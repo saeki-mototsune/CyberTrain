@@ -712,12 +712,27 @@ OAuth and two-factor authentication.
   SessionStore::SESSION_KEY_LABEL)`); the raw secret raises
   `Encryptor::Error`.
 - The template number helpers raise `ArgumentError` for a value that is
-  not an Integer, a Float or a numeric String, nil included (0.4's
-  `number_with_delimiter` gave `""` for nil), and for a precision outside
-  0 to 100.
-- A model that includes a module that is not a concern of
-  `app/models/concerns` is refused by gen (`include Comparable: no concern
-  named Comparable in app/models/concerns`), as a controller is.
+  not an Integer, a Float, a numeric String or nil, and for a precision
+  outside 0 to 100; nil renders `""` in a template, as 0.4's
+  `number_with_delimiter` did. `Cybertrain::NumberHelper` called from Ruby
+  raises for nil too.
+- A model or controller that includes a module that is not a concern (no
+  file under `app/models/concerns` or `app/controllers/concerns` has its
+  name) keeps that `include` as plain Ruby: `include Comparable` works, and
+  a misspelt concern name is a `NameError` when the application loads
+  rather than a gen message. `include A, B` includes B first, as Ruby does.
+- An action that answers by `Accept` sends `Vary: Accept`, and every ETag
+  changes once on upgrade (it now carries the format and a build digest).
+  `params.permit` and `expect` raise `ArgumentError` for a filter that is
+  not an Array (`permit(meta: :source)`) and for an Array inside one.
+  `layout "x"` or `render layout: "x"` naming a layout that does not
+  exist raises `MissingTemplate` (only the default `application` layout is
+  optional). `cookies` raise `Session::CookieOverflow` for a value over
+  4096 bytes. In development a view edit can still get a 304 until a
+  record changes or the page is reloaded without the cached copy: only
+  `--embed-views` puts the templates in the digest. `Static` does not
+  serve a dotfile under `/assets`, and an asset directory that is a
+  symlink stops gen.
 - `layout`: the first applicable declaration wins (Rails: the last one
   replaces the earlier ones).
 - `Static` does not serve a file whose real path leaves `public/`, so a
@@ -847,13 +862,24 @@ adds its own notes here.
   (`text/vnd.turbo-stream.html, text/html`) to an action without a
   `turbo_stream` declaration or template answers through its html one, as
   Rails does, where section 3 would have answered 406; a `.turbo_stream`
-  extension still asks for that format only. No format but html renders
-  in a layout. `render :x` inside a non-html block still renders
-  `x.html.erb`.
+  extension still asks for that format only. The same fallback covers any
+  `Accept` that lists `text/html` or `*/*` next to a non-html format (an
+  axios `application/json, text/plain, */*` gets the html of an html-only
+  action, not a 406). No format but html renders in a layout. `render :x`
+  inside a block renders the template of the format that block matched
+  (`x.turbo_stream.erb` in `format.turbo_stream`); the html fallback runs
+  the block a second time, so its other statements run twice. A response
+  negotiated by `Accept` carries `Vary: Accept` (an extension's does not),
+  and the format joins the ETag, so a cached html copy is never revalidated
+  for a JSON or Turbo Stream request.
 - Concerns (section 4): besides the copies above, an `include` of a module
-  that is not a concern is refused for models as for controllers; include
-  positions are counted lexically; a model concern's callbacks run after
-  the model's own (plan decision 9). `helper_method` is refused for a
+  that is not a concern is left to Ruby, for models as for controllers
+  (it was refused at first); `include A, B` splices B's `included` body
+  first, as Ruby runs it; a model concern's `class_methods` name may not be
+  a scope of the model or a name in `ModelScan::RESERVED_SCOPE_NAMES`;
+  an `include` inside a model concern's `included` body brings that
+  concern in; include positions are counted lexically; a model concern's
+  callbacks run after the model's own (plan decision 9). `helper_method` is refused for a
   framework helper's name, a `_path` / `_url` name, an application helper's
   name, a name with no `def` in the class, its parents or its concerns,
   and a `def` whose parameters a template cannot pass.
@@ -861,8 +887,16 @@ adds its own notes here.
   `{"id" => "3"}`, and the top-level list form `params.expect(tags: [])`
   answers `{"tags" => [...]}` (one return type). `fresh_when` lets a
   non-empty `If-None-Match` decide alone (RFC 9110 13.1.3) and answers 304
-  to GET and HEAD only; a 304 carries no Content-Type, Content-Length or
-  policy header (a fresh nonce on it would break a cached page's scripts).
+  to GET and HEAD only; a 304 carries no Content-Type, Content-Length,
+  body or policy header (a fresh nonce on it would break a cached page's
+  scripts). The ETag is the key, the request's format and a build digest
+  (the asset digests and import map, plus the embedded views of an
+  `--embed-views` build), so a deploy invalidates it; content that differs
+  per user needs the user in the key (`etag: "posts/#{@post.id}-#{current_user.id}"`),
+  and a page with a CSP nonce is not made `public`, as a shared cache
+  would give every visitor one nonce. `permit` and `expect` refuse a filter
+  that is not an Array with `ArgumentError`, a programmer's error and not
+  a 400.
   `rate_limit` refuses a `name:` with `:` and a second limit of the same
   name in one controller's chain, raises for a `by:` method answering nil
   or `""`, and follows a `with:` method that renders nothing with the 429;
@@ -877,12 +911,13 @@ adds its own notes here.
   `form_record_url`, as the policy's `form_action` returns nil (rule 34).
   `javascript_tag` writes no CDATA. The cookie jar's `signed` HMAC covers
   `"<name>=<value>"`, so a value does not verify under another name; a jar
-  built without SessionStore raises for `signed` and `encrypted`; cookies
-  other than the session's have no 4096-byte check. `Session.load` and
-  `dump` take the derived key.
+  built without SessionStore raises for `signed` and `encrypted`; a cookie
+  written through the jar raises `Session::CookieOverflow` over 4096 bytes
+  of `name=value`. `Session.load` and `dump` take the derived key.
 - Views (section 6): the number helpers raise for any value that is not
-  numeric, nil included, and cap the precision at 100 and the exponent at
-  400. `f.select` has no public Ruby method (Kernel's and Enumerable's
+  numeric and cap the precision at 100 and the exponent at 400; nil
+  renders `""` in a template, and `NumberHelper` called from Ruby raises
+  for it. `f.select` has no public Ruby method (Kernel's and Enumerable's
   `select` return other types, rule 34): templates reach a private
   `select_field`. The hidden input of `multiple:` is written `<input
   type="hidden" name="..." value="" autocomplete="off">` (plan decision
@@ -890,7 +925,10 @@ adds its own notes here.
   Turbo Stream builder takes a block's output through
   `call_method_with_block`, so no block reaches it. `time_tag`'s `format:`
   is formatted directive by directive with literal patterns and raises on
-  an unknown directive (rule 96). A component's `with_collection` is
+  an unknown directive (rule 96), and on a width or flag that `strftime`
+  would read differently (`%6L`, `%-T`, `%:Y`); a width on a number
+  replaces its padding as `strftime` does. `collection:` takes no other
+  keyword. A component's `with_collection` is
   generated for a component whose one required keyword is named after it
   (`ComponentCollection`), and a hand-written `def self.with_collection`
   is refused. The first applicable `layout` declaration wins; a layout
@@ -900,9 +938,13 @@ adds its own notes here.
   directory, as Propshaft resolves it (so the blog's stylesheet uses
   `url("logo.svg")`, not `url("../images/logo.svg")`); a symlinked file
   leading out of its tree or nowhere, and a path with a space or a control
-  character, stop gen; an unknown import map option stops it too. Boot
+  character, stop gen, as does an asset directory (`app/assets`, `app/javascript`,
+  `vendor/javascript`) that is itself a symlink; an unknown import map
+  option stops it too. Boot
   sets `Assets.raise_on_unknown = !production?` (Assets cannot read
-  `Config`). `Static` refuses a file whose real path leaves `public/`.
+  `Config`). `Static` refuses a file whose real path leaves `public/` and any dotfile
+  under `/assets` (`.manifest`, a crashed run's temp file); other public
+  dotfiles (`/.well-known`) are served.
   `image_tag` writes `alt=""` when given it and makes none up; a URL with a
   scheme, `//`, `data:` or `cid:` is written as given and `javascript:x`
   is looked up as an asset name. One file, `cybertrain/asset_manifest.rb`,
@@ -917,6 +959,4 @@ adds its own notes here.
   `gen_assets`, `gen_concerns`, `gen_model_concerns`, `helper_method`,
   `http_caching`, `number_helper`, `rate_limit_store`, `send_data`,
   `turbo_helpers`), and examples/blog's two programs run 52 tests (35 and
-  17). The whole suite (`script/test-shard 0 1`) passed 161 of 161 after
-  Task 4 and 167 of 167 after Task 10, the group boundaries the
-  implementation log records; it was not run again for this section.
+  17). The whole suite (`script/test-shard 0 1`) passed 177 of 177 at 0e183e6, before the final fix wave.

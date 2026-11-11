@@ -1,5 +1,5 @@
 ---
-source_sha256: 7f750ee56295d2cb3d244772201081aa35f57e019c3554e514b1a3ef115d75fb
+source_sha256: ea0920c65e1defc6886af8050bf6977a12fa422a483c5e9a9a87305465abbf41
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -311,11 +311,11 @@ Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui fait 
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | le chemin du point d’entrée des flux avec le jeton et `mode=json` (ou `"raw"`) |
 | `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`&nbsp;; un enregistrement donne son `dom_id`&nbsp;; chaque attribut seulement s’il est fourni |
 | `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | un élément `<turbo-stream action="...">`, pour un template `*.turbo_stream.erb`&nbsp;; la cible est un id DOM ou un enregistrement&nbsp;; exactement un parmi un bloc, `partial:` (avec `locals:`) et `html:` |
-| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`, ou avec un bloc | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`&nbsp;; une Date donne `2026-11-10`&nbsp;; `format:` vaut `:short`, `:long` ou une String strftime (une directive inconnue lève une erreur) |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`, ou avec un bloc | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`&nbsp;; une Date donne `2026-11-10`&nbsp;; `format:` vaut `:short`, `:long` ou une String strftime (une directive inconnue lève une erreur, de même qu’une largeur ou un drapeau que strftime lirait autrement&nbsp;: `%6L`, utilisez `%6N`&nbsp;; `:` seulement dans `%:z`&nbsp;; pas de drapeau de remplissage sur `%F %T %D %R %r %c %x %X %v`&nbsp;; une largeur sur un nombre remplace son remplissage, `%5e` donne `"    5"`) |
 
 Chaque argument texte d’un helper suit une seule règle&nbsp;: une `SafeString` passe sans être échappée, tout le reste est échappé — `link_to raw('<b>raw</b>'), post` affiche la balise gras littéralement, mais `link_to post.title, post` l’échappe.
 
-Les six helpers numériques sont ceux de `Cybertrain::NumberHelper`, que le code Ruby appelle comme des fonctions de module avec les mêmes mots-clés (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). Ils prennent un Integer, un Float ou une String numérique (les colonnes décimales sont des Float) et arrondissent au demi supérieur sur les chiffres de son texte décimal, si bien que le résultat est le même sur les deux runtimes&nbsp;; toute autre valeur, `nil` compris, lève `ArgumentError` (`"number_with_delimiter: nil is not a number"`), tout comme une précision hors de 0 à 100. Les formats sont en anglais.
+Les six helpers numériques sont ceux de `Cybertrain::NumberHelper`, que le code Ruby appelle comme des fonctions de module avec les mêmes mots-clés (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). Ils prennent un Integer, un Float ou une String numérique (les colonnes décimales sont des Float) et arrondissent au demi supérieur sur les chiffres de son texte décimal, si bien que le résultat est le même sur les deux runtimes&nbsp;; toute autre valeur lève `ArgumentError` (`"number_with_delimiter: \"abc\" is not a number"`), tout comme une précision hors de 0 à 100. Dans un template, `nil` donne `""` (une colonne décimale nullable s’affiche vide, comme dans Rails)&nbsp;; `Cybertrain::NumberHelper` appelé depuis Ruby lève toujours `ArgumentError` pour `nil` (`"number_with_delimiter: nil is not a number"`). Les formats sont en anglais.
 
 ### Le constructeur tag
 
@@ -460,7 +460,7 @@ class AdminController < ApplicationController
 end
 ```
 
-`layout "admin"` seul nomme un layout pour toutes les actions. `spin run gen` lit les lignes `layout` (un nom entre guillemets, `false`, ou le Symbol d’une méthode, avec `only:` / `except:`) et écrit le `controller_layout(action)` du contrôleur. Les déclarations sont essayées dans l’ordre et **la première qui s’applique l’emporte** (Rails laisse une déclaration ultérieure remplacer une antérieure)&nbsp;; les lignes d’un concern comptent à son `include`. `render layout: "x"` utilise `layouts/x` pour un appel et `render layout: false` aucun. Seul le html est rendu dans un layout&nbsp;; le template d’un autre format se rend sans. Tout autre argument de `layout` (`nil`, une lambda, une constante) est refusé par gen.
+`layout "admin"` seul nomme un layout pour toutes les actions. `spin run gen` lit les lignes `layout` (un nom entre guillemets, `false`, ou le Symbol d’une méthode, avec `only:` / `except:`) et écrit le `controller_layout(action)` du contrôleur. Les déclarations sont essayées dans l’ordre et **la première qui s’applique l’emporte** (Rails laisse une déclaration ultérieure remplacer une antérieure)&nbsp;; les lignes d’un concern comptent à son `include`. `render layout: "x"` utilise `layouts/x` pour un appel et `render layout: false` aucun&nbsp;; un `layouts/` initial est accepté (`layout "layouts/x"` vaut `layouts/x`). Une ligne `layout` ou un `render layout:` qui nomme un layout inexistant lève `MissingTemplate`&nbsp;; seul le layout `application` par défaut est facultatif (l’action se rend alors sans layout). Seul le html est rendu dans un layout&nbsp;; le template d’un autre format se rend sans. Tout autre argument de `layout` (`nil`, une lambda, une constante) est refusé par gen.
 
 ### Partiels et `render`
 
@@ -486,7 +486,7 @@ end
 
 - `collection:` rend le partiel une fois par élément d’un Array, sous la variable locale nommée par `as:` (par défaut le nom du partiel), avec `<as>_counter` qui compte à partir de 0, les `locals:` donnés à chacun et `spacer_template:` (un partiel) entre les éléments&nbsp;; une collection vide ne rend rien. Un partiel à locals stricts ne reçoit le compteur que s’il le déclare, et l’élément l’emporte sur une variable locale du même nom.
 - `render @comments` choisit le partiel de chaque enregistrement d’après son modèle, `<plural>/_<singular>` (`admin/notes/_note` pour un `Admin::Note`), si bien qu’une liste peut mêler des modèles.
-- Un composant dont l’unique mot-clé requis porte son nom (`CommentComponent` avec `comment:`) reçoit `CommentComponent.with_collection(items)`, et `render component: "comment", collection: @comments` le rend une fois par élément, en passant `comment_counter:` quand `initialize` le déclare.
+- Un composant dont l’unique mot-clé requis porte son nom (`CommentComponent` avec `comment:`) reçoit `CommentComponent.with_collection(items)`, et `render component: "comment", collection: @comments` le rend une fois par élément, en passant `comment_counter:` quand `initialize` le déclare. `collection:` n’accepte aucun autre mot-clé (`render component: "comment", collection: @comments, extra: 1` est une erreur qui le nomme)&nbsp;; le contenu du bloc n’est pas transmis.
 
 ### Résolution des fichiers (`engine.rb`)
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 2ffd6596d62c339b9ae69a076e7d8aefbabe8f7fecc3d1ea104fb1bf3be7dd06
+source_sha256: f33d41101fb56e6a4ccb2fd65374062a590ba781adb2baf79d57aef2a6aefb2c
 ---
 # アセット
 
@@ -15,7 +15,7 @@ app/javascript/controllers/hello.js       controllers/hello.js
 vendor/javascript/chart.js                chart.js
 ```
 
-`app/assets/` の直下にあるディレクトリはそれぞれがルートで、`app/javascript/` と `vendor/javascript/` もルートです：ファイルの論理パスはそのルートより下のパス（上の右の列）で、ヘルパーが受け取る名前です。二つのルートに同じ論理パスがあると、`spin run gen` は両方のファイルを挙げて止まります。ドットファイル（`.keep`）とシンボリックリンクのディレクトリは飛ばします。シンボリックリンクのファイルは、そのツリーの中を指していれば読み、外を指すものやどこも指さないものがあれば gen は止まります。空白や制御文字を含むパスは拒否されます。別の CSS ビルド（Sass、Tailwind）は `app/assets/builds/` に書き出せます。そこもほかと同じルートです。
+`app/assets/` の直下にあるディレクトリはそれぞれがルートで、`app/javascript/` と `vendor/javascript/` もルートです：ファイルの論理パスはそのルートより下のパス（上の右の列）で、ヘルパーが受け取る名前です。二つのルートに同じ論理パスがあると、`spin run gen` は両方のファイルを挙げて止まります。ルートの下のドットファイル（`.keep`）とシンボリックリンクのディレクトリは飛ばしますが、ルート自体がシンボリックリンクである場合（`app/assets`、`app/javascript`、`vendor/javascript`）は、gen がそれを名指しして止まります。シンボリックリンクのファイルは、そのツリーの中を指していれば読み、外を指すものやどこも指さないものがあれば gen は止まります。空白や制御文字を含むパスは拒否されます。別の CSS ビルド（Sass、Tailwind）は `app/assets/builds/` に書き出せます。そこもほかと同じルートです。
 
 ## ダイジェストと保持
 
@@ -68,7 +68,7 @@ gen はこのファイルをテキストとして読み、実行はしません�
 
 ## 配信
 
-静的ファイルのミドルウェアは、gen が書いたダイジェスト（`gen/assets.rb` の現在のもの、または起動時に読む `public/assets/.manifest` の残したもの）を名前に持つ `/assets/` 以下のファイルを、`Cache-Control: public, max-age=31536000, immutable` で返します。ファイルが変わることはないので ETag は要りません。`public/` のそれ以外のもの（アプリが `public/assets/` に置いたダイジェストなしのファイルも）は `max-age=3600` のままです。実際のパスが `public/` の外に出るファイルは返しません：`public/assets` を `public/` の外のディレクトリへのシンボリックリンクにするデプロイ（Capistrano の共有ディレクトリ）は、代わりにそこへマウントかバインドマウントしてください。`public/` を自分で返すリバースプロキシは自分のヘッダーを送るので、そちらで `/assets/` に同じ 1 年の immutable なキャッシュを付けてください。
+静的ファイルのミドルウェアは、gen が書いたダイジェスト（`gen/assets.rb` の現在のもの、または起動時に読む `public/assets/.manifest` の残したもの）を名前に持つ `/assets/` 以下のファイルを、`Cache-Control: public, max-age=31536000, immutable` で返します。ファイルが変わることはないので ETag は要りません。`public/` のそれ以外のもの（アプリが `public/assets/` に置いたダイジェストなしのファイルも）は `max-age=3600` のままです。`/assets` の下のドットファイル（`.manifest`、途中で止まった gen 実行の一時ファイル）は返しません。`public/` のほかの場所のドットファイル（`/.well-known/...`）は返します。実際のパスが `public/` の外に出るファイルは返しません：`public/assets` を `public/` の外のディレクトリへのシンボリックリンクにするデプロイ（Capistrano の共有ディレクトリ）は、代わりにそこへマウントかバインドマウントしてください。`public/` を自分で返すリバースプロキシは自分のヘッダーを送るので、そちらで `/assets/` に同じ 1 年の immutable なキャッシュを付けてください。
 
 ## `public/style.css` を移す
 

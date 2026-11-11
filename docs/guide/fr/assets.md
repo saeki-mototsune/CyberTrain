@@ -1,5 +1,5 @@
 ---
-source_sha256: 2ffd6596d62c339b9ae69a076e7d8aefbabe8f7fecc3d1ea104fb1bf3be7dd06
+source_sha256: f33d41101fb56e6a4ccb2fd65374062a590ba781adb2baf79d57aef2a6aefb2c
 ---
 # Assets
 
@@ -15,7 +15,7 @@ app/javascript/controllers/hello.js       controllers/hello.js
 vendor/javascript/chart.js                chart.js
 ```
 
-Chaque répertoire placé directement sous `app/assets/` est une racine, tout comme `app/javascript/` et `vendor/javascript/`&nbsp;: le chemin logique d’un fichier est son chemin sous sa racine (la colonne de droite ci-dessus), c’est-à-dire le nom que prennent les helpers. Un chemin logique trouvé sous deux racines arrête `spin run gen`, qui nomme les deux fichiers. Les fichiers cachés (`.keep`) et les répertoires liés symboliquement sont ignorés&nbsp;; un fichier lié symboliquement est lu s’il reste dans son arborescence, et un lien qui mène en dehors, ou nulle part, arrête gen. Un chemin contenant une espace ou un caractère de contrôle est refusé. Une construction CSS séparée (Sass, Tailwind) peut écrire dans `app/assets/builds/`, une racine comme les autres.
+Chaque répertoire placé directement sous `app/assets/` est une racine, tout comme `app/javascript/` et `vendor/javascript/`&nbsp;: le chemin logique d’un fichier est son chemin sous sa racine (la colonne de droite ci-dessus), c’est-à-dire le nom que prennent les helpers. Un chemin logique trouvé sous deux racines arrête `spin run gen`, qui nomme les deux fichiers. Les fichiers cachés (`.keep`) et les répertoires liés symboliquement sous une racine sont ignorés, mais une racine qui est elle-même un lien symbolique (`app/assets`, `app/javascript`, `vendor/javascript`) arrête gen, qui la nomme&nbsp;; un fichier lié symboliquement est lu s’il reste dans son arborescence, et un lien qui mène en dehors, ou nulle part, arrête gen. Un chemin contenant une espace ou un caractère de contrôle est refusé. Une construction CSS séparée (Sass, Tailwind) peut écrire dans `app/assets/builds/`, une racine comme les autres.
 
 ## Empreintes et conservation
 
@@ -68,7 +68,7 @@ gen lit le fichier comme du texte, sans jamais l’exécuter&nbsp;: `pin name, t
 
 ## Service des fichiers
 
-Le middleware des fichiers statiques sert un fichier sous `/assets/` dont le nom porte une empreinte écrite par gen (une actuelle, tirée de `gen/assets.rb`, ou une conservée, tirée de `public/assets/.manifest`, lu au démarrage) avec `Cache-Control: public, max-age=31536000, immutable`&nbsp;; il n’a pas besoin d’ETag, puisque le fichier ne change jamais. Tout le reste de `public/`, y compris un fichier sans empreinte qu’une application garde sous `public/assets/`, garde `max-age=3600`. Un fichier dont le chemin réel sort de `public/` n’est pas servi&nbsp;: un déploiement qui relie `public/assets` par un lien symbolique vers un répertoire hors de `public/` (les répertoires partagés de Capistrano) le monte ou le monte en bind à cet endroit à la place. Un reverse proxy qui sert lui-même `public/` envoie ses propres en-têtes&nbsp;; donnez-y à `/assets/` la même mise en cache immuable d’un an.
+Le middleware des fichiers statiques sert un fichier sous `/assets/` dont le nom porte une empreinte écrite par gen (une actuelle, tirée de `gen/assets.rb`, ou une conservée, tirée de `public/assets/.manifest`, lu au démarrage) avec `Cache-Control: public, max-age=31536000, immutable`&nbsp;; il n’a pas besoin d’ETag, puisque le fichier ne change jamais. Tout le reste de `public/`, y compris un fichier sans empreinte qu’une application garde sous `public/assets/`, garde `max-age=3600`. Un fichier caché sous `/assets` (`.manifest`, le fichier temporaire d’une exécution de gen interrompue) n’est pas servi&nbsp;; un fichier caché ailleurs dans `public/` (`/.well-known/...`) l’est. Un fichier dont le chemin réel sort de `public/` n’est pas servi&nbsp;: un déploiement qui relie `public/assets` par un lien symbolique vers un répertoire hors de `public/` (les répertoires partagés de Capistrano) le monte ou le monte en bind à cet endroit à la place. Un reverse proxy qui sert lui-même `public/` envoie ses propres en-têtes&nbsp;; donnez-y à `/assets/` la même mise en cache immuable d’un an.
 
 ## Déplacer `public/style.css`
 

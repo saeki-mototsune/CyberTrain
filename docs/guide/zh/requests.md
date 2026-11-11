@@ -1,5 +1,5 @@
 ---
-source_sha256: 6814f64b2b650016b9986a1a5df4781f258632796b93eeb6254ca46eb48edb65
+source_sha256: 7e141ae855e1da4fc4646fc1e60ffec077a1add0cff41de7c5394125f4eccbf1
 ---
 # 请求
 
@@ -80,9 +80,11 @@ def show
 end
 ```
 
-收集器（`Cybertrain::FormatCollector`）有 `html`、`json`、`turbo_stream`、`csv`、`xml`、`text` 和 `any`。第一个匹配的声明会立即运行它的块，因此块能看到动作的实例变量；没有块的声明会渲染该格式的动作模板（`show.html.erb` 在布局中，`show.turbo_stream.erb` 不带布局）。一个都不匹配时，响应是 `406 Not Acceptable`。`any` 匹配除 `:unknown` 以外的任何格式。Turbo 提交表单时请求 `text/vnd.turbo-stream.html, text/html`：这样的请求格式是 `:turbo_stream`，没有 `format.turbo_stream` 的动作会像 Rails 那样通过它的 `format.html` 响应（`.turbo_stream` 扩展名只请求该格式）。
+收集器（`Cybertrain::FormatCollector`）有 `html`、`json`、`turbo_stream`、`csv`、`xml`、`text` 和 `any`。第一个匹配的声明会立即运行它的块，因此块能看到动作的实例变量；没有块的声明会渲染该格式的动作模板（`show.html.erb` 在布局中，`show.turbo_stream.erb` 不带布局）。一个都不匹配时，响应是 `406 Not Acceptable`。`any` 匹配除 `:unknown` 以外的任何格式。Turbo 提交表单时请求 `text/vnd.turbo-stream.html, text/html`：这样的请求格式是 `:turbo_stream`，没有 `format.turbo_stream` 的动作会像 Rails 那样通过它的 `format.html` 响应（`.turbo_stream` 扩展名只请求该格式）。同样的回退适用于任何在非 html 格式旁边列出 `text/html` 或 `*/*` 的 `Accept`：客户端向只有 html 模板的动作发送 `application/json, text/plain, */*`，得到的是 html，而不是 406。回退会为 html 把块再运行一次，所以块中 `format.` 行以外的语句会运行两次：块里只放 `format.` 行。
 
-没有 `respond_to` 时，动作在 `<action>.<format>.erb` 存在时渲染它（`create.turbo_stream.erb`，不带布局，使用该格式的内容类型），不存在时以 406 响应；html 和以前一样。JSON 没有模板：动作用 `render json:` 返回 JSON。在块中，`render :edit` 仍然渲染 `edit.html.erb`。
+格式来自 `Accept` 的响应（没有扩展名、发送了 `Accept` 头）带有 `Vary: Accept`，并与动作已设置的 `Vary` 合并，这样浏览器或缓存不会把某个 URL 的 html 交给请求其 JSON 或 Turbo Stream 的请求；带扩展名的路径则没有。
+
+没有 `respond_to` 时，动作在 `<action>.<format>.erb` 存在时渲染它（`create.turbo_stream.erb`，不带布局，使用该格式的内容类型），不存在时以 406 响应；html 和以前一样。JSON 没有模板：动作用 `render json:` 返回 JSON。在块中，`render :edit` 渲染该块所匹配格式的模板（`format.turbo_stream` 中是 `edit.turbo_stream.erb`）。
 
 控制器用 `turbo_stream` 构建 Turbo Stream 响应（turbo-rails 的构建器：`replace`、`update`、`append`、`prepend`、`before`、`after` 各接受一个目标以及带 `locals:` 的 `partial:` 或 `html:` 之一，还有 `remove`）：
 
@@ -109,11 +111,11 @@ module AdminGate
 end
 ```
 
-写了 `include AdminGate` 的控制器会得到 `included` 块所声明的内容（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`），位置就在 `include` 处，顺序与书写一致，并且在它的动作中可以使用 `self.class.per_page`。concern 可以包含 concern：gen 以深度优先展开它们，每个只展开一次，并点名拒绝循环（`concern cycle: A includes B includes A`）。`around_action` 会被拒绝（没有 around 回调）。concern 方法中的 `@x =` 赋值属于控制器的视图变量。
+写了 `include AdminGate` 的控制器会得到 `included` 块所声明的内容（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`），位置就在 `include` 处，顺序与书写一致，并且在它的动作中可以使用 `self.class.per_page`。concern 可以包含 concern：gen 以深度优先展开它们，每个只展开一次，并点名拒绝循环（`concern cycle: A includes B includes A`）。`include A, B` 与 Ruby 一样先包含 B，所以 B 的 `included` 块和回调排在 A 之前。`around_action` 会被拒绝（没有 around 回调）。concern 方法中的 `@x =` 赋值属于控制器的视图变量。
 
-Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。由此产生两条规则。`class_methods` 的方法不能与 concern、包含它的类或其祖先的实例方法同名（Spinel 会把两者都定义为实例方法，spikes/NOTES.md 规则 93）；gen 会拒绝它并指出两个位置。另外，`include` 指向的是 concern：不是 concern 的模块（`include Comparable`）会被拒绝（`include Comparable: no concern named Comparable in app/controllers/concerns`）。
+Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。由此产生两条规则。`class_methods` 的方法不能与 concern、包含它的类或其祖先的实例方法同名（Spinel 会把两者都定义为实例方法，spikes/NOTES.md 规则 93）；gen 会拒绝它并指出两个位置（实例方法所在的 `文件:行`）。另外，`include` 一个不是 concern 的模块（`include Comparable`，或在 `app/*/concerns` 下没有对应文件的名字）会原样留给 Ruby，所以 concern 名字拼错时，是应用加载时的 `NameError`，而不是 gen 的提示。
 
-模型的 concern 放在 `app/models/concerns/`，工作方式相同：它们的 `included` 块可以包含模型的任何类级声明（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、回调、`normalizes`），视同在 `include` 处写在模型中。concern 的回调在模型自己的同类回调之后运行。
+模型的 concern 放在 `app/models/concerns/`，工作方式相同：它们的 `included` 块可以包含模型的任何类级声明（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、回调、`normalizes`），视同在 `include` 处写在模型中。concern 的回调在模型自己的同类回调之后运行，模型 concern 的 `included` 块中的 `include` 会把那个 concern 引入。模型 concern 的 `class_methods` 方法名不能是该模型的 scope，也不能是每个模型都有的类方法（与 `scope :recent` 并列的 `recent`，或 `where`）；gen 会拒绝。
 
 在控制器或 concern 的 `included` 块中写 `helper_method :current_user, :admin?`，就可以在该控制器的模板以及它们渲染的组件和局部模板中，带参数调用这些控制器方法。gen 会拒绝以下名称：框架辅助方法的名称、以 `_path` 或 `_url` 结尾的名称、由 `app/helpers` 中的模块定义的名称、在控制器及其父类或 concern 中没有 `def` 的名称，以及模板无法传入其参数（`*rest`、`**opts`、`...`）的名称。
 
@@ -126,7 +128,7 @@ end
 # => {"title" => "Hi", "body" => "...", "tags" => ["a", "b"], "meta" => {"source" => "rss"}}
 ```
 
-`permit` 接受同样的形式：一个键允许一个 String，`key: []` 允许 String 的列表，`key: [...]` 允许一层嵌套。类型不对的值、未列出的键和上传的文件都会被丢弃。`expect` 返回其唯一键之下的那一层，当该键不存在、类型不对或什么都不允许时，抛出 `Params::ParameterMissing`（以 400 响应）。`params.expect(:id)` 读取一个 String 并返回 `{"id" => "3"}`；`params.expect(tags: [])` 同样返回一个非空列表。两者都返回 `Hash{String => Object}`：值是 String、String 的 Array 或嵌套的 Hash，所以在对值调用 String 方法之前，先用 `Cybertrain::Cast.str`（或 `.to_s`）收窄它。
+`permit` 接受同样的形式：一个键允许一个 String，`key: []` 允许 String 的列表，`key: [...]` 允许一层嵌套。不是 Array 的过滤器（`permit(meta: :source)`、`expect(article: :title)`）或含有 Array 的过滤器（`[[:title]]`）会抛出 `ArgumentError`：这是代码里的错误，不是错误的请求，所以不是 400。类型不对的值、未列出的键和上传的文件都会被丢弃。`expect` 返回其唯一键之下的那一层，当该键不存在、类型不对或什么都不允许时，抛出 `Params::ParameterMissing`（以 400 响应）。`params.expect(:id)` 读取一个 String 并返回 `{"id" => "3"}`；`params.expect(tags: [])` 同样返回一个非空列表。两者都返回 `Hash{String => Object}`：值是 String、String 的 Array 或嵌套的 Hash，所以在对值调用 String 方法之前，先用 `Cybertrain::Cast.str`（或 `.to_s`）收窄它。
 
 ## 下载、HTTP 缓存与状态码
 
@@ -147,6 +149,8 @@ end
 
 `fresh_when` 设置弱 `ETag`（来自 String，或来自记录的表名、`to_param` 和 `updated_at`）和 `Last-Modified`，当请求的 `If-None-Match`（没有它时为 `If-Modified-Since`）表明客户端已有当前版本时，以 `304 Not Modified` 响应；`stale?` 做同样的事并返回动作是否应当渲染。只有 GET 和 HEAD 会得到 304。`Cache-Control` 为 `max-age=0, private, must-revalidate`（`public: true` 时为 `public`），除非 `expires_in seconds` 先设置了 `max-age=<seconds>`。其他响应不会自动带 ETag。
 
+ETag 由你给的键、请求的格式和构建摘要（资源摘要和 import map，在 `cybertrain build` 的二进制中还有视图）组成，所以同一 URL 的 html 和 JSON 永远不会共用一个 ETag，改动资源或视图的部署会让所有客户端重新验证。由此有两点。在开发中，不带 `--embed-views` 时模板是从磁盘读取的，不在摘要里：编辑视图后仍可能得到 `304`，直到记录改变或页面在不带缓存副本的情况下重新加载。还有，键表示页面显示什么，而不是谁在看：因用户而异的内容需要把用户放进键里（`etag: "posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`），否则会展示给错误的人。不要把带有 CSP nonce 的页面设为 `public`（带 nonce 的 `content_security_policy`、`javascript_importmap_tags`）：共享缓存会把同一个页面，也就是同一个 nonce，交给每位访客，nonce 也就起不到任何保护作用。
+
 `status:` 和 `head` 接受所有 Rack 符号（`:unauthorized`、`:payment_required`、`:unprocessable_content`、`:too_many_requests` 等，旧的 `:unprocessable_entity` 和 `:payload_too_large` 作为别名保留），原因短语采用 RFC 9110 的写法（413 "Content Too Large"、422 "Unprocessable Content"）。
 
 ## Cookie 与会话
@@ -163,7 +167,7 @@ cookies.delete(:theme)
 
 写入接受一个 String，或一个带 `value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:` 和 `same_site:` 的 Hash。cookie 写入时带 `Path=/`、`HttpOnly` 和 `SameSite=Lax`，会话 cookie 带 `Secure` 时（生产环境中，或开启 `force_ssl` 时）也带 `Secure`，除非写入时另有指定。`permanent` 写入 20 年的 `Max-Age`。签名的值是用从 `secret_key_base` 派生的密钥计算的 HMAC-SHA256；加密的值是用另一个密钥的 AES-256-GCM；两者都绑定到各自 cookie 的名称，因此换一个名称既无法验证也无法解密，被改过的值读出来是 nil。同一请求中写入后再读取，得到的是写入的值。
 
-会话 cookie 与 Rails 的 cookie store 一样，用 AES-256-GCM 加密并认证，使用从 `secret_key_base` 派生的专用密钥：客户端既不能读取也不能修改它。无法解密的 cookie（被改过的、来自别处的或旧的签名 cookie）会作为空会话加载，超过 4096 字节的 cookie 也是如此；cookie 会超过 4096 字节的会话在写入时抛出 `Session::CookieOverflow`。值仍然是 String。和以前一样，更换 `secret_key_base` 会让所有人退出登录。
+会话 cookie 与 Rails 的 cookie store 一样，用 AES-256-GCM 加密并认证，使用从 `secret_key_base` 派生的专用密钥：客户端既不能读取也不能修改它。无法解密的 cookie（被改过的、来自别处的或旧的签名 cookie）会作为空会话加载，超过 4096 字节的 cookie 也是如此；cookie 会超过 4096 字节的会话，或 `name=value` 超过 4096 字节的 jar cookie，在写入时抛出 `Session::CookieOverflow`。值仍然是 String。和以前一样，更换 `secret_key_base` 会让所有人退出登录。
 
 ## 限流与客户端地址
 
@@ -269,6 +273,8 @@ Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: g
 - 手写的 `url_resolver` lambda 接受三个参数 `->(name, args, options)`；传入 `Gen::Routes.url_resolver` 的应用只需运行 `spin run gen`。
 - `params.permit` 返回 `Hash{String => Object}`：把值当作 String 使用之前，先对它调用 `Cast.str` 或 `.to_s`。
 - `rate_limit` 在缓存中计数：`store: :memory` 保留原来的按进程计数，同一控制器中的两个限制需要各自的 `name:`，返回 nil 或 `""` 的 `by:` 方法会抛出异常，什么都不渲染的 `with:` 方法之后仍返回 429。
-- 数字辅助方法对不是数字的值，以及超出 0 到 100 的精度，会抛出异常。
-- 模型只能包含 concern：`include` 其他模块会让 `spin run gen` 停止。
+- 数字辅助方法对不是数字的值，以及超出 0 到 100 的精度，会抛出异常（nil 在模板中仍渲染为 `""`）。
+- 控制器或模型中的 `include A, B` 与 Ruby 一样先包含 B；`include` 一个不是 concern 的模块会留给 Ruby。
+- 所有 ETag 变化一次（现在包含请求的格式和构建摘要），由 `Accept` 决定的响应会发送 `Vary: Accept`，html 回退适用于任何列出 `text/html` 或 `*/*` 的 `Accept`。
+- `permit` 和 `expect` 对不是 Array 的过滤器抛出 `ArgumentError`；`layout` 指向不存在的布局会抛出 `MissingTemplate`（默认的 `application` 布局仍是可选的）；jar cookie 超过 4096 字节会抛出 `Session::CookieOverflow`。
 - `public/style.css` 继续可用；把它移到 `app/assets/stylesheets/` 是可选的（[资源](assets.md#moving-publicstylecss)）。

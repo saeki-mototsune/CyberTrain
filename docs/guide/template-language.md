@@ -308,11 +308,11 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | the stream endpoint's path with the token and `mode=json` (or `"raw"`) |
 | `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`; a record gives its `dom_id`; each attribute only when given |
 | `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | one `<turbo-stream action="...">` element, for a `*.turbo_stream.erb` template; the target is a DOM id or a record; exactly one of a block, `partial:` (with `locals:`) and `html:` |
-| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`, or with a block | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`; a Date gives `2026-11-10`; `format:` is `:short`, `:long` or a strftime String (an unknown directive raises) |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`, or with a block | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`; a Date gives `2026-11-10`; `format:` is `:short`, `:long` or a strftime String (an unknown directive raises, and so does a width or flag strftime would read differently: `%6L`, use `%6N`; `:` only in `%:z`; no padding flag on `%F %T %D %R %r %c %x %X %v`; a width on a number replaces its padding, `%5e` gives `"    5"`) |
 
 Every helper text argument follows one rule: a `SafeString` passes through unescaped, anything else is escaped — `link_to raw('<b>raw</b>'), post` prints the bold tag literally, but `link_to post.title, post` escapes it.
 
-The six number helpers are `Cybertrain::NumberHelper`'s, which Ruby code calls as module functions with the same keywords (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). They take an Integer, a Float or a numeric String (decimal columns are Floats) and round half up on the digits of its decimal text, so the output is the same on both runtimes; anything else, `nil` included, raises `ArgumentError` (`"number_with_delimiter: nil is not a number"`), as does a precision outside 0 to 100. The formats are English.
+The six number helpers are `Cybertrain::NumberHelper`'s, which Ruby code calls as module functions with the same keywords (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). They take an Integer, a Float or a numeric String (decimal columns are Floats) and round half up on the digits of its decimal text, so the output is the same on both runtimes; anything else raises `ArgumentError` (`"number_with_delimiter: \"abc\" is not a number"`), as does a precision outside 0 to 100. In a template `nil` renders `""` (a nullable decimal column prints as empty, as in Rails); `Cybertrain::NumberHelper` called from Ruby still raises `ArgumentError` for `nil` (`"number_with_delimiter: nil is not a number"`). The formats are English.
 
 ### The tag builder
 
@@ -465,7 +465,11 @@ with `only:` / `except:`) and writes the controller's
 `controller_layout(action)`. The declarations are tried in order and **the
 first that applies wins** (Rails lets a later one replace an earlier one);
 a concern's lines count at its `include`. `render layout: "x"` uses
-`layouts/x` for one call and `render layout: false` none. Only html is
+`layouts/x` for one call and `render layout: false` none; a leading `layouts/`
+is accepted (`layout "layouts/x"` is `layouts/x`). A `layout` line or
+`render layout:` that names a layout that does not exist raises
+`MissingTemplate`; only the default `application` layout is optional (an
+action renders bare without it). Only html is
 rendered in a layout; another format's template renders without one. Any
 other `layout` argument (`nil`, a lambda, a constant) is refused by gen.
 
@@ -493,7 +497,7 @@ other `layout` argument (`nil`, a lambda, a constant) is refused by gen.
 
 - `collection:` renders the partial once per item of an Array, as the local named by `as:` (the partial's own name by default), with `<as>_counter` counting from 0, the `locals:` given to each and `spacer_template:` (a partial) between items; an empty collection renders nothing. A partial with strict locals gets the counter only when it declares it, and the item wins over a local of the same name.
 - `render @comments` picks each record's partial from its model, `<plural>/_<singular>` (`admin/notes/_note` for an `Admin::Note`), so a list may mix models.
-- A component whose one required keyword is named after it (`CommentComponent` with `comment:`) gets `CommentComponent.with_collection(items)`, and `render component: "comment", collection: @comments` renders it once per item, passing `comment_counter:` when `initialize` declares it.
+- A component whose one required keyword is named after it (`CommentComponent` with `comment:`) gets `CommentComponent.with_collection(items)`, and `render component: "comment", collection: @comments` renders it once per item, passing `comment_counter:` when `initialize` declares it. `collection:` takes no other keyword (`render component: "comment", collection: @comments, extra: 1` is an error naming it); the block's content is not passed.
 
 ### File resolution (`engine.rb`)
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 7f750ee56295d2cb3d244772201081aa35f57e019c3554e514b1a3ef115d75fb
+source_sha256: ea0920c65e1defc6886af8050bf6977a12fa422a483c5e9a9a87305465abbf41
 ---
 # Справочник по языку шаблонов Cybertrain
 
@@ -311,11 +311,11 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | путь точки входа потоков с токеном и `mode=json` (или `"raw"`) |
 | `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`; запись даёт свой `dom_id`; каждый атрибут — только если задан |
 | `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | один элемент `<turbo-stream action="...">` для шаблона `*.turbo_stream.erb`; цель — DOM id или запись; ровно одно из: блок, `partial:` (с `locals:`) или `html:` |
-| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)` или с блоком | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`; Date даёт `2026-11-10`; `format:` — `:short`, `:long` или String для strftime (неизвестная директива вызывает исключение) |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)` или с блоком | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`; Date даёт `2026-11-10`; `format:` — `:short`, `:long` или String для strftime (неизвестная директива вызывает исключение, как и ширина или флаг, которые strftime прочитал бы иначе: `%6L`, используйте `%6N`; `:` только в `%:z`; никаких флагов заполнения у `%F %T %D %R %r %c %x %X %v`; ширина у числа заменяет его заполнение, `%5e` даёт `"    5"`) |
 
 Каждый текстовый аргумент хелпера следует одному правилу: `SafeString` проходит без экранирования, всё остальное экранируется — `link_to raw('<b>raw</b>'), post` выводит тег жирного шрифта буквально, а `link_to post.title, post` его экранирует.
 
-Шесть числовых хелперов — это хелперы `Cybertrain::NumberHelper`, которые код на Ruby вызывает как функции модуля с теми же именованными аргументами (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). Они принимают Integer, Float или числовую String (десятичные столбцы — Float) и округляют половину вверх по цифрам её десятичного текста, поэтому результат одинаков в обоих рантаймах; любое другое значение, включая `nil`, вызывает `ArgumentError` (`"number_with_delimiter: nil is not a number"`), как и точность вне диапазона от 0 до 100. Форматы английские.
+Шесть числовых хелперов — это хелперы `Cybertrain::NumberHelper`, которые код на Ruby вызывает как функции модуля с теми же именованными аргументами (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). Они принимают Integer, Float или числовую String (десятичные столбцы — Float) и округляют половину вверх по цифрам её десятичного текста, поэтому результат одинаков в обоих рантаймах; любое другое значение вызывает `ArgumentError` (`"number_with_delimiter: \"abc\" is not a number"`), как и точность вне диапазона от 0 до 100. В шаблоне `nil` даёт `""` (десятичный столбец, допускающий null, выводится пустым, как в Rails); `Cybertrain::NumberHelper`, вызванный из Ruby, по-прежнему вызывает `ArgumentError` для `nil` (`"number_with_delimiter: nil is not a number"`). Форматы английские.
 
 ### Построитель tag
 
@@ -460,7 +460,7 @@ class AdminController < ApplicationController
 end
 ```
 
-`layout "admin"` сам по себе задаёт один макет для всех действий. `spin run gen` читает строки `layout` (имя в кавычках, `false` или Symbol метода, с `only:` / `except:`) и пишет `controller_layout(action)` контроллера. Объявления перебираются по порядку, и **побеждает первое подходящее** (в Rails более позднее объявление заменяет более раннее); строки concern считаются на месте его `include`. `render layout: "x"` использует `layouts/x` для одного вызова, а `render layout: false` — никакого. В макете отрисовывается только html; шаблон другого формата отрисовывается без него. Любой другой аргумент `layout` (`nil`, лямбда, константа) gen отклоняет.
+`layout "admin"` сам по себе задаёт один макет для всех действий. `spin run gen` читает строки `layout` (имя в кавычках, `false` или Symbol метода, с `only:` / `except:`) и пишет `controller_layout(action)` контроллера. Объявления перебираются по порядку, и **побеждает первое подходящее** (в Rails более позднее объявление заменяет более раннее); строки concern считаются на месте его `include`. `render layout: "x"` использует `layouts/x` для одного вызова, а `render layout: false` — никакого; начальный `layouts/` допускается (`layout "layouts/x"` — это `layouts/x`). Строка `layout` или `render layout:`, называющие несуществующий макет, вызывают `MissingTemplate`; необязателен только макет `application` по умолчанию (действие тогда рендерится без макета). В макете отрисовывается только html; шаблон другого формата отрисовывается без него. Любой другой аргумент `layout` (`nil`, лямбда, константа) gen отклоняет.
 
 ### Партиалы и `render`
 
@@ -486,7 +486,7 @@ end
 
 - `collection:` отрисовывает партиал один раз на каждый элемент массива, как локальную переменную с именем из `as:` (по умолчанию — имя самого партиала), с `<as>_counter`, считающим от 0, `locals:`, переданными каждому, и `spacer_template:` (партиал) между элементами; пустая коллекция ничего не выводит. Партиал со строгими локальными переменными получает счётчик, только если объявляет его, а элемент важнее локальной переменной с тем же именем.
 - `render @comments` выбирает партиал каждой записи по её модели, `<plural>/_<singular>` (`admin/notes/_note` для `Admin::Note`), поэтому список может смешивать модели.
-- Компонент, единственный обязательный именованный аргумент которого назван по нему (`CommentComponent` с `comment:`), получает `CommentComponent.with_collection(items)`, и `render component: "comment", collection: @comments` отрисовывает его по разу на элемент, передавая `comment_counter:`, когда `initialize` его объявляет.
+- Компонент, единственный обязательный именованный аргумент которого назван по нему (`CommentComponent` с `comment:`), получает `CommentComponent.with_collection(items)`, и `render component: "comment", collection: @comments` отрисовывает его по разу на элемент, передавая `comment_counter:`, когда `initialize` его объявляет. `collection:` не принимает других именованных аргументов (`render component: "comment", collection: @comments, extra: 1` — ошибка, называющая его); содержимое блока не передаётся.
 
 ### Разрешение файлов (`engine.rb`)
 

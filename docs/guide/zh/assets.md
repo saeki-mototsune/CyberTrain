@@ -1,5 +1,5 @@
 ---
-source_sha256: 2ffd6596d62c339b9ae69a076e7d8aefbabe8f7fecc3d1ea104fb1bf3be7dd06
+source_sha256: f33d41101fb56e6a4ccb2fd65374062a590ba781adb2baf79d57aef2a6aefb2c
 ---
 # 资源
 
@@ -15,7 +15,7 @@ app/javascript/controllers/hello.js       controllers/hello.js
 vendor/javascript/chart.js                chart.js
 ```
 
-`app/assets/` 下的每个直接子目录都是一个根，`app/javascript/` 和 `vendor/javascript/` 也是：文件的逻辑路径是它在根之下的路径（上面右侧一列），也就是辅助方法接受的名称。同一个逻辑路径出现在两个根之下时，`spin run gen` 会停止并指出两个文件。点文件（`.keep`）和符号链接目录会被跳过；符号链接文件如果仍在它所在的目录树内就会被读取，指向树外或不存在目标的链接会让 gen 停止。含有空格或控制字符的路径会被拒绝。单独的 CSS 构建（Sass、Tailwind）可以写入 `app/assets/builds/`，它和其他根一样。
+`app/assets/` 下的每个直接子目录都是一个根，`app/javascript/` 和 `vendor/javascript/` 也是：文件的逻辑路径是它在根之下的路径（上面右侧一列），也就是辅助方法接受的名称。同一个逻辑路径出现在两个根之下时，`spin run gen` 会停止并指出两个文件。根之下的点文件（`.keep`）和符号链接目录会被跳过，但本身是符号链接的根（`app/assets`、`app/javascript`、`vendor/javascript`）会让 gen 停止并指出它；符号链接文件如果仍在它所在的目录树内就会被读取，指向树外或不存在目标的链接会让 gen 停止。含有空格或控制字符的路径会被拒绝。单独的 CSS 构建（Sass、Tailwind）可以写入 `app/assets/builds/`，它和其他根一样。
 
 ## 摘要与保留
 
@@ -68,7 +68,7 @@ gen 把这个文件当作文本读取，从不执行它：`pin name, to:, preloa
 
 ## 提供文件
 
-静态文件中间件对 `/assets/` 下名称带有 gen 所写摘要的文件（当前的摘要来自 `gen/assets.rb`，保留的摘要来自启动时读取的 `public/assets/.manifest`）使用 `Cache-Control: public, max-age=31536000, immutable` 提供；不需要 ETag，因为文件永远不会改变。`public/` 中的其他所有内容，包括应用放在 `public/assets/` 下的不带摘要的文件，仍然使用 `max-age=3600`。真实路径离开 `public/` 的文件不会被提供：把 `public/assets` 做成指向 `public/` 之外目录的符号链接的部署方式（Capistrano 的共享目录），应改为在那里挂载或绑定挂载。自己提供 `public/` 的反向代理会发送它自己的响应头；请在那里给 `/assets/` 同样设置一年的 immutable 缓存。
+静态文件中间件对 `/assets/` 下名称带有 gen 所写摘要的文件（当前的摘要来自 `gen/assets.rb`，保留的摘要来自启动时读取的 `public/assets/.manifest`）使用 `Cache-Control: public, max-age=31536000, immutable` 提供；不需要 ETag，因为文件永远不会改变。`public/` 中的其他所有内容，包括应用放在 `public/assets/` 下的不带摘要的文件，仍然使用 `max-age=3600`。`/assets` 下的点文件（`.manifest`、中途失败的 gen 运行留下的临时文件）不会被提供；`public/` 其他位置的点文件（`/.well-known/...`）会被提供。真实路径离开 `public/` 的文件不会被提供：把 `public/assets` 做成指向 `public/` 之外目录的符号链接的部署方式（Capistrano 的共享目录），应改为在那里挂载或绑定挂载。自己提供 `public/` 的反向代理会发送它自己的响应头；请在那里给 `/assets/` 同样设置一年的 immutable 缓存。
 
 ## 迁移 `public/style.css`
 

@@ -19,8 +19,9 @@ Every directory directly under `app/assets/` is a root, and so are
 `app/javascript/` and `vendor/javascript/`: a file's logical path is its
 path below its root (the right-hand column above), which is the name the
 helpers take. A logical path found under two roots stops `spin run gen`,
-naming both files. Dotfiles (`.keep`) and symlinked directories are
-skipped; a symlinked file is read when it stays inside its tree, and one
+naming both files. Dotfiles (`.keep`) and symlinked directories under a root are
+skipped, but a root that is itself a symlink (`app/assets`, `app/javascript`,
+`vendor/javascript`) stops gen, which names it; a symlinked file is read when it stays inside its tree, and one
 that leads outside it, or nowhere, stops gen. A path holding a space or a
 control character is refused. A separate CSS build (Sass, Tailwind) may
 write into `app/assets/builds/`, which is a root like any other.
@@ -125,7 +126,9 @@ carries a digest gen wrote (a current one, from `gen/assets.rb`, or a kept
 one, from `public/assets/.manifest`, read at boot) with `Cache-Control:
 public, max-age=31536000, immutable`; it needs no ETag, as the file never
 changes. Everything else in `public/`, an undigested file an application
-keeps under `public/assets/` included, keeps `max-age=3600`. A file whose
+keeps under `public/assets/` included, keeps `max-age=3600`. A dotfile under `/assets` (`.manifest`, the temporary
+file of a gen run that crashed) is not served; a dotfile elsewhere in `public/`
+(`/.well-known/...`) is. A file whose
 real path leaves `public/` is not served: a deploy that symlinks
 `public/assets` to a directory outside `public/` (Capistrano's shared
 directories) mounts or bind-mounts it there instead. A reverse proxy that

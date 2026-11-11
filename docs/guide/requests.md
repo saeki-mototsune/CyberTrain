@@ -135,13 +135,24 @@ any format but `:unknown`. Turbo submits a form asking for
 `text/vnd.turbo-stream.html, text/html`: such a request has the format
 `:turbo_stream`, and an action without `format.turbo_stream` answers
 through its `format.html`, as in Rails (a `.turbo_stream` extension asks for
-that format only).
+that format only). The same fallback covers any `Accept` that lists
+`text/html` or `*/*` next to a non-html format, so a client that sends
+`application/json, text/plain, */*` to an action with only an html
+template gets the html and not a 406. The fallback runs the block a second
+time, for html, so a statement in it other than the `format.` lines runs
+twice: keep the block to the `format.` lines.
+
+A response whose format came from `Accept` (no extension, an `Accept`
+header sent) carries `Vary: Accept`, merged into a `Vary` the action set,
+so a browser or cache never hands the html of a URL to a request for its
+JSON or Turbo Stream; a path with an extension gets none.
 
 Without `respond_to`, an action renders `<action>.<format>.erb` when it
 exists (`create.turbo_stream.erb`, no layout, the format's content type)
 and answers 406 when it does not; html is as before. JSON has no templates:
 an action answers JSON with `render json:`. Inside a block, `render :edit`
-still renders `edit.html.erb`.
+renders the template of the format that block matched (`edit.turbo_stream.erb`
+in `format.turbo_stream`).
 
 A controller builds Turbo Stream answers with `turbo_stream` (turbo-rails'
 builder: `replace`, `update`, `append`, `prepend`, `before`, `after`, each
@@ -177,7 +188,8 @@ block declares (`before_action`, `skip_before_action`, `after_action`,
 `include` and in the order written, and `self.class.per_page` works in its
 actions. Concerns may include concerns: gen expands them depth first, each
 once, and refuses a cycle by name (`concern cycle: A includes B includes
-A`). `around_action` is refused (there are no around callbacks). The
+A`). `include A, B` includes B first, as Ruby does, so B's `included` block
+and callbacks come before A's. `around_action` is refused (there are no around callbacks). The
 `@x =` assignments in a concern's methods are the controller's view
 variables.
 
@@ -189,17 +201,21 @@ including class with the spliced declarations and a forwarder per
 `class_methods` method. Two rules follow. A `class_methods` method may not
 share its name with an instance method of the concern, of an including
 class or of its ancestors (Spinel would define both as instance methods,
-spikes/NOTES.md rule 93); gen refuses it, naming both places. And an
-`include` names a concern: a module that is not one (`include Comparable`)
-is refused (`include Comparable: no concern named Comparable in
-app/controllers/concerns`).
+spikes/NOTES.md rule 93); gen refuses it, naming both places (`file:line`
+of the instance method). And an `include` of a module that is not a concern
+(`include Comparable`, a name with no file under `app/*/concerns`) is left
+to Ruby as it is, so a misspelt concern name is a `NameError` when the
+application loads, not a gen message.
 
 Model concerns live in `app/models/concerns/` and work the same way: their
 `included` block may hold any of the model's class-level declarations
 (`validates`, `validate`, `scope`, `belongs_to`, `has_many`, `has_one`,
 `encrypts`, callbacks, `normalizes`), treated as written in the model at
 the `include`. A concern's callbacks run after the model's own of the same
-kind.
+kind, and an `include` inside a model concern's `included` block brings that
+concern in. A model concern's `class_methods` name may not be a scope of
+the model or a class method every model has (`recent` beside `scope :recent`,
+`where`); gen refuses it.
 
 `helper_method :current_user, :admin?` in a controller, or in a concern's
 `included` block, makes those controller methods callable from that
@@ -219,7 +235,10 @@ end
 ```
 
 `permit` takes the same forms: a key permits a String, `key: []` a list of
-Strings and `key: [...]` a nested level. A value of the wrong kind, an
+Strings and `key: [...]` a nested level. A filter that is not an Array
+(`permit(meta: :source)`, `expect(article: :title)`) or that holds an Array
+(`[[:title]]`) raises `ArgumentError`: it is a mistake in the code, not a
+bad request, so it is not a 400. A value of the wrong kind, an
 unlisted key and an upload are dropped. `expect` returns the level under
 its one key, and raises `Params::ParameterMissing` (answered 400) when that
 key is absent, of the wrong kind, or permits nothing. `params.expect(:id)`
@@ -261,6 +280,21 @@ HEAD get a 304. `Cache-Control` is `max-age=0, private, must-revalidate`
 (`public` with `public: true`) unless `expires_in seconds` set
 `max-age=<seconds>` first. There is no automatic ETag on other responses.
 
+The ETag is made from the key you give, the request's format and a digest
+of the build (the asset digests and import map, and the views in a
+`cybertrain build` binary), so the html and the JSON of one URL never share
+one, and a deploy that changes the assets or the views revalidates every
+client. Two consequences. In development, without `--embed-views`, the
+templates are read from disk and are not in the digest: a view edit can
+still get a `304` until a record changes or the page is reloaded without
+its cached copy. And the key names what the page shows, not who sees it:
+content that differs per user needs the user in the key (`etag:
+"posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`), or it
+is shown to the wrong person. Do not make a page `public` when it carries a
+CSP nonce (`content_security_policy` with nonces, `javascript_importmap_tags`):
+a shared cache gives every visitor the same page, and so the same nonce,
+which then protects nothing.
+
 `status:` and `head` take every Rack symbol (`:unauthorized`,
 `:payment_required`, `:unprocessable_content`, `:too_many_requests`, ...,
 with the old `:unprocessable_entity` and `:payload_too_large` as aliases),
@@ -293,8 +327,9 @@ The session cookie is encrypted and authenticated with AES-256-GCM, as
 Rails' cookie store, under its own key derived from `secret_key_base`: the
 client can neither read nor change it. A cookie that does not decrypt (a
 changed, foreign or older signed one) loads as an empty session, and so
-does one over 4096 bytes; a session whose cookie would pass 4096 bytes
-raises `Session::CookieOverflow` when it is written. Values stay Strings.
+does one over 4096 bytes; a session whose cookie would pass 4096 bytes, or a
+jar cookie whose `name=value` does, raises `Session::CookieOverflow` when it
+is written. Values stay Strings.
 Rotating `secret_key_base` signs everyone out, as before.
 
 ## Rate limiting and the client address
@@ -529,9 +564,16 @@ What changes for an application written for 0.4 (the full list is section
   per-process counter, two limits in one controller need their own
   `name:`, a `by:` method answering nil or `""` raises, and a `with:`
   method that renders nothing is followed by the 429.
-- The number helpers raise for a value that is not a number, and for a
-  precision outside 0 to 100.
-- A model may include only concerns: `include` of another module stops
-  `spin run gen`.
+- The number helpers raise for a value that is not a number (nil renders
+  `""` in a template, as before), and for a precision outside 0 to 100.
+- `include A, B` in a controller or model includes B first, as Ruby does; an
+  `include` of a module that is not a concern is left to Ruby.
+- Every ETag changes once (it now holds the request's format and a build
+  digest), a response negotiated by `Accept` sends `Vary: Accept`, and the
+  html fallback covers any `Accept` that lists `text/html` or `*/*`.
+- `permit` and `expect` raise `ArgumentError` for a filter that is not an
+  Array; a `layout` that names a missing layout raises `MissingTemplate`
+  (the default `application` layout stays optional); a jar cookie over 4096
+  bytes raises `Session::CookieOverflow`.
 - `public/style.css` keeps working; moving it to `app/assets/stylesheets/`
   is optional ([Assets](assets.md#moving-publicstylecss)).

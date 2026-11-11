@@ -1,5 +1,5 @@
 ---
-source_sha256: 7f750ee56295d2cb3d244772201081aa35f57e019c3554e514b1a3ef115d75fb
+source_sha256: ea0920c65e1defc6886af8050bf6977a12fa422a483c5e9a9a87305465abbf41
 ---
 # Cybertrain 模板语言参考
 
@@ -311,11 +311,11 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | 带令牌和 `mode=json`（或 `"raw"`）的流端点路径 |
 | `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`；记录会给出它的 `dom_id`；每个属性只在给出时写出 |
 | `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | 一个 `<turbo-stream action="...">` 元素，用于 `*.turbo_stream.erb` 模板；目标是 DOM id 或记录；块、`partial:`（带 `locals:`）和 `html:` 恰好其一 |
-| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`，或带块 | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`；Date 给出 `2026-11-10`；`format:` 为 `:short`、`:long` 或 strftime 的 String（未知的指令会抛出异常） |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`，或带块 | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`；Date 给出 `2026-11-10`；`format:` 为 `:short`、`:long` 或 strftime 的 String（未知的指令会抛出异常，strftime 会读成别的意思的宽度或标志也一样：`%6L`，请用 `%6N`；`:` 只能用在 `%:z` 中；`%F %T %D %R %r %c %x %X %v` 不能带填充标志；数字上的宽度会替换它的填充，`%5e` 得到 `"    5"`） |
 
 每个辅助方法的文本参数都遵循同一条规则：`SafeString` 不经转义直接通过，其他任何内容都会被转义——`link_to raw('<b>raw</b>'), post` 会原样输出加粗标签，而 `link_to post.title, post` 会转义它。
 
-六个数字辅助方法来自 `Cybertrain::NumberHelper`，Ruby 代码可以用相同的关键字把它们作为模块函数调用（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。它们接受 Integer、Float 或数字 String（decimal 列是 Float），并按其十进制文本的数字四舍五入，所以两种运行时的结果相同；其他任何值，包括 `nil`，都会抛出 `ArgumentError`（`"number_with_delimiter: nil is not a number"`），超出 0 到 100 的精度也一样。格式是英文的。
+六个数字辅助方法来自 `Cybertrain::NumberHelper`，Ruby 代码可以用相同的关键字把它们作为模块函数调用（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。它们接受 Integer、Float 或数字 String（decimal 列是 Float），并按其十进制文本的数字四舍五入，所以两种运行时的结果相同；其他任何值都会抛出 `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`），超出 0 到 100 的精度也一样。在模板中，`nil` 渲染为 `""`（可为空的 decimal 列显示为空，和 Rails 一样）；从 Ruby 调用的 `Cybertrain::NumberHelper` 对 `nil` 仍会抛出 `ArgumentError`（`"number_with_delimiter: nil is not a number"`）。格式是英文的。
 
 ### tag 构建器
 
@@ -460,7 +460,7 @@ class AdminController < ApplicationController
 end
 ```
 
-单独的 `layout "admin"` 为所有动作指定一个布局。`spin run gen` 读取 `layout` 行（带引号的名称、`false` 或方法的 Symbol，可带 `only:` / `except:`），并写出控制器的 `controller_layout(action)`。声明按顺序尝试，**第一个适用的胜出**（Rails 中后面的声明会替换前面的）；concern 的行在其 `include` 处计入。`render layout: "x"` 在一次调用中使用 `layouts/x`，`render layout: false` 则不用布局。只有 html 在布局中渲染；其他格式的模板不带布局渲染。其他任何 `layout` 参数（`nil`、lambda、常量）都会被 gen 拒绝。
+单独的 `layout "admin"` 为所有动作指定一个布局。`spin run gen` 读取 `layout` 行（带引号的名称、`false` 或方法的 Symbol，可带 `only:` / `except:`），并写出控制器的 `controller_layout(action)`。声明按顺序尝试，**第一个适用的胜出**（Rails 中后面的声明会替换前面的）；concern 的行在其 `include` 处计入。`render layout: "x"` 在一次调用中使用 `layouts/x`，`render layout: false` 则不用布局；开头的 `layouts/` 是被接受的（`layout "layouts/x"` 就是 `layouts/x`）。指向不存在布局的 `layout` 行或 `render layout:` 会抛出 `MissingTemplate`；只有默认的 `application` 布局是可选的（此时动作不带布局渲染）。只有 html 在布局中渲染；其他格式的模板不带布局渲染。其他任何 `layout` 参数（`nil`、lambda、常量）都会被 gen 拒绝。
 
 ### 局部模板与 `render`
 
@@ -486,7 +486,7 @@ end
 
 - `collection:` 对 Array 的每个元素渲染一次局部模板，元素作为 `as:` 指定的局部变量（默认是局部模板自己的名称），`<as>_counter` 从 0 开始计数，`locals:` 传给每一次，`spacer_template:`（一个局部模板）放在元素之间；空集合什么都不渲染。使用严格局部变量的局部模板只有声明了计数器才会得到它，并且元素优先于同名的局部变量。
 - `render @comments` 根据每条记录的模型选择局部模板：`<plural>/_<singular>`（`Admin::Note` 对应 `admin/notes/_note`），所以列表可以混合不同的模型。
-- 唯一必需关键字以自身命名的组件（带 `comment:` 的 `CommentComponent`）会得到 `CommentComponent.with_collection(items)`，`render component: "comment", collection: @comments` 会为每个元素渲染一次，在 `initialize` 声明了 `comment_counter:` 时传入它。
+- 唯一必需关键字以自身命名的组件（带 `comment:` 的 `CommentComponent`）会得到 `CommentComponent.with_collection(items)`，`render component: "comment", collection: @comments` 会为每个元素渲染一次，在 `initialize` 声明了 `comment_counter:` 时传入它。`collection:` 不接受其他关键字（`render component: "comment", collection: @comments, extra: 1` 是一个点出该关键字的错误）；块的内容不会被传入。
 
 ### 文件解析（`engine.rb`）
 

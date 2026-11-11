@@ -1,5 +1,5 @@
 ---
-source_sha256: 7f750ee56295d2cb3d244772201081aa35f57e019c3554e514b1a3ef115d75fb
+source_sha256: ea0920c65e1defc6886af8050bf6977a12fa422a483c5e9a9a87305465abbf41
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -311,11 +311,11 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | トークンと `mode=json`（または `"raw"`）付きのストリームのエンドポイントのパス |
 | `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`。レコードならその `dom_id`。属性は渡したときだけ書く |
 | `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | `*.turbo_stream.erb` のテンプレート用の `<turbo-stream action="...">` 要素 1 つ。ターゲットは DOM の id かレコード。ブロック、`partial:`（`locals:` 付き）、`html:` のちょうど 1 つ |
-| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`、またはブロック付き | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`。Date なら `2026-11-10`。`format:` は `:short`、`:long`、strftime の String（知らない指示子は例外になる） |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`、またはブロック付き | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`。Date なら `2026-11-10`。`format:` は `:short`、`:long`、strftime の String（知らない指示子は例外になり、strftime が別の意味に読む幅やフラグも同じ：`%6L` は `%6N` を使う。`:` は `%:z` の中だけ。`%F %T %D %R %r %c %x %X %v` にはパディングのフラグを付けられない。数値の幅はパディングを置き換え、`%5e` は `"    5"` になる） |
 
 ヘルパーのテキスト引数はすべて 1 つの規則に従います：`SafeString` はエスケープされずにそのまま通り、それ以外はエスケープされます — `link_to raw('<b>raw</b>'), post` は太字のタグを文字どおりに出力しますが、`link_to post.title, post` はエスケープします。
 
-六つの数値ヘルパーは `Cybertrain::NumberHelper` のもので、Ruby のコードからは同じキーワードのモジュール関数として呼べます（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。Integer、Float、数値の String（decimal のカラムは Float です）を受け取り、10 進のテキストの桁で四捨五入するので、どちらのランタイムでも結果は同じです。それ以外の値は、`nil` も含めて `ArgumentError`（`"number_with_delimiter: nil is not a number"`）になり、0 から 100 の範囲外の精度も同じです。書式は英語です。
+六つの数値ヘルパーは `Cybertrain::NumberHelper` のもので、Ruby のコードからは同じキーワードのモジュール関数として呼べます（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。Integer、Float、数値の String（decimal のカラムは Float です）を受け取り、10 進のテキストの桁で四捨五入するので、どちらのランタイムでも結果は同じです。それ以外の値は `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`）になり、0 から 100 の範囲外の精度も同じです。テンプレートでは `nil` は `""` になります（null を許す decimal のカラムは Rails と同じく空で表示されます）。Ruby から呼んだ `Cybertrain::NumberHelper` は、`nil` に対して今も `ArgumentError`（`"number_with_delimiter: nil is not a number"`）を発生させます。書式は英語です。
 
 ### tag ビルダー
 
@@ -460,7 +460,7 @@ class AdminController < ApplicationController
 end
 ```
 
-`layout "admin"` だけなら、すべてのアクションに一つのレイアウトを指定します。`spin run gen` は `layout` の行（引用符付きの名前、`false`、メソッドの Symbol に、`only:` / `except:`）を読み、コントローラーの `controller_layout(action)` を書きます。宣言は順に試され、**最初に当てはまったものが勝ちます**（Rails では後の宣言が前のものを置き換えます）。コンサーンの行はその `include` の位置で数えます。`render layout: "x"` はその呼び出しだけ `layouts/x` を使い、`render layout: false` はレイアウトなしです。レイアウトの中にレンダリングされるのは html だけで、ほかのフォーマットのテンプレートはレイアウトなしです。それ以外の `layout` の引数（`nil`、ラムダ、定数）は gen が拒否します。
+`layout "admin"` だけなら、すべてのアクションに一つのレイアウトを指定します。`spin run gen` は `layout` の行（引用符付きの名前、`false`、メソッドの Symbol に、`only:` / `except:`）を読み、コントローラーの `controller_layout(action)` を書きます。宣言は順に試され、**最初に当てはまったものが勝ちます**（Rails では後の宣言が前のものを置き換えます）。コンサーンの行はその `include` の位置で数えます。`render layout: "x"` はその呼び出しだけ `layouts/x` を使い、`render layout: false` はレイアウトなしです。先頭の `layouts/` は受け付けます（`layout "layouts/x"` は `layouts/x` です）。存在しないレイアウトを指す `layout` の行や `render layout:` は `MissingTemplate` を発生させます。省略できるのは既定の `application` レイアウトだけです（そのときアクションはレイアウトなしで描画されます）。レイアウトの中にレンダリングされるのは html だけで、ほかのフォーマットのテンプレートはレイアウトなしです。それ以外の `layout` の引数（`nil`、ラムダ、定数）は gen が拒否します。
 
 ### パーシャルと `render`
 
@@ -486,7 +486,7 @@ end
 
 - `collection:` は Array の要素ごとにパーシャルを 1 回レンダリングします。要素は `as:` が指すローカル変数（既定はパーシャル自身の名前）になり、`<as>_counter` が 0 から数え、`locals:` はそれぞれに渡され、要素の間には `spacer_template:`（パーシャル）が入ります。空のコレクションは何も出力しません。strict locals のパーシャルがカウンターを受け取るのは、それを宣言したときだけで、同じ名前のローカル変数より要素が優先されます。
 - `render @comments` は、各レコードのパーシャルをそのモデルから選びます：`<plural>/_<singular>`（`Admin::Note` なら `admin/notes/_note`）。そのため、一覧に複数のモデルが混ざっていても構いません。
-- ただ一つの必須キーワードが自分の名前と同じコンポーネント（`comment:` を取る `CommentComponent`）には `CommentComponent.with_collection(items)` があり、`render component: "comment", collection: @comments` は要素ごとに 1 回レンダリングし、`initialize` が `comment_counter:` を宣言していればそれも渡します。
+- ただ一つの必須キーワードが自分の名前と同じコンポーネント（`comment:` を取る `CommentComponent`）には `CommentComponent.with_collection(items)` があり、`render component: "comment", collection: @comments` は要素ごとに 1 回レンダリングし、`initialize` が `comment_counter:` を宣言していればそれも渡します。`collection:` はほかのキーワードを受け付けません（`render component: "comment", collection: @comments, extra: 1` は、そのキーワードを挙げるエラーになります）。ブロックの内容は渡されません。
 
 ### ファイルの解決（`engine.rb`）
 
