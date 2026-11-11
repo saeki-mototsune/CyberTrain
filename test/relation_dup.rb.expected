@@ -1,0 +1,13 @@
+ok   without dup the chain methods change the receiver (the documented behaviour, unchanged)
+ok   queries branched from one base with dup do not affect each other or the base
+ok   a copy is unaffected by what the source does afterwards
+ok   dup is lazy and answers the model's own relation: records, scopes and chain methods stay typed
+ok   where terms and binds are copied: Hash, Array, Range, nil, where.not, where_sql, where_like, where_between
+ok   or on a copy leaves the source's terms and binds alone, and a copy can be the other side
+ok   order, order_sql, limit and offset are copied and then independent
+ok   distinct and none are copied and then independent
+ok   having_sql and its binds are copied and then independent
+ok   includes names are copied and then independent
+ok   page windows the copy it is called on, not the source
+ok   a copy of a preloaded association answers from its own Array of the same records
+12 tests, 73 assertions, 0 failures

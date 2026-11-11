@@ -79,6 +79,13 @@ class PostRelation < Cybertrain::Relation
     self
   end
 
+  def dup
+    rel = PostRelation.new("posts")
+    copy_chain_to(rel)
+    rel.preloaded(to_a) if records_preloaded?
+    rel
+  end
+
   def to_a
     if records_preloaded?
       copy = Array.new(0) { Post.new }

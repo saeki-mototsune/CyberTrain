@@ -457,7 +457,8 @@ end
 # The relation `spin run gen` writes next to each model (`ArticleRelation`
 # for `Article`): the chainable query methods and the methods that load
 # records. Start one with {Article.all} or a shortcut such as
-# {Article.where}. The chain methods change this relation and return it.
+# {Article.where}. The chain methods change this relation and return it;
+# {#dup} copies it first when several queries start from one base.
 # @example
 #   Article.where(title: "Hello").order("created_at DESC").limit(5).to_a
 #   Comment.where(article_id: @article.id).count
@@ -680,6 +681,33 @@ class ArticleRelation < Cybertrain::Relation
   # @return [ArticleRelation]
   # @api public
   def preloaded(records); end
+
+  # An independent copy of this relation, of the same class: the same
+  # conditions and binds, order, limit, offset, `distinct`, `none`,
+  # `having_sql` and `includes`, in Arrays of its own, so a chain method
+  # called on either afterwards leaves the other as it was. Nothing runs:
+  # the copy is as lazy as its source. Use it to start several queries
+  # from one base, because the chain methods change their receiver:
+  #
+  #     base = Article.where("created_at >= ?", since)
+  #     newest = base.dup.order(created_at: :desc).limit(5).to_a
+  #     titled = base.dup.where_like(:title, "spinel").count
+  #     # base is still only `created_at >= ?`
+  #
+  # Without `dup`, `newest` and `titled` would be `base` itself, and the
+  # second query would carry the first one's order and limit. A copy of a
+  # {#preloaded} relation (a has_many reader after {#includes}) answers
+  # from an Array of its own holding the same records, until a chain
+  # method changes it. The records themselves are not copied. {#page}
+  # windows the relation it is called on, so `base.dup.page(...)` leaves
+  # `base` unwindowed.
+  # @example
+  #   comments = @article.comments
+  #   @recent = comments.dup.order(created_at: :desc).limit(3).to_a
+  #   @count = comments.count
+  # @return [ArticleRelation]
+  # @api public
+  def dup; end
 
   # Runs the query, then the {#includes} queries. Templates iterate an
   # Array, so controllers usually end a query with `to_a`. A

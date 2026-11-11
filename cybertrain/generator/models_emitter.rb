@@ -274,6 +274,7 @@ module Cybertrain
         src << "  def having_sql(s, b = []) = (set_having_sql(s, b); self)\n"
         src << "\n"
         src << emit_includes(model, plans)
+        src << emit_relation_dup(model, table)
         src << "  def to_a\n"
         # A preloaded relation hands out a copy: the Array is the record's
         # cache, and the caller may mutate what to_a returns.
@@ -394,6 +395,25 @@ module Cybertrain
         src << "\n" unless scopes.empty?
         scopes.each { |scope| src << scope_relation_method(scope) }
         src << "end\n"
+        src
+      end
+
+      # `dup` (issue #188, design D72): an independent relation of the same
+      # generated class, so the copy's `first` / `to_a` stay typed by the
+      # model (a base-class copy would be typed Cybertrain::Relation: NOTES
+      # rule 5). The chain state goes through Relation#copy_chain_to; the
+      # preloaded records, when the source answers from them, into an
+      # Array of the copy's own (the source's is a record's association
+      # cache).
+      def self.emit_relation_dup(model, table)
+        src = +""
+        src << "  def dup\n"
+        src << "    rel = #{model}Relation.new(\"#{table.name}\")\n"
+        src << "    copy_chain_to(rel)\n"
+        src << "    rel.preloaded(to_a) if records_preloaded?\n"
+        src << "    rel\n"
+        src << "  end\n"
+        src << "\n"
         src
       end
 

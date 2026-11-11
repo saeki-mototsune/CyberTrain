@@ -64,6 +64,13 @@ class CommentRelation < Cybertrain::Relation
     self
   end
 
+  def dup
+    rel = CommentRelation.new("comments")
+    copy_chain_to(rel)
+    rel.preloaded(to_a) if records_preloaded?
+    rel
+  end
+
   def to_a
     if records_preloaded?
       copy = Array.new(0) { Comment.new }

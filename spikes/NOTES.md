@@ -1260,6 +1260,19 @@ stage, as that Dockerfile does, satisfies every row.
     still exited 0). Write such files outside the package (the build
     directory, or a `TMPDIR` outside it) and delete them after the grep.
 
+rule N188. `dup` on an instance of a user-defined class compiles without a
+    `dup` method in the class, on Spinel 2026.11.04.7026, and is a shallow
+    copy: the new object has its own Integer, Boolean and String slots
+    (assigning `@limit` on one leaves the other), but an Array ivar is the
+    same Array in both, so `copy.where(...)` on a `rel.dup` appended to
+    the source's `@wheres` and `@binds` as well. Nothing warns. A class
+    whose instances are meant to be copied defines `dup` itself, building
+    a new instance and filling the new instance's own Arrays element by
+    element (the generated `<Model>Relation#dup`, design D72); such an
+    override compiles and is dispatched on the static type (issue #188,
+    2026-11-11, seen by removing the generated method under
+    `test/relation_dup.rb`: seven of twelve tests fail).
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.

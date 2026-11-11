@@ -10,7 +10,7 @@ module Cybertrain
   # Each generated model gets its own subclass, `<Model>Relation`, which adds
   # the chainable query methods (`where`, `not`, `where_sql`, `where_like`,
   # `where_between`, `or`, `order`, `order_sql`, `limit`, `offset`,
-  # `distinct`, `none`, `having_sql`, `includes`, `preload`) and the
+  # `distinct`, `none`, `having_sql`, `includes`, `preload`), `dup`, and the
   # methods that return records (`to_a`, `each`, `first`, `last`, `find`,
   # `find_by`, `find_by!`, `find_or_create_by`, `find_or_initialize_by`,
   # `destroy_all`, `find_each`, `size`, `empty?`, and `preloaded`, which a
@@ -25,6 +25,16 @@ module Cybertrain
   #     scope = Comment.where(article_id: article.id)
   #     recent = scope.order("created_at DESC").limit(10).to_a
   #     # scope itself is now ordered and limited too
+  #
+  # To branch several queries from one base, copy it first: `dup` (on the
+  # generated subclass, {ArticleRelation#dup}) answers an independent
+  # relation of the same class, as lazy as its source, and the two share no
+  # conditions afterwards (docs/design.md D72):
+  #
+  #     scope = Comment.where(article_id: article.id)
+  #     recent = scope.dup.order("created_at DESC").limit(10).to_a
+  #     approved = scope.dup.where(approved: true).count
+  #     # scope is still only `article_id = ?`
   #
   # Implementation: the subclass's chain methods wrap the setters below and
   # return self, so `Post.where(...).first` is typed Post|nil: a base-class
@@ -497,6 +507,67 @@ module Cybertrain
 
     def drop_preloaded
       @records_preloaded = false
+      nil
+    end
+
+    # --- copying (issue #188, design D72) -----------------------------------
+    # The generated subclass's `dup` builds a relation of its own class
+    # (so the copy's `first` / `to_a` stay typed by the model: rule 5) and
+    # hands it this one's state through copy_chain_to.
+
+    # Gives `target` this relation's whole chain state: where terms and
+    # binds, order, limit, offset, distinct, none, having and its binds,
+    # and the included association names.
+    def copy_chain_to(target)
+      target.take_chain(@wheres, @binds, @order, @limit, @offset, @distinct, @none)
+      target.take_having(@having, @having_binds, @includes)
+      nil
+    end
+
+    # Replaces this relation's conditions and window with the ones given.
+    # The Arrays are copied element by element into this relation's own
+    # (already typed: rule 9), never kept, so the two relations share no
+    # Array afterwards. The elements are shared: a where term, an order
+    # text and a bind (nil, Integer, Float, String, DB::Blob) are never
+    # changed in place by a Relation, only replaced or appended to.
+    def take_chain(wheres, binds, order, limit, offset, distinct, none)
+      drop_preloaded
+      @wheres.clear
+      i = 0
+      while i < wheres.size
+        @wheres << wheres[i]
+        i += 1
+      end
+      @binds.clear
+      i = 0
+      while i < binds.size
+        @binds << binds[i]
+        i += 1
+      end
+      @order = order
+      @limit = limit
+      @offset = offset
+      @distinct = distinct
+      @none = none
+      nil
+    end
+
+    # The rest of copy_chain_to: the HAVING text, its binds and the
+    # included association names, copied as take_chain copies.
+    def take_having(having, having_binds, includes)
+      @having = having
+      @having_binds.clear
+      i = 0
+      while i < having_binds.size
+        @having_binds << having_binds[i]
+        i += 1
+      end
+      @includes.clear
+      i = 0
+      while i < includes.size
+        @includes << includes[i]
+        i += 1
+      end
       nil
     end
 
