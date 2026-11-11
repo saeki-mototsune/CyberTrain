@@ -36,6 +36,16 @@ module Cybertrain
     # recently it was used, and the Max-Age sent never reaches past that
     # end. A cookie from before the setting was on gets its start stamped
     # on its first request.
+    #
+    # A session stamped with Session#stamp_lifetime! (generated sign-in,
+    # "remember me") uses its own lifetime in place of absolute_max_age,
+    # both when it is loaded and when it is written, and the start is
+    # recorded even with absolute_max_age 0. Its cookie's Max-Age is the
+    # time left of that lifetime, not capped by max_age, or there is no
+    # Max-Age and no Expires at all for a browser session
+    # (Session#browser_session?). The write reads the session as the
+    # action left it, so a stamp or restart made during this request
+    # applies to this request's cookie.
     def initialize(app, secret:, cookie_name: "_cybertrain_session", max_age: 1209600, secure: false,
                    same_site: "Lax", partitioned: false, absolute_max_age: 0)
       super(app)
@@ -61,7 +71,11 @@ module Cybertrain
                                                             encrypted_key: @encrypted_key, secure: @secure)
       cookie_value = cookies[@cookie_name]
       loaded = Session.load(cookie_value.nil? ? "" : cookie_value, @session_key)
-      lifetime = @absolute_max_age
+      # The cookie's own lifetime (Session#stamp_lifetime!) replaces the
+      # absolute limit; the cookie is authenticated, so the client cannot
+      # change it.
+      stamped = loaded.lifetime_limit
+      lifetime = stamped > 0 ? stamped : @absolute_max_age
       now = lifetime > 0 ? current_time : 0
       if lifetime > 0
         if loaded.lifetime_over?(now, lifetime)
@@ -77,12 +91,27 @@ module Cybertrain
 
       Flash.store(ctx.flash, ctx.session)
       if ctx.session.changed?
+        # The action may have restarted or stamped the lifetime, so the
+        # write reads the stamp of the session as it is now, not of the
+        # one loaded.
+        session = ctx.session
+        stamped = session.lifetime_limit
+        lifetime = stamped > 0 ? stamped : @absolute_max_age
         max_age = @max_age
         if lifetime > 0
-          ctx.session.stamp_issued_at!(now, false)
-          left = ctx.session.issued_at + lifetime - now
-          max_age = left if left < max_age
+          now = current_time if now == 0
+          session.stamp_issued_at!(now, false)
+          left = session.issued_at + lifetime - now
+          left = 0 if left < 0
+          if stamped > 0
+            # "Remember me": the time left, even past max_age.
+            max_age = left
+          elsif left < max_age
+            max_age = left
+          end
         end
+        # "Remember me" unchecked: no Max-Age, no Expires.
+        max_age = -1 if session.browser_session?
         value = Session.dump(ctx.session, @session_key)
         size = @cookie_name.bytesize + 1 + value.bytesize
         if size > Session::MAX_COOKIE_BYTES

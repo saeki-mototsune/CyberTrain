@@ -27,8 +27,9 @@ module Cybertrain
   # `_cybertrain_session` with `Path=/; HttpOnly; SameSite=Lax`, `Secure`
   # in production or under `force_ssl` ({Config#secure_cookies?}) and a
   # two-week Max-Age (the name, the Max-Age and `Secure` are {Config}
-  # settings). `"_csrf_token"` and `"_flash"` are the
-  # framework's keys.
+  # settings), unless {#stamp_lifetime!} gave the session its own lifetime
+  # or made it a browser-session cookie. `"_csrf_token"`, `"_flash"`,
+  # `"_issued_at"`, `"_lifetime"` and `"_browser"` are the framework's keys.
   # @example
   #   session[:user_id] = user.id
   #   User.find(session[:user_id]) if session.key?(:user_id)
@@ -174,17 +175,77 @@ module Cybertrain
       Session.epoch_seconds(@data[ISSUED_AT_KEY])
     end
 
-    # Restarts the absolute lifetime (`Config#session_absolute_max_age`):
-    # SessionStore stamps the time of this request when it writes the
-    # cookie, so the session lasts the full lifetime from now. Call it at
-    # sign-in (the generated `start_new_session_for` does), so that a
-    # visitor who browsed for a while before signing in is not signed out
-    # early.
+    # The per-session lifetime in seconds ({#stamp_lifetime!}).
+    LIFETIME_KEY = "_lifetime"
+    # `"1"`: the cookie is a browser-session cookie ({#stamp_lifetime!}).
+    BROWSER_KEY = "_browser"
+
+    # Restarts the lifetime: SessionStore stamps the time of this request
+    # when it writes the cookie, so the session lasts its full lifetime
+    # from now. It also clears a {#stamp_lifetime!} stamp, so the session
+    # falls back to `Config#session_absolute_max_age` and
+    # `Config#session_max_age`. Call it at sign-in (the generated
+    # `start_new_session_for` does), so that a visitor who browsed for a
+    # while before signing in is not signed out early.
+    #
+    # The order at sign-in is: `restart_lifetime!` first, then
+    # `stamp_lifetime!`. A restart after a stamp erases that stamp.
     # @return [nil]
     # @api public
     def restart_lifetime!
       delete(ISSUED_AT_KEY)
+      delete(LIFETIME_KEY)
+      delete(BROWSER_KEY)
       nil
+    end
+
+    # Gives this session its own lifetime, `seconds` long, in place of
+    # `Config#session_absolute_max_age`. SessionStore ends the session
+    # once that many seconds have passed since its start
+    # ({#issued_at}). With `persistent` true, the cookie's Max-Age is the
+    # time left, even past `Config#session_max_age` ("remember me"
+    # checked). With `persistent` false, the cookie has no Max-Age and no
+    # Expires, so the browser drops it when it closes ("remember me"
+    # unchecked). `seconds` 0 or less removes the lifetime and keeps the
+    # browser-session choice.
+    #
+    # It does not move the start. Call {#restart_lifetime!} first, as the
+    # generated `start_new_session_for` does: the restart clears the old
+    # start and any old stamp, and this call then writes the new stamp,
+    # which counts from this request. A stamp without a restart counts
+    # from the start the cookie already records.
+    # @param seconds [Integer]
+    # @param persistent [Boolean]
+    # @return [nil]
+    # @api public
+    def stamp_lifetime!(seconds, persistent)
+      if seconds > 0
+        self[LIFETIME_KEY] = seconds
+      else
+        delete(LIFETIME_KEY)
+      end
+      if persistent
+        delete(BROWSER_KEY)
+      else
+        self[BROWSER_KEY] = "1"
+      end
+      nil
+    end
+
+    # The lifetime {#stamp_lifetime!} gave this session, in seconds, or 0
+    # when it has none (Config#session_absolute_max_age then applies).
+    # @return [Integer]
+    # @api public
+    def lifetime_limit
+      Session.epoch_seconds(@data[LIFETIME_KEY])
+    end
+
+    # Whether {#stamp_lifetime!} made this a browser-session cookie (no
+    # Max-Age, no Expires).
+    # @return [Boolean]
+    # @api public
+    def browser_session?
+      @data[BROWSER_KEY] == "1"
     end
 
     # Whether the lifetime started at least `max_age` seconds before `now`

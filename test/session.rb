@@ -461,4 +461,225 @@ test "absolute_max_age 0 (SessionStore's default) leaves the start alone" do
   assert ancient_ctx.response.cookies.empty?
 end
 
+# ---- per-session lifetime and browser-session cookies (stamp_lifetime!) ----
+
+DAY = 86_400
+MONTH = 2_592_000 # 30 days, Config#auth_remember_for's default
+
+# Signs in with "remember me" checked, in the order the generated
+# start_new_session_for uses: restart_lifetime! first, then stamp_lifetime!.
+class LifetimeRememberer < Cybertrain::Middleware
+  def call(ctx)
+    ctx.session.restart_lifetime!
+    ctx.session.stamp_lifetime!(MONTH, true)
+    ctx.session["user"] = "carol"
+    nil
+  end
+end
+
+# Signs in with "remember me" unchecked: a browser-session cookie, bounded
+# by a week.
+class LifetimeBrowser < Cybertrain::Middleware
+  def call(ctx)
+    ctx.session.restart_lifetime!
+    ctx.session.stamp_lifetime!(WEEK, false)
+    ctx.session["user"] = "dave"
+    nil
+  end
+end
+
+# The wrong order: the restart erases the stamp just written.
+class LifetimeStampThenRestart < Cybertrain::Middleware
+  def call(ctx)
+    ctx.session.stamp_lifetime!(MONTH, true)
+    ctx.session.restart_lifetime!
+    ctx.session["user"] = "erin"
+    nil
+  end
+end
+
+# Stamps a lifetime without restarting it: the stamp counts from the start
+# the cookie already records.
+class LifetimeLateStamper < Cybertrain::Middleware
+  def call(ctx)
+    ctx.session.stamp_lifetime!(WEEK, true)
+    nil
+  end
+end
+
+# What a SessionReader sees for `cookie` under a store at `now`.
+def lifetime_seen(cookie, now, absolute_max_age)
+  reader = SessionReader.new
+  store = Cybertrain::SessionStore.new(reader, secret: SECRET, absolute_max_age: absolute_max_age)
+  store.fixed_now = now
+  store.call(lifetime_ctx(cookie))
+  reader.seen
+end
+
+# A session's entries as "k=v" pairs in key order, joined with ",".
+def lifetime_pairs(session)
+  keys = session.keys.sort
+  out = []
+  i = 0
+  while i < keys.size
+    out << "#{keys[i]}=#{session[keys[i]]}"
+    i += 1
+  end
+  out.join(",")
+end
+
+test "lifetime_limit and browser_session? read the stamp; stamp_lifetime! writes it" do
+  plain = Cybertrain::Session.new
+  assert_equal 0, plain.lifetime_limit
+  refute plain.browser_session?
+  assert_equal 0, Cybertrain::Session.new({ "_lifetime" => "x1" }).lifetime_limit
+  refute Cybertrain::Session.new({ "_browser" => "0" }).browser_session?
+
+  remembered = Cybertrain::Session.new
+  assert_nil remembered.stamp_lifetime!(MONTH, true)
+  assert remembered.changed?
+  assert_equal MONTH, remembered.lifetime_limit
+  refute remembered.browser_session?
+  assert_equal "_lifetime=2592000", lifetime_pairs(remembered)
+
+  browser = Cybertrain::Session.new
+  browser.stamp_lifetime!(WEEK, false)
+  assert_equal WEEK, browser.lifetime_limit
+  assert browser.browser_session?
+  assert_equal "_browser=1,_lifetime=604800", lifetime_pairs(browser)
+
+  # A later persistent stamp drops the browser flag; 0 seconds drops the
+  # lifetime (SessionStore's absolute_max_age applies again).
+  browser.stamp_lifetime!(0, true)
+  assert_equal 0, browser.lifetime_limit
+  refute browser.browser_session?
+  assert_equal "", lifetime_pairs(browser)
+end
+
+test "a stamped lifetime replaces the absolute limit" do
+  # absolute_max_age is a week; the stamp says 30 days.
+  stamping = Cybertrain::SessionStore.new(LifetimeRememberer.new, secret: SECRET, absolute_max_age: WEEK)
+  stamping.fixed_now = LIFE_START
+  stamp_ctx = lifetime_ctx("")
+  stamping.call(stamp_ctx)
+  written = lifetime_written(stamp_ctx)
+  assert_equal LIFE_START, written.issued_at
+  assert_equal MONTH, written.lifetime_limit
+  cookie = cookie_header_from(stamp_ctx.response)
+
+  assert_equal "carol", lifetime_seen(cookie, LIFE_START + 15 * DAY, WEEK)
+  assert_equal "carol", lifetime_seen(cookie, LIFE_START + MONTH - 1, WEEK)
+  assert_nil lifetime_seen(cookie, LIFE_START + MONTH, WEEK)
+  assert_nil lifetime_seen(cookie, LIFE_START + 31 * DAY, WEEK)
+  # The stamp also holds with absolute_max_age off.
+  assert_equal "carol", lifetime_seen(cookie, LIFE_START + 15 * DAY, 0)
+  assert_nil lifetime_seen(cookie, LIFE_START + 31 * DAY, 0)
+end
+
+test "an unstamped session keeps session_absolute_max_age" do
+  aging = lifetime_cookie({ "user" => "alice", "_issued_at" => LIFE_START.to_s })
+  assert_equal "alice", lifetime_seen(aging, LIFE_START + WEEK - 1, WEEK)
+  assert_nil lifetime_seen(aging, LIFE_START + WEEK, WEEK)
+
+  # The write keeps today's clamp: max_age (two weeks) under a 30-day
+  # absolute limit.
+  store = Cybertrain::SessionStore.new(SessionWriter.new, secret: SECRET, absolute_max_age: MONTH)
+  store.fixed_now = LIFE_START
+  ctx = lifetime_ctx("")
+  store.call(ctx)
+  assert_includes ctx.response.cookies[0], "; Max-Age=1209600"
+  written = lifetime_written(ctx)
+  assert_equal 0, written.lifetime_limit
+  assert_equal LIFE_START, written.issued_at
+end
+
+test "a browser session cookie has no Max-Age" do
+  # absolute_max_age 0: the stamp alone gets _issued_at written.
+  store = Cybertrain::SessionStore.new(LifetimeBrowser.new, secret: SECRET, absolute_max_age: 0)
+  store.fixed_now = LIFE_START
+  ctx = lifetime_ctx("")
+  store.call(ctx)
+  set_cookie = ctx.response.cookies[0]
+  refute set_cookie.include?("Max-Age")
+  refute set_cookie.include?("Expires")
+  assert set_cookie.end_with?("; Path=/; HttpOnly; SameSite=Lax")
+  written = lifetime_written(ctx)
+  assert_equal "dave", written["user"]
+  assert written.browser_session?
+  assert_equal WEEK, written.lifetime_limit
+  assert_equal LIFE_START, written.issued_at
+
+  # A later write keeps it a browser-session cookie, and the week still ends it.
+  cookie = cookie_header_from(ctx.response)
+  later = Cybertrain::SessionStore.new(LifetimeToucher.new, secret: SECRET, absolute_max_age: 0)
+  later.fixed_now = LIFE_START + 3 * DAY
+  later_ctx = lifetime_ctx(cookie)
+  later.call(later_ctx)
+  refute later_ctx.response.cookies[0].include?("Max-Age")
+  refute later_ctx.response.cookies[0].include?("Expires")
+  assert_equal "2", lifetime_written(later_ctx)["visits"]
+  assert_equal "dave", lifetime_seen(cookie, LIFE_START + WEEK - 1, 0)
+  assert_nil lifetime_seen(cookie, LIFE_START + WEEK, 0)
+end
+
+test "a remembered cookie's Max-Age is the remaining lifetime" do
+  # absolute_max_age 0 and the default two-week max_age: neither caps the stamp.
+  store = Cybertrain::SessionStore.new(LifetimeRememberer.new, secret: SECRET, absolute_max_age: 0)
+  store.fixed_now = LIFE_START
+  ctx = lifetime_ctx("")
+  store.call(ctx)
+  assert_includes ctx.response.cookies[0], "; Max-Age=2592000"
+  assert_equal LIFE_START, lifetime_written(ctx).issued_at
+
+  later = Cybertrain::SessionStore.new(LifetimeToucher.new, secret: SECRET, absolute_max_age: 0)
+  later.fixed_now = LIFE_START + 15 * DAY
+  later_ctx = lifetime_ctx(cookie_header_from(ctx.response))
+  later.call(later_ctx)
+  assert_includes later_ctx.response.cookies[0], "; Max-Age=1296000"
+  rewritten = lifetime_written(later_ctx)
+  assert_equal LIFE_START, rewritten.issued_at
+  assert_equal MONTH, rewritten.lifetime_limit
+  assert_equal "carol", rewritten["user"]
+
+  # A stamp shorter than the session's age, without a restart, counts from
+  # the recorded start: the session is already over, so Max-Age=0 expires it.
+  old = lifetime_cookie({ "user" => "alice", "_issued_at" => LIFE_START.to_s })
+  late = Cybertrain::SessionStore.new(LifetimeLateStamper.new, secret: SECRET, absolute_max_age: 0)
+  late.fixed_now = LIFE_START + 10 * DAY
+  late_ctx = lifetime_ctx(old)
+  late.call(late_ctx)
+  assert late_ctx.response.cookies[0].end_with?("; SameSite=Lax; Max-Age=0")
+end
+
+test "restart_lifetime! clears the stamp" do
+  stamped = Cybertrain::Session.new({ "user" => "alice", "_issued_at" => "42", "_lifetime" => "2592000",
+                                      "_browser" => "1" })
+  assert_nil stamped.restart_lifetime!
+  assert stamped.changed?
+  assert_equal 0, stamped.issued_at
+  assert_equal 0, stamped.lifetime_limit
+  refute stamped.browser_session?
+  assert_equal "user=alice", lifetime_pairs(stamped)
+
+  # Stamping first and restarting after loses the stamp: the cookie is an
+  # unstamped one, under max_age and absolute_max_age.
+  wrong = Cybertrain::SessionStore.new(LifetimeStampThenRestart.new, secret: SECRET, absolute_max_age: WEEK)
+  wrong.fixed_now = LIFE_START
+  wrong_ctx = lifetime_ctx("")
+  wrong.call(wrong_ctx)
+  assert_includes wrong_ctx.response.cookies[0], "; Max-Age=604800"
+  assert_equal 0, lifetime_written(wrong_ctx).lifetime_limit
+
+  # A restart on a remembered cookie returns it to the default limits.
+  remembered = lifetime_cookie({ "user" => "carol", "_issued_at" => LIFE_START.to_s, "_lifetime" => MONTH.to_s })
+  restarting = Cybertrain::SessionStore.new(LifetimeRestarter.new, secret: SECRET, absolute_max_age: WEEK)
+  restarting.fixed_now = LIFE_START + 10 * DAY
+  restart_ctx = lifetime_ctx(remembered)
+  restarting.call(restart_ctx)
+  assert_includes restart_ctx.response.cookies[0], "; Max-Age=604800"
+  restarted = lifetime_written(restart_ctx)
+  assert_equal 0, restarted.lifetime_limit
+  assert_equal LIFE_START + 10 * DAY, restarted.issued_at
+end
+
 Cybertrain::Test.run!
