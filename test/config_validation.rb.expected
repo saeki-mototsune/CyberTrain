@@ -1,0 +1,10 @@
+ok   a default config is valid
+ok   validation creates no file or directory and connects no database
+ok   the first problem in boot's order is the one reported
+ok   the web limits at their boundaries
+ok   the background settings at their boundaries
+ok   the health check and the stream endpoint at their boundaries
+ok   the encryption keys: unset is fine until a model declares encrypts
+ok   resolve_secret! is the step that writes: the key file, once, for its owner only
+ok   a set secret is returned as it is, and production refuses to invent one
+9 tests, 45 assertions, 0 failures

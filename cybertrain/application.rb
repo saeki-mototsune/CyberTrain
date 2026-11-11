@@ -137,38 +137,17 @@ module Cybertrain
       if Application.embedded_views_missing?(c, @views)
         fail_boot("views are not embedded in this binary; build with `cybertrain build` (or run with CYBERTRAIN_ENV=development)")
       end
-      # config/app.rb has run by now, so the environment variable and
-      # `c.session_same_site = ...` are checked together.
-      same_site_error = c.session_same_site_error
-      fail_boot(same_site_error) unless same_site_error.empty?
-      prefixes_error = c.csrf_exempt_prefixes_error
-      fail_boot(prefixes_error) unless prefixes_error.empty?
-      body_bytes_error = c.max_body_bytes_error
-      fail_boot(body_bytes_error) unless body_bytes_error.empty?
-      upload_error = c.upload_limits_error
-      fail_boot(upload_error) unless upload_error.empty?
-      scheduler_error = c.scheduler_error
-      fail_boot(scheduler_error) unless scheduler_error.empty?
+      # config/app.rb has run by now, so the environment variables and its
+      # assignments are checked together. Config#validation_error only
+      # reads (D65): nothing has touched the disk or the database yet.
+      problem = c.validation_error
+      fail_boot(problem) unless problem.empty?
       # A cron task's job: kind no Job.handle registered (Scheduler.start!
       # raises the same message; here it is a boot error before the banner).
       job_kinds_error = Scheduler.job_kinds_error
       fail_boot(job_kinds_error) unless job_kinds_error.empty?
-      max_page_error = c.max_page_error
-      fail_boot(max_page_error) unless max_page_error.empty?
-      proxies_error = c.trusted_proxies_error
-      fail_boot(proxies_error) unless proxies_error.empty?
-      health_error = c.health_error
-      fail_boot(health_error) unless health_error.empty?
-      feeds_error = c.feeds_error
-      fail_boot(feeds_error) unless feeds_error.empty?
-      stream_error = c.stream_error
-      fail_boot(stream_error) unless stream_error.empty?
-      security_error = c.security_error
-      fail_boot(security_error) unless security_error.empty?
-      # A string check, no openssl: a malformed key always, an unset one when
-      # gen/app.rb says a model declares `encrypts`.
-      encryption_error = c.encryption_error
-      fail_boot(encryption_error) unless encryption_error.empty?
+      # The one step that may write a file (tmp/secret_key, outside
+      # production), after every check has passed.
       c.resolve_secret!
       # The pool is the process's (DB.connect replaces it): a boot connects
       # only when nothing has, and remembers that the pool is then its own
