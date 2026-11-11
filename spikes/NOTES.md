@@ -101,7 +101,7 @@ The rules are numbered in the order they were found. By topic:
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97
-- Polymorphic values and narrowing: 8, 14, 29, 35, 86
+- Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81, 89
@@ -1273,6 +1273,34 @@ stage, as that Dockerfile does, satisfies every row.
     override compiles and is dispatched on the static type (issue #188,
     2026-11-11, seen by removing the generated method under
     `test/relation_dup.rb`: seven of twelve tests fail).
+
+100. `Float#round(n)` does not answer the same on every path under Spinel
+    2026.11.04.7026. On a Float local it agrees with CRuby (`x.round(2)`
+    with `x = "1.005".to_f` is 1.01: CRuby rounds the product and then
+    corrects a tie the binary product fell short of). On a Float narrowed
+    by a `case`/`when` inside a method whose scale is a parameter, followed
+    by `.to_f` (`f = case v when Float then v when String then v.to_f else
+    0.0 end; f.round(scale).to_f`, the body `Cast.round_scale` had), it
+    goes through the runtime's polymorphic rounding, which rounds the
+    binary product and stops: 1.005, 1.015 and 0.285 came back as 1.0,
+    1.01 and 0.28 where CRuby answers 1.01, 1.02 and 0.29
+    (spikes/decimal/float_round.rb prints both). Both runtimes also move a
+    value that needs no rounding once it has 17 significant digits
+    (`123456789012345.67.round(2)` is ...69). So a result that must be the
+    same decimal under both runtimes is not rounded with `Float#round(n)`:
+    round on the digits of `Float#to_s`, as `Cybertrain::NumberHelper` does
+    and, since issue #189 (2026-11-11), `Cast.round_scale`
+    (`Cast.round_digits`; docs/design.md D73). `Float#round` with no
+    argument (an Integer) was not seen to differ.
+    The same spike found what the exact types offer on this Spinel
+    (spikes/decimal/exact_types.rb): Integer is 64-bit and raises
+    `RangeError` ("integer overflow in +") past it, where CRuby grows a
+    bignum; `Rational` compiles and adds; the pre-installed `bigdecimal`
+    package now builds a BigDecimal from a String or an Integer, rounds
+    with every mode, compares, and compiles beside `cybertrain/db`, but has
+    no `to_s("F")` (ArgumentError at run time: `to_s` takes no format, the
+    only text is `0.125e2`), no `bigdecimal/util` (`to_d`), no
+    construction from a Float, no NaN or Infinity.
 
 ## Numbers worth remembering
 

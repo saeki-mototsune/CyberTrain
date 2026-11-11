@@ -183,7 +183,7 @@ test "returning: names the columns, cast by type; [] and nil return nothing" do
   assert_equal 1, rows[0]["id"]
   assert_equal "a", rows[0]["code"]
   assert_equal 2, rows[0]["qty"]
-  assert_equal 1.0, rows[0]["price"]
+  assert_equal 1.01, rows[0]["price"]
   assert rows[0]["created_at"].is_a?(Time)
   assert_equal 0, Item.insert_all([{ code: "b" }], returning: []).size
   assert_equal 0, Item.insert_all([{ code: "c" }], returning: nil).size

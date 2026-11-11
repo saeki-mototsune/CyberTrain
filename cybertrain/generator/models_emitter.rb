@@ -485,6 +485,36 @@ module Cybertrain
         src
       end
 
+      # `validates :price, numericality: { greater_than: -100000000,
+      # less_than: 100000000 }` for every decimal column that declares a
+      # precision: DECIMAL(10,2) holds less than 10**(10-2) either side of
+      # zero, and SQLite does not enforce it. The comparisons also refuse
+      # Infinity and NaN (`"1e999"` from a form), which would otherwise be
+      # stored as Inf and NULL. `allow_nil: true` on a nullable column. A
+      # bound past the Integer range (precision - scale > 18) is a Float
+      # literal. docs/design.md D73. "" when there is no such column.
+      def self.emit_decimal_range(table)
+        src = +""
+        table.columns.each do |c|
+          next unless c.type == :decimal && c.precision > 0
+
+          whole = c.precision - (c.scale < 0 ? 0 : c.scale)
+          next if whole < 0
+
+          bound = whole > 18 ? "1.0e+#{whole}" : "1#{"0" * whole}"
+          src << "  validates :#{c.name}, numericality: { greater_than: -#{bound}, less_than: #{bound} }"
+          src << ", allow_nil: true" if c.null
+          src << "\n"
+        end
+        return src if src == ""
+
+        # Declared inside a splice (Model.model_concern_insert_at): the
+        # rules are appended without counting as `validates` calls of the
+        # model, so gen/concerns.rb's positions, which count the calls in
+        # app/models, still point where the `include` was written.
+        "  model_concern_insert_at(0)\n#{src}  model_concern_insert_done\n\n"
+      end
+
       # `decimal_scale(name)`: one `when` per decimal column with a scale.
       def self.emit_decimal_scale(table)
         scaled = table.columns.select { |c| c.type == :decimal && c.scale >= 0 }
@@ -534,6 +564,7 @@ module Cybertrain
         src << "  attr_accessor #{symbols}\n"
         src << "\n"
         src << emit_date_presence(table)
+        src << emit_decimal_range(table)
         src << emit_association_rules(plans)
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
