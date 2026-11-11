@@ -216,8 +216,11 @@ server started by hand (D4) and the offline app (B3).
 
 [.github/workflows/playground-image.yml](../.github/workflows/playground-image.yml)
 ("Playground image") runs on pull requests that touch `playground/` (except
-this README), `.devcontainer/` or the workflow itself, without pushing; a
-framework change alone does not run it. Pushes to `main` do not run it. It
+this README), `.devcontainer/`, the workflow itself, or what the image's
+toolchain is built from (the CLI's files, `cybertrain.gemspec`,
+`cybertrain/version.rb` and `spin.toml`: the build runs `cybertrain setup`
+and `cybertrain doctor`), without pushing; a change to the rest of the
+framework alone does not run it. Pushes to `main` do not run it. It
 also runs from the Release workflow
 ([.github/workflows/release.yml](../.github/workflows/release.yml)), which
 calls it for a tag `vX.Y.Z` after the Gate, CI and the blog image have

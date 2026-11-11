@@ -4,9 +4,12 @@
 # a manual run. It runs from release.yml, which calls it (with release_tag)
 # after the Gate, CI and the blog image have passed on the tag, and by hand
 # (Actions -> Playground image -> Run workflow). A pull request runs it,
-# without pushing, only when it touches the image's own files (below); a
-# framework change alone is tested by ci.yml and reaches the image at the
-# next release. Pushes to main do not run it. See playground/README.md.
+# without pushing, only when it touches what the image is built with
+# (below): its own files, and the CLI, the toolchain checks, the pins and
+# the gemspec, since the build runs `cybertrain setup && cybertrain doctor`
+# and nothing else runs doctor on this image's package list. A change to the
+# rest of the framework alone is tested by ci.yml and reaches the image at
+# the next release. Pushes to main do not run it. See playground/README.md.
 name: Playground image
 
 on:
@@ -17,6 +20,21 @@ on:
       - "!playground/README.md"
       - ".devcontainer/**"
       - ".github/workflows/playground-image.yml"
+      # The gem the image builds and runs (the Dockerfile's cli-src stage,
+      # which is cybertrain.gemspec's spec.files) and the pins: the version
+      # and the Spinel release in cybertrain/version.rb, the packages in
+      # spin.toml.
+      - "cybertrain.gemspec"
+      - "spin.toml"
+      - "exe/**"
+      - "cybertrain/cli.rb"
+      - "cybertrain/cli/**"
+      - "cybertrain/version.rb"
+      - "cybertrain/app_name.rb"
+      - "cybertrain/shell.rb"
+      - "cybertrain/ident.rb"
+      - "cybertrain/crypto.rb"
+      - "cybertrain/generator/inflector.rb"
   # From release.yml, after every check passed on the release tag.
   workflow_call:
     inputs:

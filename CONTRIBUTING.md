@@ -84,8 +84,10 @@ at [.githooks/](.githooks/), after which:
   `script/check-reserved-names`, `check-client-faults` and `check-http-layer`
   pass (see [Conventions](#conventions-ci-enforces) for what each guards),
   every file `cybertrain.gemspec` lists exists, the CLI loads under CRuby and
-  `playground/Dockerfile` copies each of those files into its gem stage, and
-  every `test/*.rb` has its `.expected` snapshot.
+  `playground/Dockerfile` copies each of those files into its gem stage, the
+  Playground image and Blog image workflows run for a pull request that
+  changes one of them or a pin, and every `test/*.rb` has its `.expected`
+  snapshot.
 - **commit-msg** checks the message's shape (see [Commits](#commits)).
 
 `script/gate` with no arguments runs the same checks over the whole
