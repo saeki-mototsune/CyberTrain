@@ -10,6 +10,10 @@ module Cybertrain
   module NumberHelper
     UNIT_KEYS = [:unit, :thousand, :million, :billion, :trillion, :quadrillion]
     UNIT_NAMES = ["", "Thousand", "Million", "Billion", "Trillion", "Quadrillion"]
+    # Bounds on request-supplied sizes: an exponent ("1e9") or a precision
+    # larger than these would build a string of that many digits.
+    MAX_EXPONENT = 400
+    MAX_PRECISION = 100
     SIZE_UNITS = ["Bytes", "KB", "MB", "GB", "TB", "PB", "EB"]
 
     # A number as 0.<digits> * 10**point: digits has no leading or trailing
@@ -31,7 +35,8 @@ module Cybertrain
     # @api public
     def self.number_with_precision(number, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)
       d = NumberHelper.parse_number(number, "number_with_precision")
-      places = precision < 0 ? 0 : precision
+      NumberHelper.check_precision(precision)
+      places = precision
       r = NumberHelper.round_places(d, places)
       NumberHelper.render_fixed(r, places, delimiter, separator, strip_insignificant_zeros)
     end
@@ -62,6 +67,7 @@ module Cybertrain
     # the template helper builds them from its own Hash.
     def self.human_text(number, precision, names)
       d = NumberHelper.parse_number(number, "number_to_human")
+      NumberHelper.check_precision(precision)
       sig = precision < 1 ? 1 : precision
       r = NumberHelper.round_to_k(d, sig)
       return "0" if r.digits.empty?
@@ -80,7 +86,8 @@ module Cybertrain
     # @api public
     def self.number_to_percentage(number, precision: 3)
       d = NumberHelper.parse_number(number, "number_to_percentage")
-      places = precision < 0 ? 0 : precision
+      NumberHelper.check_precision(precision)
+      places = precision
       r = NumberHelper.round_places(d, places)
       "#{NumberHelper.render_fixed(r, places, "", ".", false)}%"
     end
@@ -89,7 +96,8 @@ module Cybertrain
     # @api public
     def self.number_to_currency(number, unit: "$", precision: 2, format: "%u%n")
       d = NumberHelper.parse_number(number, "number_to_currency")
-      places = precision < 0 ? 0 : precision
+      NumberHelper.check_precision(precision)
+      places = precision
       r = NumberHelper.round_places(d, places)
       shown = Decimal.new(false, r.digits, r.point, 0)
       amount = NumberHelper.render_fixed(shown, places, ",", ".", false)
@@ -151,6 +159,14 @@ module Cybertrain
       parsed
     end
 
+    # ArgumentError for a precision outside 0..MAX_PRECISION.
+    def self.check_precision(precision)
+      return nil if precision >= 0 && precision <= MAX_PRECISION
+
+      msg = "precision must be between 0 and #{MAX_PRECISION}, got #{precision}"
+      raise ArgumentError, msg
+    end
+
     def self.digit?(c)
       c >= "0" && c <= "9"
     end
@@ -201,6 +217,8 @@ module Cybertrain
         e = 0
         while i < n && NumberHelper.digit?(s[i])
           e = e * 10 + s[i].to_i
+          return nil if e > MAX_EXPONENT
+
           i += 1
         end
         return nil if i == start

@@ -609,6 +609,23 @@ test "scan_source reads layout lines: a name, false, a method, only: and except:
   assert_equal [], app_controller.layouts
 end
 
+test "a layout after a one-line def (endless self./operator, or `; end # note`) is still read" do
+  src = <<~'RUBY'
+    class ArticlesController < ApplicationController
+      def self.x = 1
+      layout "a"
+      def <=>(other) = 0
+      layout "b"
+      def c; d; end # note
+      layout "c"
+      def e; f; end
+      layout "d"
+    end
+  RUBY
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", src)
+  assert_equal ["a", "b", "c", "d"], info.layouts.map { |d| d.layout_name }
+end
+
 test "emit writes controller_layout: the declarations in order, the first that applies wins" do
   articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", LAYOUTS_SOURCE)
   expected = <<~'RUBY'

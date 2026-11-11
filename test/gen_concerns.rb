@@ -175,4 +175,16 @@ test "a project root with an app/ directory in its path still keys gen/concerns 
   assert Cybertrain::Gen::Manifest.emit(root).include?("controllers/concerns/same")
 end
 
+test "an endless operator or self. def does not swallow the def after it" do
+  src = "module Endless\n  extend ActiveSupport::Concern\n\n  def self.x = 1\n\n  def <=>(other) = 0\n\n  def tag\n    1\n  end\nend\n"
+  assert Cybertrain::Gen::HelperScan.endless?("def <=>(other) = 0")
+  assert Cybertrain::Gen::HelperScan.endless?("def self.x = 1")
+  assert Cybertrain::Gen::HelperScan.endless?("def -@ = 1")
+  assert !Cybertrain::Gen::HelperScan.endless?("def x=(v)")
+  assert !Cybertrain::Gen::HelperScan.endless?("def ==(other)")
+  info = Cybertrain::Gen::ConcernScan.scan_source("app/controllers/concerns/endless.rb", src)
+  names = info.concern_defs.map { |d| d.name }
+  assert names.include?("tag")
+end
+
 Cybertrain::Test.run!

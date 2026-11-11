@@ -237,11 +237,16 @@ module Cybertrain
       end
 
       # `def today = "now"` / `def price(v) = v.to_s`: no body to skip.
+      ENDLESS_NAME = /\A\s*def\s+(?:self\.)?(?:[A-Za-z_]\w*[?!]?|<=>|===|==|=~|!=|!~|\[\]=?|<<|>>|<=|>=|\*\*|[+\-]@|[!~]@?|[+\-*\/%<>^&|`])(.*)\z/m
+
+      # Also `def self.x = 1` and `def <=>(other) = 0`: the name is read
+      # here, not through DEF_LINE (which needs a plain lowercase name).
       def self.endless?(text)
-        m = text.match(DEF_LINE)
+        m = text.match(ENDLESS_NAME)
         return false if m.nil?
 
-        rest = m[2].to_s
+        rest = m[1].to_s
+        # `def x=(v)`: a writer, and `def x=1` is not an endless def either.
         return false if rest.start_with?("=")
 
         rest = rest.strip
@@ -250,7 +255,25 @@ module Cybertrain
           close = rest.index(")", inner.size + 1)
           rest = close.nil? ? "" : rest[close + 1, rest.size - close - 1].to_s.strip
         end
-        rest.start_with?("=") && !rest.start_with?("==")
+        rest.start_with?("=") && !rest.start_with?("==") && !rest.start_with?("=~") && !rest.start_with?("=>")
+      end
+
+      # text without a trailing `# comment` (a `#` outside string literals).
+      def self.strip_comment(text)
+        quote = ""
+        i = 0
+        while i < text.size
+          ch = text[i].to_s
+          if quote != ""
+            quote = "" if ch == quote
+          elsif ch == "\"" || ch == "'"
+            quote = ch
+          elsif ch == "#"
+            return text[0, i].to_s.rstrip
+          end
+          i += 1
+        end
+        text
       end
 
       def self.found_named(found, name)

@@ -189,7 +189,7 @@ module Cybertrain
               text = "#{text} #{lines[i].strip}"
               i += 1
             end
-            one_line = HelperScan.endless?(text) || (line.include?(";") && (line.end_with?(" end") || line.end_with?(";end")))
+            one_line = HelperScan.endless?(text) || (line.include?(";") && (HelperScan.strip_comment(line).end_with?(" end") || HelperScan.strip_comment(line).end_with?(";end")))
             i = skip_block(lines, i, indent) unless one_line
             add_ivars(info, lines, start - 1, i)
             info.concern_defs << def_of(file, start, text, info.concern_def_errors) unless line.start_with?("def self.") || HelperScan.setter?(text) || text.match(HelperScan::DEF_LINE).nil?

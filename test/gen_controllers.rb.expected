@@ -26,9 +26,10 @@ ok   a helper_method declared in a concern's included block dispatches from the 
 ok   a helper_method named like a framework helper, an app helper, or an undefined method is refused with its message
 ok   a helper_method whose def a template cannot fill (*rest, ...) is refused with the def's place
 ok   scan_source reads layout lines: a name, false, a method, only: and except:
+ok   a layout after a one-line def (endless self./operator, or `; end # note`) is still read
 ok   emit writes controller_layout: the declarations in order, the first that applies wins
 ok   a layout declared in a concern applies, at the include's position
 ok   a layout line gen cannot read is refused with its place
 ok   a local named layout in a method is no declaration; a layout line's comment may hold quotes
 ok   the method form's locals shadow no method: layout :chosen and layout :action call the method
-33 tests, 134 assertions, 0 failures
+34 tests, 135 assertions, 0 failures

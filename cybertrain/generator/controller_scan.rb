@@ -275,7 +275,10 @@ module Cybertrain
           text = "#{text} #{lines[j].to_s.strip}"
           j += 1
         end
-        HelperScan.endless?(text) || (text.include?(";") && (text.end_with?(" end") || text.end_with?(";end")))
+        return true if HelperScan.endless?(text)
+
+        code = HelperScan.strip_comment(text)
+        code.include?(";") && (code.end_with?(" end") || code.end_with?(";end"))
       end
 
       # The names a `helper_method :a, :b` line declares ([] for any other line).

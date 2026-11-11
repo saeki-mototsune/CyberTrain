@@ -274,9 +274,10 @@ module Cybertrain
     # Content-Type, X-Content-Type-Options and X-Frame-Options are added
     # when the response has no header of that name (D14); every response
     # the Server writes, error answers and HEAD included, goes through this
-    # method. Accepted deviation: Content-Length and the default
-    # Content-Type are emitted for 204 and 304 too, although RFC 9110
-    # section 8.6 forbids Content-Length in a 204.
+    # method. A 304 carries neither Content-Length nor Content-Type (RFC
+    # 9110 15.4.5). Accepted deviation: Content-Length and the default
+    # Content-Type are emitted for 204 too, although RFC 9110 section 8.6
+    # forbids Content-Length in a 204.
     def to_http(head_only = false)
       out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
       # A 304 describes no body: no Content-Type and no Content-Length

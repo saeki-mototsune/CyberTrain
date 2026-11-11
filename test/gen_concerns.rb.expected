@@ -9,4 +9,5 @@ ok   a concern included by an ancestor and again is expanded once
 ok   a class_methods name that an ancestor's concern defines as an instance method is refused
 ok   @x in a concern method is a view assign of the includer
 ok   a project root with an app/ directory in its path still keys gen/concerns and the manifest by the path under it
-11 tests, 41 assertions, 0 failures
+ok   an endless operator or self. def does not swallow the def after it
+12 tests, 47 assertions, 0 failures

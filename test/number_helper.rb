@@ -85,4 +85,15 @@ test "a non-number raises ArgumentError" do
   assert_equal "number_with_precision: nil is not a number", msg
 end
 
+test "an oversized exponent or precision is rejected" do
+  msg = assert_raises("ArgumentError") { N.number_with_delimiter("1e401") }
+  assert_equal "number_with_delimiter: \"1e401\" is not a number", msg
+  assert_equal 301, N.number_with_delimiter("1e300").delete(",").length
+  assert_raises("ArgumentError") { N.number_with_precision(1, precision: 101) }
+  assert_raises("ArgumentError") { N.number_with_precision(1, precision: -1) }
+  assert_raises("ArgumentError") { N.number_to_percentage(1, precision: 101) }
+  assert_raises("ArgumentError") { N.number_to_currency(1, precision: -1) }
+  assert_raises("ArgumentError") { N.number_to_human(1, precision: 101) }
+end
+
 Cybertrain::Test.run!
