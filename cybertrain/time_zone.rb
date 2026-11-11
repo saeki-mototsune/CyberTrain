@@ -321,7 +321,8 @@ module Cybertrain
     # The process-wide cache: an immutable pair of a name => index Hash and
     # a typed Array of zones (a Hash of objects boxes its values; NOTES
     # rule 56). A new zone builds a new ZoneCache and swaps the reference,
-    # so a reader takes one consistent snapshot without a lock.
+    # with readers taking the same mutex to acquire the snapshot reference.
+    # Once acquired, the immutable snapshot can be read outside the lock.
     class ZoneCache
       def initialize(index, list)
         @zc_index = index
@@ -580,8 +581,8 @@ module Cybertrain
     # not valid TZif gives a zone that behaves as UTC with {#found?} false;
     # those are not cached.
     #
-    # Readers take no lock: the cache is copied on write under a Mutex and
-    # swapped in one assignment.
+    # Readers acquire the snapshot under the writer's Mutex, then look up
+    # the immutable snapshot outside it. File I/O and parsing hold no lock.
     # @param name [String] an IANA zone name such as "Asia/Tokyo"
     # @return [TimeZone]
     # @api public
@@ -592,7 +593,7 @@ module Cybertrain
 
       dir = zoneinfo_dir
       path = "#{dir}/#{key}"
-      cache = @zone_cache
+      cache = zone_cache_snapshot
       i = cache.zone_index(path)
       return cache.zone_at(i) if i >= 0
 
@@ -645,7 +646,15 @@ module Cybertrain
     # Number of zones in the process cache.
     # @return [Integer]
     def self.cached_count
-      @zone_cache.zone_count
+      zone_cache_snapshot.zone_count
+    end
+
+    # Acquire the immutable snapshot under the same lock used to publish it.
+    # A plain reference load is not a publication barrier on Spinel.
+    # @return [ZoneCache]
+    # @api private
+    def self.zone_cache_snapshot
+      @zone_lock.synchronize { @zone_cache }
     end
 
     # A zone that behaves as UTC and reports {#found?} false.

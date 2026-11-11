@@ -418,10 +418,18 @@ test "find from several threads keeps one zone per name" do
   workers = []
   4.times do
     workers << Thread.new do
-      20.times do
-        TZ.find("Par/A")
-        TZ.find("Par/B")
-        TZ.find("Par/C")
+      100.times do
+        zone_a = TZ.find("Par/A")
+        zone_b = TZ.find("Par/B")
+        zone_c = TZ.find("Par/C")
+        # Check the acquired snapshots while other threads may publish new
+        # entries, not just the cache after all writers have finished. Raise
+        # on failure: the harness assertion counter is not thread-safe.
+        raise "wrong A snapshot" unless zone_a.utc_offset_at(0) == -18_000
+        raise "wrong B snapshot" unless zone_b.utc_offset_at(0) == 32_400
+        raise "wrong C snapshot" unless zone_c.utc_offset_at(0) == 3600
+        raise "duplicate cached zone" unless zone_a.equal?(TZ.find("Par/A"))
+        raise "incomplete cache snapshot" unless TZ.cached_count == start_count + 3
       end
     end
   end
