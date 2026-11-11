@@ -136,11 +136,23 @@ module Cybertrain
     # @return [String] "" when the claim succeeded, else what to report
     # @api private
     def self.enter_role(role)
-      current = @role
-      return "the #{current} role is already running in this process (one Application runs one role at a time)" unless current.empty?
+      problem = role_problem
+      return problem unless problem.empty?
 
       @role = role
       ""
+    end
+
+    # What refuses a second role, "" when none is running: asked before a
+    # role changes anything shared (its stop flag, a boot), and again by
+    # {.enter_role}.
+    # @return [String]
+    # @api private
+    def self.role_problem
+      current = @role
+      return "" if current.empty?
+
+      "the #{current} role is already running in this process (one Application runs one role at a time)"
     end
 
     # Gives the process back when the role has stopped its services.

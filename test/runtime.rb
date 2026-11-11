@@ -160,6 +160,40 @@ test "a second Application takes the settings over; the pool stays the first's" 
   Cybertrain::Runtime.reset!
 end
 
+test "a role refused because another runs changes nothing shared" do
+  Cybertrain::Runtime.reset!
+  app = app_for(config_a)
+  assert_equal "", Cybertrain::Runtime.enter_role("feeds")
+  Cybertrain::Application.request_stop_roles
+  applied = Cybertrain::Runtime.applied
+  assert_equal 1, app.run_worker([])
+  assert_equal 1, app.run_feeds([])
+  refute app.booted?
+  assert_equal applied, Cybertrain::Runtime.applied
+  assert Cybertrain::Roles.stop_requested?
+  assert_equal "feeds", Cybertrain::Runtime.role
+  Cybertrain::Runtime.leave_role
+  Cybertrain::Roles.reset_stop
+end
+
+test "shutdown ends the server's lifecycle too: the next one is built anew" do
+  Cybertrain::Runtime.reset!
+  c = config_b
+  c.port = 8080
+  app = app_for(c)
+  app.boot
+  first = app.server
+  assert first.equal?(app.server)
+  assert_equal 8080, first.port
+  app.shutdown
+  c.port = 8081
+  app.boot
+  second = app.server
+  refute second.equal?(first)
+  assert_equal 8081, second.port
+  app.shutdown
+end
+
 test "one role runs at a time" do
   assert_equal "", Cybertrain::Runtime.enter_role("worker")
   assert_equal "worker", Cybertrain::Runtime.role

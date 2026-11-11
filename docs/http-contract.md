@@ -21,7 +21,7 @@ front of the binary ([docs/deploy.md](deploy.md)). The split:
 | Concern | Owner | Notes |
 | --- | --- | --- |
 | TLS, certificates, HTTP/2 and HTTP/3 | the proxy | the server speaks cleartext HTTP/1.0 and 1.1 only; `force_ssl` and `X-Forwarded-Proto` are how the application learns the outer scheme (D61) |
-| Request bodies sent with `Transfer-Encoding: chunked` | the proxy | it must buffer and forward with `Content-Length` (Caddy, nginx and kamal-proxy do by default); the server answers a transfer coding with 411 |
+| Request bodies sent with `Transfer-Encoding: chunked` | the proxy | it must buffer and forward with `Content-Length`: nginx does by default (`proxy_request_buffering on`), Caddy only when `reverse_proxy` is given `request_buffers` (the Caddyfile in docs/deploy.md does not set it, so a client that uploads chunked through it gets the 411; browsers and most clients send a length). The server answers a transfer coding with 411 |
 | Slow or hostile clients, connection limits, request rate | the proxy first | the server bounds every wait itself (`read_timeout`, `max_head_bytes`, `max_body_bytes`), and `rate_limit` works per action, but it has no cap on open connections apart from the stream endpoint's `stream_max_connections` |
 | Compression of responses | the proxy | the server never encodes a response; it inflates a gzip **request** body on demand (`request.decoded_body`) |
 | The client's address | both | the server reports the peer; `request.client_ip` reads `X-Forwarded-For` only from `trusted_proxy` / `trusted_proxies` (D26) |
@@ -37,7 +37,7 @@ has no TLS and no chunked request bodies.
 | Case | Behaviour | Test |
 | --- | --- | --- |
 | Versions | `HTTP/1.1` and `HTTP/1.0`; anything else is 400 | test/http_parser.rb ("HTTP/1.0 is accepted", "HTTP/2.0 raises ParseError") |
-| Request line | exactly `METHOD SP target SP version`; otherwise 400 and the connection closes. Empty lines before it are skipped (RFC 9112 2.2) | test/http_parser.rb, test/server.rb ("malformed request line gets 400 ...") |
+| Request line | three fields, `METHOD target version`, separated by spaces (runs of spaces or tabs are accepted, more leniently than RFC 9112); any other count is 400 and the connection closes. Empty lines before it are skipped (RFC 9112 2.2) | test/http_parser.rb, test/server.rb ("malformed request line gets 400 ...") |
 | Target | origin-form. It is passed on undecoded (`Query` and the `Router` decode); an absolute-form target (`GET http://host/path`) is not rewritten and reaches the handler as the path, so it is a 404 unless routed; `OPTIONS *` likewise | test/server.rb ("an absolute-form target is not rewritten ...") |
 | Method | any token; unknown methods reach the router (404 / 405 are the application's) | test/router.rb |
 | Line endings | CRLF. A head ended by bare LFs is never recognised: nothing is answered, and the connection closes at `read_timeout` | test/server.rb ("a head ended by bare LFs is not a head ...") |
@@ -64,7 +64,7 @@ or half-sent request is closed silently at `read_timeout` (15 s).
 | Framing | `Content-Length` in bytes on every non-streaming response; a header the application set by that name is replaced by the real length | test/http_response.rb |
 | HEAD | the head of the same response, with its `Content-Length`, and no body; the next request on the connection is read cleanly | test/server.rb ("HEAD returns headers with Content-Length and no body") |
 | 304 | no `Content-Type`, no `Content-Length`, no body | test/http_caching.rb |
-| 204 and 1xx | written like any other status: `Content-Length: 0` is sent. **Known deviation** from RFC 9110 8.6 (a 204 should carry no `Content-Length`); harmless to browsers and proxies, kept until changed on purpose | test/http_response.rb (the 204 case) |
+| 204 and 1xx | written like any other status: a `Content-Length` is sent (0 for an empty body), and a body the application set is sent too. **Known deviation** from RFC 9110 6.4.1 and 8.6 (a 204 carries neither); an empty 204 is harmless to browsers and proxies, but leave its body empty: bytes after a 204 can be read as the start of the next response on a kept-alive connection. Kept until changed deliberately | test/http_response.rb (the 204 case) |
 | Defaults on every response | `Content-Type: text/html; charset=utf-8` unless set, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, the configured `Permissions-Policy`; an upgrade carries none of them | test/server.rb ("every response the server writes carries the security defaults") |
 | Keep-alive | HTTP/1.1 stays open unless the request said `Connection: close`; HTTP/1.0 closes unless it said `keep-alive`; tokens are compared whole, and `close` wins. The response always names the outcome (`Connection: keep-alive` or `close`) | test/http_request.rb (`keep_alive?`), test/server.rb ("two keep-alive requests ...", "Connection: close ...", "HTTP/1.0 without keep-alive ...", "HTTP/1.0 with Connection: keep-alive ...") |
 | Pipelining | requests already in the buffer are answered in order, one at a time | test/server.rb ("pipelined requests are answered in order") |

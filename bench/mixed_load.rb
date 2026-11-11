@@ -493,9 +493,12 @@ def pending_jobs
 end
 
 # Waits for the jobs enqueued and the messages broadcast in the phase to be
-# handled, so their delays belong to it; gives up after `seconds`.
+# handled, so their delays belong to it; gives up after `seconds`. True
+# when everything was handled, false when work of this phase is still
+# pending: the next phase would then count it as its own.
 def drain(seconds)
   ends_at = monotonic + seconds
+  idle = false
   while monotonic < ends_at
     idle = pending_jobs == 0 && Stream::Poller.last_id >= Stream.max_id
     break if idle
@@ -504,7 +507,7 @@ def drain(seconds)
   end
   # The subscriber's pop of the last hand-off.
   sleep 0.3
-  nil
+  idle
 end
 
 def phase_runs?(phase, group)
@@ -543,7 +546,14 @@ def run_phase(phase, seconds)
   end
   threads.each(&:join)
   PHASE_MS[phase] = ((monotonic - started) * 1000.0).to_i
-  drain(30.0)
+  unless drain(30.0)
+    # A phase that leaves jobs or messages behind would hand them to the
+    # next one, whose "alone" numbers would then include them: no table is
+    # better than a wrong comparison.
+    puts "error: phase #{phase} did not drain in 30 s (#{pending_jobs} jobs pending); lower the load or raise job_threads"
+    STDOUT.flush
+    exit(1)
+  end
   kind = 0
   while kind < KINDS
     merged = RESULTS[phase * KINDS + kind]

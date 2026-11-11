@@ -90,14 +90,26 @@ jobs:
           test "$RELEASE_TAG" = "v$version" || { echo "tag $RELEASE_TAG is not v$version (cybertrain/version.rb)"; exit 1; }
 
       # latest is what Codespaces opens: only release.yml moves it, after it
-      # has checked which release is the newest.
-      - name: A manual run does not push latest
+      # has checked which release is the newest. A release's X.Y.Z is that
+      # release's image: a manual run must not replace it with a build of
+      # another commit, which promote-latest would then copy to latest. The
+      # value is checked as the action below will use it (it trims
+      # whitespace), so only a plain tag name gets through.
+      - name: A manual run pushes neither latest nor a release's tag
         if: github.event_name == 'workflow_dispatch' && !inputs.release_tag
         env:
           MANUAL_TAG: ${{ inputs.tag }}
         run: |
-          if [ "$MANUAL_TAG" = latest ]; then
-            echo "::error::latest is moved only by the Release workflow (promote-latest), to the newest release; push another tag"
+          case "$MANUAL_TAG" in
+            "" | *[!A-Za-z0-9_.-]* | [.-]*)
+              echo "::error::the tag must be a plain tag name (letters, digits, _ . -), got '$MANUAL_TAG'"
+              exit 1 ;;
+            latest)
+              echo "::error::latest is moved only by the Release workflow (promote-latest), to the newest release; push another tag"
+              exit 1 ;;
+          esac
+          if printf '%s' "$MANUAL_TAG" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$MANUAL_TAG is a release's tag: only the Release workflow pushes X.Y.Z; push another tag"
             exit 1
           fi
 

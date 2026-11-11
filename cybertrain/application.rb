@@ -217,6 +217,9 @@ module Cybertrain
       DB.disconnect if @database_generation >= 0 && DB.connected? && DB.generation == @database_generation
       @database_generation = -1
       @booted = false
+      # A later boot may serve on another port or with a changed config: the
+      # runner (and the HTTP server it built) is this lifecycle's.
+      @server_runner = nil
       nil
     end
 
@@ -279,6 +282,11 @@ module Cybertrain
         STDOUT.flush
         return 1
       end
+      # Before anything shared changes: a second role in a process that
+      # runs one must not clear its stop flag or re-apply the settings.
+      busy = Runtime.role_problem
+      return Roles.refuse(busy) unless busy.empty?
+
       # Before boot: a stop asked for while booting is kept.
       Roles.reset_stop
       @config.worker = true
@@ -298,6 +306,9 @@ module Cybertrain
     # @api public
     def run_feeds(names)
       return run_feeds_status if !names.empty? && names[0] == "status"
+
+      busy = Runtime.role_problem
+      return Roles.refuse(busy) unless busy.empty?
 
       Roles.reset_stop
       @config.worker = true
