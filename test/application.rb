@@ -580,6 +580,50 @@ test "boot connects the database, configures views and resolves the secret" do
   assert_equal 64, Cybertrain.config.secret_key_base.length
 end
 
+test "boot installs the locale settings" do
+  c = Cybertrain.config
+  # test environment: the defaults reach I18n, and missing keys are marked
+  APP.boot
+  assert_equal :en, I18n.default_locale
+  assert_equal [:en], I18n.available_locales
+  assert_equal "translation missing: en.no.such_key", I18n.t("no.such_key")
+
+  c.i18n_default_locale = :ja
+  c.i18n_available_locales = [:ja, :en]
+  APP.boot
+  assert_equal :ja, I18n.default_locale
+  assert_equal [:ja, :en], I18n.available_locales
+  assert_equal true, I18n.locale_available?("en")
+  assert_equal false, I18n.locale_available?("fr")
+  assert_equal :ja, I18n.locale
+  assert_equal "translation missing: ja.no.such_key", I18n.t("no.such_key")
+
+  c.i18n_raise_on_missing = true
+  APP.boot
+  assert_raises("I18n::MissingTranslationData") { I18n.t("no.such_key") }
+
+  # production does not mark a missing key; it answers the humanised segment
+  c.i18n_raise_on_missing = false
+  prod = Cybertrain::Config.new
+  prod.env = "production"
+  prod.database_path = ":memory:"
+  prod.secret_key_base = "production-secret"
+  prod.log_level = :none
+  prod.i18n_default_locale = :ja
+  prod.i18n_available_locales = [:ja]
+  some = { "pages/index.html.erb" => "<p>embedded</p>\n" }
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: some, config: prod).boot
+  assert_equal "Such key", I18n.t("no.such_key")
+  assert_equal [:ja], I18n.available_locales
+
+  c.i18n_default_locale = :en
+  c.i18n_available_locales = []
+  APP.boot
+  assert_equal :en, I18n.default_locale
+  assert_equal [:en], I18n.available_locales
+  assert_equal "translation missing: en.no.such_key", I18n.t("no.such_key")
+end
+
 test "a GET renders a template inside the layout" do
   res = CLIENT.get("/")
   assert_response res, :ok

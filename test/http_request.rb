@@ -1,6 +1,7 @@
 require "zlib"
 require "cybertrain/http/request"
 require "cybertrain/http/client_error"
+require "cybertrain/i18n"
 require "cybertrain/params"
 require "cybertrain/test"
 
@@ -575,6 +576,101 @@ test "header_params tolerates any bytes in values" do
   assert_equal [0x81, 0x82], binary["z"].to_s.bytes
   assert_equal "2", binary["ok"]
   assert binary.key?("n"), "the name ends at the first non-token byte"
+end
+
+
+def locale_request(value)
+  request_with({ "Accept-Language" => value })
+end
+
+test "preferred_locale with q-values, regions, wildcards and junk" do
+  I18n.default_locale = :en
+  both = [:en, :ja]
+  # q-values order the choice: en (0.9) beats ja-JP (0.8) wherever they stand.
+  assert_equal :en, locale_request("ja-JP;q=0.8, en;q=0.9").preferred_locale(both)
+  assert_equal :ja, locale_request("ja-JP;q=0.8, en;q=0.7").preferred_locale(both)
+  assert_equal :ja, locale_request("en;q=0.1, ja;q=0.2").preferred_locale(both)
+  # equal q-values: the earlier entry wins
+  assert_equal :ja, locale_request("ja, en").preferred_locale(both)
+  assert_equal :en, locale_request("en, ja").preferred_locale(both)
+  # a region matches its language, any case
+  assert_equal :ja, locale_request("ja-JP").preferred_locale(both)
+  assert_equal :ja, locale_request("JA-jp").preferred_locale(both)
+  assert_equal :ja, locale_request("ja_JP").preferred_locale(both)
+  assert_equal :en, locale_request("en-GB,en;q=0.9").preferred_locale(both)
+  # a full tag is tried before its language
+  assert_equal :"pt-BR", locale_request("pt-BR, pt;q=0.5").preferred_locale([:pt, :"pt-BR", :en])
+  assert_equal :pt, locale_request("pt-PT").preferred_locale([:en, :pt, :"pt-BR"])
+  # a wildcard and unknown languages mean the default
+  assert_equal :en, locale_request("fr, *").preferred_locale(both)
+  assert_equal :en, locale_request("*").preferred_locale(both)
+  assert_equal :en, locale_request("fr, de;q=0.8").preferred_locale(both)
+  # q=0 excludes; a later entry still counts
+  assert_equal :en, locale_request("ja;q=0").preferred_locale(both)
+  assert_equal :en, locale_request("ja;q=0.000").preferred_locale(both)
+  assert_equal :en, locale_request("ja;q=0, en;q=0.1").preferred_locale(both)
+  assert_equal :ja, locale_request("en;q=0, ja;q=0.1").preferred_locale(both)
+  # no header, an empty one, junk: the default, never nil
+  assert_equal :en, request_with({}).preferred_locale(both)
+  assert_equal :en, locale_request("").preferred_locale(both)
+  assert_equal :en, locale_request(";;;,,,=;q=").preferred_locale(both)
+  assert_equal :en, locale_request("ja;q=abc").preferred_locale(both)
+  assert_equal :en, locale_request("ja;q=1.5").preferred_locale(both)
+  assert_equal :en, locale_request("ja;q=-1").preferred_locale(both)
+  assert_equal :en, locale_request("ja;q=0.8888888").preferred_locale(both)
+  assert_equal :en, locale_request("../ja, ja/../en").preferred_locale(both)
+  assert_equal :en, locale_request("j\u0000a").preferred_locale(both)
+  # nothing available: the default
+  assert_equal :en, locale_request("ja").preferred_locale([])
+  # the default need not be the first available locale
+  I18n.default_locale = :ja
+  assert_equal :ja, locale_request("fr").preferred_locale(both)
+  assert_equal :en, locale_request("en").preferred_locale(both)
+  I18n.default_locale = :en
+end
+
+test "preferred_locale reads at most 4 KB and 32 entries and survives a huge header" do
+  I18n.default_locale = :en
+  both = [:en, :ja]
+  # 10 KB of commas
+  assert_equal :en, locale_request("," * 10_240).preferred_locale(both)
+  # 10 KB of one tag
+  assert_equal :en, locale_request("x" * 10_240).preferred_locale(both)
+  # a match inside the first 32 entries counts; the 33rd entry does not
+  filler = "fr, " * 31
+  assert_equal :ja, locale_request("#{filler}ja").preferred_locale(both)
+  assert_equal :en, locale_request("#{filler}fr, ja").preferred_locale(both)
+  # a match inside the first 4 KB counts; one past it does not
+  pad = "x" * 4000
+  assert_equal :ja, locale_request("#{pad},ja").preferred_locale(both)
+  assert_equal :en, locale_request("#{pad}#{' ' * 200},ja").preferred_locale(both)
+  # an enormous q-value text is dropped, not parsed
+  assert_equal :en, locale_request("ja;q=#{'9' * 3000}").preferred_locale(both)
+end
+
+test "a ?locale= value from the query only passes when it names an available locale" do
+  I18n.default_locale = :en
+  I18n.available_locales = [:en, :ja]
+  accepted = ["ja", "en"]
+  refused = ["xx", "JA", "Ja", "../en", "..%2Fen", "en/../ja", "ja ", "", "ja%00", "e", "*", "ja;q=1", "a" * 5000]
+  accepted.each do |value|
+    req = Request.new("GET", "/?locale=#{value}", {}, "")
+    assert_equal value, req.query_value("locale")
+    assert_equal true, I18n.locale_available?(req.query_value("locale"))
+  end
+  refused.each do |value|
+    req = Request.new("GET", "/?locale=#{value}", {}, "")
+    assert_equal false, I18n.locale_available?(req.query_value("locale"))
+  end
+  assert_equal false, I18n.locale_available?(Request.new("GET", "/", {}, "").query_value("locale"))
+  # a refused value never changes the thread's locale
+  I18n.locale = nil
+  refused.each do |value|
+    req = Request.new("GET", "/?locale=#{value}", {}, "")
+    I18n.locale = req.query_value("locale") if I18n.locale_available?(req.query_value("locale"))
+  end
+  assert_equal :en, I18n.locale
+  I18n.available_locales = []
 end
 
 Cybertrain::Test.run!

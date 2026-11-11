@@ -11,7 +11,9 @@ module Cybertrain
   # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
   # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_ALLOWED_HOSTS, CYBERTRAIN_SESSION_SAME_SITE,
   # CYBERTRAIN_SESSION_PARTITIONED, CYBERTRAIN_MAX_PAGE, CYBERTRAIN_HTTP_ALLOW_PRIVATE,
-  # CYBERTRAIN_WORKER); config/app.rb then adjusts them:
+  # CYBERTRAIN_WORKER, CYBERTRAIN_I18N_DEFAULT_LOCALE, CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS,
+  # CYBERTRAIN_AUTH_LOCKOUT_PERIOD, CYBERTRAIN_AUTH_REMEMBER_FOR,
+  # CYBERTRAIN_AUTH_IDLE_TIMEOUT); config/app.rb then adjusts them:
   #
   #   Cybertrain.configure do |c|
   #     c.port = 3000
@@ -619,6 +621,118 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :stream_max_backlog
 
+    # The locale a request and a thread start in, `:en`, from
+    # `CYBERTRAIN_I18N_DEFAULT_LOCALE` (a name such as `en` or `pt-BR`).
+    # Boot refuses a name that is not one, or a default outside
+    # {#i18n_available_locales} when that is not empty.
+    # @return [Symbol]
+    # @api public
+    attr_accessor :i18n_default_locale
+
+    # The locales `I18n.locale=` and `Request#preferred_locale` accept.
+    # Empty (the default) means just {#i18n_default_locale}; read the
+    # effective list with {#i18n_locales}.
+    # @example config/app.rb
+    #   config.i18n_available_locales = [:en, :ja]
+    # @return [Array<Symbol>]
+    # @api public
+    attr_accessor :i18n_available_locales
+
+    # Whether a missing translation raises `I18n::MissingTranslationData`
+    # instead of answering a marker or the humanised key, `false`.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :i18n_raise_on_missing
+
+    # Failed sign-ins before an account is locked, `10`, from
+    # `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS`. `0` turns lockout off.
+    # @return [Integer]
+    # @api public
+    attr_accessor :auth_lockout_attempts
+
+    # How long a lockout lasts, in seconds, `3600`, from
+    # `CYBERTRAIN_AUTH_LOCKOUT_PERIOD`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :auth_lockout_period
+
+    # How long a "remember me" sign-in lasts, in seconds, `2592000` (30
+    # days), from `CYBERTRAIN_AUTH_REMEMBER_FOR`. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :auth_remember_for
+
+    # Seconds without a request after which a session ends, `604800` (7
+    # days), from `CYBERTRAIN_AUTH_IDLE_TIMEOUT`. `0` turns it off.
+    # @return [Integer]
+    # @api public
+    attr_accessor :auth_idle_timeout
+
+    # The locales in effect: {#i18n_available_locales}, or just
+    # {#i18n_default_locale} when that is empty.
+    # @return [Array<Symbol>]
+    # @api public
+    def i18n_locales
+      list = @i18n_available_locales
+      return [@i18n_default_locale] if list.empty?
+
+      list
+    end
+
+    # CYBERTRAIN_I18N_DEFAULT_LOCALE as a Symbol (`:en` when unset or
+    # empty). A name boot refuses (i18n_error) is kept as written. This is
+    # the one place environment text becomes a Symbol, once at startup;
+    # request input never does.
+    def self.default_i18n_locale
+      env_or("CYBERTRAIN_I18N_DEFAULT_LOCALE", "en").to_sym
+    end
+
+    # An authentication setting's variable read as default_job_threads
+    # reads its own: the default when unset or not a number, any number
+    # kept for boot to refuse (auth_error).
+    def self.default_auth_setting(name, default)
+      Params.parse_int(env_or(name, ""), default)
+    end
+
+    # Whether text is a locale name: a 2-3 letter language, then any number
+    # of `-` or `_` separated parts of 2-8 letters or digits (`en`, `ja`,
+    # `pt-BR`, `zh-Hant-TW`), at most 35 bytes. A byte scan through a fresh
+    # local (NOTES rule 62).
+    # @param text [String]
+    # @return [Boolean]
+    # @api private
+    def self.locale_name?(text)
+      s = text.to_s
+      len = s.bytesize
+      return false if len < 2 || len > 35
+
+      part = 0 # 0-based index of the part being read
+      part_len = 0
+      i = 0
+      while i < len
+        b = s.getbyte(i)
+        if b == 45 || b == 95 # "-" "_"
+          return false if part_len < 2
+          return false if part == 0 && part_len > 3
+
+          part += 1
+          part_len = 0
+        else
+          letter = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+          digit = b >= 48 && b <= 57
+          return false unless letter || (digit && part > 0)
+
+          part_len += 1
+          return false if part_len > 8
+        end
+        i += 1
+      end
+      return false if part_len < 2
+      return false if part == 0 && part_len > 3
+
+      true
+    end
+
     # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
     # 25): 10000 when it is unset, not a number, or below 1.
     def self.default_max_page
@@ -871,6 +985,13 @@ end
       @stream_max_connections = 1000
       @stream_max_message = 65536
       @stream_max_backlog = 1000
+      @i18n_default_locale = Config.default_i18n_locale
+      @i18n_available_locales = []
+      @i18n_raise_on_missing = false
+      @auth_lockout_attempts = Config.default_auth_setting("CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS", 10)
+      @auth_lockout_period = Config.default_auth_setting("CYBERTRAIN_AUTH_LOCKOUT_PERIOD", 3600)
+      @auth_remember_for = Config.default_auth_setting("CYBERTRAIN_AUTH_REMEMBER_FOR", 2_592_000)
+      @auth_idle_timeout = Config.default_auth_setting("CYBERTRAIN_AUTH_IDLE_TIMEOUT", 604_800)
     end
 
     # The parameter names whose values are replaced with `[FILTERED]` in the
@@ -1399,6 +1520,46 @@ end
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
       end
       return "scheduler_tz #{@scheduler_tz.inspect} is not a known time zone" unless TimeZone.find(@scheduler_tz).found?
+
+      ""
+    end
+
+    # The error Application#boot reports when i18n_default_locale or an
+    # entry of i18n_available_locales is not a locale name (`en`, `pt-BR`),
+    # or the default is not in a non-empty i18n_available_locales; "" when
+    # all are fine.
+    def i18n_error
+      default_name = @i18n_default_locale.to_s
+      unless Config.locale_name?(default_name)
+        return "CYBERTRAIN_I18N_DEFAULT_LOCALE must be a locale name such as en or pt-BR (got #{default_name.inspect})"
+      end
+      list = @i18n_available_locales
+      i = 0
+      while i < list.size
+        entry = list[i].to_s
+        unless Config.locale_name?(entry)
+          return "i18n_available_locales entries must be locale names such as en or pt-BR (got #{entry.inspect})"
+        end
+        i += 1
+      end
+      if !list.empty? && !list.include?(@i18n_default_locale)
+        return "i18n_default_locale #{@i18n_default_locale.inspect} is not in i18n_available_locales #{list.inspect}"
+      end
+
+      ""
+    end
+
+    # The error Application#boot reports when an auth_* setting is out of
+    # range: auth_lockout_attempts and auth_idle_timeout below 0 (0 is
+    # off), auth_lockout_period and auth_remember_for below 1; "" when all
+    # are fine.
+    def auth_error
+      if @auth_lockout_attempts < 0
+        return "auth_lockout_attempts must be 0 (off) or more (got #{@auth_lockout_attempts})"
+      end
+      return "auth_lockout_period must be at least 1 second (got #{@auth_lockout_period})" if @auth_lockout_period < 1
+      return "auth_remember_for must be at least 1 second (got #{@auth_remember_for})" if @auth_remember_for < 1
+      return "auth_idle_timeout must be 0 (off) or more (got #{@auth_idle_timeout})" if @auth_idle_timeout < 0
 
       ""
     end

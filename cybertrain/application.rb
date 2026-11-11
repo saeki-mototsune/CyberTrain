@@ -159,6 +159,10 @@ module Cybertrain
       fail_boot(feeds_error) unless feeds_error.empty?
       stream_error = c.stream_error
       fail_boot(stream_error) unless stream_error.empty?
+      i18n_error = c.i18n_error
+      fail_boot(i18n_error) unless i18n_error.empty?
+      auth_error = c.auth_error
+      fail_boot(auth_error) unless auth_error.empty?
       security_error = c.security_error
       fail_boot(security_error) unless security_error.empty?
       # A string check, no openssl: a malformed key always, an unset one when
@@ -172,6 +176,10 @@ module Cybertrain
       # (Static); an unknown asset name raises outside production.
       Assets.load_kept(c.public_root)
       Assets.raise_on_unknown = !c.production?
+      I18n.default_locale = c.i18n_default_locale
+      I18n.available_locales = c.i18n_available_locales
+      I18n.raise_on_missing = c.i18n_raise_on_missing
+      I18n.mark_missing = !c.production?
       # Module-level settings, like Views': the parser and the blob store are
       # reached from places that have no Config. The upload directory is made
       # by the first write, not here, so a read-only deploy still boots.

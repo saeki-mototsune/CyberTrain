@@ -347,4 +347,106 @@ test "content_security_policy builds the policy once and yields it" do
                policy.header_value("", [])
 end
 
+
+def clear_i18n_auth_env
+  ["CYBERTRAIN_I18N_DEFAULT_LOCALE", "CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS", "CYBERTRAIN_AUTH_LOCKOUT_PERIOD",
+   "CYBERTRAIN_AUTH_REMEMBER_FOR", "CYBERTRAIN_AUTH_IDLE_TIMEOUT"].each { |name| ENV[name] = "" }
+end
+
+test "i18n settings from the environment and their checks" do
+  clear_i18n_auth_env
+  conf = Cybertrain::Config.new
+  assert_equal :en, conf.i18n_default_locale
+  assert_equal [], conf.i18n_available_locales
+  assert_equal [:en], conf.i18n_locales
+  assert_equal false, conf.i18n_raise_on_missing
+  assert_equal "", conf.i18n_error
+
+  ENV["CYBERTRAIN_I18N_DEFAULT_LOCALE"] = "ja"
+  conf = Cybertrain::Config.new
+  assert_equal :ja, conf.i18n_default_locale
+  assert_equal [:ja], conf.i18n_locales
+  assert_equal "", conf.i18n_error
+
+  ENV["CYBERTRAIN_I18N_DEFAULT_LOCALE"] = "pt-BR"
+  conf = Cybertrain::Config.new
+  assert_equal :"pt-BR", conf.i18n_default_locale
+  assert_equal "", conf.i18n_error
+
+  ENV["CYBERTRAIN_I18N_DEFAULT_LOCALE"] = "x y"
+  conf = Cybertrain::Config.new
+  assert_equal "CYBERTRAIN_I18N_DEFAULT_LOCALE must be a locale name such as en or pt-BR (got \"x y\")", conf.i18n_error
+
+  ["e", "english-language", "../en", "en/", "-en", "en-", "en--US", "1n", "en-U", "JA\n", "a" * 40].each do |junk|
+    ENV["CYBERTRAIN_I18N_DEFAULT_LOCALE"] = junk
+    conf = Cybertrain::Config.new
+    assert_equal "CYBERTRAIN_I18N_DEFAULT_LOCALE must be a locale name such as en or pt-BR (got #{junk.inspect})", conf.i18n_error
+  end
+  ["en", "ja", "pt-BR", "pt_BR", "zh-Hant-TW", "EN", "es-419"].each do |name|
+    assert_equal true, Cybertrain::Config.locale_name?(name)
+  end
+
+  ENV["CYBERTRAIN_I18N_DEFAULT_LOCALE"] = ""
+  conf = Cybertrain::Config.new
+  conf.i18n_default_locale = :fr
+  conf.i18n_available_locales = [:en, :ja]
+  assert_equal "i18n_default_locale :fr is not in i18n_available_locales [:en, :ja]", conf.i18n_error
+  assert_equal [:en, :ja], conf.i18n_locales
+  conf.i18n_default_locale = :ja
+  assert_equal "", conf.i18n_error
+  conf.i18n_available_locales = [:en, :"j a"]
+  assert_equal "i18n_available_locales entries must be locale names such as en or pt-BR (got \"j a\")", conf.i18n_error
+end
+
+test "auth settings and their checks" do
+  clear_i18n_auth_env
+  conf = Cybertrain::Config.new
+  assert_equal 10, conf.auth_lockout_attempts
+  assert_equal 3600, conf.auth_lockout_period
+  assert_equal 2_592_000, conf.auth_remember_for
+  assert_equal 604_800, conf.auth_idle_timeout
+  assert_equal "", conf.auth_error
+
+  ENV["CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS"] = "5"
+  ENV["CYBERTRAIN_AUTH_LOCKOUT_PERIOD"] = "60"
+  ENV["CYBERTRAIN_AUTH_REMEMBER_FOR"] = "120"
+  ENV["CYBERTRAIN_AUTH_IDLE_TIMEOUT"] = "30"
+  conf = Cybertrain::Config.new
+  assert_equal 5, conf.auth_lockout_attempts
+  assert_equal 60, conf.auth_lockout_period
+  assert_equal 120, conf.auth_remember_for
+  assert_equal 30, conf.auth_idle_timeout
+  assert_equal "", conf.auth_error
+
+  # not a number: the default
+  ENV["CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS"] = "many"
+  assert_equal 10, Cybertrain::Config.new.auth_lockout_attempts
+
+  # 0 is off for attempts and idle timeout
+  clear_i18n_auth_env
+  conf = Cybertrain::Config.new
+  conf.auth_lockout_attempts = 0
+  conf.auth_idle_timeout = 0
+  assert_equal "", conf.auth_error
+
+  conf.auth_lockout_attempts = -1
+  assert_equal "auth_lockout_attempts must be 0 (off) or more (got -1)", conf.auth_error
+  conf.auth_lockout_attempts = 10
+  conf.auth_lockout_period = 0
+  assert_equal "auth_lockout_period must be at least 1 second (got 0)", conf.auth_error
+  conf.auth_lockout_period = 3600
+  conf.auth_remember_for = 0
+  assert_equal "auth_remember_for must be at least 1 second (got 0)", conf.auth_error
+  conf.auth_remember_for = 1
+  conf.auth_idle_timeout = -5
+  assert_equal "auth_idle_timeout must be 0 (off) or more (got -5)", conf.auth_error
+  conf.auth_idle_timeout = 1
+  assert_equal "", conf.auth_error
+
+  # a value from the environment that boot refuses is kept as written
+  ENV["CYBERTRAIN_AUTH_REMEMBER_FOR"] = "0"
+  assert_equal "auth_remember_for must be at least 1 second (got 0)", Cybertrain::Config.new.auth_error
+  clear_i18n_auth_env
+end
+
 Cybertrain::Test.run!
