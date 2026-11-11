@@ -2,7 +2,8 @@ ok   stage 2: a database that cannot be opened leaves nothing behind, and the re
 ok   stage 3: an embedded template that does not parse closes the pool this boot connected and resets the settings
 ok   a failed boot never closes a pool the caller connected
 ok   a failed boot after a good one leaves the first Application's pool, and defaults for the settings
+ok   booting and serving a request in-process starts no service and claims no role
 => test environment
 => feeds: alpha, beta
 ok   a feeds role whose second feed raises on start stops the first and frees the role
-5 tests, 32 assertions, 0 failures
+6 tests, 37 assertions, 0 failures

@@ -27,28 +27,6 @@ require "cybertrain/runtime"
 require "cybertrain/dev"
 
 module Cybertrain
-  # The flag that ends `./<app> worker` and `./<app> feeds`
-  # (Application.request_stop_roles sets it; the TERM trap calls that).
-  # A module-level ivar, not a class variable (NOTES rules 18/64).
-  # @api private
-  module RoleStop
-    @requested = false
-
-    def self.stop_roles!
-      @requested = true
-      nil
-    end
-
-    def self.resume_roles!
-      @requested = false
-      nil
-    end
-
-    def self.roles_stopped?
-      @requested
-    end
-  end
-
   # The booted application: config, database, views and the middleware
   # stack in front of the generated router. bin/<name>.rb builds one and
   # hands it Cybertrain::Main's argv:
@@ -90,10 +68,7 @@ module Cybertrain
       @name = name
       @config = config
       @stack = nil
-      @server = nil
-      @rebuilder = nil
-      @restart_requested = false
-      @serving = false
+      @server_runner = nil
       @booted = false
       # True while #apply_boot_settings is writing the shared settings.
       @applying = false
@@ -251,14 +226,21 @@ module Cybertrain
       nil
     end
 
+    # The HTTP server the `server` role runs (Roles::ServerRunner builds it
+    # on first use, from this Application's config and stack).
+    # @return [Cybertrain::Server]
     def server
-      built = @server
+      server_runner.http_server
+    end
+
+    # The object that operates the `server` role for this Application
+    # (docs/design.md D67); built on first use, after which #stack is fixed.
+    # @api private
+    def server_runner
+      built = @server_runner
       if built.nil?
-        built = Server.new(ContextHandler.new(front_app), host: @config.host, port: @config.port,
-                                                          max_body_bytes: @config.max_body_bytes,
-                                                          reuse_port: reuse_port?,
-                                                          stream_write_timeout: @config.stream_ping_interval)
-        @server = built
+        built = Roles::ServerRunner.new(@config, @name, stack)
+        @server_runner = built
       end
       built
     end
@@ -270,83 +252,24 @@ module Cybertrain
       serve(argv)
     end
 
-    # Starts the server and blocks until it is stopped. SPINEL_WORKERS must
-    # be set before the first Thread.new starts the scheduler (NOTES rule 22).
-    # A port given as the first argument wins over the config: that is how
-    # the development loop hands its port to the binary it execs.
-    # A port that cannot be bound (Server raises PortInUse, for a busy port or
-    # a privileged one) is reported on STDOUT in place of the boot banner (the
-    # listener is bound before it prints) and exits 1: without this the
-    # process died with a misleading "Connection refused".
+    # Serves until SIGTERM: Roles::ServerRunner#run_server (the listener,
+    # the stream poller, the scheduler, the job threads, the background
+    # services; in development the rebuild loop). Call #boot first, or use
+    # #run. argv: [] or ["<port>"]; a port given there wins over the config.
+    # A port that cannot be bound is `error: ...` on STDOUT and exit 1.
+    # @param argv [Array<String>]
+    # @return [nil]
     def serve(argv)
-      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
-      port = Application.port_argument(argv)
-      @config.port = port if port > 0
-      # The rebuilder must exist before #server builds the stack (front_app
-      # wraps it in Dev::ErrorPage only when one is set). Two layers on the
-      # name: serve reports a bad one as a boot failure (the `error: ...`
-      # line, exit 1, like a busy port), and Rebuilder.new refuses it for
-      # direct callers (its contract: ArgumentError). The check here is a
-      # plain call, not a `rescue ArgumentError` around the Rebuilder (NOTES
-      # rule 32: no new rescue clause in a method that blocks and yields).
-      if @config.development?
-        problem = Application.name_problem(@name)
-        fail_boot(problem) unless problem.empty?
-        @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name)
-      end
-      # A service that would refuse to start (a WebSocket subscription
-      # without on_message) fails the boot here, before the port is bound,
-      # not with an exception after the banner.
-      service_problem = Background.boot_problem(@config)
-      fail_boot(service_problem) unless service_problem.empty?
-      busy = Runtime.enter_role("server")
-      fail_boot(busy) unless busy.empty?
-      srv = server
-      begin
-        # The stream poller before the listener: its start position (MAX(id))
-        # must come before any subscription. Only with the endpoint mounted.
-        Stream::Poller.start!(@config) unless @config.stream_path.empty?
-        srv.start # bind first: a PortInUse error must not come after the banner
-        print_boot_banner
-        # After boot connected the database and SPINEL_WORKERS is set; only
-        # here, so `migrate`, `db` and Main.command never start it.
-        Scheduler.start!(@config)
-        Job.start!(@config) if @config.worker
-        # Services files like cybertrain/websocket registered when required.
-        Background.start_all(@config)
-        if @config.development?
-          serve_development(srv)
-        else
-          # Flags only (safe in a trap): the job threads stop claiming while
-          # the requests drain, so Job.stop! waits out only what is left of
-          # its job_drain_timeout, inside systemd's TimeoutStopSec.
-          trap("TERM") do
-            srv.request_stop
-            Job.request_stop
-          end
-          srv.wait
-        end
-      ensure
-        # Also when a start above raised (D66): each stop is a no-op for
-        # what never started, so nothing this role began outlives it.
-        Job.stop!
-        Scheduler.stop!
-        Background.stop_all
-        Stream::Poller.stop!
-        Runtime.leave_role
-      end
-      nil
-    rescue PortInUse => e
-      fail_boot(e.message)
+      server_runner.run_server(argv)
     end
 
-    # `./<app> worker` (Main.run): boots (the config checks, the database),
-    # prints a banner, starts the scheduler (lease-gated: several workers
-    # may share the database) and the job threads, and runs until SIGTERM
-    # or SIGINT (or Application.request_stop_roles), then stops the job threads (they
-    # finish their jobs, for at most Config#job_drain_timeout seconds) and
-    # the scheduler. No port, no HTTP. Config#worker is set: in this role
-    # it is what the process is for.
+    # `./<app> worker` (Main.run): boots (the config checks, the database)
+    # and runs Roles::WorkerRunner: a banner, the scheduler (lease-gated:
+    # several workers may share the database) and the job threads, until
+    # SIGTERM or SIGINT (or Application.request_stop_roles), then their
+    # shutdown (the job threads finish their jobs, for at most
+    # Config#job_drain_timeout seconds). No port, no HTTP. Config#worker is
+    # set: in this role it is what the process is for.
     # @param argv [Array<String>] what follows `worker`; must be empty
     # @return [Integer] the exit status
     # @api public
@@ -357,90 +280,29 @@ module Cybertrain
         return 1
       end
       # Before boot: a stop asked for while booting is kept.
-      Application.reset_roles_stop
+      Roles.reset_stop
       @config.worker = true
       boot
-      # What serve gives Spinel for the same config (NOTES rule 22), the
-      # development limit of one included: a job or feed callback renders
-      # partials and components through the same cache: false engine.
-      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
-      threads = @config.job_threads
-      tasks = Scheduler::TASKS.size
-      jobs = Job.handlers? ? "#{threads} job thread#{threads == 1 ? "" : "s"}" : "no job handler"
-      print_role_banner("worker: #{jobs}, #{tasks} scheduled task#{tasks == 1 ? "" : "s"}")
-      # INT as TERM: a worker run in a terminal and stopped with Ctrl-C
-      # drains its jobs too, rather than dying with its rows left
-      # `running` until job_heartbeat_stale. Both handlers are given back
-      # when the role ends (test/main_roles.rb sends the signals and
-      # checks the handlers come back).
-      busy = Runtime.enter_role("worker")
-      return role_error(busy) unless busy.empty?
-
-      previous_term = trap("TERM") { Application.request_stop_roles }
-      previous_int = trap("INT") { Application.request_stop_roles }
-      run_worker_threads(previous_term, previous_int)
+      Roles::WorkerRunner.new(@config).run_worker
     end
 
-    # The worker's lifetime: the scheduler and the job threads until the
-    # stop, then their shutdown. Restores the TERM and INT handlers the
-    # role replaced, also when a start or a stop raises: an in-process
-    # caller (a test) keeps its own handlers, and a later Ctrl-C ends the
-    # process again instead of setting a flag nobody waits for.
-    # @param previous_term [Object] what trap("TERM") answered: the
-    #   handler Proc, or a name such as "DEFAULT"
-    # @param previous_int [Object] the same for INT
-    # @return [Integer] 0
-    def run_worker_threads(previous_term, previous_int)
-      Scheduler.start!(@config)
-      Job.start!(@config)
-      Application.wait_roles_stop
-      0
-    ensure
-      # Also when a start raised (D66): both stops are no-ops for what
-      # never started.
-      Job.stop!
-      Scheduler.stop!
-      Runtime.leave_role
-      trap("TERM", previous_term)
-      trap("INT", previous_int)
-    end
-
-    # `./<app> feeds [NAME...]` (Main.run): boots, checks the names against
-    # the registered feeds (an unknown one is an error that lists them),
-    # starts the WebSocket subscriptions (all of them, or the named ones:
-    # Background.start_only) and runs until SIGTERM or SIGINT, then stops
-    # them. No
-    # port, no jobs, no scheduler. With no subscription registered it says
-    # so and returns 0.
+    # `./<app> feeds [NAME...]` (Main.run): boots and runs
+    # Roles::FeedsRunner: checks the names against the registered feeds (an
+    # unknown one is an error that lists them), starts the WebSocket
+    # subscriptions (all of them, or the named ones) and runs until SIGTERM
+    # or SIGINT, then stops them. No port, no jobs, no scheduler. With no
+    # subscription registered it says so and returns 0.
     # @param names [Array<String>] the feeds to run; empty for all
-    # @return [Integer] the exit status
+    # @return [Integer] the exit status: 0, or 1 for a refused start or
+    #   after a feed died too often
     # @api public
     def run_feeds(names)
       return run_feeds_status if !names.empty? && names[0] == "status"
 
-      Application.reset_roles_stop
+      Roles.reset_stop
       @config.worker = true
       boot
-      unknown = Background.unknown_feed(names)
-      return role_error(unknown) unless unknown.empty?
-
-      problem = Background.boot_problem(@config)
-      return role_error(problem) unless problem.empty?
-
-      known = Background.feed_names
-      ENV["SPINEL_WORKERS"] = Application.spinel_workers_for(@config).to_s
-      if known.empty?
-        print_role_banner("feeds: no WebSocket subscription is registered; nothing to run")
-        return 0
-      end
-      busy = Runtime.enter_role("feeds")
-      return role_error(busy) unless busy.empty?
-
-      print_role_banner("feeds: #{(names.empty? ? known : names).join(", ")}")
-      # INT as TERM (Ctrl-C), and the handlers given back, as in run_worker.
-      previous_term = trap("TERM") { Application.request_stop_roles }
-      previous_int = trap("INT") { Application.request_stop_roles }
-      run_feeds_threads(names, previous_term, previous_int)
+      Roles::FeedsRunner.new(@config).run_feeds(names)
     end
 
     # `./<app> feeds status`: boots (the database), prints one line per
@@ -459,12 +321,7 @@ module Cybertrain
     def run_feeds_status
       @config.worker = true
       boot
-      now = Application.status_now > 0 ? Application.status_now : Time.now.to_i
-      rows = WebSocket::FeedTable.read_feeds
-      puts "no feed has reported status" if rows.empty?
-      rows.each { |row| puts Application.feed_status_line(row, now) }
-      STDOUT.flush
-      0
+      Roles::FeedsRunner.new(@config).feeds_status
     end
 
     # One `feeds status` line for a FeedTable row.
@@ -476,51 +333,6 @@ module Cybertrain
       note = Background.feed_names.include?(name) ? "" : "  (not registered)"
       "#{name}  #{state}  #{Cast.str(row["process"])}  last activity #{activity}  " \
         "restarts #{Cast.int(row["restarts"])}  updated #{now - Cast.int(row["updated_at"])}s ago#{note}"
-    end
-
-    # The feeds' lifetime, the counterpart of run_worker_threads: the named
-    # subscriptions until the stop, then their shutdown, and the TERM and
-    # INT handlers restored whatever happens.
-    #
-    # In this role a feed whose thread keeps dying ends the process
-    # (Background.exit_on_feed_death, spec section 9): the supervisor logs
-    # the FATAL line and sets Background.feeds_failed?, which ends the wait
-    # as a stop does; the feeds are stopped and the role answers 1, the
-    # exit status Main.run's caller exits with. (The supervisor thread
-    # cannot exit itself: under Spinel `exit` on a thread other than the
-    # main one ends only that thread.)
-    # @param names [Array<String>] the feeds to run; empty for all
-    # @param previous_term [Object] what trap("TERM") answered
-    # @param previous_int [Object] what trap("INT") answered
-    # On a clean stop the feeds' status rows this process wrote are
-    # deleted (Background.withdraw_status_all), so a role stopped on
-    # purpose no longer counts in `/up`; after a feed died too often they
-    # are kept.
-    # @return [Integer] 0, or 1 after a feed died too often
-    def run_feeds_threads(names, previous_term, previous_int)
-      stopped = false
-      Background.exit_on_feed_death = true
-      Background.start_only(@config, names)
-      Application.wait_roles_stop
-      Background.stop_all
-      stopped = true
-      return 1 if Background.feeds_failed?
-
-      # A clean stop (TERM, INT, a scale-down) takes this process's status
-      # rows away, so `/up` stops counting feeds nobody runs any more; a
-      # process that crashed, or gave up on a feed, leaves them to go stale.
-      Background.withdraw_status_all
-      0
-    ensure
-      # Also when a feed's start raised (D66): the feeds started before it
-      # are stopped. The flags are the role's: an in-process caller (a
-      # test) that runs another role afterwards starts clean.
-      Background.stop_all unless stopped
-      Background.exit_on_feed_death = false
-      Background.reset_supervisor!
-      Runtime.leave_role
-      trap("TERM", previous_term)
-      trap("INT", previous_int)
     end
 
     # Ends a run_worker or run_feeds: sets a flag the waiting main thread
@@ -538,7 +350,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.request_stop_roles
-      RoleStop.stop_roles!
+      Roles.request_stop
     end
 
     # The "now" (epoch seconds) `feeds status` measures ages from; 0, the
@@ -555,14 +367,13 @@ module Cybertrain
     end
 
     def self.reset_roles_stop
-      RoleStop.resume_roles!
+      Roles.reset_stop
     end
 
     # Waits for a stop, or for a feeds process's supervisor giving up on a
     # feed (Background.feeds_failed?).
     def self.wait_roles_stop
-      sleep 0.1 until RoleStop.roles_stopped? || Background.feeds_failed?
-      nil
+      Roles.wait_stop
     end
 
     # "" when name works as the development build target, else the
@@ -575,46 +386,6 @@ module Cybertrain
       return "" if reason.empty?
 
       "application name #{name.inspect} #{reason}"
-    end
-
-    # The development loop (docs/design.md D12): requests go through
-    # Dev::ErrorPage; a change under Dev::WATCHED rebuilds the server, and
-    # a successful build stops serving and execs the new binary on the same
-    # port with the same PID. A failed build keeps the old code serving and
-    # shows the compiler output.
-    #
-    # The restart runs in ordinary thread context, never inside a signal
-    # handler: Spinel calls a trap block straight from its C signal handler
-    # (sp_sig_c_handler), where Thread#join, allocation, IO and execv are
-    # not async-signal-safe. A successful rebuild (on the watcher thread)
-    # and an external `kill -HUP` both only set a flag; the restart monitor
-    # thread stops the server, and once Server#wait returns the main thread
-    # execs the new binary.
-    #
-    # Known limitation: the exec'd process takes a fresh watcher baseline,
-    # so a source edit saved during the successful build (after gen ran)
-    # is only picked up by the next change.
-    def serve_development(srv)
-      rebuilder = @rebuilder
-      trap("TERM") do
-        srv.request_stop
-        Job.request_stop
-      end
-      trap("HUP") { request_restart }
-      watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
-      watcher.start { |paths| rebuild_after_change(rebuilder, paths) }
-      @serving = true
-      spawn_restart_monitor(srv)
-      srv.wait
-      @serving = false
-      exec_new_build(srv, rebuilder) if @restart_requested
-      nil
-    end
-
-    # What the SIGHUP handler does: nothing but set a flag.
-    def request_restart
-      @restart_requested = true
-      nil
     end
 
     # Views as a process renders them: the embedded templates in
@@ -688,122 +459,9 @@ module Cybertrain
 
     private
 
-    # Config#reuse_port, except in development: the dev server re-execs
-    # itself, and a stray second process on the port would answer with stale
-    # code. #server builds once, so this warns once.
-    def reuse_port?
-      return false unless @config.reuse_port
-      return true unless @config.development?
-
-      Cybertrain.logger.warn("reuse_port is ignored in development: a second process on the port would answer with stale code")
-      false
-    end
-
     # A boot failure: the message on STDOUT in place of the banner, exit 1.
     def fail_boot(message)
-      puts "error: #{message}"
-      STDOUT.flush
-      exit(1)
-      nil
-    end
-
-    # Printed once, straight to STDOUT (not through Cybertrain.logger, which
-    # a quiet log_level could silence): the same "is it up, and where"
-    # message Rails/Puma print on boot. Flushed immediately since Spinel
-    # block-buffers a redirected STDOUT until exit (spikes/NOTES.md).
-    def print_boot_banner
-      c = @config
-      puts "=> Booting cybertrain #{Cybertrain::VERSION}"
-      puts Application.environment_banner(c)
-      # Application settings (Config#setting_string ...), secrets filtered.
-      settings = c.settings_summary
-      puts "=> Settings: #{settings}" unless settings.empty?
-      puts "=> Watching app/, config/ and db/schema.rb for changes" if c.development?
-      puts "* Listening on http://#{c.host}:#{c.port}"
-      puts "Use Ctrl-C to stop"
-      STDOUT.flush
-      nil
-    end
-
-    # The banner of a role without a port (worker, feeds): the environment
-    # and what the process runs.
-    def print_role_banner(what)
-      c = @config
-      puts "=> #{c.env} environment"
-      settings = c.settings_summary
-      puts "=> Settings: #{settings}" unless settings.empty?
-      puts "=> #{what}"
-      STDOUT.flush
-      nil
-    end
-
-    # A role's refusal to start: `error: MESSAGE`, exit status 1 (returned,
-    # not exit(1): Main.run's caller exits with it).
-    def role_error(message)
-      puts "error: #{message}"
-      STDOUT.flush
-      1
-    end
-
-    # The stack the server runs: diagnostics must stay inside hostname
-    # authorization too, including when #stack was built before serving.
-    def front_app
-      app = stack
-      rebuilder = @rebuilder
-      unless rebuilder.nil?
-        app = Dev::ErrorPage.new(app, rebuilder)
-        app = HostAuthorization.new(app, @config.checked_hosts, @config.health_path) if @config.development?
-      end
-      app
-    end
-
-    # Runs on the watcher thread. A successful build requests the restart
-    # (monitor_restart stops the server, serve_development execs).
-    def rebuild_after_change(rebuilder, paths)
-      return nil if @restart_requested # the new binary is about to take over
-
-      logger = Cybertrain.logger
-      logger.info("Changed #{paths.join(", ")}; rebuilding (log: #{rebuilder.log_path})")
-      if rebuilder.rebuild
-        logger.info("Build succeeded; restarting")
-        request_restart
-      elsif rebuilder.last_skipped
-        logger.info(rebuilder.last_output)
-      else
-        logger.error("Build failed; still serving the previous build (see #{rebuilder.log_path})")
-      end
-      nil
-    end
-
-    def spawn_restart_monitor(srv)
-      Thread.new { monitor_restart(srv) }
-    end
-
-    # The only place the development loop stops the server for a restart:
-    # turns request_restart (a rebuild or SIGHUP) into Server#stop within
-    # 0.2 s, and ends quietly when the server stops for another reason
-    # (SIGTERM).
-    def monitor_restart(srv)
-      while @serving
-        sleep 0.2
-        break if @restart_requested
-      end
-      srv.stop if @serving && @restart_requested
-      nil
-    end
-
-    # On the main thread, after Server#wait has returned: the listener is
-    # closed, so the new process can bind the port again.
-    def exec_new_build(srv, rebuilder)
-      binary = rebuilder.binary_path
-      STDOUT.flush # exec discards whatever the log has not written yet
-      # The new process inherits the environment and reads SPINEL_WORKERS
-      # as config.workers again: hand it the configured count, not the one
-      # #serve gave Spinel, or every rebuild would add a worker.
-      ENV["SPINEL_WORKERS"] = @config.workers.to_s
-      Dev::Reexec.exec_self(binary, srv.port.to_s)
-      Cybertrain.logger.error("could not exec #{binary}")
-      exit(1)
+      Roles.fail_boot(message)
     end
 
     def build_stack
@@ -840,3 +498,5 @@ module Cybertrain
     end
   end
 end
+
+require "cybertrain/roles"

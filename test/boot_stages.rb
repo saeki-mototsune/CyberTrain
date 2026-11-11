@@ -104,6 +104,24 @@ test "a failed boot after a good one leaves the first Application's pool, and de
   refute Cybertrain::DB.connected?
 end
 
+# Test::Client, the console and Main.command go through #boot and #call and
+# never through a role runner (D67), so they cannot start a service.
+test "booting and serving a request in-process starts no service and claims no role" do
+  Cybertrain::Runtime.reset!
+  quiet = stage_config("test")
+  quiet.log_level = :none # no request log line: its timing is not repeatable
+  app = stage_app(quiet, stage_views(GOOD))
+  app.boot
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/nothing", { "host" => "localhost" }, ""))
+  app.call(ctx)
+  assert_equal 404, ctx.response.status
+  refute Cybertrain::Job.running?
+  refute Cybertrain::Scheduler.running?
+  refute Cybertrain::Stream::Poller.running?
+  assert_equal "", Cybertrain::Runtime.role
+  app.shutdown
+end
+
 # ---- a role's partial start ------------------------------------------------
 
 $stage_events = Array.new(0) { "" }
