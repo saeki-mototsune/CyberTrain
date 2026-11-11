@@ -103,6 +103,7 @@ module Cybertrain
       end
 
       def self.add_file(root, source, logical, files)
+        check_link(root, source)
         unless safe_logical?(logical)
           message = "asset #{source}: a name with a space or a control character cannot be served; rename it"
           raise ArgumentError, message
@@ -115,6 +116,27 @@ module Cybertrain
         end
         body = logical.end_with?(".css") ? File.read("#{root}/#{source}") : File.binread("#{root}/#{source}")
         files << AssetFile.new(logical, source, body)
+        nil
+      end
+
+      # A symlinked file is read only when it resolves inside the tree it
+      # was found in (app/assets, app/javascript or vendor/javascript), as
+      # symlinked directories are never followed at all; one leading
+      # outside, or dangling, stops gen with the path named.
+      def self.check_link(root, source)
+        path = "#{root}/#{source}"
+        return nil unless File.symlink?(path)
+
+        unless File.exist?(path)
+          message = "asset #{source} is a symlink to a file that does not exist"
+          raise ArgumentError, message
+        end
+        tree = source.start_with?("app/assets/") ? "app/assets" : source.split("/")[0, 2].to_a.join("/")
+        base = "#{File.realpath("#{root}/#{tree}")}/"
+        unless File.realpath(path).start_with?(base)
+          message = "asset #{source} is a symlink to a file outside #{tree}; copy the file in instead"
+          raise ArgumentError, message
+        end
         nil
       end
 
@@ -164,7 +186,7 @@ module Cybertrain
         end
         stack << file.logical_path
         url_refs(file.asset_body).each do |ref|
-          dep = find(files, resolve(ref.url_target, file.logical_path))
+          dep = find(files, url_logical(ref.url_target, file.logical_path))
           next if dep.nil? || !dep.css_asset?
 
           digest_css(dep, files, done, stack).each { |w| warnings << w }
@@ -193,7 +215,7 @@ module Cybertrain
           replaced = target
           unless skipped_url?(target)
             cut = suffix_start(target)
-            asset = find(files, resolve(target[0, cut].to_s, css_logical))
+            asset = find(files, url_logical(target, css_logical))
             if asset.nil? || asset.digested_path.empty?
               warnings << "warning: #{source_of(files, css_logical)}: url(#{target}) is not an asset; left as written"
             else
@@ -205,6 +227,16 @@ module Cybertrain
         end
         out << s[pos, s.size - pos].to_s
         [out, warnings]
+      end
+
+      # The logical path a url() target names (its ?query / #fragment cut
+      # off), or "" for a skipped target (data:, http:, ...) or one that
+      # climbs above the roots. digest_css and rewrite_css both read targets
+      # through it, so the dependency order and the rewrite agree.
+      def self.url_logical(target, css_logical)
+        return "" if skipped_url?(target)
+
+        resolve(target[0, suffix_start(target)].to_s, css_logical)
       end
 
       def self.skipped_url?(target)

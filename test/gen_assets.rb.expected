@@ -4,6 +4,9 @@ ok   a logical path under two roots is refused
 ok   url() suffixes, quotes and non-asset references
 ok   url() resolves against the stylesheet's logical directory and never climbs out of it
 ok   a CSS digest is taken after rewriting, CSS files in dependency order
+ok   a stylesheet named with a ?query is still a dependency, even when its referrer sorts first
+ok   a CSS url() cycle through a suffixed url is refused
+ok   a symlinked file leading outside its tree, or nowhere, stops gen
 ok   a CSS url() cycle is refused
 ok   a CSS digest changes when an image it names changes
 wrote public/assets/application-2cac91ee.css
@@ -28,6 +31,7 @@ wrote public/assets/.manifest
 ok   a manifest line naming a path outside public/assets deletes nothing
 ok   the import map, preloads and the emitted case
 ok   an application with no assets gets an empty table
+ok   the fixture's compiled gen/assets.rb installs its table
 wrote gen/routes.rb
 wrote gen/assets.rb
 wrote gen/controllers.rb
@@ -40,4 +44,4 @@ wrote gen/console.rb
 wrote gen/app.rb
 stale: gen/assets.rb
 ok   gen --check compares gen/assets.rb only
-13 tests, 78 assertions, 0 failures
+17 tests, 96 assertions, 0 failures

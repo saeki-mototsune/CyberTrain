@@ -544,4 +544,4 @@ ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-26 tests, 307 assertions, 0 failures
+26 tests, 308 assertions, 0 failures

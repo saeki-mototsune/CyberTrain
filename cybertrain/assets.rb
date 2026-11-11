@@ -17,11 +17,12 @@ module Cybertrain
     # The resolver of an application with no assets: every name unknown.
     # Returned by a method, not written as a literal into the ivar below:
     # a lambda literal assigned to a module-level ivar never learns its call
-    # sites' argument types (spikes/NOTES.md rule 82); `name.empty?` types
-    # its parameter as a String.
+    # sites' argument types (spikes/NOTES.md rule 82). The empty answer is
+    # name's first zero characters, so the parameter is used (and typed as
+    # a String) rather than ignored.
     # @api private
     def self.empty_resolver
-      ->(name) { name.empty? ? "" : "" }
+      ->(name) { name[0, 0].to_s }
     end
 
     @resolver = empty_resolver

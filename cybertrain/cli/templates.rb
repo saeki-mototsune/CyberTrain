@@ -83,6 +83,7 @@ module Cybertrain
           /tmp/*
           !/tmp/.keep
           /log/
+          /public/assets/.manifest
         TEXT
       end
 

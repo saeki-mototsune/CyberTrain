@@ -2,6 +2,7 @@ require "tmpdir"
 require "digest"
 require "cybertrain/test"
 require "cybertrain/generator"
+require_relative "fixtures/assets_app/gen/assets"
 
 # Assets at gen time (spec section 7.1, 7.3): digests, CSS url() rewriting,
 # three kept versions under public/assets, the import map and gen/assets.rb.
@@ -146,6 +147,49 @@ test "a CSS digest is taken after rewriting, CSS files in dependency order" do
   assert_includes a.asset_body, "@import url(/assets/b-"
 end
 
+test "a stylesheet named with a ?query is still a dependency, even when its referrer sorts first" do
+  File.write("#{TMP}/app/assets/stylesheets/a.css", "@import url(b.css?v=1);\n")
+  File.write("#{TMP}/app/assets/stylesheets/b.css", "x{y:url(logo.svg)}\n")
+  css, warnings = Cybertrain::Gen::AssetScan.rewrite_css("@import url(b.css?v=1);\n", "a.css", scan_now)
+  before_a = digest("a.css")
+  before_b = digest("b.css")
+  File.write("#{TMP}/app/assets/stylesheets/b.css", "x{y:url(\"logo.svg\")}\n")
+  after_a = digest("a.css")
+  after_b = digest("b.css")
+  File.delete("#{TMP}/app/assets/stylesheets/a.css")
+  File.delete("#{TMP}/app/assets/stylesheets/b.css")
+  assert_equal 0, warnings.size
+  assert_equal "@import url(/assets/b-#{before_b}.css?v=1);\n", css
+  refute after_b == before_b
+  refute after_a == before_a
+end
+
+test "a CSS url() cycle through a suffixed url is refused" do
+  File.write("#{TMP}/app/assets/stylesheets/a.css", "@import url(b.css?v=1);\n")
+  File.write("#{TMP}/app/assets/stylesheets/b.css", "@import url(\"a.css#top\");\n")
+  message = assert_raises("ArgumentError") { scan_now }
+  File.delete("#{TMP}/app/assets/stylesheets/a.css")
+  File.delete("#{TMP}/app/assets/stylesheets/b.css")
+  assert_equal "CSS url() cycle: a.css -> b.css -> a.css", message
+end
+
+test "a symlinked file leading outside its tree, or nowhere, stops gen" do
+  File.write("#{TMP}/outside.txt", "secret\n")
+  File.symlink("#{TMP}/outside.txt", "#{TMP}/app/assets/images/host.txt")
+  message = assert_raises("ArgumentError") { scan_now }
+  File.delete("#{TMP}/app/assets/images/host.txt")
+  assert_equal "asset app/assets/images/host.txt is a symlink to a file outside app/assets; copy the file in instead", message
+  File.symlink("#{TMP}/missing.txt", "#{TMP}/app/assets/images/gone.txt")
+  message = assert_raises("ArgumentError") { scan_now }
+  File.delete("#{TMP}/app/assets/images/gone.txt")
+  assert_equal "asset app/assets/images/gone.txt is a symlink to a file that does not exist", message
+  File.symlink("#{TMP}/app/assets/images/logo.svg", "#{TMP}/app/assets/fonts/logo-link.svg")
+  linked = asset("logo-link.svg")
+  File.delete("#{TMP}/app/assets/fonts/logo-link.svg")
+  File.delete("#{TMP}/outside.txt")
+  assert_equal digest("logo.svg"), linked.asset_digest
+end
+
 test "a CSS url() cycle is refused" do
   File.write("#{TMP}/app/assets/stylesheets/a.css", "@import url(b.css);\n")
   File.write("#{TMP}/app/assets/stylesheets/b.css", "@import url(a.css);\n")
@@ -241,6 +285,25 @@ test "an application with no assets gets an empty table" do
   assert_includes source, "    def self.digest_path(logical)\n      \"\"\n    end\n"
   assert_includes source, "      \"{\\\"imports\\\":{}}\"\n"
   assert_includes source, "      Array.new(0) { \"\" }\n"
+end
+
+# The fixture's checked-in gen/assets.rb, required at the top: a populated
+# table compiled into this program. A stale file is rewritten so that the
+# next build picks it up.
+test "the fixture's compiled gen/assets.rb installs its table" do
+  source = Cybertrain::Gen::Runner.assets_source(FIXTURE)
+  unless File.read("#{FIXTURE}/gen/assets.rb") == source
+    File.write("#{FIXTURE}/gen/assets.rb", source)
+    flunk("fixture stale: #{FIXTURE}/gen/assets.rb (rewritten; rebuild and rerun)")
+  end
+  assert_equal "/assets/logo-#{digest("logo.svg")}.svg", Cybertrain::Assets.digest_path("logo.svg")
+  assert_equal "/assets/controllers/hello_controller-#{digest("controllers/hello_controller.js")}.js",
+               Cybertrain::Assets.digest_path("controllers/hello_controller.js")
+  assert_equal "", Cybertrain::Assets.digest_path("missing.png")
+  assert_equal Gen::Assets.importmap_json, Cybertrain::Assets.importmap_json
+  assert_includes Cybertrain::Assets.importmap_json, "\"application\":\"/assets/application-#{digest("application.js")}.js\""
+  assert_equal 3, Cybertrain::Assets.preload_paths.size
+  assert_equal "/assets/application-#{digest("application.js")}.js", Cybertrain::Assets.preload_paths[0]
 end
 
 test "gen --check compares gen/assets.rb only" do

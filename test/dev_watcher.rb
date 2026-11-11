@@ -147,6 +147,11 @@ test "an asset change triggers a rebuild" do
     File.write("#{ROOT}/#{f}", "// v2\n")
     assert_equal ["#{ROOT}/#{f}"], w.changed_paths
   end
+  pause
+  ["application.css~", "#application.css#", ".application.css.swp", "4913"].each do |name|
+    File.write("#{ROOT}/app/assets/stylesheets/#{name}", "scratch\n")
+  end
+  assert_equal [], w.changed_paths
 end
 
 def wait_for_calls(calls, count)
