@@ -96,6 +96,9 @@ module Cybertrain
         select_tag options_for_select options_from_collection_for_select label_tag
         text_field_tag hidden_field_tag submit_tag
         csp_meta_tag javascript_tag content_security_policy_nonce form_record_url
+        turbo_frame_tag turbo_stream time_tag current_page?
+        partial_html render_collection render_records record_expected! record_partial
+        record_partial_local render_items render_item render_partial_scope
       ]
 
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/

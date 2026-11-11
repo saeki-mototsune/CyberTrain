@@ -340,4 +340,52 @@ test "a template reads the Page" do
   assert_equal "last", render_inline("<% if page.next? %>more<% else %>last<% end %>", pager_env(4, false))
 end
 
+def time_env
+  env = new_env
+  env["t"] = Time.utc(2026, 11, 10, 12, 0, 0)
+  env["d"] = Date.new(2026, 11, 10)
+  env
+end
+
+test "time_tag for Time, Date, text and format:" do
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">Tue, 10 Nov 2026 12:00:00 +0000</time>", render_inline("<%= time_tag t %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10\">2026-11-10</time>", render_inline("<%= time_tag d %>", time_env)
+  # The text is escaped unless it is a SafeString.
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">&lt;now&gt;</time>", render_inline("<%= time_tag t, \"<now>\" %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10\"><b>day</b></time>", render_inline("<%= time_tag d, raw(\"<b>day</b>\") %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">10 Nov 12:00</time>", render_inline("<%= time_tag t, format: :short %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">November 10, 2026 12:00</time>", render_inline("<%= time_tag t, format: :long %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">2026/11 &amp;</time>", render_inline("<%= time_tag t, format: \"%Y/%m &\" %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10\">Nov 10</time>", render_inline("<%= time_tag d, format: :short %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10\">November 10, 2026</time>", render_inline("<%= time_tag d, format: :long %>", time_env)
+  # A block is the text; other keywords are attributes.
+  assert_equal "<time datetime=\"2026-11-10\" class=\"when\"><i>x</i></time>", render_inline("<%= time_tag d, class: \"when\" do %><i>x</i><% end %>", time_env)
+  msg = assert_raises("RuntimeError") { render_inline("<%= time_tag t, format: :iso %>", time_env) }
+  assert_equal "posts/inline:1: time_tag format: must be :short, :long or a strftime String, got iso", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= time_tag \"x\" %>", time_env) }
+  assert_equal "posts/inline:1: time_tag expects a Time or a Date, got x", msg
+end
+
+def page_helpers(verb, target)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new(verb, target, { "host" => "example.test" }, ""))
+  Cybertrain::Template::Helpers.new(Cybertrain::Controller.new(ctx))
+end
+
+test "current_page? path only, with query, false on POST" do
+  get = page_helpers("GET", "/posts?page=2")
+  assert_equal "true", render_with(get, "<%= current_page?(\"/posts\") %>")
+  assert_equal "true", render_with(get, "<%= current_page?(\"/posts/\") %>")
+  assert_equal "false", render_with(get, "<%= current_page?(\"/posts/7\") %>")
+  # With a query in the argument, the query must match too.
+  assert_equal "true", render_with(get, "<%= current_page?(\"/posts?page=2\") %>")
+  assert_equal "false", render_with(get, "<%= current_page?(\"/posts?page=3\") %>")
+  assert_equal "true", render_with(page_helpers("HEAD", "/posts"), "<%= current_page?(\"/posts\") %>")
+  assert_equal "false", render_with(page_helpers("POST", "/posts"), "<%= current_page?(\"/posts\") %>")
+  # A record goes through url_for.
+  install_routes
+  assert_equal "true", render_with(page_helpers("GET", "/posts/7"), "<%= current_page?(post) %>")
+  # Without a controller there is no current page.
+  assert_equal "false", render_inline("<%= current_page?(\"/posts\") %>")
+end
+
 Cybertrain::Test.run!

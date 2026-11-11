@@ -8,5 +8,6 @@ ok   two classes with the same component name are an error naming both files
 ok   the emitter writes the per-class tables and the construction arms
 ok   two optional keywords give four arms, the most complete first
 ok   no components: build always raises
+ok   a component named after its only required keyword gets with_collection and a collection: arm
 ok   the output always ends with the component_builder line
-11 tests, 29 assertions, 0 failures
+12 tests, 35 assertions, 0 failures

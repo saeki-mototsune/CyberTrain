@@ -10,6 +10,7 @@ require "cybertrain/rate_limit"
 require "cybertrain/views"
 require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
+require "cybertrain/turbo_stream_renderer"
 require "cybertrain/generator/inflector"
 require "cybertrain/active_support"
 require "cybertrain/http/cookies"
@@ -943,6 +944,10 @@ module Cybertrain
     #   record, pass {Model#as_json} or {Model#to_json}.
     # - `partial:` `_<name>.html.erb` (`"form"` in this controller's
     #   directory, `"comments/comment"` in another), never in a layout.
+    # - `turbo_stream:` a `<turbo-stream>` element ({#turbo_stream} builds
+    #   them) or an Array of them, joined, as
+    #   `text/vnd.turbo-stream.html`, never in a layout. A plain String is
+    #   refused: build the elements with {#turbo_stream}.
     #
     # It does not end the action: a later `render` or `redirect_to`
     # replaces it.
@@ -952,11 +957,13 @@ module Cybertrain
     #   render :show, layout: "print"
     #   render json: { ok: true }, status: :created
     #   render json: @article.to_json
+    #   render turbo_stream: [turbo_stream.remove(@comment), turbo_stream.update("count", html: "3")]
     # @param template [Symbol, String, nil] an action's template, `:new`
     # @param plain [String, nil]
     # @param html [String, SafeString, nil]
     # @param json [Object, nil]
     # @param partial [String, nil]
+    # @param turbo_stream [SafeString, Array<SafeString>, nil]
     # @param status [Integer, Symbol] see {STATUS_SYMBOLS}; 200 by default
     # @param content_type [String, nil] replaces the content type
     # @param locals [Hash{Symbol => Object}] extra template variables
@@ -964,21 +971,26 @@ module Cybertrain
     #   controller's layout; `false`: none; `"x"`: `layouts/x`
     # @return [nil]
     # @raise [ArgumentError] when not exactly one of template, `plain:`,
-    #   `html:`, `json:`, `partial:` is given, or the status is unknown
+    #   `html:`, `json:`, `partial:`, `turbo_stream:` is given, or the
+    #   status is unknown
     # @raise [Template::MissingTemplate] when the template does not exist
     # @api public
     def render(template = nil, plain: nil, html: nil, json: nil, status: DEFAULT_STATUS, content_type: nil,
-               partial: nil, locals: {}, layout: DEFAULT_LAYOUT)
+               partial: nil, locals: {}, layout: DEFAULT_LAYOUT, turbo_stream: nil)
       given = 0
       given += 1 unless template.nil?
       given += 1 unless plain.nil?
       given += 1 unless html.nil?
       given += 1 unless json.nil?
       given += 1 unless partial.nil?
-      raise ArgumentError, "render needs exactly one of template, plain:, html:, json:, partial:" if given != 1
+      given += 1 unless turbo_stream.nil?
+      raise ArgumentError, "render needs exactly one of template, plain:, html:, json:, partial:, turbo_stream:" if given != 1
 
       @response.status = Controller.status_code(status)
-      if !plain.nil?
+      if !turbo_stream.nil?
+        @response.body = Controller.turbo_stream_body(turbo_stream)
+        @response.content_type = Request.mime_type(:turbo_stream)
+      elsif !plain.nil?
         @response.body = plain
         @response.content_type = "text/plain; charset=utf-8"
       elsif !html.nil?
@@ -1001,6 +1013,50 @@ module Cybertrain
       @response.content_type = content_type unless content_type.nil?
       @response.performed!
       nil
+    end
+
+    # The Turbo Stream builder of an action (turbo-rails' `turbo_stream`):
+    # replace, update, append, prepend, before and after (a target and one
+    # of `partial:` with `locals:`, or `html:`) and remove (a target), each
+    # a `<turbo-stream>` element for `render turbo_stream:`.
+    # @example
+    #   render turbo_stream: turbo_stream.replace(@comment, partial: "comment", locals: { comment: @comment })
+    # @return [TurboStreams]
+    # @api public
+    def turbo_stream
+      TurboStreams.new(self)
+    end
+
+    # What `render turbo_stream:` sends: a SafeString, or an Array of them
+    # joined.
+    def self.turbo_stream_body(value)
+      case value
+      when SafeString then return value.to_s
+      when String then nil
+      # Time before Array (spikes/NOTES.md rule 8).
+      when Time then nil
+      when Array
+        out = +""
+        i = 0
+        while i < value.size
+          out << Controller.turbo_stream_part(value[i])
+          i += 1
+        end
+        return out
+      end
+      Controller.turbo_stream_refused(value)
+    end
+
+    def self.turbo_stream_part(value)
+      case value
+      when SafeString then return value.to_s
+      end
+      Controller.turbo_stream_refused(value)
+    end
+
+    def self.turbo_stream_refused(value)
+      msg = "render turbo_stream: takes a SafeString or an Array of them (turbo_stream.replace and the others build them), got #{value.class.name}"
+      raise ArgumentError, msg
     end
 
     # Answers with a redirect (302 by default) to a URL String: build it with

@@ -638,6 +638,7 @@ module Cybertrain
         record_not_found resume_session require_authentication
         start_new_session_for terminate_session after_authentication_url
         cookies
+        turbo_stream
       ]
 
       # Whether `field` as the name of the download action `def <field>` on

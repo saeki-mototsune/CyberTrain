@@ -1275,3 +1275,21 @@ module Gen
     def self.resolver = ->(name) { digest_path(name) }
   end
 end
+
+# What `spin run gen` writes into `gen/components.rb` for
+# app/components/comment_component.rb (cybertrain/generator/components_emitter.rb;
+# examples/blog's): the per-class tables {Cybertrain::Component} documents,
+# and, because its only required keyword is named after it
+# (`def initialize(comment:)`), ViewComponent's `with_collection`. The
+# build arm of `Gen::Components.build` answers `render component:
+# "comment", collection: @comments` with the same collection.
+class CommentComponent < Cybertrain::Component
+  # One CommentComponent per item, each built with the item as `comment:`
+  # (and `comment_counter:` 0, 1, ... when `initialize` declares it).
+  # @example
+  #   Cybertrain::Views.render_component(CommentComponent.with_collection(@comments))
+  # @param items [Array]
+  # @return [Cybertrain::ComponentCollection]
+  # @api public
+  def self.with_collection(items) = Cybertrain::ComponentCollection.new("comment", "comment", items, false)
+end

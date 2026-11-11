@@ -22,6 +22,7 @@ require "cybertrain/component"
 require "cybertrain/stream"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
+require "cybertrain/template/turbo_stream_builder"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/url_support"
 
@@ -31,6 +32,9 @@ module Cybertrain
       MINUTES_IN_YEAR = 525_600
       MINUTES_IN_QUARTER_YEAR = 131_400
       MINUTES_IN_THREE_QUARTERS_YEAR = 394_200
+      # The keywords turbo_frame_tag and time_tag take.
+      TURBO_FRAME_KEYWORDS = %w[src loading target class data]
+      TIME_TAG_KEYWORDS = %w[format class id title data]
 
       def initialize(controller)
         @controller = controller
@@ -141,6 +145,18 @@ module Cybertrain
           no_kwargs(kwargs, name)
           dom_id(args)
         when "turbo_stream_from" then turbo_stream_from(args, kwargs)
+        when "turbo_frame_tag" then turbo_frame_tag(args, kwargs, block, interp, env)
+        when "turbo_stream"
+          # The template's builder (`turbo_stream.replace ...`). No method
+          # named turbo_stream here: Controller#turbo_stream returns
+          # TurboStreams (NAME_HOMES in script/check-reserved-names).
+          helper_arity!(name, args, 0, 0)
+          helper_no_keywords!(name, kwargs)
+          raise CallSyntaxError, "turbo_stream takes no block (turbo_stream.replace \"id\" do ... end does)" unless block.nil?
+
+          TurboStreamBuilder.new(self, interp, env)
+        when "time_tag" then time_tag(args, kwargs, block, interp, env)
+        when "current_page?" then current_page?(args, kwargs)
         when "signed_stream_name" then signed_stream_name(args)
         when "stream_source_path" then stream_source_path(args, kwargs)
         else
@@ -241,6 +257,20 @@ module Cybertrain
         button_to([text, path], string_keys_of(attrs))
       end
 
+      # The partial `name` (found as `render` finds it from this template)
+      # with `locals` (String keys), checked against its strict locals: what
+      # the template's turbo_stream builder renders for `partial:`.
+      # @return [SafeString]
+      def partial_html(name, locals, interp, env)
+        engine = Views.engine
+        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
+
+        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        names = Array.new(0) { "" }
+        locals.each_key { |key| names << key }
+        render_partial_scope(template, locals, names, interp, env)
+      end
+
       # `f.label :title` and the other FormBuilder methods, `@page.next?`
       # (neither takes a block), and the `tag` builder.
       def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
@@ -254,6 +284,13 @@ module Cybertrain
 
           page_method(recv, name_sym, name_str)
         when Html::TagBuilder then tag_builder_call(name_str, args, kwargs, block, interp, env)
+        when TurboStreamBuilder
+          # The block renders at once, here: the builder never holds it
+          # (spikes/NOTES.md rule 88).
+          return recv.call_method(name_sym, args, kwargs) if block.nil?
+
+          content = interp.capture(block, env)
+          recv.call_method_with_block(name_sym, args, kwargs, content)
         else super(recv, name_sym, name_str, args, kwargs, block, interp, env)
         end
       end
@@ -850,6 +887,14 @@ module Cybertrain
       # Controller#render_partial returns nil, and two same-named methods
       # with different return types emptied `kwargs` here once both were in
       # one program (spikes/NOTES.md rules 34 and 41).
+      #
+      # With collection: (an Array), the partial once per item, as the local
+      # named by as: (the partial's own name by default) with
+      # `<as>_counter` from 0 (to a partial with strict locals only when it
+      # declares it), locals: given to each, and spacer_template: (a
+      # partial) between items; an empty collection renders "". `render
+      # @comments` renders each record's comments/_comment the same way, and
+      # `render @comment` one record.
       def render_helper(args, kwargs, interp, env)
         locals = kwargs
         name = ""
@@ -863,7 +908,17 @@ module Cybertrain
           when nil then locals = {}
           else raise ArgumentError, "render locals: must be a Hash"
           end
+          return render_collection(name, kwargs, locals, interp, env) if kwargs.key?("collection")
         else
+          first = args[0]
+          case first
+          # Time before Array (spikes/NOTES.md rule 8).
+          when Time then nil
+          when Array, Cybertrain::Model
+            helper_arity!("render", args, 1, 1)
+            helper_no_keywords!("render", kwargs)
+            return render_records(first, interp, env)
+          end
           name = text_arg(args, 0, "render")
         end
         engine = Views.engine
@@ -872,6 +927,120 @@ module Cybertrain
         template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
+        render_partial_scope(template, locals, names, interp, env)
+      end
+
+      # render partial:, collection:, as:, spacer_template:, locals:.
+      def render_collection(name, kwargs, locals, interp, env)
+        items = kwargs["collection"]
+        case items
+        when Time then nil
+        when Array
+          return SafeString.of("") if items.empty?
+
+          slash = name.rindex("/")
+          as_name = slash.nil? ? name : name[slash + 1, name.size - slash - 1].to_s
+          as_name = FormBuilder.value_text(kwargs["as"]) if kwargs.key?("as")
+          spacer = ""
+          if kwargs.key?("spacer_template")
+            no_locals = { "" => [nil, 0, 0.0, "", true][0] }
+            no_locals.delete("")
+            spacer = partial_html(FormBuilder.value_text(kwargs["spacer_template"]), no_locals, interp, env).to_s
+          end
+          return render_items(name, as_name, items, locals, spacer, interp, env)
+        end
+        msg = "render collection: must be an Array, got #{FormBuilder.value_text(items)}"
+        raise ArgumentError, msg
+      end
+
+      # `render @comments` (each record's <route key>/_<singular>) and
+      # `render @comment`.
+      def render_records(value, interp, env)
+        out = +""
+        no_locals = { "" => [nil, 0, 0.0, "", true][0] }
+        no_locals.delete("")
+        case value
+        when Cybertrain::Model
+          key = record_partial_local(value)
+          # One object: no counter, as in Rails.
+          html = render_item(record_partial(value, key), key, value, -1, no_locals, interp, env)
+          out << html.to_s
+        when Array
+          i = 0
+          while i < value.size
+            record = value[i]
+            case record
+            when Time then record_expected!(record)
+            when Cybertrain::Model
+              key = record_partial_local(record)
+              # One item at a time: the records may be of different models.
+              html = render_item(record_partial(record, key), key, record, i, no_locals, interp, env)
+              out << html.to_s
+            else record_expected!(record)
+            end
+            i += 1
+          end
+        end
+        SafeString.of(out)
+      end
+
+      def record_expected!(value)
+        msg = "render expects records in a collection, got #{FormBuilder.value_text(value)}"
+        raise ArgumentError, msg
+      end
+
+      # "comment" for a Comment, "note" for an Admin::Note.
+      def record_partial_local(record)
+        key = model_key(record)
+        slash = key.rindex("/")
+        slash.nil? ? key : key[slash + 1, key.size - slash - 1].to_s
+      end
+
+      # "comments/comment" for a Comment, "admin/notes/note" for an
+      # Admin::Note (ActiveModel's to_partial_path).
+      def record_partial(record, local)
+        key = model_key(record)
+        slash = key.rindex("/")
+        plural = Inflector.pluralize(local)
+        return "#{plural}/#{local}" if slash.nil?
+
+        "#{key[0, slash]}/#{plural}/#{local}"
+      end
+
+      # The partial once per item, spacer between.
+      def render_items(name, as_name, items, locals, spacer, interp, env)
+        out = +""
+        i = 0
+        while i < items.size
+          out << spacer if i > 0
+          html = render_item(name, as_name, items[i], i, locals, interp, env)
+          out << html.to_s
+          i += 1
+        end
+        SafeString.of(out)
+      end
+
+      # One item: locals, then the item as `as_name`, then `<as_name>_counter`
+      # (index; none when it is -1) unless the partial's strict locals leave
+      # it out.
+      def render_item(name, as_name, item, index, locals, interp, env)
+        engine = Views.engine
+        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
+
+        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        counter = "#{as_name}_counter"
+        scoped = { "" => [nil, 0, 0.0, "", true][0] }
+        scoped.delete("")
+        locals.each_key { |key| scoped[key] = locals[key] }
+        scoped[as_name] = item
+        scoped[counter] = index if index >= 0 && (!template.strict_locals? || Helpers.name_in?(template.locals, counter))
+        names = Array.new(0) { "" }
+        scoped.each_key { |key| names << key }
+        render_partial_scope(template, scoped, names, interp, env)
+      end
+
+      # The partial template with `names` of locals added to a copy of env.
+      def render_partial_scope(template, locals, names, interp, env)
         Helpers.check_locals(template, names)
         scope = env.dup
         i = 0
@@ -1051,6 +1220,196 @@ module Cybertrain
         src << token
         escaped = Html.escape(src)
         SafeString.of("<turbo-stream-source src=\"#{escaped}\"></turbo-stream-source>")
+      end
+
+      # turbo_frame_tag @article, src: article_path(@article), loading: "lazy",
+      # target: "_top" do ... end: `<turbo-frame id="article_3" src="..."
+      # loading="lazy" target="_top">...</turbo-frame>`. The id is a String
+      # or a record's dom_id; each attribute is written only when given
+      # (class: and data: too), escaped once (a SafeString as it is).
+      def turbo_frame_tag(args, kwargs, block, interp, env)
+        helper_arity!("turbo_frame_tag", args, 1, 1)
+        helper_keywords!("turbo_frame_tag", kwargs, TURBO_FRAME_KEYWORDS, 0)
+        target = args[0]
+        out = +"<turbo-frame"
+        case target
+        when Cybertrain::Model then out << FormBuilder.attr_html("id", Html.dom_id(target, ""))
+        else out << FormBuilder.attr_html("id", target)
+        end
+        kwargs.each_key { |key| out << FormBuilder.attr_html(key, kwargs[key]) }
+        out << ">"
+        out << interp.capture(block, env) unless block.nil?
+        out << "</turbo-frame>"
+        SafeString.of(out)
+      end
+
+      # time_tag(time, text = nil, format: nil): `<time datetime="...">text
+      # </time>`. A Time's datetime is its xmlschema
+      # (`2026-11-10T12:00:00Z`), a Date's `2026-11-10`. The text is `text`
+      # (escaped unless a SafeString), else the block's output, else the
+      # value in `format:` (:short, :long or a strftime String; by default
+      # `Tue, 10 Nov 2026 12:00:00 +0000` for a Time, `2026-11-10` for a
+      # Date). class:, id:, title: and data: are attributes.
+      def time_tag(args, kwargs, block, interp, env)
+        helper_arity!("time_tag", args, 1, block.nil? ? 2 : 1)
+        helper_keywords!("time_tag", kwargs, TIME_TAG_KEYWORDS, 0)
+        value = args[0]
+        format = kwargs["format"]
+        datetime = ""
+        text = ""
+        case value
+        when Time
+          # xmlschema: "Z" for UTC, else the offset ("+09:00"). The default
+          # text spells the offset here too ("+0000"), whatever the
+          # platform's strftime does with %z.
+          offset = value.utc_offset
+          stamp = value.strftime("%Y-%m-%dT%H:%M:%S")
+          datetime = offset == 0 ? "#{stamp}Z" : "#{stamp}#{Helpers.offset_text(offset, ":")}"
+          if args.size < 2 && block.nil?
+            if format.nil?
+              shown = value.strftime("%a, %d %b %Y %H:%M:%S")
+              text = "#{shown} #{Helpers.offset_text(offset, "")}"
+            else
+              pattern = Helpers.time_tag_pattern(format, "", "%d %b %H:%M", "%B %d, %Y %H:%M")
+              text = Helpers.time_tag_strftime(value, pattern)
+            end
+          end
+        when Date
+          datetime = value.strftime("%Y-%m-%d")
+          pattern = Helpers.time_tag_pattern(format, "%Y-%m-%d", "%b %d", "%B %d, %Y")
+          text = Helpers.time_tag_strftime(value, pattern) if args.size < 2 && block.nil?
+        else
+          msg = "time_tag expects a Time or a Date, got #{FormBuilder.value_text(value)}"
+          raise ArgumentError, msg
+        end
+        out = +"<time"
+        out << FormBuilder.attr_html("datetime", datetime)
+        kwargs.each_key { |key| out << FormBuilder.attr_html(key, kwargs[key]) unless key == "format" }
+        out << ">"
+        if args.size > 1
+          out << to_html(args[1])
+        elsif !block.nil?
+          out << interp.capture(block, env)
+        else
+          out << Html.escape(text)
+        end
+        out << "</time>"
+        SafeString.of(out)
+      end
+
+      # strftime of a pattern that is not a literal, one directive at a time
+      # with literal patterns. Time#strftime given a built String on a
+      # polymorphic receiver handed the pattern back unformatted under
+      # Spinel 2026.11.04.7026 (the call goes through a dispatch that reads
+      # the String's buffer and then returns that buffer). Directives: %Y %C
+      # %y %m %d %e %j %H %k %I %l %M %S %L %p %P %a %A %b %h %B %u %w %Z
+      # %z %%; any other byte is copied.
+      def self.time_tag_strftime(time, pattern)
+        s = pattern.to_s # NOTES rule 62: plain byte reads
+        n = s.bytesize
+        out = +""
+        i = 0
+        while i < n
+          b = s.getbyte(i)
+          if b != 37 || i + 1 >= n
+            out << s.byteslice(i, 1).to_s
+            i += 1
+            next
+          end
+          d = s.byteslice(i + 1, 1).to_s
+          i += 2
+          piece = case d
+                  when "Y" then time.strftime("%Y")
+                  when "C" then time.strftime("%C")
+                  when "y" then time.strftime("%y")
+                  when "m" then time.strftime("%m")
+                  when "d" then time.strftime("%d")
+                  when "e" then time.strftime("%e")
+                  when "j" then time.strftime("%j")
+                  when "H" then time.strftime("%H")
+                  when "k" then time.strftime("%k")
+                  when "I" then time.strftime("%I")
+                  when "l" then time.strftime("%l")
+                  when "M" then time.strftime("%M")
+                  when "S" then time.strftime("%S")
+                  when "L" then time.strftime("%L")
+                  when "p" then time.strftime("%p")
+                  when "P" then time.strftime("%P")
+                  when "a" then time.strftime("%a")
+                  when "A" then time.strftime("%A")
+                  when "b", "h" then time.strftime("%b")
+                  when "B" then time.strftime("%B")
+                  when "u" then time.strftime("%u")
+                  when "w" then time.strftime("%w")
+                  when "Z" then time.strftime("%Z")
+                  when "z" then time.strftime("%z")
+                  when "%" then "%"
+                  else "%#{d}"
+                  end
+          out << piece
+        end
+        out
+      end
+
+      # The strftime pattern of time_tag's format: (nil: the default).
+      # Interpolated, so that strftime gets a plain String.
+      def self.time_tag_pattern(format, default, short, long)
+        case format
+        when nil then return default
+        when :short then return short
+        when :long then return long
+        when SafeString then return "#{format.to_s}"
+        when String then return "#{format}"
+        end
+        msg = "time_tag format: must be :short, :long or a strftime String, got #{FormBuilder.value_text(format)}"
+        raise ArgumentError, msg
+      end
+
+      # "+0900" / "-05:30" for an offset in seconds.
+      def self.offset_text(seconds, sep)
+        sign = seconds < 0 ? "-" : "+"
+        abs = seconds.abs
+        hours = abs / 3600
+        minutes = (abs % 3600) / 60
+        hh = hours < 10 ? "0#{hours}" : "#{hours}"
+        mm = minutes < 10 ? "0#{minutes}" : "#{minutes}"
+        "#{sign}#{hh}#{sep}#{mm}"
+      end
+
+      # current_page?("/articles"): whether this GET or HEAD request is for
+      # that path (a trailing slash aside); with a query in the argument
+      # ("/articles?page=2") the query must match too. A record or an Array
+      # goes through url_for. False on any other method, and without a
+      # request.
+      def current_page?(args, kwargs)
+        helper_arity!("current_page?", args, 1, 1)
+        helper_no_keywords!("current_page?", kwargs)
+        request_bound!("current_page?")
+        controller = @controller
+        return false if controller.nil?
+
+        req = controller.request
+        return false unless req.get? || req.head?
+
+        url = url_for(args[0], @no_url_options)
+        base = req.base_url
+        url = url.byteslice(base.bytesize, url.bytesize - base.bytesize).to_s if !base.empty? && url.start_with?(base)
+        return false if url.start_with?("http://") || url.start_with?("https://")
+
+        q = url.index("?")
+        path = q.nil? ? url : url[0, q].to_s
+        return false unless Helpers.same_path?(path, req.path)
+        return true if q.nil?
+
+        query = url[q + 1, url.size - q - 1].to_s
+        query == req.query_string.to_s
+      end
+
+      # "/articles/" and "/articles" are the same page; "/" is itself.
+      def self.same_path?(a, b)
+        x = a.size > 1 && a.end_with?("/") ? a[0, a.size - 1].to_s : a
+        y = b.size > 1 && b.end_with?("/") ? b[0, b.size - 1].to_s : b
+        x == y
       end
 
       # The signed token naming the streams, for hand-written JavaScript.

@@ -177,6 +177,10 @@ module Cybertrain
     # as its block:
     #
     #   Cybertrain::Views.render_component(CardComponent.new(title: "x"))
+    #
+    # A {ComponentCollection} (`CommentComponent.with_collection(comments)`)
+    # renders each item's component, joined; `content` is not passed to them.
+    # @param component [Component, ComponentCollection]
     # @return [String]
     # @api public
     def self.render_component(component, content = "")

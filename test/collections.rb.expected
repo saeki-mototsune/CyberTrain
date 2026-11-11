@@ -1,0 +1,4 @@
+ok   render partial: collection: with as:, counter and spacer
+ok   strict locals get the counter only when they declare it; locals: reach every item
+ok   render @comments picks comments/_comment
+3 tests, 12 assertions, 0 failures

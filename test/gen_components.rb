@@ -236,6 +236,46 @@ test "no components: build always raises" do
   RUBY
 end
 
+test "a component named after its only required keyword gets with_collection and a collection: arm" do
+  comment = scan("class CommentComponent < Cybertrain::Component\n  def initialize(comment:, comment_counter: 0)\n    @comment = comment\n  end\nend\n", "comment_component.rb")
+  row = scan("module Admin\n  class RowComponent < ApplicationComponent\n    def initialize(row:)\n    end\n  end\nend\n", "admin/row_component.rb")
+  source = Cybertrain::Gen::ComponentsEmitter.emit([comment, row])
+  assert_includes source, <<~'RUBY'
+
+      def self.with_collection(items)
+        Cybertrain::ComponentCollection.new("comment", "comment", items, true)
+      end
+    end
+  RUBY
+  assert_includes source, <<~'RUBY'
+
+        def self.with_collection(items)
+          Cybertrain::ComponentCollection.new("admin/row", "row", items, false)
+        end
+      end
+    end
+  RUBY
+  arm = <<~'RUBY'
+    when "comment"
+      return ::CommentComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
+
+      Cybertrain::Component.check_keywords!(name, kwargs, ["comment", "comment_counter"], 1)
+  RUBY
+  assert_includes source, arm.lines.map { |l| l == "\n" ? l : "      #{l}" }.join
+  arm = <<~'RUBY'
+    when "admin/row"
+      return ::Admin::RowComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
+
+      Cybertrain::Component.check_keywords!(name, kwargs, ["row"], 1)
+  RUBY
+  assert_includes source, arm.lines.map { |l| l == "\n" ? l : "      #{l}" }.join
+  # Not for a keyword named otherwise, a second required keyword, or none.
+  card = Cybertrain::Gen::ComponentsEmitter.emit([scan(CARD)])
+  refute card.include?("with_collection")
+  pair = scan("class PairComponent < Cybertrain::Component\n  def initialize(pair:, other:)\n  end\nend\n", "pair_component.rb")
+  refute Cybertrain::Gen::ComponentsEmitter.emit([pair]).include?("with_collection")
+end
+
 test "the output always ends with the component_builder line" do
   line = "Cybertrain::Views.component_builder = ->(name, kwargs) { Gen::Components.build(name, kwargs) }\n"
   assert Cybertrain::Gen::ComponentsEmitter.emit([scan(CARD)]).end_with?(line)
