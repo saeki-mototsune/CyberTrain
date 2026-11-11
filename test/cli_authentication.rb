@@ -130,7 +130,7 @@ test "the User model hashes with Cybertrain::Password and validates in before_va
   assert_includes model, indented(<<~RUBY, 2)
       def self.authenticate_by(email_address:, password:)
         user = User.find_by(email_address: User.normalize_email_address(email_address))
-        if user.nil? || user.locked?
+        if user.nil? || (Cybertrain.config.auth_lockout_attempts > 0 && user.locked?)
           Cybertrain::Password.verify_serialized(password.to_s, Cybertrain::Password.dummy_digest)
           return nil
         end
@@ -143,14 +143,18 @@ test "the User model hashes with Cybertrain::Password and validates in before_va
       end
   RUBY
   assert_includes model, "  def locked? = !locked_until.nil? && locked_until > Time.now\n"
+  # One write per failed attempt (I2): no separate increment and lock.
+  assert model.index(".increment(").nil?
+  assert_equal 1, model.scan("update_all_sql(").size
   assert_includes model, indented(<<~RUBY, 2)
       def count_failed_attempt!
         limit = Cybertrain.config.auth_lockout_attempts
         return nil if limit <= 0
 
-        User.where(id: id).increment(:failed_attempts)
+        count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
+        lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
         ends = Time.now + Cybertrain.config.auth_lockout_period
-        User.where(id: id).where_sql("failed_attempts >= ?", [limit]).update_all(locked_until: ends, failed_attempts: 0)
+        User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
         nil
       end
   RUBY
@@ -191,9 +195,10 @@ test "writes the Authentication concern and includes it" do
         !@current_user.nil?
       end
 
-      # Loads the Session row the cookie names (and its user); a stale or
-      # expired id is dropped. Cookie Max-Age alone cannot stop replay, so
-      # the row's own limits end a sign-in: session_limit(remember) seconds
+      # Loads the Session row the cookie names (and its user); an id with no
+      # row is dropped, and an expired row is ended (destroyed, so no later
+      # change of the limits revives it). Cookie Max-Age alone cannot stop
+      # replay, so the row's own limits end a sign-in: session_limit(remember) seconds
       # after it started (SessionStore enforces the same on the cookie,
       # from the stamp start_new_session_for writes), and auth_idle_timeout
       # seconds (0: no limit) after its last request (last_active_at, or
@@ -214,6 +219,7 @@ test "writes the Authentication concern and includes it" do
         created_at = found.created_at
         now = Time.now.to_i
         if created_at.nil? || created_at.to_i + session_limit(found.remember) <= now
+          found.destroy
           session.delete(:session_id)
           return nil
         end
@@ -221,6 +227,7 @@ test "writes the Authentication concern and includes it" do
         active = last_active_at.nil? ? created_at.to_i : last_active_at.to_i
         idle = Cybertrain.config.auth_idle_timeout
         if idle > 0 && active + idle <= now
+          found.destroy
           session.delete(:session_id)
           return nil
         end
@@ -280,13 +287,13 @@ test "writes the Authentication concern and includes it" do
       end
 
       # How long a sign-in lasts in seconds, however often it is used:
-      # auth_remember_for when remembered, else session_absolute_max_age,
-      # or with that off (0) session_max_age, or two weeks when that is not
-      # positive either. Never 0: a stamp of 0 would leave the cookie with
-      # no limit at all.
+      # auth_remember_for when remembered, else (or when that is not
+      # positive) session_absolute_max_age, or with that off (0)
+      # session_max_age, or two weeks when that is not positive either.
+      # Never 0: a stamp of 0 would leave the cookie with no limit at all.
       def session_limit(remember)
         c = Cybertrain.config
-        return c.auth_remember_for if remember
+        return c.auth_remember_for if remember && c.auth_remember_for > 0
         return c.session_absolute_max_age if c.session_absolute_max_age > 0
         return c.session_max_age if c.session_max_age > 0
 
@@ -789,10 +796,10 @@ test "the app's test boots the app and drives the sign-in flow" do
   assert_includes spec, "require_relative \"support/app_test\""
   assert_includes spec, "client.post(\"/sign_up\""
   assert_includes spec, "test \"POST /session past ten attempts is refused for a while\" do\n"
-  # Ten wrong passwords would lock the account too: that test is the rate
-  # limit alone, lockout off and restored.
-  assert_includes spec, "  Cybertrain.config.auth_lockout_attempts = 0\n  begin\n"
-  assert_includes spec, "    Cybertrain.config.auth_lockout_attempts = lockout_attempts\n  end\n"
+  # Its ten attempts go to an address no user has: the per-IP limit counts
+  # them, and lockout (left on) has no account to lock.
+  assert_includes spec, "                       \"email_address\" => \"nobody@example.com\", \"password\" => \"wrong-password\" }\n"
+  assert spec.index("auth_lockout_attempts").nil?
   assert_includes spec, "Cybertrain::Test.run!\n"
   # after_authentication_url is private now: a subclass made for the test reads it.
   assert_includes spec, "class ReturnPathProbeController < ApplicationController\n  def probe_after_authentication_url\n    after_authentication_url\n  end\nend\n"
@@ -824,9 +831,12 @@ test "the app's test boots the app and drives the sign-in flow" do
   end
   assert_includes remember, "  fields[\"remember_me\"] = \"1\" if remember\n"
   assert_includes remember, "  Session.first.update_columns(created_at: Time.at(now - started).utc, last_active_at: Time.at(now - idle).utc)\n"
-  assert_includes remember, "  backdate(15 * DAY, 0)\n  assert signed_in?(client)\n  backdate(30 * DAY - 60, 0)\n  assert signed_in?(client)\n  backdate(30 * DAY, 0)\n  refute signed_in?(client)\n"
+  assert_includes remember, "  backdate(15 * DAY, 0)\n  assert signed_in?(client)\n  backdate(30 * DAY - 60, 0)\n  assert signed_in?(client)\n  cookie = cookie_header(client)\n  backdate(30 * DAY, 0)\n  refute signed_in?(client)\n"
+  # An expired row is ended, and raising the limit later does not revive it.
+  assert_includes remember, "  assert_equal 0, Session.count\n"
+  assert_includes remember, "    refute replayed_signed_in?(client, cookie)\n"
   assert_includes remember, "  backdate(14 * DAY - 60, 0)\n  assert signed_in?(client)\n  backdate(14 * DAY, 0)\n  refute signed_in?(client)\n"
-  assert_includes remember, "    backdate(8 * DAY, 7 * DAY - 60)\n    assert signed_in?(client)\n    backdate(8 * DAY, 7 * DAY)\n    refute signed_in?(client)\n"
+  assert_includes remember, "    backdate(8 * DAY, 7 * DAY - 60)\n    assert signed_in?(client)\n    cookie = cookie_header(client)\n    backdate(8 * DAY, 7 * DAY)\n    refute signed_in?(client)\n"
   assert_includes remember, "  assert session_cookie(res).end_with?(\"; Max-Age=2592000\"), session_cookie(res)\n"
   assert_includes remember, "  refute cookie.include?(\"Max-Age\")\n"
   assert_includes remember, "    assert_equal 1_209_600, stamped.lifetime_limit\n    assert stamped.browser_session?\n"
@@ -991,6 +1001,16 @@ test "--invite-only's user command reads the password from stdin when not given"
   assert_includes club_spec, "Cybertrain::Main.run(\"club\", argv, "
   assert_includes club_spec, "test \"POST /session past ten attempts is refused for a while\" do\n"
   assert club_spec.index("client.post(\"/sign_up\"").nil?
+end
+
+test "the user command clears a lock when it sets a password" do
+  command = read("shop/app/commands/user_command.rb")
+  assert_includes command, "    unless user.save\n"
+  assert_includes command, "    user.clear_failed_attempts!\n    puts created ?"
+  lockout = read("shop/test/lockout.rb")
+  assert_includes lockout, "require_relative \"../app/commands/user_command\"\n"
+  assert_includes lockout, "test \"./APP user EMAIL PASSWORD clears a lock\" do\n"
+  assert_includes lockout, "test \"with auth_lockout_attempts 0 an existing lock is not enforced\" do\n"
 end
 
 test "the user command is written in both modes with admin and unadmin" do

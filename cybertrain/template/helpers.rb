@@ -648,16 +648,19 @@ module Cybertrain
       # writes it: a box alone, no hidden field (f.check_box adds one), so an
       # unchecked box sends nothing; a nil value writes no value attribute.
       # Other keywords are attributes (id: replaces the id taken from the
-      # name).
+      # name); any truthy `checked` adds checked="checked" after them all,
+      # in Rails' order.
       def check_box_tag(args, kwargs)
         helper_arity!("check_box_tag", args, 1, 3)
         name = text_arg(args, 0, "check_box_tag")
-        checked = args.size > 2 && args[2] == true ? " checked=\"checked\"" : ""
-        if args.size > 1
-          return SafeString.of(FormBuilder.input_tag("checkbox", name, args[1], kwargs, checked))
-        end
+        html = if args.size > 1
+                 FormBuilder.input_tag("checkbox", name, args[1], kwargs, "")
+               else
+                 FormBuilder.input_tag("checkbox", name, "1", kwargs, "")
+               end
+        return SafeString.of(html) unless args.size > 2 && args[2]
 
-        SafeString.of(FormBuilder.input_tag("checkbox", name, "1", kwargs, checked))
+        SafeString.of("#{html[0, html.size - 1]} checked=\"checked\">")
       end
 
       # submit_tag(value = "Save changes"), named commit as f.submit is; the

@@ -483,15 +483,17 @@ module Cybertrain
             end
 
             # The user with this address and password, or nil. A missing address
-            # costs a verification too (against Cybertrain::Password.dummy_digest),
-            # so the response time does not say which of the two was wrong, and
-            # so does a locked account (locked?), which answers nil whatever the
-            # password: the sign-in form shows it the wrong-password message. A
-            # wrong password counts toward the lock; the right one clears the
-            # count.
+            # and a locked account (locked?, while lockout is on) cost a password
+            # verification too, against Cybertrain::Password.dummy_digest, and
+            # answer nil whatever the password, as a wrong one does: the sign-in
+            # form shows them all the wrong-password message. A wrong password
+            # on an existing, unlocked account also writes its row once
+            # (count_failed_attempt!), as Devise's lockable does; that one write
+            # is the timing difference left between it and the other two, and it
+            # is accepted. The right password clears the count.
             def self.authenticate_by(email_address:, password:)
               user = User.find_by(email_address: User.normalize_email_address(email_address))
-              if user.nil? || user.locked?
+              if user.nil? || (Cybertrain.config.auth_lockout_attempts > 0 && user.locked?)
                 Cybertrain::Password.verify_serialized(password.to_s, Cybertrain::Password.dummy_digest)
                 return nil
               end
@@ -549,29 +551,32 @@ module Cybertrain
             def admin? = admin
 
             # Whether wrong passwords have locked the account for now
-            # (count_failed_attempt!): authenticate_by refuses it until then.
+            # (count_failed_attempt!): authenticate_by refuses it until then,
+            # unless lockout is off (auth_lockout_attempts 0), which also stops
+            # enforcing a lock made before.
             def locked? = !locked_until.nil? && locked_until > Time.now
 
             # A wrong password: one more failed attempt, counted by the database
-            # (UPDATE ... SET failed_attempts = failed_attempts + 1, so sign-ins
-            # at the same time all count). The attempt that reaches
+            # in one UPDATE that reads the row as it is (so sign-ins at the same
+            # time all count). The attempt that reaches
             # Cybertrain.config.auth_lockout_attempts (10; 0 never locks) locks
             # the account for auth_lockout_period seconds (an hour) and starts
-            # the count again (a second UPDATE, which only a row at the limit
-            # matches).
+            # the count again, in the same statement.
             def count_failed_attempt!
               limit = Cybertrain.config.auth_lockout_attempts
               return nil if limit <= 0
 
-              User.where(id: id).increment(:failed_attempts)
+              count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
+              lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
               ends = Time.now + Cybertrain.config.auth_lockout_period
-              User.where(id: id).where_sql("failed_attempts >= ?", [limit]).update_all(locked_until: ends, failed_attempts: 0)
+              User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
               nil
             end
 
             # No failed attempts and no lock: a successful sign-in calls it, and
-            # so should anything else that proves the password is known (a
-            # reset). Writes only when there is something to clear.
+            # so does `./<app> user EMAIL PASSWORD` (and should anything else that
+            # sets or proves the password, such as a reset). Writes only when
+            # there is something to clear.
             def clear_failed_attempts!
               return nil if failed_attempts == 0 && locked_until.nil?
 
@@ -653,9 +658,10 @@ module Cybertrain
               !@current_user.nil?
             end
 
-            # Loads the Session row the cookie names (and its user); a stale or
-            # expired id is dropped. Cookie Max-Age alone cannot stop replay, so
-            # the row's own limits end a sign-in: session_limit(remember) seconds
+            # Loads the Session row the cookie names (and its user); an id with no
+            # row is dropped, and an expired row is ended (destroyed, so no later
+            # change of the limits revives it). Cookie Max-Age alone cannot stop
+            # replay, so the row's own limits end a sign-in: session_limit(remember) seconds
             # after it started (SessionStore enforces the same on the cookie,
             # from the stamp start_new_session_for writes), and auth_idle_timeout
             # seconds (0: no limit) after its last request (last_active_at, or
@@ -676,6 +682,7 @@ module Cybertrain
               created_at = found.created_at
               now = Time.now.to_i
               if created_at.nil? || created_at.to_i + session_limit(found.remember) <= now
+                found.destroy
                 session.delete(:session_id)
                 return nil
               end
@@ -683,6 +690,7 @@ module Cybertrain
               active = last_active_at.nil? ? created_at.to_i : last_active_at.to_i
               idle = Cybertrain.config.auth_idle_timeout
               if idle > 0 && active + idle <= now
+                found.destroy
                 session.delete(:session_id)
                 return nil
               end
@@ -742,13 +750,13 @@ module Cybertrain
             end
 
             # How long a sign-in lasts in seconds, however often it is used:
-            # auth_remember_for when remembered, else session_absolute_max_age,
-            # or with that off (0) session_max_age, or two weeks when that is not
-            # positive either. Never 0: a stamp of 0 would leave the cookie with
-            # no limit at all.
+            # auth_remember_for when remembered, else (or when that is not
+            # positive) session_absolute_max_age, or with that off (0)
+            # session_max_age, or two weeks when that is not positive either.
+            # Never 0: a stamp of 0 would leave the cookie with no limit at all.
             def session_limit(remember)
               c = Cybertrain.config
-              return c.auth_remember_for if remember
+              return c.auth_remember_for if remember && c.auth_remember_for > 0
               return c.session_absolute_max_age if c.session_absolute_max_age > 0
               return c.session_max_age if c.session_max_age > 0
 
@@ -1096,7 +1104,8 @@ module Cybertrain
           # `./#{app} user EMAIL [PASSWORD]` (cybertrain generate authentication#{mode}):
           # creates the user with this address, or sets the password of the one
           # that has it (which signs that user's browsers out: their sessions'
-          # password key no longer matches). Without PASSWORD it is read from
+          # password key no longer matches; and clears a lockout, User#locked?).
+          # Without PASSWORD it is read from
           # standard input, one line, so that it stays out of `ps` and the shell
           # history:
           #
@@ -1143,6 +1152,7 @@ module Cybertrain
                 user.errors.full_messages.each { |message| puts "error: \#{message}" }
                 return 1
               end
+              user.clear_failed_attempts!
               puts created ? "created \#{address}" : "updated \#{address}"
               0
             end
@@ -1535,6 +1545,17 @@ module Cybertrain
             client.get("/session/new").body.include?("<span>ann@example.com</span>")
           end
 
+          # The session cookie client holds now, as a request header.
+          def cookie_header(client)
+            name = Cybertrain.config.session_cookie_name
+            "#{name}=#{client.cookies[name]}"
+          end
+
+          # Whether a copy of an old cookie (kept by whoever had it) signs in.
+          def replayed_signed_in?(client, cookie)
+            client.get("/session/new", { "cookie" => cookie }).body.include?("<span>ann@example.com</span>")
+          end
+
           # The Set-Cookie line of the session cookie in res ("" when none).
           def session_cookie(res)
             prefix = "#{Cybertrain.config.session_cookie_name}="
@@ -1570,12 +1591,19 @@ module Cybertrain
             assert signed_in?(client)
             backdate(30 * DAY - 60, 0)
             assert signed_in?(client)
+            cookie = cookie_header(client)
             backdate(30 * DAY, 0)
             refute signed_in?(client)
-            # The row stays; the browser's cookie no longer names it.
-            assert_equal 1, Session.count
-            backdate(0, 0)
-            refute signed_in?(client)
+            # Ended: the row is gone, so a longer limit set afterwards does not
+            # bring back a copy of the cookie.
+            assert_equal 0, Session.count
+            remember_for = Cybertrain.config.auth_remember_for
+            begin
+              Cybertrain.config.auth_remember_for = 60 * DAY
+              refute replayed_signed_in?(client, cookie)
+            ensure
+              Cybertrain.config.auth_remember_for = remember_for
+            end
           end
 
           test "an unremembered session ends after day 14" do
@@ -1599,6 +1627,7 @@ module Cybertrain
           test "an unremembered session still ends with session_absolute_max_age off" do
             absolute = Cybertrain.config.session_absolute_max_age
             max_age = Cybertrain.config.session_max_age
+            remember_for = Cybertrain.config.auth_remember_for
             begin
               # Off (0): the limit is session_max_age (two weeks), stamped on
               # the cookie and checked on the row.
@@ -1628,9 +1657,20 @@ module Cybertrain
               remembered = stamped_session(user, true)
               assert_equal 2_592_000, remembered.lifetime_limit
               refute remembered.browser_session?
+              # auth_remember_for not positive (set at run time, past boot's
+              # check): the same chain as an unremembered sign-in, still
+              # persistent.
+              Cybertrain.config.auth_remember_for = 0
+              remembered = stamped_session(user, true)
+              assert_equal 3600, remembered.lifetime_limit
+              refute remembered.browser_session?
+              Cybertrain.config.session_absolute_max_age = 0
+              Cybertrain.config.session_max_age = 0
+              assert_equal 1_209_600, stamped_session(user, true).lifetime_limit
             ensure
               Cybertrain.config.session_absolute_max_age = absolute
               Cybertrain.config.session_max_age = max_age
+              Cybertrain.config.auth_remember_for = remember_for
             end
           end
 
@@ -1641,8 +1681,19 @@ module Cybertrain
               sign_in_with(client, remember)
               backdate(8 * DAY, 7 * DAY - 60)
               assert signed_in?(client)
+              cookie = cookie_header(client)
               backdate(8 * DAY, 7 * DAY)
               refute signed_in?(client)
+              # Ended: the row is gone, so turning the idle limit off afterwards
+              # does not bring back a copy of the cookie.
+              assert_equal 0, Session.count
+              idle = Cybertrain.config.auth_idle_timeout
+              begin
+                Cybertrain.config.auth_idle_timeout = 0
+                refute replayed_signed_in?(client, cookie)
+              ensure
+                Cybertrain.config.auth_idle_timeout = idle
+              end
             end
             # A row with no last_active_at is idle since created_at.
             client = new_client
@@ -1654,6 +1705,7 @@ module Cybertrain
             refute Session.first.last_active_at.nil?
             Session.first.update_columns(created_at: Time.at(now - 7 * DAY).utc, last_active_at: nil)
             refute signed_in?(client)
+            assert_equal 0, Session.count
             # auth_idle_timeout 0: no idle limit, the absolute one alone.
             idle = Cybertrain.config.auth_idle_timeout
             begin
@@ -1729,6 +1781,7 @@ module Cybertrain
           # Cybertrain::RateLimit.reset_all!). Run with `cybertrain spin test`;
           # its snapshot comes from the compiled binary (the database is FFI).
           require_relative "support/app_test"
+          require_relative "../app/commands/user_command"
 
           WRONG = "<p class=\"alert\">Try another email address or password.</p>"
 
@@ -1821,6 +1874,51 @@ module Cybertrain
             assert_equal 9, User.find(user.id).failed_attempts
             assert_nil User.find(user.id).locked_until
             refute User.find(user.id).locked?
+          end
+
+          test "./APP user EMAIL PASSWORD clears a lock" do
+            client = new_client
+            user = AppTest.user
+            lock(client)
+            assert User.find(user.id).locked?
+            assert_equal 0, UserCommand.run(["ann@example.com", "an0ther-s3cr3t"])
+            assert_nil User.find(user.id).locked_until
+            assert_equal 0, User.find(user.id).failed_attempts
+            res = AppTest.sign_in(client, "ann@example.com", "an0ther-s3cr3t")
+            assert_redirected_to res, "/"
+            assert_equal 1, Session.count
+            # Some failures, no lock: the count is cleared too.
+            client = new_client
+            user = AppTest.user
+            3.times { attempt(client, "wrong-password") }
+            assert_equal 0, UserCommand.run(["ann@example.com", "an0ther-s3cr3t"])
+            assert_equal 0, User.find(user.id).failed_attempts
+          end
+
+          test "with auth_lockout_attempts 0 an existing lock is not enforced" do
+            client = new_client
+            user = AppTest.user
+            lock(client)
+            attempts = Cybertrain.config.auth_lockout_attempts
+            begin
+              Cybertrain.config.auth_lockout_attempts = 0
+              # Lockout off: the lock no longer refuses the right password, and
+              # the sign-in clears it.
+              refute User.find(user.id).locked_until.nil?
+              res = AppTest.sign_in(client)
+              assert_redirected_to res, "/"
+              assert_equal 1, Session.count
+              assert_nil User.find(user.id).locked_until
+            ensure
+              Cybertrain.config.auth_lockout_attempts = attempts
+            end
+            # Lockout on again, the same lock is enforced (made afresh).
+            client = new_client
+            user = AppTest.user
+            lock(client)
+            res = AppTest.sign_in(client)
+            assert_redirected_to res, "/session/new"
+            assert_equal 0, Session.count
           end
 
           test "auth_lockout_attempts 0 never locks" do
@@ -2188,20 +2286,18 @@ module Cybertrain
           # the right password goes back to the form until the window closes.
           # The counts live in Cybertrain::Cache, in windows aligned to the
           # epoch: the cache's clock is held still, so the attempts share one
-          # window, then moved a whole window on. Ten wrong passwords would
-          # also lock the account (test/lockout.rb), so lockout is off here:
-          # this is the rate limit alone.
+          # window, then moved a whole window on. The ten go to an address no
+          # user has: the limit counts per client, whatever the address, and
+          # there is no account for lockout (test/lockout.rb) to lock.
           test "POST /session past ten attempts is refused for a while" do
             client = new_client
             AppTest.user
             Cybertrain::RateLimit.reset_all!
             Cybertrain::Cache.clock = -> { 2_000_000_000 }
-            lockout_attempts = Cybertrain.config.auth_lockout_attempts
-            Cybertrain.config.auth_lockout_attempts = 0
             begin
               client.get("/session/new")
               wrong_password = { "authenticity_token" => AppTest.form_token(client),
-                                 "email_address" => "ann@example.com", "password" => "wrong-password" }
+                                 "email_address" => "nobody@example.com", "password" => "wrong-password" }
               right_password = { "authenticity_token" => AppTest.form_token(client),
                                  "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
               10.times { client.post("/session", wrong_password) }
@@ -2218,7 +2314,6 @@ module Cybertrain
               # The system clock again, even when an assertion fails: the
               # tests after this one must not run at a frozen time.
               Cybertrain::Cache.clock = -> { Time.now.to_i }
-              Cybertrain.config.auth_lockout_attempts = lockout_attempts
             end
           end
 
@@ -2283,7 +2378,7 @@ module Cybertrain
               res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
                                            { "cookie" => cookie })
               assert_redirected_to res, "/session/new"
-              assert_equal 1, Session.count
+              assert_equal 0, Session.count
               res = client.get("/session/new")
               refute res.body.include?("<span>ann@example.com</span>")
               assert_includes res.body, "<a href=\\"/session/new\\">Sign in</a>"

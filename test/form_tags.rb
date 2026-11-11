@@ -96,8 +96,14 @@ end
 
 test "check_box_tag is a box with no hidden field, value 1 unless given" do
   assert_equal "<input type=\"checkbox\" name=\"remember_me\" id=\"remember_me\" value=\"1\">", render_inline("<%= check_box_tag :remember_me %>")
-  assert_equal "<input type=\"checkbox\" name=\"tags[]\" id=\"tag_ruby\" value=\"ruby &amp; c\" checked=\"checked\" class=\"c\">",
+  # checked="checked" comes last, after the other attributes, as Rails
+  # writes it; any truthy third argument checks the box.
+  assert_equal "<input type=\"checkbox\" name=\"tags[]\" id=\"tag_ruby\" value=\"ruby &amp; c\" class=\"c\" checked=\"checked\">",
                render_inline("<%= check_box_tag 'tags[]', 'ruby & c', true, id: 'tag_ruby', class: 'c' %>")
+  assert_equal "<input type=\"checkbox\" name=\"x\" id=\"x\" value=\"1\" checked=\"checked\">", render_inline("<%= check_box_tag :x, '1', 'yes' %>")
+  assert_equal "<input type=\"checkbox\" name=\"x\" id=\"x\" value=\"1\" checked=\"checked\">", render_inline("<%= check_box_tag :x, '1', 1 %>")
+  assert_equal "<input type=\"checkbox\" name=\"x\" id=\"x\" value=\"1\">", render_inline("<%= check_box_tag :x, '1', nil %>")
+  assert_equal "<input type=\"checkbox\" name=\"x\" id=\"x\" value=\"1\">", render_inline("<%= check_box_tag :x, '1', false %>")
   assert_equal "<input type=\"checkbox\" name=\"q[on]\" id=\"q_on\" value=\"yes\">", render_inline("<%= check_box_tag('q[on]', 'yes', false) %>")
   # A nil value writes none (Rails' check_box_tag too).
   assert_equal "<input type=\"checkbox\" name=\"n\" id=\"n\" checked=\"checked\">", render_inline("<%= check_box_tag(:n, nil, true) %>")
