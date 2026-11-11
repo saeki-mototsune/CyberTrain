@@ -249,6 +249,11 @@ module Cybertrain
     # kind than the one permitted (a list sent where a String is permitted,
     # a String where a nested level is) is dropped, not coerced, and so are
     # unlisted keys and uploaded files: read a file with {#upload}.
+    #
+    # A filter is a key or a Hash of key => Array: `permit(meta: :source)`
+    # (the nested level's filters not in an Array) and an Array among the
+    # filters (`permit([:title])`, `[[:title]]`, Rails 8's list of records)
+    # are ArgumentErrors, a mistake in the code rather than in the request.
     # @example
     #   params.require(:article).permit(:title, :body)  # => {"title" => "Hi", "body" => "..."}
     #   params.require(:article).permit(:title, tags: [], meta: [:source])
@@ -256,6 +261,7 @@ module Cybertrain
     # @param keys [Array<String, Symbol, Hash{Symbol => Array}>]
     # @return [Hash{String => Object}] values are Strings, Arrays of
     #   Strings, or nested Hashes of the same
+    # @raise [ArgumentError] for a filter of another shape (see above)
     # @api public
     def permit(*keys)
       permitted_by(keys)
@@ -277,7 +283,10 @@ module Cybertrain
     #   invalid: article"` (a 400 unless rescued) when the key is absent,
     #   of the wrong kind (a String where a nested level is expected, a
     #   nested level where a list is), or permits nothing
-    # @raise [ArgumentError] when spec is a Hash of more or fewer than one key
+    # @raise [ArgumentError] when spec is a Hash of more or fewer than one
+    #   key, its value is not an Array (`expect(article: :title)`), or a
+    #   filter has another shape than {#permit} takes: a mistake in the
+    #   code, never answered as a 400
     # @api public
     def expect(spec)
       case spec
@@ -305,7 +314,7 @@ module Cybertrain
           Params.expect_missing!(k) if permitted.empty?
           return permitted
         end
-        Params.expect_missing!(k)
+        Params.filter_not_array!("expect", k, filters.class.name.to_s)
         Params.permitted_hash
       else
         k = spec.to_s
@@ -315,6 +324,20 @@ module Cybertrain
         out[k] = v
         out
       end
+    end
+
+    # Raises the ArgumentError of a spec whose filters for key k are not an
+    # Array (`expect(article: :title)`, `permit(meta: :source)`); kind is
+    # the value's class name.
+    def self.filter_not_array!(method, k, kind)
+      msg = "#{method}'s filters for :#{k} must be an Array (#{k}: [:name] or #{k}: []), got #{kind}"
+      raise ArgumentError, msg
+    end
+
+    # Raises the ArgumentError of an Array among a level's filters.
+    def self.nested_array_filter!
+      msg = "permit and expect take keys and key: [...] Hashes, not an Array among the filters ([[:title]] lists of records are not supported)"
+      raise ArgumentError, msg
     end
 
     # Raises #expect's ParameterMissing for key k (the message built into a
@@ -561,9 +584,13 @@ module Cybertrain
                 child = @children[k]
                 out[k] = child.permitted_by(inner) unless child.nil?
               end
+            else
+              Params.filter_not_array!("permit", k, inner.class.name.to_s)
             end
             j += 1
           end
+        when Array
+          Params.nested_array_filter!
         else
           k = f.to_s
           out[k] = @values[k] if @values.key?(k)

@@ -135,6 +135,39 @@ test "expect with a list spec answers the list in a one-entry Hash" do
   assert_raises("ParameterMissing") { params_from("tags=a").expect(tags: []) }
 end
 
+test "a filter that is not an Array, or an Array among the filters, is an ArgumentError" do
+  msg = assert_raises("ArgumentError") { params_from("article[title]=Hi").expect(article: :title) }
+  assert_equal "expect's filters for :article must be an Array (article: [:name] or article: []), got Symbol", msg
+  # the same with no such key in the request: the code is wrong, not the request
+  assert_raises("ArgumentError") { params_from("").expect(article: :title) }
+  msg = assert_raises("ArgumentError") { params_from("meta[source]=rss").permit(meta: :source) }
+  assert_equal "permit's filters for :meta must be an Array (meta: [:name] or meta: []), got Symbol", msg
+  assert_raises("ArgumentError") { params_from("article[title]=Hi").expect(article: [[:title]]) }
+  assert_raises("ArgumentError") { params_from("title=Hi").permit([:title]) }
+end
+
+test "expect drops an unlisted key inside a nested level" do
+  h = params_from("article[meta][source]=rss&article[meta][secret]=x&article[title]=T").expect(article: [:title, meta: [:source]])
+  assert_equal({ "source" => "rss" }, h["meta"])
+  assert_equal "T", h["title"]
+end
+
+test "expect takes a spec of exactly one key" do
+  msg = assert_raises("ArgumentError") { params_from("a[x]=1&b[y]=2").expect(a: [:x], b: [:y]) }
+  assert_equal "expect takes a spec of one key, got 2", msg
+end
+
+test "expect never returns an uploaded file" do
+  p = params_from("article[title]=Hi")
+  p.set_upload_path(["article", "cover"], upload_named("c.png", "1"))
+  h = p.expect(article: [:title, :cover])
+  assert_equal({ "title" => "Hi" }, h)
+  # a level that holds only the file permits nothing: missing
+  q = Cybertrain::Params.new
+  q.set_upload_path(["article", "cover"], upload_named("c.png", "1"))
+  assert_raises("ParameterMissing") { q.expect(article: [:cover]) }
+end
+
 test "require(...).permit gains the nested and array forms" do
   h = params_from("post[title]=T&post[ids][]=1").require(:post).permit(:title, ids: [])
   assert_equal ["1"], h["ids"]
