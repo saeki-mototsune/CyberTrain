@@ -141,6 +141,12 @@ module Cybertrain
       @raise_on_unknown = value
     end
 
+    # @return [Boolean] whether an unknown name raises
+    # @api public
+    def self.raise_on_unknown
+      @raise_on_unknown
+    end
+
     # Reads public_root/assets/.manifest (written by `spin run gen`): the
     # digests it keeps for each logical path, so that a page served before
     # a deploy still fetches its files as immutable. Application#boot calls
@@ -161,6 +167,22 @@ module Cybertrain
       end
       @kept = kept
       nil
+    end
+
+    # Keeps no digest, as before the first {.load_kept} (Runtime.reset!).
+    # @return [nil]
+    # @api private
+    def self.forget_kept
+      kept = { "" => true }
+      kept.delete("")
+      @kept = kept
+      nil
+    end
+
+    # @return [Integer] how many digested names {.load_kept} keeps
+    # @api private
+    def self.kept_count
+      @kept.size
     end
 
     # Whether file_name (the path below /assets) carries a digest gen

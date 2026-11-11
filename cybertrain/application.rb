@@ -23,6 +23,7 @@ require "cybertrain/db"
 require "cybertrain/scheduler"
 require "cybertrain/background"
 require "cybertrain/views"
+require "cybertrain/runtime"
 require "cybertrain/dev"
 
 module Cybertrain
@@ -93,6 +94,10 @@ module Cybertrain
       @rebuilder = nil
       @restart_requested = false
       @serving = false
+      @booted = false
+      # The DB.generation of the pool this Application's boot connected,
+      # or -1 when the database was connected already (the caller's pool).
+      @database_generation = -1
     end
 
     # A typed empty table (spikes/NOTES.md rule 9): the default for a
@@ -165,24 +170,41 @@ module Cybertrain
       encryption_error = c.encryption_error
       fail_boot(encryption_error) unless encryption_error.empty?
       c.resolve_secret!
-      DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
+      # The pool is the process's (DB.connect replaces it): a boot connects
+      # only when nothing has, and remembers that the pool is then its own
+      # to close (#shutdown). A pool the caller connected stays the caller's.
+      unless DB.connected?
+        DB.connect(c.database_path, size: c.pool_size)
+        @database_generation = DB.generation
+      end
       Application.configure_views(c, @views, @url_resolver)
-      # The digests public/assets/.manifest keeps are served immutable too
-      # (Static); an unknown asset name raises outside production.
-      Assets.load_kept(c.public_root)
-      Assets.raise_on_unknown = !c.production?
-      # Module-level settings, like Views': the parser and the blob store are
-      # reached from places that have no Config. The upload directory is made
-      # by the first write, not here, so a read-only deploy still boots.
-      Multipart.configure(c.max_upload_bytes, c.max_multipart_parts)
-      BlobStore.root = c.upload_root
-      Params.max_page = c.max_page
-      Request.trusted_proxy = c.trusted_proxy
-      Request.trusted_proxies = c.trusted_proxies
-      ParameterFilter.names = c.filter_parameters
-      Response.default_permissions_policy = c.permissions_policy
-      Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
+      # Every other process-shared setting, in one place (D64).
+      Runtime.apply(c)
+      @booted = true
       self
+    end
+
+    # Whether #boot has completed (and #shutdown has not run since).
+    # @return [Boolean]
+    # @api public
+    def booted?
+      @booted
+    end
+
+    # Ends what #boot began: closes the database pool if this Application's
+    # boot connected it (a pool the caller connected, or one connected
+    # since, is left open) and marks the Application not booted. The
+    # process-shared settings stay as the boot left them until the next
+    # boot or Runtime.reset!. Call it after #serve, #run_worker or
+    # #run_feeds has returned (they stop their own threads), never while
+    # one runs. #boot may be called again afterwards.
+    # @return [nil]
+    # @api public
+    def shutdown
+      DB.disconnect if @database_generation >= 0 && DB.connected? && DB.generation == @database_generation
+      @database_generation = -1
+      @booted = false
+      nil
     end
 
     # Runs one request through the stack (what Test::Client calls).
@@ -239,6 +261,8 @@ module Cybertrain
       # not with an exception after the banner.
       service_problem = Background.boot_problem(@config)
       fail_boot(service_problem) unless service_problem.empty?
+      busy = Runtime.enter_role("server")
+      fail_boot(busy) unless busy.empty?
       srv = server
       # The stream poller before the listener: its start position (MAX(id))
       # must come before any subscription. Only with the endpoint mounted.
@@ -267,6 +291,7 @@ module Cybertrain
       Scheduler.stop!
       Background.stop_all
       Stream::Poller.stop!
+      Runtime.leave_role
       nil
     rescue PortInUse => e
       fail_boot(e.message)
@@ -305,6 +330,9 @@ module Cybertrain
       # `running` until job_heartbeat_stale. Both handlers are given back
       # when the role ends (test/main_roles.rb sends the signals and
       # checks the handlers come back).
+      busy = Runtime.enter_role("worker")
+      return role_error(busy) unless busy.empty?
+
       previous_term = trap("TERM") { Application.request_stop_roles }
       previous_int = trap("INT") { Application.request_stop_roles }
       run_worker_threads(previous_term, previous_int)
@@ -327,6 +355,7 @@ module Cybertrain
       Scheduler.stop!
       0
     ensure
+      Runtime.leave_role
       trap("TERM", previous_term)
       trap("INT", previous_int)
     end
@@ -359,6 +388,9 @@ module Cybertrain
         print_role_banner("feeds: no WebSocket subscription is registered; nothing to run")
         return 0
       end
+      busy = Runtime.enter_role("feeds")
+      return role_error(busy) unless busy.empty?
+
       print_role_banner("feeds: #{(names.empty? ? known : names).join(", ")}")
       # INT as TERM (Ctrl-C), and the handlers given back, as in run_worker.
       previous_term = trap("TERM") { Application.request_stop_roles }
@@ -437,6 +469,7 @@ module Cybertrain
       # another role afterwards starts clean.
       Background.exit_on_feed_death = false
       Background.reset_supervisor!
+      Runtime.leave_role
       trap("TERM", previous_term)
       trap("INT", previous_int)
     end

@@ -1,0 +1,10 @@
+ok   before any boot the settings are the modules' own defaults
+ok   a boot installs every setting of its config
+ok   Runtime.reset! restores every default
+ok   the settings after a boot do not depend on what booted before
+ok   booting the same Application twice keeps its connection and its settings
+ok   shutdown closes the pool its boot connected, and boot works again afterwards
+ok   shutdown leaves a pool the caller connected, and one connected since
+ok   a second Application takes the settings over; the pool stays the first's
+ok   one role runs at a time
+9 tests, 35 assertions, 0 failures
