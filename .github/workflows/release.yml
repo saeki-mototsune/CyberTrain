@@ -112,7 +112,6 @@ jobs:
     needs: version
     permissions:
       contents: read
-      packages: write
     uses: ./.github/workflows/blog-image.yml
     with:
       ref: ${{ needs.version.outputs.sha }}

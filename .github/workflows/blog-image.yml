@@ -58,9 +58,10 @@ on:
         description: "ID (docker image inspect) of the tested image saved in the artifact; empty without `artifact`"
         value: ${{ jobs.image.outputs.image_id }}
 
+# Builds and tests only: nothing here pushes (release.yml's blog-image-push
+# publishes the tested artifact), so the token is read-only.
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: blog-image-${{ inputs.ref || github.ref }}
