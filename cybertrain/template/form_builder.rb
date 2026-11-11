@@ -90,6 +90,12 @@ module Cybertrain
       " #{name}=\"#{Html.escape(value)}\"" # one String, sized up front
     end
 
+    # ` name="value"` for any value: a SafeString as is (it is HTML
+    # already, as in Rails' tag_option), anything else as text, escaped.
+    def self.text_attr(name, value)
+      " #{name}=\"#{FormBuilder.html_text(value)}\""
+    end
+
     # Keyword arguments become attributes in the order given, skipping the
     # keys in skip: `true` as name="name", false/nil dropped, `data:` and
     # `aria:` Hashes as data-*/aria-* attributes; extra_class (the error
@@ -103,7 +109,8 @@ module Cybertrain
         unless skip.include?(key)
           value = kwargs[key]
           if key == "class"
-            classes << FormBuilder.value_text(value)
+            # A SafeString class is HTML already: escaped once, here.
+            classes << FormBuilder.html_text(value)
           else
             out << FormBuilder.attr_html(key.tr("_", "-"), value)
           end
@@ -111,9 +118,9 @@ module Cybertrain
       end
       unless extra_class.empty?
         classes << " " unless classes.empty?
-        classes << extra_class
+        classes << Html.escape(extra_class)
       end
-      out << " class=\"" << Html.escape(classes) << "\"" unless classes.empty?
+      out << " class=\"" << classes << "\"" unless classes.empty?
       out
     end
 

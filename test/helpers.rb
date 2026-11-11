@@ -111,6 +111,23 @@ test "link_to escapes its text and its href" do
   assert_equal "posts/inline:1: link_to does not support method: (use button_to 'Destroy', path, method: :delete)", msg
 end
 
+test "link_to and button_to check data: keys; a SafeString attribute is escaped once" do
+  install_routes
+  env = new_env
+  env["bad"] = { "x\" onclick=\"a" => 1 }
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= link_to 'All', '/a', data: bad %>", env) }
+  assert_equal "posts/inline:1: invalid attribute name 'data-x\" onclick=\"a'", msg
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= button_to 'Go', '/go', data: bad %>", env) }
+  assert_equal "posts/inline:1: invalid attribute name 'data-x\" onclick=\"a'", msg
+  assert_equal "<a href=\"/a\" class=\"a&amp;b\" data-x=\"&amp;\" data-y=\"&lt;\">All</a>",
+               render_inline("<%= link_to 'All', '/a', class: raw('a&amp;b'), data: { x: raw('&amp;'), y: '<', z: nil } %>")
+  assert_equal "<form class=\"button_to\" method=\"get\" action=\"/go\"><button class=\"a&amp;b\" data-turbo=\"false\" type=\"submit\">Go</button></form>",
+               render_inline("<%= button_to 'Go', '/go', method: :get, class: raw('a&amp;b'), data: { turbo: false } %>")
+  assert_equal "<img src=\"/x.png\" alt=\"A &amp; B\" class=\"a&amp;b\">", render_inline("<%= image_tag '/x.png', alt: raw('A &amp; B'), class: raw('a&amp;b') %>")
+  assert_equal "<img src=\"/x.png\" alt=\"A &amp; B\">", render_inline("<%= image_tag '/x.png', alt: 'A & B' %>")
+  assert_equal "<link rel=\"stylesheet\" href=\"/x.css\" media=\"a&amp;b\">", render_inline("<%= stylesheet_link_tag '/x.css', media: raw('a&amp;b') %>")
+end
+
 test "button_to emits the hidden _method and the authenticity token" do
   install_routes
   helpers = Cybertrain::Template::Helpers.new(controller_with_session)

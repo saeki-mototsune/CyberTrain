@@ -404,6 +404,21 @@ test "form_with data: writes data- attributes" do
   assert_equal "<form action=\"/s\" method=\"post\" class=\"f\" data-turbo-frame=\"top\" data-x=\"&lt;\">#{TOKEN}|</form>", html
 end
 
+test "a data: key is checked, a Hash for another attribute refused, a SafeString attribute escaped once" do
+  env = {}
+  env["article"] = article(nil)
+  env["bad"] = { "x\" onclick=\"a" => 1 }
+  template = Cybertrain::Template::Template.parse("<%= form_with model: article, url: '/x', method: :get do |f| %><%= f.text_field :title, data: bad %><% end %>", "posts/_form")
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { Cybertrain::Template::Interpreter.new(helpers).render(template, env) }
+  assert_equal "posts/_form:1: invalid attribute name 'data-x\" onclick=\"a'", msg
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { field(article(nil), "f.text_field :title, style: { color: 'red' }") }
+  assert_equal "posts/_form:1: attribute 'style' cannot be a Hash", msg
+  assert_equal "<input type=\"text\" name=\"article[title]\" id=\"article_title\" value=\"Hi\" placeholder=\"&amp;\" class=\"a&amp;b\">",
+               field(article(nil), "f.text_field :title, placeholder: raw('&amp;'), class: raw('a&amp;b')")
+  assert_equal "<input type=\"text\" name=\"article[title]\" id=\"article_title\" value=\"Hi\" class=\"a&amp;b\">",
+               field(article(nil), "f.text_field :title, class: 'a&b'")
+end
+
 test "nested and array field names round-trip through params.expect" do
   html = render_article("<%= form_with url: '/a', scope: 'article[meta]', method: :get do |f| %><%= f.text_field :source %><% end %>", article(nil))
   assert_equal "<form action=\"/a\" method=\"get\"><input type=\"text\" name=\"article[meta][source]\" id=\"article_meta_source\"></form>", html

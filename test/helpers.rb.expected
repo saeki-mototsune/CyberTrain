@@ -1,6 +1,7 @@
 ok   path helpers raise until the app installs a url_resolver
 ok   h and raw
 ok   link_to escapes its text and its href
+ok   link_to and button_to check data: keys; a SafeString attribute is escaped once
 ok   button_to emits the hidden _method and the authenticity token
 ok   csrf_meta_tags and csrf_token read the session token
 ok   flash, params and request_path come from the controller
@@ -29,4 +30,4 @@ ok   a template reads the Page
 ok   time_tag for Time, Date, text and format:
 ok   time_tag format: Strings take flags, widths and composites; an unknown directive raises
 ok   current_page? path only, with query, false on POST
-31 tests, 153 assertions, 0 failures
+32 tests, 162 assertions, 0 failures

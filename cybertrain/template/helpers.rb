@@ -546,19 +546,18 @@ module Cybertrain
       def kwarg_attr(kwargs, key, attr_name)
         return "" if kwargs[key].nil?
 
-        FormBuilder.html_attr(attr_name, FormBuilder.value_text(kwargs[key]))
+        FormBuilder.text_attr(attr_name, kwargs[key])
       end
 
-      # data: { turbo_confirm: "Sure?" } -> data-turbo-confirm="Sure?".
+      # data: { turbo_confirm: "Sure?" } -> data-turbo-confirm="Sure?",
+      # through FormBuilder.attr_html, so a key that is not a valid
+      # attribute name raises as it does for every other data: Hash; a nil
+      # value is dropped.
       def data_attrs(data)
-        out = +""
         case data
-        when Hash
-          data.each_key do |key|
-            out << FormBuilder.html_attr("data-#{key.tr("_", "-")}", FormBuilder.value_text(data[key]))
-          end
+        when Hash then FormBuilder.attr_html("data", data)
+        else ""
         end
-        out
       end
 
       # --- form tags without a model -------------------------------------------
@@ -1726,8 +1725,7 @@ module Cybertrain
         href = asset_source(text_arg(args, 0, "stylesheet_link_tag"), ".css")
         out = +"<link rel=\"stylesheet\""
         out << FormBuilder.attr_html("href", href)
-        media = FormBuilder.value_text(kwargs["media"])
-        out << FormBuilder.attr_html("media", media) unless media.empty?
+        out << FormBuilder.text_attr("media", kwargs["media"]) unless FormBuilder.value_text(kwargs["media"]).empty?
         out << nonce_attr(kwargs["nonce"])
         out << ">"
         SafeString.of(out)
@@ -1760,7 +1758,7 @@ module Cybertrain
         out = +"<img"
         out << FormBuilder.attr_html("src", src)
         # alt: "" is written (a decorative image); an absent or nil alt: is not.
-        out << FormBuilder.attr_html("alt", FormBuilder.value_text(kwargs["alt"])) unless kwargs["alt"].nil?
+        out << FormBuilder.text_attr("alt", kwargs["alt"]) unless kwargs["alt"].nil?
         size = FormBuilder.value_text(kwargs["size"])
         x = size.index("x")
         width = x.nil? ? size : size[0, x].to_s
@@ -1769,8 +1767,7 @@ module Cybertrain
           out << FormBuilder.attr_html("width", width)
           out << FormBuilder.attr_html("height", height)
         end
-        klass = FormBuilder.value_text(kwargs["class"])
-        out << FormBuilder.attr_html("class", klass) unless klass.empty?
+        out << FormBuilder.text_attr("class", kwargs["class"]) unless FormBuilder.value_text(kwargs["class"]).empty?
         out << ">"
         SafeString.of(out)
       end
