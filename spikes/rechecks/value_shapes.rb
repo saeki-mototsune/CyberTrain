@@ -7,13 +7,16 @@ module Recheck
 end
 module Recheck
   class Label
+    # Return a stable value through the object stored in the module variable.
     def text = "kept"
   end
   @@label = Label.new
+  # Read the class variable after the module has been reopened.
   def self.label_text = @@label.text
 end
 puts "module class variable: #{Recheck.label_text}"
 
+# Exercise a sliced String promoted to an append buffer without losing NULs.
 def append_after_slice(bytes)
   rest = bytes.byteslice(0, bytes.bytesize)
   i = 0
