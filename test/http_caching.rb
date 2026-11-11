@@ -87,6 +87,17 @@ class PagesController < Cybertrain::Controller
   def bodied_304
     render plain: "x", status: :not_modified
   end
+
+  # Validates first, then offers HTML only: a request whose Accept lists
+  # JSON before HTML is answered with the page.
+  def offered
+    fresh_when etag: "v1"
+    return if performed?
+
+    respond_to do |format|
+      format.html { render plain: "page" }
+    end
+  end
 end
 
 router = Cybertrain::Router.new
@@ -100,12 +111,16 @@ router.get("/timed", "timed") { |ctx| PagesController.new(ctx).process(:timed) {
 router.get("/timed_public", "timed_public") { |ctx| PagesController.new(ctx).process(:timed_public) { |c| c.timed_public } }
 router.get("/then", "then") { |ctx| PagesController.new(ctx).process(:timed_then_fresh) { |c| c.timed_then_fresh } }
 router.get("/bodied", "bodied") { |ctx| PagesController.new(ctx).process(:bodied_304) { |c| c.bodied_304 } }
+router.get("/offered", "offered") { |ctx| PagesController.new(ctx).process(:offered) { |c| c.offered } }
 router.post("/text", "text_post") { |ctx| PagesController.new(ctx).process(:text) { |c| c.text } }
+router.post("/dated", "dated_post") { |ctx| PagesController.new(ctx).process(:dated) { |c| c.dated } }
 
 CLIENT = Cybertrain::Test::Client.new(router)
 
 # The ETag of `key` for a request of `format`: the key, the format and
-# the build digest (Assets.build_digest), "\0"-separated.
+# the build digest (Assets.build_digest), "\0"-separated. The format of a
+# request that also takes HTML (its Accept lists text/html or */* after
+# another type) is "<format>+html".
 def tag_of(key, format = "html")
   keyed = "#{key}\0#{format}\0#{Cybertrain::Assets.build_digest}"
   "W/\"#{Digest::SHA256.hexdigest(keyed).byteslice(0, 32)}\""
@@ -143,6 +158,24 @@ test "If-None-Match takes a list, a strong form and *" do
   assert_equal 304, CLIENT.get("/text", { "If-None-Match" => strong }).status
   assert_equal 304, CLIENT.get("/text", { "If-None-Match" => "*" }).status
   assert_equal 200, CLIENT.get("/text", { "If-None-Match" => "\"x\", W/\"y\"" }).status
+end
+
+test "If-None-Match: * is fresh for a response validated by date only" do
+  # RFC 9110 13.1.2: * matches any current representation, whether or not
+  # the response carries an ETag.
+  res = CLIENT.get("/dated", { "If-None-Match" => "*" })
+  assert_equal 304, res.status
+  assert_equal "", res.body
+  assert_nil res.header("ETag")
+  assert_equal stamp_date(0), res.header("Last-Modified")
+  assert_equal 304, CLIENT.get("/dated", { "If-None-Match" => "\"x\", *" }).status
+  # it decides alone, like any If-None-Match
+  assert_equal 304, CLIENT.get("/dated", { "If-None-Match" => "*", "If-Modified-Since" => stamp_date(-60) }).status
+  # an ordinary tag has nothing to match on a response without an ETag
+  assert_equal 200, CLIENT.get("/dated", { "If-None-Match" => "\"x\"" }).status
+  assert_equal 200, CLIENT.get("/dated", { "If-None-Match" => "\"x\"", "If-Modified-Since" => stamp_date(0) }).status
+  # and only GET and HEAD are answered 304
+  assert_equal 200, CLIENT.post("/dated", {}, { "If-None-Match" => "*" }).status
 end
 
 test "only GET and HEAD are answered 304" do
@@ -192,7 +225,7 @@ test "the ETag depends on the request's format: a Turbo or JSON fetch never reva
   stream = CLIENT.get("/record", { "Accept" => "text/vnd.turbo-stream.html, text/html" }).header("ETag")
   json = CLIENT.get("/record", { "Accept" => "application/json" }).header("ETag")
   assert_equal tag_of("posts/7-#{STAMP}"), html
-  assert_equal tag_of("posts/7-#{STAMP}", "turbo_stream"), stream
+  assert_equal tag_of("posts/7-#{STAMP}", "turbo_stream+html"), stream
   assert_equal tag_of("posts/7-#{STAMP}", "json"), json
   refute html == stream
   refute html == json
@@ -201,6 +234,33 @@ test "the ETag depends on the request's format: a Turbo or JSON fetch never reva
   assert_equal 200, res.status
   assert_equal "Accept", res.header("Vary")
   assert_equal 304, CLIENT.get("/record", { "Accept" => "text/html", "If-None-Match" => html }).status
+end
+
+test "a request that falls back to HTML does not share its ETag with one for the format alone" do
+  both = { "Accept" => "application/json, text/html" }
+  page = CLIENT.get("/offered", both)
+  assert_equal 200, page.status
+  assert_equal "page", page.body
+  tag = page.header("ETag")
+  assert_equal tag_of("v1", "json+html"), tag
+  refute tag == tag_of("v1", "json")
+  refute tag == tag_of("v1")
+  # the same request revalidates its page
+  assert_equal 304, CLIENT.get("/offered", { "Accept" => "application/json, text/html", "If-None-Match" => tag }).status
+  # a JSON-only request holding that ETag reaches respond_to, which has no
+  # JSON to offer
+  only = CLIENT.get("/offered", { "Accept" => "application/json", "If-None-Match" => tag })
+  assert_equal 406, only.status
+  assert_equal "Not Acceptable", only.body
+  assert_equal tag_of("v1", "json"), only.header("ETag")
+  # an extension asks for its format alone, whatever Accept says
+  assert_equal tag_of("v1", "json"), CLIENT.get("/offered.json", both).header("ETag")
+  # HTML refused with q=0 is no fallback
+  assert_equal tag_of("v1", "json"), CLIENT.get("/offered", { "Accept" => "application/json, text/html;q=0" }).header("ETag")
+  # */* counts as taking HTML (axios)
+  assert_equal tag_of("v1", "json+html"), CLIENT.get("/offered", { "Accept" => "application/json, text/plain, */*" }).header("ETag")
+  # HTML first is the html format, as before
+  assert_equal tag_of("v1"), CLIENT.get("/offered", { "Accept" => "text/html, application/json" }).header("ETag")
 end
 
 test "the ETag changes with the build digest gen installs" do

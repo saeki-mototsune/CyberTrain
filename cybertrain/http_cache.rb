@@ -25,15 +25,19 @@ module Cybertrain
     # @param etag [String, Model, nil]
     # @param last_modified [Time, nil]
     # @param public [Boolean] let shared caches store it
+    # @param html_fallback [Boolean] whether the request, of another format,
+    #   is also answered in HTML when the action has nothing for its own
+    #   (Rendering.accepts_html?, which the caller asks: this file names
+    #   no template)
     # @return [nil]
     # @raise [ArgumentError] for an `etag` that is neither a String nor a record
-    def self.set_validators(request, response, etag, last_modified, public)
+    def self.set_validators(request, response, etag, last_modified, public, html_fallback)
       key = etag_key(etag)
       unless key.empty?
-        # The format and the build digest too (see Controller#fresh_when):
-        # "\0" never occurs in a format or a hex digest, so the parts cannot
-        # run together.
-        keyed = "#{key}\0#{request.format}\0#{Assets.build_digest}"
+        # The representation and the build digest too (see
+        # Controller#fresh_when): "\0" never occurs in a format or a hex
+        # digest, so the parts cannot run together.
+        keyed = "#{key}\0#{representation(request.format, html_fallback)}\0#{Assets.build_digest}"
         response.set_header("ETag", "W/\"#{Digest::SHA256.hexdigest(keyed).byteslice(0, 32)}\"")
       end
       stamp = modified_stamp(last_modified)
@@ -46,9 +50,12 @@ module Cybertrain
 
     # Whether the request's validators say the client's copy of the
     # response (its ETag and Last-Modified, set by {.set_validators}) is
-    # current: RFC 9110 section 13.1.3 and 13.1.4 for GET and HEAD: a
+    # current: RFC 9110 section 13.1.2 and 13.1.3 for GET and HEAD: a
     # non-empty If-None-Match decides alone and If-Modified-Since is
-    # ignored; without one, a parseable If-Modified-Since decides.
+    # ignored; without one, a parseable If-Modified-Since decides. An
+    # If-None-Match that lists `*` matches whatever the response is, with
+    # or without an ETag (a response validated by date only has none);
+    # any other entry needs the response's ETag to match.
     # @param request [Request]
     # @param response [Response]
     # @return [Boolean]
@@ -57,7 +64,11 @@ module Cybertrain
 
       since = Request.parse_http_date(request.header("If-Modified-Since").to_s)
       none_match = request.header("If-None-Match").to_s
-      return etag_listed?(none_match, response.header("ETag").to_s) unless none_match.empty?
+      unless none_match.empty?
+        return true if any_listed?(none_match)
+
+        return etag_listed?(none_match, response.header("ETag").to_s)
+      end
       return false if since < 0
 
       stamp = Request.parse_http_date(response.header("Last-Modified").to_s)
@@ -108,6 +119,20 @@ module Cybertrain
       false
     end
 
+    # What a request's ETag is keyed on beside the key: its format, and
+    # "+html" when the answer may be the HTML one instead (the format came
+    # from an Accept that also offers HTML). Which of the two the action
+    # sends is not known when fresh_when runs, so the two kinds of request
+    # get validators of their own: "json+html" may be answered with a
+    # page, "json" never is, and an ETag of the first must not turn the
+    # second's 406 into a 304. "+" occurs in no format's name.
+    # @param format [Symbol]
+    # @param html_fallback [Boolean]
+    # @return [String]
+    def self.representation(format, html_fallback)
+      html_fallback ? "#{format}+html" : "#{format}"
+    end
+
     # The text an ETag is made from: a String as given, a record as
     # "posts/1-<updated_at epoch>", "" for nil; anything else is an
     # ArgumentError.
@@ -134,16 +159,22 @@ module Cybertrain
       end
     end
 
+    # Whether the If-None-Match list is, or has an entry, `*`.
+    def self.any_listed?(list)
+      list.split(",").each do |item|
+        return true if item.strip == "*"
+      end
+      false
+    end
+
     # Whether the If-None-Match list names `tag` (weak comparison: a W/
-    # prefix is ignored) or is `*`.
+    # prefix is ignored). `*` is {.any_listed?}'s.
     def self.etag_listed?(list, tag)
       return false if tag.empty?
 
       want = strip_weak(tag)
       list.split(",").each do |item|
-        entry = item.strip
-        return true if entry == "*"
-        return true if strip_weak(entry) == want
+        return true if strip_weak(item.strip) == want
       end
       false
     end
