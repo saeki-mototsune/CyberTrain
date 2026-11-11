@@ -45,10 +45,12 @@ module Cybertrain
                   :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors, :layouts,
                   :rate_limit_refs
 
-      # includes: the module names of the class's `include` lines, in order.
+      # includes: the module names of the class's `include` lines, in the
+      # order Ruby includes them (`include A, B` includes B first, so B's
+      # `included` block runs first: the names of one line are reversed).
       # include_positions / rescue_positions: per include, the count of
-      # callback declarations (before_action, after_action, rate_limit,
-      # prepend_before_action) / of rescue_from lines above it in the class.
+      # callback declarations (before_action, after_action, rate_limit) / of
+      # rescue_from lines above it in the class.
       # include_lines: per include, its line number. method_names /
       # method_lines: the class's instance `def`s. module_prefix: the
       # modules around the class line ("Admin"; "" at the top level).
@@ -113,7 +115,7 @@ module Cybertrain
       DEF_OPEN = /\A(?:(?:private|protected|public)\s+)?def\s/
       DEF_NAME = /\A\s*def\s+(?!self\.)([a-z_]\w*[?!]?)/
       # The declarations that add one entry to the class's callback list.
-      CALLBACK_DECLARATION = /\A\s*(?:before_action|after_action|rate_limit|prepend_before_action)\b/
+      CALLBACK_DECLARATION = /\A\s*(?:before_action|after_action|rate_limit)\b/
       RESCUE_DECLARATION = /\A\s*rescue_from\b/
       RATE_LIMIT_CALL = /\A\s*rate_limit\b/
       # A rate_limit option that names a method, up to its value.
@@ -227,7 +229,8 @@ module Cybertrain
             rescues_above += 1 if line.match?(RESCUE_DECLARATION)
             im = line.match(INCLUDE_LINE)
             if im
-              im[1].to_s.split(",").each do |name|
+              # Module#include takes its arguments last to first.
+              im[1].to_s.split(",").reverse.each do |name|
                 includes << name.strip
                 include_positions << callbacks_above
                 rescue_positions << rescues_above

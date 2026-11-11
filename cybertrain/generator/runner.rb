@@ -61,9 +61,13 @@ module Cybertrain
         # gen/models/<model>.rb per table once db/schema.rb has been loaded.
         schema = Cybertrain::Schema.current
         stale = 0
-        # A gen/concerns file whose concern is gone.
+        # A gen/concerns file whose concern is gone, and the directories
+        # that leaves empty.
         Manifest.rb_files(root, "gen/concerns").each do |f|
-          stale += remove_file(root, f + ".rb", check) unless concern_files.include?(f + ".rb")
+          next if concern_files.include?(f + ".rb")
+
+          stale += remove_file(root, f + ".rb", check)
+          remove_empty_dirs(root, File.dirname(f), "gen/concerns") unless check
         end
         if schema.nil?
           outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
@@ -154,6 +158,22 @@ module Cybertrain
           puts "removed #{rel}"
           0
         end
+      end
+
+      # Removes root/rel and each parent of it that is left empty, up to
+      # and including root/stop (gen/concerns goes too when no concern is
+      # left).
+      def self.remove_empty_dirs(root, rel, stop)
+        dir = rel
+        while dir == stop || dir.start_with?("#{stop}/")
+          path = "#{root}/#{dir}"
+          break unless File.directory?(path) && Dir.children(path).empty?
+
+          Dir.rmdir(path)
+          puts "removed #{dir}/"
+          dir = File.dirname(dir)
+        end
+        nil
       end
 
       # Creates dir and any missing parent.

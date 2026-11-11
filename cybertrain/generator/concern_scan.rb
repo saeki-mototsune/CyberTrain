@@ -180,7 +180,8 @@ module Cybertrain
           end
           im = raw.match(ControllerScan::INCLUDE_LINE)
           if im
-            im[1].to_s.split(",").each do |name|
+            # Module#include takes its arguments last to first.
+            im[1].to_s.split(",").reverse.each do |name|
               info.concern_includes << name.strip
               info.include_line_numbers << i
             end
@@ -327,18 +328,16 @@ module Cybertrain
       end
 
       # The concerns `names` bring in, depth first (a concern's own
-      # includes before it), each once. `where` gives, per name, the
-      # "file:line" of its `include` for the unknown-name message.
-      def self.expand(names, concerns, where = Array.new(0) { "" })
+      # includes before it), each once. A name that is not a concern
+      # (`include Comparable`, a module of lib/) brings in nothing: its
+      # `include` stays plain Ruby.
+      def self.expand(names, concerns)
         out = Array.new(0) { ConcernInfo.new("", "", 0) }
-        names.each_with_index do |name, k|
-          place = k < where.size ? where[k] : ""
-          visit(name, place, concerns, Array.new(0) { "" }, out)
-        end
+        names.each { |name| visit(name, concerns, Array.new(0) { "" }, out) }
         out
       end
 
-      def self.visit(name, place, concerns, stack, out)
+      def self.visit(name, concerns, stack, out)
         if stack.include?(name)
           chain = Array.new(0) { "" }
           started = false
@@ -352,17 +351,11 @@ module Cybertrain
         end
         out.each { |c| return nil if c.concern_name == name }
         concern = find(concerns, name)
-        if concern.nil?
-          home = place.start_with?("app/models/") ? "app/models/concerns" : "app/controllers/concerns"
-          prefix = place == "" ? "" : "#{place}: "
-          msg = "#{prefix}include #{name}: no concern named #{name} in #{home}"
-          raise ArgumentError, msg
-        end
+        return nil if concern.nil?
+
         inner = stack.dup
         inner << name
-        concern.concern_includes.each_with_index do |sub, k|
-          visit(sub, "#{ControllerScan.app_path(concern.concern_file)}:#{concern.include_line_numbers[k]}", concerns, inner, out)
-        end
+        concern.concern_includes.each { |sub| visit(sub, concerns, inner, out) }
         out << concern
         nil
       end
@@ -370,14 +363,13 @@ module Cybertrain
       # The concerns a controller brings in that its scanned ancestors have
       # not, in `include` order, each expanded depth first and kept once.
       # `from_include` receives, per concern returned, the index (into
-      # info.includes) of the `include` that brought it in. Raises for an
-      # unknown name or a cycle.
+      # info.includes) of the `include` that brought it in. Raises for a
+      # cycle; a name that is not a concern brings in nothing.
       def self.own_concerns(info, infos, concerns, from_include = Array.new(0) { 0 })
         inherited = inherited_concerns(info, infos, concerns)
         out = Array.new(0) { ConcernInfo.new("", "", 0) }
         info.includes.each_with_index do |name, k|
-          place = "#{ControllerScan.app_path(info.file)}:#{info.include_lines[k]}"
-          expand([name], concerns, [place]).each do |c|
+          expand([name], concerns).each do |c|
             next if inherited.include?(c.concern_name)
 
             seen = false
@@ -404,9 +396,8 @@ module Cybertrain
         parent = controller_named(infos, info.superclass_name)
         until parent.nil? || seen.include?(parent.class_name)
           seen << parent.class_name
-          parent.includes.each_with_index do |name, k|
-            place = "#{ControllerScan.app_path(parent.file)}:#{parent.include_lines[k]}"
-            expand([name], concerns, [place]).each { |c| names << c.concern_name unless names.include?(c.concern_name) }
+          parent.includes.each do |name|
+            expand([name], concerns).each { |c| names << c.concern_name unless names.include?(c.concern_name) }
           end
           parent = controller_named(infos, parent.superclass_name)
         end

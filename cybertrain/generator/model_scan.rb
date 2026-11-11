@@ -23,12 +23,14 @@ module Cybertrain
     # how many of the model's own `validates` calls come above each;
     # concern_names: the concerns those bring in, depth first, each once,
     # with concern_from the index (into includes) of the `include` that
-    # brought each in.
+    # brought each in (a concern an `included` body includes counts as
+    # brought in by the `include` of the concern around it).
+    # defined_places: per defined_methods entry, the "file:line" of its def.
     class ModelInfo
       attr_reader :file, :class_name, :view_methods, :scopes, :associations, :custom_validations,
                   :condition_methods, :condition_lines, :defined_methods, :encrypted, :encrypted_lines,
                   :unique_columns, :unique_lines, :includes, :include_lines, :include_validates,
-                  :concern_names, :concern_from
+                  :concern_names, :concern_from, :defined_places
 
       def initialize(file, class_name, view_methods, scopes, associations, custom_validations,
                      condition_methods, condition_lines, defined_methods, encrypted, encrypted_lines,
@@ -51,6 +53,13 @@ module Cybertrain
         @include_validates = Array.new(0) { 0 }
         @concern_names = Array.new(0) { "" }
         @concern_from = Array.new(0) { 0 }
+        @defined_places = Array.new(0) { "" }
+      end
+
+      # Per defined_methods entry, the "app/...:line" of its def.
+      def record_defined_places(places)
+        places.each { |p| @defined_places << p }
+        nil
       end
 
       def add_include(name, line, validates)
@@ -208,8 +217,11 @@ module Cybertrain
       # An `include` line brings in the concerns it names from `concerns`
       # (ConcernScan.expand: depth first, each once per model), each read by
       # scan_concern and added where the `include` stands (merge_concern);
-      # an unknown name raises ArgumentError with the file and line.
-      def self.scan_source(file, source, concerns = Array.new(0) { ConcernInfo.new("", "", 0) })
+      # a name that is not a concern (`include Comparable`) is left to Ruby.
+      # `include A, B` brings in B, then A, as Module#include does. within
+      # names the concerns whose `included` body is being read (an
+      # `include` in one is expanded too; a cycle through them raises).
+      def self.scan_source(file, source, concerns = Array.new(0) { ConcernInfo.new("", "", 0) }, within = Array.new(0) { "" })
         class_name = ""
         class_indent = -1
         skip_indent = -1
@@ -224,6 +236,7 @@ module Cybertrain
         conditions = Array.new(0) { "" }
         condition_lines = Array.new(0) { 0 }
         defined = Array.new(0) { "" }
+        defined_places = Array.new(0) { "" }
         encrypted = Array.new(0) { "" }
         encrypted_lines = Array.new(0) { 0 }
         unique = Array.new(0) { "" }
@@ -300,19 +313,27 @@ module Cybertrain
             names_text = ""
             im = raw.match(ControllerScan::INCLUDE_LINE)
             names_text = im[1].to_s if im
-            names_text.split(",").each do |part|
+            # Module#include takes its arguments last to first.
+            names_text.split(",").reverse.each do |part|
               name = part.strip
               includes << name
               include_lines << lineno
               include_validates << validates_calls
-              place = "#{ControllerScan.app_path(file)}:#{lineno}"
-              ConcernScan.expand([name], concerns, [place]).each do |c|
+              ConcernScan.expand([name], concerns).each do |c|
                 next if concern_names.include?(c.concern_name)
 
+                scanned = scan_concern(c, concerns, within)
                 concern_names << c.concern_name
                 concern_from << includes.size - 1
-                merge_concern(scan_concern(c), scopes, associations, validations, conditions, condition_lines, defined, methods,
-                              encrypted, encrypted_lines, unique, unique_lines)
+                merge_concern(scanned, scopes, associations, validations, conditions, condition_lines, defined, defined_places,
+                              methods, encrypted, encrypted_lines, unique, unique_lines)
+                # The concerns its `included` body includes, spliced after it.
+                scanned.concern_names.each do |inner|
+                  next if concern_names.include?(inner)
+
+                  concern_names << inner
+                  concern_from << includes.size - 1
+                end
               end
             end
           elsif line == "private" || line == "protected"
@@ -321,7 +342,10 @@ module Cybertrain
             in_private = false
           else
             defined_name = def_name(line)
-            defined << defined_name if def_indent < 0 && defined_name != "" && !defined.include?(defined_name)
+            if def_indent < 0 && defined_name != "" && !defined.include?(defined_name)
+              defined << defined_name
+              defined_places << "#{ControllerScan.app_path(file)}:#{lineno}"
+            end
             unless in_private
               name = view_method_name(line)
               methods << name if name != "" && !methods.include?(name)
@@ -336,14 +360,30 @@ module Cybertrain
                              defined, encrypted, encrypted_lines, unique, unique_lines)
         includes.each_with_index { |name, k| info.add_include(name, include_lines[k], include_validates[k]) }
         concern_names.each_with_index { |name, k| info.add_concern(name, concern_from[k]) }
+        info.record_defined_places(defined_places)
         info
       end
 
       # What a model concern declares, read as a model: concern_source of
       # its file, so every line keeps its number and errors name the
-      # concern's file.
-      def self.scan_concern(concern)
-        info = scan_source(concern.concern_file, concern_source(concern, File.read(concern.concern_file)))
+      # concern's file. An `include` in its `included` body is expanded
+      # against concerns; within names the concerns already being read
+      # (a cycle through `included` bodies raises).
+      def self.scan_concern(concern, concerns, within)
+        if within.include?(concern.concern_name)
+          chain = Array.new(0) { "" }
+          started = false
+          within.each do |w|
+            started = true if w == concern.concern_name
+            chain << w if started
+          end
+          chain << concern.concern_name
+          msg = "concern cycle: #{chain.join(" includes ")}"
+          raise ArgumentError, msg
+        end
+        inner = within.dup
+        inner << concern.concern_name
+        info = scan_source(concern.concern_file, concern_source(concern, File.read(concern.concern_file)), concerns, inner)
         if info.nil?
           msg = "#{concern.concern_file}:#{concern.concern_line}: module #{concern.concern_name} could not be read as a model concern"
           raise Error, msg
@@ -387,8 +427,8 @@ module Cybertrain
       # scanned, as if written at its `include`. A scope or association
       # named like one the model already has raises Error naming both
       # places.
-      def self.merge_concern(part, scopes, associations, validations, conditions, condition_lines, defined, methods,
-                             encrypted, encrypted_lines, unique, unique_lines)
+      def self.merge_concern(part, scopes, associations, validations, conditions, condition_lines, defined, defined_places,
+                             methods, encrypted, encrypted_lines, unique, unique_lines)
         part.scopes.each do |sc|
           scopes.each do |e|
             next unless e.name == sc.name
@@ -414,7 +454,12 @@ module Cybertrain
           conditions << name
           condition_lines << part.condition_lines[k]
         end
-        part.defined_methods.each { |name| defined << name unless defined.include?(name) }
+        part.defined_methods.each_with_index do |name, k|
+          next if defined.include?(name)
+
+          defined << name
+          defined_places << part.defined_places[k]
+        end
         part.view_methods.each { |name| methods << name unless methods.include?(name) }
         part.encrypted.each_with_index do |name, k|
           next if encrypted.include?(name)

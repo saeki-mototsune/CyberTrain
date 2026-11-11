@@ -7,7 +7,9 @@ ok   class_methods are callable through self.class
 ok   nested concerns expand depth first; a cycle is refused by name
 ok   a concern included by an ancestor and again is expanded once
 ok   a class_methods name that an ancestor's concern defines as an instance method is refused
+ok   include A, B splices B first, as Ruby includes B first
+ok   prepend_before_action is not a callback declaration
 ok   @x in a concern method is a view assign of the includer
 ok   a project root with an app/ directory in its path still keys gen/concerns and the manifest by the path under it
 ok   an endless operator or self. def does not swallow the def after it
-12 tests, 47 assertions, 0 failures
+14 tests, 55 assertions, 0 failures

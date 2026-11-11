@@ -154,6 +154,28 @@ test "a gen/concerns file whose concern is gone is removed (reported stale by --
   assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
 end
 
+test "removing a stale gen/concerns file removes the directories it leaves empty" do
+  draw_routes
+  Cybertrain::Gen::Runner.make_dirs("#{ROOT}/gen/concerns/models/concerns/old/deeper")
+  File.write("#{ROOT}/gen/concerns/models/concerns/old/deeper/gone.rb", "module Gone\nend\n")
+  assert_equal 1, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
+  assert File.directory?("#{ROOT}/gen/concerns/models/concerns/old/deeper")
+  assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, [])
+  refute File.exist?("#{ROOT}/gen/concerns/models/concerns/old")
+  # The directory of a concern that is still there stays.
+  assert File.exist?("#{ROOT}/gen/concerns/models/concerns/sluggable.rb")
+  assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, ["--check"])
+  # A tree whose last concern is gone loses gen/concerns itself.
+  base = Dir.mktmpdir("cybertrain-gen-concerns-gone")
+  Cybertrain::Gen::Runner.make_dirs("#{base}/gen/concerns/controllers/concerns")
+  File.write("#{base}/gen/concerns/controllers/concerns/x.rb", "module X\nend\n")
+  Cybertrain::Gen::Runner.remove_file(base, "gen/concerns/controllers/concerns/x.rb", false)
+  Cybertrain::Gen::Runner.remove_empty_dirs(base, "gen/concerns/controllers/concerns", "gen/concerns")
+  assert_equal [], Dir.children("#{base}/gen")
+  Dir.rmdir("#{base}/gen")
+  Dir.rmdir(base)
+end
+
 test "runner leaves unchanged files alone" do
   draw_routes
   assert_equal 0, Cybertrain::Gen::Runner.run(ROOT, [])

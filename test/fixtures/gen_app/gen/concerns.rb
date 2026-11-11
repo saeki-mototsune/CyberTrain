@@ -39,5 +39,6 @@ class Post
   model_concern_insert_at(1)
   validates :body, length: { maximum: 10000 }
   scope :visible, -> { where(hidden: 0) }
+  before_save { |r| r.body = "#{r.body}>visible" if r.title == "callback order" }
   model_concern_insert_done
 end

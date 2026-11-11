@@ -286,7 +286,8 @@ test "includes, and each include's position among the callbacks and rescues abov
   RUBY
   info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", source)
   assert_equal "ApplicationController", info.superclass_name
-  assert_equal ["AdminGate", "Auditing", "Stamped"], info.includes
+  # `include AdminGate, Auditing` includes Auditing first, as Ruby does.
+  assert_equal ["Auditing", "AdminGate", "Stamped"], info.includes
   assert_equal [1, 1, 3], info.include_positions
   assert_equal [1, 1, 1], info.rescue_positions
   assert_equal [4, 4, 8], info.include_lines
@@ -409,14 +410,14 @@ test "gen/concerns.rb: the class methods on the concern, a forwarder and the spl
   assert_includes controllers, "      when :a then a\n      when :b then b\n      when :gone then gone\n      when :require_admin then require_admin\n      when :forbidden then forbidden\n"
 end
 
-test "an unknown concern is refused with the include's line" do
-  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", "class ArticlesController < ApplicationController\n  before_action :x\n  include Missing\nend\n")
+test "an include of a module that is not a concern is left to Ruby" do
+  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", "class ArticlesController < ApplicationController\n  before_action :x\n  include PricesHelper\nend\n")
+  assert_equal ["PricesHelper"], articles.includes
   none = Array.new(0) { concern("app/controllers/concerns/a.rb", "module A\nend\n") }
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernsEmitter.emit([articles], none) }
-  assert_equal "app/controllers/articles_controller.rb:3: include Missing: no concern named Missing in app/controllers/concerns", msg
-  nested = concern("app/controllers/concerns/a.rb", "module A\n  include Gone\nend\n")
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernScan.expand(["A"], [nested]) }
-  assert_equal "app/controllers/concerns/a.rb:2: include Gone: no concern named Gone in app/controllers/concerns", msg
+  assert_equal Cybertrain::Gen::ConcernsEmitter::HEADER, Cybertrain::Gen::ConcernsEmitter.emit([articles], none)
+  # A concern's own include of a plain module brings in nothing either.
+  nested = concern("app/controllers/concerns/a.rb", "module A\n  include Comparable\nend\n")
+  assert_equal ["A"], Cybertrain::Gen::ConcernScan.expand(["A"], [nested]).map { |c| c.concern_name }
 end
 
 test "around_action in an included block is refused" do
@@ -529,8 +530,10 @@ test "emit writes helper_method? and call_helper_method for the declared names" 
   RUBY
   out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, articles], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
   assert_includes out, expected
-  # ApplicationController declares none: no table of its own.
-  refute out.include?("class ApplicationController < Cybertrain::Controller\n  def view_assigns\n    {}\n  end\n\n  def helper_method?"), "no table for ApplicationController"
+  # ApplicationController declares none: no table of its own (its whole
+  # block, so a change of formatting cannot pass this vacuously).
+  assert_includes out, "class ApplicationController < Cybertrain::Controller\n  def view_assigns\n    {}\n  end\nend\n"
+  assert_equal 1, out.scan("def helper_method?(name)").size
 end
 
 test "a helper_method declared in a concern's included block dispatches from the includer" do

@@ -234,6 +234,12 @@ module Cybertrain
         names.each do |name|
           check_helper_method(name, helper_modules)
           error = Array.new(0) { "" }
+          # The arm checks and calls with the signature of the def this
+          # class reaches. A subclass that overrides the method without its
+          # own `helper_method` line keeps the declaring class's arm, so
+          # the declaring class's signature, not the override's, is the one
+          # checked (Ruby would call the override with whatever the template
+          # passed): redeclare `helper_method` in the subclass to change it.
           found = helper_def(info, infos, concerns, name, error)
           if found.nil?
             msg = "helper_method :#{name} in #{info.class_name}: no def #{name} in the controller, its parents or its concerns"
@@ -315,9 +321,7 @@ module Cybertrain
             error << current.def_errors[k]
             return d
           end
-          places = Array.new(0) { "" }
-          current.include_lines.each { |n| places << "#{ControllerScan.app_path(current.file)}:#{n}" }
-          ConcernScan.expand(current.includes, concerns, places).reverse.each do |c|
+          ConcernScan.expand(current.includes, concerns).reverse.each do |c|
             c.concern_defs.each_with_index do |d, k|
               next unless d.name == name
 

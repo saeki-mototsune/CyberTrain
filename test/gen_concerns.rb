@@ -159,6 +159,36 @@ test "a class_methods name that an ancestor's concern defines as an instance met
                "(spikes/NOTES.md rule 93), so rename one", msg
 end
 
+test "include A, B splices B first, as Ruby includes B first" do
+  # Module#include takes its arguments last to first, so B's `included`
+  # block runs before A's and B's callbacks come first; Ruby's method
+  # lookup still finds A's methods before B's.
+  a = Cybertrain::Gen::ConcernScan.scan_source("app/controllers/concerns/a.rb",
+                                               "module A\n  extend ActiveSupport::Concern\n\n  included do\n    before_action :from_a\n  end\n\n  def shared = 1\nend\n")
+  b = Cybertrain::Gen::ConcernScan.scan_source("app/controllers/concerns/b.rb",
+                                               "module B\n  extend ActiveSupport::Concern\n\n  included do\n    before_action :from_b\n  end\n\n\n  def shared = 2\nend\n")
+  c = Cybertrain::Gen::ConcernScan.scan_source("app/controllers/concerns/c.rb", "module C\n  extend ActiveSupport::Concern\n  include A, B\nend\n")
+  assert_equal ["B", "A"], c.concern_includes
+  assert_equal ["B", "A", "C"], Cybertrain::Gen::ConcernScan.expand(["C"], [a, b, c]).map { |x| x.concern_name }
+  app = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/application_controller.rb",
+                                                    "class ApplicationController < Cybertrain::Controller\nend\n")
+  both = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/both_controller.rb",
+                                                     "class BothController < ApplicationController\n  include A, B\nend\n")
+  assert_equal ["B", "A"], both.includes
+  out = Cybertrain::Gen::ConcernsEmitter.emit([app, both], [a, b])
+  assert_includes out, "class BothController\n  # B (include B at app/controllers/both_controller.rb:2)\n  concern_insert_at(0, 0)\n" \
+                       "  before_action :from_b\n  concern_insert_done\n  # A (include A at app/controllers/both_controller.rb:2)\n" \
+                       "  concern_insert_at(1, 0)\n  before_action :from_a\n  concern_insert_done\nend\n"
+  # A's shared is on line 8, B's on line 9.
+  assert_equal 8, Cybertrain::Gen::ControllersEmitter.helper_def(both, [app, both], [a, b], "shared").line
+end
+
+test "prepend_before_action is not a callback declaration" do
+  refute "  prepend_before_action :x".match?(Cybertrain::Gen::ControllerScan::CALLBACK_DECLARATION)
+  assert "  before_action :x".match?(Cybertrain::Gen::ControllerScan::CALLBACK_DECLARATION)
+  assert "  rate_limit to: 1, within: 60".match?(Cybertrain::Gen::ControllerScan::CALLBACK_DECLARATION)
+end
+
 test "@x in a concern method is a view assign of the includer" do
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/gated/1", {}, ""))
   assert_equal ["viewer", "post", "audited_at"], GatedController.new(ctx).view_assigns.keys

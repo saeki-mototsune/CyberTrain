@@ -30,6 +30,28 @@ identical gen/concerns/models/concerns/sluggable.rb
 identical gen/console.rb
 identical gen/app.rb
 ok   a gen/concerns file whose concern is gone is removed (reported stale by --check)
+stale: gen/concerns/models/concerns/old/deeper/gone.rb
+removed gen/concerns/models/concerns/old/deeper/gone.rb
+removed gen/concerns/models/concerns/old/deeper/
+removed gen/concerns/models/concerns/old/
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
+identical gen/console.rb
+identical gen/app.rb
+removed gen/concerns/controllers/concerns/x.rb
+removed gen/concerns/controllers/concerns/
+removed gen/concerns/controllers/
+removed gen/concerns/
+ok   removing a stale gen/concerns file removes the directories it leaves empty
 identical gen/routes.rb
 identical gen/assets.rb
 identical gen/controllers.rb
@@ -61,4 +83,4 @@ identical gen/concerns/models/concerns/sluggable.rb
 identical gen/console.rb
 wrote gen/app.rb
 ok   runner --check reports stale files and writes nothing
-7 tests, 24 assertions, 0 failures
+8 tests, 31 assertions, 0 failures

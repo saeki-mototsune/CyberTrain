@@ -84,8 +84,8 @@ module Cybertrain
       # body between `model_concern_insert_at(n)` (n: the model's own
       # `validates` calls above the `include`) and
       # `model_concern_insert_done`. A class_methods name that the model
-      # or one of its concerns defines as an instance method is refused
-      # (spikes/NOTES.md rule 93).
+      # or one of its concerns defines as an instance method, a scope's or
+      # a model class method's is refused (check_model_class_method).
       def self.emit_models(model_infos, concern_infos)
         out = +""
         model_infos.each do |info|
@@ -99,12 +99,7 @@ module Cybertrain
           body = +""
           own.each do |c|
             c.class_method_names.each_with_index do |m, k|
-              if info.defined_methods.include?(m)
-                msg = "#{ControllerScan.app_path(c.concern_file)}:#{c.class_method_line_numbers[k]}: class_methods def #{m}: " \
-                      "#{info.class_name} (#{ControllerScan.app_path(info.file)}), which includes #{c.concern_name}, or one of its " \
-                      "concerns also defines an instance method #{m}; #{ConcernScan::RULE_93}"
-                raise ArgumentError, msg
-              end
+              check_model_class_method(info, c, m, c.class_method_line_numbers[k])
               body << "def self.#{m}(...) = #{c.concern_name}.#{m}(...)\n"
             end
           end
@@ -131,6 +126,37 @@ module Cybertrain
           out << ControllersEmitter.wrap_in_modules(info.class_name, source)
         end
         out
+      end
+
+      # A model concern's class_methods name m (written at line) must not
+      # be an instance method of the model or of its concerns (rule 93: it
+      # is one too, compiled), a scope's name (gen/models defines
+      # `def self.<scope>` on the model, which the forwarder would
+      # redefine) or a class method every model and Relation already has
+      # (ModelScan::RESERVED_SCOPE_NAMES: `where`, `all`, ...). Each
+      # refusal names both places.
+      def self.check_model_class_method(info, concern, m, line)
+        place = "#{ControllerScan.app_path(concern.concern_file)}:#{line}: class_methods def #{m}: "
+        j = position(info.defined_methods, m)
+        if j >= 0
+          where = j < info.defined_places.size ? info.defined_places[j] : ControllerScan.app_path(info.file)
+          msg = "#{place}#{info.class_name}, which includes #{concern.concern_name}, or one of its concerns also defines " \
+                "an instance method #{m} (#{where}); #{ConcernScan::RULE_93}"
+          raise ArgumentError, msg
+        end
+        info.scopes.each do |sc|
+          next unless sc.name == m
+
+          msg = "#{place}#{info.class_name}, which includes #{concern.concern_name}, has scope :#{m} " \
+                "(#{ControllerScan.app_path(sc.file)}:#{sc.line}), and both would define #{info.class_name}.#{m}; rename one"
+          raise ArgumentError, msg
+        end
+        if ModelScan::RESERVED_SCOPE_NAMES.include?(m)
+          msg = "#{place}every model and Relation already has #{m} (Cybertrain::Model, Cybertrain::Relation); " \
+                "a forwarder would replace it in #{info.class_name}, so rename it"
+          raise ArgumentError, msg
+        end
+        nil
       end
 
       # gen/concerns/<path under app/> => the concern's file with its
