@@ -38,6 +38,10 @@
 # the set:
 #   * script/check-version-mentions passes (no page names the current release's
 #     numbers).
+# When a workflow, a local action (.github/workflows/, .github/actions/) or
+# script/check-workflows is in the set:
+#   * script/check-workflows passes (token permissions and checkout
+#     credentials are stated).
 #
 # Exit status 1 when any check fails; the failing lines are printed. To commit
 # past the hook on purpose, `git commit --no-verify`; CI runs the gate anyway.
@@ -201,6 +205,19 @@ if mode != :all && files.none? { |f| f.match?(VERSION_MENTIONS) }
 else
   out, status = Open3.capture2e("ruby", "script/check-version-mentions")
   status.success? ? ok("no page names the release numbers", "script/check-version-mentions") : fail!("release numbers in the pages", out.lines.map(&:chomp))
+end
+
+# --- the workflows' own rules -----------------------------------------------------
+
+# What YAML that loads can still get wrong without anyone noticing: a token
+# with the repository's default permissions, a checkout that leaves its
+# credentials behind.
+WORKFLOW_RULES = %r{\A(\.github/(workflows|actions)/|script/check-workflows\z)}
+if mode != :all && files.none? { |f| f.match?(WORKFLOW_RULES) }
+  skip("workflow rules", "no workflow or local action in the set")
+else
+  out, status = Open3.capture2e("ruby", "script/check-workflows")
+  status.success? ? ok("workflow rules", "script/check-workflows") : fail!("workflow rules", out.lines.map(&:chomp))
 end
 
 # --- repository checks -----------------------------------------------------------

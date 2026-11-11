@@ -65,6 +65,8 @@ jobs:
         with:
           ref: main
           token: ${{ secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          # Kept: "Open the pull request" pushes the branch with this token.
+          persist-credentials: true
 
       - name: Check the inputs
         id: inputs

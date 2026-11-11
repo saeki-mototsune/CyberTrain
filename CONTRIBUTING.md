@@ -191,6 +191,15 @@ way; the script or workflow step that checks it says so in its comment.
 - **The CLI runs under CRuby and lists its files by hand.** A file the CLI
   requires must be in `cybertrain.gemspec`'s `spec.files`; CI installs the
   built gem and runs it.
+- **A workflow's token can do only what its jobs need.** Every workflow
+  states `permissions:` at the top, so nothing relies on the repository's
+  default: read access for what only checks (the Gate, CI, `required`),
+  write access only where something is published (a release, a package,
+  the site), on the job that publishes when the workflow has others. Every
+  `actions/checkout` sets `persist-credentials: false`, so the token is not
+  left in `.git/config` for the steps after it, unless a later step pushes
+  with it (the Bump version workflow, which says so)
+  (`script/check-workflows`).
 - **Versions are pinned in one place.** `Cybertrain::VERSION` equals
   `spin.toml`'s version; `Cybertrain::SPINEL_TAG` equals `SPINEL_TAG` in
   `ci.yml`. (`script/claude-cloud-setup` pins no tag: it builds the latest
