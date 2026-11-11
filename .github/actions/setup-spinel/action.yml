@@ -13,7 +13,7 @@ description: Install Ruby, the system packages, the gem CLI of this checkout and
 runs:
   using: composite
   steps:
-    - uses: ruby/setup-ruby@v1
+    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
       with:
         ruby-version: "3.3"
 
@@ -58,7 +58,7 @@ runs:
 
     - name: Restore the Spinel toolchain
       id: spinel-cache
-      uses: actions/cache/restore@v6
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cybertrain/spinel
         key: spinel-${{ steps.image.outputs.spinel_tag }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v3
@@ -78,7 +78,7 @@ runs:
     # refused with a warning.
     - name: Save the Spinel toolchain
       if: steps.spinel-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v6
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cybertrain/spinel
         key: ${{ steps.spinel-cache.outputs.cache-primary-key }}

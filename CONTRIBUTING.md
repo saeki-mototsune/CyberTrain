@@ -200,6 +200,11 @@ way; the script or workflow step that checks it says so in its comment.
   left in `.git/config` for the steps after it, unless a later step pushes
   with it (the Bump version workflow, which says so)
   (`script/check-workflows`).
+- **What a workflow runs is pinned.** An action from another repository is
+  named by commit, `uses: owner/name@<commit> # vX.Y.Z`, never by a tag,
+  and a `gem install` in a workflow names a version
+  (`script/check-workflows`; see
+  [Dependencies and their updates](#dependencies-and-their-updates)).
 - **Versions are pinned in one place.** `Cybertrain::VERSION` equals
   `spin.toml`'s version; `Cybertrain::SPINEL_TAG` equals `SPINEL_TAG` in
   `ci.yml`. (`script/claude-cloud-setup` pins no tag: it builds the latest
@@ -334,6 +339,59 @@ must show `gate` and `required` green within minutes, with CI not started,
 and be mergeable; one that breaks a test must show `required` red and the
 merge blocked. When a required job is renamed, change the file, the ruleset
 and this section together.
+
+## Dependencies and their updates
+
+What CI and a release run is pinned, so that a run can be repeated and a
+change in someone else's code arrives as a pull request, not as a surprise:
+
+| What | Pinned how | Updated by |
+|---|---|---|
+| Actions (`uses:` in `.github/workflows/` and `.github/actions/`) | A commit, with the release in a comment: `actions/checkout@<commit> # vX.Y.Z` | Dependabot ([.github/dependabot.yml](.github/dependabot.yml)): one pull request a week for all of them |
+| Spinel | `Cybertrain::SPINEL_TAG`, one release, equal to `SPINEL_TAG` in `ci.yml` | The Bump version workflow ([Releasing](#releasing)) |
+| Gems a workflow installs (`yard`, `kramdown`, `kramdown-parser-gfm`, `rouge`, `kamal`) | `-v "~> X.Y"`: a fixed minor, the newest patch | By hand, in every workflow that installs the gem and in [docs/guide/README.md](docs/guide/README.md) |
+| `prism`, for building Spinel | The exact version Spinel's Makefile names | With Spinel |
+| Ruby for the scripts and the CLI | `ruby-version: "3.3"` | By hand |
+| Runners and base images | `ubuntu-26.04` runners, `ubuntu:24.04` images. `macos-latest` is not pinned: it follows GitHub's current macOS image | By hand |
+
+The gem itself has no runtime dependency and the repository has no
+`Gemfile`: the gems above are tools of the documentation build and of the
+Kamal check, installed in the job that uses them. A lockfile for them was
+considered and left out: it would put Bundler in every job that today
+needs one `gem install`, for tools whose builds already fail on a warning
+or a broken link. Dependabot does not read `gem install` lines, so these
+constraints move by hand.
+
+To pin a new action, or move one by hand, take the commit from the
+release's tag and write both:
+
+```sh
+git ls-remote https://github.com/actions/checkout 'refs/tags/v7*'
+# an annotated tag also lists <tag>^{}: that line is the commit to use
+```
+
+An update is verified by the checks its pull request starts. Dependabot's
+pull request changes every file that uses an updated action, and each
+workflow a pull request can start runs on it: the Gate always (with
+`script/check-workflows`), CI on both systems when `ci.yml` or a local
+action changes, an image's build and smoke test when that image's workflow
+changes; `required` waits for them all.
+Three things no pull request exercises, because they only run when
+something is published; look at them after merging an update that touches
+them:
+
+- the Pages actions (`configure-pages`, `upload-pages-artifact`,
+  `deploy-pages`): the next Pages run on `main`, or run the Pages workflow
+  by hand;
+- `docker/login-action` and the pushes: run the Playground image workflow
+  by hand with the tag `test`;
+- the Release, Bump version and Spinel prebuilt workflows: read the diff;
+  their next run is the next release.
+
+When a gem's constraint moves, run what uses it before pushing:
+`script/api-docs` (yard, kramdown) and `script/guide-pages --out <tmpdir>`
+with the tests under `script/guide-pages.d/test/` (kramdown, rouge); the
+Blog image workflow loads `config/deploy.yml` with Kamal.
 
 ## Releasing
 

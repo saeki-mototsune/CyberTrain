@@ -41,7 +41,8 @@
 # When a workflow, a local action (.github/workflows/, .github/actions/) or
 # script/check-workflows is in the set:
 #   * script/check-workflows passes (token permissions and checkout
-#     credentials are stated).
+#     credentials are stated, actions are pinned to commits and gems to
+#     versions).
 #
 # Exit status 1 when any check fails; the failing lines are printed. To commit
 # past the hook on purpose, `git commit --no-verify`; CI runs the gate anyway.
@@ -211,7 +212,8 @@ end
 
 # What YAML that loads can still get wrong without anyone noticing: a token
 # with the repository's default permissions, a checkout that leaves its
-# credentials behind.
+# credentials behind, an action named by a tag that can move, a gem
+# installed at whatever version is newest that day.
 WORKFLOW_RULES = %r{\A(\.github/(workflows|actions)/|script/check-workflows\z)}
 if mode != :all && files.none? { |f| f.match?(WORKFLOW_RULES) }
   skip("workflow rules", "no workflow or local action in the set")

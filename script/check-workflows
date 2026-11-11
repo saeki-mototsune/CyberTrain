@@ -11,6 +11,12 @@
 #   * Every actions/checkout step states `persist-credentials`: false unless
 #     a later step of the job pushes with the checkout's token (then true,
 #     with a comment saying which step).
+#   * Every action from another repository is pinned to a commit: `uses:
+#     owner/name@<40 hex digits> # vX.Y.Z`. A tag can be moved to other code;
+#     a commit cannot. The comment names the release, which is what
+#     Dependabot (.github/dependabot.yml) reads and moves with the commit.
+#   * Every `gem install` names a version (`-v "~> X.Y"`), or installs a
+#     file built in the job (`--local`).
 #
 # usage: script/check-workflows [FILE...]   (default: every workflow and local action)
 require "yaml"
@@ -43,6 +49,20 @@ files.each do |file|
   workflow = file.start_with?(".github/workflows/")
   if workflow && !doc.key?("permissions")
     problems << "#{file}: no top-level `permissions:` (start from `contents: read`; raise a permission on the job that needs it)"
+  end
+
+  # Raw lines for these two: the release comment after a `uses:` is not in
+  # the parsed document, and a `gem install` is text inside a `run:` block.
+  File.foreach(file).with_index(1) do |line, n|
+    next if line.match?(/\A\s*#/)
+
+    if (m = line.match(/\A\s*(?:-\s+)?uses:\s*(\S+)(.*)$/)) && !m[1].start_with?("./")
+      pinned = m[1].match?(%r{\A[^@\s]+/[^@\s]+@\h{40}\z}) && m[2].match?(/\A\s+#\s*v\d+(\.\d+)*\s*\z/)
+      problems << "#{file}:#{n}: `uses: #{m[1]}` is not `owner/name@<commit> # vX.Y.Z`" unless pinned
+    end
+    if line.match?(/\bgem install\b/) && !line.match?(/\s(-v|--version)[\s=]|\s--local\s/)
+      problems << "#{file}:#{n}: `gem install` without a version (-v \"~> X.Y\")"
+    end
   end
 
   each_use(doc) do |step, path|

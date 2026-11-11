@@ -1,0 +1,22 @@
+# Keeps the actions the workflows and the local actions use up to date. They
+# are pinned to commits (`uses: owner/name@<commit> # vX.Y.Z`, which
+# script/check-workflows enforces); Dependabot moves the commit and the
+# comment together, in one pull request a week for all of them, and the
+# checks that pull request starts are the verification. CONTRIBUTING.md,
+# "Dependencies and their updates", has the rest: what else is pinned, and
+# what a pull request cannot exercise.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # "/" is .github/workflows; a local action is a directory of its own.
+    directories:
+      - "/"
+      - "/.github/actions/setup-cybertrain"
+      - "/.github/actions/setup-spinel"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"

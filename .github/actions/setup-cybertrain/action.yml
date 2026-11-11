@@ -72,7 +72,7 @@ runs:
         echo "LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
         echo "CPATH=$prefix/include" >> "$GITHUB_ENV"
 
-    - uses: ruby/setup-ruby@v1
+    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
       with:
         ruby-version: ${{ inputs.ruby-version }}
 
@@ -141,7 +141,7 @@ runs:
 
     - name: Restore the Spinel toolchain
       id: spinel-cache
-      uses: actions/cache/restore@v6
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cybertrain/spinel
         key: cybertrain-spinel-${{ steps.framework.outputs.spinel-tag }}-${{ runner.os }}-${{ steps.framework.outputs.image }}-${{ runner.arch }}
@@ -161,7 +161,7 @@ runs:
     # cost the next run another build.
     - name: Save the Spinel toolchain
       if: steps.spinel-cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v6
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cybertrain/spinel
         key: ${{ steps.spinel-cache.outputs.cache-primary-key }}
