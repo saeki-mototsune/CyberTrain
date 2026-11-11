@@ -11,7 +11,10 @@ module Cybertrain
     # handler and does not know whether a pool runs: {Job::Executor} and
     # {Job::Worker} call it, and it reads the registry ({Job::HANDLERS},
     # through Job's lookups) only for what a statement depends on, the
-    # concurrency limits and keys. The public entry points and their
+    # concurrency limits and keys. A claim carries its caller's ticket,
+    # which the store hands back to {Job.claim_open?} once it holds the
+    # write lock, without knowing what the ticket stands for (D78). The
+    # public entry points and their
     # documentation are the `Job.*` methods of cybertrain/job.rb, which
     # delegate here.
     module Store
@@ -310,23 +313,28 @@ module Cybertrain
         nil
       end
 
-      # {Job.heartbeat!}: marks the `running` rows `ids` claimed by `label`
-      # as alive at `now`. Returns how many rows it touched. (Judgement
-      # call: the spec's statement was `WHERE state = 'running' AND
-      # claimed_by = ?`; this adds `AND id IN (...)`, the ids the caller
-      # has in flight.)
-      def self.touch_heartbeats(now, label, ids)
+      # {Job.heartbeat!}: marks as alive at `now` the `running` rows that
+      # `label` claimed as one of `claims`, a flat list of the id and then
+      # the attempt number of each attempt the caller has in flight. The
+      # attempt is part of the predicate as it is of the outcome write's
+      # (write_outcome): a row recovered and claimed again by the same
+      # label is another claim, and an older attempt still running does
+      # not keep it alive (D78). Returns how many rows it touched.
+      # (Judgement call: the spec's statement was `WHERE state = 'running'
+      # AND claimed_by = ?`; this adds the claims the caller has in flight.)
+      def self.touch_heartbeats(now, label, claims)
         ensure_installed
-        return 0 if ids.empty?
+        return 0 if claims.empty?
 
         binds = Cast.binds(now, label)
-        sql = +"UPDATE cybertrain_jobs SET heartbeat_at = ? WHERE state = 'running' AND claimed_by = ? AND id IN ("
+        sql = +"UPDATE cybertrain_jobs SET heartbeat_at = ? WHERE state = 'running' AND claimed_by = ? AND ("
         i = 0
-        while i < ids.size
-          sql << ", " if i > 0
-          sql << "?"
-          binds << ids[i]
-          i += 1
+        while i + 1 < claims.size
+          sql << " OR " if i > 0
+          sql << "(id = ? AND attempts = ?)"
+          binds << claims[i]
+          binds << claims[i + 1]
+          i += 2
         end
         sql << ")"
         count = 0
@@ -416,7 +424,13 @@ module Cybertrain
       # heartbeat, and comes back as the {Job::Run} of that attempt. When
       # nothing is due, or another claimer took the row, the Run's run_id
       # is -1 (a typed "none": NOTES rules 11/56) and nothing was written.
-      def self.claim(now, label)
+      # `ticket` is the caller's, opaque here: under the write lock, before
+      # anything is read or written, the claim asks {Job.claim_open?}
+      # whether the caller still wants a row, and takes none when it does
+      # not. The wait for the lock can be long (another process's
+      # transaction), and what the caller checked before the wait may no
+      # longer hold after it.
+      def self.claim(now, label, ticket)
         ensure_installed
         # A read outside any transaction first: an idle thread then takes no
         # write lock (three BEGIN IMMEDIATEs a second per process otherwise,
@@ -437,24 +451,28 @@ module Cybertrain
         # claimers (threads or processes) can both take the last free slot.
         limited = Job.limits?
         DB.transaction(immediate: true) do |c|
-          pairs = Array.new(0) { "" }
-          excluded = limited ? kinds_at_limit(c, pairs) : Array.new(0) { "" }
-          binds = Cast.binds(now)
-          excluded.each { |k| binds << k }
-          pairs.each { |k| binds << k }
-          rows = c.execute(claim_sql(excluded, pairs), binds)
-          unless rows.empty?
-            row = rows[0]
-            found = Cast.int(row["id"])
-            claim = Cast.binds(label, now, now, found)
-            # (attempts is counted here; the outcome write is fenced by it.)
-            c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
-                      "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", claim)
-            if c.changes == 1
-              id = found
-              kind = Cast.str(row["kind"])
-              payload = Cast.str(row["payload"])
-              attempts = Cast.int(row["attempts"]) + 1
+          # The lock is held from here: the caller's last word on the claim.
+          if Job.claim_open?(ticket)
+            pairs = Array.new(0) { "" }
+            excluded = limited ? kinds_at_limit(c, pairs) : Array.new(0) { "" }
+            binds = Cast.binds(now)
+            excluded.each { |k| binds << k }
+            pairs.each { |k| binds << k }
+            rows = c.execute(claim_sql(excluded, pairs), binds)
+            unless rows.empty?
+              row = rows[0]
+              found = Cast.int(row["id"])
+              claim = Cast.binds(label, now, now, found)
+              # (attempts is counted here; the outcome write and the
+              # heartbeat are fenced by it.)
+              c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
+                        "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", claim)
+              if c.changes == 1
+                id = found
+                kind = Cast.str(row["kind"])
+                payload = Cast.str(row["payload"])
+                attempts = Cast.int(row["attempts"]) + 1
+              end
             end
           end
         end

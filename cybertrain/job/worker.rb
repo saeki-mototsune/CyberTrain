@@ -12,7 +12,8 @@ module Cybertrain
     # which delegate here.
     module Worker
       # Guards @live_loops and @stop_seen_at, which every job thread
-      # changes and stop! reads.
+      # changes and stop! reads, and the step of @generation, which decides
+      # whose stop a thread may note.
       POOL_LOCK = Mutex.new
 
       # How long an idle wait sleeps between looks at the stop flag.
@@ -34,9 +35,11 @@ module Cybertrain
       # Config#job_heartbeat_stale of the last start!; 0 before one (recover!
       # then reads Cybertrain.config).
       @heartbeat_stale = 0
-      # Monotonic seconds when a job thread first saw the stop; 0.0 until
-      # then. Written by the threads, not the trap (no clock call in a
-      # signal handler).
+      # Monotonic seconds when a thread of the current generation first saw
+      # the stop; 0.0 until then. Written by the threads, not the trap (no
+      # clock call in a signal handler), and only by threads of the pool
+      # stop! will drain: a thread left from before a restart saw another
+      # pool's stop (note_stop_seen).
       @stop_seen_at = 0.0
 
       # {Job.start!}.
@@ -59,11 +62,9 @@ module Cybertrain
         @poll_interval = config.job_poll_interval
         @heartbeat_interval = config.job_heartbeat_interval
         @drain_timeout = config.job_drain_timeout
-        @stop_seen_at = 0.0
+        generation = begin_generation
         @started = true
         @running = true
-        @generation += 1
-        generation = @generation
         count = config.job_threads
         Cybertrain.logger.info("Job threads started: #{count} (#{Job.process_label})")
         i = 0
@@ -116,10 +117,32 @@ module Cybertrain
         at
       end
 
-      def self.note_stop_seen
+      # Notes when a thread of `generation` saw the stop, the first time
+      # only, and only while that generation is the current one. After a
+      # stop! that timed out and a start!, a thread of the pool before (a
+      # job that outlived the drain, a heartbeat late to wake) ends here
+      # too: its stop is not the new pool's, and its stamp would make the
+      # next stop! count the drain from a time long past.
+      def self.note_stop_seen(generation)
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        POOL_LOCK.synchronize { @stop_seen_at = now if @stop_seen_at == 0.0 }
+        POOL_LOCK.synchronize do
+          @stop_seen_at = now if generation == @generation && @stop_seen_at == 0.0
+        end
         nil
+      end
+
+      # start!'s step to the next generation: the number and the cleared
+      # stop time change together under the lock note_stop_seen takes, so
+      # no thread of the generation before can stamp between the two.
+      # Returns the new generation.
+      def self.begin_generation
+        generation = 0
+        POOL_LOCK.synchronize do
+          @generation += 1
+          @stop_seen_at = 0.0
+          generation = @generation
+        end
+        generation
       end
 
       # How many job threads have not ended yet (a thread finishing its job
@@ -158,9 +181,9 @@ module Cybertrain
       # whole job_drain_timeout for a thread that is gone.)
       def self.run_job_loop(index, generation)
         while pool_live?(generation)
-          idle_wait(@poll_interval, generation) unless claim_safely(Time.now.to_i, index)
+          idle_wait(@poll_interval, generation) unless claim_safely(Time.now.to_i, index, generation)
         end
-        note_stop_seen
+        note_stop_seen(generation)
         nil
       ensure
         loop_ended
@@ -174,8 +197,12 @@ module Cybertrain
       # run_handler does not survive, raised by a job) is logged too, so a
       # job thread never ends while the pool is live: the row is left
       # `running` for heartbeat recovery, which fails it at recovery_limit.
-      def self.claim_safely(now, index)
-        Executor.work_one(now)
+      #
+      # The generation goes with the claim as its ticket: a claim that
+      # waited for the write lock is asked again under it ({Job.claim_open?}),
+      # so a stop requested during the wait is seen before a row is taken.
+      def self.claim_safely(now, index, generation)
+        Executor.work_one_under(now, generation)
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
         Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
         false
@@ -207,7 +234,7 @@ module Cybertrain
         end
         # The heartbeat thread is never busy with a job, so it is the one
         # that notices a request_stop within WAIT_SLICE.
-        note_stop_seen
+        note_stop_seen(generation)
         nil
       end
 

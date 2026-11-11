@@ -48,7 +48,10 @@ Job.handle("again") do |payload|
     c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, heartbeat_at = 5000 " \
               "WHERE kind = 'again' AND state = 'queued'")
   end
-  SEEN << "again"
+  # The stale first attempt is still in flight here; the second claim is
+  # not (the raw UPDATE above stands for it). A heartbeat now is the first
+  # attempt's, and must not touch the second claim's row.
+  SEEN << "again #{Job.heartbeat!(6000)}"
 end
 # Plays a worker whose heartbeat went stale mid-job: while it runs (as
 # "host-a"), the row is recovered and claimed again by "host-b"
@@ -431,11 +434,14 @@ test "an outcome write that fails once is retried and written" do
   assert_includes LOG.string, "[ERROR] job #{id}: outcome write 1 of 3 failed"
 end
 
-test "the outcome is fenced by the attempt: a later claim by this same process wins" do
+test "the outcome and the heartbeat are fenced by the attempt: a later claim by this same process wins" do
   fresh_db
   id = Job.enqueue("again", "", run_at: Time.at(1000))
   assert Job.work_one(1000)
-  assert_equal "again", SEEN.join(",")
+  # The first attempt's heartbeat touched nothing: the row is the second
+  # claim's by then, and recovery can still release it once it is stale.
+  assert_equal "again 0", SEEN.join(",")
+  assert_equal 5000, job_heartbeat(id)
   # The second claim (attempt 2, same label) still runs; the first run's
   # outcome was discarded.
   assert_equal "running", job_state(id)
