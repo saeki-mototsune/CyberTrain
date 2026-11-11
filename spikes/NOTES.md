@@ -88,6 +88,7 @@ written up for upstream.
 | 93 | **Still there**: found on this build (its reduced program prints `true false`; CRuby prints `false false`). |
 | 94, 96, 97, 98 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
 | 95 | Works on this build: a record of a form that compiles, not of a defect. |
+| 99 | **Still there**: found on this build (2026-11-11, issue #188): `dup` on a user-defined class is a shallow copy that shares Array ivars. The generated `<Model>Relation#dup` (D72) is the workaround; test/relation_dup.rb fails without it. |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -105,7 +106,7 @@ The rules are numbered in the order they were found. By topic:
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81, 89
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
-- Memory and GC roots: 58, 64, 65
+- Memory and GC roots: 58, 64, 65, 99 (a shallow built-in `dup`)
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
   91
@@ -1260,7 +1261,7 @@ stage, as that Dockerfile does, satisfies every row.
     still exited 0). Write such files outside the package (the build
     directory, or a `TMPDIR` outside it) and delete them after the grep.
 
-rule N188. `dup` on an instance of a user-defined class compiles without a
+99. `dup` on an instance of a user-defined class compiles without a
     `dup` method in the class, on Spinel 2026.11.04.7026, and is a shallow
     copy: the new object has its own Integer, Boolean and String slots
     (assigning `@limit` on one leaves the other), but an Array ivar is the

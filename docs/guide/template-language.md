@@ -253,7 +253,7 @@ A `Cybertrain::Model` subclass (a generated `Post`, `Note`, ...) resolves a bare
 
 If all four answer `nil`, `attribute_or_method?(:name)` decides whether that was a legitimate name that just holds `nil` (returns the `nil`) or a typo (`"undefined method 'bogus' for Post"`).
 
-**As built, a real gap the interpreter file itself flags** (see the `TODO(integrator)` comment above `class Model` in `interpreter.rb`): the *base* `Cybertrain::Model#attribute_or_method?` always returns `true`. Only a generated model overriding it with an explicit `case` (as the hand-written test models do) actually raises on a typo; without that override, a misspelled attribute or method silently renders empty instead of failing. Do not assume typos are caught unless you know the model overrides this hook.
+**Generated models answer it from their schema.** `spin run gen` emits `attribute_or_method?` in every model as a `case` over its columns (a renamed column under both names), its associations and its public view methods, so `<%= post.titel %>` on a generated model is `"posts/show:3: undefined method 'titel' for Post"`, while a column that holds `nil` renders empty. The *base* `Cybertrain::Model#attribute_or_method?` (in `model.rb`) still returns `true`: a hand-written `Cybertrain::Model` subclass that does not override it renders an unknown name as empty. Upgrade note: a template that read a name its model never had rendered blank before this and raises after the next `spin run gen` (docs/design.md D71).
 
 Two models compare with `==` by class and `id` (`Model#==`), reachable as the ordinary `==` operator (native equality dispatch, not `call_method`).
 
@@ -535,7 +535,7 @@ Any plain `StandardError` from a helper or `FormBuilder`/custom-object method ca
 | `:"quoted symbol"`, `:+` operator symbols | Symbols are identifier characters only |
 | `foo (x)`, `foo [x]` (space tolerated, sometimes with a warning) | Both are hard `SyntaxError`s — no space before a call's `(` or an index's `[` |
 | Nested unparenthesized calls resolved by Ruby's own parser | Only the outermost call in an expression gets parenthesis-free arguments |
-| An undeclared/misspelled attribute reliably raises `NoMethodError` | Silently renders blank unless the specific generated model overrides `attribute_or_method?` (tracked gap, not a guarantee) |
+| An undeclared/misspelled attribute reliably raises `NoMethodError` | A generated model raises `"undefined method 'x' for Post"` (a `Template::RuntimeError`) and renders an existing `nil` attribute empty; a hand-written model that does not override `attribute_or_method?` renders an unknown name empty |
 | `1 / 0` and `1.0 / 0` both raise `ZeroDivisionError` | `Integer` division/modulo by zero raises `"divided by 0"`; `Float` follows IEEE-754 (`Infinity`/`NaN`), no error |
 | `distance_of_time_in_words`/pluralization support i18n locales | English-only, no locale support |
 | Every module in `app/helpers` is mixed in; any signature; a helper may override a framework one | Modules are scanned at build time into a generated `case`: named parameters only, at most three optional, no framework helper name and no `_path`/`_url` ending ([Application helpers](#application-helpers)) |
