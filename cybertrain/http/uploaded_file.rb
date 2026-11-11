@@ -384,6 +384,70 @@ module Cybertrain
       out
     end
 
+    # A Content-Disposition header value for a download, the way Rails'
+    # `send_data` writes it (RFC 6266), ASCII only:
+    #
+    #     attachment; filename="r?sum?.csv"; filename*=UTF-8''r%C3%A9sum%C3%A9.csv
+    #
+    # The quoted `filename` is a fallback for old clients: every non-ASCII
+    # character and every control character becomes one `?`, and `"` and
+    # `\` are escaped with a backslash. `filename*` is the RFC 5987
+    # percent form of the real name, every byte outside the attr-char set
+    # encoded, so the original name survives. An empty `filename` gives the
+    # bare disposition. Unlike {.content_disposition} the name is not
+    # sanitized: pass only a name the application chose.
+    # @example
+    #   UploadedFile.content_disposition_utf8("attachment", "a b.txt") # => "attachment; filename=\"a b.txt\"; filename*=UTF-8''a%20b.txt"
+    # @param disposition [String] "inline" or "attachment"; anything else
+    #   means "attachment"
+    # @param filename [String] may be empty
+    # @return [String]
+    # @api public
+    def self.content_disposition_utf8(disposition, filename)
+      kind = disposition == "inline" ? "inline" : "attachment"
+      s = filename.to_s # NOTES rule 62: a fresh local for the byte scans
+      n = s.bytesize
+      return kind if n == 0
+
+      out = +""
+      out << kind
+      out << "; filename=\""
+      i = 0
+      high = false # the previous byte was part of a non-ASCII character
+      while i < n
+        b = s.getbyte(i)
+        if b >= 0x80
+          out << "?" if b >= 0xC0 || !high
+          high = true
+        else
+          high = false
+          if b < 0x20 || b == 0x7F
+            out << "?"
+          elsif b == 0x22 || b == 0x5C
+            out << "\\"
+            out << s.byteslice(i, 1)
+          else
+            out << s.byteslice(i, 1)
+          end
+        end
+        i += 1
+      end
+      out << "\"; filename*=UTF-8''"
+      i = 0
+      while i < n
+        b = s.getbyte(i)
+        if UploadedFile.attr_char?(b)
+          out << s.byteslice(i, 1)
+        else
+          out << "%"
+          out << UPPER_HEX.byteslice((b >> 4) & 0xF, 1)
+          out << UPPER_HEX.byteslice(b & 0xF, 1)
+        end
+        i += 1
+      end
+      out
+    end
+
     # An RFC 5987 attr-char: ALPHA / DIGIT / ! # $ & + . ^ _ ` | ~ -
     # @api private
     def self.attr_char?(b)

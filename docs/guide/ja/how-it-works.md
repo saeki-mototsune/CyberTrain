@@ -1,5 +1,5 @@
 ---
-source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
+source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -8,13 +8,15 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 
 ## ビルド時のコード生成
 
-`spin run gen`（`bin/gen.rb`）は、`db/schema.rb` の `create_table` DSL と `config/routes.rb` の `Routes.draw` DSL を実行してテーブルとルートの*データ*を得ます。それとは別に、`app/controllers/**/*.rb` と `app/models/**/*.rb` に対して**字句スキャン**（パーサーではなく正規表現。Spinel は実行時にパーサーを公開していません）を行い、`@ivar =` の代入、`before_action`/`after_action`/`rescue_from ... with:` の名前、引数なしの `def` を探します。
+`spin run gen`（`bin/gen.rb`）は、`db/schema.rb` の `create_table` DSL と `config/routes.rb` の `Routes.draw` DSL を実行してテーブルとルートの*データ*を得ます。それとは別に、`app/controllers/**/*.rb` と `app/models/**/*.rb` に対して**字句スキャン**（パーサーではなく正規表現。Spinel は実行時にパーサーを公開していません）を行い、`@ivar =` の代入、`before_action`/`after_action`/`rescue_from ... with:` の名前、`helper_method`・`layout`・`rate_limit` の行、コンサーンの `include`、引数なしの `def` を探します。`app/assets/`、`app/javascript/`、`vendor/javascript/` のファイルにダイジェストを付け、`config/importmap.rb` をテキストとして読みます。
 
 そこから、素の読みやすい Ruby を `gen/` 以下に書き出します：
 
 - `gen/models/<name>.rb`：アクセサー、型変換、ファインダー、外部キーから導いた関連付け
 - `gen/routes.rb`：ルートテーブル、ディスパッチャー、`*_path`/`*_url` ヘルパー
-- `gen/controllers.rb`：コントローラーごとの `view_assigns` と `run_callback`
+- `gen/controllers.rb`：コントローラーごとの `view_assigns`、`run_callback`、`helper_method` の表、`controller_layout`
+- `gen/concerns.rb` と `gen/concerns/**`：コンサーンの `included` ブロックを include する各クラスに差し込んだものと、そのブロックを空にしたコンサーンのモジュール（[コンサーン](requests.md#concerns-and-helper_method)）
+- `gen/assets.rb`：ダイジェスト付きのアセットのパスとインポートマップ（[アセット](assets.md)）。ダイジェスト付きのファイルは `public/assets/` に置く
 - `gen/migrations.rb`
 - `gen/views.rb`：埋め込みビューのテーブル。デプロイ用のビルド以外では空
 - `gen/app.rb`：`require_relative` のマニフェスト
@@ -52,7 +54,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 
 ## 開発ループ
 
-`development`（`cybertrain build` で作ったバイナリ以外での `CYBERTRAIN_ENV` のデフォルト）で `cybertrain server`（`spin run gen`、次に `spin run NAME`）を実行すると、`app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` も 0.5 秒ごとに確認します。ビューは除外され（エンジンが自分で再読み込みするためです）、開発環境では空の `gen/views.rb` も同様です。
+`development`（`cybertrain build` で作ったバイナリ以外での `CYBERTRAIN_ENV` のデフォルト）で `cybertrain server`（`spin run gen`、次に `spin run NAME`）を実行すると、`app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` とアセットのルート（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）も 0.5 秒ごとに確認します。ビューは除外され（エンジンが自分で再読み込みするためです）、開発環境では空の `gen/views.rb` も同様です。
 
 変更があるとバックグラウンドで `spin run gen && spin build NAME -- --incremental` を実行します：Spinel のインクリメンタルビルドで、編集によって変わった C のユニットだけを再コンパイルします。`--incremental` のない Spinel のリリースはこのフラグを拒否し、その場合ループはフラグなしでビルドします。
 
@@ -71,13 +73,15 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | `before_action { do_thing }`（暗黙の `self`） | `before_action { \|c\| c.do_thing }` — 保存したブロックに対する `instance_exec` がないので、コールバックはコントローラーやレコードを明示的に受け取る |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — ネストしたブロックはマッパーを明示的に受け取る |
 | ERB はメソッドにコンパイルされる。どんなオブジェクトの、どんなメソッドでも呼べる | 固定の文法とディスパッチテーブルに対して解釈される（[テンプレート言語](template-language.md)） |
-| セッションはマーシャルされた任意のオブジェクトを保持する | セッションの値は String だけで、HMAC 署名付きの cookie |
+| セッションはマーシャルされた任意のオブジェクトを保持する | セッションの値は String だけで、Rails の cookie store と同じく AES-256-GCM で暗号化した cookie に入る（[Cookie とセッション](requests.md#cookies-and-the-session)） |
 | 多くのデータベースアダプター | FFI による SQLite のみ |
 | `Article.transaction { ... }` はブロックの値を返す。`raise ActiveRecord::Rollback`。`requires_new: true` のセーブポイント | `Article.transaction { \|c\| ... }` は接続を渡して nil を返す。抜けるには例外を出す。ネストした呼び出しは外側のトランザクションに合流し、セーブポイントはない（[トランザクション](models.md#transactions)） |
 | `has_many :through`、enum、STI、ポリモーフィック関連 | 実装されていない。`has_many`、`has_one`、`belongs_to` は外部キーか一行の宣言から作られ、`dependent:`、`counter_cache:`、一段の `includes` がある（[関連付け](models.md#associations)） |
 | `pluck(:a)`、`maximum(:a)`、`group(:a).sum(:b)`、`upsert`、`update_counters`、`where(created_at: t1..t2)` | Spinel のメソッドは戻り値の型がひとつなので、型付きの版になる：`pluck_int` とその仲間、`maximum_int`、`sum_float_by`、`upsert`、`increment(:col, by: n)`。Time の範囲は `where_between`（[`where` を超えるクエリ](models.md#querying-beyond-where)） |
 | 任意のカラム名。関連付けが `errors` を覆い隠せる | ASCII の識別子のみ。フレームワークのメソッドや Ruby のキーワードと同じ名前のカラムは `<column>_column` として生成され、衝突する関連付けは代わりの名前で生成される（[カラム名](models.md#column-names)） |
-| `namespace`、format/`respond_to`、`constraints`、`mount` | 実装されていない — 名前はフラットで、`render json:` のみ |
+| `namespace`、`scope`、フォーマットと `respond_to` | 同じ（[ルーティング](requests.md#routing)、[フォーマット](requests.md#formats-and-respond_to)）。JSON は `render json:` で返す（jbuilder のテンプレートはない） |
+| `constraints`、`mount`、glob セグメント | 実装されていない |
+| 実行時に include される `ActiveSupport::Concern` | `app/controllers/concerns` と `app/models/concerns` のコンサーンを、`spin run gen` が include するクラスに展開する。`include` はコンサーンを指し、`class_methods` のメソッドはインスタンスメソッドと同じ名前にできない（[コンサーン](requests.md#concerns-and-helper_method)） |
 | `rescue StandardError` が不正な `JSON.parse` を捕まえる | Spinel では `JSON::ParserError` は `StandardError` ではない：アプリのコードは `rescue JSON::ParserError, StandardError` と書く必要がある。サーバーは最後の手段としてこれを捕まえ、500 を返す |
 | API コントローラーで `skip_forgery_protection` | CSRF はルーティングの前に実行されるので、API はパスで除外し（`c.csrf_exempt_prefixes = ["/api/"]`）、呼び出し元を自分で認証する（[設定](configuration.md#configuration-and-environment-variables)） |
 | Rack は gzip されたリクエストボディをそのままにする | `Content-Encoding: gzip` のボディは `request.decoded_body` で、10 MiB の上限のもとで展開される。壊れたものや大きすぎるものは 400。`request.body` は送られたままのバイト列（[クエリ文字列とボディ](requests.md#query-strings-and-bodies)） |
@@ -100,6 +104,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | `get "up" => "rails/health#show"`（コントローラーへのルート） | `GET /up` は組み込みで、静的ファイル、セッション、ルーターより前に応答するので、`before_action` は実行されない。データベース、ワーカー、WebSocket のフィードを確認し、`200 ok` または `503` を返す（[運用](background-and-operations.md#operations-backups-vacuum-health-check)） |
 | バックアップ用の `bin/rails db:...` タスク（組み込みはない） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`、モード 0600、所定の場所にリネーム）と `./<app> db vacuum` |
 | Action Cable、`turbo_stream_from`、`broadcast_append_to` | 同じヘルパー名で、1 つの SQLite テーブルから Server-Sent Events か WebSocket で配信される署名付きストリーム。チャンネルのクラスはない（[リアルタイム](realtime.md)） |
-| アセットパイプライン、i18n | まだ作られていない（後のフェーズ。`docs/design.md` D1） |
+| Propshaft、importmap-rails | 同じ配置（`app/assets`、`app/javascript`、`vendor/javascript`、`config/importmap.rb`）で、`spin run gen` がダイジェストを付けて `public/assets/` に書く。`bin/importmap pin` はなく、Turbo は同梱しない（[アセット](assets.md)） |
+| i18n | まだ作られていない（フェーズ 4b。`docs/design.md` D1） |
 
 <!-- table-foot: これですべてではありません：より詳しい記録は docs/design.md §8（「What was deliberately left out」）にあります。 -->

@@ -30,7 +30,7 @@ module Cybertrain
         stamps.delete("") # a typed empty Hash (spikes/NOTES.md rule 9)
         @globs.each do |pattern|
           Dir.glob(pattern).each do |path|
-            next if @ignored.include?(path)
+            next if @ignored.include?(path) || Watcher.scratch_path?(path)
 
             stamp = Watcher.mtime_stamp(path)
             stamps[path] = stamp if stamp >= 0
@@ -80,6 +80,15 @@ module Cybertrain
         thread.join unless thread.nil?
         @thread = nil
         nil
+      end
+
+      # An editor's backup or lock file that a `**/*` pattern (the asset
+      # roots of Dev::WATCHED) would otherwise match: `foo.css~`, Emacs'
+      # `#foo.css#`, and Vim's `4913` write probe. Dotfiles (`.foo.swp`,
+      # `.#foo`) never match a glob.
+      def self.scratch_path?(path)
+        name = File.basename(path)
+        name.end_with?("~") || name.start_with?("#") || name == "4913"
       end
 
       # -1 for anything that is not a regular file (or vanished meanwhile).

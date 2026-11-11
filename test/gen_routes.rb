@@ -157,8 +157,8 @@ test "names derived from a path become method-name prefixes" do
   ]
   assert_equal expected, route_lines(Cybertrain::Routes.specs)
   source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
-  assert_includes source, "    def about_us_path\n"
-  assert_includes source, "    def robots_txt_url\n"
+  assert_includes source, "    def about_us_path(options = {})\n"
+  assert_includes source, "    def robots_txt_url(options = {})\n"
 end
 
 test "a name that is not a method-name prefix raises" do
@@ -360,19 +360,19 @@ end
 
 test "emitted source defines path and url helpers" do
   source = Cybertrain::Gen::RoutesEmitter.emit(draw_blog)
-  assert_includes source, "    def posts_path\n      \"/posts\"\n    end\n"
-  assert_includes source, "    def edit_post_path(post)\n      \"/posts/\#{Cybertrain::Gen.segment(post)}/edit\"\n    end\n"
-  assert_includes source, "    def post_comments_path(post)\n      \"/posts/\#{Cybertrain::Gen.segment(post)}/comments\"\n    end\n"
-  assert_includes source, "    def post_comment_path(post, comment)\n"
-  assert_includes source, "    def post_url(post)\n      Cybertrain.url_root + post_path(post)\n    end\n"
-  assert_includes source, "    def root_path\n      \"/\"\n    end\n"
+  assert_includes source, "    def posts_path(options = {})\n      Cybertrain::Gen.with_options(\"/posts\", options)\n    end\n"
+  assert_includes source, "    def edit_post_path(post, options = {})\n      Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(post)}/edit\", options)\n    end\n"
+  assert_includes source, "    def post_comments_path(post, options = {})\n      Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(post)}/comments\", options)\n    end\n"
+  assert_includes source, "    def post_comment_path(post, comment, options = {})\n"
+  assert_includes source, "    def post_url(post, options = {})\n      Cybertrain.url_root + post_path(post, options)\n    end\n"
+  assert_includes source, "    def root_path(options = {})\n      Cybertrain::Gen.with_options(\"/\", options)\n    end\n"
   assert_includes source, "class Cybertrain::Controller\n  include ::Gen::UrlHelpers\nend\n"
 end
 
 test "emitted path_for resolves helper names with positional args" do
   source = Cybertrain::Gen::RoutesEmitter.emit(draw_blog)
-  assert_includes source, "      when \"post_path\" then \"/posts/\#{Cybertrain::Gen.segment(args[0])}\"\n"
-  assert_includes source, "      when \"post_comment_url\" then Cybertrain.url_root + \"/posts/\#{Cybertrain::Gen.segment(args[0])}/comments/\#{Cybertrain::Gen.segment(args[1])}\"\n"
+  assert_includes source, "      when \"post_path\" then Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(args[0])}\", options)\n"
+  assert_includes source, "      when \"post_comment_url\" then Cybertrain.url_root + Cybertrain::Gen.with_options(\"/posts/\#{Cybertrain::Gen.segment(args[0])}/comments/\#{Cybertrain::Gen.segment(args[1])}\", options)\n"
   assert_includes source, "      else raise ArgumentError, \"unknown route helper '\#{name}'\"\n"
 end
 
@@ -394,38 +394,38 @@ test "emitted source for a small route set" do
           router
         end
 
-        # The helper named by a String, for templates: path_for("user_path", [user]).
-        def self.path_for(name, args)
+        # The helper named by a String, for templates: path_for("user_path", [user], { "page" => 2 }).
+        def self.path_for(name, args, options = {})
           case name
-          when "root_path" then "/"
-          when "root_url" then Cybertrain.url_root + "/"
-          when "user_path" then "/users/#{Cybertrain::Gen.segment(args[0])}"
-          when "user_url" then Cybertrain.url_root + "/users/#{Cybertrain::Gen.segment(args[0])}"
+          when "root_path" then Cybertrain::Gen.with_options("/", options)
+          when "root_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/", options)
+          when "user_path" then Cybertrain::Gen.with_options("/users/#{Cybertrain::Gen.segment(args[0])}", options)
+          when "user_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/users/#{Cybertrain::Gen.segment(args[0])}", options)
           else raise ArgumentError, "unknown route helper '#{name}'"
           end
         end
 
         # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).
         def self.url_resolver
-          ->(name, args) { path_for(name, args) }
+          ->(name, args, options) { path_for(name, args, options) }
         end
       end
 
       module UrlHelpers
-        def root_path
-          "/"
+        def root_path(options = {})
+          Cybertrain::Gen.with_options("/", options)
         end
 
-        def root_url
-          Cybertrain.url_root + root_path
+        def root_url(options = {})
+          Cybertrain.url_root + root_path(options)
         end
 
-        def user_path(user)
-          "/users/#{Cybertrain::Gen.segment(user)}"
+        def user_path(user, options = {})
+          Cybertrain::Gen.with_options("/users/#{Cybertrain::Gen.segment(user)}", options)
         end
 
-        def user_url(user)
-          Cybertrain.url_root + user_path(user)
+        def user_url(user, options = {})
+          Cybertrain.url_root + user_path(user, options)
         end
       end
     end
@@ -441,7 +441,7 @@ test "emitted source with no named routes still parses" do
   Cybertrain::Routes.reset!
   source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
   assert_includes source, "    def self.build(router)\n      router\n    end\n"
-  assert_includes source, "    def self.path_for(name, args)\n      raise ArgumentError, \"unknown route helper '\#{name}'\"\n    end\n"
+  assert_includes source, "    def self.path_for(name, args, options = {})\n      raise ArgumentError, \"unknown route helper '\#{name}'\"\n    end\n"
 end
 
 test "Gen.param and Gen.segment turn helper arguments into path segments" do
@@ -450,6 +450,33 @@ test "Gen.param and Gen.segment turn helper arguments into path segments" do
   assert_equal "a%20b%2Fc", Cybertrain::Gen.segment("a b/c")
   assert_equal "12", Cybertrain::Gen.segment(12)
   assert_equal "missing route parameter", assert_raises("ArgumentError") { Cybertrain::Gen.segment(nil) }
+end
+
+test "a segment named options leaves the helper's options Hash another name" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw { get "/prefs/:options", to: "prefs#show", as: "prefs" }
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "    def prefs_path(options, _options = {})\n      Cybertrain::Gen.with_options(\"/prefs/\#{Cybertrain::Gen.segment(options)}\", _options)\n    end\n"
+  assert_includes source, "    def prefs_url(options, _options = {})\n      Cybertrain.url_root + prefs_path(options, _options)\n    end\n"
+  Cybertrain::Routes.reset!
+end
+
+test "Gen.with_options appends format, query and anchor (spec 2.6, plan decision 14)" do
+  assert_equal "/p", Cybertrain::Gen.with_options("/p", {})
+  assert_equal "/p.json?page=2&q=a+b%26c#x%20y", Cybertrain::Gen.with_options("/p", { anchor: "x y", page: 2, format: :json, q: "a b&c" })
+  assert_equal "/p?b=1&a=2", Cybertrain::Gen.with_options("/p", { b: 1, a: 2 })
+  assert_equal "/p?x=", Cybertrain::Gen.with_options("/p", { x: "", y: nil, format: nil, anchor: nil })
+  assert_equal "/p?on=true&off=false&f=1.5", Cybertrain::Gen.with_options("/p", { on: true, off: false, f: 1.5 })
+  assert_equal "/p?ids%5B%5D=1&ids%5B%5D=2", Cybertrain::Gen.with_options("/p", { ids: [1, 2] })
+  assert_equal "/p.csv?page=3#top", Cybertrain::Gen.with_options("/p", { "page" => 3, "format" => "csv", "anchor" => "top" })
+  assert_equal "/p#", Cybertrain::Gen.with_options("/p", { anchor: "" })
+  # the fragment keeps / ? : @ and sub-delims as Rails' escape_fragment does
+  assert_equal "/p#a/b", Cybertrain::Gen.with_options("/p", { anchor: "a/b" })
+  assert_equal "/p#q?x=1&y=@2:3", Cybertrain::Gen.with_options("/p", { anchor: "q?x=1&y=@2:3" })
+  assert_equal "/p#a%23b%25%20%C3%A9", Cybertrain::Gen.with_options("/p", { anchor: "a#b% é" })
+  msg ="path helper option :q must be a String, Symbol, number, boolean or Array (got Hash)"
+  assert_equal msg, assert_raises("ArgumentError") { Cybertrain::Gen.with_options("/p", { q: { "a" => "b" } }) }
+  assert_equal msg, assert_raises("ArgumentError") { Cybertrain::Gen.with_options("/p", { q: [{ "a" => "b" }] }) }
 end
 
 # --- jobs_page -----------------------------------------------------------
@@ -535,6 +562,342 @@ test "jobs_page refuses a path it cannot route and a before_action that is not a
     end
   end
   assert_equal "jobs_page must be used at the top of the routes, not inside resources", message
+  Cybertrain::Routes.reset!
+end
+
+# --- namespace, scope, resource blocks, controller:, on:, param: --------
+
+test "namespace prefixes path, helper and controller, and nests" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    namespace :admin do |admin|
+      admin.resources :articles, only: [:index, :destroy]
+      admin.namespace :reports do |reports|
+        reports.get "/daily", to: "daily#show"
+      end
+      admin.jobs_page "/jobs", before_action: :require_admin
+    end
+  end
+  lines = route_lines(Cybertrain::Routes.specs)
+  assert_includes lines, "GET /admin/articles admin/articles#index admin_articles"
+  assert_includes lines, "DELETE /admin/articles/:id admin/articles#destroy admin_article"
+  assert_includes lines, "GET /admin/reports/daily admin/reports/daily#show admin_reports_daily"
+  assert_includes lines, "POST /admin/jobs/:id/retry cybertrain_jobs#retry"
+  assert_equal "/admin/jobs", Cybertrain::Routes.jobs_page_spec.jobs_path
+  assert_equal "Admin::ArticlesController", Cybertrain::Routes.specs[0].controller_class
+  assert_equal "Admin::Reports::DailyController", Cybertrain::Routes.specs[2].controller_class
+  assert_equal ["article"], Cybertrain::Routes.specs[1].helper_args
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, %(      router.add("DELETE", "/admin/articles/:id", "admin_article") { |ctx| Admin::ArticlesController.new(ctx).process(:destroy) { |c| c.destroy } }\n)
+  assert_includes source, "    def admin_article_path(article, options = {})\n      Cybertrain::Gen.with_options(\"/admin/articles/\#{Cybertrain::Gen.segment(article)}\", options)\n    end\n"
+  assert_includes source, "    def admin_reports_daily_path(options = {})\n"
+end
+
+test "namespace draws root and a nested resource under its prefix" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    namespace :admin do |admin|
+      admin.root "dashboard#index"
+      admin.resources :posts, only: [:show] do |posts|
+        posts.resources :comments, only: [:index]
+        posts.get "stats"
+      end
+      admin.get "/report", to: "reports#show", as: "report"
+    end
+    get "/about", to: "pages#about"
+  end
+  expected = [
+    "GET /admin admin/dashboard#index admin_root",
+    "GET /admin/posts/:post_id/comments admin/comments#index admin_post_comments",
+    "GET /admin/posts/:post_id/stats admin/posts#stats admin_post_stats",
+    "GET /admin/posts/:id admin/posts#show admin_post",
+    "GET /admin/report admin/reports#show admin_report",
+    "GET /about pages#about about"
+  ]
+  assert_equal expected, route_lines(Cybertrain::Routes.specs)
+end
+
+test "scope path, module and as each change one thing and combine" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    scope("dashboard") { |s| s.get "/stats", to: "stats#index" }
+    scope(module: "admin") { |s| s.resources :users, only: [:index] }
+    scope(as: "admin") { |s| s.get "/stats", to: "stats#index" }
+    scope("/x", module: "y", as: "z") { |s| s.get "/a", to: "p#a" }
+  end
+  expected = [
+    "GET /dashboard/stats stats#index stats",
+    "GET /users admin/users#index users",
+    "GET /stats stats#index admin_stats",
+    "GET /x/a y/p#a z_a"
+  ]
+  assert_equal expected, route_lines(Cybertrain::Routes.specs)
+  assert_equal "Admin::UsersController", Cybertrain::Routes.specs[1].controller_class
+end
+
+test "a scope path with a dynamic segment gives the helpers an argument" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    scope "/:locale" do |s|
+      s.resources :posts, only: [:show]
+    end
+  end
+  assert_equal ["GET /:locale/posts/:id posts#show post"], route_lines(Cybertrain::Routes.specs)
+  assert_equal ["locale", "post"], Cybertrain::Routes.specs[0].helper_args
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "    def post_path(locale, post, options = {})\n"
+end
+
+test "resource takes controller: and a block with member routes and nested resources" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    resource :session, controller: "auth/sessions" do |s|
+      s.get :refresh, on: :member
+      s.resource :settings, only: [:edit, :update]
+      s.resources :devices, only: [:index]
+    end
+  end
+  expected = [
+    "GET /session/refresh auth/sessions#refresh refresh_session",
+    "GET /session/settings/edit settings#edit edit_session_settings",
+    "PATCH /session/settings settings#update session_settings",
+    "PUT /session/settings settings#update",
+    "GET /session/devices devices#index session_devices",
+    "POST /session auth/sessions#create session",
+    "GET /session/new auth/sessions#new new_session",
+    "GET /session/edit auth/sessions#edit edit_session",
+    "GET /session auth/sessions#show",
+    "PATCH /session auth/sessions#update",
+    "PUT /session auth/sessions#update",
+    "DELETE /session auth/sessions#destroy"
+  ]
+  assert_equal expected, route_lines(Cybertrain::Routes.specs)
+  assert_equal "Auth::SessionsController", Cybertrain::Routes.specs[0].controller_class
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "    def edit_session_settings_path(options = {})\n      Cybertrain::Gen.with_options(\"/session/settings/edit\", options)\n    end\n"
+  assert_includes source, "    def session_devices_path(options = {})\n"
+end
+
+test "resources controller: and param:" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    resources :indicators, param: :key, controller: "metrics" do |i|
+      i.resources :points, only: [:index]
+    end
+  end
+  expected = [
+    "GET /indicators/:indicator_key/points points#index indicator_points",
+    "GET /indicators metrics#index indicators",
+    "POST /indicators metrics#create",
+    "GET /indicators/new metrics#new new_indicator",
+    "GET /indicators/:key/edit metrics#edit edit_indicator",
+    "GET /indicators/:key metrics#show indicator",
+    "PATCH /indicators/:key metrics#update",
+    "PUT /indicators/:key metrics#update",
+    "DELETE /indicators/:key metrics#destroy"
+  ]
+  specs = Cybertrain::Routes.specs
+  assert_equal expected, route_lines(specs)
+  assert_equal ["indicator"], specs[0].helper_args
+  assert_equal ["indicator"], specs[5].helper_args
+  assert_equal "MetricsController", specs[5].controller_class
+  source = Cybertrain::Gen::RoutesEmitter.emit(specs)
+  assert_includes source, "    def indicator_points_path(indicator, options = {})\n      Cybertrain::Gen.with_options(\"/indicators/\#{Cybertrain::Gen.segment(indicator)}/points\", options)\n    end\n"
+  assert_includes source, "    def indicator_path(indicator, options = {})\n      Cybertrain::Gen.with_options(\"/indicators/\#{Cybertrain::Gen.segment(indicator)}\", options)\n    end\n"
+  assert_includes source, "      when \"edit_indicator_path\" then Cybertrain::Gen.with_options(\"/indicators/\#{Cybertrain::Gen.segment(args[0])}/edit\", options)\n"
+end
+
+test "on: :collection and on: :member inside resources" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    resources :posts, only: [:show] do |p|
+      p.get :search, on: :collection
+      p.post :publish, on: :member
+    end
+  end
+  expected = [
+    "GET /posts/search posts#search search_posts",
+    "POST /posts/:id/publish posts#publish publish_post",
+    "GET /posts/:id posts#show post"
+  ]
+  assert_equal expected, route_lines(Cybertrain::Routes.specs)
+  assert_equal ["post"], Cybertrain::Routes.specs[1].helper_args
+  assert_equal 0, Cybertrain::Routes.specs[0].helper_args.size
+end
+
+test "format: false on a route, resources, resource and root" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    root "pages#home", format: false
+    get "/files/:name", to: "pages#file", format: false
+    post "/files", to: "pages#upload", format: false
+    patch "/files/:name", to: "pages#rename", format: false
+    put "/files/:name", to: "pages#replace", format: false
+    delete "/files/:name", to: "pages#remove", format: false
+    resources :reports, only: [:index, :show], format: false
+    resource :profile, only: [:show], format: false
+    get "/about", to: "pages#about"
+    resources :posts, only: [:show]
+  end
+  specs = Cybertrain::Routes.specs
+  assert_equal [false, false, false, false, false, false, false, false, false, true, true], specs.map { |s| s.takes_format }
+  source = Cybertrain::Gen::RoutesEmitter.emit(specs)
+  assert_includes source, "router.add(\"GET\", \"/\", \"root\", false) { |ctx| PagesController.new(ctx)"
+  assert_includes source, "router.add(\"GET\", \"/files/:name\", \"files_name\", false) { |ctx| PagesController.new(ctx).process(:file) { |c| c.file } }"
+  assert_includes source, "router.add(\"GET\", \"/about\", \"about\") { |ctx| PagesController.new(ctx)"
+  assert_includes source, "router.add(\"GET\", \"/posts/:id\", \"post\") { |ctx| PostsController.new(ctx)"
+end
+
+test "redirect routes" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    get "/old", to: redirect("/new")
+    get "/posts/:id/show", to: redirect("/posts/%{id}", status: 302)
+    get "/legacy/:slug", to: redirect("/articles/%{slug}"), format: false
+    resources :posts, only: [:show] do |posts|
+      posts.get :permalink, on: :member, to: posts.redirect("/p/%{id}", status: 308)
+    end
+  end
+  spec = Cybertrain::Routes.specs[0]
+  assert_equal "/new", spec.redirect_location
+  assert_equal 301, spec.redirect_code
+  assert_equal "", spec.name
+  source = Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs)
+  assert_includes source, "      router.add(\"GET\", \"/old\", \"\") { |ctx| Cybertrain::Router.redirect_to(ctx, \"/new\", 301) }\n"
+  assert_includes source, "      router.add(\"GET\", \"/posts/:id/show\", \"\") { |ctx| Cybertrain::Router.redirect_to(ctx, \"/posts/%{id}\", 302) }\n"
+  assert_includes source, "      router.add(\"GET\", \"/legacy/:slug\", \"\", false) { |ctx| Cybertrain::Router.redirect_to(ctx, \"/articles/%{slug}\", 301) }\n"
+  assert_includes source, "      router.add(\"GET\", \"/posts/:id/permalink\", \"\") { |ctx| Cybertrain::Router.redirect_to(ctx, \"/p/%{id}\", 308) }\n"
+  # A redirect route with as: is named like any other.
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw { get "/old", to: redirect("/new"), as: "old" }
+  assert_equal "old", Cybertrain::Routes.specs[0].name
+  assert_includes Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs), "def old_path(options = {})\n"
+  Cybertrain::Routes.reset!
+end
+
+test "redirect refuses a status that is not 3xx and a %{name} the pattern lacks" do
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/old", to: redirect("/new", status: 200) }
+  end
+  assert_equal "redirect status: must be a 3xx code (got 200)", message
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/old", to: redirect("/new", status: 309) }
+  end
+  assert_equal "redirect status: must be a 3xx code (got 309)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/posts/:id/show", to: redirect("/posts/%{slug}") }
+  end
+  assert_equal "redirect(\"/posts/%{slug}\"): %{slug} is not a segment of /posts/:id/show", message
+  Cybertrain::Routes.reset!
+end
+
+test "a route path's :param name must be a lowercase name" do
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/users/:", to: "users#show" }
+  end
+  assert_equal "route path \"/users/:\": \":\" is not a valid param name (lowercase letters, digits and _)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/:Key", to: "users#show", as: "key" }
+  end
+  assert_equal "route path \"/:Key\": \":Key\" is not a valid param name (lowercase letters, digits and _)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { scope("/:") { |s| s.get "/about", to: "pages#about" } }
+  end
+  assert_equal "route path \"/:\": \":\" is not a valid param name (lowercase letters, digits and _)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw { get "/old/:Id", to: redirect("/new") }
+  end
+  assert_equal "route path \"/old/:Id\": \":Id\" is not a valid param name (lowercase letters, digits and _)", message
+  # Valid names pass, and the optional format extension is matched at run
+  # time, never written into the pattern, so it cannot trip the check.
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    scope "/:locale" do |s|
+      s.get "/users/:user_id/posts/:id2", to: "posts#show", as: "user_post"
+    end
+  end
+  spec = Cybertrain::Routes.specs[0]
+  assert_equal "/:locale/users/:user_id/posts/:id2", spec.pattern
+  assert spec.takes_format
+  assert_equal ["locale", "user", "id2"], spec.helper_args
+  Cybertrain::Routes.reset!
+end
+
+test "RouteSpec takes a format by default" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw { get "/about", to: "pages#about" }
+  assert Cybertrain::Routes.specs[0].takes_format
+end
+
+test "misuse is refused with a message" do
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      resources :posts do |posts|
+        posts.namespace :admin do |admin|
+          admin.get "/x", to: "x#y"
+        end
+      end
+    end
+  end
+  assert_equal "namespace must be used outside resources", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      resources :posts do |posts|
+        posts.scope("/v1") { |s| s.get "/x", to: "x#y" }
+      end
+    end
+  end
+  assert_equal "scope must be used outside resources", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      get :refresh, to: "sessions#refresh", on: :member
+    end
+  end
+  assert_equal "on: :member must be used inside resources or resource", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      resource :session do |s|
+        s.get :recent, on: :collection
+      end
+    end
+  end
+  assert_equal "on: :collection must be used inside resources", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      resources :posts do |posts|
+        posts.get :recent, on: :new
+      end
+    end
+  end
+  assert_equal "on: must be :member or :collection (got :new)", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      resources :indicators, param: "Key"
+    end
+  end
+  assert_equal "param: must be a lowercase name (got \"Key\")", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      jobs_page "/ops/jobs"
+      namespace :admin do |admin|
+        admin.jobs_page "/jobs"
+      end
+    end
+  end
+  assert_equal "jobs_page \"/admin/jobs\": the jobs page is already drawn at \"/ops/jobs\" (one per application)", message
   Cybertrain::Routes.reset!
 end
 

@@ -28,6 +28,28 @@ class CardComponent < Cybertrain::Component
   end
 end
 
+class ReceiptComponent < Cybertrain::Component
+  def view_assigns
+    { "cents" => @cents }
+  end
+
+  def call_view_method(name)
+    nil
+  end
+
+  def view_method?(name)
+    false
+  end
+
+  def component_name
+    "receipt"
+  end
+
+  def component_template
+    "__components/receipt_component.html.erb"
+  end
+end
+
 module Gen
   module Components
     # kwargs: Hash<String, polymorphic> from the template.
@@ -38,6 +60,9 @@ module Gen
         if kwargs.key?("value") then ::CardComponent.new(title: kwargs["title"], value: kwargs["value"])
         else ::CardComponent.new(title: kwargs["title"])
         end
+      when "receipt"
+        Cybertrain::Component.check_keywords!(name, kwargs, ["cents"], 1)
+        ::ReceiptComponent.new(cents: kwargs["cents"])
       else
         raise Cybertrain::Component::Unknown, "no component '#{name}' (app/components/#{name}_component.rb, then `spin run gen`)"
       end

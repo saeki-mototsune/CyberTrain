@@ -1,5 +1,5 @@
 ---
-source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -137,6 +137,7 @@ blog/
   spin.toml  config/app.rb  config/routes.rb
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
+  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
   gen/  storage/  tmp/  test/
 ```
@@ -148,6 +149,9 @@ blog/
 использует `cybertrain db migrate`, потому что `bin/blog.rb` не
 скомпилируется, пока первая миграция не сгенерирует `gen/models/`). В `gen/`
 уже лежит `views.rb` — закоммиченная пустая таблица встроенных представлений.
+Лейаут подключает `app/assets/stylesheets/application.css` через
+`stylesheet_link_tag`; `spin run gen` записывает его с дайджестом в
+`public/assets/`, который исключён из git (см. [Ассеты](assets.md)).
 
 `ApplicationController` изначально выглядит так, поэтому отсутствующая запись
 через `rescue_from` превращается в 404:
@@ -847,7 +851,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
     `Cybertrain.config.test?`, так что наборы тестов не платят
     production-стоимость за каждого пользователя; дайджесты хранят своё число
     итераций, поэтому больше ничего не меняется.
-- **Сессия** (`session[:key]`, подписанный cookie): `clear` очищает её (вместе
+- **Сессия** (`session[:key]`, зашифрованный cookie): `clear` очищает её (вместе
   с токеном CSRF) при выходе, а `config.session_absolute_max_age` (две недели;
   `0` отключает) ограничивает всё время жизни сессии, как бы часто ею ни
   пользовались: cookie хранит момент своей первой записи, cookie старше этого
@@ -908,7 +912,9 @@ end
 > этого шага. Частота попыток входа ограничена, как в генераторе Rails:
 > `SessionsController` объявляет `rate_limit to: 10, within: 3 * 60, only:
 > [:create]`, десять попыток с одного адреса клиента за три минуты, затем
-> возврат к форме с "Try again later.", пока окно не закроется. За обратным
+> возврат к форме с "Try again later.", пока окно не закроется. Счётчики
+> хранятся в базе данных приложения (`Cybertrain::Cache`), поэтому все
+> процессы приложения считают вместе. За обратным
 > прокси каждый посетитель считается по адресу прокси, если не настроены
 > [доверенные прокси](requests.md#rate-limiting-and-the-client-address). Не
 > генерируется: сброс пароля — его письму нужны настройки SMTP приложения
@@ -1176,7 +1182,7 @@ kamal deploy   # каждое следующее развёртывание
 > застали вас врасплох.
 
 <!-- list: points know -->
-- Сессии хранят только строки (String) в cookie с подписью HMAC.
+- Сессии хранят только строки (String) в зашифрованной cookie.
 - Только SQLite, через FFI Spinel.
 - Бэктрейсов нет: ошибки показывают класс, сообщение, строку запроса и
   имя/строку шаблона.
@@ -1185,8 +1191,8 @@ kamal deploy   # каждое следующее развёртывание
 - Ассоциации выводятся из внешних ключей или однострочных объявлений; нет
   `has_many :through`, вложенного `includes`, enum, STI и полиморфных
   ассоциаций.
-- Нет `namespace`, `respond_to`/форматов, `constraints` и `mount`;
-  `render json:` минимален.
+- Нет `constraints` и `mount`; JSON отдаётся через `render json:`, который
+  минимален.
 - В модели, созданной скаффолдом, валидацию присутствия по умолчанию получает
   только первое строковое поле.
 - Генератор обрабатывает `app/controllers` и `app/models` лексическим

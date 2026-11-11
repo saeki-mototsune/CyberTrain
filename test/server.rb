@@ -305,7 +305,7 @@ end
 test "a body over max_body_bytes gets 413 and the connection closes" do
   c = RawClient.new($server.port)
   c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nContent-Length: 65\r\n\r\n")
-  assert_equal "HTTP/1.1 413 Payload Too Large", c.read_response(false).status_line
+  assert_equal "HTTP/1.1 413 Content Too Large", c.read_response(false).status_line
   assert c.closed_by_server?
   c.close
 end
@@ -313,7 +313,7 @@ end
 test "a Content-Length too large for an Integer gets 413" do
   c = RawClient.new($server.port)
   c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nContent-Length: 99999999999999999999999999\r\n\r\n")
-  assert_equal "HTTP/1.1 413 Payload Too Large", c.read_response(false).status_line
+  assert_equal "HTTP/1.1 413 Content Too Large", c.read_response(false).status_line
   assert c.closed_by_server?
   c.close
 end

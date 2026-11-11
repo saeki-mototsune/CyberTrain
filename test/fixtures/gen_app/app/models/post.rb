@@ -1,12 +1,14 @@
 class Post
   encrypts :secret_note
   validates :title, presence: true
+  include Visible
   validates :title, uniqueness: true, length: { maximum: 40 }
   validates :views, numericality: { greater_than_or_equal_to: 0 }
   validate :title_not_reserved, if: :published?
   has_many :comments, dependent: :destroy
   scope :recent, -> { order(created_at: :desc) }
   scope :min_views, ->(n) { where("views >= ?", n) }
+  before_save { |r| r.body = "#{r.body}>post" if r.title == "callback order" }
 
   def summary = title[0, 3]
   def published? = !published_on.nil?

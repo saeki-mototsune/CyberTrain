@@ -1,5 +1,6 @@
 require "tmpdir"
 require "cybertrain/middleware/static"
+require "cybertrain/assets"
 require "cybertrain/router"
 require "cybertrain/test"
 
@@ -11,9 +12,57 @@ File.write(ROOT + "/index.html", "<h1>home</h1>")
 File.write(ROOT + "/data.bin", "raw")
 SECRET = ROOT + "-secret.txt"
 File.write(SECRET, "top secret")
+OUTSIDE = ROOT + "-outside"
+Dir.mkdir(OUTSIDE)
+File.write(OUTSIDE + "/x.txt", "outside")
+# public/assets as gen leaves it: current digests (the resolver below,
+# standing in for gen/assets.rb), one kept in .manifest, an undigested file
+# the application keeps there, and a digest-shaped name gen never wrote.
+Dir.mkdir(ROOT + "/assets")
+Dir.mkdir(ROOT + "/assets/controllers")
+Dir.mkdir(ROOT + "/x")
+ASSET_FILES = ["assets/app-1a2b3c4d.css", "assets/app-0badf00d.css", "assets/controllers/hello_controller-abcdef01.js",
+               "assets/LICENSE-2b3c4d5e", "assets/plain.txt", "assets/app-99999999.css", "x/app-1a2b3c4d.css"]
+ASSET_FILES.each { |f| File.write("#{ROOT}/#{f}", "/* #{f} */") }
+File.write(ROOT + "/assets/.manifest", "app.css 1a2b3c4d 0badf00d\n../escape.css 0badf00d\n")
+File.write(ROOT + "/assets/controllers/.hello_controller-abcdef01.js.123.tmp", "partial")
+Dir.mkdir(ROOT + "/.well-known")
+File.write(ROOT + "/.well-known/security.txt", "Contact: mailto:security@example.com\n")
+File.symlink(SECRET, ROOT + "/link.txt")
+File.symlink(OUTSIDE, ROOT + "/outdir")
+File.symlink(ROOT + "/robots.txt", ROOT + "/inner.txt")
+
+module StaticAssets
+  def self.digest_path(logical)
+    case logical
+    when "app.css" then "/assets/app-1a2b3c4d.css"
+    when "controllers/hello_controller.js" then "/assets/controllers/hello_controller-abcdef01.js"
+    when "LICENSE" then "/assets/LICENSE-2b3c4d5e"
+    else ""
+    end
+  end
+
+  def self.resolver = ->(name) { digest_path(name) }
+end
+
+Cybertrain::Assets.install(StaticAssets.resolver, "{\"imports\":{}}", Array.new(0) { "" })
+Cybertrain::Assets.load_kept(ROOT)
 
 # Test.run! exits the process, so the temporary files are removed at exit.
 at_exit do
+  ASSET_FILES.each { |f| File.delete("#{ROOT}/#{f}") }
+  File.delete(ROOT + "/assets/.manifest")
+  File.delete(ROOT + "/assets/controllers/.hello_controller-abcdef01.js.123.tmp")
+  File.delete(ROOT + "/.well-known/security.txt")
+  Dir.rmdir(ROOT + "/.well-known")
+  Dir.rmdir(ROOT + "/assets/controllers")
+  Dir.rmdir(ROOT + "/assets")
+  Dir.rmdir(ROOT + "/x")
+  File.delete(ROOT + "/link.txt")
+  File.delete(ROOT + "/outdir")
+  File.delete(ROOT + "/inner.txt")
+  File.delete(OUTSIDE + "/x.txt")
+  Dir.rmdir(OUTSIDE)
   File.delete(ROOT + "/css/app.css")
   Dir.rmdir(ROOT + "/css")
   File.delete(ROOT + "/robots.txt")
@@ -141,6 +190,70 @@ test "HEAD keeps Content-Length but sends no body" do
   assert_includes wire, "Content-Length: 14\r\n"
   assert wire.end_with?("\r\n\r\n"), wire
   refute wire.include?("User-agent"), wire
+end
+
+test "a current or kept digest is immutable" do
+  ["/assets/app-1a2b3c4d.css", "/assets/app-0badf00d.css", "/assets/controllers/hello_controller-abcdef01.js",
+   "/assets/LICENSE-2b3c4d5e", "/assets/app%2D1a2b3c4d.css"].each do |target|
+    ["GET", "HEAD"].each do |method|
+      res = serve(method, target)
+      assert_equal 200, res.status
+      assert_equal "public, max-age=31536000, immutable", res.header("Cache-Control").to_s
+      wire = res.to_http(method == "HEAD")
+      assert_equal 1, wire.scan(/^Cache-Control: public, max-age=31536000, immutable\r$/i).length
+    end
+  end
+  assert_equal "/* assets/app-1a2b3c4d.css */", serve("GET", "/assets/app-1a2b3c4d.css").body
+  assert_equal "text/css; charset=utf-8", serve("GET", "/assets/app-0badf00d.css").header("Content-Type")
+  assert Cybertrain::Assets.kept_file?("app-0badf00d.css")
+  # a .manifest line that would leave public/assets is not read
+  refute Cybertrain::Assets.kept_file?("../escape-0badf00d.css")
+end
+
+test "an undigested file under public/assets keeps max-age=3600" do
+  res = serve("GET", "/assets/plain.txt")
+  assert_equal 200, res.status
+  assert_equal "public, max-age=3600", res.header("Cache-Control").to_s
+  refute Cybertrain::Assets.kept_file?("plain.txt")
+end
+
+test "a digest-shaped name gen did not write keeps max-age=3600" do
+  # on disk under /assets, but neither current nor in .manifest
+  assert_equal "public, max-age=3600", serve("GET", "/assets/app-99999999.css").header("Cache-Control").to_s
+  # a current digest's name outside /assets
+  assert_equal "public, max-age=3600", serve("GET", "/x/app-1a2b3c4d.css").header("Cache-Control").to_s
+  refute Cybertrain::Assets.kept_file?("app-99999999.css")
+  refute Cybertrain::Assets.kept_file?("controllers/hello_controller-0badf00d.js")
+  refute Cybertrain::Assets.kept_file?("")
+end
+
+test "dotfiles under /assets are not served; elsewhere in public/ they are" do
+  ["/assets/.manifest", "/assets/%2emanifest", "/assets/controllers/.hello_controller-abcdef01.js.123.tmp"].each do |target|
+    res = serve("GET", target)
+    assert_equal 404, res.status
+    refute res.body.include?("1a2b3c4d"), target
+    refute res.body.include?("partial"), target
+  end
+  res = serve("GET", "/.well-known/security.txt")
+  assert_equal 200, res.status
+  assert_equal "Contact: mailto:security@example.com\n", res.body
+end
+
+test "a symlink is served only when it stays inside the root" do
+  res = serve("GET", "/link.txt")
+  assert_equal 404, res.status
+  refute res.body.include?("top secret")
+  assert_equal 404, serve("GET", "/outdir/x.txt").status
+  assert_equal "User-agent: *\n", serve("GET", "/inner.txt").body
+end
+
+test "an absolute or encoded path cannot leave the root" do
+  name = File.basename(SECRET)
+  ["/assets/../../#{name}", "/assets/%2e%2e/%2e%2e/#{name}", "/#{SECRET}", "/%2F#{SECRET.delete_prefix("/")}", "//#{SECRET.delete_prefix("/")}"].each do |target|
+    res = serve("GET", target)
+    assert_equal 404, res.status
+    refute res.body.include?("top secret"), target
+  end
 end
 
 Cybertrain::Test.run!

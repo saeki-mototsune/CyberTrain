@@ -72,8 +72,100 @@ class PostsController < Cybertrain::Controller
   end
 end
 
+# Per-controller layouts (V-9), each controller_layout written in the shape
+# gen/controllers.rb emits for its `layout` line; their templates are
+# PostsController's.
+
+# layout "frame"
+class FramedController < PostsController
+  def controller_path = "posts"
+
+  def controller_layout(layout_action__)
+    "layouts/frame"
+  end
+end
+
+# layout :pick
+class PickedController < PostsController
+  def controller_path = "posts"
+
+  def bare_show
+    @post = Post.new(7, "Picked")
+    render :show
+  end
+
+  def pick
+    return false if action_name == "bare_show"
+    return nil if action_name == "index"
+    "frame"
+  end
+
+  def controller_layout(layout_action__)
+    layout_chosen__ = pick
+    return super if layout_chosen__.nil?
+    layout_chosen__ == false ? "" : Cybertrain::Controller.layout_path(layout_chosen__.to_s)
+  end
+end
+
+# layout "admin", only: [:index]
+class AdminPostsController < PostsController
+  def controller_path = "posts"
+
+  def framed_show
+    @post = Post.new(7, "Per call")
+    render :show, layout: "frame"
+  end
+
+  def bare_show
+    @post = Post.new(7, "Bare")
+    render :show, layout: false
+  end
+
+  def prefixed_show
+    @post = Post.new(7, "Prefixed")
+    render :show, layout: "layouts/frame"
+  end
+
+  def typo_show
+    @post = Post.new(7, "Typo")
+    render :show, layout: "fram"
+  end
+
+  def controller_layout(layout_action__)
+    if layout_action__ == "index"
+      return "layouts/admin"
+    end
+    super
+  end
+end
+
+# layout "admn" (a typo)
+class MisnamedController < PostsController
+  def controller_path = "posts"
+
+  def controller_layout(layout_action__)
+    "layouts/admn"
+  end
+end
+
+# layout :frame_or_application
+class TurboPostsController < PostsController
+  def controller_path = "posts"
+
+  def frame_or_application
+    return "frame" if request.header("Turbo-Frame")
+    "application"
+  end
+
+  def controller_layout(layout_action__)
+    layout_chosen__ = frame_or_application
+    return super if layout_chosen__.nil?
+    layout_chosen__ == false ? "" : Cybertrain::Controller.layout_path(layout_chosen__.to_s)
+  end
+end
+
 Cybertrain::Views.configure("test/fixtures/views", cache: true)
-Cybertrain::Views.url_resolver = lambda do |name, args|
+Cybertrain::Views.url_resolver = lambda do |name, args, options|
   case name
   when "edit_post_path"
     id = ""
@@ -85,8 +177,8 @@ Cybertrain::Views.url_resolver = lambda do |name, args|
   end
 end
 
-def build_ctx
-  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/posts/7", { "host" => "example.test" }, ""))
+def build_ctx(headers = { "host" => "example.test" })
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/posts/7", headers, ""))
   flash = Cybertrain::Flash.new
   flash.set_now("notice", "Post <saved>")
   ctx.flash = flash
@@ -181,6 +273,79 @@ test "controller_path and view_env" do
   assert_equal 1, env["x"]
   assert env.key?("post")
   assert_equal 0, Cybertrain::Controller.new(build_ctx).view_assigns.size
+end
+
+FRAMED_SHOW = "<div class=\"frame\">\n#{SHOW_BODY}</div>\n"
+
+test "layout by name" do
+  c = FramedController.new(build_ctx)
+  c.process(:show) { |x| x.show }
+  assert_equal FRAMED_SHOW, c.response.body
+  assert_equal "layouts/frame", c.controller_layout("show")
+  assert_equal "layouts/application", PostsController.new(build_ctx).controller_layout("show")
+end
+
+test "layout :method returning false renders bare, returning \"frame\" uses it" do
+  bare = PickedController.new(build_ctx)
+  bare.process(:bare_show) { |x| x.bare_show }
+  assert_equal "\n<p class=\"notice\">Post &lt;saved&gt;</p>\n<h1>Picked</h1>\n<a href=\"/posts/7/edit\">Edit</a>\n", bare.response.body
+  framed = PickedController.new(build_ctx)
+  framed.process(:show) { |x| x.show }
+  assert_equal FRAMED_SHOW, framed.response.body
+end
+
+test "layout :method returning nil uses the inherited layout" do
+  c = PickedController.new(build_ctx)
+  c.process(:index) { |x| x.index }
+  assert c.response.body.start_with?("<!DOCTYPE html>\n"), c.response.body
+  assert_equal "layouts/application", c.controller_layout("index")
+end
+
+test "layout \"admin\", only: [:index] applies to index only" do
+  index = AdminPostsController.new(build_ctx)
+  index.process(:index) { |x| x.index }
+  assert index.response.body.start_with?("<main class=\"admin\">\n<h1>Posts</h1>"), index.response.body
+  show = AdminPostsController.new(build_ctx)
+  show.process(:show) { |x| x.show }
+  assert show.response.body.start_with?("<!DOCTYPE html>"), show.response.body
+end
+
+test "render layout: \"frame\" per call wins; render layout: false is bare" do
+  framed = AdminPostsController.new(build_ctx)
+  framed.process(:index) { |x| x.framed_show }
+  assert framed.response.body.start_with?("<div class=\"frame\">\n"), framed.response.body
+  assert_includes framed.response.body, "<h1>Per call</h1>"
+  bare = AdminPostsController.new(build_ctx)
+  bare.process(:index) { |x| x.bare_show }
+  assert_equal "\n<p class=\"notice\">Post &lt;saved&gt;</p>\n<h1>Bare</h1>\n<a href=\"/posts/7/edit\">Edit</a>\n", bare.response.body
+  # layout: true (the default) is the controller's own layout.
+  own = AdminPostsController.new(build_ctx)
+  own.process(:index) { |x| x.new_action }
+  assert own.response.body.start_with?("<main class=\"admin\">\n<h1>New post</h1>"), own.response.body
+end
+
+test "render layout: \"layouts/frame\" is not prefixed twice; a missing named layout raises" do
+  assert_equal "layouts/frame", Cybertrain::Controller.layout_path("frame")
+  assert_equal "layouts/frame", Cybertrain::Controller.layout_path("layouts/frame")
+  prefixed = AdminPostsController.new(build_ctx)
+  prefixed.process(:index) { |x| x.prefixed_show }
+  assert prefixed.response.body.start_with?("<div class=\"frame\">\n"), prefixed.response.body
+  msg = assert_raises("Cybertrain::MissingTemplate") { AdminPostsController.new(build_ctx).process(:index) { |x| x.typo_show } }
+  assert_equal "missing layout layouts/fram for AdminPostsController", msg
+end
+
+test "a layout line naming a missing layout raises; the default layout stays optional" do
+  msg = assert_raises("Cybertrain::MissingTemplate") { MisnamedController.new(build_ctx).process(:show) { |x| x.show } }
+  assert_equal "missing layout layouts/admn for MisnamedController", msg
+end
+
+test "a Turbo-Frame request picks the frame layout through a two-line method" do
+  framed = TurboPostsController.new(build_ctx({ "host" => "example.test", "turbo-frame" => "post_7" }))
+  framed.process(:show) { |x| x.show }
+  assert_equal FRAMED_SHOW, framed.response.body
+  page = TurboPostsController.new(build_ctx)
+  page.process(:show) { |x| x.show }
+  assert page.response.body.start_with?("<!DOCTYPE html>"), page.response.body
 end
 
 Cybertrain::Test.run!

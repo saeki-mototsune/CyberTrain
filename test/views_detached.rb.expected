@@ -1,4 +1,5 @@
 ok   render_partial returns the HTML, path helpers included
+ok   a path helper's keywords work outside a request
 ok   strict locals are checked
 ok   a partial name without a directory is at the views root
 ok   request-bound helpers raise OutsideRequest
@@ -8,4 +9,4 @@ ok   a form renders without the authenticity token
 ok   render_component returns the HTML with the content unescaped
 ok   Cybertrain::Test wraps both
 ok   render_mail wraps in layouts/mail when present
-10 tests, 20 assertions, 0 failures
+11 tests, 21 assertions, 0 failures

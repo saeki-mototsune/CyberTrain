@@ -2,15 +2,27 @@ require "cybertrain/middleware"
 require "cybertrain/session"
 require "cybertrain/flash"
 require "cybertrain/http/cookies"
+require "cybertrain/crypto"
+require "cybertrain/cookie_jar"
 
 module Cybertrain
   # Loads the session (and the flash riding inside it) from the request's
   # cookie before the rest of the chain runs, and writes it back out as a
   # Set-Cookie afterward -- but only when something actually changed, so an
   # ordinary read-only request does not churn the cookie on every hit.
+  #
+  # The session cookie is AES-256-GCM under a key derived from `secret:`
+  # (Session.load / Session.dump); the keys of the session and of
+  # `cookies.signed` and `cookies.encrypted` are derived once, here, each
+  # with its own label (Crypto.derive_key), and the secret itself is not
+  # kept. It also builds the request's cookie jar (Context#cookie_jar,
+  # Controller#cookies) over the cookies it parses anyway. A session whose
+  # cookie, `name=value`, would pass 4096 bytes raises
+  # Session::CookieOverflow instead of being written.
   class SessionStore < Middleware
     # secure: true adds the Secure attribute, so browsers only send the
-    # cookie back over HTTPS (Config#session_secure: on in production).
+    # cookie back over HTTPS (Application passes Config#secure_cookies?:
+    # session_secure, on in production, or force_ssl).
     # same_site is the SameSite value, "Lax", "Strict" or "None"
     # (Config#session_same_site); partitioned adds Partitioned (CHIPS,
     # Config#session_partitioned). "None" with Partitioned keeps the session
@@ -30,7 +42,9 @@ module Cybertrain
       @absolute_max_age = absolute_max_age
       # 0: the clock is Time.now. Tests set a fixed time with fixed_now=.
       @fixed_now = 0
-      @secret = secret
+      @session_key = Crypto.derive_key(secret, SESSION_KEY_LABEL)
+      @signed_key = Crypto.derive_key(secret, CookieJar::SIGNED_KEY_LABEL)
+      @encrypted_key = Crypto.derive_key(secret, CookieJar::ENCRYPTED_KEY_LABEL)
       @cookie_name = cookie_name
       @max_age = max_age
       @secure = secure
@@ -38,10 +52,15 @@ module Cybertrain
       @partitioned = partitioned
     end
 
+    # The label of the session key (Crypto.derive_key).
+    SESSION_KEY_LABEL = "cybertrain session"
+
     def call(ctx)
       cookies = Cookies.parse(ctx.request.cookie_header)
+      ctx.cookie_jar = CookieJar.new(cookies, ctx.response, signed_key: @signed_key,
+                                                            encrypted_key: @encrypted_key, secure: @secure)
       cookie_value = cookies[@cookie_name]
-      loaded = Session.load(cookie_value.nil? ? "" : cookie_value, @secret)
+      loaded = Session.load(cookie_value.nil? ? "" : cookie_value, @session_key)
       lifetime = @absolute_max_age
       now = lifetime > 0 ? current_time : 0
       if lifetime > 0
@@ -64,7 +83,14 @@ module Cybertrain
           left = ctx.session.issued_at + lifetime - now
           max_age = left if left < max_age
         end
-        set_cookie = Cookies.serialize(@cookie_name, Session.dump(ctx.session, @secret),
+        value = Session.dump(ctx.session, @session_key)
+        size = @cookie_name.bytesize + 1 + value.bytesize
+        if size > Session::MAX_COOKIE_BYTES
+          message = "session cookie is #{size} bytes, over the 4096 a browser keeps (store less in the session)"
+          raise Session::CookieOverflow, message
+        end
+
+        set_cookie = Cookies.serialize(@cookie_name, value,
                                        max_age: max_age, secure: @secure, same_site: @same_site,
                                        partitioned: @partitioned)
         ctx.response.add_cookie(set_cookie)

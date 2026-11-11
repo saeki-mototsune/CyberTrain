@@ -1,3 +1,4 @@
+ok   requiring the framework leaves the config to the first use, after CYBERTRAIN_ENV is set
 ok   worker? and feeds? recognise their words; server? is false for both
 Usage:
   ./blog [server [PORT]]   start the server
@@ -18,32 +19,32 @@ ok   help lists worker and feeds
 error: unknown feed "nosuch" (registered: none)
 ok   feeds before any subscription: nothing to run is 0, any name is unknown
 => test environment
-=> worker: 3 job threads, 0 scheduled tasks
-ok   worker with only the built-in mail job and no task boots, waits for the stop and returns 0
+=> worker: 3 job threads, 1 scheduled task
+ok   worker with only the built-in mail job and the cache prune task boots, waits for the stop and returns 0
 error: worker takes no arguments (got 3000)
 ok   worker takes no arguments
 => test environment
-=> worker: 3 job threads, 1 scheduled task
+=> worker: 3 job threads, 2 scheduled tasks
 ok   worker runs a due job on its job threads and stops them
 error: unknown feed "nosuch" (registered: trades, quotes)
 => test environment
 => feeds: trades
 ok   feeds runs only the named subscription and stops it
 => test environment
-=> worker: 3 job threads, 1 scheduled task
+=> worker: 3 job threads, 2 scheduled tasks
 => test environment
 => feeds: trades
 ok   worker and feeds give Spinel the SPINEL_WORKERS serve does
 => development environment
-=> worker: 3 job threads, 1 scheduled task
+=> worker: 3 job threads, 2 scheduled tasks
 ok   in development the roles run on one worker, as serve does
 => test environment
-=> worker: 3 job threads, 1 scheduled task
+=> worker: 3 job threads, 2 scheduled tasks
 => test environment
 => feeds: trades
 ok   worker stops on SIGINT and feeds on SIGTERM, as the traps ask
 => test environment
-=> worker: 3 job threads, 1 scheduled task
+=> worker: 3 job threads, 2 scheduled tasks
 ok   a role hands back the INT and TERM handlers it replaced
 no feed has reported status
 quotes  disconnected  host:42  last activity never  restarts 2  updated 5s ago
@@ -55,4 +56,4 @@ ok   feeds status prints one line per status row and returns 0; with none it say
 => test environment
 => feeds: trades
 ok   a feeds process stopped cleanly deletes its own status rows, not another process's
-13 tests, 59 assertions, 0 failures
+14 tests, 61 assertions, 0 failures

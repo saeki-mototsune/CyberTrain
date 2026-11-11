@@ -1,5 +1,5 @@
 ---
-source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -145,6 +145,7 @@ blog/
   spin.toml  config/app.rb  config/routes.rb
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
+  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
   gen/  storage/  tmp/  test/
 ```
@@ -156,7 +157,9 @@ générateur (`spin run gen`), et `bin/db.rb` lance le migrateur pendant le
 développement (`cybertrain db migrate` l’utilise, car `bin/blog.rb` ne peut
 pas compiler tant que la première migration n’a pas généré `gen/models/`).
 `gen/` contient déjà `views.rb`, la table des vues intégrées, versionnée et
-vide.
+vide. Le layout lie `app/assets/stylesheets/application.css` avec
+`stylesheet_link_tag`&nbsp;; `spin run gen` l’écrit avec une empreinte dans
+`public/assets/`, ignoré par git (voir [Assets](assets.md)).
 
 `ApplicationController` commence ainsi, pour qu’un enregistrement introuvable
 donne une 404 via `rescue_from`&nbsp;:
@@ -867,7 +870,7 @@ de passe d’administration, une connexion écrite à la main)&nbsp;:
     `Cybertrain.config.test?`, pour que les suites de tests ne paient pas le
     coût de production par utilisateur&nbsp;; les condensats enregistrent leur
     nombre d’itérations, donc rien d’autre ne change.
-- **La session** (`session[:key]`, un cookie signé)&nbsp;: `clear` la vide
+- **La session** (`session[:key]`, un cookie chiffré)&nbsp;: `clear` la vide
   (jeton CSRF compris) à la déconnexion, et `config.session_absolute_max_age`
   (deux semaines&nbsp;; `0` la désactive) borne la vie entière d’une session,
   quelle que soit la fréquence de son usage&nbsp;: le cookie enregistre quand
@@ -933,7 +936,9 @@ end
 > le générateur de Rails&nbsp;: `SessionsController` déclare `rate_limit to:
 > 10, within: 3 * 60, only: [:create]`, dix tentatives par adresse du client
 > toutes les trois minutes, puis retour au formulaire avec "Try again later."
-> jusqu’à la fin de la fenêtre. Derrière un reverse proxy, chaque visiteur est
+> jusqu’à la fin de la fenêtre. Les compteurs sont gardés dans la base de
+> données de l’application (`Cybertrain::Cache`), si bien que tous les
+> processus de l’application comptent ensemble. Derrière un reverse proxy, chaque visiteur est
 > compté sous l’adresse du proxy, sauf si des [proxys de
 > confiance](requests.md#rate-limiting-and-the-client-address) sont
 > configurés. Non générée&nbsp;: la réinitialisation du mot
@@ -1209,7 +1214,7 @@ et charge `config/deploy.yml` avec Kamal.
 > surprennent.
 
 <!-- list: points know -->
-- Les sessions ne contiennent que des String, dans un cookie signé HMAC.
+- Les sessions ne contiennent que des String, dans un cookie chiffré.
 - SQLite uniquement, via la FFI de Spinel.
 - Pas de backtraces&nbsp;: les erreurs affichent la classe, le message, la
   ligne de requête et le nom/la ligne du template.
@@ -1218,8 +1223,8 @@ et charge `config/deploy.yml` avec Kamal.
 - Les associations viennent des clés étrangères ou de déclarations d’une
   ligne&nbsp;; pas de `has_many :through`, d’`includes` imbriqué, d’enums, de
   STI ni d’associations polymorphes.
-- Pas de `namespace`, de `respond_to`/formats, de `constraints` ni de
-  `mount`&nbsp;; `render json:` est minimal.
+- Pas de `constraints` ni de `mount`&nbsp;; on répond en JSON avec
+  `render json:`, qui est minimal.
 - Dans un modèle généré par scaffold, seul le premier champ string reçoit une
   validation de présence par défaut.
 - Le générateur utilise un balayage lexical (des regex), pas un parseur, sur

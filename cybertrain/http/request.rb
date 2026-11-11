@@ -30,7 +30,7 @@ module Cybertrain
   # {Controller#params}; the request holds the raw parts. The client's
   # address is {#client_ip} (Rails' `remote_ip`, with one trusted proxy hop
   # at most, see {Request.trusted_proxy} and {Request.trusted_proxies}).
-  # There is no `xhr?`, `format` or `url`.
+  # There is no `xhr?` or `url`.
   # @example
   #   request.header("user-agent")
   #   JSON.parse(request.body) if request.json?   # JSON bodies are not parsed into params
@@ -101,6 +101,165 @@ module Cybertrain
       @decoded_body = nil
       @multipart_form = nil
       @path_segments_cache = nil
+      @format_extension = ""
+      @format_known = false
+      @format_symbol = :html
+    end
+
+    # The extension the route split off the last path segment (`"json"` for
+    # `/articles/3.json`), `""` for none or before routing.
+    # @return [String]
+    # @api public
+    attr_reader :format_extension
+
+    # Set by the Router for the route that matched; forgets a {#format}
+    # worked out earlier.
+    def format_extension=(ext)
+      @format_extension = ext
+      @format_known = false
+    end
+
+    # The format the client asked for, as a Symbol: the extension's
+    # registered name ({Request.format_for_extension}: `:json` for
+    # `/articles/3.json`, `:unknown` for one that is not registered), else
+    # from `Accept`, read in order: `:turbo_stream` when it lists
+    # `text/vnd.turbo-stream.html`, `:json` when it lists
+    # `application/json` and not `text/html` before it, else `:html` (also
+    # for `*/*` and no `Accept` at all). An entry with `q=0` is ignored;
+    # other q-values do not reorder the list.
+    # @example
+    #   request.format   # => :json for GET /articles/3.json
+    # @return [Symbol]
+    # @api public
+    def format
+      return @format_symbol if @format_known
+
+      found = if @format_extension.empty?
+                Request.format_for_accept(header("Accept").to_s)
+              else
+                Request.format_for_extension(@format_extension)
+              end
+      @format_symbol = found
+      @format_known = true
+      found
+    end
+
+    # The format an `Accept` header names (see {#format}).
+    def self.format_for_accept(value)
+      accept = value.to_s # a fresh String for the scan (NOTES rule 62)
+      turbo = false
+      json_at = -1
+      html_at = -1
+      position = 0
+      accept.split(",").each do |entry|
+        parts = entry.split(";")
+        next if parts.empty?
+
+        media = parts[0].to_s.strip.downcase
+        refused = false
+        parts.each_with_index do |param, i|
+          next if i == 0
+
+          pair = param.split("=", 2)
+          next unless pair.size == 2 && pair[0].to_s.strip.downcase == "q"
+
+          refused = Request.zero_quality?(pair[1].to_s.strip)
+        end
+        next if refused
+
+        turbo = true if media == "text/vnd.turbo-stream.html"
+        json_at = position if media == "application/json" && json_at < 0
+        html_at = position if media == "text/html" && html_at < 0
+        position += 1
+      end
+      return :turbo_stream if turbo
+      return :json if json_at >= 0 && (html_at < 0 || html_at > json_at)
+
+      :html
+    end
+
+    # "0", "0.", "0.0", "0.000": a q-value that refuses the type.
+    def self.zero_quality?(value)
+      q = value.to_s
+      return false unless q.start_with?("0")
+      return true if q == "0"
+      return false unless q[1, 1] == "." && q.size <= 5
+
+      i = 2
+      while i < q.size
+        return false unless q[i, 1] == "0"
+
+        i += 1
+      end
+      true
+    end
+
+    # The registered format of an extension, Rails' MIME table (`"json"` ->
+    # `:json`, `"jpg"` -> `:jpeg`, `"txt"` -> `:text`), `:unknown` for any
+    # other: a fixed table, so request input never becomes a new Symbol.
+    # @param ext [String] without the dot, as written (case matters)
+    # @return [Symbol]
+    # @api public
+    def self.format_for_extension(ext)
+      case ext
+      when "html", "htm" then :html
+      when "text", "txt" then :text
+      when "js" then :js
+      when "css" then :css
+      when "ics" then :ics
+      when "csv" then :csv
+      when "vcf" then :vcf
+      when "vtt" then :vtt
+      when "png" then :png
+      when "jpeg", "jpg" then :jpeg
+      when "gif" then :gif
+      when "bmp" then :bmp
+      when "tiff" then :tiff
+      when "svg" then :svg
+      when "webp" then :webp
+      when "mpeg" then :mpeg
+      when "mp3" then :mp3
+      when "ogg" then :ogg
+      when "m4a" then :m4a
+      when "webm" then :webm
+      when "mp4" then :mp4
+      when "otf" then :otf
+      when "ttf" then :ttf
+      when "woff" then :woff
+      when "woff2" then :woff2
+      when "xml" then :xml
+      when "rss" then :rss
+      when "atom" then :atom
+      when "yaml" then :yaml
+      when "multipart_form" then :multipart_form
+      when "url_encoded_form" then :url_encoded_form
+      when "json" then :json
+      when "pdf" then :pdf
+      when "zip" then :zip
+      when "gzip" then :gzip
+      when "turbo_stream" then :turbo_stream
+      else :unknown
+      end
+    end
+
+    # The Content-Type a response in `format` is sent with (`:json` ->
+    # `"application/json; charset=utf-8"`); `"application/octet-stream"`
+    # for a format without a text type here.
+    # @param format [Symbol]
+    # @return [String]
+    # @api public
+    def self.mime_type(format)
+      case format
+      when :html then "text/html; charset=utf-8"
+      when :json then "application/json; charset=utf-8"
+      when :turbo_stream then "text/vnd.turbo-stream.html; charset=utf-8"
+      when :csv then "text/csv; charset=utf-8"
+      when :xml then "application/xml; charset=utf-8"
+      when :text then "text/plain; charset=utf-8"
+      when :js then "text/javascript; charset=utf-8"
+      when :css then "text/css; charset=utf-8"
+      else "application/octet-stream"
+      end
     end
 
     # Used by MethodOverride to turn a POST form into PATCH/PUT/DELETE.
@@ -422,6 +581,80 @@ module Cybertrain
       end
       @decoded_body = text
       text
+    end
+
+    # An HTTP date (RFC 9110 section 5.6.7, IMF-fixdate), what
+    # Last-Modified and Expires carry: `Sun, 06 Nov 1994 08:49:37 GMT`.
+    # @example
+    #   Request.http_date(Time.at(784111777)) # => "Sun, 06 Nov 1994 08:49:37 GMT"
+    # @param time [Time]
+    # @return [String]
+    # @api public
+    def self.http_date(time)
+      time.getutc.strftime("%a, %d %b %Y %H:%M:%S GMT")
+    end
+
+    # The epoch seconds of an HTTP date as {.http_date} writes it (a
+    # conditional request's If-Modified-Since), -1 when the text is not one.
+    # An Integer sentinel, not nil, so the result has one type.
+    # @example
+    #   Request.parse_http_date("Sun, 06 Nov 1994 08:49:37 GMT") # => 784111777
+    #   Request.parse_http_date("yesterday")                      # => -1
+    # @param text [String]
+    # @return [Integer]
+    # @api public
+    def self.parse_http_date(text)
+      s = text.to_s # NOTES rule 62: the byte scans read a fresh local
+      return -1 unless s.bytesize == 29 && s.getbyte(3) == 44 && s.getbyte(4) == 32 && s.getbyte(7) == 32 &&
+                       s.getbyte(11) == 32 && s.getbyte(16) == 32 && s.getbyte(19) == 58 && s.getbyte(22) == 58 &&
+                       s.getbyte(25) == 32 && s.byteslice(25, 4) == " GMT"
+      return -1 unless HTTP_DAYS.include?(s.byteslice(0, 3))
+
+      month = 0
+      name = s.byteslice(8, 3)
+      m = 0
+      while m < 12
+        month = m + 1 if HTTP_MONTHS[m] == name
+        m += 1
+      end
+      return -1 if month == 0
+
+      day = http_digits(s, 5, 2)
+      year = http_digits(s, 12, 4)
+      hour = http_digits(s, 17, 2)
+      minute = http_digits(s, 20, 2)
+      second = http_digits(s, 23, 2)
+      return -1 if day < 1 || day > 31 || year < 1970 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 60
+
+      # Days from the civil date (Howard Hinnant's algorithm), then seconds.
+      y = month <= 2 ? year - 1 : year
+      era = y / 400
+      yoe = y - era * 400
+      shifted = month > 2 ? month - 3 : month + 9
+      doy = (153 * shifted + 2) / 5 + day - 1
+      doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+      days = era * 146_097 + doe - 719_468
+      days * 86_400 + hour * 3600 + minute * 60 + second
+    end
+
+    HTTP_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    HTTP_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    # The `len` ASCII digits of `s` from byte `from` as an Integer, -1 when
+    # one is not a digit.
+    # @api private
+    def self.http_digits(text, from, len)
+      s = text.to_s # NOTES rule 62
+      n = 0
+      i = 0
+      while i < len
+        b = s.getbyte(from + i)
+        return -1 if b < 48 || b > 57
+
+        n = n * 10 + (b - 48)
+        i += 1
+      end
+      n
     end
 
     # Inflates one gzip body under a size limit through the installed

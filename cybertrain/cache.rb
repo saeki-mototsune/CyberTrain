@@ -399,12 +399,24 @@ module Cybertrain
     # {Config#cache_prune_interval} seconds, unless a task of that name is
     # registered already. Requiring this file calls it; an interval below 1
     # is registered as 1, and boot refuses it ({Config#scheduler_error}).
+    #
+    # It does not create {Cybertrain.config}: `require "cybertrain"` runs
+    # this, and a config made then would keep the environment of that
+    # moment (`development`), before a test sets `CYBERTRAIN_ENV` or an
+    # embedded build's gen/views.rb defaults it to production. Until the
+    # config exists, the interval comes from the variable as
+    # {Config#cache_prune_interval} would read it.
     # @return [nil]
     # @api public
     def self.register_prune_task
       return nil if Scheduler.task_index(PRUNE_TASK) >= 0
 
-      interval = Cybertrain.config.cache_prune_interval
+      interval = 0
+      if Cybertrain.config_loaded?
+        interval = Cybertrain.config.cache_prune_interval
+      else
+        interval = Config.default_cache_prune_interval
+      end
       interval = 1 if interval < 1
       Scheduler.every(interval, PRUNE_TASK) { Cache.prune(Cache.now) }
       nil

@@ -21,7 +21,7 @@ CHILD_FLAG = "CYBERTRAIN_FEEDS_EXIT_CHILD"
 class FeedCrash < Exception
 end
 
-def resolver = ->(name, args) { "/" }
+def resolver = ->(name, args, options) { "/" }
 
 def no_views
   none = { "" => "" }

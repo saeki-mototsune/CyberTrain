@@ -1,0 +1,7 @@
+ok   turbo_frame_tag with a record and options
+ok   turbo_stream.replace with partial and locals, append with html:, remove(target)
+ok   turbo_stream refuses a missing or doubled content, and unknown actions
+ok   render turbo_stream: [..] in a controller sets the content type
+ok   render turbo_stream: refuses a plain String; the controller builder checks its partial and content
+ok   a turbo_stream response carries the headers every response does
+6 tests, 40 assertions, 0 failures

@@ -41,18 +41,21 @@ module Cybertrain
         out
       end
 
-      # The `when "name"` arm: the argument checks, then the call.
-      def self.def_arm(d)
+      # The `when "name"` arm: the argument checks, then the call. checks:
+      # the receiver of the check methods with its dot ("" for the helpers'
+      # own; ControllersEmitter's helper_method arms, in a controller, pass
+      # "Cybertrain::Template::Helpers.").
+      def self.def_arm(d, checks = "")
         out = +""
         min = d.required.size
         max = min + d.optional.size
         out << "    when #{literal(d.name)}\n"
-        out << "      helper_arity!(name, args, #{min}, #{max})\n"
+        out << "      #{checks}helper_arity!(name, args, #{min}, #{max})\n"
         if d.keywords_required.empty? && d.keywords_optional.empty?
-          out << "      helper_no_keywords!(name, kwargs)\n"
+          out << "      #{checks}helper_no_keywords!(name, kwargs)\n"
         else
           known = d.keywords_required + d.keywords_optional
-          out << "      helper_keywords!(name, kwargs, [#{known.map { |k| literal(k) }.join(", ")}], #{d.keywords_required.size})\n"
+          out << "      #{checks}helper_keywords!(name, kwargs, [#{known.map { |k| literal(k) }.join(", ")}], #{d.keywords_required.size})\n"
         end
         givens = arm_givens(d)
         keysets = arm_keysets(d)

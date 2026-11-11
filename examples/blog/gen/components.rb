@@ -20,6 +20,10 @@ class CommentComponent < Cybertrain::Component
   def component_template
     "__components/comment_component.html.erb"
   end
+
+  def self.with_collection(items)
+    Cybertrain::ComponentCollection.new("comment", "comment", items, false)
+  end
 end
 
 module Gen
@@ -28,6 +32,9 @@ module Gen
     def self.build(name, kwargs)
       case name
       when "comment"
+        Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
+        return ::CommentComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
+
         Cybertrain::Component.check_keywords!(name, kwargs, ["comment"], 1)
         ::CommentComponent.new(comment: kwargs["comment"])
       else

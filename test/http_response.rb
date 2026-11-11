@@ -4,7 +4,7 @@ require "cybertrain/test"
 Response = Cybertrain::Response
 
 # The security defaults every response carries (docs/design.md D14).
-SEC = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: SAMEORIGIN\r\n"
+SEC = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: SAMEORIGIN\r\nPermissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
 
 test "defaults" do
   res = Response.new
@@ -37,6 +37,29 @@ test "to_http writes the standard reason phrase for 202 and 429" do
   assert_equal "Conflict", Response.status_text(409)
   assert_equal "Temporary Redirect", Response.status_text(307)
   assert_equal "Service Unavailable", Response.status_text(503)
+end
+
+test "reason phrases follow RFC 9110" do
+  assert_equal "Continue", Response.status_text(100)
+  assert_equal "Early Hints", Response.status_text(103)
+  assert_equal "Non-Authoritative Information", Response.status_text(203)
+  assert_equal "Multi-Status", Response.status_text(207)
+  assert_equal "IM Used", Response.status_text(226)
+  assert_equal "Use Proxy", Response.status_text(305)
+  assert_equal "Proxy Authentication Required", Response.status_text(407)
+  assert_equal "Content Too Large", Response.status_text(413)
+  assert_equal "URI Too Long", Response.status_text(414)
+  assert_equal "Misdirected Request", Response.status_text(421)
+  assert_equal "Unprocessable Content", Response.status_text(422)
+  assert_equal "Too Early", Response.status_text(425)
+  assert_equal "Unavailable For Legal Reasons", Response.status_text(451)
+  assert_equal "HTTP Version Not Supported", Response.status_text(505)
+  assert_equal "Network Authentication Required", Response.status_text(511)
+  res = Response.new
+  res.status = 413
+  assert_includes res.to_http, "HTTP/1.1 413 Content Too Large\r\n"
+  res.status = 418
+  assert_equal "Unknown", res.status_text
 end
 
 test "header lookup is case-insensitive" do
@@ -237,6 +260,52 @@ test "performed! marks the response" do
   res = Response.new
   res.performed!
   assert res.performed?
+end
+
+test "Permissions-Policy is a default header" do
+  assert_equal "camera=(), microphone=(), geolocation=()", Response.default_permissions_policy
+  res = Response.new
+  assert_includes res.to_http, "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  assert_includes res.to_http(true), "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  assert_includes res.to_http_head(true), "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  # a 304 keeps it (it is not a body header) and still drops Content-Length
+  unchanged = Response.new
+  unchanged.status = 304
+  wire = unchanged.to_http
+  assert_includes wire, "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  refute wire.include?("Content-Length")
+  # set_header wins, once, whatever its case
+  own = Response.new
+  own.set_header("permissions-policy", "geolocation=(self)")
+  assert_includes own.to_http, "permissions-policy: geolocation=(self)\r\n"
+  assert_equal 1, own.to_http.scan(/permissions-policy:/i).size
+  # the default is not stored on the response
+  assert_equal 0, Response.new.headers.size
+  # "" sends none; another default is sent instead
+  Response.default_permissions_policy = ""
+  refute Response.new.to_http.include?("Permissions-Policy")
+  Response.default_permissions_policy = "camera=(self)"
+  assert_includes Response.new.to_http, "Permissions-Policy: camera=(self)\r\n"
+  # CR or LF is refused and changes nothing
+  msg = assert_raises("ArgumentError") { Response.default_permissions_policy = "camera=()\r\nSet-Cookie: x=1" }
+  assert_equal "header Permissions-Policy must not contain CR or LF", msg
+  assert_equal "camera=(self)", Response.default_permissions_policy
+  Response.default_permissions_policy = "camera=(), microphone=(), geolocation=()"
+end
+
+test "a 304 never writes a body it was given" do
+  res = Response.new
+  res.status = 304
+  res.body = "stale bytes"
+  wire = res.to_http
+  # the head ends the message: nothing after the blank line
+  assert wire.end_with?("\r\n\r\n")
+  refute wire.include?("stale bytes")
+  refute wire.include?("Content-Length")
+  # a 200 with the same body still writes it
+  ok = Response.new
+  ok.body = "fresh bytes"
+  assert ok.to_http.end_with?("\r\n\r\nfresh bytes")
 end
 
 Cybertrain::Test.run!

@@ -21,9 +21,10 @@
 # again (see {Net.resolve} and {TcpStream.connect_to}).
 #
 # TLS is a separate file, cybertrain/net/tls.rb, which requires Spinel's
-# openssl package; this file does not, so a program that never makes an
-# https request does not link libssl. Requiring that file installs its
-# connector in {Net.tls_connector}.
+# openssl package; this file does not (`require "cybertrain"` links
+# openssl in any case, for the encrypted session, but not the TLS
+# connector). Requiring that file installs its connector in
+# {Net.tls_connector}.
 #
 # Method names here are distinctive (`stream_read`, not `read`): a method
 # named like a builtin changes how every call of that name on a boxed

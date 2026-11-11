@@ -1,5 +1,5 @@
 ---
-source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
+source_sha256: cf5a8c6dd814a8f7d284bf9bf02a6cca610f28753925229a7408b436c81f6011
 ---
 # 配置
 
@@ -25,7 +25,9 @@ end
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`；以逗号分隔的旧密钥，只用于解密，因此重新保存记录即可轮换密钥；格式错误的条目会让启动停止 |
 | `SPINEL_WORKERS` | `workers` | `1`；开发服务器忽略此值，总是只用一个 worker（[原因](template-language.md#file-resolution-enginerb)） |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`；`0.0.0.0` 在所有网络接口上监听（容器） |
-| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | 开发环境接受 `localhost`、`127.0.0.1`、`[::1]`；以逗号分隔的精确主机名会扩展这个列表（不带协议、端口或通配符）。其他主机会在静态文件、会话、路由或诊断之前得到 403。这与监听地址无关；生产和测试环境不应用这项开发时的防护 |
+| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | 开发环境接受 `localhost`、`127.0.0.1`、`[::1]`；以逗号分隔的精确主机名会扩展这个列表（不带协议、端口或通配符）。其他主机会在静态文件、会话、路由或诊断之前得到 403。这与监听地址无关；生产和测试环境只有在 `CYBERTRAIN_HOSTS` 在那里开启检查后才应用这个列表 |
+| `CYBERTRAIN_HOSTS` | `hosts_from_env`（追加到 `allowed_hosts`） | `[]`；逗号分隔的精确主机名（IPv6 地址放在方括号中；不带协议、路径、端口或通配符，否则启动失败），在所有环境中追加在回环名称之后。设置后，生产和测试环境也会检查主机：其他 `Host` 得到 403 `Blocked host` 并记入日志。对健康检查路径的 GET 或 HEAD 请求无论 Host 为何都会通过（参见[主机](requests.md#content-security-policy-force_ssl-and-hosts)） |
+| `CYBERTRAIN_FORCE_SSL` | `force_ssl` | `false`；`1` 或 `true` 把 http 重定向到 https（GET 和 HEAD 用 301，其余用 307；在代理之后依据 `X-Forwarded-Proto`），发送 `Strict-Transport-Security: max-age=63072000; includeSubDomains`，并把所有 cookie 写成 `Secure`；健康检查路径从不重定向。`1`、`true`、`0`、`false` 或空以外的值会让启动停止。在代理之后，还要设置 `CYBERTRAIN_TRUSTED_PROXY` 或 `CYBERTRAIN_TRUSTED_PROXIES`，否则应用生成的 URL 仍是 http |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`；也可以是 `Strict` 或 `None`（`None` 总会加上 `Secure`）；其他任何值都会让服务器在启动时停止 |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`；`1` 或 `true` 会加上 `Partitioned`（以及 `Secure`） |
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`；`1` 或 `true` 会让来自环回地址的连接的 `request.client_ip`（`rate_limit` 所计数的对象）取 `X-Forwarded-For` 中的最后一个地址，用于同一主机上的反向代理（参见[限流](requests.md#rate-limiting-and-the-client-address)）；是 `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` 的简写 |
@@ -59,7 +61,9 @@ end
 
 **作业与流**：除了上面的变量，`config/app.rb` 还设置 `scheduler_interval`（1 秒，调度器的心跳间隔）、`job_poll_interval`（1 秒，空闲的作业线程等待的时间；在有作业线程之前是 5）、`job_max_attempts`（5）、`job_heartbeat_interval`（30 秒）、`job_heartbeat_stale`（300 秒，必须大于心跳间隔）、`job_drain_timeout`（10 秒，`SIGTERM` 等待运行中作业的时间）和 `scheduler_lease_ttl`（30 秒，至少是 `scheduler_interval` 的两倍），以及流的设置 `stream_poll_ms`、`stream_retention`、`stream_ping_interval`、`stream_max_connections`、`stream_max_message` 和 `stream_max_backlog`（[限制与设置](realtime.md#limits-and-settings)）。超出范围的值会让启动停止，并给出指明该值的消息。
 
-**安全响应头**：服务器写出的每个响应（动作、静态文件中间件、错误页面和开发时的诊断页面、服务器自己的 400/411/413/500，以及 HEAD）都带有 `X-Content-Type-Options: nosniff` 和 `X-Frame-Options: SAMEORIGIN`，除非响应已经设置了同名的响应头（不区分大小写）：`Response#to_http` 在响应自己的响应头之后添加它们，并且只在缺失时添加，所以在动作中写 `response.set_header("X-Frame-Options", "DENY")` 会恰好发送一次你设置的值。刻意没有在全应用范围内关闭它们的 `Config` 开关；可嵌入的小部件在自己的响应上覆盖该响应头（在当前的浏览器中，`Content-Security-Policy: frame-ancestors ...` 响应头优先于 `X-Frame-Options`）。由于 `nosniff`，浏览器会按字面理解 `Content-Type`：静态文件中间件认识 `public/` 中常见的扩展名（html、css、js/mjs、包括 webp 和 avif 在内的图片、字体、wasm、pdf、音频和视频、json、csv、xml），其他任何文件都以 `application/octet-stream` 提供，即作为下载；如果应用需要内联显示其他类型，请把扩展名加入 `Cybertrain::Static::EXTENSIONS`。自己提供 `public/` 的反向代理会绕过这些响应头（参见 [docs/deploy.en.md](../deploy.en.md)）。`Cybertrain::Test::Client` 在进程内调用应用，从不序列化响应，所以看不到这两个默认响应头；请在 `response.to_http` 上断言它们。
+**安全响应头**：服务器写出的每个响应（动作、静态文件中间件、错误页面和开发时的诊断页面、服务器自己的 400/411/413/500，以及 HEAD）都带有 `X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN` 和 `Permissions-Policy: camera=(), microphone=(), geolocation=()`，除非响应已经设置了同名的响应头（不区分大小写）：`Response#to_http` 在响应自己的响应头之后添加它们，并且只在缺失时添加，所以在动作中写 `response.set_header("X-Frame-Options", "DENY")` 会恰好发送一次你设置的值。`c.permissions_policy` 替换第三个响应头的值（`"camera=(), microphone=(), geolocation=(self)"`），`""` 则不发送，值中含有 CR 或 LF 会让启动停止。刻意没有在全应用范围内关闭前两个响应头的 `Config` 开关；可嵌入的小部件在自己的响应上覆盖该响应头（在当前的浏览器中，`Content-Security-Policy: frame-ancestors ...` 响应头优先于 `X-Frame-Options`）。由于 `nosniff`，浏览器会按字面理解 `Content-Type`：静态文件中间件认识 `public/` 中常见的扩展名（html、css、js/mjs、包括 webp 和 avif 在内的图片、字体、wasm、pdf、音频和视频、json、csv、xml），其他任何文件都以 `application/octet-stream` 提供，即作为下载；如果应用需要内联显示其他类型，请把扩展名加入 `Cybertrain::Static::EXTENSIONS`。自己提供 `public/` 的反向代理会绕过这些响应头（参见 [docs/deploy.en.md](../deploy.en.md)）。`Cybertrain::Test::Client` 在进程内调用应用，从不序列化响应，所以看不到这些默认响应头；请在 `response.to_http` 上断言它们。
+
+**Content Security Policy**：与 Rails 一样默认关闭；`cybertrain new` 会在 `config/app.rb` 中以注释形式写出下面的块。`c.content_security_policy do |p| ... end` 声明策略（每个指令一个方法，`p.script_src :self, "https://cdn.jsdelivr.net"`；第二次调用会补充同一个策略），`c.content_security_policy_nonce_directives`（`[]`）列出接收请求 nonce 的指令（不是指令的名称会让启动停止），`c.content_security_policy_report_only`（`false`）把响应头作为 `Content-Security-Policy-Report-Only` 发送。控制器用 `content_security_policy do |p|` 声明自己的副本；参见[Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts)。
 
 **过滤的参数**：请求日志中的 `Started GET "/login?..."` 行和开发时的错误页面（其中的请求行，以及它转储的 params 和 JSON 请求体）会把 `config.filter_parameters` 中所列名称的每个参数的值显示为 `[FILTERED]`，与 Rails 的 `filter_parameters` 一样，所以 URL 中的 `?token=` 或提交到失败表单的密码不会出现在框架的请求日志或开发时的错误页面上。只替换值：查询字符串的其余部分按发送时的原样记录（控制字符会被转义）。该列表按子串、不区分大小写地匹配；可以在 `config/app.rb` 中扩展它（`c.filter_parameters = c.filter_parameters + ["otp", "ssn"]`），或用 `CYBERTRAIN_FILTER_PARAMETERS` 替换它。动作自己写入日志的值不会被过滤；在那里请调用 `Cybertrain::ParameterFilter.filter?(name)` 或 `ParameterFilter.filter_query(text)`。
 

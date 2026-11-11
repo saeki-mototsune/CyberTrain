@@ -1,5 +1,5 @@
 ---
-source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -95,11 +95,12 @@ blog/
   spin.toml  config/app.rb  config/routes.rb
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
+  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
   gen/  storage/  tmp/  test/
 ```
 
-`bin/blog.rb` はアプリケーション唯一のエントリーポイントで、`spin build blog` がコンパイルするプログラムです：`./blog` でサーバーを起動し、`./blog migrate` と `./blog db status` でデータベースを管理します。`bin/gen.rb` はジェネレーターを実行し（`spin run gen`）、`bin/db.rb` は開発中にマイグレーターを実行します（`cybertrain db migrate` がこれを使います。最初のマイグレーションで `gen/models/` が生成されるまで、`bin/blog.rb` はコンパイルできないためです）。`gen/` にはすでに `views.rb` があります。これはコミットされる、空の埋め込みビューのテーブルです。
+`bin/blog.rb` はアプリケーション唯一のエントリーポイントで、`spin build blog` がコンパイルするプログラムです：`./blog` でサーバーを起動し、`./blog migrate` と `./blog db status` でデータベースを管理します。`bin/gen.rb` はジェネレーターを実行し（`spin run gen`）、`bin/db.rb` は開発中にマイグレーターを実行します（`cybertrain db migrate` がこれを使います。最初のマイグレーションで `gen/models/` が生成されるまで、`bin/blog.rb` はコンパイルできないためです）。`gen/` にはすでに `views.rb` があります。これはコミットされる、空の埋め込みビューのテーブルです。レイアウトは `stylesheet_link_tag` で `app/assets/stylesheets/application.css` を読み込みます。`spin run gen` がそれをダイジェスト付きで `public/assets/` に書き出し、そこは git の管理から外してあります（[アセット](assets.md)を参照）。
 
 `ApplicationController` は最初は次のようになっており、レコードが見つからない場合は `rescue_from` によって 404 になります：
 
@@ -599,7 +600,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   - `dummy_digest` はランダムなパスワードのダイジェストで、プロセスごとに一度、現在のコストで作られます。アドレスが見つからないときはこれと照合してください。そうすれば、どのアドレスにアカウントがあるかが応答時間から分かりません：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。
   - `session_key(digest)` は、パスワードダイジェストの `secret_key_base` による HMAC です。サインイン時にセッションに保存し、リクエストごとに `session_key_matches?(session[:password_key], user.password_digest)` で確かめます。パスワードを変えるとダイジェストが新しくなるので、それ以前に始まったセッションはすべてサインアウトされます。
   - `iterations` は、`Cybertrain.config.test?` のときは `Password::TEST_ITERATIONS`（1,000）なので、テストスイートはユーザーごとに本番のコストを払わずに済みます。ダイジェストは自身の回数を記録しているので、ほかには何も変わりません。
-- **セッション**（`session[:key]`、署名付き cookie）：`clear` はサインアウト時にセッションを空にします（CSRF トークンも含めて）。`config.session_absolute_max_age`（2 週間。`0` で無効）は、どれだけ頻繁に使われても、セッションの寿命全体に上限を設けます：cookie は最初に書かれた時刻を記録し、それより古い cookie は空のセッションとして読み込まれるので、コピーした cookie をいつまでも再利用することはできません。`session.restart_lifetime!` は（サインイン時に）カウントをやり直します。
+- **セッション**（`session[:key]`、暗号化された cookie）：`clear` はサインアウト時にセッションを空にします（CSRF トークンも含めて）。`config.session_absolute_max_age`（2 週間。`0` で無効）は、どれだけ頻繁に使われても、セッションの寿命全体に上限を設けます：cookie は最初に書かれた時刻を記録し、それより古い cookie は空のセッションとして読み込まれるので、コピーした cookie をいつまでも再利用することはできません。`session.restart_lifetime!` は（サインイン時に）カウントをやり直します。
 - **`Controller#local_path?(text)` と `safe_redirect_path(text, fallback)`**：リクエストから来たパス（`return_to` パラメーター、記憶しておいたページ）にリダイレクトするのは、それが `/` で始まり、`//` や `/\` では始まらず、表示可能な ASCII 文字だけからなり、2,048 バイト以下の場合だけです：`redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`。
 - コントローラークラスの **`skip_before_action(name, only:, except:)`** は、継承した `before_action` を一部のアクションで外します。生成される `allow_unauthenticated_access` は、これを 1 行で包んだものです。
 - **`cybertrain generate authentication`** は、アプリが所有するコードとして次のものを書き出します：`users` と `sessions` のマイグレーションとモデル、`SessionsController`、`RegistrationsController`、それらのビューとナビゲーションのパーシャル、`ApplicationController` のブロック（`resume_session`、`require_authentication`、`start_new_session_for`、`terminate_session`、`after_authentication_url`）、そして `test/authentication.rb`。このコードは、このリストのすべてを使います：`User.authenticate_by` は `verify_serialized` とダミーのダイジェストで照合し、`start_new_session_for` はパスワードのキーを保存して寿命をやり直し、`resume_session` はキーが一致しなくなった Session の行や `session_absolute_max_age` より古い行を終了させ、`after_authentication_url` は `safe_redirect_path` です。パスワードを変えたブラウザーをサインインしたままにするには、保存した後に新しいキーを格納します：`session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`。設計：[docs/design.md](../design.md) D25。
@@ -626,7 +627,7 @@ end
 ```
 
 > [!NOTE]
-> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。リバースプロキシの背後では、[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定しない限り、訪問者は全員がプロキシのアドレスとして数えられます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
+> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。カウントはアプリのデータベース（`Cybertrain::Cache`）にあるので、アプリのすべてのプロセスがまとめて数えます。リバースプロキシの背後では、[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定しない限り、訪問者は全員がプロキシのアドレスとして数えられます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
 
 <!-- step 14 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する
@@ -788,12 +789,12 @@ kamal deploy   # 以降のデプロイ
 > 思わぬところでつまずく前に知っておきたい、制限とクセ。
 
 <!-- list: points know -->
-- セッションに保持できるのは String のみで、HMAC 署名付きの cookie に入ります。
+- セッションに保持できるのは String のみで、暗号化した cookie に入ります。
 - データベースは SQLite のみで、Spinel の FFI を経由します。
 - バックトレースはありません：エラーにはクラス、メッセージ、リクエスト行、テンプレート名と行番号が表示されます。
 - ビュー内で属性名を書き間違えると、例外にならず空としてレンダリングされます。これは既知の課題です。
 - 関連付けは外部キーか一行の宣言から作られます。`has_many :through`、入れ子の `includes`、enum、STI、ポリモーフィック関連付けはありません。
-- `namespace`、`respond_to`/フォーマット、`constraints`、`mount` はありません。`render json:` は最小限です。
+- `constraints` と `mount` はありません。JSON は `render json:` で返し、これは最小限です。
 - スキャフォールドで生成したモデルでは、最初の string フィールドにだけデフォルトで presence バリデーションが付きます。
 - ジェネレーターは `app/controllers` と `app/models` に対して、パーサーではなく字句スキャン（正規表現）を使います。
 - ビューはビルド時に埋め込まれます：ビューだけの変更でも、本番環境に反映するには `cybertrain build` と再起動が必要です。

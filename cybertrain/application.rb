@@ -1,4 +1,5 @@
 require "cybertrain/app_name"
+require "cybertrain/assets"
 require "cybertrain/config"
 require "cybertrain/cast"
 require "cybertrain/version"
@@ -13,6 +14,8 @@ require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/error_pages"
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/middleware/health_check"
+require "cybertrain/middleware/ssl_redirect"
+require "cybertrain/middleware/content_security_policy_header"
 require "cybertrain/stream/endpoint"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
@@ -50,7 +53,7 @@ module Cybertrain
   # hands it Cybertrain::Main's argv:
   #
   #   module Gen::Routes
-  #     def self.url_resolver = ->(name, args) { path_for(name, args) }
+  #     def self.url_resolver = ->(name, args, options) { path_for(name, args, options) }
   #   end
   #
   #   app = Cybertrain::Application.new(
@@ -67,7 +70,7 @@ module Cybertrain
   # binary (build/bin/<name>) the development loop rebuilds and execs.
   #
   # Do NOT write the resolver as a lambda literal in the keyword position
-  # (`url_resolver: ->(name, args) { ... }`), nor pass a local holding one:
+  # (`url_resolver: ->(name, args, options) { ... }`), nor pass a local holding one:
   # Spinel 2026.09.12 does not mark a lambda passed as a keyword argument as
   # escaping, so its parameters keep the Integer default and every path
   # helper receives a garbage route name (e.g. 4295868465 instead of
@@ -106,8 +109,11 @@ module Cybertrain
       config.production? && views.empty?
     end
 
-    # HostAuthorization (in development) -> ErrorPages (in production) ->
-    # RequestLogger (unless log_level :none) ->
+    # HostAuthorization (Config#host_check?: development, or CYBERTRAIN_HOSTS
+    # set; the health path exempt) -> SslRedirect (if force_ssl) ->
+    # ErrorPages (in production) -> RequestLogger (unless log_level :none) ->
+    # ContentSecurityPolicyHeader (when config/app.rb or a controller
+    # declared a policy) ->
     # Stream::Endpoint (unless stream_path is "") -> HealthCheck (unless
     # health_path is "") -> Static (if static_files) -> MethodOverride -> SessionStore ->
     # CsrfProtection (if csrf; paths under csrf_exempt_prefixes pass it) ->
@@ -152,6 +158,8 @@ module Cybertrain
       fail_boot(feeds_error) unless feeds_error.empty?
       stream_error = c.stream_error
       fail_boot(stream_error) unless stream_error.empty?
+      security_error = c.security_error
+      fail_boot(security_error) unless security_error.empty?
       # A string check, no openssl: a malformed key always, an unset one when
       # gen/app.rb says a model declares `encrypts`.
       encryption_error = c.encryption_error
@@ -159,6 +167,10 @@ module Cybertrain
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       Application.configure_views(c, @views, @url_resolver)
+      # The digests public/assets/.manifest keeps are served immutable too
+      # (Static); an unknown asset name raises outside production.
+      Assets.load_kept(c.public_root)
+      Assets.raise_on_unknown = !c.production?
       # Module-level settings, like Views': the parser and the blob store are
       # reached from places that have no Config. The upload directory is made
       # by the first write, not here, so a read-only deploy still boots.
@@ -168,6 +180,7 @@ module Cybertrain
       Request.trusted_proxy = c.trusted_proxy
       Request.trusted_proxies = c.trusted_proxies
       ParameterFilter.names = c.filter_parameters
+      Response.default_permissions_policy = c.permissions_policy
       Cybertrain.logger.level = c.log_level == :none ? :error : c.log_level
       self
     end
@@ -657,7 +670,7 @@ module Cybertrain
       rebuilder = @rebuilder
       unless rebuilder.nil?
         app = Dev::ErrorPage.new(app, rebuilder)
-        app = HostAuthorization.new(app, @config.allowed_hosts) if @config.development?
+        app = HostAuthorization.new(app, @config.checked_hosts, @config.health_path) if @config.development?
       end
       app
     end
@@ -716,7 +729,7 @@ module Cybertrain
       app = @router
       app = CsrfProtection.new(app, c.csrf_exempt_prefixes) if c.csrf
       app = SessionStore.new(app, secret: c.resolve_secret!, cookie_name: c.session_cookie_name,
-                                  max_age: c.session_max_age, secure: c.session_secure,
+                                  max_age: c.session_max_age, secure: c.secure_cookies?,
                                   same_site: c.session_same_site, partitioned: c.session_partitioned,
                                   absolute_max_age: c.session_absolute_max_age)
       app = MethodOverride.new(app)
@@ -727,10 +740,20 @@ module Cybertrain
       # The realtime endpoint (Stream::Endpoint), also before the session:
       # its authorisation is the signed token, and it sets no cookie.
       app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?
+      # Only when a policy exists: an application without one keeps its
+      # stack (and sends no CSP header, as in Rails).
+      policy = c.content_security_policy_value
+      if !policy.nil? || ContentSecurityPolicy.controller_policies?
+        app = ContentSecurityPolicyHeader.new(app, policy, c.content_security_policy_report_only,
+                                              c.content_security_policy_nonce_directives)
+      end
       # The stream path's `s` tokens are logged as [FILTERED].
       app = RequestLogger.new(app, Cybertrain.logger, c.stream_path) unless c.log_level == :none
       app = ErrorPages.new(app, c.public_root) if c.production?
-      app = HostAuthorization.new(app, c.allowed_hosts) if c.development?
+      # Outside ErrorPages, inside the host check: a refused Host is never
+      # redirected, and the redirect's host is one the check accepted.
+      app = SslRedirect.new(app, c.health_path) if c.force_ssl
+      app = HostAuthorization.new(app, c.checked_hosts, c.health_path) if c.host_check?
       app
     end
   end

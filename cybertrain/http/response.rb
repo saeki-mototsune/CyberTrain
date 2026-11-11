@@ -24,24 +24,33 @@ module Cybertrain
     # application built on them answer (RFC 9110 section 15), sent on the
     # status line by #to_http. Browsers ignore the phrase, but curl and the
     # logs show it, so a code missing here would be written as "Unknown"
-    # (`HTTP/1.1 202 Unknown`). A new code goes here and, as a Symbol, into
-    # Controller::STATUS_SYMBOLS; the two tables list the same codes, except
-    # 101, which only the server's WebSocket upgrade sends (D36), never a
-    # controller.
+    # (`HTTP/1.1 202 Unknown`). The phrases are RFC 9110's (413 "Content Too
+    # Large", 422 "Unprocessable Content"). A new code goes here and, as a
+    # Symbol, into Controller::STATUS_SYMBOLS; the two tables list the same
+    # codes, plus five older names that are extra Symbols (`:payload_too_large`,
+    # `:request_entity_too_large`, `:unprocessable_entity`,
+    # `:request_uri_too_long`, `:requested_range_not_satisfiable`).
     STATUS_TEXT = {
-      101 => "Switching Protocols",
-      200 => "OK", 201 => "Created", 202 => "Accepted", 204 => "No Content",
-      205 => "Reset Content", 206 => "Partial Content",
+      100 => "Continue", 101 => "Switching Protocols", 102 => "Processing", 103 => "Early Hints",
+      200 => "OK", 201 => "Created", 202 => "Accepted", 203 => "Non-Authoritative Information",
+      204 => "No Content", 205 => "Reset Content", 206 => "Partial Content",
+      207 => "Multi-Status", 208 => "Already Reported", 226 => "IM Used",
       300 => "Multiple Choices", 301 => "Moved Permanently", 302 => "Found", 303 => "See Other",
-      304 => "Not Modified", 307 => "Temporary Redirect", 308 => "Permanent Redirect",
+      304 => "Not Modified", 305 => "Use Proxy", 307 => "Temporary Redirect", 308 => "Permanent Redirect",
       400 => "Bad Request", 401 => "Unauthorized", 402 => "Payment Required", 403 => "Forbidden",
       404 => "Not Found", 405 => "Method Not Allowed", 406 => "Not Acceptable",
-      408 => "Request Timeout", 409 => "Conflict", 410 => "Gone", 411 => "Length Required",
-      412 => "Precondition Failed", 413 => "Payload Too Large", 415 => "Unsupported Media Type",
-      416 => "Range Not Satisfiable", 417 => "Expectation Failed", 422 => "Unprocessable Entity",
+      407 => "Proxy Authentication Required", 408 => "Request Timeout", 409 => "Conflict",
+      410 => "Gone", 411 => "Length Required", 412 => "Precondition Failed",
+      413 => "Content Too Large", 414 => "URI Too Long", 415 => "Unsupported Media Type",
+      416 => "Range Not Satisfiable", 417 => "Expectation Failed", 421 => "Misdirected Request",
+      422 => "Unprocessable Content", 423 => "Locked", 424 => "Failed Dependency",
+      425 => "Too Early", 426 => "Upgrade Required", 428 => "Precondition Required",
       429 => "Too Many Requests", 431 => "Request Header Fields Too Large",
+      451 => "Unavailable For Legal Reasons",
       500 => "Internal Server Error", 501 => "Not Implemented", 502 => "Bad Gateway",
-      503 => "Service Unavailable", 504 => "Gateway Timeout"
+      503 => "Service Unavailable", 504 => "Gateway Timeout", 505 => "HTTP Version Not Supported",
+      506 => "Variant Also Negotiates", 507 => "Insufficient Storage", 508 => "Loop Detected",
+      510 => "Not Extended", 511 => "Network Authentication Required"
     }
     DEFAULT_CONTENT_TYPE = "text/html; charset=utf-8"
     # Sent on every response unless the response already carries a header of
@@ -50,9 +59,32 @@ module Cybertrain
     DEFAULT_NOSNIFF = "nosniff"
     DEFAULT_FRAME_OPTIONS = "SAMEORIGIN"
 
+    # The Permissions-Policy every response carries unless it sets its own
+    # (spec C-11): camera, microphone and geolocation off. Application#boot
+    # installs Config#permissions_policy here; "" sends none.
+    @default_permissions_policy = "camera=(), microphone=(), geolocation=()"
+
+    # @return [String] the default Permissions-Policy, "" for none
+    # @api public
+    def self.default_permissions_policy
+      @default_permissions_policy
+    end
+
+    # @param value [String] e.g. `"camera=(), geolocation=(self)"`, or "" for none
+    # @raise [ArgumentError] on a CR or LF, changing nothing
+    # @api public
+    def self.default_permissions_policy=(value)
+      text = value.to_s
+      if text.include?("\r") || text.include?("\n")
+        msg = "header Permissions-Policy must not contain CR or LF"
+        raise ArgumentError, msg
+      end
+      @default_permissions_policy = text
+    end
+
     # The status code, 200 until set. The status line carries the reason
-    # phrase STATUS_TEXT gives the code; a code the table lacks (418, 451,
-    # a non-standard code) is sent with the phrase "Unknown".
+    # phrase STATUS_TEXT gives the code; a code the table lacks (418, a
+    # non-standard code) is sent with the phrase "Unknown".
     # @return [Integer]
     # @api public
     attr_accessor :status
@@ -229,14 +261,38 @@ module Cybertrain
       @cookies << set_cookie_value
     end
 
+    # Adds a Set-Cookie header in place of any earlier one for the cookie
+    # `name` (a value starting `"name="`), so a cookie written twice in one
+    # request is sent once, with its last value ({CookieJar} writes through
+    # this). Raises ArgumentError, changing nothing, when the value contains
+    # CR or LF. The list is edited in place (`cookies` is a public reader).
+    # @param name [String]
+    # @param set_cookie [String] built with {Cookies.serialize}
+    # @return [nil]
+    # @api public
+    def replace_cookie(name, set_cookie)
+      reject_crlf!("Set-Cookie", set_cookie)
+      prefix = "#{name}="
+      kept = Array.new(0) { "" }
+      @cookies.each { |c| kept << c unless c.start_with?(prefix) }
+      @cookies.clear
+      kept.each { |c| @cookies << c }
+      @cookies << set_cookie
+      nil
+    end
+
     # Raises ArgumentError (leaving the response untouched) when location
-    # contains CR or LF, e.g. a percent-decoded return_to param.
+    # contains CR or LF, e.g. a percent-decoded return_to param. Returns nil:
+    # `redirect` is also the routes DSL's Mapper#redirect, and one name keeps
+    # one return type across the program (NAME_HOMES in
+    # script/check-reserved-names; spikes/NOTES.md rules 10, 34).
     def redirect(location, status = 302)
       set_header("Location", location) # raises on CR/LF: the stream stays
       @body_writer = nil
       @upgrade = false
       @status = status
       @performed = true
+      nil
     end
 
     def performed?
@@ -261,25 +317,35 @@ module Cybertrain
     # Content-Type, X-Content-Type-Options and X-Frame-Options are added
     # when the response has no header of that name (D14); every response
     # the Server writes, error answers and HEAD included, goes through this
-    # method. Accepted deviation: Content-Length and the default
-    # Content-Type are emitted for 204 and 304 too, although RFC 9110
-    # section 8.6 forbids Content-Length in a 204.
+    # method. Permissions-Policy is one of those defaults too
+    # (Response.default_permissions_policy). A 304 carries neither Content-Length nor Content-Type (RFC
+    # 9110 15.4.5), and no body either, even when one was set (`render
+    # plain: "x", status: :not_modified`): bytes after a 304's head would be
+    # read as the start of the next response on a keep-alive connection.
+    # Accepted deviation: Content-Length and the default
+    # Content-Type are emitted for 204 too, although RFC 9110 section 8.6
+    # forbids Content-Length in a 204.
     def to_http(head_only = false)
       out = +"HTTP/1.1 #{@status} #{status_text}\r\n"
-      out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if header_key("content-type").nil?
+      # A 304 describes no body: no Content-Type and no Content-Length
+      # (RFC 9110 15.4.5), as Rails sends it.
+      not_modified = @status == 304
+      out << "Content-Type: #{DEFAULT_CONTENT_TYPE}\r\n" if !not_modified && header_key("content-type").nil?
       @headers.each do |name, value|
         next if HeaderName.same?(name, "content-length")
+        next if not_modified && HeaderName.same?(name, "content-type")
 
         out << name << ": " << value << "\r\n"
       end
       out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
       out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
-      out << "Content-Length: #{@body.bytesize}\r\n"
+      add_permissions_policy(out)
+      out << "Content-Length: #{@body.bytesize}\r\n" unless not_modified
       @cookies.each do |cookie|
         out << "Set-Cookie: " << cookie << "\r\n"
       end
       out << "\r\n"
-      out << @body unless head_only
+      out << @body unless head_only || not_modified
       out
     end
 
@@ -301,6 +367,7 @@ module Cybertrain
       unless upgrade
         out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
         out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
+        add_permissions_policy(out)
       end
       out << "Transfer-Encoding: chunked\r\n" if chunked
       @cookies.each do |cookie|
@@ -311,6 +378,14 @@ module Cybertrain
     end
 
     private
+
+    # The default Permissions-Policy line, unless the response set the
+    # header or the default is "".
+    def add_permissions_policy(out)
+      policy = Response.default_permissions_policy
+      out << "Permissions-Policy: " << policy << "\r\n" if !policy.empty? && header_key("permissions-policy").nil?
+      nil
+    end
 
     # The tail both reset policies share: status, text/plain content type
     # and the body ("" means the status text). Returns nil.

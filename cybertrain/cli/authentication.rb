@@ -16,9 +16,9 @@
 # made once, so running the generator again is harmless.
 #
 # Sign-in attempts are rate limited as in Rails' generator (`rate_limit to:
-# 10, within: 3 * 60, only: [:create]`, per client address, per process;
-# docs/design.md D26), and AppTest.sign_in resets the counts so a test
-# suite never reaches the limit.
+# 10, within: 3 * 60, only: [:create]`, per client address, counted in
+# Cybertrain::Cache; docs/design.md D26), and AppTest.sign_in resets the
+# counts so a test suite never reaches the limit.
 #
 # What it leaves out, and why: password reset (its e-mail needs the app's
 # SMTP settings for Cybertrain::Mailer, which the generator cannot know) and a `Current` object (templates read `@current_user` instead, an ivar
@@ -456,7 +456,7 @@ module Cybertrain
           # deleting their rows. Columns, the Cybertrain::Model superclass and
           # `user` (from the user_id foreign key) come from gen/models/session.rb.
           #
-          # Not to be confused with Cybertrain::Session, the signed cookie that
+          # Not to be confused with Cybertrain::Session, the encrypted cookie that
           # holds this row's id as `session[:session_id]`.
           class Session
           end
@@ -1424,26 +1424,35 @@ module Cybertrain
 
           # SessionsController's rate_limit: ten attempts per address, then even
           # the right password goes back to the form until the window closes.
+          # The counts live in Cybertrain::Cache, in windows aligned to the
+          # epoch: the cache's clock is held still, so the attempts share one
+          # window, then moved a whole window on.
           test "POST /session past ten attempts is refused for a while" do
             client = new_client
             AppTest.user
             Cybertrain::RateLimit.reset_all!
-            client.get("/session/new")
-            wrong_password = { "authenticity_token" => AppTest.form_token(client),
-                               "email_address" => "ann@example.com", "password" => "wrong-password" }
-            right_password = { "authenticity_token" => AppTest.form_token(client),
-                               "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
-            10.times { client.post("/session", wrong_password) }
-            res = client.post("/session", right_password)
-            assert_redirected_to res, "/session/new"
-            assert_equal 0, Session.count
-            res = client.follow_redirect!
-            assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
-            Cybertrain::RateLimit.current_time = Time.now.to_i + 3 * 60
-            res = client.post("/session", right_password)
-            Cybertrain::RateLimit.current_time = -1
-            assert_redirected_to res, "/"
-            assert_equal 1, Session.count
+            Cybertrain::Cache.clock = -> { 2_000_000_000 }
+            begin
+              client.get("/session/new")
+              wrong_password = { "authenticity_token" => AppTest.form_token(client),
+                                 "email_address" => "ann@example.com", "password" => "wrong-password" }
+              right_password = { "authenticity_token" => AppTest.form_token(client),
+                                 "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
+              10.times { client.post("/session", wrong_password) }
+              res = client.post("/session", right_password)
+              assert_redirected_to res, "/session/new"
+              assert_equal 0, Session.count
+              res = client.follow_redirect!
+              assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
+              Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
+              res = client.post("/session", right_password)
+              assert_redirected_to res, "/"
+              assert_equal 1, Session.count
+            ensure
+              # The system clock again, even when an assertion fails: the
+              # tests after this one must not run at a frozen time.
+              Cybertrain::Cache.clock = -> { Time.now.to_i }
+            end
           end
 
           test "DELETE /session signs out and drops the Session row" do
@@ -1498,7 +1507,7 @@ module Cybertrain
               assert_includes res.body, "<span>ann@example.com</span>"
               token = AppTest.form_token(client)
 
-              # Keep the signed cookie and its row, but move the creation time
+              # Keep the session cookie and its row, but move the creation time
               # to the expiration boundary. Saving updates updated_at too;
               # neither that nor a rewritten cookie extends authentication.
               row = Session.first

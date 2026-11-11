@@ -226,6 +226,28 @@ test "with the toolchain of this machine, nothing an app build needs is missing 
   assert_equal [], Toolchain.missing_app_requirements
   assert Toolchain.sqlite_ok?
   assert Toolchain.zlib_ok?
+  assert Toolchain.openssl_ok?
+end
+
+test "missing OpenSSL headers or library are a missing requirement, like sqlite3 and zlib" do
+  reset_env
+  # A compiler that links everything except -lssl, as a machine without the
+  # OpenSSL development package would.
+  File.write("nossl-cc", "#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = \"-lssl\" ] && exit 1; done\nexit 0\n")
+  File.chmod(0o755, "nossl-cc")
+  ENV["CC"] = here("nossl-cc")
+  assert Toolchain.sqlite_ok?
+  assert Toolchain.zlib_ok?
+  refute Toolchain.openssl_ok?
+  assert_includes Toolchain.missing_app_requirements, "the OpenSSL headers and library"
+  refute Toolchain.missing_app_requirements.include?("the zlib headers and library")
+  assert_includes Toolchain.missing_requirements, "the OpenSSL headers and library"
+  assert_includes Toolchain.doctor_problems(true), "the OpenSSL headers and library"
+  assert_includes Toolchain.doctor_problems(false), "the OpenSSL headers and library"
+  # One assertion whatever the platform: macOS has two hint lines, and the
+  # snapshot counts assertions.
+  refute Toolchain.platform_install_hints.any? { |line| line.include?("optional") }
+  ENV["CC"] = ""
 end
 
 test "install refuses a home it cannot write, without hanging" do

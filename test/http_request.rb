@@ -87,6 +87,63 @@ test "content_length of an overlong all-digit value is Int64 max, not a RangeErr
   assert_equal 999999999999999999, request_with({ "content-length" => "999999999999999999" }).content_length
 end
 
+def req_with_accept(accept)
+  Request.new("GET", "/", { "accept" => accept }, "", "127.0.0.1")
+end
+
+test "Accept decides the format when there is no extension" do
+  assert_equal :html, req_with_accept("").format
+  assert_equal :html, request_with({}).format
+  assert_equal :html, req_with_accept("*/*").format
+  assert_equal :turbo_stream, req_with_accept("text/vnd.turbo-stream.html, text/html, application/xhtml+xml").format
+  assert_equal :json, req_with_accept("application/json").format
+  assert_equal :json, req_with_accept("application/json, */*").format
+  assert_equal :html, req_with_accept("text/html, application/json").format
+  assert_equal :json, req_with_accept("Application/JSON; charset=utf-8").format
+end
+
+test "Accept with q-values and wildcards" do
+  assert_equal :html, req_with_accept("text/html;q=0.9, application/json").format
+  assert_equal :html, req_with_accept("application/json;q=0, text/html").format
+  assert_equal :html, req_with_accept("application/json;q=0").format
+  assert_equal :json, req_with_accept("text/*, application/json;q=0.1").format   # text/* is not text/html
+  assert_equal :html, req_with_accept("text/vnd.turbo-stream.html; q=0.000, text/html").format
+  assert_equal :json, req_with_accept("text/html;q=0.0, application/json").format
+end
+
+test "the extension wins over Accept, and setting it again forgets the memo" do
+  req = req_with_accept("application/json")
+  assert_equal "", req.format_extension
+  assert_equal :json, req.format
+  req.format_extension = "csv"
+  assert_equal "csv", req.format_extension
+  assert_equal :csv, req.format
+  req.format_extension = "v2"
+  assert_equal :unknown, req.format
+end
+
+test "extensions map to Rails' registered formats" do
+  assert_equal :jpeg, Cybertrain::Request.format_for_extension("jpg")
+  assert_equal :text, Cybertrain::Request.format_for_extension("txt")
+  assert_equal :unknown, Cybertrain::Request.format_for_extension("v2")
+  assert_equal "text/vnd.turbo-stream.html; charset=utf-8", Cybertrain::Request.mime_type(:turbo_stream)
+  assert_equal :html, Cybertrain::Request.format_for_extension("htm")
+  assert_equal :turbo_stream, Cybertrain::Request.format_for_extension("turbo_stream")
+  assert_equal :woff2, Cybertrain::Request.format_for_extension("woff2")
+  assert_equal :url_encoded_form, Cybertrain::Request.format_for_extension("url_encoded_form")
+  assert_equal :unknown, Cybertrain::Request.format_for_extension("JSON")
+  assert_equal :unknown, Cybertrain::Request.format_for_extension("")
+  assert_equal "text/html; charset=utf-8", Cybertrain::Request.mime_type(:html)
+  assert_equal "application/json; charset=utf-8", Cybertrain::Request.mime_type(:json)
+  assert_equal "text/csv; charset=utf-8", Cybertrain::Request.mime_type(:csv)
+  assert_equal "application/xml; charset=utf-8", Cybertrain::Request.mime_type(:xml)
+  assert_equal "text/plain; charset=utf-8", Cybertrain::Request.mime_type(:text)
+  assert_equal "text/javascript; charset=utf-8", Cybertrain::Request.mime_type(:js)
+  assert_equal "text/css; charset=utf-8", Cybertrain::Request.mime_type(:css)
+  assert_equal "application/octet-stream", Cybertrain::Request.mime_type(:pdf)
+  assert_equal "application/octet-stream", Cybertrain::Request.mime_type(:unknown)
+end
+
 test "method predicates" do
   assert Request.new("GET", "/", {}, "").get?
   assert Request.new("POST", "/", {}, "").post?

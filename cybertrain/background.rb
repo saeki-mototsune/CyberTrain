@@ -22,7 +22,7 @@ module Cybertrain
   # and Test::Client never start them. The same pattern as
   # Net.tls_connector: a do-nothing default here, the real one in the file
   # that is required only by the programs that use it (so a program that
-  # never opens a WebSocket does not link it, nor libssl).
+  # never opens a WebSocket does not link it).
   # @api public
   module Background
     # A background service: the default does nothing. Subclasses override

@@ -121,6 +121,54 @@ class LoopComponent < Cybertrain::Component
   end
 end
 
+# A collection component: its only required keyword is named after it, and
+# it declares the counter.
+class CommentComponent < Cybertrain::Component
+  def initialize(comment:, comment_counter: 0)
+    @comment = comment
+    @comment_counter = comment_counter
+  end
+
+  def view_assigns
+    { "comment" => @comment, "comment_counter" => @comment_counter }
+  end
+
+  def component_name
+    "comment"
+  end
+
+  def component_template
+    "__components/comment_component.html.erb"
+  end
+
+  def self.with_collection(items)
+    Cybertrain::ComponentCollection.new("comment", "comment", items, true)
+  end
+end
+
+# Named after its keyword too, without a counter.
+class PillComponent < Cybertrain::Component
+  def initialize(pill:)
+    @pill = pill
+  end
+
+  def view_assigns
+    { "pill" => @pill }
+  end
+
+  def component_name
+    "pill"
+  end
+
+  def component_template
+    "__components/pill_component.html.erb"
+  end
+
+  def self.with_collection(items)
+    Cybertrain::ComponentCollection.new("pill", "pill", items, false)
+  end
+end
+
 module Gen
   module Components
     def self.build(name, kwargs)
@@ -142,6 +190,20 @@ module Gen
       when "loop"
         Cybertrain::Component.check_keywords!(name, kwargs, Array.new(0) { "" }, 0)
         ::LoopComponent.new
+      when "comment"
+        Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
+        return ::CommentComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
+
+        Cybertrain::Component.check_keywords!(name, kwargs, ["comment", "comment_counter"], 1)
+        if kwargs.key?("comment_counter") then ::CommentComponent.new(comment: kwargs["comment"], comment_counter: kwargs["comment_counter"])
+        else ::CommentComponent.new(comment: kwargs["comment"])
+        end
+      when "pill"
+        Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
+        return ::PillComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
+
+        Cybertrain::Component.check_keywords!(name, kwargs, ["pill"], 1)
+        ::PillComponent.new(pill: kwargs["pill"])
       else
         raise Cybertrain::Component::Unknown, "no component '#{name}' (app/components/#{name}_component.rb, then `spin run gen`)"
       end
@@ -156,6 +218,8 @@ FILES = {
   "app/components/card_component.html.erb" => "<div class=\"card\"><h3><%= title %></h3><p><%= value_text %></p><%= content %></div>",
   "app/components/frame_component.html.erb" => "<section><%= label %>:<%= render component: \"card\", title: label %>|<%= render \"shared/note\", text: label %></section>",
   "app/components/loop_component.html.erb" => "<%= render component: \"loop\" %>",
+  "app/components/comment_component.html.erb" => "<li><%= comment_counter %>:<%= comment %></li>",
+  "app/components/pill_component.html.erb" => "<i><%= pill %></i>",
   "app/views/shared/_note.html.erb" => "<i><%= text %></i>",
   "app/components/probe_component.html.erb" => "<%= secret %>|<%= render \"shared/probe\" %>",
   "app/views/shared/_probe.html.erb" => "<%= secret %>",
@@ -183,6 +247,8 @@ def render_inline(src, max_depth = 12)
   template = Cybertrain::Template::Template.parse(src, "pages/inline")
   env = { "__template_dir" => "pages" }
   env["v"] = 2
+  env["comments"] = ["a", "<b>"]
+  env["none"] = Array.new(0) { "" }
   Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil), max_depth).render(template, env)
 end
 
@@ -268,6 +334,20 @@ test "the derived names of the base class" do
   assert_equal "admin/user_row", Cybertrain::Component.name_for("Admin::UserRowComponent")
   assert_equal "card", Cybertrain::Component.name_for("CardComponent")
   assert_equal "", Cybertrain::Component.new.content.to_s
+end
+
+test "CommentComponent.with_collection(items) and render component: collection:" do
+  assert_equal "<li>0:a</li><li>1:&lt;b&gt;</li>", Cybertrain::Views.render_component(CommentComponent.with_collection(["a", "<b>"]))
+  assert_equal "<li>0:a</li><li>1:&lt;b&gt;</li>", render_inline("<%= render component: \"comment\", collection: comments %>")
+  # Without a declared counter, only the item.
+  assert_equal "<i>a</i><i>&lt;b&gt;</i>", render_inline("<%= render component: \"pill\", collection: comments %>")
+  assert_equal "", render_inline("<%= render component: \"comment\", collection: none %>")
+  assert_equal "pages/inline:1: render component: collection: must be an Array, got 2", render_error("<%= render component: \"comment\", collection: v %>")
+  assert_equal "pages/inline:1: unknown keyword 'collection' for component 'card' (known: title, value)",
+               render_error("<%= render component: \"card\", title: \"x\", collection: comments %>")
+  # Another keyword next to collection: is refused, not dropped.
+  assert_equal "pages/inline:1: component 'comment' with collection: takes no other keyword (given comment_counter, extra)",
+               render_error("<%= render component: \"comment\", collection: comments, comment_counter: 1, extra: 2 %>")
 end
 
 Cybertrain::Test.run!

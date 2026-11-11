@@ -24,6 +24,8 @@ require "cybertrain/http/response"
 require "cybertrain/http/query"
 require "cybertrain/http/gzip_ffi"
 require "cybertrain/http/client_error"
+require "cybertrain/router"
+require "cybertrain/middleware/session_store"
 require "cybertrain/test"
 
 Cybertrain::GzipFFI.install!
@@ -104,6 +106,58 @@ test "a time out of a Hash of mixed values casts" do
   row = { "id" => 1, "at" => "2026-01-31T23:59:59Z", "note" => nil }
   assert_equal 31, Cybertrain::Cast.parse_time(Cybertrain::Cast.str(row["at"])).day
   assert_nil Cybertrain::Cast.parse_time(Cybertrain::Cast.str(row["note"]))
+end
+
+# The session cookie through SessionStore, a Router and Response#to_http
+# (the wire form, which the in-process Test::Client never builds): one
+# request writes it, the next sends back what the first's Set-Cookie said,
+# and a damaged cookie reads as an empty session. The session is sealed
+# with AES-256-GCM through this very openssl package.
+SESSION_ROUTER = Cybertrain::Router.new
+SESSION_ROUTER.get("/write") do |ctx|
+  ctx.session["user"] = "café"
+  ctx.response.body = "wrote"
+end
+SESSION_ROUTER.get("/read") do |ctx|
+  user = ctx.session["user"]
+  ctx.response.body = user.nil? ? "(none)" : user
+end
+SESSION_APP = Cybertrain::SessionStore.new(SESSION_ROUTER, secret: "openssl-dispatch-secret")
+
+def wire_round_trip(path, cookie)
+  headers = { "host" => "localhost" }
+  headers["cookie"] = cookie unless cookie.empty?
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", path, headers, ""))
+  SESSION_APP.call(ctx)
+  ctx.response.to_http
+end
+
+# "name=value" of the first Set-Cookie line of a wire response.
+def wire_cookie(http)
+  http.split("\r\n").each do |line|
+    next unless line.downcase.start_with?("set-cookie: ")
+
+    return line[12, line.size].to_s.split(";")[0].to_s
+  end
+  ""
+end
+
+def wire_body(http)
+  http.split("\r\n\r\n", 2)[1].to_s
+end
+
+test "a session written by one request is read by the next, on the wire" do
+  first = wire_round_trip("/write", "")
+  assert_equal "wrote", wire_body(first)
+  cookie = wire_cookie(first)
+  assert cookie.start_with?("_cybertrain_session=")
+  refute cookie.include?("caf")
+  assert_equal "café", wire_body(wire_round_trip("/read", cookie))
+  assert_equal "(none)", wire_body(wire_round_trip("/read", ""))
+  assert_equal "(none)", wire_body(wire_round_trip("/read", "#{cookie}x"))
+  at = cookie.size - 5
+  flipped = cookie[0, at] + (cookie[at] == "A" ? "B" : "A") + cookie[at + 1, 4]
+  assert_equal "(none)", wire_body(wire_round_trip("/read", flipped))
 end
 
 Cybertrain::Test.run!

@@ -19,9 +19,9 @@ files:
 
 | File | What it holds |
 | --- | --- |
-| `Dockerfile` | A two-stage build. The first stage (Ubuntu 24.04) runs `gem install cybertrain`, `cybertrain setup` (Spinel) and `cybertrain build`; the second (the same Ubuntu) gets only `dist/` and the libraries it needs at run time (SQLite, zlib, jemalloc). On start it runs `./notes migrate`, then `exec`s `./notes` |
+| `Dockerfile` | A two-stage build. The first stage (Ubuntu 24.04) runs `gem install cybertrain`, `cybertrain setup` (Spinel) and `cybertrain build`; the second (the same Ubuntu) gets only `dist/` and the libraries it needs at run time (SQLite, zlib, jemalloc, OpenSSL). On start it runs `./notes migrate`, then `exec`s `./notes` |
 | `.dockerignore` | Keeps `build/`, `dist/`, the databases in `storage/`, `tmp/`, `.git/` and `.kamal/` out of the build |
-| `config/deploy.yml` | Kamal's configuration. kamal-proxy takes HTTPS (Let's Encrypt) and forwards to the app's port 3000, and health-checks `/up.html`. The database lives on the volume `notes_storage` (`/app/storage` in the container) |
+| `config/deploy.yml` | Kamal's configuration. kamal-proxy takes HTTPS (Let's Encrypt) and forwards to the app's port 3000, and health-checks `/up.html`. The database lives on the volume `notes_storage` (`/app/storage` in the container), and `asset_path: /app/public/assets` carries the previous release's digested assets over |
 | `.kamal/secrets` | Reads `KAMAL_REGISTRY_PASSWORD` and `CYBERTRAIN_SECRET_KEY_BASE` from the environment of the shell that runs kamal. It never holds the values themselves (the file is committed) |
 | `public/up.html` | The health check page, served by the app itself as a static file |
 
@@ -134,6 +134,22 @@ another range, put that range there instead (`docker network inspect kamal`
 shows it). Leave `proxy.forward_headers` unset: kamal-proxy terminating TLS
 sets `X-Forwarded-For` itself and does not pass on what the client sent,
 which is what you want.
+
+The generated `config/deploy.yml` also has `asset_path: /app/public/assets`.
+Each image carries only its own digested stylesheets and scripts, so Kamal
+bridges the previous release's files into the new container for the
+switch-over, and a page loaded before the deploy still finds the files its
+HTML names. Add the line to a `config/deploy.yml` from an older cybertrain;
+its `Dockerfile` also needs `libssl-dev` in the build stage and `libssl3t64`
+in the runtime stage, since every app now links OpenSSL.
+
+kamal-proxy already redirects http to https and the app sees
+`X-Forwarded-Proto: https`. If you turn on `CYBERTRAIN_FORCE_SSL: 1` as well
+(for the HSTS header), or `CYBERTRAIN_HOSTS: notes.example.com` (which refuses
+other `Host` values), point the `healthcheck` at `/up`. The proxy's check is
+plain http to the container, by address: only the health path (`/up`) is
+exempt from the redirect and from the Host check, so `/up.html` would be
+redirected or get a 403 and the new container would never turn healthy.
 
 ## 8-3. Prepare the secrets
 

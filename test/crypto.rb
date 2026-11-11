@@ -63,4 +63,11 @@ test "random_token returns distinct hex strings of the requested byte length" do
   assert_equal 16, short.length
 end
 
+test "derive_key is the HMAC of a domain-prefixed label, not of the bare label" do
+  key = Cybertrain::Crypto.derive_key("s" * 64, "cybertrain session")
+  assert_equal 32, key.bytesize
+  assert_equal Cybertrain::Crypto.hmac_digest("s" * 64, "cybertrain key\0cybertrain session"), key
+  refute key == Cybertrain::Crypto.hmac_digest("s" * 64, "cybertrain session")
+end
+
 Cybertrain::Test.run!

@@ -78,6 +78,13 @@ env:
 volumes:
   - "blog_storage:/app/storage"
 
+# Digested files under public/assets/ (cybertrain gen keeps the current
+# digest and the two before it). Every image carries only its own, so
+# this bridges the previous release's files into the new container
+# for the switch-over: a page loaded before the deploy still finds
+# the CSS and JavaScript its HTML names.
+asset_path: /app/public/assets
+
 # `kamal db_status` (pending migrations) and `kamal shell`.
 aliases:
   db_status: app exec --reuse "./blog db status"

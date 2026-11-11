@@ -1,16 +1,25 @@
 ok   path helpers raise until the app installs a url_resolver
 ok   h and raw
 ok   link_to escapes its text and its href
+ok   link_to and button_to check data: keys; a SafeString attribute is escaped once
 ok   button_to emits the hidden _method and the authenticity token
 ok   csrf_meta_tags and csrf_token read the session token
 ok   flash, params and request_path come from the controller
 ok   pluralize picks singular or plural
 ok   truncate shortens long text with an ellipsis
 ok   number_with_delimiter groups thousands
+ok   number helpers from a template
+ok   number helpers render nil as an empty string
+ok   number helpers check their arguments
 ok   time_ago_in_words buckets
 ok   render a partial with strict locals
 ok   content_for and yield :title
 ok   url helpers go through the url_resolver with name and args
+ok   a path helper's keywords reach the url_resolver as its options
+ok   url_for appends format:, a query and anchor: to a String or a record's route
+ok   url_for refuses options on a String that already has a query
+ok   url_for refuses options on a String that already has a fragment
+ok   url_for still takes options on a plain String
 ok   url_for derives the route name from the model
 ok   url_for names the route of an Array of one or three records
 ok   an unknown helper is a RuntimeError
@@ -18,4 +27,8 @@ ok   paginate renders Newer / Older around Page N, keeping the query minus page
 ok   paginate leaves out a link to a page that does not exist
 ok   paginate escapes what it is given and takes a path's own query string
 ok   a template reads the Page
-20 tests, 83 assertions, 0 failures
+ok   time_tag for Time, Date, text and format:
+ok   time_tag format: Strings take flags, widths and composites; an unknown directive raises
+ok   time_tag format: a width replaces a number's padding; a width or flag strftime does not mean here raises
+ok   current_page? path only, with query, false on POST
+33 tests, 181 assertions, 0 failures

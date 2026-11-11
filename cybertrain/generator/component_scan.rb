@@ -49,6 +49,10 @@ module Cybertrain
       # would be overwritten without a word (ViewComponent raises
       # ReservedParameterError for the same name).
       RESERVED_NAME = "content"
+      # gen/components.rb writes `def self.with_collection` (a
+      # ComponentCollection); an app's own would replace it, or be replaced,
+      # with another return type (spikes/NOTES.md rule 34).
+      WITH_COLLECTION_DEF = /\Adef\s+self\.with_collection\b/
 
       def self.scan_dir(dir)
         infos = Array.new(0) { ComponentInfo.new("", "", "", [], [], [], [], "") }
@@ -145,6 +149,9 @@ module Cybertrain
           end
           break if indent <= class_indent && ModelScan.closing_end?(line)
 
+          if line.match?(WITH_COLLECTION_DEF)
+            raise Error, "#{file}:#{i}: 'self.with_collection' is written by `spin run gen` (gen/components.rb) for a component whose only required keyword is named after it; remove this definition (render component: \"x\", collection: items, or X.with_collection(items))"
+          end
           names = ControllerScan.ivar_names(line)
           reserved_ivar!(file, i, line)
           names.each { |n| ivars << n unless ivars.include?(n) }

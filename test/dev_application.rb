@@ -67,7 +67,7 @@ router.get("/boom", "boom") { |ctx| PagesController.new(ctx).process(:boom) { |c
 router.get("/status", "status") { |ctx| PagesController.new(ctx).process(:status) { |c| c.status } }
 
 module DevRoutes
-  def self.url_resolver = ->(name, args) { "/" }
+  def self.url_resolver = ->(name, args, options) { "/" }
 end
 
 config = Cybertrain::Config.new

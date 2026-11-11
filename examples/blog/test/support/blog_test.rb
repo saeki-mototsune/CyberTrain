@@ -99,7 +99,8 @@ module BlogTest
 
   # The session the client's cookie carries, read as the server reads it.
   def self.session_of(client)
-    Cybertrain::Session.load(client.cookies[Cybertrain.config.session_cookie_name], Cybertrain.config.secret_key_base)
+    key = Cybertrain::Crypto.derive_key(Cybertrain.config.secret_key_base, Cybertrain::SessionStore::SESSION_KEY_LABEL)
+    Cybertrain::Session.load(client.cookies[Cybertrain.config.session_cookie_name].to_s, key)
   end
 end
 

@@ -18,6 +18,12 @@ module Gen
       router.add("PUT", "/posts/:id", "") { |ctx| PostsController.new(ctx).process(:update) { |c| c.update } }
       router.add("DELETE", "/posts/:id", "") { |ctx| PostsController.new(ctx).process(:destroy) { |c| c.destroy } }
       router.add("GET", "/about", "about") { |ctx| PagesController.new(ctx).process(:about) { |c| c.about } }
+      router.add("GET", "/v1/about", "v1_about") { |ctx| PagesController.new(ctx).process(:about) { |c| c.about } }
+      router.add("GET", "/profile/refresh", "refresh_profile") { |ctx| PagesController.new(ctx).process(:refresh) { |c| c.refresh } }
+      router.add("GET", "/profile", "profile") { |ctx| PagesController.new(ctx).process(:show) { |c| c.show } }
+      router.add("GET", "/old-posts/:id", "") { |ctx| Cybertrain::Router.redirect_to(ctx, "/posts/%{id}", 301) }
+      router.add("GET", "/files/:name", "files_name", false) { |ctx| PagesController.new(ctx).process(:file) { |c| c.file } }
+      router.add("GET", "/gated/:id", "gated_id") { |ctx| GatedController.new(ctx).process(:show) { |c| c.show } }
       router.add("GET", "/admin/jobs", "") { |ctx| CybertrainJobsController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/admin/jobs/retry_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry_all) { |c| c.retry_all_action } }
       router.add("POST", "/admin/jobs/discard_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard_all_failed) { |c| c.discard_all_failed_action } }
@@ -27,118 +33,168 @@ module Gen
       router
     end
 
-    # The helper named by a String, for templates: path_for("about_path", []).
-    def self.path_for(name, args)
+    # The helper named by a String, for templates: path_for("gated_id_path", [gated], { "page" => 2 }).
+    def self.path_for(name, args, options = {})
       case name
-      when "root_path" then "/"
-      when "root_url" then Cybertrain.url_root + "/"
-      when "search_posts_path" then "/posts/search"
-      when "search_posts_url" then Cybertrain.url_root + "/posts/search"
-      when "preview_post_path" then "/posts/#{Cybertrain::Gen.segment(args[0])}/preview"
-      when "preview_post_url" then Cybertrain.url_root + "/posts/#{Cybertrain::Gen.segment(args[0])}/preview"
-      when "post_comments_path" then "/posts/#{Cybertrain::Gen.segment(args[0])}/comments"
-      when "post_comments_url" then Cybertrain.url_root + "/posts/#{Cybertrain::Gen.segment(args[0])}/comments"
-      when "post_comment_path" then "/posts/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}"
-      when "post_comment_url" then Cybertrain.url_root + "/posts/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}"
-      when "posts_path" then "/posts"
-      when "posts_url" then Cybertrain.url_root + "/posts"
-      when "new_post_path" then "/posts/new"
-      when "new_post_url" then Cybertrain.url_root + "/posts/new"
-      when "edit_post_path" then "/posts/#{Cybertrain::Gen.segment(args[0])}/edit"
-      when "edit_post_url" then Cybertrain.url_root + "/posts/#{Cybertrain::Gen.segment(args[0])}/edit"
-      when "post_path" then "/posts/#{Cybertrain::Gen.segment(args[0])}"
-      when "post_url" then Cybertrain.url_root + "/posts/#{Cybertrain::Gen.segment(args[0])}"
-      when "about_path" then "/about"
-      when "about_url" then Cybertrain.url_root + "/about"
+      when "root_path" then Cybertrain::Gen.with_options("/", options)
+      when "root_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/", options)
+      when "search_posts_path" then Cybertrain::Gen.with_options("/posts/search", options)
+      when "search_posts_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts/search", options)
+      when "preview_post_path" then Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/preview", options)
+      when "preview_post_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/preview", options)
+      when "post_comments_path" then Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/comments", options)
+      when "post_comments_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/comments", options)
+      when "post_comment_path" then Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}", options)
+      when "post_comment_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/comments/#{Cybertrain::Gen.segment(args[1])}", options)
+      when "posts_path" then Cybertrain::Gen.with_options("/posts", options)
+      when "posts_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts", options)
+      when "new_post_path" then Cybertrain::Gen.with_options("/posts/new", options)
+      when "new_post_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts/new", options)
+      when "edit_post_path" then Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/edit", options)
+      when "edit_post_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}/edit", options)
+      when "post_path" then Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "post_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "about_path" then Cybertrain::Gen.with_options("/about", options)
+      when "about_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/about", options)
+      when "v1_about_path" then Cybertrain::Gen.with_options("/v1/about", options)
+      when "v1_about_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/v1/about", options)
+      when "refresh_profile_path" then Cybertrain::Gen.with_options("/profile/refresh", options)
+      when "refresh_profile_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/profile/refresh", options)
+      when "profile_path" then Cybertrain::Gen.with_options("/profile", options)
+      when "profile_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/profile", options)
+      when "files_name_path" then Cybertrain::Gen.with_options("/files/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "files_name_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/files/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "gated_id_path" then Cybertrain::Gen.with_options("/gated/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "gated_id_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/gated/#{Cybertrain::Gen.segment(args[0])}", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
 
     # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).
     def self.url_resolver
-      ->(name, args) { path_for(name, args) }
+      ->(name, args, options) { path_for(name, args, options) }
     end
   end
 
   module UrlHelpers
-    def root_path
-      "/"
+    def root_path(options = {})
+      Cybertrain::Gen.with_options("/", options)
     end
 
-    def root_url
-      Cybertrain.url_root + root_path
+    def root_url(options = {})
+      Cybertrain.url_root + root_path(options)
     end
 
-    def search_posts_path
-      "/posts/search"
+    def search_posts_path(options = {})
+      Cybertrain::Gen.with_options("/posts/search", options)
     end
 
-    def search_posts_url
-      Cybertrain.url_root + search_posts_path
+    def search_posts_url(options = {})
+      Cybertrain.url_root + search_posts_path(options)
     end
 
-    def preview_post_path(post)
-      "/posts/#{Cybertrain::Gen.segment(post)}/preview"
+    def preview_post_path(post, options = {})
+      Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(post)}/preview", options)
     end
 
-    def preview_post_url(post)
-      Cybertrain.url_root + preview_post_path(post)
+    def preview_post_url(post, options = {})
+      Cybertrain.url_root + preview_post_path(post, options)
     end
 
-    def post_comments_path(post)
-      "/posts/#{Cybertrain::Gen.segment(post)}/comments"
+    def post_comments_path(post, options = {})
+      Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(post)}/comments", options)
     end
 
-    def post_comments_url(post)
-      Cybertrain.url_root + post_comments_path(post)
+    def post_comments_url(post, options = {})
+      Cybertrain.url_root + post_comments_path(post, options)
     end
 
-    def post_comment_path(post, comment)
-      "/posts/#{Cybertrain::Gen.segment(post)}/comments/#{Cybertrain::Gen.segment(comment)}"
+    def post_comment_path(post, comment, options = {})
+      Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(post)}/comments/#{Cybertrain::Gen.segment(comment)}", options)
     end
 
-    def post_comment_url(post, comment)
-      Cybertrain.url_root + post_comment_path(post, comment)
+    def post_comment_url(post, comment, options = {})
+      Cybertrain.url_root + post_comment_path(post, comment, options)
     end
 
-    def posts_path
-      "/posts"
+    def posts_path(options = {})
+      Cybertrain::Gen.with_options("/posts", options)
     end
 
-    def posts_url
-      Cybertrain.url_root + posts_path
+    def posts_url(options = {})
+      Cybertrain.url_root + posts_path(options)
     end
 
-    def new_post_path
-      "/posts/new"
+    def new_post_path(options = {})
+      Cybertrain::Gen.with_options("/posts/new", options)
     end
 
-    def new_post_url
-      Cybertrain.url_root + new_post_path
+    def new_post_url(options = {})
+      Cybertrain.url_root + new_post_path(options)
     end
 
-    def edit_post_path(post)
-      "/posts/#{Cybertrain::Gen.segment(post)}/edit"
+    def edit_post_path(post, options = {})
+      Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(post)}/edit", options)
     end
 
-    def edit_post_url(post)
-      Cybertrain.url_root + edit_post_path(post)
+    def edit_post_url(post, options = {})
+      Cybertrain.url_root + edit_post_path(post, options)
     end
 
-    def post_path(post)
-      "/posts/#{Cybertrain::Gen.segment(post)}"
+    def post_path(post, options = {})
+      Cybertrain::Gen.with_options("/posts/#{Cybertrain::Gen.segment(post)}", options)
     end
 
-    def post_url(post)
-      Cybertrain.url_root + post_path(post)
+    def post_url(post, options = {})
+      Cybertrain.url_root + post_path(post, options)
     end
 
-    def about_path
-      "/about"
+    def about_path(options = {})
+      Cybertrain::Gen.with_options("/about", options)
     end
 
-    def about_url
-      Cybertrain.url_root + about_path
+    def about_url(options = {})
+      Cybertrain.url_root + about_path(options)
+    end
+
+    def v1_about_path(options = {})
+      Cybertrain::Gen.with_options("/v1/about", options)
+    end
+
+    def v1_about_url(options = {})
+      Cybertrain.url_root + v1_about_path(options)
+    end
+
+    def refresh_profile_path(options = {})
+      Cybertrain::Gen.with_options("/profile/refresh", options)
+    end
+
+    def refresh_profile_url(options = {})
+      Cybertrain.url_root + refresh_profile_path(options)
+    end
+
+    def profile_path(options = {})
+      Cybertrain::Gen.with_options("/profile", options)
+    end
+
+    def profile_url(options = {})
+      Cybertrain.url_root + profile_path(options)
+    end
+
+    def files_name_path(name, options = {})
+      Cybertrain::Gen.with_options("/files/#{Cybertrain::Gen.segment(name)}", options)
+    end
+
+    def files_name_url(name, options = {})
+      Cybertrain.url_root + files_name_path(name, options)
+    end
+
+    def gated_id_path(gated, options = {})
+      Cybertrain::Gen.with_options("/gated/#{Cybertrain::Gen.segment(gated)}", options)
+    end
+
+    def gated_id_url(gated, options = {})
+      Cybertrain.url_root + gated_id_path(gated, options)
     end
   end
 end

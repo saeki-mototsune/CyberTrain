@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
+source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 ---
 # 工作原理
 
@@ -8,13 +8,15 @@ source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
 
 ## 构建时代码生成
 
-`spin run gen`（`bin/gen.rb`）执行 `db/schema.rb` 的 `create_table` DSL 和 `config/routes.rb` 的 `Routes.draw` DSL，以获得表和路由的*数据*。另外，它还对 `app/controllers/**/*.rb` 和 `app/models/**/*.rb` 进行**词法扫描**（用正则表达式，而不是解析器——Spinel 在运行时不提供解析器），查找 `@ivar =` 赋值、`before_action`/`after_action`/`rescue_from ... with:` 的名称以及无参数的 `def`。
+`spin run gen`（`bin/gen.rb`）执行 `db/schema.rb` 的 `create_table` DSL 和 `config/routes.rb` 的 `Routes.draw` DSL，以获得表和路由的*数据*。另外，它还对 `app/controllers/**/*.rb` 和 `app/models/**/*.rb` 进行**词法扫描**（用正则表达式，而不是解析器——Spinel 在运行时不提供解析器），查找 `@ivar =` 赋值、`before_action`/`after_action`/`rescue_from ... with:` 的名称、`helper_method`、`layout` 和 `rate_limit` 行、对 concern 的 `include` 以及无参数的 `def`。它还给 `app/assets/`、`app/javascript/` 和 `vendor/javascript/` 下的文件加上摘要，并把 `config/importmap.rb` 当作文本读取。
 
 据此，它在 `gen/` 下写出朴素、易读的 Ruby 代码：
 
 - `gen/models/<name>.rb`：访问器、类型转换、查找方法、由外键推导出的关联；
 - `gen/routes.rb`：路由表、分派器、`*_path`/`*_url` 辅助方法；
-- `gen/controllers.rb`：每个控制器的 `view_assigns` 和 `run_callback`；
+- `gen/controllers.rb`：每个控制器的 `view_assigns`、`run_callback`、`helper_method` 表和 `controller_layout`；
+- `gen/concerns.rb` 和 `gen/concerns/**`：插入到每个包含类中的 concern 的 `included` 块，以及清空了这些块的 concern 模块（[Concern](requests.md#concerns-and-helper_method)）；
+- `gen/assets.rb`：带摘要的资源路径和 import map（[资源](assets.md)），带摘要的文件放在 `public/assets/` 中；
 - `gen/migrations.rb`；
 - `gen/views.rb`：内嵌视图表，除非为部署而构建，否则为空；
 - `gen/app.rb`：`require_relative` 清单。
@@ -52,7 +54,7 @@ source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
 
 ## 开发循环
 
-在 `development` 模式下（默认的 `CYBERTRAIN_ENV`，`cybertrain build` 构建的二进制文件除外），`cybertrain server`（先 `spin run gen`，再 `spin run NAME`）还会每半秒轮询一次 `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb` 和 `gen/**/*.rb`。视图被排除在外（引擎会自己重新加载它们），`gen/views.rb` 也被排除，它在开发模式下为空。
+在 `development` 模式下（默认的 `CYBERTRAIN_ENV`，`cybertrain build` 构建的二进制文件除外），`cybertrain server`（先 `spin run gen`，再 `spin run NAME`）还会每半秒轮询一次 `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` 以及资源的根（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）。视图被排除在外（引擎会自己重新加载它们），`gen/views.rb` 也被排除，它在开发模式下为空。
 
 发生改动时，会在后台运行 `spin run gen && spin build NAME -- --incremental`：Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元。不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时循环会不带它进行构建。
 
@@ -71,13 +73,15 @@ source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
 | `before_action { do_thing }`（隐式的 `self`） | `before_action { \|c\| c.do_thing }`——无法对存储的块使用 `instance_exec`，所以回调显式接收控制器或记录 |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end`——嵌套块显式接收 mapper |
 | ERB 编译为方法；任意对象、任意方法 | 按固定的语法和分派表解释执行（[模板语言](template-language.md)） |
-| 会话可以保存任何序列化的对象 | 会话的值只能是 String，存放在 HMAC 签名的 cookie 中 |
+| 会话可以保存任何序列化的对象 | 会话的值只能是 String，与 Rails 的 cookie store 一样存放在用 AES-256-GCM 加密的 cookie 中（[Cookie 与会话](requests.md#cookies-and-the-session)） |
 | 多种数据库适配器 | 只有 SQLite，通过 FFI |
 | `Article.transaction { ... }` 返回块的值；`raise ActiveRecord::Rollback`；`requires_new: true` 保存点 | `Article.transaction { \|c\| ... }` 把连接传给块并返回 nil；通过抛出异常退出；嵌套调用加入外层事务，没有保存点（[事务](models.md#transactions)） |
 | `has_many :through`、枚举、STI、多态关联 | 未实现；`has_many`、`has_one` 和 `belongs_to` 来自外键或一行声明，支持 `dependent:`、`counter_cache:` 和一层 `includes`（[关联](models.md#associations)） |
 | `pluck(:a)`、`maximum(:a)`、`group(:a).sum(:b)`、`upsert`、`update_counters`、`where(created_at: t1..t2)` | 带类型的版本，因为 Spinel 的方法只有一种返回类型：`pluck_int` 及其同类方法、`maximum_int`、`sum_float_by`、`upsert`、`increment(:col, by: n)`；Time 的范围写作 `where_between`（[超出 `where` 的查询](models.md#querying-beyond-where)） |
 | 任意列名；关联可以遮蔽 `errors` | 只允许 ASCII 标识符；与框架方法或 Ruby 关键字同名的列会以 `<column>_column` 的名字生成，名称冲突的关联则以后备名称生成（[列名](models.md#column-names)） |
-| `namespace`、format/`respond_to`、`constraints`、`mount` | 未实现——扁平的名称，只有 `render json:` |
+| `namespace`、`scope`、格式与 `respond_to` | 相同（[路由](requests.md#routing)、[格式](requests.md#formats-and-respond_to)）；JSON 用 `render json:` 返回（没有 jbuilder 模板） |
+| `constraints`、`mount`、glob 段 | 未实现 |
+| 在运行时包含的 `ActiveSupport::Concern` | `app/controllers/concerns` 和 `app/models/concerns` 中的 concern 由 `spin run gen` 展开到包含它们的类中；`include` 指向 concern，`class_methods` 的方法不能与实例方法同名（[Concern](requests.md#concerns-and-helper_method)） |
 | `rescue StandardError` 能捕获出错的 `JSON.parse` | 在 Spinel 下 `JSON::ParserError` 不是 `StandardError`：应用代码必须写 `rescue JSON::ParserError, StandardError`。服务器会作为最后手段捕获它并返回 500 |
 | API 控制器中的 `skip_forgery_protection` | CSRF 在路由之前运行，所以 API 按路径豁免，`c.csrf_exempt_prefixes = ["/api/"]`，并自行验证调用方的身份（[配置](configuration.md#configuration-and-environment-variables)） |
 | Rack 对 gzip 压缩的请求体保持原样 | 以 `Content-Encoding: gzip` 发送的请求体通过 `request.decoded_body` 获取，在 10 MiB 的上限内解压；损坏或过大的请求体返回 400；`request.body` 仍然是发送时的原样（[查询字符串与请求体](requests.md#query-strings-and-bodies)） |
@@ -100,6 +104,7 @@ source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
 | `get "up" => "rails/health#show"`（指向控制器的路由） | `GET /up` 是内置的，在静态文件、会话和路由器之前就作出响应，所以不会运行任何 `before_action`；它检查数据库、后台工作线程和 WebSocket 数据订阅，返回 `200 ok` 或 `503`（[运维](background-and-operations.md#operations-backups-vacuum-health-check)） |
 | 用于备份的 `bin/rails db:...` 任务（没有内置） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`，权限 0600，重命名到位）和 `./<app> db vacuum` |
 | Action Cable、`turbo_stream_from`、`broadcast_append_to` | 相同的辅助方法名称，基于签名的流，从一张 SQLite 表通过 Server-Sent Events 或 WebSocket 投递；没有频道类（[实时](realtime.md)） |
-| 资源管道、i18n | 尚未构建（后续阶段，`docs/design.md` D1） |
+| Propshaft、importmap-rails | 相同的目录布局（`app/assets`、`app/javascript`、`vendor/javascript`、`config/importmap.rb`），由 `spin run gen` 加上摘要写入 `public/assets/`；没有 `bin/importmap pin`，不内置 Turbo（[资源](assets.md)） |
+| i18n | 尚未构建（阶段 4b，`docs/design.md` D1） |
 
 <!-- table-foot: 并不详尽：`docs/design.md` §8（“What was deliberately left out”）是更完整的记录。 -->

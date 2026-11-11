@@ -2,6 +2,8 @@ require "cybertrain/generator/routes_dsl"
 require "cybertrain/generator/routes_emitter"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/controllers_emitter"
+require "cybertrain/generator/concern_scan"
+require "cybertrain/generator/concerns_emitter"
 require "cybertrain/generator/manifest"
 require "cybertrain/schema"
 require "cybertrain/generator/model_scan"
@@ -12,6 +14,7 @@ require "cybertrain/generator/helpers_emitter"
 require "cybertrain/generator/components_emitter"
 require "cybertrain/generator/console_emitter"
 require "cybertrain/generator/jobs_emitter"
+require "cybertrain/generator/assets_emitter"
 
 module Cybertrain
   module Gen
@@ -20,29 +23,52 @@ module Cybertrain
     # With --check nothing is written; each out-of-date file is reported as
     # "stale: <path>" and the exit code is 1.
     # `--embed-views` writes gen/views.rb with the app/views tree instead
-    # of an empty table. A jobs page drawn without before_action: prints a
-    # warning line first.
+    # of an empty table. gen/concerns/** holds one file per concern of
+    # app/controllers and app/models (ConcernsEmitter.module_files); a file
+    # there whose concern is gone is removed. A jobs page drawn without before_action: prints a
+    # warning line first. gen/assets.rb holds the asset manifest and the
+    # import map (AssetsEmitter); without --check the digested files are
+    # also written to public/assets (AssetsEmitter.sync_public), which
+    # --check never reads: it compares gen/assets.rb only.
     module Runner
       def self.run(root, argv)
+        ControllerScan.use_root(root)
         check = argv.include?("--check")
         embed = argv.include?("--embed-views")
         jobs_page = Cybertrain::Routes.jobs_page_spec
         warning = ControllersEmitter.jobs_page_warning(jobs_page)
         puts warning unless warning.empty?
+        views = ViewsEmitter.emit(root, embed)
         outputs = [
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
-          ["gen/controllers.rb", ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page)],
-          ["gen/views.rb", ViewsEmitter.emit(root, embed)],
+          # An embedded build's views go into its build digest (the ETags).
+          ["gen/assets.rb", assets_output(root, check, embed ? views : "")],
+          ["gen/controllers.rb", controllers_source(root, jobs_page)],
+          ["gen/concerns.rb", concerns_source(root)],
+          ["gen/views.rb", views],
           ["gen/helpers.rb", HelpersEmitter.emit(HelperScan.scan_dir("#{root}/app/helpers"))],
           ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))],
           ["gen/jobs.rb", JobsEmitter.emit(JobScan.scan_dir("#{root}/app/jobs"))]
         ]
+        concern_files = Array.new(0) { "" }
+        concern_modules(root).each do |rel, source|
+          outputs << [rel, source]
+          concern_files << rel
+        end
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).
         outputs << ["gen/migrations.rb", MigrationsEmitter.emit(root)] if File.directory?("#{root}/db/migrate")
         # gen/models/<model>.rb per table once db/schema.rb has been loaded.
         schema = Cybertrain::Schema.current
         stale = 0
+        # A gen/concerns file whose concern is gone, and the directories
+        # that leaves empty.
+        Manifest.rb_files(root, "gen/concerns").each do |f|
+          next if concern_files.include?(f + ".rb")
+
+          stale += remove_file(root, f + ".rb", check)
+          remove_empty_dirs(root, File.dirname(f), "gen/concerns") unless check
+        end
         if schema.nil?
           outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
@@ -73,6 +99,54 @@ module Cybertrain
         stale > 0 ? 1 : 0
       end
 
+      # gen/controllers.rb and gen/concerns.rb, each from its own scan of
+      # app/controllers: with the two scans' results held in locals of run
+      # and handed to both emitters, Spinel 2026.11.04.7026 warns that type
+      # inference did not converge when it compiles bin/gen.rb. The app's
+      # helper modules come too: a helper_method may not shadow one.
+      def self.controllers_source(root, jobs_page)
+        ControllerScan.use_root(root)
+        ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page, ConcernScan.scan_dir("#{root}/app/controllers"),
+                                HelperScan.scan_dir("#{root}/app/helpers"))
+      end
+
+      def self.concerns_source(root)
+        ControllerScan.use_root(root)
+        ConcernsEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/controllers"),
+                             ModelScan.scan_dir("#{root}/app/models"), ConcernScan.scan_dir("#{root}/app/models"))
+      end
+
+      # gen/assets.rb's source; without check, public/assets is brought up to
+      # date first (its log lines printed). `views` is the embedded
+      # gen/views.rb of an --embed-views run, "" otherwise.
+      def self.assets_output(root, check, views)
+        files = AssetScan.scan(root)
+        AssetsEmitter.sync_public(root, files).each { |line| puts line } unless check
+        AssetsEmitter.emit(files, importmap_pins(root, files), views)
+      end
+
+      # gen/assets.rb's source, public/assets left alone.
+      def self.assets_source(root)
+        assets_output(root, true, "")
+      end
+
+      # The pins of root/config/importmap.rb (none without the file).
+      def self.importmap_pins(root, files)
+        path = "#{root}/#{ImportmapReader::PATH}"
+        return Array.new(0) { ImportmapPin.new("", "", false) } unless File.exist?(path)
+
+        ImportmapReader.read(File.read(path), files)
+      end
+
+      # gen/concerns/<path under app/> => source, for the concerns of
+      # app/controllers then those of app/models.
+      def self.concern_modules(root)
+        ControllerScan.use_root(root)
+        out = ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/controllers"))
+        ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/models")).each { |rel, source| out[rel] = source }
+        out
+      end
+
       # Deletes a generated file that should no longer exist (with `check`,
       # reports it); returns 1 when stale.
       def self.remove_file(root, rel, check)
@@ -86,6 +160,31 @@ module Cybertrain
         end
       end
 
+      # Removes root/rel and each parent of it that is left empty, up to
+      # and including root/stop (gen/concerns goes too when no concern is
+      # left).
+      def self.remove_empty_dirs(root, rel, stop)
+        dir = rel
+        while dir == stop || dir.start_with?("#{stop}/")
+          path = "#{root}/#{dir}"
+          break unless File.directory?(path) && Dir.children(path).empty?
+
+          Dir.rmdir(path)
+          puts "removed #{dir}/"
+          dir = File.dirname(dir)
+        end
+        nil
+      end
+
+      # Creates dir and any missing parent.
+      def self.make_dirs(dir)
+        return nil if File.directory?(dir)
+
+        make_dirs(File.dirname(dir))
+        Dir.mkdir(dir)
+        nil
+      end
+
       # Writes (or with `check`, compares) one generated file; returns 1 when stale.
       def self.sync_file(root, rel, source, check)
         path = "#{root}/#{rel}"
@@ -97,9 +196,7 @@ module Cybertrain
           puts "stale: #{rel}"
           1
         else
-          Dir.mkdir("#{root}/gen") unless File.directory?("#{root}/gen")
-          dir = File.dirname(path)
-          Dir.mkdir(dir) unless File.directory?(dir)
+          make_dirs(File.dirname(path))
           File.write(path, source)
           puts "wrote #{rel}"
           0

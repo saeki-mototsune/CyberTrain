@@ -12,4 +12,13 @@ ok   form_with multipart: true adds enctype after method and keeps the hidden fi
 ok   form_with multipart: true on a GET form is an error
 ok   file_field has no value, and accept and required pass through
 ok   file_field takes the field_with_errors class and rejects multiple: true
-14 tests, 39 assertions, 0 failures
+ok   select with values, pairs, groups, blank, prompt, selected, disabled
+ok   select escapes text and values once, compares values as strings, takes html options
+ok   collection_select reads each record's attribute or view method
+ok   radio_button, check_box include_hidden: false, the new input types
+ok   date, datetime-local and time fields write a Time as the browser reads it
+ok   form_with scope: and a namespaced model
+ok   form_with data: writes data- attributes
+ok   a data: key is checked, a Hash for another attribute refused, a SafeString attribute escaped once
+ok   nested and array field names round-trip through params.expect
+23 tests, 104 assertions, 0 failures

@@ -96,7 +96,7 @@ ROUTER.get("/", "root") { |ctx| PagesController.new(ctx).process(:index) { |c| c
 ROUTER.get("/up", "up") { |ctx| PagesController.new(ctx).process(:index) { |c| c.index } }
 
 def build_app(config)
-  Cybertrain::Application.new(router: ROUTER, url_resolver: ->(name, args) { "/" }, config: config)
+  Cybertrain::Application.new(router: ROUTER, url_resolver: ->(name, args, options) { "/" }, config: config)
 end
 
 APP = build_app(build_config("/up"))

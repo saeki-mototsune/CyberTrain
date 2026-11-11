@@ -109,11 +109,11 @@ test "a stream token is not a session cookie" do
   # names that join into a session's JSON payload
   token = Stream.sign(["{\"user_id\":\"1\"", "\"x\":\"y\"}"])
   assert_equal ["{\"user_id\":\"1\"", "\"x\":\"y\"}"], Stream.verify(token)
-  session = Cybertrain::Session.load(token, "s" * 64)
+  session = Cybertrain::Session.load(token, Cybertrain::Crypto.derive_key("s" * 64, "cybertrain session"))
   assert_nil session["user_id"]
   assert_equal 0, session.keys.size
   # and a session cookie is not a stream token
-  cookie = Cybertrain::Session.dump(Cybertrain::Session.new({ "a" => "b" }), "s" * 64)
+  cookie = Cybertrain::Session.dump(Cybertrain::Session.new({ "a" => "b" }), Cybertrain::Crypto.derive_key("s" * 64, "cybertrain session"))
   assert_nil Stream.verify(cookie)
 end
 

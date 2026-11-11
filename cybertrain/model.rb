@@ -4,6 +4,8 @@ require "cybertrain/db"
 require "cybertrain/errors"
 require "cybertrain/validator"
 require "cybertrain/relation"
+# A model concern (app/models/concerns) extends ActiveSupport::Concern.
+require "cybertrain/active_support"
 
 module Cybertrain
   # Raised by `find` and {Model#reload} when no row has the id. Map it to a
@@ -58,6 +60,13 @@ module Cybertrain
   # @api public
   class Model
     VALIDATORS = {}   # model name => Array<Validator>
+    # model name => where the validators of each of the model's own
+    # `validates` calls start in its VALIDATORS list (a concern's calls,
+    # spliced by gen/concerns.rb, are not counted, and move these along).
+    VALIDATES_STARTS = {}
+    # While gen/concerns.rb splices a model concern's `included` body:
+    # model name => the index its next validator goes to.
+    MODEL_CONCERN_AT = {}
     CALLBACKS = {}    # "Post:before_save" => Array<Proc>; each block takes the record
     # What generated from_row passes to new: never written to (initialize
     # skips assign_attributes for an empty Hash), so one serves every row.
@@ -119,7 +128,43 @@ module Cybertrain
     def self.validates(*args)
       built = Validator.build_all(args)
       list = (VALIDATORS[self.name] ||= Array.new(0) { Validator.new(:base, :presence) })
-      built.each { |v| list << v }
+      starts = (VALIDATES_STARTS[self.name] ||= Array.new(0) { 0 })
+      if MODEL_CONCERN_AT.key?(self.name)
+        at = MODEL_CONCERN_AT[self.name]
+        at = list.size if at > list.size
+        built.each_with_index { |v, k| list.insert(at + k, v) }
+        # The model's own calls from this one on start further along.
+        starts.each_with_index { |s, k| starts[k] = s + built.size if s >= at }
+        MODEL_CONCERN_AT[self.name] = at + built.size
+      else
+        starts << list.size
+        built.each { |v| list << v }
+      end
+      nil
+    end
+
+    # Written by gen/concerns.rb (`spin run gen`) around the `included`
+    # body of a model concern it splices into this class (spec 4.2):
+    # until {.model_concern_insert_done}, the rules its `validates` calls
+    # declare go before the model's own call number `validators_index`
+    # (the count of the model's `validates` calls above the `include`
+    # line), not to the end, so they run where the `include` was written.
+    # Not for application code.
+    # @param validators_index [Integer]
+    # @return [nil]
+    # @api public
+    def self.model_concern_insert_at(validators_index)
+      list = (VALIDATORS[self.name] ||= Array.new(0) { Validator.new(:base, :presence) })
+      starts = (VALIDATES_STARTS[self.name] ||= Array.new(0) { 0 })
+      MODEL_CONCERN_AT[self.name] = validators_index < starts.size ? starts[validators_index] : list.size
+      nil
+    end
+
+    # Ends a {.model_concern_insert_at} splice: `validates` appends again.
+    # @return [nil]
+    # @api public
+    def self.model_concern_insert_done
+      MODEL_CONCERN_AT.delete(self.name)
       nil
     end
 
@@ -150,8 +195,8 @@ module Cybertrain
     # (`"1:..."`, AES-256-GCM). Each must be a string or text column, named
     # with Symbols, no options (there is no deterministic encryption). The
     # application then needs `CYBERTRAIN_ENCRYPTION_KEY` (boot fails
-    # without it) and links openssl (cybertrain/encryptor.rb, which
-    # gen/app.rb requires). `where`, `where_like`, `where_between`,
+    # without it); the encryption is cybertrain/encryptor.rb's (openssl),
+    # which every program loads. `where`, `where_like`, `where_between`,
     # `update_all` and the bulk writes refuse an encrypted column
     # (ArgumentError); `pluck` answers the stored payload. At run time this
     # method does nothing; it exists so the model file loads.

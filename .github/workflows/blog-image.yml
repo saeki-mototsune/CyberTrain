@@ -106,8 +106,11 @@ jobs:
           start
           docker logs blog | grep -q "production environment"
           test "$(docker exec blog id -u)" != 0
-          curl -fsS -o /dev/null http://127.0.0.1:3000/
-          curl -fsS -o /dev/null http://127.0.0.1:3000/style.css
+          # The layout links the digested stylesheet; it must answer with the immutable header.
+          css=$(curl -fsS http://127.0.0.1:3000/ | grep -o '/assets/application-[0-9a-f]\{8\}\.css' | head -1)
+          test -n "$css"
+          curl -fsS -D css.h -o /dev/null "http://127.0.0.1:3000$css"
+          grep -qi '^cache-control:.*immutable' css.h
 
           # An article through the form: the CSRF token from the page, the
           # session cookie (Secure, so passed by hand over http) with it.

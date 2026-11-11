@@ -122,4 +122,29 @@ test "an unknown status Symbol from a block is an ArgumentError" do
   assert_equal "unknown status :teapot", msg
 end
 
+test "every Rack symbol, old aliases included" do
+  assert_equal 100, Cybertrain::Controller.status_code(:continue)
+  assert_equal 402, Cybertrain::Controller.status_code(:payment_required)
+  assert_equal 413, Cybertrain::Controller.status_code(:content_too_large)
+  assert_equal 413, Cybertrain::Controller.status_code(:payload_too_large)
+  assert_equal 413, Cybertrain::Controller.status_code(:request_entity_too_large)
+  assert_equal 414, Cybertrain::Controller.status_code(:uri_too_long)
+  assert_equal 414, Cybertrain::Controller.status_code(:request_uri_too_long)
+  assert_equal 416, Cybertrain::Controller.status_code(:range_not_satisfiable)
+  assert_equal 416, Cybertrain::Controller.status_code(:requested_range_not_satisfiable)
+  assert_equal 422, Cybertrain::Controller.status_code(:unprocessable_content)
+  assert_equal 422, Cybertrain::Controller.status_code(:unprocessable_entity)
+  assert_equal 451, Cybertrain::Controller.status_code(:unavailable_for_legal_reasons)
+  assert_equal 511, Cybertrain::Controller.status_code(:network_authentication_required)
+  assert_equal "Unprocessable Content", Cybertrain::Response.status_text(422)
+  assert_equal "Content Too Large", Cybertrain::Response.status_text(413)
+end
+
+test "every symbol has a reason phrase" do
+  Cybertrain::Controller::STATUS_SYMBOLS.each do |name, code|
+    assert Cybertrain::Response::STATUS_TEXT.key?(code), "no phrase for #{name} (#{code})"
+  end
+  assert_equal 61, Cybertrain::Response::STATUS_TEXT.size
+end
+
 Cybertrain::Test.run!

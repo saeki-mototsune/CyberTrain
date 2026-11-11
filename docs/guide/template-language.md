@@ -265,22 +265,39 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` escaped unless already `SafeString`; **no `method:`** — raises, telling you to use `button_to` (no rails-ujs/turbo faking of DELETE links) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | one-button `<form class="button_to">`; hidden `_method` for any verb but `get`/`post`, plus the CSRF field when a session exists |
-| `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | needs a block; `model:` new → collection route + POST, persisted → member route + PATCH; `[parent, child]` for a nested route; `url:`/`method:` override the derived action/verb; `multipart: true` adds `enctype="multipart/form-data"` (required for `f.file_field`; it is never guessed from the block, and raises `ArgumentError` on a GET form) |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials) and [Components](#components) |
+| `form_with` | `form_with(model:, url:, scope:, method:, class:, data:, multipart:, local:) do \|f\| ... end` | needs a block; `model:` new → collection route + POST, persisted → member route + PATCH; `[parent, child]` for a nested route, `[:admin, @article]` for a namespaced one; `url:`/`method:` override the derived action/verb; `scope: :q` names the fields `q[term]` (with `model:` it replaces the model's prefix); `data: { turbo_frame: "f" }` writes `data-` attributes; `local:` is accepted and changes nothing; `multipart: true` adds `enctype="multipart/form-data"` (required for `f.file_field`; it is never guessed from the block, and raises `ArgumentError` on a GET form) |
+| `select_tag` | `select_tag(name, option_tags = nil, include_blank:, prompt:, multiple:)` | `select_tag "order", options_for_select([["Newest", "new"], ["Oldest", "old"]], "old")` → `<select name="order" id="order">...</select>`; `option_tags` that is not a `SafeString` is escaped; `multiple: true` names it `order[]`; other keywords are attributes |
+| `options_for_select` | `options_for_select(choices, selected = nil)` | the `<option>` lines of `f.select`'s choices (below); `selected` is a value or an Array of them, compared as Strings |
+| `options_from_collection_for_select` | `options_from_collection_for_select(records, :id, :name, selected = nil)` | one `<option>` per record, its value and text read as `f.collection_select` reads them |
+| `label_tag`, `text_field_tag`, `hidden_field_tag`, `submit_tag` | `label_tag(name, text = nil)`, `text_field_tag(name, value = nil)`, `hidden_field_tag(name, value = nil)`, `submit_tag(value = "Save changes")` | the form tags without a model: `label_tag(:term)` → `<label for="term">Term</label>`; `hidden_field_tag` writes `autocomplete="off"`; `submit_tag` is named `commit`; other keywords are attributes (`id:` replaces the id taken from the name) |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render partial: "comment", collection: @comments` / `render @comments` / `render component: "card", k: v` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials), [Collections](#collections) and [Components](#components) |
 | `h`, `escape` | `h(text)` | escapes; a `SafeString` passes through unescaped |
 | `raw` | `raw(text)` | wraps text in a `SafeString` (prints unescaped) |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`; `pluralize(2, "mouse")` → `"2 mice"` (Rails' default English inflections, via `Cybertrain::Inflector`; app-defined inflections are not supported); explicit third arg always wins |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
-| `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`; `-1000` → `"-1,000"`; `1234.5` → `"1,234.5"` |
+| `number_with_delimiter` | `number_with_delimiter(n, delimiter: ",", separator: ".")` | `1234567` → `"1,234,567"`; `-1000` → `"-1,000"`; `1234.5` → `"1,234.5"` |
+| `number_with_precision` | `number_with_precision(n, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)` | `111.2345` → `"111.235"`; `precision: 0` → `"111"` |
+| `number_to_human` | `number_to_human(n, precision: 3, units: {})` | `1234` → `"1.23 Thousand"`, `1234567` → `"1.23 Million"`; `units: { thousand: "K" }` replaces a unit's name (`unit`, `thousand` ... `quadrillion`) |
+| `number_to_percentage` | `number_to_percentage(n, precision: 3)` | `100` → `"100.000%"` |
+| `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`; a negative number writes `-` before the format |
+| `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (base 1024); `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails-style buckets, no seconds precision: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | empty / absent with no controller session |
+| `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / the nonce alone, this request's [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) nonce; `""` when no policy applies |
+| `javascript_tag` | `javascript_tag(nonce: true) do ... end`, `javascript_tag(js)` | the content in a `<script>` (not escaped, as in Rails: never put request data in it), with the nonce when `nonce: true` and a policy applies; `id:`, `type:`, `data:` are attributes |
+| `asset_path` | `asset_path("logo.svg")` | `/assets/logo-1a2b3c4d.svg` (see [Assets](assets.md#helpers)); a URL or a path starting with `/` comes back as given |
+| `stylesheet_link_tag` | `stylesheet_link_tag("application", media:, nonce:)` | `<link rel="stylesheet" href="/assets/application-1a2b3c4d.css">` (`.css` added when missing) |
+| `javascript_include_tag` | `javascript_include_tag("legacy", nonce:)` | `<script src="/assets/legacy-1a2b3c4d.js"></script>` (`.js` added when missing) |
+| `image_tag` | `image_tag(source, alt:, size:, class:)` | `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16" height="16">` for `size: "16x16"` (or `"16"`); no `alt` is made up, `alt: ""` is written |
+| `javascript_importmap_tags` | `javascript_importmap_tags(entry = "application")` | the import map, a `modulepreload` link per preloaded pin and `import "application"`, each with the nonce when a policy applies ([Assets](assets.md#the-import-map)); needs a request |
 | `flash` | | `Hash`-like: `flash[:notice]` |
 | `params` | | the current `Cybertrain::Params` |
 | `request_path` | | current path, `""` with no controller |
-| `url_for` | `url_for(target)` | `String` as-is, `Model` → member route, `[parent, child]` → nested route |
+| `url_for` | `url_for(target, format:, anchor:, k: v)` | `String` as-is, `Model` → member route, `[parent, child]` → nested route, `[:admin, record]` → namespaced route; the keywords are appended as a path helper appends them (`url_for("/x", format: :csv)` → `/x.csv`) |
+| `current_page?` | `current_page?(path)` | whether this GET or HEAD request is for `path` (a trailing slash aside; with a query in `path`, the query must match too); a record or an Array goes through `url_for`; false for any other method; needs a request |
 | `paginate` | `paginate(page, path)` | `page` is a `Cybertrain::Page` (from `Relation#page`); renders `<nav class="pager">` with "Newer" (`rel="prev"`), `<span class="pager-current">Page N</span>` and "Older" (`rel="next"`), a link left out when there is no such page. Each link is `path` plus the current request's query string with `page` replaced (dropped for page 1), re-encoded and HTML-escaped; a `path` with its own `?query` uses that instead. A `Page` also answers `number`, `per`, `row_offset`, `next?`, `prev?`, `next_number`, `prev_number` in a template (`<% if @page.next? %>`) |
-| `*_path` / `*_url` | e.g. `post_path(post)` | generated by the app, resolved via `Cybertrain::Views.url_resolver` |
+| `*_path` / `*_url` | e.g. `post_path(post)`, `posts_path(page: 2, format: :json)` | generated by the app, resolved via `Cybertrain::Views.url_resolver`; keywords go to the query string, `format:` adds the extension and `anchor:` the fragment ([Redirects and query strings](requests.md#redirects-and-query-strings)) |
 | `tag` | `tag.div(content, attrs) do ... end` | the tag builder: see [The tag builder](#the-tag-builder) |
 | `content_tag` | `content_tag(name, content = nil, attrs)`, or with a `do` block | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`; the same rules as `tag` |
 | `safe_join` | `safe_join(array, sep = "")` (no keyword arguments) | joins into a `SafeString`, escaping every item and the separator that is not already a `SafeString`: `safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
@@ -289,8 +306,13 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | one `<turbo-stream-source>` subscribing the page to the streams (Strings, or records named `"articles:12"`); `ws: true` gives a `ws://`/`wss://` URL and needs a request. See [Realtime](realtime.md#turbo-streams) |
 | `signed_stream_name` | `signed_stream_name(*streams)` | the signed token alone, for hand-written JavaScript |
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | the stream endpoint's path with the token and `mode=json` (or `"raw"`) |
+| `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`; a record gives its `dom_id`; each attribute only when given |
+| `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | one `<turbo-stream action="...">` element, for a `*.turbo_stream.erb` template; the target is a DOM id or a record; exactly one of a block, `partial:` (with `locals:`) and `html:` |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`, or with a block | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`; a Date gives `2026-11-10`; `format:` is `:short`, `:long` or a strftime String (an unknown directive raises, and so does a width or flag strftime would read differently: `%6L`, use `%6N`; `:` only in `%:z`; no padding flag on `%F %T %D %R %r %c %x %X %v`; a width on a number replaces its padding, `%5e` gives `"    5"`) |
 
 Every helper text argument follows one rule: a `SafeString` passes through unescaped, anything else is escaped — `link_to raw('<b>raw</b>'), post` prints the bold tag literally, but `link_to post.title, post` escapes it.
+
+The six number helpers are `Cybertrain::NumberHelper`'s, which Ruby code calls as module functions with the same keywords (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). They take an Integer, a Float or a numeric String (decimal columns are Floats) and round half up on the digits of its decimal text, so the output is the same on both runtimes; anything else raises `ArgumentError` (`"number_with_delimiter: \"abc\" is not a number"`), as does a precision outside 0 to 100. In a template `nil` renders `""` (a nullable decimal column prints as empty, as in Rails); `Cybertrain::NumberHelper` called from Ruby still raises `ArgumentError` for `nil` (`"number_with_delimiter: nil is not a number"`). The formats are English.
 
 ### The tag builder
 
@@ -318,13 +340,16 @@ Every method returns a `SafeString`; an unlisted one is a `RuntimeError` (`"unde
 | Method | Renders |
 | --- | --- |
 | `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>` — default text is the humanized attribute (`published_at` → "Published at", `author_id` → "Author"); explicit text is escaped unless a `SafeString` |
-| `f.text_field :title` (also `email_field`, `password_field`, `number_field`, `date_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`; `password_field` never emits `value=` |
+| `f.text_field :title` (also `email_field`, `password_field`, `number_field`, `date_field`, `datetime_local_field`, `time_field`, `range_field`, `color_field`, `search_field`, `telephone_field`, `url_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`; `password_field` never emits `value=`; `telephone_field` is `type="tel"`; a Time is written as the browser reads it (`2026-11-10`, `2026-11-10T12:00:00`, `12:00:00.000`) |
+| `f.select :status, ["draft", "published"]` (also `include_blank:`, `prompt:`, `selected:`, `disabled:`, `multiple:`) | `<select name="post[status]" id="post_status">` with one `<option>` per choice, the current value selected; choices are values, `[text, value]` pairs, or a Hash or `[label, [choices]]` groups for `<optgroup>`; `multiple: true` names it `post[status][]` and writes a hidden empty input first |
+| `f.collection_select :author_id, @authors, :id, :name` | a `<select>` with one `<option>` per record, its value and text read from the two methods |
+| `f.radio_button :status, "draft"` | `<input type="radio" name="post[status]" id="post_status_draft" value="draft">`, checked when the value matches (`checked:` overrides) |
 | `f.file_field :cover` (also `accept: "image/*"`, `required: true`) | `<input type="file" name="post[cover]" id="post_cover">` — never a `value=`, and the attribute need not be a column; the form must be `form_with ..., multipart: true`; `multiple: true` raises `ArgumentError` (one file per field) |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>` (leading `\n`, as Rails does — browsers eat the first newline) |
-| `f.check_box :published` | hidden `value="0"` input then the real checkbox, so an unchecked box still submits `"0"` |
+| `f.check_box :published` | hidden `value="0"` input then the real checkbox, so an unchecked box still submits `"0"`; `include_hidden: false` leaves the hidden input out |
 | `f.submit` / `f.submit "Text"` | default text `"Create Post"`/`"Update Post"` (by `persisted?`), or `"Save changes"` with no model |
 
-With a model, fields are named `post[title]`/`id="post_title"` (`Inflector.underscore(model.model_name)` as scope); with `form_with(url: ...)` and no model, the bare attribute name is used for both. Extra keyword args become HTML attributes in order given: `true` → `attr="attr"`, `false`/`nil` dropped, anything else → `attr="value"` (escaped), underscores become hyphens (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), and `class:` merges with the automatic `field_with_errors` class added when `model.errors.key?(attr)`.
+With a model, fields are named `post[title]`/`id="post_title"` (`Inflector.underscore(model.model_name)` as scope); `form_with(..., scope: :q)` uses `q[title]`/`id="q_title"` instead; with `form_with(url: ...)` and no model or scope, the bare attribute name is used for both. Every attribute value and option text is escaped once (a `SafeString` as it is). Extra keyword args become HTML attributes in order given: `true` → `attr="attr"`, `false`/`nil` dropped, anything else → `attr="value"` (escaped), underscores become hyphens (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), and `class:` merges with the automatic `field_with_errors` class added when `model.errors.key?(attr)`.
 
 ## Application helpers
 
@@ -399,7 +424,7 @@ html = Cybertrain::Views.render_partial("articles/article", article: article)   
 card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
 ```
 
-Both return the HTML as a String, with the application's helpers. Path helpers work (`article_path(article)`), strict locals are checked, and forms (`form_with`, `button_to`) render without the authenticity token (a Turbo page submits the one from `csrf_meta_tags`). A helper that needs a request raises `Cybertrain::Views::OutsideRequest` (`"csrf_token needs a request"`): `csrf_token`, `csrf_meta_tags`, `params`, `flash`, `request_path`, any `*_url` helper and `turbo_stream_from ... ws: true`. `paginate` links carry only the path's own query string. (A bare `Cybertrain::Template::Helpers.new(nil)`, as a unit test might build, answers those with empty values instead.)
+Both return the HTML as a String, with the application's helpers. Path helpers work (`article_path(article)`), strict locals are checked, and forms (`form_with`, `button_to`) render without the authenticity token (a Turbo page submits the one from `csrf_meta_tags`). A helper that needs a request raises `Cybertrain::Views::OutsideRequest` (`"csrf_token needs a request"`): `csrf_token`, `csrf_meta_tags`, `params`, `flash`, `request_path`, `current_page?`, `content_security_policy_nonce` (so `csp_meta_tag` and a tag helper given `nonce: true`), `javascript_importmap_tags`, any `*_url` helper and `turbo_stream_from ... ws: true`. `paginate` links carry only the path's own query string. (A bare `Cybertrain::Template::Helpers.new(nil)`, as a unit test might build, answers those with empty values instead.)
 
 ## Layouts, `yield`, `content_for`, partials
 
@@ -417,6 +442,37 @@ Both return the HTML as a String, with the application's helpers. Path helpers w
 <% content_for :title, " (draft)" %>   <%# appends: calls accumulate, they don't replace %>
 ```
 
+### Per-controller layouts
+
+An action renders inside `app/views/layouts/application.html.erb` (when it
+exists) unless its controller, a parent or a concern it includes chooses
+another:
+
+```ruby
+class AdminController < ApplicationController
+  layout "print", only: [:receipt]      # app/views/layouts/print.html.erb
+  layout :choose_layout                 # a method: a name, false for none, nil for the parent's
+
+  private
+
+  def choose_layout = request.header("Turbo-Frame").to_s.empty? ? "application" : "frame"
+end
+```
+
+`layout "admin"` alone names one layout for every action. `spin run gen`
+reads the `layout` lines (a quoted name, `false`, or a method's Symbol,
+with `only:` / `except:`) and writes the controller's
+`controller_layout(action)`. The declarations are tried in order and **the
+first that applies wins** (Rails lets a later one replace an earlier one);
+a concern's lines count at its `include`. `render layout: "x"` uses
+`layouts/x` for one call and `render layout: false` none; a leading `layouts/`
+is accepted (`layout "layouts/x"` is `layouts/x`). A `layout` line or
+`render layout:` that names a layout that does not exist raises
+`MissingTemplate`; only the default `application` layout is optional (an
+action renders bare without it). Only html is
+rendered in a layout; another format's template renders without one. Any
+other `layout` argument (`nil`, a lambda, a constant) is refused by gen.
+
 ### Partials and `render`
 
 ```erb
@@ -429,6 +485,19 @@ Both return the HTML as a String, with the application's helpers. Path helpers w
 - The partial gets **a duplicate of the caller's entire environment** (ivars and any locals already in scope) plus the explicit locals given to `render` — it is not sandboxed to only what was passed. Strict locals only validate the names **explicitly given to that `render` call** against the declared list; they do not stop the partial from also reading some other name it inherits from the caller's environment.
 - Only `content_for` keys (`__content_*`) copy back out of a partial's scope into the caller's; ordinary locals it assigns do not leak back.
 - Missing/extra locals against a `<%# locals: %>` declaration are `RuntimeError`s: `"missing local 'post' for posts/_form.html.erb"`, `"unknown local 'extra' for posts/_form.html.erb"`.
+
+### Collections
+
+```erb
+<%= render partial: "comment", collection: @comments, as: :comment, spacer_template: "divider" %>
+<%= render @comments %>      <%# each record's comments/_comment.html.erb %>
+<%= render @comment %>       <%# one record, no counter %>
+<%= render component: "comment", collection: @comments %>
+```
+
+- `collection:` renders the partial once per item of an Array, as the local named by `as:` (the partial's own name by default), with `<as>_counter` counting from 0, the `locals:` given to each and `spacer_template:` (a partial) between items; an empty collection renders nothing. A partial with strict locals gets the counter only when it declares it, and the item wins over a local of the same name.
+- `render @comments` picks each record's partial from its model, `<plural>/_<singular>` (`admin/notes/_note` for an `Admin::Note`), so a list may mix models.
+- A component whose one required keyword is named after it (`CommentComponent` with `comment:`) gets `CommentComponent.with_collection(items)`, and `render component: "comment", collection: @comments` renders it once per item, passing `comment_counter:` when `initialize` declares it. `collection:` takes no other keyword (`render component: "comment", collection: @comments, extra: 1` is an error naming it); the block's content is not passed.
 
 ### File resolution (`engine.rb`)
 
@@ -470,4 +539,5 @@ Any plain `StandardError` from a helper or `FormBuilder`/custom-object method ca
 | `1 / 0` and `1.0 / 0` both raise `ZeroDivisionError` | `Integer` division/modulo by zero raises `"divided by 0"`; `Float` follows IEEE-754 (`Infinity`/`NaN`), no error |
 | `distance_of_time_in_words`/pluralization support i18n locales | English-only, no locale support |
 | Every module in `app/helpers` is mixed in; any signature; a helper may override a framework one | Modules are scanned at build time into a generated `case`: named parameters only, at most three optional, no framework helper name and no `_path`/`_url` ending ([Application helpers](#application-helpers)) |
-| ViewComponent: `render CardComponent.new(title: "x")`, `with_collection`, slots | `render component: "card", title: "x"` by name, `content` from the block; no collections or slots ([Components](#components)) |
+| ViewComponent: `render CardComponent.new(title: "x")`, `with_collection`, slots | `render component: "card", title: "x"` by name, `content` from the block, `collection:` for a component named after its one required keyword; no slots ([Components](#components), [Collections](#collections)) |
+| A later `layout` line replaces an earlier one | The first `layout` declaration that applies wins ([Per-controller layouts](#per-controller-layouts)) |

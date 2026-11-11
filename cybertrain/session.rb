@@ -1,10 +1,11 @@
 require "cybertrain/crypto"
+require "cybertrain/encryptor"
 require "base64"
 require "json"
 
 module Cybertrain
   # A cookie-store session: a flat Hash<String,String> that round-trips
-  # through a signed, base64-encoded cookie value. Design D8 restricts
+  # through an encrypted, base64-encoded cookie value. Design D8 restricts
   # values to String -- there is no marshalling format to smuggle other
   # types through, so nothing else needs to be ruled out at the type level.
   #
@@ -12,19 +13,40 @@ module Cybertrain
   # Symbol key is its name; a value is stored as `value.to_s`, so
   # `session[:user_id] = 5` reads back as `"5"`).
   #
-  # The cookie is signed with `secret_key_base` (HMAC-SHA256), not
-  # encrypted: the client can read it, but a changed or forged cookie is
-  # dropped and the request starts with an empty session. It is sent only
-  # when the session changed, as `_cybertrain_session` with `Path=/;
-  # HttpOnly; SameSite=Lax`, `Secure` in production and a two-week Max-Age
-  # (the name, the Max-Age and `Secure` are {Config} settings).
-  # `"_csrf_token"` and `"_flash"` are the framework's keys.
+  # The cookie is encrypted and authenticated with AES-256-GCM (spec
+  # section 5.1, as Rails' cookie store), under a key derived from
+  # `secret_key_base` ({Crypto.derive_key} with the label
+  # `"cybertrain session"`) and with `"session"` as the additional data:
+  # the client can neither read it nor change it. A cookie that does not
+  # decode, authenticate or parse (a changed, truncated or forged one, one
+  # sealed for another cookie, one under another secret, a 0.4 signed
+  # cookie) loads as an empty session, and so does one over 4096 bytes,
+  # without being decrypted. A session whose cookie would pass 4096 bytes
+  # raises {CookieOverflow} when SessionStore writes it: nothing is cut
+  # short. It is sent only when the session changed, as
+  # `_cybertrain_session` with `Path=/; HttpOnly; SameSite=Lax`, `Secure`
+  # in production or under `force_ssl` ({Config#secure_cookies?}) and a
+  # two-week Max-Age (the name, the Max-Age and `Secure` are {Config}
+  # settings). `"_csrf_token"` and `"_flash"` are the
+  # framework's keys.
   # @example
   #   session[:user_id] = user.id
   #   User.find(session[:user_id]) if session.key?(:user_id)
   #   session.delete(:user_id)
   # @api public
   class Session
+    # A session too large for its cookie: SessionStore raises it, with the
+    # cookie's size, instead of sending a cookie a browser would drop.
+    # @api public
+    class CookieOverflow < StandardError
+    end
+
+    # The most a browser keeps of one cookie, `name=value` (RFC 6265 section
+    # 6.1's minimum, Rails' `CookieOverflow` limit).
+    MAX_COOKIE_BYTES = 4096
+    # The GCM additional data the session is sealed with.
+    SEAL_PURPOSE = "session"
+
     def initialize(data = {})
       @data = {}
       # keys + while: an each block is a Proc and closure per new Session.
@@ -145,8 +167,8 @@ module Cybertrain
 
     # When this session's lifetime started, in seconds since the epoch, or
     # 0 when it has no `"_issued_at"` key (SessionStore writes it when
-    # `Config#session_absolute_max_age` is on). The cookie is signed, so the
-    # client cannot move it.
+    # `Config#session_absolute_max_age` is on). The cookie is encrypted and
+    # authenticated, so the client cannot move it.
     # @return [Integer]
     def issued_at
       Session.epoch_seconds(@data[ISSUED_AT_KEY])
@@ -202,31 +224,47 @@ module Cybertrain
       s.to_i
     end
 
-    # cookie_value is "<base64 JSON payload>--<64 hex HMAC>". The signature
-    # occupies a known-width suffix, so it is sliced off rather than located
-    # by scanning for "--" -- urlsafe base64's own alphabet includes "-",
-    # so the separator can legitimately recur inside the payload.
-    def self.load(cookie_value, secret)
+    # The session a cookie value holds, under `key` (32 bytes,
+    # `Crypto.derive_key(secret_key_base, "cybertrain session")`; SessionStore
+    # derives it once). The value is urlsafe Base64, with or without
+    # padding, of {Encryptor#seal_bytes} of the session's JSON with
+    # `"session"` as the additional data. Anything else -- a value over
+    # MAX_COOKIE_BYTES (not decrypted at all), bad Base64, bytes that do not
+    # authenticate (a changed or truncated value, another key, another
+    # purpose, a 0.4 `"<base64>--<hmac>"` signed cookie), a payload that is
+    # not a JSON object -- is an empty Session. It never raises for the
+    # cookie it is given.
+    # @param cookie_value [String]
+    # @param key [String] 32 raw bytes
+    # @return [Session]
+    def self.load(cookie_value, key)
       # A fresh empty Session on each early return, not one made up front:
       # a valid cookie (nearly every request) never needs it.
-      return Session.new if cookie_value.nil? || cookie_value.length < 66
+      value = cookie_value.to_s
+      return Session.new if value.empty? || value.bytesize > MAX_COOKIE_BYTES
 
-      len = cookie_value.length
-      sep = cookie_value[len - 66, 2]
-      return Session.new unless sep == "--"
+      raw = Session.decode_value(value)
+      return Session.new if raw.empty?
 
-      payload = cookie_value[0, len - 66]
-      signature = cookie_value[len - 64, 64]
-      expected = Crypto.hmac_hex(secret, payload)
-      return Session.new unless Crypto.secure_compare(signature, expected)
+      json = Encryptor.new(key).open_bytes(raw, SEAL_PURPOSE)
+      return Session.new if json.nil?
 
+      Session.from_json(json)
+    end
+
+    # The bytes of urlsafe Base64 (padded or not), "" when it is not.
+    def self.decode_value(value)
+      Base64.urlsafe_decode64(value)
+    rescue ArgumentError
+      ""
+    end
+
+    # The Session of an authenticated JSON payload; an empty one unless it
+    # is a JSON object. JSON::ParserError is NOT a StandardError under
+    # Spinel (NOTES rule 33), so it is listed explicitly, as in Flash.load.
+    def self.from_json(json)
       data = {}
       begin
-        # JSON::ParserError is NOT a StandardError under Spinel 2026.09.12
-        # (it has no entry in the builtin exception hierarchy table), so a
-        # bare `rescue StandardError` lets a malformed payload's parse error
-        # through; it is listed explicitly here and in Flash.load.
-        json = Base64.urlsafe_decode64(payload)
         parsed = JSON.parse(json)
         case parsed
         when Hash
@@ -243,14 +281,18 @@ module Cybertrain
       Session.new(data)
     end
 
-    # Without base64's `=` padding: it would be the only byte in the value
-    # Cookies.serialize has to encode, and 2 of 3 payload lengths have it, so
-    # every Set-Cookie would pay for the encoder. Cookies issued with padding
-    # still load: the HMAC covers the payload as sent, and urlsafe_decode64
-    # takes either form, on both runtimes.
-    def self.dump(session, secret)
-      payload = Base64.urlsafe_encode64(JSON.generate(session.to_h), padding: false)
-      "#{payload}--#{Crypto.hmac_hex(secret, payload)}"
+    # The cookie value of `session` under `key` (see {.load}): a fresh
+    # nonce each call, so two dumps of one session differ. Without Base64's
+    # `=` padding: it would be the only byte in the value Cookies.serialize
+    # has to encode. Does not check the size; SessionStore does, against
+    # the whole `name=value`.
+    # @param session [Session]
+    # @param key [String] 32 raw bytes
+    # @return [String]
+    def self.dump(session, key)
+      json = JSON.generate(session.to_h)
+      raw = Encryptor.new(key).seal_bytes(json, SEAL_PURPOSE)
+      Base64.urlsafe_encode64(raw, padding: false)
     end
   end
 end

@@ -18,13 +18,22 @@ and `config/routes.rb`'s `Routes.draw` DSL to get table and route *data*.
 Separately it does a **lexical scan** (regexes, not a parser — Spinel exposes
 none at run time) of `app/controllers/**/*.rb` and `app/models/**/*.rb` for
 `@ivar =` assignments, `before_action`/`after_action`/`rescue_from ... with:`
-names and zero-argument `def`s.
+names, `helper_method`, `layout` and `rate_limit` lines, `include`s of
+concerns and zero-argument `def`s. It digests the files under `app/assets/`,
+`app/javascript/` and `vendor/javascript/` and reads `config/importmap.rb`
+as text.
 
 From that it writes plain, readable Ruby under `gen/`:
 
 - `gen/models/<name>.rb`: accessors, casts, finders, FK-derived associations;
 - `gen/routes.rb`: the route table, the dispatcher, the `*_path`/`*_url` helpers;
-- `gen/controllers.rb`: `view_assigns` and `run_callback` per controller;
+- `gen/controllers.rb`: `view_assigns`, `run_callback`, the `helper_method`
+  table and `controller_layout` per controller;
+- `gen/concerns.rb` and `gen/concerns/**`: the concerns' `included` blocks
+  spliced into each including class, and the concern modules with those
+  blocks blanked ([Concerns](requests.md#concerns-and-helper_method));
+- `gen/assets.rb`: the digested asset paths and the import map
+  ([Assets](assets.md)), with the digested files in `public/assets/`;
 - `gen/migrations.rb`;
 - `gen/views.rb`: the embedded views table, empty unless building for deployment;
 - `gen/app.rb`: the `require_relative` manifest.
@@ -93,8 +102,9 @@ How a transaction checks out one of these connections, and what runs on it:
 
 `cybertrain server` (`spin run gen`, then `spin run NAME`) in `development`
 (the default `CYBERTRAIN_ENV`, except in a binary from `cybertrain build`)
-also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb` and `gen/**/*.rb`
-every half second. Views are excluded (the engine reloads those itself), and
+also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb`
+and the asset roots (`app/assets/**`, `app/javascript/**`,
+`vendor/javascript/**`) every half second. Views are excluded (the engine reloads those itself), and
 so is `gen/views.rb`, empty in development.
 
 A change runs `spin run gen && spin build NAME -- --incremental` in the
@@ -123,13 +133,15 @@ production.
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — nested blocks take the mapper explicitly |
 | ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table ([Template language](template-language.md)) |
-| Session holds any marshalled object | Session values are Strings only, HMAC-signed cookie |
+| Session holds any marshalled object | Session values are Strings only, in an AES-256-GCM encrypted cookie, as Rails' cookie store ([Cookies and the session](requests.md#cookies-and-the-session)) |
 | Many database adapters | SQLite only, via FFI |
 | `Article.transaction { ... }` returns the block's value; `raise ActiveRecord::Rollback`; `requires_new: true` savepoints | `Article.transaction { \|c\| ... }` yields the connection and returns nil; leave it by raising; nested calls join the outer transaction, no savepoints ([Transactions](models.md#transactions)) |
 | `has_many :through`, enums, STI, polymorphic associations | Not implemented; `has_many`, `has_one` and `belongs_to` come from foreign keys or one-line declarations, with `dependent:`, `counter_cache:` and one level of `includes` ([Associations](models.md#associations)) |
 | `pluck(:a)`, `maximum(:a)`, `group(:a).sum(:b)`, `upsert`, `update_counters`, `where(created_at: t1..t2)` | Typed flavours, as a Spinel method has one return type: `pluck_int` and its kin, `maximum_int`, `sum_float_by`, `upsert`, `increment(:col, by: n)`; a Time range is `where_between` ([Querying beyond `where`](models.md#querying-beyond-where)) |
 | Any column name; an association can shadow `errors` | ASCII identifiers only; a column named like a framework method or a Ruby keyword generates as `<column>_column`, a clashing association under a fallback name ([Column names](models.md#column-names)) |
-| `namespace`, format/`respond_to`, `constraints`, `mount` | Not implemented — flat names, `render json:` only |
+| `namespace`, `scope`, formats and `respond_to` | The same ([Routing](requests.md#routing), [Formats](requests.md#formats-and-respond_to)); JSON is answered with `render json:` (no jbuilder templates) |
+| `constraints`, `mount`, glob segments | Not implemented |
+| `ActiveSupport::Concern` included at run time | Concerns in `app/controllers/concerns` and `app/models/concerns`, expanded by `spin run gen` into the including classes; an `include` names a concern, and a `class_methods` method may not share an instance method's name ([Concerns](requests.md#concerns-and-helper_method)) |
 | `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
 | `skip_forgery_protection` in an API controller | CSRF runs before routing, so an API is exempted by path, `c.csrf_exempt_prefixes = ["/api/"]`, and authenticates its callers itself ([Configuration](configuration.md#configuration-and-environment-variables)) |
 | Rack leaves a gzip request body as it is | A `Content-Encoding: gzip` body is `request.decoded_body`, inflated under a 10 MiB ceiling; a corrupt or oversize one is a 400; `request.body` stays as sent ([Query strings and bodies](requests.md#query-strings-and-bodies)) |
@@ -152,6 +164,7 @@ production.
 | `get "up" => "rails/health#show"` (a route to a controller) | `GET /up` is built in, answered before static files, session and router, so no `before_action` runs; it checks the database, the worker and the WebSocket feeds, `200 ok` or `503` ([Operations](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
 | Action Cable, `turbo_stream_from`, `broadcast_append_to` | The same helper names over signed streams, delivered by Server-Sent Events or WebSocket from one SQLite table; no channel classes ([Realtime](realtime.md)) |
-| Asset pipeline, i18n | Not built yet (later phases, `docs/design.md` D1) |
+| Propshaft, importmap-rails | The same layout (`app/assets`, `app/javascript`, `vendor/javascript`, `config/importmap.rb`), digested by `spin run gen` into `public/assets/`; no `bin/importmap pin`, no bundled Turbo ([Assets](assets.md)) |
+| i18n | Not built yet (phase 4b, `docs/design.md` D1) |
 
 <!-- table-foot: Not exhaustive: docs/design.md §8 ("What was deliberately left out") is the fuller record. -->

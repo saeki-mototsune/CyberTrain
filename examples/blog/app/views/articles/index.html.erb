@@ -1,12 +1,14 @@
 <h1>Articles</h1>
 
-<p class="article-count"><%= pluralize(@article_count, "article") %></p>
+<p class="article-count"><%= number_with_delimiter(@article_count) %> <%= @article_count == 1 ? "article" : "articles" %></p>
 
 <%= form_with url: articles_path, method: :get do |f| %>
   <%= f.label :from, "From" %>
   <%= f.date_field :from, value: @from %>
   <%= f.label :to, "To" %>
   <%= f.date_field :to, value: @to %>
+  <%= f.label :order, "Order" %>
+  <%= select_tag "order", options_for_select([["Newest first", "new"], ["Oldest first", "old"]], @order) %>
   <%= f.submit "Filter" %>
 <% end %>
 
@@ -24,7 +26,7 @@
       <tr>
         <td><%= article.title %></td>
         <td><%= article.body %></td>
-        <td class="comment-count"><%= article.comments.size %></td>
+        <td class="comment-count"><%= number_with_delimiter(article.comments.size) %></td>
         <td><%= link_to "Show", article_path(article) %></td>
       </tr>
     <% end %>

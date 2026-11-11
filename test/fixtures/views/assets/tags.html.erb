@@ -1,0 +1,14 @@
+<%= asset_path("logo.svg") %>
+<%= asset_path("/icons/a.png") %>
+<%= asset_path("https://cdn.example/x.js") %>
+<%= stylesheet_link_tag("application") %>
+<%= stylesheet_link_tag("application.css", media: "print") %>
+<%= stylesheet_link_tag("application", nonce: true) %>
+<%= stylesheet_link_tag("https://cdn.example/x.css") %>
+<%= javascript_include_tag("legacy") %>
+<%= javascript_include_tag("legacy.js", nonce: true) %>
+<%= image_tag("logo.svg", alt: "Logo", size: "16x16", class: "x") %>
+<%= image_tag("logo.svg", size: "16") %>
+<%= image_tag("/icons/a.png") %>
+<%= image_tag("https://example.com/a.png", alt: "A & B") %>
+<%= image_tag("data:image/gif;base64,R0lGOD", alt: "") %>

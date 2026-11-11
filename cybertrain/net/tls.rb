@@ -6,9 +6,10 @@
 #   require "cybertrain/net/tls"
 #
 # It requires Spinel's openssl package, which links the system libssl and
-# libcrypto; cybertrain/net/socket.rb and cybertrain/http_client.rb do not,
-# so a program that only speaks plain http (or none) links neither.
-# Requiring this file installs {OpenSSLConnector} as {Net.tls_connector}.
+# libcrypto; cybertrain/net/socket.rb and cybertrain/http_client.rb do not
+# (an application links them anyway: `require "cybertrain"` loads
+# cybertrain/encryptor.rb for the encrypted session). Requiring this file
+# installs {OpenSSLConnector} as {Net.tls_connector}.
 #
 # What the handshake checks is the openssl package's, which is CRuby's
 # `SSLContext#set_params`: VERIFY_PEER against the operating system's trust

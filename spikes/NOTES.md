@@ -72,7 +72,7 @@ written up for upstream.
 | 64, 65 | Marked / rooted in the shape checked (docs/spinel-feedback.md, "From spikes/NOTES.md"). |
 | 70 | Probe passes in a small program; the rule was seen only with the whole framework required, so not conclusive. |
 | 72 | Probe passes for two parts: an unresolvable name raises SocketError, and `entry[3]` indexes a `getaddrinfo` entry. The rest was not re-checked. |
-| 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. |
+| 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. Phase 4a relies on it: test/rate_limit_store.rb spawns its own binary with `Process.spawn` and reaps it with `Process.wait(pid)` (2026-11-10). |
 | 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
 | 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
@@ -84,6 +84,10 @@ written up for upstream.
 | 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
 | 90 | **Still there**: found on this build (its reduced program, `C.str(yield)` with a String block at one call site and an Integer block at another, runs the first block twice). |
 | 91 | **Still there**: found on this build (its reduced program, `exit(1)` on a thread spawned through a method while the main thread sleeps, prints the main thread's line and exits 0). |
+| 92 | **Still there**: found on this build (the refusal is by design, as rule 84's is). |
+| 93 | **Still there**: found on this build (its reduced program prints `true false`; CRuby prints `false false`). |
+| 94, 96, 97, 98 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
+| 95 | Works on this build: a record of a form that compiles, not of a defect. |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -91,22 +95,22 @@ written up for upstream.
 The rules are numbered in the order they were found. By topic:
 
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
-  90
+  90, 92, 93, 95, 97
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
-  37, 46 (Hash literals), 56, 63, 71, 73, 86
+  37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86
-- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81, 89
-- Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66
+- Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
   91
 - FFI: 15, 59
-- Tests and tools: 23, 24, 36, 41, 63, 84
+- Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98
 
 ## Rules every framework file must follow (derived from the spikes)
 
@@ -1056,6 +1060,104 @@ The rules are numbered in the order they were found. By topic:
     so the framework joins feed and supervisor threads in plain methods
     that rescue `Exception` (rules 32 / 45).
 
+92. A block that never runs is still compiled, and an implicit-self call
+    in it is resolved against the `self` of the code around the block:
+    in a module body, the module. Spinel 2026.11.04.7026 refuses such a
+    call when that module has no method of the name, even though another
+    class defines it (`before_action` is a class method of
+    Cybertrain::Controller) and CRuby, never running the block, never
+    looks: `module AdminGate; extend ActiveSupport::Concern; included do
+    before_action :require_admin, only: [:index]; end; end`, with
+    `ActiveSupport::Concern#included(base = nil, &block)` doing nothing,
+    is refused with "unsupported call: ... (CallNode `before_action`)
+    recv=-/ty-1", 1 refusal, nothing written (the ahead-of-time
+    NoMethodError of rule 84, met from a receiver Spinel knows). So
+    `ActiveSupport::Concern` defines a no-op instance method (a singleton
+    method of every concern that extends it) for every declaration a
+    concern's `included` block may make, with the framework declaration's
+    parameters; with `before_action`, `helper_method` and `rescue_from`
+    stubbed the program builds and the declarations gen splices into the
+    including class work. Found in the phase 4a spike (2026-11-10,
+    spikes/phase4/concern_class_methods.rb).
+    Stubs are not enough for a call no stub covers: Task 7 of phase 4a
+    found `included do; scope :visible, -> { where(hidden: 0) }; end` in a
+    model concern refused at the bare `where` inside the lambda, with
+    `scope` stubbed and `method_missing` defined (stubbing Relation's
+    methods on the concern would break rule 34), and a controller
+    concern's `before_action { redirect_to "/" }` is the same shape. So
+    gen never compiles the blocks: it writes each concern to
+    `gen/concerns/<path under app/>` with its `included` and
+    `class_methods` blocks blanked line for line, the application loads
+    those copies, and `gen/concerns.rb` splices the blocks' bodies into
+    the including classes (docs/design.md D60). The stubs stay, for a
+    program that requires a concern's own file.
+
+93. A `def` inside a block is compiled as a method of the code around the
+    block whether or not the block ever runs (Spinel 2026.11.04.7026):
+    CRuby defines it only when the block runs, and then on the block's
+    `def` target. Reduced program (CRuby prints `false false`, the
+    compiled program `true false`): `module Concern; def
+    class_methods(&block) = nil; end`, `module Gate; extend Concern;
+    class_methods do; def per_page = 50; end; end`, `class C; include
+    Gate; end`, `puts "#{C.new.respond_to?(:per_page)}
+    #{Gate.respond_to?(:per_page)}"`. So a concern's `class_methods do
+    def x ... end end` also gives every including class an instance method
+    `x` under Spinel: a `class_methods` name must not be the name of an
+    instance method of the concern or of an including class (gen refuses
+    it), and the class method itself comes from gen's `def self.x` on the
+    concern and forwarder in the class (plan decision 12). Found in the
+    phase 4a spike (2026-11-10; docs/spinel-feedback.md U).
+
+94. Type inference that does not converge: Spinel 2026.11.04.7026 stopped
+    compiling examples/blog's `bin/gen.rb` with "type inference did not
+    converge in 128 rounds" once `Gen::Runner.run` held the results of two
+    lexical scans of `app/controllers` (the controllers' and the
+    concerns') in locals and passed both to two emitters; bisected to that
+    change (phase 4a Task 5, 2026-11-10), not reduced further. Each emitter
+    now scans for itself (`Runner.controllers_source`,
+    `concerns_source`), so `app/controllers` is read twice. When the
+    message appears after a change that threads one value through several
+    methods, have each consumer compute its own.
+
+95. A keyword parameter named after a Ruby keyword (`if:`, `unless:`,
+    `module:`) cannot be read by name in the method body, under CRuby or
+    Spinel; `binding.local_variable_get(:if)` reads it, and that compiles
+    and returns the argument on Spinel 2026.11.04.7026, with the
+    parameter's type: `Controller.rate_limit(..., if: nil, unless: nil)`
+    and the routes DSL's `scope(path = "", module: "", as: "")` use it
+    (phase 4a Tasks 2 and 13, 2026-11-10).
+
+96. `Time#strftime(pattern)` with a pattern built at run time (not a
+    String literal), on a receiver that the program also holds as a Date
+    (a Time narrowed by `case value when Time` from a slot that can hold
+    either), returns the pattern itself, unformatted, on Spinel
+    2026.11.04.7026: the polymorphic dispatch reads the pattern into the
+    runtime's shared string buffer and the caller then takes the stale
+    buffer. The literal-pattern form works. So `time_tag`'s `format:`
+    (`Template::Helpers.time_tag_strftime`) walks the pattern itself and
+    calls `strftime` with a literal for each directive it supports,
+    raising for an unknown one (phase 4a Task 17, 2026-11-11).
+
+97. A String held in an instance variable, passed as an argument to a
+    stored lambda that may append to its argument (`a proc.call`), is
+    refused by Spinel 2026.11.04.7026 ("a String is passed through `a
+    proc.call` ..."), while a fresh local holding the same text is
+    accepted. It showed only in the blog's program, through
+    `Views.component_builder.call(@name, ...)`; the framework passes an
+    interpolated copy (`"#{@name}"`) there. Pass a local, never an ivar,
+    to a lambda stored on a module or object (phase 4a Task 17,
+    2026-11-11; compare rule 82).
+
+98. A C file that Spinel wrote (`spinel prog.rb -c -o x.c`, such as the
+    rule 62 grep's output) left anywhere in a package's tree is not
+    compiled: spin prints "x.c is spinel's own output and was NOT
+    compiled", asks for it to be deleted or moved out, and counts it as a
+    change of the package, so the next `spin run gen` of an application
+    that depends on the package rebuilds its generator (checked on
+    2026-11-11 with `spin run gen -- --check` in examples/blog, which
+    still exited 0). Write such files outside the package (the build
+    directory, or a `TMPDIR` outside it) and delete them after the grep.
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
@@ -1064,3 +1166,4 @@ The rules are numbered in the order they were found. By topic:
 - SQLite: 1.5 M inserts/s inside one transaction, ~70 K/s autocommit; pool of 4 serving 8 threads: ~55 K statements/s.
 - HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it.
 - PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (Spinel's docs/thread.md, "The execution model").
+- Asset digests (phase 4a spike, 2026-11-10, one cloud vCPU): `File.binread` of 1 MB 1.4 ms, `Digest::SHA256.digest` of it 0.8 ms compiled (CRuby 3.3.6: 5.0 ms for both); a generated 200-arm `case` of String literals compiles in 1.3 s, adds 44 KB to the binary and answers in 293 ns a lookup (arms tried in order; CRuby hashes them, 183 ns).

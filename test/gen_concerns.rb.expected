@@ -1,0 +1,18 @@
+ok   the checked-in gen/concerns.rb and gen/concerns/** are fresh
+ok   before_action from a concern runs at the include's position
+ok   a block in a concern's included body calls the including class's methods without a receiver
+ok   a concern's method overrides the superclass's of the same name
+ok   a layout declared in a concern's included block applies to the including controller
+ok   class_methods are callable through self.class
+ok   nested concerns expand depth first; a cycle is refused by name
+ok   a concern included by an ancestor and again is expanded once
+ok   a class_methods name that an ancestor's concern defines as an instance method is refused
+ok   include A, B splices B first, as Ruby includes B first
+ok   prepend_before_action is not a callback declaration
+ok   @x in a concern method is a view assign of the includer
+ok   a project root with an app/ directory in its path still keys gen/concerns and the manifest by the path under it
+ok   an endless operator or self. def does not swallow the def after it
+ok   include Gate inside module Admin brings in Admin::Gate, as Ruby resolves it
+ok   an include that does not reach a concern but ends in a concern's name is refused
+ok   include Comparable, no concern's name, stays plain Ruby
+17 tests, 65 assertions, 0 failures

@@ -1,5 +1,5 @@
 ---
-source_sha256: 3354d343281bf776b3016f5d1c574c1b5d5c88983a4c9e70b418a9427b206039
+source_sha256: ea0920c65e1defc6886af8050bf6977a12fa422a483c5e9a9a87305465abbf41
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -268,22 +268,39 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` はすでに `SafeString` でなければエスケープされる。**`method:` はない** — 例外を出し、`button_to` を使うよう伝える（rails-ujs/turbo による DELETE リンクの偽装はない） |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | ボタン 1 つの `<form class="button_to">`。`get`/`post` 以外のメソッドには hidden の `_method`、セッションがあれば CSRF のフィールドも付く |
-| `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | ブロックが必要。`model:` が新規 → コレクションのルートと POST、保存済み → メンバーのルートと PATCH。ネストしたルートには `[parent, child]`。`url:`/`method:` は導かれたアクションやメソッドを上書きする。`multipart: true` は `enctype="multipart/form-data"` を追加する（`f.file_field` に必須。ブロックから推測されることはなく、GET のフォームでは `ArgumentError` を出す） |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)と[コンポーネント](#components)を参照 |
+| `form_with` | `form_with(model:, url:, scope:, method:, class:, data:, multipart:, local:) do \|f\| ... end` | ブロックが必要。`model:` が新規 → コレクションのルートと POST、保存済み → メンバーのルートと PATCH。ネストしたルートには `[parent, child]`、namespace のルートには `[:admin, @article]`。`url:`/`method:` は導かれたアクションやメソッドを上書きする。`scope: :q` はフィールドを `q[term]` と名付ける（`model:` と一緒ならモデルのプレフィックスを置き換える）。`data: { turbo_frame: "f" }` は `data-` 属性を書く。`local:` は受け付けるが何も変えない。`multipart: true` は `enctype="multipart/form-data"` を追加する（`f.file_field` に必須。ブロックから推測されることはなく、GET のフォームでは `ArgumentError` を出す） |
+| `select_tag` | `select_tag(name, option_tags = nil, include_blank:, prompt:, multiple:)` | `select_tag "order", options_for_select([["Newest", "new"], ["Oldest", "old"]], "old")` → `<select name="order" id="order">...</select>`。`SafeString` でない `option_tags` はエスケープされる。`multiple: true` で名前は `order[]` になる。ほかのキーワードは属性になる |
+| `options_for_select` | `options_for_select(choices, selected = nil)` | `f.select` の選択肢（下記）の `<option>` の行。`selected` は値か値の Array で、String として比べる |
+| `options_from_collection_for_select` | `options_from_collection_for_select(records, :id, :name, selected = nil)` | レコードごとに 1 つの `<option>`。値とテキストは `f.collection_select` と同じように読む |
+| `label_tag`, `text_field_tag`, `hidden_field_tag`, `submit_tag` | `label_tag(name, text = nil)`, `text_field_tag(name, value = nil)`, `hidden_field_tag(name, value = nil)`, `submit_tag(value = "Save changes")` | モデルなしのフォームのタグ：`label_tag(:term)` → `<label for="term">Term</label>`。`hidden_field_tag` は `autocomplete="off"` を書く。`submit_tag` の名前は `commit`。ほかのキーワードは属性になる（`id:` は名前から作った id を置き換える） |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render partial: "comment", collection: @comments` / `render @comments` / `render component: "card", k: v` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)、[コレクション](#collections)、[コンポーネント](#components)を参照 |
 | `h`、`escape` | `h(text)` | エスケープする。`SafeString` はエスケープされずにそのまま通る |
 | `raw` | `raw(text)` | テキストを `SafeString` で包む（エスケープせずに出力される） |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`、`pluralize(2, "mouse")` → `"2 mice"`（`Cybertrain::Inflector` による Rails のデフォルトの英語の語形変化。アプリが定義する語形変化はサポートされない）。明示的な 3 つ目の引数が常に優先される |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
-| `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`、`-1000` → `"-1,000"`、`1234.5` → `"1,234.5"` |
+| `number_with_delimiter` | `number_with_delimiter(n, delimiter: ",", separator: ".")` | `1234567` → `"1,234,567"`、 `-1000` → `"-1,000"`、 `1234.5` → `"1,234.5"` |
+| `number_with_precision` | `number_with_precision(n, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)` | `111.2345` → `"111.235"`、 `precision: 0` → `"111"` |
+| `number_to_human` | `number_to_human(n, precision: 3, units: {})` | `1234` → `"1.23 Thousand"`, `1234567` → `"1.23 Million"`、 `units: { thousand: "K" }` は単位の名前（`unit`、`thousand` … `quadrillion`）を置き換える |
+| `number_to_percentage` | `number_to_percentage(n, precision: 3)` | `100` → `"100.000%"` |
+| `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`、 負の数は書式の前に `-` を書く |
+| `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (1024 進)、 `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails 風の区分で、秒単位の精度はない：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照 |
 | `csrf_meta_tags` / `csrf_token` | | コントローラーのセッションがなければ空 / なし |
+| `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / nonce だけ。このリクエストの [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) の nonce。ポリシーがなければ `""` |
+| `javascript_tag` | `javascript_tag(nonce: true) do ... end`, `javascript_tag(js)` | 内容を `<script>` に入れる（Rails と同じくエスケープしないので、リクエストのデータは決して入れない）。`nonce: true` でポリシーがあれば nonce を付ける。`id:`、`type:`、`data:` は属性 |
+| `asset_path` | `asset_path("logo.svg")` | `/assets/logo-1a2b3c4d.svg`（[アセット](assets.md#helpers)を参照）。URL や `/` で始まるパスはそのまま返す |
+| `stylesheet_link_tag` | `stylesheet_link_tag("application", media:, nonce:)` | `<link rel="stylesheet" href="/assets/application-1a2b3c4d.css">`（`.css` がなければ付ける） |
+| `javascript_include_tag` | `javascript_include_tag("legacy", nonce:)` | `<script src="/assets/legacy-1a2b3c4d.js"></script>`（`.js` がなければ付ける） |
+| `image_tag` | `image_tag(source, alt:, size:, class:)` | `size: "16x16"`（または `"16"`）なら `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16" height="16">`。`alt` を勝手に作らず、`alt: ""` は書く |
+| `javascript_importmap_tags` | `javascript_importmap_tags(entry = "application")` | インポートマップ、プリロードする pin ごとの `modulepreload` のリンク、`import "application"`。ポリシーがあればどれにも nonce を付ける（[アセット](assets.md#the-import-map)）。リクエストが必要 |
 | `flash` | | `Hash` のようなもの：`flash[:notice]` |
 | `params` | | 現在の `Cybertrain::Params` |
 | `request_path` | | 現在のパス。コントローラーがなければ `""` |
-| `url_for` | `url_for(target)` | `String` はそのまま、`Model` → メンバーのルート、`[parent, child]` → ネストしたルート |
+| `url_for` | `url_for(target, format:, anchor:, k: v)` | `String` はそのまま、`Model` → メンバーのルート、`[parent, child]` → ネストしたルート、`[:admin, record]` → namespace のルート。キーワードはパスヘルパーと同じように付く（`url_for("/x", format: :csv)` → `/x.csv`） |
+| `current_page?` | `current_page?(path)` | この GET か HEAD のリクエストが `path` へのものか（末尾のスラッシュは問わない。`path` にクエリがあればクエリも一致する必要がある）。レコードや Array は `url_for` を通す。ほかのメソッドなら false。リクエストが必要 |
 | `paginate` | `paginate(page, path)` | `page` は `Cybertrain::Page`（`Relation#page` から）。`<nav class="pager">` をレンダリングし、「Newer」（`rel="prev"`）、`<span class="pager-current">Page N</span>`、「Older」（`rel="next"`）を含める。該当するページがなければリンクは省かれる。各リンクは `path` に、`page` を置き換えた（1 ページ目では取り除いた）現在のリクエストのクエリ文字列を付けたもので、再エンコードされ HTML エスケープされる。独自の `?query` を持つ `path` では代わりにそれを使う。`Page` はテンプレートの中で `number`、`per`、`row_offset`、`next?`、`prev?`、`next_number`、`prev_number` にも応える（`<% if @page.next? %>`） |
-| `*_path` / `*_url` | 例：`post_path(post)` | アプリが生成し、`Cybertrain::Views.url_resolver` 経由で解決される |
+| `*_path` / `*_url` | 例： `post_path(post)`, `posts_path(page: 2, format: :json)` | アプリが生成し、`Cybertrain::Views.url_resolver` 経由で解決される。キーワードはクエリ文字列になり、`format:` は拡張子を、`anchor:` はフラグメントを付ける（[リダイレクトとクエリ文字列](requests.md#redirects-and-query-strings)） |
 | `tag` | `tag.div(content, attrs) do ... end` | tag ビルダー：[tag ビルダー](#the-tag-builder)を参照 |
 | `content_tag` | `content_tag(name, content = nil, attrs)`、または `do` のブロック付き | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`。規則は `tag` と同じ |
 | `safe_join` | `safe_join(array, sep = "")`（キーワード引数なし） | `SafeString` に連結します。まだ `SafeString` でない各要素と区切りはエスケープします：`safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
@@ -292,8 +309,13 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | ページをストリーム（String、または `"articles:12"` と名付けられるレコード）に購読させる `<turbo-stream-source>` を 1 つ。`ws: true` は `ws://`/`wss://` の URL を返し、リクエストが必要です。[リアルタイム](realtime.md#turbo-streams)を参照 |
 | `signed_stream_name` | `signed_stream_name(*streams)` | 署名付きトークンだけ。手書きの JavaScript 用 |
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | トークンと `mode=json`（または `"raw"`）付きのストリームのエンドポイントのパス |
+| `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`。レコードならその `dom_id`。属性は渡したときだけ書く |
+| `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | `*.turbo_stream.erb` のテンプレート用の `<turbo-stream action="...">` 要素 1 つ。ターゲットは DOM の id かレコード。ブロック、`partial:`（`locals:` 付き）、`html:` のちょうど 1 つ |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`、またはブロック付き | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`。Date なら `2026-11-10`。`format:` は `:short`、`:long`、strftime の String（知らない指示子は例外になり、strftime が別の意味に読む幅やフラグも同じ：`%6L` は `%6N` を使う。`:` は `%:z` の中だけ。`%F %T %D %R %r %c %x %X %v` にはパディングのフラグを付けられない。数値の幅はパディングを置き換え、`%5e` は `"    5"` になる） |
 
 ヘルパーのテキスト引数はすべて 1 つの規則に従います：`SafeString` はエスケープされずにそのまま通り、それ以外はエスケープされます — `link_to raw('<b>raw</b>'), post` は太字のタグを文字どおりに出力しますが、`link_to post.title, post` はエスケープします。
+
+六つの数値ヘルパーは `Cybertrain::NumberHelper` のもので、Ruby のコードからは同じキーワードのモジュール関数として呼べます（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。Integer、Float、数値の String（decimal のカラムは Float です）を受け取り、10 進のテキストの桁で四捨五入するので、どちらのランタイムでも結果は同じです。それ以外の値は `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`）になり、0 から 100 の範囲外の精度も同じです。テンプレートでは `nil` は `""` になります（null を許す decimal のカラムは Rails と同じく空で表示されます）。Ruby から呼んだ `Cybertrain::NumberHelper` は、`nil` に対して今も `ArgumentError`（`"number_with_delimiter: nil is not a number"`）を発生させます。書式は英語です。
 
 ### tag ビルダー
 
@@ -321,13 +343,16 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | メソッド | レンダリング結果 |
 | --- | --- |
 | `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>` — デフォルトのテキストは属性を人間向けにしたもの（`published_at` → 「Published at」、`author_id` → 「Author」）。明示的なテキストは `SafeString` でなければエスケープされる |
-| `f.text_field :title`（`email_field`、`password_field`、`number_field`、`date_field`、`hidden_field` も） | `<input type="..." name="post[title]" id="post_title" value="...">`。`password_field` は決して `value=` を出力しない |
+| `f.text_field :title` ( `email_field`, `password_field`, `number_field`, `date_field`, `datetime_local_field`, `time_field`, `range_field`, `color_field`, `search_field`, `telephone_field`, `url_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`。`password_field` は決して `value=` を出力しない。`telephone_field` は `type="tel"`。Time はブラウザーが読む形で書く（`2026-11-10`、`2026-11-10T12:00:00`、`12:00:00.000`） |
+| `f.select :status, ["draft", "published"]` ( `include_blank:`, `prompt:`, `selected:`, `disabled:`, `multiple:`) | 選択肢ごとに `<option>` を持つ `<select name="post[status]" id="post_status">` で、現在の値が選ばれる。選択肢は値、`[text, value]` の組、`<optgroup>` 用の Hash か `[label, [choices]]` のグループ。`multiple: true` で名前は `post[status][]` になり、先に空の hidden の input を書く |
+| `f.collection_select :author_id, @authors, :id, :name` | レコードごとに 1 つの `<option>` を持つ `<select>`。値とテキストは二つのメソッドから読む |
+| `f.radio_button :status, "draft"` | `<input type="radio" name="post[status]" id="post_status_draft" value="draft">`。値が一致すればチェックされる（`checked:` が優先） |
 | `f.file_field :cover`（`accept: "image/*"`、`required: true` も） | `<input type="file" name="post[cover]" id="post_cover">` — `value=` は決して付かず、属性はカラムでなくてもよい。フォームは `form_with ..., multipart: true` でなければならない。`multiple: true` は `ArgumentError` を出す（フィールドごとにファイル 1 つ） |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>`（Rails と同じく先頭に `\n` — ブラウザーは最初の改行を食べる） |
-| `f.check_box :published` | hidden の `value="0"` の input の後に本物のチェックボックスが続くので、チェックしていないボックスも `"0"` を送信する |
+| `f.check_box :published` | hidden の `value="0"` の input の後に本物のチェックボックスが続くので、チェックしていないボックスも `"0"` を送信する。`include_hidden: false` なら hidden の input を書かない |
 | `f.submit` / `f.submit "Text"` | デフォルトのテキストは（`persisted?` によって）`"Create Post"`/`"Update Post"`、モデルがなければ `"Save changes"` |
 
-モデルがある場合、フィールドの名前は `post[title]`/`id="post_title"` になります（スコープは `Inflector.underscore(model.model_name)`）。モデルなしの `form_with(url: ...)` では、どちらにも素の属性名が使われます。追加のキーワード引数は、与えた順に HTML の属性になります：`true` → `attr="attr"`、`false`/`nil` は捨てられ、それ以外は → `attr="value"`（エスケープされます）。アンダースコアはハイフンになり（`data_confirm: "Sure?"` → `data-confirm="Sure?"`）、`class:` は、`model.errors.key?(attr)` のときに自動で付く `field_with_errors` クラスと合わせられます。
+モデルがある場合、フィールドの名前は `post[title]`/`id="post_title"` になります（スコープは `Inflector.underscore(model.model_name)`）。`form_with(..., scope: :q)` なら代わりに `q[title]`/`id="q_title"` です。モデルもスコープもない `form_with(url: ...)` では、どちらにも素の属性名が使われます。属性の値と選択肢のテキストは、どれも一度だけエスケープされます（`SafeString` はそのまま）。追加のキーワード引数は、与えた順に HTML の属性になります：`true` → `attr="attr"`、`false`/`nil` は捨てられ、それ以外は → `attr="value"`（エスケープされます）。アンダースコアはハイフンになり（`data_confirm: "Sure?"` → `data-confirm="Sure?"`）、`class:` は、`model.errors.key?(attr)` のときに自動で付く `field_with_errors` クラスと合わせられます。
 
 ## アプリケーションのヘルパー
 
@@ -402,7 +427,7 @@ html = Cybertrain::Views.render_partial("articles/article", article: article)   
 card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
 ```
 
-どちらも、アプリケーションのヘルパーを使って HTML を String で返します。パスヘルパーは動き（`article_path(article)`）、strict locals は検査され、フォーム（`form_with`、`button_to`）は認証トークンなしでレンダリングされます（Turbo のページは `csrf_meta_tags` のトークンを送信します）。リクエストを必要とするヘルパーは `Cybertrain::Views::OutsideRequest`（`"csrf_token needs a request"`）を出します：`csrf_token`、`csrf_meta_tags`、`params`、`flash`、`request_path`、あらゆる `*_url` ヘルパー、`turbo_stream_from ... ws: true` です。`paginate` のリンクは、パス自身のクエリ文字列だけを持ちます。（単体テストで作るような素の `Cybertrain::Template::Helpers.new(nil)` は、それらに代わりに空の値で応えます。）
+どちらも、アプリケーションのヘルパーを使って HTML を String で返します。パスヘルパーは動き（`article_path(article)`）、strict locals は検査され、フォーム（`form_with`、`button_to`）は認証トークンなしでレンダリングされます（Turbo のページは `csrf_meta_tags` のトークンを送信します）。リクエストを必要とするヘルパーは `Cybertrain::Views::OutsideRequest`（`"csrf_token needs a request"`）を出します：`csrf_token`、`csrf_meta_tags`、`params`、`flash`、`request_path`、`current_page?`、`content_security_policy_nonce`（そのため `csp_meta_tag` と、`nonce: true` を渡したタグヘルパーも）、`javascript_importmap_tags`、あらゆる `*_url` ヘルパー、`turbo_stream_from ... ws: true` です。`paginate` のリンクは、パス自身のクエリ文字列だけを持ちます。（単体テストで作るような素の `Cybertrain::Template::Helpers.new(nil)` は、それらに代わりに空の値で応えます。）
 
 ## レイアウト、`yield`、`content_for`、パーシャル
 
@@ -420,6 +445,23 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 <% content_for :title, " (draft)" %>   <%# appends: calls accumulate, they don't replace %>
 ```
 
+### コントローラーごとのレイアウト
+
+アクションは、コントローラー、その親、include したコンサーンが別のものを選ばない限り、`app/views/layouts/application.html.erb`（あれば）の中でレンダリングされます：
+
+```ruby
+class AdminController < ApplicationController
+  layout "print", only: [:receipt]      # app/views/layouts/print.html.erb
+  layout :choose_layout                 # メソッド：名前、なしなら false、親のものなら nil
+
+  private
+
+  def choose_layout = request.header("Turbo-Frame").to_s.empty? ? "application" : "frame"
+end
+```
+
+`layout "admin"` だけなら、すべてのアクションに一つのレイアウトを指定します。`spin run gen` は `layout` の行（引用符付きの名前、`false`、メソッドの Symbol に、`only:` / `except:`）を読み、コントローラーの `controller_layout(action)` を書きます。宣言は順に試され、**最初に当てはまったものが勝ちます**（Rails では後の宣言が前のものを置き換えます）。コンサーンの行はその `include` の位置で数えます。`render layout: "x"` はその呼び出しだけ `layouts/x` を使い、`render layout: false` はレイアウトなしです。先頭の `layouts/` は受け付けます（`layout "layouts/x"` は `layouts/x` です）。存在しないレイアウトを指す `layout` の行や `render layout:` は `MissingTemplate` を発生させます。省略できるのは既定の `application` レイアウトだけです（そのときアクションはレイアウトなしで描画されます）。レイアウトの中にレンダリングされるのは html だけで、ほかのフォーマットのテンプレートはレイアウトなしです。それ以外の `layout` の引数（`nil`、ラムダ、定数）は gen が拒否します。
+
 ### パーシャルと `render`
 
 ```erb
@@ -432,6 +474,19 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 - パーシャルは、**呼び出し元の環境全体の複製**（インスタンス変数と、すでにスコープにあるローカル変数）に加えて、`render` に与えた明示的なローカル変数を受け取ります — 渡されたものだけに隔離されるわけではありません。strict locals が宣言されたリストに対して検査するのは、**その `render` の呼び出しに明示的に与えた**名前だけです。パーシャルが呼び出し元の環境から受け継いだ別の名前を読むことは止めません。
 - パーシャルのスコープから呼び出し元のスコープに書き戻されるのは、`content_for` のキー（`__content_*`）だけです。パーシャルが代入した普通のローカル変数は外に漏れません。
 - `<%# locals: %>` の宣言に対してローカル変数が足りない・余分な場合は `RuntimeError` です：`"missing local 'post' for posts/_form.html.erb"`、`"unknown local 'extra' for posts/_form.html.erb"`。
+
+### コレクション
+
+```erb
+<%= render partial: "comment", collection: @comments, as: :comment, spacer_template: "divider" %>
+<%= render @comments %>      <%# each record's comments/_comment.html.erb %>
+<%= render @comment %>       <%# one record, no counter %>
+<%= render component: "comment", collection: @comments %>
+```
+
+- `collection:` は Array の要素ごとにパーシャルを 1 回レンダリングします。要素は `as:` が指すローカル変数（既定はパーシャル自身の名前）になり、`<as>_counter` が 0 から数え、`locals:` はそれぞれに渡され、要素の間には `spacer_template:`（パーシャル）が入ります。空のコレクションは何も出力しません。strict locals のパーシャルがカウンターを受け取るのは、それを宣言したときだけで、同じ名前のローカル変数より要素が優先されます。
+- `render @comments` は、各レコードのパーシャルをそのモデルから選びます：`<plural>/_<singular>`（`Admin::Note` なら `admin/notes/_note`）。そのため、一覧に複数のモデルが混ざっていても構いません。
+- ただ一つの必須キーワードが自分の名前と同じコンポーネント（`comment:` を取る `CommentComponent`）には `CommentComponent.with_collection(items)` があり、`render component: "comment", collection: @comments` は要素ごとに 1 回レンダリングし、`initialize` が `comment_counter:` を宣言していればそれも渡します。`collection:` はほかのキーワードを受け付けません（`render component: "comment", collection: @comments, extra: 1` は、そのキーワードを挙げるエラーになります）。ブロックの内容は渡されません。
 
 ### ファイルの解決（`engine.rb`）
 
@@ -473,4 +528,5 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 | `1 / 0` と `1.0 / 0` はどちらも `ZeroDivisionError` を出す | `Integer` のゼロによる除算・剰余は `"divided by 0"` を出す。`Float` は IEEE-754 に従い（`Infinity`/`NaN`）、エラーにならない |
 | `distance_of_time_in_words` や複数形化は i18n のロケールをサポートする | 英語のみで、ロケールのサポートはない |
 | `app/helpers` のモジュールはすべて混ぜ込まれる。シグネチャは自由で、ヘルパーがフレームワークのものを上書きできる | モジュールはビルド時に走査され、生成された `case` になる：名前付きのパラメーターだけ、省略可能なものは 3 つまで、フレームワークのヘルパー名と `_path`/`_url` で終わる名前は不可（[アプリケーションのヘルパー](#application-helpers)） |
-| ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、スロット | 名前による `render component: "card", title: "x"`、ブロックからの `content`。コレクションとスロットはない（[コンポーネント](#components)） |
+| ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、スロット | 名前による `render component: "card", title: "x"`、ブロックからの `content`、ただ一つの必須キーワードと同じ名前のコンポーネントには `collection:`。スロットはない（[コンポーネント](#components)、[コレクション](#collections)） |
+| 後の `layout` の行が前のものを置き換える | 最初に当てはまった `layout` の宣言が勝つ（[コントローラーごとのレイアウト](#per-controller-layouts)） |

@@ -1,4 +1,5 @@
 require "json"
+require "digest"
 require "cybertrain/context"
 require "cybertrain/html"
 require "cybertrain/http/client_error"
@@ -7,8 +8,14 @@ require "cybertrain/logger"
 require "cybertrain/callback"
 require "cybertrain/rate_limit"
 require "cybertrain/views"
+require "cybertrain/assets"
+require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
+require "cybertrain/turbo_stream_renderer"
 require "cybertrain/generator/inflector"
+require "cybertrain/active_support"
+require "cybertrain/http/cookies"
+require "cybertrain/cookie_jar"
 
 module Cybertrain
   class MissingTemplate < StandardError
@@ -83,25 +90,44 @@ module Cybertrain
     CALLBACKS = {}   # class name => Array<Callback>
     SKIPS = {}       # class name => Array<Callback> (kind :skip, by name)
     RESCUES = {}     # class name => Array<RescueHandler>
+    # class name => its content_security_policy (a typed seed, emptied:
+    # NOTES rule 9).
+    CSP_POLICIES = { "" => ContentSecurityPolicy.new }
+    CSP_POLICIES.delete("")
+    # While gen/concerns.rb splices a concern's `included` body into a
+    # class: class name => the index its next callback / rescue goes to.
+    CONCERN_CALLBACK_AT = {}
+    CONCERN_RESCUE_AT = {}
 
     # The Symbols `status:` accepts in {#render}, {#head} and
     # {#redirect_to}: the Rails names of the codes in
-    # `Response::STATUS_TEXT`, one Symbol per code there. Any other status
-    # must be given as an Integer.
+    # `Response::STATUS_TEXT`, one Symbol per code there (Rack 3's names,
+    # `:content_too_large` and `:unprocessable_content` among them), plus the
+    # older names `:payload_too_large`, `:request_entity_too_large`,
+    # `:unprocessable_entity`, `:request_uri_too_long` and
+    # `:requested_range_not_satisfiable`. Any other status must be given as
+    # an Integer.
     # @api public
     STATUS_SYMBOLS = {
-      ok: 200, created: 201, accepted: 202, no_content: 204,
-      reset_content: 205, partial_content: 206,
-      multiple_choices: 300, moved_permanently: 301, found: 302, see_other: 303,
-      not_modified: 304, temporary_redirect: 307, permanent_redirect: 308,
+      continue: 100, switching_protocols: 101, processing: 102, early_hints: 103, ok: 200,
+      created: 201, accepted: 202, non_authoritative_information: 203, no_content: 204,
+      reset_content: 205, partial_content: 206, multi_status: 207, already_reported: 208,
+      im_used: 226, multiple_choices: 300, moved_permanently: 301, found: 302, see_other: 303,
+      not_modified: 304, use_proxy: 305, temporary_redirect: 307, permanent_redirect: 308,
       bad_request: 400, unauthorized: 401, payment_required: 402, forbidden: 403,
       not_found: 404, method_not_allowed: 405, not_acceptable: 406,
-      request_timeout: 408, conflict: 409, gone: 410, length_required: 411,
-      precondition_failed: 412, payload_too_large: 413, unsupported_media_type: 415,
-      range_not_satisfiable: 416, expectation_failed: 417, unprocessable_entity: 422,
-      too_many_requests: 429, request_header_fields_too_large: 431,
+      proxy_authentication_required: 407, request_timeout: 408, conflict: 409, gone: 410,
+      length_required: 411, precondition_failed: 412, content_too_large: 413, uri_too_long: 414,
+      unsupported_media_type: 415, range_not_satisfiable: 416, expectation_failed: 417,
+      misdirected_request: 421, unprocessable_content: 422, locked: 423, failed_dependency: 424,
+      too_early: 425, upgrade_required: 426, precondition_required: 428, too_many_requests: 429,
+      request_header_fields_too_large: 431, unavailable_for_legal_reasons: 451,
       internal_server_error: 500, not_implemented: 501, bad_gateway: 502,
-      service_unavailable: 503, gateway_timeout: 504
+      service_unavailable: 503, gateway_timeout: 504, http_version_not_supported: 505,
+      variant_also_negotiates: 506, insufficient_storage: 507, loop_detected: 508,
+      not_extended: 510, network_authentication_required: 511, payload_too_large: 413,
+      request_entity_too_large: 413, unprocessable_entity: 422, request_uri_too_long: 414,
+      requested_range_not_satisfiable: 416
     }
 
     # Default statuses for render/head and redirect_to. They are 200 and 302
@@ -116,6 +142,16 @@ module Cybertrain
     # mix is. (test/controller_status.rb)
     DEFAULT_STATUS = [200, :ok][0]
     DEFAULT_REDIRECT_STATUS = [302, :found][0]
+    # The `etag:` and `last_modified:` default of {#fresh_when} and {#stale?},
+    # nil, boxed like DEFAULT_STATUS: the validators are a String, a Model
+    # or a Time, and one call site passing a Model and another a String
+    # must both reach a parameter that can hold either. The seed Model is
+    # never read.
+    DEFAULT_VALIDATOR = [nil, "", Model.new, Time.at(0)][0]
+    # render's `layout:` default, `true` (the controller's layout), boxed
+    # the same way: one call site passing `false` and another a String must
+    # both reach a parameter that can hold either.
+    DEFAULT_LAYOUT = [true, ""][0]
     # What run_before_callbacks consults when no controller declared a skip:
     # seeded with the element type and emptied (spikes/NOTES.md rule 9).
     NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [], [], -1) }
@@ -160,60 +196,246 @@ module Cybertrain
     end
 
     # Limits how often one client may call some actions: at most `to`
-    # requests per `within` seconds for each client address, counted in
-    # this process before the action runs (a before callback, in
-    # declaration order with the others). An exhausted client gets a 429
-    # with the body "Too Many Requests" and a `Retry-After` header (the
-    # seconds until its window closes), or, with `redirect_to:`, a 303 to
-    # that path with `alert:` in the flash. The action does not run either
-    # way.
+    # requests per `within` seconds for each client, counted before the
+    # action runs (a before callback, in declaration order with the
+    # others). An exhausted client gets a 429 with the body "Too Many
+    # Requests" and a `Retry-After` header (the seconds until its window
+    # closes), or, with `redirect_to:`, a 303 to that path with `alert:` in
+    # the flash, or what the `with:` method answers. The action does not
+    # run.
     #
-    # The count is kept per declaration, per controller (a limit declared in
-    # a parent counts each subclass apart, as Rails' does) and per address:
-    # {Request#client_ip} by default, so behind a proxy on the same host set
-    # Config#trusted_proxy, or every visitor shares the proxy's address;
-    # `by: :remote_addr` counts the connection's peer whatever the
-    # configuration. Memory is bounded and counts are lost on restart (see
-    # {RateLimit}). Every request to a limited action takes one lock, so
-    # name the actions with `only:`.
+    # The counts are shared through the cache (`store: :cache`, the
+    # default; see {RateLimit}): every process of the application counts
+    # together, in fixed windows aligned to the epoch. `store: :memory`
+    # keeps them in this process instead.
+    #
+    # A count is kept per declaration (its `name:`), per controller (a
+    # limit declared in a parent counts each subclass apart, as Rails'
+    # does) and per client: {Request#client_ip} by default, so behind a
+    # proxy on the same host set Config#trusted_proxy, or every visitor
+    # shares the proxy's address; `by: :remote_addr` counts the
+    # connection's peer whatever the configuration; `by: :user_key` the
+    # String the controller's `user_key` method answers (an empty one
+    # raises ArgumentError rather than count every client in one bucket).
+    # `if: :m` applies the limit only when the method m answers true,
+    # `unless: :m` only when it answers false; a request it does not apply
+    # to is not counted. The methods named by `by:`, `with:`, `if:` and
+    # `unless:` are called through the tables `spin run gen` writes
+    # ({#rate_limit_key}, {#rate_limit_condition?}, {#run_callback}).
     #
     # Differences from Rails: `within:` is a number of seconds (`3 * 60`;
-    # there is no `3.minutes`), `only:`/`except:` take Arrays, there is no
-    # `by:` or `with:` block, and the count lives in the process rather than
-    # in a cache store.
+    # there is no `3.minutes`), `only:`/`except:` take Arrays, `by:`,
+    # `with:`, `if:` and `unless:` take a method's name rather than a
+    # block, `store:` is `:cache` or `:memory` rather than a cache store,
+    # and each limit of a controller (its parents' included) needs its own
+    # `name:`.
     # @example
     #   class SessionsController < ApplicationController
     #     rate_limit to: 10, within: 3 * 60, only: [:create],
     #                redirect_to: "/session/new", alert: "Try again later."
     #   end
     #   rate_limit to: 100, within: 60, only: [:create, :update]   # a 429 with Retry-After
+    #   rate_limit to: 5, within: 60, by: :account_key, with: :slow_down, name: "account"
     # @param to [Integer] requests allowed per window, at least 1
     # @param within [Integer] the window, in seconds, at least 1
     # @param only [Array<Symbol>] limit these actions only
     # @param except [Array<Symbol>] limit every action but these
-    # @param by [Symbol] `:client_ip` (the default) or `:remote_addr`
+    # @param by [Symbol] `:client_ip` (the default), `:remote_addr`, or the
+    #   name of a controller method answering the key
+    # @param with [Symbol, nil] a controller method that answers an
+    #   exhausted client instead (when it renders nothing, the 429 follows)
+    # @param if [Symbol, nil] a controller method; the limit applies only
+    #   when it answers true
+    # @param unless [Symbol, nil] a controller method; the limit applies
+    #   only when it answers false
+    # @param name [String] tells the limits of one controller apart (`""`
+    #   by default); no `:`
+    # @param store [Symbol] `:cache` (the default) or `:memory`
     # @param redirect_to [String] a path to redirect an exhausted client to
     #   (`""`, the default: answer 429 instead)
     # @param alert [String] `flash[:alert]` for that redirect (`""`: none)
     # @return [nil]
-    # @raise [ArgumentError] for a `to` or `within` below 1 or another `by:`
+    # @raise [ArgumentError] for a `to` or `within` below 1, another
+    #   `store:`, a `name:` with a `:` or one another limit of the
+    #   controller has
     # @api public
-    def self.rate_limit(to:, within:, only: [], except: [], by: :client_ip, redirect_to: "", alert: "")
+    def self.rate_limit(to:, within:, only: [], except: [], by: :client_ip, with: nil, if: nil, unless: nil, name: "",
+                        store: :cache, redirect_to: "", alert: "")
       raise ArgumentError, "rate_limit needs to: of at least 1 (got #{to})" if to < 1
       raise ArgumentError, "rate_limit needs within: of at least 1 second (got #{within})" if within < 1
 
+      memory_store = false
+      case store
+      when :cache then memory_store = false
+      when :memory then memory_store = true
+      else
+        msg = "rate_limit store: must be :cache or :memory (got #{store.inspect})"
+        raise ArgumentError, msg
+      end
+      if name.include?(":")
+        msg = "rate_limit name: may not contain \":\" (got #{name.inspect})"
+        raise ArgumentError, msg
+      end
+      if rate_limit_named?(self, name)
+        msg = "rate_limit name: #{name.inspect} is already taken in #{self.name}; give each limit of a controller its own name:"
+        raise ArgumentError, msg
+      end
       by_remote_addr = false
+      by_method = nil
       case by
       when :client_ip then by_remote_addr = false
       when :remote_addr then by_remote_addr = true
-      else raise ArgumentError, "rate_limit by: must be :client_ip or :remote_addr (got #{by.inspect})"
+      else by_method = by
       end
-      id = RateLimit.register(RateLimit.new(to, within, by_remote_addr, redirect_to, alert))
+      # `if` and `unless` are keywords: their values are read by name.
+      if_method = binding.local_variable_get(:if)
+      unless_method = binding.local_variable_get(:unless)
+      limit = RateLimit.new(to, within, by_remote_addr, redirect_to, alert, by_method, with, if_method, unless_method,
+                            name, memory_store)
+      id = RateLimit.register(limit)
       add_callback(Callback.new(:before, nil, nil, only, except, id))
     end
 
+    # Whether a rate_limit of klass or of its parents has this name. The
+    # class is passed in, as to chain_for.
+    # @api private
+    def self.rate_limit_named?(klass, name)
+      chain = chain_for(klass)
+      i = 0
+      while i < chain.size
+        id = chain[i].limit_id
+        return true if id >= 0 && RateLimit.all[id].limit_name == name
+
+        i += 1
+      end
+      false
+    end
+
     def self.add_callback(callback)
-      (CALLBACKS[self.name] ||= []) << callback
+      list = (CALLBACKS[self.name] ||= [])
+      if CONCERN_CALLBACK_AT.key?(self.name)
+        at = CONCERN_CALLBACK_AT[self.name]
+        at = list.size if at > list.size
+        list.insert(at, callback)
+        CONCERN_CALLBACK_AT[self.name] = at + 1
+      else
+        list << callback
+      end
+      nil
+    end
+
+    # Written by gen/concerns.rb (`spin run gen`) around the `included`
+    # body of a concern it splices into this class: until
+    # {.concern_insert_done}, the callbacks and `rescue_from` handlers the
+    # body declares go to these positions of the class's own lists (the
+    # count of declarations above the `include` line), not to the end, so
+    # they run where the `include` was written. Not for application code.
+    # @param callbacks_index [Integer]
+    # @param rescues_index [Integer]
+    # @return [nil]
+    # @api public
+    def self.concern_insert_at(callbacks_index, rescues_index)
+      CONCERN_CALLBACK_AT[self.name] = callbacks_index
+      CONCERN_RESCUE_AT[self.name] = rescues_index
+      nil
+    end
+
+    # Ends a {.concern_insert_at} splice: declarations append again.
+    # @return [nil]
+    # @api public
+    def self.concern_insert_done
+      CONCERN_CALLBACK_AT.delete(self.name)
+      CONCERN_RESCUE_AT.delete(self.name)
+      nil
+    end
+
+    # Makes controller methods callable from this controller's templates
+    # (spec 4.3). A declaration only: `spin run gen` reads the names.
+    # @example
+    #   helper_method :current_user, :admin?
+    # @param names [Array<Symbol>]
+    # @return [nil]
+    # @api public
+    def self.helper_method(*names)
+      nil
+    end
+
+    # Names this controller's layout. A declaration only: `spin run gen`
+    # reads it.
+    # @example
+    #   layout "admin"
+    #   layout false
+    # @param name [String, Symbol, false, nil] a layout name, `false` for
+    #   none, or a method choosing one
+    # @param only [Array<Symbol>]
+    # @param except [Array<Symbol>]
+    # @return [nil]
+    # @api public
+    def self.layout(name = nil, only: [], except: [])
+      nil
+    end
+
+    # This controller's own Content Security Policy (spec C-5): a copy of
+    # the nearest ancestor's, or of the application's
+    # (Config#content_security_policy, declared in config/app.rb, which
+    # loads first), yielded at once to the block and kept for this class
+    # and its subclasses. The block runs here, once; nothing stores it
+    # (NOTES rule 88). Its actions' responses carry this policy instead of
+    # the application's. The copy is taken when the class body runs, so
+    # config/app.rb must load before the controllers (bin/<app>.rb
+    # requires config/app before gen/app); a later change to the
+    # application's policy does not reach it.
+    # @example
+    #   class EmbedController < ApplicationController
+    #     content_security_policy do |p|
+    #       p.frame_ancestors "https://partner.example"
+    #     end
+    #   end
+    # @yieldparam policy [ContentSecurityPolicy]
+    # @return [nil]
+    # @api public
+    def self.content_security_policy(&block)
+      inherited = Controller.policy_for(self)
+      inherited = Cybertrain.config.content_security_policy_value if inherited.nil?
+      policy = inherited.nil? ? ContentSecurityPolicy.new : inherited.dup_policy
+      block.call(policy)
+      CSP_POLICIES[self.name] = policy
+      ContentSecurityPolicy.controller_policy_declared!
+      nil
+    end
+
+    # The policy content_security_policy declared for klass or its nearest
+    # ancestor, nil when none did (the class is passed in, as for
+    # chain_for).
+    # @param klass [Class]
+    # @return [ContentSecurityPolicy, nil]
+    # @api private
+    def self.policy_for(klass)
+      return nil if CSP_POLICIES.empty?
+
+      k = klass
+      while k
+        found = CSP_POLICIES[k.name]
+        return found unless found.nil?
+        break if k == Controller
+
+        k = k.superclass
+      end
+      nil
+    end
+
+    # Puts the policy for an action of klass in ctx.csp_policy, before
+    # the action renders (its templates' csp_meta_tag reads it): klass's
+    # own, or else the application's when the context has none yet
+    # (ContentSecurityPolicyHeader sets that one first).
+    # @api private
+    def self.assign_csp_policy(ctx, klass)
+      own = Controller.policy_for(klass)
+      if own.nil?
+        ctx.csp_policy = Cybertrain.config.content_security_policy_value if ctx.csp_policy.nil?
+      else
+        ctx.csp_policy = own
+      end
       nil
     end
 
@@ -302,7 +524,16 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.rescue_from(klass, with: nil, &block)
-      (RESCUES[self.name] ||= []) << RescueHandler.new(klass.name, with, block)
+      list = (RESCUES[self.name] ||= [])
+      handler = RescueHandler.new(klass.name, with, block)
+      if CONCERN_RESCUE_AT.key?(self.name)
+        at = CONCERN_RESCUE_AT[self.name]
+        at = list.size if at > list.size
+        list.insert(at, handler)
+        CONCERN_RESCUE_AT[self.name] = at + 1
+      else
+        list << handler
+      end
       nil
     end
 
@@ -401,7 +632,7 @@ module Cybertrain
     # @api public
     attr_reader :rescued_exception
 
-    # This visitor's session, kept in a signed cookie.
+    # This visitor's session, kept in an encrypted cookie (AES-256-GCM).
     #
     # The session and flash installed by SessionStore (nil when the
     # middleware is not in the stack, e.g. in bare unit tests).
@@ -419,6 +650,26 @@ module Cybertrain
       @ctx.flash
     end
 
+    # The request's cookies: plain, `permanent`, `signed` and `encrypted`
+    # (see {CookieJar}). SessionStore builds the jar; without it in the
+    # stack, a jar over the request's Cookie header is built on first use,
+    # whose `signed` and `encrypted` raise (there is no key).
+    # @example
+    #   cookies[:theme] = "dark"
+    #   cookies.encrypted[:card] = "4242"
+    #   cookies.signed[:user_id]   # => "5" or nil
+    # @return [CookieJar]
+    # @api public
+    def cookies
+      jar = @ctx.cookie_jar
+      return jar unless jar.nil?
+
+      parsed = Cookies.parse(request.cookie_header)
+      built = CookieJar.new(parsed, response, secure: Cybertrain.config.secure_cookies?)
+      @ctx.cookie_jar = built
+      built
+    end
+
     def initialize(ctx)
       @ctx = ctx
       @request = ctx.request
@@ -427,6 +678,9 @@ module Cybertrain
       @action_name = ""
       @rescued_exception = nil
       @controller_path = ""
+      # The format a respond_to declaration matched (:none outside one):
+      # what a `render :x` in its block and the implicit render use.
+      @respond_format = :none
     end
 
     # Runs the before callbacks (stopping as soon as one renders or
@@ -446,12 +700,84 @@ module Cybertrain
       raise UnknownCallback, "unknown callback :#{name} in #{self.class.name} (run `spin run gen`)"
     end
 
-    # The implicit render after an action that rendered nothing:
-    # app/views/<controller_path>/<action>.html.erb inside the layout.
-    def default_render(action)
-      raise MissingTemplate, "no template for #{self.class.name}##{action}" if Views.engine.nil?
+    # The key a `rate_limit by: :name` declaration counts this request
+    # under: gen/controllers.rb overrides it with a `case` over the `by:`
+    # names of the controller's rate_limit lines and its concerns'
+    # (`when :user_key then user_key.to_s`), then `super`. Called on self,
+    # never through a stored block.
+    # @param name [Symbol]
+    # @return [String]
+    # @raise [UnknownCallback] for a name no table has
+    # @api private
+    def rate_limit_key(name)
+      msg = "unknown rate_limit by: :#{name} in #{self.class.name} (run `spin run gen`)"
+      raise UnknownCallback, msg
+    end
 
-      render_template(action.to_s)
+    # Whether the `if:` / `unless:` method `name` of a rate_limit
+    # declaration answers true: gen/controllers.rb overrides it with a
+    # `case` over those names (`when :admin? then !!admin?`), then `super`.
+    # @param name [Symbol]
+    # @return [Boolean]
+    # @raise [UnknownCallback] for a name no table has
+    # @api private
+    def rate_limit_condition?(name)
+      msg = "unknown rate_limit condition :#{name} in #{self.class.name} (run `spin run gen`)"
+      raise UnknownCallback, msg
+    end
+
+    # Whether `name` is one of this controller's helper methods (spec 4.3):
+    # gen/controllers.rb overrides it with a `case` over the names of the
+    # controller's `helper_method` lines and its concerns', then `super`.
+    # Called on self, never through a stored block.
+    # @param name [String]
+    # @return [Boolean]
+    # @api private
+    def helper_method?(name)
+      false
+    end
+
+    # Calls the helper method `name` with a template's arguments (args by
+    # position, kwargs by keyword name); gen/controllers.rb overrides it.
+    # Template::Helpers#helper_call asks {#helper_method?} first.
+    # @param name [String]
+    # @param args [Array]
+    # @param kwargs [Hash{String => Object}]
+    # @return [Object]
+    # @api private
+    def call_helper_method(name, args, kwargs)
+      nil
+    end
+
+    # The implicit render after an action that rendered nothing, by the
+    # request's format ({Request#format}): for `:html`,
+    # app/views/<controller_path>/<action>.html.erb inside the layout; for
+    # any other format, <action>.<format>.erb (`create.turbo_stream.erb`,
+    # `index.csv.erb`) without a layout when it exists, else `406 Not
+    # Acceptable` (a `:json` request with no template and no `render`
+    # included). A request whose Accept also lists HTML (Turbo's, or
+    # `application/json, text/plain, */*`) gets the html template when
+    # there is none for its own format (see #html_fallback?). After a
+    # {#respond_to} whose matching declaration's block rendered nothing,
+    # the format it matched decides instead of the request's.
+    def default_render(action)
+      engine = Views.engine
+      if engine.nil?
+        message = "no template for #{self.class.name}##{action}"
+        raise MissingTemplate, message
+      end
+
+      wanted = @respond_format == :none ? @request.format : @respond_format
+      name = action.to_s
+      if wanted == :html
+        render_template(name)
+      elsif wanted != :unknown && engine.exists?(format_template_path(name, wanted))
+        render_template(name, format: wanted)
+      elsif html_fallback?
+        render_template(name)
+      else
+        head_not_acceptable
+      end
     end
 
     # The instance variables templates can read, as { "post" => @post };
@@ -503,33 +829,155 @@ module Cybertrain
       path
     end
 
-    # Renders <controller_path>/<name> with the process-wide Views engine,
-    # inside Views.layout_name when that layout exists and layout is true.
-    def render_template(name, locals = {}, layout: true)
-      engine = Views.engine
-      raise MissingTemplate, "no template #{name} for #{self.class.name}" if engine.nil?
+    # The layout an action's HTML renders in: `"layouts/application"` (the
+    # configured {Views.layout_name}) here, and in a controller with
+    # `layout` lines the one they choose for the action. gen/controllers.rb
+    # writes the override from them, in order, the first that applies
+    # winning, else `super`:
+    #
+    #     layout "admin", only: [:index]   # "layouts/admin" for index
+    #     layout false                     # "" (no layout)
+    #     layout :choose_layout            # its value: a name, false, or nil (inherited)
+    #
+    # A concern's `included` block may declare one too; it counts at its
+    # `include` line.
+    # @param action [String] the action's name
+    # @return [String] the layout's name, `""` for none
+    # @api public
+    def controller_layout(action)
+      Views.layout_name
+    end
 
-      path = "#{controller_path}/#{name}"
+    # Renders <controller_path>/<name> with the process-wide Views engine.
+    #
+    # For `format: :html` (the default) the template is <name>.html.erb,
+    # inside `layout` (a layout name such as `"layouts/application"`; `""`
+    # for none). The default layout ({Views.layout_name}) is used only when
+    # it exists; any other layout that does not exist is a
+    # {MissingTemplate}. For any other format it is
+    # <name>.<format>.erb (`create.turbo_stream.erb`), never in a layout
+    # (layouts are HTML), sent as {Request.mime_type}(format).
+    # @param name [String] the template's name in this controller's directory
+    # @param locals [Hash{Symbol => Object}] extra template variables
+    # @param layout [String] the layout's name, `""` for none; by default
+    #   the action's ({#controller_layout})
+    # @param format [Symbol] the template's format
+    # @return [nil]
+    # @raise [Template::MissingTemplate] when the template does not exist
+    # @raise [MissingTemplate] when `layout` names a layout other than the
+    #   default that does not exist
+    # @api private
+    def render_template(name, locals = {}, layout: controller_layout(@action_name), format: :html)
+      engine = Views.engine
+      if engine.nil?
+        message = "no template #{name} for #{self.class.name}"
+        raise MissingTemplate, message
+      end
+
       env = view_env(string_keys(locals))
       helpers = Views.helpers_builder.call(self)
-      frame = Views.layout_name
-      if layout && !frame.empty? && engine.exists?(frame)
-        send_html(engine.render_with_layout(path, frame, env, helpers))
+      if format == :html
+        path = "#{controller_path}/#{name}"
+        if layout.empty?
+          send_html(engine.render(path, env, helpers))
+        elsif engine.exists?(layout)
+          send_html(engine.render_with_layout(path, layout, env, helpers))
+        elsif layout == Views.layout_name
+          # The default layout is optional: without it, pages render bare.
+          send_html(engine.render(path, env, helpers))
+        else
+          # A layout a `layout` line or `render layout:` named: a typo
+          # must not render every page bare without a word.
+          message = "missing layout #{layout} for #{self.class.name}"
+          raise MissingTemplate, message
+        end
       else
-        send_html(engine.render(path, env, helpers))
+        send_rendered(engine.render(format_template_path(name, format), env, helpers), Request.mime_type(format))
       end
+    end
+
+    # Answers by the request's format ({Request#format}): the block gets a
+    # {FormatCollector}, and the first of its declarations that matches the
+    # format runs its block at once (the blocks see the action's instance
+    # variables and call {#render} as the action would). A matching
+    # declaration without a block renders the action's template for that
+    # format (`show.html.erb` in the layout, `show.turbo_stream.erb`
+    # without one). When no declaration matches, the answer is `406 Not
+    # Acceptable` (`text/plain`, body `Not Acceptable`).
+    #
+    # Turbo submits a form asking for `text/vnd.turbo-stream.html,
+    # text/html`: its format is `:turbo_stream`, and an action with no
+    # `format.turbo_stream` answers through its `format.html` declaration,
+    # as in Rails (a `.turbo_stream` extension asks for that format only).
+    # The same holds for any format that came from an Accept header that
+    # also lists `text/html` or `*/*` (axios sends `application/json,
+    # text/plain, */*`): with no declaration for it, `format.html` answers.
+    #
+    # Inside the matching declaration's block, `render :x` renders the
+    # template of the format that matched (`x.json.erb` in `format.json`),
+    # and when the block renders nothing the implicit render does too.
+    #
+    # That HTML fallback runs the whole block a second time, now for
+    # `:html`: no declaration's block ran in the first pass, but any other
+    # statement in the block (outside a `format.x`) runs twice, so keep
+    # the block to declarations. (Rails replays stored declarations; this
+    # framework stores no blocks.)
+    # @example
+    #   def show
+    #     @article = Article.find(params[:id])
+    #     respond_to do |format|
+    #       format.html
+    #       format.json { render json: @article.as_json }
+    #       format.turbo_stream
+    #     end
+    #   end
+    # @yieldparam format [FormatCollector]
+    # @return [nil]
+    # @raise [Template::MissingTemplate] when a declaration without a block
+    #   matches and the action has no template for that format
+    # @api public
+    def respond_to(&block)
+      # Set before the block runs: a matching declaration's block runs
+      # inside block.call, and its `render :x` reads it.
+      @respond_format = @request.format
+      collector = FormatCollector.new(@request.format)
+      block.call(collector)
+      if collector.matched_format == :none && html_fallback?
+        # Nothing ran in the first pass, so running the block again for
+        # :html runs at most one declaration's block.
+        @respond_format = :html
+        collector = FormatCollector.new(:html)
+        block.call(collector)
+      end
+      matched = collector.matched_format
+      @respond_format = matched
+      if matched == :none
+        head_not_acceptable
+      elsif collector.matched_without_block?
+        render_template(@action_name, format: matched)
+      end
+      nil
     end
 
     # Renders the response from a template, text, HTML or JSON: exactly
     # one of template, plain:, html:, json: or partial:.
     #
     # An action that renders nothing renders its own template
-    # (`app/views/<controller_path>/<action>.html.erb`) in the layout.
+    # (`app/views/<controller_path>/<action>.html.erb`) in the layout, or
+    # for another request format `<action>.<format>.erb` without one
+    # (`create.turbo_stream.erb`), else answers `406 Not Acceptable`; see
+    # {#respond_to} to answer each format differently.
     #
     # - `template`: `app/views/<controller_path>/<template>.html.erb`, always
-    #   this controller's directory, inside the layout
-    #   (`app/views/layouts/application.html.erb`, when it exists) unless
-    #   `layout: false`.
+    #   this controller's directory, inside the controller's layout
+    #   ({#controller_layout}: `app/views/layouts/application.html.erb`
+    #   unless a `layout` line chooses another), when it exists. `layout:
+    #   "admin"` (or `"layouts/admin"`) uses
+    #   `app/views/layouts/admin.html.erb` instead, and raises
+    #   {MissingTemplate} when that layout does not exist; `layout: false`
+    #   none. Inside a {#respond_to} declaration for another format
+    #   (`format.json { render :show }`) it is `<template>.<format>.erb`
+    #   (`show.json.erb`), never in a layout.
     # - `plain:` the String as `text/plain`.
     # - `html:` as `text/html`; a plain String is escaped, a
     #   {SafeString} is sent as it is.
@@ -538,40 +986,53 @@ module Cybertrain
     #   record, pass {Model#as_json} or {Model#to_json}.
     # - `partial:` `_<name>.html.erb` (`"form"` in this controller's
     #   directory, `"comments/comment"` in another), never in a layout.
+    # - `turbo_stream:` a `<turbo-stream>` element ({#turbo_stream} builds
+    #   them) or an Array of them, joined, as
+    #   `text/vnd.turbo-stream.html`, never in a layout. A plain String is
+    #   refused: build the elements with {#turbo_stream}.
     #
     # It does not end the action: a later `render` or `redirect_to`
     # replaces it.
     # @example
     #   render :new, status: :unprocessable_entity
     #   render plain: "Not Found", status: :not_found
+    #   render :show, layout: "print"
     #   render json: { ok: true }, status: :created
     #   render json: @article.to_json
+    #   render turbo_stream: [turbo_stream.remove(@comment), turbo_stream.update("count", html: "3")]
     # @param template [Symbol, String, nil] an action's template, `:new`
     # @param plain [String, nil]
     # @param html [String, SafeString, nil]
     # @param json [Object, nil]
     # @param partial [String, nil]
+    # @param turbo_stream [SafeString, Array<SafeString>, nil]
     # @param status [Integer, Symbol] see {STATUS_SYMBOLS}; 200 by default
     # @param content_type [String, nil] replaces the content type
     # @param locals [Hash{Symbol => Object}] extra template variables
-    # @param layout [Boolean] false renders a template without the layout
+    # @param layout [Boolean, String] `true` (the default): the
+    #   controller's layout; `false`: none; `"x"`: `layouts/x`
     # @return [nil]
     # @raise [ArgumentError] when not exactly one of template, `plain:`,
-    #   `html:`, `json:`, `partial:` is given, or the status is unknown
+    #   `html:`, `json:`, `partial:`, `turbo_stream:` is given, or the
+    #   status is unknown
     # @raise [Template::MissingTemplate] when the template does not exist
     # @api public
     def render(template = nil, plain: nil, html: nil, json: nil, status: DEFAULT_STATUS, content_type: nil,
-               partial: nil, locals: {}, layout: true)
+               partial: nil, locals: {}, layout: DEFAULT_LAYOUT, turbo_stream: nil)
       given = 0
       given += 1 unless template.nil?
       given += 1 unless plain.nil?
       given += 1 unless html.nil?
       given += 1 unless json.nil?
       given += 1 unless partial.nil?
-      raise ArgumentError, "render needs exactly one of template, plain:, html:, json:, partial:" if given != 1
+      given += 1 unless turbo_stream.nil?
+      raise ArgumentError, "render needs exactly one of template, plain:, html:, json:, partial:, turbo_stream:" if given != 1
 
       @response.status = Controller.status_code(status)
-      if !plain.nil?
+      if !turbo_stream.nil?
+        @response.body = Controller.turbo_stream_body(turbo_stream)
+        @response.content_type = Request.mime_type(:turbo_stream)
+      elsif !plain.nil?
         @response.body = plain
         @response.content_type = "text/plain; charset=utf-8"
       elsif !html.nil?
@@ -583,11 +1044,109 @@ module Cybertrain
       elsif !partial.nil?
         render_partial(partial.to_s, locals)
       else
-        render_template(template.to_s, locals, layout: layout)
+        chosen = ""
+        if layout == true
+          chosen = controller_layout(@action_name)
+        elsif layout != false
+          chosen = Controller.layout_path(layout.to_s)
+        end
+        wanted = @respond_format == :none ? :html : @respond_format
+        render_template(template.to_s, locals, layout: chosen, format: wanted)
       end
       @response.content_type = content_type unless content_type.nil?
       @response.performed!
       nil
+    end
+
+    # The Turbo Stream builder of an action (turbo-rails' `turbo_stream`):
+    # replace, update, append, prepend, before and after (a target and one
+    # of `partial:` with `locals:`, or `html:`) and remove (a target), each
+    # a `<turbo-stream>` element for `render turbo_stream:`.
+    # @example
+    #   render turbo_stream: turbo_stream.replace(@comment, partial: "comment", locals: { comment: @comment })
+    # @return [TurboStreams]
+    # @api public
+    def turbo_stream
+      TurboStreams.new(self)
+    end
+
+    # The partial `name` rendered as `render partial:` renders it (found in
+    # this controller's directory, or another's for "comments/comment";
+    # strict locals checked; the controller's helpers and instance
+    # variables), as HTML. What `render partial:` sends and the
+    # {#turbo_stream} builder wraps.
+    # @param name [String]
+    # @param locals [Hash{Symbol => Object}]
+    # @return [String]
+    # @raise [MissingTemplate] when no views are configured
+    # @api private
+    def partial_body(name, locals)
+      engine = Views.engine
+      if engine.nil?
+        message = "no partial #{name} for #{self.class.name}"
+        raise MissingTemplate, message
+      end
+
+      path = Template::Helpers.partial_path(controller_path, name)
+      given = string_keys(locals)
+      Template::Helpers.check_locals(engine.template(path), given.keys)
+      engine.render(path, view_env(given), Views.helpers_builder.call(self))
+    end
+
+    # Whether a Vary value already covers Accept (lists it, in any case,
+    # or is `*`).
+    # @param vary [String]
+    # @return [Boolean]
+    # @api private
+    def self.vary_lists_accept?(vary)
+      vary.split(",").each do |item|
+        name = item.strip.downcase
+        return true if name == "accept" || name == "*"
+      end
+      false
+    end
+
+    # The layout `render layout: name` names: `"layouts/<name>"`, or
+    # `name` itself when it already starts with `layouts/` (Rails'
+    # `_normalize_layout`), so `layout: "layouts/admin"` is not
+    # `layouts/layouts/admin`.
+    # @param name [String]
+    # @return [String]
+    # @api private
+    def self.layout_path(name)
+      name.start_with?("layouts/") ? name : "layouts/#{name}"
+    end
+
+    # What `render turbo_stream:` sends: a SafeString, or an Array of them
+    # joined.
+    def self.turbo_stream_body(value)
+      case value
+      when SafeString then return value.to_s
+      when String then nil
+      # Time before Array (spikes/NOTES.md rule 8).
+      when Time then nil
+      when Array
+        out = +""
+        i = 0
+        while i < value.size
+          out << Controller.turbo_stream_part(value[i])
+          i += 1
+        end
+        return out
+      end
+      Controller.turbo_stream_refused(value)
+    end
+
+    def self.turbo_stream_part(value)
+      case value
+      when SafeString then return value.to_s
+      end
+      Controller.turbo_stream_refused(value)
+    end
+
+    def self.turbo_stream_refused(value)
+      msg = "render turbo_stream: takes a SafeString or an Array of them (turbo_stream.replace and the others build them), got #{value.class.name}"
+      raise ArgumentError, msg
     end
 
     # Answers with a redirect (302 by default) to a URL String: build it with
@@ -761,6 +1320,119 @@ module Cybertrain
       nil
     end
 
+    # Sends `data` as a download (Rails' `send_data`): the body is `data`,
+    # the Content-Type is `type`, and the Content-Disposition is
+    # `attachment` (or `inline`) with the file name in both the quoted
+    # fallback form and RFC 5987's `filename*`
+    # ({UploadedFile.content_disposition_utf8}), so a name with accents or a
+    # quote survives. With no `filename:` the header is the bare disposition.
+    # Marks the response performed.
+    #
+    # The bytes are served under whatever `type` says, so this is for data
+    # the application made (a CSV export, a generated PDF); bytes a user
+    # uploaded go through {#send_blob}, which never lets a browser run them.
+    # @example
+    #   send_data report.to_csv, filename: "report.csv", type: "text/csv"
+    # @param data [String] the bytes
+    # @param filename [String] the name the browser saves it under; none
+    #   when empty
+    # @param type [String] the Content-Type
+    # @param disposition [String] "attachment" or "inline"
+    # @param status [Integer, Symbol] see {STATUS_SYMBOLS}
+    # @return [nil]
+    # @api public
+    def send_data(data, filename: "", type: "application/octet-stream", disposition: "attachment", status: DEFAULT_STATUS)
+      r = @response
+      r.status = Controller.status_code(status)
+      r.content_type = type
+      r.set_header("Content-Disposition", UploadedFile.content_disposition_utf8(disposition, filename))
+      r.body = data
+      r.performed!
+      nil
+    end
+
+    # Sets the response's validators and answers `304 Not Modified` (no
+    # body) when the request's `If-None-Match` / `If-Modified-Since` show
+    # the client already has the current version; otherwise the action goes
+    # on and renders as usual. Rails' `fresh_when`.
+    #
+    # `etag:` is a String or a record. A String is taken as it is; a record
+    # is keyed by `"<table>/<to_param>-<updated_at epoch>"`, so it changes
+    # when the record is saved. The key is hashed together with the
+    # request's format ({Request#format}), so the HTML and the JSON or
+    # Turbo Stream of one URL never share an ETag, and with
+    # {Assets.build_digest}, so a deploy that changes the assets (or, in a
+    # `cybertrain build` binary, the views) changes every ETag. The key
+    # names the record, not the visitor: a page that differs per user
+    # needs the user in its key, as in Rails:
+    # `etag: "posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`. The header is a weak ETag,
+    # `W/"<first 32 hex digits of the SHA-256>"`; `If-None-Match` matches it
+    # in a list, in weak or strong form, or as `*`; any other `etag:` is an
+    # ArgumentError. `last_modified:` is a Time, sent as `Last-Modified`; an
+    # unparseable `If-Modified-Since` is ignored. When the request sends an
+    # `If-None-Match`, it alone decides and `If-Modified-Since` is ignored
+    # (RFC 9110 13.1.3). Only GET and HEAD are answered `304`.
+    #
+    # Cache-Control is `max-age=0, private, must-revalidate` (`public` when
+    # `public: true`) unless {#expires_in} already set one. Do not make a
+    # page public when it carries a CSP nonce (`content_security_policy`
+    # with nonces, `javascript_importmap_tags`): a shared cache hands the
+    # same page, and so the same nonce, to every visitor, and a nonce
+    # everyone knows protects nothing.
+    # @example
+    #   def show
+    #     @post = Post.find(params[:id])
+    #     fresh_when etag: @post, last_modified: @post.updated_at
+    #   end
+    # @param etag [String, Model, nil]
+    # @param last_modified [Time, nil]
+    # @param public [Boolean] let shared caches store it
+    # @return [nil]
+    # @api public
+    def fresh_when(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
+      apply_validators(etag, last_modified, public)
+      head :not_modified if request_fresh?
+      nil
+    end
+
+    # {#fresh_when}, for an action that renders only when the client's copy
+    # is out of date: sets the validators, answers `304` and returns false
+    # when the request is fresh, returns true otherwise. Rails' `stale?`.
+    # @example
+    #   def show
+    #     @post = Post.find(params[:id])
+    #     return unless stale?(etag: @post)
+    #   end
+    # @param etag [String, Model, nil]
+    # @param last_modified [Time, nil]
+    # @param public [Boolean] let shared caches store it
+    # @return [Boolean] true when the action should render
+    # @api public
+    def stale?(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
+      apply_validators(etag, last_modified, public)
+      return true unless request_fresh?
+
+      head :not_modified
+      false
+    end
+
+    # Lets the browser reuse the response for `seconds` without asking:
+    # `Cache-Control: max-age=<seconds>, private` (`public` with
+    # `public: true`). Rails' `expires_in`; a later {#fresh_when} keeps this
+    # header.
+    # @example
+    #   expires_in 300
+    # @param seconds [Integer]
+    # @param public [Boolean] let shared caches store it; never for a page
+    #   with a CSP nonce, which a shared cache would give every visitor
+    #   (see {#fresh_when})
+    # @return [nil]
+    # @api public
+    def expires_in(seconds, public: false)
+      @response.set_header("Cache-Control", "max-age=#{seconds.to_i}, #{public ? "public" : "private"}")
+      nil
+    end
+
     # @return [Boolean] true once this request has been rendered,
     #   redirected or answered with {#head}
     # @api public
@@ -770,8 +1442,87 @@ module Cybertrain
 
     private
 
+    # The ETag, Last-Modified and (unless expires_in set one) Cache-Control
+    # headers of fresh_when and stale?.
+    def apply_validators(etag, last_modified, public)
+      key = validator_key(etag)
+      unless key.empty?
+        # The format and the build digest too (see fresh_when): "\0" never
+        # occurs in a format or a hex digest, so the parts cannot run together.
+        keyed = "#{key}\0#{@request.format}\0#{Assets.build_digest}"
+        @response.set_header("ETag", "W/\"#{Digest::SHA256.hexdigest(keyed).byteslice(0, 32)}\"")
+      end
+      stamp = validator_time(last_modified)
+      @response.set_header("Last-Modified", Request.http_date(Time.at(stamp).utc)) if stamp >= 0
+      if @response.header("Cache-Control").nil?
+        @response.set_header("Cache-Control", public ? "max-age=0, public, must-revalidate" : "max-age=0, private, must-revalidate")
+      end
+      nil
+    end
+
+    # The text an ETag is made from: a String as given, a record as
+    # "posts/1-<updated_at epoch>", "" for nil; anything else is an
+    # ArgumentError.
+    def validator_key(value)
+      case value
+      when String then value.to_s
+      when nil then ""
+      when Model
+        name = Inflector.pluralize(Inflector.underscore(value.model_name))
+        at = Cast.time_or_nil(value.read_attribute(:updated_at))
+        at.nil? ? "#{name}/#{value.to_param}" : "#{name}/#{value.to_param}-#{at.to_i}"
+      else
+        message = "etag: must be a String or a record, got #{value.class}"
+        raise ArgumentError, message
+      end
+    end
+
+    # A Last-Modified value as epoch seconds, -1 for none. `when Time`
+    # first (NOTES rule 8).
+    def validator_time(value)
+      case value
+      when Time then value.to_i
+      else -1
+      end
+    end
+
+    # Whether the request's validators say the client's copy is current:
+    # RFC 9110 section 13.1.3 and 13.1.4 for GET and HEAD: a non-empty
+    # If-None-Match decides alone and If-Modified-Since is ignored; without
+    # one, a parseable If-Modified-Since decides.
+    def request_fresh?
+      return false unless @request.get? || @request.head?
+
+      since = Request.parse_http_date(@request.header("If-Modified-Since").to_s)
+      none_match = @request.header("If-None-Match").to_s
+      return etag_listed?(none_match, @response.header("ETag").to_s) unless none_match.empty?
+      return false if since < 0
+
+      stamp = Request.parse_http_date(@response.header("Last-Modified").to_s)
+      stamp >= 0 && stamp <= since
+    end
+
+    # Whether the If-None-Match list names `tag` (weak comparison: a W/
+    # prefix is ignored) or is `*`.
+    def etag_listed?(list, tag)
+      return false if tag.empty?
+
+      want = strip_weak(tag)
+      list.split(",").each do |item|
+        entry = item.strip
+        return true if entry == "*"
+        return true if strip_weak(entry) == want
+      end
+      false
+    end
+
+    def strip_weak(tag)
+      tag.start_with?("W/") ? tag.byteslice(2, tag.bytesize - 2).to_s : tag
+    end
+
     def run_action(action, body)
       @action_name = action.to_s
+      Controller.assign_csp_policy(@ctx, self.class)
       # Built once per request and walked by both passes.
       chain = Controller.chain_for(self.class)
       begin
@@ -780,6 +1531,7 @@ module Cybertrain
           default_render(action) unless performed?
           run_after_callbacks(chain, action)
         end
+        apply_vary_accept
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
         # JSON::ParserError named (NOTES rule 33: not a StandardError under
         # Spinel) so an action's bad JSON.parse goes through
@@ -788,6 +1540,28 @@ module Cybertrain
         # constant cannot be referenced as a value (rule 48), so no app can
         # register one there and the exception goes on to the error pages.
         rescue_with_handler(e)
+        apply_vary_accept
+      end
+      nil
+    end
+
+    # `Vary: Accept` on a response whose format came from the Accept header
+    # (the path has no extension, and the request sent one): one URL answers
+    # HTML, JSON or a Turbo Stream by Accept, so a cache must key on it, or
+    # a browser hands a cached HTML page to a later fetch for JSON (Rails'
+    # should_apply_vary_header?). Added to a Vary the action set, unless
+    # that already lists Accept or is `*`.
+    def apply_vary_accept
+      req = @request
+      return nil unless req.format_extension.empty?
+      return nil if req.header("Accept").to_s.empty?
+
+      r = @response
+      vary = r.header("Vary").to_s
+      if vary.strip.empty?
+        r.set_header("Vary", "Accept")
+      elsif !Controller.vary_lists_accept?(vary)
+        r.set_header("Vary", "#{vary}, Accept")
       end
       nil
     end
@@ -836,17 +1610,49 @@ module Cybertrain
       end
     end
 
-    # One rate_limit check: counts this request and, when the client is
-    # over the limit, answers for the action (a 429 with Retry-After, or
-    # the declaration's redirect), which halts the chain. The key carries
-    # the controller's path, so a limit inherited from a parent counts
-    # each controller apart.
+    # One rate_limit check: skipped when its `if:` method answers false or
+    # its `unless:` method true; else counts this request and, when the
+    # client is over the limit, answers for the action (the `with:`
+    # method's answer, a 429 with Retry-After, or the declaration's
+    # redirect), which halts the chain. The key carries the controller's
+    # path, so a limit inherited from a parent counts each controller
+    # apart, and the declaration's name, so two limits of one controller
+    # count apart (plan decision 17).
     def apply_rate_limit(limit)
-      address = limit.by_remote_addr? ? @request.remote_addr : @request.client_ip
-      key = "#{controller_path} #{address}"
-      wait = limit.hit(key, RateLimit.current_time)
+      condition = limit.if_method
+      return nil if !condition.nil? && !rate_limit_condition?(condition)
+
+      condition = limit.unless_method
+      return nil if !condition.nil? && rate_limit_condition?(condition)
+
+      key = ""
+      by_method = limit.by_method
+      if by_method.nil?
+        key = limit.by_remote_addr? ? @request.remote_addr : @request.client_ip
+      else
+        key = rate_limit_key(by_method)
+        if key.empty?
+          msg = "rate_limit by: :#{by_method} answered an empty key in #{self.class.name}, which would count every client together"
+          raise ArgumentError, msg
+        end
+      end
+      scope = "#{controller_path}:#{limit.limit_name}:#{key}"
+      wait = 0
+      if limit.memory_store?
+        wait = limit.hit(scope, RateLimit.current_time)
+      else
+        now = Cache.now
+        within = limit.period_seconds
+        count = Cache.increment("rate-limit:#{scope}:#{now / within}", expires_in: within)
+        wait = within - now % within if count > limit.limit_count
+      end
       return nil if wait == 0
 
+      with = limit.with_method
+      unless with.nil?
+        run_callback(with)
+        return nil if performed?
+      end
       path = limit.redirect_path
       if path.empty?
         r = @response
@@ -904,19 +1710,47 @@ module Cybertrain
     end
 
     def render_partial(name, locals)
-      engine = Views.engine
-      raise MissingTemplate, "no partial #{name} for #{self.class.name}" if engine.nil?
-
-      path = Template::Helpers.partial_path(controller_path, name)
-      given = string_keys(locals)
-      Template::Helpers.check_locals(engine.template(path), given.keys)
-      send_html(engine.render(path, view_env(given), Views.helpers_builder.call(self)))
+      send_html(partial_body(name, locals))
     end
 
     def send_html(body)
+      send_rendered(body, "text/html; charset=utf-8")
+    end
+
+    def send_rendered(body, content_type)
       @response.body = body
-      @response.content_type = "text/html; charset=utf-8"
+      @response.content_type = content_type
       @response.performed!
+      nil
+    end
+
+    # "articles/index.csv.erb": the template of a format other than html.
+    def format_template_path(name, format)
+      "#{controller_path}/#{name}.#{format}.erb"
+    end
+
+    # Whether a request whose format is not :html also takes HTML: its
+    # format came from Accept (no extension asked for that format alone)
+    # and Accept lists text/html or */* (Turbo's
+    # "text/vnd.turbo-stream.html, text/html, application/xhtml+xml",
+    # axios' "application/json, text/plain, */*"). Rails lists every format
+    # of such a request and answers in the first one the action has.
+    def html_fallback?
+      req = @request
+      return false if req.format == :html || !req.format_extension.empty?
+
+      accept = req.header("Accept").to_s
+      accept.include?("text/html") || accept.include?("*/*")
+    end
+
+    # 406 for a format the action does not answer (respond_to with no
+    # matching declaration, or an implicit render with no template).
+    def head_not_acceptable
+      r = @response
+      r.status = 406
+      r.content_type = "text/plain; charset=utf-8"
+      r.body = "Not Acceptable"
+      r.performed!
       nil
     end
 

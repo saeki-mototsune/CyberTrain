@@ -223,11 +223,18 @@ end
 test "the scheduler no longer runs jobs as a task" do
   fresh_db
   assert_equal(-1, Cybertrain::Scheduler.task_index("cybertrain jobs"))
-  # Handlers alone start it (its ticks recover jobs), with no task of its own.
+  # Handlers alone start it (its ticks recover jobs), with no task of its
+  # own. `require "cybertrain"` registers the cache prune task, so it is
+  # set aside for this start and put back after.
+  prune_index = Cybertrain::Scheduler.task_index("cybertrain cache prune")
+  assert prune_index >= 0
+  prune = Cybertrain::Scheduler::TASKS[prune_index]
+  Cybertrain::Scheduler::TASKS.delete_at(prune_index)
   assert Cybertrain::Scheduler.start!(pool_config(1))
   assert_equal(-1, Cybertrain::Scheduler.task_index("cybertrain jobs"))
   assert_includes LOG.string, "[INFO] Scheduler started: no scheduled tasks (job recovery only)"
   Cybertrain::Scheduler.stop!
+  Cybertrain::Scheduler::TASKS << prune
 end
 
 test "a keyed limit: two keys run at once, the same key does not" do

@@ -460,4 +460,245 @@ test "config/app.rb schedules the prune of done jobs, which keeps the last 7 day
   assert_equal "failed", BlogTest.job_state(failed)
 end
 
+# The text of body between `marker` and the next `stop` after it ("" when
+# the marker is not there).
+def text_after(body, marker, stop)
+  at = body.index(marker)
+  return "" if at.nil?
+
+  start = at + marker.size
+  finish = body.index(stop, start)
+  return "" if finish.nil?
+
+  body[start, finish - start].to_s
+end
+
+def hex8?(text)
+  return false unless text.size == 8
+
+  text.each_char { |ch| return false unless "0123456789abcdef".include?(ch) }
+  true
+end
+
+# An article with both timestamps at 2024-03-10 09:00 UTC, for JSON bodies
+# and <time> tags that do not depend on the clock.
+def dated_article(title, body = "I am on Rails! This is my first article.")
+  article = BlogTest.article(title, body)
+  at = Time.utc(2024, 3, 10, 9, 0, 0)
+  article.update_columns(created_at: at, updated_at: at)
+  article
+end
+
+def article_json(article, title, body = "I am on Rails! This is my first article.")
+  "{\"id\":#{article.id},\"title\":\"#{title}\",\"body\":\"#{body}\"," \
+    "\"created_at\":\"2024-03-10T09:00:00.000Z\",\"updated_at\":\"2024-03-10T09:00:00.000Z\"}"
+end
+
+test "/articles.json and /articles/:id.json answer JSON through respond_to; /articles.xml is 406" do
+  client = new_client
+  first = dated_article("First article")
+  second = dated_article("Second article")
+  res = client.get("/articles.json")
+  assert_response res, :ok
+  assert_equal "application/json; charset=utf-8", res.header("Content-Type").to_s
+  # Equal created_at: the newer id first is not promised, so either order.
+  one = "[#{article_json(first, "First article")},#{article_json(second, "Second article")}]"
+  other = "[#{article_json(second, "Second article")},#{article_json(first, "First article")}]"
+  assert res.body == one || res.body == other, "unexpected /articles.json body: #{res.body}"
+
+  res = client.get("/articles/#{first.id}.json")
+  assert_response res, :ok
+  assert_equal "application/json; charset=utf-8", res.header("Content-Type").to_s
+  assert_equal article_json(first, "First article"), res.body
+
+  res = client.get("/articles", { "Accept" => "application/json" })
+  assert_equal "application/json; charset=utf-8", res.header("Content-Type").to_s
+
+  res = client.get("/articles.xml")
+  assert_response res, :not_acceptable
+  assert_equal "Not Acceptable", res.body
+  assert_response client.get("/articles/#{first.id}.xml"), :not_acceptable
+  assert_response client.get("/articles/999.json"), :not_found
+end
+
+test "the layout links the digested stylesheet, which is served immutable with its url() digested" do
+  client = new_client
+  res = client.get("/articles")
+  digest = text_after(res.body, "<link rel=\"stylesheet\" href=\"/assets/application-", ".css\">")
+  assert hex8?(digest), "expected /assets/application-<8 hex>.css in the layout, got #{digest.inspect}"
+  assert_nil res.body.index("/style.css")
+
+  css = client.get("/assets/application-#{digest}.css")
+  assert_response css, :ok
+  assert_equal "text/css; charset=utf-8", css.header("Content-Type").to_s
+  assert_equal "public, max-age=31536000, immutable", css.header("Cache-Control").to_s
+  assert_includes css.body, "form.button_to { display: inline; }"
+  logo = text_after(css.body, "url(\"/assets/logo-", ".svg\")")
+  assert hex8?(logo), "expected the logo's url() digested, got #{logo.inspect}"
+  svg = client.get("/assets/logo-#{logo}.svg")
+  assert_response svg, :ok
+  assert_equal "public, max-age=31536000, immutable", svg.header("Cache-Control").to_s
+  assert_includes svg.body, "<svg"
+end
+
+test "the import map pins Turbo and the application entry point, with the CSP nonce" do
+  client = new_client
+  res = client.get("/articles")
+  turbo = "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+  assert_includes res.body, "\"@hotwired/turbo\":\"#{turbo}\""
+  assert_includes res.body, "<link rel=\"modulepreload\" href=\"#{turbo}\""
+  app = text_after(res.body, "\"application\":\"/assets/application-", ".js\"")
+  assert hex8?(app), "expected the application entry point digested, got #{app.inspect}"
+  js = client.get("/assets/application-#{app}.js")
+  assert_response js, :ok
+  assert_includes js.body, "import \"@hotwired/turbo\""
+
+  nonce = text_after(res.body, "<meta name=\"csp-nonce\" content=\"", "\"")
+  refute nonce.empty?, "expected a csp-nonce meta tag"
+  assert_includes res.body, "<script type=\"importmap\" data-turbo-track=\"reload\" nonce=\"#{nonce}\">"
+  assert_includes res.body, "<script type=\"module\" nonce=\"#{nonce}\">import \"application\"</script>"
+  csp = res.header("Content-Security-Policy").to_s
+  assert_includes csp, "default-src 'self'"
+  assert_includes csp, "script-src 'self' https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/ 'nonce-#{nonce}'"
+  assert_includes csp, "style-src 'self' 'nonce-#{nonce}'"
+  assert_includes csp, "img-src 'self' data:"
+
+  again = text_after(client.get("/articles").body, "<meta name=\"csp-nonce\" content=\"", "\"")
+  refute again == nonce, "a new nonce per response"
+end
+
+test "the order select puts the oldest first with ?order=old" do
+  client = new_client
+  older = BlogTest.article("Older article")
+  newer = BlogTest.article("Newer article")
+  older.update_columns(created_at: Time.utc(2024, 1, 1, 0, 0, 0))
+  newer.update_columns(created_at: Time.utc(2024, 6, 1, 0, 0, 0))
+
+  res = client.get("/articles")
+  assert_includes res.body, "<select name=\"order\" id=\"order\"><option selected=\"selected\" value=\"new\">Newest first</option>\n" \
+                            "<option value=\"old\">Oldest first</option></select>"
+  assert res.body.index("Newer article").to_i < res.body.index("Older article").to_i, "newest first by default"
+
+  res = client.get("/articles?order=old")
+  assert_includes res.body, "<option value=\"new\">Newest first</option>\n<option selected=\"selected\" value=\"old\">Oldest first</option>"
+  assert res.body.index("Older article").to_i < res.body.index("Newer article").to_i, "oldest first"
+
+  res = client.get("/articles?order=sideways")
+  assert_includes res.body, "<option selected=\"selected\" value=\"new\">Newest first</option>"
+end
+
+test "counts go through number_with_delimiter and dates through time_tag" do
+  client = new_client
+  article = dated_article("Hello Rails")
+  Cybertrain::Cache.write("articles/count", "1234", expires_in: 60)
+  res = client.get("/articles")
+  assert_includes res.body, "<p class=\"article-count\">1,234 articles</p>"
+  assert_includes res.body, "<td class=\"comment-count\">0</td>"
+
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<time datetime=\"2024-03-10T09:00:00Z\">March 10, 2024 09:00</time>"
+end
+
+# /admin/articles: Admin::ArticlesController, behind the AdminGate concern
+# (ApplicationController#require_admin, as the jobs page).
+test "/admin/articles is 404 without the token and lists the articles with it" do
+  client = new_client
+  first = dated_article("First article")
+  BlogTest.article("Second article")
+  assert_response client.get("/admin/articles"), :not_found
+  assert_response client.get("/admin/articles", admin_header(ADMIN_TOKEN)), :not_found
+  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  assert_response client.get("/admin/articles"), :not_found
+  assert_response client.get("/admin/articles", admin_header("wrong")), :not_found
+  assert_response client.get("/admin/articles", admin_header("")), :not_found
+
+  res = client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  assert_response res, :ok
+  assert_includes res.body, "<title>Blog</title>"
+  assert_includes res.body, "<h1>Admin: articles</h1>"
+  assert_includes res.body, "<p class=\"admin-count\">2 articles</p>"
+  assert_includes res.body, "First article"
+  assert_includes res.body, "Second article"
+  assert_includes res.body, "<time datetime=\"2024-03-10T09:00:00Z\">March 10, 2024 09:00</time>"
+  assert_includes res.body, "<form class=\"button_to\" method=\"post\" action=\"/admin/articles/#{first.id}\">"
+  assert_includes res.body, "<a href=\"/admin/jobs\">Jobs</a>"
+
+  # The jobs page, now drawn inside the namespace, keeps its gate.
+  assert_response client.get("/admin/jobs"), :not_found
+  assert_response client.get("/admin/jobs", admin_header(ADMIN_TOKEN)), :ok
+  # Only index and destroy are drawn.
+  assert_response client.get("/admin/articles/#{first.id}", admin_header(ADMIN_TOKEN)), :not_found
+end
+
+test "the admin list shows at most per_page (20) articles, newest first" do
+  client = new_client
+  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  i = 1
+  while i <= 21
+    article = BlogTest.article("Numbered article #{i}")
+    article.update_columns(created_at: Time.utc(2024, 1, i, 0, 0, 0))
+    i += 1
+  end
+  assert_equal 20, Admin::ArticlesController.per_page
+  res = client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  assert_includes res.body, "<p class=\"admin-count\">21 articles</p>"
+  assert_includes res.body, "Numbered article 21"
+  assert_includes res.body, "Numbered article 2<"
+  assert_nil res.body.index("Numbered article 1<")
+  assert res.body.index("Numbered article 21").to_i < res.body.index("Numbered article 20").to_i, "newest first"
+end
+
+test "DELETE /admin/articles/:id with the token deletes the article; without it, 404" do
+  client = new_client
+  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  doomed = BlogTest.article("Doomed article")
+  BlogTest.comment(doomed)
+  kept = BlogTest.article("Kept article")
+  client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  csrf = BlogTest.form_token(client)
+
+  res = client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf })
+  assert_response res, :not_found
+  res = client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf }, admin_header("wrong"))
+  assert_response res, :not_found
+  assert_equal 2, Article.count
+
+  res = client.post("/admin/articles/#{doomed.id}", { "_method" => "delete", "authenticity_token" => csrf },
+                    admin_header(ADMIN_TOKEN))
+  assert_redirected_to res, "/admin/articles"
+  assert_response res, :see_other
+  assert_equal 1, Article.count
+  assert_equal kept.id, Article.first.id
+  assert_equal 0, Comment.count
+  assert_response client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf }, admin_header(ADMIN_TOKEN)),
+                  :not_found
+end
+
+test "DELETE /admin/articles/:id with the admin token but no authenticity_token is 403" do
+  client = new_client
+  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  doomed = BlogTest.article("Protected article")
+  client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  res = client.delete("/admin/articles/#{doomed.id}", {}, admin_header(ADMIN_TOKEN))
+  assert_response res, :forbidden
+  assert_equal 1, Article.count
+end
+
+test "a signed-in browser reaches /admin/articles, and the article page links to it" do
+  client = new_client
+  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  article = BlogTest.article("Hello Rails")
+  res = client.get(BlogTest.article_path(article))
+  assert_nil res.body.index("/admin/articles")
+  admin_login(client, ADMIN_TOKEN)
+  res = client.get("/admin/articles")
+  assert_response res, :ok
+  assert_includes res.body, "Hello Rails"
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<a href=\"/admin/articles\">Manage articles</a>"
+  ENV["BLOG_ADMIN_TOKEN"] = "a-rotated-token"
+  assert_response client.get("/admin/articles"), :not_found
+  assert_nil client.get(BlogTest.article_path(article)).body.index("/admin/articles")
+end
+
 Cybertrain::Test.run!

@@ -18,7 +18,14 @@ module Cybertrain
         out << "  module Routes\n"
         out << "    def self.build(router)\n"
         specs.each do |s|
-          out << "      router.add(\"#{s.verb}\", #{quote(s.pattern)}, \"#{s.name}\") { |ctx| #{s.handler_source} }\n"
+          # The format argument only when false (Router#add defaults to true).
+          takes = s.takes_format ? "" : ", false"
+          handler = if s.redirect_location.empty?
+                      s.handler_source
+                    else
+                      "Cybertrain::Router.redirect_to(ctx, #{quote(s.redirect_location)}, #{s.redirect_code})"
+                    end
+          out << "      router.add(\"#{s.verb}\", #{quote(s.pattern)}, \"#{s.name}\"#{takes}) { |ctx| #{handler} }\n"
         end
         out << "      router\n"
         out << "    end\n"
@@ -45,7 +52,7 @@ module Cybertrain
       def self.path_for_source(named)
         out = +""
         if named.empty?
-          out << "    def self.path_for(name, args)\n"
+          out << "    def self.path_for(name, args, options = {})\n"
           out << "      raise ArgumentError, \"unknown route helper '\#{name}'\"\n"
           out << "    end\n"
           out << url_resolver_source
@@ -53,13 +60,13 @@ module Cybertrain
         end
 
         example = named.last
-        out << "    # The helper named by a String, for templates: path_for(\"#{example.helper_name}_path\", [#{arg_names(example.pattern).join(", ")}]).\n"
-        out << "    def self.path_for(name, args)\n"
+        out << "    # The helper named by a String, for templates: path_for(\"#{example.helper_name}_path\", [#{arg_names(example).join(", ")}], { \"page\" => 2 }).\n"
+        out << "    def self.path_for(name, args, options = {})\n"
         out << "      case name\n"
         named.each do |s|
           args = []
-          arg_names(s.pattern).each_with_index { |_, i| args << "args[#{i}]" }
-          path = path_expr(s.pattern, args)
+          arg_names(s).each_with_index { |_, i| args << "args[#{i}]" }
+          path = "Cybertrain::Gen.with_options(#{path_expr(s.pattern, args)}, options)"
           out << "      when \"#{s.helper_name}_path\" then #{path}\n"
           out << "      when \"#{s.helper_name}_url\" then Cybertrain.url_root + #{path}\n"
         end
@@ -80,28 +87,41 @@ module Cybertrain
         out << "\n"
         out << "    # Pass this to Cybertrain::Application.new(url_resolver: Gen::Routes.url_resolver).\n"
         out << "    def self.url_resolver\n"
-        out << "      ->(name, args) { path_for(name, args) }\n"
+        out << "      ->(name, args, options) { path_for(name, args, options) }\n"
         out << "    end\n"
         out
       end
 
       def self.helpers_source(spec)
         out = +""
-        names = arg_names(spec.pattern)
-        params = names.empty? ? "" : "(#{names.join(", ")})"
+        names = arg_names(spec)
+        # Plan decision 13: braceless keywords at the call (`page: 2`,
+        # `format: :json`) arrive as the trailing options Hash, renamed when
+        # a segment already took the name (`get "/x/:options"`).
+        opts = "options"
+        opts = "_#{opts}" while names.include?(opts)
+        params = "(#{(names + ["#{opts} = {}"]).join(", ")})"
+        call = "(#{(names + [opts]).join(", ")})"
         out << "    def #{spec.helper_name}_path#{params}\n"
-        out << "      #{path_expr(spec.pattern, names)}\n"
+        out << "      Cybertrain::Gen.with_options(#{path_expr(spec.pattern, names)}, #{opts})\n"
         out << "    end\n"
         out << "\n"
         out << "    def #{spec.helper_name}_url#{params}\n"
-        out << "      Cybertrain.url_root + #{spec.helper_name}_path#{params}\n"
+        out << "      Cybertrain.url_root + #{spec.helper_name}_path#{call}\n"
         out << "    end\n"
         out
       end
 
-      # Helper parameter names for a pattern's dynamic segments:
+      # Helper parameter names for a route's dynamic segments: the names the
+      # Mapper recorded (RouteSpec#helper_args), else the pattern's.
+      def self.arg_names(spec)
+        return spec.helper_args unless spec.helper_args.empty?
+
+        pattern_arg_names(spec.pattern)
+      end
+
       # ":post_id" -> "post", ":id" after "comments" -> "comment", ":slug" -> "slug".
-      def self.arg_names(pattern)
+      def self.pattern_arg_names(pattern)
         names = []
         previous = ""
         pattern.split("/").each do |seg|

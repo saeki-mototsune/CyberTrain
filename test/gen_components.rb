@@ -236,6 +236,56 @@ test "no components: build always raises" do
   RUBY
 end
 
+test "a component named after its only required keyword gets with_collection and a collection: arm" do
+  comment = scan("class CommentComponent < Cybertrain::Component\n  def initialize(comment:, comment_counter: 0)\n    @comment = comment\n  end\nend\n", "comment_component.rb")
+  row = scan("module Admin\n  class RowComponent < ApplicationComponent\n    def initialize(row:)\n    end\n  end\nend\n", "admin/row_component.rb")
+  source = Cybertrain::Gen::ComponentsEmitter.emit([comment, row])
+  assert_includes source, <<~'RUBY'
+
+      def self.with_collection(items)
+        Cybertrain::ComponentCollection.new("comment", "comment", items, true)
+      end
+    end
+  RUBY
+  assert_includes source, <<~'RUBY'
+
+        def self.with_collection(items)
+          Cybertrain::ComponentCollection.new("admin/row", "row", items, false)
+        end
+      end
+    end
+  RUBY
+  arm = <<~'RUBY'
+    when "comment"
+      Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
+      return ::CommentComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
+
+      Cybertrain::Component.check_keywords!(name, kwargs, ["comment", "comment_counter"], 1)
+  RUBY
+  assert_includes source, arm.lines.map { |l| l == "\n" ? l : "      #{l}" }.join
+  arm = <<~'RUBY'
+    when "admin/row"
+      Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
+      return ::Admin::RowComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
+
+      Cybertrain::Component.check_keywords!(name, kwargs, ["row"], 1)
+  RUBY
+  assert_includes source, arm.lines.map { |l| l == "\n" ? l : "      #{l}" }.join
+  # Not for a keyword named otherwise, a second required keyword, or none.
+  card = Cybertrain::Gen::ComponentsEmitter.emit([scan(CARD)])
+  refute card.include?("with_collection")
+  pair = scan("class PairComponent < Cybertrain::Component\n  def initialize(pair:, other:)\n  end\nend\n", "pair_component.rb")
+  refute Cybertrain::Gen::ComponentsEmitter.emit([pair]).include?("with_collection")
+end
+
+test "an app's own self.with_collection is an error: gen writes it" do
+  source = "class CommentComponent < Cybertrain::Component\n  def initialize(comment:)\n  end\n\n  def self.with_collection(items)\n    items\n  end\nend\n"
+  msg = scan_error(source, "comment_component.rb")
+  assert_equal "app/components/comment_component.rb:5: 'self.with_collection' is written by `spin run gen` (gen/components.rb) for a component whose only required keyword is named after it; remove this definition (render component: \"x\", collection: items, or X.with_collection(items))", msg
+  # Elsewhere, the name is just text.
+  assert_equal "CommentComponent", scan("class CommentComponent < Cybertrain::Component\n  def note = \"self.with_collection\"\nend\n", "comment_component.rb").class_name
+end
+
 test "the output always ends with the component_builder line" do
   line = "Cybertrain::Views.component_builder = ->(name, kwargs) { Gen::Components.build(name, kwargs) }\n"
   assert Cybertrain::Gen::ComponentsEmitter.emit([scan(CARD)]).end_with?(line)

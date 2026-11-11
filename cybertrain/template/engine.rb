@@ -122,7 +122,9 @@ module Cybertrain
         nil
       end
 
-      # "posts/show" and "posts/show.html.erb" name the same template.
+      # "posts/show" and "posts/show.html.erb" name the same template; a
+      # name that ends in .erb ("posts/create.turbo_stream.erb") is used as
+      # it is.
       def template(name)
         key = file_name(name)
         cached = cached_template(key)

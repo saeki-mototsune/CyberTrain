@@ -1,0 +1,52 @@
+ok   files are digested with the first 8 hex of their SHA-256
+ok   digested names keep every extension and a directory
+ok   a logical path under two roots is refused
+ok   url() suffixes, quotes and non-asset references
+ok   url() resolves against the stylesheet's logical directory and never climbs out of it
+ok   a CSS digest is taken after rewriting, CSS files in dependency order
+ok   a stylesheet named with a ?query is still a dependency, even when its referrer sorts first
+ok   a CSS url() cycle through a suffixed url is refused
+ok   a symlinked file leading outside its tree, or nowhere, stops gen
+ok   an asset root that is itself a symlink stops gen
+ok   a CSS url() cycle is refused
+ok   a CSS digest changes when an image it names changes
+wrote public/assets/application-2cac91ee.css
+wrote public/assets/application-71e4d6bc.js
+wrote public/assets/chart-354cefd4.js
+wrote public/assets/controllers/hello_controller-02d09301.js
+wrote public/assets/logo-96686f02.svg
+wrote public/assets/x-7aee4bab.woff2
+wrote public/assets/.manifest
+wrote public/assets/application-fa9503d6.css
+wrote public/assets/.manifest
+wrote public/assets/application-9bc24f22.css
+wrote public/assets/.manifest
+wrote public/assets/application-2befed0d.css
+removed public/assets/application-2cac91ee.css
+wrote public/assets/.manifest
+ok   three versions are kept, older ones deleted
+wrote public/assets/application-a45ecbb4.css
+removed public/assets/application-e681d3c3.css
+wrote public/assets/.manifest
+ok   an asset that goes back to an older digest reuses or rewrites that file
+wrote public/assets/.manifest
+ok   a manifest line naming a path outside public/assets deletes nothing
+wrote public/assets/.manifest
+ok   boot and gen read a malformed manifest line alike: the whole line is dropped
+ok   the import map, preloads and the emitted case
+ok   the build digest changes with an asset, the import map or the embedded views
+ok   an application with no assets gets an empty table
+ok   the fixture's compiled gen/assets.rb installs its table
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/console.rb
+wrote gen/app.rb
+stale: gen/assets.rb
+ok   gen --check compares gen/assets.rb only
+21 tests, 119 assertions, 0 failures

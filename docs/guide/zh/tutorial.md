@@ -1,5 +1,5 @@
 ---
-source_sha256: 775aa69e329dfcff568767e9bda00af1ebe2ef8afc85e3cd32da8d53be31892d
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -95,11 +95,12 @@ blog/
   spin.toml  config/app.rb  config/routes.rb
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
+  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
   gen/  storage/  tmp/  test/
 ```
 
-`bin/blog.rb` 是应用唯一的入口，也就是 `spin build blog` 编译的程序：`./blog` 提供服务，`./blog migrate` 和 `./blog db status` 管理数据库。`bin/gen.rb` 运行生成器（`spin run gen`），`bin/db.rb` 在开发期间运行迁移器（`cybertrain db migrate` 会用到它，因为在第一次迁移生成 `gen/models/` 之前，`bin/blog.rb` 无法编译）。`gen/` 中已经有 `views.rb`，即已提交的、空的内嵌视图表。
+`bin/blog.rb` 是应用唯一的入口，也就是 `spin build blog` 编译的程序：`./blog` 提供服务，`./blog migrate` 和 `./blog db status` 管理数据库。`bin/gen.rb` 运行生成器（`spin run gen`），`bin/db.rb` 在开发期间运行迁移器（`cybertrain db migrate` 会用到它，因为在第一次迁移生成 `gen/models/` 之前，`bin/blog.rb` 无法编译）。`gen/` 中已经有 `views.rb`，即已提交的、空的内嵌视图表。布局用 `stylesheet_link_tag` 引入 `app/assets/stylesheets/application.css`；`spin run gen` 把它加上摘要写入 `public/assets/`，该目录被 git 忽略（参见[资源](assets.md)）。
 
 `ApplicationController` 一开始是这样的，因此找不到记录时会通过 `rescue_from` 映射为 404：
 
@@ -599,7 +600,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   - `dummy_digest` 是一个随机密码的摘要，每个进程按当前成本生成一次。地址不存在时就用它来校验，这样响应时间就不会暴露哪些地址有账号：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。
   - `session_key(digest)` 是密码摘要在 `secret_key_base` 下的 HMAC；登录时把它存进会话，并在每个请求中用 `session_key_matches?(session[:password_key], user.password_digest)` 检查。修改密码会生成新的摘要，所以在此之前开始的所有会话都会退出登录。
   - 当 `Cybertrain.config.test?` 时，`iterations` 为 `Password::TEST_ITERATIONS`（1,000），这样测试套件不必为每个用户付出生产环境的成本；摘要记录了各自的迭代次数，所以其他一切都不变。
-- **会话**（`session[:key]`，一个签名 cookie）：`clear` 在退出登录时清空会话（包括 CSRF 令牌）；`config.session_absolute_max_age`（两周；`0` 表示关闭）限制会话的整个生命期，无论使用得多频繁：cookie 记录了它首次写入的时间，比这更旧的 cookie 会被加载为空会话，因此复制来的 cookie 无法被永远重放。`session.restart_lifetime!` 会重新开始计时（在登录时）。
+- **会话**（`session[:key]`，一个加密 cookie）：`clear` 在退出登录时清空会话（包括 CSRF 令牌）；`config.session_absolute_max_age`（两周；`0` 表示关闭）限制会话的整个生命期，无论使用得多频繁：cookie 记录了它首次写入的时间，比这更旧的 cookie 会被加载为空会话，因此复制来的 cookie 无法被永远重放。`session.restart_lifetime!` 会重新开始计时（在登录时）。
 - **`Controller#local_path?(text)` 和 `safe_redirect_path(text, fallback)`**：来自请求的路径（`return_to` 参数、记住的页面）只有在以 `/` 开头但不以 `//` 或 `/\` 开头、只包含可打印的 ASCII 字符且不超过 2,048 字节时，才会被重定向过去：`redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`。
 - 控制器类上的 **`skip_before_action(name, only:, except:)`** 会为部分动作去掉继承来的 `before_action`；生成的 `allow_unauthenticated_access` 就是对它的一行封装。
 - **`cybertrain generate authentication`** 以归应用所有的代码写出：`users` 和 `sessions` 的迁移与模型、`SessionsController`、`RegistrationsController`、它们的视图和导航局部模板、`ApplicationController` 中的代码块（`resume_session`、`require_authentication`、`start_new_session_for`、`terminate_session`、`after_authentication_url`）以及 `test/authentication.rb`。这些代码用到了本列表中的全部内容：`User.authenticate_by` 用 `verify_serialized` 和虚拟摘要来校验，`start_new_session_for` 存储密码密钥并重新开始生命期，`resume_session` 会结束密钥不再匹配或比 `session_absolute_max_age` 更旧的 Session 行，`after_authentication_url` 就是 `safe_redirect_path`。若要让修改了密码的那个浏览器保持登录，在保存之后存入新的密钥：`session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`。设计说明：[docs/design.md](../design.md) D25。
@@ -626,7 +627,7 @@ end
 ```
 
 > [!NOTE]
-> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。在反向代理后面，除非配置了[受信任的代理](requests.md#rate-limiting-and-the-client-address)，否则每位访客都按代理的地址计数。不会生成的部分：密码重置，它的邮件需要应用自己的 SMTP 设置（`Cybertrain::Mailer`，[发送电子邮件](external-services.md#sending-e-mail)），而生成器无从得知这些设置。
+> 和[步骤 12](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。计数保存在应用的数据库中（`Cybertrain::Cache`），所以应用的所有进程一起计数。在反向代理后面，除非配置了[受信任的代理](requests.md#rate-limiting-and-the-client-address)，否则每位访客都按代理的地址计数。不会生成的部分：密码重置，它的邮件需要应用自己的 SMTP 设置（`Cybertrain::Mailer`，[发送电子邮件](external-services.md#sending-e-mail)），而生成器无从得知这些设置。
 
 <!-- step 14 #attachments stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加封面图片
@@ -788,12 +789,12 @@ kamal deploy   # 之后的每次部署
 > 值得提前了解的限制和特殊之处，免得到时措手不及。
 
 <!-- list: points know -->
-- 会话只能保存 String，存放在 HMAC 签名的 cookie 中。
+- 会话只能保存 String，存放在加密的 cookie 中。
 - 仅支持 SQLite，通过 Spinel 的 FFI 访问。
 - 没有回溯（backtrace）：错误只显示类、消息、请求行以及模板名/行号。
 - 视图中拼错的属性会渲染为空白，而不会抛出异常；这是一个已知的不足。
 - 关联来自外键或一行声明；不支持 `has_many :through`、嵌套的 `includes`、枚举、STI 或多态关联。
-- 不支持 `namespace`、`respond_to`/格式、`constraints` 或 `mount`；`render json:` 只有最基本的功能。
+- 不支持 `constraints` 或 `mount`；JSON 用 `render json:` 返回，它只有最基本的功能。
 - 在脚手架生成的模型中，只有第一个字符串字段会获得默认的存在性验证。
 - 生成器对 `app/controllers` 和 `app/models` 使用词法扫描（正则表达式），而不是解析器。
 - 视图在构建时嵌入：即使只修改了视图，也需要运行 `cybertrain build` 并重启，改动才能到达生产环境。

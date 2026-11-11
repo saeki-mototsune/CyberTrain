@@ -7,4 +7,5 @@ ok   a request whose body and headers were read out of a Hash of mixed values
 ok   a value read out of parsed JSON escapes
 ok   a time read out of parsed JSON casts
 ok   a time out of a Hash of mixed values casts
-9 tests, 31 assertions, 0 failures
+ok   a session written by one request is read by the next, on the wire
+10 tests, 38 assertions, 0 failures

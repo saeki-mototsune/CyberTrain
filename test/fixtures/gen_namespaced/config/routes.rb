@@ -1,3 +1,6 @@
 Cybertrain::Routes.draw do
-  get "/admin/users", to: "admin/users#index"
+  namespace :admin do |admin|
+    admin.resources :users, only: [:index, :show], param: :login
+    admin.resources :reports, only: [:index]
+  end
 end

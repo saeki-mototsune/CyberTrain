@@ -4,6 +4,7 @@ require "cybertrain/params"
 require "cybertrain/http/ip_address"
 require "cybertrain/template/limits"
 require "cybertrain/time_zone"
+require "cybertrain/content_security_policy"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
@@ -47,7 +48,9 @@ module Cybertrain
     # "0.0.0.0". Defaults to localhost, 127.0.0.1 and [::1]; the comma-separated
     # CYBERTRAIN_ALLOWED_HOSTS adds exact forwarding hostnames. No wildcards,
     # schemes or ports; IPv6 addresses include brackets. An empty list denies
-    # every host. Production and test do not apply this development guard.
+    # every host. `CYBERTRAIN_HOSTS` entries ({#hosts_from_env}) are appended
+    # too, and turn the same check on in production and test
+    # ({#host_check?}); without them those environments do not check.
     # @return [Array<String>]
     # @api public
     attr_accessor :allowed_hosts
@@ -64,7 +67,7 @@ module Cybertrain
     # @api public
     attr_accessor :database_path
 
-    # The secret the session cookie is signed with, from
+    # The secret the session and cookie keys are derived from, from
     # `CYBERTRAIN_SECRET_KEY_BASE`. Required in production (boot fails without
     # it; `openssl rand -hex 32` makes one); development and test create one
     # in `tmp/secret_key`. Changing it ends every session.
@@ -195,6 +198,58 @@ module Cybertrain
 # @return [Array<String>]
 # @api public
 attr_accessor :trusted_proxies
+
+    # Whether http requests are redirected to https and https responses
+    # carry `Strict-Transport-Security: max-age=63072000; includeSubDomains`
+    # ({SslRedirect}), `false`, from `CYBERTRAIN_FORCE_SSL` (`1` or `true`;
+    # `0`, `false` or empty is off, anything else stops the server at boot).
+    # Behind a TLS-terminating proxy the request counts as https when it
+    # says `X-Forwarded-Proto: https` (the first element of a list).
+    # Request#base_url believes that header only from a trusted proxy, so
+    # also set {#trusted_proxy} or {#trusted_proxies}, or URLs the app
+    # builds (a `turbo_stream_from ws: true` URL) say http and ws. The
+    # health path is never redirected.
+    # On, the session and cookie jar cookies are `Secure` whatever
+    # {#session_secure} says ({#secure_cookies?}).
+    # @return [Boolean]
+    # @api public
+    attr_accessor :force_ssl
+
+    # The `Host` names from `CYBERTRAIN_HOSTS` (comma-separated, `[]` when
+    # unset), also appended to {#allowed_hosts}, after its loopback names:
+    # with the check on, `localhost`, `127.0.0.1` and `[::1]` are accepted
+    # too (a browser sends those only to its own machine). Set, they turn the host
+    # check on outside development ({#host_check?}): a request whose Host
+    # is not in {#allowed_hosts} or this list answers 403. Exact names (an
+    # IPv6 address in brackets); no scheme, path, port or wildcard (boot
+    # refuses one).
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :hosts_from_env
+
+    # The `Permissions-Policy` every response carries unless it sets its
+    # own, `"camera=(), microphone=(), geolocation=()"`; `""` sends none.
+    # A CR or LF stops the server at boot.
+    # @example config/app.rb
+    #   c.permissions_policy = "camera=(), microphone=(), geolocation=(self)"
+    # @return [String]
+    # @api public
+    attr_accessor :permissions_policy
+
+    # Whether the Content Security Policy is sent as
+    # `Content-Security-Policy-Report-Only` (the browser reports
+    # violations and blocks nothing), `false`.
+    # @return [Boolean]
+    # @api public
+    attr_accessor :content_security_policy_report_only
+
+    # The directives that get this request's nonce (`'nonce-...'`), `[]`:
+    # with `%w[script-src style-src]`, a `<script>` written with
+    # `javascript_tag(nonce: true)` runs under `script-src 'self'`. A name
+    # that is not a directive stops the server at boot.
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :content_security_policy_nonce_directives
 
     # SQLite connections in the pool, `4`.
     # @return [Integer]
@@ -720,6 +775,24 @@ attr_accessor :trusted_proxies
   proxy = entry.strip
   @trusted_proxies << proxy unless proxy.empty?
 end
+      # CYBERTRAIN_FORCE_SSL, kept as written for security_error.
+      @force_ssl_text = Config.env_or("CYBERTRAIN_FORCE_SSL", "")
+      @force_ssl = @force_ssl_text == "1" || @force_ssl_text == "true"
+      # CYBERTRAIN_HOSTS: checked by security_error, appended to
+      # allowed_hosts (typed seed, rule 9).
+      @hosts_from_env = Array.new(0) { "" }
+      (ENV["CYBERTRAIN_HOSTS"] || "").split(",").each do |entry|
+        env_host = entry.strip
+        next if env_host.empty?
+
+        @hosts_from_env << env_host
+        @allowed_hosts << env_host
+      end
+      @permissions_policy = "camera=(), microphone=(), geolocation=()"
+      # Off until config/app.rb declares one (as in Rails).
+      @content_security_policy = nil
+      @content_security_policy_report_only = false
+      @content_security_policy_nonce_directives = Array.new(0) { "" }
       @pool_size = 4
       @static_files = true
       @csrf = true
@@ -831,6 +904,140 @@ end
         end
       end
       names
+    end
+
+    # Declares the application's Content Security Policy (spec section 5,
+    # C-5): yields it to the block, made on the first call. Off by
+    # default; {ContentSecurityPolicyHeader} writes it on every response,
+    # and a controller adjusts its own copy with
+    # {Controller.content_security_policy}.
+    # @example config/app.rb
+    #   c.content_security_policy do |p|
+    #     p.default_src :self
+    #     p.script_src :self, "https://cdn.jsdelivr.net"
+    #     p.style_src :self
+    #   end
+    #   c.content_security_policy_nonce_directives = %w[script-src style-src]
+    # @yieldparam policy [ContentSecurityPolicy]
+    # @return [nil]
+    # @api public
+    def content_security_policy(&block)
+      policy = @content_security_policy
+      if policy.nil?
+        policy = ContentSecurityPolicy.new
+        @content_security_policy = policy
+      end
+      block.call(policy)
+      nil
+    end
+
+    # The policy {#content_security_policy} declared, nil when none was.
+    # @return [ContentSecurityPolicy, nil]
+    # @api public
+    def content_security_policy_value
+      @content_security_policy
+    end
+
+    # Whether HostAuthorization checks the Host header: always in
+    # development, elsewhere only when `CYBERTRAIN_HOSTS` named hosts
+    # (spec C-11; empty means no check, as Rails' production default).
+    # @return [Boolean]
+    # @api public
+    def host_check?
+      development? || !@hosts_from_env.empty?
+    end
+
+    # The Host names HostAuthorization accepts: {#allowed_hosts} and any
+    # {#hosts_from_env} entry not already among them (config/app.rb may
+    # assign either).
+    # @return [Array<String>]
+    # @api public
+    def checked_hosts
+      names = Array.new(0) { "" }
+      @allowed_hosts.each { |h| names << h }
+      @hosts_from_env.each { |h| names << h unless names.include?(h) }
+      names
+    end
+
+    # Whether cookies are written `Secure`: {#session_secure}, or
+    # {#force_ssl} (every request is https then).
+    # @return [Boolean]
+    # @api public
+    def secure_cookies?
+      @session_secure || @force_ssl
+    end
+
+    # The error Application#boot reports for CYBERTRAIN_FORCE_SSL,
+    # CYBERTRAIN_HOSTS, the nonce directives or permissions_policy; "" when
+    # all are fine.
+    def security_error
+      ssl = @force_ssl_text
+      unless ssl.empty? || ssl == "1" || ssl == "true" || ssl == "0" || ssl == "false"
+        return "CYBERTRAIN_FORCE_SSL must be 1, true, 0, false or empty (got #{ssl.inspect})"
+      end
+
+      hosts = @hosts_from_env
+      i = 0
+      while i < hosts.size
+        name = hosts[i].to_s
+        return "CYBERTRAIN_HOSTS: #{name.inspect} is not a host name (no scheme, path or wildcard)" unless Config.host_name?(name)
+
+        i += 1
+      end
+      directives = @content_security_policy_nonce_directives
+      i = 0
+      while i < directives.size
+        directive = directives[i].to_s
+        unless ContentSecurityPolicy.directive?(directive)
+          return "content_security_policy_nonce_directives: #{directive.inspect} is not a directive"
+        end
+
+        i += 1
+      end
+      policy = @permissions_policy
+      return "permissions_policy must not contain CR or LF" if policy.include?("\r") || policy.include?("\n")
+
+      ""
+    end
+
+    # Whether `text` is a host name as a Host header carries it, without
+    # the port: letters, digits, `-` and `.` (neither first nor last), or
+    # an IPv6 address in brackets. No scheme, path, port, userinfo or
+    # wildcard. Reads its parameter through a fresh local (NOTES rule 62).
+    # @param text [String]
+    # @return [Boolean]
+    # @api private
+    def self.host_name?(text)
+      s = text.to_s
+      n = s.bytesize
+      return false if n == 0 || n > 255
+
+      if s.getbyte(0) == 0x5b # "["
+        return false if n < 3 || s.getbyte(n - 1) != 0x5d # "]"
+
+        i = 1
+        while i < n - 1
+          b = s.getbyte(i)
+          ok = (b >= 0x30 && b <= 0x39) || (b >= 0x61 && b <= 0x66) || (b >= 0x41 && b <= 0x46) || b == 0x3a || b == 0x2e
+          return false unless ok
+
+          i += 1
+        end
+        return true
+      end
+      first = s.getbyte(0)
+      last = s.getbyte(n - 1)
+      return false if first == 0x2e || first == 0x2d || last == 0x2e || last == 0x2d
+
+      i = 0
+      while i < n
+        b = s.getbyte(i)
+        ok = (b >= 0x30 && b <= 0x39) || (b >= 0x61 && b <= 0x7a) || (b >= 0x41 && b <= 0x5a) || b == 0x2d || b == 0x2e
+        return false unless ok
+
+        i += 1
+      end
+      true
     end
 
     # @return [Boolean]
@@ -1395,7 +1602,7 @@ end
       "CYBERTRAIN_SESSION_SAME_SITE / session_same_site must be Lax, Strict or None (got \"#{value}\")"
     end
 
-    # The secret sessions are signed with. Production must set it
+    # The secret the session and cookie keys are derived from. Production must set it
     # (CYBERTRAIN_SECRET_KEY_BASE); other environments read secret_key_path,
     # creating it with a random 64-hex-digit key the first time.
     def resolve_secret!

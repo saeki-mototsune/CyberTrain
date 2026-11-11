@@ -73,14 +73,14 @@ end
 
 Cybertrain::Views.helpers_builder = ->(controller) { ApplicationHelpers.new(controller) }
 
-Cybertrain::Views.url_resolver = lambda do |name, args|
+Cybertrain::Views.url_resolver = lambda do |name, args, options|
   case name
   when "article_path"
     id = ""
     case args[0]
     when Cybertrain::Model then id = args[0].to_param
     end
-    "/articles/#{id}"
+    Cybertrain::Gen.with_options("/articles/#{id}", options)
   else raise "no route #{name}"
   end
 end
@@ -93,6 +93,7 @@ FILES = {
   "app/views/articles/_params.html.erb" => "<%= params[:q] %>",
   "app/views/articles/_flash.html.erb" => "<%= flash[:notice] %>",
   "app/views/articles/_path.html.erb" => "<%= request_path %>",
+  "app/views/articles/_paged.html.erb" => "<%# locals: (article:) %>\n<%= article_path(article, page: 2, anchor: 'x') %>",
   "app/views/articles/_url.html.erb" => "<%= article_url(1) %>",
   "app/views/articles/_button.html.erb" => "<%= button_to 'Go', '/go' %>",
   "app/views/_top.html.erb" => "top <%= n %>",
@@ -126,6 +127,10 @@ end
 test "render_partial returns the HTML, path helpers included" do
   html = Cybertrain::Views.render_partial("articles/article", article: Article.new(12, "A & B"))
   assert_equal "<a href=\"/articles/12\">A &amp; B</a>", html
+end
+
+test "a path helper's keywords work outside a request" do
+  assert_equal "/articles/12?page=2#x", Cybertrain::Views.render_partial("articles/paged", article: Article.new(12, "A"))
 end
 
 test "strict locals are checked" do

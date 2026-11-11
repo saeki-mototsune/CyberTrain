@@ -83,14 +83,23 @@ module Cybertrain
         flash_messages form_action form_record form_with h helper_arity!
         helper_call helper_keywords! helper_no_keywords! hidden_fields
         html_arg initialize int_text kwarg_attr link_to link_to_path
-        lower_text model_key nested_url number_with_delimiter
+        lower_text model_key nested_url number_to_currency number_to_human
+        number_to_human_size number_to_percentage number_with_delimiter
+        number_with_precision
         outside_request! page_method pager_href pager_html paginate params
         partial_file plural_words pluralize raw render
         render_component_helper render_helper request_bound! request_path
         request_query_string route route_key_of safe_join session_csrf_token
-        signed_stream_name stream_source_path string_keys_of tag text_arg
+        signed_stream_name stream_source_path string_keys_of string_url tag text_arg
         time_ago_in_words time_arg to_html truncate turbo_stream_from
         url_for yield
+        select_tag options_for_select options_from_collection_for_select label_tag
+        text_field_tag hidden_field_tag submit_tag
+        csp_meta_tag javascript_tag content_security_policy_nonce form_record_url
+        turbo_frame_tag turbo_stream time_tag current_page?
+        partial_html render_collection render_records record_expected! record_partial
+        record_partial_local render_items render_item render_partial_scope
+        asset_path stylesheet_link_tag javascript_include_tag image_tag javascript_importmap_tags asset_source nonce_attr
       ]
 
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/
@@ -233,11 +242,16 @@ module Cybertrain
       end
 
       # `def today = "now"` / `def price(v) = v.to_s`: no body to skip.
+      ENDLESS_NAME = /\A\s*def\s+(?:self\.)?(?:[A-Za-z_]\w*[?!]?|<=>|===|==|=~|!=|!~|\[\]=?|<<|>>|<=|>=|\*\*|[+\-]@|[!~]@?|[+\-*\/%<>^&|`])(.*)\z/m
+
+      # Also `def self.x = 1` and `def <=>(other) = 0`: the name is read
+      # here, not through DEF_LINE (which needs a plain lowercase name).
       def self.endless?(text)
-        m = text.match(DEF_LINE)
+        m = text.match(ENDLESS_NAME)
         return false if m.nil?
 
-        rest = m[2].to_s
+        rest = m[1].to_s
+        # `def x=(v)`: a writer, and `def x=1` is not an endless def either.
         return false if rest.start_with?("=")
 
         rest = rest.strip
@@ -246,7 +260,25 @@ module Cybertrain
           close = rest.index(")", inner.size + 1)
           rest = close.nil? ? "" : rest[close + 1, rest.size - close - 1].to_s.strip
         end
-        rest.start_with?("=") && !rest.start_with?("==")
+        rest.start_with?("=") && !rest.start_with?("==") && !rest.start_with?("=~") && !rest.start_with?("=>")
+      end
+
+      # text without a trailing `# comment` (a `#` outside string literals).
+      def self.strip_comment(text)
+        quote = ""
+        i = 0
+        while i < text.size
+          ch = text[i].to_s
+          if quote != ""
+            quote = "" if ch == quote
+          elsif ch == "\"" || ch == "'"
+            quote = ch
+          elsif ch == "#"
+            return text[0, i].to_s.rstrip
+          end
+          i += 1
+        end
+        text
       end
 
       def self.found_named(found, name)

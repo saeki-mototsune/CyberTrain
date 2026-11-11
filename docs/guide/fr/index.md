@@ -1,5 +1,5 @@
 ---
-source_sha256: 2fbeb86c43b9789aa21bda936feff3fd39b4035b81a06ea7f92080110e3c4ec3
+source_sha256: b35f37f16880826acb2bafe697c2825122ae242cca33d6d88142122e5222f65e
 title: Guides
 ---
 # Guides
@@ -11,7 +11,8 @@ Tout ce que la documentation de CyberTrain couvre au-delà de la référence de 
 - [**Installation**](install.md) — Prérequis, la commande `cybertrain`, comment Spinel et le framework sont installés
 - [**Fonctionnement**](how-it-works.md) — Génération de code à la compilation, vues interprétées, le serveur, la boucle de développement et un tableau des différences avec Rails
 - [**Modèles et base de données**](models.md) — Migrations, types de colonnes, requêtes, associations, validations, colonnes chiffrées, transactions, reprise d’une base Rails
-- [**Requêtes**](requests.md) — Limitation du débit, l’adresse du client, en-têtes paramétrés, chaînes de requête et corps de requête
+- [**Requêtes**](requests.md) — Routage, formats et `respond_to`, concerns, paramètres forts, cache HTTP, cookies et session chiffrée, limitation du débit, Content Security Policy, `force_ssl` et contrôle des hôtes, en-têtes, chaînes de requête et corps de requête
+- [**Assets**](assets.md) — Feuilles de style, images et JavaScript avec empreinte, `url()` en CSS, les helpers, l’import map, le service et la conservation
 - [**Configuration**](configuration.md) — `config/app.rb`, variables d’environnement, fuseaux horaires
 - [**Tâches de fond et exploitation**](background-and-operations.md) — Classes de job, nouvelles tentatives, tâches `every` et `cron`, la page des jobs, les rôles de processus `worker` et `feeds`, le cache, la console, sauvegardes, le contrôle de santé
 - [**Temps réel**](realtime.md) — Turbo Streams sur Server-Sent Events ou WebSocket, diffusions depuis les actions, les jobs et les flux, noms de flux signés, santé des flux

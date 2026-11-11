@@ -1,25 +1,36 @@
-# Cybertrain::Encryptor: AES-256-GCM column encryption (`encrypts :api_key`
-# in a model, spec section 10).
+# Cybertrain::Encryptor: AES-256-GCM, for column encryption (`encrypts
+# :api_key` in a model, spec section 10), the session cookie and
+# `cookies.encrypted` (spec section 5.1).
 #
-# Required on its own, like cybertrain/net/tls.rb: `require "cybertrain"`
-# does not load it. gen/app.rb requires it when a model of the application
-# declares `encrypts` (and then makes boot require CYBERTRAIN_ENCRYPTION_KEY);
-# an application that calls {Crypto.encrypt} itself requires it too:
+# Loaded by every program: `require "cybertrain"` requires it, because the
+# session cookie is encrypted. It requires Spinel's openssl package, which
+# links the system libssl and libcrypto (on macOS, Homebrew's OpenSSL:
+# docs/guide/install.md), so every application links them. Once openssl is
+# in a program, a `getbyte` on a boxed String dispatches over the package's
+# own `getbyte` (spikes/NOTES.md rule 62): code that scans such a String
+# byte by byte reads it through a new local, `s = text.to_s`. gen/app.rb no
+# longer requires this file for `encrypts`; it still sets
+# `Config.encryption_required` then, so boot requires
+# CYBERTRAIN_ENCRYPTION_KEY.
 #
-#   require "cybertrain/encryptor"
+# Nonces are random 96-bit values, so the safe bound is about 2^32 seals
+# per key (NIST SP 800-38D); rotating the key resets it.
 #
-# It requires Spinel's openssl package, which links the system libssl and
-# libcrypto (on macOS, Homebrew's OpenSSL: docs/guide/install.md), so a
-# program without encrypted columns links neither. Once openssl is in a
-# program, a `getbyte` on a boxed String dispatches over the package's own
-# `getbyte` (spikes/NOTES.md rule 62): code that scans such a String byte
-# by byte reads it through a new local, `s = text.to_s`.
+# Two forms of sealed value, each with a 12-byte random nonce made per
+# call and the GCM tag's 16 bytes, so nothing is encrypted without being
+# authenticated:
 #
-# The payload is `"1:" + Base64(nonce ‖ ciphertext ‖ tag)`: a 12-byte
-# random nonce per call, the GCM tag's 16 bytes, and `1` the payload
-# format's version. A wrong key, a changed byte, an unknown version, bad
-# Base64 or a payload too short to hold a nonce and a tag raises
-# {Encryptor::Error}.
+# - {#encrypt} / {#decrypt} (columns, {Crypto.encrypt}): the payload is
+#   `"1:" + Base64(nonce ‖ ciphertext ‖ tag)`, `1` the payload format's
+#   version, with no additional data. A wrong key, a changed byte, an
+#   unknown version, bad Base64 or a payload too short to hold a nonce and
+#   a tag raises {Encryptor::Error}.
+# - {#seal_bytes} / {#open_bytes} (the session cookie and
+#   `cookies.encrypted`, under keys {Crypto.derive_key} makes): the raw
+#   bytes `nonce ‖ ciphertext ‖ tag`, sealed with additional data that names
+#   the purpose (`"session"`, `"cookie:<name>"`), so a value opens only for
+#   the purpose it was sealed for. {#open_bytes} answers nil, never raises,
+#   for anything that does not authenticate.
 #
 # This file also adds to {Crypto} (encrypt, decrypt, encrypt_or_nil,
 # decrypt_or_nil, through the configured key) and to {Config} (encryptor).
@@ -87,16 +98,61 @@ module Cybertrain
     # @return [String] `"1:"` and Base64
     # @api public
     def encrypt(text)
+      raw = seal_bytes(text, "")
+      PAYLOAD_PREFIX + Base64.strict_encode64(raw)
+    end
+
+    # `text` sealed under the current key with a fresh random nonce and
+    # `aad` as the GCM additional data (authenticated, not encrypted): the
+    # raw bytes `nonce(12) ‖ ciphertext ‖ tag(16)`, which only
+    # {#open_bytes} with the same `aad` opens.
+    # @example
+    #   raw = enc.seal_bytes("{\"user_id\":\"5\"}", "session")
+    #   enc.open_bytes(raw, "session")   # => "{\"user_id\":\"5\"}"
+    #   enc.open_bytes(raw, "cookie:x")  # => nil
+    # @param text [String]
+    # @param aad [String] the purpose the value is sealed for
+    # @return [String] binary
+    # @api public
+    def seal_bytes(text, aad)
       s = text.to_s
+      data = aad.to_s
       nonce = SecureRandom.random_bytes(NONCE_BYTES)
       cipher = OpenSSL::Cipher.new(CIPHER)
       cipher.encrypt
       cipher.key = @keys[0]
       cipher.iv = nonce
-      cipher.auth_data = ""
+      cipher.auth_data = data
       sealed = cipher.update(s) + cipher.final
       tag = cipher.auth_tag
-      PAYLOAD_PREFIX + Base64.strict_encode64(nonce + sealed + tag)
+      nonce + sealed + tag
+    end
+
+    # The text {#seal_bytes} sealed with the same `aad`, under the current
+    # key or a previous one, as UTF-8; nil when no key authenticates it (a
+    # wrong key, other additional data, a changed or missing byte, or fewer
+    # bytes than a nonce and a tag). Never raises for the bytes it is given.
+    # @param raw [String] binary, `nonce ‖ ciphertext ‖ tag`
+    # @param aad [String]
+    # @return [String, nil]
+    # @api public
+    def open_bytes(raw, aad)
+      bytes = raw.to_s
+      data = aad.to_s
+      n = bytes.bytesize
+      return nil if n < NONCE_BYTES + TAG_BYTES
+
+      nonce = bytes.byteslice(0, NONCE_BYTES).to_s
+      sealed = bytes.byteslice(NONCE_BYTES, n - NONCE_BYTES - TAG_BYTES).to_s
+      tag = bytes.byteslice(n - TAG_BYTES, TAG_BYTES).to_s
+      i = 0
+      while i < @keys.size
+        opened = Encryptor.open_with(@keys[i], nonce, sealed, tag, data)
+        return opened.force_encoding("UTF-8") unless opened.nil?
+
+        i += 1
+      end
+      nil
     end
 
     # The text of a payload {#encrypt} made, under the current key or a
@@ -117,16 +173,9 @@ module Cybertrain
       raw = Encryptor.decode_payload(s[2, s.size - 2].to_s)
       raise Error, "encrypted payload is too short" if raw.bytesize < NONCE_BYTES + TAG_BYTES
 
-      nonce = raw.byteslice(0, NONCE_BYTES).to_s
-      sealed = raw.byteslice(NONCE_BYTES, raw.bytesize - NONCE_BYTES - TAG_BYTES).to_s
-      tag = raw.byteslice(raw.bytesize - TAG_BYTES, TAG_BYTES).to_s
-      i = 0
-      while i < @keys.size
-        opened = Encryptor.open_with(@keys[i], nonce, sealed, tag)
-        return opened.force_encoding("UTF-8") unless opened.nil?
+      opened = open_bytes(raw, "")
+      return opened unless opened.nil?
 
-        i += 1
-      end
       raise Error, "encrypted payload does not decrypt with the configured keys (wrong key or changed data)"
     end
 
@@ -137,15 +186,16 @@ module Cybertrain
     end
 
     # The plaintext bytes, or nil when the tag does not authenticate them
-    # under `key`. OpenSSLError, the parent of both Spinel's
-    # OpenSSL::CipherError and CRuby's OpenSSL::Cipher::CipherError.
-    def self.open_with(key, nonce, sealed, tag)
+    # and `aad` under `key` (OpenSSL checks the GCM tag in constant time).
+    # OpenSSLError, the parent of both Spinel's OpenSSL::CipherError and
+    # CRuby's OpenSSL::Cipher::CipherError.
+    def self.open_with(key, nonce, sealed, tag, aad)
       cipher = OpenSSL::Cipher.new(CIPHER)
       cipher.decrypt
       cipher.key = key
       cipher.iv = nonce
       cipher.auth_tag = tag
-      cipher.auth_data = ""
+      cipher.auth_data = aad
       opened = cipher.update(sealed) + cipher.final
       opened
     rescue OpenSSL::OpenSSLError

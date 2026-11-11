@@ -22,7 +22,7 @@ FROM docker.io/library/ubuntu:$UBUNTU_VERSION AS build
 # PRISM_VERSION in Spinel's Makefile at Cybertrain::SPINEL_TAG).
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential git curl ca-certificates \
-      ruby ruby-dev libsqlite3-dev zlib1g-dev libjemalloc-dev && \
+      ruby ruby-dev libsqlite3-dev zlib1g-dev libjemalloc-dev libssl-dev && \
     rm -rf /var/lib/apt/lists/* && \
     gem install --no-document prism -v 1.9.0
 
@@ -43,7 +43,7 @@ RUN ruby -I/src /src/exe/cybertrain build
 FROM docker.io/library/ubuntu:$UBUNTU_VERSION
 
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y libsqlite3-0 zlib1g libjemalloc2 && \
+    apt-get install --no-install-recommends -y libsqlite3-0 zlib1g libjemalloc2 libssl3t64 && \
     rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --create-home --shell /bin/bash app

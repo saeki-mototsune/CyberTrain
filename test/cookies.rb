@@ -110,4 +110,21 @@ test "plain? is true exactly for the ASCII bytes the encoder leaves alone" do
   assert !Cybertrain::Query.plain?("\u00e9")
 end
 
+test "serialize rejects a cookie name that is not an RFC 6265 token" do
+  ["x; Domain=evil.example", "x=y", "a b", "a\tb", "", "a,b", "a\"b", "a(b)", "a/b", "a[b]", "a{b}", "caf\u00e9", "a\r\nb"].each do |bad|
+    message = assert_raises("ArgumentError") { Cybertrain::Cookies.serialize(bad, "v") }
+    assert message.start_with?("cookie name")
+  end
+  assert_equal "a.b-c_d!#$%&'*+^`|~1=v; Path=/; HttpOnly; SameSite=Lax", Cybertrain::Cookies.serialize("a.b-c_d!#$%&'*+^`|~1", "v")
+end
+
+test "serialize rejects ';' and CR/LF in path and same_site, and an unknown same_site" do
+  assert_raises("ArgumentError") { Cybertrain::Cookies.serialize("a", "v", path: "/; Domain=evil.example") }
+  assert_raises("ArgumentError") { Cybertrain::Cookies.serialize("a", "v", path: "/\r\nX: y") }
+  assert_raises("ArgumentError") { Cybertrain::Cookies.serialize("a", "v", same_site: "Lax; Secure") }
+  assert_raises("ArgumentError") { Cybertrain::Cookies.serialize("a", "v", same_site: "Sloppy") }
+  assert_equal "a=v; Path=/; HttpOnly; SameSite=strict", Cybertrain::Cookies.serialize("a", "v", same_site: "strict")
+  assert_equal "a=v; Path=/; HttpOnly; SameSite=none; Secure", Cybertrain::Cookies.serialize("a", "v", same_site: "none")
+end
+
 Cybertrain::Test.run!

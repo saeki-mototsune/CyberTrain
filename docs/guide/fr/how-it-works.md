@@ -1,5 +1,5 @@
 ---
-source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
+source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -8,13 +8,15 @@ Cette page explique comment une application CyberTrain est construite et exécut
 
 ## Génération de code à la compilation
 
-`spin run gen` (`bin/gen.rb`) exécute le DSL `create_table` de `db/schema.rb` et le DSL `Routes.draw` de `config/routes.rb` pour obtenir les *données* des tables et des routes. Il fait séparément un **balayage lexical** (des regex, pas un parseur — Spinel n’en expose aucun à l’exécution) de `app/controllers/**/*.rb` et `app/models/**/*.rb` à la recherche des affectations `@ivar =`, des noms `before_action`/`after_action`/`rescue_from ... with:` et des `def` sans argument.
+`spin run gen` (`bin/gen.rb`) exécute le DSL `create_table` de `db/schema.rb` et le DSL `Routes.draw` de `config/routes.rb` pour obtenir les *données* des tables et des routes. Il fait séparément un **balayage lexical** (des regex, pas un parseur — Spinel n’en expose aucun à l’exécution) de `app/controllers/**/*.rb` et `app/models/**/*.rb` à la recherche des affectations `@ivar =`, des noms `before_action`/`after_action`/`rescue_from ... with:`, des lignes `helper_method`, `layout` et `rate_limit`, des `include` de concerns et des `def` sans argument. Il met une empreinte sur les fichiers de `app/assets/`, `app/javascript/` et `vendor/javascript/` et lit `config/importmap.rb` comme du texte.
 
 À partir de cela, il écrit du Ruby simple et lisible sous `gen/`&nbsp;:
 
 - `gen/models/<name>.rb`&nbsp;: accesseurs, conversions, finders, associations déduites des clés étrangères&nbsp;;
 - `gen/routes.rb`&nbsp;: la table des routes, le dispatcher, les helpers `*_path`/`*_url`&nbsp;;
-- `gen/controllers.rb`&nbsp;: `view_assigns` et `run_callback` par contrôleur&nbsp;;
+- `gen/controllers.rb`&nbsp;: `view_assigns`, `run_callback`, la table de `helper_method` et `controller_layout` par contrôleur&nbsp;;
+- `gen/concerns.rb` et `gen/concerns/**`&nbsp;: les blocs `included` des concerns insérés dans chaque classe qui les inclut, et les modules des concerns avec ces blocs vidés ([Concerns](requests.md#concerns-and-helper_method))&nbsp;;
+- `gen/assets.rb`&nbsp;: les chemins des assets avec empreinte et l’import map ([Assets](assets.md)), avec les fichiers à empreinte dans `public/assets/`&nbsp;;
 - `gen/migrations.rb`&nbsp;;
 - `gen/views.rb`&nbsp;: la table des vues intégrées, vide sauf lors d’une compilation pour le déploiement&nbsp;;
 - `gen/app.rb`&nbsp;: le manifeste des `require_relative`.
@@ -52,7 +54,7 @@ Comment une transaction emprunte l’une de ces connexions, et ce qui s’exécu
 
 ## La boucle de développement
 
-`cybertrain server` (`spin run gen`, puis `spin run NAME`) en `development` (le `CYBERTRAIN_ENV` par défaut, sauf dans un binaire issu de `cybertrain build`) surveille aussi `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb` et `gen/**/*.rb` toutes les demi-secondes. Les vues sont exclues (le moteur les recharge lui-même), tout comme `gen/views.rb`, vide en développement.
+`cybertrain server` (`spin run gen`, puis `spin run NAME`) en `development` (le `CYBERTRAIN_ENV` par défaut, sauf dans un binaire issu de `cybertrain build`) surveille aussi `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb` et les racines des assets (`app/assets/**`, `app/javascript/**`, `vendor/javascript/**`) toutes les demi-secondes. Les vues sont exclues (le moteur les recharge lui-même), tout comme `gen/views.rb`, vide en développement.
 
 Un changement lance `spin run gen && spin build NAME -- --incremental` en arrière-plan&nbsp;: la compilation incrémentale de Spinel, qui ne recompile que les unités C touchées par la modification. Une version de Spinel sans `--incremental` rejette l’option, et la boucle compile alors sans elle.
 
@@ -71,13 +73,15 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | `before_action { do_thing }` (`self` implicite) | `before_action { \|c\| c.do_thing }` — pas d’`instance_exec` sur un bloc stocké, donc les callbacks reçoivent explicitement le contrôleur/l’enregistrement |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — les blocs imbriqués reçoivent le mapper explicitement |
 | ERB est compilé en méthode&nbsp;; n’importe quel objet, n’importe quelle méthode | Interprété selon une grammaire/table de dispatch fixe ([Langage de templates](template-language.md)) |
-| La session contient n’importe quel objet sérialisé (marshal) | Valeurs de session de type String uniquement, cookie signé HMAC |
+| La session contient n’importe quel objet sérialisé (marshal) | Valeurs de session de type String uniquement, dans un cookie chiffré en AES-256-GCM, comme le cookie store de Rails ([Cookies et session](requests.md#cookies-and-the-session)) |
 | De nombreux adaptateurs de base de données | SQLite uniquement, via FFI |
 | `Article.transaction { ... }` renvoie la valeur du bloc&nbsp;; `raise ActiveRecord::Rollback`&nbsp;; savepoints avec `requires_new: true` | `Article.transaction { \|c\| ... }` passe la connexion au bloc et renvoie nil&nbsp;; on en sort en levant une exception&nbsp;; les appels imbriqués rejoignent la transaction externe, pas de savepoints ([Transactions](models.md#transactions)) |
 | `has_many :through`, enums, STI, associations polymorphes | Non implémenté&nbsp;; `has_many`, `has_one` et `belongs_to` viennent des clés étrangères ou de déclarations d’une ligne, avec `dependent:`, `counter_cache:` et un niveau d’`includes` ([Associations](models.md#associations)) |
 | `pluck(:a)`, `maximum(:a)`, `group(:a).sum(:b)`, `upsert`, `update_counters`, `where(created_at: t1..t2)` | Des variantes typées, car une méthode Spinel a un seul type de retour&nbsp;: `pluck_int` et ses semblables, `maximum_int`, `sum_float_by`, `upsert`, `increment(:col, by: n)`&nbsp;; un intervalle de Time s’écrit `where_between` ([Requêtes au-delà de `where`](models.md#querying-beyond-where)) |
 | N’importe quel nom de colonne&nbsp;; une association peut masquer `errors` | Des identifiants ASCII uniquement&nbsp;; une colonne nommée comme une méthode du framework ou un mot-clé Ruby est générée sous `<column>_column`, une association qui entre en conflit sous un nom de repli ([Noms de colonnes](models.md#column-names)) |
-| `namespace`, format/`respond_to`, `constraints`, `mount` | Non implémenté — noms plats, `render json:` uniquement |
+| `namespace`, `scope`, formats et `respond_to` | Pareil ([Routage](requests.md#routing), [Formats](requests.md#formats-and-respond_to))&nbsp;; on répond en JSON avec `render json:` (pas de templates jbuilder) |
+| `constraints`, `mount`, segments glob | Non implémenté |
+| `ActiveSupport::Concern` inclus à l’exécution | Concerns dans `app/controllers/concerns` et `app/models/concerns`, développés par `spin run gen` dans les classes qui les incluent&nbsp;; un `include` nomme un concern, et une méthode de `class_methods` ne peut pas porter le nom d’une méthode d’instance ([Concerns](requests.md#concerns-and-helper_method)) |
 | `rescue StandardError` attrape un `JSON.parse` qui échoue | Sous Spinel, `JSON::ParserError` n’est pas une `StandardError`&nbsp;: le code de l’application doit faire `rescue JSON::ParserError, StandardError`. Le serveur l’attrape en dernier recours et répond 500 |
 | `skip_forgery_protection` dans un contrôleur d’API | Le CSRF s’exécute avant le routage, donc une API est exemptée par chemin, `c.csrf_exempt_prefixes = ["/api/"]`, et authentifie elle-même ses appelants ([Configuration](configuration.md#configuration-and-environment-variables)) |
 | Rack laisse un corps de requête gzip tel quel | Un corps `Content-Encoding: gzip` est `request.decoded_body`, décompressé sous un plafond de 10&nbsp;Mio&nbsp;; un corps corrompu ou trop gros donne une 400&nbsp;; `request.body` reste tel qu’envoyé ([Chaînes de requête et corps](requests.md#query-strings-and-bodies)) |
@@ -100,6 +104,7 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | `get "up" => "rails/health#show"` (une route vers un contrôleur) | `GET /up` est intégré et reçoit sa réponse avant les fichiers statiques, la session et le routeur, donc aucun `before_action` ne s’exécute&nbsp;; il interroge la base de données, le worker et les flux WebSocket, `200 ok` ou `503` ([Exploitation](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | Tâches `bin/rails db:...` pour les sauvegardes (aucune intégrée) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renommé à sa place) et `./<app> db vacuum` |
 | Action Cable, `turbo_stream_from`, `broadcast_append_to` | Les mêmes noms de helpers sur des flux signés, livrés en Server-Sent Events ou en WebSocket depuis une seule table SQLite&nbsp;; pas de classes de canaux ([Temps réel](realtime.md)) |
-| Asset pipeline, i18n | Pas encore développé (phases ultérieures, `docs/design.md` D1) |
+| Propshaft, importmap-rails | La même organisation (`app/assets`, `app/javascript`, `vendor/javascript`, `config/importmap.rb`), avec empreinte par `spin run gen` dans `public/assets/`&nbsp;; pas de `bin/importmap pin`, Turbo non fourni ([Assets](assets.md)) |
+| i18n | Pas encore développé (phase 4b, `docs/design.md` D1) |
 
 <!-- table-foot: Liste non exhaustive&nbsp;: `docs/design.md` §8 («&nbsp;What was deliberately left out&nbsp;») en est l’inventaire plus complet. -->

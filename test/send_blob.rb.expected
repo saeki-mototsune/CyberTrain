@@ -27,7 +27,7 @@ csp default-src 'none'; sandbox
 cache private, max-age=3600
 ok   a type with parameters is not on the inline list
 disposition inline; filename="abSet-Cookie x_1caf__.png"; filename*=UTF-8''abSet-Cookie%20x%3D1caf%C3%A9.png
-header lines 8
+header lines 9
 ok   a hostile stored filename makes a safe ASCII header
 disposition inline; filename="caf__ ______.png"; filename*=UTF-8''caf%C3%A9%20%E6%97%A5%E6%9C%AC.png
 ok   a non-ASCII filename gets an ASCII fallback and a percent-encoded name

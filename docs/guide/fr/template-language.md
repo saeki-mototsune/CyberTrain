@@ -1,5 +1,5 @@
 ---
-source_sha256: 3354d343281bf776b3016f5d1c574c1b5d5c88983a4c9e70b418a9427b206039
+source_sha256: ea0920c65e1defc6886af8050bf6977a12fa422a483c5e9a9a87305465abbf41
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -268,22 +268,39 @@ Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui fait 
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` est échappé sauf s’il est déjà une `SafeString`&nbsp;; **pas de `method:`** — lève une erreur qui vous dit d’utiliser `button_to` (pas de liens DELETE simulés à la rails-ujs/turbo) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | un `<form class="button_to">` à un seul bouton&nbsp;; un `_method` caché pour tout verbe autre que `get`/`post`, plus le champ CSRF quand une session existe |
-| `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | exige un bloc&nbsp;; `model:` nouveau → route de collection + POST, persisté → route de membre + PATCH&nbsp;; `[parent, child]` pour une route imbriquée&nbsp;; `url:`/`method:` remplacent l’action/le verbe déduits&nbsp;; `multipart: true` ajoute `enctype="multipart/form-data"` (requis pour `f.file_field`&nbsp;; ce n’est jamais deviné à partir du bloc, et cela lève `ArgumentError` sur un formulaire GET) |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials) et [Composants](#components) |
+| `form_with` | `form_with(model:, url:, scope:, method:, class:, data:, multipart:, local:) do \|f\| ... end` | exige un bloc&nbsp;; `model:` nouveau → route de collection + POST, persisté → route de membre + PATCH&nbsp;; `[parent, child]` pour une route imbriquée, `[:admin, @article]` pour une route dans un namespace&nbsp;; `url:`/`method:` remplacent l’action/le verbe déduits&nbsp;; `scope: :q` nomme les champs `q[term]` (avec `model:`, il remplace le préfixe du modèle)&nbsp;; `data: { turbo_frame: "f" }` écrit des attributs `data-`&nbsp;; `local:` est accepté et ne change rien&nbsp;; `multipart: true` ajoute `enctype="multipart/form-data"` (requis pour `f.file_field`&nbsp;; ce n’est jamais deviné à partir du bloc, et cela lève `ArgumentError` sur un formulaire GET) |
+| `select_tag` | `select_tag(name, option_tags = nil, include_blank:, prompt:, multiple:)` | `select_tag "order", options_for_select([["Newest", "new"], ["Oldest", "old"]], "old")` → `<select name="order" id="order">...</select>`&nbsp;; un `option_tags` qui n’est pas une `SafeString` est échappé&nbsp;; `multiple: true` le nomme `order[]`&nbsp;; les autres mots-clés sont des attributs |
+| `options_for_select` | `options_for_select(choices, selected = nil)` | les lignes `<option>` des choix de `f.select` (ci-dessous)&nbsp;; `selected` est une valeur ou un Array de valeurs, comparées comme des String |
+| `options_from_collection_for_select` | `options_from_collection_for_select(records, :id, :name, selected = nil)` | une `<option>` par enregistrement, sa valeur et son texte lus comme les lit `f.collection_select` |
+| `label_tag`, `text_field_tag`, `hidden_field_tag`, `submit_tag` | `label_tag(name, text = nil)`, `text_field_tag(name, value = nil)`, `hidden_field_tag(name, value = nil)`, `submit_tag(value = "Save changes")` | les balises de formulaire sans modèle&nbsp;: `label_tag(:term)` → `<label for="term">Term</label>`&nbsp;; `hidden_field_tag` écrit `autocomplete="off"`&nbsp;; `submit_tag` s’appelle `commit`&nbsp;; les autres mots-clés sont des attributs (`id:` remplace l’id tiré du nom) |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render partial: "comment", collection: @comments` / `render @comments` / `render component: "card", k: v` | voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials), [Collections](#collections) et [Composants](#components) |
 | `h`, `escape` | `h(text)` | échappe&nbsp;; une `SafeString` passe sans être échappée |
 | `raw` | `raw(text)` | enveloppe le texte dans une `SafeString` (affiché sans échappement) |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`&nbsp;; `pluralize(2, "mouse")` → `"2 mice"` (les inflexions anglaises par défaut de Rails, via `Cybertrain::Inflector`&nbsp;; les inflexions définies par l’application ne sont pas prises en charge)&nbsp;; un troisième argument explicite l’emporte toujours |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
-| `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`&nbsp;; `-1000` → `"-1,000"`&nbsp;; `1234.5` → `"1,234.5"` |
+| `number_with_delimiter` | `number_with_delimiter(n, delimiter: ",", separator: ".")` | `1234567` → `"1,234,567"`&nbsp;; `-1000` → `"-1,000"`&nbsp;; `1234.5` → `"1,234.5"` |
+| `number_with_precision` | `number_with_precision(n, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)` | `111.2345` → `"111.235"`&nbsp;; `precision: 0` → `"111"` |
+| `number_to_human` | `number_to_human(n, precision: 3, units: {})` | `1234` → `"1.23 Thousand"`, `1234567` → `"1.23 Million"`&nbsp;; `units: { thousand: "K" }` remplace le nom d’une unité (`unit`, `thousand` … `quadrillion`) |
+| `number_to_percentage` | `number_to_percentage(n, precision: 3)` | `100` → `"100.000%"` |
+| `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`&nbsp;; un nombre négatif écrit `-` avant le format |
+| `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (base 1024)&nbsp;; `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Tranches à la Rails, sans précision à la seconde&nbsp;: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | vide / absent sans session de contrôleur |
+| `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / le nonce seul, le nonce de la [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) de cette requête&nbsp;; `""` quand aucune politique ne s’applique |
+| `javascript_tag` | `javascript_tag(nonce: true) do ... end`, `javascript_tag(js)` | le contenu dans un `<script>` (non échappé, comme dans Rails&nbsp;: n’y mettez jamais de données de la requête), avec le nonce quand `nonce: true` et qu’une politique s’applique&nbsp;; `id:`, `type:`, `data:` sont des attributs |
+| `asset_path` | `asset_path("logo.svg")` | `/assets/logo-1a2b3c4d.svg` (voir [Assets](assets.md#helpers))&nbsp;; une URL ou un chemin commençant par `/` est renvoyé tel quel |
+| `stylesheet_link_tag` | `stylesheet_link_tag("application", media:, nonce:)` | `<link rel="stylesheet" href="/assets/application-1a2b3c4d.css">` (`.css` ajouté s’il manque) |
+| `javascript_include_tag` | `javascript_include_tag("legacy", nonce:)` | `<script src="/assets/legacy-1a2b3c4d.js"></script>` (`.js` ajouté s’il manque) |
+| `image_tag` | `image_tag(source, alt:, size:, class:)` | `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16" height="16">` pour `size: "16x16"` (ou `"16"`)&nbsp;; aucun `alt` n’est inventé, `alt: ""` est écrit |
+| `javascript_importmap_tags` | `javascript_importmap_tags(entry = "application")` | l’import map, un lien `modulepreload` par pin préchargé et `import "application"`, chacun avec le nonce quand une politique s’applique ([Assets](assets.md#the-import-map))&nbsp;; a besoin d’une requête |
 | `flash` | | à la manière d’un `Hash`&nbsp;: `flash[:notice]` |
 | `params` | | les `Cybertrain::Params` courants |
 | `request_path` | | le chemin courant, `""` sans contrôleur |
-| `url_for` | `url_for(target)` | `String` tel quel, `Model` → route de membre, `[parent, child]` → route imbriquée |
+| `url_for` | `url_for(target, format:, anchor:, k: v)` | `String` tel quel, `Model` → route de membre, `[parent, child]` → route imbriquée, `[:admin, record]` → route dans un namespace&nbsp;; les mots-clés sont ajoutés comme un helper de chemin les ajoute (`url_for("/x", format: :csv)` → `/x.csv`) |
+| `current_page?` | `current_page?(path)` | si cette requête GET ou HEAD vise `path` (à une barre oblique finale près&nbsp;; avec une query dans `path`, la query doit aussi correspondre)&nbsp;; un enregistrement ou un Array passe par `url_for`&nbsp;; faux pour toute autre méthode&nbsp;; a besoin d’une requête |
 | `paginate` | `paginate(page, path)` | `page` est un `Cybertrain::Page` (issu de `Relation#page`)&nbsp;; rend `<nav class="pager">` avec «&nbsp;Newer&nbsp;» (`rel="prev"`), `<span class="pager-current">Page N</span>` et «&nbsp;Older&nbsp;» (`rel="next"`), un lien étant omis quand la page correspondante n’existe pas. Chaque lien est `path` plus la chaîne de requête de la requête courante avec `page` remplacé (supprimé pour la page 1), réencodée et échappée pour le HTML&nbsp;; un `path` avec sa propre `?query` utilise plutôt celle-ci. Un `Page` répond aussi à `number`, `per`, `row_offset`, `next?`, `prev?`, `next_number`, `prev_number` dans un template (`<% if @page.next? %>`) |
-| `*_path` / `*_url` | par ex. `post_path(post)` | générés par l’application, résolus via `Cybertrain::Views.url_resolver` |
+| `*_path` / `*_url` | par ex. `post_path(post)`, `posts_path(page: 2, format: :json)` | générés par l’application, résolus via `Cybertrain::Views.url_resolver`&nbsp;; les mots-clés vont dans la chaîne de requête, `format:` ajoute l’extension et `anchor:` le fragment ([Redirections et chaînes de requête](requests.md#redirects-and-query-strings)) |
 | `tag` | `tag.div(content, attrs) do ... end` | le constructeur tag&nbsp;: voir [Le constructeur tag](#the-tag-builder) |
 | `content_tag` | `content_tag(name, content = nil, attrs)`, ou avec un bloc `do` | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`&nbsp;; les mêmes règles que `tag` |
 | `safe_join` | `safe_join(array, sep = "")` (sans arguments nommés) | joint en une `SafeString`, en échappant chaque élément et le séparateur qui ne sont pas déjà des `SafeString`&nbsp;: `safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
@@ -292,8 +309,13 @@ Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui fait 
 | `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | un `<turbo-stream-source>` qui abonne la page aux flux (des Strings, ou des enregistrements nommés `"articles:12"`)&nbsp;; `ws: true` donne une URL `ws://`/`wss://` et exige une requête. Voir [Temps réel](realtime.md#turbo-streams) |
 | `signed_stream_name` | `signed_stream_name(*streams)` | le jeton signé seul, pour du JavaScript écrit à la main |
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | le chemin du point d’entrée des flux avec le jeton et `mode=json` (ou `"raw"`) |
+| `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`&nbsp;; un enregistrement donne son `dom_id`&nbsp;; chaque attribut seulement s’il est fourni |
+| `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | un élément `<turbo-stream action="...">`, pour un template `*.turbo_stream.erb`&nbsp;; la cible est un id DOM ou un enregistrement&nbsp;; exactement un parmi un bloc, `partial:` (avec `locals:`) et `html:` |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`, ou avec un bloc | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`&nbsp;; une Date donne `2026-11-10`&nbsp;; `format:` vaut `:short`, `:long` ou une String strftime (une directive inconnue lève une erreur, de même qu’une largeur ou un drapeau que strftime lirait autrement&nbsp;: `%6L`, utilisez `%6N`&nbsp;; `:` seulement dans `%:z`&nbsp;; pas de drapeau de remplissage sur `%F %T %D %R %r %c %x %X %v`&nbsp;; une largeur sur un nombre remplace son remplissage, `%5e` donne `"    5"`) |
 
 Chaque argument texte d’un helper suit une seule règle&nbsp;: une `SafeString` passe sans être échappée, tout le reste est échappé — `link_to raw('<b>raw</b>'), post` affiche la balise gras littéralement, mais `link_to post.title, post` l’échappe.
+
+Les six helpers numériques sont ceux de `Cybertrain::NumberHelper`, que le code Ruby appelle comme des fonctions de module avec les mêmes mots-clés (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). Ils prennent un Integer, un Float ou une String numérique (les colonnes décimales sont des Float) et arrondissent au demi supérieur sur les chiffres de son texte décimal, si bien que le résultat est le même sur les deux runtimes&nbsp;; toute autre valeur lève `ArgumentError` (`"number_with_delimiter: \"abc\" is not a number"`), tout comme une précision hors de 0 à 100. Dans un template, `nil` donne `""` (une colonne décimale nullable s’affiche vide, comme dans Rails)&nbsp;; `Cybertrain::NumberHelper` appelé depuis Ruby lève toujours `ArgumentError` pour `nil` (`"number_with_delimiter: nil is not a number"`). Les formats sont en anglais.
 
 ### Le constructeur tag
 
@@ -321,13 +343,16 @@ Chaque méthode renvoie une `SafeString`&nbsp;; une méthode non listée est une
 | Méthode | Rendu |
 | --- | --- |
 | `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>` — le texte par défaut est l’attribut humanisé (`published_at` → «&nbsp;Published at&nbsp;», `author_id` → «&nbsp;Author&nbsp;»)&nbsp;; un texte explicite est échappé sauf s’il est une `SafeString` |
-| `f.text_field :title` (aussi `email_field`, `password_field`, `number_field`, `date_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`&nbsp;; `password_field` n’émet jamais `value=` |
+| `f.text_field :title` (aussi  `email_field`, `password_field`, `number_field`, `date_field`, `datetime_local_field`, `time_field`, `range_field`, `color_field`, `search_field`, `telephone_field`, `url_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`&nbsp;; `password_field` n’émet jamais `value=`&nbsp;; `telephone_field` est `type="tel"`&nbsp;; un Time est écrit comme le lit le navigateur (`2026-11-10`, `2026-11-10T12:00:00`, `12:00:00.000`) |
+| `f.select :status, ["draft", "published"]` (aussi  `include_blank:`, `prompt:`, `selected:`, `disabled:`, `multiple:`) | `<select name="post[status]" id="post_status">` avec une `<option>` par choix, la valeur actuelle sélectionnée&nbsp;; les choix sont des valeurs, des paires `[text, value]`, ou un Hash ou des groupes `[label, [choices]]` pour `<optgroup>`&nbsp;; `multiple: true` le nomme `post[status][]` et écrit d’abord un input caché vide |
+| `f.collection_select :author_id, @authors, :id, :name` | un `<select>` avec une `<option>` par enregistrement, sa valeur et son texte lus depuis les deux méthodes |
+| `f.radio_button :status, "draft"` | `<input type="radio" name="post[status]" id="post_status_draft" value="draft">`, coché quand la valeur correspond (`checked:` prend le dessus) |
 | `f.file_field :cover` (aussi `accept: "image/*"`, `required: true`) | `<input type="file" name="post[cover]" id="post_cover">` — jamais de `value=`, et l’attribut n’a pas besoin d’être une colonne&nbsp;; le formulaire doit être `form_with ..., multipart: true`&nbsp;; `multiple: true` lève `ArgumentError` (un fichier par champ) |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>` (`\n` initial, comme le fait Rails — les navigateurs absorbent le premier saut de ligne) |
-| `f.check_box :published` | un input caché `value="0"` puis la vraie case à cocher, de sorte qu’une case non cochée envoie quand même `"0"` |
+| `f.check_box :published` | un input caché `value="0"` puis la vraie case à cocher, de sorte qu’une case non cochée envoie quand même `"0"`&nbsp;; `include_hidden: false` omet l’input caché |
 | `f.submit` / `f.submit "Text"` | texte par défaut `"Create Post"`/`"Update Post"` (selon `persisted?`), ou `"Save changes"` sans modèle |
 
-Avec un modèle, les champs sont nommés `post[title]`/`id="post_title"` (avec `Inflector.underscore(model.model_name)` comme portée)&nbsp;; avec `form_with(url: ...)` et sans modèle, le nom d’attribut nu est utilisé pour les deux. Les arguments nommés supplémentaires deviennent des attributs HTML dans l’ordre donné&nbsp;: `true` → `attr="attr"`, `false`/`nil` omis, tout le reste → `attr="value"` (échappé), les tirets bas deviennent des traits d’union (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), et `class:` est fusionné avec la classe automatique `field_with_errors` ajoutée quand `model.errors.key?(attr)`.
+Avec un modèle, les champs sont nommés `post[title]`/`id="post_title"` (avec `Inflector.underscore(model.model_name)` comme portée)&nbsp;; `form_with(..., scope: :q)` utilise plutôt `q[title]`/`id="q_title"`&nbsp;; avec `form_with(url: ...)` et sans modèle ni portée, le nom d’attribut nu est utilisé pour les deux. Chaque valeur d’attribut et chaque texte d’option est échappé une fois (une `SafeString` telle quelle). Les arguments nommés supplémentaires deviennent des attributs HTML dans l’ordre donné&nbsp;: `true` → `attr="attr"`, `false`/`nil` omis, tout le reste → `attr="value"` (échappé), les tirets bas deviennent des traits d’union (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), et `class:` est fusionné avec la classe automatique `field_with_errors` ajoutée quand `model.errors.key?(attr)`.
 
 ## Helpers de l’application
 
@@ -402,7 +427,7 @@ html = Cybertrain::Views.render_partial("articles/article", article: article)   
 card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
 ```
 
-Les deux renvoient le HTML sous forme de String, avec les helpers de l’application. Les helpers de chemin fonctionnent (`article_path(article)`), les strict locals sont vérifiés, et les formulaires (`form_with`, `button_to`) se rendent sans le jeton d’authenticité (une page Turbo soumet celui de `csrf_meta_tags`). Un helper qui a besoin d’une requête lève `Cybertrain::Views::OutsideRequest` (`"csrf_token needs a request"`)&nbsp;: `csrf_token`, `csrf_meta_tags`, `params`, `flash`, `request_path`, tout helper `*_url` et `turbo_stream_from ... ws: true`. Les liens de `paginate` ne portent que la query string propre au chemin. (Un `Cybertrain::Template::Helpers.new(nil)` nu, tel qu’un test unitaire peut en construire, y répond plutôt par des valeurs vides.)
+Les deux renvoient le HTML sous forme de String, avec les helpers de l’application. Les helpers de chemin fonctionnent (`article_path(article)`), les strict locals sont vérifiés, et les formulaires (`form_with`, `button_to`) se rendent sans le jeton d’authenticité (une page Turbo soumet celui de `csrf_meta_tags`). Un helper qui a besoin d’une requête lève `Cybertrain::Views::OutsideRequest` (`"csrf_token needs a request"`)&nbsp;: `csrf_token`, `csrf_meta_tags`, `params`, `flash`, `request_path`, `current_page?`, `content_security_policy_nonce` (donc `csp_meta_tag` et un helper de balise auquel on passe `nonce: true`), `javascript_importmap_tags`, tout helper `*_url` et `turbo_stream_from ... ws: true`. Les liens de `paginate` ne portent que la query string propre au chemin. (Un `Cybertrain::Template::Helpers.new(nil)` nu, tel qu’un test unitaire peut en construire, y répond plutôt par des valeurs vides.)
 
 ## Layouts, `yield`, `content_for`, partiels
 
@@ -420,6 +445,23 @@ Les deux renvoient le HTML sous forme de String, avec les helpers de l’applica
 <% content_for :title, " (draft)" %>   <%# appends: calls accumulate, they don't replace %>
 ```
 
+### Layouts par contrôleur
+
+Une action se rend dans `app/views/layouts/application.html.erb` (quand il existe) sauf si son contrôleur, un parent ou un concern qu’il inclut en choisit un autre&nbsp;:
+
+```ruby
+class AdminController < ApplicationController
+  layout "print", only: [:receipt]      # app/views/layouts/print.html.erb
+  layout :choose_layout                 # une méthode : un nom, false pour aucun, nil pour celui du parent
+
+  private
+
+  def choose_layout = request.header("Turbo-Frame").to_s.empty? ? "application" : "frame"
+end
+```
+
+`layout "admin"` seul nomme un layout pour toutes les actions. `spin run gen` lit les lignes `layout` (un nom entre guillemets, `false`, ou le Symbol d’une méthode, avec `only:` / `except:`) et écrit le `controller_layout(action)` du contrôleur. Les déclarations sont essayées dans l’ordre et **la première qui s’applique l’emporte** (Rails laisse une déclaration ultérieure remplacer une antérieure)&nbsp;; les lignes d’un concern comptent à son `include`. `render layout: "x"` utilise `layouts/x` pour un appel et `render layout: false` aucun&nbsp;; un `layouts/` initial est accepté (`layout "layouts/x"` vaut `layouts/x`). Une ligne `layout` ou un `render layout:` qui nomme un layout inexistant lève `MissingTemplate`&nbsp;; seul le layout `application` par défaut est facultatif (l’action se rend alors sans layout). Seul le html est rendu dans un layout&nbsp;; le template d’un autre format se rend sans. Tout autre argument de `layout` (`nil`, une lambda, une constante) est refusé par gen.
+
 ### Partiels et `render`
 
 ```erb
@@ -432,6 +474,19 @@ Les deux renvoient le HTML sous forme de String, avec les helpers de l’applica
 - Le partiel reçoit **une copie de tout l’environnement de l’appelant** (ivars et toutes les variables locales déjà visibles) plus les variables locales explicitement passées à `render` — il n’est pas cloisonné à ce qui lui a été passé. Les locals stricts ne valident que les noms **explicitement passés à cet appel de `render`** par rapport à la liste déclarée&nbsp;; ils n’empêchent pas le partiel de lire aussi un autre nom qu’il hérite de l’environnement de l’appelant.
 - Seules les clés de `content_for` (`__content_*`) sont recopiées de la portée d’un partiel vers celle de l’appelant&nbsp;; les variables locales ordinaires qu’il affecte ne remontent pas.
 - Des variables locales manquantes/en trop par rapport à une déclaration `<%# locals: %>` sont des `RuntimeError`&nbsp;: `"missing local 'post' for posts/_form.html.erb"`, `"unknown local 'extra' for posts/_form.html.erb"`.
+
+### Collections
+
+```erb
+<%= render partial: "comment", collection: @comments, as: :comment, spacer_template: "divider" %>
+<%= render @comments %>      <%# each record's comments/_comment.html.erb %>
+<%= render @comment %>       <%# one record, no counter %>
+<%= render component: "comment", collection: @comments %>
+```
+
+- `collection:` rend le partiel une fois par élément d’un Array, sous la variable locale nommée par `as:` (par défaut le nom du partiel), avec `<as>_counter` qui compte à partir de 0, les `locals:` donnés à chacun et `spacer_template:` (un partiel) entre les éléments&nbsp;; une collection vide ne rend rien. Un partiel à locals stricts ne reçoit le compteur que s’il le déclare, et l’élément l’emporte sur une variable locale du même nom.
+- `render @comments` choisit le partiel de chaque enregistrement d’après son modèle, `<plural>/_<singular>` (`admin/notes/_note` pour un `Admin::Note`), si bien qu’une liste peut mêler des modèles.
+- Un composant dont l’unique mot-clé requis porte son nom (`CommentComponent` avec `comment:`) reçoit `CommentComponent.with_collection(items)`, et `render component: "comment", collection: @comments` le rend une fois par élément, en passant `comment_counter:` quand `initialize` le déclare. `collection:` n’accepte aucun autre mot-clé (`render component: "comment", collection: @comments, extra: 1` est une erreur qui le nomme)&nbsp;; le contenu du bloc n’est pas transmis.
 
 ### Résolution des fichiers (`engine.rb`)
 
@@ -473,4 +528,5 @@ Toute `StandardError` ordinaire venant d’un helper ou d’un appel de méthode
 | `1 / 0` et `1.0 / 0` lèvent tous deux `ZeroDivisionError` | La division/le modulo d’un `Integer` par zéro lève `"divided by 0"`&nbsp;; `Float` suit l’IEEE-754 (`Infinity`/`NaN`), sans erreur |
 | `distance_of_time_in_words`/la pluralisation prennent en charge les locales i18n | Anglais uniquement, pas de prise en charge des locales |
 | Chaque module de `app/helpers` est mélangé dans la vue&nbsp;; n’importe quelle signature&nbsp;; un helper peut en remplacer un du framework | Les modules sont analysés à la compilation en un `case` généré&nbsp;: paramètres nommés seulement, au plus trois optionnels, aucun nom de helper du framework et pas de terminaison `_path`/`_url` ([Helpers de l’application](#application-helpers)) |
-| ViewComponent&nbsp;: `render CardComponent.new(title: "x")`, `with_collection`, slots | `render component: "card", title: "x"` par nom, `content` venant du bloc&nbsp;; pas de collections ni de slots ([Composants](#components)) |
+| ViewComponent&nbsp;: `render CardComponent.new(title: "x")`, `with_collection`, slots | `render component: "card", title: "x"` par nom, `content` venant du bloc, `collection:` pour un composant qui porte le nom de son unique mot-clé requis&nbsp;; pas de slots ([Composants](#components), [Collections](#collections)) |
+| Une ligne `layout` ultérieure remplace une antérieure | La première déclaration `layout` qui s’applique l’emporte ([Layouts par contrôleur](#per-controller-layouts)) |

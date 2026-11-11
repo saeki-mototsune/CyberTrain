@@ -10,4 +10,5 @@ ok   a view under app/views/components/ and a component render side by side
 ok   the same, from embedded templates
 ok   a bare partial in a component template comes from app/components/, not app/views/components/
 ok   the derived names of the base class
-12 tests, 19 assertions, 0 failures
+ok   CommentComponent.with_collection(items) and render component: collection:
+13 tests, 26 assertions, 0 failures

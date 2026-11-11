@@ -30,6 +30,13 @@ for you.
 - zlib headers/library (`zlib1g-dev` on Debian/Ubuntu; in the macOS SDK) —
   gzip request bodies (`request.decoded_body`) are inflated through the
   system zlib, bound the same way.
+- OpenSSL headers/library (`libssl-dev` on Debian/Ubuntu) — every
+  application links them: the session cookie and `cookies.encrypted` are
+  AES-256-GCM through Spinel's `openssl` package, which Spinel builds only
+  when the headers are there. On macOS install Homebrew's
+  (`brew install openssl@3`), which is keg-only, and put it on the
+  compiler's paths: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+  CPATH="$(brew --prefix openssl@3)/include"`.
 - Ruby 3.2+ and RubyGems, for the `cybertrain` command only (applications
   never run on CRuby); on Ruby 3.2, building Spinel also needs the `prism`
   gem (below).
@@ -38,17 +45,15 @@ for you.
 when a required one is missing it also prints the install command for your
 platform.
 
-<details><summary>More packages — prism on Ruby 3.2; OpenSSL and jemalloc, both optional</summary>
+<details><summary>More packages — prism on Ruby 3.2; jemalloc, optional</summary>
 
 - Building Spinel needs Ruby's `prism` gem, which Ruby 3.3 and newer bundle;
   on Ruby 3.2, `gem install prism` (with Ruby's development headers,
   `ruby-dev` on Debian/Ubuntu). `cybertrain doctor` checks it.
-- OpenSSL's headers (`libssl-dev`) are optional: without them Spinel builds
-  without its `openssl` package, which an application needs only for TLS
-  (`require "cybertrain/net/tls"`) or encrypted columns (`encrypts`). On macOS an
-  application that requires `openssl` needs Homebrew's (keg-only) OpenSSL on
-  the compiler's paths: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
-  CPATH="$(brew --prefix openssl@3)/include"`.
+- A Spinel built before the OpenSSL headers were installed has no `openssl`
+  package, and an application then fails to build; run
+  `cybertrain setup --force` once they are there to rebuild it. The same package serves TLS
+  (`require "cybertrain/net/tls"`) and encrypted columns (`encrypts`).
 - jemalloc's development package (`libjemalloc-dev`; `brew install jemalloc`)
   is optional: an app needs it only once its `spin.toml` says
   `allocator = "jemalloc"`, which `cybertrain new` writes commented out. It
@@ -204,3 +209,7 @@ run, in the app:
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+An application written for 0.4 has a few changes to make (every session
+ends once, OpenSSL is linked, a dotted route segment needs `format: false`,
+and more): see [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04).

@@ -4,10 +4,13 @@
 # PBKDF2-HMAC-SHA256, in Ruby over the runtime's vendored SHA-256, like
 # Crypto's HMAC: bcrypt and argon2 would need a C library the binary links
 # (`String#crypt` is libc crypt(3), whose bcrypt is glibc/libxcrypt only; macOS
-# has none), and Spinel's `openssl` package needs libssl on the link path,
-# which cybertrain avoids (docs/design.md D8). PBKDF2 is what NIST SP 800-132
-# and Django's default hasher use; the loop is plain Ruby, so it compiles
-# wherever the framework does.
+# has none), and Spinel's `openssl` package needed libssl on the link path,
+# which cybertrain avoided when this was written (docs/design.md D8). Every
+# program links openssl now (`require "cybertrain"` loads
+# cybertrain/encryptor.rb for the encrypted session), but digests stay
+# PBKDF2, so existing ones need no migration. PBKDF2 is what NIST SP
+# 800-132 and Django's default hasher use; the loop is plain Ruby, so it
+# compiles wherever the framework does.
 #
 # A digest is a PHC-style string naming its parameters, so the cost can be
 # raised later (or the algorithm replaced) and old digests still verify:

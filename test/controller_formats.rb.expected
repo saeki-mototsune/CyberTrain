@@ -1,0 +1,13 @@
+ok   respond_to picks html, json or turbo_stream
+ok   a format the action does not list is 406
+ok   implicit rendering: create.turbo_stream.erb without a layout; index.csv.erb
+ok   an unregistered extension reaches the action and an implicit render is 406
+ok   json without a template and without render is 406
+ok   blocks see ivars and stop at the first match
+ok   a Turbo request that also takes html falls back to the html answer
+ok   the implicit render after a respond_to arm follows the format the arm matched
+ok   render :x inside a non-html arm renders that format's template
+ok   any format from an Accept that lists */* falls back to html (axios)
+ok   a format chosen by Accept sends Vary: Accept
+ok   FormatCollector: the first matching arm, with or without a block
+12 tests, 66 assertions, 0 failures

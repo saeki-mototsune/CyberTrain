@@ -1,8 +1,10 @@
+ok   the session cookie is encrypted and round-trips
+ok   derive_key: 32 raw bytes, one per label and secret
 ok   round trip dump/load
-ok   tampered signature loads empty
-ok   wrong secret loads empty
+ok   two dumps of one session differ (a fresh nonce each)
+ok   foreign and damaged session cookies load empty
 ok   garbage loads empty
-ok   tampered payload with recomputed signature over garbage JSON loads empty
+ok   an authentic payload that is not a JSON object loads empty
 ok   dump writes no base64 padding, so serialize has nothing to encode at any length
 ok   a cookie written with base64 padding still loads
 ok   changed? starts false
@@ -16,9 +18,11 @@ ok   flash round-trips through SessionStore: request 1 sets, request 2 sees, req
 ok   the session cookie is Secure only when SessionStore is built with secure: true
 ok   SessionStore passes same_site and partitioned to its Set-Cookie
 ok   an unchanged session sets no cookie
+ok   a session larger than a cookie is refused at write
+ok   SessionStore gives the context a cookie jar over the request's cookies
 ok   Session#issued_at reads the recorded start, 0 for none or garbage
 ok   absolute_max_age stamps the first write and caps the cookie's Max-Age
 ok   a cookie past the absolute lifetime loads empty however recently it was used
 ok   a cookie without a start gets one; restart_lifetime! starts the count again
 ok   absolute_max_age 0 (SessionStore's default) leaves the start alone
-23 tests, 77 assertions, 0 failures
+27 tests, 111 assertions, 0 failures

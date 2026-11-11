@@ -7,7 +7,8 @@
 # examples/blog/gen/routes.rb). Every table gets the same surface under its
 # own names, and every job class the same class methods. Keep the signatures
 # in step with cybertrain/generator/models_emitter.rb, routes_emitter.rb,
-# controllers_emitter.rb (the jobs page's controller) and jobs_emitter.rb.
+# controllers_emitter.rb (the jobs page's controller, helper methods), concerns_emitter.rb
+# and jobs_emitter.rb.
 
 # What `spin run gen` writes into `gen/models/article.rb` for this table in
 # `db/schema.rb` (the {file:docs/api/README.md overview} has the rules for
@@ -59,8 +60,9 @@
 # relation answers `encrypted_column?` for it, so `where`, `where_like`,
 # `where_between`, `update_all` and the bulk writes refuse it
 # (ArgumentError), while `pluck` answers the payload.
-# gen/app.rb then requires `cybertrain/encryptor` (openssl) and boot requires
-# `CYBERTRAIN_ENCRYPTION_KEY` ({Cybertrain::Config#encryption_key}).
+# gen/app.rb then makes boot require `CYBERTRAIN_ENCRYPTION_KEY`
+# ({Cybertrain::Config#encryption_key}); the encryption itself
+# (cybertrain/encryptor, openssl) is in every program.
 #
 # **Associations** come from foreign keys (`t.references :article` in a
 # migration, or `add_reference`): the table with the key gets a `belongs_to`
@@ -982,6 +984,182 @@ class CybertrainJobsController < ApplicationController
   end
 end
 
+# What `spin run gen` writes into `gen/concerns.rb` for a controller concern
+# ({ActiveSupport::Concern}) with `class_methods`:
+#
+#     # app/controllers/concerns/admin_gate.rb
+#     module AdminGate
+#       extend ActiveSupport::Concern
+#
+#       included do
+#         before_action :require_admin
+#         helper_method :admin?
+#       end
+#
+#       class_methods do
+#         def per_page = 20
+#       end
+#
+#       def admin? = Current.user&.admin?
+#     end
+#
+# Each `def` of the `class_methods` block becomes a method of the concern,
+# with the same parameters and body.
+#
+# The application loads the concern itself from
+# `gen/concerns/controllers/concerns/admin_gate.rb` (a model concern from
+# `gen/concerns/models/concerns/<name>.rb`): the file as written, line for
+# line, with the lines of its `included do ... end` and `class_methods do
+# ... end` blocks left empty and a comment naming it as generated at the
+# end. Those blocks take effect only where gen/concerns.rb splices them,
+# so a block in them may call the including class's methods without a
+# receiver (`scope :visible, -> { where(hidden: 0) }`).
+#
+# A model concern's `included` body is spliced the same way into each
+# model that includes it, between
+# {Cybertrain::Model.model_concern_insert_at model_concern_insert_at}
+# (the count of the model's own `validates` calls above the `include`)
+# and {Cybertrain::Model.model_concern_insert_done model_concern_insert_done};
+# its scopes, associations, `validate` and `encrypts` lines and its
+# instance methods count, for gen/models, as written at the `include`:
+#
+#     class Post
+#       # Visible (include Visible at app/models/post.rb:4)
+#       model_concern_insert_at(1)
+#       validates :body, length: { maximum: 10000 }
+#       scope :visible, -> { where(hidden: 0) }
+#       model_concern_insert_done
+#     end
+# @api public
+module AdminGate
+  # `def per_page = 20` from the `class_methods` block.
+  # @return [Integer]
+  # @api public
+  def self.per_page = 20
+end
+
+module Admin
+  # What `spin run gen` writes into `gen/concerns.rb` for a controller that
+  # includes a concern (here `include AdminGate` in `module Admin; class
+  # ArticlesController < ApplicationController`, below one `before_action`
+  # of its own). The class is reopened (inside its modules) with a
+  # forwarder per `class_methods` method, then the concern's `included`
+  # body, as written, between
+  # {Cybertrain::Controller.concern_insert_at concern_insert_at} and
+  # {Cybertrain::Controller.concern_insert_done concern_insert_done}, so its
+  # callbacks run where the `include` line is:
+  #
+  #     module Admin
+  #       class ArticlesController
+  #         def self.per_page(...) = AdminGate.per_page(...)
+  #
+  #         # AdminGate (include AdminGate at app/controllers/admin/articles_controller.rb:4)
+  #         concern_insert_at(1, 0)
+  #         before_action :require_admin
+  #         rate_limit to: 30, within: 60, by: :account_key, unless: :admin?, name: "admin"
+  #         helper_method :admin?
+  #         layout "admin", except: [:show]
+  #         concern_insert_done
+  #       end
+  #     end
+  #
+  # gen/controllers.rb adds the concern's callback methods to the class's
+  # `run_callback` table (with the `with:` methods of `rate_limit` lines),
+  # writes {#rate_limit_key} and {#rate_limit_condition?} for their `by:`
+  # and `if:` / `unless:` methods, and adds the ivars its methods assign to
+  # `view_assigns`; for the `helper_method` names of the class and of the
+  # concerns it includes, it writes {#helper_method?} and
+  # {#call_helper_method}; for the `layout` lines of the class and of its
+  # concerns' `included` blocks, it writes {#controller_layout} (here
+  # AdminGate's `layout "admin", except: [:show]`, then the class's own
+  # `layout :choose_layout` below the `include`, `choose_layout` being a
+  # method of the controller that returns a layout name, false or nil).
+  # @api public
+  class ArticlesController < ApplicationController
+    # Forwards to {AdminGate.per_page}: `self.class.per_page` in an action.
+    # @return [Integer]
+    # @api public
+    def self.per_page(...) = AdminGate.per_page(...)
+
+    # The layout the action renders in: the `layout` lines in order (a
+    # concern's at its `include` line), the first that applies to the
+    # action winning, else the parent's (`super`). `layout "x"` is
+    # `"layouts/x"`, `layout false` `""` (none), and `layout :m` m's value
+    # (a name; false for none; nil for the parent's). The parameter and
+    # locals have names no application method has.
+    # @param layout_action__ [String] the action's name
+    # @return [String] the layout's name, `""` for none
+    # @api public
+    def controller_layout(layout_action__)
+      if layout_action__ != "show"
+        return "layouts/admin"
+      end
+      layout_chosen__ = choose_layout
+      return super if layout_chosen__.nil?
+      layout_chosen__ == false ? "" : Cybertrain::Controller.layout_path(layout_chosen__.to_s)
+    end
+
+    # Whether a template's receiverless call `name` is one of this
+    # controller's helper methods (`helper_method :admin?`, spec 4.3);
+    # a name it does not declare goes to the parent's table.
+    # @param name [String]
+    # @return [Boolean]
+    # @api private
+    def helper_method?(name)
+      case name
+      when "admin?" then true
+      else super
+      end
+    end
+
+    # Calls the helper method with the template's arguments, checked as an
+    # application helper's are (a wrong count or an unknown keyword raises
+    # ArgumentError).
+    # @param name [String]
+    # @param args [Array]
+    # @param kwargs [Hash{String => Object}]
+    # @return [Object]
+    # @api private
+    def call_helper_method(name, args, kwargs)
+      case name
+      when "admin?"
+        Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+        Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+        admin?
+      else super
+      end
+    end
+
+    # The key of a `rate_limit ..., by: :account_key` line of this
+    # controller or of its concerns' `included` blocks (spec C-4): the
+    # method's value as a String; a name it does not know goes to the
+    # parent's table. A `rate_limit` line's `with:` method is an arm of
+    # `run_callback`.
+    # @param name [Symbol] the `by:` method's name
+    # @return [String]
+    # @api private
+    def rate_limit_key(name)
+      case name
+      when :account_key then account_key.to_s
+      else super
+      end
+    end
+
+    # Whether the `if:` / `unless:` method of a `rate_limit` line
+    # (`unless: :admin?`) answers true; a name it does not know goes to
+    # the parent's table.
+    # @param name [Symbol] the method's name
+    # @return [Boolean]
+    # @api private
+    def rate_limit_condition?(name)
+      case name
+      when :admin? then !!admin?
+      else super
+      end
+    end
+  end
+end
+
 module Gen
   # The `*_path` and `*_url` helpers `spin run gen` writes into
   # `gen/routes.rb`, one pair per named route in `config/routes.rb`. They are
@@ -998,51 +1176,121 @@ module Gen
   # Arguments are positional, one per `:param` in the path: a record (its
   # {Cybertrain::Model#to_param to_param}, the id), an Integer or a String,
   # percent-encoded as one segment. nil raises `ArgumentError "missing route
-  # parameter"`. There is no hash form and no query-string option; append
-  # `"?page=2"` yourself. `*_url` prepends {Cybertrain.url_root}.
+  # parameter"`. `*_url` prepends {Cybertrain.url_root}.
+  #
+  # Keywords after them land in the trailing `options` Hash (spec 2.6):
+  # `format:` adds an extension, `anchor:` a fragment, and every other key
+  # becomes a query parameter, in the order given, escaped. A nil value
+  # leaves its key out, an Array gives `key[]=v` per element, a Hash raises
+  # ArgumentError. The same keywords work on a path helper in a template.
+  #
+  #     article_path(@article, page: 2)                 # => "/articles/3?page=2"
+  #     article_path(@article, format: :json)           # => "/articles/3.json"
+  #     articles_path(q: "a b", tag: ["x", "y"])        # => "/articles?q=a+b&tag%5B%5D=x&tag%5B%5D=y"
+  #     article_path(@article, page: 2, anchor: "c")    # => "/articles/3?page=2#c"
   #
   # See {Cybertrain::Routes.draw} for the names each route gets.
   # @api public
   module UrlHelpers
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/"`
     # @api public
-    def root_path = "/"
+    def root_path(options = {}) = Cybertrain::Gen.with_options("/", options)
 
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles"`
     # @api public
-    def articles_path = "/articles"
+    def articles_path(options = {}) = Cybertrain::Gen.with_options("/articles", options)
 
+    # @param options [Hash{Symbol => Object}] as for articles_path
     # @return [String] {Cybertrain.url_root} + `"/articles"`
     # @api public
-    def articles_url = Cybertrain.url_root + articles_path
+    def articles_url(options = {}) = Cybertrain.url_root + articles_path(options)
 
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/new"`
     # @api public
-    def new_article_path = "/articles/new"
+    def new_article_path(options = {}) = Cybertrain::Gen.with_options("/articles/new", options)
 
     # @example
     #   redirect_to article_path(@article), status: :see_other
+    #   article_path(@article, format: :json) # => "/articles/3.json"
     # @param article [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1"`
     # @api public
-    def article_path(article); end
+    def article_path(article, options = {}); end
 
     # @param article [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1/edit"`
     # @api public
-    def edit_article_path(article); end
+    def edit_article_path(article, options = {}); end
 
     # The nested collection: one argument per level.
     # @param article [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1/comments"`
     # @api public
-    def article_comments_path(article); end
+    def article_comments_path(article, options = {}); end
 
     # The nested member.
     # @param article [Cybertrain::Model, Integer, String]
     # @param comment [Cybertrain::Model, Integer, String]
+    # @param options [Hash{Symbol => Object}] `format:`, `anchor:` and query keys
     # @return [String] `"/articles/1/comments/2"`
     # @api public
-    def article_comment_path(article, comment); end
+    def article_comment_path(article, comment, options = {}); end
   end
+end
+
+module Gen
+  # What `spin run gen` writes into `gen/assets.rb` (cybertrain/generator/assets_emitter.rb):
+  # the asset manifest of app/assets/*/, app/javascript and vendor/javascript
+  # and the import map of config/importmap.rb, compiled into the binary. Its
+  # last line hands them to {Cybertrain::Assets.install}. An application
+  # with no assets gets an empty table. The values below are for an app with
+  # app/assets/images/logo.svg and `pin "application"`.
+  # @api public
+  module Assets
+    # @param logical [String] the path below an asset root (`"logo.svg"`,
+    #   `"controllers/hello_controller.js"`)
+    # @return [String] `"/assets/logo-1a2b3c4d.svg"`; `""` for a name that
+    #   is not an asset
+    # @api public
+    def self.digest_path(logical); end
+
+    # @return [String] `{"imports":{"application":"/assets/application-1a2b3c4d.js"}}`
+    #   (compact, pins in order, `</` written `</`)
+    # @api public
+    def self.importmap_json; end
+
+    # @return [Array<String>] `["/assets/application-1a2b3c4d.js"]`: the
+    #   pins without `preload: false`, in order
+    # @api public
+    def self.preload_paths; end
+
+    # @return [Proc] `->(name) { digest_path(name) }`, the resolver given to
+    #   {Cybertrain::Assets.install}
+    # @api public
+    def self.resolver = ->(name) { digest_path(name) }
+  end
+end
+
+# What `spin run gen` writes into `gen/components.rb` for
+# app/components/comment_component.rb (cybertrain/generator/components_emitter.rb;
+# examples/blog's): the per-class tables {Cybertrain::Component} documents,
+# and, because its only required keyword is named after it
+# (`def initialize(comment:)`), ViewComponent's `with_collection`. The
+# build arm of `Gen::Components.build` answers `render component:
+# "comment", collection: @comments` with the same collection.
+class CommentComponent < Cybertrain::Component
+  # One CommentComponent per item, each built with the item as `comment:`
+  # (and `comment_counter:` 0, 1, ... when `initialize` declares it).
+  # @example
+  #   Cybertrain::Views.render_component(CommentComponent.with_collection(@comments))
+  # @param items [Array]
+  # @return [Cybertrain::ComponentCollection]
+  # @api public
+  def self.with_collection(items) = Cybertrain::ComponentCollection.new("comment", "comment", items, false)
 end

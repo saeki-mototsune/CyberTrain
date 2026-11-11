@@ -158,7 +158,7 @@ test "the migrator applies a migration and the dumper reads it back" do
 end
 
 def integration_url_resolver
-  ->(name, args) { name == "notes_path" ? "/notes" : "/#{name}/#{args.size}" }
+  ->(name, args, options) { name == "notes_path" ? "/notes" : "/#{name}/#{args.size}" }
 end
 
 test "an Application boots the full stack from config" do
@@ -170,7 +170,7 @@ test "an Application boots the full stack from config" do
     c.static_files = false
   end
   router = Cybertrain::Router.new
-  router.get("/app", "app") { |ctx| ctx.response.body = "booted #{Cybertrain::Views.url_resolver.call("notes_path", [])}" }
+  router.get("/app", "app") { |ctx| ctx.response.body = "booted #{Cybertrain::Views.url_resolver.call("notes_path", [], {})}" }
   application = Cybertrain::Application.new(router: router, url_resolver: integration_url_resolver)
   application.boot
   client = Cybertrain::Test::Client.new(application)

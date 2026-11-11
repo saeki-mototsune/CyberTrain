@@ -32,6 +32,8 @@ def make_app
   Dir.mkdir("public/img")
   File.write("public/style.css", "body{}\n")
   File.write("public/img/logo.txt", "logo\n")
+  Dir.mkdir("public/assets")
+  File.write("public/assets/application-0123456789abcdef.css", "a{}\n")
 end
 
 make_app
@@ -250,6 +252,7 @@ test "assemble copies the binary and public/ into dist/ and keeps storage/ and t
   assert File.executable?("dist/blog")
   assert_equal "body{}\n", File.read("dist/public/style.css")
   assert_equal "logo\n", File.read("dist/public/img/logo.txt")
+  assert_equal "a{}\n", File.read("dist/public/assets/application-0123456789abcdef.css")
   refute File.exist?("dist/public/stale.css")
   refute File.exist?("dist/public/old.css")
   assert_equal "keep me", File.read("dist/storage/production.sqlite3")

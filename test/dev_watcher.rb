@@ -1,6 +1,7 @@
 # Cybertrain::Dev::Watcher: mtime snapshots over Dir.glob patterns and the
 # changed? semantics the development loop polls with. Runs under CRuby too.
 require "cybertrain/dev/watcher"
+require "cybertrain/dev/watched"
 require "cybertrain/test"
 
 ROOT = "tmp/dev_watcher_test"
@@ -133,6 +134,24 @@ test "start yields the changed paths from its polling thread until stop" do
   File.write("#{ROOT}/app/models/tag.rb", "class Tag\nend\n")
   sleep 0.15
   assert_equal 1, seen.size
+end
+
+test "an asset change triggers a rebuild" do
+  reset_root
+  ["app/assets", "app/assets/stylesheets", "app/javascript", "vendor", "vendor/javascript", "config"].each { |d| Dir.mkdir("#{ROOT}/#{d}") }
+  sources = ["app/assets/stylesheets/application.css", "app/javascript/application.js", "vendor/javascript/chart.js", "config/importmap.rb"]
+  sources.each { |f| File.write("#{ROOT}/#{f}", "// v1\n") }
+  w = Cybertrain::Dev::Watcher.new(Cybertrain::Dev::WATCHED.map { |p| "#{ROOT}/#{p}" }, 0.05)
+  sources.each do |f|
+    pause
+    File.write("#{ROOT}/#{f}", "// v2\n")
+    assert_equal ["#{ROOT}/#{f}"], w.changed_paths
+  end
+  pause
+  ["application.css~", "#application.css#", ".application.css.swp", "4913"].each do |name|
+    File.write("#{ROOT}/app/assets/stylesheets/#{name}", "scratch\n")
+  end
+  assert_equal [], w.changed_paths
 end
 
 def wait_for_calls(calls, count)

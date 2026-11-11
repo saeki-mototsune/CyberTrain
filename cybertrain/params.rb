@@ -33,8 +33,9 @@ module Cybertrain
   #   end
   # @api public
   class Params
-    # Raised by {Params#require}. Unless a `rescue_from` handles it, the
-    # request is answered with 400 and the message as plain text.
+    # Raised by {Params#require} and {Params#expect}. Unless a
+    # `rescue_from` handles it, the request is answered with 400 and the
+    # message as plain text.
     # @api public
     class ParameterMissing < StandardError
     end
@@ -241,22 +242,119 @@ module Cybertrain
       true
     end
 
-    # The listed keys that were sent as Strings, as a Hash ready for
-    # `Model.new` or {Model#update}. Unlisted keys are dropped silently, and
-    # so are lists, nested values and uploaded files: there is no
-    # `permit(tags: [])`; read those with {#list}, {#nested} and {#upload}.
+    # The listed keys, as a Hash ready for `Model.new` or {Model#update}.
+    # A Symbol or String key permits a String value; `key: []` permits a
+    # list of Strings (`key[]=a&key[]=b`); `key: [:a, b: []]` permits a
+    # nested level by the same rules, as a nested Hash. A value of another
+    # kind than the one permitted (a list sent where a String is permitted,
+    # a String where a nested level is) is dropped, not coerced, and so are
+    # unlisted keys and uploaded files: read a file with {#upload}.
+    #
+    # A filter is a key or a Hash of key => Array: `permit(meta: :source)`
+    # (the nested level's filters not in an Array) and an Array among the
+    # filters (`permit([:title])`, `[[:title]]`, Rails 8's list of records)
+    # are ArgumentErrors, a mistake in the code rather than in the request.
     # @example
     #   params.require(:article).permit(:title, :body)  # => {"title" => "Hi", "body" => "..."}
-    # @param keys [Array<String, Symbol>]
-    # @return [Hash{String => String}]
+    #   params.require(:article).permit(:title, tags: [], meta: [:source])
+    #   # => {"title" => "Hi", "tags" => ["a", "b"], "meta" => {"source" => "rss"}}
+    # @param keys [Array<String, Symbol, Hash{Symbol => Array}>]
+    # @return [Hash{String => Object}] values are Strings, Arrays of
+    #   Strings, or nested Hashes of the same
+    # @raise [ArgumentError] for a filter of another shape (see above)
     # @api public
     def permit(*keys)
-      permitted = {}
-      keys.each do |key|
-        k = key.to_s
-        permitted[k] = @values[k] if @values.key?(k)
+      permitted_by(keys)
+    end
+
+    # Rails 8's strong parameters in one call: the nested level under the
+    # spec's one key, permitted by the spec's filters as {#permit} does,
+    # which must be present and permit something. A spec of a bare key
+    # (`expect(:id)`) reads one String instead, and answers it as a
+    # one-entry Hash (`{"id" => "3"}`); `expect(tags: [])` answers a
+    # non-empty list the same way (`{"tags" => ["a"]}`).
+    # @example
+    #   def article_params
+    #     params.expect(article: [:title, :body, tags: []])
+    #   end
+    # @param spec [Hash{Symbol => Array}, Symbol, String] one key
+    # @return [Hash{String => Object}] as {#permit}'s
+    # @raise [ParameterMissing] `"param is missing or the value is empty or
+    #   invalid: article"` (a 400 unless rescued) when the key is absent,
+    #   of the wrong kind (a String where a nested level is expected, a
+    #   nested level where a list is), or permits nothing
+    # @raise [ArgumentError] when spec is a Hash of more or fewer than one
+    #   key, its value is not an Array (`expect(article: :title)`), or a
+    #   filter has another shape than {#permit} takes: a mistake in the
+    #   code, never answered as a 400
+    # @api public
+    def expect(spec)
+      case spec
+      when Hash
+        names = spec.keys
+        if names.length != 1
+          msg = "expect takes a spec of one key, got #{names.length}"
+          raise ArgumentError, msg
+        end
+        name = names[0]
+        k = name.to_s
+        filters = spec[name]
+        case filters
+        when Array
+          if filters.empty?
+            list = @lists[k]
+            Params.expect_missing!(k) if list.nil? || list.empty?
+            out = Params.permitted_hash
+            out[k] = Params.copy_strings(list)
+            return out
+          end
+          child = @children[k]
+          Params.expect_missing!(k) if child.nil?
+          permitted = child.permitted_by(filters)
+          Params.expect_missing!(k) if permitted.empty?
+          return permitted
+        end
+        Params.filter_not_array!("expect", k, filters.class.name.to_s)
+        Params.permitted_hash
+      else
+        k = spec.to_s
+        v = @values[k]
+        Params.expect_missing!(k) if v.nil? || v.empty?
+        out = Params.permitted_hash
+        out[k] = v
+        out
       end
-      permitted
+    end
+
+    # Raises the ArgumentError of a spec whose filters for key k are not an
+    # Array (`expect(article: :title)`, `permit(meta: :source)`); kind is
+    # the value's class name.
+    def self.filter_not_array!(method, k, kind)
+      msg = "#{method}'s filters for :#{k} must be an Array (#{k}: [:name] or #{k}: []), got #{kind}"
+      raise ArgumentError, msg
+    end
+
+    # Raises the ArgumentError of an Array among a level's filters.
+    def self.nested_array_filter!
+      msg = "permit and expect take keys and key: [...] Hashes, not an Array among the filters ([[:title]] lists of records are not supported)"
+      raise ArgumentError, msg
+    end
+
+    # Raises #expect's ParameterMissing for key k (the message built into a
+    # local first, NOTES rule 58).
+    def self.expect_missing!(k)
+      msg = "param is missing or the value is empty or invalid: #{k}"
+      raise ParameterMissing, msg
+    end
+
+    # A fresh empty Hash typed String => any value, seeded with a value of
+    # every scalar type (NOTES rules 9 and 46) so a String, an Array and a
+    # nested Hash can all be stored in it. Cast.empty_hash's shape; Params
+    # belongs to the HTTP layer and does not require Cast.
+    def self.permitted_hash
+      h = { "" => [nil, 0, 0.0, "", true][0] }
+      h.delete("")
+      h
     end
 
     # Rack-style: setting a key as one kind (scalar/list/nested) deletes it
@@ -458,6 +556,49 @@ module Cybertrain
     protected
 
     attr_reader :lists, :children
+
+    # #permit's work, on the filters as one Array (Symbols, Strings and
+    # Hashes of key => Array). Recurses into a nested level once per
+    # nesting of the filters, which the application writes, so the depth is
+    # the spec's, never the request's. While loops, no blocks, so the
+    # mixed-type filters stay out of block parameters.
+    def permitted_by(filters)
+      out = Params.permitted_hash
+      i = 0
+      while i < filters.length
+        f = filters[i]
+        case f
+        when Hash
+          names = f.keys
+          j = 0
+          while j < names.length
+            name = names[j]
+            k = name.to_s
+            inner = f[name]
+            case inner
+            when Array
+              if inner.empty?
+                list = @lists[k]
+                out[k] = Params.copy_strings(list) unless list.nil?
+              else
+                child = @children[k]
+                out[k] = child.permitted_by(inner) unless child.nil?
+              end
+            else
+              Params.filter_not_array!("permit", k, inner.class.name.to_s)
+            end
+            j += 1
+          end
+        when Array
+          Params.nested_array_filter!
+        else
+          k = f.to_s
+          out[k] = @values[k] if @values.key?(k)
+        end
+        i += 1
+      end
+      out
+    end
 
     # NOTE: named raw_values, not values -- a reader called "values" collides
     # with Hash#values: under Spinel the call resolves "values" against

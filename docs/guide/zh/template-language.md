@@ -1,5 +1,5 @@
 ---
-source_sha256: 3354d343281bf776b3016f5d1c574c1b5d5c88983a4c9e70b418a9427b206039
+source_sha256: ea0920c65e1defc6886af8050bf6977a12fa422a483c5e9a9a87305465abbf41
 ---
 # Cybertrain 模板语言参考
 
@@ -268,22 +268,39 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` 会被转义，除非它已经是 `SafeString`；**没有 `method:`**——使用它会抛出异常，提示你改用 `button_to`（不用 rails-ujs/turbo 伪造 DELETE 链接） |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | 只有一个按钮的 `<form class="button_to">`；`get`/`post` 以外的任何动词都带隐藏的 `_method`，存在会话时还带 CSRF 字段 |
-| `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | 需要一个块；`model:` 为新记录 → 集合路由 + POST，已持久化 → 成员路由 + PATCH；嵌套路由用 `[parent, child]`；`url:`/`method:` 会覆盖推导出的动作/动词；`multipart: true` 会加上 `enctype="multipart/form-data"`（`f.file_field` 需要它；它从不根据块推断，在 GET 表单上会抛出 `ArgumentError`） |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials)和[组件](#components) |
+| `form_with` | `form_with(model:, url:, scope:, method:, class:, data:, multipart:, local:) do \|f\| ... end` | 需要一个块；`model:` 为新记录 → 集合路由 + POST，已持久化 → 成员路由 + PATCH；嵌套路由用 `[parent, child]`，命名空间路由用 `[:admin, @article]`；`url:`/`method:` 会覆盖推导出的动作/动词；`scope: :q` 把字段命名为 `q[term]`（与 `model:` 一起使用时替换模型的前缀）；`data: { turbo_frame: "f" }` 写出 `data-` 属性；`local:` 会被接受但不起作用；`multipart: true` 会加上 `enctype="multipart/form-data"`（`f.file_field` 需要它；它从不根据块推断，在 GET 表单上会抛出 `ArgumentError`） |
+| `select_tag` | `select_tag(name, option_tags = nil, include_blank:, prompt:, multiple:)` | `select_tag "order", options_for_select([["Newest", "new"], ["Oldest", "old"]], "old")` → `<select name="order" id="order">...</select>`；不是 `SafeString` 的 `option_tags` 会被转义；`multiple: true` 把名称变为 `order[]`；其他关键字作为属性 |
+| `options_for_select` | `options_for_select(choices, selected = nil)` | `f.select` 选项（见下文）的 `<option>` 行；`selected` 是一个值或值的 Array，按 String 比较 |
+| `options_from_collection_for_select` | `options_from_collection_for_select(records, :id, :name, selected = nil)` | 每条记录一个 `<option>`，其值和文本的读取方式与 `f.collection_select` 相同 |
+| `label_tag`, `text_field_tag`, `hidden_field_tag`, `submit_tag` | `label_tag(name, text = nil)`, `text_field_tag(name, value = nil)`, `hidden_field_tag(name, value = nil)`, `submit_tag(value = "Save changes")` | 不带模型的表单标签：`label_tag(:term)` → `<label for="term">Term</label>`；`hidden_field_tag` 写出 `autocomplete="off"`；`submit_tag` 的名称是 `commit`；其他关键字作为属性（`id:` 替换由名称得到的 id） |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render partial: "comment", collection: @comments` / `render @comments` / `render component: "card", k: v` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials)、[集合](#collections)和[组件](#components) |
 | `h`、`escape` | `h(text)` | 进行转义；`SafeString` 不经转义直接通过 |
 | `raw` | `raw(text)` | 把文本包装为 `SafeString`（不转义输出） |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`；`pluralize(2, "mouse")` → `"2 mice"`（Rails 默认的英语词形变化规则，经由 `Cybertrain::Inflector`；不支持应用自定义的词形变化）；显式给出的第三个参数总是优先 |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
-| `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`；`-1000` → `"-1,000"`；`1234.5` → `"1,234.5"` |
+| `number_with_delimiter` | `number_with_delimiter(n, delimiter: ",", separator: ".")` | `1234567` → `"1,234,567"`； `-1000` → `"-1,000"`； `1234.5` → `"1,234.5"` |
+| `number_with_precision` | `number_with_precision(n, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)` | `111.2345` → `"111.235"`； `precision: 0` → `"111"` |
+| `number_to_human` | `number_to_human(n, precision: 3, units: {})` | `1234` → `"1.23 Thousand"`, `1234567` → `"1.23 Million"`； `units: { thousand: "K" }` 替换单位的名称（`unit`、`thousand` … `quadrillion`） |
+| `number_to_percentage` | `number_to_percentage(n, precision: 3)` | `100` → `"100.000%"` |
+| `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`； 负数会在格式前写出 `-` |
+| `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (以 1024 为底)； `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails 风格的区间，不精确到秒：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | 没有控制器会话时为空 / 不存在 |
+| `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / 只有 nonce，即本次请求的 [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) nonce；没有策略生效时为 `""` |
+| `javascript_tag` | `javascript_tag(nonce: true) do ... end`, `javascript_tag(js)` | 把内容放进 `<script>`（与 Rails 一样不转义：绝不要把请求数据放进去），`nonce: true` 且有策略生效时带上 nonce；`id:`、`type:`、`data:` 是属性 |
+| `asset_path` | `asset_path("logo.svg")` | `/assets/logo-1a2b3c4d.svg`（参见[资源](assets.md#helpers)）；URL 或以 `/` 开头的路径原样返回 |
+| `stylesheet_link_tag` | `stylesheet_link_tag("application", media:, nonce:)` | `<link rel="stylesheet" href="/assets/application-1a2b3c4d.css">`（缺少时加上 `.css`） |
+| `javascript_include_tag` | `javascript_include_tag("legacy", nonce:)` | `<script src="/assets/legacy-1a2b3c4d.js"></script>`（缺少时加上 `.js`） |
+| `image_tag` | `image_tag(source, alt:, size:, class:)` | `size: "16x16"`（或 `"16"`）时为 `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16" height="16">`；不会自行生成 `alt`，`alt: ""` 会被写出 |
+| `javascript_importmap_tags` | `javascript_importmap_tags(entry = "application")` | import map、每个预加载 pin 的 `modulepreload` 链接以及 `import "application"`，有策略生效时每个都带 nonce（[资源](assets.md#the-import-map)）；需要请求 |
 | `flash` | | 类似 `Hash`：`flash[:notice]` |
 | `params` | | 当前的 `Cybertrain::Params` |
 | `request_path` | | 当前路径，没有控制器时为 `""` |
-| `url_for` | `url_for(target)` | `String` 原样返回，`Model` → 成员路由，`[parent, child]` → 嵌套路由 |
+| `url_for` | `url_for(target, format:, anchor:, k: v)` | `String` 原样返回，`Model` → 成员路由，`[parent, child]` → 嵌套路由，`[:admin, record]` → 命名空间路由；关键字按路径辅助方法的方式附加（`url_for("/x", format: :csv)` → `/x.csv`） |
+| `current_page?` | `current_page?(path)` | 这个 GET 或 HEAD 请求是否针对 `path`（不计末尾的斜杠；`path` 中有查询时，查询也必须一致）；记录或 Array 会经过 `url_for`；其他方法一律为 false；需要请求 |
 | `paginate` | `paginate(page, path)` | `page` 是一个 `Cybertrain::Page`（来自 `Relation#page`）；渲染 `<nav class="pager">`，其中有 “Newer”（`rel="prev"`）、`<span class="pager-current">Page N</span>` 和 “Older”（`rel="next"`），没有对应页面时省略相应链接。每个链接都是 `path` 加上当前请求的查询字符串，其中 `page` 被替换（第 1 页时去掉），并重新编码和进行 HTML 转义；带有自己 `?query` 的 `path` 则改用它自己的查询字符串。在模板中，`Page` 还响应 `number`、`per`、`row_offset`、`next?`、`prev?`、`next_number`、`prev_number`（`<% if @page.next? %>`） |
-| `*_path` / `*_url` | 例如 `post_path(post)` | 由应用生成，通过 `Cybertrain::Views.url_resolver` 解析 |
+| `*_path` / `*_url` | 例如 `post_path(post)`, `posts_path(page: 2, format: :json)` | 由应用生成，通过 `Cybertrain::Views.url_resolver` 解析；关键字进入查询字符串，`format:` 添加扩展名，`anchor:` 添加片段（[重定向与查询字符串](requests.md#redirects-and-query-strings)） |
 | `tag` | `tag.div(content, attrs) do ... end` | tag 构建器：参见[tag 构建器](#the-tag-builder) |
 | `content_tag` | `content_tag(name, content = nil, attrs)`，或带 `do` 块 | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`；规则与 `tag` 相同 |
 | `safe_join` | `safe_join(array, sep = "")`（没有关键字参数） | 连接成一个 `SafeString`，转义每个尚不是 `SafeString` 的元素和分隔符：`safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
@@ -292,8 +309,13 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | 一个让页面订阅这些流（String，或名为 `"articles:12"` 这样的记录）的 `<turbo-stream-source>`；`ws: true` 给出 `ws://`/`wss://` URL，并且需要请求。参见[实时](realtime.md#turbo-streams) |
 | `signed_stream_name` | `signed_stream_name(*streams)` | 只有签名令牌，供手写的 JavaScript 使用 |
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | 带令牌和 `mode=json`（或 `"raw"`）的流端点路径 |
+| `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`；记录会给出它的 `dom_id`；每个属性只在给出时写出 |
+| `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | 一个 `<turbo-stream action="...">` 元素，用于 `*.turbo_stream.erb` 模板；目标是 DOM id 或记录；块、`partial:`（带 `locals:`）和 `html:` 恰好其一 |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`，或带块 | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`；Date 给出 `2026-11-10`；`format:` 为 `:short`、`:long` 或 strftime 的 String（未知的指令会抛出异常，strftime 会读成别的意思的宽度或标志也一样：`%6L`，请用 `%6N`；`:` 只能用在 `%:z` 中；`%F %T %D %R %r %c %x %X %v` 不能带填充标志；数字上的宽度会替换它的填充，`%5e` 得到 `"    5"`） |
 
 每个辅助方法的文本参数都遵循同一条规则：`SafeString` 不经转义直接通过，其他任何内容都会被转义——`link_to raw('<b>raw</b>'), post` 会原样输出加粗标签，而 `link_to post.title, post` 会转义它。
+
+六个数字辅助方法来自 `Cybertrain::NumberHelper`，Ruby 代码可以用相同的关键字把它们作为模块函数调用（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。它们接受 Integer、Float 或数字 String（decimal 列是 Float），并按其十进制文本的数字四舍五入，所以两种运行时的结果相同；其他任何值都会抛出 `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`），超出 0 到 100 的精度也一样。在模板中，`nil` 渲染为 `""`（可为空的 decimal 列显示为空，和 Rails 一样）；从 Ruby 调用的 `Cybertrain::NumberHelper` 对 `nil` 仍会抛出 `ArgumentError`（`"number_with_delimiter: nil is not a number"`）。格式是英文的。
 
 ### tag 构建器
 
@@ -321,13 +343,16 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | 方法 | 渲染结果 |
 | --- | --- |
 | `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>`——默认文本是人性化后的属性名（`published_at` → “Published at”，`author_id` → “Author”）；显式给出的文本会被转义，除非它是 `SafeString` |
-| `f.text_field :title`（还有 `email_field`、`password_field`、`number_field`、`date_field`、`hidden_field`） | `<input type="..." name="post[title]" id="post_title" value="...">`；`password_field` 从不输出 `value=` |
+| `f.text_field :title` (还有  `email_field`, `password_field`, `number_field`, `date_field`, `datetime_local_field`, `time_field`, `range_field`, `color_field`, `search_field`, `telephone_field`, `url_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`；`password_field` 从不输出 `value=`；`telephone_field` 是 `type="tel"`；Time 按浏览器读取的格式写出（`2026-11-10`、`2026-11-10T12:00:00`、`12:00:00.000`） |
+| `f.select :status, ["draft", "published"]` (还有  `include_blank:`, `prompt:`, `selected:`, `disabled:`, `multiple:`) | `<select name="post[status]" id="post_status">`，每个选项一个 `<option>`，当前值被选中；选项可以是值、`[text, value]` 对，或用于 `<optgroup>` 的 Hash 或 `[label, [choices]]` 分组；`multiple: true` 把名称变为 `post[status][]` 并先写出一个空的隐藏输入框 |
+| `f.collection_select :author_id, @authors, :id, :name` | 一个 `<select>`，每条记录一个 `<option>`，其值和文本从两个方法读取 |
+| `f.radio_button :status, "draft"` | `<input type="radio" name="post[status]" id="post_status_draft" value="draft">`，值一致时被勾选（`checked:` 优先） |
 | `f.file_field :cover`（还可以加 `accept: "image/*"`、`required: true`） | `<input type="file" name="post[cover]" id="post_cover">`——从不输出 `value=`，属性也不必是列；表单必须是 `form_with ..., multipart: true`；`multiple: true` 会抛出 `ArgumentError`（每个字段一个文件） |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>`（开头有 `\n`，与 Rails 一样——浏览器会吞掉第一个换行符） |
-| `f.check_box :published` | 先是隐藏的 `value="0"` 输入框，然后是真正的复选框，所以未勾选的复选框仍会提交 `"0"` |
+| `f.check_box :published` | 先是隐藏的 `value="0"` 输入框，然后是真正的复选框，所以未勾选的复选框仍会提交 `"0"`；`include_hidden: false` 不写出隐藏输入框 |
 | `f.submit` / `f.submit "Text"` | 默认文本为 `"Create Post"`/`"Update Post"`（根据 `persisted?`），没有模型时为 `"Save changes"` |
 
-有模型时，字段命名为 `post[title]`/`id="post_title"`（以 `Inflector.underscore(model.model_name)` 作为作用域）；使用 `form_with(url: ...)` 且没有模型时，两者都直接使用属性名。额外的关键字参数按给出的顺序变为 HTML 属性：`true` → `attr="attr"`，`false`/`nil` 被丢弃，其他任何值 → `attr="value"`（经过转义），下划线变为连字符（`data_confirm: "Sure?"` → `data-confirm="Sure?"`），并且 `class:` 会与 `model.errors.key?(attr)` 时自动添加的 `field_with_errors` 类合并。
+有模型时，字段命名为 `post[title]`/`id="post_title"`（以 `Inflector.underscore(model.model_name)` 作为作用域）；`form_with(..., scope: :q)` 则改用 `q[title]`/`id="q_title"`；使用 `form_with(url: ...)` 且没有模型和作用域时，两者都直接使用属性名。每个属性值和选项文本都只转义一次（`SafeString` 原样使用）。额外的关键字参数按给出的顺序变为 HTML 属性：`true` → `attr="attr"`，`false`/`nil` 被丢弃，其他任何值 → `attr="value"`（经过转义），下划线变为连字符（`data_confirm: "Sure?"` → `data-confirm="Sure?"`），并且 `class:` 会与 `model.errors.key?(attr)` 时自动添加的 `field_with_errors` 类合并。
 
 ## 应用的辅助方法
 
@@ -402,7 +427,7 @@ html = Cybertrain::Views.render_partial("articles/article", article: article)   
 card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
 ```
 
-两者都会使用应用的辅助方法，以 String 返回 HTML。路径辅助方法可以使用（`article_path(article)`），strict locals 会被检查，表单（`form_with`、`button_to`）渲染时不带真实性令牌（Turbo 页面会提交来自 `csrf_meta_tags` 的令牌）。需要请求的辅助方法会抛出 `Cybertrain::Views::OutsideRequest`（`"csrf_token needs a request"`）：`csrf_token`、`csrf_meta_tags`、`params`、`flash`、`request_path`、任何 `*_url` 辅助方法，以及 `turbo_stream_from ... ws: true`。`paginate` 的链接只带路径自身的查询字符串。（单元测试可能构造的裸 `Cybertrain::Template::Helpers.new(nil)` 则对它们返回空值。）
+两者都会使用应用的辅助方法，以 String 返回 HTML。路径辅助方法可以使用（`article_path(article)`），strict locals 会被检查，表单（`form_with`、`button_to`）渲染时不带真实性令牌（Turbo 页面会提交来自 `csrf_meta_tags` 的令牌）。需要请求的辅助方法会抛出 `Cybertrain::Views::OutsideRequest`（`"csrf_token needs a request"`）：`csrf_token`、`csrf_meta_tags`、`params`、`flash`、`request_path`、`current_page?`、`content_security_policy_nonce`（因此还有 `csp_meta_tag` 和传入 `nonce: true` 的标签辅助方法）、`javascript_importmap_tags`、任何 `*_url` 辅助方法，以及 `turbo_stream_from ... ws: true`。`paginate` 的链接只带路径自身的查询字符串。（单元测试可能构造的裸 `Cybertrain::Template::Helpers.new(nil)` 则对它们返回空值。）
 
 ## 布局、`yield`、`content_for`、局部模板
 
@@ -420,6 +445,23 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 <% content_for :title, " (draft)" %>   <%# appends: calls accumulate, they don't replace %>
 ```
 
+### 按控制器的布局
+
+动作在 `app/views/layouts/application.html.erb`（存在时）中渲染，除非它的控制器、父类或包含的 concern 选择了另一个：
+
+```ruby
+class AdminController < ApplicationController
+  layout "print", only: [:receipt]      # app/views/layouts/print.html.erb
+  layout :choose_layout                 # 一个方法：名称，false 表示不用，nil 表示父类的
+
+  private
+
+  def choose_layout = request.header("Turbo-Frame").to_s.empty? ? "application" : "frame"
+end
+```
+
+单独的 `layout "admin"` 为所有动作指定一个布局。`spin run gen` 读取 `layout` 行（带引号的名称、`false` 或方法的 Symbol，可带 `only:` / `except:`），并写出控制器的 `controller_layout(action)`。声明按顺序尝试，**第一个适用的胜出**（Rails 中后面的声明会替换前面的）；concern 的行在其 `include` 处计入。`render layout: "x"` 在一次调用中使用 `layouts/x`，`render layout: false` 则不用布局；开头的 `layouts/` 是被接受的（`layout "layouts/x"` 就是 `layouts/x`）。指向不存在布局的 `layout` 行或 `render layout:` 会抛出 `MissingTemplate`；只有默认的 `application` 布局是可选的（此时动作不带布局渲染）。只有 html 在布局中渲染；其他格式的模板不带布局渲染。其他任何 `layout` 参数（`nil`、lambda、常量）都会被 gen 拒绝。
+
 ### 局部模板与 `render`
 
 ```erb
@@ -432,6 +474,19 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 - 局部模板得到的是**调用者整个环境的副本**（实例变量以及作用域中已有的任何局部变量），再加上传给 `render` 的显式局部变量——它并没有被隔离到只能访问传入的内容。严格局部变量只会根据声明的列表校验**显式传给那次 `render` 调用的名称**；它们并不阻止局部模板读取从调用者环境继承来的其他名称。
 - 只有 `content_for` 的键（`__content_*`）会从局部模板的作用域复制回调用者的作用域；它所赋值的普通局部变量不会泄漏回去。
 - 相对于 `<%# locals: %>` 声明缺少或多出的局部变量会引发 `RuntimeError`：`"missing local 'post' for posts/_form.html.erb"`、`"unknown local 'extra' for posts/_form.html.erb"`。
+
+### 集合
+
+```erb
+<%= render partial: "comment", collection: @comments, as: :comment, spacer_template: "divider" %>
+<%= render @comments %>      <%# each record's comments/_comment.html.erb %>
+<%= render @comment %>       <%# one record, no counter %>
+<%= render component: "comment", collection: @comments %>
+```
+
+- `collection:` 对 Array 的每个元素渲染一次局部模板，元素作为 `as:` 指定的局部变量（默认是局部模板自己的名称），`<as>_counter` 从 0 开始计数，`locals:` 传给每一次，`spacer_template:`（一个局部模板）放在元素之间；空集合什么都不渲染。使用严格局部变量的局部模板只有声明了计数器才会得到它，并且元素优先于同名的局部变量。
+- `render @comments` 根据每条记录的模型选择局部模板：`<plural>/_<singular>`（`Admin::Note` 对应 `admin/notes/_note`），所以列表可以混合不同的模型。
+- 唯一必需关键字以自身命名的组件（带 `comment:` 的 `CommentComponent`）会得到 `CommentComponent.with_collection(items)`，`render component: "comment", collection: @comments` 会为每个元素渲染一次，在 `initialize` 声明了 `comment_counter:` 时传入它。`collection:` 不接受其他关键字（`render component: "comment", collection: @comments, extra: 1` 是一个点出该关键字的错误）；块的内容不会被传入。
 
 ### 文件解析（`engine.rb`）
 
@@ -473,4 +528,5 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 | `1 / 0` 和 `1.0 / 0` 都会抛出 `ZeroDivisionError` | `Integer` 除以零或对零取模会抛出 `"divided by 0"`；`Float` 遵循 IEEE-754（`Infinity`/`NaN`），不报错 |
 | `distance_of_time_in_words`/复数化支持 i18n 语言区域 | 仅限英语，不支持语言区域 |
 | `app/helpers` 中的每个模块都会被混入；签名任意；辅助方法可以覆盖框架的辅助方法 | 模块在构建时被扫描为生成的 `case`：只能用具名参数，最多三个可选参数，不能使用框架辅助方法的名称，也不能以 `_path`/`_url` 结尾（[应用的辅助方法](#application-helpers)） |
-| ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、插槽 | 按名称 `render component: "card", title: "x"`，`content` 来自块；没有集合或插槽（[组件](#components)） |
+| ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、插槽 | 按名称 `render component: "card", title: "x"`，`content` 来自块，以唯一必需关键字命名的组件可用 `collection:`；没有插槽（[组件](#components)、[集合](#collections)） |
+| 后面的 `layout` 行替换前面的 | 第一个适用的 `layout` 声明胜出（[按控制器的布局](#per-controller-layouts)） |

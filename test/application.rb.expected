@@ -19,6 +19,11 @@ ok   DB::CLI.database_path follows Cybertrain.config once it is loaded
 ok   the stack is RequestLogger, Stream::Endpoint, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router
 ok   log_level :none, static_files and csrf switch their middleware off
 ok   the stack's session cookie follows session_same_site and session_partitioned
+[WARN] Blocked host: "rebind.example" for "/"
+[WARN] Blocked host: "rebind.example" for "/robots.txt"
+[WARN] Blocked host: "rebind.example" for "/visit"
+[WARN] Blocked host: "rebind.example" for "/notes/7"
+[WARN] Blocked host: "rebind.example" for "/"
 ok   development rejects hostile hosts before pages, static files, sessions and writes
 ok   production puts ErrorPages outermost
 ok   Application.new accepts any name; only the Rebuilder refuses one

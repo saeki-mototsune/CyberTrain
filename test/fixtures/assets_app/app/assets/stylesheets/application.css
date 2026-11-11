@@ -1,0 +1,3 @@
+/* The logo and the font, named from the stylesheet's logical directory. */
+header { background: url("logo.svg") no-repeat; }
+@font-face { font-family: "X"; src: url(x.woff2?v=3#iefix) format("woff2"); }

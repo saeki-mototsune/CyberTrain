@@ -138,5 +138,93 @@ module Cybertrain
       end
       nil
     end
+
+    # `render component: "comment", collection: x` takes no other keyword:
+    # each item is built from the item alone (and its counter), so another
+    # keyword would be dropped. ArgumentError names the others.
+    # @api private
+    def self.check_collection_keywords!(name, kwargs)
+      others = Array.new(0) { "" }
+      kwargs.each_key { |key| others << key unless key == "collection" }
+      return nil if others.empty?
+
+      msg = "component '#{name}' with collection: takes no other keyword (given #{others.join(", ")})"
+      raise ArgumentError, msg
+    end
+  end
+
+  # A component rendered once per item, ViewComponent's
+  # `CommentComponent.with_collection(@comments)`: gen/components.rb writes
+  # `with_collection` for a component whose only required keyword is named
+  # after it (`comment:`), and its build arm answers `render component:
+  # "comment", collection: @comments` with one. Each item is built through
+  # {Views.component_builder} as that keyword, with `comment_counter:` (0,
+  # 1, ...) when the component declares it, and the outputs are joined; an
+  # empty collection renders "".
+  #
+  #   Cybertrain::Views.render_component(CommentComponent.with_collection(comments))
+  #
+  # A Component itself, so that a build arm and {Views.render_component}
+  # take it where they take any component.
+  # @api public
+  class ComponentCollection < Component
+    # @param name [String] the component's name ("comment", "admin/row")
+    # @param keyword [String] its collection keyword ("comment", "row")
+    # @param items [Array] the items
+    # @param counter [Boolean] whether it declares `<keyword>_counter:`
+    def initialize(name, keyword, items, counter)
+      @name = name
+      @keyword = keyword
+      @counter = counter
+      # Typed Array of polymorphic values (spikes/NOTES.md rule 9).
+      @items = Array.new(0) { [nil, 0, 0.0, "", true][0] }
+      case items
+      # Time before Array (spikes/NOTES.md rule 8).
+      when Time then ComponentCollection.not_an_array!(items)
+      when Array then items.each { |item| @items << item }
+      else ComponentCollection.not_an_array!(items)
+      end
+    end
+
+    def self.not_an_array!(items)
+      msg = "render component: collection: must be an Array, got #{items}"
+      raise ArgumentError, msg
+    end
+
+    def component_name
+      @name
+    end
+
+    # Each item's component, rendered on interp, joined.
+    # @return [SafeString]
+    # @api public
+    def render_collection_with(helpers, interp)
+      out = +""
+      i = 0
+      while i < @items.size
+        kwargs = { "" => [nil, 0, 0.0, "", true][0] }
+        kwargs.delete("")
+        kwargs[@keyword] = @items[i]
+        kwargs["#{@keyword}_counter"] = i if @counter
+        # A fresh local, not the ivar: Spinel refuses an ivar's String
+        # handed to a proc that could append to it.
+        name = "#{@name}"
+        built = Views.component_builder.call(name, kwargs)
+        case built
+        when Cybertrain::Component
+          html = built.render_with(helpers, "", interp)
+          out << html.to_s
+        else raise Component::Unknown, "component_builder returned no component for '#{@name}'"
+        end
+        i += 1
+      end
+      SafeString.of(out)
+    end
+
+    # What {Views.render_component} and `render component:` call: the
+    # collection (a block's content is not passed to the items).
+    def render_with(helpers, content, interp)
+      render_collection_with(helpers, interp)
+    end
   end
 end

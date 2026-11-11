@@ -5,4 +5,5 @@ ok   hmac_hex matches HMAC-SHA256 reference values
 ok   hex spells raw bytes in lowercase hex
 ok   secure_compare is true only for equal strings of equal length
 ok   random_token returns distinct hex strings of the requested byte length
-7 tests, 82 assertions, 0 failures
+ok   derive_key is the HMAC of a domain-prefixed label, not of the bare label
+8 tests, 85 assertions, 0 failures

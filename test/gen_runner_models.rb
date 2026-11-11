@@ -15,22 +15,36 @@ ROOT = Dir.mktmpdir("cybertrain-gen-models")
 APP_FILES = [
   "app/models/comment.rb",
   "app/models/post.rb",
+  "app/models/concerns/visible.rb",
   "app/controllers/application_controller.rb",
   "app/controllers/comments_controller.rb",
   "app/controllers/pages_controller.rb",
   "app/controllers/posts_controller.rb",
+  "app/controllers/gated_controller.rb",
+  "app/controllers/concerns/admin_gate.rb",
+  "app/controllers/concerns/auditing.rb",
+  "app/controllers/concerns/stamped.rb",
   "app/helpers/prices_helper.rb",
   "app/components/card_component.rb",
   "app/components/card_component.html.erb",
+  "app/components/receipt_component.rb",
+  "app/components/receipt_component.html.erb",
   "app/jobs/welcome_job.rb",
   "app/jobs/digest_job.rb",
   "app/jobs/admin/report_job.rb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
-DIRS = ["app", "app/models", "app/controllers", "app/helpers", "app/components", "app/jobs", "app/jobs/admin", "gen", "gen/models"]
+GEN_FILES = ["gen/routes.rb", "gen/assets.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb",
+             "gen/concerns/controllers/concerns/admin_gate.rb", "gen/concerns/controllers/concerns/auditing.rb",
+             "gen/concerns/controllers/concerns/stamped.rb", "gen/concerns/models/concerns/visible.rb",
+             "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]
+DIRS = ["app", "app/models", "app/models/concerns", "app/controllers", "app/controllers/concerns", "app/helpers", "app/components", "app/jobs",
+        "app/jobs/admin", "gen", "gen/models", "gen/concerns", "gen/concerns/controllers", "gen/concerns/controllers/concerns",
+        "gen/concerns/models", "gen/concerns/models/concerns"]
 Dir.mkdir("#{ROOT}/app")
 Dir.mkdir("#{ROOT}/app/models")
+Dir.mkdir("#{ROOT}/app/models/concerns")
 Dir.mkdir("#{ROOT}/app/controllers")
+Dir.mkdir("#{ROOT}/app/controllers/concerns")
 Dir.mkdir("#{ROOT}/app/helpers")
 Dir.mkdir("#{ROOT}/app/components")
 Dir.mkdir("#{ROOT}/app/jobs")
@@ -73,6 +87,7 @@ def load_fixture_schema
       t.date "published_on"
       t.text "secret_note"
       t.binary "thumbnail"
+      t.integer "hidden", null: false, default: "0"
       t.timestamps
     end
   end
@@ -85,7 +100,7 @@ test "runner with a schema writes gen/models and a manifest listing them" do
     flunk("#{f} differs from the fixture") unless File.read("#{ROOT}/#{f}") == File.read("#{FIXTURE}/#{f}")
   end
   app = File.read("#{ROOT}/gen/app.rb")
-  assert_includes app, "require_relative \"models/comment\"\nrequire_relative \"models/post\"\nrequire_relative \"routes\"\n"
+  assert_includes app, "require_relative \"models/comment\"\nrequire_relative \"models/post\"\nrequire_relative \"routes\"\nrequire_relative \"assets\"\n"
 end
 
 test "runner --check passes on the fresh tree" do
@@ -115,6 +130,7 @@ test "a table added to the schema makes both its model and the manifest stale" d
       t.date "published_on"
       t.text "secret_note"
       t.binary "thumbnail"
+      t.integer "hidden", null: false, default: "0"
       t.timestamps
     end
     s.create_table "tags" do |t|
@@ -160,6 +176,15 @@ def redraw_fixture_routes
       posts.resources :comments, only: [:create, :destroy]
     end
     get "/about", to: "pages#about"
+    scope "/v1", as: "v1" do |v|
+      v.get "/about", to: "pages#about"
+    end
+    resource :profile, controller: "pages", only: [:show] do |r|
+      r.get :refresh, on: :member
+    end
+    get "/old-posts/:id", to: redirect("/posts/%{id}")
+    get "/files/:name", to: "pages#file", format: false
+    get "/gated/:id", to: "gated#show"
     jobs_page "/admin/jobs", before_action: :require_admin
   end
 end

@@ -1,0 +1,13 @@
+ok   validates from a model concern runs at the include's position
+ok   scope from a model concern
+ok   a concern's instance method is a view method
+ok   a model concern included twice is expanded once
+ok   an include of a module that is not a concern is left to Ruby
+ok   a concern's before_save runs after the model's own, wherever the include stands
+ok   a scope a concern defines again is refused, naming both places
+ok   the concern's own file is loaded as gen/concerns/models/concerns/visible.rb, its included block blanked
+ok   associations, encrypts, uniqueness and validate from a concern join the model's ModelInfo
+ok   an include in a concern's included body brings that concern in after it; a cycle is refused
+ok   a model concern's class_methods name may not be a scope, a model class method or an instance method
+ok   a model concern named relative to its module is resolved as Ruby resolves it; an unreached one is refused
+12 tests, 72 assertions, 0 failures

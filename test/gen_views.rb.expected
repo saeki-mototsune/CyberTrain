@@ -6,7 +6,9 @@ ok   without --embed-views the table is empty and the env is untouched
 ok   with --embed-views every view is a literal and production becomes the default env
 ok   with --embed-views and no app/views, the table is still typed empty, not a bare {}
 wrote gen/routes.rb
+wrote gen/assets.rb
 wrote gen/controllers.rb
+wrote gen/concerns.rb
 wrote gen/views.rb
 wrote gen/helpers.rb
 wrote gen/components.rb
@@ -14,7 +16,9 @@ wrote gen/jobs.rb
 wrote gen/console.rb
 wrote gen/app.rb
 identical gen/routes.rb
+wrote gen/assets.rb
 identical gen/controllers.rb
+identical gen/concerns.rb
 wrote gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
@@ -22,7 +26,9 @@ identical gen/jobs.rb
 identical gen/console.rb
 identical gen/app.rb
 identical gen/routes.rb
+wrote gen/assets.rb
 identical gen/controllers.rb
+identical gen/concerns.rb
 wrote gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb

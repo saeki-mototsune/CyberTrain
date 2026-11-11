@@ -1,20 +1,37 @@
 require "cybertrain/middleware"
 require "cybertrain/http/parser"
+require "cybertrain/logger"
 
 module Cybertrain
-  # Keeps development requests on explicitly trusted hostnames, even when
-  # an attacker's DNS resolves to the server's loopback listening address.
+  # Keeps requests on explicitly trusted hostnames, even when an attacker's
+  # DNS resolves to the server's address: in development always, elsewhere
+  # when `CYBERTRAIN_HOSTS` is set (Config#host_check?). A refused Host
+  # answers 403 "Blocked host". A GET or HEAD of `exempt_path` (the health
+  # path) passes whatever the Host, so a load balancer probing by IP still
+  # reaches HealthCheck; every other path and method is checked.
   class HostAuthorization < Middleware
-    def initialize(app, allowed_hosts)
+    def initialize(app, allowed_hosts, exempt_path = "")
       super(app)
       @allowed_hosts = allowed_hosts
+      @exempt_path = exempt_path
     end
 
     def call(ctx)
-      return super if allowed?(ctx.request.header("host"))
+      request = ctx.request
+      return super if allowed?(request.header("host"))
+      return super if exempt?(request)
 
+      # One line so a CYBERTRAIN_HOSTS typo shows (Rails logs blocked
+      # hosts too); inspect escapes whatever bytes the client sent.
+      Cybertrain.logger.warn("Blocked host: #{request.header("host").to_s.inspect} for #{request.path.inspect}")
       ctx.response.reset_to(403, "Blocked host")
       nil
+    end
+
+    # Whether the request is a probe of the exempt path.
+    def exempt?(request)
+      path = @exempt_path
+      !path.empty? && request.path == path && (request.get? || request.head?)
     end
 
     # Compare the whole authority, allowing only a numeric port after an

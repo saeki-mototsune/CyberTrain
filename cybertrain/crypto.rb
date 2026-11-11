@@ -1,12 +1,19 @@
-# Cybertrain::Crypto -- the primitives Session and CsrfProtection sign and
-# compare with.
+# Cybertrain::Crypto -- the primitives sessions, cookies and CsrfProtection
+# sign, derive keys and compare with.
 #
-# HMAC-SHA256 is implemented here in pure Ruby over Digest::SHA256.digest
-# rather than via `require "openssl"`: the `openssl` package links against
-# Homebrew's OpenSSL, which is not on this build's link path, while `digest`
-# is the runtime's own vendored SHA-256 (spikes/NOTES.md numbers table).
-# Column encryption, which does need openssl, is cybertrain/encryptor.rb,
-# required only by an application that declares `encrypts`.
+# HMAC-SHA256 is implemented here in pure Ruby over Digest::SHA256.digest,
+# the runtime's own vendored SHA-256 (spikes/NOTES.md numbers table). It
+# was written that way when the `openssl` package was linked only into
+# programs that asked for it; `require "cybertrain"` now loads
+# cybertrain/encryptor.rb, and so openssl, in every program (the encrypted
+# session, spec section 5.1), but this file needs neither and stays usable
+# on its own. {Crypto.derive_key} turns `secret_key_base` into one 32-byte
+# key per purpose (the session, signed cookies, encrypted cookies), so no
+# two uses share a key. The derivation input carries a fixed prefix
+# ({Crypto::KEY_PREFIX}) so a derived key is never the same HMAC as one
+# the framework computes directly under the raw secret (Password's
+# session key tag, Stream's signing key), whose tag may be public. The AES-256-GCM encryption itself is
+# cybertrain/encryptor.rb's.
 require "digest"
 require "securerandom"
 
@@ -14,6 +21,9 @@ module Cybertrain
   module Crypto
     BLOCK_SIZE = 64
     HEX_DIGITS = "0123456789abcdef"
+    # Domain separation for derive_key: no other HMAC under the raw secret
+    # starts with this.
+    KEY_PREFIX = "cybertrain key\0"
 
     def self.hmac_hex(secret, data)
       Crypto.hex(hmac_digest(secret, data))
@@ -72,14 +82,32 @@ module Cybertrain
 
     # A fresh key for `CYBERTRAIN_ENCRYPTION_KEY`: 32 random bytes as 64
     # lowercase hex digits (what `cybertrain secret --hex` prints). The
-    # encryption itself is cybertrain/encryptor.rb's, which links openssl;
-    # making a key does not.
+    # encryption itself is cybertrain/encryptor.rb's (AES-256-GCM through
+    # openssl); making a key needs only SecureRandom.
     # @example
     #   Cybertrain::Crypto.encryption_key_hex   # => "9b1f..." (64 hex digits)
     # @return [String]
     # @api public
     def self.encryption_key_hex
       Crypto.random_token(32)
+    end
+
+    # A 32-byte key for one purpose, derived from a secret (normally
+    # `secret_key_base`): the HMAC-SHA256 of `"cybertrain key\0" + label`
+    # under `secret` (the prefix keeps it apart from the framework's other
+    # HMACs under the raw secret). Each
+    # use takes its own label ("cybertrain session", "cybertrain signed
+    # cookie", "cybertrain encrypted cookie"), so a value made under one key
+    # never verifies or decrypts under another, and rotating the secret
+    # changes them all.
+    # @example
+    #   Cybertrain::Crypto.derive_key(config.secret_key_base, "cybertrain session").bytesize   # => 32
+    # @param secret [String]
+    # @param label [String] the purpose
+    # @return [String] 32 raw bytes
+    # @api public
+    def self.derive_key(secret, label)
+      Crypto.hmac_digest(secret, KEY_PREFIX + label)
     end
 
     # RFC 2104 HMAC over Digest::SHA256, keyed the way every implementation

@@ -1,20 +1,68 @@
 ok   manifest lists gen models and routes, helpers, components and console, then controllers, app models, jobs and controllers
 ok   manifest for the fixture app, whose Post encrypts a column and whose WelcomeJob names the mailer's TimeoutError
 wrote gen/routes.rb
+wrote gen/assets.rb
 wrote gen/controllers.rb
+wrote gen/concerns.rb
 wrote gen/views.rb
 wrote gen/helpers.rb
 wrote gen/components.rb
 wrote gen/jobs.rb
+wrote gen/concerns/controllers/concerns/audited.rb
+wrote gen/concerns/controllers/concerns/trackable.rb
+wrote gen/concerns/models/concerns/sluggable.rb
 wrote gen/console.rb
 wrote gen/app.rb
 ok   runner writes the gen files
+stale: gen/concerns/models/concerns/gone.rb
+removed gen/concerns/models/concerns/gone.rb
 identical gen/routes.rb
+identical gen/assets.rb
 identical gen/controllers.rb
+identical gen/concerns.rb
 identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
 identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   a gen/concerns file whose concern is gone is removed (reported stale by --check)
+stale: gen/concerns/models/concerns/old/deeper/gone.rb
+removed gen/concerns/models/concerns/old/deeper/gone.rb
+removed gen/concerns/models/concerns/old/deeper/
+removed gen/concerns/models/concerns/old/
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
+identical gen/console.rb
+identical gen/app.rb
+removed gen/concerns/controllers/concerns/x.rb
+removed gen/concerns/controllers/concerns/
+removed gen/concerns/controllers/
+removed gen/concerns/
+ok   removing a stale gen/concerns file removes the directories it leaves empty
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
 identical gen/console.rb
 identical gen/app.rb
 ok   runner leaves unchanged files alone
@@ -22,12 +70,17 @@ ok   runner --check passes when gen is fresh
 stale: gen/routes.rb
 stale: gen/app.rb
 wrote gen/routes.rb
+identical gen/assets.rb
 identical gen/controllers.rb
+identical gen/concerns.rb
 identical gen/views.rb
 identical gen/helpers.rb
 identical gen/components.rb
 identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
 identical gen/console.rb
 wrote gen/app.rb
 ok   runner --check reports stale files and writes nothing
-6 tests, 17 assertions, 0 failures
+8 tests, 31 assertions, 0 failures

@@ -5,4 +5,6 @@ ok   rescue_from(X) { |c, e| c.head :not_found } sends 404
 ok   an Integer status from a block passes through
 ok   redirect_to from a block defaults to 302
 ok   an unknown status Symbol from a block is an ArgumentError
-7 tests, 12 assertions, 0 failures
+ok   every Rack symbol, old aliases included
+ok   every symbol has a reason phrase
+9 tests, 94 assertions, 0 failures

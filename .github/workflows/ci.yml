@@ -148,7 +148,11 @@ jobs:
           curl -fsS http://127.0.0.1:3999/sign_up | grep -q "Sign up"
           # Signed out, the scaffold is behind the sign-in page.
           test "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://127.0.0.1:3999/products)" = "303 http://127.0.0.1:3999/session/new"
-          curl -fsS http://127.0.0.1:3999/style.css > /dev/null
+          # The layout links the digested stylesheet; it must answer with the immutable header.
+          css=$(curl -fsS http://127.0.0.1:3999/session/new | grep -o '/assets/application-[0-9a-f]\{8\}\.css' | head -1)
+          test -n "$css"
+          curl -fsS -D css.h -o /dev/null "http://127.0.0.1:3999$css"
+          grep -qi '^cache-control:.*immutable' css.h
           curl -fsS http://127.0.0.1:3999/up.html > /dev/null   # Kamal's health check (config/deploy.yml)
           grep -q "production environment" server.log
           kill %1

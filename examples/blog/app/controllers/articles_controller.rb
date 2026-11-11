@@ -2,8 +2,12 @@ require "cybertrain/cache"
 
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
+  # The article page links to /admin/articles for an admin
+  # (ApplicationController#admin?).
+  helper_method :admin?
 
-  # GET /articles (?from=YYYY-MM-DD&to=YYYY-MM-DD, either end optional)
+  # GET /articles (?from=YYYY-MM-DD&to=YYYY-MM-DD, either end optional;
+  # ?order=old for the oldest first), and /articles.json
   # Newest first, each article's comments preloaded for the Comments
   # column (two queries, however many articles), and the number of
   # articles above them from the cache. A date that does not parse is
@@ -13,7 +17,9 @@ class ArticlesController < ApplicationController
     to_date = Cybertrain::Cast.date_or_nil(params[:to])
     @from = from_date.nil? ? nil : params[:from]
     @to = to_date.nil? ? nil : params[:to]
-    articles = Article.recent.includes(:comments)
+    @order = params[:order] == "old" ? "old" : "new"
+    articles = @order == "old" ? Article.order(created_at: :asc) : Article.recent
+    articles = articles.includes(:comments)
     unless from_date.nil? && to_date.nil?
       from_time = from_date.nil? ? nil : Time.utc(from_date.year, from_date.month, from_date.day)
       to_time = to_date.nil? ? nil : Time.utc(to_date.year, to_date.month, to_date.day) + 86_400
@@ -23,11 +29,19 @@ class ArticlesController < ApplicationController
     # Kept in cybertrain_cache for a minute: an article created meanwhile
     # shows up in the list at once and in the count within the minute.
     @article_count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.count }
+    respond_to do |format|
+      format.html
+      format.json { render json: @articles.map(&:as_json) }
+    end
   end
 
-  # GET /articles/1
+  # GET /articles/1, and /articles/1.json
   def show
     @comment = Comment.new
+    respond_to do |format|
+      format.html
+      format.json { render json: @article.as_json }
+    end
   end
 
   # GET /articles/new

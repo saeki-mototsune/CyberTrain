@@ -9,4 +9,10 @@ ok   a malformed percent-escape falls through instead of raising
 ok   Static decodes the path once through request.path_segments; an invalid decoded byte is the 400
 ok   only GET and HEAD are served
 ok   HEAD keeps Content-Length but sends no body
-11 tests, 59 assertions, 0 failures
+ok   a current or kept digest is immutable
+ok   an undigested file under public/assets keeps max-age=3600
+ok   a digest-shaped name gen did not write keeps max-age=3600
+ok   dotfiles under /assets are not served; elsewhere in public/ they are
+ok   a symlink is served only when it stays inside the root
+ok   an absolute or encoded path cannot leave the root
+17 tests, 126 assertions, 0 failures

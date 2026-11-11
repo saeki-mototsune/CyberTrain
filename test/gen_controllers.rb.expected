@@ -12,4 +12,30 @@ ok   a namespaced controller is emitted inside its modules
 ok   emit writes CybertrainJobsController after the scanned controllers when a jobs page is drawn
 ok   without before_action: the jobs controller has no callback and the generator warns
 ok   no jobs page, no jobs controller
-14 tests, 30 assertions, 0 failures
+ok   includes, and each include's position among the callbacks and rescues above it
+ok   the nested module form names the class after its modules
+ok   a superclass written bare inside a module resolves to the module's class when gen found one
+ok   a concern's scan: included body, class methods, includes, ivars, callbacks, defs
+ok   gen/concerns.rb: the class methods on the concern, a forwarder and the splice at the include
+ok   an include of a module that is not a concern is left to Ruby
+ok   around_action in an included block is refused
+ok   a class_methods name that is also an instance method is refused, naming both places
+ok   scan_source reads helper_method lines and each def's parameters
+ok   emit writes helper_method? and call_helper_method for the declared names
+ok   a helper_method declared in a concern's included block dispatches from the includer
+ok   a helper_method named like a framework helper, an app helper, or an undefined method is refused with its message
+ok   a helper_method whose def a template cannot fill (*rest, ...) is refused with the def's place
+ok   scan_source reads layout lines: a name, false, a method, only: and except:
+ok   a layout after a one-line def (endless self./operator, or `; end # note`) is still read
+ok   emit writes controller_layout: the declarations in order, the first that applies wins
+ok   layout lines: %i[] and single quotes are read, only: wins over except:, a layouts/ prefix is kept once
+ok   a layout declared in a concern applies, at the include's position
+ok   a layout line gen cannot read is refused with its place
+ok   a local named layout in a method is no declaration; a layout line's comment may hold quotes
+ok   the method form's locals shadow no method: layout :chosen and layout :action call the method
+ok   scan_source reads the methods rate_limit lines name, over continuation lines
+ok   emit writes rate_limit_key, rate_limit_condition? and the with: arm of run_callback
+ok   a rate_limit in a concern's included block gives the includer its tables
+ok   a rate_limit naming an undefined method, or a block, is refused with its line
+ok   rate_limit options inside a String are not options, and nil names no method
+40 tests, 163 assertions, 0 failures

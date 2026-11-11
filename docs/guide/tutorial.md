@@ -130,6 +130,7 @@ blog/
   spin.toml  config/app.rb  config/routes.rb
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
+  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
   gen/  storage/  tmp/  test/
 ```
@@ -140,7 +141,10 @@ blog/
 (`spin run gen`), and `bin/db.rb` runs the migrator during development
 (`cybertrain db migrate` uses it, since `bin/blog.rb` cannot compile until the
 first migration has generated `gen/models/`). `gen/` already holds `views.rb`,
-the committed, empty table of embedded views.
+the committed, empty table of embedded views. The layout links
+`app/assets/stylesheets/application.css` with `stylesheet_link_tag`; `spin
+run gen` writes it digested into `public/assets/`, which is git-ignored
+(see [Assets](assets.md)).
 
 `ApplicationController` starts like this, so a missing record maps to a 404
 through `rescue_from`:
@@ -821,7 +825,7 @@ hand-written sign-in):
   - `iterations` is `Password::TEST_ITERATIONS` (1,000) when
     `Cybertrain.config.test?`, so test suites do not pay the production cost
     per user; digests record their count, so nothing else changes.
-- **The session** (`session[:key]`, a signed cookie): `clear` empties it
+- **The session** (`session[:key]`, an encrypted cookie): `clear` empties it
   (CSRF token included) on sign-out, and `config.session_absolute_max_age`
   (two weeks; `0` turns it off) bounds a session's whole life however often
   it is used: the cookie records when it was first written, a cookie older
@@ -882,7 +886,9 @@ end
 > as in Rails' generator: `SessionsController` declares `rate_limit to: 10,
 > within: 3 * 60, only: [:create]`, ten attempts per client address every
 > three minutes, then back to the form with "Try again later." until the
-> window closes. Behind a reverse proxy every visitor counts as the proxy's
+> window closes. The counts are kept in the application's database
+> (`Cybertrain::Cache`), so every process of the app counts together.
+> Behind a reverse proxy every visitor counts as the proxy's
 > address unless
 > [trusted proxies](requests.md#rate-limiting-and-the-client-address) are
 > configured. Not generated: password reset, whose e-mail needs the app's
@@ -1139,7 +1145,7 @@ a clean stop and the database kept on its volume, and loads
 > Limits and quirks worth knowing before they surprise you.
 
 <!-- list: points know -->
-- Sessions hold Strings only, in an HMAC-signed cookie.
+- Sessions hold Strings only, in an encrypted cookie.
 - SQLite only, through Spinel&rsquo;s FFI.
 - No backtraces: errors show class, message, request line and template
   name/line.
@@ -1148,8 +1154,8 @@ a clean stop and the database kept on its volume, and loads
 - Associations come from foreign keys or one-line declarations; no
   `has_many :through`, nested `includes`, enums, STI or polymorphic
   associations.
-- No `namespace`, `respond_to`/formats, `constraints` or `mount`;
-  `render json:` is minimal.
+- No `constraints` or `mount`; JSON is answered with `render json:`, which
+  is minimal.
 - Only the first string field gets a default presence validation in a
   scaffolded model.
 - The generator uses a lexical scan (regexes), not a parser, over

@@ -10,9 +10,11 @@
 # session (so no CSRF token), no flash and empty params. It is typed by the
 # program that renders through it: cybertrain/controller.rb requires this
 # file, so this file does not require the controller back.
+require "cybertrain/assets"
 require "cybertrain/html"
 require "cybertrain/http/header_name"
 require "cybertrain/http/query"
+require "cybertrain/number_helper"
 require "cybertrain/model"
 require "cybertrain/pagination"
 require "cybertrain/params"
@@ -21,7 +23,9 @@ require "cybertrain/component"
 require "cybertrain/stream"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
+require "cybertrain/template/turbo_stream_builder"
 require "cybertrain/generator/inflector"
+require "cybertrain/generator/url_support"
 
 module Cybertrain
   module Template
@@ -29,6 +33,14 @@ module Cybertrain
       MINUTES_IN_YEAR = 525_600
       MINUTES_IN_QUARTER_YEAR = 131_400
       MINUTES_IN_THREE_QUARTERS_YEAR = 394_200
+      # The keywords turbo_frame_tag and time_tag take.
+      TURBO_FRAME_KEYWORDS = %w[src loading target class data]
+      TIME_TAG_KEYWORDS = %w[format class id title data]
+      # The keywords of the asset tag helpers (spec 7.2).
+      STYLESHEET_KEYWORDS = %w[media nonce]
+      JAVASCRIPT_INCLUDE_KEYWORDS = %w[nonce]
+      IMAGE_TAG_KEYWORDS = %w[alt size class]
+      JS_HEX = "0123456789abcdef"
 
       def initialize(controller)
         @controller = controller
@@ -51,6 +63,11 @@ module Cybertrain
         # helpers then raise Views::OutsideRequest. A plain nil controller
         # (unit tests) keeps answering "" and empty values.
         @outside_request = false
+        # The options of a url_for or route call that has none (link_to's
+        # href, a form's action): a template's keywords Hash, typed empty
+        # (rule 9). Never mutated.
+        @no_url_options = { "" => [nil, 0, 0.0, "", true][0] }
+        @no_url_options.delete("")
       end
 
       # Marks these helpers as rendering with no request (Views.render_partial).
@@ -84,6 +101,13 @@ module Cybertrain
         when "link_to" then link_to(args, kwargs)
         when "button_to" then button_to(args, kwargs)
         when "form_with" then form_with(kwargs, block, interp, env)
+        when "select_tag" then select_tag(args, kwargs)
+        when "options_for_select" then options_for_select(args, kwargs)
+        when "options_from_collection_for_select" then options_from_collection_for_select(args, kwargs)
+        when "label_tag" then label_tag(args, kwargs)
+        when "text_field_tag" then text_field_tag(args, kwargs)
+        when "hidden_field_tag" then hidden_field_tag(args, kwargs)
+        when "submit_tag" then submit_tag(args, kwargs)
         when "render"
           return render_component_helper(kwargs, block, interp, env) if args.empty? && !kwargs["component"].nil?
 
@@ -92,16 +116,41 @@ module Cybertrain
         when "raw" then SafeString.of(text_arg(args, 0, name))
         when "pluralize" then pluralize(args)
         when "truncate" then truncate(args, kwargs)
-        when "number_with_delimiter" then number_with_delimiter(args)
+        when "number_with_delimiter" then number_with_delimiter(args, kwargs)
+        when "number_with_precision" then number_with_precision(args, kwargs)
+        when "number_to_human" then number_to_human(args, kwargs)
+        when "number_to_percentage" then number_to_percentage(args, kwargs)
+        when "number_to_currency" then number_to_currency(args, kwargs)
+        when "number_to_human_size" then number_to_human_size(args, kwargs)
         when "time_ago_in_words" then distance_of_time_in_words(time_arg(args, 0, name), Time.now)
         when "content_for" then content_for(args, block, interp, env)
         when "content_for?" then !env["__content_#{text_arg(args, 0, name)}"].nil?
         when "csrf_meta_tags" then csrf_meta_tags
         when "csrf_token" then csrf_token
+        when "csp_meta_tag"
+          helper_arity!(name, args, 0, 0)
+          helper_no_keywords!(name, kwargs)
+          csp_meta_tag
+        when "content_security_policy_nonce"
+          helper_arity!(name, args, 0, 0)
+          helper_no_keywords!(name, kwargs)
+          content_security_policy_nonce
+        when "javascript_tag" then javascript_tag(args, kwargs, block, interp, env)
+        when "asset_path"
+          helper_arity!(name, args, 1, 1)
+          helper_no_keywords!(name, kwargs)
+          asset_path(text_arg(args, 0, name))
+        when "stylesheet_link_tag" then stylesheet_link_tag(args, kwargs)
+        when "javascript_include_tag" then javascript_include_tag(args, kwargs)
+        when "image_tag" then image_tag(args, kwargs)
+        when "javascript_importmap_tags"
+          helper_arity!(name, args, 0, 1)
+          helper_no_keywords!(name, kwargs)
+          javascript_importmap_tags(args.empty? ? "application" : text_arg(args, 0, name))
         when "flash" then flash_messages
         when "params" then params
         when "request_path" then request_path
-        when "url_for" then url_for(arg(args, 0, name))
+        when "url_for" then url_for(arg(args, 0, name), kwargs)
         when "paginate" then paginate(args)
         when "tag" then Html::TAG_BUILDER
         when "content_tag" then content_tag(args, kwargs, block, interp, env)
@@ -113,6 +162,18 @@ module Cybertrain
           no_kwargs(kwargs, name)
           dom_id(args)
         when "turbo_stream_from" then turbo_stream_from(args, kwargs)
+        when "turbo_frame_tag" then turbo_frame_tag(args, kwargs, block, interp, env)
+        when "turbo_stream"
+          # The template's builder (`turbo_stream.replace ...`). No method
+          # named turbo_stream here: Controller#turbo_stream returns
+          # TurboStreams (NAME_HOMES in script/check-reserved-names).
+          helper_arity!(name, args, 0, 0)
+          helper_no_keywords!(name, kwargs)
+          raise CallSyntaxError, "turbo_stream takes no block (turbo_stream.replace \"id\" do ... end does)" unless block.nil?
+
+          TurboStreamBuilder.new(self, interp, env)
+        when "time_tag" then time_tag(args, kwargs, block, interp, env)
+        when "current_page?" then current_page?(args, kwargs)
         when "signed_stream_name" then signed_stream_name(args)
         when "stream_source_path" then stream_source_path(args, kwargs)
         else
@@ -123,8 +184,14 @@ module Cybertrain
             component = @components[depth - 1]
             return component.call_view_method(name.to_sym) if component.view_method?(name)
           end
+          # The controller's helper methods (`helper_method :x`, spec 4.3),
+          # in its templates and the components they render. Outside a
+          # request there is no controller, so the name is undefined.
+          controller = @controller
+          return controller.call_helper_method(name, args, kwargs) if !controller.nil? && controller.helper_method?(name)
+
           request_bound!(name) if name.end_with?("_url")
-          return route(name, args) if name.end_with?("_path") || name.end_with?("_url")
+          return route(name, args, kwargs) if name.end_with?("_path") || name.end_with?("_url")
 
           app_helper_call(name, args, kwargs, block, interp, env)
         end
@@ -141,6 +208,23 @@ module Cybertrain
 
       # The positional-argument check of a generated helper arm.
       def helper_arity!(name, args, min, max)
+        Helpers.helper_arity!(name, args, min, max)
+      end
+
+      # A helper that takes no keywords was given some.
+      def helper_no_keywords!(name, kwargs)
+        Helpers.helper_no_keywords!(name, kwargs)
+      end
+
+      # known: the helper's keywords, its `required` required ones first.
+      def helper_keywords!(name, kwargs, known, required)
+        Helpers.helper_keywords!(name, kwargs, known, required)
+      end
+
+      # The three checks as class methods too: a controller's generated
+      # call_helper_method (helper_method, spec 4.3) runs them outside
+      # these helpers.
+      def self.helper_arity!(name, args, min, max)
         n = args.size
         return nil if n >= min && n <= max
 
@@ -148,15 +232,13 @@ module Cybertrain
         raise ArgumentError, "wrong number of arguments for '#{name}' (given #{n}, expected #{expected})"
       end
 
-      # A helper that takes no keywords was given some.
-      def helper_no_keywords!(name, kwargs)
+      def self.helper_no_keywords!(name, kwargs)
         return nil if kwargs.empty?
 
         raise ArgumentError, "'#{name}' takes no keyword arguments (given #{kwargs.keys.join(", ")})"
       end
 
-      # known: the helper's keywords, its `required` required ones first.
-      def helper_keywords!(name, kwargs, known, required)
+      def self.helper_keywords!(name, kwargs, known, required)
         i = 0
         while i < required
           raise ArgumentError, "missing keyword '#{known[i]}' for '#{name}'" unless kwargs.key?(known[i])
@@ -192,6 +274,20 @@ module Cybertrain
         button_to([text, path], string_keys_of(attrs))
       end
 
+      # The partial `name` (found as `render` finds it from this template)
+      # with `locals` (String keys), checked against its strict locals: what
+      # the template's turbo_stream builder renders for `partial:`.
+      # @return [SafeString]
+      def partial_html(name, locals, interp, env)
+        engine = Views.engine
+        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
+
+        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        names = Array.new(0) { "" }
+        locals.each_key { |key| names << key }
+        render_partial_scope(template, locals, names, interp, env)
+      end
+
       # `f.label :title` and the other FormBuilder methods, `@page.next?`
       # (neither takes a block), and the `tag` builder.
       def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
@@ -205,6 +301,13 @@ module Cybertrain
 
           page_method(recv, name_sym, name_str)
         when Html::TagBuilder then tag_builder_call(name_str, args, kwargs, block, interp, env)
+        when TurboStreamBuilder
+          # The block renders at once, here: the builder never holds it
+          # (spikes/NOTES.md rule 88).
+          return recv.call_method(name_sym, args, kwargs) if block.nil?
+
+          content = interp.capture(block, env)
+          recv.call_method_with_block(name_sym, args, kwargs, content)
         else super(recv, name_sym, name_str, args, kwargs, block, interp, env)
         end
       end
@@ -311,7 +414,7 @@ module Cybertrain
       # refused rather than faked with JavaScript.
       def link_to(args, kwargs)
         text = html_arg(args, 0, "link_to")
-        href = url_for(arg(args, 1, "link_to"))
+        href = url_for(arg(args, 1, "link_to"), @no_url_options)
         unless kwargs["method"].nil?
           raise ArgumentError, "link_to does not support method: (use button_to '#{text}', path, method: :#{FormBuilder.value_text(kwargs["method"])})"
         end
@@ -329,7 +432,7 @@ module Cybertrain
       # plus the CSRF token, or a plain GET form.
       def button_to(args, kwargs)
         text = html_arg(args, 0, "button_to")
-        action = url_for(arg(args, 1, "button_to"))
+        action = url_for(arg(args, 1, "button_to"), @no_url_options)
         verb = kwargs["method"].nil? ? "post" : lower_text(kwargs["method"])
         # One interpolation, allocated once at its final size: a `+""`
         # buffer costs a copy of the literal, a String object, and a copy
@@ -345,12 +448,19 @@ module Cybertrain
       # collection route, a saved one patches its member route.
       # `multipart: true` adds enctype="multipart/form-data" (needed for
       # f.file_field); it raises ArgumentError on a GET form.
+      # `scope: :q` prefixes the field names (q[term]); with model: it
+      # replaces the model's prefix. `model: [:admin, article]` posts to the
+      # namespaced route (admin_article_path) with fields named after the
+      # last record. `data: { turbo_frame: "x" }` writes data- attributes;
+      # `local:` is accepted and changes nothing (every form submits as
+      # Turbo or the browser decides).
       def form_with(kwargs, block, interp, env)
         raise ArgumentError, "form_with needs a block (form_with(...) do |f| ... end)" if block.nil?
 
         model = kwargs["model"]
         record = form_record(model)
-        action = kwargs["url"].nil? ? form_action(model) : url_for(kwargs["url"])
+        scope = kwargs["scope"].nil? ? "" : FormBuilder.value_text(kwargs["scope"])
+        action = kwargs["url"].nil? ? form_record_url(model) : url_for(kwargs["url"], @no_url_options)
         verb = "post"
         if !kwargs["method"].nil?
           verb = lower_text(kwargs["method"])
@@ -367,9 +477,10 @@ module Cybertrain
         buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
         buf << " enctype=\"multipart/form-data\"" if multipart
         buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
+        buf << FormBuilder.attr_html("data", kwargs["data"]) unless kwargs["data"].nil?
         buf << ">"
         buf << hidden_fields(verb)
-        buf << interp.capture(block, env, FormBuilder.new(record))
+        buf << interp.capture(block, env, FormBuilder.new(record, scope))
         buf << "</form>"
         SafeString.of(buf)
       end
@@ -401,14 +512,14 @@ module Cybertrain
       end
 
       # posts_path / post_path(post); nested: post_comments_path(post).
-      def form_action(model)
+      def form_record_url(model)
         case model
         when Cybertrain::Model
-          return url_for(model) if model.persisted?
+          return url_for(model, @no_url_options) if model.persisted?
 
           # Bound step by step (see FormBuilder.humanize).
-          route("#{route_key_of(model_key(model))}_path", [])
-        when Array then url_for(model)
+          route("#{route_key_of(model_key(model))}_path", [], @no_url_options)
+        when Array then url_for(model, @no_url_options)
         else raise ArgumentError, "form_with needs model: or url:"
         end
       end
@@ -435,48 +546,135 @@ module Cybertrain
       def kwarg_attr(kwargs, key, attr_name)
         return "" if kwargs[key].nil?
 
-        FormBuilder.html_attr(attr_name, FormBuilder.value_text(kwargs[key]))
+        FormBuilder.text_attr(attr_name, kwargs[key])
       end
 
-      # data: { turbo_confirm: "Sure?" } -> data-turbo-confirm="Sure?".
+      # data: { turbo_confirm: "Sure?" } -> data-turbo-confirm="Sure?",
+      # through FormBuilder.attr_html, so a key that is not a valid
+      # attribute name raises as it does for every other data: Hash; a nil
+      # value is dropped.
       def data_attrs(data)
-        out = +""
         case data
-        when Hash
-          data.each_key do |key|
-            out << FormBuilder.html_attr("data-#{key.tr("_", "-")}", FormBuilder.value_text(data[key]))
-          end
+        when Hash then FormBuilder.attr_html("data", data)
+        else ""
         end
-        out
+      end
+
+      # --- form tags without a model -------------------------------------------
+      #
+      # Rails' standalone tag helpers. Other keywords become attributes in
+      # the order given (FormBuilder.attrs_html). Ids come from the name as
+      # Rails' sanitize_to_id ("q[term]" -> "q_term").
+
+      # select_tag "order", options_for_select(...), include_blank:, prompt:,
+      # multiple: (which names order[]). option_tags is HTML: a SafeString
+      # (the options_* helpers) goes in as it is, a String is escaped.
+      def select_tag(args, kwargs)
+        helper_arity!("select_tag", args, 1, 2)
+        name = text_arg(args, 0, "select_tag")
+        html_name = kwargs["multiple"] == true && !name.end_with?("[]") ? "#{name}[]" : name
+        prefix = FormBuilder.select_prefix(kwargs, true, "")
+        options = args.size > 1 ? FormBuilder.html_text(args[1]) : ""
+        SafeString.of("<select name=\"#{Html.escape(html_name)}\" id=\"#{Html.escape(FormBuilder.tag_id(name))}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::TAG_SELECT_KEYS, "")}>#{prefix}#{options}</select>")
+      end
+
+      # options_for_select(container, selected = nil): container as f.select's
+      # choices; selected a value or an Array of them, compared as Strings.
+      def options_for_select(args, kwargs)
+        helper_arity!("options_for_select", args, 1, 2)
+        helper_no_keywords!("options_for_select", kwargs)
+        selected = FormBuilder.text_list(args.size > 1 ? args[1] : nil)
+        SafeString.of(FormBuilder.options_html(args[0], selected, FormBuilder::NO_KEYS))
+      end
+
+      # options_from_collection_for_select(authors, :id, :name, selected = nil):
+      # each record's value and text read as f.collection_select reads them.
+      def options_from_collection_for_select(args, kwargs)
+        helper_arity!("options_from_collection_for_select", args, 3, 4)
+        helper_no_keywords!("options_from_collection_for_select", kwargs)
+        selected = FormBuilder.text_list(args.size > 3 ? args[3] : nil)
+        value_sym = FormBuilder.method_sym(args[1])
+        text_sym = FormBuilder.method_sym(args[2])
+        SafeString.of(FormBuilder.collection_options(args[0], value_sym, text_sym, selected, FormBuilder::NO_KEYS, "options_from_collection_for_select"))
+      end
+
+      # label_tag(:term) -> <label for="term">Term</label>; explicit text is
+      # escaped unless it is a SafeString.
+      def label_tag(args, kwargs)
+        helper_arity!("label_tag", args, 1, 2)
+        name = text_arg(args, 0, "label_tag")
+        text = args.size > 1 && !args[1].nil? ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(name))
+        SafeString.of("<label for=\"#{Html.escape(FormBuilder.tag_id(name))}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>#{text}</label>")
+      end
+
+      # text_field_tag(:term, value = nil, placeholder: ...); id: replaces
+      # the id taken from the name.
+      def text_field_tag(args, kwargs)
+        helper_arity!("text_field_tag", args, 1, 2)
+        name = text_arg(args, 0, "text_field_tag")
+        SafeString.of(FormBuilder.input_tag("text", name, args.size > 1 ? args[1] : nil, kwargs, ""))
+      end
+
+      # hidden_field_tag(:token, value = nil), with autocomplete="off" as
+      # Rails writes it (a browser restoring the page does not refill
+      # it from its form cache).
+      def hidden_field_tag(args, kwargs)
+        helper_arity!("hidden_field_tag", args, 1, 2)
+        name = text_arg(args, 0, "hidden_field_tag")
+        SafeString.of(FormBuilder.input_tag("hidden", name, args.size > 1 ? args[1] : nil, kwargs, " autocomplete=\"off\""))
+      end
+
+      # submit_tag(value = "Save changes"), named commit as f.submit is.
+      def submit_tag(args, kwargs)
+        helper_arity!("submit_tag", args, 0, 1)
+        text = args.empty? ? "Save changes" : FormBuilder.html_text(args[0])
+        SafeString.of("<input type=\"submit\" name=\"commit\" value=\"#{text}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>")
       end
 
       # --- routes ------------------------------------------------------------
 
-      # to_s, not an interpolation: a String typed without a copy (see
+      # The template's keywords go along as the helper's options
+      # (`post_path(post, page: 2)`: Gen.with_options). to_s, not an
+      # interpolation: a String typed without a copy (see
       # FormBuilder.value_text).
-      def route(name, args)
-        Views.url_resolver.call(name, args).to_s
+      def route(name, args, options)
+        Views.url_resolver.call(name, args, options).to_s
       end
 
       # A String is already a URL; a record maps to its member route
       # ("post_path"), a [parent, child] pair to the nested one
       # ("post_comment_path", or "post_comments_path" for a new child).
-      def url_for(target)
+      # options (`format:`, `anchor:`, query keys) are appended as a path
+      # helper appends them (`url_for("/x", format: :csv)` is "/x.csv").
+      def url_for(target, options)
         case target
-        when SafeString then "#{target.to_s}"
-        when String then "#{target}"
-        when Cybertrain::Model then route("#{model_key(target)}_path", [target])
-        when Array then nested_url(target)
+        when SafeString then string_url(target.to_s, options)
+        when String then string_url(target, options)
+        when Cybertrain::Model then route("#{model_key(target)}_path", [target], options)
+        when Array then nested_url(target, options)
         else raise ArgumentError, "url_for cannot build a URL from #{FormBuilder.value_text(target)}"
         end
+      end
+
+      # url_for's String case: options (format:, a query, anchor:) are appended
+      # to the path, so a URL that already has a query or fragment is refused.
+      def string_url(url, options)
+        return "#{url}" if options.empty?
+
+        if url.include?("?") || url.include?("#")
+          msg = "url_for #{url.inspect}: options cannot be added to a URL that already has a query or fragment"
+          raise ArgumentError, msg
+        end
+        Cybertrain::Gen.with_options(url, options)
       end
 
       # url_for's Array case: the route named after the records in items,
       # in order ("post_comment_path"), called with those records. A last
       # record that is new names the collection route instead
-      # ("post_comments_path") and is left out of the arguments. Raises
-      # ArgumentError when an item of the general case is not a record.
-      def nested_url(items)
+      # ("post_comments_path") and is left out of the arguments. A Symbol
+      # is a namespace (`[:admin, article]`: "admin_article_path").
+      # Raises ArgumentError when an item of the general case is neither.
+      def nested_url(items, options)
         # [parent, child], the usual shape, in one interpolation.
         if items.size == 2
           parent = items[0]
@@ -486,9 +684,9 @@ module Cybertrain
             case child
             when Cybertrain::Model
               parent_key = model_key(parent)
-              return route("#{parent_key}_#{route_key_of(model_key(child))}_path", [parent]) if child.new_record?
+              return route("#{parent_key}_#{route_key_of(model_key(child))}_path", [parent], options) if child.new_record?
 
-              return route("#{parent_key}_#{model_key(child)}_path", [parent, child])
+              return route("#{parent_key}_#{model_key(child)}_path", [parent, child], options)
             end
           end
         end
@@ -510,11 +708,16 @@ module Cybertrain
               route_args << item
             end
             name << "_" unless last
+          # A namespace ([:admin, article] -> admin_article_path): a name
+          # part only, no route argument.
+          when Symbol
+            name << FormBuilder.value_text(item)
+            name << "_" unless i == items.size - 1
           else raise ArgumentError, "url_for expects records in a nested route"
           end
           i += 1
         end
-        route("#{name}_path", route_args)
+        route("#{name}_path", route_args, options)
       end
 
       def model_key(record)
@@ -568,7 +771,7 @@ module Cybertrain
       # Query.without_key).
       def paginate(args)
         page = arg(args, 0, "paginate")
-        path = url_for(arg(args, 1, "paginate"))
+        path = url_for(arg(args, 1, "paginate"), @no_url_options)
         case page
         when Cybertrain::Page then pager_html(page, path)
         else raise ArgumentError, "paginate expects a Page (from Relation#page), got #{FormBuilder.value_text(page)}"
@@ -700,6 +903,14 @@ module Cybertrain
       # Controller#render_partial returns nil, and two same-named methods
       # with different return types emptied `kwargs` here once both were in
       # one program (spikes/NOTES.md rules 34 and 41).
+      #
+      # With collection: (an Array), the partial once per item, as the local
+      # named by as: (the partial's own name by default) with
+      # `<as>_counter` from 0 (to a partial with strict locals only when it
+      # declares it), locals: given to each, and spacer_template: (a
+      # partial) between items; an empty collection renders "". `render
+      # @comments` renders each record's comments/_comment the same way, and
+      # `render @comment` one record.
       def render_helper(args, kwargs, interp, env)
         locals = kwargs
         name = ""
@@ -713,7 +924,17 @@ module Cybertrain
           when nil then locals = {}
           else raise ArgumentError, "render locals: must be a Hash"
           end
+          return render_collection(name, kwargs, locals, interp, env) if kwargs.key?("collection")
         else
+          first = args[0]
+          case first
+          # Time before Array (spikes/NOTES.md rule 8).
+          when Time then nil
+          when Array, Cybertrain::Model
+            helper_arity!("render", args, 1, 1)
+            helper_no_keywords!("render", kwargs)
+            return render_records(first, interp, env)
+          end
           name = text_arg(args, 0, "render")
         end
         engine = Views.engine
@@ -722,6 +943,120 @@ module Cybertrain
         template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
+        render_partial_scope(template, locals, names, interp, env)
+      end
+
+      # render partial:, collection:, as:, spacer_template:, locals:.
+      def render_collection(name, kwargs, locals, interp, env)
+        items = kwargs["collection"]
+        case items
+        when Time then nil
+        when Array
+          return SafeString.of("") if items.empty?
+
+          slash = name.rindex("/")
+          as_name = slash.nil? ? name : name[slash + 1, name.size - slash - 1].to_s
+          as_name = FormBuilder.value_text(kwargs["as"]) if kwargs.key?("as")
+          spacer = ""
+          if kwargs.key?("spacer_template")
+            no_locals = { "" => [nil, 0, 0.0, "", true][0] }
+            no_locals.delete("")
+            spacer = partial_html(FormBuilder.value_text(kwargs["spacer_template"]), no_locals, interp, env).to_s
+          end
+          return render_items(name, as_name, items, locals, spacer, interp, env)
+        end
+        msg = "render collection: must be an Array, got #{FormBuilder.value_text(items)}"
+        raise ArgumentError, msg
+      end
+
+      # `render @comments` (each record's <route key>/_<singular>) and
+      # `render @comment`.
+      def render_records(value, interp, env)
+        out = +""
+        no_locals = { "" => [nil, 0, 0.0, "", true][0] }
+        no_locals.delete("")
+        case value
+        when Cybertrain::Model
+          key = record_partial_local(value)
+          # One object: no counter, as in Rails.
+          html = render_item(record_partial(value, key), key, value, -1, no_locals, interp, env)
+          out << html.to_s
+        when Array
+          i = 0
+          while i < value.size
+            record = value[i]
+            case record
+            when Time then record_expected!(record)
+            when Cybertrain::Model
+              key = record_partial_local(record)
+              # One item at a time: the records may be of different models.
+              html = render_item(record_partial(record, key), key, record, i, no_locals, interp, env)
+              out << html.to_s
+            else record_expected!(record)
+            end
+            i += 1
+          end
+        end
+        SafeString.of(out)
+      end
+
+      def record_expected!(value)
+        msg = "render expects records in a collection, got #{FormBuilder.value_text(value)}"
+        raise ArgumentError, msg
+      end
+
+      # "comment" for a Comment, "note" for an Admin::Note.
+      def record_partial_local(record)
+        key = model_key(record)
+        slash = key.rindex("/")
+        slash.nil? ? key : key[slash + 1, key.size - slash - 1].to_s
+      end
+
+      # "comments/comment" for a Comment, "admin/notes/note" for an
+      # Admin::Note (ActiveModel's to_partial_path).
+      def record_partial(record, local)
+        key = model_key(record)
+        slash = key.rindex("/")
+        plural = Inflector.pluralize(local)
+        return "#{plural}/#{local}" if slash.nil?
+
+        "#{key[0, slash]}/#{plural}/#{local}"
+      end
+
+      # The partial once per item, spacer between.
+      def render_items(name, as_name, items, locals, spacer, interp, env)
+        out = +""
+        i = 0
+        while i < items.size
+          out << spacer if i > 0
+          html = render_item(name, as_name, items[i], i, locals, interp, env)
+          out << html.to_s
+          i += 1
+        end
+        SafeString.of(out)
+      end
+
+      # One item: locals, then the item as `as_name`, then `<as_name>_counter`
+      # (index; none when it is -1) unless the partial's strict locals leave
+      # it out.
+      def render_item(name, as_name, item, index, locals, interp, env)
+        engine = Views.engine
+        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
+
+        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        counter = "#{as_name}_counter"
+        scoped = { "" => [nil, 0, 0.0, "", true][0] }
+        scoped.delete("")
+        locals.each_key { |key| scoped[key] = locals[key] }
+        scoped[as_name] = item
+        scoped[counter] = index if index >= 0 && (!template.strict_locals? || Helpers.name_in?(template.locals, counter))
+        names = Array.new(0) { "" }
+        scoped.each_key { |key| names << key }
+        render_partial_scope(template, scoped, names, interp, env)
+      end
+
+      # The partial template with `names` of locals added to a copy of env.
+      def render_partial_scope(template, locals, names, interp, env)
         Helpers.check_locals(template, names)
         scope = env.dup
         i = 0
@@ -813,22 +1148,82 @@ module Cybertrain
         "#{text[0, keep]}#{omission}"
       end
 
-      # 1234567 -> "1,234,567"; 1234.5 -> "1,234.5".
-      def number_with_delimiter(args)
-        text = FormBuilder.value_text(arg(args, 0, "number_with_delimiter"))
-        sign = text.start_with?("-") ? "-" : ""
-        digits = sign.empty? ? text : text[1, text.length - 1]
-        dot = digits.index(".")
-        whole = dot.nil? ? digits : digits[0, dot]
-        fraction = dot.nil? ? "" : digits[dot, digits.length - dot]
-        out = +""
-        i = 0
-        while i < whole.length
-          out << "," if i > 0 && (whole.length - i) % 3 == 0
-          out << whole[i]
-          i += 1
+      # The number helpers are Cybertrain::NumberHelper's, with Rails'
+      # keywords: 1234567 -> "1,234,567"; 1234.5 -> "1,234.5".
+      # nil renders "" in a template (as in Rails and 0.4: a nullable column
+      # prints nothing); NumberHelper's module functions, called from Ruby,
+      # raise ArgumentError for nil. Any other non-number raises in both.
+      def number_with_delimiter(args, kwargs)
+        helper_arity!("number_with_delimiter", args, 1, 1)
+        helper_keywords!("number_with_delimiter", kwargs, ["delimiter", "separator"], 0)
+        return "" if args[0].nil?
+
+        delimiter = kwargs["delimiter"].nil? ? "," : FormBuilder.value_text(kwargs["delimiter"])
+        separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
+        NumberHelper.number_with_delimiter(args[0], delimiter: delimiter, separator: separator)
+      end
+
+      def number_with_precision(args, kwargs)
+        helper_arity!("number_with_precision", args, 1, 1)
+        helper_keywords!("number_with_precision", kwargs, ["precision", "delimiter", "separator", "strip_insignificant_zeros"], 0)
+        return "" if args[0].nil?
+
+        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
+        delimiter = kwargs["delimiter"].nil? ? "" : FormBuilder.value_text(kwargs["delimiter"])
+        separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
+        strip = kwargs["strip_insignificant_zeros"] == true
+        NumberHelper.number_with_precision(args[0], precision: precision, delimiter: delimiter, separator: separator, strip_insignificant_zeros: strip)
+      end
+
+      # units: { thousand: "lt" } is a template Hash (String keys).
+      def number_to_human(args, kwargs)
+        helper_arity!("number_to_human", args, 1, 1)
+        helper_keywords!("number_to_human", kwargs, ["precision", "units"], 0)
+        return "" if args[0].nil?
+
+        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
+        names = NumberHelper::UNIT_NAMES.dup
+        given = kwargs["units"]
+        case given
+        when Hash
+          i = 0
+          while i < NumberHelper::UNIT_KEYS.length
+            key = NumberHelper::UNIT_KEYS[i].to_s
+            names[i] = FormBuilder.value_text(given[key]) if given.key?(key)
+            i += 1
+          end
+        when nil then nil
+        else raise ArgumentError, "number_to_human units: must be a Hash"
         end
-        "#{sign}#{out}#{fraction}"
+        NumberHelper.human_text(args[0], precision, names)
+      end
+
+      def number_to_percentage(args, kwargs)
+        helper_arity!("number_to_percentage", args, 1, 1)
+        helper_keywords!("number_to_percentage", kwargs, ["precision"], 0)
+        return "" if args[0].nil?
+
+        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
+        NumberHelper.number_to_percentage(args[0], precision: precision)
+      end
+
+      def number_to_currency(args, kwargs)
+        helper_arity!("number_to_currency", args, 1, 1)
+        helper_keywords!("number_to_currency", kwargs, ["unit", "precision", "format"], 0)
+        return "" if args[0].nil?
+
+        unit = kwargs["unit"].nil? ? "$" : FormBuilder.value_text(kwargs["unit"])
+        precision = kwargs["precision"].nil? ? 2 : int_text(kwargs["precision"])
+        fmt = kwargs["format"].nil? ? "%u%n" : FormBuilder.value_text(kwargs["format"])
+        NumberHelper.number_to_currency(args[0], unit: unit, precision: precision, format: fmt)
+      end
+
+      def number_to_human_size(args, kwargs)
+        helper_arity!("number_to_human_size", args, 1, 1)
+        helper_no_keywords!("number_to_human_size", kwargs)
+        return "" if args[0].nil?
+
+        NumberHelper.number_to_human_size(args[0])
       end
 
       # A value for HTML: SafeString as is, anything else escaped.
@@ -856,6 +1251,330 @@ module Cybertrain
         src << token
         escaped = Html.escape(src)
         SafeString.of("<turbo-stream-source src=\"#{escaped}\"></turbo-stream-source>")
+      end
+
+      # turbo_frame_tag @article, src: article_path(@article), loading: "lazy",
+      # target: "_top" do ... end: `<turbo-frame id="article_3" src="..."
+      # loading="lazy" target="_top">...</turbo-frame>`. The id is a String
+      # or a record's dom_id; each attribute is written only when given
+      # (class: and data: too), escaped once (a SafeString as it is).
+      def turbo_frame_tag(args, kwargs, block, interp, env)
+        helper_arity!("turbo_frame_tag", args, 1, 1)
+        helper_keywords!("turbo_frame_tag", kwargs, TURBO_FRAME_KEYWORDS, 0)
+        target = args[0]
+        out = +"<turbo-frame"
+        case target
+        when Cybertrain::Model then out << FormBuilder.attr_html("id", Html.dom_id(target, ""))
+        else out << FormBuilder.attr_html("id", target)
+        end
+        kwargs.each_key { |key| out << FormBuilder.attr_html(key, kwargs[key]) }
+        out << ">"
+        out << interp.capture(block, env) unless block.nil?
+        out << "</turbo-frame>"
+        SafeString.of(out)
+      end
+
+      # time_tag(time, text = nil, format: nil): `<time datetime="...">text
+      # </time>`. A Time's datetime is its xmlschema
+      # (`2026-11-10T12:00:00Z`), a Date's `2026-11-10`. The text is `text`
+      # (escaped unless a SafeString), else the block's output, else the
+      # value in `format:` (:short, :long or a strftime String; by default
+      # `Tue, 10 Nov 2026 12:00:00 +0000` for a Time, `2026-11-10` for a
+      # Date). class:, id:, title: and data: are attributes.
+      def time_tag(args, kwargs, block, interp, env)
+        helper_arity!("time_tag", args, 1, block.nil? ? 2 : 1)
+        helper_keywords!("time_tag", kwargs, TIME_TAG_KEYWORDS, 0)
+        value = args[0]
+        format = kwargs["format"]
+        datetime = ""
+        text = ""
+        case value
+        when Time
+          # xmlschema: "Z" for UTC, else the offset with a colon ("+09:00"),
+          # which strftime's %z does not write.
+          offset = value.utc_offset
+          stamp = value.strftime("%Y-%m-%dT%H:%M:%S")
+          datetime = offset == 0 ? "#{stamp}Z" : "#{stamp}#{Helpers.offset_text(offset, ":")}"
+          if args.size < 2 && block.nil?
+            if format.nil?
+              text = value.strftime("%a, %d %b %Y %H:%M:%S %z")
+            else
+              pattern = Helpers.time_tag_pattern(format, "", "%d %b %H:%M", "%B %d, %Y %H:%M")
+              text = Helpers.time_tag_strftime(value, pattern)
+            end
+          end
+        when Date
+          datetime = value.strftime("%Y-%m-%d")
+          pattern = Helpers.time_tag_pattern(format, "%Y-%m-%d", "%b %d", "%B %d, %Y")
+          text = Helpers.time_tag_strftime(value, pattern) if args.size < 2 && block.nil?
+        else
+          msg = "time_tag expects a Time or a Date, got #{FormBuilder.value_text(value)}"
+          raise ArgumentError, msg
+        end
+        out = +"<time"
+        out << FormBuilder.attr_html("datetime", datetime)
+        kwargs.each_key { |key| out << FormBuilder.attr_html(key, kwargs[key]) unless key == "format" }
+        out << ">"
+        if args.size > 1
+          out << to_html(args[1])
+        elsif !block.nil?
+          out << interp.capture(block, env)
+        else
+          out << Html.escape(text)
+        end
+        out << "</time>"
+        SafeString.of(out)
+      end
+
+      # strftime of a pattern that is not a literal, one directive at a time
+      # with literal patterns. Time#strftime given a built String on a
+      # polymorphic receiver handed the pattern back unformatted under
+      # Spinel 2026.11.04.7026 (the call goes through a dispatch that reads
+      # the String's buffer and then returns that buffer).
+      #
+      # A directive is `%`, flags (`-` no padding, `_` space padding, `0`
+      # zero padding, `^` upcase, `#` change case, `:` for `%:z`), a width,
+      # then one of: Y C y m d e j H k I l M S L N s p P a A b h B u w U W
+      # G g V Z z F T D R r c x X v n t %. `%3N` / `%6N` / `%9N` (any width
+      # for N) give that many fraction digits; a width on a number replaces
+      # its padding (`%1d`, `%5e`), as in strftime. Anything else raises
+      # ArgumentError, as does a lone `%` at the end, and so does a width or
+      # flag whose strftime meaning this walk does not reproduce
+      # (strftime_refusal: `%6L`, `%-N`, `%:Y`, `%::z`, `%5Z`, `%-T`, `%-_d`):
+      # it raises rather than render something else. Text between
+      # directives (multibyte included) is copied as it is.
+      def self.time_tag_strftime(time, pattern)
+        s = pattern.to_s # NOTES rule 62: plain byte reads
+        n = s.bytesize
+        out = +""
+        i = 0
+        while i < n
+          start = i
+          i += 1 while i < n && s.getbyte(i) != 37
+          out << s.byteslice(start, i - start).to_s if i > start
+          break if i >= n
+
+          dstart = i
+          i += 1
+          flags = +""
+          while i < n
+            f = s.getbyte(i)
+            # - _ 0 ^ # :
+            break unless f == 45 || f == 95 || f == 48 || f == 94 || f == 35 || f == 58
+
+            flags << s.byteslice(i, 1).to_s
+            i += 1
+          end
+          width = 0
+          while i < n
+            w = s.getbyte(i)
+            break unless w >= 48 && w <= 57
+
+            width = width * 10 + (w - 48)
+            i += 1
+          end
+          if i >= n
+            msg = "time_tag format: incomplete directive #{s.byteslice(dstart, n - dstart)} in #{pattern.inspect}"
+            raise ArgumentError, msg
+          end
+          conv = s.byteslice(i, 1).to_s
+          i += 1
+          refused = Helpers.strftime_refusal(conv, flags, width)
+          unless refused.empty?
+            msg = "time_tag format: #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}: #{refused}"
+            raise ArgumentError, msg
+          end
+          piece = Helpers.strftime_directive(time, conv, flags, width)
+          if piece.nil?
+            msg = "time_tag format: unknown directive #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}"
+            raise ArgumentError, msg
+          end
+          out << piece
+        end
+        out
+      end
+
+      # Why a directive's flags or width are refused ("" when they are
+      # not): the combinations whose Time#strftime output this walk does
+      # not reproduce raise instead of rendering something else.
+      def self.strftime_refusal(conv, flags, width)
+        pads = 0
+        pads += 1 if flags.include?("-")
+        pads += 1 if flags.include?("_")
+        pads += 1 if flags.include?("0")
+        return "combine at most one of the flags - _ 0" if pads > 1
+        return "combine at most one of the flags ^ #" if flags.include?("^") && flags.include?("#")
+        if conv == "z"
+          return "%z takes no width and no flag but :" if width > 0 || flags.delete(":").size > 0 || flags.count(":") > 1
+        elsif flags.include?(":")
+          return "the : flag is only for %:z"
+        end
+        return "%L takes no width or flag; use %3N, %6N or %9N" if conv == "L" && (width > 0 || !flags.empty?)
+        return "%N takes no flag" if conv == "N" && !flags.empty?
+        return "%Z takes no width" if conv == "Z" && width > 0
+        return "%#{conv} takes no flag but ^" if "FTDRrcxXv".include?(conv) && !flags.delete("^").empty?
+
+        ""
+      end
+
+      # One directive of time_tag_strftime; nil for an unknown conversion.
+      def self.strftime_directive(time, conv, flags, width)
+        base = case conv
+               when "Y" then time.strftime("%Y")
+               when "C" then time.strftime("%C")
+               when "y" then time.strftime("%y")
+               when "m" then time.strftime("%m")
+               when "d" then time.strftime("%d")
+               when "e" then time.strftime("%e")
+               when "j" then time.strftime("%j")
+               when "H" then time.strftime("%H")
+               when "k" then time.strftime("%k")
+               when "I" then time.strftime("%I")
+               when "l" then time.strftime("%l")
+               when "M" then time.strftime("%M")
+               when "S" then time.strftime("%S")
+               when "L" then time.strftime("%L")
+               when "N"
+                 nine = time.strftime("%9N")
+                 digits = width > 0 ? width : 9
+                 digits <= 9 ? nine[0, digits].to_s : "#{nine}#{"0" * (digits - 9)}"
+               when "s" then time.strftime("%s")
+               when "p" then time.strftime("%p")
+               when "P" then time.strftime("%P")
+               when "a" then time.strftime("%a")
+               when "A" then time.strftime("%A")
+               when "b", "h" then time.strftime("%b")
+               when "B" then time.strftime("%B")
+               when "u" then time.strftime("%u")
+               when "w" then time.strftime("%w")
+               when "U" then time.strftime("%U")
+               when "W" then time.strftime("%W")
+               when "G" then time.strftime("%G")
+               when "g" then time.strftime("%g")
+               when "V" then time.strftime("%V")
+               when "Z" then time.strftime("%Z")
+               when "z"
+                 zone = time.strftime("%z")
+                 flags.include?(":") && zone.size == 5 ? "#{zone[0, 3]}:#{zone[3, 2]}" : zone
+               when "F" then time.strftime("%Y-%m-%d")
+               when "T", "X" then time.strftime("%H:%M:%S")
+               when "D", "x" then time.strftime("%m/%d/%y")
+               when "R" then time.strftime("%H:%M")
+               when "r" then time.strftime("%I:%M:%S %p")
+               when "c" then time.strftime("%a %b %e %H:%M:%S %Y")
+               when "v" then time.strftime("%e-%^b-%Y")
+               when "n" then "\n"
+               when "t" then "\t"
+               when "%" then "%"
+               end
+        return nil if base.nil?
+        return base if flags.empty? && (width == 0 || conv == "N")
+
+        Helpers.strftime_flags(base, conv, flags, conv == "N" ? 0 : width)
+      end
+
+      # Applies the flags and width of a directive to its default text. A
+      # width on a number replaces its default padding, as in strftime
+      # (`%1d` is "5", `%5e` is "    5").
+      def self.strftime_flags(base, conv, flags, width)
+        text = base
+        numeric = "YCymdejHkIlMSsuwUWGgV".include?(conv)
+        if numeric && width > 0
+          k = 0
+          k += 1 while k < text.size - 1 && (text[k] == "0" || text[k] == " ")
+          text = text[k, text.size - k].to_s
+          return text if flags.include?("-") || width <= text.size
+
+          pad = "ekl".include?(conv) ? " " : "0"
+          pad = " " if flags.include?("_")
+          pad = "0" if flags.include?("0")
+          return "#{pad * (width - text.size)}#{text}"
+        end
+        if flags.include?("-")
+          # "05" -> "5", " 5" -> "5"
+          k = 0
+          k += 1 while k < text.size - 1 && (text[k] == "0" || text[k] == " ")
+          text = text[k, text.size - k].to_s
+        elsif flags.include?("_")
+          k = 0
+          lead = +""
+          while k < text.size - 1 && text[k] == "0"
+            lead << " "
+            k += 1
+          end
+          text = "#{lead}#{text[k, text.size - k]}"
+        elsif flags.include?("0")
+          text = text.tr(" ", "0")
+        end
+        text = text.upcase if flags.include?("^")
+        text = text == text.upcase ? text.downcase : text.upcase if flags.include?("#")
+        if width > text.size && !flags.include?("-")
+          pad = flags.include?("_") || !numeric ? " " : "0"
+          pad = "0" if flags.include?("0")
+          text = "#{pad * (width - text.size)}#{text}"
+        end
+        text
+      end
+
+      # The strftime pattern of time_tag's format: (nil: the default).
+      # Interpolated, so that strftime gets a plain String.
+      def self.time_tag_pattern(format, default, short, long)
+        case format
+        when nil then return default
+        when :short then return short
+        when :long then return long
+        when SafeString then return "#{format.to_s}"
+        when String then return "#{format}"
+        end
+        msg = "time_tag format: must be :short, :long or a strftime String, got #{FormBuilder.value_text(format)}"
+        raise ArgumentError, msg
+      end
+
+      # "+0900" / "-05:30" for an offset in seconds.
+      def self.offset_text(seconds, sep)
+        sign = seconds < 0 ? "-" : "+"
+        abs = seconds.abs
+        hours = abs / 3600
+        minutes = (abs % 3600) / 60
+        hh = hours < 10 ? "0#{hours}" : "#{hours}"
+        mm = minutes < 10 ? "0#{minutes}" : "#{minutes}"
+        "#{sign}#{hh}#{sep}#{mm}"
+      end
+
+      # current_page?("/articles"): whether this GET or HEAD request is for
+      # that path (a trailing slash aside); with a query in the argument
+      # ("/articles?page=2") the query must match too. A record or an Array
+      # goes through url_for. False on any other method, and without a
+      # request.
+      def current_page?(args, kwargs)
+        helper_arity!("current_page?", args, 1, 1)
+        helper_no_keywords!("current_page?", kwargs)
+        request_bound!("current_page?")
+        controller = @controller
+        return false if controller.nil?
+
+        req = controller.request
+        return false unless req.get? || req.head?
+
+        url = url_for(args[0], @no_url_options)
+        base = req.base_url
+        url = url.byteslice(base.bytesize, url.bytesize - base.bytesize).to_s if !base.empty? && url.start_with?(base)
+        return false if url.start_with?("http://") || url.start_with?("https://")
+
+        q = url.index("?")
+        path = q.nil? ? url : url[0, q].to_s
+        return false unless Helpers.same_path?(path, req.path)
+        return true if q.nil?
+
+        query = url[q + 1, url.size - q - 1].to_s
+        query == req.query_string.to_s
+      end
+
+      # "/articles/" and "/articles" are the same page; "/" is itself.
+      def self.same_path?(a, b)
+        x = a.size > 1 && a.end_with?("/") ? a[0, a.size - 1].to_s : a
+        y = b.size > 1 && b.end_with?("/") ? b[0, b.size - 1].to_s : b
+        x == y
       end
 
       # The signed token naming the streams, for hand-written JavaScript.
@@ -942,6 +1661,223 @@ module Cybertrain
         return "" if session.nil?
 
         session.csrf_token!
+      end
+
+      # This request's Content Security Policy nonce (Context#csp_nonce),
+      # "" when no policy applies (none declared) or there is no controller.
+      def content_security_policy_nonce
+        request_bound!("content_security_policy_nonce")
+        controller = @controller
+        return "" if controller.nil?
+
+        ctx = controller.ctx
+        return "" if ctx.csp_policy.nil?
+
+        ctx.csp_nonce
+      end
+
+      # `<meta name="csp-nonce" content="...">` for scripts that add
+      # elements (Turbo reads it); "" when no policy applies.
+      def csp_meta_tag
+        nonce = content_security_policy_nonce
+        return SafeString.of("") if nonce.empty?
+
+        SafeString.of("<meta name=\"csp-nonce\" content=\"#{Html.escape(nonce)}\">")
+      end
+
+      # `javascript_tag(nonce: true) do ... end`: the block's output in a
+      # `<script>`, with this request's nonce when `nonce: true` and a
+      # policy applies. The content may instead be one String argument,
+      # written as given (not escaped, as in Rails: never put request data
+      # in it). id:, type: and data: are attributes.
+      def javascript_tag(args, kwargs, block, interp, env)
+        helper_arity!("javascript_tag", args, 0, block.nil? ? 1 : 0)
+        helper_keywords!("javascript_tag", kwargs, ["nonce", "id", "type", "data"], 0)
+        content = block.nil? ? (args.empty? ? "" : text_arg(args, 0, "javascript_tag")) : interp.capture(block, env)
+        attrs = { "" => [nil, 0, 0.0, "", true][0] }
+        attrs.delete("")
+        kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "nonce" }
+        if kwargs["nonce"] == true
+          nonce = content_security_policy_nonce
+          attrs["nonce"] = nonce unless nonce.empty?
+        end
+        Html.build_tag("script", attrs, content, true)
+      end
+
+      # --- assets (spec 7.2, 7.3) -------------------------------------------
+
+      # asset_path("logo.svg") -> "/assets/logo-1a2b3c4d.svg" (Assets.path:
+      # an unknown name raises in development and test). A URL or a path
+      # starting with `/` comes back as given, as from the tag helpers.
+      def asset_path(name)
+        asset_source(name, "")
+      end
+
+      # A source as a tag helper writes it: a URL with a scheme (or `//`)
+      # as written; else ext added when the name lacks it (Rails'
+      # ASSET_EXTENSIONS; "" for none), then a path starting with `/` as
+      # written and anything else digested.
+      def asset_source(source, ext)
+        return source if Helpers.url_with_scheme?(source)
+
+        name = ext.empty? || source.end_with?(ext) ? source : "#{source}#{ext}"
+        return name if name.start_with?("/")
+
+        Assets.path(name)
+      end
+
+      # A URL a tag helper writes as given, as Rails' URI_REGEXP has it:
+      # "https://x" (a scheme then "://"), "//cdn/x", "data:..." or "cid:...".
+      # "javascript:x" is not one, so it is looked up as an asset name.
+      def self.url_with_scheme?(source)
+        s = source.to_s
+        return true if s.start_with?("//")
+
+        n = s.bytesize
+        i = 0
+        while i < n
+          b = s.getbyte(i)
+          if b == 58
+            return false if i == 0
+
+            scheme = s[0, i].to_s.downcase
+            return scheme == "data" || scheme == "cid" || s[i + 1, 2].to_s == "//"
+          end
+          letter = (b >= 97 && b <= 122) || (b >= 65 && b <= 90)
+          ok = i == 0 ? letter : (letter || (b >= 48 && b <= 57) || b == 43 || b == 45 || b == 46)
+          return false unless ok
+
+          i += 1
+        end
+        false
+      end
+
+      # The nonce attribute: ` nonce="..."` when nonce is true and a policy
+      # applies, else "".
+      def nonce_attr(nonce)
+        return "" unless nonce == true
+
+        value = content_security_policy_nonce
+        value.empty? ? "" : FormBuilder.attr_html("nonce", value)
+      end
+
+      # stylesheet_link_tag("application", media: "print", nonce: true):
+      # `<link rel="stylesheet" href="/assets/application-1a2b3c4d.css"
+      # media="print" nonce="...">` (".css" added when missing).
+      def stylesheet_link_tag(args, kwargs)
+        helper_arity!("stylesheet_link_tag", args, 1, 1)
+        helper_keywords!("stylesheet_link_tag", kwargs, STYLESHEET_KEYWORDS, 0)
+        href = asset_source(text_arg(args, 0, "stylesheet_link_tag"), ".css")
+        out = +"<link rel=\"stylesheet\""
+        out << FormBuilder.attr_html("href", href)
+        out << FormBuilder.text_attr("media", kwargs["media"]) unless FormBuilder.value_text(kwargs["media"]).empty?
+        out << nonce_attr(kwargs["nonce"])
+        out << ">"
+        SafeString.of(out)
+      end
+
+      # javascript_include_tag("legacy", nonce: true):
+      # `<script src="/assets/legacy-1a2b3c4d.js" nonce="..."></script>`
+      # (".js" added when missing).
+      def javascript_include_tag(args, kwargs)
+        helper_arity!("javascript_include_tag", args, 1, 1)
+        helper_keywords!("javascript_include_tag", kwargs, JAVASCRIPT_INCLUDE_KEYWORDS, 0)
+        src = asset_source(text_arg(args, 0, "javascript_include_tag"), ".js")
+        out = +"<script"
+        out << FormBuilder.attr_html("src", src)
+        out << nonce_attr(kwargs["nonce"])
+        out << "></script>"
+        SafeString.of(out)
+      end
+
+      # image_tag("logo.svg", alt: "Logo", size: "16x16", class: "x"):
+      # `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16"
+      # height="16" class="x">`. A source starting with `/` or a scheme is
+      # used as written; no alt is made up, but alt: "" is written as
+      # `alt=""`; size: is "WxH" or "N" (another
+      # shape is ignored, as in Rails).
+      def image_tag(args, kwargs)
+        helper_arity!("image_tag", args, 1, 1)
+        helper_keywords!("image_tag", kwargs, IMAGE_TAG_KEYWORDS, 0)
+        src = asset_source(text_arg(args, 0, "image_tag"), "")
+        out = +"<img"
+        out << FormBuilder.attr_html("src", src)
+        # alt: "" is written (a decorative image); an absent or nil alt: is not.
+        out << FormBuilder.text_attr("alt", kwargs["alt"]) unless kwargs["alt"].nil?
+        size = FormBuilder.value_text(kwargs["size"])
+        x = size.index("x")
+        width = x.nil? ? size : size[0, x].to_s
+        height = x.nil? ? size : size[x + 1, size.size - x - 1].to_s
+        if Helpers.dimension?(width) && Helpers.dimension?(height)
+          out << FormBuilder.attr_html("width", width)
+          out << FormBuilder.attr_html("height", height)
+        end
+        out << FormBuilder.text_attr("class", kwargs["class"]) unless FormBuilder.value_text(kwargs["class"]).empty?
+        out << ">"
+        SafeString.of(out)
+      end
+
+      # Rails' image size part: digits, optionally "." and digits ("16", "1.5").
+      def self.dimension?(text)
+        s = text.to_s
+        n = s.bytesize
+        return false if n == 0
+
+        i = 0
+        dot = -1
+        while i < n
+          b = s.getbyte(i)
+          if b == 46
+            return false if dot >= 0 || i == 0 || i == n - 1
+
+            dot = i
+          elsif b < 48 || b > 57
+            return false
+          end
+          i += 1
+        end
+        true
+      end
+
+      # javascript_importmap_tags("application"): the import map, a
+      # modulepreload link per preloaded pin and the entry point's import,
+      # each with this request's nonce when a policy applies (spec C-5).
+      def javascript_importmap_tags(entry)
+        request_bound!("javascript_importmap_tags")
+        nonce = nonce_attr(true)
+        out = +"<script type=\"importmap\" data-turbo-track=\"reload\""
+        out << nonce << ">" << Assets.importmap_json << "</script>"
+        Assets.preload_paths.each do |path|
+          out << "\n<link rel=\"modulepreload\"" << FormBuilder.attr_html("href", path) << nonce << ">"
+        end
+        out << "\n<script type=\"module\"" << nonce << ">import " << Helpers.js_string(entry) << "</script>"
+        SafeString.of(out)
+      end
+
+      # text as a JavaScript string literal that can sit inside <script>:
+      # `"`, `\` and control characters escaped, `<` written \u003c.
+      def self.js_string(text)
+        s = text.to_s
+        out = +"\""
+        n = s.bytesize
+        i = 0
+        start = 0
+        while i < n
+          b = s.getbyte(i)
+          if b == 34 || b == 92 || b == 60 || b < 32 || b == 127
+            out << s.byteslice(start, i - start) if i > start
+            if b == 34 then out << "\\\""
+            elsif b == 92 then out << "\\\\"
+            else
+              out << "\\u00" << JS_HEX[b / 16].to_s << JS_HEX[b % 16].to_s
+            end
+            start = i + 1
+          end
+          i += 1
+        end
+        out << s.byteslice(start, n - start) if n > start
+        out << "\""
+        out
       end
 
       def flash_messages

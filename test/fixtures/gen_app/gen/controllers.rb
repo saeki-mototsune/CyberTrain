@@ -9,6 +9,7 @@ class ApplicationController < Cybertrain::Controller
     case name
     when :load_viewer then load_viewer
     when :not_found then not_found
+    when :stamp_response then stamp_response
     else super
     end
   end
@@ -17,6 +18,46 @@ end
 class CommentsController < ApplicationController
   def view_assigns
     { "viewer" => @viewer, "comment" => @comment }
+  end
+end
+
+class GatedController < ApplicationController
+  def view_assigns
+    { "viewer" => @viewer, "post" => @post, "audited_at" => @audited_at }
+  end
+
+  def run_callback(name)
+    case name
+    when :set_post then set_post
+    when :log_visit then log_visit
+    when :require_admin then require_admin
+    when :audit then audit
+    else super
+    end
+  end
+
+  def controller_layout(layout_action__)
+    if layout_action__ != "show"
+      return "layouts/audit"
+    end
+    super
+  end
+
+  def helper_method?(name)
+    case name
+    when "admin?" then true
+    else super
+    end
+  end
+
+  def call_helper_method(name, args, kwargs)
+    case name
+    when "admin?"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      admin?
+    else super
+    end
   end
 end
 
@@ -35,6 +76,29 @@ class PostsController < ApplicationController
     case name
     when :set_post then set_post
     when :stamp then stamp
+    else super
+    end
+  end
+
+  def helper_method?(name)
+    case name
+    when "viewer_name", "price_label" then true
+    else super
+    end
+  end
+
+  def call_helper_method(name, args, kwargs)
+    case name
+    when "viewer_name"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      viewer_name
+    when "price_label"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 1, 1)
+      Cybertrain::Template::Helpers.helper_keywords!(name, kwargs, ["currency"], 0)
+      if kwargs.key?("currency") then price_label(args[0], currency: kwargs["currency"])
+      else price_label(args[0])
+      end
     else super
     end
   end

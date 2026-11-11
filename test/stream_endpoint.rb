@@ -378,7 +378,7 @@ test "stream_path \"\" leaves the endpoint out of the stack; stream_error checks
   c.env = "test"
   c.secret_key_base = "e" * 64
   c.stream_path = ""
-  app = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args) { "/" }, config: c)
+  app = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, config: c)
   res = Cybertrain::Test::Client.new(app).get("/cybertrain/stream?s=#{token("a")}")
   assert_equal 404, res.status
   assert_equal "", c.stream_error

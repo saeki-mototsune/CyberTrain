@@ -1,5 +1,5 @@
 ---
-source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
+source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
 ---
 # 安装
 
@@ -14,15 +14,16 @@ source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
 - 构建它需要：C 工具链（`cc`，或 `CC` 指定的编译器）和 `make`——Spinel 会把每个程序编译为 C——以及 `git` 和 `curl`。
 - SQLite 3 头文件和库（Debian/Ubuntu 上为 `libsqlite3-dev`；macOS 上随 Xcode 命令行工具提供）——模型直接使用 Spinel 的 FFI，而不是 gem。
 - zlib 头文件和库（Debian/Ubuntu 上为 `zlib1g-dev`；macOS 上在 SDK 中）——gzip 压缩的请求体（`request.decoded_body`）通过系统的 zlib 解压，绑定方式相同。
+- OpenSSL 头文件和库（Debian/Ubuntu 上为 `libssl-dev`）——每个应用都会链接它们：会话 cookie 和 `cookies.encrypted` 通过 Spinel 的 `openssl` 包使用 AES-256-GCM，而 Spinel 只有在头文件存在时才会构建这个包。在 macOS 上安装 Homebrew 的版本（`brew install openssl@3`），它是 keg-only 的，需要加入编译器的路径：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+  CPATH="$(brew --prefix openssl@3)/include"`。
 - Ruby 3.2+ 和 RubyGems，仅供 `cybertrain` 命令使用（应用从不在 CRuby 上运行）；在 Ruby 3.2 上，构建 Spinel 还需要 `prism` gem（见下文）。
 
 `cybertrain doctor` 会检查这些工具和头文件以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令。
 
-<details><summary>更多软件包 — Ruby 3.2 上的 prism；OpenSSL 和 jemalloc，均为可选</summary>
+<details><summary>更多软件包 — Ruby 3.2 上的 prism；jemalloc，可选</summary>
 
 - 构建 Spinel 需要 Ruby 的 `prism` gem，Ruby 3.3 及以上已内置；Ruby 3.2 请运行 `gem install prism`（需要 Ruby 的开发头文件，Debian/Ubuntu 上为 `ruby-dev`）。`cybertrain doctor` 会检查它。
-- OpenSSL 头文件（`libssl-dev`）是可选的：没有它们时，Spinel 构建时会不带其 `openssl` 包，应用只有在使用 TLS（`require "cybertrain/net/tls"`）或加密列（`encrypts`）时才需要这个包。在 macOS 上，require `openssl` 的应用需要让编译器的路径包含 Homebrew 的（keg-only）OpenSSL：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
-  CPATH="$(brew --prefix openssl@3)/include"`。
+- 在安装 OpenSSL 头文件之前构建的 Spinel 没有 `openssl` 包，这时应用的构建会失败；装好头文件后运行 `cybertrain setup --force` 重新构建它。同一个包也用于 TLS（`require "cybertrain/net/tls"`）和加密列（`encrypts`）。
 - jemalloc 的开发包（`libjemalloc-dev`；`brew install jemalloc`）是可选的：只有当应用的 `spin.toml` 写明 `allocator = "jemalloc"` 时才需要它，`cybertrain new` 会把这一行写成注释。在生产环境中值得开启：在 examples/blog 上每秒请求数可达 1.1 到 1.4 倍（[docs/benchmark.md](../benchmark.md)）。
 
 </details>
@@ -109,3 +110,5 @@ gem 和框架从同一个标签发布，因此版本一致：X.Y.Z 版的 gem �
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+为 0.4 编写的应用需要做一些修改（每个会话都会结束一次、要链接 OpenSSL、含点号的路由段需要 `format: false` 等）：参见[升级为 0.4 编写的应用](requests.md#upgrading-an-application-from-04)。

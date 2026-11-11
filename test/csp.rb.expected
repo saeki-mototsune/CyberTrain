@@ -1,0 +1,9 @@
+ok   the header sits inside RequestLogger's place, outside the stream endpoint
+ok   the policy is written per response with a fresh nonce
+ok   a nonce is made for a page that writes none, and for every other response
+ok   send_blob keeps its own policy
+ok   a 304 carries no policy, so the cached page keeps its nonce; the 200 does
+ok   report-only, off by default, and a controller's own policy
+ok   sources: keywords, schemes, Strings, replacing and removing a directive
+ok   a source that could break the header is refused
+8 tests, 54 assertions, 0 failures
