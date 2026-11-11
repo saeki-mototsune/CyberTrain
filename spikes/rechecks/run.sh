@@ -13,6 +13,11 @@ set -u
 
 cd "$(dirname "$0")/../.." || exit 2
 limit=${RECHECK_TIMEOUT:-180}
+# GNU timeout; macOS has it as gtimeout (Homebrew coreutils) or not at all.
+if command -v timeout > /dev/null; then bound="timeout $limit"
+elif command -v gtimeout > /dev/null; then bound="gtimeout $limit"
+else bound=""; echo "note: no timeout command, steps are not bounded"
+fi
 out=$(mktemp -d "${TMPDIR:-/tmp}/cybertrain-rechecks.XXXXXX") || exit 2
 printf 'Recheck outputs: %s\n' "$out"
 spinel --version
@@ -22,18 +27,23 @@ failed=""
 for source in spikes/rechecks/*.rb; do
   name=$(basename "$source" .rb)
   ok=1
-  if ! timeout "$limit" ruby "$source" > "$out/$name.ruby.txt" 2>&1 ||
+  if ! $bound ruby "$source" > "$out/$name.ruby.txt" 2>&1 ||
      ! diff -u "$source.expected" "$out/$name.ruby.txt"; then
     echo "FAIL $name: CRuby output differs from $source.expected"
     ok=0
   fi
-  if ! timeout "$limit" spinel "$source" -O 0 -o "$out/$name" > "$out/$name.compile.txt" 2>&1; then
+  if ! $bound spinel "$source" -O 0 -o "$out/$name" > "$out/$name.compile.txt" 2>&1; then
     echo "FAIL $name: compile failed or timed out, see $out/$name.compile.txt"
     ok=0
-  elif ! timeout "$limit" "$out/$name" > "$out/$name.spinel.txt" 2>&1 ||
+  else
+    if grep -qv -- ' -> ' "$out/$name.compile.txt"; then
+      echo "warn $name: compiler output to review in $out/$name.compile.txt"
+    fi
+    if ! $bound "$out/$name" > "$out/$name.spinel.txt" 2>&1 ||
        ! diff -u "$source.expected" "$out/$name.spinel.txt"; then
-    echo "FAIL $name: Spinel output differs, see $out/$name.spinel.txt"
-    ok=0
+      echo "FAIL $name: Spinel output differs, see $out/$name.spinel.txt"
+      ok=0
+    fi
   fi
   if [ "$ok" = 1 ]; then echo "ok   $name"; else failed="$failed $name"; fi
 done

@@ -33,7 +33,9 @@ spikes/rechecks/run.sh
 The script prints its output directory first, then runs every probe even
 after one fails, and exits 1 if any did. Each failure names the file that
 holds its output. Each compile and each run is bounded at 180 seconds
-(`RECHECK_TIMEOUT`). A timeout or missing native library
+(`RECHECK_TIMEOUT`; `gtimeout` on macOS, unbounded with a note when
+neither exists). Compiler output other than the usual `src -> bin` line is
+flagged as `warn`. A timeout or missing native library
 is inconclusive; keep the diagnostics rather than calling it a language
 regression. Review compile warnings even when output matches. Keep outputs
 outside the package (rule 98); remove the temporary directory after inspection.
