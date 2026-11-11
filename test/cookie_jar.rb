@@ -78,6 +78,28 @@ class CookiesController < Cybertrain::Controller
     render plain: value.nil? ? "(none)" : value
   end
 
+  # The signed value of :uid, copied as it is into :other.
+  def copy_signed
+    raw = cookies[:uid]
+    cookies[:other] = raw.nil? ? "" : raw
+    render plain: "ok"
+  end
+
+  def read_other_signed
+    value = cookies.signed[:other]
+    render plain: value.nil? ? "(none)" : value
+  end
+
+  def bad_name
+    cookies["x; Domain=evil.example"] = "v"
+    render plain: "ok"
+  end
+
+  def bad_delete
+    cookies.delete("a=b")
+    render plain: "ok"
+  end
+
   def write_twice
     cookies[:theme] = "a"
     cookies[:theme] = "b"
@@ -116,6 +138,10 @@ def build_router
   router.add("GET", "/read_encrypted", "") { |ctx| CookiesController.new(ctx).process(:read_encrypted) { |c| c.read_encrypted } }
   router.add("GET", "/copy_encrypted", "") { |ctx| CookiesController.new(ctx).process(:copy_encrypted) { |c| c.copy_encrypted } }
   router.add("GET", "/read_other", "") { |ctx| CookiesController.new(ctx).process(:read_other) { |c| c.read_other } }
+  router.add("GET", "/copy_signed", "") { |ctx| CookiesController.new(ctx).process(:copy_signed) { |c| c.copy_signed } }
+  router.add("GET", "/read_other_signed", "") { |ctx| CookiesController.new(ctx).process(:read_other_signed) { |c| c.read_other_signed } }
+  router.add("GET", "/bad_name", "") { |ctx| CookiesController.new(ctx).process(:bad_name) { |c| c.bad_name } }
+  router.add("GET", "/bad_delete", "") { |ctx| CookiesController.new(ctx).process(:bad_delete) { |c| c.bad_delete } }
   router.add("GET", "/write_twice", "") { |ctx| CookiesController.new(ctx).process(:write_twice) { |c| c.write_twice } }
   router.add("GET", "/write_permanent_views", "") { |ctx| CookiesController.new(ctx).process(:write_permanent_views) { |c| c.write_permanent_views } }
   router.add("GET", "/read_permanent_views", "") { |ctx| CookiesController.new(ctx).process(:read_permanent_views) { |c| c.read_permanent_views } }
@@ -180,6 +206,12 @@ test "plain, permanent, signed and encrypted cookies" do
   client.get("/copy_encrypted")
   assert_equal client.cookies["card"], client.cookies["other"]
   assert_equal "(none)", client.get("/read_other").body
+  # A signed value copied to another cookie name reads nil (the name is in the HMAC).
+  client.get("/write_signed")
+  assert_equal "7", client.get("/read_signed").body
+  client.get("/copy_signed")
+  assert_equal client.cookies["uid"], client.cookies["other"]
+  assert_equal "(none)", client.get("/read_other_signed").body
   # A damaged one reads nil too.
   raw = client.cookies["card"].to_s
   client.cookies["card"] = raw[0, 10] + (raw[10] == "A" ? "B" : "A") + raw[11, raw.size - 11].to_s
@@ -234,6 +266,20 @@ test "without SessionStore: plain cookies work, signed and encrypted refuse" do
   assert_equal "dark", client.get("/read_plain").body
   message = assert_raises("ArgumentError") { client.get("/write_signed") }
   assert_equal "cookies.signed and cookies.encrypted need SessionStore in the stack (it holds the keys derived from secret_key_base)", message
+end
+
+test "the jar refuses a cookie name that is not a token, on write and on delete" do
+  client = Cybertrain::Test::Client.new(APP)
+  assert_raises("ArgumentError") { client.get("/bad_name") }
+  assert_raises("ArgumentError") { client.get("/bad_delete") }
+end
+
+test "without SessionStore the jar defaults Secure from Cybertrain.config.session_secure" do
+  saved = Cybertrain.config.session_secure
+  Cybertrain.config.session_secure = true
+  res = Cybertrain::Test::Client.new(BARE_APP).get("/write_plain")
+  Cybertrain.config.session_secure = saved
+  assert_equal ["theme=dark; Path=/; HttpOnly; SameSite=Lax; Secure"], set_cookies_for(res, "theme")
 end
 
 test "Cookies.serialize writes Expires for a Time" do

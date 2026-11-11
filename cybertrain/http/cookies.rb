@@ -64,6 +64,57 @@ module Cybertrain
       cookies
     end
 
+    # RFC 6265 separators: a cookie name may not contain these, a space or
+    # a tab, nor anything outside visible ASCII.
+    NAME_SEPARATORS = "()<>@,;:\\\"/[]?={}"
+
+    # Whether `name` is an RFC 6265 token: one or more visible ASCII
+    # characters (0x21-0x7e) that are not separators.
+    # @param name [String]
+    # @return [Boolean]
+    # @api public
+    def self.token?(name)
+      text = name.to_s # a fresh local for the byte reads (NOTES rule 62)
+      return false if text.empty?
+
+      i = 0
+      n = text.bytesize
+      while i < n
+        b = text.getbyte(i)
+        return false if b <= 32 || b >= 127
+        return false if NAME_SEPARATORS.include?(text.byteslice(i, 1).to_s)
+
+        i += 1
+      end
+      true
+    end
+
+    # Raises ArgumentError for a cookie name that is not a token, or an
+    # attribute value (`Path`, `Domain`, `SameSite`) holding ";" (which would
+    # start another attribute) or CR/LF; `same_site` must also be Lax,
+    # Strict or None, in any case.
+    def self.validate!(name, path, same_site)
+      unless Cookies.token?(name)
+        message = "cookie name #{name.to_s.inspect} is not an RFC 6265 token"
+        raise ArgumentError, message
+      end
+      Cookies.check_attribute!("path", path)
+      Cookies.check_attribute!("same_site", same_site)
+      lowered = same_site.to_s.downcase
+      return nil if lowered == "lax" || lowered == "strict" || lowered == "none"
+
+      message = "cookie same_site must be Lax, Strict or None, not #{same_site.to_s.inspect}"
+      raise ArgumentError, message
+    end
+
+    def self.check_attribute!(label, value)
+      text = value.to_s
+      return nil unless text.include?(";") || text.include?("\r") || text.include?("\n")
+
+      message = "cookie #{label} must not contain ';', CR or LF"
+      raise ArgumentError, message
+    end
+
     # A Set-Cookie value for {Response#add_cookie}, the value
     # percent-encoded. `same_site` `"None"` and `partitioned` both require
     # `Secure` (browsers drop such a cookie without it), so either adds
@@ -80,9 +131,12 @@ module Cybertrain
     # @param expires [Time, nil] adds `Expires=` with the time as an HTTP
     #   date ({Request.http_date}); nil leaves it out
     # @return [String]
+    # @raise [ArgumentError] `name` is not an RFC 6265 token, `path` holds
+    #   ";", CR or LF, or `same_site` is not Lax, Strict or None (any case)
     # @api public
     def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false,
                        partitioned: false, expires: nil)
+      Cookies.validate!(name, path, same_site)
       text = value.to_s # a String for Query.plain?'s byte reads (see Html.escape)
       encoded = Query.plain?(text) ? text : URI.encode_www_form_component(text)
       out = +"#{name}=#{encoded}"
@@ -91,7 +145,7 @@ module Cybertrain
       out << "; SameSite=#{same_site}"
       out << "; Max-Age=#{max_age}" if max_age >= 0
       out << "; Expires=#{Request.http_date(expires)}" unless expires.nil?
-      out << "; Secure" if secure || partitioned || same_site == "None"
+      out << "; Secure" if secure || partitioned || same_site.downcase == "none"
       out << "; Partitioned" if partitioned
       out
     end

@@ -532,7 +532,7 @@ module Cybertrain
       return jar unless jar.nil?
 
       parsed = Cookies.parse(request.cookie_header)
-      built = CookieJar.new(parsed, response)
+      built = CookieJar.new(parsed, response, secure: Cybertrain.config.session_secure)
       @ctx.cookie_jar = built
       built
     end

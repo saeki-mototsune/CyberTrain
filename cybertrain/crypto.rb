@@ -9,7 +9,10 @@
 # session, spec section 5.1), but this file needs neither and stays usable
 # on its own. {Crypto.derive_key} turns `secret_key_base` into one 32-byte
 # key per purpose (the session, signed cookies, encrypted cookies), so no
-# two uses share a key. The AES-256-GCM encryption itself is
+# two uses share a key. The derivation input carries a fixed prefix
+# ({Crypto::KEY_PREFIX}) so a derived key is never the same HMAC as one
+# the framework computes directly under the raw secret (Password's
+# session key tag, Stream's signing key), whose tag may be public. The AES-256-GCM encryption itself is
 # cybertrain/encryptor.rb's.
 require "digest"
 require "securerandom"
@@ -18,6 +21,9 @@ module Cybertrain
   module Crypto
     BLOCK_SIZE = 64
     HEX_DIGITS = "0123456789abcdef"
+    # Domain separation for derive_key: no other HMAC under the raw secret
+    # starts with this.
+    KEY_PREFIX = "cybertrain key\0"
 
     def self.hmac_hex(secret, data)
       Crypto.hex(hmac_digest(secret, data))
@@ -87,7 +93,9 @@ module Cybertrain
     end
 
     # A 32-byte key for one purpose, derived from a secret (normally
-    # `secret_key_base`): the raw HMAC-SHA256 of `label` under `secret`. Each
+    # `secret_key_base`): the HMAC-SHA256 of `"cybertrain key\0" + label`
+    # under `secret` (the prefix keeps it apart from the framework's other
+    # HMACs under the raw secret). Each
     # use takes its own label ("cybertrain session", "cybertrain signed
     # cookie", "cybertrain encrypted cookie"), so a value made under one key
     # never verifies or decrypts under another, and rotating the secret
@@ -99,7 +107,7 @@ module Cybertrain
     # @return [String] 32 raw bytes
     # @api public
     def self.derive_key(secret, label)
-      Crypto.hmac_digest(secret, label)
+      Crypto.hmac_digest(secret, KEY_PREFIX + label)
     end
 
     # RFC 2104 HMAC over Digest::SHA256, keyed the way every implementation

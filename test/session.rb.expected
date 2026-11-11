@@ -25,4 +25,4 @@ ok   absolute_max_age stamps the first write and caps the cookie's Max-Age
 ok   a cookie past the absolute lifetime loads empty however recently it was used
 ok   a cookie without a start gets one; restart_lifetime! starts the count again
 ok   absolute_max_age 0 (SessionStore's default) leaves the start alone
-27 tests, 110 assertions, 0 failures
+27 tests, 111 assertions, 0 failures

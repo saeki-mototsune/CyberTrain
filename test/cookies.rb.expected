@@ -11,4 +11,6 @@ ok   serialize with partitioned appends Partitioned and implies Secure
 ok   serialize writes Secure once when secure, same_site None and partitioned are all set
 ok   serialize encodes exactly as encode_www_form_component, plain or not
 ok   plain? is true exactly for the ASCII bytes the encoder leaves alone
-13 tests, 285 assertions, 0 failures
+ok   serialize rejects a cookie name that is not an RFC 6265 token
+ok   serialize rejects ';' and CR/LF in path and same_site, and an unknown same_site
+15 tests, 318 assertions, 0 failures

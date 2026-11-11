@@ -13,6 +13,9 @@
 # `Config.encryption_required` then, so boot requires
 # CYBERTRAIN_ENCRYPTION_KEY.
 #
+# Nonces are random 96-bit values, so the safe bound is about 2^32 seals
+# per key (NIST SP 800-38D); rotating the key resets it.
+#
 # Two forms of sealed value, each with a 12-byte random nonce made per
 # call and the GCM tag's 16 bytes, so nothing is encrypted without being
 # authenticated:

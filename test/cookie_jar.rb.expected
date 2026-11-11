@@ -4,6 +4,8 @@ ok   permanent.signed and permanent.encrypted last 20 years and read back
 ok   the views delete too
 ok   Secure by default where the session cookie is (Config#session_secure)
 ok   without SessionStore: plain cookies work, signed and encrypted refuse
+ok   the jar refuses a cookie name that is not a token, on write and on delete
+ok   without SessionStore the jar defaults Secure from Cybertrain.config.session_secure
 ok   Cookies.serialize writes Expires for a Time
 ok   Response#replace_cookie keeps one Set-Cookie per name
-8 tests, 40 assertions, 0 failures
+10 tests, 46 assertions, 0 failures

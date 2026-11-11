@@ -26,7 +26,8 @@
 # on in production) unless the write says otherwise. A value read after
 # a write in the same request is the written one. Without SessionStore in
 # the stack (Controller#cookies then builds a jar over the Cookie header),
-# plain and permanent cookies work, never `Secure` by default, and
+# plain and permanent cookies work, `Secure` follows Cybertrain.config.session_secure
+# (on in production) as with SessionStore, and
 # `signed` / `encrypted` raise ArgumentError: there is no key.
 require "base64"
 require "cybertrain/cast"

@@ -64,7 +64,8 @@ test "derive_key: 32 raw bytes, one per label and secret" do
   refute a == Cybertrain::Crypto.derive_key(SECRET, "cybertrain signed cookie")
   refute a == Cybertrain::Crypto.derive_key(SECRET, "cybertrain encrypted cookie")
   refute a == Cybertrain::Crypto.derive_key("other", "cybertrain session")
-  assert_equal Cybertrain::Crypto.hmac_hex(SECRET, "cybertrain session"), Cybertrain::Crypto.hex(a)
+  assert_equal Cybertrain::Crypto.hmac_hex(SECRET, "cybertrain key\0cybertrain session"), Cybertrain::Crypto.hex(a)
+  refute Cybertrain::Crypto.hmac_hex(SECRET, "cybertrain session") == Cybertrain::Crypto.hex(a)
 end
 
 test "round trip dump/load" do
