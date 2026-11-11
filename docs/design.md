@@ -1,7 +1,7 @@
 # cybertrain design document
 
 - Status: implemented decisions through D63; D34 remains a proposal except for test sharding. The original 15 decisions were agreed on 2026-09-24.
-- Target: the Spinel fork and release pinned by `SPINEL_REPOSITORY` / `SPINEL_TAG` in [cybertrain/version.rb](../cybertrain/version.rb), also checked by CI. At this review: `2026.11.04.7026` (`a2d06115`).
+- Target: the Spinel fork and release pinned by `SPINEL_REPOSITORY` / `SPINEL_TAG` in [cybertrain/version.rb](../cybertrain/version.rb), also checked by CI. The version and commit a review was done against are recorded in [spikes/NOTES.md](../spikes/NOTES.md#status-on-202611047026), not here, so this line does not go stale on an upgrade.
 - Implementation status: section 13 (M0 to M5 are all reached. Later changes are recorded in each decision's revision notes ("revised 2026-09-26" and so on) and in section 13)
 - Reviewed 2026-11-11: Rails application porting is in scope (D1); phases 1, 2, 3 and 4a have shipped (D36-D63). Historical measurements, MVP criteria and revision notes are labelled as such; proposed follow-ups in section 14 are not implemented contracts.
 
