@@ -734,6 +734,8 @@ module Cybertrain
         src << "\n" unless plans.empty? && methods.empty?
         src << emit_case("call_view_method", methods)
         src << "\n"
+        assoc_names = Array.new(0) { "" }
+        plans.each { |plan| assoc_names << plan.name }
         src << emit_attribute_or_method(table, assoc_names, methods)
         src
       end
