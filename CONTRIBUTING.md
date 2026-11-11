@@ -168,9 +168,12 @@ generator emits or how an application runs:
 
 ```sh
 cd examples/blog
-spin run gen && git diff --exit-code -- gen/   # generated code must be fresh
+spin run gen && git status --short -- gen/     # generated code must be fresh: this prints nothing
 spin test
 ```
+
+`git status` rather than `git diff`: a file the generator writes for the
+first time is untracked, and `git diff` passes over it. CI fails on either.
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs all of this on
 Ubuntu and macOS, builds and installs the gem, scaffolds and serves an

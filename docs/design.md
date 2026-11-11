@@ -1156,7 +1156,7 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 | `app/assets/**`, `app/javascript/**`, `vendor/javascript/**`, `config/importmap.rb` | `gen/assets.rb`, `public/assets/` | the logical-to-digested `case`, the import map and its preloads; the digested files and `.manifest` (2026-11-11, D63) |
 | file list of `app/` | `gen/app.rb` | list of `require_relative` |
 
-All generated code is committed. CI runs `git diff --exit-code gen/` after `spin run gen` to check that it is up to date.
+All generated code is committed. CI runs `spin run gen` and then `git status --porcelain --untracked-files=all -- gen/`, which must print nothing: a changed file, a file that is gone and a file never committed all fail it (`git diff --exit-code` did not see the last, issue #205).
 
 The inputs above are what gen reads when it runs. What it is compiled from is a different set: whatever `bin/gen.rb` reaches through its requires, which `config/routes.rb` can extend with `app/routes/extra.rb` or a package called through `Package.draw(r)`.
 

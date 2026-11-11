@@ -336,12 +336,20 @@ jobs:
           cybertrain db migrate
           cybertrain spin run gen -- --check
 
+      # `git status`, not `git diff`: a file the generator writes that was
+      # never committed is untracked, and `git diff` does not see it.
       - name: Generated code is fresh (examples/blog)
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
           spin run gen
-          git diff --exit-code -- gen/
+          changed=$(git status --porcelain --untracked-files=all -- gen/)
+          if [ -n "$changed" ]; then
+            echo "examples/blog/gen/ is not what \`spin run gen\` writes (M changed, D gone, ?? never committed):"
+            echo "$changed"
+            git diff -- gen/
+            exit 1
+          fi
 
       - name: Example app tests
         if: hashFiles('examples/blog/spin.toml') != ''
