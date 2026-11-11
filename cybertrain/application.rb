@@ -95,6 +95,8 @@ module Cybertrain
       @restart_requested = false
       @serving = false
       @booted = false
+      # True while #apply_boot_settings is writing the shared settings.
+      @applying = false
       # The DB.generation of the pool this Application's boot connected,
       # or -1 when the database was connected already (the caller's pool).
       @database_generation = -1
@@ -132,35 +134,92 @@ module Cybertrain
       built
     end
 
+    # Boots in three stages (docs/design.md D66): validate (reads only; a
+    # problem is `error: ...` and exit 1), acquire (the secret, the
+    # database pool), apply (the views, the process-shared settings). An
+    # exception in the second or third stage propagates after #abandon_boot
+    # has released what this call acquired, so a retry starts from a
+    # defined state.
+    # @return [Application] self
+    # @api public
     def boot
+      validate_boot
+      before = @database_generation
+      completed = false
+      begin
+        acquire_boot_resources
+        apply_boot_settings
+        completed = true
+      ensure
+        # A flag and an ensure, not a rescue: a rescue clause does not see
+        # every exception class under Spinel (NOTES rules 33, 61).
+        abandon_boot(before) unless completed
+      end
+      @booted = true
+      self
+    end
+
+    # Stage 1: every check, before anything is acquired. Nothing here
+    # touches the disk or the database (Config#validation_error, D65).
+    def validate_boot
       c = @config
       if Application.embedded_views_missing?(c, @views)
         fail_boot("views are not embedded in this binary; build with `cybertrain build` (or run with CYBERTRAIN_ENV=development)")
       end
       # config/app.rb has run by now, so the environment variables and its
-      # assignments are checked together. Config#validation_error only
-      # reads (D65): nothing has touched the disk or the database yet.
+      # assignments are checked together.
       problem = c.validation_error
       fail_boot(problem) unless problem.empty?
       # A cron task's job: kind no Job.handle registered (Scheduler.start!
       # raises the same message; here it is a boot error before the banner).
       job_kinds_error = Scheduler.job_kinds_error
       fail_boot(job_kinds_error) unless job_kinds_error.empty?
-      # The one step that may write a file (tmp/secret_key, outside
-      # production), after every check has passed.
+      nil
+    end
+
+    # Stage 2: the secret (the one step that may write a file:
+    # tmp/secret_key, outside production) and the database pool. The pool
+    # is the process's (DB.connect replaces it): a boot connects only when
+    # nothing has, and remembers that the pool is then its own to close
+    # (#shutdown, #abandon_boot). A pool the caller connected stays the
+    # caller's.
+    def acquire_boot_resources
+      c = @config
       c.resolve_secret!
-      # The pool is the process's (DB.connect replaces it): a boot connects
-      # only when nothing has, and remembers that the pool is then its own
-      # to close (#shutdown). A pool the caller connected stays the caller's.
       unless DB.connected?
         DB.connect(c.database_path, size: c.pool_size)
         @database_generation = DB.generation
       end
-      Application.configure_views(c, @views, @url_resolver)
-      # Every other process-shared setting, in one place (D64).
-      Runtime.apply(c)
-      @booted = true
-      self
+      nil
+    end
+
+    # Stage 3: the views (production parses every embedded template here;
+    # one that does not parse raises) and every other process-shared
+    # setting, in one place (D64).
+    def apply_boot_settings
+      @applying = true
+      Application.configure_views(@config, @views, @url_resolver)
+      Runtime.apply(@config)
+      @applying = false
+      nil
+    end
+
+    # What a boot that raised leaves behind: no pool of its own (a pool
+    # that was connected before this call, by the caller or by an earlier
+    # boot of this Application, is not touched), the settings at their
+    # defaults if stage 3 had begun writing them (never a half-applied
+    # set), and an Application that is not booted.
+    # @param before [Integer] @database_generation when #boot was called
+    def abandon_boot(before)
+      mine = @database_generation
+      if mine != before
+        DB.disconnect if DB.connected? && DB.generation == mine
+        @database_generation = before
+      end
+      Runtime.reset! if @applying
+      @applying = false
+      @booted = false
+      nil
     end
 
     # Whether #boot has completed (and #shutdown has not run since).
@@ -243,34 +302,39 @@ module Cybertrain
       busy = Runtime.enter_role("server")
       fail_boot(busy) unless busy.empty?
       srv = server
-      # The stream poller before the listener: its start position (MAX(id))
-      # must come before any subscription. Only with the endpoint mounted.
-      Stream::Poller.start!(@config) unless @config.stream_path.empty?
-      srv.start # bind first: a PortInUse error must not come after the banner
-      print_boot_banner
-      # After boot connected the database and SPINEL_WORKERS is set; only
-      # here, so `migrate`, `db` and Main.command never start it.
-      Scheduler.start!(@config)
-      Job.start!(@config) if @config.worker
-      # Services files like cybertrain/websocket registered when required.
-      Background.start_all(@config)
-      if @config.development?
-        serve_development(srv)
-      else
-        # Flags only (safe in a trap): the job threads stop claiming while
-        # the requests drain, so Job.stop! waits out only what is left of
-        # its job_drain_timeout, inside systemd's TimeoutStopSec.
-        trap("TERM") do
-          srv.request_stop
-          Job.request_stop
+      begin
+        # The stream poller before the listener: its start position (MAX(id))
+        # must come before any subscription. Only with the endpoint mounted.
+        Stream::Poller.start!(@config) unless @config.stream_path.empty?
+        srv.start # bind first: a PortInUse error must not come after the banner
+        print_boot_banner
+        # After boot connected the database and SPINEL_WORKERS is set; only
+        # here, so `migrate`, `db` and Main.command never start it.
+        Scheduler.start!(@config)
+        Job.start!(@config) if @config.worker
+        # Services files like cybertrain/websocket registered when required.
+        Background.start_all(@config)
+        if @config.development?
+          serve_development(srv)
+        else
+          # Flags only (safe in a trap): the job threads stop claiming while
+          # the requests drain, so Job.stop! waits out only what is left of
+          # its job_drain_timeout, inside systemd's TimeoutStopSec.
+          trap("TERM") do
+            srv.request_stop
+            Job.request_stop
+          end
+          srv.wait
         end
-        srv.wait
+      ensure
+        # Also when a start above raised (D66): each stop is a no-op for
+        # what never started, so nothing this role began outlives it.
+        Job.stop!
+        Scheduler.stop!
+        Background.stop_all
+        Stream::Poller.stop!
+        Runtime.leave_role
       end
-      Job.stop!
-      Scheduler.stop!
-      Background.stop_all
-      Stream::Poller.stop!
-      Runtime.leave_role
       nil
     rescue PortInUse => e
       fail_boot(e.message)
@@ -330,10 +394,12 @@ module Cybertrain
       Scheduler.start!(@config)
       Job.start!(@config)
       Application.wait_roles_stop
-      Job.stop!
-      Scheduler.stop!
       0
     ensure
+      # Also when a start raised (D66): both stops are no-ops for what
+      # never started.
+      Job.stop!
+      Scheduler.stop!
       Runtime.leave_role
       trap("TERM", previous_term)
       trap("INT", previous_int)
@@ -432,10 +498,12 @@ module Cybertrain
     # are kept.
     # @return [Integer] 0, or 1 after a feed died too often
     def run_feeds_threads(names, previous_term, previous_int)
+      stopped = false
       Background.exit_on_feed_death = true
       Background.start_only(@config, names)
       Application.wait_roles_stop
       Background.stop_all
+      stopped = true
       return 1 if Background.feeds_failed?
 
       # A clean stop (TERM, INT, a scale-down) takes this process's status
@@ -444,8 +512,10 @@ module Cybertrain
       Background.withdraw_status_all
       0
     ensure
-      # The flags are the role's: an in-process caller (a test) that runs
-      # another role afterwards starts clean.
+      # Also when a feed's start raised (D66): the feeds started before it
+      # are stopped. The flags are the role's: an in-process caller (a
+      # test) that runs another role afterwards starts clean.
+      Background.stop_all unless stopped
       Background.exit_on_feed_death = false
       Background.reset_supervisor!
       Runtime.leave_role
