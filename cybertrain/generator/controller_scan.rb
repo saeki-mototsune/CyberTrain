@@ -462,6 +462,7 @@ module Cybertrain
           infos << info unless info.nil?
         end
         resolve_superclasses(infos)
+        ConcernScan.resolve_controller_includes(infos, ConcernScan.scan_dir(dir))
         infos
       end
 

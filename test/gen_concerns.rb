@@ -217,4 +217,63 @@ test "an endless operator or self. def does not swallow the def after it" do
   assert names.include?("tag")
 end
 
+# A scratch app: app/controllers/<rel> per entry of files.
+def scratch_app(files)
+  root = Dir.mktmpdir("cybertrain-gen-concerns-include")
+  files.each do |rel, source|
+    path = "#{root}/app/controllers/#{rel}"
+    Cybertrain::Gen::Runner.make_dirs(File.dirname(path))
+    File.write(path, source)
+  end
+  root
+end
+
+ADMIN_GATE = "module Admin\n  module Gate\n    extend ActiveSupport::Concern\n\n    included do\n      before_action :require_admin\n    end\n\n" \
+             "    def require_admin = nil\n  end\nend\n"
+SCRATCH_APP_CONTROLLER = "class ApplicationController < Cybertrain::Controller\nend\n"
+
+test "include Gate inside module Admin brings in Admin::Gate, as Ruby resolves it" do
+  root = scratch_app({ "application_controller.rb" => SCRATCH_APP_CONTROLLER,
+                       "concerns/admin/gate.rb" => ADMIN_GATE,
+                       "admin/articles_controller.rb" => "module Admin\n  class ArticlesController < ApplicationController\n    include Gate\n\n" \
+                                                         "    def index = render(plain: \"ok\")\n  end\nend\n" })
+  infos = Cybertrain::Gen::ControllerScan.scan_dir("#{root}/app/controllers")
+  concerns = Cybertrain::Gen::ConcernScan.scan_dir("#{root}/app/controllers")
+  articles = infos.find { |i| i.class_name == "Admin::ArticlesController" }
+  assert_equal ["Admin::Gate"], articles.includes
+  assert_equal ["Admin::Gate"], Cybertrain::Gen::ConcernScan.own_concerns(articles, infos, concerns).map { |c| c.concern_name }
+  out = Cybertrain::Gen::Runner.concerns_source(root)
+  assert_includes out, "module Admin\n  class ArticlesController\n    # Admin::Gate (include Admin::Gate at app/controllers/admin/articles_controller.rb:3)\n" \
+                       "    concern_insert_at(0, 0)\n    before_action :require_admin\n    concern_insert_done\n  end\nend\n"
+end
+
+test "an include that does not reach a concern but ends in a concern's name is refused" do
+  shop_gate = "module Shop\n  module Gate\n    extend ActiveSupport::Concern\n  end\nend\n"
+  root = scratch_app({ "application_controller.rb" => SCRATCH_APP_CONTROLLER,
+                       "concerns/admin/gate.rb" => ADMIN_GATE,
+                       "concerns/shop/gate.rb" => shop_gate,
+                       "other/things_controller.rb" => "module Other\n  class ThingsController < ApplicationController\n    include Gate\n  end\nend\n" })
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllerScan.scan_dir("#{root}/app/controllers") }
+  assert_equal "app/controllers/other/things_controller.rb:3: include Gate: no concern named Other::ThingsController::Gate or " \
+               "Other::Gate or Gate, but Admin::Gate and Shop::Gate are concerns; write the full name of the one meant", msg
+  # The compact form: Ruby does not search Admin from `class Admin::ArticlesController`.
+  root = scratch_app({ "application_controller.rb" => SCRATCH_APP_CONTROLLER,
+                       "concerns/admin/gate.rb" => ADMIN_GATE,
+                       "admin/articles_controller.rb" => "class Admin::ArticlesController < ApplicationController\n  include Gate\nend\n" })
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::Runner.concerns_source(root) }
+  assert_equal "app/controllers/admin/articles_controller.rb:2: include Gate: no concern named Admin::ArticlesController::Gate or Gate, " \
+               "but Admin::Gate is a concern; write include Admin::Gate", msg
+end
+
+test "include Comparable, no concern's name, stays plain Ruby" do
+  root = scratch_app({ "application_controller.rb" => SCRATCH_APP_CONTROLLER,
+                       "concerns/admin/gate.rb" => ADMIN_GATE,
+                       "admin/articles_controller.rb" => "module Admin\n  class ArticlesController < ApplicationController\n    include Comparable\n  end\nend\n" })
+  infos = Cybertrain::Gen::ControllerScan.scan_dir("#{root}/app/controllers")
+  articles = infos.find { |i| i.class_name == "Admin::ArticlesController" }
+  assert_equal ["Comparable"], articles.includes
+  assert_equal [], Cybertrain::Gen::ConcernScan.own_concerns(articles, infos, Cybertrain::Gen::ConcernScan.scan_dir("#{root}/app/controllers"))
+  refute Cybertrain::Gen::Runner.concerns_source(root).include?("ArticlesController")
+end
+
 Cybertrain::Test.run!

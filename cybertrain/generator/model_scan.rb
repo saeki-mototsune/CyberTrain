@@ -314,8 +314,13 @@ module Cybertrain
             im = raw.match(ControllerScan::INCLUDE_LINE)
             names_text = im[1].to_s if im
             # Module#include takes its arguments last to first.
+            # A concern written relative to its module (ConcernScan.resolve_include):
+            # a model's nesting is the class; a concern read as a model
+            # (scan_concern) has its own module and the ones around it.
+            owner = within.empty? ? class_name : within.last.to_s
+            nesting = ConcernScan.lookup_nesting(owner, within.empty? ? "" : ConcernScan.enclosing(owner))
             names_text.split(",").reverse.each do |part|
-              name = part.strip
+              name = ConcernScan.resolve_include(part.strip, nesting, concerns, "#{ControllerScan.app_path(file)}:#{lineno}: ")
               includes << name
               include_lines << lineno
               include_validates << validates_calls

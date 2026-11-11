@@ -12,4 +12,7 @@ ok   prepend_before_action is not a callback declaration
 ok   @x in a concern method is a view assign of the includer
 ok   a project root with an app/ directory in its path still keys gen/concerns and the manifest by the path under it
 ok   an endless operator or self. def does not swallow the def after it
-14 tests, 55 assertions, 0 failures
+ok   include Gate inside module Admin brings in Admin::Gate, as Ruby resolves it
+ok   an include that does not reach a concern but ends in a concern's name is refused
+ok   include Comparable, no concern's name, stays plain Ruby
+17 tests, 65 assertions, 0 failures

@@ -112,7 +112,86 @@ module Cybertrain
           info = scan_source(path, source)
           infos << info unless info.nil?
         end
+        infos.each do |info|
+          nesting = lookup_nesting(info.concern_name, enclosing(info.concern_name))
+          place = ControllerScan.app_path(info.concern_file)
+          info.concern_includes.each_with_index do |name, k|
+            info.concern_includes[k] = resolve_include(name, nesting, infos, "#{place}:#{info.include_line_numbers[k]}: ")
+          end
+        end
         infos
+      end
+
+      # "Admin::Gate" -> "Admin"; "Gate" -> "".
+      def self.enclosing(full_name)
+        parts = full_name.split("::")
+        parts.pop
+        parts.join("::")
+      end
+
+      # The modules Ruby searches for a constant written in the body of
+      # `owner` (a full name), nearest first: owner itself, then the
+      # modules of `prefix` (the `module` lines around it, innermost
+      # first). The top level is left out. As ControllerScan's
+      # resolve_superclasses, a `module A::B` line counts as A and A::B.
+      def self.lookup_nesting(owner, prefix)
+        out = Array.new(0) { "" }
+        out << owner unless owner == ""
+        parts = prefix == "" ? Array.new(0) { "" } : prefix.split("::")
+        while parts.size > 0
+          out << parts.join("::")
+          parts.pop
+        end
+        out
+      end
+
+      # The concern an `include name` in a body with that nesting brings
+      # in, by its full name, looked up as Ruby looks up the constant:
+      # "#{outer}::#{name}" for each module of the nesting, nearest first,
+      # then the name as written. A name that is no concern is returned
+      # as written (`include Comparable` stays plain Ruby), unless its last
+      # segment is a concern's: Ruby would then include some other module,
+      # or raise NameError, and the concern's `included` body would be
+      # lost without a word, so gen stops. `place` ("file:line: ")
+      # prefixes the message.
+      def self.resolve_include(name, nesting, concerns, place)
+        nesting.each do |outer|
+          candidate = "#{outer}::#{name}"
+          return candidate unless find(concerns, candidate).nil?
+        end
+        return name unless find(concerns, name).nil?
+
+        refuse_unreached(name, nesting, concerns, place)
+        name
+      end
+
+      def self.refuse_unreached(name, nesting, concerns, place)
+        last = name.split("::").last.to_s
+        matches = Array.new(0) { "" }
+        concerns.each { |c| matches << c.concern_name if c.concern_name.split("::").last.to_s == last }
+        return nil if matches.empty?
+
+        looked = Array.new(0) { "" }
+        nesting.each { |outer| looked << "#{outer}::#{name}" }
+        looked << name
+        known = matches.size == 1 ? "#{matches[0]} is a concern" : "#{matches.join(" and ")} are concerns"
+        fix = matches.size == 1 ? "write include #{matches[0]}" : "write the full name of the one meant"
+        msg = "#{place}include #{name}: no concern named #{looked.join(" or ")}, but #{known}; #{fix}"
+        raise ArgumentError, msg
+      end
+
+      # The `include` names of each controller rewritten to the concerns'
+      # full names (resolve_include), so `include Gate` inside `module
+      # Admin` brings in Admin::Gate.
+      def self.resolve_controller_includes(infos, concerns)
+        infos.each do |info|
+          nesting = lookup_nesting(info.class_name, info.module_prefix)
+          place = ControllerScan.app_path(info.file)
+          info.includes.each_with_index do |name, k|
+            info.includes[k] = resolve_include(name, nesting, concerns, "#{place}:#{info.include_lines[k]}: ")
+          end
+        end
+        nil
       end
 
       # nil when the file opens no module. The concern is the module whose
@@ -330,7 +409,8 @@ module Cybertrain
       # The concerns `names` bring in, depth first (a concern's own
       # includes before it), each once. A name that is not a concern
       # (`include Comparable`, a module of lib/) brings in nothing: its
-      # `include` stays plain Ruby.
+      # `include` stays plain Ruby. Names are full names (resolve_include);
+      # one that is not but ends in a concern's name is refused.
       def self.expand(names, concerns)
         out = Array.new(0) { ConcernInfo.new("", "", 0) }
         names.each { |name| visit(name, concerns, Array.new(0) { "" }, out) }
@@ -351,7 +431,12 @@ module Cybertrain
         end
         out.each { |c| return nil if c.concern_name == name }
         concern = find(concerns, name)
-        return nil if concern.nil?
+        if concern.nil?
+          # A name the scan did not resolve (resolve_include) that still
+          # ends in a concern's name is refused, not passed to Ruby.
+          refuse_unreached(name, Array.new(0) { "" }, concerns, "")
+          return nil
+        end
 
         inner = stack.dup
         inner << name

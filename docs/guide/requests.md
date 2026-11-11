@@ -205,7 +205,12 @@ spikes/NOTES.md rule 93); gen refuses it, naming both places (`file:line`
 of the instance method). And an `include` of a module that is not a concern
 (`include Comparable`, a name with no file under `app/*/concerns`) is left
 to Ruby as it is, so a misspelt concern name is a `NameError` when the
-application loads, not a gen message.
+application loads, not a gen message. gen looks a name up as Ruby does, the
+class's own modules first, so `include Gate` inside `module Admin` brings in
+`Admin::Gate`. A name that reaches no concern but ends in a concern's name
+(`include Gate` where only `Admin::Gate` exists) stops gen: Ruby would
+include some other module or raise, and the concern's `included` block
+would be lost.
 
 Model concerns live in `app/models/concerns/` and work the same way: their
 `included` block may hold any of the model's class-level declarations

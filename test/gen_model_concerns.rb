@@ -241,4 +241,30 @@ test "a model concern's class_methods name may not be a scope, a model class met
   assert_nil Cybertrain::Gen::ConcernsEmitter.check_model_class_method(info, paged, "per_page", 7)
 end
 
+test "a model concern named relative to its module is resolved as Ruby resolves it; an unreached one is refused" do
+  root = Dir.mktmpdir("cybertrain-model-concerns-nested")
+  Cybertrain::Gen::Runner.make_dirs("#{root}/app/models/concerns/shop")
+  File.write("#{root}/app/models/concerns/shop/priced.rb",
+             "module Shop\n  module Priced\n    extend ActiveSupport::Concern\n\n    included do\n      scope :cheap, -> { where(price: 1) }\n    end\n  end\nend\n")
+  File.write("#{root}/app/models/concerns/shop/bundle.rb",
+             "module Shop\n  module Bundle\n    extend ActiveSupport::Concern\n\n    included do\n      include Priced\n    end\n  end\nend\n")
+  File.write("#{root}/app/models/concerns/shop/kit.rb",
+             "module Shop\n  module Kit\n    extend ActiveSupport::Concern\n    include Priced\n  end\nend\n")
+  concerns = Cybertrain::Gen::ConcernScan.scan_dir("#{root}/app/models")
+  kit = concerns.find { |c| c.concern_name == "Shop::Kit" }
+  assert_equal ["Shop::Priced"], kit.concern_includes
+  # `include Priced` in Shop::Bundle's included body: Shop::Priced.
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/item.rb", "class Item\n  include Shop::Bundle\nend\n", concerns)
+  assert_equal ["Shop::Bundle", "Shop::Priced"], info.concern_names
+  assert_equal ["cheap"], info.scopes.map { |s| s.name }
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/item.rb", "class Item\n  include Shop::Kit\nend\n", concerns)
+  assert_equal ["Shop::Priced", "Shop::Kit"], info.concern_names
+  assert_equal ["cheap"], info.scopes.map { |s| s.name }
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelScan.scan_source("app/models/item.rb", "class Item\n  include Comparable\n  include Priced\nend\n", concerns)
+  end
+  assert_equal "app/models/item.rb:3: include Priced: no concern named Item::Priced or Priced, but Shop::Priced is a concern; " \
+               "write include Shop::Priced", msg
+end
+
 Cybertrain::Test.run!

@@ -720,7 +720,10 @@ OAuth and two-factor authentication.
   file under `app/models/concerns` or `app/controllers/concerns` has its
   name) keeps that `include` as plain Ruby: `include Comparable` works, and
   a misspelt concern name is a `NameError` when the application loads
-  rather than a gen message. `include A, B` includes B first, as Ruby does.
+  rather than a gen message. A name is looked up as Ruby looks it up, the
+  class's modules first (`include Gate` inside `module Admin` is
+  `Admin::Gate`); one that reaches no concern but ends in a concern's name
+  stops gen. `include A, B` includes B first, as Ruby does.
 - An action that answers by `Accept` sends `Vary: Accept`, and every ETag
   changes once on upgrade (it now carries the format and a build digest).
   `params.permit` and `expect` raise `ArgumentError` for a filter that is

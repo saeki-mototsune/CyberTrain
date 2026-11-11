@@ -9,4 +9,5 @@ ok   the concern's own file is loaded as gen/concerns/models/concerns/visible.rb
 ok   associations, encrypts, uniqueness and validate from a concern join the model's ModelInfo
 ok   an include in a concern's included body brings that concern in after it; a cycle is refused
 ok   a model concern's class_methods name may not be a scope, a model class method or an instance method
-11 tests, 65 assertions, 0 failures
+ok   a model concern named relative to its module is resolved as Ruby resolves it; an unreached one is refused
+12 tests, 72 assertions, 0 failures

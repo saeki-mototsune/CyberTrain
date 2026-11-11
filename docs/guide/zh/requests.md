@@ -1,5 +1,5 @@
 ---
-source_sha256: 7e141ae855e1da4fc4646fc1e60ffec077a1add0cff41de7c5394125f4eccbf1
+source_sha256: 2249f3239f3cc08531ce19f54fbd2b0f46fcdb8fc891d4942cea75b9cb1d0038
 ---
 # 请求
 
@@ -113,7 +113,7 @@ end
 
 写了 `include AdminGate` 的控制器会得到 `included` 块所声明的内容（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`），位置就在 `include` 处，顺序与书写一致，并且在它的动作中可以使用 `self.class.per_page`。concern 可以包含 concern：gen 以深度优先展开它们，每个只展开一次，并点名拒绝循环（`concern cycle: A includes B includes A`）。`include A, B` 与 Ruby 一样先包含 B，所以 B 的 `included` 块和回调排在 A 之前。`around_action` 会被拒绝（没有 around 回调）。concern 方法中的 `@x =` 赋值属于控制器的视图变量。
 
-Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。由此产生两条规则。`class_methods` 的方法不能与 concern、包含它的类或其祖先的实例方法同名（Spinel 会把两者都定义为实例方法，spikes/NOTES.md 规则 93）；gen 会拒绝它并指出两个位置（实例方法所在的 `文件:行`）。另外，`include` 一个不是 concern 的模块（`include Comparable`，或在 `app/*/concerns` 下没有对应文件的名字）会原样留给 Ruby，所以 concern 名字拼错时，是应用加载时的 `NameError`，而不是 gen 的提示。
+Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。由此产生两条规则。`class_methods` 的方法不能与 concern、包含它的类或其祖先的实例方法同名（Spinel 会把两者都定义为实例方法，spikes/NOTES.md 规则 93）；gen 会拒绝它并指出两个位置（实例方法所在的 `文件:行`）。另外，`include` 一个不是 concern 的模块（`include Comparable`，或在 `app/*/concerns` 下没有对应文件的名字）会原样留给 Ruby，所以 concern 名字拼错时，是应用加载时的 `NameError`，而不是 gen 的提示。gen 像 Ruby 一样查找名字，先查类自己所在的模块，所以 `module Admin` 里的 `include Gate` 会引入 `Admin::Gate`。一个名字如果找不到任何 concern，但最后一段与某个 concern 的名字相同（只有 `Admin::Gate` 时写 `include Gate`），gen 会停止：Ruby 会 include 别的模块或抛出异常，而这个 concern 的 `included` 块就会丢失。
 
 模型的 concern 放在 `app/models/concerns/`，工作方式相同：它们的 `included` 块可以包含模型的任何类级声明（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、回调、`normalizes`），视同在 `include` 处写在模型中。concern 的回调在模型自己的同类回调之后运行，模型 concern 的 `included` 块中的 `include` 会把那个 concern 引入。模型 concern 的 `class_methods` 方法名不能是该模型的 scope，也不能是每个模型都有的类方法（与 `scope :recent` 并列的 `recent`，或 `where`）；gen 会拒绝。
 
