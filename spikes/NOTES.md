@@ -71,13 +71,14 @@ for the evidence needed to change a status.
 | 1 | Computed `send` over 150 method names and `respond_to?` pass a probe; the compiler documentation caps such dispatch at 1024 arms. The original 128-literal limit is historical. Other reflection forms were not re-checked; the generated-dispatch policy remains. |
 | 2 | **Still there** for `instance_exec(&stored)` ("unsupported call: CallNode `instance_exec`"). |
 | 7, 8, 9, 10/34, 14, 29, 31, 40, 42, 43, 55, 67, 68 | Probe passes. |
-| 12, 18, 26, 47, 53, 54, 73, 74 | Reduced program passes (18: the class variable is also marked as a GC root, see 64). 47's last sentence (a `begin ... ensure ... end` ending a block) passes as a probe. |
+| 12, 18, 26, 47, 53, 73, 74 | Reduced program passes (18: the class variable is also marked as a GC root, see 64). 47: `is_a?` on a superclass after `rescue StandardError`, with the raised class chosen at run time, passes in rechecks/exception_shapes.rb (2026-11-11). 47's last sentence (a `begin ... ensure ... end` ending a block) passes as a probe. |
+| 54 | **Split.** For user-defined classes, walking `e.class` / `.superclass` after `rescue StandardError` gives CRuby's full chain (rechecks/exception_shapes.rb, 2026-11-11). **Still there** for a package exception: `begin; JSON.parse("{"); rescue JSON::ParserError => e; puts e.class.superclass.name; end` prints `JSON::JSONError` under CRuby, but under Spinel it raises "undefined method 'superclass' for module JSON::ParserError (NoMethodError)" (checked 2026-11-11). A fallback that walks ancestor names is still unavailable for such classes. |
 | 25 | **Still there**, by design (docs/spinel-feedback.md D). |
 | 28 | Probe passes: `URI.decode_www_form_component("%ZZ")` raises ArgumentError as under CRuby. |
 | 32 | The shape described (a yielding method with `rescue => e` called from a block nested in another block) compiles when the inner block has a value; a block whose only expression is `raise` fails to compile, a different trigger (rule 79). Rule 45's C error was not re-checked. |
 | 38 | Not a Spinel rule: CRuby raises NoMethodError too (a protected method is callable only with an instance of the class as `self`, not from a class method). |
 | 44 | Probe passes (`break` out of a block whose `yield` sits inside `begin/rescue`). |
-| 46 | `Class#name` now carries the namespace (`"JSON::ParserError"`, as CRuby). The thread stack and Hash literal parts were not re-checked. |
+| 46 | `Class#name` now carries the namespace, as under CRuby, for a rescued `JSON::ParserError` and for user-defined nested classes (rechecks/exception_shapes.rb, 2026-11-11). The thread stack and Hash literal parts were not re-checked. |
 | 48 | Probe passes: `klass = JSON::ParserError` is a value. |
 | 49 | **Still there**: decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes 224 / 855 / 3,668 ms (quadratic). |
 | 51 | `Hash#keys` next to a user class's `keys` dispatches (probe passes); the Symbol-and-String key part was not re-checked. |
@@ -113,21 +114,24 @@ for the evidence needed to change a status.
 | 95 | Works on this build: a record of a form that compiles, not of a defect. |
 | 98 | Tool behaviour, checked 2026-11-11: generated C inside a package is refused as input and can invalidate builds. Keep probe outputs outside the package. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
-| 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. |
+| 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98) have their own rows. |
 
 ## Rechecks recorded on 2026-11-11
 
 Four saved programs in [rechecks/](rechecks/README.md) were compiled and run
 on Linux x86_64 with Spinel `2026.11.04.7026` (`a2d06115`, GCC 14.2.0,
 `-O 0`) and compared with CRuby 3.3.8. All four compiled, exited 0 and
-matched CRuby's output. This is new evidence for these small shapes only;
+matched CRuby's output. In review, exception_shapes.rb was strengthened to
+the `rescue StandardError` shape and all four were re-run with
+`rechecks/run.sh` (GCC 13.3.0, CRuby 3.3.6). All four still matched.
+This is new evidence for these small shapes only;
 no production workaround was removed and no GC-stress, macOS or optimized
 framework-wide equivalence is claimed.
 
 | Saved program | Scope of the passing observation | What remains unproven |
 | --- | --- | --- |
 | [value_shapes.rb](rechecks/value_shapes.rb) | Destructuring (12), module reopening with a class variable (18), NUL-preserving append after slice (60) | Collection/GC lifetimes, other buffer optimizations and application-scale inference |
-| [exception_shapes.rb](rechecks/exception_shapes.rb) | Qualified names (46), an unraised exception's message (53), hierarchy (54), `is_a?` on a raised exception (47) | Namespace aliases, missing rescue constants (81/89), stack depth and framework fault classification |
+| [exception_shapes.rb](rechecks/exception_shapes.rb) | Qualified names, including `JSON::ParserError` (46); `is_a?` on a superclass after `rescue StandardError`, with the class chosen at run time (47); an unraised exception's message (53); the superclass chain of user-defined classes (54) | The superclass chain of package classes (still fails, status 54), namespace aliases, missing rescue constants (81/89), stack depth and framework fault classification |
 | [openssl_dispatch.rb](rechecks/openssl_dispatch.rb) | `getbyte` on a boxed String with OpenSSL loaded (62) | Other builtin names and dispatch paths in a complete application |
 | [decimal.rb](rechecks/decimal.rb) | String construction, ordering and scale rounding (design D42); Float collapses two distinct decimal inputs | Framework integration, Float construction, storage precision and SQLite round-trips |
 
@@ -203,8 +207,8 @@ Read each record together with its per-version status above. Unless its own
 text gives a newer date, the failure narrative describes the original
 2026.09.12 observation. Imperative workarounds stay in force only within the
 affected shape; they do not turn historical symptoms into universal Ruby rules.
-Records 16, 23-24, 38, 76, 84-85, 87, 95 and 98 include language/tool behaviour
-or supported capabilities; record 22 is a measured tuning decision, and 77
+Records 13, 16-17, 23-24, 38, 76, 84-85, 87, 95 and 98 include language/tool
+behaviour or supported capabilities (the status table classifies each); record 22 is a measured tuning decision, and 77
 explicitly retires a workaround.
 
 1. Never call `send`, `public_send`, `respond_to?`, `instance_variable_get`,
@@ -432,8 +436,9 @@ explicitly retires a workaround.
     A second `ensure` in such a re-entrant yielding method broke nested
     calls at run time (the outer transaction rolled back).
 46. Historically `Class#name` carried no namespace ("ParserError", not
-    "JSON::ParserError"). The current pin returns the qualified name; do
-    not introduce new bare-name assertions on the basis of this old symptom. Thread stacks are small:
+    "JSON::ParserError"). The current pin returns the qualified name for
+    user-defined classes and for `JSON::ParserError` (status 46); do not
+    introduce new bare-name assertions on the basis of this old symptom. Thread stacks are small:
     about 50 nested template renders (14 Ruby frames each under CRuby)
     overflow one, so the Interpreter caps nesting at 12. A Hash literal
     whose values are all Strings is typed that way; seed it with a value of
