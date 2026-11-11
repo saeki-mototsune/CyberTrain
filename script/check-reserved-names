@@ -179,7 +179,8 @@ NAME_HOMES = {
   # active_support.rb's, like the other declarations below, is the no-op
   # that lets a concern's never-run `included` block compile
   # (spikes/NOTES.md rule 92), returning nil as Controller's does.
-  "layout" => %w[cybertrain/cli/templates.rb cybertrain/controller.rb cybertrain/active_support.rb],
+  # config.rb's is the `attr_accessor :layout` of Config (a String).
+  "layout" => %w[cybertrain/cli/templates.rb cybertrain/controller.rb cybertrain/active_support.rb cybertrain/config.rb],
   "before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "after_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "skip_before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
@@ -192,7 +193,12 @@ NAME_HOMES = {
   # body (spec 4.2); both return nil.
   "model_concern_insert_at" => %w[cybertrain/model.rb],
   "model_concern_insert_done" => %w[cybertrain/model.rb],
-  "cookies" => %w[cybertrain/controller.rb],
+  # Controller#cookies is the CookieJar; Response#cookies the Set-Cookie
+  # values sent (Array<String>); Test::Client#cookies the client's jar
+  # (Hash). Three return types under one name, kept apart by their
+  # receivers (a Response, a Client and a Controller never share a
+  # variable); a fourth definer needs a reason here.
+  "cookies" => %w[cybertrain/controller.rb cybertrain/http/response.rb cybertrain/test/client.rb],
   "signed" => %w[cybertrain/cookie_jar.rb],
   "encrypted" => %w[cybertrain/cookie_jar.rb],
   "permanent" => %w[cybertrain/cookie_jar.rb],
@@ -202,8 +208,13 @@ NAME_HOMES = {
   "turbo_stream" => %w[cybertrain/format_collector.rb cybertrain/controller.rb],
   "csv" => %w[cybertrain/format_collector.rb],
   "xml" => %w[cybertrain/format_collector.rb],
-  "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb],
-  "any" => %w[cybertrain/format_collector.rb],
+  # template/ast.rb's TextNode#text and template/lexer.rb's Token#text are
+  # attr_readers (a String), never compiled next to a FormatCollector or a
+  # Table receiver.
+  "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb cybertrain/template/ast.rb cybertrain/template/lexer.rb],
+  # cli/attachment.rb's and cli/scaffold.rb's are the --any option
+  # (attr_reader, a Boolean) of the generators' name records.
+  "any" => %w[cybertrain/format_collector.rb cybertrain/cli/attachment.rb cybertrain/cli/scaffold.rb],
   "permit" => %w[cybertrain/params.rb],
   # Response#redirect returns nil next to the routes DSL's Mapper#redirect
   # (a RedirectSpec, run only by `spin run gen`); both redirect_to return nil.
@@ -238,8 +249,26 @@ NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted perman
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
 homeless = []
-def_line = /^\s*def\s+(?:self\.)?([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
+# `def x`, `def self.x`, `private def x` and `protected def x`; an
+# attr_reader, attr_accessor or attr_writer line defines each name it lists
+# (a writer's `x=` is a different name, but the line is counted all the
+# same: a reader of the name is never far behind).
+def_line = /^\s*(?:(?:private|protected|public)\s+)?def\s+(?:self\.)?([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
+attr_line = /^\s*(?:(?:private|protected|public)\s+)?attr_(?:reader|accessor|writer)\s+((?::[a-z_][A-Za-z0-9_]*\s*,?\s*)+)/
 emitted_def = /(?:"|\\n)\s*def\s+(?:self\.)?([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
+# The two line shapes pin themselves: a regex edit that stops reading
+# `private def x` or a multi-name attr_reader fails here rather than
+# silently passing every file.
+{ "    private def layout_path(x)" => ["layout_path"], "  protected def self.x" => ["x"], "  def cookies" => ["cookies"],
+  "    attr_reader :status, :cookies" => %w[status cookies], "  attr_accessor :layout" => ["layout"],
+  "  def x=(v)" => [], "  # def cookies" => [] }.each do |sample, want|
+  got = []
+  m = sample.match(def_line)
+  got << m[1] unless m.nil?
+  a = sample.match(attr_line)
+  a[1].scan(/:([a-z_][A-Za-z0-9_]*)/) { |(name)| got << name } unless a.nil?
+  abort "check-reserved-names: self-check: #{sample.strip.inspect} gives #{got.inspect}, expected #{want.inspect}" unless got == want
+end
 Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
   rel = file.delete_prefix("#{root}/")
   emitter = rel.match?(%r{\Acybertrain/generator/[^/]+_emitter\.rb\z})
@@ -249,6 +278,8 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
     found = []
     m = line.match(def_line)
     found << m[1] unless m.nil?
+    a = line.match(attr_line)
+    a[1].scan(/:([a-z_][A-Za-z0-9_]*)/) { |(name)| found << name } unless a.nil?
     line.scan(emitted_def) { |(name)| found << name } if emitter
     found.uniq.each do |name|
       homes = NAME_HOMES[name]
