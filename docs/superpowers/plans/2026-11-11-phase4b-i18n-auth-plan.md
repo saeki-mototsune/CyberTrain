@@ -225,6 +225,11 @@ test "the locale is reset per action and with_locale restores it on raise" do
   # a controller action sets I18n.locale = :ja; the next run_action on the same thread sees :en
   # begin I18n.with_locale(:ja) { raise "x" } rescue; end -> I18n.locale == :en
 end
+test "overlapping requests on two threads keep their own locales" do
+  # thread A sets :ja and waits on a queue; thread B sets :en and renders t("hello");
+  # then A renders t("hello"): A gets the ja string, B the en string (also in the
+  # fallback shape, where each controller instance passes locale: explicitly)
+end
 test "locale= accepts names of available locales only" do
   I18n.locale = "ja"; assert_equal :ja, I18n.locale
   assert_raises("I18n::InvalidLocale") { I18n.locale = "xx" }
