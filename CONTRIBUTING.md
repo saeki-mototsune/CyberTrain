@@ -409,13 +409,15 @@ before the gem is pushed:
    give it the new version and, to move to another Spinel release, the new
    `Cybertrain::SPINEL_TAG`. It runs
    [script/bump-version](script/bump-version), which also moves
-   `SPINEL_TAG` in `ci.yml` and the numbers the tests expect. With the
-   repository secret `RELEASE_PR_TOKEN` set (a fine-grained token for this
-   repository with Contents, Pull requests and Workflows: read and write),
-   the Gate and CI run on that pull request. Without it a version-only bump
-   still opens the pull request, but the checks do not start until it is
-   closed and reopened, and a Spinel bump stops: only a token with Workflows
-   may push the change to `ci.yml`.
+   `SPINEL_TAG` in `ci.yml` and the numbers the tests expect. It needs the
+   repository secret `RELEASE_PR_TOKEN` (a fine-grained personal access
+   token for this repository with Contents, Pull requests and Workflows:
+   read and write; Workflows because a Spinel bump changes `ci.yml`): a
+   pull request opened with `GITHUB_TOKEN` starts no workflows, so there is
+   no fallback to it, and without the secret the run fails in its first
+   step with nothing pushed. With it, the Gate and CI run on the pull
+   request, and the run waits until both have started and fails if they
+   have not. Renew the secret when the token expires.
 2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
 4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml),
