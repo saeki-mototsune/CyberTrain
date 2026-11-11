@@ -11,7 +11,7 @@ ok   recover! fails a stale row that used its last attempt instead of requeueing
 ok   a claim writes claimed_by and heartbeat_at; heartbeat! touches only the jobs in flight here
 ok   an outcome write that keeps failing leaves the row to staleness recovery
 ok   an outcome write that fails once is retried and written
-ok   the outcome is fenced by the attempt: a later claim by this same process wins
+ok   the outcome and the heartbeat are fenced by the attempt: a later claim by this same process wins
 ok   two processes recovering: only the stale row is requeued, and only once
 ok   install! adds claimed_by and heartbeat_at to a table made before them
 ok   concurrency: a kind at its limit is skipped and another kind's job claimed
@@ -37,4 +37,4 @@ ok   the unkeyable-row warnings list at most 20 ids and count the rest
 ok   recovery requeues a stale running row with its key in the same statement
 ok   an upgrade adds the column and the index to an existing table
 ok   schema dumps leave the jobs table out
-39 tests, 320 assertions, 0 failures
+39 tests, 321 assertions, 0 failures
