@@ -244,7 +244,9 @@ test "missing OpenSSL headers or library are a missing requirement, like sqlite3
   assert_includes Toolchain.missing_requirements, "the OpenSSL headers and library"
   assert_includes Toolchain.doctor_problems(true), "the OpenSSL headers and library"
   assert_includes Toolchain.doctor_problems(false), "the OpenSSL headers and library"
-  Toolchain.platform_install_hints.each { |line| refute line.include?("optional") }
+  # One assertion whatever the platform: macOS has two hint lines, and the
+  # snapshot counts assertions.
+  refute Toolchain.platform_install_hints.any? { |line| line.include?("optional") }
   ENV["CC"] = ""
 end
 
