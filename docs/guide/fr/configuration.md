@@ -1,5 +1,5 @@
 ---
-source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
+source_sha256: cf5a8c6dd814a8f7d284bf9bf02a6cca610f28753925229a7408b436c81f6011
 ---
 # Configuration
 
@@ -26,7 +26,9 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`&nbsp;; d’anciennes clés séparées par des virgules, essayées pour le déchiffrement seulement, pour changer de clé en réenregistrant les enregistrements&nbsp;; une entrée mal formée arrête le démarrage |
 | `SPINEL_WORKERS` | `workers` | `1`&nbsp;; le serveur de développement l’ignore et tourne toujours avec un seul worker ([pourquoi](template-language.md#file-resolution-enginerb)) |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`&nbsp;; `0.0.0.0` écoute sur toutes les interfaces (conteneurs) |
-| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Le développement accepte `localhost`, `127.0.0.1`, `[::1]`&nbsp;; des noms d’hôte exacts séparés par des virgules étendent cette liste (sans schéma, port ni joker). Les autres hôtes reçoivent une 403 avant les fichiers statiques, les sessions, le routage ou les diagnostics. C’est distinct de l’adresse d’écoute&nbsp;; la production et le test n’appliquent pas cette protection propre au développement |
+| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Le développement accepte `localhost`, `127.0.0.1`, `[::1]`&nbsp;; des noms d’hôte exacts séparés par des virgules étendent cette liste (sans schéma, port ni joker). Les autres hôtes reçoivent une 403 avant les fichiers statiques, les sessions, le routage ou les diagnostics. C’est distinct de l’adresse d’écoute&nbsp;; la production et le test n’appliquent cette liste qu’une fois que `CYBERTRAIN_HOSTS` y active le contrôle |
+| `CYBERTRAIN_HOSTS` | `hosts_from_env` (ajouté à `allowed_hosts`) | `[]`&nbsp;; des noms d’hôte exacts séparés par des virgules (une adresse IPv6 entre crochets&nbsp;; sans schéma, chemin, port ni joker, sinon le démarrage échoue), ajoutés après les noms du loopback dans tous les environnements. Définis, ils activent le contrôle des hôtes en production et en test aussi&nbsp;: un autre `Host` reçoit une 403 `Blocked host` et est journalisé. Un GET ou HEAD du chemin de santé passe quel que soit le Host (voir [Hôtes](requests.md#content-security-policy-force_ssl-and-hosts)) |
+| `CYBERTRAIN_FORCE_SSL` | `force_ssl` | `false`&nbsp;; `1` ou `true` redirige http vers https (301 pour GET et HEAD, 307 sinon&nbsp;; d’après `X-Forwarded-Proto` derrière un proxy), envoie `Strict-Transport-Security: max-age=63072000; includeSubDomains` et écrit tous les cookies `Secure`&nbsp;; le chemin de santé n’est jamais redirigé. Toute autre valeur que `1`, `true`, `0`, `false` ou vide arrête le démarrage. Derrière un proxy, définissez aussi `CYBERTRAIN_TRUSTED_PROXY` ou `CYBERTRAIN_TRUSTED_PROXIES`, sinon les URL que l’application construit restent en http |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`&nbsp;; aussi `Strict` ou `None` (`None` ajoute toujours `Secure`)&nbsp;; toute autre valeur arrête le serveur au démarrage |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`&nbsp;; `1` ou `true` ajoute `Partitioned` (et `Secure`) |
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`&nbsp;; `1` ou `true` fait de `request.client_ip` (ce que compte `rate_limit`) la dernière adresse de `X-Forwarded-For` d’une connexion venant du loopback, pour un reverse proxy sur le même hôte (voir [Limitation du débit](requests.md#rate-limiting-and-the-client-address))&nbsp;; raccourci de `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` |
@@ -107,13 +109,17 @@ le démarrage avec un message qui la nomme.
 **En-têtes de sécurité&nbsp;:** chaque réponse qu’écrit le serveur (actions,
 middleware des fichiers statiques, pages d’erreur et page de diagnostic de
 développement, les 400/411/413/500 propres au serveur, et HEAD) porte
-`X-Content-Type-Options: nosniff` et `X-Frame-Options: SAMEORIGIN`, sauf si la
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` et
+`Permissions-Policy: camera=(), microphone=(), geolocation=()`, sauf si la
 réponse définit déjà un en-tête de ce nom (quelle que soit la casse)&nbsp;:
 `Response#to_http` les ajoute après les en-têtes propres à la réponse et
 seulement s’ils manquent, donc
 `response.set_header("X-Frame-Options", "DENY")` dans une action envoie
-exactement votre valeur, une seule fois. Il n’y a délibérément pas de réglage
-`Config` pour les désactiver dans toute l’application&nbsp;; un widget
+exactement votre valeur, une seule fois. `c.permissions_policy` remplace la
+valeur du troisième (`"camera=(), microphone=(), geolocation=(self)"`), `""`
+n’en envoie aucun, et un CR ou un LF dedans arrête le démarrage. Il n’y a
+délibérément pas de réglage `Config` pour désactiver les deux premiers dans
+toute l’application&nbsp;; un widget
 intégrable remplace l’en-tête sur ses propres réponses (un en-tête
 `Content-Security-Policy: frame-ancestors ...` l’emporte sur `X-Frame-Options`
 dans les navigateurs actuels). À cause de `nosniff`, les navigateurs prennent
@@ -126,8 +132,20 @@ une application en a besoin d’une autre affichée directement. Un reverse prox
 qui sert lui-même `public/` contourne ces en-têtes (voir
 [docs/deploy.en.md](../deploy.en.md)). `Cybertrain::Test::Client` appelle
 l’application dans le même processus et ne sérialise jamais la réponse&nbsp;: il
-ne montre donc pas ces deux valeurs par défaut&nbsp;; vérifiez-les sur
+ne montre donc pas ces valeurs par défaut&nbsp;; vérifiez-les sur
 `response.to_http`.
+
+**Content Security Policy&nbsp;:** désactivée par défaut, comme dans Rails&nbsp;;
+`cybertrain new` écrit le bloc ci-dessous en commentaire dans `config/app.rb`.
+`c.content_security_policy do |p| ... end` déclare la politique (une méthode
+par directive, `p.script_src :self, "https://cdn.jsdelivr.net"`&nbsp;; un second
+appel complète la même politique), `c.content_security_policy_nonce_directives`
+(`[]`) nomme les directives qui reçoivent le nonce de la requête (un nom qui
+n’est pas une directive arrête le démarrage), et
+`c.content_security_policy_report_only` (`false`) envoie l’en-tête sous la forme
+`Content-Security-Policy-Report-Only`. Un contrôleur déclare sa propre copie
+avec `content_security_policy do |p|`&nbsp;; voir
+[Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts).
 
 **Paramètres filtrés&nbsp;:** la ligne `Started GET "/login?..."` du journal des
 requêtes et la page d’erreur de développement (sa ligne de requête, et son

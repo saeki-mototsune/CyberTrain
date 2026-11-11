@@ -1,5 +1,5 @@
 ---
-source_sha256: ed98ecbb73ff505f2eaf2a1c78f0261e948a085277bf440d0d0293b79de70a4b
+source_sha256: cf5a8c6dd814a8f7d284bf9bf02a6cca610f28753925229a7408b436c81f6011
 ---
 # Конфигурация
 
@@ -25,7 +25,9 @@ end
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`; прежние ключи через запятую, пробуются только для расшифровки, так что ключ меняют, пересохраняя записи; неверная запись останавливает запуск |
 | `SPINEL_WORKERS` | `workers` | `1`; сервер разработки игнорирует это значение и всегда работает с одним воркером ([почему](template-language.md#file-resolution-enginerb)) |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`; `0.0.0.0` слушает на всех интерфейсах (контейнеры) |
-| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Режим разработки принимает `localhost`, `127.0.0.1`, `[::1]`; разделённые запятыми точные имена хостов расширяют этот список (без схемы, порта и подстановочных знаков). Другие хосты получают 403 до статических файлов, сессий, маршрутизации и диагностики. Это не связано с адресом прослушивания; production и test не применяют эту защиту режима разработки |
+| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Режим разработки принимает `localhost`, `127.0.0.1`, `[::1]`; разделённые запятыми точные имена хостов расширяют этот список (без схемы, порта и подстановочных знаков). Другие хосты получают 403 до статических файлов, сессий, маршрутизации и диагностики. Это не связано с адресом прослушивания; production и test применяют этот список, только когда `CYBERTRAIN_HOSTS` включает там проверку |
+| `CYBERTRAIN_HOSTS` | `hosts_from_env` (добавляется к `allowed_hosts`) | `[]`; разделённые запятыми точные имена хостов (IPv6-адрес в квадратных скобках; без схемы, пути, порта и подстановочных знаков, иначе запуск не удаётся), добавляемые после имён loopback во всех окружениях. Если они заданы, проверка хостов включается и в production и test: другой `Host` получает 403 `Blocked host` и записывается в лог. GET или HEAD пути проверки здоровья проходит при любом Host (см. [Хосты](requests.md#content-security-policy-force_ssl-and-hosts)) |
+| `CYBERTRAIN_FORCE_SSL` | `force_ssl` | `false`; `1` или `true` перенаправляет http на https (301 для GET и HEAD, 307 для остального; за прокси — по `X-Forwarded-Proto`), отправляет `Strict-Transport-Security: max-age=63072000; includeSubDomains` и пишет все cookies с `Secure`; путь проверки здоровья никогда не перенаправляется. Любое значение, кроме `1`, `true`, `0`, `false` или пустого, останавливает запуск. За прокси задайте также `CYBERTRAIN_TRUSTED_PROXY` или `CYBERTRAIN_TRUSTED_PROXIES`, иначе URL, которые строит приложение, останутся http |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; также `Strict` или `None` (`None` всегда добавляет `Secure`); любое другое значение останавливает сервер при запуске |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` или `true` добавляет `Partitioned` (и `Secure`) |
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` или `true` делает `request.client_ip` (то, что засчитывает `rate_limit`) последним адресом `X-Forwarded-For` соединения с loopback — для обратного прокси на том же хосте (см. [Ограничение частоты запросов](requests.md#rate-limiting-and-the-client-address)); сокращение для `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` |
@@ -104,11 +106,15 @@ end
 **Заголовки безопасности:** каждый ответ, который пишет сервер (действия,
 middleware статических файлов, страницы ошибок и страница диагностики режима
 разработки, собственные 400/411/413/500 сервера и HEAD), несёт
-`X-Content-Type-Options: nosniff` и `X-Frame-Options: SAMEORIGIN`, если только
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` и
+`Permissions-Policy: camera=(), microphone=(), geolocation=()`, если только
 ответ уже не задаёт заголовок с таким именем (в любом регистре): `Response#to_http`
 добавляет их после собственных заголовков ответа и только при их отсутствии,
 поэтому `response.set_header("X-Frame-Options", "DENY")` в действии отправляет
-ровно ваше значение, один раз. Переключателя в `Config`, чтобы отключить их для
+ровно ваше значение, один раз. `c.permissions_policy` заменяет значение
+третьего (`"camera=(), microphone=(), geolocation=(self)"`), `""` не отправляет
+его вовсе, а CR или LF в нём останавливает запуск. Переключателя в `Config`,
+чтобы отключить первые два для
 всего приложения, намеренно нет; встраиваемый виджет переопределяет заголовок
 в собственных ответах (заголовок `Content-Security-Policy: frame-ancestors ...`
 в современных браузерах имеет приоритет над `X-Frame-Options`). Из-за `nosniff`
@@ -120,7 +126,18 @@ avif, шрифты, wasm, pdf, аудио и видео, json, csv, xml), а в�
 в браузере другое. Обратный прокси, который сам отдаёт `public/`, обходит эти
 заголовки (см. [docs/deploy.en.md](../deploy.en.md)). `Cybertrain::Test::Client`
 вызывает приложение внутри процесса и никогда не сериализует ответ, поэтому
-эти два значения по умолчанию в нём не видны; проверяйте их на `response.to_http`.
+эти значения по умолчанию в нём не видны; проверяйте их на `response.to_http`.
+
+**Content Security Policy:** по умолчанию выключена, как в Rails; `cybertrain new`
+пишет блок ниже закомментированным в `config/app.rb`.
+`c.content_security_policy do |p| ... end` объявляет политику (по методу на
+директиву, `p.script_src :self, "https://cdn.jsdelivr.net"`; второй вызов
+дополняет ту же политику), `c.content_security_policy_nonce_directives` (`[]`)
+называет директивы, которые получают nonce запроса (имя, не являющееся
+директивой, останавливает запуск), а `c.content_security_policy_report_only`
+(`false`) отправляет заголовок как `Content-Security-Policy-Report-Only`.
+Контроллер объявляет собственную копию через `content_security_policy do |p|`;
+см. [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts).
 
 **Фильтруемые параметры:** строка `Started GET "/login?..."` в логе запросов и
 страница ошибок режима разработки (её строка запроса и дамп params и тела JSON)

@@ -22,11 +22,15 @@ in production. The Rails vocabulary (`before_action`, `Article.where(...)`,
 `resources :articles`) comes from plain Ruby generated at build time instead
 of runtime metaprogramming.
 
-**Status:** pre-alpha. Routing, controllers, sessions/CSRF, ERB-style
-templates with components and application helpers, SQLite models
+**Status:** pre-alpha. Routing (namespaces, scopes, formats and
+`respond_to`), controllers with concerns, `helper_method`, strong
+parameters, HTTP caching, cookies and an encrypted session, CSRF, a Content
+Security Policy, `force_ssl` and host checks, ERB-style templates with
+components, application helpers, the number, form and Turbo helpers and
+per-controller layouts, digested assets with an import map, SQLite models
 (decimal, json, date and datetime columns; declared associations with
-`includes`; Rails' validators; encrypted columns; bulk inserts and typed
-aggregates), migrations, and the authentication and file-upload generators
+`includes`; Rails' validators; model concerns; encrypted columns; bulk
+inserts and typed aggregates), migrations, and the authentication and file-upload generators
 all work end to end. So do background jobs (job classes with retry
 policies, cron schedules, a jobs page), a cache store, Turbo Streams over
 Server-Sent Events or WebSocket, and the outbound clients: HTTP (streamed,
@@ -35,15 +39,15 @@ or from a job) and WebSocket feeds. [examples/blog](examples/blog) is the
 Rails "Getting Started" blog built on it. Since 2026-11-05 porting an
 existing Rails application is a goal, in five phases
 ([design record](docs/design.md), D1); a SQLite database that a Rails
-application created can be taken over as it is. Not built: an asset
-pipeline, i18n, mailer classes (a mail is a method that calls
+application created can be taken over as it is. Not built: i18n, mailer
+classes (a mail is a method that calls
 `Mailer.deliver` or `deliver_later`), mail attachments, HTTP/2
 ([what differs from Rails](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#differences-from-rails)).
 
 ## Quick start
 
-Needs Ruby 3.2+, a C toolchain, `make`, `git`, `curl` and the SQLite and zlib
-headers ([details](https://saeki-mototsune.github.io/CyberTrain/guide/install.html#requirements); `cybertrain doctor`
+Needs Ruby 3.2+, a C toolchain, `make`, `git`, `curl` and the SQLite, zlib and
+OpenSSL headers ([details](https://saeki-mototsune.github.io/CyberTrain/guide/install.html#requirements); `cybertrain doctor`
 checks them).
 
 ```sh
@@ -79,7 +83,8 @@ the same app in Rails 8.1, in about a tenth of the memory
 | [Installing](https://saeki-mototsune.github.io/CyberTrain/guide/install.html) | Requirements, the `cybertrain` command, how Spinel and the framework are installed |
 | [How it works](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop, and a table of the differences from Rails |
 | [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database |
-| [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Rate limiting, the client address, parameterised headers, query strings and request bodies |
+| [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Routing, formats and `respond_to`, concerns, strong parameters, HTTP caching, cookies and the session, rate limiting, CSP, `force_ssl` and hosts, headers, query strings and request bodies |
+| [Assets](https://saeki-mototsune.github.io/CyberTrain/guide/assets.html) | Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
 | [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check |
 | [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |

@@ -1,5 +1,5 @@
 ---
-source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
+source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
 ---
 # Установка
 
@@ -31,6 +31,13 @@ source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
 - Заголовки и библиотека zlib (`zlib1g-dev` в Debian/Ubuntu; в macOS SDK) —
   тела запросов в gzip (`request.decoded_body`) распаковываются через
   системную zlib, привязанную тем же способом.
+- Заголовки и библиотека OpenSSL (`libssl-dev` в Debian/Ubuntu) — их линкует
+  каждое приложение: cookie сессии и `cookies.encrypted` шифруются AES-256-GCM
+  через пакет `openssl` Spinel, который Spinel собирает, только когда заголовки
+  есть. На macOS установите OpenSSL из Homebrew (`brew install openssl@3`),
+  он keg-only, и добавьте его в пути компилятора:
+  `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+  CPATH="$(brew --prefix openssl@3)/include"`.
 - Ruby 3.2+ и RubyGems — только для команды `cybertrain` (приложения никогда
   не запускаются на CRuby); на Ruby 3.2 для сборки Spinel также нужен gem
   `prism` (ниже).
@@ -39,17 +46,17 @@ source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
 Spinel; если чего-то обязательного не хватает, она также выводит команду
 установки для вашей платформы.
 
-<details><summary>Ещё пакеты — prism на Ruby 3.2; OpenSSL и jemalloc, оба необязательны</summary>
+<details><summary>Ещё пакеты — prism на Ruby 3.2; jemalloc, необязателен</summary>
 
 - Для сборки Spinel нужен gem `prism`, который в Ruby 3.3 и новее входит в
   поставку; на Ruby 3.2 выполните `gem install prism` (нужны заголовки
   разработки Ruby, `ruby-dev` в Debian/Ubuntu). `cybertrain doctor` это
   проверяет.
-- Заголовки OpenSSL (`libssl-dev`) необязательны: без них Spinel собирается
-  без своего пакета `openssl`, который приложению нужен только для TLS (`require "cybertrain/net/tls"`) или зашифрованных столбцов (`encrypts`). На macOS
-  приложению, которому нужен `openssl`, требуется OpenSSL из Homebrew (keg-only)
-  в путях компилятора: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
-  CPATH="$(brew --prefix openssl@3)/include"`.
+- Spinel, собранный до установки заголовков OpenSSL, не имеет пакета
+  `openssl`, и сборка приложения тогда не удаётся; когда заголовки появятся,
+  выполните `cybertrain setup --force`, чтобы пересобрать его. Тот же пакет
+  обслуживает TLS (`require "cybertrain/net/tls"`) и зашифрованные столбцы
+  (`encrypts`).
 - Пакет разработки jemalloc (`libjemalloc-dev`; `brew install jemalloc`)
   необязателен: он нужен приложению, только когда в его `spin.toml` указано
   `allocator = "jemalloc"`, что `cybertrain new` записывает закомментированным.
@@ -201,3 +208,7 @@ X.Y.Z создаёт приложения, зависящие от фреймв�
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+Приложению, написанному для 0.4, нужно внести несколько изменений (каждая
+сессия один раз завершается, линкуется OpenSSL, сегменту маршрута с точкой
+нужен `format: false` и другое): см. [Обновление приложения с 0.4](requests.md#upgrading-an-application-from-04).

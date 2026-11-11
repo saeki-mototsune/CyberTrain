@@ -25,8 +25,9 @@ module Cybertrain
   # raises {CookieOverflow} when SessionStore writes it: nothing is cut
   # short. It is sent only when the session changed, as
   # `_cybertrain_session` with `Path=/; HttpOnly; SameSite=Lax`, `Secure`
-  # in production and a two-week Max-Age (the name, the Max-Age and
-  # `Secure` are {Config} settings). `"_csrf_token"` and `"_flash"` are the
+  # in production or under `force_ssl` ({Config#secure_cookies?}) and a
+  # two-week Max-Age (the name, the Max-Age and `Secure` are {Config}
+  # settings). `"_csrf_token"` and `"_flash"` are the
   # framework's keys.
   # @example
   #   session[:user_id] = user.id

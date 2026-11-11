@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: f411ad8886352765ab1934561dfee0742bdeb3da63a413f36d317b7769eff275
+source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 ---
 
 # Как это работает
@@ -19,14 +19,18 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 маршрутов. Отдельно он проводит **лексическое сканирование** (регулярными
 выражениями, а не парсером — Spinel не предоставляет его во время выполнения)
 файлов `app/controllers/**/*.rb` и `app/models/**/*.rb` в поисках присваиваний
-`@ivar =`, имён `before_action`/`after_action`/`rescue_from ... with:` и `def`
-без аргументов.
+`@ivar =`, имён `before_action`/`after_action`/`rescue_from ... with:`, строк
+`helper_method`, `layout` и `rate_limit`, `include` concerns и `def` без
+аргументов. Он ставит дайджест на файлы в `app/assets/`, `app/javascript/` и
+`vendor/javascript/` и читает `config/importmap.rb` как текст.
 
 По этим данным он пишет в `gen/` простой, читаемый Ruby:
 
 - `gen/models/<name>.rb`: аксессоры, приведения типов, finder-методы, ассоциации, выведенные из внешних ключей;
 - `gen/routes.rb`: таблица маршрутов, диспетчер, хелперы `*_path`/`*_url`;
-- `gen/controllers.rb`: `view_assigns` и `run_callback` для каждого контроллера;
+- `gen/controllers.rb`: `view_assigns`, `run_callback`, таблица `helper_method` и `controller_layout` для каждого контроллера;
+- `gen/concerns.rb` и `gen/concerns/**`: блоки `included` concerns, вставленные в каждый включающий класс, и модули concerns с опустошёнными блоками ([Concerns](requests.md#concerns-and-helper_method));
+- `gen/assets.rb`: пути ассетов с дайджестом и import map ([Ассеты](assets.md)), а файлы с дайджестом — в `public/assets/`;
 - `gen/migrations.rb`;
 - `gen/views.rb`: таблица встроенных представлений, пустая, если сборка не для развёртывания;
 - `gen/app.rb`: манифест `require_relative`.
@@ -88,8 +92,9 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 
 `cybertrain server` (`spin run gen`, затем `spin run NAME`) в `development`
 (`CYBERTRAIN_ENV` по умолчанию, кроме бинарного файла из `cybertrain build`)
-также опрашивает `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb` и
-`gen/**/*.rb` каждые полсекунды. Представления исключены (движок сам их
+также опрашивает `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`,
+`gen/**/*.rb` и корни ассетов (`app/assets/**`, `app/javascript/**`,
+`vendor/javascript/**`) каждые полсекунды. Представления исключены (движок сам их
 перезагружает), как и `gen/views.rb`, пустой в режиме разработки.
 
 Изменение запускает `spin run gen && spin build NAME -- --incremental` в фоне:
@@ -119,13 +124,15 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 | `before_action { do_thing }` (неявный `self`) | `before_action { \|c\| c.do_thing }` — для сохранённого блока нет `instance_exec`, поэтому колбэки получают контроллер/запись явно |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — вложенные блоки получают маппер явно |
 | ERB компилируется в метод; любой объект, любой метод | Интерпретируется по фиксированной грамматике/таблице диспетчеризации ([Язык шаблонов](template-language.md)) |
-| Сессия хранит любой сериализуемый через Marshal объект | Значения сессии — только строки (String), cookie с подписью HMAC |
+| Сессия хранит любой сериализуемый через Marshal объект | Значения сессии — только строки (String), в cookie, зашифрованной AES-256-GCM, как cookie store в Rails ([Cookies и сессия](requests.md#cookies-and-the-session)) |
 | Множество адаптеров баз данных | Только SQLite, через FFI |
 | `Article.transaction { ... }` возвращает значение блока; `raise ActiveRecord::Rollback`; точки сохранения `requires_new: true` | `Article.transaction { \|c\| ... }` передаёт в блок соединение и возвращает nil; выходят из неё, возбуждая исключение; вложенные вызовы присоединяются к внешней транзакции, точек сохранения нет ([Транзакции](models.md#transactions)) |
 | `has_many :through`, enum, STI, полиморфные ассоциации | Не реализовано; `has_many`, `has_one` и `belongs_to` выводятся из внешних ключей или однострочных объявлений, с `dependent:`, `counter_cache:` и одним уровнем `includes` ([Ассоциации](models.md#associations)) |
 | `pluck(:a)`, `maximum(:a)`, `group(:a).sum(:b)`, `upsert`, `update_counters`, `where(created_at: t1..t2)` | Типизированные варианты, потому что у метода Spinel один тип возвращаемого значения: `pluck_int` и ему подобные, `maximum_int`, `sum_float_by`, `upsert`, `increment(:col, by: n)`; диапазон Time — это `where_between` ([Запросы помимо `where`](models.md#querying-beyond-where)) |
 | Любое имя столбца; ассоциация может затенить `errors` | Только идентификаторы ASCII; столбец, названный как метод фреймворка или ключевое слово Ruby, генерируется как `<column>_column`, конфликтующая ассоциация — под запасным именем ([Имена столбцов](models.md#column-names)) |
-| `namespace`, форматы/`respond_to`, `constraints`, `mount` | Не реализовано — плоские имена, только `render json:` |
+| `namespace`, `scope`, форматы и `respond_to` | То же ([Маршрутизация](requests.md#routing), [Форматы](requests.md#formats-and-respond_to)); JSON отдаётся через `render json:` (без шаблонов jbuilder) |
+| `constraints`, `mount`, glob-сегменты | Не реализовано |
+| `ActiveSupport::Concern`, включаемый во время выполнения | Concerns в `app/controllers/concerns` и `app/models/concerns`, которые `spin run gen` разворачивает во включающие классы; `include` называет concern, а метод `class_methods` не может называться так же, как метод экземпляра ([Concerns](requests.md#concerns-and-helper_method)) |
 | `rescue StandardError` перехватывает неудачный `JSON.parse` | Под Spinel `JSON::ParserError` не является `StandardError`: коду приложения нужно `rescue JSON::ParserError, StandardError`. Сервер перехватывает его в крайнем случае и отвечает 500 |
 | `skip_forgery_protection` в API-контроллере | CSRF выполняется до маршрутизации, поэтому API исключается по пути, `c.csrf_exempt_prefixes = ["/api/"]`, и сам аутентифицирует вызывающих ([Конфигурация](configuration.md#configuration-and-environment-variables)) |
 | Rack оставляет тело запроса в gzip как есть | Тело с `Content-Encoding: gzip` — это `request.decoded_body`, распакованное с ограничением в 10 МиБ; повреждённое или слишком большое — 400; `request.body` остаётся как отправлено ([Строки запроса и тела](requests.md#query-strings-and-bodies)) |
@@ -148,6 +155,7 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 | `get "up" => "rails/health#show"` (маршрут к контроллеру) | `GET /up` встроен и получает ответ до статических файлов, сессии и маршрутизатора, поэтому никакой `before_action` не выполняется; он проверяет базу данных, обработчик фоновых задач и фиды WebSocket: `200 ok` или `503` ([Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | Задачи `bin/rails db:...` для резервных копий (встроенных нет) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, режим 0600, переименование на место) и `./<app> db vacuum` |
 | Action Cable, `turbo_stream_from`, `broadcast_append_to` | Те же имена хелперов поверх подписанных потоков, доставляемых через Server-Sent Events или WebSocket из одной таблицы SQLite; без классов каналов ([Реальное время](realtime.md)) |
-| Asset pipeline, i18n | Пока не сделано (следующие фазы, `docs/design.md` D1) |
+| Propshaft, importmap-rails | Та же раскладка (`app/assets`, `app/javascript`, `vendor/javascript`, `config/importmap.rb`), `spin run gen` ставит дайджест и пишет в `public/assets/`; без `bin/importmap pin`, Turbo в комплект не входит ([Ассеты](assets.md)) |
+| i18n | Пока не сделано (фаза 4b, `docs/design.md` D1) |
 
 <!-- table-foot: Список не исчерпывающий: более полная запись в `docs/design.md` §8 («What was deliberately left out»). -->

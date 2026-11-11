@@ -1,5 +1,5 @@
 ---
-source_sha256: 3354d343281bf776b3016f5d1c574c1b5d5c88983a4c9e70b418a9427b206039
+source_sha256: 7f750ee56295d2cb3d244772201081aa35f57e019c3554e514b1a3ef115d75fb
 ---
 # Справочник по языку шаблонов Cybertrain
 
@@ -268,22 +268,39 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | --- | --- | --- |
 | `link_to` | `link_to(text, href, class:, id:, data_confirm:, data: {})` | `text` экранируется, если это ещё не `SafeString`; **нет `method:`** — возбуждает ошибку, предлагая использовать `button_to` (никакой имитации ссылок DELETE через rails-ujs/turbo) |
 | `button_to` | `button_to(text, action, method: :post, class:, data: {})` | `<form class="button_to">` с одной кнопкой; скрытый `_method` для любого глагола, кроме `get`/`post`, плюс поле CSRF, когда есть сессия |
-| `form_with` | `form_with(model:, url:, method:, class:, multipart:) do \|f\| ... end` | нужен блок; новая `model:` → маршрут коллекции + POST, сохранённая → маршрут элемента + PATCH; `[parent, child]` для вложенного маршрута; `url:`/`method:` переопределяют выведенные действие/глагол; `multipart: true` добавляет `enctype="multipart/form-data"` (обязательно для `f.file_field`; никогда не угадывается по блоку и возбуждает `ArgumentError` на GET-форме) |
-| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render component: "card", k: v` | см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials) и [Компоненты](#components) |
+| `form_with` | `form_with(model:, url:, scope:, method:, class:, data:, multipart:, local:) do \|f\| ... end` | нужен блок; новая `model:` → маршрут коллекции + POST, сохранённая → маршрут элемента + PATCH; `[parent, child]` для вложенного маршрута, `[:admin, @article]` для маршрута в пространстве имён; `url:`/`method:` переопределяют выведенные действие/глагол; `scope: :q` называет поля `q[term]` (с `model:` заменяет префикс модели); `data: { turbo_frame: "f" }` пишет атрибуты `data-`; `local:` принимается и ничего не меняет; `multipart: true` добавляет `enctype="multipart/form-data"` (обязательно для `f.file_field`; никогда не угадывается по блоку и возбуждает `ArgumentError` на GET-форме) |
+| `select_tag` | `select_tag(name, option_tags = nil, include_blank:, prompt:, multiple:)` | `select_tag "order", options_for_select([["Newest", "new"], ["Oldest", "old"]], "old")` → `<select name="order" id="order">...</select>`; `option_tags`, не являющийся `SafeString`, экранируется; `multiple: true` называет его `order[]`; остальные именованные аргументы — атрибуты |
+| `options_for_select` | `options_for_select(choices, selected = nil)` | строки `<option>` для вариантов `f.select` (ниже); `selected` — значение или массив значений, сравниваемых как String |
+| `options_from_collection_for_select` | `options_from_collection_for_select(records, :id, :name, selected = nil)` | по `<option>` на запись, значение и текст читаются так же, как в `f.collection_select` |
+| `label_tag`, `text_field_tag`, `hidden_field_tag`, `submit_tag` | `label_tag(name, text = nil)`, `text_field_tag(name, value = nil)`, `hidden_field_tag(name, value = nil)`, `submit_tag(value = "Save changes")` | теги форм без модели: `label_tag(:term)` → `<label for="term">Term</label>`; `hidden_field_tag` пишет `autocomplete="off"`; `submit_tag` называется `commit`; остальные именованные аргументы — атрибуты (`id:` заменяет id, взятый из имени) |
+| `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render partial: "comment", collection: @comments` / `render @comments` / `render component: "card", k: v` | см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials), [Коллекции](#collections) и [Компоненты](#components) |
 | `h`, `escape` | `h(text)` | экранирует; `SafeString` проходит без экранирования |
 | `raw` | `raw(text)` | оборачивает текст в `SafeString` (выводится без экранирования) |
 | `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`; `pluralize(2, "mouse")` → `"2 mice"` (английские правила словоизменения Rails по умолчанию, через `Cybertrain::Inflector`; правила, определённые приложением, не поддерживаются); явный третий аргумент всегда побеждает |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
-| `number_with_delimiter` | `number_with_delimiter(n)` | `1234567` → `"1,234,567"`; `-1000` → `"-1,000"`; `1234.5` → `"1,234.5"` |
+| `number_with_delimiter` | `number_with_delimiter(n, delimiter: ",", separator: ".")` | `1234567` → `"1,234,567"`; `-1000` → `"-1,000"`; `1234.5` → `"1,234.5"` |
+| `number_with_precision` | `number_with_precision(n, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)` | `111.2345` → `"111.235"`; `precision: 0` → `"111"` |
+| `number_to_human` | `number_to_human(n, precision: 3, units: {})` | `1234` → `"1.23 Thousand"`, `1234567` → `"1.23 Million"`; `units: { thousand: "K" }` заменяет название единицы (`unit`, `thousand` … `quadrillion`) |
+| `number_to_percentage` | `number_to_percentage(n, precision: 3)` | `100` → `"100.000%"` |
+| `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`; отрицательное число пишет `-` перед форматом |
+| `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (основание 1024); `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | интервалы в стиле Rails, без точности до секунд: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | пусто / отсутствует без сессии контроллера |
+| `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / сам nonce — nonce [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) этого запроса; `""`, когда политика не действует |
+| `javascript_tag` | `javascript_tag(nonce: true) do ... end`, `javascript_tag(js)` | содержимое в `<script>` (без экранирования, как в Rails: никогда не помещайте туда данные запроса), с nonce при `nonce: true`, когда действует политика; `id:`, `type:`, `data:` — атрибуты |
+| `asset_path` | `asset_path("logo.svg")` | `/assets/logo-1a2b3c4d.svg` (см. [Ассеты](assets.md#helpers)); URL или путь, начинающийся с `/`, возвращается как есть |
+| `stylesheet_link_tag` | `stylesheet_link_tag("application", media:, nonce:)` | `<link rel="stylesheet" href="/assets/application-1a2b3c4d.css">` (`.css` добавляется, если его нет) |
+| `javascript_include_tag` | `javascript_include_tag("legacy", nonce:)` | `<script src="/assets/legacy-1a2b3c4d.js"></script>` (`.js` добавляется, если его нет) |
+| `image_tag` | `image_tag(source, alt:, size:, class:)` | `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16" height="16">` при `size: "16x16"` (или `"16"`); `alt` не придумывается, `alt: ""` записывается |
+| `javascript_importmap_tags` | `javascript_importmap_tags(entry = "application")` | import map, ссылка `modulepreload` на каждый предзагружаемый pin и `import "application"`, каждый с nonce, когда действует политика ([Ассеты](assets.md#the-import-map)); нужен запрос |
 | `flash` | | похож на `Hash`: `flash[:notice]` |
 | `params` | | текущие `Cybertrain::Params` |
 | `request_path` | | текущий путь, `""` без контроллера |
-| `url_for` | `url_for(target)` | `String` как есть, `Model` → маршрут элемента, `[parent, child]` → вложенный маршрут |
+| `url_for` | `url_for(target, format:, anchor:, k: v)` | `String` как есть, `Model` → маршрут элемента, `[parent, child]` → вложенный маршрут, `[:admin, record]` → маршрут в пространстве имён; именованные аргументы добавляются так же, как их добавляет хелпер пути (`url_for("/x", format: :csv)` → `/x.csv`) |
+| `current_page?` | `current_page?(path)` | относится ли этот GET- или HEAD-запрос к `path` (без учёта завершающего слеша; если в `path` есть query, она тоже должна совпасть); запись или массив проходит через `url_for`; false для любого другого метода; нужен запрос |
 | `paginate` | `paginate(page, path)` | `page` — это `Cybertrain::Page` (из `Relation#page`); выводит `<nav class="pager">` с «Newer» (`rel="prev"`), `<span class="pager-current">Page N</span>` и «Older» (`rel="next"`); ссылка опускается, если такой страницы нет. Каждая ссылка — это `path` плюс строка запроса текущего запроса с заменённым `page` (для страницы 1 он убирается), заново закодированная и HTML-экранированная; `path` с собственным `?query` использует вместо этого его. `Page` в шаблоне также отвечает на `number`, `per`, `row_offset`, `next?`, `prev?`, `next_number`, `prev_number` (`<% if @page.next? %>`) |
-| `*_path` / `*_url` | например, `post_path(post)` | генерируются приложением, разрешаются через `Cybertrain::Views.url_resolver` |
+| `*_path` / `*_url` | например, `post_path(post)`, `posts_path(page: 2, format: :json)` | генерируются приложением, разрешаются через `Cybertrain::Views.url_resolver`; именованные аргументы уходят в строку запроса, `format:` добавляет расширение, а `anchor:` — фрагмент ([Редиректы и строки запроса](requests.md#redirects-and-query-strings)) |
 | `tag` | `tag.div(content, attrs) do ... end` | построитель tag: см. [Построитель tag](#the-tag-builder) |
 | `content_tag` | `content_tag(name, content = nil, attrs)` или с блоком `do` | `content_tag "p", "<i>", class: "n"` → `<p class="n">&lt;i&gt;</p>`; те же правила, что у `tag` |
 | `safe_join` | `safe_join(array, sep = "")` (без именованных аргументов) | соединяет в `SafeString`, экранируя каждый элемент и разделитель, которые ещё не `SafeString`: `safe_join([tag.b("a"), "<"], " ")` → `<b>a</b> &lt;` |
@@ -292,8 +309,13 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | `turbo_stream_from` | `turbo_stream_from(*streams, ws: false)` | один `<turbo-stream-source>`, подписывающий страницу на потоки (String или записи с именами вида `"articles:12"`); `ws: true` даёт URL `ws://`/`wss://` и требует запроса. См. [Реальное время](realtime.md#turbo-streams) |
 | `signed_stream_name` | `signed_stream_name(*streams)` | только подписанный токен, для написанного вручную JavaScript |
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | путь точки входа потоков с токеном и `mode=json` (или `"raw"`) |
+| `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`; запись даёт свой `dom_id`; каждый атрибут — только если задан |
+| `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | один элемент `<turbo-stream action="...">` для шаблона `*.turbo_stream.erb`; цель — DOM id или запись; ровно одно из: блок, `partial:` (с `locals:`) или `html:` |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)` или с блоком | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`; Date даёт `2026-11-10`; `format:` — `:short`, `:long` или String для strftime (неизвестная директива вызывает исключение) |
 
 Каждый текстовый аргумент хелпера следует одному правилу: `SafeString` проходит без экранирования, всё остальное экранируется — `link_to raw('<b>raw</b>'), post` выводит тег жирного шрифта буквально, а `link_to post.title, post` его экранирует.
+
+Шесть числовых хелперов — это хелперы `Cybertrain::NumberHelper`, которые код на Ruby вызывает как функции модуля с теми же именованными аргументами (`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`). Они принимают Integer, Float или числовую String (десятичные столбцы — Float) и округляют половину вверх по цифрам её десятичного текста, поэтому результат одинаков в обоих рантаймах; любое другое значение, включая `nil`, вызывает `ArgumentError` (`"number_with_delimiter: nil is not a number"`), как и точность вне диапазона от 0 до 100. Форматы английские.
 
 ### Построитель tag
 
@@ -321,13 +343,16 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | Метод | Выводит |
 | --- | --- |
 | `f.label :title` / `f.label :title, "Text"` | `<label for="post_title">Title</label>` — текст по умолчанию — «очеловеченный» атрибут (`published_at` → «Published at», `author_id` → «Author»); явный текст экранируется, если это не `SafeString` |
-| `f.text_field :title` (также `email_field`, `password_field`, `number_field`, `date_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`; `password_field` никогда не выводит `value=` |
+| `f.text_field :title` (также  `email_field`, `password_field`, `number_field`, `date_field`, `datetime_local_field`, `time_field`, `range_field`, `color_field`, `search_field`, `telephone_field`, `url_field`, `hidden_field`) | `<input type="..." name="post[title]" id="post_title" value="...">`; `password_field` никогда не выводит `value=`; `telephone_field` — это `type="tel"`; Time записывается так, как его читает браузер (`2026-11-10`, `2026-11-10T12:00:00`, `12:00:00.000`) |
+| `f.select :status, ["draft", "published"]` (также  `include_blank:`, `prompt:`, `selected:`, `disabled:`, `multiple:`) | `<select name="post[status]" id="post_status">` с `<option>` на каждый вариант, текущее значение выбрано; варианты — значения, пары `[text, value]` или Hash либо группы `[label, [choices]]` для `<optgroup>`; `multiple: true` называет его `post[status][]` и сначала пишет пустой скрытый input |
+| `f.collection_select :author_id, @authors, :id, :name` | `<select>` с `<option>` на каждую запись, значение и текст читаются из двух методов |
+| `f.radio_button :status, "draft"` | `<input type="radio" name="post[status]" id="post_status_draft" value="draft">`, отмечен, когда значение совпадает (`checked:` имеет приоритет) |
 | `f.file_field :cover` (также `accept: "image/*"`, `required: true`) | `<input type="file" name="post[cover]" id="post_cover">` — никогда не выводит `value=`, и атрибут не обязан быть столбцом; форма должна быть `form_with ..., multipart: true`; `multiple: true` возбуждает `ArgumentError` (один файл на поле) |
 | `f.text_area :body` | `<textarea name="post[body]" id="post_body">\n...</textarea>` (ведущий `\n`, как в Rails, — браузеры съедают первый перевод строки) |
-| `f.check_box :published` | скрытый input с `value="0"`, затем настоящий флажок, поэтому неотмеченный флажок всё равно отправляет `"0"` |
+| `f.check_box :published` | скрытый input с `value="0"`, затем настоящий флажок, поэтому неотмеченный флажок всё равно отправляет `"0"`; `include_hidden: false` не пишет скрытый input |
 | `f.submit` / `f.submit "Text"` | текст по умолчанию `"Create Post"`/`"Update Post"` (по `persisted?`) или `"Save changes"` без модели |
 
-С моделью поля называются `post[title]`/`id="post_title"` (`Inflector.underscore(model.model_name)` как область видимости); с `form_with(url: ...)` без модели для обоих используется голое имя атрибута. Дополнительные именованные аргументы становятся HTML-атрибутами в заданном порядке: `true` → `attr="attr"`, `false`/`nil` отбрасываются, всё остальное → `attr="value"` (с экранированием), подчёркивания становятся дефисами (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), а `class:` объединяется с автоматическим классом `field_with_errors`, который добавляется, когда `model.errors.key?(attr)`.
+С моделью поля называются `post[title]`/`id="post_title"` (`Inflector.underscore(model.model_name)` как область видимости); `form_with(..., scope: :q)` использует вместо этого `q[title]`/`id="q_title"`; с `form_with(url: ...)` без модели и области видимости для обоих используется голое имя атрибута. Каждое значение атрибута и каждый текст варианта экранируется один раз (`SafeString` — как есть). Дополнительные именованные аргументы становятся HTML-атрибутами в заданном порядке: `true` → `attr="attr"`, `false`/`nil` отбрасываются, всё остальное → `attr="value"` (с экранированием), подчёркивания становятся дефисами (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), а `class:` объединяется с автоматическим классом `field_with_errors`, который добавляется, когда `model.errors.key?(attr)`.
 
 ## Хелперы приложения
 
@@ -402,7 +427,7 @@ html = Cybertrain::Views.render_partial("articles/article", article: article)   
 card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", value: 12))
 ```
 
-Оба возвращают HTML в виде String, с хелперами приложения. Хелперы путей работают (`article_path(article)`), strict locals проверяются, а формы (`form_with`, `button_to`) отрисовываются без токена подлинности (страница с Turbo отправляет токен из `csrf_meta_tags`). Хелпер, которому нужен запрос, возбуждает `Cybertrain::Views::OutsideRequest` (`"csrf_token needs a request"`): `csrf_token`, `csrf_meta_tags`, `params`, `flash`, `request_path`, любой хелпер `*_url` и `turbo_stream_from ... ws: true`. Ссылки `paginate` несут только собственную строку запроса пути. (Голый `Cybertrain::Template::Helpers.new(nil)`, какой может построить модульный тест, вместо этого отвечает на них пустыми значениями.)
+Оба возвращают HTML в виде String, с хелперами приложения. Хелперы путей работают (`article_path(article)`), strict locals проверяются, а формы (`form_with`, `button_to`) отрисовываются без токена подлинности (страница с Turbo отправляет токен из `csrf_meta_tags`). Хелпер, которому нужен запрос, возбуждает `Cybertrain::Views::OutsideRequest` (`"csrf_token needs a request"`): `csrf_token`, `csrf_meta_tags`, `params`, `flash`, `request_path`, `current_page?`, `content_security_policy_nonce` (а значит, `csp_meta_tag` и теговый хелпер с `nonce: true`), `javascript_importmap_tags`, любой хелпер `*_url` и `turbo_stream_from ... ws: true`. Ссылки `paginate` несут только собственную строку запроса пути. (Голый `Cybertrain::Template::Helpers.new(nil)`, какой может построить модульный тест, вместо этого отвечает на них пустыми значениями.)
 
 ## Макеты, `yield`, `content_for`, партиалы
 
@@ -420,6 +445,23 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 <% content_for :title, " (draft)" %>   <%# appends: calls accumulate, they don't replace %>
 ```
 
+### Макеты контроллера
+
+Действие отрисовывается внутри `app/views/layouts/application.html.erb` (когда он есть), если только его контроллер, родитель или включённый concern не выбирает другой:
+
+```ruby
+class AdminController < ApplicationController
+  layout "print", only: [:receipt]      # app/views/layouts/print.html.erb
+  layout :choose_layout                 # метод: имя, false — без макета, nil — макет родителя
+
+  private
+
+  def choose_layout = request.header("Turbo-Frame").to_s.empty? ? "application" : "frame"
+end
+```
+
+`layout "admin"` сам по себе задаёт один макет для всех действий. `spin run gen` читает строки `layout` (имя в кавычках, `false` или Symbol метода, с `only:` / `except:`) и пишет `controller_layout(action)` контроллера. Объявления перебираются по порядку, и **побеждает первое подходящее** (в Rails более позднее объявление заменяет более раннее); строки concern считаются на месте его `include`. `render layout: "x"` использует `layouts/x` для одного вызова, а `render layout: false` — никакого. В макете отрисовывается только html; шаблон другого формата отрисовывается без него. Любой другой аргумент `layout` (`nil`, лямбда, константа) gen отклоняет.
+
 ### Партиалы и `render`
 
 ```erb
@@ -432,6 +474,19 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 - Партиал получает **копию всего окружения вызывающего** (переменные экземпляра и все локальные переменные, уже находящиеся в области видимости) плюс явные локальные переменные, переданные в `render`, — он не изолирован только тем, что было передано. Строгие локальные переменные проверяют по объявленному списку лишь имена, **явно переданные в этот вызов `render`**; они не мешают партиалу читать и какое-то другое имя, унаследованное из окружения вызывающего.
 - Из области видимости партиала в область вызывающего копируются обратно только ключи `content_for` (`__content_*`); обычные локальные переменные, которые он присваивает, наружу не утекают.
 - Отсутствующие или лишние локальные переменные относительно объявления `<%# locals: %>` — это `RuntimeError`: `"missing local 'post' for posts/_form.html.erb"`, `"unknown local 'extra' for posts/_form.html.erb"`.
+
+### Коллекции
+
+```erb
+<%= render partial: "comment", collection: @comments, as: :comment, spacer_template: "divider" %>
+<%= render @comments %>      <%# each record's comments/_comment.html.erb %>
+<%= render @comment %>       <%# one record, no counter %>
+<%= render component: "comment", collection: @comments %>
+```
+
+- `collection:` отрисовывает партиал один раз на каждый элемент массива, как локальную переменную с именем из `as:` (по умолчанию — имя самого партиала), с `<as>_counter`, считающим от 0, `locals:`, переданными каждому, и `spacer_template:` (партиал) между элементами; пустая коллекция ничего не выводит. Партиал со строгими локальными переменными получает счётчик, только если объявляет его, а элемент важнее локальной переменной с тем же именем.
+- `render @comments` выбирает партиал каждой записи по её модели, `<plural>/_<singular>` (`admin/notes/_note` для `Admin::Note`), поэтому список может смешивать модели.
+- Компонент, единственный обязательный именованный аргумент которого назван по нему (`CommentComponent` с `comment:`), получает `CommentComponent.with_collection(items)`, и `render component: "comment", collection: @comments` отрисовывает его по разу на элемент, передавая `comment_counter:`, когда `initialize` его объявляет.
 
 ### Разрешение файлов (`engine.rb`)
 
@@ -473,4 +528,5 @@ card = Cybertrain::Views.render_component(CardComponent.new(title: "Visitors", v
 | `1 / 0` и `1.0 / 0` оба возбуждают `ZeroDivisionError` | Целочисленное деление/остаток на ноль для `Integer` возбуждает `"divided by 0"`; `Float` следует IEEE-754 (`Infinity`/`NaN`), без ошибки |
 | `distance_of_time_in_words`/плюрализация поддерживают локали i18n | Только английский, локали не поддерживаются |
 | Каждый модуль из `app/helpers` подмешивается; любая сигнатура; хелпер может переопределить хелпер фреймворка | Модули разбираются при сборке в сгенерированный `case`: только именованные параметры, не больше трёх необязательных, никаких имён хелперов фреймворка и окончаний `_path`/`_url` ([Хелперы приложения](#application-helpers)) |
-| ViewComponent: `render CardComponent.new(title: "x")`, `with_collection`, слоты | `render component: "card", title: "x"` по имени, `content` из блока; без коллекций и слотов ([Компоненты](#components)) |
+| ViewComponent: `render CardComponent.new(title: "x")`, `with_collection`, слоты | `render component: "card", title: "x"` по имени, `content` из блока, `collection:` для компонента, названного по единственному обязательному именованному аргументу; без слотов ([Компоненты](#components), [Коллекции](#collections)) |
+| Более поздняя строка `layout` заменяет более раннюю | Побеждает первое подходящее объявление `layout` ([Макеты контроллера](#per-controller-layouts)) |

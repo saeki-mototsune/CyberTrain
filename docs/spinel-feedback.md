@@ -142,6 +142,9 @@ has a workaround in CyberTrain or an open bug:
 | S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. Not reported upstream yet |
 | T | the feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the exit status (spikes/NOTES.md rule 91) | **Ready to report**: the six-line program in T (CRuby exits 1; the compiled program goes on and exits 0). Not reported upstream yet |
 | U | gen writes a concern's `class_methods` as `def self.x` on the concern plus a forwarder, and refuses a `class_methods` name an instance method of the concern or an including class has (phase 4a, spikes/NOTES.md rule 93) | **Ready to report**: the reduced program in U (CRuby prints `false false`; the compiled program `true false`). No fix written. Not reported upstream yet |
+| V | `Template::Helpers.time_tag_strftime` calls `strftime` with a literal pattern per directive (spikes/NOTES.md rule 96) | Nothing yet: seen in the framework, the cause read from the generated C, no reduced program written (see V). Not reported upstream yet |
+| W | `Component` passes `"#{@name}"`, a fresh local, to `Views.component_builder.call` (spikes/NOTES.md rule 97) | Nothing yet: seen only in examples/blog's program, not reduced (see W). Not reported upstream yet |
+| X | `Gen::Runner` has each emitter scan `app/controllers` for itself (spikes/NOTES.md rule 94) | Nothing yet: bisected to one change in examples/blog's generator, not reduced (see X). Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -186,6 +189,9 @@ that it is fixed.
 | S. A `yield` passed as an argument runs the block twice when blocks differ in type | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 90) |
 | T. `exit` on a thread other than the main one ends only that thread | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 91) |
 | U. A `def` inside a block that never runs defines the method anyway | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a spike, 2026-11-10; rule 93) |
+| V. `strftime` with a built pattern on a Time or Date returns the pattern | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a, 2026-11-11; rule 96) |
+| W. An ivar String passed to a stored lambda is refused | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a, 2026-11-11; rule 97) |
+| X. Type inference does not converge in examples/blog's generator | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a, 2026-11-10; rule 94) |
 
 ## What CyberTrain still works around
 
@@ -2059,4 +2065,57 @@ Cybertrain::Controller defines `before_action`. This is the ahead-of-time
 NoMethodError of "A refusal of a never-reached class-method call" above,
 met from a receiver Spinel knows; CyberTrain asks for nothing:
 `ActiveSupport::Concern` defines a no-op for each declaration an
-`included` block may make (spikes/NOTES.md rule 92).
+`included` block may make (spikes/NOTES.md rule 92). The stubs cover only
+the declarations themselves: a call inside a block in the block, such as
+the `where` of `scope :visible, -> { where(hidden: 0) }` in a model
+concern's `included`, is refused the same way, and stubbing every Relation
+method on the concern would give those names a second return type (rule
+34). So gen does not let Spinel see the blocks at all: it loads each
+concern from a copy in `gen/concerns/` with its `included` and
+`class_methods` blocks blanked, and splices their bodies into the
+including classes (phase 4a Task 7, 2026-11-10; docs/design.md D60).
+
+### V. `strftime` with a built pattern on a Time or Date returns the pattern
+
+In `Template::Helpers#time_tag`, a value narrowed by `case value when
+Time` from a slot that can also hold a Date, formatted with
+`value.strftime(pattern)` where `pattern` is a String built at run time
+(from `format:`), returns `pattern` itself, unformatted, under Spinel
+2026.11.04.7026; CRuby formats it. The generated C shows why: the
+polymorphic dispatch (`sp_pd_*`) reads the pattern with
+`sp_strbuf_read_pub(pattern)`, and the caller then takes the stale
+`_sp_ret_strbuf`, which still holds the pattern. The variant that takes a
+`const char*` (a literal pattern) formats correctly.
+
+- What CyberTrain does with it (phase 4a Task 17): `time_tag_strftime`
+  parses the pattern and calls `strftime` with a literal for each
+  directive it supports, applying flags and widths itself, and raises for
+  an unknown directive (spikes/NOTES.md rule 96).
+- Not reduced to a standalone program yet; not reported upstream.
+
+### W. An ivar String passed to a stored lambda is refused
+
+examples/blog's program was refused with "a String is passed through `a
+proc.call` ..." at `Views.component_builder.call(@name, kwargs)` in
+`Cybertrain::Component`, where `component_builder` is a lambda stored on
+the `Views` module and `@name` a String ivar; the same call with a fresh
+local (`name = "#{@name}"`) builds. It showed only in the blog's
+program, so the trigger needs more of a program than that line.
+
+- What CyberTrain does with it (phase 4a Task 17): `Component` passes the
+  interpolated local (spikes/NOTES.md rule 97).
+- Not reduced; not reported upstream.
+
+### X. Type inference does not converge in examples/blog's generator
+
+`spin run gen` in examples/blog stopped at the compile of `bin/gen.rb`
+with "type inference did not converge in 128 rounds" after one change to
+`Gen::Runner.run`: holding the controller scan and the concern scan of
+`app/controllers` in locals and passing both to two emitters. Bisected to
+that change.
+
+- What CyberTrain does with it (phase 4a Task 5): each emitter scans
+  `app/controllers` for itself (`Runner.controllers_source`,
+  `concerns_source`), so the directory is read twice (spikes/NOTES.md rule
+  94).
+- Not reduced; not reported upstream.

@@ -642,8 +642,9 @@ module Cybertrain
       end
 
       # What a Spinel build cannot do without, by name. OpenSSL is not in
-      # this list: without its headers Spinel builds without its openssl
-      # package, which cybertrain does not use.
+      # this list: without its headers Spinel still builds, only without
+      # its openssl package, which every application now links (the
+      # session cookie is encrypted), so an application's build then fails.
       def self.missing_requirements
         missing = Array.new(0) { "" }
         if platform == "darwin" && !system("xcode-select -p > /dev/null 2>&1")

@@ -22,7 +22,9 @@ end
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`; comma-separated earlier keys, tried for decryption only, so a key can be rotated by saving the records again; a malformed entry stops the boot |
 | `SPINEL_WORKERS` | `workers` | `1`; the development server always serves with one and ignores this ([why](template-language.md#file-resolution-enginerb)) |
 | `CYBERTRAIN_HOST` | `host` | `"127.0.0.1"`; `0.0.0.0` listens on every interface (containers) |
-| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Development accepts `localhost`, `127.0.0.1`, `[::1]`; comma-separated exact hostnames extend this list (no scheme, port or wildcard). Other hosts get 403 before static files, sessions, routing or diagnostics. This is separate from the listening address; production and test do not apply this development guard |
+| `CYBERTRAIN_ALLOWED_HOSTS` | `allowed_hosts` | Development accepts `localhost`, `127.0.0.1`, `[::1]`; comma-separated exact hostnames extend this list (no scheme, port or wildcard). Other hosts get 403 before static files, sessions, routing or diagnostics. This is separate from the listening address; production and test apply this list only once `CYBERTRAIN_HOSTS` turns the check on there |
+| `CYBERTRAIN_HOSTS` | `hosts_from_env` (appended to `allowed_hosts`) | `[]`; comma-separated exact host names (an IPv6 address in brackets; no scheme, path, port or wildcard, or boot fails), appended after the loopback names in every environment. Set, they turn the host check on in production and test too: another `Host` answers 403 `Blocked host` and is logged. A GET or HEAD of the health path passes whatever the Host (see [Hosts](requests.md#content-security-policy-force_ssl-and-hosts)) |
+| `CYBERTRAIN_FORCE_SSL` | `force_ssl` | `false`; `1` or `true` redirects http to https (301 for GET and HEAD, 307 otherwise; by `X-Forwarded-Proto` behind a proxy), sends `Strict-Transport-Security: max-age=63072000; includeSubDomains` and writes every cookie `Secure`; the health path is never redirected. Anything but `1`, `true`, `0`, `false` or empty stops the boot. Behind a proxy, also set `CYBERTRAIN_TRUSTED_PROXY` or `CYBERTRAIN_TRUSTED_PROXIES`, or the URLs the app builds stay http |
 | `CYBERTRAIN_SESSION_SAME_SITE` | `session_same_site` | `"Lax"`; also `Strict` or `None` (`None` always adds `Secure`); anything else stops the server at boot |
 | `CYBERTRAIN_SESSION_PARTITIONED` | `session_partitioned` | `false`; `1` or `true` adds `Partitioned` (and `Secure`) |
 | `CYBERTRAIN_TRUSTED_PROXY` | `trusted_proxy` | `false`; `1` or `true` makes `request.client_ip` (what `rate_limit` counts) the last `X-Forwarded-For` address of a connection from loopback, for a reverse proxy on the same host (see [Rate limiting](requests.md#rate-limiting-and-the-client-address)); shorthand for `CYBERTRAIN_TRUSTED_PROXIES=127.0.0.0/8,::1` |
@@ -95,12 +97,15 @@ A value out of range stops the boot with a message naming it.
 **Security headers:** every response the server writes (actions, the
 static-file middleware, error pages and the development diagnostics page,
 the server's own 400/411/413/500, and HEAD) carries
-`X-Content-Type-Options: nosniff` and `X-Frame-Options: SAMEORIGIN`, unless
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` and
+`Permissions-Policy: camera=(), microphone=(), geolocation=()`, unless
 the response already sets a header of that name (any case): `Response#to_http`
 adds them after the response's own headers and only when missing, so
 `response.set_header("X-Frame-Options", "DENY")` in an action sends exactly
-your value, once. There is deliberately no `Config`
-switch to turn them off app-wide; an embeddable widget overrides the header
+your value, once. `c.permissions_policy` replaces the third one's value
+(`"camera=(), microphone=(), geolocation=(self)"`), `""` sends none, and a
+CR or LF in it stops the boot. There is deliberately no `Config`
+switch to turn the first two off app-wide; an embeddable widget overrides the header
 on its own responses (a `Content-Security-Policy: frame-ancestors ...` header
 takes precedence over `X-Frame-Options` in current browsers). Because of
 `nosniff`, browsers take `Content-Type` literally: the static-file middleware
@@ -110,8 +115,19 @@ anything else is served as `application/octet-stream`, a download; add the
 extension to `Cybertrain::Static::EXTENSIONS` if an app needs another one
 inline. A reverse proxy that serves `public/` itself bypasses these headers
 (see [docs/deploy.en.md](../deploy.en.md)). `Cybertrain::Test::Client` calls the
-app in-process and never serializes the response, so it does not show the two
+app in-process and never serializes the response, so it does not show these
 defaults; assert them on `response.to_http`.
+
+**Content Security Policy:** off by default, as in Rails; `cybertrain new`
+writes the block below commented out in `config/app.rb`.
+`c.content_security_policy do |p| ... end` declares the policy (one method
+per directive, `p.script_src :self, "https://cdn.jsdelivr.net"`; a second
+call adds to the same policy), `c.content_security_policy_nonce_directives`
+(`[]`) names the directives that get the request's nonce (a name that is not
+a directive stops the boot), and `c.content_security_policy_report_only`
+(`false`) sends the header as `Content-Security-Policy-Report-Only`. A
+controller declares its own copy with `content_security_policy do |p|`; see
+[Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts).
 
 **Filtered parameters:** the request log's `Started GET "/login?..."` line
 and the development error page (its request line, and its dump of the

@@ -1,5 +1,5 @@
 ---
-source_sha256: 2fbeb86c43b9789aa21bda936feff3fd39b4035b81a06ea7f92080110e3c4ec3
+source_sha256: b35f37f16880826acb2bafe697c2825122ae242cca33d6d88142122e5222f65e
 title: 指南
 ---
 # 指南
@@ -11,7 +11,8 @@ CyberTrain 文档中 API 参考之外的全部内容：一步步构建博客的�
 - [**安装**](install.md) — 环境要求、`cybertrain` 命令、Spinel 与框架的安装方式
 - [**工作原理**](how-it-works.md) — 构建时代码生成、解释执行的视图、服务器、开发循环，以及与 Rails 的差异表
 - [**模型与数据库**](models.md) — 迁移、列类型、查询、关联、校验、加密列、事务、接管 Rails 数据库
-- [**请求**](requests.md) — 限流、客户端地址、参数化的请求头、查询字符串与请求体
+- [**请求**](requests.md) — 路由、格式与 `respond_to`、concern、强参数、HTTP 缓存、cookie 与加密的会话、限流、Content Security Policy、`force_ssl` 与主机检查、请求头、查询字符串与请求体
+- [**资源**](assets.md) — 带摘要的样式表、图片和 JavaScript、CSS 的 `url()`、辅助方法、import map、提供文件与保留
 - [**配置**](configuration.md) — `config/app.rb`、环境变量、时区
 - [**后台任务与运维**](background-and-operations.md) — 作业类、重试、`every` 与 `cron` 任务、作业页面、`worker` 与 `feeds` 进程角色、缓存存储、控制台、备份、健康检查
 - [**实时**](realtime.md) — 基于 Server-Sent Events 或 WebSocket 的 Turbo Streams，来自动作、作业和数据订阅的广播，签名的流名称，数据订阅的健康状况

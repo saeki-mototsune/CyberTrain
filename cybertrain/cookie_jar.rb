@@ -22,12 +22,13 @@
 # Writes go out as Set-Cookie through Cookies.serialize and
 # Response#replace_cookie (a cookie written twice in one request is sent
 # once, with its last value), with `Path=/`, `HttpOnly`, `SameSite=Lax`,
-# and `Secure` where the session cookie has it (Config#session_secure,
-# on in production) unless the write says otherwise. A value read after
+# and `Secure` where the session cookie has it (Config#secure_cookies?:
+# session_secure, on in production, or force_ssl) unless the write says
+# otherwise. A value read after
 # a write in the same request is the written one. Without SessionStore in
 # the stack (Controller#cookies then builds a jar over the Cookie header),
-# plain and permanent cookies work, `Secure` follows Cybertrain.config.session_secure
-# (on in production) as with SessionStore, and
+# plain and permanent cookies work, `Secure` follows
+# Cybertrain.config.secure_cookies? as with SessionStore, and
 # `signed` / `encrypted` raise ArgumentError: there is no key.
 require "base64"
 require "cybertrain/cast"

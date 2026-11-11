@@ -62,9 +62,10 @@ macOS: `xcode-select --install`（C コンパイラ、make、git、curl と SQLi
 jemalloc（`libjemalloc-dev`、macOS なら `brew install jemalloc`）は、2-2 で `allocator = "jemalloc"`
 を有効にする場合だけ要ります。
 
-OpenSSL（`libssl-dev`、macOS なら `brew install openssl@3`）は必須ではありません。無くても Spinel は
-openssl パッケージ抜きでビルドされ、cybertrain はそれを使いません。macOS で `require "openssl"` する
-アプリをビルドするときは、Homebrew の OpenSSL(keg-only)をコンパイラに教えます:
+OpenSSL（`libssl-dev`、macOS なら `brew install openssl@3`）は必須です。セッション Cookie を
+これで暗号化するので、どのアプリもリンクします。Spinel はヘッダがあるときだけ openssl パッケージを
+ビルドするので、Spinel より先に入れてください（ヘッダ無しでビルドした Spinel は
+`cybertrain setup --force` で作り直します）。macOS では、Homebrew の OpenSSL(keg-only)をコンパイラに教えます:
 `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib" CPATH="$(brew --prefix openssl@3)/include"`。
 
 `cybertrain` コマンドは gem で入れるので、Ruby 3.2 以上が要ります（サーバーでも
@@ -873,7 +874,7 @@ sudo systemctl enable --now notes@2 notes@3
 - **`CYBERTRAIN_WORKER=0` は 1 つを除くすべてのプロセスに必要です。** 指定しないと各プロセスが
   ジョブのスレッドと `Background` のサービス（WebSocket の購読など）を動かし、同じフィードを
   プロセスの数だけ受け取ります。定期タスクは `cybertrain_leases` のリースを持つ 1 プロセスでだけ動きます。
-- **`RateLimit` はプロセスごとに数えます。** N プロセスなら、制限は実質 N 倍ゆるくなります。`cybertrain generate authentication` が書くサインインの制限（`rate_limit to: 10`）は、3 プロセスなら 1 アドレスあたり最大 30 回になります。全体の制限をおおよそ保つには、`SessionsController` の `to:` を N で割ってください（3 プロセスなら `to: 3` で、1 回の時間枠あたり最大 9 回）。厳密な上限ではありません。時間枠はプロセスごと、アドレスごとに始まり、再起動でカウントも消えます。接続が 1 プロセスに偏った利用者には、この小さい値がそのまま効きます。割れるのは N が元の制限以下のときだけです。`to:` は 1 以上が必要で、0 にするとアプリが起動しません。N がそれを超えるなら、プロセスを減らしてください。
+- **`rate_limit` のカウントは共有されます。** カウントはデータベース（`Cybertrain::Cache`）にあるので、すべてのプロセスがまとめて数えます。`cybertrain generate authentication` が書くサインインの制限（`rate_limit to: 10`）は、プロセスがいくつでも 1 アドレスあたり 10 回のままで、再起動してもカウントは残ります。プロセスごとに数えるのは `store: :memory` と宣言した制限だけです。N プロセスならその制限は実質 N 倍ゆるくなり、時間枠はプロセスごと、アドレスごとに始まり、再起動でカウントも消えます。
 - **`--invite-only` の初回セットアップは1プロセスで行います。** セットアップトークンは起動時にプロセスごとに作られるので、他のプロセスでは `/setup` が 404 になります。最初のユーザーはプロセスを増やす前に作るか、`./notes user EMAIL` で作ります。
 - **POST は増えません。** SQLite の書き込みは同時に 1 つなので、読み取りだけが伸びます。
 - **`SPINEL_WORKERS` は 1 のままにします。** プロセスを増やしてください。
@@ -997,9 +998,9 @@ dist/notes feeds status                       # 各フィードが最後に報�
 
 | ファイル | 中身 |
 | --- | --- |
-| `Dockerfile` | 2 段のビルド。1 段目（Ubuntu 24.04）で `gem install cybertrain`・`cybertrain setup`（Spinel）・`cybertrain build` を実行し、2 段目（同じ Ubuntu）に `dist/` と実行時に要るライブラリ（SQLite・zlib・jemalloc）だけを入れる。起動時に `./notes migrate` してから `./notes` を `exec` する |
+| `Dockerfile` | 2 段のビルド。1 段目（Ubuntu 24.04）で `gem install cybertrain`・`cybertrain setup`（Spinel）・`cybertrain build` を実行し、2 段目（同じ Ubuntu）に `dist/` と実行時に要るライブラリ（SQLite・zlib・jemalloc・OpenSSL）だけを入れる。起動時に `./notes migrate` してから `./notes` を `exec` する |
 | `.dockerignore` | `build/`・`dist/`・`storage/` の DB・`tmp/`・`.git/`・`.kamal/` をビルドに渡さない |
-| `config/deploy.yml` | Kamal の設定。kamal-proxy が HTTPS（Let's Encrypt）を受けてアプリの 3000 番に渡し、`/up.html` でヘルスチェックする。DB はボリューム `notes_storage`（コンテナの `/app/storage`）に置く |
+| `config/deploy.yml` | Kamal の設定。kamal-proxy が HTTPS（Let's Encrypt）を受けてアプリの 3000 番に渡し、`/up.html` でヘルスチェックする。DB はボリューム `notes_storage`（コンテナの `/app/storage`）に置き、`asset_path: /app/public/assets` で前のリリースのダイジェスト付きアセットを引き継ぐ |
 | `.kamal/secrets` | `KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を、kamal を実行するシェルの環境変数から読む。値そのものは書かない（コミットするファイル） |
 | `public/up.html` | ヘルスチェック用のページ。アプリ自身が静的ファイルとして返す |
 
@@ -1101,6 +1102,19 @@ registry:
 で確かめられます）。`proxy.forward_headers` は設定しません。TLS を終端する kamal-proxy は
 `X-Forwarded-For` を自分で付け、クライアントが送ったものは渡さないので、それが望む動きです。
 
+生成される `config/deploy.yml` には `asset_path: /app/public/assets` もあります。イメージには
+そのリリースのダイジェスト付きのスタイルシートとスクリプトしか入っていないので、Kamal が前の
+リリースのファイルを新しいコンテナへ引き継ぎ、切り替えの間も、デプロイ前に読み込んだページが
+HTML に書かれたファイルを取得できます。古い cybertrain で作った `config/deploy.yml` にはこの行を
+足してください。どのアプリも OpenSSL をリンクするようになったので、その `Dockerfile` には
+ビルド段に `libssl-dev`、実行段に `libssl3t64` も要ります。
+
+kamal-proxy はすでに http を https にリダイレクトし、アプリには `X-Forwarded-Proto: https` が
+届きます。（HSTS ヘッダのために）`CYBERTRAIN_FORCE_SSL: 1` も有効にするなら、`healthcheck` を
+`/up` に向けてください。プロキシのチェックはコンテナへの素の http で、`/up.html` を含むほかの
+パスはリダイレクトされます。`CYBERTRAIN_HOSTS: notes.example.com` はほかの `Host` を拒否しますが、
+ヘルスチェックのパスは Host に関係なく応えるので、アドレスで行うプロキシのチェックは通ります。
+
 ### 8-3. 秘密鍵を用意する
 
 `.kamal/secrets` は環境変数を読むだけなので、kamal を実行するシェルで設定します。
@@ -1192,13 +1206,27 @@ https://notes.example.com を開いて確かめます。
   で、それより長くかかるリクエストはそこで切れます。
 - HTTPS に固定したい場合は、動作を確認した後で Caddyfile のサイトブロックに
   `header Strict-Transport-Security "max-age=31536000"` を足してください（セッション Cookie は
-  本番では `Secure` 付きです）。
-- アプリは全レスポンスに `X-Content-Type-Options: nosniff` と `X-Frame-Options: SAMEORIGIN` を付けます
+  本番では `Secure` 付きです）。アプリにさせることもできます。`/etc/notes/notes.env` に
+  `CYBERTRAIN_FORCE_SSL=1` を書くと、HSTS を送り、`X-Forwarded-Proto` を見て http を https に
+  リダイレクトします。そのときは `CYBERTRAIN_TRUSTED_PROXY=1` も書いてください。書かないと、アプリが
+  組み立てる URL（`request.base_url`）は http のままです。
+- `CYBERTRAIN_HOSTS=notes.example.com` を書くと、それ以外の `Host` へのリクエストは 403 になります。
+  ループバックの名前（`localhost`・`127.0.0.1`・`[::1]`）は通るので、デプロイスクリプトの
+  `curl http://127.0.0.1:...` はそのまま動きます。
+- アプリは全レスポンスに `X-Content-Type-Options: nosniff`・`X-Frame-Options: SAMEORIGIN`・
+  `Permissions-Policy` を付けます
   （アプリの応答、エラー応答、`Static` ミドルウェアが返す `public/` のファイルも）。ただし 6-2 の
-  Caddyfile では `public/` のファイルを Caddy が直接返すので、アプリを通らず、この 2 つは付きません。
+  Caddyfile では `public/` のファイルを Caddy が直接返すので、アプリを通らず、これらは付きません。
   揃えたいときは、サイトブロックに `header ?X-Content-Type-Options nosniff` と
   `header ?X-Frame-Options SAMEORIGIN` を足してください（`?` は、アプリがすでに付けているときは
   上書きしない指定です。埋め込み用のページがアプリ側で値を変えていても、それが残ります）。
+- `public/assets/` のダイジェスト付きファイルも同じです。アプリは
+  `Cache-Control: public, max-age=31536000, immutable` で返しますが、Caddy は自分のヘッダで返します。
+  サイトブロックに `header /assets/* Cache-Control "public, max-age=31536000, immutable"` のような
+  行を足すと、アプリと同じキャッシュになります。リリースは毎回まっさらなクローンなので、その
+  `public/assets/` にはそのリリースのダイジェストしかありません。また、アプリは `public/` の外へ
+  向かうシンボリックリンク越しにはファイルを返しません。`public/assets/` を `shared/` に置くなら、
+  リンクではなくマウントしてください。
 - 認証（ログイン）機能はフレームワークにありません。公開前に、誰が書き込めるべきかを考えてください。
 - ビューはビルド時にバイナリへ埋め込まれます。ビューだけの変更でも、本番ではデプロイ
   （再ビルドと再起動）が必要です。

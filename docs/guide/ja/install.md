@@ -1,5 +1,5 @@
 ---
-source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
+source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
 ---
 # インストール
 
@@ -14,15 +14,16 @@ CyberTrain が手元のマシンに必要とするもの、`cybertrain` コマ�
 - そのビルドには：C ツールチェーン（`cc`、または `CC` で指定したコンパイラ）と `make` — Spinel はすべてのプログラムを C にコンパイルします — さらに `git` と `curl`。
 - SQLite 3 のヘッダーとライブラリ（Debian/Ubuntu では `libsqlite3-dev`。macOS では Xcode のコマンドラインツールに含まれています） — モデルは gem ではなく、Spinel の FFI を直接使います。
 - zlib のヘッダーとライブラリ（Debian/Ubuntu では `zlib1g-dev`。macOS では SDK に含まれています） — gzip されたリクエストボディ（`request.decoded_body`）は、同じ方法でバインドしたシステムの zlib で展開されます。
+- OpenSSL のヘッダーとライブラリ（Debian/Ubuntu では `libssl-dev`） — どのアプリケーションもリンクします：セッション Cookie と `cookies.encrypted` は Spinel の `openssl` パッケージによる AES-256-GCM で、Spinel はヘッダーがあるときだけこのパッケージをビルドします。macOS では Homebrew のもの（`brew install openssl@3`）を入れ、keg-only なのでコンパイラのパスに加えます：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+  CPATH="$(brew --prefix openssl@3)/include"`。
 - Ruby 3.2+ と RubyGems。`cybertrain` コマンドのためだけに必要です（アプリケーションが CRuby 上で動くことはありません）。Ruby 3.2 では、Spinel のビルドに `prism` gem も必要です（下記）。
 
 `cybertrain doctor` はこれらのツールとヘッダー、Spinel のインストールを確認します。必要なものが欠けている場合は、プラットフォームに応じたインストールコマンドも表示します。
 
-<details><summary>その他のパッケージ — Ruby 3.2 での prism、どちらも任意の OpenSSL と jemalloc</summary>
+<details><summary>その他のパッケージ — Ruby 3.2 での prism、任意の jemalloc</summary>
 
 - Spinel のビルドには Ruby の `prism` gem が必要で、Ruby 3.3 以上には同梱されています。Ruby 3.2 では `gem install prism` を実行します（Ruby の開発用ヘッダーが必要です。Debian/Ubuntu なら `ruby-dev`）。`cybertrain doctor` が確認します。
-- OpenSSL のヘッダー（`libssl-dev`）は任意です：ない場合、Spinel は `openssl` パッケージなしでビルドされますが、このパッケージをアプリケーションが必要とするのは TLS（`require "cybertrain/net/tls"`）か暗号化されたカラム（`encrypts`）のときだけです。macOS で `openssl` を require するアプリケーションには、コンパイラのパス上に Homebrew の（keg-only の）OpenSSL が必要です：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
-  CPATH="$(brew --prefix openssl@3)/include"`。
+- OpenSSL のヘッダーを入れる前にビルドした Spinel には `openssl` パッケージがなく、アプリケーションのビルドが失敗します。ヘッダーを入れたら `cybertrain setup --force` で作り直してください。同じパッケージが TLS（`require "cybertrain/net/tls"`）と暗号化されたカラム（`encrypts`）にも使われます。
 - jemalloc の開発用パッケージ（`libjemalloc-dev`、`brew install jemalloc`）は任意です：アプリがこれを必要とするのは、その `spin.toml` に `allocator = "jemalloc"` と書いたときだけで、`cybertrain new` はこの行をコメントアウトして書き出します。本番環境では有効にする価値があります：examples/blog で毎秒のリクエスト数が 1.1〜1.4 倍になります（[docs/benchmark.md](../benchmark.md)）。
 
 </details>
@@ -108,3 +109,5 @@ gem とフレームワークは同じタグからリリースされるため、�
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+0.4 向けに書いたアプリケーションには、いくつか変更が要ります（どのセッションも一度だけ終わる、OpenSSL をリンクする、ドットを含むルートのセグメントには `format: false` が要る、など）：[0.4 のアプリを更新する](requests.md#upgrading-an-application-from-04)を見てください。

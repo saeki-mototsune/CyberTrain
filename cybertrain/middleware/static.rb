@@ -8,7 +8,9 @@ module Cybertrain
   # carries a digest gen wrote (Assets.kept_file?) is cached for a year as
   # immutable (spec 7.4): its name changes with its content, so it is never
   # rewritten in place and needs no ETag. Everything else, an undigested
-  # file under public/assets included, is cached for an hour.
+  # file under public/assets included, is cached for an hour. A file whose
+  # realpath leaves the root's (a symlink out of public/) is not served: a
+  # deploy that keeps public/assets elsewhere mounts it there instead.
   class Static < Middleware
     EXTENSIONS = {
       "html" => "text/html; charset=utf-8",

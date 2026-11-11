@@ -1,5 +1,5 @@
 ---
-source_sha256: 41d9af7384b3594e85e3b3e3a5a1c3d01e6cbd4b27db0519b631a850b79193de
+source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
 ---
 # Installer cybertrain
 
@@ -31,6 +31,13 @@ Ce dont CyberTrain a besoin sur votre machine, comment installer la commande `cy
 - En-têtes et bibliothèque zlib (`zlib1g-dev` sous Debian/Ubuntu&nbsp;; dans le
   SDK de macOS) — les corps de requête gzip (`request.decoded_body`) sont
   décompressés par la zlib du système, liée de la même façon.
+- En-têtes et bibliothèque OpenSSL (`libssl-dev` sous Debian/Ubuntu) — chaque
+  application les lie&nbsp;: le cookie de session et `cookies.encrypted` sont en
+  AES-256-GCM par le paquet `openssl` de Spinel, que Spinel ne compile que si
+  les en-têtes sont présents. Sous macOS, installez celui de Homebrew
+  (`brew install openssl@3`), qui est keg-only, et placez-le dans les chemins
+  du compilateur&nbsp;: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
+  CPATH="$(brew --prefix openssl@3)/include"`.
 - Ruby 3.2+ et RubyGems, uniquement pour la commande `cybertrain` (les
   applications ne tournent jamais sur CRuby)&nbsp;; avec Ruby 3.2, la
   compilation de Spinel demande aussi la gem `prism` (ci-dessous).
@@ -39,17 +46,17 @@ Ce dont CyberTrain a besoin sur votre machine, comment installer la commande `cy
 Spinel&nbsp;; quand un élément requis manque, il affiche aussi la commande
 d’installation pour votre plateforme.
 
-<details><summary>Autres paquets — prism avec Ruby 3.2&nbsp;; OpenSSL et jemalloc, facultatifs</summary>
+<details><summary>Autres paquets — prism avec Ruby 3.2&nbsp;; jemalloc, facultatif</summary>
 
 - La compilation de Spinel demande la gem `prism` de Ruby, que Ruby 3.3 et plus
   récent incluent&nbsp;; avec Ruby 3.2, `gem install prism` (avec les en-têtes
   de développement de Ruby, `ruby-dev` sous Debian/Ubuntu). `cybertrain doctor`
   le vérifie.
-- Les en-têtes OpenSSL (`libssl-dev`) sont facultatifs&nbsp;: sans eux, Spinel
-  est compilé sans son paquet `openssl`, dont une application n’a besoin que pour TLS (`require "cybertrain/net/tls"`) ou les colonnes chiffrées (`encrypts`). Sous
-  macOS, une application qui requiert `openssl` a besoin de l’OpenSSL de
-  Homebrew (keg-only) dans les chemins du compilateur&nbsp;: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
-  CPATH="$(brew --prefix openssl@3)/include"`.
+- Un Spinel compilé avant l’installation des en-têtes OpenSSL n’a pas de paquet
+  `openssl`, et la compilation d’une application échoue alors&nbsp;; lancez
+  `cybertrain setup --force` une fois qu’ils sont là pour le recompiler. Le même
+  paquet sert à TLS (`require "cybertrain/net/tls"`) et aux colonnes chiffrées
+  (`encrypts`).
 - Le paquet de développement de jemalloc (`libjemalloc-dev`&nbsp;;
   `brew install jemalloc`) est facultatif&nbsp;: une application n’en a besoin
   qu’une fois que son `spin.toml` indique `allocator = "jemalloc"`, ligne que
@@ -221,3 +228,7 @@ l’application&nbsp;:
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+Une application écrite pour 0.4 a quelques changements à faire (chaque session
+prend fin une fois, OpenSSL est lié, un segment de route contenant un point a
+besoin de `format: false`, etc.)&nbsp;: voir [Mettre à jour une application écrite pour 0.4](requests.md#upgrading-an-application-from-04).

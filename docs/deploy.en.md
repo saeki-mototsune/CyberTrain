@@ -66,10 +66,11 @@ the SQLite and zlib headers).
 jemalloc (`libjemalloc-dev`; `brew install jemalloc` on macOS) is needed only
 if you turn on `allocator = "jemalloc"` in 2-2.
 
-OpenSSL (`libssl-dev`; `brew install openssl@3` on macOS) is optional.
-Without it Spinel is built without its openssl package, which cybertrain does
-not use. To build an app that does `require "openssl"` on macOS, point the
-compiler at Homebrew's OpenSSL (keg-only):
+OpenSSL (`libssl-dev`; `brew install openssl@3` on macOS) is required: every
+app links it, since the session cookie is encrypted with it. Install it
+before Spinel, which builds its openssl package only when the headers are
+there (a Spinel built without them needs `cybertrain setup --force`). On
+macOS, point the compiler at Homebrew's OpenSSL (keg-only):
 `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib" CPATH="$(brew --prefix openssl@3)/include"`.
 
 The `cybertrain` command is a gem, so it needs Ruby 3.2 or newer (the server
@@ -955,16 +956,13 @@ What to keep in mind:
   starts job threads and the `Background` services (WebSocket subscriptions
   and the like), so each feed is received once per process. Scheduled tasks
   run in one process only, the holder of the `cybertrain_leases` lease.
-- **`RateLimit` counts per process,** so with N processes a limit is effectively
-  N times looser. The sign-in limit `cybertrain generate authentication` writes
-  (`rate_limit to: 10`) becomes up to 30 attempts per address with three
-  processes. To keep roughly the same limit for the whole deployment, divide
-  `to:` in `SessionsController` by N (`to: 3` gives at most 9 per window with
-  three processes). This is not a strict ceiling: each process opens its own
-  window for each address, and a restart clears the counts. A visitor whose
-  connections stay on one process meets that smaller number. Division works
-  only while N is at most the original limit: `to:` must be at least 1, and 0
-  stops the application from booting. Above that, use fewer processes.
+- **`rate_limit` counts are shared.** They are kept in the database
+  (`Cybertrain::Cache`), so every process counts together and the sign-in
+  limit `cybertrain generate authentication` writes (`rate_limit to: 10`)
+  stays 10 per address however many processes run; a restart keeps the
+  counts. Only a limit declared with `store: :memory` counts per process: with
+  N processes it is effectively N times looser, each process opens its own
+  window for each address, and a restart clears its counts.
 - **An `--invite-only` first run needs one process.** Each process makes its own
   setup token at start, so `/setup` answers 404 on the others. Create the first
   user before adding processes, or with `./notes user EMAIL`.
@@ -1138,16 +1136,32 @@ day-to-day operation.
   there.
 - To pin the site to HTTPS, once you have checked it works, add
   `header Strict-Transport-Security "max-age=31536000"` to the Caddyfile's
-  site block (the session cookie is `Secure` in production).
-- The app adds `X-Content-Type-Options: nosniff` and
-  `X-Frame-Options: SAMEORIGIN` to every response (the app's responses, error
+  site block (the session cookie is `Secure` in production). The app can
+  do it instead: `CYBERTRAIN_FORCE_SSL=1` in `/etc/notes/notes.env` sends
+  HSTS and redirects http to https by `X-Forwarded-Proto`. Set
+  `CYBERTRAIN_TRUSTED_PROXY=1` with it, or the URLs the app builds
+  (`request.base_url`) still say http.
+- `CYBERTRAIN_HOSTS=notes.example.com` refuses requests for any other `Host`
+  with a 403. The loopback names (`localhost`, `127.0.0.1`, `[::1]`) stay
+  accepted, so the deploy script's `curl http://127.0.0.1:...` still works.
+- The app adds `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: SAMEORIGIN` and `Permissions-Policy` to every response
+  (the app's responses, error
   responses and the `public/` files the `Static` middleware serves). But with
   the Caddyfile of 6-2, Caddy serves the files in `public/` itself, without
-  going through the app, so those two headers are missing there. To add them,
+  going through the app, so those headers are missing there. To add them,
   put `header ?X-Content-Type-Options nosniff` and
   `header ?X-Frame-Options SAMEORIGIN` in the site block (`?` means "do not
   overwrite a value the app already set", so a page meant for embedding that
   changes the value in the app keeps it).
+- The same goes for the digested files in `public/assets/`: the app sends
+  them with `Cache-Control: public, max-age=31536000, immutable`, Caddy with
+  its own headers. A site block line such as
+  `header /assets/* Cache-Control "public, max-age=31536000, immutable"` gives
+  them the app's caching. Each release is a fresh clone, so its
+  `public/assets/` holds that release's digests only. And the app does not
+  serve a file through a symlink that leads out of `public/`: if you keep
+  `public/assets/` in `shared/`, mount it there rather than linking it.
 - The framework has no authentication (login). Before going public, think
   about who should be able to write.
 - The views are embedded into the binary at build time. Even a view-only

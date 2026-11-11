@@ -422,13 +422,16 @@ pin_all_from "app/javascript/controllers", under: "controllers"
 ### 7.4 Serving
 
 `Static` serves a file under `/assets/` whose name carries a digest gen
-wrote (current digests in `gen/assets.rb`; kept ones listed in a
-git-ignored `public/assets/.manifest`, so `gen --check` stays a pure function
-of the sources) with `Cache-Control: public,
+wrote (current digests in `gen/assets.rb`; kept ones listed in
+`public/assets/.manifest`, so `gen --check` stays a pure function of the
+sources) with `Cache-Control: public,
 max-age=31536000, immutable`; everything else in `public/`, including an
 undigested file an application keeps under `public/assets/`, as today
 (`max-age=3600`). A digested file is never rewritten in place, so no ETag
-is needed.
+is needed. All of `public/assets/` is build output: the `.gitignore` that
+`cybertrain new` writes lists `/public/assets/` (the `.manifest` is inside
+it), and `cybertrain build` and the image build run gen, so an undigested
+file an application keeps there is committed with `git add -f`.
 
 # Part 4b
 
@@ -691,7 +694,43 @@ OAuth and two-factor authentication.
 - `public/style.css` keeps working; moving it to `app/assets` is optional
   and the guide shows how.
 - `rate_limit` counts move to the cache (`store: :memory` for the old
-  behaviour).
+  behaviour), shared by every process through `Cybertrain::Cache`. A
+  second limit with the same name in one controller's chain (parents
+  included) is refused, so two limits need their own `name:`; a `by:`
+  method answering nil or `""` raises; a `with:` method that renders
+  nothing is followed by the 429.
+- A dynamic segment no longer captures a dot in a route that takes a
+  format (`/x/:id` with `/x/1.2.json`, or `/x/a.b`): such a route says
+  `format: false` to keep dots in its segments.
+- A `url_resolver` lambda takes three arguments, `->(name, args, options)`;
+  a hand-written resolver must accept the options. `post_path(id: 3)`
+  (the keyword form of a segment) is not supported: segments are
+  positional.
+- The session cookie is AES-256-GCM encrypted, so the 0.4 signed sessions
+  end once (users sign in again). `Session.load` and `Session.dump` take a
+  key derived from `secret_key_base` (`Crypto.derive_key(secret,
+  SessionStore::SESSION_KEY_LABEL)`); the raw secret raises
+  `Encryptor::Error`.
+- The template number helpers raise `ArgumentError` for a value that is
+  not an Integer, a Float or a numeric String, nil included (0.4's
+  `number_with_delimiter` gave `""` for nil), and for a precision outside
+  0 to 100.
+- A model that includes a module that is not a concern of
+  `app/models/concerns` is refused by gen (`include Comparable: no concern
+  named Comparable in app/models/concerns`), as a controller is.
+- `layout`: the first applicable declaration wins (Rails: the last one
+  replaces the earlier ones).
+- `Static` does not serve a file whose real path leaves `public/`, so a
+  Capistrano-style `public/assets` symlinked to a shared directory must be
+  a mount instead.
+- `cybertrain new` ignores all of `/public/assets/`: digested files are
+  build output.
+- `X-Forwarded-Proto` is honoured by `force_ssl` whatever `trusted_proxy`
+  says (as Rails and Rack do); `request.base_url` still believes it only
+  from a trusted proxy.
+- Concerns load from `gen/concerns/**` (copies with their `included` and
+  `class_methods` blocks blanked), not from the application's source:
+  `spin run gen` must have run after a concern changes.
 - 4b: the authentication generator keeps its rule of never overwriting an
   application's files. Re-run on an application generated earlier, it
   writes the new files that are missing (the passwords and accounts
@@ -763,3 +802,121 @@ OAuth and two-factor authentication.
     translated validation errors; users from the authentication generator,
     with `BLOG_ADMIN_TOKEN` replaced by an admin user guarding `/admin`.
 12. As item 8.
+
+## 18. Implementation notes (2026-11-11, after part 4a's Tasks 1 to 21 landed)
+
+What differed from the plan or from this document in part 4a, and why;
+each is recorded in the code and in docs/design.md D58 to D63 too. Part 4b
+adds its own notes here.
+
+- The spike (section 12): no fallback was taken; item 3 needed
+  `ActiveSupport::Concern`'s no-op stubs (spikes/NOTES.md rule 92) and
+  found rule 93. Task 7 then found the stubs not enough: Spinel refuses the
+  bare `where` inside a model concern's `scope :visible, -> { where(...) }`
+  however `scope` is stubbed, and a controller concern's `before_action {
+  ... }` is the same shape. So gen writes each concern to
+  `gen/concerns/<path under app/>` with its `included` and
+  `class_methods` blocks blanked line for line, the application loads
+  those copies, and `gen/concerns.rb` splices the blocks' bodies (section
+  4.1's splice, for controller and model concerns alike). Gen implements
+  rule 93's refusal: a `class_methods` name an instance method of the
+  concern, an including class, its ancestors or their concerns has is
+  refused, naming both places.
+- Plan decisions taken as written: 4 (the fixed extension table and
+  `:unknown`), 6 (the immediate `FormatCollector`), 10 (`around_action` in
+  a concern refused), 26 (`turbo_frame_tag` writes `loading` only when
+  given; `form_with local:` accepted and ignored) and 27 (number helpers
+  on the digits of the decimal text, half up). Plan decision 2's "8 bytes"
+  remark is stale: section 7.1 says 8 hex characters, and that is what gen
+  writes. Plan Review Focus #5's example, `url("../fonts/x.woff2?v=3#iefix")`,
+  is stale too: under the logical-directory rule below, `../` from a
+  stylesheet at a root's top climbs out of the roots and is left as
+  written with a warning; the suffix rule it pins holds for a target that
+  resolves (`url(b.css?v=1)`).
+- Routing (section 2): `namespace` and `scope` inside a `resources` block
+  are refused rather than nested. A redirect route is unnamed unless it
+  says `as:` (deriving a name hits the `/old-posts/:id` → `old-post`
+  invalid-identifier problem). A custom route's `:id` and `:x_id` segments
+  keep 0.4's helper argument names. Keywords never fill a path segment
+  (section 2.6's "keyword arguments a route's pattern does not use" is
+  read as "every keyword goes to the query"). A `:param` name in a route
+  or scope path must be a lowercase identifier.
+- Formats (section 3): `Route#matched_extension` takes the path's segments
+  (a Route is shared by every connection's thread), and the emitter writes
+  the format argument only when it is `false`. A Turbo form post
+  (`text/vnd.turbo-stream.html, text/html`) to an action without a
+  `turbo_stream` declaration or template answers through its html one, as
+  Rails does, where section 3 would have answered 406; a `.turbo_stream`
+  extension still asks for that format only. No format but html renders
+  in a layout. `render :x` inside a non-html block still renders
+  `x.html.erb`.
+- Concerns (section 4): besides the copies above, an `include` of a module
+  that is not a concern is refused for models as for controllers; include
+  positions are counted lexically; a model concern's callbacks run after
+  the model's own (plan decision 9). `helper_method` is refused for a
+  framework helper's name, a `_path` / `_url` name, an application helper's
+  name, a name with no `def` in the class, its parents or its concerns,
+  and a `def` whose parameters a template cannot pass.
+- Controllers (section 5): `params.expect(:id)` answers the one-entry Hash
+  `{"id" => "3"}`, and the top-level list form `params.expect(tags: [])`
+  answers `{"tags" => [...]}` (one return type). `fresh_when` lets a
+  non-empty `If-None-Match` decide alone (RFC 9110 13.1.3) and answers 304
+  to GET and HEAD only; a 304 carries no Content-Type, Content-Length or
+  policy header (a fresh nonce on it would break a cached page's scripts).
+  `rate_limit` refuses a `name:` with `:` and a second limit of the same
+  name in one controller's chain, raises for a `by:` method answering nil
+  or `""`, and follows a `with:` method that renders nothing with the 429;
+  the memory store's key is `"<path>:<name>:<key>"`. The CSP middleware is
+  installed only when a policy is declared. `force_ssl` reads
+  `X-Forwarded-Proto` whatever `trusted_proxy` says (plan decision 21),
+  exempts only GET and HEAD of the health path, answers 400 to a missing
+  or malformed `Host` rather than redirect to it, and makes cookies
+  `Secure` (`Config#secure_cookies?`); a `CYBERTRAIN_HOSTS` entry with a
+  port stops the boot, and `Config#checked_hosts` also takes hosts set in
+  `config/app.rb`. The template helper `form_action` became
+  `form_record_url`, as the policy's `form_action` returns nil (rule 34).
+  `javascript_tag` writes no CDATA. The cookie jar's `signed` HMAC covers
+  `"<name>=<value>"`, so a value does not verify under another name; a jar
+  built without SessionStore raises for `signed` and `encrypted`; cookies
+  other than the session's have no 4096-byte check. `Session.load` and
+  `dump` take the derived key.
+- Views (section 6): the number helpers raise for any value that is not
+  numeric, nil included, and cap the precision at 100 and the exponent at
+  400. `f.select` has no public Ruby method (Kernel's and Enumerable's
+  `select` return other types, rule 34): templates reach a private
+  `select_field`. The hidden input of `multiple:` is written `<input
+  type="hidden" name="..." value="" autocomplete="off">` (plan decision
+  25's order), and `form_with data:` validates its keys. The template's
+  Turbo Stream builder takes a block's output through
+  `call_method_with_block`, so no block reaches it. `time_tag`'s `format:`
+  is formatted directive by directive with literal patterns and raises on
+  an unknown directive (rule 96). A component's `with_collection` is
+  generated for a component whose one required keyword is named after it
+  (`ComponentCollection`), and a hand-written `def self.with_collection`
+  is refused. The first applicable `layout` declaration wins; a layout
+  method answering nil falls back to the parent's layout; `layout nil`, a
+  lambda and a constant are refused.
+- Assets (section 7): `url()` is resolved against the stylesheet's logical
+  directory, as Propshaft resolves it (so the blog's stylesheet uses
+  `url("logo.svg")`, not `url("../images/logo.svg")`); a symlinked file
+  leading out of its tree or nowhere, and a path with a space or a control
+  character, stop gen; an unknown import map option stops it too. Boot
+  sets `Assets.raise_on_unknown = !production?` (Assets cannot read
+  `Config`). `Static` refuses a file whose real path leaves `public/`.
+  `image_tag` writes `alt=""` when given it and makes none up; a URL with a
+  scheme, `//`, `data:` or `cid:` is written as given and `javascript:x`
+  is looked up as an asset name. One file, `cybertrain/asset_manifest.rb`,
+  reads `.manifest` for gen and boot. `Dev::WATCHED` moved to
+  `cybertrain/dev/watched.rb`, which the watcher's CRuby test can load.
+  `cybertrain new` ignores all of `/public/assets/` (section 7.4 amended).
+- New Spinel rules: spikes/NOTES.md 92 to 98 (92 and 93 from the spike,
+  94 from Task 5, 95 from Tasks 2 and 13, 96 and 97 from Task 17, 98 a
+  tooling note); docs/spinel-feedback.md U to X.
+- Tests: `spin test` has 177 programs (16 new: `assets`, `collections`,
+  `controller_formats`, `cookie_jar`, `csp`, `force_ssl`, `form_tags`,
+  `gen_assets`, `gen_concerns`, `gen_model_concerns`, `helper_method`,
+  `http_caching`, `number_helper`, `rate_limit_store`, `send_data`,
+  `turbo_helpers`), and examples/blog's two programs run 52 tests (35 and
+  17). The whole suite (`script/test-shard 0 1`) passed 161 of 161 after
+  Task 4 and 167 of 167 after Task 10, the group boundaries the
+  implementation log records; it was not run again for this section.

@@ -21,7 +21,8 @@ module Cybertrain
   # Session::CookieOverflow instead of being written.
   class SessionStore < Middleware
     # secure: true adds the Secure attribute, so browsers only send the
-    # cookie back over HTTPS (Config#session_secure: on in production).
+    # cookie back over HTTPS (Application passes Config#secure_cookies?:
+    # session_secure, on in production, or force_ssl).
     # same_site is the SameSite value, "Lax", "Strict" or "None"
     # (Config#session_same_site); partitioned adds Partitioned (CHIPS,
     # Config#session_partitioned). "None" with Partitioned keeps the session
