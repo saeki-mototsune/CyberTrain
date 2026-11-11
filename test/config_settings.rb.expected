@@ -43,4 +43,9 @@ Settings (environment variables):
 ok   help lists every declared setting with its variable and default
 ok   the encryption keys are read from their variables, the previous ones as a comma list
 ok   encryption_error: a malformed key fails, an unset one only when encryption is required
-15 tests, 80 assertions, 0 failures
+ok   the transport and policy settings default off, permissions_policy on
+ok   CYBERTRAIN_FORCE_SSL takes 1/true and 0/false; anything else stops the boot
+ok   force_ssl makes cookies Secure whatever session_secure says
+ok   a nonce directive that is not a directive, or a CR in permissions_policy, stops the boot
+ok   content_security_policy builds the policy once and yields it
+20 tests, 107 assertions, 0 failures

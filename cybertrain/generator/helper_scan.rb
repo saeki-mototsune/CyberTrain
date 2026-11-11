@@ -95,6 +95,7 @@ module Cybertrain
         url_for yield
         select_tag options_for_select options_from_collection_for_select label_tag
         text_field_tag hidden_field_tag submit_tag
+        csp_meta_tag javascript_tag content_security_policy_nonce form_record_url
       ]
 
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/

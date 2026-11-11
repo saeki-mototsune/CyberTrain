@@ -117,6 +117,15 @@ module Cybertrain
         when "content_for?" then !env["__content_#{text_arg(args, 0, name)}"].nil?
         when "csrf_meta_tags" then csrf_meta_tags
         when "csrf_token" then csrf_token
+        when "csp_meta_tag"
+          helper_arity!(name, args, 0, 0)
+          helper_no_keywords!(name, kwargs)
+          csp_meta_tag
+        when "content_security_policy_nonce"
+          helper_arity!(name, args, 0, 0)
+          helper_no_keywords!(name, kwargs)
+          content_security_policy_nonce
+        when "javascript_tag" then javascript_tag(args, kwargs, block, interp, env)
         when "flash" then flash_messages
         when "params" then params
         when "request_path" then request_path
@@ -397,7 +406,7 @@ module Cybertrain
         model = kwargs["model"]
         record = form_record(model)
         scope = kwargs["scope"].nil? ? "" : FormBuilder.value_text(kwargs["scope"])
-        action = kwargs["url"].nil? ? form_action(model) : url_for(kwargs["url"], @no_url_options)
+        action = kwargs["url"].nil? ? form_record_url(model) : url_for(kwargs["url"], @no_url_options)
         verb = "post"
         if !kwargs["method"].nil?
           verb = lower_text(kwargs["method"])
@@ -449,7 +458,7 @@ module Cybertrain
       end
 
       # posts_path / post_path(post); nested: post_comments_path(post).
-      def form_action(model)
+      def form_record_url(model)
         case model
         when Cybertrain::Model
           return url_for(model, @no_url_options) if model.persisted?
@@ -1128,6 +1137,47 @@ module Cybertrain
         return "" if session.nil?
 
         session.csrf_token!
+      end
+
+      # This request's Content Security Policy nonce (Context#csp_nonce),
+      # "" when no policy applies (none declared) or there is no controller.
+      def content_security_policy_nonce
+        request_bound!("content_security_policy_nonce")
+        controller = @controller
+        return "" if controller.nil?
+
+        ctx = controller.ctx
+        return "" if ctx.csp_policy.nil?
+
+        ctx.csp_nonce
+      end
+
+      # `<meta name="csp-nonce" content="...">` for scripts that add
+      # elements (Turbo reads it); "" when no policy applies.
+      def csp_meta_tag
+        nonce = content_security_policy_nonce
+        return SafeString.of("") if nonce.empty?
+
+        SafeString.of("<meta name=\"csp-nonce\" content=\"#{Html.escape(nonce)}\">")
+      end
+
+      # `javascript_tag(nonce: true) do ... end`: the block's output in a
+      # `<script>`, with this request's nonce when `nonce: true` and a
+      # policy applies. The content may instead be one String argument,
+      # written as given (not escaped, as in Rails: never put request data
+      # in it). id:, type: and data: are attributes.
+      def javascript_tag(args, kwargs, block, interp, env)
+        helper_arity!("javascript_tag", args, 0, block.nil? ? 1 : 0)
+        helper_keywords!("javascript_tag", kwargs, ["nonce", "id", "type", "data"], 0)
+        content = block.nil? ? (args.empty? ? "" : text_arg(args, 0, "javascript_tag")) : interp.capture(block, env)
+        attrs = { "" => [nil, 0, 0.0, "", true][0] }
+        attrs.delete("")
+        kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "nonce" }
+        if kwargs["nonce"] == true
+          nonce = content_security_policy_nonce
+          attrs["nonce"] = nonce unless nonce.empty?
+        end
+        Html.build_tag("script", attrs, content, true)
       end
 
       def flash_messages

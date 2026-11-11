@@ -279,4 +279,72 @@ test "encryption_error: a malformed key fails, an unset one only when encryption
   assert_equal false, Cybertrain::Config.encryption_required
 end
 
+test "the transport and policy settings default off, permissions_policy on" do
+  ENV.delete("CYBERTRAIN_FORCE_SSL")
+  ENV.delete("CYBERTRAIN_HOSTS")
+  conf = Cybertrain::Config.new
+  refute conf.force_ssl
+  assert conf.hosts_from_env.empty?
+  assert_equal "camera=(), microphone=(), geolocation=()", conf.permissions_policy
+  assert_nil conf.content_security_policy_value
+  refute conf.content_security_policy_report_only
+  assert conf.content_security_policy_nonce_directives.empty?
+  assert_equal "", conf.security_error
+end
+
+test "CYBERTRAIN_FORCE_SSL takes 1/true and 0/false; anything else stops the boot" do
+  ["1", "true"].each do |on|
+    ENV["CYBERTRAIN_FORCE_SSL"] = on
+    forced = Cybertrain::Config.new
+    assert forced.force_ssl
+    assert_equal "", forced.security_error
+  end
+  ["0", "false", ""].each do |off|
+    ENV["CYBERTRAIN_FORCE_SSL"] = off
+    plain = Cybertrain::Config.new
+    refute plain.force_ssl
+    assert_equal "", plain.security_error
+  end
+  ENV["CYBERTRAIN_FORCE_SSL"] = "yes"
+  bad = Cybertrain::Config.new
+  refute bad.force_ssl
+  assert_equal "CYBERTRAIN_FORCE_SSL must be 1, true, 0, false or empty (got \"yes\")", bad.security_error
+  ENV.delete("CYBERTRAIN_FORCE_SSL")
+end
+
+test "force_ssl makes cookies Secure whatever session_secure says" do
+  ENV.delete("CYBERTRAIN_FORCE_SSL")
+  conf = Cybertrain::Config.new
+  conf.session_secure = false
+  refute conf.secure_cookies?
+  conf.force_ssl = true
+  assert conf.secure_cookies?
+  conf.force_ssl = false
+  conf.session_secure = true
+  assert conf.secure_cookies?
+end
+
+test "a nonce directive that is not a directive, or a CR in permissions_policy, stops the boot" do
+  conf = Cybertrain::Config.new
+  conf.content_security_policy_nonce_directives = %w[script-src scripts-src]
+  assert_equal "content_security_policy_nonce_directives: \"scripts-src\" is not a directive", conf.security_error
+  conf.content_security_policy_nonce_directives = %w[script-src style-src]
+  assert_equal "", conf.security_error
+  conf.permissions_policy = "camera=()\r\nSet-Cookie: x=1"
+  assert_equal "permissions_policy must not contain CR or LF", conf.security_error
+end
+
+test "content_security_policy builds the policy once and yields it" do
+  conf = Cybertrain::Config.new
+  conf.content_security_policy do |p|
+    p.default_src :self
+    p.script_src :self, "https://cdn.jsdelivr.net"
+  end
+  conf.content_security_policy { |p| p.style_src :self, :unsafe_inline }
+  policy = conf.content_security_policy_value
+  refute policy.nil?
+  assert_equal "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'",
+               policy.header_value("", [])
+end
+
 Cybertrain::Test.run!

@@ -77,5 +77,6 @@ module ActiveSupport
     def rescue_from(klass, with: nil, &block) = nil
     def helper_method(*names) = nil
     def layout(name = nil, only: [], except: []) = nil
+    def content_security_policy(&block) = nil
   end
 end

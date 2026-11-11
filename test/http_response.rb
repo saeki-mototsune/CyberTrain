@@ -4,7 +4,7 @@ require "cybertrain/test"
 Response = Cybertrain::Response
 
 # The security defaults every response carries (docs/design.md D14).
-SEC = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: SAMEORIGIN\r\n"
+SEC = "X-Content-Type-Options: nosniff\r\nX-Frame-Options: SAMEORIGIN\r\nPermissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
 
 test "defaults" do
   res = Response.new
@@ -260,6 +260,37 @@ test "performed! marks the response" do
   res = Response.new
   res.performed!
   assert res.performed?
+end
+
+test "Permissions-Policy is a default header" do
+  assert_equal "camera=(), microphone=(), geolocation=()", Response.default_permissions_policy
+  res = Response.new
+  assert_includes res.to_http, "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  assert_includes res.to_http(true), "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  assert_includes res.to_http_head(true), "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  # a 304 keeps it (it is not a body header) and still drops Content-Length
+  unchanged = Response.new
+  unchanged.status = 304
+  wire = unchanged.to_http
+  assert_includes wire, "Permissions-Policy: camera=(), microphone=(), geolocation=()\r\n"
+  refute wire.include?("Content-Length")
+  # set_header wins, once, whatever its case
+  own = Response.new
+  own.set_header("permissions-policy", "geolocation=(self)")
+  assert_includes own.to_http, "permissions-policy: geolocation=(self)\r\n"
+  assert_equal 1, own.to_http.scan(/permissions-policy:/i).size
+  # the default is not stored on the response
+  assert_equal 0, Response.new.headers.size
+  # "" sends none; another default is sent instead
+  Response.default_permissions_policy = ""
+  refute Response.new.to_http.include?("Permissions-Policy")
+  Response.default_permissions_policy = "camera=(self)"
+  assert_includes Response.new.to_http, "Permissions-Policy: camera=(self)\r\n"
+  # CR or LF is refused and changes nothing
+  msg = assert_raises("ArgumentError") { Response.default_permissions_policy = "camera=()\r\nSet-Cookie: x=1" }
+  assert_equal "header Permissions-Policy must not contain CR or LF", msg
+  assert_equal "camera=(self)", Response.default_permissions_policy
+  Response.default_permissions_policy = "camera=(), microphone=(), geolocation=()"
 end
 
 Cybertrain::Test.run!

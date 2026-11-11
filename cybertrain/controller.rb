@@ -88,6 +88,10 @@ module Cybertrain
     CALLBACKS = {}   # class name => Array<Callback>
     SKIPS = {}       # class name => Array<Callback> (kind :skip, by name)
     RESCUES = {}     # class name => Array<RescueHandler>
+    # class name => its content_security_policy (a typed seed, emptied:
+    # NOTES rule 9).
+    CSP_POLICIES = { "" => ContentSecurityPolicy.new }
+    CSP_POLICIES.delete("")
     # While gen/concerns.rb splices a concern's `included` body into a
     # class: class name => the index its next callback / rescue goes to.
     CONCERN_CALLBACK_AT = {}
@@ -368,6 +372,67 @@ module Cybertrain
       nil
     end
 
+    # This controller's own Content Security Policy (spec C-5): a copy of
+    # the nearest ancestor's, or of the application's
+    # (Config#content_security_policy, declared in config/app.rb, which
+    # loads first), yielded at once to the block and kept for this class
+    # and its subclasses. The block runs here, once; nothing stores it
+    # (NOTES rule 88). Its actions' responses carry this policy instead of
+    # the application's.
+    # @example
+    #   class EmbedController < ApplicationController
+    #     content_security_policy do |p|
+    #       p.frame_ancestors "https://partner.example"
+    #     end
+    #   end
+    # @yieldparam policy [ContentSecurityPolicy]
+    # @return [nil]
+    # @api public
+    def self.content_security_policy(&block)
+      inherited = Controller.policy_for(self)
+      inherited = Cybertrain.config.content_security_policy_value if inherited.nil?
+      policy = inherited.nil? ? ContentSecurityPolicy.new : inherited.dup_policy
+      block.call(policy)
+      CSP_POLICIES[self.name] = policy
+      ContentSecurityPolicy.controller_policy_declared!
+      nil
+    end
+
+    # The policy content_security_policy declared for klass or its nearest
+    # ancestor, nil when none did (the class is passed in, as for
+    # chain_for).
+    # @param klass [Class]
+    # @return [ContentSecurityPolicy, nil]
+    # @api private
+    def self.policy_for(klass)
+      return nil if CSP_POLICIES.empty?
+
+      k = klass
+      while k
+        found = CSP_POLICIES[k.name]
+        return found unless found.nil?
+        break if k == Controller
+
+        k = k.superclass
+      end
+      nil
+    end
+
+    # Puts the policy for an action of klass in ctx.csp_policy, before
+    # the action renders (its templates' csp_meta_tag reads it): klass's
+    # own, or else the application's when the context has none yet
+    # (ContentSecurityPolicyHeader sets that one first).
+    # @api private
+    def self.assign_csp_policy(ctx, klass)
+      own = Controller.policy_for(klass)
+      if own.nil?
+        ctx.csp_policy = Cybertrain.config.content_security_policy_value if ctx.csp_policy.nil?
+      else
+        ctx.csp_policy = own
+      end
+      nil
+    end
+
     # Leaves out a named before callback a parent class (or this one)
     # declared, for every action or for `only:` / `except:` some. The
     # usual shape is an `ApplicationController` that requires a signed-in
@@ -594,7 +659,7 @@ module Cybertrain
       return jar unless jar.nil?
 
       parsed = Cookies.parse(request.cookie_header)
-      built = CookieJar.new(parsed, response, secure: Cybertrain.config.session_secure)
+      built = CookieJar.new(parsed, response, secure: Cybertrain.config.secure_cookies?)
       @ctx.cookie_jar = built
       built
     end
@@ -1290,6 +1355,7 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
+      Controller.assign_csp_policy(@ctx, self.class)
       # Built once per request and walked by both passes.
       chain = Controller.chain_for(self.class)
       begin

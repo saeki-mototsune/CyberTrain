@@ -1,0 +1,6 @@
+ok   force_ssl redirects http and sends HSTS
+ok   the X-Forwarded-Proto value is compared as a word
+ok   the redirect keeps a port other than 80 and 443, lowercases the host, and never follows a bad Host
+ok   cookies are Secure under force_ssl
+ok   the stack: the host check outside the redirect, both off without their settings
+5 tests, 85 assertions, 0 failures

@@ -21,4 +21,5 @@ ok   a headers Hash taken before drop_header, set_header or client_error! is sti
 ok   client_error! drops Location and Content-Disposition in any case, keeps the rest
 ok   client_error! with an empty body answers the status text
 ok   performed! marks the response
-23 tests, 104 assertions, 0 failures
+ok   Permissions-Policy is a default header
+24 tests, 118 assertions, 0 failures

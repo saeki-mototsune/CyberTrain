@@ -59,6 +59,29 @@ module Cybertrain
     DEFAULT_NOSNIFF = "nosniff"
     DEFAULT_FRAME_OPTIONS = "SAMEORIGIN"
 
+    # The Permissions-Policy every response carries unless it sets its own
+    # (spec C-11): camera, microphone and geolocation off. Application#boot
+    # installs Config#permissions_policy here; "" sends none.
+    @default_permissions_policy = "camera=(), microphone=(), geolocation=()"
+
+    # @return [String] the default Permissions-Policy, "" for none
+    # @api public
+    def self.default_permissions_policy
+      @default_permissions_policy
+    end
+
+    # @param value [String] e.g. `"camera=(), geolocation=(self)"`, or "" for none
+    # @raise [ArgumentError] on a CR or LF, changing nothing
+    # @api public
+    def self.default_permissions_policy=(value)
+      text = value.to_s
+      if text.include?("\r") || text.include?("\n")
+        msg = "header Permissions-Policy must not contain CR or LF"
+        raise ArgumentError, msg
+      end
+      @default_permissions_policy = text
+    end
+
     # The status code, 200 until set. The status line carries the reason
     # phrase STATUS_TEXT gives the code; a code the table lacks (418, a
     # non-standard code) is sent with the phrase "Unknown".
@@ -294,7 +317,8 @@ module Cybertrain
     # Content-Type, X-Content-Type-Options and X-Frame-Options are added
     # when the response has no header of that name (D14); every response
     # the Server writes, error answers and HEAD included, goes through this
-    # method. A 304 carries neither Content-Length nor Content-Type (RFC
+    # method. Permissions-Policy is one of those defaults too
+    # (Response.default_permissions_policy). A 304 carries neither Content-Length nor Content-Type (RFC
     # 9110 15.4.5). Accepted deviation: Content-Length and the default
     # Content-Type are emitted for 204 too, although RFC 9110 section 8.6
     # forbids Content-Length in a 204.
@@ -312,6 +336,7 @@ module Cybertrain
       end
       out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
       out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
+      add_permissions_policy(out)
       out << "Content-Length: #{@body.bytesize}\r\n" unless not_modified
       @cookies.each do |cookie|
         out << "Set-Cookie: " << cookie << "\r\n"
@@ -339,6 +364,7 @@ module Cybertrain
       unless upgrade
         out << "X-Content-Type-Options: #{DEFAULT_NOSNIFF}\r\n" if header_key("x-content-type-options").nil?
         out << "X-Frame-Options: #{DEFAULT_FRAME_OPTIONS}\r\n" if header_key("x-frame-options").nil?
+        add_permissions_policy(out)
       end
       out << "Transfer-Encoding: chunked\r\n" if chunked
       @cookies.each do |cookie|
@@ -349,6 +375,14 @@ module Cybertrain
     end
 
     private
+
+    # The default Permissions-Policy line, unless the response set the
+    # header or the default is "".
+    def add_permissions_policy(out)
+      policy = Response.default_permissions_policy
+      out << "Permissions-Policy: " << policy << "\r\n" if !policy.empty? && header_key("permissions-policy").nil?
+      nil
+    end
 
     # The tail both reset policies share: status, text/plain content type
     # and the body ("" means the status text). Returns nil.

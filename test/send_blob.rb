@@ -138,7 +138,7 @@ test "a hostile stored filename makes a safe ASCII header" do
   head = head_of(res.to_http)
   assert head.ascii_only?
   # the status line, the five headers send_blob sets, the X-Frame-Options
-  # default and Content-Length: nothing injected
+  # and Permissions-Policy defaults and Content-Length: nothing injected
   puts "header lines #{head.split("\r\n").length}"
 end
 
