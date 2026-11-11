@@ -59,6 +59,8 @@ require "cybertrain/template/form_builder"
 require "cybertrain/config"
 require "cybertrain/job"
 require "cybertrain/mailer/later"
+require "cybertrain/mail_message"
+require "cybertrain/token"
 require "cybertrain/lease"
 require "cybertrain/scheduler"
 # The default store of Controller.rate_limit counts.

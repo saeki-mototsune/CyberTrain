@@ -263,6 +263,95 @@ def secure(klass, action)
   c
 end
 
+# allow_unauthenticated_access (plan D14): the Controller class method the
+# generated controllers call in their class bodies. It is
+# skip_before_action(:require_authentication, only:, except:), so a base
+# class requiring sign-in keeps it for every action the call does not open.
+class AuthBaseController < Cybertrain::Controller
+  before_action :require_authentication
+
+  def require_authentication
+    SKIPPED << "require_authentication"
+    head :forbidden
+  end
+
+  def run_callback(name)
+    case name
+    when :require_authentication then require_authentication
+    else super
+    end
+  end
+end
+
+class PasswordsController < AuthBaseController
+  allow_unauthenticated_access only: [:new, :create]
+
+  def new_action
+    render plain: "forgot"
+  end
+
+  def create
+    render plain: "sent"
+  end
+
+  def destroy
+    render plain: "gone"
+  end
+end
+
+class SignupsController < AuthBaseController
+  allow_unauthenticated_access
+
+  def new_action
+    render plain: "sign up"
+  end
+
+  def create
+    render plain: "signed up"
+  end
+
+  def destroy
+    render plain: "cancelled"
+  end
+end
+
+class AccountsController < AuthBaseController
+  allow_unauthenticated_access except: [:destroy]
+
+  def new_action
+    render plain: "account"
+  end
+
+  def create
+    render plain: "created"
+  end
+
+  def destroy
+    render plain: "closed"
+  end
+end
+
+# A class whose only skip a test adds, to read the call's return value.
+class LaterOpenedController < AuthBaseController
+end
+
+def open_auth(klass, action)
+  SKIPPED.clear
+  ctx = build_ctx(false)
+  c = case klass
+      when "passwords" then PasswordsController.new(ctx)
+      when "signups" then SignupsController.new(ctx)
+      else AccountsController.new(ctx)
+      end
+  case action
+  when :new then c.process(:new) { |x| x.new_action }
+  when :create then c.process(:create) { |x| x.create }
+  when :destroy then c.process(:destroy) { |x| x.destroy }
+  else raise ArgumentError, "no route for #{action}"
+  end
+  c
+end
+
 class Gone < StandardError
 end
 
@@ -541,6 +630,57 @@ test "skipped? matches by name and action, never a block callback" do
   block = Cybertrain::Callback.new(:before, nil, nil, [], [])
   refute Cybertrain::Controller.skipped?(skips, block, :new)
   assert_equal 0, Cybertrain::Controller::NO_SKIPS.size
+end
+
+test "allow_unauthenticated_access skips require_authentication for the listed actions" do
+  c = open_auth("passwords", :new)
+  assert_equal 200, c.response.status
+  assert_equal "forgot", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("passwords", :create)
+  assert_equal 200, c.response.status
+  assert_equal "sent", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("passwords", :destroy)
+  assert_equal 403, c.response.status
+  assert_equal "", c.response.body
+  assert_equal ["require_authentication"], SKIPPED
+  skips = Cybertrain::Controller.skips_for(PasswordsController)
+  assert_equal 1, skips.size
+  assert_equal "require_authentication", skips[0].name.to_s
+  assert skips[0].applies?(:new)
+  assert skips[0].applies?(:create)
+  refute skips[0].applies?(:destroy)
+  assert_equal 0, Cybertrain::Controller.skips_for(AuthBaseController).size
+end
+
+test "allow_unauthenticated_access with no actions opens all of them; except: keeps the listed ones" do
+  [:new, :create, :destroy].each do |action|
+    c = open_auth("signups", action)
+    assert_equal 200, c.response.status
+    assert_equal [], SKIPPED
+  end
+  assert_equal "cancelled", open_auth("signups", :destroy).response.body
+  c = open_auth("accounts", :new)
+  assert_equal "account", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("accounts", :create)
+  assert_equal "created", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("accounts", :destroy)
+  assert_equal 403, c.response.status
+  assert_equal ["require_authentication"], SKIPPED
+end
+
+test "allow_unauthenticated_access answers nil and records one skip on the calling class" do
+  assert_equal 0, Cybertrain::Controller.skips_for(LaterOpenedController).size
+  assert_nil LaterOpenedController.allow_unauthenticated_access(only: [:show])
+  skips = Cybertrain::Controller.skips_for(LaterOpenedController)
+  assert_equal 1, skips.size
+  assert_equal "require_authentication", skips[0].name.to_s
+  assert skips[0].applies?(:show)
+  refute skips[0].applies?(:index)
+  assert_equal 0, Cybertrain::Controller.skips_for(AuthBaseController).size
 end
 
 test "status_code maps symbols and passes integers through" do

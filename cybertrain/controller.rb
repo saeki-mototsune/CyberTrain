@@ -449,8 +449,8 @@ module Cybertrain
     #       skip_before_action :require_authentication, only: [:new, :create]
     #
     # A skip declared in a class applies to it and its subclasses. Block
-    # callbacks have no name and cannot be skipped. `cybertrain generate
-    # authentication` wraps this as `allow_unauthenticated_access`.
+    # callbacks have no name and cannot be skipped. {.allow_unauthenticated_access}
+    # is this for `:require_authentication`.
     # @param name [Symbol] the callback's method name
     # @param only [Array<Symbol>] skip it for these actions only
     # @param except [Array<Symbol>] skip it for every action but these
@@ -459,6 +459,26 @@ module Cybertrain
     def self.skip_before_action(name, only: [], except: [])
       (SKIPS[self.name] ||= []) << Callback.new(:skip, name, nil, only, except, -1)
       nil
+    end
+
+    # Opens actions to visitors who are not signed in, as Rails 8's
+    # authentication concern does: `skip_before_action
+    # :require_authentication` for every action, or for `only:` / `except:`
+    # some. `cybertrain generate authentication` writes the
+    # `require_authentication` callback this skips.
+    #
+    #     class PasswordsController < ApplicationController
+    #       allow_unauthenticated_access only: [:new, :create]
+    #
+    # (An application whose ApplicationController defines its own
+    # `self.allow_unauthenticated_access`, as 0.4's generator wrote it,
+    # keeps using that one.)
+    # @param only [Array<Symbol>] open these actions only
+    # @param except [Array<Symbol>] open every action but these
+    # @return [nil]
+    # @api public
+    def self.allow_unauthenticated_access(only: [], except: [])
+      skip_before_action(:require_authentication, only: only, except: except)
     end
 
     # The skips that apply to klass: its own and its ancestors', up to

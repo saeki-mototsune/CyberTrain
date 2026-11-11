@@ -27,6 +27,9 @@ ok   an action a skip does not list still runs the callback
 ok   a skip with except: keeps the callback for the listed actions only
 ok   a subclass inherits its parent's skips
 ok   skipped? matches by name and action, never a block callback
+ok   allow_unauthenticated_access skips require_authentication for the listed actions
+ok   allow_unauthenticated_access with no actions opens all of them; except: keeps the listed ones
+ok   allow_unauthenticated_access answers nil and records one skip on the calling class
 ok   status_code maps symbols and passes integers through
 ok   a missing required param answers 400 Bad Request
 ok   a client fault raised in an action answers 400 with its message, like a missing param
@@ -36,4 +39,4 @@ ok   an exception the controller re-raises is not logged by it (ErrorPages logs 
 ok   an app exception sharing a bare name with a framework one is still raised (500 path)
 ok   local_path? and safe_redirect_path accept only an ordinary local path
 ok   the locale is reset per action: a keep-alive pair, the first sets ja
-38 tests, 165 assertions, 0 failures
+41 tests, 200 assertions, 0 failures
