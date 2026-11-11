@@ -4,14 +4,18 @@ name: CI
 # homepage, the tutorial, the deploy and playground pages: static files that
 # nothing below reads; pages.yml publishes it) and Markdown files anywhere.
 # The exception is the API reference's Markdown source (docs/api/README.md;
-# see .yardopts), which the "API reference builds" step below checks. Nor do the repository scripts and git hooks: the Gate
+# see .yardopts), which the api-docs job below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
-# reads them except script/api-docs and script/test-shard, which are brought
-# back in. Nor do the other workflows (release, images, pages, gate): only this
+# reads them except script/api-docs, script/test-shard and script/ci-changes,
+# which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
 # files back in (a later pattern wins).
+# `paths` starts the whole workflow or none of it. Which jobs a run needs is
+# the `changes` job's to say: a change to the API reference's own inputs
+# alone (docs/api/**, script/api-docs, .yardopts) runs the api-docs job and
+# skips the jobs that compile (script/ci-changes has the rule).
 # push runs only on main: a branch is tested by its pull request, and a push
 # to it would otherwise run everything a second time.
 on:
@@ -28,6 +32,7 @@ on:
       - "docs/api/**"
       - "script/api-docs"
       - "script/test-shard"
+      - "script/ci-changes"
   pull_request:
     paths:
       - "**"
@@ -40,6 +45,7 @@ on:
       - "docs/api/**"
       - "script/api-docs"
       - "script/test-shard"
+      - "script/ci-changes"
   # release.yml runs this whole file on the tag before it creates a release
   # (with `ref` set to the tag on a manual release run, which takes this file
   # from the branch it was started on, but .github/actions/setup-spinel and
@@ -73,12 +79,81 @@ env:
   SPINEL_TAG: "2026.11.04.7026"
 
 jobs:
+  # Whether this run needs the jobs that compile (framework-tests, test,
+  # setup-cybertrain): `framework` is false when every changed file is one
+  # only the API reference reads, or one `paths` above leaves out
+  # (script/ci-changes). A release run (release.yml passes `ref`) runs
+  # everything, and so does a run whose changed files cannot be listed.
+  changes:
+    runs-on: ubuntu-26.04
+    outputs:
+      framework: ${{ steps.decide.outputs.framework }}
+    steps:
+      # Two commits: on a pull request the checkout is the merge commit, whose
+      # first parent is the base branch; on main, the commit before a merge.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 2
+
+      - name: Decide from the changed files
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          CALLED_WITH_REF: ${{ inputs.ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base=""
+          if [ -n "$CALLED_WITH_REF" ]; then
+            echo "a run for $CALLED_WITH_REF (release.yml): every job"
+          elif [ "$EVENT" = pull_request ]; then
+            # HEAD is the merge of the pull request into its base.
+            base=$(git rev-parse --verify --quiet "HEAD^2" > /dev/null && git rev-parse HEAD^1) || base=""
+          elif [ "$EVENT" = push ]; then
+            # The commit main was at before the push, when the checkout has
+            # it (it is HEAD's parent for a merged pull request).
+            if git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then base="$BEFORE"; fi
+          fi
+          if [ -z "$base" ]; then
+            echo "no base commit to compare with: every job"
+            echo "framework=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$base" HEAD > "$RUNNER_TEMP/changed"
+          echo "changed since $base:"
+          sed 's/^/  /' "$RUNNER_TEMP/changed"
+          script/ci-changes < "$RUNNER_TEMP/changed" | tee -a "$GITHUB_OUTPUT"
+
+  # The API reference (YARD, published with the site) must build without
+  # a warning: an unknown tag or a {Link} to nothing fails it. On every run
+  # of this workflow: its inputs are the framework's sources (.yardopts) as
+  # well as docs/api/, and it takes under a minute.
+  api-docs:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: API reference builds
+        run: |
+          gem install --no-document yard -v "~> 0.9"
+          gem install --no-document kramdown -v "~> 2.5"
+          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
+          script/api-docs
+
   # The framework's test programs on Ubuntu, in four parallel jobs: each
   # program is compiled on its own, so the programs split cleanly. A job of
   # its own, not steps of `test`: that job keeps its name and the end-to-end
   # checks. macOS stays one job (the step in `test`): shards there ran one
   # after another, so the run waited on them (docs/design.md, D34).
   framework-tests:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -98,6 +173,8 @@ jobs:
           script/test-shard ${{ matrix.shard }} 4
 
   test:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -113,16 +190,7 @@ jobs:
 
       # The version pins, script/check-reserved-names, check-client-faults and
       # check-http-layer run in the Gate workflow (script/gate), on every change.
-
-      # The API reference (YARD, published with the site) must build without
-      # a warning: an unknown tag or a {Link} to nothing fails it.
-      - name: API reference builds
-        if: runner.os == 'Linux'
-        run: |
-          gem install --no-document yard -v "~> 0.9"
-          gem install --no-document kramdown -v "~> 2.5"
-          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
-          script/api-docs
+      # The API reference builds in the api-docs job.
 
       - name: Framework tests
         if: runner.os == 'macOS'
@@ -282,6 +350,8 @@ jobs:
   # that differ by OS (the packages, Homebrew's OpenSSL) are the same on
   # both routes.
   setup-cybertrain:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
     strategy:
       fail-fast: false
       matrix:

@@ -175,7 +175,10 @@ spin test
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs all of this on
 Ubuntu and macOS, builds and installs the gem, scaffolds and serves an
 application end to end, and builds the API reference with YARD (any warning
-fails it: `script/api-docs`). Its `setup-cybertrain` jobs run the action
+fails it: `script/api-docs`, the `api-docs` job). A change to nothing but
+the API reference's own inputs (`docs/api/`, `script/api-docs`, `.yardopts`)
+runs that job alone; [script/ci-changes](script/ci-changes) holds the rule
+and `script/ci-changes --self-test` checks it. Its `setup-cybertrain` jobs run the action
 applications use in their own CI
 ([.github/actions/setup-cybertrain](.github/actions/setup-cybertrain/action.yml))
 on a newly generated application, so a change to that action is tested like
