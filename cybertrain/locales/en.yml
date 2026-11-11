@@ -20,6 +20,59 @@ en:
     helpers:
       submit:
         no_model: Save changes
+    jobs_page:
+      buttons:
+        delete: Delete
+        discard: Discard
+        discard_all: Discard all failed
+        retry: Retry
+        retry_all: Retry all failed
+      columns:
+        arguments: Arguments
+        attempts: Attempts
+        claimed_by: Claimed by
+        error: Error
+        heartbeat: Heartbeat
+        id: ID
+        jobs: Jobs
+        kind: Kind
+        run_at: Run at
+        state: State
+        updated: Updated
+      empty:
+        discarded: No discarded jobs.
+        failed: No failed jobs.
+        running: No running jobs.
+      heartbeat:
+        ago: "%{seconds} s ago"
+        none: none
+      notices:
+        deleted: Job %{id} was deleted.
+        discarded: Job %{id} was discarded.
+        discarded_all: "%{count} failed job(s) discarded."
+        not_deleted: "Job %{id} was not deleted: it is not failed or discarded."
+        not_discarded: "Job %{id} was not discarded: it is not failed or discarded."
+        not_retried: "Job %{id} was not retried: it is not failed or discarded."
+        retried: Job %{id} was queued again.
+        retried_all: "%{count} failed job(s) queued again."
+      queued:
+        next: "%{count} queued; the next is due at %{time}."
+        none: No queued jobs.
+      states:
+        discarded: discarded
+        done: done
+        failed: failed
+        queued: queued
+        running: running
+      tabs:
+        discarded: Discarded (%{count})
+        failed: Failed (%{count})
+        running: Running (%{count})
+      title: Jobs
+    pager:
+      newer: Newer
+      older: Older
+      page: Page %{page}
   date:
     abbr_day_names:
     - Sun

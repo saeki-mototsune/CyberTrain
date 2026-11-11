@@ -7,9 +7,56 @@ module Cybertrain
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "Cannot delete record because dependent %{record} exist"
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "Cannot delete record because a dependent %{record} exists"
       h["en.cybertrain.helpers.submit.no_model"] = "Save changes"
+      h["en.cybertrain.jobs_page.buttons.delete"] = "Delete"
+      h["en.cybertrain.jobs_page.buttons.discard"] = "Discard"
+      h["en.cybertrain.jobs_page.buttons.discard_all"] = "Discard all failed"
+      h["en.cybertrain.jobs_page.buttons.retry"] = "Retry"
+      h["en.cybertrain.jobs_page.buttons.retry_all"] = "Retry all failed"
+      h["en.cybertrain.jobs_page.columns.arguments"] = "Arguments"
+      h["en.cybertrain.jobs_page.columns.attempts"] = "Attempts"
+      h["en.cybertrain.jobs_page.columns.claimed_by"] = "Claimed by"
+      h["en.cybertrain.jobs_page.columns.error"] = "Error"
+      h["en.cybertrain.jobs_page.columns.heartbeat"] = "Heartbeat"
+      h["en.cybertrain.jobs_page.columns.id"] = "ID"
+      h["en.cybertrain.jobs_page.columns.jobs"] = "Jobs"
+      h["en.cybertrain.jobs_page.columns.kind"] = "Kind"
+      h["en.cybertrain.jobs_page.columns.run_at"] = "Run at"
+      h["en.cybertrain.jobs_page.columns.state"] = "State"
+      h["en.cybertrain.jobs_page.columns.updated"] = "Updated"
+      h["en.cybertrain.jobs_page.empty.discarded"] = "No discarded jobs."
+      h["en.cybertrain.jobs_page.empty.failed"] = "No failed jobs."
+      h["en.cybertrain.jobs_page.empty.running"] = "No running jobs."
+      h["en.cybertrain.jobs_page.heartbeat.ago"] = "%{seconds} s ago"
+      h["en.cybertrain.jobs_page.heartbeat.none"] = "none"
+      h["en.cybertrain.jobs_page.notices.deleted"] = "Job %{id} was deleted."
+      h["en.cybertrain.jobs_page.notices.discarded"] = "Job %{id} was discarded."
+      h["en.cybertrain.jobs_page.notices.discarded_all"] = "%{count} failed job(s) discarded."
+      h["en.cybertrain.jobs_page.notices.not_deleted"] = "Job %{id} was not deleted: it is not failed or discarded."
+      h["en.cybertrain.jobs_page.notices.not_discarded"] = "Job %{id} was not discarded: it is not failed or discarded."
+      h["en.cybertrain.jobs_page.notices.not_retried"] = "Job %{id} was not retried: it is not failed or discarded."
+      h["en.cybertrain.jobs_page.notices.retried"] = "Job %{id} was queued again."
+      h["en.cybertrain.jobs_page.notices.retried_all"] = "%{count} failed job(s) queued again."
+      h["en.cybertrain.jobs_page.queued.next"] = "%{count} queued; the next is due at %{time}."
+      h["en.cybertrain.jobs_page.queued.none"] = "No queued jobs."
+      h["en.cybertrain.jobs_page.states.discarded"] = "discarded"
+      h["en.cybertrain.jobs_page.states.done"] = "done"
+      h["en.cybertrain.jobs_page.states.failed"] = "failed"
+      h["en.cybertrain.jobs_page.states.queued"] = "queued"
+      h["en.cybertrain.jobs_page.states.running"] = "running"
+      h["en.cybertrain.jobs_page.tabs.discarded"] = "Discarded (%{count})"
+      h["en.cybertrain.jobs_page.tabs.failed"] = "Failed (%{count})"
+      h["en.cybertrain.jobs_page.tabs.running"] = "Running (%{count})"
+      h["en.cybertrain.jobs_page.title"] = "Jobs"
+      h["en.cybertrain.pager.newer"] = "Newer"
+      h["en.cybertrain.pager.older"] = "Older"
+      h["en.cybertrain.pager.page"] = "Page %{page}"
       h["en.date.formats.default"] = "%Y-%m-%d"
       h["en.date.formats.long"] = "%B %d, %Y"
       h["en.date.formats.short"] = "%b %d"
+      nil
+    end
+
+    def self.fill_texts_01(h)
       h["en.datetime.distance_in_words.about_x_hours.one"] = "about %{count} hour"
       h["en.datetime.distance_in_words.about_x_hours.other"] = "about %{count} hours"
       h["en.datetime.distance_in_words.about_x_months.one"] = "about %{count} month"
@@ -53,10 +100,6 @@ module Cybertrain
       h["en.errors.messages.model_invalid"] = "Validation failed: %{errors}"
       h["en.errors.messages.not_a_number"] = "is not a number"
       h["en.errors.messages.not_an_integer"] = "must be an integer"
-      nil
-    end
-
-    def self.fill_texts_01(h)
       h["en.errors.messages.odd"] = "must be odd"
       h["en.errors.messages.other_than"] = "must be other than %{count}"
       h["en.errors.messages.password_too_long"] = "is too long"
@@ -64,6 +107,10 @@ module Cybertrain
       h["en.errors.messages.required"] = "must exist"
       h["en.errors.messages.taken"] = "has already been taken"
       h["en.errors.messages.too_long.one"] = "is too long (maximum is %{count} character)"
+      nil
+    end
+
+    def self.fill_texts_02(h)
       h["en.errors.messages.too_long.other"] = "is too long (maximum is %{count} characters)"
       h["en.errors.messages.too_short.one"] = "is too short (minimum is %{count} character)"
       h["en.errors.messages.too_short.other"] = "is too short (minimum is %{count} characters)"
@@ -107,10 +154,6 @@ module Cybertrain
       h["en.number.human.storage_units.units.gb"] = "GB"
       h["en.number.human.storage_units.units.kb"] = "KB"
       h["en.number.human.storage_units.units.mb"] = "MB"
-      nil
-    end
-
-    def self.fill_texts_02(h)
       h["en.number.human.storage_units.units.pb"] = "PB"
       h["en.number.human.storage_units.units.tb"] = "TB"
       h["en.number.human.storage_units.units.zb"] = "ZB"
@@ -118,6 +161,10 @@ module Cybertrain
       h["en.number.percentage.format.format"] = "%n%"
       h["en.number.precision.format.delimiter"] = ""
       h["en.support.array.last_word_connector"] = ", and "
+      nil
+    end
+
+    def self.fill_texts_03(h)
       h["en.support.array.two_words_connector"] = " and "
       h["en.support.array.words_connector"] = ", "
       h["en.time.am"] = "am"
@@ -129,6 +176,53 @@ module Cybertrain
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "%{record}が存在しているので削除できません"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "%{record}が存在しているので削除できません"
       h["ja.cybertrain.helpers.submit.no_model"] = "変更を保存"
+      h["ja.cybertrain.jobs_page.buttons.delete"] = "削除"
+      h["ja.cybertrain.jobs_page.buttons.discard"] = "破棄"
+      h["ja.cybertrain.jobs_page.buttons.discard_all"] = "失敗したジョブをすべて破棄"
+      h["ja.cybertrain.jobs_page.buttons.retry"] = "再実行"
+      h["ja.cybertrain.jobs_page.buttons.retry_all"] = "失敗したジョブをすべて再実行"
+      h["ja.cybertrain.jobs_page.columns.arguments"] = "引数"
+      h["ja.cybertrain.jobs_page.columns.attempts"] = "試行回数"
+      h["ja.cybertrain.jobs_page.columns.claimed_by"] = "実行ワーカー"
+      h["ja.cybertrain.jobs_page.columns.error"] = "エラー"
+      h["ja.cybertrain.jobs_page.columns.heartbeat"] = "最終応答"
+      h["ja.cybertrain.jobs_page.columns.id"] = "ID"
+      h["ja.cybertrain.jobs_page.columns.jobs"] = "件数"
+      h["ja.cybertrain.jobs_page.columns.kind"] = "種類"
+      h["ja.cybertrain.jobs_page.columns.run_at"] = "実行予定"
+      h["ja.cybertrain.jobs_page.columns.state"] = "状態"
+      h["ja.cybertrain.jobs_page.columns.updated"] = "更新日時"
+      h["ja.cybertrain.jobs_page.empty.discarded"] = "破棄済みのジョブはありません。"
+      h["ja.cybertrain.jobs_page.empty.failed"] = "失敗したジョブはありません。"
+      h["ja.cybertrain.jobs_page.empty.running"] = "実行中のジョブはありません。"
+      h["ja.cybertrain.jobs_page.heartbeat.ago"] = "%{seconds}秒前"
+      h["ja.cybertrain.jobs_page.heartbeat.none"] = "なし"
+      h["ja.cybertrain.jobs_page.notices.deleted"] = "ジョブ %{id} を削除しました。"
+      h["ja.cybertrain.jobs_page.notices.discarded"] = "ジョブ %{id} を破棄しました。"
+      h["ja.cybertrain.jobs_page.notices.discarded_all"] = "失敗したジョブ %{count}件を破棄しました。"
+      h["ja.cybertrain.jobs_page.notices.not_deleted"] = "ジョブ %{id} は削除できません。失敗または破棄済みの状態ではありません。"
+      h["ja.cybertrain.jobs_page.notices.not_discarded"] = "ジョブ %{id} は破棄できません。失敗または破棄済みの状態ではありません。"
+      h["ja.cybertrain.jobs_page.notices.not_retried"] = "ジョブ %{id} は再実行できません。失敗または破棄済みの状態ではありません。"
+      h["ja.cybertrain.jobs_page.notices.retried"] = "ジョブ %{id} を再びキューに入れました。"
+      h["ja.cybertrain.jobs_page.notices.retried_all"] = "失敗したジョブ %{count}件を再びキューに入れました。"
+      h["ja.cybertrain.jobs_page.queued.next"] = "待機中 %{count}件。次の実行予定は %{time} です。"
+      h["ja.cybertrain.jobs_page.queued.none"] = "待機中のジョブはありません。"
+      h["ja.cybertrain.jobs_page.states.discarded"] = "破棄済み"
+      h["ja.cybertrain.jobs_page.states.done"] = "完了"
+      h["ja.cybertrain.jobs_page.states.failed"] = "失敗"
+      h["ja.cybertrain.jobs_page.states.queued"] = "待機中"
+      h["ja.cybertrain.jobs_page.states.running"] = "実行中"
+      h["ja.cybertrain.jobs_page.tabs.discarded"] = "破棄済み (%{count})"
+      h["ja.cybertrain.jobs_page.tabs.failed"] = "失敗 (%{count})"
+      h["ja.cybertrain.jobs_page.tabs.running"] = "実行中 (%{count})"
+      nil
+    end
+
+    def self.fill_texts_04(h)
+      h["ja.cybertrain.jobs_page.title"] = "ジョブ"
+      h["ja.cybertrain.pager.newer"] = "前へ"
+      h["ja.cybertrain.pager.older"] = "次へ"
+      h["ja.cybertrain.pager.page"] = "%{page}ページ"
       h["ja.date.formats.default"] = "%Y/%m/%d"
       h["ja.date.formats.long"] = "%Y年%m月%d日(%a)"
       h["ja.date.formats.short"] = "%m/%d"
@@ -161,10 +255,6 @@ module Cybertrain
       h["ja.errors.messages.less_than"] = "は%{count}より小さい値にしてください"
       h["ja.errors.messages.less_than_or_equal_to"] = "は%{count}以下の値にしてください"
       h["ja.errors.messages.model_invalid"] = "バリデーションに失敗しました: %{errors}"
-      nil
-    end
-
-    def self.fill_texts_03(h)
       h["ja.errors.messages.not_a_number"] = "は数値で入力してください"
       h["ja.errors.messages.not_an_integer"] = "は整数で入力してください"
       h["ja.errors.messages.odd"] = "は奇数にしてください"
@@ -179,6 +269,10 @@ module Cybertrain
       h["ja.errors.template.body"] = "次の項目を確認してください"
       h["ja.errors.template.header"] = "%{model}に%{count}個のエラーが発生しました"
       h["ja.helpers.submit.create"] = "登録する"
+      nil
+    end
+
+    def self.fill_texts_05(h)
       h["ja.helpers.submit.submit"] = "保存する"
       h["ja.helpers.submit.update"] = "更新する"
       h["ja.number.currency.format.delimiter"] = ","
@@ -215,10 +309,6 @@ module Cybertrain
       h["ja.number.human.storage_units.units.pb"] = "PB"
       h["ja.number.human.storage_units.units.tb"] = "TB"
       h["ja.number.human.storage_units.units.zb"] = "ZB"
-      nil
-    end
-
-    def self.fill_texts_04(h)
       h["ja.number.percentage.format.delimiter"] = ""
       h["ja.number.percentage.format.format"] = "%n%"
       h["ja.number.precision.format.delimiter"] = ""
@@ -241,6 +331,7 @@ module Cybertrain
       fill_texts_02(h)
       fill_texts_03(h)
       fill_texts_04(h)
+      fill_texts_05(h)
       h
     end
 

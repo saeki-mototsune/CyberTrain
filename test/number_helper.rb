@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/number_helper"
+require "cybertrain/i18n"
 
 N = Cybertrain::NumberHelper
 
@@ -113,6 +114,20 @@ test "an oversized exponent or precision is rejected" do
   assert_raises("ArgumentError") { N.number_to_percentage(1, precision: 101) }
   assert_raises("ArgumentError") { N.number_to_currency(1, precision: -1) }
   assert_raises("ArgumentError") { N.number_to_human(1, precision: 101) }
+end
+
+test "the new keywords; Ruby keeps its English defaults in any locale" do
+  assert_equal "$1.234,50", N.number_to_currency(1234.5, delimiter: ".", separator: ",")
+  assert_equal "1 234,50 €", N.number_to_currency(1234.5, unit: "€", format: "%n %u", delimiter: " ", separator: ",")
+  assert_equal "1,23Million|1,23 Million", "#{N.number_to_human(1234567, format: "%n%u", separator: ",")}|#{N.number_to_human(1234567, separator: ",")}"
+  assert_equal "123|1,230 Quadrillion", "#{N.number_to_human(123, format: "%u %n")}|#{N.number_to_human(1234567890123456789, delimiter: ",")}"
+  assert_equal "1.230,5 %|100,000%", "#{N.number_to_percentage(1230.5, precision: 1, format: "%n %", delimiter: ".", separator: ",")}|#{N.number_to_percentage(100, separator: ",")}"
+  # NumberHelper never reads the locale (D11): the template helpers do.
+  I18n.available_locales = [:en, :ja]
+  text = I18n.with_locale(:ja) do
+    [N.number_to_currency(1234), N.number_to_human(1234567), N.number_to_human_size(1), N.number_to_percentage(100)].join("|")
+  end
+  assert_equal "$1,234.00|1.23 Million|1 Byte|100.000%", text
 end
 
 Cybertrain::Test.run!

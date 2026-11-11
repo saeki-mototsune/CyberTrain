@@ -87,7 +87,7 @@ module Cybertrain
         number_to_human_size number_to_percentage number_with_delimiter
         number_with_precision
         outside_request! page_method pager_href pager_html paginate params
-        partial_file plural_words pluralize raw render
+        partial_file pluralize raw render
         render_component_helper render_helper request_bound! request_path
         request_query_string route route_key_of safe_join session_csrf_token
         signed_stream_name stream_source_path string_keys_of string_url tag text_arg

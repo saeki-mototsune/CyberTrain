@@ -20,6 +20,59 @@ ja:
     helpers:
       submit:
         no_model: 変更を保存
+    jobs_page:
+      buttons:
+        delete: 削除
+        discard: 破棄
+        discard_all: 失敗したジョブをすべて破棄
+        retry: 再実行
+        retry_all: 失敗したジョブをすべて再実行
+      columns:
+        arguments: 引数
+        attempts: 試行回数
+        claimed_by: 実行ワーカー
+        error: エラー
+        heartbeat: 最終応答
+        id: ID
+        jobs: 件数
+        kind: 種類
+        run_at: 実行予定
+        state: 状態
+        updated: 更新日時
+      empty:
+        discarded: 破棄済みのジョブはありません。
+        failed: 失敗したジョブはありません。
+        running: 実行中のジョブはありません。
+      heartbeat:
+        ago: "%{seconds}秒前"
+        none: なし
+      notices:
+        deleted: ジョブ %{id} を削除しました。
+        discarded: ジョブ %{id} を破棄しました。
+        discarded_all: 失敗したジョブ %{count}件を破棄しました。
+        not_deleted: ジョブ %{id} は削除できません。失敗または破棄済みの状態ではありません。
+        not_discarded: ジョブ %{id} は破棄できません。失敗または破棄済みの状態ではありません。
+        not_retried: ジョブ %{id} は再実行できません。失敗または破棄済みの状態ではありません。
+        retried: ジョブ %{id} を再びキューに入れました。
+        retried_all: 失敗したジョブ %{count}件を再びキューに入れました。
+      queued:
+        next: 待機中 %{count}件。次の実行予定は %{time} です。
+        none: 待機中のジョブはありません。
+      states:
+        discarded: 破棄済み
+        done: 完了
+        failed: 失敗
+        queued: 待機中
+        running: 実行中
+      tabs:
+        discarded: 破棄済み (%{count})
+        failed: 失敗 (%{count})
+        running: 実行中 (%{count})
+      title: ジョブ
+    pager:
+      newer: 前へ
+      older: 次へ
+      page: "%{page}ページ"
   date:
     abbr_day_names:
     - 日
