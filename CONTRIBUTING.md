@@ -263,9 +263,11 @@ blank second line) and leaves merge, revert, fixup! and squash! commits alone.
    does and why, how it was checked, and what the reviewer should know; the
    checklist is the gate above in prose. Mark it a draft if it is not ready
    for review.
-4. CI must be green: the Gate workflow and the CI workflow (both operating
-   systems). A failure you believe is unrelated to your change is still worth
-   a sentence in the pull request.
+4. CI must be green: the Gate workflow, the CI workflow (both operating
+   systems) and, when the change touches an image, that image's workflow.
+   The `required` check waits for all of them and is what `main` asks for
+   (see [Branch rules](#branch-rules)). A failure you believe is unrelated
+   to your change is still worth a sentence in the pull request.
 5. A maintainer reviews it. Expect questions about the design and requests
    for tests; answer on the thread and push follow-up commits (do not
    force-push over commits a reviewer has already read). Approved pull
@@ -285,6 +287,44 @@ gems (see [docs/guide/README.md](docs/guide/README.md#building-and-previewing)).
 if you change `docs/guide/` also run `script/guide-pages --out <tmpdir>`, as
 the Gate workflow's `guide-pages` job does: it fails on a broken link or
 anchor, which the gate does not see.
+
+## Branch rules
+
+`main` takes changes through pull requests only, and a pull request merges
+only when two checks have passed on its latest commit:
+
+- **`gate`**, the Gate workflow's job that runs `script/gate`;
+- **`required`**, the one job of
+  [.github/workflows/required.yml](.github/workflows/required.yml). It waits
+  for every other workflow the pull request started (the Gate, CI, the image
+  workflows) and passes only if each of them did. CI and the image workflows
+  start only for the paths they test, so their jobs cannot be required one by
+  one: a documentation pull request would wait for ever for a job that never
+  starts. `required` starts on every pull request and waits only for what
+  did start, which for a documentation change is the Gate, about a minute.
+
+A pull request whose workflows did not start (one opened with
+`GITHUB_TOKEN`, see [Releasing](#releasing), step 1) has neither check and
+cannot be merged until they run. After re-running a failed job, re-run
+`required` as well: it reported on the attempt it saw.
+
+The rule itself is a repository setting, which only an owner can change. Its
+definition is checked in as
+[.github/rulesets/main.json](.github/rulesets/main.json): pull requests
+required (no approval count, so a sole maintainer can merge their own), the
+two checks above required from GitHub Actions, no force push and no deletion.
+To apply it, either import the file (Settings → Rules → Rulesets → New
+ruleset → Import a ruleset) or run, as an owner:
+
+```sh
+gh api --method POST repos/saeki-mototsune/CyberTrain/rulesets --input .github/rulesets/main.json
+```
+
+Then check it on two pull requests: one that changes only a Markdown file
+must show `gate` and `required` green within minutes, with CI not started,
+and be mergeable; one that breaks a test must show `required` red and the
+merge blocked. When a required job is renamed, change the file, the ruleset
+and this section together.
 
 ## Releasing
 
