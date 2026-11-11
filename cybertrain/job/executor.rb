@@ -1,0 +1,226 @@
+# Required by cybertrain/job.rb, after the registry, RetryPolicy and Store.
+module Cybertrain
+  module Job
+    # One attempt of one job, on the calling thread: claim a due row
+    # ({Job::Store.claim}), run its handler, decide the outcome
+    # ({Job::RetryPolicy}) and have it written ({Job::Store.write_outcome}),
+    # trying the write again when the database raises. It holds no SQL and
+    # starts no thread: a job thread of {Job::Worker} calls work_one in a
+    # loop, and a test or a {Main.command} calls it directly. What it keeps
+    # is the list of attempts in flight here, which the heartbeat reads.
+    # The public entry points and their documentation are the `Job.*`
+    # methods of cybertrain/job.rb, which delegate here.
+    module Executor
+      # Guards IN_FLIGHT, which every job thread changes and the heartbeat
+      # thread reads.
+      FLIGHT_LOCK = Mutex.new
+
+      # The ids of the jobs this process has claimed and not yet finished
+      # writing the outcome of: the only rows its heartbeat keeps alive. A
+      # constant (NOTES rule 64), seeded and emptied (rule 9).
+      IN_FLIGHT = Array.new(0) { 0 }
+
+      # How many times an outcome write is tried before the row is left to
+      # staleness recovery, and the pause before each retry (times the try).
+      OUTCOME_TRIES = 3
+      OUTCOME_RETRY_PAUSE = 0.05
+
+      # A copy of IN_FLIGHT.
+      def self.in_flight_ids
+        out = Array.new(0) { 0 }
+        FLIGHT_LOCK.synchronize { IN_FLIGHT.each { |id| out << id } }
+        out
+      end
+
+      def self.in_flight_add(id)
+        FLIGHT_LOCK.synchronize { IN_FLIGHT << id }
+        nil
+      end
+
+      # Removes one entry for id (the same row can be in flight twice when it
+      # was recovered and claimed again here while its first run went on).
+      def self.in_flight_remove(id)
+        FLIGHT_LOCK.synchronize do
+          at = IN_FLIGHT.index(id)
+          IN_FLIGHT.delete_at(at) unless at.nil?
+        end
+        nil
+      end
+
+      # {Job.work_one}: claims the oldest job due at `now`, runs it and has
+      # its outcome written. True when a job was claimed.
+      def self.work_one(now)
+        run = Store.claim(now, Job.process_label)
+        return false if run.run_id < 0
+
+        finish_in_flight(run)
+        true
+      end
+
+      # finish between in_flight_add and in_flight_remove, in a plain method
+      # with an `ensure` (NOTES rules 32/45): the id leaves IN_FLIGHT whatever
+      # the handler raised. run_handler rescues StandardError and the
+      # NotImplementedError / SystemStackError / ScriptError arm; anything
+      # else reaches Worker.claim_safely, which logs it, and without this the
+      # row would be heartbeated for the life of the process and never
+      # recovered.
+      def self.finish_in_flight(run)
+        in_flight_add(run.run_id)
+        finish(run)
+      ensure
+        in_flight_remove(run.run_id)
+      end
+
+      # {Job.work_due}.
+      def self.work_due(now, limit)
+        count = 0
+        while count < limit
+          break unless work_one(now)
+          count += 1
+        end
+        count
+      end
+
+      # Runs a claimed job's handler and writes the outcome back, fenced by
+      # the claim (its label and attempt number): when the row was
+      # recovered and claimed again while the handler ran (its heartbeat went
+      # stale), the outcome is discarded and the row is left to its new
+      # claimer. Delivery is therefore at least once: write handlers so that
+      # running twice is harmless. Nothing is written for a Run whose block
+      # wrote its own outcome ({Job.retry_later}, {Job.discard}).
+      def self.finish(run)
+        logger = Cybertrain.logger
+        id = run.run_id
+        kind = run.run_kind
+        attempts = run.run_attempts
+        now = run.run_now
+        label = run.run_claimed_by
+        index = Job.handler_index(kind)
+        if index < 0
+          message = "no handler registered for kind #{kind.inspect}"
+          return nil unless outcome_written?(id, kind, record_outcome(id, "failed", now, message, now, label, attempts))
+
+          logger.error("job #{id} (#{kind}) failed: #{message}")
+          return nil
+        end
+        error = run_handler(HANDLERS[index], run)
+        if run.run_outcome_written?
+          logger.error("job #{id} (#{kind}) raised after its outcome was written: #{error}") unless error.empty?
+          return nil
+        end
+        if error.empty?
+          return nil unless outcome_written?(id, kind, record_outcome(id, "done", now, "", now, label, attempts))
+
+          logger.info("job #{id} (#{kind}) done")
+          return nil
+        end
+        max = Cybertrain.config.job_max_attempts
+        if RetryPolicy.exhausted?(attempts, max)
+          return nil unless outcome_written?(id, kind, record_outcome(id, "failed", now, error, now, label, attempts))
+
+          logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{error}")
+        else
+          wait = RetryPolicy.default_wait(attempts)
+          return nil unless outcome_written?(id, kind, record_outcome(id, "queued", now + wait, error, now, label, attempts))
+
+          logger.error("job #{id} (#{kind}) attempt #{attempts} of #{max} failed: #{error}; retrying in #{wait} s")
+        end
+        nil
+      end
+
+      # Logs what record_outcome's code means unless the outcome was written
+      # (1): 0, the row was reclaimed; -1, the write failed every try.
+      def self.outcome_written?(id, kind, code)
+        return true if code == 1
+
+        if code == 0
+          Cybertrain.logger.warn("job #{id} (#{kind}) finished after it was reclaimed; outcome discarded")
+        else
+          Cybertrain.logger.error("job #{id} (#{kind}) finished but its outcome could not be written; " \
+                                  "left running for heartbeat recovery")
+        end
+        false
+      end
+
+      # The handler call with its rescue in a plain method that receives the
+      # Proc as a parameter (NOTES rules 32/45/69); JSON::NestingError named
+      # first (rule 61). "" when the handler returned, else the bounded error.
+      # The exceptions outside StandardError that a job's own code raises
+      # (`raise NotImplementedError` in a helper not yet written, a recursion
+      # too deep, a `require` that fails) take the default policy as a
+      # StandardError does, instead of ending the job thread.
+      def self.run_handler(handler, run)
+        handler.handler_run_block.call(run)
+        ""
+      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        RetryPolicy.error_text(e.class.name, e.message)
+      rescue NotImplementedError, SystemStackError, ScriptError => e
+        RetryPolicy.error_text(e.class.name, e.message)
+      end
+
+      # {Job.retry_later}: the outcome of a failed attempt under a
+      # `retry_on` policy, written once and marked written on the Run.
+      def self.retry_later(run, error, wait_base, polynomial, attempts_limit)
+        attempts = run.run_attempts
+        wait = RetryPolicy.policy_wait(attempts, wait_base, polynomial)
+        message = RetryPolicy.error_text(error.class.name, error.message)
+        now = run.run_now
+        id = run.run_id
+        kind = run.run_kind
+        run.run_outcome_written!
+        unless RetryPolicy.exhausted?(attempts, attempts_limit)
+          code = record_outcome(id, "queued", now + wait, message, now, run.run_claimed_by, attempts)
+          return OUTCOME_STALE unless outcome_written?(id, kind, code)
+
+          Cybertrain.logger.error("job #{id} (#{kind}) attempt #{attempts} of #{attempts_limit} failed: #{message}; retrying in #{wait} s")
+          return OUTCOME_REQUEUED
+        end
+        code = record_outcome(id, "failed", now, message, now, run.run_claimed_by, attempts)
+        return OUTCOME_STALE unless outcome_written?(id, kind, code)
+
+        Cybertrain.logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{message}")
+        OUTCOME_FAILED
+      end
+
+      # {Job.discard}: the row becomes `discarded`, written once and marked
+      # written on the Run.
+      def self.discard(run, error)
+        message = RetryPolicy.error_text(error.class.name, error.message)
+        now = run.run_now
+        id = run.run_id
+        kind = run.run_kind
+        run.run_outcome_written!
+        code = record_outcome(id, "discarded", now, message, now, run.run_claimed_by, run.run_attempts)
+        return OUTCOME_STALE unless outcome_written?(id, kind, code)
+
+        Cybertrain.logger.error("job #{id} (#{kind}) discarded: #{message}")
+        OUTCOME_FAILED
+      end
+
+      # Has the outcome of the claim (`label`, `attempts`) written, trying
+      # OUTCOME_TRIES times when the database raises (busy past its busy
+      # timeout, a disk error): 1 when written, 0 when the row is no longer
+      # running under that claim (nothing written), -1 when every try failed
+      # (logged). Never raises.
+      def self.record_outcome(id, state, run_at, error, now, label, attempts)
+        try = 1
+        while try <= OUTCOME_TRIES
+          code = write_outcome_safely(id, state, run_at, error, now, label, attempts, try)
+          return code if code >= 0
+
+          sleep OUTCOME_RETRY_PAUSE * try if try < OUTCOME_TRIES
+          try += 1
+        end
+        -1
+      end
+
+      # One try, its rescue in a plain method (NOTES rules 32/45).
+      def self.write_outcome_safely(id, state, run_at, error, now, label, attempts, try)
+        Store.write_outcome(id, state, run_at, error, now, label, attempts)
+      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        Cybertrain.logger.error("job #{id}: outcome write #{try} of #{OUTCOME_TRIES} failed: #{e.class.name}: #{e.message}")
+        -1
+      end
+    end
+  end
+end

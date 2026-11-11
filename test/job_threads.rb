@@ -261,6 +261,8 @@ test "request_stop (the TERM trap) starts the drain: stop! waits only what is le
   asked = monotonic
   Job.request_stop
   refute Job.running?
+  # A job that becomes due after the stop is claimed by no thread (#184).
+  late = enqueue_now("record", "late")
   # The requests drain meanwhile (Application#serve's Server#wait).
   sleep 0.6
   before_stop = monotonic
@@ -272,6 +274,10 @@ test "request_stop (the TERM trap) starts the drain: stop! waits only what is le
   assert_equal "running", job_state(id)
   # The beat job's thread finishes on its own.
   assert wait_until(3.0) { Job.live_loops == 0 }
+  # ... and the thread ended without taking the late job.
+  assert_equal "queued", job_state(late)
+  refute events_text.include?("late")
+  assert_equal 1, Job.state_count("queued")
   clear_events
 end
 

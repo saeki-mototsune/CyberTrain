@@ -1,0 +1,10 @@
+ok   the default policy waits 1, 5, 15 and then 60 minutes
+ok   a retry_on policy waits its base, or attempts ** 4 + 2 when polynomial
+ok   an attempt is the last once it reaches the limit
+ok   recovery gives up at the larger of the default and the kind's own limit
+ok   the error text is Class: message, cut at 1000 characters
+ok   the retry policy requires nothing and names no database, Config or clock
+ok   the store names no thread, no pool and no handler call
+ok   the worker and the executor hold no SQL
+ok   the facade keeps no statement of its own
+9 tests, 36 assertions, 0 failures
