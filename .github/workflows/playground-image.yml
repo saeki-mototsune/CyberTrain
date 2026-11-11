@@ -56,9 +56,10 @@ on:
         required: true
         default: "test"
 
+# The image job builds and tests with a read-only token, also on a pull
+# request; only the push job, which never runs for one, may write packages.
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: playground-image-${{ inputs.release_tag || github.ref }}
@@ -71,6 +72,9 @@ jobs:
   image:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      image_id: ${{ steps.save.outputs.image_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -130,18 +134,65 @@ jobs:
       - name: Smoke test
         run: bash playground/smoke.sh cybertrain-playground:ci
 
-      - name: Log in to GHCR
+      # After the smoke test, so the artifact exists only for an image that
+      # passed it. The ID names the image's content: the push job compares
+      # it after docker load, before it pushes.
+      - name: Save the tested image
+        id: save
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        run: |
+          set -eu
+          docker save cybertrain-playground:ci | gzip > playground-image.tar.gz
+          echo "image_id=$(docker image inspect cybertrain-playground:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+          ls -l playground-image.tar.gz
+
+      # overwrite: a re-run of this job replaces the artifact of the attempt
+      # before it. Already gzipped, so stored as it is.
+      - name: Upload the tested image
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: playground-image-tested
+          path: playground-image.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7
+
+  # Publishes what the image job built and tested, without building again:
+  # the one job of this workflow with a token that may write packages, and it
+  # does not run for a pull request.
+  push:
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: playground-image-tested
+
+      - name: Load the tested image
+        env:
+          IMAGE_ID: ${{ needs.image.outputs.image_id }}
+        run: |
+          set -eu
+          gunzip -c playground-image.tar.gz | docker load
+          loaded=$(docker image inspect cybertrain-playground:ci --format '{{.Id}}')
+          test "$loaded" = "$IMAGE_ID" || { echo "::error::the loaded image is $loaded, the tested one was $IMAGE_ID"; exit 1; }
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
 
       - name: Push the tested image
-        if: github.event_name != 'pull_request'
         env:
-          TAGS: ${{ steps.meta.outputs.tags }}
+          TAGS: ${{ needs.image.outputs.tags }}
         run: |
           test -n "$TAGS" || { echo "no tag to push"; exit 1; }
           for tag in $TAGS; do
