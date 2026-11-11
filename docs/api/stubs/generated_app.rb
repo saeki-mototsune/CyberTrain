@@ -1275,6 +1275,38 @@ module Gen
     # @api public
     def self.resolver = ->(name) { digest_path(name) }
   end
+
+  # What `spin run gen` writes into `gen/locales.rb`
+  # (cybertrain/generator/locales_emitter.rb): every
+  # `config/locales/**/*.yml`, read in path order (a later file's key wins),
+  # compiled into the binary as two tables, texts and lists (day and month
+  # names). The file begins with `require "cybertrain/i18n"` and its last
+  # line hands {resolver} and {list_resolver} to
+  # `I18n.install_dictionary`. An application with no dictionary gets
+  # empty tables. The values below are for a `config/locales/ja.yml` with
+  # `ja: { posts: { index: { title: 投稿 } } }`.
+  # @api public
+  module Locales
+    # @param key [String] the full key, locale first (`"ja.posts.index.title"`)
+    # @return [String, nil] `"投稿"`; nil for a key that is absent, a list
+    #   or a mapping
+    # @api public
+    def self.lookup(key); end
+
+    # @param key [String] the full key (`"en.date.abbr_day_names"`)
+    # @return [Array<String>] `["Sun", "Mon", ...]`; empty for a key that
+    #   is absent or a text
+    # @api public
+    def self.lookup_list(key); end
+
+    # @return [Proc] `->(key) { Gen::Locales.lookup(key) }`
+    # @api public
+    def self.resolver = ->(key) { Gen::Locales.lookup(key) }
+
+    # @return [Proc] `->(key) { Gen::Locales.lookup_list(key) }`
+    # @api public
+    def self.list_resolver = ->(key) { Gen::Locales.lookup_list(key) }
+  end
 end
 
 # What `spin run gen` writes into `gen/components.rb` for

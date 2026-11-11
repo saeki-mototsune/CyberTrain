@@ -1,0 +1,55 @@
+ok   the scan merges files, a later file's key wins
+ok   a mapping in one file and a scalar in another is refused naming both
+ok   the emitted source writes fill methods of at most 50 keys
+ok   the emitted lookup answers Strings, lists and nil
+ok   the generated gen/locales.rb loads on its own, without cybertrain/i18n preloaded
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/locales.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/console.rb
+wrote gen/app.rb
+stale: gen/locales.rb
+identical gen/routes.rb
+identical gen/assets.rb
+wrote gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/console.rb
+identical gen/app.rb
+stale: gen/locales.rb
+identical gen/routes.rb
+identical gen/assets.rb
+wrote gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/console.rb
+identical gen/app.rb
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/locales.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/console.rb
+wrote gen/app.rb
+ok   gen --check reports a stale gen/locales.rb
+ok   the bundled dictionaries answer rails-i18n's keys
+ok   script/bundle-locales --check exits 0 on a fresh tree and 1 after en.yml changes
+8 tests, 99 assertions, 0 failures

@@ -45,6 +45,15 @@ module Cybertrain
     module LocaleYaml
       # The entries of one dictionary file, in file order.
       def self.parse(text, path)
+        mappings = { "" => 0 }
+        mappings.delete("")
+        LocaleYaml.parse_recording(text, path, mappings)
+      end
+
+      # parse, also filling `mappings` with each key that holds a nested
+      # mapping ("ja.posts") => its line: LocaleScan names that line when
+      # another file gives the key a value (plan decision D4).
+      def self.parse_recording(text, path, mappings)
         # File.read answers the locale's encoding (US-ASCII under LANG=C):
         # the text is read as UTF-8, as http/query.rb does.
         raw = text.to_s
@@ -128,6 +137,7 @@ module Cybertrain
               i = j
             elsif j < lines.size && next_indent > indent
               prefixes << full
+              mappings[full] = number
               indents << indent
             else
               out << LocaleEntry.new(full, "", [], false, path, number)

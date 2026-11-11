@@ -24,6 +24,8 @@
 #     (that script builds the fork's latest release, so it pins no tag);
 #   * script/check-reserved-names, check-client-faults and check-http-layer
 #     pass;
+#   * script/bundle-locales --check passes (cybertrain/locales/bundled.rb is
+#     what cybertrain/locales/*.yml give);
 #   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
 #   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
 #   * every test/*.rb has its .expected snapshot, and every snapshot its test.
@@ -229,6 +231,9 @@ else
     out, status = Open3.capture2e("ruby", "script/#{script}")
     status.success? ? ok("script/#{script}") : fail!("script/#{script}", out.lines.map(&:chomp))
   end
+
+  out, status = Open3.capture2e("ruby", "script/bundle-locales", "--check")
+  status.success? ? ok("bundled dictionaries fresh", "script/bundle-locales --check") : fail!("script/bundle-locales --check", out.lines.map(&:chomp))
 
   spec_out, spec_status = Open3.capture2e("ruby", "-e", <<~'RB')
     spec = Gem::Specification.load("cybertrain.gemspec") or abort "cybertrain.gemspec does not load"

@@ -6,7 +6,7 @@ require "cybertrain/generator/job_scan"
 module Cybertrain
   module Gen
     # Writes gen/app.rb, the one file an app's binaries require to load
-    # everything: generated models, routes and assets, the app's helpers and
+    # everything: generated models, routes, assets and locales, the app's helpers and
     # components with their generated tables, the console tables, the
     # generated controllers, then the app's own models, jobs
     # (application_job first) with their generated half (gen/jobs.rb), and
@@ -39,6 +39,7 @@ module Cybertrain
         model_files.each { |f| lines << f.delete_prefix("gen/") }
         lines << "routes"
         lines << "assets"
+        lines << "locales"
         # The helper modules before gen/helpers (ApplicationHelpers
         # includes them), the component classes before gen/components
         # (which reopens them), ApplicationComponent first.
