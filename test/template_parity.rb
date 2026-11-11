@@ -115,18 +115,20 @@ def parity_render(mode, page)
   engine.render_with_layout(page, "layouts/application", parity_env, Cybertrain::Template::Helpers.new(nil)).to_s
 end
 
-# "Class: message", with the template named the same way in every mode:
+# "Class: message" (the exception's own class name, so two classes with one
+# message do not compare equal), with the template named the same way in
+# every mode:
 # the embedded key's ".html.erb" and the file engines' root are dropped.
 def parity_failure(mode, page)
   failure = "no error"
   begin
     parity_render(mode, page)
   rescue Cybertrain::Template::SyntaxError => e
-    failure = "SyntaxError: #{e.message}"
+    failure = "#{e.class.name}: #{e.message}"
   rescue Cybertrain::Template::RuntimeError => e
-    failure = "RuntimeError: #{e.message}"
+    failure = "#{e.class.name}: #{e.message}"
   rescue Cybertrain::Template::MissingTemplate => e
-    failure = "MissingTemplate: #{e.message}"
+    failure = "#{e.class.name}: #{e.message}"
   rescue StandardError => e
     failure = "#{e.class.name}: #{e.message}"
   end

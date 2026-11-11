@@ -408,7 +408,7 @@ module Cybertrain
       def self.emit_relation_dup(model, table)
         src = +""
         src << "  def dup\n"
-        src << "    rel = #{model}Relation.new(\"#{table.name}\")\n"
+        src << "    rel = #{model}Relation.new(@table)\n"
         src << "    copy_chain_to(rel)\n"
         src << "    rel.preloaded(to_a) if records_preloaded?\n"
         src << "    rel\n"

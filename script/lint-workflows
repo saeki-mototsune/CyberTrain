@@ -16,7 +16,12 @@
 # `inputs.NAME` or `steps.ID.outputs.NAME` that names nothing and a broken
 # `run:` script are found there too. (A wrong `with:` key is found, here and
 # in a workflow, only for the actions actionlint carries the inputs of:
-# ruby/setup-ruby@v1 is one, actions/cache/restore@v6 is not in 1.7.12.)
+# ruby/setup-ruby@v1 is one, actions/cache/restore@v6 is not in 1.7.12.
+# And only when the action is referenced by its major tag: the workflows
+# here pin actions to commits (script/check-workflows), which actionlint
+# 1.7.12 does not match against that list, so a misspelt `with:` key of a
+# pinned action is NOT reported. A reusable workflow's and a local
+# action's inputs are still checked.)
 # Two things a workflow does not need and a composite action does are checked
 # first: `runs.using: composite`, and a `shell:` on every `run:` step.
 # The line numbers actionlint prints for an action are those of that

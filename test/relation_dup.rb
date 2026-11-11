@@ -222,6 +222,13 @@ test "page windows the copy it is called on, not the source" do
   assert_equal ["D"], titles(paged.dup)
 end
 
+test "a copy keeps the table its source was built for, not the schema's" do
+  archived = PostRelation.new("archived_posts").where(views: 1)
+  copy = archived.dup
+  assert_includes archived.to_sql, "archived_posts"
+  assert_equal archived.to_sql, copy.to_sql
+end
+
 test "a copy of a preloaded association answers from its own Array of the same records" do
   seed_posts
   post = Post.where(title: "A").includes(:comments).to_a[0]

@@ -264,7 +264,7 @@ follows the rule even where a probe passes.
 CI's `SPINEL_TAG`, the numbers the tests print). The pull request that
 carries it also:
 
-1. Runs everything compiled: `spin test`, then `cd examples/blog && spin run gen && git diff --exit-code -- gen/ && spin test`, and the generated application of CI's end-to-end job. A snapshot that changes is a behaviour change of the compiler: explain it, do not regenerate it away.
+1. Runs everything compiled: `spin test`, then `cd examples/blog && spin run gen && test -z "$(git status --porcelain --untracked-files=all -- gen/)" && spin test` (the status, not `git diff`: a new generated file is untracked and a diff does not show it), and the generated application of CI's end-to-end job. A snapshot that changes is a behaviour change of the compiler: explain it, do not regenerate it away.
 2. Runs `bench/run` on the one- and two-core configurations and compares with the last `bench/results/*.json` (D34, docs/benchmark.md): rules 22 and 57 and spinel-feedback 4 to 7 are about cost, which no test sees.
 3. Re-checks the rows of the second table above whose status says "still there" or "required", with the rule's reduced program, and writes the result into a new "Status on <tag>" section (keep the old one: a rule's history is part of the record). Rows marked accepted (spinel-feedback, "Accepted as Spinel constraints") and the first table are not re-checked.
 4. Reads Spinel's release notes and docs/limitations.md for a changed default (the worker count, `--int-overflow`, a new refusal): a refusal by design becomes a rule here, not a workaround.

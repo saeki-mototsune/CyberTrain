@@ -96,12 +96,18 @@ module Cybertrain
         # Also when a feed's start raised (D66): the feeds started before
         # it are stopped. The flags are the role's: an in-process caller (a
         # test) that runs another role afterwards starts clean.
-        Background.stop_all unless stopped
-        Background.exit_on_feed_death = false
-        Background.reset_supervisor!
-        Runtime.leave_role
-        trap("TERM", previous_term)
-        trap("INT", previous_int)
+        # A service whose stop raises must not keep the role claimed or
+        # the caller's handlers replaced: the inner ensure runs either way,
+        # and the exception goes on to the caller.
+        begin
+          Background.stop_all unless stopped
+        ensure
+          Background.exit_on_feed_death = false
+          Background.reset_supervisor!
+          Runtime.leave_role
+          trap("TERM", previous_term)
+          trap("INT", previous_int)
+        end
       end
     end
   end

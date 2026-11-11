@@ -65,7 +65,7 @@ class ArticleRelation < Cybertrain::Relation
   end
 
   def dup
-    rel = ArticleRelation.new("articles")
+    rel = ArticleRelation.new(@table)
     copy_chain_to(rel)
     rel.preloaded(to_a) if records_preloaded?
     rel

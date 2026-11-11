@@ -210,7 +210,11 @@ module Cybertrain
     # process-shared settings stay as the boot left them until the next
     # boot or Runtime.reset!. Call it after #serve, #run_worker or
     # #run_feeds has returned (they stop their own threads), never while
-    # one runs. #boot may be called again afterwards.
+    # one runs. Scheduler.stop! asks the scheduler to stop without waiting
+    # for a task in progress, so an in-process caller that shuts down right
+    # after a role returned should let a running Scheduler task finish
+    # first: it would find the pool closed (DB::Error). #boot may be called
+    # again afterwards.
     # @return [nil]
     # @api public
     def shutdown

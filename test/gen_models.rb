@@ -119,7 +119,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       end
 
       def dup
-        rel = PostRelation.new("posts")
+        rel = PostRelation.new(@table)
         copy_chain_to(rel)
         rel.preloaded(to_a) if records_preloaded?
         rel
@@ -565,7 +565,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       end
 
       def dup
-        rel = CommentRelation.new("comments")
+        rel = CommentRelation.new(@table)
         copy_chain_to(rel)
         rel.preloaded(to_a) if records_preloaded?
         rel
@@ -1017,7 +1017,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       end
 
       def dup
-        rel = FlagRelation.new("flags")
+        rel = FlagRelation.new(@table)
         copy_chain_to(rel)
         rel.preloaded(to_a) if records_preloaded?
         rel

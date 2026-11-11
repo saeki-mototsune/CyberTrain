@@ -22,37 +22,37 @@ ok   pages/statements renders the same from files, from cached files and from th
 
 </body></html>
 ok   pages/partials renders the same from files, from cached files and from the embedded table
-  RuntimeError: errors/undefined_helper:2: undefined helper 'no_such_helper'
+  Cybertrain::Template::RuntimeError: errors/undefined_helper:2: undefined helper 'no_such_helper'
 ok   errors/undefined_helper fails the same way in all three
-  RuntimeError: errors/undefined_method:3: undefined method 'no_such_method' for String
+  Cybertrain::Template::RuntimeError: errors/undefined_method:3: undefined method 'no_such_method' for String
 ok   errors/undefined_method fails the same way in all three
-  RuntimeError: errors/each_on_scalar:1: undefined method 'each' for Integer
+  Cybertrain::Template::RuntimeError: errors/each_on_scalar:1: undefined method 'each' for Integer
 ok   errors/each_on_scalar fails the same way in all three
-  RuntimeError: errors/zero:1: divided by 0
+  Cybertrain::Template::RuntimeError: errors/zero:1: divided by 0
 ok   errors/zero fails the same way in all three
-  RuntimeError: errors/missing_local:1: missing local 'position' for pages/_item
+  Cybertrain::Template::RuntimeError: errors/missing_local:1: missing local 'position' for pages/_item
 ok   errors/missing_local fails the same way in all three
-  RuntimeError: errors/unknown_local:1: unknown local 'extra' for pages/_item
+  Cybertrain::Template::RuntimeError: errors/unknown_local:1: unknown local 'extra' for pages/_item
 ok   errors/unknown_local fails the same way in all three
-  RuntimeError: errors/_broken:2: undefined method 'no_such_method' for String
+  Cybertrain::Template::RuntimeError: errors/_broken:2: undefined method 'no_such_method' for String
 ok   errors/in_partial fails the same way in all three
-  MissingTemplate: Missing template errors/nope
+  Cybertrain::Template::MissingTemplate: Missing template errors/nope
 ok   errors/nope fails the same way in all three
-  SyntaxError: syntax/unclosed_if:1: 'if' without 'end'
+  Cybertrain::Template::SyntaxError: syntax/unclosed_if:1: 'if' without 'end'
 ok   syntax/unclosed_if fails the same way in all three
-  SyntaxError: syntax/unclosed_tag:2: unterminated <% tag
+  Cybertrain::Template::SyntaxError: syntax/unclosed_tag:2: unterminated <% tag
 ok   syntax/unclosed_tag fails the same way in all three
-  SyntaxError: syntax/reserved_word:1: unexpected 'and' in 'name and nothing'
+  Cybertrain::Template::SyntaxError: syntax/reserved_word:1: unexpected 'and' in 'name and nothing'
 ok   syntax/reserved_word fails the same way in all three
-  SyntaxError: syntax/constant:1: constants are not supported: 'Time'
+  Cybertrain::Template::SyntaxError: syntax/constant:1: constants are not supported: 'Time'
 ok   syntax/constant fails the same way in all three
-  SyntaxError: syntax/space_before_paren:1: unexpected '(' in 'name.center (9)'
+  Cybertrain::Template::SyntaxError: syntax/space_before_paren:1: unexpected '(' in 'name.center (9)'
 ok   syntax/space_before_paren fails the same way in all three
-  SyntaxError: syntax/assignment_in_output:1: unexpected '=' in 'x = 1'
+  Cybertrain::Template::SyntaxError: syntax/assignment_in_output:1: unexpected '=' in 'x = 1'
 ok   syntax/assignment_in_output fails the same way in all three
-  SyntaxError: syntax/stray_end:2: 'end' without an opening block
+  Cybertrain::Template::SyntaxError: syntax/stray_end:2: 'end' without an opening block
 ok   syntax/stray_end fails the same way in all three
-  SyntaxError: syntax/hashrocket:1: unexpected 'a' in '{ "a" => 1 }.size'
+  Cybertrain::Template::SyntaxError: syntax/hashrocket:1: unexpected 'a' in '{ "a" => 1 }.size'
 ok   syntax/hashrocket fails the same way in all three
 ok   an edited file is picked up in development only; the cached and embedded engines keep what they parsed
 20 tests, 58 assertions, 0 failures

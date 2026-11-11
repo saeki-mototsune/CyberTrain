@@ -112,11 +112,11 @@ module Cybertrain
             # Flags only (safe in a trap): the job threads stop claiming
             # while the requests drain, so Job.stop! waits out only what is
             # left of its job_drain_timeout, inside systemd's TimeoutStopSec.
-            trap("TERM") do
+            previous_term = trap("TERM") do
               srv.request_stop
               Job.request_stop
             end
-            srv.wait
+            wait_for_stop(srv, previous_term)
           end
         ensure
           # Also when a start above raised (D66): each stop is a no-op for
@@ -153,12 +153,21 @@ module Cybertrain
       # gen ran) is only picked up by the next change.
       def serve_development(srv)
         rebuilder = @rebuilder
-        trap("TERM") do
+        previous_term = trap("TERM") do
           srv.request_stop
           Job.request_stop
         end
-        trap("HUP") { request_restart }
+        previous_hup = trap("HUP") { request_restart }
         watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
+        watch_and_wait(srv, rebuilder, watcher, previous_term, previous_hup)
+      end
+
+      # The development server's lifetime. When it ends without an exec
+      # (SIGTERM, or an in-process caller's Server#stop) the watcher is
+      # stopped, so a later edit does not rebuild an application nobody
+      # serves, and the TERM and HUP handlers the role replaced are given
+      # back, as the other roles give theirs back.
+      def watch_and_wait(srv, rebuilder, watcher, previous_term, previous_hup)
         watcher.start { |paths| rebuild_after_change(rebuilder, paths) }
         @serving = true
         spawn_restart_monitor(srv)
@@ -166,6 +175,22 @@ module Cybertrain
         @serving = false
         exec_new_build(srv, rebuilder) if @restart_requested
         nil
+      ensure
+        @serving = false
+        watcher.stop
+        trap("TERM", previous_term)
+        trap("HUP", previous_hup)
+      end
+
+      # The production wait: until the TERM trap (or Server#stop) ends it,
+      # then the handler the role replaced is given back, so an in-process
+      # caller's own TERM handler works again once the role has returned.
+      # @param previous_term [Object] what trap("TERM") answered
+      def wait_for_stop(srv, previous_term)
+        srv.wait
+        nil
+      ensure
+        trap("TERM", previous_term)
       end
 
       # What the SIGHUP handler does: nothing but set a flag.
