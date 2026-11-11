@@ -16,7 +16,7 @@ wrote gen/jobs.rb
 wrote gen/console.rb
 wrote gen/app.rb
 identical gen/routes.rb
-identical gen/assets.rb
+wrote gen/assets.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 wrote gen/views.rb
@@ -26,7 +26,7 @@ identical gen/jobs.rb
 identical gen/console.rb
 identical gen/app.rb
 identical gen/routes.rb
-identical gen/assets.rb
+wrote gen/assets.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 wrote gen/views.rb
