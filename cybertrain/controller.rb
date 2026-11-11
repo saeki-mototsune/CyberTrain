@@ -9,6 +9,7 @@ require "cybertrain/callback"
 require "cybertrain/rate_limit"
 require "cybertrain/views"
 require "cybertrain/rendering"
+require "cybertrain/http_cache"
 require "cybertrain/assets"
 require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
@@ -757,7 +758,7 @@ module Cybertrain
     # Acceptable` (a `:json` request with no template and no `render`
     # included). A request whose Accept also lists HTML (Turbo's, or
     # `application/json, text/plain, */*`) gets the html template when
-    # there is none for its own format ({Rendering.accepts_html?}). After a
+    # there is none for its own format (`Rendering.accepts_html?`). After a
     # {#respond_to} whose matching declaration's block rendered nothing,
     # the format it matched decides instead of the request's.
     def default_render(action)
@@ -1035,20 +1036,7 @@ module Cybertrain
       Rendering.partial_html(self.class.name, controller_path, name, given, view_env(given), helpers)
     end
 
-    # Whether a Vary value already covers Accept (lists it, in any case,
-    # or is `*`).
-    # @param vary [String]
-    # @return [Boolean]
-    # @api private
-    def self.vary_lists_accept?(vary)
-      vary.split(",").each do |item|
-        name = item.strip.downcase
-        return true if name == "accept" || name == "*"
-      end
-      false
-    end
-
-    # The layout `render layout: name` names ({Rendering.layout_named});
+    # The layout `render layout: name` names (`Rendering.layout_named`);
     # gen/controllers.rb calls it for a `layout :method` line's value.
     # @param name [String]
     # @return [String]
@@ -1298,8 +1286,8 @@ module Cybertrain
     # @return [nil]
     # @api public
     def fresh_when(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
-      apply_validators(etag, last_modified, public)
-      head :not_modified if request_fresh?
+      HttpCache.set_validators(@request, @response, etag, last_modified, public)
+      head :not_modified if HttpCache.validators_fresh?(@request, @response)
       nil
     end
 
@@ -1317,8 +1305,8 @@ module Cybertrain
     # @return [Boolean] true when the action should render
     # @api public
     def stale?(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
-      apply_validators(etag, last_modified, public)
-      return true unless request_fresh?
+      HttpCache.set_validators(@request, @response, etag, last_modified, public)
+      return true unless HttpCache.validators_fresh?(@request, @response)
 
       head :not_modified
       false
@@ -1337,8 +1325,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def expires_in(seconds, public: false)
-      @response.set_header("Cache-Control", "max-age=#{seconds.to_i}, #{public ? "public" : "private"}")
-      nil
+      HttpCache.lifetime(@response, seconds, public)
     end
 
     # @return [Boolean] true once this request has been rendered,
@@ -1349,84 +1336,6 @@ module Cybertrain
     end
 
     private
-
-    # The ETag, Last-Modified and (unless expires_in set one) Cache-Control
-    # headers of fresh_when and stale?.
-    def apply_validators(etag, last_modified, public)
-      key = validator_key(etag)
-      unless key.empty?
-        # The format and the build digest too (see fresh_when): "\0" never
-        # occurs in a format or a hex digest, so the parts cannot run together.
-        keyed = "#{key}\0#{@request.format}\0#{Assets.build_digest}"
-        @response.set_header("ETag", "W/\"#{Digest::SHA256.hexdigest(keyed).byteslice(0, 32)}\"")
-      end
-      stamp = validator_time(last_modified)
-      @response.set_header("Last-Modified", Request.http_date(Time.at(stamp).utc)) if stamp >= 0
-      if @response.header("Cache-Control").nil?
-        @response.set_header("Cache-Control", public ? "max-age=0, public, must-revalidate" : "max-age=0, private, must-revalidate")
-      end
-      nil
-    end
-
-    # The text an ETag is made from: a String as given, a record as
-    # "posts/1-<updated_at epoch>", "" for nil; anything else is an
-    # ArgumentError.
-    def validator_key(value)
-      case value
-      when String then value.to_s
-      when nil then ""
-      when Model
-        name = Inflector.pluralize(Inflector.underscore(value.model_name))
-        at = Cast.time_or_nil(value.read_attribute(:updated_at))
-        at.nil? ? "#{name}/#{value.to_param}" : "#{name}/#{value.to_param}-#{at.to_i}"
-      else
-        message = "etag: must be a String or a record, got #{value.class}"
-        raise ArgumentError, message
-      end
-    end
-
-    # A Last-Modified value as epoch seconds, -1 for none. `when Time`
-    # first (NOTES rule 8).
-    def validator_time(value)
-      case value
-      when Time then value.to_i
-      else -1
-      end
-    end
-
-    # Whether the request's validators say the client's copy is current:
-    # RFC 9110 section 13.1.3 and 13.1.4 for GET and HEAD: a non-empty
-    # If-None-Match decides alone and If-Modified-Since is ignored; without
-    # one, a parseable If-Modified-Since decides.
-    def request_fresh?
-      return false unless @request.get? || @request.head?
-
-      since = Request.parse_http_date(@request.header("If-Modified-Since").to_s)
-      none_match = @request.header("If-None-Match").to_s
-      return etag_listed?(none_match, @response.header("ETag").to_s) unless none_match.empty?
-      return false if since < 0
-
-      stamp = Request.parse_http_date(@response.header("Last-Modified").to_s)
-      stamp >= 0 && stamp <= since
-    end
-
-    # Whether the If-None-Match list names `tag` (weak comparison: a W/
-    # prefix is ignored) or is `*`.
-    def etag_listed?(list, tag)
-      return false if tag.empty?
-
-      want = strip_weak(tag)
-      list.split(",").each do |item|
-        entry = item.strip
-        return true if entry == "*"
-        return true if strip_weak(entry) == want
-      end
-      false
-    end
-
-    def strip_weak(tag)
-      tag.start_with?("W/") ? tag.byteslice(2, tag.bytesize - 2).to_s : tag
-    end
 
     def run_action(action, body)
       @action_name = action.to_s
@@ -1439,7 +1348,7 @@ module Cybertrain
           default_render(action) unless performed?
           run_after_callbacks(chain, action)
         end
-        apply_vary_accept
+        HttpCache.add_vary_accept(@request, @response)
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
         # JSON::ParserError named (NOTES rule 33: not a StandardError under
         # Spinel) so an action's bad JSON.parse goes through
@@ -1448,28 +1357,7 @@ module Cybertrain
         # constant cannot be referenced as a value (rule 48), so no app can
         # register one there and the exception goes on to the error pages.
         rescue_with_handler(e)
-        apply_vary_accept
-      end
-      nil
-    end
-
-    # `Vary: Accept` on a response whose format came from the Accept header
-    # (the path has no extension, and the request sent one): one URL answers
-    # HTML, JSON or a Turbo Stream by Accept, so a cache must key on it, or
-    # a browser hands a cached HTML page to a later fetch for JSON (Rails'
-    # should_apply_vary_header?). Added to a Vary the action set, unless
-    # that already lists Accept or is `*`.
-    def apply_vary_accept
-      req = @request
-      return nil unless req.format_extension.empty?
-      return nil if req.header("Accept").to_s.empty?
-
-      r = @response
-      vary = r.header("Vary").to_s
-      if vary.strip.empty?
-        r.set_header("Vary", "Accept")
-      elsif !Controller.vary_lists_accept?(vary)
-        r.set_header("Vary", "#{vary}, Accept")
+        HttpCache.add_vary_accept(@request, @response)
       end
       nil
     end
