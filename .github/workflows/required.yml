@@ -38,9 +38,14 @@ jobs:
   # changing .github/rulesets/main.json and the ruleset itself.
   required:
     runs-on: ubuntu-26.04
-    # Longer than the slowest workflow it waits for (the playground image
-    # allows itself 45 minutes) plus the time that one may spend queued.
-    timeout-minutes: 90
+    # Longer than the slowest workflow it waits for plus the time that one
+    # may spend queued. The slowest is CI: its macOS job allows itself 120
+    # minutes (65 measured), and the first run on a pull request took 98
+    # minutes from start to finish while this job, then waiting 80, gave up
+    # on it (run 43086752319, 2026-11-11). The wait below is 170 minutes,
+    # and this limit a little more, so that the job reports its own
+    # message rather than being cut off.
+    timeout-minutes: 180
     steps:
       - name: Every other workflow run for this commit has passed
         env:
@@ -48,7 +53,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           set -eu
-          deadline=$(( $(date +%s) + ${WAIT_SECONDS:-4800} ))
+          deadline=$(( $(date +%s) + ${WAIT_SECONDS:-10200} ))
           interval=${POLL_SECONDS:-30}
           list() {
             gh api --paginate \
