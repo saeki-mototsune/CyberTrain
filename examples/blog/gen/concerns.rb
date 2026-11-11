@@ -6,3 +6,20 @@
 # (Cybertrain::Controller.concern_insert_at,
 # Cybertrain::Model.model_concern_insert_at). Loaded after the
 # application's classes.
+
+module AdminGate
+  # The admin lists' page size: `self.class.per_page` in an action.
+  def self.per_page = 20
+end
+
+module Admin
+  class ArticlesController
+    def self.per_page(...) = AdminGate.per_page(...)
+
+    # AdminGate (include AdminGate at app/controllers/admin/articles_controller.rb:6)
+    concern_insert_at(0, 0)
+    before_action :require_admin
+    helper_method :admin?
+    concern_insert_done
+  end
+end

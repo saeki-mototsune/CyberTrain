@@ -161,9 +161,10 @@ test "the article page renders each comment with CommentComponent and subscribes
   names = Cybertrain::Stream.verified_names(stream_token(res.body))
   assert_equal 1, names.size
   assert_equal "articles:#{article.id}", names[0]
-  # The layout loads Turbo, which makes <turbo-stream-source> live.
-  assert_includes res.body, "<script type=\"module\" src=\"https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js\""
-  assert_nil res.body.index("asset pipeline")
+  # The layout loads Turbo through the import map (config/importmap.rb),
+  # which makes <turbo-stream-source> live.
+  assert_includes res.body, "\"@hotwired/turbo\":\"https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js\""
+  assert_includes res.body, "<script type=\"module\" nonce=\""
 end
 
 test "a new comment is broadcast as a Turbo Stream append to the article's stream" do
@@ -253,6 +254,62 @@ test "a comment that is not saved enqueues no job" do
                                         "comment[commenter]" => "",
                                         "comment[body]" => "Anonymous words" })
   assert_no_enqueued_jobs
+end
+
+TURBO_STREAM_ACCEPT = { "Accept" => "text/vnd.turbo-stream.html, text/html, application/xhtml+xml" }.freeze
+
+test "a comment posted by Turbo answers create.turbo_stream.erb: the comment appended and the form reset" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<div id=\"comment_form\">"
+  res = client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                              "comment[commenter]" => "Dave",
+                                              "comment[body]" => "Streamed <i>in</i>" }, TURBO_STREAM_ACCEPT)
+  assert_response res, :ok
+  assert_equal "text/vnd.turbo-stream.html; charset=utf-8", res.header("Content-Type").to_s
+  comment = Comment.last
+  refute comment.nil?, "expected the comment to be saved"
+  assert_equal "Dave", comment.commenter
+  assert_includes res.body, "<turbo-stream action=\"append\" target=\"comments\"><template>" \
+                            "<div class=\"comment\" id=\"comment_#{comment.id}\">"
+  assert_includes res.body, "<strong class=\"comment-author\">Dave</strong> wrote:"
+  assert_includes res.body, "Streamed &lt;i&gt;in&lt;/i&gt;"
+  assert_includes res.body, "<turbo-stream action=\"update\" target=\"comment_form\"><template>" \
+                            "<form action=\"#{comments_path(article)}\" method=\"post\">"
+  assert_includes res.body, "<textarea name=\"comment[body]\" id=\"comment_body\">\n</textarea>"
+  assert_nil res.body.index("<html")
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => comment.id, "article_id" => article.id }
+
+  # No flash is left for the next page: the stream already showed the comment.
+  res = client.get(BlogTest.article_path(article))
+  assert_nil res.body.index("successfully created")
+end
+
+test "a comment posted without the Turbo Stream Accept header still redirects with 303" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  res = client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                              "comment[commenter]" => "Erin",
+                                              "comment[body]" => "Plain form" }, { "Accept" => "text/html" })
+  assert_redirected_to res, BlogTest.article_path(article)
+  assert_response res, :see_other
+  assert_equal 1, Comment.count
+end
+
+test "an invalid comment posted by Turbo redirects back with the alert" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  res = client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                              "comment[commenter]" => "",
+                                              "comment[body]" => "Anonymous words" }, TURBO_STREAM_ACCEPT)
+  assert_redirected_to res, BlogTest.article_path(article)
+  assert_response res, :see_other
+  assert_equal 0, Comment.count
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"alert\">Comment could not be saved: Commenter can&#39;t be blank</p>"
 end
 
 Cybertrain::Test.run!

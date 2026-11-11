@@ -5,17 +5,22 @@ module Gen
   module Assets
     # "logo.svg" -> "/assets/logo-1a2b3c4d.svg"; "" for a name that is not an asset.
     def self.digest_path(logical)
-      ""
+      case logical
+      when "application.css" then "/assets/application-9fd1aedf.css"
+      when "application.js" then "/assets/application-493948bc.js"
+      when "logo.svg" then "/assets/logo-8177afd7.svg"
+      else ""
+      end
     end
 
     # The import map of config/importmap.rb, as compact JSON.
     def self.importmap_json
-      "{\"imports\":{}}"
+      "{\"imports\":{\"application\":\"/assets/application-493948bc.js\",\"@hotwired/turbo\":\"https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js\"}}"
     end
 
     # The paths javascript_importmap_tags preloads, in pin order.
     def self.preload_paths
-      Array.new(0) { "" }
+      ["/assets/application-493948bc.js", "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"]
     end
 
     def self.resolver = ->(name) { digest_path(name) }

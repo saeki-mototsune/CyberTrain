@@ -1,0 +1,5 @@
+<%# CommentsController#create's answer to a form Turbo submitted: the new
+    comment at the end of #comments, then an empty form in place of the
+    one just sent. %>
+<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
+<%= turbo_stream.update "comment_form", partial: "comments/form", locals: { comment: @new_comment } %>

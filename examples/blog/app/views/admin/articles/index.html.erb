@@ -1,0 +1,26 @@
+<h1>Admin: articles</h1>
+
+<p class="admin-count"><%= number_with_delimiter(@article_count) %> <%= @article_count == 1 ? "article" : "articles" %></p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Created</th>
+      <th>Comments</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @articles.each do |article| %>
+      <tr>
+        <td><%= article.title %></td>
+        <td><%= time_tag article.created_at, format: :long %></td>
+        <td><%= number_with_delimiter(article.comments.size) %></td>
+        <td><%= button_to "Delete", admin_article_path(article), method: :delete %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<p><%= link_to "Jobs", "/admin/jobs" %> | <%= link_to "Back to articles", articles_path %></p>

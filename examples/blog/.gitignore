@@ -3,4 +3,4 @@
 /storage/*.sqlite3*
 /tmp/*
 /log/
-/public/assets/.manifest
+/public/assets/

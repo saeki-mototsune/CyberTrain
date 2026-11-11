@@ -11,6 +11,7 @@
 !examples/blog/
 examples/blog/.kamal/
 examples/blog/build/
+examples/blog/public/assets/
 examples/blog/dist/
 examples/blog/log/
 examples/blog/storage/*

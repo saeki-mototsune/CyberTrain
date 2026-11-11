@@ -28,4 +28,13 @@ ok   a wrong token at /admin/login is 404 and signs nobody in
 ok   with BLOG_ADMIN_TOKEN unset or empty nothing opens the jobs page
 ok   an admin session is 404 once BLOG_ADMIN_TOKEN changes
 ok   config/app.rb schedules the prune of done jobs, which keeps the last 7 days
-26 tests, 162 assertions, 0 failures
+ok   /articles.json and /articles/:id.json answer JSON through respond_to; /articles.xml is 406
+ok   the layout links the digested stylesheet, which is served immutable with its url() digested
+ok   the import map pins Turbo and the application entry point, with the CSP nonce
+ok   the order select puts the oldest first with ?order=old
+ok   counts go through number_with_delimiter and dates through time_tag
+ok   /admin/articles is 404 without the token and lists the articles with it
+ok   the admin list shows at most per_page (20) articles, newest first
+ok   DELETE /admin/articles/:id with the token deletes the article; without it, 404
+ok   a signed-in browser reaches /admin/articles, and the article page links to it
+35 tests, 242 assertions, 0 failures

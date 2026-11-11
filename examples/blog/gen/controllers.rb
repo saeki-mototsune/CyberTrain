@@ -13,6 +13,38 @@ class ApplicationController < Cybertrain::Controller
   end
 end
 
+module Admin
+  class ArticlesController < ::ApplicationController
+    def view_assigns
+      { "articles" => @articles, "article_count" => @article_count }
+    end
+
+    def run_callback(name)
+      case name
+      when :require_admin then require_admin
+      else super
+      end
+    end
+
+    def helper_method?(name)
+      case name
+      when "admin?" then true
+      else super
+      end
+    end
+
+    def call_helper_method(name, args, kwargs)
+      case name
+      when "admin?"
+        Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+        Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+        admin?
+      else super
+      end
+    end
+  end
+end
+
 class AdminSessionsController < ApplicationController
   def view_assigns
     {}
@@ -21,7 +53,7 @@ end
 
 class ArticlesController < ApplicationController
   def view_assigns
-    { "from" => @from, "to" => @to, "articles" => @articles, "article_count" => @article_count, "comment" => @comment, "article" => @article }
+    { "from" => @from, "to" => @to, "order" => @order, "articles" => @articles, "article_count" => @article_count, "comment" => @comment, "article" => @article }
   end
 
   def run_callback(name)
@@ -30,11 +62,28 @@ class ArticlesController < ApplicationController
     else super
     end
   end
+
+  def helper_method?(name)
+    case name
+    when "admin?" then true
+    else super
+    end
+  end
+
+  def call_helper_method(name, args, kwargs)
+    case name
+    when "admin?"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      admin?
+    else super
+    end
+  end
 end
 
 class CommentsController < ApplicationController
   def view_assigns
-    { "comment" => @comment, "article" => @article }
+    { "comment" => @comment, "new_comment" => @new_comment, "article" => @article }
   end
 
   def run_callback(name)

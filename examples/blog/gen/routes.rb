@@ -15,6 +15,8 @@ module Gen
       router.add("PATCH", "/articles/:id", "") { |ctx| ArticlesController.new(ctx).process(:update) { |c| c.update } }
       router.add("PUT", "/articles/:id", "") { |ctx| ArticlesController.new(ctx).process(:update) { |c| c.update } }
       router.add("DELETE", "/articles/:id", "") { |ctx| ArticlesController.new(ctx).process(:destroy) { |c| c.destroy } }
+      router.add("GET", "/admin/articles", "admin_articles") { |ctx| Admin::ArticlesController.new(ctx).process(:index) { |c| c.index } }
+      router.add("DELETE", "/admin/articles/:id", "admin_article") { |ctx| Admin::ArticlesController.new(ctx).process(:destroy) { |c| c.destroy } }
       router.add("GET", "/admin/jobs", "") { |ctx| CybertrainJobsController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/admin/jobs/retry_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry_all) { |c| c.retry_all_action } }
       router.add("POST", "/admin/jobs/discard_all", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard_all_failed) { |c| c.discard_all_failed_action } }
@@ -43,6 +45,10 @@ module Gen
       when "edit_article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/edit", options)
       when "article_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}", options)
       when "article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "admin_articles_path" then Cybertrain::Gen.with_options("/admin/articles", options)
+      when "admin_articles_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/articles", options)
+      when "admin_article_path" then Cybertrain::Gen.with_options("/admin/articles/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "admin_article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/articles/#{Cybertrain::Gen.segment(args[0])}", options)
       when "admin_login_path" then Cybertrain::Gen.with_options("/admin/login", options)
       when "admin_login_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/login", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
@@ -110,6 +116,22 @@ module Gen
 
     def article_url(article, options = {})
       Cybertrain.url_root + article_path(article, options)
+    end
+
+    def admin_articles_path(options = {})
+      Cybertrain::Gen.with_options("/admin/articles", options)
+    end
+
+    def admin_articles_url(options = {})
+      Cybertrain.url_root + admin_articles_path(options)
+    end
+
+    def admin_article_path(article, options = {})
+      Cybertrain::Gen.with_options("/admin/articles/#{Cybertrain::Gen.segment(article)}", options)
+    end
+
+    def admin_article_url(article, options = {})
+      Cybertrain.url_root + admin_article_path(article, options)
     end
 
     def admin_login_path(options = {})
