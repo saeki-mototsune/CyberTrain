@@ -1,0 +1,10 @@
+ok   a generated model knows its columns, associations and view methods
+ok   an attribute that is nil renders empty
+ok   a name the model does not have is an error naming the template, line, name and model
+ok   associations: a has_many as an Array, a belongs_to as the record, a missing one as nil
+ok   view methods, a concern's included
+ok   outside a request a record reads the same
+ok   outside a request an unknown name is the same error, and a request-bound helper still OutsideRequest
+ok   options_from_collection_for_select reads a view method and refuses an unknown name
+ok   a model that does not declare its names keeps an unanswered name nil
+9 tests, 32 assertions, 0 failures

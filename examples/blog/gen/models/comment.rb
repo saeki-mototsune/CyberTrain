@@ -421,6 +421,14 @@ class Comment < Cybertrain::Model
 
   def call_view_method(name) = nil
 
+  def attribute_or_method?(name)
+    case name
+    when :id, :commenter, :body, :article_id, :created_at, :updated_at then true
+    when :article then true
+    else false
+    end
+  end
+
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
     rel = CommentRelation.new("comments")
     if case_sensitive || value.nil?

@@ -411,6 +411,14 @@ class Article < Cybertrain::Model
 
   def call_view_method(name) = nil
 
+  def attribute_or_method?(name)
+    case name
+    when :id, :title, :body, :created_at, :updated_at then true
+    when :comments then true
+    else false
+    end
+  end
+
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
     rel = ArticleRelation.new("articles")
     if case_sensitive || value.nil?

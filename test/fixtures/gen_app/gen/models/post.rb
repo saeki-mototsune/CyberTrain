@@ -487,6 +487,15 @@ class Post < Cybertrain::Model
     end
   end
 
+  def attribute_or_method?(name)
+    case name
+    when :id, :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :thumbnail, :hidden, :created_at, :updated_at then true
+    when :comments then true
+    when :visible?, :summary, :published? then true
+    else false
+    end
+  end
+
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
     rel = PostRelation.new("posts")
     if rel.encrypted_column?(attr.to_s)

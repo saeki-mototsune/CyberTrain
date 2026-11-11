@@ -467,9 +467,13 @@ module Cybertrain
     def read_association(name) = nil
     def call_view_method(name) = nil
 
-    # Whether a template may read `name` from this record. The base answer
-    # is true: a model that does not declare its names (a hand-written
-    # subclass) keeps every unanswered name a nil.
+    # Whether a template may read `name` from this record. A generated
+    # model answers with a `case` over its columns, associations and view
+    # methods (ModelsEmitter.emit_attribute_or_method), so a name it does
+    # not have is an "undefined method" error in the template instead of an
+    # empty string (docs/design.md D71). The base answer is true: a model
+    # that does not declare its names (a hand-written subclass) keeps
+    # every unanswered name a nil.
     # @param name [Symbol]
     # @return [Boolean]
     # @api private

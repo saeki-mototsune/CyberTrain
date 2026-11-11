@@ -462,6 +462,15 @@ EXPECTED_POST = HEADER + <<~'RUBY'
         end
       end
 
+      def attribute_or_method?(name)
+        case name
+        when :id, :title, :body, :created_at, :updated_at then true
+        when :comments then true
+        when :summary then true
+        else false
+        end
+      end
+
       def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
         rel = PostRelation.new("posts")
         if case_sensitive || value.nil?
@@ -903,6 +912,14 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
 
       def call_view_method(name) = nil
 
+      def attribute_or_method?(name)
+        case name
+        when :id, :post_id, :author, :body, :created_at, :updated_at then true
+        when :post then true
+        else false
+        end
+      end
+
       def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
         rel = CommentRelation.new("comments")
         if case_sensitive || value.nil?
@@ -1252,6 +1269,13 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def read_association(name) = nil
       def call_view_method(name) = nil
 
+      def attribute_or_method?(name)
+        case name
+        when :id, :active, :score, :group then true
+        else false
+        end
+      end
+
       def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
         rel = FlagRelation.new("flags")
         if case_sensitive || value.nil?
@@ -1352,6 +1376,18 @@ test "call_view_method with a scanned summary" do
   post = emit_for("posts", info.view_methods)
   assert_lines(post, ["def call_view_method(name)", "when :summary then self.summary"])
   assert_lines(emit_for("comments"), ["def call_view_method(name) = nil"])
+end
+
+test "attribute_or_method? answers the names the three readers answer, one when per group" do
+  info = Cybertrain::Gen::ModelScan.scan_source("app/models/post.rb", "class Post\n  def summary = title[0, 3]\n  def draft? = body.nil?\nend\n")
+  post = emit_for("posts", info.view_methods)
+  assert_lines(post, ["def attribute_or_method?(name)", "when :id, :title, :body, :created_at, :updated_at then true",
+                      "when :comments then true", "when :summary, :draft? then true", "else false"])
+  # no view methods: no third `when`; no associations either: the columns alone
+  comment = emit_for("comments")
+  assert_lines(comment, ["when :id, :post_id, :author, :body, :created_at, :updated_at then true", "when :post then true"])
+  assert !comment.include?("when :post then true\n    when")
+  assert_lines(emit_for("flags"), ["when :id, :active, :score, :group then true"])
 end
 
 # ---- the column type map --------------------------------------------------
@@ -1745,6 +1781,8 @@ test "a reserved column name generates under <column>_column with a note; read_a
     '@attributes_column = Cybertrain::Cast.str_or_nil(row["attributes"])',
     '@errors_column = Cybertrain::Cast.int_or_nil(row["errors"])',
     "when :hash, :hash_column then @hash_column",
+    # attribute_or_method? knows the column under both spellings too
+    "when :id, :title, :hash, :hash_column, :attributes, :attributes_column, :errors, :errors_column, :to_param, :to_param_column then true",
     "when :attributes, :attributes_column then @attributes_column",
     "when :errors, :errors_column then @errors_column",
     "when :hash, :hash_column then @hash_column = Cybertrain::Cast.str_or_nil(value)",

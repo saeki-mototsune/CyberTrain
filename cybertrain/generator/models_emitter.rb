@@ -713,6 +713,28 @@ module Cybertrain
         src << emit_read_association(plans)
         src << "\n" unless plans.empty? && methods.empty?
         src << emit_case("call_view_method", methods)
+        src << "\n"
+        src << emit_attribute_or_method(table, assoc_names, methods)
+        src
+      end
+
+      # attribute_or_method?: the names read_attribute, read_association and
+      # call_view_method above answer, one `when` per group, so that the
+      # template layer can tell a nil value from a name the model does not
+      # have (Cybertrain::Model, "what a template may read"). The keys are
+      # the same ones those three use: a renamed column under both its
+      # names (attribute_keys).
+      def self.emit_attribute_or_method(table, assoc_names, methods)
+        columns = [":id"]
+        table.columns.each { |c| columns << attribute_keys(c.name) }
+        src = +"  def attribute_or_method?(name)\n"
+        src << "    case name\n"
+        src << "    when #{columns.join(", ")} then true\n"
+        src << "    when #{assoc_names.map { |n| ":" + n }.join(", ")} then true\n" unless assoc_names.empty?
+        src << "    when #{methods.map { |n| ":" + n }.join(", ")} then true\n" unless methods.empty?
+        src << "    else false\n"
+        src << "    end\n"
+        src << "  end\n"
         src
       end
 
