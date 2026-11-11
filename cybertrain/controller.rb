@@ -1526,8 +1526,10 @@ module Cybertrain
       # Every action starts at the default locale: a keep-alive connection
       # serves its requests on one thread, and I18n.locale is that
       # thread's (Thread.current), so a locale a before_action set for one
-      # request must not reach the next.
-      I18n.locale = I18n.default_locale
+      # request must not reach the next. nil means the default locale
+      # (Application#call and ContextHandler#call clear it per request too;
+      # this covers a controller run without them).
+      I18n.locale = nil
       Controller.assign_csp_policy(@ctx, self.class)
       # Built once per request and walked by both passes.
       chain = Controller.chain_for(self.class)

@@ -7,4 +7,6 @@ ok   overlapping requests on two threads keep their own locales
 ok   locale= accepts names of available locales only
 ok   translate_list reads arrays; the application overrides the bundled dictionary
 ok   a plural mapping and a scalar at one key: the application's shape wins
-9 tests, 99 assertions, 0 failures
+ok   an application form beside a bundled plural mapping merges with the bundled forms
+ok   interpolation names are \w+; anything else stays literal
+11 tests, 112 assertions, 0 failures

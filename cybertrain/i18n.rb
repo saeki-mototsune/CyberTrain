@@ -155,7 +155,7 @@ module I18n
   end
 
   # Sets this thread's locale. The value is compared with the names of
-  # {I18n.available_locales} (and the default locale) and never turned into
+  # {I18n.available_locales} and never turned into
   # a Symbol itself, so a request parameter can be passed as is; nil goes
   # back to the default locale.
   # @example
@@ -186,18 +186,12 @@ module I18n
     false
   end
 
-  # The available locale (or the default one) named value.
+  # The available locale named value: exactly what locale_available?
+  # accepts, as in Rails (the default locale must be in the list too).
   # @api private
   def self.resolve_locale(value)
-    default = I18n.default_locale
-    # The Symbol itself first: run_action passes the default locale on
-    # every request.
-    return default if value == default
-
     name = value.to_s
     I18n.available_locales.each { |l| return l if l.to_s == name }
-    return default if default.to_s == name
-
     message = "\"#{name}\" is not an available locale"
     raise InvalidLocale, message
   end
@@ -405,39 +399,44 @@ module I18n
     I18n.text_in_locale(default, key, counted, n)
   end
 
-  # The text at key in one locale: the application's entry, else the
-  # bundled one. An entry is a text at the key, or (with count:) a plural
-  # form under it. The application's shape wins: where it holds plural
-  # forms under the key and the bundled dictionary a text at the key (or
-  # the other way round), only the application's entry is read, so a
-  # mapping without count: is no text in this locale.
+  # The text at key in one locale, the two dictionaries merged as Rails'
+  # deep merge of an application file over rails-i18n merges them: a text
+  # at the key replaces whatever the other holds there (the application's
+  # first); the application's plural forms replace a bundled text at the
+  # key; and two sets of plural forms merge form by form, the
+  # application's first, so an application adding only `zero:` keeps the
+  # bundled `one:` and `other:`. Without count:, plural forms are no text.
   # @api private
   def self.text_in_locale(loc, key, counted, n)
     full = "#{loc}.#{key}"
-    found = I18n.counted_entry(true, full, loc, counted, n)
-    return found unless found.nil?
-    return nil if I18n.plural_forms_at?(true, full)
-
-    I18n.counted_entry(false, full, loc, counted, n)
-  end
-
-  # One dictionary's entry at full: its text, else (counted) `zero` for 0,
-  # the locale's plural category, then `other`.
-  # @api private
-  def self.counted_entry(app, full, loc, counted, n)
-    text = I18n.dictionary_text(app, full)
+    text = I18n.dictionary_text(true, full)
     return text unless text.nil?
+
+    bundled = I18n.dictionary_text(false, full)
+    # Probed only here, off the common path: the application's forms hide
+    # a bundled text.
+    return bundled unless bundled.nil? || I18n.plural_forms_at?(true, full)
     return nil unless counted
 
     if n == 0
-      zero = I18n.dictionary_text(app, "#{full}.zero")
+      zero = I18n.merged_form(full, "zero")
       return zero unless zero.nil?
     end
     category = I18n.plural_category(loc, n)
-    form = I18n.dictionary_text(app, "#{full}.#{category}")
+    form = I18n.merged_form(full, category.to_s)
     return form unless form.nil?
 
-    I18n.dictionary_text(app, "#{full}.other")
+    I18n.merged_form(full, "other")
+  end
+
+  # The plural form under full, the application's, else the bundled one.
+  # @api private
+  def self.merged_form(full, form)
+    sub = "#{full}.#{form}"
+    found = I18n.dictionary_text(true, sub)
+    return found unless found.nil?
+
+    I18n.dictionary_text(false, sub)
   end
 
   # Whether one dictionary holds any plural form under full.
@@ -490,9 +489,11 @@ module I18n
         start = i
         next
       end
+      # A name is \w+ (ASCII letters, digits, "_"), as in the i18n gem's
+      # pattern; `%{a b}`, `%{}` and an unclosed `%{` stay literal.
       close = i + 2
-      close += 1 while nxt == 123 && close < n && s.getbyte(close) != 125 # "{" "}"
-      if nxt != 123 || close >= n || close == i + 2
+      close += 1 while nxt == 123 && close < n && I18n.name_byte?(s.getbyte(close))
+      if nxt != 123 || close >= n || close == i + 2 || s.getbyte(close) != 125 # "{" "}"
         i += 1
         next
       end
@@ -509,5 +510,11 @@ module I18n
     end
     out << s.byteslice(start, n - start) if n > start
     out
+  end
+
+  # Whether byte b may be part of an interpolation name: [A-Za-z0-9_].
+  # @api private
+  def self.name_byte?(b)
+    (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95
   end
 end

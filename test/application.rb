@@ -397,6 +397,9 @@ router.post("/notes", "notes") { |ctx| PagesController.new(ctx).process(:create)
 router.delete("/notes/:id", "note") { |ctx| PagesController.new(ctx).process(:destroy) { |c| c.destroy } }
 router.post("/api/notes", "api_notes") { |ctx| PagesController.new(ctx).process(:create) { |c| c.create } }
 router.post("/api/upload", "api_upload") { |ctx| PagesController.new(ctx).process(:upload) { |c| c.upload } }
+# A response made without a controller action (as a route miss or an error
+# page is): it shows the locale the request runs in.
+router.get("/locale", "locale") { |ctx| ctx.response.body = "#{I18n.locale} #{I18n.t("errors.messages.blank")}" }
 
 # The Application Cybertrain::Main builds for bin/<name>.rb, minus views:
 # and name:. NOTE(Spinel 2026.09.12): a lambda literal written as a keyword
@@ -748,6 +751,22 @@ test "development warns once and ignores reuse_port" do
   refute first.reuse_port
   assert_includes sink.string, "[WARN] reuse_port is ignored in development"
   assert_equal 1, sink.string.split("reuse_port is ignored").size - 1
+end
+
+test "every request starts at the default locale, also one no controller action answers" do
+  I18n.available_locales = [:en, :ja]
+  # What a previous request on this thread (a keep-alive connection) left.
+  I18n.locale = :ja
+  assert_equal "en can't be blank", CLIENT.get("/locale").body
+  assert_equal :en, I18n.locale
+  # The server's entry, ContextHandler (around the stack, not through
+  # Application#call), clears it the same way.
+  I18n.locale = :ja
+  handler = Cybertrain::ContextHandler.new(APP.stack)
+  res = handler.call(Cybertrain::Request.new("GET", "/locale", { "host" => "www.example.com" }, ""))
+  assert_equal "en can't be blank", res.body
+  assert_equal :en, I18n.locale
+  I18n.available_locales = [:en]
 end
 
 test "the server listens on the configured host and port" do

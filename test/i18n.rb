@@ -33,7 +33,12 @@ module TestLocales
     # A plural mapping where the bundled ja dictionary holds a scalar, and
     # a scalar where the bundled en dictionary holds a plural mapping.
     when "ja.errors.template.header.other" then "%{model}: %{count}件のエラー"
-    when "en.datetime.distance_in_words.x_days" then "%{count} day(s)"
+    when "en.datetime.distance_in_words.x_minutes" then "%{count} minute(s)"
+    # Only the zero form of a bundled one/other key, and only the one form of
+    # bundled about_x_months.
+    when "en.datetime.distance_in_words.x_days.zero" then "today"
+    when "en.datetime.distance_in_words.about_x_months.one" then "about a month"
+    when "en.odd_marks" then "%{a b}, %{}, %{x-y}, 5% and %{"
     end
   end
 
@@ -235,6 +240,15 @@ test "locale= accepts names of available locales only" do
   assert_equal :ja, I18n.default_locale
   I18n.available_locales = []
   assert_equal [:ja], I18n.available_locales
+  # locale= accepts exactly what locale_available? accepts: a default
+  # locale missing from the list is refused, as in Rails.
+  I18n.default_locale = :en
+  I18n.available_locales = [:ja]
+  assert_equal false, I18n.locale_available?(:en)
+  message = assert_raises("I18n::InvalidLocale") { I18n.locale = :en }
+  assert_equal "\"en\" is not an available locale", message
+  I18n.locale = nil
+  assert_equal :en, I18n.locale
 end
 
 test "translate_list reads arrays; the application overrides the bundled dictionary" do
@@ -259,14 +273,34 @@ test "a plural mapping and a scalar at one key: the application's shape wins" do
   # hides the bundled scalar: the key falls back to en, where it is a
   # bundled mapping again, so it is missing.
   assert_equal "translation missing: ja.errors.template.header", I18n.t("errors.template.header", model: "x", locale: :ja)
-  # Bundled en holds x_days as a one/other mapping; the application a
+  # Bundled en holds x_minutes as a one/other mapping; the application a
   # scalar, which answers for every count.
-  assert_equal "1 day(s)", I18n.t("datetime.distance_in_words.x_days", count: 1)
-  assert_equal "5 day(s)", I18n.t("datetime.distance_in_words.x_days", count: 5)
+  assert_equal "1 minute(s)", I18n.t("datetime.distance_in_words.x_minutes", count: 1)
+  assert_equal "5 minute(s)", I18n.t("datetime.distance_in_words.x_minutes", count: 5)
   # The bundled forms answer where the application has nothing.
   assert_equal "about 1 hour", I18n.t("datetime.distance_in_words.about_x_hours", count: 1)
   assert_equal "about 3 hours", I18n.t("datetime.distance_in_words.about_x_hours", count: 3)
   assert_equal "1 error prohibited this post from being saved", I18n.t("errors.template.header", count: 1, model: "post")
+end
+
+test "an application form beside a bundled plural mapping merges with the bundled forms" do
+  reset_i18n
+  # The application adds only x_days.zero; bundled en holds one/other.
+  assert_equal "today", I18n.t("datetime.distance_in_words.x_days", count: 0)
+  assert_equal "1 day", I18n.t("datetime.distance_in_words.x_days", count: 1)
+  assert_equal "5 days", I18n.t("datetime.distance_in_words.x_days", count: 5)
+  # The application overrides only about_x_months.one; other stays bundled.
+  assert_equal "about a month", I18n.t("datetime.distance_in_words.about_x_months", count: 1)
+  assert_equal "about 4 months", I18n.t("datetime.distance_in_words.about_x_months", count: 4)
+  # ja is untouched: bundled ja's scalar answers.
+  assert_equal "5日", I18n.t("datetime.distance_in_words.x_days", count: 5, locale: :ja)
+end
+
+test "interpolation names are \\w+; anything else stays literal" do
+  reset_i18n
+  assert_equal "%{a b}, %{}, %{x-y}, 5% and %{", I18n.t("odd_marks")
+  assert_equal "%{a b}, %{}, %{x-y}, 5% and %{", I18n.t("odd_marks", "a b": "z", "x-y": "w")
+  assert_equal "ok_1 then 9", I18n.t("nope", default: "%{ok_1} then %{N9}", ok_1: "ok_1", N9: 9)
 end
 
 Cybertrain::Test.run!
