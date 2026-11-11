@@ -166,7 +166,7 @@ schema` writes `db/schema.rb` from the database without migrating
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
 | `t.float` | `FLOAT` | Float |
-| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, rounded to the scale when stored |
+| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, rounded to the scale when stored, exact to 15 significant digits |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time (UTC, microseconds) |
 | `t.date` | `DATE` | Date |
@@ -182,14 +182,33 @@ every datetime keeps microseconds.
 
 ### Decimals are Floats
 
-Rails reads a `decimal` column as a BigDecimal; here it is a Float, and the
-generated model rounds it to the column's `scale:` whenever it is stored
-(`save`, `update_columns`, `update_all`, the bulk writes), so what is stored
-is what Rails would store after assignment. Spinel's BigDecimal cannot be
-built from a Float or a String or rounded yet, which is the condition for
-revisiting this (`docs/design.md` D42). Binary floating point drifts in long
-sums: round at the edge (`total.round(2)`), or keep money in minor units in an
-integer column (`price_cents`).
+Rails reads a `decimal` column as a BigDecimal; here it is a Float in a
+`DECIMAL(p,s)` column, with this contract (`docs/design.md` D73):
+
+- **Exact to 15 significant digits.** With `precision:` 15 or less, every
+  value of `scale:` fractional digits inside the declared precision is stored
+  and read back as itself. Past 15 digits it is the nearest Float:
+  `decimal(18,8)` is exact up to 9,999,999.99999999, not to its declared ten
+  integer digits.
+- **Rounded to the scale where it is stored** (`save`, `update`,
+  `update_columns`, `update_all`, the bulk writes), half away from zero on
+  the decimal digits: 1.005 at scale 2 is 1.01, as Rails stores it, and the
+  same under CRuby and Spinel.
+- **Out of range is a validation error.** For a decimal column with a
+  precision `spin run gen` writes a `numericality` validation, so `save`
+  answers false for a value beyond the precision, for Infinity and for NaN
+  instead of storing it.
+- **Sums are Float sums.** Round a total at the edge with
+  `Cybertrain::Cast.round_scale(total, 2)`, not `total.round(2)`.
+
+Keep money in minor units in an integer column (`price_cents`): Integer
+arithmetic and `sum_int` are exact. Read a form field with
+`(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` and show it
+with `number_to_currency(price_cents / 100.0)`. Upgrade note: a tie that the
+compiled framework used to round down (1.005 stored as 1.0) is now stored
+rounded up, for new writes only, and the generated validation refuses values
+that were stored before; D73 has the steps for moving a decimal column to
+minor units.
 
 ### JSON columns
 

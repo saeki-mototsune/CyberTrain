@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d303742a866d81fb204cf10d6797d582398283dd581c2a9ae7274e86046fa65
+source_sha256: ad3169ddff720e3527105667bef185f816a9c1eeaf8f74207edb0ff4cf53d242
 ---
 # Modèles et base de données
 
@@ -177,7 +177,7 @@ Rails](#taking-over-a-database-rails-created)).
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
 | `t.float` | `FLOAT` | Float |
-| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, arrondi à l’échelle à l’enregistrement |
+| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, arrondi à l’échelle à l’enregistrement, exact jusqu’à 15 chiffres significatifs |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time (UTC, microsecondes) |
 | `t.date` | `DATE` | Date |
@@ -194,16 +194,35 @@ les microsecondes.
 
 ### Les décimaux sont des Float
 
-Rails lit une colonne `decimal` comme un BigDecimal&nbsp;; ici c’est un
-Float, et le modèle généré l’arrondit à la `scale:` de la colonne chaque fois
-qu’il est stocké (`save`, `update_columns`, `update_all`, les écritures en
-masse), si bien que la valeur stockée est celle que Rails stockerait après
-l’affectation. Le BigDecimal de Spinel ne peut pas encore être construit à
-partir d’un Float ou d’une String, ni arrondi, et c’est la condition pour
-revenir sur ce choix (`docs/design.md` D42). La virgule flottante binaire
-dérive dans les longues sommes&nbsp;: arrondissez au bord (`total.round(2)`),
-ou gardez l’argent en unités mineures dans une colonne entière
-(`price_cents`).
+Rails lit une colonne `decimal` comme un BigDecimal&nbsp;; ici c’est un Float
+dans une colonne `DECIMAL(p,s)`, avec ce contrat (`docs/design.md` D73)&nbsp;:
+
+- **Exact jusqu’à 15 chiffres significatifs.** Avec une `precision:` de 15
+  ou moins, toute valeur de `scale:` chiffres après la virgule comprise dans
+  la précision déclarée est stockée et relue telle quelle. Au-delà de 15
+  chiffres, c’est le Float le plus proche&nbsp;: `decimal(18,8)` est exact
+  jusqu’à 9,999,999.99999999, non jusqu’à ses dix chiffres entiers déclarés.
+- **Arrondi à l’échelle là où il est stocké** (`save`, `update`,
+  `update_columns`, `update_all`, les écritures en masse), en s’éloignant de
+  zéro, sur les chiffres décimaux&nbsp;: 1.005 à l’échelle 2 donne 1.01,
+  comme Rails le stocke, et de la même façon sous CRuby et sous Spinel.
+- **Hors plage, c’est une erreur de validation.** Pour une colonne decimal
+  dotée d’une précision, `spin run gen` écrit une validation `numericality`,
+  si bien que `save` répond false pour une valeur au-delà de la précision,
+  pour Infinity et pour NaN au lieu de la stocker.
+- **Les sommes sont des sommes de Float.** Arrondissez un total au bord avec
+  `Cybertrain::Cast.round_scale(total, 2)`, et non `total.round(2)`.
+
+Gardez l’argent en unités mineures dans une colonne entière
+(`price_cents`)&nbsp;: l’arithmétique Integer et `sum_int` sont exactes.
+Lisez un champ de formulaire avec
+`(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` et
+affichez-le avec `number_to_currency(price_cents / 100.0)`. Note de mise à
+niveau&nbsp;: un cas limite que le framework compilé arrondissait vers le bas
+(1.005 stocké comme 1.0) est désormais stocké arrondi vers le haut, pour les
+nouvelles écritures seulement, et la validation générée refuse des valeurs
+qui étaient stockées auparavant&nbsp;; D73 donne les étapes pour passer une
+colonne decimal aux unités mineures.
 
 ### Colonnes JSON
 
