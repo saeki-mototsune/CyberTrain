@@ -28,8 +28,10 @@ EXPECTED_FILES = [
   "config/app.rb", "config/routes.rb",
   "db/schema.rb", "db/migrate/.keep",
   "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep", "app/jobs/.keep",
+  "app/assets/stylesheets/application.css", "app/assets/images/.keep", "app/javascript/application.js",
+  "config/importmap.rb",
   "app/views/layouts/application.html.erb",
-  "public/404.html", "public/500.html", "public/style.css", "public/up.html",
+  "public/404.html", "public/500.html", "public/up.html",
   "bin/blog.rb", "bin/gen.rb", "bin/db.rb",
   "Dockerfile", ".dockerignore", "config/deploy.yml", ".kamal/secrets", ".github/workflows/ci.yml",
   "gen/.keep", "storage/.keep", "tmp/.keep", "test/.keep"
@@ -118,7 +120,20 @@ test "the layout renders csrf_meta_tags, the flash and yield" do
   assert_includes layout, "<%= flash[:notice] %>"
   assert_includes layout, "<%= flash[:alert] %>"
   assert_includes layout, "<%= yield %>"
-  assert_includes layout, "<link rel=\"stylesheet\" href=\"/style.css\">"
+  assert_includes layout, "<%= csp_meta_tag %>"
+  assert_includes layout, "<%= stylesheet_link_tag \"application\" %>"
+  assert_includes layout, "<%= javascript_importmap_tags %>"
+  assert_equal false, File.exist?("blog/public/style.css")
+  assert_includes read("blog/config/importmap.rb"), "pin \"application\"\n"
+  assert_includes read("blog/app/javascript/application.js"), "// import \"@hotwired/turbo\"\n"
+  assert_includes read("blog/app/assets/stylesheets/application.css"), "body { font-family"
+  assert_includes read("blog/config/app.rb"), "# c.content_security_policy_report_only = true\n"
+  assert_includes read("blog/config/app.rb"), '# c.permissions_policy = "camera=(), microphone=(), geolocation=()"'
+  assert_includes read("blog/.env.example"), "# CYBERTRAIN_FORCE_SSL=1\n"
+  assert_includes read("blog/.env.example"), "# CYBERTRAIN_HOSTS=app.example.com\n"
+  assert_includes read("blog/Dockerfile"), "libjemalloc-dev libssl-dev"
+  assert_includes read("blog/Dockerfile"), "libjemalloc2 libssl3t64"
+  assert_includes read("blog/config/deploy.yml"), "asset_path: /app/public/assets\n"
 end
 
 test "application_controller.rb and config/app.rb are ready to edit" do
@@ -136,7 +151,7 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes read("blog/.gitignore"), "/storage/uploads/\n"
   assert_includes read("blog/.gitignore"), "/dist/"
   # gen's list of kept digests (spec 7.4): local state, never committed.
-  assert_includes read("blog/.gitignore"), "/public/assets/.manifest\n"
+  assert_includes read("blog/.gitignore"), "/public/assets/\n"
 end
 
 test "README.md gives the cybertrain command sequence" do

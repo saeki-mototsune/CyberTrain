@@ -10,10 +10,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/blog.rb
 create bin/gen.rb
@@ -51,10 +54,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/shop.rb
 create bin/gen.rb
@@ -81,10 +87,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/store.rb
 create bin/gen.rb
@@ -117,10 +126,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/wiki.rb
 create bin/gen.rb
@@ -147,10 +159,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/fork.rb
 create bin/gen.rb
@@ -176,10 +191,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/pinned.rb
 create bin/gen.rb
@@ -210,10 +228,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/odd.rb
 create bin/gen.rb
@@ -241,10 +262,13 @@ create app/controllers/application_controller.rb
 create app/models/.keep
 create app/helpers/.keep
 create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
 create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
-create public/style.css
 create public/up.html
 create bin/notes.rb
 create bin/gen.rb
@@ -540,8 +564,14 @@ ok   CLI version, help and unknown commands
 
 # The IANA zone cron expressions are read in; UTC when unset.
 # CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
+
+# Redirect http to https and mark cookies Secure (production behind
+# a TLS-terminating proxy).
+# CYBERTRAIN_FORCE_SSL=1
+# The host names the application answers to, comma-separated.
+# CYBERTRAIN_HOSTS=app.example.com
 ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-26 tests, 308 assertions, 0 failures
+26 tests, 324 assertions, 0 failures

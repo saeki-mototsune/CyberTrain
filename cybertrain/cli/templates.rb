@@ -83,7 +83,7 @@ module Cybertrain
           /tmp/*
           !/tmp/.keep
           /log/
-          /public/assets/.manifest
+          /public/assets/
         TEXT
       end
 
@@ -114,6 +114,12 @@ module Cybertrain
 
           # The IANA zone cron expressions are read in; UTC when unset.
           # CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
+
+          # Redirect http to https and mark cookies Secure (production behind
+          # a TLS-terminating proxy).
+          # CYBERTRAIN_FORCE_SSL=1
+          # The host names the application answers to, comma-separated.
+          # CYBERTRAIN_HOSTS=app.example.com
         TEXT
       end
 
@@ -171,6 +177,21 @@ module Cybertrain
             # Production marks the session cookie Secure (HTTPS only). Turn it
             # off only if production is really served over plain http://.
             # c.session_secure = false
+
+            # Sent with every response; "" turns the header off.
+            # c.permissions_policy = "camera=(), microphone=(), geolocation=()"
+
+            # Content Security Policy, off until you set it. Start in report-only
+            # mode, watch the browser console, then turn it on. The nonce lets
+            # the tags csp_meta_tag, javascript_importmap_tags and
+            # stylesheet_link_tag(nonce: true) through without "unsafe-inline".
+            # c.content_security_policy do |p|
+            #   p.default_src :self
+            #   p.script_src :self, "https://cdn.jsdelivr.net"
+            #   p.style_src :self
+            # end
+            # c.content_security_policy_nonce_directives = %w[script-src style-src]
+            # c.content_security_policy_report_only = true
           end
 
           # A scheduled task: a cron expression (read in CYBERTRAIN_SCHEDULER_TZ,
@@ -217,7 +238,9 @@ module Cybertrain
               <title>#{title}</title>
               <meta name="viewport" content="width=device-width,initial-scale=1">
               <%= csrf_meta_tags %>
-              <link rel="stylesheet" href="/style.css">
+              <%= csp_meta_tag %>
+              <%= stylesheet_link_tag "application" %>
+              <%= javascript_importmap_tags %>
             </head>
             <body>
               <main>
@@ -241,7 +264,10 @@ module Cybertrain
             <head>
               <title>#{message} (#{status})</title>
               <meta name="viewport" content="width=device-width,initial-scale=1">
-              <link rel="stylesheet" href="/style.css">
+              <style>
+            body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0; color: #222; }
+            main { max-width: 48rem; margin: 0 auto; padding: 1rem; }
+          </style>
             </head>
             <body>
               <main>
@@ -269,6 +295,25 @@ module Cybertrain
           #error_explanation { color: #991b1b; border: 1px solid #fca5a5; padding: 0.5rem 1rem; margin-bottom: 1rem; }
           form.button_to { display: inline; }
         CSS
+      end
+
+      # app/javascript/application.js: the import map's entry point.
+      def self.application_js
+        <<~JS
+          // Entry point for the import map (config/importmap.rb).
+          // import "@hotwired/turbo"
+        JS
+      end
+
+      # config/importmap.rb: the pins gen reads into the import map.
+      def self.importmap
+        <<~RUBY
+          # Pins for the import map: a logical name from app/javascript or
+          # vendor/javascript, or a URL.
+          pin "application"
+          # pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+          # pin_all_from "app/javascript/controllers", under: "controllers"
+        RUBY
       end
 
       def self.bin_app(package)
@@ -348,7 +393,7 @@ module Cybertrain
           # requires prism, which 24.04's Ruby 3.2 does not bundle.
           RUN apt-get update -qq && \\
               apt-get install --no-install-recommends -y build-essential git curl ca-certificates \\
-                ruby ruby-dev libsqlite3-dev zlib1g-dev libjemalloc-dev && \\
+                ruby ruby-dev libsqlite3-dev zlib1g-dev libjemalloc-dev libssl-dev && \\
               rm -rf /var/lib/apt/lists/* && \\
               gem install --no-document prism -v 1.9.0
 
@@ -364,7 +409,7 @@ module Cybertrain
           FROM docker.io/library/ubuntu:$UBUNTU_VERSION
 
           RUN apt-get update -qq && \\
-              apt-get install --no-install-recommends -y libsqlite3-0 zlib1g libjemalloc2 && \\
+              apt-get install --no-install-recommends -y libsqlite3-0 zlib1g libjemalloc2 libssl3t64 && \\
               rm -rf /var/lib/apt/lists/*
 
           RUN useradd --system --create-home --shell /bin/bash app
@@ -495,6 +540,13 @@ module Cybertrain
           # deploys. Back it up from there (docs/deploy.md).
           volumes:
             - "#{package}_storage:/app/storage"
+
+          # Digested files under public/assets/ (cybertrain gen keeps the current
+          # digest and the two before it). Every image carries only its own, so
+          # this bridges the previous release's files into the new container
+          # for the switch-over: a page loaded before the deploy still finds
+          # the CSS and JavaScript its HTML names.
+          asset_path: /app/public/assets
 
           # `kamal db_status` (pending migrations) and `kamal shell`.
           aliases:
