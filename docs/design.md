@@ -741,7 +741,7 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 - Consequences:
   - A leftover process gets no bind error and keeps taking traffic with its old code. A plain listener and a `reuse_port` one still refuse each other in both orders (`PortInUse`, tested), so only processes that all asked for it share. That takes a single address, which is why a name with several stops the boot. Two plain processes on such a name still both boot, one per address, as they did before this setting.
   - The balancing is Linux's. macOS binds both and gives every connection to the last one bound (1000 of 1000 measured), so `test/server.rb` asserts the split only when `RUBY_PLATFORM` says Linux.
-  - Everything kept in process memory is per process: `RateLimit` is N times looser. `Scheduler`, the `Job` worker and `Background` run in every process that keeps `CYBERTRAIN_WORKER`, so all but one set it to 0. The `--invite-only` setup token is per process too, so a first run happens on one process.
+  - Everything kept in process memory is per process: `RateLimit` is N times looser with `store: :memory` (since D61 the default `store: :cache` is shared). `Scheduler`, the `Job` worker and `Background` run in every process that keeps `CYBERTRAIN_WORKER`, so all but one set it to 0. The `--invite-only` setup token is per process too, so a first run happens on one process.
   - POST does not scale: SQLite has one writer.
   - Linux drops the connections still in the accept queue of a listener that closes, as with any restart; not measured here.
 - Rejected:

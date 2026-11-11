@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e7fd8eb6f7387078aeb9c878e7e793f81133c832e75f7130d06e6877923d270
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -600,7 +600,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   - `dummy_digest` はランダムなパスワードのダイジェストで、プロセスごとに一度、現在のコストで作られます。アドレスが見つからないときはこれと照合してください。そうすれば、どのアドレスにアカウントがあるかが応答時間から分かりません：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。
   - `session_key(digest)` は、パスワードダイジェストの `secret_key_base` による HMAC です。サインイン時にセッションに保存し、リクエストごとに `session_key_matches?(session[:password_key], user.password_digest)` で確かめます。パスワードを変えるとダイジェストが新しくなるので、それ以前に始まったセッションはすべてサインアウトされます。
   - `iterations` は、`Cybertrain.config.test?` のときは `Password::TEST_ITERATIONS`（1,000）なので、テストスイートはユーザーごとに本番のコストを払わずに済みます。ダイジェストは自身の回数を記録しているので、ほかには何も変わりません。
-- **セッション**（`session[:key]`、署名付き cookie）：`clear` はサインアウト時にセッションを空にします（CSRF トークンも含めて）。`config.session_absolute_max_age`（2 週間。`0` で無効）は、どれだけ頻繁に使われても、セッションの寿命全体に上限を設けます：cookie は最初に書かれた時刻を記録し、それより古い cookie は空のセッションとして読み込まれるので、コピーした cookie をいつまでも再利用することはできません。`session.restart_lifetime!` は（サインイン時に）カウントをやり直します。
+- **セッション**（`session[:key]`、暗号化された cookie）：`clear` はサインアウト時にセッションを空にします（CSRF トークンも含めて）。`config.session_absolute_max_age`（2 週間。`0` で無効）は、どれだけ頻繁に使われても、セッションの寿命全体に上限を設けます：cookie は最初に書かれた時刻を記録し、それより古い cookie は空のセッションとして読み込まれるので、コピーした cookie をいつまでも再利用することはできません。`session.restart_lifetime!` は（サインイン時に）カウントをやり直します。
 - **`Controller#local_path?(text)` と `safe_redirect_path(text, fallback)`**：リクエストから来たパス（`return_to` パラメーター、記憶しておいたページ）にリダイレクトするのは、それが `/` で始まり、`//` や `/\` では始まらず、表示可能な ASCII 文字だけからなり、2,048 バイト以下の場合だけです：`redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`。
 - コントローラークラスの **`skip_before_action(name, only:, except:)`** は、継承した `before_action` を一部のアクションで外します。生成される `allow_unauthenticated_access` は、これを 1 行で包んだものです。
 - **`cybertrain generate authentication`** は、アプリが所有するコードとして次のものを書き出します：`users` と `sessions` のマイグレーションとモデル、`SessionsController`、`RegistrationsController`、それらのビューとナビゲーションのパーシャル、`ApplicationController` のブロック（`resume_session`、`require_authentication`、`start_new_session_for`、`terminate_session`、`after_authentication_url`）、そして `test/authentication.rb`。このコードは、このリストのすべてを使います：`User.authenticate_by` は `verify_serialized` とダミーのダイジェストで照合し、`start_new_session_for` はパスワードのキーを保存して寿命をやり直し、`resume_session` はキーが一致しなくなった Session の行や `session_absolute_max_age` より古い行を終了させ、`after_authentication_url` は `safe_redirect_path` です。パスワードを変えたブラウザーをサインインしたままにするには、保存した後に新しいキーを格納します：`session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`。設計：[docs/design.md](../design.md) D25。

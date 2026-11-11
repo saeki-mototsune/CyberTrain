@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e7fd8eb6f7387078aeb9c878e7e793f81133c832e75f7130d06e6877923d270
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -870,7 +870,7 @@ de passe d’administration, une connexion écrite à la main)&nbsp;:
     `Cybertrain.config.test?`, pour que les suites de tests ne paient pas le
     coût de production par utilisateur&nbsp;; les condensats enregistrent leur
     nombre d’itérations, donc rien d’autre ne change.
-- **La session** (`session[:key]`, un cookie signé)&nbsp;: `clear` la vide
+- **La session** (`session[:key]`, un cookie chiffré)&nbsp;: `clear` la vide
   (jeton CSRF compris) à la déconnexion, et `config.session_absolute_max_age`
   (deux semaines&nbsp;; `0` la désactive) borne la vie entière d’une session,
   quelle que soit la fréquence de son usage&nbsp;: le cookie enregistre quand

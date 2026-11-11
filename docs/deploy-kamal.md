@@ -145,11 +145,11 @@ in the runtime stage, since every app now links OpenSSL.
 
 kamal-proxy already redirects http to https and the app sees
 `X-Forwarded-Proto: https`. If you turn on `CYBERTRAIN_FORCE_SSL: 1` as well
-(for the HSTS header), point the `healthcheck` at `/up`: the proxy's check is
-plain http to the container, and every other path, `/up.html` included, is
-redirected. `CYBERTRAIN_HOSTS: notes.example.com` refuses other `Host`
-values; the health path answers whatever the Host, so the proxy's check by
-address still passes.
+(for the HSTS header), or `CYBERTRAIN_HOSTS: notes.example.com` (which refuses
+other `Host` values), point the `healthcheck` at `/up`. The proxy's check is
+plain http to the container, by address: only the health path (`/up`) is
+exempt from the redirect and from the Host check, so `/up.html` would be
+redirected or get a 403 and the new container would never turn healthy.
 
 ## 8-3. Prepare the secrets
 

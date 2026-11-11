@@ -1111,9 +1111,10 @@ HTML に書かれたファイルを取得できます。古い cybertrain で作
 
 kamal-proxy はすでに http を https にリダイレクトし、アプリには `X-Forwarded-Proto: https` が
 届きます。（HSTS ヘッダのために）`CYBERTRAIN_FORCE_SSL: 1` も有効にするなら、`healthcheck` を
-`/up` に向けてください。プロキシのチェックはコンテナへの素の http で、`/up.html` を含むほかの
-パスはリダイレクトされます。`CYBERTRAIN_HOSTS: notes.example.com` はほかの `Host` を拒否しますが、
-ヘルスチェックのパスは Host に関係なく応えるので、アドレスで行うプロキシのチェックは通ります。
+`/up` に向けてください。`CYBERTRAIN_HOSTS: notes.example.com`（ほかの `Host` を拒否します）を
+有効にする場合も同じです。プロキシのチェックはコンテナへの素の http で、アドレスに対して行われ、
+リダイレクトと Host の検査を免れるのはヘルスチェックのパス（`/up`）だけです。`/up.html` のままだと
+リダイレクトされるか 403 になり、新しいコンテナは正常になりません。
 
 ### 8-3. 秘密鍵を用意する
 
@@ -1209,7 +1210,9 @@ https://notes.example.com を開いて確かめます。
   本番では `Secure` 付きです）。アプリにさせることもできます。`/etc/notes/notes.env` に
   `CYBERTRAIN_FORCE_SSL=1` を書くと、HSTS を送り、`X-Forwarded-Proto` を見て http を https に
   リダイレクトします。そのときは `CYBERTRAIN_TRUSTED_PROXY=1` も書いてください。書かないと、アプリが
-  組み立てる URL（`request.base_url`）は http のままです。
+  組み立てる URL（`request.base_url`）は http のままです。このときはデプロイスクリプトの確認も
+  `http://127.0.0.1:$PORT/up` に変えてください。リダイレクトされないのはヘルスチェックのパスだけで、
+  素の http での `/up.html` はリダイレクトされ、確認がアプリの応答を証明しなくなります。
 - `CYBERTRAIN_HOSTS=notes.example.com` を書くと、それ以外の `Host` へのリクエストは 403 になります。
   ループバックの名前（`localhost`・`127.0.0.1`・`[::1]`）は通るので、デプロイスクリプトの
   `curl http://127.0.0.1:...` はそのまま動きます。

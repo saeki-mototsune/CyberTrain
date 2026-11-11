@@ -825,7 +825,7 @@ hand-written sign-in):
   - `iterations` is `Password::TEST_ITERATIONS` (1,000) when
     `Cybertrain.config.test?`, so test suites do not pay the production cost
     per user; digests record their count, so nothing else changes.
-- **The session** (`session[:key]`, a signed cookie): `clear` empties it
+- **The session** (`session[:key]`, an encrypted cookie): `clear` empties it
   (CSRF token included) on sign-out, and `config.session_absolute_max_age`
   (two weeks; `0` turns it off) bounds a session's whole life however often
   it is used: the cookie records when it was first written, a cookie older

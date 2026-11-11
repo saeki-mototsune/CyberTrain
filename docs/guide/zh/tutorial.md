@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e7fd8eb6f7387078aeb9c878e7e793f81133c832e75f7130d06e6877923d270
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -600,7 +600,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
   - `dummy_digest` 是一个随机密码的摘要，每个进程按当前成本生成一次。地址不存在时就用它来校验，这样响应时间就不会暴露哪些地址有账号：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。
   - `session_key(digest)` 是密码摘要在 `secret_key_base` 下的 HMAC；登录时把它存进会话，并在每个请求中用 `session_key_matches?(session[:password_key], user.password_digest)` 检查。修改密码会生成新的摘要，所以在此之前开始的所有会话都会退出登录。
   - 当 `Cybertrain.config.test?` 时，`iterations` 为 `Password::TEST_ITERATIONS`（1,000），这样测试套件不必为每个用户付出生产环境的成本；摘要记录了各自的迭代次数，所以其他一切都不变。
-- **会话**（`session[:key]`，一个签名 cookie）：`clear` 在退出登录时清空会话（包括 CSRF 令牌）；`config.session_absolute_max_age`（两周；`0` 表示关闭）限制会话的整个生命期，无论使用得多频繁：cookie 记录了它首次写入的时间，比这更旧的 cookie 会被加载为空会话，因此复制来的 cookie 无法被永远重放。`session.restart_lifetime!` 会重新开始计时（在登录时）。
+- **会话**（`session[:key]`，一个加密 cookie）：`clear` 在退出登录时清空会话（包括 CSRF 令牌）；`config.session_absolute_max_age`（两周；`0` 表示关闭）限制会话的整个生命期，无论使用得多频繁：cookie 记录了它首次写入的时间，比这更旧的 cookie 会被加载为空会话，因此复制来的 cookie 无法被永远重放。`session.restart_lifetime!` 会重新开始计时（在登录时）。
 - **`Controller#local_path?(text)` 和 `safe_redirect_path(text, fallback)`**：来自请求的路径（`return_to` 参数、记住的页面）只有在以 `/` 开头但不以 `//` 或 `/\` 开头、只包含可打印的 ASCII 字符且不超过 2,048 字节时，才会被重定向过去：`redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`。
 - 控制器类上的 **`skip_before_action(name, only:, except:)`** 会为部分动作去掉继承来的 `before_action`；生成的 `allow_unauthenticated_access` 就是对它的一行封装。
 - **`cybertrain generate authentication`** 以归应用所有的代码写出：`users` 和 `sessions` 的迁移与模型、`SessionsController`、`RegistrationsController`、它们的视图和导航局部模板、`ApplicationController` 中的代码块（`resume_session`、`require_authentication`、`start_new_session_for`、`terminate_session`、`after_authentication_url`）以及 `test/authentication.rb`。这些代码用到了本列表中的全部内容：`User.authenticate_by` 用 `verify_serialized` 和虚拟摘要来校验，`start_new_session_for` 存储密码密钥并重新开始生命期，`resume_session` 会结束密钥不再匹配或比 `session_absolute_max_age` 更旧的 Session 行，`after_authentication_url` 就是 `safe_redirect_path`。若要让修改了密码的那个浏览器保持登录，在保存之后存入新的密钥：`session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`。设计说明：[docs/design.md](../design.md) D25。

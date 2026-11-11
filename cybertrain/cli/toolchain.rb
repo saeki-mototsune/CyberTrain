@@ -629,8 +629,10 @@ module Cybertrain
         compiles?("zlib.h", "zlibVersion() != 0 ? 0 : 1", "-lz")
       end
 
-      # Spinel's own Makefile finds a Homebrew OpenSSL by itself; this probe
-      # only decides whether to warn.
+      # OpenSSL's header and library: every application links Spinel's
+      # openssl package (the session cookie is encrypted), which Spinel
+      # builds only when it finds them. Spinel's own Makefile finds a
+      # Homebrew OpenSSL by itself; this probe also tries that prefix.
       def self.openssl_ok?
         return true if compiles?("openssl/ssl.h", "TLS_client_method() != 0 ? 0 : 1", "-lssl -lcrypto")
 
@@ -641,10 +643,10 @@ module Cybertrain
                   "-I#{Shell.quote(File.join(brew, "include"))} -L#{Shell.quote(File.join(brew, "lib"))} -lssl -lcrypto")
       end
 
-      # What a Spinel build cannot do without, by name. OpenSSL is not in
-      # this list: without its headers Spinel still builds, only without
-      # its openssl package, which every application now links (the
-      # session cookie is encrypted), so an application's build then fails.
+      # What a Spinel build cannot do without, by name. OpenSSL comes with
+      # the application requirements below: without its headers Spinel
+      # still builds, only without its openssl package, which every
+      # application links (the session cookie is encrypted).
       def self.missing_requirements
         missing = Array.new(0) { "" }
         if platform == "darwin" && !system("xcode-select -p > /dev/null 2>&1")
@@ -678,6 +680,7 @@ module Cybertrain
         end
         missing << "the SQLite 3 headers and library" unless sqlite_ok?
         missing << "the zlib headers and library" unless zlib_ok?
+        missing << "the OpenSSL headers and library" unless openssl_ok?
         missing
       end
 
@@ -731,9 +734,9 @@ module Cybertrain
           ["sudo zypper install -y gcc make git curl sqlite3-devel zlib-devel libopenssl-devel"]
         when "darwin"
           ["xcode-select --install     # cc, make, git, curl, the SQLite and zlib headers",
-           "brew install openssl@3     # optional: Spinel's openssl package"]
+           "brew install openssl@3     # the OpenSSL headers every app links"]
         else
-          ["install git, make, curl, a C compiler and the SQLite 3 and zlib development headers with your package manager"]
+          ["install git, make, curl, a C compiler and the SQLite 3, zlib and OpenSSL development headers with your package manager"]
         end
       end
 
@@ -754,11 +757,7 @@ module Cybertrain
         if have_command?(cc_program)
           report("sqlite3", sqlite_ok?, sqlite_ok? ? "headers and library found" : "sqlite3.h or -lsqlite3 missing")
           report("zlib", zlib_ok?, zlib_ok? ? "headers and library found" : "zlib.h or -lz missing")
-          if openssl_ok?
-            report("openssl", true, "headers and library found")
-          else
-            info("openssl", "not found: Spinel builds without its openssl package, which cybertrain does not use")
-          end
+          report("openssl", openssl_ok?, openssl_ok? ? "headers and library found" : "openssl/ssl.h or -lssl -lcrypto missing")
         end
         ready = doctor_spinel
         problems = doctor_problems(ready)

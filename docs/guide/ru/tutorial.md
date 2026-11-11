@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e7fd8eb6f7387078aeb9c878e7e793f81133c832e75f7130d06e6877923d270
+source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -851,7 +851,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
     `Cybertrain.config.test?`, так что наборы тестов не платят
     production-стоимость за каждого пользователя; дайджесты хранят своё число
     итераций, поэтому больше ничего не меняется.
-- **Сессия** (`session[:key]`, подписанный cookie): `clear` очищает её (вместе
+- **Сессия** (`session[:key]`, зашифрованный cookie): `clear` очищает её (вместе
   с токеном CSRF) при выходе, а `config.session_absolute_max_age` (две недели;
   `0` отключает) ограничивает всё время жизни сессии, как бы часто ею ни
   пользовались: cookie хранит момент своей первой записи, cookie старше этого

@@ -1140,7 +1140,10 @@ day-to-day operation.
   do it instead: `CYBERTRAIN_FORCE_SSL=1` in `/etc/notes/notes.env` sends
   HSTS and redirects http to https by `X-Forwarded-Proto`. Set
   `CYBERTRAIN_TRUSTED_PROXY=1` with it, or the URLs the app builds
-  (`request.base_url`) still say http.
+  (`request.base_url`) still say http. With it, change the deploy script's
+  check to `http://127.0.0.1:$PORT/up`: only the health path is exempt from
+  the redirect, so `/up.html` over plain http is redirected and the check
+  would no longer prove the app answered.
 - `CYBERTRAIN_HOSTS=notes.example.com` refuses requests for any other `Host`
   with a 403. The loopback names (`localhost`, `127.0.0.1`, `[::1]`) stay
   accepted, so the deploy script's `curl http://127.0.0.1:...` still works.
