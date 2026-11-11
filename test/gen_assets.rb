@@ -119,6 +119,10 @@ test "url() suffixes, quotes and non-asset references" do
   assert_includes css, "url( '/assets/logo-#{digest("logo.svg")}.svg' )"
   assert_includes css, "url(%23x)"
   assert_includes css, "url(//cdn/y.png)"
+  # A quoted url() with a suffix keeps both its quotes and its suffix.
+  quoted, = rewrite(%(a{b:url("x.woff2?v=3")} c{d:url('x.woff2#iefix')}))
+  assert_includes quoted, %(url("/assets/x-#{digest("x.woff2")}.woff2?v=3"))
+  assert_includes quoted, "url('/assets/x-#{digest("x.woff2")}.woff2#iefix')"
   assert_equal 1, warnings.size
   assert_equal "warning: app/assets/stylesheets/application.css: url(missing.png) is not an asset; left as written", warnings[0]
 end
@@ -246,6 +250,33 @@ test "three versions are kept, older ones deleted" do
   assert_equal "undigested\n", File.read("#{TMP}/public/assets/keep.txt")
   css = File.read("#{TMP}/public/assets/application-#{digests[3]}.css")
   assert_includes css, "url(\"/assets/logo-#{digest("logo.svg")}.svg\")"
+end
+
+test "an asset that goes back to an older digest reuses or rewrites that file" do
+  original = File.read("#{TMP}/app/assets/stylesheets/application.css")
+  digests = Array.new(0) { "" }
+  logs = Array.new(0) { "" }
+  [0, 1, 0, 2, 3, 1].each do |v|
+    File.write("#{TMP}/app/assets/stylesheets/application.css", "#{original}/* r#{v} */\n")
+    files = scan_now
+    files.each { |f| digests << f.asset_digest if f.logical_path == "application.css" }
+    logs << Cybertrain::Gen::AssetsEmitter.sync_public(TMP, files).join("\n")
+  end
+  File.write("#{TMP}/app/assets/stylesheets/application.css", original)
+  r0 = digests[0]
+  r1 = digests[1]
+  r2 = digests[3]
+  r3 = digests[4]
+  # Back to r0 while it is kept: its file is reused, not written again,
+  # and it heads the list once.
+  refute logs[2].include?("wrote public/assets/application-#{r0}.css"), logs[2]
+  # r0 then dropped out (r2, r3 came after it); going back to r1, which
+  # had been deleted too, writes it again and deletes r0's file.
+  assert_includes logs[5], "wrote public/assets/application-#{r1}.css"
+  assert_includes File.read("#{TMP}/public/assets/.manifest"), "application.css #{r1} #{r3} #{r2}\n"
+  assert File.exist?("#{TMP}/public/assets/application-#{r1}.css")
+  refute File.exist?("#{TMP}/public/assets/application-#{r0}.css")
+  Cybertrain::Gen::AssetsEmitter.sync_public(TMP, scan_now).each { |line| puts line }
 end
 
 test "a manifest line naming a path outside public/assets deletes nothing" do

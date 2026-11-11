@@ -26,8 +26,9 @@ removed public/assets/application-2cac91ee.css
 wrote public/assets/.manifest
 ok   three versions are kept, older ones deleted
 wrote public/assets/application-a45ecbb4.css
-removed public/assets/application-fa9503d6.css
+removed public/assets/application-e681d3c3.css
 wrote public/assets/.manifest
+ok   an asset that goes back to an older digest reuses or rewrites that file
 wrote public/assets/.manifest
 ok   a manifest line naming a path outside public/assets deletes nothing
 wrote public/assets/.manifest
@@ -48,4 +49,4 @@ wrote gen/console.rb
 wrote gen/app.rb
 stale: gen/assets.rb
 ok   gen --check compares gen/assets.rb only
-20 tests, 112 assertions, 0 failures
+21 tests, 119 assertions, 0 failures

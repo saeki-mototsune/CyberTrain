@@ -216,6 +216,13 @@ NAME_HOMES = {
   # (attr_reader, a Boolean) of the generators' name records.
   "any" => %w[cybertrain/format_collector.rb cybertrain/cli/attachment.rb cybertrain/cli/scaffold.rb],
   "permit" => %w[cybertrain/params.rb],
+  # Cache.read (a String or nil), BlobStore.read (a binary String) and
+  # Gen::ImportmapReader.read (the pins, an Array, run only by gen): all
+  # module functions called on their module, never on a shared receiver.
+  "read" => %w[cybertrain/cache.rb cybertrain/blob_store.rb cybertrain/generator/importmap_reader.rb],
+  # Assets.install (nil; gen/assets.rb calls it) and CLI::Toolchain.install
+  # (true or false; only in the cybertrain command).
+  "install" => %w[cybertrain/assets.rb cybertrain/cli/toolchain.rb],
   # Response#redirect returns nil next to the routes DSL's Mapper#redirect
   # (a RedirectSpec, run only by `spin run gen`); both redirect_to return nil.
   "redirect" => %w[cybertrain/http/response.rb cybertrain/generator/routes_dsl.rb],
