@@ -694,7 +694,7 @@ module Cybertrain
 
         apply_rate_limit rate_limit_key
         record_not_found resume_session require_authentication require_admin
-        start_new_session_for terminate_session after_authentication_url
+        start_new_session_for session_limit terminate_session after_authentication_url
         cookies
         turbo_stream partial_body
         t translate

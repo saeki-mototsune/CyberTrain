@@ -44,13 +44,15 @@ create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
 create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/shop.rb (./shop user)
 ok   generate authentication writes the migrations, models, controllers, views and tests
-ok   the users migration has the NOT NULL columns, the admin flag and a unique index
+ok   the users migration has the NOT NULL columns, the admin flag, the lockout columns and a unique index
 ok   the User model hashes with Cybertrain::Password and validates in before_validation
 ok   writes the Authentication concern and includes it
 create spin.toml
@@ -146,6 +148,8 @@ identical app/views/registrations/new.html.erb
 identical test/support/app_test.rb
 identical test/authentication.rb
 identical test/admin.rb
+identical test/remember_me.rb
+identical test/lockout.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session
 identical app/views/layouts/application.html.erb (nav already rendered)
@@ -154,7 +158,7 @@ identical bin/shop.rb (user command already required)
 next:
   cybertrain db migrate
   cybertrain server      # then open /sign_up
-  cybertrain spin test   # test/authentication.rb and test/admin.rb; snapshot them from the binaries
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb and lockout.rb; snapshot them from the binaries
 ok   running the generator again writes and edits nothing
 create spin.toml
 create .gitignore
@@ -211,6 +215,8 @@ create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
 create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
@@ -263,6 +269,8 @@ create app/views/setup/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
 create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /setup
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
@@ -273,7 +281,7 @@ insert config/app.rb (CLUB_SETUP_OPEN)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb and test/admin.rb; snapshot them from the binaries
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb and lockout.rb; snapshot them from the binaries
 ok   --invite-only writes the user command and /setup instead of the sign-up page
 ok   --invite-only's screens go through t, with keys the bundled dictionaries have
 ok   --invite-only requires the command in bin/<app>.rb and declares setup_open
@@ -330,6 +338,8 @@ identical app/views/setup/new.html.erb
 identical test/support/app_test.rb
 identical test/authentication.rb
 identical test/admin.rb
+identical test/remember_me.rb
+identical test/lockout.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session
 identical app/views/layouts/application.html.erb (nav already rendered)
@@ -339,7 +349,7 @@ identical config/app.rb (setup_open already declared)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb and test/admin.rb; snapshot them from the binaries
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb and lockout.rb; snapshot them from the binaries
 ok   --invite-only run again writes and edits nothing
 create spin.toml
 create .gitignore
@@ -417,4 +427,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-25 tests, 366 assertions, 0 failures
+25 tests, 410 assertions, 0 failures

@@ -257,6 +257,7 @@ ja:
     new:
       email_address: メールアドレス
       password: パスワード
+      remember_me: ログインしたままにする
       sign_up: アカウント登録
       submit: ログイン
       title: ログイン

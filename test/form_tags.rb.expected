@@ -2,5 +2,6 @@ ok   select_tag with options_for_select
 ok   options_for_select takes values, pairs, a Hash and several selected values, compared as strings
 ok   options_from_collection_for_select reads each record
 ok   label_tag, text_field_tag, hidden_field_tag and submit_tag
+ok   check_box_tag is a box with no hidden field, value 1 unless given
 ok   the tag helpers check their arguments
-5 tests, 29 assertions, 0 failures
+6 tests, 36 assertions, 0 failures

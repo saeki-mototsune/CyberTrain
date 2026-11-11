@@ -34,6 +34,14 @@ def read(path)
   File.read(path)
 end
 
+# text with n spaces before each non-empty line (a method of a class, a
+# field of a form).
+def indented(text, n)
+  out = +""
+  text.each_line { |line| out << (line.strip.empty? ? line : "#{" " * n}#{line}") }
+  out
+end
+
 AUTH_FILES = [
   "db/migrate/20260925120000_create_users.rb",
   "db/migrate/20260925120001_create_sessions.rb",
@@ -48,7 +56,9 @@ AUTH_FILES = [
   "app/views/registrations/new.html.erb",
   "test/support/app_test.rb",
   "test/authentication.rb",
-  "test/admin.rb"
+  "test/admin.rb",
+  "test/remember_me.rb",
+  "test/lockout.rb"
 ]
 
 test "generate authentication writes the migrations, models, controllers, views and tests" do
@@ -59,7 +69,7 @@ test "generate authentication writes the migrations, models, controllers, views 
   AUTH_FILES.each { |f| assert(File.exist?("shop/#{f}"), "missing #{f}") }
 end
 
-test "the users migration has the NOT NULL columns, the admin flag and a unique index" do
+test "the users migration has the NOT NULL columns, the admin flag, the lockout columns and a unique index" do
   assert_equal <<~RUBY, read("shop/db/migrate/20260925120000_create_users.rb")
     class CreateUsers < Cybertrain::Migration::Base
       def change
@@ -67,17 +77,28 @@ test "the users migration has the NOT NULL columns, the admin flag and a unique 
           t.string "email_address", null: false
           t.string "password_digest", null: false
           t.boolean "admin", null: false, default: "false"
+          t.integer "failed_attempts", null: false, default: "0"
+          t.datetime "locked_until"
           t.timestamps
         end
         add_index "users", ["email_address"], unique: true
       end
     end
   RUBY
-  sessions = read("shop/db/migrate/20260925120001_create_sessions.rb")
-  assert_includes sessions, "create_table \"sessions\" do |t|"
-  assert_includes sessions, "      t.references :user\n"
-  assert_includes sessions, "      t.string \"ip_address\"\n"
-  assert_includes sessions, "      t.string \"user_agent\"\n"
+  assert_equal <<~RUBY, read("shop/db/migrate/20260925120001_create_sessions.rb")
+    class CreateSessions < Cybertrain::Migration::Base
+      def change
+        create_table "sessions" do |t|
+          t.references :user
+          t.string "ip_address"
+          t.string "user_agent"
+          t.boolean "remember", null: false, default: "false"
+          t.datetime "last_active_at"
+          t.timestamps
+        end
+      end
+    end
+  RUBY
 end
 
 test "the User model hashes with Cybertrain::Password and validates in before_validation" do
@@ -102,6 +123,45 @@ test "the User model hashes with Cybertrain::Password and validates in before_va
   assert model.index("errors.add(:password, \"").nil?
   # The admin flag, which require_admin asks for.
   assert_includes model, "  def admin? = admin\n"
+  # Lockout (D17): a locked account costs the dummy verification and
+  # answers nil, as a wrong password does; a wrong password is counted in
+  # the database, the attempt that reaches the limit locks; the right one
+  # clears the count.
+  assert_includes model, indented(<<~RUBY, 2)
+      def self.authenticate_by(email_address:, password:)
+        user = User.find_by(email_address: User.normalize_email_address(email_address))
+        if user.nil? || user.locked?
+          Cybertrain::Password.verify_serialized(password.to_s, Cybertrain::Password.dummy_digest)
+          return nil
+        end
+        unless user.authenticate(password)
+          user.count_failed_attempt!
+          return nil
+        end
+        user.clear_failed_attempts!
+        user
+      end
+  RUBY
+  assert_includes model, "  def locked? = !locked_until.nil? && locked_until > Time.now\n"
+  assert_includes model, indented(<<~RUBY, 2)
+      def count_failed_attempt!
+        limit = Cybertrain.config.auth_lockout_attempts
+        return nil if limit <= 0
+
+        User.where(id: id).increment(:failed_attempts)
+        ends = Time.now + Cybertrain.config.auth_lockout_period
+        User.where(id: id).where_sql("failed_attempts >= ?", [limit]).update_all(locked_until: ends, failed_attempts: 0)
+        nil
+      end
+  RUBY
+  assert_includes model, indented(<<~RUBY, 2)
+      def clear_failed_attempts!
+        return nil if failed_attempts == 0 && locked_until.nil?
+
+        update_columns(failed_attempts: 0, locked_until: nil)
+        nil
+      end
+  RUBY
   assert_includes read("shop/app/models/session.rb"), "class Session\nend\n"
 end
 
@@ -132,11 +192,14 @@ test "writes the Authentication concern and includes it" do
       end
 
       # Loads the Session row the cookie names (and its user); a stale or
-      # expired id is dropped. Cookie Max-Age alone cannot stop replay:
-      # authentication expires session_absolute_max_age seconds after
-      # sign-in (SessionStore enforces the same on the cookie). A cookie
-      # whose password key no longer matches (the password changed since
-      # it signed in) ends its Session row.
+      # expired id is dropped. Cookie Max-Age alone cannot stop replay, so
+      # the row's own limits end a sign-in: session_limit(remember) seconds
+      # after it started (SessionStore enforces the same on the cookie,
+      # from the stamp start_new_session_for writes), and auth_idle_timeout
+      # seconds (0: no limit) after its last request (last_active_at, or
+      # created_at while it has none). A request touches last_active_at at
+      # most once a minute. A cookie whose password key no longer matches
+      # (the password changed since it signed in) ends its Session row.
       def resume_session
         @current_session = nil
         @current_user = nil
@@ -149,8 +212,15 @@ test "writes the Authentication concern and includes it" do
           return nil
         end
         created_at = found.created_at
-        lifetime = Cybertrain.config.session_absolute_max_age
-        if created_at.nil? || (lifetime > 0 && created_at.to_i + lifetime <= Time.now.to_i)
+        now = Time.now.to_i
+        if created_at.nil? || created_at.to_i + session_limit(found.remember) <= now
+          session.delete(:session_id)
+          return nil
+        end
+        last_active_at = found.last_active_at
+        active = last_active_at.nil? ? created_at.to_i : last_active_at.to_i
+        idle = Cybertrain.config.auth_idle_timeout
+        if idle > 0 && active + idle <= now
           session.delete(:session_id)
           return nil
         end
@@ -160,6 +230,7 @@ test "writes the Authentication concern and includes it" do
           session.delete(:session_id)
           return nil
         end
+        found.update_columns(last_active_at: Time.now) if now - active >= 60
         @current_session = found
         @current_user = user
         nil
@@ -187,19 +258,39 @@ test "writes the Authentication concern and includes it" do
         nil
       end
 
-      # Also stores the password key resume_session compares, and restarts
-      # the cookie's absolute lifetime. After a password change, call
+      # Signs user in: a Session row (remembered or not, active now), its
+      # id and the password key resume_session compares in the cookie, and
+      # the cookie's lifetime, restarted and then stamped in that order (a
+      # restart clears the stamp): session_limit(remember) seconds, with a
+      # Max-Age when remembered ("keep me signed in"), else a cookie the
+      # browser drops when it closes. After a password change, call
       # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
       # to keep the browser that changed it signed in.
-      def start_new_session_for(user)
+      def start_new_session_for(user, remember: false)
         started = Session.create(user_id: user.id, ip_address: request.client_ip,
-                                 user_agent: request.header("user-agent").to_s)
+                                 user_agent: request.header("user-agent").to_s,
+                                 remember: remember, last_active_at: Time.now)
         session.restart_lifetime!
+        session.stamp_lifetime!(session_limit(remember), remember)
         session[:session_id] = started.id
         session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
         @current_session = started
         @current_user = user
         nil
+      end
+
+      # How long a sign-in lasts in seconds, however often it is used:
+      # auth_remember_for when remembered, else session_absolute_max_age,
+      # or with that off (0) session_max_age, or two weeks when that is not
+      # positive either. Never 0: a stamp of 0 would leave the cookie with
+      # no limit at all.
+      def session_limit(remember)
+        c = Cybertrain.config
+        return c.auth_remember_for if remember
+        return c.session_absolute_max_age if c.session_absolute_max_age > 0
+        return c.session_max_age if c.session_max_age > 0
+
+        1_209_600
       end
 
       # Deletes the Session row and empties the cookie session (the CSRF
@@ -290,7 +381,8 @@ test "the controllers open their sign-in actions and the views post to the route
   # exhausted client gets rate_limited's answer.
   assert_includes sessions, "  rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited\n"
   assert_includes sessions, "User.authenticate_by(email_address: params[:email_address].to_s, password: params[:password].to_s)"
-  assert_includes sessions, "start_new_session_for(user)"
+  # "Keep me signed in" is the box's "1".
+  assert_includes sessions, "      start_new_session_for(user, remember: params[:remember_me] == \"1\")\n"
   assert_includes sessions, "terminate_session"
   assert_includes sessions, "      flash[:alert] = t(\".invalid\")\n"
   assert_includes sessions, "    flash[:notice] = t(\".signed_out\")\n"
@@ -303,6 +395,7 @@ test "the controllers open their sign-in actions and the views post to the route
   assert_includes registrations, "@user.password = fields[:password].to_s"
   assert_includes registrations, "render :new, status: :unprocessable_entity"
   assert_includes registrations, "      flash[:notice] = t(\".welcome\")\n"
+  assert_includes registrations, "      start_new_session_for(@user)\n"
 
   sign_in = read("shop/app/views/sessions/new.html.erb")
   assert_includes sign_in, "<%= form_with(url: session_path) do |f| %>"
@@ -311,6 +404,14 @@ test "the controllers open their sign-in actions and the views post to the route
   assert_includes sign_in, "<h1><%= t(\".title\") %></h1>\n"
   assert_includes sign_in, "<%= f.label :email_address, t(\".email_address\") %>"
   assert_includes sign_in, "<%= f.submit t(\".submit\") %>"
+  assert_includes sign_in, indented(<<~ERB, 2)
+      <div class="field">
+        <%= check_box_tag :remember_me %>
+        <%= label_tag :remember_me, t(".remember_me") %>
+      </div>
+
+      <div class="actions">
+  ERB
   assert_includes sign_in, "<p><%= link_to t(\".sign_up\"), sign_up_path %></p>\n"
   sign_up = read("shop/app/views/registrations/new.html.erb")
   assert_includes sign_up, "<%= form_with(model: @user, url: sign_up_path) do |f| %>"
@@ -635,8 +736,8 @@ SHOP_KEYS = ["errors.template.header",
              "registrations.new.submit", "registrations.new.title",
              "sessions.create.invalid", "sessions.create.rate_limited", "sessions.destroy.signed_out",
              "sessions.nav.sign_in", "sessions.nav.sign_out",
-             "sessions.new.email_address", "sessions.new.password", "sessions.new.sign_up",
-             "sessions.new.submit", "sessions.new.title"]
+             "sessions.new.email_address", "sessions.new.password", "sessions.new.remember_me",
+             "sessions.new.sign_up", "sessions.new.submit", "sessions.new.title"]
 
 test "every key the generated files use exists in the bundled en and ja dictionaries" do
   assert_equal SHOP_KEYS, used_keys("shop")
@@ -648,6 +749,8 @@ test "every key the generated files use exists in the bundled en and ja dictiona
   assert_equal "ログイン", bundled("ja", "sessions.new.title")
   assert_equal "Try another email address or password.", bundled("en", "sessions.create.invalid")
   assert_equal "Try again later.", bundled("en", "sessions.create.rate_limited")
+  assert_equal "Keep me signed in", bundled("en", "sessions.new.remember_me")
+  assert_equal "ログインしたままにする", bundled("ja", "sessions.new.remember_me")
   assert_equal "You have been signed out.", bundled("en", "sessions.destroy.signed_out")
   assert_equal "Welcome! You have signed up.", bundled("en", "registrations.create.welcome")
   # The form labels of User come from activerecord.attributes.user.
@@ -686,6 +789,10 @@ test "the app's test boots the app and drives the sign-in flow" do
   assert_includes spec, "require_relative \"support/app_test\""
   assert_includes spec, "client.post(\"/sign_up\""
   assert_includes spec, "test \"POST /session past ten attempts is refused for a while\" do\n"
+  # Ten wrong passwords would lock the account too: that test is the rate
+  # limit alone, lockout off and restored.
+  assert_includes spec, "  Cybertrain.config.auth_lockout_attempts = 0\n  begin\n"
+  assert_includes spec, "    Cybertrain.config.auth_lockout_attempts = lockout_attempts\n  end\n"
   assert_includes spec, "Cybertrain::Test.run!\n"
   # after_authentication_url is private now: a subclass made for the test reads it.
   assert_includes spec, "class ReturnPathProbeController < ApplicationController\n  def probe_after_authentication_url\n    after_authentication_url\n  end\nend\n"
@@ -707,6 +814,36 @@ test "the app's test boots the app and drives the sign-in flow" do
   assert_includes admin, "  assert_equal false, user.admin?\n"
   assert_includes admin, "  assert_equal 0, UserCommand.run([\"admin\", \"Ann@Example.com\"])\n"
   assert_includes admin, "Cybertrain::Test.run!\n"
+  # Remember me and the idle limit: Session rows moved back in time.
+  remember = read("shop/test/remember_me.rb")
+  assert_includes remember, "require_relative \"support/app_test\"\n"
+  ["a remembered session is alive on day 15 and ended after day 30", "an unremembered session ends after day 14",
+   "an unremembered session still ends with session_absolute_max_age off", "both end after 7 idle days",
+   "last_active_at is touched at most once a minute", "an unremembered sign-in sets a cookie without Max-Age"].each do |name|
+    assert_includes remember, "test \"#{name}\" do\n"
+  end
+  assert_includes remember, "  fields[\"remember_me\"] = \"1\" if remember\n"
+  assert_includes remember, "  Session.first.update_columns(created_at: Time.at(now - started).utc, last_active_at: Time.at(now - idle).utc)\n"
+  assert_includes remember, "  backdate(15 * DAY, 0)\n  assert signed_in?(client)\n  backdate(30 * DAY - 60, 0)\n  assert signed_in?(client)\n  backdate(30 * DAY, 0)\n  refute signed_in?(client)\n"
+  assert_includes remember, "  backdate(14 * DAY - 60, 0)\n  assert signed_in?(client)\n  backdate(14 * DAY, 0)\n  refute signed_in?(client)\n"
+  assert_includes remember, "    backdate(8 * DAY, 7 * DAY - 60)\n    assert signed_in?(client)\n    backdate(8 * DAY, 7 * DAY)\n    refute signed_in?(client)\n"
+  assert_includes remember, "  assert session_cookie(res).end_with?(\"; Max-Age=2592000\"), session_cookie(res)\n"
+  assert_includes remember, "  refute cookie.include?(\"Max-Age\")\n"
+  assert_includes remember, "    assert_equal 1_209_600, stamped.lifetime_limit\n    assert stamped.browser_session?\n"
+  assert_includes remember, "Cybertrain::Test.run!\n"
+  # Lockout: every attempt forgets the rate limit's counts (AppTest.sign_in),
+  # so the eleventh is answered by the lock, not the rate limit (F8).
+  lockout = read("shop/test/lockout.rb")
+  ["10 failures lock the account for an hour with the wrong-password message",
+   "a locked account refuses the right password until locked_until passes",
+   "a successful sign-in clears the count", "auth_lockout_attempts 0 never locks"].each do |name|
+    assert_includes lockout, "test \"#{name}\" do\n"
+  end
+  assert_includes lockout, "  res = AppTest.sign_in(client, \"ann@example.com\", password)\n"
+  assert_includes lockout, "WRONG = \"<p class=\\\"alert\\\">Try another email address or password.</p>\"\n"
+  assert_includes lockout, "  refute page.body.include?(\"Try again later.\")\n"
+  assert_includes lockout, "  assert locked.locked_until.to_i >= before + 3600\n  assert locked.locked_until.to_i <= after + 3600\n"
+  assert_includes lockout, "Cybertrain::Test.run!\n"
 end
 
 test "running the generator again writes and edits nothing" do
@@ -752,7 +889,9 @@ INVITE_FILES = [
   "app/views/setup/new.html.erb",
   "test/support/app_test.rb",
   "test/authentication.rb",
-  "test/admin.rb"
+  "test/admin.rb",
+  "test/remember_me.rb",
+  "test/lockout.rb"
 ]
 
 test "--invite-only writes the user command and /setup instead of the sign-up page" do
@@ -784,7 +923,8 @@ test "--invite-only's screens go through t, with keys the bundled dictionaries h
   keys = ["errors.template.header",
           "sessions.create.invalid", "sessions.create.rate_limited", "sessions.destroy.signed_out",
           "sessions.nav.sign_in", "sessions.nav.sign_out",
-          "sessions.new.email_address", "sessions.new.password", "sessions.new.submit", "sessions.new.title",
+          "sessions.new.email_address", "sessions.new.password", "sessions.new.remember_me",
+          "sessions.new.submit", "sessions.new.title",
           "setup.create.welcome", "setup.new.intro", "setup.new.model", "setup.new.submit", "setup.new.title"]
   assert_equal keys, used_keys("club")
   keys.each do |key|

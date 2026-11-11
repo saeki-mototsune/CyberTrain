@@ -179,6 +179,7 @@ module Cybertrain
       h["en.sessions.nav.sign_out"] = "Sign out"
       h["en.sessions.new.email_address"] = "Email address"
       h["en.sessions.new.password"] = "Password"
+      h["en.sessions.new.remember_me"] = "Keep me signed in"
       h["en.sessions.new.sign_up"] = "Sign up"
       h["en.sessions.new.submit"] = "Sign in"
       h["en.sessions.new.title"] = "Sign in"
@@ -214,11 +215,11 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.columns.heartbeat"] = "最終応答"
       h["ja.cybertrain.jobs_page.columns.id"] = "ID"
       h["ja.cybertrain.jobs_page.columns.jobs"] = "件数"
-      h["ja.cybertrain.jobs_page.columns.kind"] = "種類"
       nil
     end
 
     def self.fill_texts_04(h)
+      h["ja.cybertrain.jobs_page.columns.kind"] = "種類"
       h["ja.cybertrain.jobs_page.columns.run_at"] = "実行予定"
       h["ja.cybertrain.jobs_page.columns.state"] = "状態"
       h["ja.cybertrain.jobs_page.columns.updated"] = "更新日時"
@@ -268,11 +269,11 @@ module Cybertrain
       h["ja.errors.format"] = "%{attribute}%{message}"
       h["ja.errors.messages.accepted"] = "を受諾してください"
       h["ja.errors.messages.blank"] = "を入力してください"
-      h["ja.errors.messages.confirmation"] = "と%{attribute}の入力が一致しません"
       nil
     end
 
     def self.fill_texts_05(h)
+      h["ja.errors.messages.confirmation"] = "と%{attribute}の入力が一致しません"
       h["ja.errors.messages.empty"] = "を入力してください"
       h["ja.errors.messages.equal_to"] = "は%{count}にしてください"
       h["ja.errors.messages.even"] = "は偶数にしてください"
@@ -322,11 +323,11 @@ module Cybertrain
       h["ja.number.human.decimal_units.units.thousand"] = "千"
       h["ja.number.human.decimal_units.units.trillion"] = "兆"
       h["ja.number.human.decimal_units.units.unit"] = ""
-      h["ja.number.human.format.delimiter"] = ""
       nil
     end
 
     def self.fill_texts_06(h)
+      h["ja.number.human.format.delimiter"] = ""
       h["ja.number.human.format.precision"] = "3"
       h["ja.number.human.format.significant"] = "true"
       h["ja.number.human.format.strip_insignificant_zeros"] = "true"
@@ -354,6 +355,7 @@ module Cybertrain
       h["ja.sessions.nav.sign_out"] = "ログアウト"
       h["ja.sessions.new.email_address"] = "メールアドレス"
       h["ja.sessions.new.password"] = "パスワード"
+      h["ja.sessions.new.remember_me"] = "ログインしたままにする"
       h["ja.sessions.new.sign_up"] = "アカウント登録"
       h["ja.sessions.new.submit"] = "ログイン"
       h["ja.sessions.new.title"] = "ログイン"

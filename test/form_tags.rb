@@ -4,7 +4,7 @@ require "cybertrain/session"
 
 # The standalone form tag helpers (V-7): select_tag, options_for_select,
 # options_from_collection_for_select, label_tag, text_field_tag,
-# hidden_field_tag, submit_tag. cybertrain/model links SQLite through FFI,
+# hidden_field_tag, check_box_tag, submit_tag. cybertrain/model links SQLite through FFI,
 # so this program cannot run under CRuby: its snapshot comes from the
 # compiled binary (spikes/NOTES.md rule 23).
 
@@ -92,6 +92,19 @@ test "label_tag, text_field_tag, hidden_field_tag and submit_tag" do
   assert_equal "<input type=\"submit\" name=\"commit\" value=\"Save changes\">", render_inline("<%= submit_tag %>")
   assert_equal "<input type=\"submit\" name=\"commit\" value=\"Go &lt;\" data-turbo-submits-with=\"Going\" class=\"b\">",
                render_inline("<%= submit_tag 'Go <', class: 'b', data: { turbo_submits_with: 'Going' } %>")
+end
+
+test "check_box_tag is a box with no hidden field, value 1 unless given" do
+  assert_equal "<input type=\"checkbox\" name=\"remember_me\" id=\"remember_me\" value=\"1\">", render_inline("<%= check_box_tag :remember_me %>")
+  assert_equal "<input type=\"checkbox\" name=\"tags[]\" id=\"tag_ruby\" value=\"ruby &amp; c\" checked=\"checked\" class=\"c\">",
+               render_inline("<%= check_box_tag 'tags[]', 'ruby & c', true, id: 'tag_ruby', class: 'c' %>")
+  assert_equal "<input type=\"checkbox\" name=\"q[on]\" id=\"q_on\" value=\"yes\">", render_inline("<%= check_box_tag('q[on]', 'yes', false) %>")
+  # A nil value writes none (Rails' check_box_tag too).
+  assert_equal "<input type=\"checkbox\" name=\"n\" id=\"n\" checked=\"checked\">", render_inline("<%= check_box_tag(:n, nil, true) %>")
+  assert_equal "<input type=\"checkbox\" name=\"remember_me\" id=\"remember_me\" value=\"1\"><label for=\"remember_me\">Keep me signed in</label>",
+               render_inline("<%= check_box_tag :remember_me %><%= label_tag :remember_me, 'Keep me signed in' %>")
+  msg = assert_raises("RuntimeError") { render_inline("<%= check_box_tag %>") }
+  assert_equal "search/index:1: wrong number of arguments for 'check_box_tag' (given 0, expected 1..3)", msg
 end
 
 test "the tag helpers check their arguments" do

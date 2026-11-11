@@ -112,6 +112,7 @@ module Cybertrain
         when "label_tag" then label_tag(args, kwargs)
         when "text_field_tag" then text_field_tag(args, kwargs)
         when "hidden_field_tag" then hidden_field_tag(args, kwargs)
+        when "check_box_tag" then check_box_tag(args, kwargs)
         when "submit_tag" then submit_tag(args, kwargs)
         when "render"
           return render_component_helper(kwargs, block, interp, env) if args.empty? && !kwargs["component"].nil?
@@ -641,6 +642,22 @@ module Cybertrain
         helper_arity!("hidden_field_tag", args, 1, 2)
         name = text_arg(args, 0, "hidden_field_tag")
         SafeString.of(FormBuilder.input_tag("hidden", name, args.size > 1 ? args[1] : nil, kwargs, " autocomplete=\"off\""))
+      end
+
+      # check_box_tag(:remember_me, value = "1", checked = false), as Rails
+      # writes it: a box alone, no hidden field (f.check_box adds one), so an
+      # unchecked box sends nothing; a nil value writes no value attribute.
+      # Other keywords are attributes (id: replaces the id taken from the
+      # name).
+      def check_box_tag(args, kwargs)
+        helper_arity!("check_box_tag", args, 1, 3)
+        name = text_arg(args, 0, "check_box_tag")
+        checked = args.size > 2 && args[2] == true ? " checked=\"checked\"" : ""
+        if args.size > 1
+          return SafeString.of(FormBuilder.input_tag("checkbox", name, args[1], kwargs, checked))
+        end
+
+        SafeString.of(FormBuilder.input_tag("checkbox", name, "1", kwargs, checked))
       end
 
       # submit_tag(value = "Save changes"), named commit as f.submit is; the

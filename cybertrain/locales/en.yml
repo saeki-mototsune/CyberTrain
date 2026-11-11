@@ -291,6 +291,7 @@ en:
     new:
       email_address: Email address
       password: Password
+      remember_me: Keep me signed in
       sign_up: Sign up
       submit: Sign in
       title: Sign in
