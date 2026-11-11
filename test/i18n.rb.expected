@@ -1,0 +1,10 @@
+ok   t with interpolation, default and fallback to the default locale
+ok   interpolation, %%, count zero and a missing argument
+ok   plural rules for en, fr, ru, ja and zh
+ok   missing keys: development text, production humanised, raise
+ok   with_locale restores the locale on raise and answers the block's value
+ok   overlapping requests on two threads keep their own locales
+ok   locale= accepts names of available locales only
+ok   translate_list reads arrays; the application overrides the bundled dictionary
+ok   a plural mapping and a scalar at one key: the application's shape wins
+9 tests, 99 assertions, 0 failures

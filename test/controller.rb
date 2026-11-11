@@ -1,6 +1,9 @@
 require "stringio"
 require "cybertrain/test"
 require "cybertrain/controller"
+require "cybertrain/router"
+require "cybertrain/app"
+require "cybertrain/test/client"
 
 # cybertrain/controller pulls in cybertrain/model and the SQLite FFI bindings
 # (through the template helpers), so this program no longer runs under CRuby:
@@ -634,6 +637,56 @@ test "local_path? and safe_redirect_path accept only an ordinary local path" do
   end
   refute controller.local_path?(nil)
   assert_equal "/home", controller.safe_redirect_path(nil, "/home")
+end
+
+# The per-request locale (plan R4, Task 4): a before_action or an action
+# sets I18n.locale on the connection's thread; the next request on that
+# thread (a keep-alive connection) starts at the default locale again.
+class LocaleController < Cybertrain::Controller
+  before_action(only: [:switch]) { |c| I18n.locale = c.params["to"].to_s }
+
+  def switch
+    render plain: "#{I18n.locale} #{I18n.t("errors.messages.blank")}"
+  end
+
+  def set_in_action
+    I18n.locale = :ja
+    raise "after setting ja"
+  end
+
+  def show
+    render plain: "#{I18n.locale} #{I18n.t("errors.messages.blank")}"
+  end
+end
+
+def locale_app
+  router = Cybertrain::Router.new
+  router.get("/switch") { |c| LocaleController.new(c).process(:switch) { |x| x.switch } }
+  router.get("/raise") { |c| LocaleController.new(c).process(:set_in_action) { |x| x.set_in_action } }
+  router.get("/show") { |c| LocaleController.new(c).process(:show) { |x| x.show } }
+  Cybertrain::App.new(router, public_root: "test/no_such_public_dir", logging: false)
+end
+
+test "the locale is reset per action: a keep-alive pair, the first sets ja" do
+  I18n.available_locales = [:en, :ja]
+  client = Cybertrain::Test::Client.new(locale_app)
+  assert_equal "ja を入力してください", client.get("/switch?to=ja").body
+  # The in-process client serves every request on this one thread, as a
+  # keep-alive connection does: the locale is still :ja after the request,
+  # and the next request starts at :en.
+  assert_equal :ja, I18n.locale
+  assert_equal "en can't be blank", client.get("/show").body
+  assert_equal :en, I18n.locale
+  # A locale set in an action that then raises (no ErrorPages here, so the
+  # exception reaches the client) does not leak either.
+  assert_equal "after setting ja", assert_raises("RuntimeError") { client.get("/raise") }
+  assert_equal :ja, I18n.locale
+  assert_equal "en can't be blank", client.get("/show").body
+  # An unavailable locale from the request is refused before the action.
+  message = assert_raises("I18n::InvalidLocale") { client.get("/switch?to=xx") }
+  assert_equal "\"xx\" is not an available locale", message
+  assert_equal :en, I18n.locale
+  assert_equal "en can't be blank", client.get("/show").body
 end
 
 Cybertrain::Test.run!

@@ -16,6 +16,7 @@ require "cybertrain/generator/inflector"
 require "cybertrain/active_support"
 require "cybertrain/http/cookies"
 require "cybertrain/cookie_jar"
+require "cybertrain/i18n"
 
 module Cybertrain
   class MissingTemplate < StandardError
@@ -1522,6 +1523,11 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
+      # Every action starts at the default locale: a keep-alive connection
+      # serves its requests on one thread, and I18n.locale is that
+      # thread's (Thread.current), so a locale a before_action set for one
+      # request must not reach the next.
+      I18n.locale = I18n.default_locale
       Controller.assign_csp_policy(@ctx, self.class)
       # Built once per request and walked by both passes.
       chain = Controller.chain_for(self.class)
