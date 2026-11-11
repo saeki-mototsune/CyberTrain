@@ -132,12 +132,14 @@ runs:
         if [ -n "$GIVEN_PATH" ]; then dir="$(cd "$GIVEN_PATH" && pwd)"; else dir="$RUNNER_TEMP/cybertrain-framework"; fi
         tag="$(ruby -e 'print File.read(ARGV[0])[/SPINEL_TAG = "([^"]+)"/, 1].to_s' "$dir/cybertrain/version.rb")"
         test -n "$tag" || { echo "setup-cybertrain: no SPINEL_TAG in $dir/cybertrain/version.rb" >&2; exit 1; }
-        echo "path=$dir" >> "$GITHUB_OUTPUT"
-        echo "spinel-tag=$tag" >> "$GITHUB_OUTPUT"
         # ImageOS and ImageVersion are variables of the runner process, not
         # of the expression context: a toolchain built on one image is not
         # assumed to run on the next.
-        echo "image=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
+        {
+          echo "path=$dir"
+          echo "spinel-tag=$tag"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-0}"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Restore the Spinel toolchain
       id: spinel-cache

@@ -236,7 +236,16 @@ way; the script or workflow step that checks it says so in its comment.
   say so in the pull request and leave the English change; a maintainer will
   follow up.
 
-There is no formatter or linter beyond the gate. Follow the surrounding code:
+- **The workflows pass actionlint.** A workflow or a composite action under
+  `.github/` that loads as YAML can still name a job, an input or a step
+  output that does not exist, and GitHub says so only when it runs, which for
+  the release workflow is at release time. The Gate workflow's `actionlint`
+  job runs [script/lint-workflows](script/lint-workflows) on every pull
+  request; with [actionlint](https://github.com/rhysd/actionlint) installed
+  (and shellcheck, which it calls for the `run:` scripts) the same command
+  runs locally. The commit gate does not run it.
+
+There is no formatter or linter for the Ruby code beyond the gate. Follow the surrounding code:
 two-space indentation, comments that explain why rather than what, methods
 and files named for what they hold. Prefer the plain construct Spinel compiles
 well over the clever one; when a compiler constraint forces an odd shape, say
