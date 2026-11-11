@@ -1,6 +1,6 @@
-# M0 spike verdicts and Spinel rules
+# Spinel constraints, retained workarounds and spike history
 
-Throwaway programs under `spikes/` answered the design questions in
+Original throwaway programs under `spikes/` answered the design questions in
 `docs/design.md` section 9, on Spinel 2026.09.12. This file is the durable
 record; the programs themselves were deleted once the framework covered
 them (828e220, 2026-09-27; `git log --diff-filter=D -- spikes/` in a full
@@ -9,10 +9,17 @@ clone).
 The rules below grew from those spikes and from everything found since,
 most of it on 2026.09.12. A rule says which build it was seen on; where it
 says nothing, that is 2026.09.12. Whether a rule still reproduces on the
-build CyberTrain is pinned to now is in "Status on 2026.11.04.7026" below.
+build reviewed here is in "Status on 2026.11.04.7026" below. The source of
+truth for the supported compiler is [cybertrain/version.rb](../cybertrain/version.rb),
+including its fork URL; a newer pin needs its own evidence, not a relabelled table.
 Rules are cited by number across the repository ("NOTES rule 62"), so they
 are never renumbered: a new finding gets the next number, and a rule that
 no longer holds is marked, not removed.
+
+## Historical M0 results (2026-09-12 compiler)
+
+These results describe the original spike environment, not the current compiler
+or performance targets. The M0 question numbers are **not** the rule IDs below.
 
 | # | Question | Verdict |
 | --- | --- | --- |
@@ -33,28 +40,38 @@ Checked on 2026-11-04 with Spinel 2026.11.04.7026 (a2d06115f), the pinned
 `Cybertrain::SPINEL_TAG`, built from source, by compiling each re-checked
 rule's reduced program (or, where the rule has none, a small probe of the
 shape it describes; the rules marked "Not re-checked" were not run) and
-comparing its output with CRuby 3.3's. With that build `spin test` passes 106 of 106 of the framework's tests.
+comparing its output with CRuby 3.3's. The recorded 2026-11-04 run passed
+106 of 106 framework programs; this is a historical count, not the current
+suite size or a new test result. Later entries state their own observation dates.
+The 2026-11-11 document audit checked all 98 rule IDs for status coverage; it
+did not re-run all 98 behaviours. Fresh, saved probes are described under
+"Rechecks recorded on 2026-11-11" below.
 
 - **Still there**: the program still differs from CRuby or does not compile.
 - **Reduced program passes**: the rule's own reduced program prints Ruby's
-  result. The rule's cause is gone in that shape.
+  result. The failure was not reproduced in that shape; this does not prove
+  its cause is gone in every program.
 - **Probe passes**: a small program of the shape the rule describes prints
   Ruby's result, but the rule was seen in a larger program and never
   reduced, so this does not show that it is gone.
 - **Not re-checked**: no one has tried it on this build. That is not a
   claim either way.
 
-A rule whose program passes is not a licence to drop the workaround: the
-framework keeps following every rule until a change removes the workaround
-together with a test that covers the shape (as rule 77's did), and new code
-keeps following them. docs/spinel-feedback.md has the items that were
-written up for upstream.
+Compiler evidence and project policy are separate. A passing probe is not
+a licence to drop an active workaround: keep it until a dedicated change
+removes it with a test of the affected framework shape. Rule 77 is already
+retired; capability notes, ordinary Ruby behaviour and historical measurements
+are not blanket coding prohibitions. For a rule with several observations,
+a passing subcase does not clear the rest. [docs/spinel-feedback.md](../docs/spinel-feedback.md)
+contains upstream reports and comparisons. See the maintenance procedure below
+for the evidence needed to change a status.
 
 | Rule | On 2026.11.04.7026 |
 | --- | --- |
-| 2 | **Still there** for `instance_exec(&stored)` ("unsupported call: CallNode `instance_exec`"). A computed `send` over 150 method names in one class dispatches and `respond_to?` answers (probe passes); Spinel's docs/limitations.md now caps such a dispatch at 1024 arms. |
+| 1 | Computed `send` over 150 method names and `respond_to?` pass a probe; the compiler documentation caps such dispatch at 1024 arms. The original 128-literal limit is historical. Other reflection forms were not re-checked; the generated-dispatch policy remains. |
+| 2 | **Still there** for `instance_exec(&stored)` ("unsupported call: CallNode `instance_exec`"). |
 | 7, 8, 9, 10/34, 14, 29, 31, 40, 42, 43, 55, 67, 68 | Probe passes. |
-| 12, 18, 26, 47, 53, 54, 66, 73, 74, 77 | Reduced program passes (18: the class variable is also marked as a GC root, see 64). 47's last sentence (a `begin ... ensure ... end` ending a block) passes as a probe. |
+| 12, 18, 26, 47, 53, 54, 73, 74 | Reduced program passes (18: the class variable is also marked as a GC root, see 64). 47's last sentence (a `begin ... ensure ... end` ending a block) passes as a probe. |
 | 25 | **Still there**, by design (docs/spinel-feedback.md D). |
 | 28 | Probe passes: `URI.decode_www_form_component("%ZZ")` raises ArgumentError as under CRuby. |
 | 32 | The shape described (a yielding method with `rescue => e` called from a block nested in another block) compiles when the inner block has a value; a block whose only expression is `raise` fails to compile, a different trigger (rule 79). Rule 45's C error was not re-checked. |
@@ -69,26 +86,92 @@ written up for upstream.
 | 60 | Reduced program passes (the NUL byte and what follows are kept). |
 | 61 | Probe passes: `rescue JSON::ParserError, StandardError` catches `JSON.generate`'s NestingError. |
 | 62 | Reduced program passes: with `require "openssl"`, `getbyte` on a boxed String prints 97, and the C has no `sp_nomethod_msg("getbyte"` switch. |
+| 66 | Reduced buffer-append program passes. The separate `TimeZone#name` collision in the whole framework was not re-checked; do not treat it as cleared. |
 | 64, 65 | Marked / rooted in the shape checked (docs/spinel-feedback.md, "From spikes/NOTES.md"). |
 | 70 | Probe passes in a small program; the rule was seen only with the whole framework required, so not conclusive. |
 | 72 | Probe passes for two parts: an unresolvable name raises SocketError, and `entry[3]` indexes a `getaddrinfo` entry. The rest was not re-checked. |
 | 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. Phase 4a relies on it: test/rate_limit_store.rb spawns its own binary with `Process.spawn` and reaps it with `Process.wait(pid)` (2026-11-10). |
 | 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
+| 77 | **Retired workaround** since 2026.10.27.7020; reduced program passes on this pin and `test/db_with_value.rb` covers both forms. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
 | 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
 | 80 | **Still there**: found on this build. |
+| 81 | **Still there**, recorded on this build in phase 1: a relative rescue path can swallow an exception; use a defined, fully qualified class. Not freshly re-run by the document audit. |
 | 82 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
 | 83 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
+| 84 | Compiler refusal by design, checked 2026-11-05 on this pin; not a runtime Ruby-equivalence claim. |
 | 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
+| 86 | **Still there**, recorded on this build in phase 2: only Integer Range bounds survive the supported query path; other bounds use `where_between`. Not freshly re-run by the document audit. |
+| 87 | Supported capability on this pin: Ruby-defined class methods on `Time` are exercised by `test/time_ext.rb`; not a defect. |
 | 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). |
 | 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
 | 90 | **Still there**: found on this build (its reduced program, `C.str(yield)` with a String block at one call site and an Integer block at another, runs the first block twice). |
 | 91 | **Still there**: found on this build (its reduced program, `exit(1)` on a thread spawned through a method while the main thread sleeps, prints the main thread's line and exits 0). |
 | 92 | **Still there**: found on this build (the refusal is by design, as rule 84's is). |
 | 93 | **Still there**: found on this build (its reduced program prints `true false`; CRuby prints `false false`). |
-| 94, 96, 97, 98 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
+| 94, 96, 97 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
 | 95 | Works on this build: a record of a form that compiles, not of a defect. |
-| 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
+| 98 | Tool behaviour, checked 2026-11-11: generated C inside a package is refused as input and can invalidate builds. Keep probe outputs outside the package. |
+| 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
+| 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. |
+
+## Rechecks recorded on 2026-11-11
+
+Four saved programs in [rechecks/](rechecks/README.md) were compiled and run
+on Linux x86_64 with Spinel `2026.11.04.7026` (`a2d06115`, GCC 14.2.0,
+`-O 0`) and compared with CRuby 3.3.8. All four compiled, exited 0 and
+matched CRuby's output. This is new evidence for these small shapes only;
+no production workaround was removed and no GC-stress, macOS or optimized
+framework-wide equivalence is claimed.
+
+| Saved program | Scope of the passing observation | What remains unproven |
+| --- | --- | --- |
+| [value_shapes.rb](rechecks/value_shapes.rb) | Destructuring (12), module reopening with a class variable (18), NUL-preserving append after slice (60) | Collection/GC lifetimes, other buffer optimizations and application-scale inference |
+| [exception_shapes.rb](rechecks/exception_shapes.rb) | Qualified names (46), an unraised exception's message (53), hierarchy (54), `is_a?` on a raised exception (47) | Namespace aliases, missing rescue constants (81/89), stack depth and framework fault classification |
+| [openssl_dispatch.rb](rechecks/openssl_dispatch.rb) | `getbyte` on a boxed String with OpenSSL loaded (62) | Other builtin names and dispatch paths in a complete application |
+| [decimal.rb](rechecks/decimal.rb) | String construction, ordering and scale rounding (design D42); Float collapses two distinct decimal inputs | Framework integration, Float construction, storage precision and SQLite round-trips |
+
+## Maintaining this inventory
+
+Use the compiler pin in `cybertrain/version.rb` and record the tested fork,
+release and commit. Keep rule IDs stable; append a new ID for a new finding,
+and keep retired IDs with the removal/test reference. M0 question numbers,
+NOTES rule IDs and upstream issue numbers are distinct identifiers.
+
+For each new finding or recheck, record:
+
+- **Kind and scope:** language/tool contract, compiler defect, supported
+  capability, project policy, or performance observation. State the exact
+  receiver/block/type shape; split the status of unrelated subcases.
+- **Evidence:** date, framework commit, compiler version/commit, OS/architecture,
+  relevant flags and worker/GC settings, saved source, exact invocation,
+  exit status and expected/observed output. A timeout is inconclusive, not a
+  reproduction of a compiler defect. A snapshot is an expectation to review,
+  not something to regenerate automatically to make the check pass.
+- **Policy:** the affected framework code, the workaround still required,
+  the regression test (or explicitly missing coverage), and the upstream
+  issue/fix when known. Separate "probe passes" from "workaround retired".
+
+Keep new reduced programs under `spikes/rechecks/` or the relevant phase
+folder; output binaries, generated C and logs go outside the package tree
+(rule 98). Once an affected-program regression exists in `test/`, link it
+before removing redundant spike source. Do not delete the only reproducible
+evidence and leave an unsupported "fixed" claim.
+
+On a compiler upgrade, re-run retained probes and the affected framework,
+generator and example-application tests on supported platforms. Prioritize
+GC/FFI lifetimes (15, 58, 64, 65, 80), exception swallowing (81, 89), stored
+blocks (2, 82, 88, 90, 97), and concurrency/process behaviour (20-22, 57,
+80, 91). Keep untested entries explicitly unverified on the new pin. Update
+the status table and design references together; do not copy an older
+compiler's pass label onto a new version without running its evidence.
+
+Retire a workaround only in a reviewed change that demonstrates the old
+failure shape without the workaround, keeps an affected-program regression,
+and passes the relevant integration checks. GC and concurrency changes need
+stress or multi-worker evidence; a small single-threaded program is not
+sufficient. Narrow general advice to the actual failure: never remove needed
+synchronization or repeat side effects just to work around inference.
 
 ## Rules by topic
 
@@ -112,15 +195,29 @@ The rules are numbered in the order they were found. By topic:
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98
 
-## Rules every framework file must follow (derived from the spikes)
+<a id="rules-every-framework-file-must-follow-derived-from-the-spikes"></a>
+
+## Numbered records and retained implementation rules
+
+Read each record together with its per-version status above. Unless its own
+text gives a newer date, the failure narrative describes the original
+2026.09.12 observation. Imperative workarounds stay in force only within the
+affected shape; they do not turn historical symptoms into universal Ruby rules.
+Records 16, 23-24, 38, 76, 84-85, 87, 95 and 98 include language/tool behaviour
+or supported capabilities; record 22 is a measured tuning decision, and 77
+explicitly retires a workaround.
 
 1. Never call `send`, `public_send`, `respond_to?`, `instance_variable_get`,
    `const_get` with a non-literal name. Dispatch on names with `case name when :literal`.
+   This is the retained framework policy; the current computed-send probe
+   passes and the old 128-literal compiler limit no longer justifies it alone.
 2. Never `instance_exec`/`instance_eval` a stored block. Blocks that need the
    receiver take it as an argument: `before_action { |c| ... }`, `before_save { |r| ... }`.
 3. A base-class method that calls a method defined only in subclasses
    crashes the compiler (SIGSEGV at codegen). Declare an abstract stub in the
-   base for every such hook (`def read_attribute(name) = nil`).
+   base for directly dispatched hooks (`def read_attribute(name) = nil`).
+   Do not add stubs indiscriminately: stored callback-only hooks have the
+   opposite failure in rule 88 and intentionally have no base stub.
 4. From an instance method, `self.class.foo` is only safe when `foo` is
    overridden in every subclass; otherwise pass the class explicitly. Keep
    class-level registries keyed by a String (`model_name`, class name).
@@ -284,8 +381,10 @@ The rules are numbered in the order they were found. By topic:
 37. A Hash constant with Symbol keys and Integer values looked up with a
     polymorphic key returns a boxed value; accumulate into a typed local and
     `.to_i` on every branch to keep the result `sp_int`.
-38. A class method cannot call a protected/private instance method of an
-    instance it holds; expose a public method instead.
+38. **Ordinary Ruby visibility, not a Spinel defect.** The observed class
+    method calling an instance's protected method is rejected by CRuby too.
+    Expose the intended public interface; do not infer a general rule about
+    all private/protected calls from this shape.
 39. `SafeString#+` must build its result in two steps (compute the piece, then
     `SafeString.new`): a case expression whose branches both construct the
     result fails under the unboxed value-type layout that SafeString gets when
@@ -332,8 +431,9 @@ The rules are numbered in the order they were found. By topic:
     'sp_Exception *'"). Call it from a method body or a single-level block.
     A second `ensure` in such a re-entrant yielding method broke nested
     calls at run time (the outer transaction rolled back).
-46. `Class#name` carries no namespace ("ParserError", not
-    "JSON::ParserError"); assert on the bare name. Thread stacks are small:
+46. Historically `Class#name` carried no namespace ("ParserError", not
+    "JSON::ParserError"). The current pin returns the qualified name; do
+    not introduce new bare-name assertions on the basis of this old symptom. Thread stacks are small:
     about 50 nested template renders (14 Ruby frames each under CRuby)
     overflow one, so the Interpreter caps nesting at 12. A Hash literal
     whose values are all Strings is typed that way; seed it with a value of
@@ -474,8 +574,11 @@ The rules are numbered in the order they were found. By topic:
     under `SPINEL_WORKERS=2` (a process-wide cache in Helpers.route_key):
     bench/run's two-core config failed about one run in two with wrk
     timeouts or a dead server, and five runs out of five passed once the
-    lock was gone. Keep locks off the per-request path; cache per request.
-    A process-wide cache that requests only read needs no lock: the
+    lock was gone. Prefer request-local caches for this shape. This is not
+    permission to remove synchronization from shared mutable state: a
+    performance result is not a memory-safety argument. A shared cache can
+    be read without mutation locks only when fully initialized before its
+    readers start and not subsequently modified. In particular, the
     template engine's (`@template_index`, `@template_list`) used to be
     written on a template's first render, which two workers could do at
     once; `Engine.embedded` now parses every embedded template at boot
@@ -554,7 +657,10 @@ The rules are numbered in the order they were found. By topic:
     requires the openssl package had every response fail in
     `Response#to_http` this way (`HeaderName.same?` got its keys boxed),
     which the in-process Test::Client, never calling to_http, did not show.
-    Detect it in the C, not by running: `spinel prog.rb -c -o /tmp/x.c` and
+    The reduced probe passes on the current pin; retain the workaround
+    pending affected-program tests. Inspecting generated C is supporting
+    evidence, not a substitute for executing the path:
+    `spinel prog.rb -c -o /tmp/x.c` and
     `grep 'sp_raise_nomethod(sp_nomethod_msg("getbyte"' /tmp/x.c` (the
     enclosing C function names the Ruby method; a parameter typed `sp_RbVal`
     is a boxed one). What boxes a String parameter: one call site passing a
@@ -776,6 +882,11 @@ The rules are numbered in the order they were found. By topic:
     "backup", ...)` from a Scheduler task) instead of running a long
     `VACUUM INTO` on a thread of the server, where the SQLite call would hold
     its OS worker until it returns.
+    Current-pin update: `spawn` / `Process.spawn` and `Process.wait` now
+    pass the recorded probe; `test/rate_limit_store.rb` uses and reaps child
+    processes. The earlier spawn prohibition is superseded. Bounded work
+    and child cleanup still matter; the SQLite platform difference was not
+    re-checked.
 76. Spinel 2026.10.26.7019 resolves constants as CRuby does: a bare `DB`
     in an application class outside `module Cybertrain` (`class
     SessionsController < ApplicationController; def x = DB.with { ... }`)
@@ -1008,8 +1119,9 @@ The rules are numbered in the order they were found. By topic:
     class anywhere it raises NameError as CRuby does. Classes that are
     defined resolve by their full name: `rescue A::TimeoutError` and
     `rescue B::TimeoutError` side by side each catch their own. Found in the
-    phase 3 spike (2026-11-09): `require "cybertrain"` does not load
-    cybertrain/mailer, so an arm naming `Cybertrain::Mailer::TimeoutError`
+    phase 3 spike (2026-11-09), before the mailer integration: at that
+    point `require "cybertrain"` did not load cybertrain/mailer, so an arm
+    naming `Cybertrain::Mailer::TimeoutError`
     in such a program swallowed every exception its method raised, another
     framework `TimeoutError` supplying the last segment
     (spikes/phase3/rescue_arms.rb). Reduced repro: `module Outer; module
@@ -1021,7 +1133,10 @@ The rules are numbered in the order they were found. By topic:
     nothing. So generated `rescue` arms
     (`run_job`'s `retry_on` / `discard_on`) name only classes the program
     is known to define, and Spinel's "uninitialized constant" warning on a
-    `rescue` line is treated as an error.
+    `rescue` line is treated as an error. The full framework now loads the
+    mailer through `cybertrain/mailer/later`; that old missing-require
+    example is historical, but partial programs and generated rescue arms
+    still need the class-definition check.
 
 90. A `yield` passed straight as a method's argument runs the block twice
     when the block returns different types at different call sites
@@ -1106,7 +1221,10 @@ The rules are numbered in the order they were found. By topic:
     instance method of the concern or of an including class (gen refuses
     it), and the class method itself comes from gen's `def self.x` on the
     concern and forwarder in the class (plan decision 12). Found in the
-    phase 4a spike (2026-11-10; docs/spinel-feedback.md U).
+    phase 4a spike (2026-11-10; docs/spinel-feedback.md U). The final
+    generated concern copies blank these blocks before compilation (rule
+    92); the phantom instance-method description applies to compiling the
+    original source, not to a claim that generated copies still expose it.
 
 94. Type inference that does not converge: Spinel 2026.11.04.7026 stopped
     compiling examples/blog's `bin/gen.rb` with "type inference did not
@@ -1117,7 +1235,11 @@ The rules are numbered in the order they were found. By topic:
     now scans for itself (`Runner.controllers_source`,
     `concerns_source`), so `app/controllers` is read twice. When the
     message appears after a change that threads one value through several
-    methods, have each consumer compute its own.
+    methods, reduce the failing shape first. Repeating these read-only
+    scans is a local workaround, not a rule to recompute arbitrary values:
+    repeated I/O, stateful operations or time-dependent reads may change
+    semantics. Preserve the workaround until an integration test permits
+    sharing the result safely.
 
 95. A keyword parameter named after a Ruby keyword (`if:`, `unless:`,
     `module:`) cannot be read by name in the method body, under CRuby or
@@ -1144,8 +1266,11 @@ The rules are numbered in the order they were found. By topic:
     proc.call` ..."), while a fresh local holding the same text is
     accepted. It showed only in the blog's program, through
     `Views.component_builder.call(@name, ...)`; the framework passes an
-    interpolated copy (`"#{@name}"`) there. Pass a local, never an ivar,
-    to a lambda stored on a module or object (phase 4a Task 17,
+    interpolated copy (`"#{@name}"`) there. For this String/possibly-mutating
+    lambda shape, use an independently owned local copy and preserve the
+    caller's mutation semantics; a plain local alias is not evidence that
+    the same workaround works. Do not generalize this to every ivar/type
+    passed to a stored lambda (phase 4a Task 17,
     2026-11-11; compare rule 82).
 
 98. A C file that Spinel wrote (`spinel prog.rb -c -o x.c`, such as the
@@ -1158,12 +1283,21 @@ The rules are numbered in the order they were found. By topic:
     still exited 0). Write such files outside the package (the build
     directory, or a `TMPDIR` outside it) and delete them after the grep.
 
-## Numbers worth remembering
+<a id="numbers-worth-remembering"></a>
+
+## Historical measurements (not performance budgets)
+
+The undated M0 figures below were measured on the original compiler and
+workload. Later figures carry their own dates. They are neither current
+capacity guarantees nor pass/fail thresholds. Record compiler/commit, OS/CPU,
+worker count, workload, concurrency and repeated-run distribution when
+re-measuring; use [docs/benchmark.md](../docs/benchmark.md) and `bench/` for
+application benchmarks. Do not use old timings alone to set security costs.
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
 - Template render (32 KB page, 50 posts): hand-written 122-136 µs, interpreter 203 µs.
 - HTML escape: byte scan with fast path 506 ns / 2 strings; `gsub` with a Hash 587 ns; `each_char` 2541 ns.
 - SQLite: 1.5 M inserts/s inside one transaction, ~70 K/s autocommit; pool of 4 serving 8 threads: ~55 K statements/s.
-- HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it.
+- Historical crypto choice: HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it. This does not mean the full framework avoids OpenSSL today: encrypted sessions load the encryptor (design D61).
 - PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (Spinel's docs/thread.md, "The execution model").
 - Asset digests (phase 4a spike, 2026-11-10, one cloud vCPU): `File.binread` of 1 MB 1.4 ms, `Digest::SHA256.digest` of it 0.8 ms compiled (CRuby 3.3.6: 5.0 ms for both); a generated 200-arm `case` of String literals compiles in 1.3 s, adds 44 KB to the binary and answers in 293 ns a lookup (arms tried in order; CRuby hashes them, 183 ns).

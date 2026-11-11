@@ -1,0 +1,4 @@
+unraised message: kept
+class: Recheck::Child
+parent: Recheck::Parent
+is_a parent: true
