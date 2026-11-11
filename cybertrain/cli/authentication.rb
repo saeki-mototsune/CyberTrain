@@ -180,6 +180,17 @@ module Cybertrain
         "db/migrate/#{Scaffold.next_version(root, Scaffold.timestamp)}#{suffix}"
       end
 
+      # Whether source has an `include Authentication` line (a trailing
+      # comment allowed): not a commented-out one, and not
+      # `include AuthenticationHelpers` or `include Authentication::X`.
+      def self.included?(source)
+        source.each_line do |line|
+          code = line.strip
+          return true if code == INCLUDE_LINE || code.start_with?("#{INCLUDE_LINE} #")
+        end
+        false
+      end
+
       # Inserts `include Authentication` right after the class line, once. A
       # controller that defines require_authentication itself (0.4's
       # generator put the whole block there) is left alone: including the
@@ -187,7 +198,7 @@ module Cybertrain
       # when the file was changed.
       def self.add_to_application_controller(path)
         source = File.read(path)
-        unless source.index(INCLUDE_LINE).nil?
+        if Authentication.included?(source)
           puts "identical app/controllers/application_controller.rb (#{INCLUDE_LINE})"
           return false
         end
@@ -213,7 +224,7 @@ module Cybertrain
         at = source.index(comment)
         return false if at.nil?
 
-        if File.read(controller_path).index(INCLUDE_LINE).nil?
+        unless Authentication.included?(File.read(controller_path))
           puts "skip config/routes.rb (#{comment}): ApplicationController has no require_admin until it includes Authentication"
           return false
         end
@@ -614,10 +625,13 @@ module Cybertrain
               nil
             end
 
-            # The before_action of the pages only admins may see (the jobs page in
-            # config/routes.rb): anyone but a signed-in admin gets a 404, as if
-            # there were no such page. The user command makes a user an admin
-            # (`user admin EMAIL`, app/commands/user_command.rb).
+            # The before_action of the pages only admins may see: anyone but a
+            # signed-in admin gets a 404, as if there were no such page. The user
+            # command makes a user an admin (`user admin EMAIL`,
+            # app/commands/user_command.rb). On the jobs page (config/routes.rb)
+            # it runs alone, so a visitor gets the 404 too; in a controller that
+            # declares `before_action :require_admin` itself,
+            # require_authentication runs first and sends a visitor to sign in.
             def require_admin
               render plain: "Not Found", status: :not_found unless @current_user && @current_user.admin?
               nil
@@ -1025,22 +1039,26 @@ module Cybertrain
               0
             end
 
-            # `user admin EMAIL` (granted) or `user unadmin EMAIL`: sets the
-            # admin flag of the user with this address, who must exist.
+            # `user admin EMAIL` (granted) or `user unadmin EMAIL`: prints what
+            # admin_change did and answers the exit status.
             def self.grant_admin(email, granted)
+              line = UserCommand.admin_change(email, granted)
+              puts line
+              line.start_with?("error: ") ? 1 : 0
+            end
+
+            # Sets the admin flag of the user with this address, who must exist,
+            # and answers the line to print: "admin ann@example.com",
+            # "unadmin ann@example.com" or "error: ...".
+            def self.admin_change(email, granted)
               address = User.normalize_email_address(email)
               found = User.find_by(email_address: address)
-              if found.nil?
-                puts "error: no user \#{address}"
-                return 1
-              end
+              return "error: no user \#{address}" if found.nil?
+
               found.admin = granted
-              unless found.save
-                found.errors.full_messages.each { |message| puts "error: \#{message}" }
-                return 1
-              end
-              puts granted ? "admin \#{address}" : "unadmin \#{address}"
-              0
+              return "error: \#{found.errors.full_messages.join(", ")}" unless found.save
+
+              granted ? "admin \#{address}" : "unadmin \#{address}"
             end
 
             # One line of standard input, with a prompt when it is a terminal.
@@ -1300,18 +1318,24 @@ module Cybertrain
             assert probe.performed?
             assert_equal 404, ctx.response.status
             assert_equal "Not Found", ctx.response.body
-            # Through the full stack, require_authentication comes first and
-            # sends the visitor to sign in.
+            # Through the full stack the same: the jobs page runs require_admin
+            # alone (no redirect to sign in, which would show the page exists).
             client = new_client
             res = client.get("/admin/jobs")
-            assert_redirected_to res, "/session/new"
-            # Signed in, not an admin: 404, as if there were no such page.
+            assert_response res, :not_found
+            assert_equal "Not Found", res.body
+            # Signed in, not an admin: 404, as if there were no such page; the
+            # same body and type as a path no route has.
             user = AppTest.user
             AppTest.sign_in(client)
             res = client.get("/admin/jobs")
             assert_response res, :not_found
             assert_equal "Not Found", res.body
             refute res.body.include?("<h1>Jobs</h1>")
+            missing = client.get("/admin/no-such-page")
+            assert_response missing, :not_found
+            assert_equal missing.body, res.body
+            assert_equal missing.header("content-type"), res.header("content-type")
             # Made an admin, the same browser sees the page.
             user.admin = true
             user.save!
@@ -1323,6 +1347,17 @@ module Cybertrain
             user.save!
             res = client.get("/admin/jobs")
             assert_response res, :not_found
+          end
+
+          test "./#{app} user admin and unadmin print what they did" do
+            new_client
+            AppTest.user
+            assert_equal "admin ann@example.com", UserCommand.admin_change("Ann@Example.com", true)
+            assert_equal true, User.first.admin?
+            assert_equal "unadmin ann@example.com", UserCommand.admin_change("ann@example.com", false)
+            assert_equal false, User.first.admin?
+            assert_equal "error: no user bob@example.com", UserCommand.admin_change("bob@example.com", true)
+            assert_equal 1, User.count
           end
 
           test "./#{app} user admin and unadmin set the flag of an existing user" do

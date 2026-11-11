@@ -931,7 +931,13 @@ end
 # controller, after the application's own. It inherits ApplicationController,
 # so the application's layout, CSRF protection and helpers apply; the
 # `before_action` line is there only when `jobs_page` names one (without it
-# the page is open, and `spin run gen` prints a warning). The actions hand
+# the page is open, and `spin run gen` prints a warning). With one, it also
+# skips `require_authentication` (`cybertrain generate authentication`'s;
+# a no-op where there is none), so that guard alone decides and a visitor
+# gets its answer (`require_admin`: 404) rather than a redirect to sign in
+# that shows the page exists. A controller of the application that
+# declares `before_action :require_admin` itself keeps the inherited order:
+# authentication first. The actions hand
 # the work to {Cybertrain::JobsPage}; the POST ones redirect back to the page
 # (303) with a flash notice. `retry` is a Ruby keyword, so the routes call
 # `<action>_action` methods for the row and bulk actions:

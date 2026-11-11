@@ -38,4 +38,4 @@ ok   emit writes rate_limit_key, rate_limit_condition? and the with: arm of run_
 ok   a rate_limit in a concern's included block gives the includer its tables
 ok   a rate_limit naming an undefined method, or a block, is refused with its line
 ok   rate_limit options inside a String are not options, and nil names no method
-40 tests, 163 assertions, 0 failures
+40 tests, 164 assertions, 0 failures

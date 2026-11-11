@@ -73,6 +73,43 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/up.html
+create bin/commented.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+skip config/routes.rb (# jobs_page "/admin/jobs", before_action: :require_admin): ApplicationController has no require_admin until it includes Authentication
+insert app/controllers/application_controller.rb (include Authentication)
+skip config/routes.rb (# jobs_page "/admin/jobs", before_action: :require_admin): ApplicationController has no require_admin until it includes Authentication
+insert app/controllers/application_controller.rb (include Authentication)
+ok   only an include Authentication line counts, not a comment or another module
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
 create bin/legacy.rb
 create bin/gen.rb
 create bin/db.rb
@@ -116,7 +153,7 @@ identical bin/shop.rb (user command already required)
 next:
   cybertrain db migrate
   cybertrain server      # then open /sign_up
-  cybertrain spin test   # test/authentication.rb; snapshot it from the binary
+  cybertrain spin test   # test/authentication.rb and test/admin.rb; snapshot them from the binaries
 ok   running the generator again writes and edits nothing
 create spin.toml
 create .gitignore
@@ -235,7 +272,7 @@ insert config/app.rb (CLUB_SETUP_OPEN)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb; snapshot it from the binary
+  cybertrain spin test   # test/authentication.rb and test/admin.rb; snapshot them from the binaries
 ok   --invite-only writes the user command and /setup instead of the sign-up page
 ok   --invite-only's screens go through t, with keys the bundled dictionaries have
 ok   --invite-only requires the command in bin/<app>.rb and declares setup_open
@@ -301,7 +338,7 @@ identical config/app.rb (setup_open already declared)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb; snapshot it from the binary
+  cybertrain spin test   # test/authentication.rb and test/admin.rb; snapshot them from the binaries
 ok   --invite-only run again writes and edits nothing
 create spin.toml
 create .gitignore
@@ -379,4 +416,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-24 tests, 326 assertions, 0 failures
+25 tests, 360 assertions, 0 failures

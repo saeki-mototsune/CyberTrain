@@ -63,6 +63,16 @@ module Cybertrain
         out << "# before_action and CSRF protection.\n"
         out << "class CybertrainJobsController < ApplicationController\n"
         unless guard.empty?
+          # The guard alone decides: run after an inherited
+          # require_authentication (`generate authentication`'s), it would
+          # never see a visitor, who would be sent to sign in instead, which
+          # tells them the page exists. A skip of a callback the application
+          # does not have is a no-op. Controllers that declare the guard
+          # themselves keep Rails' order: authentication first.
+          out << "  # :#{guard} alone decides who sees the page: an application's\n"
+          out << "  # require_authentication is skipped, so a visitor gets the guard's\n"
+          out << "  # answer, not a redirect to sign in that shows the page exists.\n"
+          out << "  skip_before_action :require_authentication\n"
           out << "  before_action :#{guard}\n"
           out << "\n"
           out << "  def run_callback(name)\n"

@@ -350,7 +350,7 @@ module Cybertrain
         else
           puts "  cybertrain server      # then open /sign_up"
         end
-        puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary"
+        puts "  cybertrain spin test   # test/authentication.rb and test/admin.rb; snapshot them from the binaries"
       when "helper"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate helper NAME [--force]" unless args.size == 1

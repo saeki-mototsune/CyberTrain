@@ -174,10 +174,13 @@ test "writes the Authentication concern and includes it" do
         nil
       end
 
-      # The before_action of the pages only admins may see (the jobs page in
-      # config/routes.rb): anyone but a signed-in admin gets a 404, as if
-      # there were no such page. The user command makes a user an admin
-      # (`user admin EMAIL`, app/commands/user_command.rb).
+      # The before_action of the pages only admins may see: anyone but a
+      # signed-in admin gets a 404, as if there were no such page. The user
+      # command makes a user an admin (`user admin EMAIL`,
+      # app/commands/user_command.rb). On the jobs page (config/routes.rb)
+      # it runs alone, so a visitor gets the 404 too; in a controller that
+      # declares `before_action :require_admin` itself,
+      # require_authentication runs first and sends a visitor to sign in.
       def require_admin
         render plain: "Not Found", status: :not_found unless @current_user && @current_user.admin?
         nil
@@ -231,6 +234,25 @@ test "writes the Authentication concern and includes it" do
       end
     end
   RUBY
+end
+
+test "only an include Authentication line counts, not a comment or another module" do
+  Cybertrain::CLI::NewApp.create("commented", "{ path = \"../cybertrain\" }")
+  controller = "commented/app/controllers/application_controller.rb"
+  routes = "commented/config/routes.rb"
+  original = read(controller)
+  ["  # include Authentication\n", "  include AuthenticationHelpers\n"].each do |line|
+    File.write(controller, original.sub("Cybertrain::Controller\n", "Cybertrain::Controller\n#{line}"))
+    assert_equal false, Cybertrain::CLI::Authentication.included?(read(controller))
+    assert_equal false, Cybertrain::CLI::Authentication.enable_jobs_page(routes, controller)
+    assert_includes read(routes), "  # jobs_page \"/admin/jobs\""
+    assert_equal true, Cybertrain::CLI::Authentication.add_to_application_controller(controller)
+    assert read(controller).start_with?("class ApplicationController < Cybertrain::Controller\n  include Authentication\n\n#{line}"), read(controller)
+    assert_equal true, Cybertrain::CLI::Authentication.included?(read(controller))
+  end
+  assert_equal true, Cybertrain::CLI::Authentication.included?("class A < B\n  include Authentication\nend\n")
+  assert_equal true, Cybertrain::CLI::Authentication.included?("class A < B\n  include Authentication # here\nend\n")
+  assert_equal false, Cybertrain::CLI::Authentication.included?("class A < B\n  include Authentication::X\nend\n")
 end
 
 test "ApplicationController that already defines require_authentication (0.4's block) is left alone" do
@@ -341,21 +363,144 @@ def text_nodes(erb)
   nodes
 end
 
-# The views' text nodes that start with a capital letter (words a person
-# reads, which t() should give) and the controllers' literal flashes.
+# Whether text starts with a capital letter: words a person reads, which
+# t() should give (keys, paths, partial names and HTML values are lower
+# case).
+def capitalized?(text)
+  !text.empty? && text[0] >= "A" && text[0] <= "Z"
+end
+
+# The "..." and '...' literals in a piece of code, in order (a backslash
+# escapes the next character).
+def quoted_literals(code)
+  found = Array.new(0) { "" }
+  at = 0
+  while at < code.size
+    quote = code[at]
+    if quote == "\"" || quote == "'"
+      literal = +""
+      at += 1
+      while at < code.size && code[at] != quote
+        if code[at] == "\\"
+          at += 1
+          literal << code[at].to_s
+        else
+          literal << code[at]
+        end
+        at += 1
+      end
+      found << literal
+    end
+    at += 1
+  end
+  found
+end
+
+# The Ruby code of each ERB tag (`<%= x %>`, `<% x %>`); comments
+# (`<%# ... %>`) are left out.
+def erb_code(erb)
+  found = Array.new(0) { "" }
+  at = 0
+  loop do
+    open = erb.index("<%", at)
+    break if open.nil?
+
+    close = erb.index("%>", open)
+    break if close.nil?
+
+    code = erb[open + 2, close - open - 2].to_s
+    found << code unless code.start_with?("#")
+    at = close + 2
+  end
+  found
+end
+
+# The HTML tags of an ERB file (`input type="hidden" name="token"`), its
+# ERB tags taken out first.
+def html_tags(erb)
+  plain = +""
+  at = 0
+  while at < erb.size
+    open = erb.index("<%", at)
+    if open.nil?
+      plain << erb[at, erb.size - at].to_s
+      break
+    end
+    plain << erb[at, open - at].to_s
+    close = erb.index("%>", open)
+    at = close.nil? ? erb.size : close + 2
+  end
+  tags = Array.new(0) { "" }
+  at = 0
+  loop do
+    open = plain.index("<", at)
+    break if open.nil?
+
+    close = plain.index(">", open)
+    break if close.nil?
+
+    tags << plain[open + 1, close - open - 1].to_s
+    at = close + 1
+  end
+  tags
+end
+
+# What a view shows that does not come from t(): a text node, a string
+# literal inside an ERB tag (`f.submit "Sign in"`, `link_to 'Sign up', x`,
+# `f.label :x, "Email"`) or an attribute value (`placeholder="Email"`,
+# `title=`, `alt=`, `aria-label=`) that starts with a capital letter.
+def erb_problems(erb)
+  found = Array.new(0) { "" }
+  text_nodes(erb).each { |node| found << "text #{node}" if capitalized?(node) }
+  erb_code(erb).each do |code|
+    quoted_literals(code).each { |literal| found << "literal #{literal}" if capitalized?(literal) }
+  end
+  html_tags(erb).each do |tag|
+    quoted_literals(tag).each { |value| found << "attribute #{value}" if capitalized?(value) }
+  end
+  found
+end
+
+# What a controller or mailer says that does not come from t(): a
+# `notice:`, `alert:` or `subject:` literal, or a literal stored into the
+# flash (`flash[:x] = "..."`, `flash.now[:x] = '...'`). Comment lines are
+# left out.
+def ruby_problems(source)
+  found = Array.new(0) { "" }
+  source.each_line do |line|
+    code = line.strip
+    next if code.start_with?("#")
+
+    ["notice: ", "alert: ", "subject: "].each do |key|
+      ["\"", "'"].each do |quote|
+        found << "#{key}#{quote}" unless code.index("#{key}#{quote}").nil?
+      end
+    end
+    next if code.index("flash").nil?
+
+    ["] = \"", "] = '"].each do |assign|
+      found << "flash#{assign}" unless code.index(assign).nil?
+    end
+  end
+  found
+end
+
+# Every view (layouts aside) and every controller, concern and mailer of
+# the app, with what erb_problems / ruby_problems find in it.
 def untranslated(app)
   found = Array.new(0) { "" }
   tree_files("#{app}/app/views").each do |f|
     next if f.start_with?("layouts/") || !f.end_with?(".erb")
 
-    text_nodes(read("#{app}/app/views/#{f}")).each do |node|
-      found << "#{f}: #{node}" if node[0] >= "A" && node[0] <= "Z"
-    end
+    erb_problems(read("#{app}/app/views/#{f}")).each { |problem| found << "#{f}: #{problem}" }
   end
-  tree_files("#{app}/app/controllers").each do |f|
-    source = read("#{app}/app/controllers/#{f}")
-    ["notice: \"", "alert: \"", "flash[:notice] = \"", "flash[:alert] = \""].each do |literal|
-      found << "#{f}: #{literal}" unless source.index(literal).nil?
+  ["controllers", "mailers"].each do |dir|
+    next unless File.directory?("#{app}/app/#{dir}")
+
+    tree_files("#{app}/app/#{dir}").each do |f|
+      next unless f.end_with?(".rb")
+
+      ruby_problems(read("#{app}/app/#{dir}/#{f}")).each { |problem| found << "#{dir}/#{f}: #{problem}" }
     end
   end
   found
@@ -363,8 +508,32 @@ end
 
 test "every view and flash string goes through t" do
   assert_equal [], untranslated("shop")
-  # The scanner sees what it is meant to.
+  # The scanner sees what it is meant to: text nodes...
   assert_equal ["Sign in", "Hi"], text_nodes("<%# locals: () %>\n<h1>Sign in</h1>\n<p class=\"x\"><%= t(\".a\") %> Hi</p><input value=\"<%= x %>\">")
+  # ...English passed to helpers inside ERB tags, double or single quoted...
+  assert_equal ["literal Sign in"], erb_problems("<div class=\"actions\">\n  <%= f.submit \"Sign in\" %>\n</div>\n")
+  assert_equal ["literal Sign up"], erb_problems("<p><%= link_to 'Sign up', sign_up_path %></p>")
+  assert_equal ["literal Email"], erb_problems("<%= f.label :email_address, \"Email\" %>")
+  assert_equal ["literal Don't"], erb_problems("<%= button_to \"Don\\'t\", x %>")
+  # ...English attribute values...
+  assert_equal ["attribute Email", "attribute Close", "attribute A cat", "attribute Menu"],
+               erb_problems("<input placeholder=\"Email\" title='Close'><img alt=\"A cat\" src=\"/c.png\"><nav aria-label=\"Menu\">")
+  # ...but not keys, options, paths, comments or values from ERB.
+  assert_equal [], erb_problems("<%# Sign in %>\n<h1><%= t(\".title\") %></h1>\n<%= f.email_field :email_address, autocomplete: \"username\" %>\n" \
+                                "<%= render \"sessions/nav\" %><input type=\"hidden\" name=\"token\" value=\"<%= @setup_token %>\">")
+  # Controllers and mailers: notice:, alert:, subject: and flash literals.
+  assert_equal ["notice: '"], ruby_problems("    redirect_to x, notice: 'Saved'\n")
+  assert_equal ["alert: \""], ruby_problems("    redirect_to x, alert: \"No\"\n")
+  assert_equal ["subject: \""], ruby_problems("    Cybertrain::MailMessage.new(to: a, subject: \"Reset your password\", body: b)\n")
+  assert_equal ["flash] = \"", "flash] = '"], ruby_problems("  flash[:notice] = \"Hi\"\n  flash.now[:alert] = 'No'\n")
+  assert_equal [], ruby_problems("  # flash[:notice] = \"Hi\"\n  flash[:notice] = t(\".welcome\")\n  subject: I18n.t(\"x.subject\")\n")
+  # A whole app with one such view fails the check.
+  Dir.mkdir("shop/app/views/probes")
+  File.write("shop/app/views/probes/new.html.erb", "<%= form_with(url: x) do |f| %>\n  <%= f.submit \"Sign in\" %>\n<% end %>\n")
+  assert_equal ["probes/new.html.erb: literal Sign in"], untranslated("shop")
+  File.delete("shop/app/views/probes/new.html.erb")
+  Dir.rmdir("shop/app/views/probes")
+  assert_equal [], untranslated("shop")
 end
 
 # Where a lazy key ("." first) of a view resolves (D8): the template's
@@ -517,6 +686,13 @@ test "the app's test boots the app and drives the sign-in flow" do
   assert_includes admin, "test \"user.admin? is false for a new user\" do\n"
   assert_includes admin, "  assert_equal 404, ctx.response.status\n"
   assert_includes admin, "  res = client.get(\"/admin/jobs\")\n  assert_response res, :not_found\n"
+  # A visitor gets the same 404 through the stack: the jobs page runs
+  # require_admin alone.
+  assert_includes admin, "  client = new_client\n  res = client.get(\"/admin/jobs\")\n  assert_response res, :not_found\n  assert_equal \"Not Found\", res.body\n"
+  assert admin.index("assert_redirected_to res, \"/session/new\"").nil?
+  # The command's printed lines, not only its status.
+  assert_includes admin, "  assert_equal \"admin ann@example.com\", UserCommand.admin_change(\"Ann@Example.com\", true)\n"
+  assert_includes admin, "  assert_equal \"error: no user bob@example.com\", UserCommand.admin_change(\"bob@example.com\", true)\n"
   assert_includes admin, "  assert_equal false, user.admin?\n"
   assert_includes admin, "  assert_equal 0, UserCommand.run([\"admin\", \"Ann@Example.com\"])\n"
   assert_includes admin, "Cybertrain::Test.run!\n"
@@ -673,9 +849,10 @@ test "the user command is written in both modes with admin and unadmin" do
     assert_includes command, "    if !argv.empty? && (argv[0] == \"admin\" || argv[0] == \"unadmin\")\n" \
                              "      if argv.size != 2\n        puts USAGE\n        return 1\n      end\n" \
                              "      return UserCommand.grant_admin(argv[1], argv[0] == \"admin\")\n    end\n"
-    assert_includes command, "    found = User.find_by(email_address: address)\n    if found.nil?\n      puts \"error: no user \#{address}\"\n      return 1\n    end\n"
+    assert_includes command, "  def self.grant_admin(email, granted)\n    line = UserCommand.admin_change(email, granted)\n    puts line\n    line.start_with?(\"error: \") ? 1 : 0\n  end\n"
+    assert_includes command, "    found = User.find_by(email_address: address)\n    return \"error: no user \#{address}\" if found.nil?\n"
     assert_includes command, "    found.admin = granted\n"
-    assert_includes command, "    puts granted ? \"admin \#{address}\" : \"unadmin \#{address}\"\n"
+    assert_includes command, "    granted ? \"admin \#{address}\" : \"unadmin \#{address}\"\n"
     assert_includes command, "    puts created ? \"created \#{address}\" : \"updated \#{address}\"\n"
     assert_includes command, "Cybertrain::Main.command(\"user\", \"EMAIL [PASSWORD] | admin EMAIL | unadmin EMAIL: create a user or set its password, or grant or revoke admin\") do |argv|\n"
   end

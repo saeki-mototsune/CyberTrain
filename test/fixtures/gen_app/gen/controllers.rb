@@ -110,6 +110,10 @@ require "cybertrain/jobs_page"
 # rows in Cybertrain::JobsPage, in the application's layout, behind its
 # before_action and CSRF protection.
 class CybertrainJobsController < ApplicationController
+  # :require_admin alone decides who sees the page: an application's
+  # require_authentication is skipped, so a visitor gets the guard's
+  # answer, not a redirect to sign in that shows the page exists.
+  skip_before_action :require_authentication
   before_action :require_admin
 
   def run_callback(name)

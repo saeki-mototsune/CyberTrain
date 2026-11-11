@@ -201,6 +201,10 @@ test "emit writes CybertrainJobsController after the scanned controllers when a 
     # rows in Cybertrain::JobsPage, in the application's layout, behind its
     # before_action and CSRF protection.
     class CybertrainJobsController < ApplicationController
+      # :require_admin alone decides who sees the page: an application's
+      # require_authentication is skipped, so a visitor gets the guard's
+      # answer, not a redirect to sign in that shows the page exists.
+      skip_before_action :require_authentication
       before_action :require_admin
 
       def run_callback(name)
@@ -249,6 +253,9 @@ test "without before_action: the jobs controller has no callback and the generat
   source = Cybertrain::Gen::ControllersEmitter.emit([], page)
   assert_includes source, "class CybertrainJobsController < ApplicationController\n  def index\n    render html: Cybertrain::JobsPage.page_html(self, \"/ops/queue\")\n  end\n"
   refute source.include?("  before_action :"), "no before_action line"
+  # Without a guard of its own, the page keeps the application's
+  # authentication.
+  refute source.include?("skip_before_action"), "no skip without a guard"
   refute source.include?("run_callback"), "no run_callback"
   assert_equal "warning: jobs_page \"/ops/queue\" has no before_action:, so anyone who can reach it can see, retry, discard and delete jobs " \
                "(add one: jobs_page \"/ops/queue\", before_action: :require_admin)",

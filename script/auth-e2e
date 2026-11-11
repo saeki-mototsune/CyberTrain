@@ -151,8 +151,14 @@ run_variant() {
   expect_contains "GET /session/new" 'type="password" name="password"' "$page"
   expect_equal "GET /products, signed out" "303 $base/session/new" \
     "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$base/products")"
-  expect_equal "GET /admin/jobs, signed out" "303 $base/session/new" \
-    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$base/admin/jobs")"
+  # The jobs page runs require_admin alone: a visitor gets the same 404 as
+  # a path no route has, not a redirect that shows the page exists.
+  # (In production both bodies are public/404.html.)
+  status=$(curl -sS -o page.html -w '%{http_code}' "$base/admin/jobs")
+  expect_equal "GET /admin/jobs, signed out" "404" "$status"
+  status=$(curl -sS -o missing.html -w '%{http_code}' "$base/admin/no-such-page")
+  expect_equal "GET /admin/no-such-page" "404" "$status"
+  cmp -s page.html missing.html || fail "GET /admin/jobs, signed out: the body differs from a missing page's"
   if [ "$VARIANT" = "invite" ]; then
     expect_equal "GET /sign_up" "404" "$(curl -sS -o /dev/null -w '%{http_code}' "$base/sign_up")"
     grep -q '\[WARN\] no user exists yet' "$SERVER_LOG" || fail "no first-run warning in the server log"
