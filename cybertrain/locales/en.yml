@@ -4,12 +4,20 @@
 # fetched and its license are in test/fixtures/i18n/rails-i18n/), cut to
 # date, time, datetime.distance_in_words, number, errors,
 # activerecord.errors.messages, helpers.submit and support.array; plus
-# the framework's own keys under cybertrain (plan decision D12).
+# the framework's own keys under cybertrain (plan decision D12), and the
+# screens `cybertrain generate authentication` writes: their lazy keys
+# (sessions.*, registrations.*, setup.*) and the User model's attribute
+# names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
 ---
 en:
   activerecord:
+    attributes:
+      user:
+        email_address: Email address
+        password: Password
+        password_confirmation: Password confirmation
     errors:
       messages:
         record_invalid: 'Validation failed: %{errors}'
@@ -263,6 +271,37 @@ en:
     precision:
       format:
         delimiter: ''
+  registrations:
+    create:
+      welcome: Welcome! You have signed up.
+    new:
+      model: account
+      sign_in: Sign in
+      submit: Sign up
+      title: Sign up
+  sessions:
+    create:
+      invalid: Try another email address or password.
+      rate_limited: Try again later.
+    destroy:
+      signed_out: You have been signed out.
+    nav:
+      sign_in: Sign in
+      sign_out: Sign out
+    new:
+      email_address: Email address
+      password: Password
+      sign_up: Sign up
+      submit: Sign in
+      title: Sign in
+  setup:
+    create:
+      welcome: Welcome! Your account has been created.
+    new:
+      intro: Create the first account. This page is only shown on this machine, with the link the server printed when it started, and only until an account exists.
+      model: account
+      submit: Create account
+      title: Set up
   support:
     array:
       last_word_connector: ", and "

@@ -4,12 +4,20 @@
 # fetched and its license are in test/fixtures/i18n/rails-i18n/), cut to
 # date, time, datetime.distance_in_words, number, errors,
 # activerecord.errors.messages, helpers.submit and support.array; plus
-# the framework's own keys under cybertrain (plan decision D12).
+# the framework's own keys under cybertrain (plan decision D12), and the
+# screens `cybertrain generate authentication` writes: their lazy keys
+# (sessions.*, registrations.*, setup.*) and the User model's attribute
+# names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
 ---
 ja:
   activerecord:
+    attributes:
+      user:
+        email_address: メールアドレス
+        password: パスワード
+        password_confirmation: パスワード（確認用）
     errors:
       messages:
         record_invalid: 'バリデーションに失敗しました: %{errors}'
@@ -229,6 +237,37 @@ ja:
     precision:
       format:
         delimiter: ''
+  registrations:
+    create:
+      welcome: ようこそ。アカウントを登録しました。
+    new:
+      model: アカウント
+      sign_in: ログイン
+      submit: 登録する
+      title: アカウント登録
+  sessions:
+    create:
+      invalid: メールアドレスかパスワードが違います。
+      rate_limited: しばらくしてからもう一度お試しください。
+    destroy:
+      signed_out: ログアウトしました。
+    nav:
+      sign_in: ログイン
+      sign_out: ログアウト
+    new:
+      email_address: メールアドレス
+      password: パスワード
+      sign_up: アカウント登録
+      submit: ログイン
+      title: ログイン
+  setup:
+    create:
+      welcome: ようこそ。アカウントを作成しました。
+    new:
+      intro: 最初のアカウントを作成します。このページは、サーバーが起動時に表示したリンクを開いたこのマシンにだけ、アカウントができるまで表示されます。
+      model: アカウント
+      submit: アカウントを作成
+      title: 初期設定
   support:
     array:
       last_word_connector: "、"

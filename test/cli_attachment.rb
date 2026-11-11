@@ -457,6 +457,25 @@ test "inherited show-only authorization cannot be bypassed by a public download"
   assert_includes read(path), "allow_unauthenticated_access only: [:index, :show, :photo]"
 end
 
+# ApplicationController's `include Authentication` brings the concern's
+# callbacks: they are read from the concern, which must exist.
+test "the Authentication concern's callbacks count as ApplicationController's" do
+  Cybertrain::CLI::NewApp.create("concerned", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("concerned", "plan", ["title:string"])
+  Cybertrain::CLI::Authentication.generate("concerned")
+  path = "concerned/app/controllers/plans_controller.rb"
+  File.write(path, read(path).sub("ApplicationController\n", "ApplicationController\n  allow_unauthenticated_access only: [:index, :show]\n"))
+  concern = "concerned/app/controllers/concerns/authentication.rb"
+  original = read(concern)
+  File.write(concern, original.sub("    before_action :require_authentication\n", "    before_action :require_authentication\n    before_action :require_reader, only: [:show]\n"))
+  refuse_download("concerned", "plan", "photo")
+  File.delete(concern)
+  refuse_download("concerned", "plan", "photo")
+  File.write(concern, original)
+  Cybertrain::CLI::Attachment.generate("concerned", "plan", "photo", false)
+  assert_includes read(path), "allow_unauthenticated_access only: [:index, :show, :photo]"
+end
+
 test "unknown inherited policies and asymmetric skips refuse attachment scaffolds before writing" do
   Cybertrain::CLI::NewApp.create("unknown", "{ path = \"../cybertrain\" }")
   parent = "unknown/app/controllers/application_controller.rb"

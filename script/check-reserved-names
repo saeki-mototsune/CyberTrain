@@ -87,14 +87,14 @@ end
 # owner controller, so CLI::Templates::ATTACHMENT_RESERVED_ACTIONS must name
 # every instance method and reader a controller already has: those of
 # cybertrain/controller.rb (public or private), and those the generators
-# write into ApplicationController (its template and the authentication
-# block). A field called `params` or `head` would otherwise be accepted and
-# break the controller. Names a field cannot have (with ? ! =) are skipped.
+# write into ApplicationController (its template and the Authentication
+# concern it includes). A field called `params` or `head` would otherwise
+# be accepted and break the controller. Names a field cannot have (with ? ! =) are skipped.
 $LOAD_PATH.unshift(File.expand_path("..", __dir__))
 require "cybertrain/cli/templates"
 require "cybertrain/cli/authentication"
 controller_source = File.read(File.expand_path("../cybertrain/controller.rb", __dir__))
-app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.application_controller_block
+app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.authentication_concern
 action_names = []
 [controller_source, app_source].each do |text|
   text.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| action_names << m }

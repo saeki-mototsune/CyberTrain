@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# Drives an application made by `cybertrain generate authentication` from
+# end to end, once per VARIANT: a new app (this checkout as its framework)
+# with a scaffold, the generator, `db migrate`, `build`, `spin run gen --
+# --check`, every test/*.rb the app has compiled and run from build/test/,
+# then the built binary served on a free port and probed with curl and
+# the user command. The first failure stops it with a non-zero status and
+# leaves the app's directory in place to look at.
+#
+#   signup   generate authentication (the sign-up page)
+#   invite   generate authentication --invite-only (/setup, the boot warning)
+#
+# Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
+# it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
+# to end"). Each variant builds the app and its tests: minutes, not seconds.
+#
+# usage: script/auth-e2e VARIANT...
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+SECRET=auth-e2e-secret-auth-e2e-secret-auth-e2e
+
+if [ $# -eq 0 ]; then
+  echo "usage: script/auth-e2e VARIANT... (signup, invite)" >&2
+  exit 2
+fi
+for variant in "$@"; do
+  case "$variant" in
+    signup | invite) ;;
+    *)
+      echo "auth-e2e: unknown variant $variant (signup, invite)" >&2
+      exit 2
+      ;;
+  esac
+done
+
+cybertrain() {
+  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
+}
+
+fail() {
+  echo "auth-e2e [$VARIANT]: FAIL: $*" >&2
+  if [ -n "${SERVER_LOG:-}" ] && [ -f "$SERVER_LOG" ]; then
+    echo "--- server log" >&2
+    tail -n 40 "$SERVER_LOG" >&2
+  fi
+  echo "auth-e2e [$VARIANT]: the app is in $WORK" >&2
+  exit 1
+}
+
+step() {
+  echo "auth-e2e [$VARIANT]: $*"
+}
+
+# `expect_equal WHAT EXPECTED ACTUAL`
+expect_equal() {
+  [ "$2" = "$3" ] || fail "$1: expected '$2', got '$3'"
+}
+
+# `expect_contains WHAT NEEDLE HAYSTACK`
+expect_contains() {
+  case "$3" in
+    *"$2"*) ;;
+    *) fail "$1: no '$2' in: $(printf '%s' "$3" | head -c 400)" ;;
+  esac
+}
+
+SERVER_PID=""
+stop_server() {
+  if [ -n "$SERVER_PID" ]; then
+    kill "$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+    SERVER_PID=""
+  fi
+}
+trap stop_server EXIT
+
+free_port() {
+  ruby -rsocket -e 'server = TCPServer.new("127.0.0.1", 0); puts server.addr[1]; server.close'
+}
+
+# The authenticity_token of the first form in a page.
+form_token() {
+  printf '%s' "$1" | sed -n 's/.*name="authenticity_token" value="\([^"]*\)".*/\1/p' | head -n 1
+}
+
+run_variant() {
+  WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
+  SERVER_LOG=""
+  local flag=""
+  [ "$VARIANT" = "invite" ] && flag="--invite-only"
+
+  step "app in $WORK"
+  cd "$WORK"
+  cybertrain new shop --path "$ROOT" > new.log 2>&1 || { cat new.log >&2; fail "cybertrain new"; }
+  cd shop
+  cybertrain generate scaffold product name:string > /dev/null || fail "generate scaffold"
+  # shellcheck disable=SC2086
+  cybertrain generate authentication $flag > generate.log || { cat generate.log >&2; fail "generate authentication $flag"; }
+  test -f app/controllers/concerns/authentication.rb || fail "no Authentication concern"
+  grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "ApplicationController does not include Authentication"
+  grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin$' config/routes.rb || fail "the jobs page is not drawn"
+  if [ "$VARIANT" = "invite" ]; then
+    test ! -e app/controllers/registrations_controller.rb || fail "--invite-only wrote a sign-up page"
+  fi
+
+  step "db migrate, build, gen --check"
+  cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate"; }
+  cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build"; }
+  test -x dist/shop || fail "no dist/shop"
+  cybertrain spin run gen -- --check > gen-check.log 2>&1 || { cat gen-check.log >&2; fail "spin run gen -- --check"; }
+
+  # The app's own tests link SQLite, so they have no CRuby snapshot: `spin
+  # test` compiles each one (and fails for want of a snapshot), then the
+  # binary is run here and must pass.
+  for test_file in test/*.rb; do
+    name=$(basename "$test_file" .rb)
+    step "test/$name.rb"
+    cybertrain spin test "$test_file" > "test-$name.log" 2>&1 || true
+    test -x "build/test/$name" || { tail -n 40 "test-$name.log" >&2; fail "test/$name.rb did not compile"; }
+    out=$("./build/test/$name" 2>&1) || { printf '%s\n' "$out" | grep -v '^ok ' >&2; fail "test/$name.rb"; }
+    expect_contains "test/$name.rb" " 0 failures" "$out"
+  done
+
+  step "serve dist/shop"
+  cd dist
+  export CYBERTRAIN_SECRET_KEY_BASE="$SECRET"
+  ./shop migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "./shop migrate"; }
+  local port
+  port=$(free_port)
+  local base="http://127.0.0.1:$port"
+  SERVER_LOG="$PWD/server.log"
+  PORT=$port ./shop > "$SERVER_LOG" 2>&1 &
+  SERVER_PID=$!
+  local up=""
+  for _ in $(seq 1 60); do
+    if curl -fsS -o /dev/null "$base/up.html" 2>/dev/null; then
+      up=yes
+      break
+    fi
+    sleep 0.5
+  done
+  [ -n "$up" ] || fail "the server did not answer on port $port"
+
+  local status page
+  status=$(curl -sS -o page.html -w '%{http_code}' "$base/session/new")
+  page=$(cat page.html)
+  expect_equal "GET /session/new" "200" "$status"
+  expect_contains "GET /session/new" "<h1>Sign in</h1>" "$page"
+  expect_contains "GET /session/new" '<form action="/session" method="post">' "$page"
+  expect_contains "GET /session/new" 'type="password" name="password"' "$page"
+  expect_equal "GET /products, signed out" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$base/products")"
+  expect_equal "GET /admin/jobs, signed out" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$base/admin/jobs")"
+  if [ "$VARIANT" = "invite" ]; then
+    expect_equal "GET /sign_up" "404" "$(curl -sS -o /dev/null -w '%{http_code}' "$base/sign_up")"
+    grep -q '\[WARN\] no user exists yet' "$SERVER_LOG" || fail "no first-run warning in the server log"
+  else
+    expect_contains "GET /sign_up" "<h1>Sign up</h1>" "$(curl -fsS "$base/sign_up")"
+  fi
+
+  step "./shop user"
+  expect_equal "./shop user ann@example.com pw-pw-pw-pw" "created ann@example.com" \
+    "$(./shop user ann@example.com pw-pw-pw-pw)"
+  expect_equal "./shop user admin ann@example.com" "admin ann@example.com" \
+    "$(./shop user admin ann@example.com)"
+  local missing=0
+  out=$(./shop user admin bob@example.com) || missing=$?
+  expect_equal "./shop user admin bob@example.com" "error: no user bob@example.com" "$out"
+  expect_equal "./shop user admin bob@example.com (status)" "1" "$missing"
+
+  step "sign in, the jobs page as an admin"
+  local jar="$PWD/cookies.txt"
+  page=$(curl -fsS -c "$jar" -b "$jar" "$base/session/new")
+  local token
+  token=$(form_token "$page")
+  [ -n "$token" ] || fail "no authenticity_token on /session/new"
+  expect_equal "POST /session" "303 $base/" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$jar" -b "$jar" \
+       --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=ann@example.com" \
+       --data-urlencode "password=pw-pw-pw-pw" "$base/session")"
+  status=$(curl -sS -o page.html -w '%{http_code}' -b "$jar" "$base/admin/jobs")
+  expect_equal "GET /admin/jobs as an admin" "200" "$status"
+  expect_contains "GET /admin/jobs as an admin" "<h1>Jobs</h1>" "$(cat page.html)"
+  expect_equal "./shop user unadmin ann@example.com" "unadmin ann@example.com" \
+    "$(./shop user unadmin ann@example.com)"
+  expect_equal "GET /admin/jobs, no longer an admin" "404" \
+    "$(curl -sS -o /dev/null -w '%{http_code}' -b "$jar" "$base/admin/jobs")"
+
+  stop_server
+  unset CYBERTRAIN_SECRET_KEY_BASE
+  cd "$ROOT"
+  rm -rf "$WORK"
+  step "PASS"
+}
+
+for VARIANT in "$@"; do
+  run_variant
+done
+echo "auth-e2e: PASS ($*)"

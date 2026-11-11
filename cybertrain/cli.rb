@@ -55,13 +55,17 @@ module Cybertrain
         cybertrain generate authentication [--invite-only]
             Add email-and-password sign-in to the application in the current
             directory: users and sessions tables, User and Session models,
-            SessionsController and RegistrationsController with their views,
-            the routes, a before_action in ApplicationController and a test.
-            --invite-only: no sign-up page. Users are created with
-            `./NAME user EMAIL` (password from stdin), and the first one
-            also at /setup, which answers only to this machine, only with the
-            one-time token the server's boot warning prints, and only while
-            no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+            the Authentication concern (included into ApplicationController),
+            SessionsController and RegistrationsController with their views
+            (their texts in the bundled en and ja dictionaries), the routes,
+            the jobs page behind require_admin, and tests. `./NAME user
+            EMAIL` creates a user (password from stdin), `./NAME user admin
+            EMAIL` makes one an admin, `user unadmin EMAIL` takes it back.
+            --invite-only: no sign-up page. The first user is created with
+            the user command, or at /setup, which answers only to this
+            machine, only with the one-time token the server's boot warning
+            prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
+            the address check).
         cybertrain generate helper NAME [--force]
             Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
             `spin run gen` makes callable from every template) and a test.
@@ -335,7 +339,8 @@ module Cybertrain
         raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only]" unless args.empty?
 
         invite_only = argv.include?("--invite-only")
-        Authentication.generate(".", invite_only)
+        result = Authentication.generate_with_result(".", invite_only)
+        result.manual.each { |diff| puts diff }
         puts ""
         puts "next:"
         puts "  cybertrain db migrate"

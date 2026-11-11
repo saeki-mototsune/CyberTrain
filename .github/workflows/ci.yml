@@ -6,8 +6,8 @@ name: CI
 # The exception is the API reference's Markdown source (docs/api/README.md;
 # see .yardopts), which the "API reference builds" step below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
-# reads them except script/api-docs and script/test-shard, which are brought
-# back in. Nor do the other workflows (release, images, pages, gate): only this
+# reads them except script/api-docs, script/test-shard and script/auth-e2e,
+# which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
@@ -28,6 +28,7 @@ on:
       - "docs/api/**"
       - "script/api-docs"
       - "script/test-shard"
+      - "script/auth-e2e"
   pull_request:
     paths:
       - "**"
@@ -40,6 +41,7 @@ on:
       - "docs/api/**"
       - "script/api-docs"
       - "script/test-shard"
+      - "script/auth-e2e"
   # release.yml runs this whole file on the tag before it creates a release
   # (with `ref` set to the tag on a manual release run, which takes this file
   # from the branch it was started on, but .github/actions/setup-spinel and
@@ -192,6 +194,13 @@ jobs:
           test "$(./club user ann@example.com another-s3cr3t)" = "updated ann@example.com"
           test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3997/setup?token=$setup_token")" = "404"
           kill %1
+
+      # Both authentication variants end to end (script/auth-e2e): a new app
+      # with a scaffold, the generator, every test the app has compiled and
+      # run, then the binary served: the sign-in page, `./shop user` and
+      # `user admin`, and the jobs page behind require_admin.
+      - name: Authentication end to end
+        run: script/auth-e2e signup invite
 
       # File uploads end to end: a scaffold with an attachment field, the
       # app's own generated upload test, then one browser-shaped multipart

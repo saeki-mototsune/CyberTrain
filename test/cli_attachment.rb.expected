@@ -327,16 +327,21 @@ create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/club.rb (./club user)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
 create app/controllers/posts_controller.rb
@@ -404,16 +409,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/blog.rb (./blog user)
 create db/migrate/20260925120003_add_cover_to_articles.rb
 insert app/views/articles/_form.html.erb (cover file field, multipart: true)
 insert app/views/articles/show.html.erb (cover)
@@ -484,16 +494,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/desk.rb (./desk user)
 create db/migrate/20260925120003_add_scan_to_memos.rb
 insert app/views/memos/_form.html.erb (scan file field, multipart: true)
 insert app/views/memos/show.html.erb (scan)
@@ -552,16 +567,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/yard.rb (./yard user)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -619,16 +639,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/barn.rb (./barn user)
 create spin.toml
 create .gitignore
 create .env.example
@@ -674,16 +699,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/loft.rb (./loft user)
 create spin.toml
 create .gitignore
 create .env.example
@@ -729,16 +759,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/shed.rb (./shed user)
 create spin.toml
 create .gitignore
 create .env.example
@@ -784,16 +819,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/coop.rb (./coop user)
 create spin.toml
 create .gitignore
 create .env.example
@@ -839,16 +879,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/hive.rb (./hive user)
 create spin.toml
 create .gitignore
 create .env.example
@@ -894,16 +939,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/pen.rb (./pen user)
 ok   show restrictions are preserved or attachment generation is refused
 create spin.toml
 create .gitignore
@@ -950,16 +1000,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/restricted.rb (./restricted user)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1018,16 +1073,21 @@ create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 create test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/inherited.rb (./inherited user)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1042,6 +1102,80 @@ identical .gitignore (/storage/uploads/ already ignored)
 identical test/support/app_test.rb
 create test/attachment_plan_photo.rb
 ok   inherited show-only authorization cannot be bypassed by a public download
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/concerned.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_plans.rb
+create app/models/plan.rb
+create app/controllers/plans_controller.rb
+create app/views/plans/index.html.erb
+create app/views/plans/show.html.erb
+create app/views/plans/new.html.erb
+create app/views/plans/edit.html.erb
+create app/views/plans/_form.html.erb
+route resources :plans
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create test/support/app_test.rb
+create test/authentication.rb
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/concerned.rb (./concerned user)
+create db/migrate/20260925120003_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
+insert app/controllers/plans_controller.rb (:photo in allow_unauthenticated_access, since :show is public)
+insert app/controllers/plans_controller.rb (photo_file= in create)
+insert app/controllers/plans_controller.rb (photo_file= in update)
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_plan_photo.rb
+ok   the Authentication concern's callbacks count as ApplicationController's
 create spin.toml
 create .gitignore
 create .env.example
@@ -1132,34 +1266,43 @@ create db/migrate/20260925120002_create_users.rb
 create db/migrate/20260925120003_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
+create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
 identical test/support/app_test.rb
 create test/authentication.rb
-insert app/controllers/application_controller.rb (authentication)
+create test/admin.rb
+insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
 insert test/attachment_product_photo.rb (sign in first)
+insert bin/guild.rb (./guild user)
 identical db/migrate/20260925120002_create_users.rb
 identical db/migrate/20260925120003_create_sessions.rb
 identical app/models/user.rb
 identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
 identical app/controllers/sessions_controller.rb
 identical app/controllers/registrations_controller.rb
+identical app/commands/user_command.rb
 identical app/views/sessions/new.html.erb
 identical app/views/sessions/_nav.html.erb
 identical app/views/registrations/new.html.erb
 identical test/support/app_test.rb
 identical test/authentication.rb
-identical app/controllers/application_controller.rb (authentication already added)
+identical test/admin.rb
+identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session
 identical app/views/layouts/application.html.erb (nav already rendered)
 skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
 identical test/attachment_product_photo.rb (signs in already)
+identical bin/guild.rb (user command already required)
 ok   authentication generated after the attachment adds the sign-in to its test
 create spin.toml
 create .gitignore
@@ -1542,4 +1685,4 @@ create test/support/app_test.rb
 create test/attachment_item_set_post.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-33 tests, 340 assertions, 0 failures
+34 tests, 347 assertions, 0 failures

@@ -208,8 +208,10 @@ module Cybertrain
         RUBY
       end
 
-      # The jobs page line is a comment: uncomment it once
-      # ApplicationController has a require_admin that refuses everyone else.
+      # The jobs page line is a comment: a new application has no
+      # require_admin. `cybertrain generate authentication` provides one (the
+      # Authentication concern's) and draws the page behind it
+      # (CLI::Authentication.enable_jobs_page).
       def self.routes
         "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n"
       end
@@ -673,7 +675,7 @@ module Cybertrain
       # - every instance method and reader of Cybertrain::Controller,
       #   public or private (cybertrain/controller.rb);
       # - the methods the generators write into ApplicationController
-      #   (Templates.application_controller and the authentication block).
+      #   (Templates.application_controller and the Authentication concern).
       # Names ending in ? or ! are left out: a field name cannot have them.
       # script/check-reserved-names fails when Controller or those templates
       # gain a method this list lacks. The per-model helpers (set_<model>,
@@ -689,7 +691,7 @@ module Cybertrain
         respond_to head_not_acceptable send_rendered format_template_path apply_vary_accept
 
         apply_rate_limit rate_limit_key
-        record_not_found resume_session require_authentication
+        record_not_found resume_session require_authentication require_admin
         start_new_session_for terminate_session after_authentication_url
         cookies
         turbo_stream partial_body

@@ -4,42 +4,51 @@
 #
 #   db/migrate/*_create_users.rb, *_create_sessions.rb
 #   app/models/user.rb, app/models/session.rb
+#   app/controllers/concerns/authentication.rb   the Authentication concern
 #   app/controllers/sessions_controller.rb, registrations_controller.rb
+#   app/commands/user_command.rb                 `./<app> user ...`
 #   app/views/sessions/new.html.erb, _nav.html.erb, registrations/new.html.erb
-#   test/authentication.rb, test/support/app_test.rb
+#   test/authentication.rb, test/admin.rb, test/support/app_test.rb
 #
-# and three edits: `before_action`s and the sign-in helpers into
+# and these edits: `include Authentication` into
 # app/controllers/application_controller.rb, the routes into
-# config/routes.rb and the nav partial into the layout (plus a sign-in in
-# any test/attachment_*.rb written before it, which now needs one). Every
-# file is written once (Templates.write never overwrites) and every edit is
-# made once, so running the generator again is harmless.
+# config/routes.rb (and the jobs page's line, a comment until now, drawn
+# behind require_admin), the nav partial into the layout, the user command
+# into bin/<app>.rb (plus a sign-in in any test/attachment_*.rb written
+# before it, which now needs one). Every file is written once
+# (Templates.write never overwrites) and every edit is made once, so
+# running the generator again is harmless.
+#
+# Every word the screens show goes through t(): lazy keys
+# (`t(".title")`, sessions.new.title) in the views and the actions,
+# absolute ones in private methods, all of them in the bundled en and ja
+# dictionaries (cybertrain/locales/*.yml); an application's
+# config/locales overrides any of them.
 #
 # Sign-in attempts are rate limited as in Rails' generator (`rate_limit to:
 # 10, within: 3 * 60, only: [:create]`, per client address, counted in
 # Cybertrain::Cache; docs/design.md D26), and AppTest.sign_in resets the
 # counts so a test suite never reaches the limit.
 #
+# Users have an admin flag (`users.admin`, User#admin?), which the
+# concern's require_admin asks for and `./<app> user admin EMAIL` sets.
+#
 # What it leaves out, and why: password reset (its e-mail needs the app's
 # SMTP settings for Cybertrain::Mailer, which the generator cannot know) and a `Current` object (templates read `@current_user` instead, an ivar
 # `resume_session` sets on every controller). What it adds that Rails'
 # does not: a sign-up page, because there is no console to create the first
-# user in (Spinel has no `eval`).
+# user in (Spinel has no `eval`), and the user command.
 #
 # `--invite-only` (docs/design.md D29) writes no sign-up page. Instead:
 #
-#   app/commands/user_command.rb   `./<app> user EMAIL [PASSWORD]`, a
-#                                  Main.command that creates a user or sets
-#                                  its password (from stdin when not given),
-#                                  and the boot warning while no user exists
 #   app/controllers/setup_controller.rb, app/views/setup/new.html.erb
 #                                  /setup, the first user's form: only while
 #                                  no user exists, only with the one-time
 #                                  token the boot warning prints, only from
 #                                  loopback unless <APP>_SETUP_OPEN=1
 #
-# plus two more edits: the require and the warning into bin/<app>.rb
-# (before `exit(Cybertrain::Main.run(`), and the `setup_open` setting into
+# plus the boot warning while no user exists (in the user command's file,
+# called from bin/<app>.rb), and the `setup_open` setting into
 # config/app.rb's configure block.
 require "cybertrain/cli/templates"
 require "cybertrain/cli/scaffold"
@@ -60,18 +69,46 @@ module Cybertrain
       TEST_SIGN_IN_LINES = "  AppTest.user\n  AppTest.sign_in(client)\n"
       NEW_CLIENT_LINE = "def new_client"
       TEST_CLIENT_LINE = "  client = Cybertrain::Test::Client.new(APP)"
-      # --invite-only's two edits: bin/<app>.rb gets the command file and the
-      # boot warning before this line, config/app.rb the setting after this one.
+      # The edits bin/<app>.rb and config/app.rb get: the user command's file
+      # (and, with --invite-only, the boot warning) before this line, the
+      # setting (--invite-only) after this one.
       MAIN_RUN_LINE = "exit(Cybertrain::Main.run("
       CONFIGURE_LINE = "Cybertrain.configure do |c|"
       COMMAND_REQUIRE = "require_relative \"../app/commands/user_command\""
+      # What ApplicationController gets right after its class line.
+      INCLUDE_LINE = "include Authentication"
+      # `cybertrain new`'s routes carry the jobs page as a comment of this
+      # line until ApplicationController has a require_admin; then it is
+      # drawn (enable_jobs_page).
+      JOBS_PAGE_LINE = "jobs_page \"/admin/jobs\", before_action: :require_admin"
 
-      # Returns the paths it created. Raises InvalidArgument, before anything
-      # is written, when `root` is not an application (no config/routes.rb
-      # with the draw line, no app/controllers/application_controller.rb
-      # with the class line; with `invite_only`, no bin/<app>.rb with the
-      # Main.run line or no config/app.rb with the configure line).
+      # What generate_with_result did: the paths it created, the paths it
+      # overwrote and the diffs to apply by hand where a file it writes
+      # whole exists with other content. The generator leaves such a file
+      # alone and reports nothing yet, so the last two are empty.
+      class GenerateResult
+        # @return [Array<String>] each one's path from the app's root
+        attr_reader :created, :forced, :manual
+
+        def initialize(created, forced, manual)
+          @created = created
+          @forced = forced
+          @manual = manual
+        end
+      end
+
+      # The paths it created (generate_with_result's `created`).
       def self.generate(root, invite_only = false)
+        generate_with_result(root, invite_only).created
+      end
+
+      # Writes the files and makes the edits. Raises InvalidArgument, before
+      # anything is written, when `root` is not an application (no
+      # config/routes.rb with the draw line, no
+      # app/controllers/application_controller.rb with the class line, no
+      # bin/<app>.rb with the Main.run line; with `invite_only`, no
+      # config/app.rb with the configure line).
+      def self.generate_with_result(root, invite_only = false)
         routes_path = File.join(root, "config/routes.rb")
         raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
         raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
@@ -80,16 +117,16 @@ module Cybertrain
         raise InvalidArgument, "#{controller_path} not found: run this inside a cybertrain app" unless File.exist?(controller_path)
         raise InvalidArgument, "#{controller_path} has no `#{CLASS_LINE}` line" if File.read(controller_path).index(CLASS_LINE).nil?
 
-        app = ""
+        # Both modes require the user command from bin/<app>.rb.
+        app = Build.app_name(root)
+        raise InvalidArgument, "#{root}/spin.toml has no [package] name: run this inside a cybertrain app" if app == ""
+
+        bin_path = File.join(root, "bin/#{app}.rb")
+        raise InvalidArgument, "#{bin_path} not found: run this inside a cybertrain app" unless File.exist?(bin_path)
+        raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
+
+        config_path = File.join(root, "config/app.rb")
         if invite_only
-          app = Build.app_name(root)
-          raise InvalidArgument, "#{root}/spin.toml has no [package] name: run this inside a cybertrain app" if app == ""
-
-          bin_path = File.join(root, "bin/#{app}.rb")
-          raise InvalidArgument, "#{bin_path} not found: run this inside a cybertrain app" unless File.exist?(bin_path)
-          raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
-
-          config_path = File.join(root, "config/app.rb")
           raise InvalidArgument, "#{config_path} not found: run this inside a cybertrain app" unless File.exist?(config_path)
           raise InvalidArgument, "#{config_path} has no `#{CONFIGURE_LINE}` line" if File.read(config_path).index(CONFIGURE_LINE).nil?
         end
@@ -100,13 +137,14 @@ module Cybertrain
         record(created, root, migration_path(root, "sessions"), sessions_migration)
         record(created, root, "app/models/user.rb", user_model)
         record(created, root, "app/models/session.rb", session_model)
+        record(created, root, "app/controllers/concerns/authentication.rb", authentication_concern)
         record(created, root, "app/controllers/sessions_controller.rb", sessions_controller)
         if invite_only
           record(created, root, "app/controllers/setup_controller.rb", setup_controller(app))
-          record(created, root, "app/commands/user_command.rb", user_command(app))
         else
           record(created, root, "app/controllers/registrations_controller.rb", registrations_controller)
         end
+        record(created, root, "app/commands/user_command.rb", user_command(app, invite_only))
         record(created, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only))
         record(created, root, "app/views/sessions/_nav.html.erb", nav_partial)
         if invite_only
@@ -116,15 +154,15 @@ module Cybertrain
         end
         record(created, root, "test/support/app_test.rb", app_test_support)
         record(created, root, "test/authentication.rb", invite_only ? invite_only_test(app) : authentication_test)
+        record(created, root, "test/admin.rb", admin_test(app))
         add_to_application_controller(controller_path)
         add_routes(routes_path, invite_only)
+        enable_jobs_page(routes_path, controller_path)
         add_nav_to_layout(File.join(root, "app/views/layouts/application.html.erb"))
         add_sign_in_to_attachment_tests(root)
-        if invite_only
-          add_command_to_bin(File.join(root, "bin/#{app}.rb"), app)
-          add_setting_to_config(File.join(root, "config/app.rb"), app)
-        end
-        created
+        add_command_to_bin(bin_path, app, invite_only)
+        add_setting_to_config(config_path, app) if invite_only
+        GenerateResult.new(created, Array.new(0) { "" }, Array.new(0) { "" })
       end
 
       def self.record(created, root, path, content)
@@ -142,18 +180,51 @@ module Cybertrain
         "db/migrate/#{Scaffold.next_version(root, Scaffold.timestamp)}#{suffix}"
       end
 
-      # Inserts the authentication block right after the class line, once
-      # (the block's own `def require_authentication` marks a file that has
-      # it). Returns true when the file was changed.
+      # Inserts `include Authentication` right after the class line, once. A
+      # controller that defines require_authentication itself (0.4's
+      # generator put the whole block there) is left alone: including the
+      # concern on top of it would run every callback twice. Returns true
+      # when the file was changed.
       def self.add_to_application_controller(path)
         source = File.read(path)
+        unless source.index(INCLUDE_LINE).nil?
+          puts "identical app/controllers/application_controller.rb (#{INCLUDE_LINE})"
+          return false
+        end
         unless source.index("def require_authentication").nil?
-          puts "identical app/controllers/application_controller.rb (authentication already added)"
+          puts "skip app/controllers/application_controller.rb (it defines require_authentication itself): " \
+               "replace that code with `#{INCLUDE_LINE}` (app/controllers/concerns/authentication.rb)"
           return false
         end
 
-        File.write(path, insert_after_line(source, CLASS_LINE, indent(application_controller_block)))
-        puts "insert app/controllers/application_controller.rb (authentication)"
+        File.write(path, insert_after_line(source, CLASS_LINE, "  #{INCLUDE_LINE}\n\n"))
+        puts "insert app/controllers/application_controller.rb (#{INCLUDE_LINE})"
+        true
+      end
+
+      # Draws the jobs page `cybertrain new` left as a comment
+      # (`# jobs_page "/admin/jobs", before_action: :require_admin`), once
+      # ApplicationController includes the concern that defines
+      # require_admin. A routes file without that comment is left as it is.
+      # Returns true when the file was changed.
+      def self.enable_jobs_page(routes_path, controller_path)
+        source = File.read(routes_path)
+        comment = "# #{JOBS_PAGE_LINE}"
+        at = source.index(comment)
+        return false if at.nil?
+
+        if File.read(controller_path).index(INCLUDE_LINE).nil?
+          puts "skip config/routes.rb (#{comment}): ApplicationController has no require_admin until it includes Authentication"
+          return false
+        end
+
+        updated = +""
+        updated << source[0, at].to_s
+        updated << JOBS_PAGE_LINE
+        rest = at + comment.size
+        updated << source[rest, source.size - rest].to_s
+        File.write(routes_path, updated)
+        puts "route #{JOBS_PAGE_LINE}"
         true
       end
 
@@ -171,10 +242,10 @@ module Cybertrain
         true
       end
 
-      # --invite-only: requires app/commands/user_command.rb (which registers
-      # the `user` command) and runs its boot warning, just before the
-      # Main.run line of bin/<app>.rb, once.
-      def self.add_command_to_bin(path, app)
+      # Requires app/commands/user_command.rb (which registers the `user`
+      # command) and, with --invite-only, runs its boot warning, just before
+      # the Main.run line of bin/<app>.rb, once.
+      def self.add_command_to_bin(path, app, invite_only = false)
         name = "bin/#{app}.rb"
         source = File.read(path)
         unless source.index(COMMAND_REQUIRE).nil?
@@ -182,8 +253,8 @@ module Cybertrain
           return false
         end
 
-        File.write(path, insert_before_line(source, MAIN_RUN_LINE, bin_block(app)))
-        puts "insert #{name} (./#{app} user, the first-run warning)"
+        File.write(path, insert_before_line(source, MAIN_RUN_LINE, bin_block(app, invite_only)))
+        puts invite_only ? "insert #{name} (./#{app} user, the first-run warning)" : "insert #{name} (./#{app} user)"
         true
       end
 
@@ -313,6 +384,7 @@ module Cybertrain
               create_table "users" do |t|
                 t.string "email_address", null: false
                 t.string "password_digest", null: false
+                t.boolean "admin", null: false, default: "false"
                 t.timestamps
               end
               add_index "users", ["email_address"], unique: true
@@ -338,7 +410,7 @@ module Cybertrain
 
       def self.user_model
         <<~RUBY
-          # Columns (email_address, password_digest), the Cybertrain::Model
+          # Columns (email_address, password_digest, admin), the Cybertrain::Model
           # superclass and `sessions` (from the sessions table's foreign key) come
           # from gen/models/user.rb, generated from db/schema.rb by `spin run gen`.
           #
@@ -421,27 +493,35 @@ module Cybertrain
               true
             end
 
+            # Whether this user may see the admin pages (the Authentication
+            # concern's require_admin): `./<app> user admin EMAIL` sets it.
+            def admin? = admin
+
             # Public so the before_validation block above (which receives the
-            # record, not an implicit self) can call them.
+            # record, not an implicit self) can call them. Their messages come
+            # from the dictionary of the current locale, as a validator's do.
 
             def validate_email_address_taken
               address = email_address
               return nil if address.nil? || address.empty?
 
               taken = User.where(email_address: address).where_sql("id != ?", [id]).exists?
-              errors.add(:email_address, "has already been taken") if taken
+              errors.add(:email_address, I18n.error_message("user", :email_address, :taken)) if taken
               nil
             end
 
             def validate_password
               given = password
               if password_digest.to_s.empty?
-                errors.add(:password, "can't be blank")
+                errors.add(:password, I18n.error_message("user", :password, :blank))
               elsif !given.empty? && given.size < MIN_PASSWORD_LENGTH
-                errors.add(:password, "is too short (minimum is \#{MIN_PASSWORD_LENGTH} characters)")
+                errors.add(:password, I18n.error_message("user", :password, :too_short, { count: MIN_PASSWORD_LENGTH }))
               end
               confirmation = @password_confirmation
-              errors.add(:password_confirmation, "doesn't match Password") if !confirmation.nil? && confirmation != given
+              if !confirmation.nil? && confirmation != given
+                attribute = I18n.human_attribute_name("user", :password)
+                errors.add(:password_confirmation, I18n.error_message("user", :password_confirmation, :confirmation, { attribute: attribute }))
+              end
               nil
             end
           end
@@ -463,102 +543,118 @@ module Cybertrain
         RUBY
       end
 
-      # Inserted (indented) after the class line of
-      # app/controllers/application_controller.rb.
-      def self.application_controller_block
+      # app/controllers/concerns/authentication.rb: what 0.4 inserted into
+      # ApplicationController, as Rails 8's concern, plus require_admin.
+      def self.authentication_concern
         <<~RUBY
-          # ---- Authentication (cybertrain generate authentication) -------------
-          # Every action needs a signed-in user unless its controller opens it:
+          # Sign-in for the whole application (cybertrain generate authentication),
+          # as Rails 8's generator writes it: ApplicationController includes it, so
+          # every action needs a signed-in user unless its controller opens it with
           # `allow_unauthenticated_access only: [:new, :create]`. resume_session
-          # sets @current_user (and @current_session), which templates can read.
-          before_action :resume_session
-          before_action :require_authentication
+          # sets @current_user (and @current_session), which templates can read;
+          # require_admin guards the pages only admins may see.
+          #
+          # Written by the generator; it is yours to change.
+          module Authentication
+            extend ActiveSupport::Concern
 
-          def self.allow_unauthenticated_access(only: [], except: [])
-            skip_before_action(:require_authentication, only: only, except: except)
-          end
-
-          # @return [Boolean] whether this request has a signed-in user
-          def authenticated?
-            !@current_user.nil?
-          end
-
-          # Loads the Session row the cookie names (and its user); a stale or
-          # expired id is dropped. Cookie Max-Age alone cannot stop replay:
-          # authentication expires session_absolute_max_age seconds after
-          # sign-in (SessionStore enforces the same on the cookie). A cookie
-          # whose password key no longer matches (the password changed since
-          # it signed in) ends its Session row.
-          def resume_session
-            @current_session = nil
-            @current_user = nil
-            id = session[:session_id]
-            return nil if id.nil? || id.empty? || id.size > 18
-
-            found = Session.find_by(id: id.to_i)
-            if found.nil?
-              session.delete(:session_id)
-              return nil
+            included do
+              before_action :resume_session
+              before_action :require_authentication
+              helper_method :authenticated?
             end
-            created_at = found.created_at
-            lifetime = Cybertrain.config.session_absolute_max_age
-            if created_at.nil? || (lifetime > 0 && created_at.to_i + lifetime <= Time.now.to_i)
-              session.delete(:session_id)
-              return nil
+
+            private
+
+            # Whether this request has a signed-in user.
+            def authenticated?
+              !@current_user.nil?
             end
-            user = found.user
-            if user.nil? || !Cybertrain::Password.session_key_matches?(session[:password_key], user.password_digest)
-              found.destroy
-              session.delete(:session_id)
-              return nil
+
+            # Loads the Session row the cookie names (and its user); a stale or
+            # expired id is dropped. Cookie Max-Age alone cannot stop replay:
+            # authentication expires session_absolute_max_age seconds after
+            # sign-in (SessionStore enforces the same on the cookie). A cookie
+            # whose password key no longer matches (the password changed since
+            # it signed in) ends its Session row.
+            def resume_session
+              @current_session = nil
+              @current_user = nil
+              id = session[:session_id]
+              return nil if id.nil? || id.empty? || id.size > 18
+
+              found = Session.find_by(id: id.to_i)
+              if found.nil?
+                session.delete(:session_id)
+                return nil
+              end
+              created_at = found.created_at
+              lifetime = Cybertrain.config.session_absolute_max_age
+              if created_at.nil? || (lifetime > 0 && created_at.to_i + lifetime <= Time.now.to_i)
+                session.delete(:session_id)
+                return nil
+              end
+              user = found.user
+              if user.nil? || !Cybertrain::Password.session_key_matches?(session[:password_key], user.password_digest)
+                found.destroy
+                session.delete(:session_id)
+                return nil
+              end
+              @current_session = found
+              @current_user = user
+              nil
             end
-            @current_session = found
-            @current_user = user
-            nil
+
+            # Sends a visitor to the sign-in page, remembering a GET to come back to.
+            def require_authentication
+              return nil if authenticated?
+
+              session[:return_to_after_authenticating] = request.path if request.method == "GET"
+              redirect_to new_session_path, status: :see_other
+              nil
+            end
+
+            # The before_action of the pages only admins may see (the jobs page in
+            # config/routes.rb): anyone but a signed-in admin gets a 404, as if
+            # there were no such page. The user command makes a user an admin
+            # (`user admin EMAIL`, app/commands/user_command.rb).
+            def require_admin
+              render plain: "Not Found", status: :not_found unless @current_user && @current_user.admin?
+              nil
+            end
+
+            # Also stores the password key resume_session compares, and restarts
+            # the cookie's absolute lifetime. After a password change, call
+            # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
+            # to keep the browser that changed it signed in.
+            def start_new_session_for(user)
+              started = Session.create(user_id: user.id, ip_address: request.client_ip,
+                                       user_agent: request.header("user-agent").to_s)
+              session.restart_lifetime!
+              session[:session_id] = started.id
+              session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
+              @current_session = started
+              @current_user = user
+              nil
+            end
+
+            # Deletes the Session row and empties the cookie session (the CSRF
+            # token with it, so forms rendered before no longer submit).
+            def terminate_session
+              current = @current_session
+              current.destroy unless current.nil?
+              session.clear
+              @current_session = nil
+              @current_user = nil
+              nil
+            end
+
+            # Where to go after signing in: the page that asked for it, if it is a
+            # local path (Cybertrain::Controller#safe_redirect_path), or /.
+            def after_authentication_url
+              safe_redirect_path(session.delete(:return_to_after_authenticating), "/")
+            end
           end
-
-          # Sends a visitor to the sign-in page, remembering a GET to come back to.
-          def require_authentication
-            return nil if authenticated?
-
-            session[:return_to_after_authenticating] = request.path if request.method == "GET"
-            redirect_to new_session_path, status: :see_other
-            nil
-          end
-
-          # Also stores the password key resume_session compares, and restarts
-          # the cookie's absolute lifetime. After a password change, call
-          # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
-          # to keep the browser that changed it signed in.
-          def start_new_session_for(user)
-            started = Session.create(user_id: user.id, ip_address: request.client_ip,
-                                     user_agent: request.header("user-agent").to_s)
-            session.restart_lifetime!
-            session[:session_id] = started.id
-            session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
-            @current_session = started
-            @current_user = user
-            nil
-          end
-
-          # Deletes the Session row and empties the cookie session (the CSRF
-          # token with it, so forms rendered before no longer submit).
-          def terminate_session
-            current = @current_session
-            current.destroy unless current.nil?
-            session.clear
-            @current_session = nil
-            @current_user = nil
-            nil
-          end
-
-          # Where to go after signing in: the page that asked for it, if it is a
-          # local path (Cybertrain::Controller#safe_redirect_path), or /.
-          def after_authentication_url
-            safe_redirect_path(session.delete(:return_to_after_authenticating), "/")
-          end
-          # ---- end of authentication ------------------------------------------
-
         RUBY
       end
 
@@ -568,11 +664,10 @@ module Cybertrain
           class SessionsController < ApplicationController
             allow_unauthenticated_access only: [:new, :create]
             # Ten sign-in attempts per client address every three minutes, then
-            # back to the form until the window closes. Behind a reverse proxy on
-            # this host, set CYBERTRAIN_TRUSTED_PROXY=1 so that each visitor is
-            # counted rather than the proxy.
-            rate_limit to: 10, within: 3 * 60, only: [:create],
-                       redirect_to: "/session/new", alert: "Try again later."
+            # back to the form (rate_limited) until the window closes. Behind a
+            # reverse proxy on this host, set CYBERTRAIN_TRUSTED_PROXY=1 so that
+            # each visitor is counted rather than the proxy.
+            rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
 
             # GET /session/new
             # (named new_action: a `new` method would shadow SessionsController.new)
@@ -583,7 +678,7 @@ module Cybertrain
             def create
               user = User.authenticate_by(email_address: params[:email_address].to_s, password: params[:password].to_s)
               if user.nil?
-                flash[:alert] = "Try another email address or password."
+                flash[:alert] = t(".invalid")
                 redirect_to new_session_path, status: :see_other
               else
                 start_new_session_for(user)
@@ -594,8 +689,19 @@ module Cybertrain
             # DELETE /session
             def destroy
               terminate_session
-              flash[:notice] = "You have been signed out."
+              flash[:notice] = t(".signed_out")
               redirect_to new_session_path, status: :see_other
+            end
+
+            private
+
+            # What a client past the rate limit gets: the form again, with a
+            # message. Not an action, so its key is written in full (the
+            # action it answers for is create).
+            def rate_limited
+              flash[:alert] = t("sessions.create.rate_limited")
+              redirect_to new_session_path, status: :see_other
+              nil
             end
           end
         RUBY
@@ -623,7 +729,7 @@ module Cybertrain
               @user.password_confirmation = fields[:password_confirmation].to_s
               if @user.save
                 start_new_session_for(@user)
-                flash[:notice] = "Welcome! You have signed up."
+                flash[:notice] = t(".welcome")
                 redirect_to after_authentication_url, status: :see_other
               else
                 render :new, status: :unprocessable_entity
@@ -636,27 +742,27 @@ module Cybertrain
       # With --invite-only there is no sign-up page to link to.
       def self.sessions_new_view(invite_only = false)
         view = <<~ERB
-          <h1>Sign in</h1>
+          <h1><%= t(".title") %></h1>
 
           <%= form_with(url: session_path) do |f| %>
             <div class="field">
-              <%= f.label :email_address %>
+              <%= f.label :email_address, t(".email_address") %>
               <%= f.email_field :email_address, autocomplete: "username", autofocus: true %>
             </div>
 
             <div class="field">
-              <%= f.label :password %>
+              <%= f.label :password, t(".password") %>
               <%= f.password_field :password, autocomplete: "current-password" %>
             </div>
 
             <div class="actions">
-              <%= f.submit "Sign in" %>
+              <%= f.submit t(".submit") %>
             </div>
           <% end %>
         ERB
         return view if invite_only
 
-        "#{view}\n<p><%= link_to \"Sign up\", sign_up_path %></p>\n"
+        "#{view}\n<p><%= link_to t(\".sign_up\"), sign_up_path %></p>\n"
       end
 
       def self.nav_partial
@@ -665,9 +771,9 @@ module Cybertrain
           <nav class="session">
             <% if @current_user %>
               <span><%= @current_user.email_address %></span>
-              <%= button_to "Sign out", session_path, method: :delete %>
+              <%= button_to t(".sign_out"), session_path, method: :delete %>
             <% else %>
-              <%= link_to "Sign in", new_session_path %>
+              <%= link_to t(".sign_in"), new_session_path %>
             <% end %>
           </nav>
         ERB
@@ -675,12 +781,12 @@ module Cybertrain
 
       def self.registrations_new_view
         <<~ERB
-          <h1>Sign up</h1>
+          <h1><%= t(".title") %></h1>
 
           <%= form_with(model: @user, url: sign_up_path) do |f| %>
             <% if @user.errors.any? %>
               <div id="error_explanation">
-                <h2><%= pluralize(@user.errors.count, "error") %> prohibited this account from being created:</h2>
+                <h2><%= t("errors.template.header", count: @user.errors.count, model: t(".model")) %></h2>
                 <ul>
                   <% @user.errors.full_messages.each do |message| %>
                     <li><%= message %></li>
@@ -705,11 +811,11 @@ module Cybertrain
             </div>
 
             <div class="actions">
-              <%= f.submit "Sign up" %>
+              <%= f.submit t(".submit") %>
             </div>
           <% end %>
 
-          <p><%= link_to "Sign in", new_session_path %></p>
+          <p><%= link_to t(".sign_in"), new_session_path %></p>
         ERB
       end
 
@@ -771,7 +877,7 @@ module Cybertrain
               end
               if saved
                 start_new_session_for(@user)
-                flash[:notice] = "Welcome! Your account has been created."
+                flash[:notice] = t(".welcome")
                 redirect_to "/", status: :see_other
               else
                 render :new, status: :unprocessable_entity
@@ -803,18 +909,16 @@ module Cybertrain
 
       def self.setup_new_view
         <<~ERB
-          <h1>Set up</h1>
+          <h1><%= t(".title") %></h1>
 
-          <p>Create the first account. This page is only shown on this machine,
-          with the link the server printed when it started, and only until an
-          account exists.</p>
+          <p><%= t(".intro") %></p>
 
           <%= form_with(model: @user, url: setup_path) do |f| %>
             <input type="hidden" name="token" value="<%= @setup_token %>">
 
             <% if @user.errors.any? %>
               <div id="error_explanation">
-                <h2><%= pluralize(@user.errors.count, "error") %> prohibited this account from being created:</h2>
+                <h2><%= t("errors.template.header", count: @user.errors.count, model: t(".model")) %></h2>
                 <ul>
                   <% @user.errors.full_messages.each do |message| %>
                     <li><%= message %></li>
@@ -839,37 +943,65 @@ module Cybertrain
             </div>
 
             <div class="actions">
-              <%= f.submit "Create account" %>
+              <%= f.submit t(".submit") %>
             </div>
           <% end %>
         ERB
       end
 
-      # app/commands/user_command.rb (--invite-only): the `user` command and
-      # the boot warning, required from bin/<app>.rb (and from the app's
-      # test, which runs the command through Main.run).
-      def self.user_command(app)
+      # app/commands/user_command.rb: the `user` command, required from
+      # bin/<app>.rb (and from the app's tests, which run it). With
+      # --invite-only it also holds the boot warning, which names /setup's
+      # token; a sign-up app has no SetupController to name.
+      def self.user_command(app, invite_only = false)
+        head = user_command_head(app, invite_only)
+        warning = invite_only ? user_command_warning(app) : ""
+        tail = <<~RUBY
+          end
+
+          Cybertrain::Main.command("user", "EMAIL [PASSWORD] | admin EMAIL | unadmin EMAIL: create a user or set its password, or grant or revoke admin") do |argv|
+            UserCommand.run(argv)
+          end
+        RUBY
+        join_three(head, warning, tail)
+      end
+
+      # The command's file up to the end of its last method, in both modes.
+      def self.user_command_head(app, invite_only)
+        mode = invite_only ? " --invite-only" : ""
+        warned = invite_only ? ", which also calls UserCommand.warn_if_no_user before serving" : ""
         <<~RUBY
-          # `./#{app} user EMAIL [PASSWORD]` (cybertrain generate authentication
-          # --invite-only): creates the user with this address, or sets the
-          # password of the one that has it (which signs that user's browsers
-          # out: their sessions' password key no longer matches). Without
-          # PASSWORD it is read from standard input, one line, so that it stays
-          # out of `ps` and the shell history:
+          # `./#{app} user EMAIL [PASSWORD]` (cybertrain generate authentication#{mode}):
+          # creates the user with this address, or sets the password of the one
+          # that has it (which signs that user's browsers out: their sessions'
+          # password key no longer matches). Without PASSWORD it is read from
+          # standard input, one line, so that it stays out of `ps` and the shell
+          # history:
           #
           #   ./#{app} user ann@example.com          # type it, then Enter (it is echoed)
           #   printf '%s' "$PASSWORD" | ./#{app} user ann@example.com
           #
+          # `./#{app} user admin EMAIL` makes that user an admin (User#admin?, which
+          # the Authentication concern's require_admin asks for: the jobs page),
+          # `./#{app} user unadmin EMAIL` makes them an ordinary user again.
+          #
           # Registered with Cybertrain::Main.command, which connects the database
-          # first. Required by bin/#{app}.rb,
-          # which also calls UserCommand.warn_if_no_user before serving.
+          # first. Required by bin/#{app}.rb#{warned}.
           # Written by the generator; it is yours to change.
           module UserCommand
-            USAGE = "usage: ./#{app} user EMAIL [PASSWORD] (without PASSWORD, it is read from standard input)"
+            USAGE = "usage: ./#{app} user EMAIL [PASSWORD] (without PASSWORD, it is read from standard input) | ./#{app} user admin EMAIL | ./#{app} user unadmin EMAIL"
 
-            # The exit status: 0 when the user was created or updated, 1 for bad
-            # arguments, an empty password or a record that does not validate.
+            # The exit status: 0 when the user was created, updated or made an
+            # admin or not, 1 for bad arguments, an empty password, an unknown
+            # address (admin, unadmin) or a record that does not validate.
             def self.run(argv)
+              if !argv.empty? && (argv[0] == "admin" || argv[0] == "unadmin")
+                if argv.size != 2
+                  puts USAGE
+                  return 1
+                end
+                return UserCommand.grant_admin(argv[1], argv[0] == "admin")
+              end
               if argv.empty? || argv.size > 2 || argv[0].start_with?("-")
                 puts USAGE
                 return 1
@@ -893,6 +1025,24 @@ module Cybertrain
               0
             end
 
+            # `user admin EMAIL` (granted) or `user unadmin EMAIL`: sets the
+            # admin flag of the user with this address, who must exist.
+            def self.grant_admin(email, granted)
+              address = User.normalize_email_address(email)
+              found = User.find_by(email_address: address)
+              if found.nil?
+                puts "error: no user \#{address}"
+                return 1
+              end
+              found.admin = granted
+              unless found.save
+                found.errors.full_messages.each { |message| puts "error: \#{message}" }
+                return 1
+              end
+              puts granted ? "admin \#{address}" : "unadmin \#{address}"
+              0
+            end
+
             # One line of standard input, with a prompt when it is a terminal.
             def self.read_password
               if STDIN.tty?
@@ -911,44 +1061,58 @@ module Cybertrain
               s = s[0, s.size - 1].to_s if s.end_with?("\\r")
               s
             end
-
-            # Called by bin/#{app}.rb before the server boots: a [WARN] while no
-            # user exists, which is while /setup is open, with the page's
-            # one-time token (SetupController.setup_token, this process's own).
-            # Says nothing when the users table is not there yet (`./#{app}
-            # migrate` comes first).
-            def self.warn_if_no_user
-              Cybertrain.logger.warn("no user exists yet: run ./#{app} user EMAIL, or open /setup?token=\#{SetupController.setup_token} from this machine") if UserCommand.no_user?
-              nil
-            end
-
-            # Connects for the question only: Application#boot connects the
-            # server's own pool afterwards.
-            def self.no_user?
-              begin
-                Cybertrain::DB.connect(Cybertrain.config.database_path, size: 1)
-                !User.all.exists?
-              rescue Cybertrain::DB::Error
-                false
-              ensure
-                Cybertrain::DB.disconnect
-              end
-            end
-          end
-
-          Cybertrain::Main.command("user", "EMAIL [PASSWORD]: create a user or set its password") do |argv|
-            UserCommand.run(argv)
-          end
         RUBY
       end
 
-      # Inserted before the Main.run line of bin/<app>.rb (--invite-only).
-      def self.bin_block(app)
+      # --invite-only: the boot warning and the question it asks, indented
+      # into the module.
+      def self.user_command_warning(app)
+        text = <<~RUBY
+
+          # Called by bin/#{app}.rb before the server boots: a [WARN] while no
+          # user exists, which is while /setup is open, with the page's
+          # one-time token (SetupController.setup_token, this process's own).
+          # Says nothing when the users table is not there yet (`./#{app}
+          # migrate` comes first).
+          def self.warn_if_no_user
+            Cybertrain.logger.warn("no user exists yet: run ./#{app} user EMAIL, or open /setup?token=\#{SetupController.setup_token} from this machine") if UserCommand.no_user?
+            nil
+          end
+
+          # Connects for the question only: Application#boot connects the
+          # server's own pool afterwards.
+          def self.no_user?
+            begin
+              Cybertrain::DB.connect(Cybertrain.config.database_path, size: 1)
+              !User.all.exists?
+            rescue Cybertrain::DB::Error
+              false
+            ensure
+              Cybertrain::DB.disconnect
+            end
+          end
+        RUBY
+        indent(text)
+      end
+
+      # Inserted before the Main.run line of bin/<app>.rb; with
+      # --invite-only it also runs the boot warning.
+      def self.bin_block(app, invite_only = false)
+        if invite_only
+          return <<~RUBY
+            # `./#{app} user EMAIL [PASSWORD]`, `./#{app} user admin EMAIL` and
+            # `./#{app} user unadmin EMAIL`, and a [WARN] at boot while no user exists
+            # (cybertrain generate authentication --invite-only).
+            #{COMMAND_REQUIRE}
+            UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)
+
+          RUBY
+        end
+
         <<~RUBY
-          # `./#{app} user EMAIL [PASSWORD]`, and a [WARN] at boot while no user
-          # exists (cybertrain generate authentication --invite-only).
+          # `./#{app} user EMAIL [PASSWORD]`, `./#{app} user admin EMAIL` and
+          # `./#{app} user unadmin EMAIL` (cybertrain generate authentication).
           #{COMMAND_REQUIRE}
-          UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)
 
         RUBY
       end
@@ -1088,6 +1252,95 @@ module Cybertrain
         head = authentication_test_head(true)
         middle = setup_tests(app)
         join_three(head, middle, authentication_test_tail)
+      end
+
+      # test/admin.rb: the admin flag, require_admin (through the jobs page
+      # config/routes.rb draws behind it) and the user command's admin and
+      # unadmin.
+      def self.admin_test(app)
+        <<~RUBY
+          # The admin flag (cybertrain generate authentication): User#admin?,
+          # require_admin (the Authentication concern's before_action, which the
+          # jobs page in config/routes.rb names) and `./#{app} user admin EMAIL`.
+          # Run with `cybertrain spin test`; its snapshot comes from the compiled
+          # binary (the database is FFI).
+          require_relative "support/app_test"
+          require_relative "../app/commands/user_command"
+
+          def new_client
+            Session.all.delete_all
+            User.all.delete_all
+            Cybertrain::Test::Client.new(APP)
+          end
+
+          # require_admin is private (the Authentication concern's): a controller
+          # made for this test calls it, as a before_action would.
+          class AdminProbeController < ApplicationController
+            def probe_require_admin
+              require_admin
+            end
+          end
+
+          test "user.admin? is false for a new user" do
+            new_client
+            user = AppTest.user
+            assert_equal false, user.admin?
+            assert_equal false, User.find(user.id).admin?
+            user.admin = true
+            user.save!
+            assert_equal true, User.find(user.id).admin?
+          end
+
+          test "require_admin answers 404 to a visitor and a non-admin and 200 to an admin" do
+            # A visitor (no @current_user): require_admin itself answers 404.
+            ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/admin/jobs", {}, ""))
+            ctx.session = Cybertrain::Session.new
+            probe = AdminProbeController.new(ctx)
+            probe.probe_require_admin
+            assert probe.performed?
+            assert_equal 404, ctx.response.status
+            assert_equal "Not Found", ctx.response.body
+            # Through the full stack, require_authentication comes first and
+            # sends the visitor to sign in.
+            client = new_client
+            res = client.get("/admin/jobs")
+            assert_redirected_to res, "/session/new"
+            # Signed in, not an admin: 404, as if there were no such page.
+            user = AppTest.user
+            AppTest.sign_in(client)
+            res = client.get("/admin/jobs")
+            assert_response res, :not_found
+            assert_equal "Not Found", res.body
+            refute res.body.include?("<h1>Jobs</h1>")
+            # Made an admin, the same browser sees the page.
+            user.admin = true
+            user.save!
+            res = client.get("/admin/jobs")
+            assert_response res, :ok
+            assert_includes res.body, "<h1>Jobs</h1>"
+            # And no more once that is taken back.
+            user.admin = false
+            user.save!
+            res = client.get("/admin/jobs")
+            assert_response res, :not_found
+          end
+
+          test "./#{app} user admin and unadmin set the flag of an existing user" do
+            new_client
+            AppTest.user
+            assert_equal 0, UserCommand.run(["admin", "Ann@Example.com"])
+            assert_equal true, User.first.admin?
+            assert_equal 0, UserCommand.run(["unadmin", "ann@example.com"])
+            assert_equal false, User.first.admin?
+            assert_equal 1, UserCommand.run(["admin", "bob@example.com"])
+            assert_equal 1, UserCommand.run(["admin"])
+            assert_equal 1, UserCommand.run(["unadmin", "ann@example.com", "extra"])
+            assert_equal 1, User.count
+            assert_equal false, User.first.admin?
+          end
+
+          Cybertrain::Test.run!
+        RUBY
       end
 
       def self.join_three(first, second, third)
@@ -1382,30 +1635,38 @@ module Cybertrain
             assert_equal "127.0.0.1", Session.first.ip_address
           end
 
+          # after_authentication_url is private (the Authentication concern's):
+          # a controller made for these tests reads it.
+          class ReturnPathProbeController < ApplicationController
+            def probe_after_authentication_url
+              after_authentication_url
+            end
+          end
+
           test "authentication returns to a local path once" do
             ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
             ctx.session = Cybertrain::Session.new
-            controller = ApplicationController.new(ctx)
-            assert_equal "/", controller.after_authentication_url
+            controller = ReturnPathProbeController.new(ctx)
+            assert_equal "/", controller.probe_after_authentication_url
             ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9"].each do |path|
               controller.session[:return_to_after_authenticating] = path
-              assert_equal path, controller.after_authentication_url
+              assert_equal path, controller.probe_after_authentication_url
               refute controller.session.key?(:return_to_after_authenticating)
-              assert_equal "/", controller.after_authentication_url
+              assert_equal "/", controller.probe_after_authentication_url
             end
           end
 
           test "authentication rejects unsafe return destinations and consumes them" do
             ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
             ctx.session = Cybertrain::Session.new
-            controller = ApplicationController.new(ctx)
+            controller = ReturnPathProbeController.new(ctx)
             unsafe = ["", "products", "https://evil.example/", "//evil.example/", "///evil.example/",
                       "/\\\\evil.example/", "/products\\\\evil", " //evil.example/", "/記事", "/" + "a" * 2048]
             (0..32).each { |byte| unsafe << "/\#{Cybertrain::Test.binary([byte])}/evil.example/" }
             unsafe << "/\#{Cybertrain::Test.binary([127])}/evil.example/"
             unsafe.each do |path|
               controller.session[:return_to_after_authenticating] = path
-              assert_equal "/", controller.after_authentication_url
+              assert_equal "/", controller.probe_after_authentication_url
               refute controller.session.key?(:return_to_after_authenticating)
             end
           end

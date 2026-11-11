@@ -3,6 +3,9 @@
 module Cybertrain
   module BundledLocales
     def self.fill_texts_00(h)
+      h["en.activerecord.attributes.user.email_address"] = "Email address"
+      h["en.activerecord.attributes.user.password"] = "Password"
+      h["en.activerecord.attributes.user.password_confirmation"] = "Password confirmation"
       h["en.activerecord.errors.messages.record_invalid"] = "Validation failed: %{errors}"
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "Cannot delete record because dependent %{record} exist"
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "Cannot delete record because a dependent %{record} exists"
@@ -50,13 +53,13 @@ module Cybertrain
       h["en.cybertrain.pager.newer"] = "Newer"
       h["en.cybertrain.pager.older"] = "Older"
       h["en.cybertrain.pager.page"] = "Page %{page}"
-      h["en.date.formats.default"] = "%Y-%m-%d"
-      h["en.date.formats.long"] = "%B %d, %Y"
-      h["en.date.formats.short"] = "%b %d"
       nil
     end
 
     def self.fill_texts_01(h)
+      h["en.date.formats.default"] = "%Y-%m-%d"
+      h["en.date.formats.long"] = "%B %d, %Y"
+      h["en.date.formats.short"] = "%b %d"
       h["en.datetime.distance_in_words.about_x_hours.one"] = "about %{count} hour"
       h["en.datetime.distance_in_words.about_x_hours.other"] = "about %{count} hours"
       h["en.datetime.distance_in_words.about_x_months.one"] = "about %{count} month"
@@ -104,13 +107,13 @@ module Cybertrain
       h["en.errors.messages.other_than"] = "must be other than %{count}"
       h["en.errors.messages.password_too_long"] = "is too long"
       h["en.errors.messages.present"] = "must be blank"
-      h["en.errors.messages.required"] = "must exist"
-      h["en.errors.messages.taken"] = "has already been taken"
-      h["en.errors.messages.too_long.one"] = "is too long (maximum is %{count} character)"
       nil
     end
 
     def self.fill_texts_02(h)
+      h["en.errors.messages.required"] = "must exist"
+      h["en.errors.messages.taken"] = "has already been taken"
+      h["en.errors.messages.too_long.one"] = "is too long (maximum is %{count} character)"
       h["en.errors.messages.too_long.other"] = "is too long (maximum is %{count} characters)"
       h["en.errors.messages.too_short.one"] = "is too short (minimum is %{count} character)"
       h["en.errors.messages.too_short.other"] = "is too short (minimum is %{count} characters)"
@@ -158,13 +161,33 @@ module Cybertrain
       h["en.number.human.storage_units.units.tb"] = "TB"
       h["en.number.human.storage_units.units.zb"] = "ZB"
       h["en.number.percentage.format.delimiter"] = ""
-      h["en.number.percentage.format.format"] = "%n%"
-      h["en.number.precision.format.delimiter"] = ""
-      h["en.support.array.last_word_connector"] = ", and "
       nil
     end
 
     def self.fill_texts_03(h)
+      h["en.number.percentage.format.format"] = "%n%"
+      h["en.number.precision.format.delimiter"] = ""
+      h["en.registrations.create.welcome"] = "Welcome! You have signed up."
+      h["en.registrations.new.model"] = "account"
+      h["en.registrations.new.sign_in"] = "Sign in"
+      h["en.registrations.new.submit"] = "Sign up"
+      h["en.registrations.new.title"] = "Sign up"
+      h["en.sessions.create.invalid"] = "Try another email address or password."
+      h["en.sessions.create.rate_limited"] = "Try again later."
+      h["en.sessions.destroy.signed_out"] = "You have been signed out."
+      h["en.sessions.nav.sign_in"] = "Sign in"
+      h["en.sessions.nav.sign_out"] = "Sign out"
+      h["en.sessions.new.email_address"] = "Email address"
+      h["en.sessions.new.password"] = "Password"
+      h["en.sessions.new.sign_up"] = "Sign up"
+      h["en.sessions.new.submit"] = "Sign in"
+      h["en.sessions.new.title"] = "Sign in"
+      h["en.setup.create.welcome"] = "Welcome! Your account has been created."
+      h["en.setup.new.intro"] = "Create the first account. This page is only shown on this machine, with the link the server printed when it started, and only until an account exists."
+      h["en.setup.new.model"] = "account"
+      h["en.setup.new.submit"] = "Create account"
+      h["en.setup.new.title"] = "Set up"
+      h["en.support.array.last_word_connector"] = ", and "
       h["en.support.array.two_words_connector"] = " and "
       h["en.support.array.words_connector"] = ", "
       h["en.time.am"] = "am"
@@ -172,6 +195,9 @@ module Cybertrain
       h["en.time.formats.long"] = "%B %d, %Y %H:%M"
       h["en.time.formats.short"] = "%d %b %H:%M"
       h["en.time.pm"] = "pm"
+      h["ja.activerecord.attributes.user.email_address"] = "メールアドレス"
+      h["ja.activerecord.attributes.user.password"] = "パスワード"
+      h["ja.activerecord.attributes.user.password_confirmation"] = "パスワード（確認用）"
       h["ja.activerecord.errors.messages.record_invalid"] = "バリデーションに失敗しました: %{errors}"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "%{record}が存在しているので削除できません"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "%{record}が存在しているので削除できません"
@@ -189,6 +215,10 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.columns.id"] = "ID"
       h["ja.cybertrain.jobs_page.columns.jobs"] = "件数"
       h["ja.cybertrain.jobs_page.columns.kind"] = "種類"
+      nil
+    end
+
+    def self.fill_texts_04(h)
       h["ja.cybertrain.jobs_page.columns.run_at"] = "実行予定"
       h["ja.cybertrain.jobs_page.columns.state"] = "状態"
       h["ja.cybertrain.jobs_page.columns.updated"] = "更新日時"
@@ -215,10 +245,6 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.tabs.discarded"] = "破棄済み (%{count})"
       h["ja.cybertrain.jobs_page.tabs.failed"] = "失敗 (%{count})"
       h["ja.cybertrain.jobs_page.tabs.running"] = "実行中 (%{count})"
-      nil
-    end
-
-    def self.fill_texts_04(h)
       h["ja.cybertrain.jobs_page.title"] = "ジョブ"
       h["ja.cybertrain.pager.newer"] = "前へ"
       h["ja.cybertrain.pager.older"] = "次へ"
@@ -243,6 +269,10 @@ module Cybertrain
       h["ja.errors.messages.accepted"] = "を受諾してください"
       h["ja.errors.messages.blank"] = "を入力してください"
       h["ja.errors.messages.confirmation"] = "と%{attribute}の入力が一致しません"
+      nil
+    end
+
+    def self.fill_texts_05(h)
       h["ja.errors.messages.empty"] = "を入力してください"
       h["ja.errors.messages.equal_to"] = "は%{count}にしてください"
       h["ja.errors.messages.even"] = "は偶数にしてください"
@@ -269,10 +299,6 @@ module Cybertrain
       h["ja.errors.template.body"] = "次の項目を確認してください"
       h["ja.errors.template.header"] = "%{model}に%{count}個のエラーが発生しました"
       h["ja.helpers.submit.create"] = "登録する"
-      nil
-    end
-
-    def self.fill_texts_05(h)
       h["ja.helpers.submit.submit"] = "保存する"
       h["ja.helpers.submit.update"] = "更新する"
       h["ja.number.currency.format.delimiter"] = ","
@@ -297,6 +323,10 @@ module Cybertrain
       h["ja.number.human.decimal_units.units.trillion"] = "兆"
       h["ja.number.human.decimal_units.units.unit"] = ""
       h["ja.number.human.format.delimiter"] = ""
+      nil
+    end
+
+    def self.fill_texts_06(h)
       h["ja.number.human.format.precision"] = "3"
       h["ja.number.human.format.significant"] = "true"
       h["ja.number.human.format.strip_insignificant_zeros"] = "true"
@@ -312,6 +342,26 @@ module Cybertrain
       h["ja.number.percentage.format.delimiter"] = ""
       h["ja.number.percentage.format.format"] = "%n%"
       h["ja.number.precision.format.delimiter"] = ""
+      h["ja.registrations.create.welcome"] = "ようこそ。アカウントを登録しました。"
+      h["ja.registrations.new.model"] = "アカウント"
+      h["ja.registrations.new.sign_in"] = "ログイン"
+      h["ja.registrations.new.submit"] = "登録する"
+      h["ja.registrations.new.title"] = "アカウント登録"
+      h["ja.sessions.create.invalid"] = "メールアドレスかパスワードが違います。"
+      h["ja.sessions.create.rate_limited"] = "しばらくしてからもう一度お試しください。"
+      h["ja.sessions.destroy.signed_out"] = "ログアウトしました。"
+      h["ja.sessions.nav.sign_in"] = "ログイン"
+      h["ja.sessions.nav.sign_out"] = "ログアウト"
+      h["ja.sessions.new.email_address"] = "メールアドレス"
+      h["ja.sessions.new.password"] = "パスワード"
+      h["ja.sessions.new.sign_up"] = "アカウント登録"
+      h["ja.sessions.new.submit"] = "ログイン"
+      h["ja.sessions.new.title"] = "ログイン"
+      h["ja.setup.create.welcome"] = "ようこそ。アカウントを作成しました。"
+      h["ja.setup.new.intro"] = "最初のアカウントを作成します。このページは、サーバーが起動時に表示したリンクを開いたこのマシンにだけ、アカウントができるまで表示されます。"
+      h["ja.setup.new.model"] = "アカウント"
+      h["ja.setup.new.submit"] = "アカウントを作成"
+      h["ja.setup.new.title"] = "初期設定"
       h["ja.support.array.last_word_connector"] = "、"
       h["ja.support.array.two_words_connector"] = "、"
       h["ja.support.array.words_connector"] = "、"
@@ -332,6 +382,7 @@ module Cybertrain
       fill_texts_03(h)
       fill_texts_04(h)
       fill_texts_05(h)
+      fill_texts_06(h)
       h
     end
 
