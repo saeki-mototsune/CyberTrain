@@ -20,7 +20,17 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   `instance_variable_get`, `eval`) do not exist. [spikes/NOTES.md](spikes/NOTES.md)
   lists the constraints found so far and how the code works around them.
   When something will not compile, look there first, and add a note when you
-  find a new one.
+  find a new one. Its section "Workarounds that shape the design" says which
+  shapes are permanent, which are tied to the pinned build and which test
+  covers each, and what a Spinel update re-checks.
+- **A CRuby pass is not acceptance for a structural change.** The commit
+  gate and `ruby -I. test/<name>.rb` run under CRuby, where none of Spinel's
+  constraints exist. A change that moves code between methods, classes or
+  files, changes what a block or a Proc crosses, adds a shared helper or a
+  base class, or changes what the generator emits must pass the affected
+  tests compiled (`spin test`), and a generator change must leave
+  `examples/blog` regenerating clean and passing. Say in the pull request
+  which compiled tests you ran.
 - **Every design decision is written down.** [docs/design.md](docs/design.md)
   records what was decided, what was rejected and why. Read the
   relevant section before changing a behaviour, and update it when a
