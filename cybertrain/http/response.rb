@@ -319,7 +319,10 @@ module Cybertrain
     # the Server writes, error answers and HEAD included, goes through this
     # method. Permissions-Policy is one of those defaults too
     # (Response.default_permissions_policy). A 304 carries neither Content-Length nor Content-Type (RFC
-    # 9110 15.4.5). Accepted deviation: Content-Length and the default
+    # 9110 15.4.5), and no body either, even when one was set (`render
+    # plain: "x", status: :not_modified`): bytes after a 304's head would be
+    # read as the start of the next response on a keep-alive connection.
+    # Accepted deviation: Content-Length and the default
     # Content-Type are emitted for 204 too, although RFC 9110 section 8.6
     # forbids Content-Length in a 204.
     def to_http(head_only = false)
@@ -342,7 +345,7 @@ module Cybertrain
         out << "Set-Cookie: " << cookie << "\r\n"
       end
       out << "\r\n"
-      out << @body unless head_only
+      out << @body unless head_only || not_modified
       out
     end
 

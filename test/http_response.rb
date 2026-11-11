@@ -293,4 +293,19 @@ test "Permissions-Policy is a default header" do
   Response.default_permissions_policy = "camera=(), microphone=(), geolocation=()"
 end
 
+test "a 304 never writes a body it was given" do
+  res = Response.new
+  res.status = 304
+  res.body = "stale bytes"
+  wire = res.to_http
+  # the head ends the message: nothing after the blank line
+  assert wire.end_with?("\r\n\r\n")
+  refute wire.include?("stale bytes")
+  refute wire.include?("Content-Length")
+  # a 200 with the same body still writes it
+  ok = Response.new
+  ok.body = "fresh bytes"
+  assert ok.to_http.end_with?("\r\n\r\nfresh bytes")
+end
+
 Cybertrain::Test.run!
