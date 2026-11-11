@@ -1,6 +1,11 @@
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/config"
 require "cybertrain/test"
+require "stringio"
+
+# Blocked hosts are logged: collected here and checked by one test.
+LOG = StringIO.new
+Cybertrain.logger = Cybertrain::Logger.new(LOG)
 
 class ProtectedApp < Cybertrain::Middleware
   def call(ctx)
@@ -142,6 +147,13 @@ test "a CYBERTRAIN_HOSTS entry that is not a host name stops the boot" do
     assert_equal expected, config_in("production", "app.example,#{entry}").security_error
   end
   assert_equal "", config_in("production", "app.example,[::1],10.0.0.7,xn--bcher-kva.example").security_error
+end
+
+test "a blocked host is logged with its path, escaped" do
+  before = LOG.string.size
+  guarded_request({ "host" => "typo.example\x1b[31m" })
+  logged = LOG.string[before, LOG.string.size - before].to_s
+  assert_equal "[WARN] Blocked host: \"typo.example\\e[31m\" for \"/\"\n", logged
 end
 
 Cybertrain::Test.run!

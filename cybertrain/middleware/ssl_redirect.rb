@@ -9,7 +9,10 @@ module Cybertrain
   # `X-Forwarded-Proto: https`; the header is read whatever
   # Config#trusted_proxy says, so a proxy not declared trusted does not
   # loop the redirect (a client that forges the header only skips its own
-  # redirect: nothing else is decided by it here).
+  # redirect: nothing else is decided by it here). Request#base_url
+  # trusts the header only from a trusted proxy, so behind a proxy also
+  # set Config#trusted_proxy or #trusted_proxies, or URLs the application
+  # builds (a `turbo_stream_from ws: true` URL) stay http/ws.
   #
   # - https: the app answers, and the response gets
   #   `Strict-Transport-Security: max-age=63072000; includeSubDomains`
@@ -54,14 +57,18 @@ module Cybertrain
       nil
     end
 
-    # Whether an X-Forwarded-Proto value says https (any case, blanks
-    # around it ignored).
+    # Whether an X-Forwarded-Proto value says https: its first element
+    # (the hop the client reached; a list as chained proxies append it,
+    # as Rack reads it), any case, blanks around it ignored.
     # @param value [String, nil]
     # @return [Boolean]
     def self.https?(value)
       return false if value.nil?
 
-      value.to_s.strip.downcase == "https"
+      text = value.to_s
+      comma = text.index(",")
+      first = comma.nil? ? text : text[0, comma].to_s
+      first.strip.downcase == "https"
     end
 
     # `https://<host>[:port]<path>[?query]`, or "" when the Host is not a

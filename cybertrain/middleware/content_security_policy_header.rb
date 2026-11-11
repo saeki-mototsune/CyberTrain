@@ -32,6 +32,11 @@ module Cybertrain
       return nil if policy.nil?
 
       response = ctx.response
+      # A 304 carries no policy: the browser merges a 304's headers onto
+      # its cached copy, and a fresh nonce there would block the cached
+      # page's nonce'd scripts (RFC 9111 4.3.4). The cached policy stays.
+      return nil if response.status == 304
+
       name = @header_name
       return nil unless response.header(name).nil?
 

@@ -98,10 +98,14 @@ test "force_ssl redirects http and sends HSTS" do
   assert_equal 307, CLIENT.post("/up", {}, { "host" => "example.com" }).status
 end
 
-test "the X-Forwarded-Proto value is compared as a word" do
+test "the X-Forwarded-Proto value is compared as a word, a list by its first element" do
   assert_equal 200, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => " HTTPS " }).status
   assert_equal 301, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => "http" }).status
-  assert_equal 301, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => "https, http" }).status
+  # a list (chained proxies) is read by its first element, as Rack does
+  assert_equal 200, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => "https,https" }).status
+  assert_equal 200, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => " HTTPS , http" }).status
+  assert_equal 301, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => "http,https" }).status
+  assert_equal 301, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => ",https" }).status
   assert_equal 301, CLIENT.get("/a", { "host" => "example.com", "x-forwarded-proto" => "httpsx" }).status
 end
 

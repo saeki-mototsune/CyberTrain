@@ -49,6 +49,11 @@ class CspController < Cybertrain::Controller
     render :plain, layout: false
   end
 
+  def cached
+    fresh_when etag: "v1"
+    render :show, layout: false unless response.performed?
+  end
+
   def blob
     send_blob "GIF89a", filename: "a.gif", content_type: "image/gif"
   end
@@ -66,6 +71,7 @@ end
 ROUTER = Cybertrain::Router.new
 ROUTER.get("/show", "show") { |ctx| CspController.new(ctx).process(:show) { |c| c.show } }
 ROUTER.get("/plain", "plain") { |ctx| CspController.new(ctx).process(:plain) { |c| c.plain } }
+ROUTER.get("/cached", "cached") { |ctx| CspController.new(ctx).process(:cached) { |c| c.cached } }
 ROUTER.get("/blob", "blob") { |ctx| CspController.new(ctx).process(:blob) { |c| c.blob } }
 ROUTER.get("/embed", "embed") { |ctx| EmbedController.new(ctx).process(:show) { |c| c.show } }
 ROUTER.get("/deep", "deep") { |ctx| DeepEmbedController.new(ctx).process(:show) { |c| c.show } }
@@ -143,6 +149,19 @@ end
 test "send_blob keeps its own policy" do
   res = CLIENT.get("/blob")
   assert_equal "default-src 'none'; sandbox", res.header("Content-Security-Policy").to_s
+end
+
+test "a 304 carries no policy, so the cached page keeps its nonce; the 200 does" do
+  full = CLIENT.get("/cached")
+  assert_equal 200, full.status
+  n = nonce_of(full.header("Content-Security-Policy"))
+  assert_equal policy_with(n), full.header("Content-Security-Policy").to_s
+  etag = full.header("ETag").to_s
+  refute etag.empty?
+  unchanged = CLIENT.get("/cached", { "if-none-match" => etag })
+  assert_equal 304, unchanged.status
+  assert_nil unchanged.header("Content-Security-Policy")
+  assert_nil unchanged.header("Content-Security-Policy-Report-Only")
 end
 
 test "report-only, off by default, and a controller's own policy" do

@@ -378,7 +378,10 @@ module Cybertrain
     # loads first), yielded at once to the block and kept for this class
     # and its subclasses. The block runs here, once; nothing stores it
     # (NOTES rule 88). Its actions' responses carry this policy instead of
-    # the application's.
+    # the application's. The copy is taken when the class body runs, so
+    # config/app.rb must load before the controllers (bin/<app>.rb
+    # requires config/app before gen/app); a later change to the
+    # application's policy does not reach it.
     # @example
     #   class EmbedController < ApplicationController
     #     content_security_policy do |p|

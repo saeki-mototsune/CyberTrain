@@ -204,7 +204,11 @@ attr_accessor :trusted_proxies
     # ({SslRedirect}), `false`, from `CYBERTRAIN_FORCE_SSL` (`1` or `true`;
     # `0`, `false` or empty is off, anything else stops the server at boot).
     # Behind a TLS-terminating proxy the request counts as https when it
-    # says `X-Forwarded-Proto: https`. The health path is never redirected.
+    # says `X-Forwarded-Proto: https` (the first element of a list).
+    # Request#base_url believes that header only from a trusted proxy, so
+    # also set {#trusted_proxy} or {#trusted_proxies}, or URLs the app
+    # builds (a `turbo_stream_from ws: true` URL) say http and ws. The
+    # health path is never redirected.
     # On, the session and cookie jar cookies are `Secure` whatever
     # {#session_secure} says ({#secure_cookies?}).
     # @return [Boolean]
@@ -212,7 +216,9 @@ attr_accessor :trusted_proxies
     attr_accessor :force_ssl
 
     # The `Host` names from `CYBERTRAIN_HOSTS` (comma-separated, `[]` when
-    # unset), also appended to {#allowed_hosts}. Set, they turn the host
+    # unset), also appended to {#allowed_hosts}, after its loopback names:
+    # with the check on, `localhost`, `127.0.0.1` and `[::1]` are accepted
+    # too (a browser sends those only to its own machine). Set, they turn the host
     # check on outside development ({#host_check?}): a request whose Host
     # is not in {#allowed_hosts} or this list answers 403. Exact names (an
     # IPv6 address in brackets); no scheme, path, port or wildcard (boot
