@@ -67,6 +67,31 @@ class ArticlesController < Cybertrain::Controller
     end
   end
 
+  # The html arm sets an ivar and renders nothing: the implicit render
+  # follows the arm that matched (peek.html.erb), not the request's
+  # turbo_stream format (peek.turbo_stream.erb exists too).
+  def peek
+    @title = "Hello"
+    respond_to do |format|
+      format.html { @title = "From html" }
+    end
+  end
+
+  # `render :show` in the turbo_stream arm renders show.turbo_stream.erb.
+  def stream_show
+    @id = 1
+    @title = "Hello"
+    respond_to do |format|
+      format.turbo_stream { render :show }
+      format.html { render :show }
+    end
+  end
+
+  def varied
+    response.set_header("Vary", "Accept-Encoding")
+    render plain: "varied"
+  end
+
   # What gen/controllers.rb emits for this class.
   def view_assigns
     { "id" => @id, "title" => @title }
@@ -92,6 +117,9 @@ def build_app
   router.add("POST", "/articles", "") { |ctx| ArticlesController.new(ctx).process(:create) { |c| c.create } }
   router.add("PATCH", "/articles/:id", "") { |ctx| ArticlesController.new(ctx).process(:edit) { |c| c.edit } }
   router.add("GET", "/articles/:id/pick", "") { |ctx| ArticlesController.new(ctx).process(:pick) { |c| c.pick } }
+  router.add("GET", "/articles/:id/peek", "") { |ctx| ArticlesController.new(ctx).process(:peek) { |c| c.peek } }
+  router.add("GET", "/articles/:id/stream_show", "") { |ctx| ArticlesController.new(ctx).process(:stream_show) { |c| c.stream_show } }
+  router.add("GET", "/varied", "") { |ctx| ArticlesController.new(ctx).process(:varied) { |c| c.varied } }
   router.add("GET", "/articles/:id", "") { |ctx| ArticlesController.new(ctx).process(:show) { |c| c.show } }
   router.add("GET", "/notes/:id", "") { |ctx| NotesController.new(ctx).process(:show) { |c| c.show } }
   Cybertrain::App.new(router, public_root: "test/no_such_public_dir", logging: false)
@@ -176,6 +204,51 @@ test "a Turbo request that also takes html falls back to the html answer" do
   assert_equal 406, client.patch("/articles/1", {}, only_stream).status
   assert_equal 406, client.get("/articles", only_stream).status
   assert_equal 406, client.get("/articles.turbo_stream", TURBO_ACCEPT).status
+end
+
+test "the implicit render after a respond_to arm follows the format the arm matched" do
+  res = client.get("/articles/1/peek", TURBO_ACCEPT)
+  assert_equal 200, res.status
+  assert_equal "text/html; charset=utf-8", res.header("content-type")
+  assert_equal "<p>Peek From html</p>", res.body.strip
+end
+
+test "render :x inside a non-html arm renders that format's template" do
+  ts = client.get("/articles/1/stream_show", TURBO_ACCEPT)
+  assert_equal "text/vnd.turbo-stream.html; charset=utf-8", ts.header("content-type")
+  assert ts.body.start_with?("<turbo-stream action=\"replace\" target=\"article_1\">"), ts.body
+  html = client.get("/articles/1/stream_show")
+  assert_equal "text/html; charset=utf-8", html.header("content-type")
+  assert_equal "<p>Hello</p>", html.body.strip
+end
+
+AXIOS_ACCEPT = { "accept" => "application/json, text/plain, */*" }
+
+test "any format from an Accept that lists */* falls back to html (axios)" do
+  res = client.get("/articles", AXIOS_ACCEPT)
+  assert_equal 200, res.status
+  assert_equal "text/html; charset=utf-8", res.header("content-type")
+  assert_equal "<p>Index</p>", res.body.strip
+  # an action that answers json still answers it
+  assert_equal "{\"id\":2,\"title\":\"Edit\"}", client.patch("/articles/1", {}, AXIOS_ACCEPT).body
+  # neither text/html nor */*: still 406
+  assert_equal 406, client.get("/articles", JSON_ACCEPT).status
+  # an extension asks for its format alone
+  assert_equal 406, client.get("/articles.json", AXIOS_ACCEPT).status
+end
+
+test "a format chosen by Accept sends Vary: Accept" do
+  assert_equal "Accept", client.get("/articles/1", TURBO_ACCEPT).header("Vary")
+  assert_equal "Accept", client.get("/articles/1", JSON_ACCEPT).header("Vary")
+  assert_equal "Accept", client.get("/articles", { "accept" => "text/html" }).header("Vary")
+  # also on the 406
+  assert_equal "Accept", client.get("/articles", JSON_ACCEPT).header("Vary")
+  # an extension decides the format; no Accept, nothing to vary on
+  assert_nil client.get("/articles/1.json", JSON_ACCEPT).header("Vary")
+  assert_nil client.get("/articles/1").header("Vary")
+  # added to the action's own Vary, once
+  assert_equal "Accept-Encoding, Accept", client.get("/varied", JSON_ACCEPT).header("Vary")
+  assert_equal "Accept-Encoding", client.get("/varied").header("Vary")
 end
 
 test "FormatCollector: the first matching arm, with or without a block" do

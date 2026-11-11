@@ -1095,7 +1095,7 @@ module Admin
       end
       layout_chosen__ = choose_layout
       return super if layout_chosen__.nil?
-      layout_chosen__ == false ? "" : "layouts/#{layout_chosen__}"
+      layout_chosen__ == false ? "" : Cybertrain::Controller.layout_path(layout_chosen__.to_s)
     end
 
     # Whether a template's receiverless call `name` is one of this

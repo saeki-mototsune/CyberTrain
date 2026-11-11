@@ -204,14 +204,18 @@ module Cybertrain
 
       # The lines computing a declaration's layout, the value last. A
       # layout method's nil is the inherited layout (`super`), as in Rails.
+      # A name already under `layouts/` keeps it (`layout "layouts/admin"`
+      # is layouts/admin, Rails' `_normalize_layout`), through
+      # Controller.layout_path for a method's value.
       def self.layout_value_lines(decl, local)
         lines = Array.new(0) { "" }
         if decl.layout_method.empty?
-          lines << (decl.layout_name.empty? ? "\"\"" : HelpersEmitter.literal("layouts/#{decl.layout_name}"))
+          name = decl.layout_name
+          lines << (name.empty? ? "\"\"" : HelpersEmitter.literal(name.start_with?("layouts/") ? name : "layouts/#{name}"))
         else
           lines << "#{local} = #{decl.layout_method}"
           lines << "return super if #{local}.nil?"
-          lines << "#{local} == false ? \"\" : \"layouts/\#{#{local}}\""
+          lines << "#{local} == false ? \"\" : Cybertrain::Controller.layout_path(#{local}.to_s)"
         end
         lines
       end

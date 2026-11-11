@@ -8,6 +8,7 @@ require "cybertrain/logger"
 require "cybertrain/callback"
 require "cybertrain/rate_limit"
 require "cybertrain/views"
+require "cybertrain/assets"
 require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
 require "cybertrain/turbo_stream_renderer"
@@ -676,6 +677,9 @@ module Cybertrain
       @action_name = ""
       @rescued_exception = nil
       @controller_path = ""
+      # The format a respond_to declaration matched (:none outside one):
+      # what a `render :x` in its block and the implicit render use.
+      @respond_format = :none
     end
 
     # Runs the before callbacks (stopping as soon as one renders or
@@ -750,8 +754,11 @@ module Cybertrain
     # any other format, <action>.<format>.erb (`create.turbo_stream.erb`,
     # `index.csv.erb`) without a layout when it exists, else `406 Not
     # Acceptable` (a `:json` request with no template and no `render`
-    # included). A Turbo request that also accepts HTML gets the html
-    # template when there is no turbo_stream one (see #html_fallback?).
+    # included). A request whose Accept also lists HTML (Turbo's, or
+    # `application/json, text/plain, */*`) gets the html template when
+    # there is none for its own format (see #html_fallback?). After a
+    # {#respond_to} whose matching declaration's block rendered nothing,
+    # the format it matched decides instead of the request's.
     def default_render(action)
       engine = Views.engine
       if engine.nil?
@@ -759,7 +766,7 @@ module Cybertrain
         raise MissingTemplate, message
       end
 
-      wanted = @request.format
+      wanted = @respond_format == :none ? @request.format : @respond_format
       name = action.to_s
       if wanted == :html
         render_template(name)
@@ -844,7 +851,9 @@ module Cybertrain
     #
     # For `format: :html` (the default) the template is <name>.html.erb,
     # inside `layout` (a layout name such as `"layouts/application"`; `""`
-    # for none) when that layout exists. For any other format it is
+    # for none). The default layout ({Views.layout_name}) is used only when
+    # it exists; any other layout that does not exist is a
+    # {MissingTemplate}. For any other format it is
     # <name>.<format>.erb (`create.turbo_stream.erb`), never in a layout
     # (layouts are HTML), sent as {Request.mime_type}(format).
     # @param name [String] the template's name in this controller's directory
@@ -854,6 +863,8 @@ module Cybertrain
     # @param format [Symbol] the template's format
     # @return [nil]
     # @raise [Template::MissingTemplate] when the template does not exist
+    # @raise [MissingTemplate] when `layout` names a layout other than the
+    #   default that does not exist
     # @api private
     def render_template(name, locals = {}, layout: controller_layout(@action_name), format: :html)
       engine = Views.engine
@@ -866,10 +877,18 @@ module Cybertrain
       helpers = Views.helpers_builder.call(self)
       if format == :html
         path = "#{controller_path}/#{name}"
-        if !layout.empty? && engine.exists?(layout)
-          send_html(engine.render_with_layout(path, layout, env, helpers))
-        else
+        if layout.empty?
           send_html(engine.render(path, env, helpers))
+        elsif engine.exists?(layout)
+          send_html(engine.render_with_layout(path, layout, env, helpers))
+        elsif layout == Views.layout_name
+          # The default layout is optional: without it, pages render bare.
+          send_html(engine.render(path, env, helpers))
+        else
+          # A layout a `layout` line or `render layout:` named: a typo
+          # must not render every page bare without a word.
+          message = "missing layout #{layout} for #{self.class.name}"
+          raise MissingTemplate, message
         end
       else
         send_rendered(engine.render(format_template_path(name, format), env, helpers), Request.mime_type(format))
@@ -889,6 +908,19 @@ module Cybertrain
     # text/html`: its format is `:turbo_stream`, and an action with no
     # `format.turbo_stream` answers through its `format.html` declaration,
     # as in Rails (a `.turbo_stream` extension asks for that format only).
+    # The same holds for any format that came from an Accept header that
+    # also lists `text/html` or `*/*` (axios sends `application/json,
+    # text/plain, */*`): with no declaration for it, `format.html` answers.
+    #
+    # Inside the matching declaration's block, `render :x` renders the
+    # template of the format that matched (`x.json.erb` in `format.json`),
+    # and when the block renders nothing the implicit render does too.
+    #
+    # That HTML fallback runs the whole block a second time, now for
+    # `:html`: no declaration's block ran in the first pass, but any other
+    # statement in the block (outside a `format.x`) runs twice, so keep
+    # the block to declarations. (Rails replays stored declarations; this
+    # framework stores no blocks.)
     # @example
     #   def show
     #     @article = Article.find(params[:id])
@@ -904,15 +936,20 @@ module Cybertrain
     #   matches and the action has no template for that format
     # @api public
     def respond_to(&block)
+      # Set before the block runs: a matching declaration's block runs
+      # inside block.call, and its `render :x` reads it.
+      @respond_format = @request.format
       collector = FormatCollector.new(@request.format)
       block.call(collector)
       if collector.matched_format == :none && html_fallback?
         # Nothing ran in the first pass, so running the block again for
         # :html runs at most one declaration's block.
+        @respond_format = :html
         collector = FormatCollector.new(:html)
         block.call(collector)
       end
       matched = collector.matched_format
+      @respond_format = matched
       if matched == :none
         head_not_acceptable
       elsif collector.matched_without_block?
@@ -934,8 +971,12 @@ module Cybertrain
     #   this controller's directory, inside the controller's layout
     #   ({#controller_layout}: `app/views/layouts/application.html.erb`
     #   unless a `layout` line chooses another), when it exists. `layout:
-    #   "admin"` uses `app/views/layouts/admin.html.erb` instead, `layout:
-    #   false` none.
+    #   "admin"` (or `"layouts/admin"`) uses
+    #   `app/views/layouts/admin.html.erb` instead, and raises
+    #   {MissingTemplate} when that layout does not exist; `layout: false`
+    #   none. Inside a {#respond_to} declaration for another format
+    #   (`format.json { render :show }`) it is `<template>.<format>.erb`
+    #   (`show.json.erb`), never in a layout.
     # - `plain:` the String as `text/plain`.
     # - `html:` as `text/html`; a plain String is escaped, a
     #   {SafeString} is sent as it is.
@@ -1006,9 +1047,10 @@ module Cybertrain
         if layout == true
           chosen = controller_layout(@action_name)
         elsif layout != false
-          chosen = "layouts/#{layout}"
+          chosen = Controller.layout_path(layout.to_s)
         end
-        render_template(template.to_s, locals, layout: chosen)
+        wanted = @respond_format == :none ? :html : @respond_format
+        render_template(template.to_s, locals, layout: chosen, format: wanted)
       end
       @response.content_type = content_type unless content_type.nil?
       @response.performed!
@@ -1048,6 +1090,30 @@ module Cybertrain
       given = string_keys(locals)
       Template::Helpers.check_locals(engine.template(path), given.keys)
       engine.render(path, view_env(given), Views.helpers_builder.call(self))
+    end
+
+    # Whether a Vary value already covers Accept (lists it, in any case,
+    # or is `*`).
+    # @param vary [String]
+    # @return [Boolean]
+    # @api private
+    def self.vary_lists_accept?(vary)
+      vary.split(",").each do |item|
+        name = item.strip.downcase
+        return true if name == "accept" || name == "*"
+      end
+      false
+    end
+
+    # The layout `render layout: name` names: `"layouts/<name>"`, or
+    # `name` itself when it already starts with `layouts/` (Rails'
+    # `_normalize_layout`), so `layout: "layouts/admin"` is not
+    # `layouts/layouts/admin`.
+    # @param name [String]
+    # @return [String]
+    # @api private
+    def self.layout_path(name)
+      name.start_with?("layouts/") ? name : "layouts/#{name}"
     end
 
     # What `render turbo_stream:` sends: a SafeString, or an Array of them
@@ -1289,9 +1355,16 @@ module Cybertrain
     # the client already has the current version; otherwise the action goes
     # on and renders as usual. Rails' `fresh_when`.
     #
-    # `etag:` is a String or a record. A String is hashed as it is; a record
+    # `etag:` is a String or a record. A String is taken as it is; a record
     # is keyed by `"<table>/<to_param>-<updated_at epoch>"`, so it changes
-    # when the record is saved. The header is a weak ETag,
+    # when the record is saved. The key is hashed together with the
+    # request's format ({Request#format}), so the HTML and the JSON or
+    # Turbo Stream of one URL never share an ETag, and with
+    # {Assets.build_digest}, so a deploy that changes the assets (or, in a
+    # `cybertrain build` binary, the views) changes every ETag. The key
+    # names the record, not the visitor: a page that differs per user
+    # needs the user in its key, as in Rails:
+    # `etag: "posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`. The header is a weak ETag,
     # `W/"<first 32 hex digits of the SHA-256>"`; `If-None-Match` matches it
     # in a list, in weak or strong form, or as `*`; any other `etag:` is an
     # ArgumentError. `last_modified:` is a Time, sent as `Last-Modified`; an
@@ -1300,7 +1373,11 @@ module Cybertrain
     # (RFC 9110 13.1.3). Only GET and HEAD are answered `304`.
     #
     # Cache-Control is `max-age=0, private, must-revalidate` (`public` when
-    # `public: true`) unless {#expires_in} already set one.
+    # `public: true`) unless {#expires_in} already set one. Do not make a
+    # page public when it carries a CSP nonce (`content_security_policy`
+    # with nonces, `javascript_importmap_tags`): a shared cache hands the
+    # same page, and so the same nonce, to every visitor, and a nonce
+    # everyone knows protects nothing.
     # @example
     #   def show
     #     @post = Post.find(params[:id])
@@ -1345,7 +1422,9 @@ module Cybertrain
     # @example
     #   expires_in 300
     # @param seconds [Integer]
-    # @param public [Boolean] let shared caches store it
+    # @param public [Boolean] let shared caches store it; never for a page
+    #   with a CSP nonce, which a shared cache would give every visitor
+    #   (see {#fresh_when})
     # @return [nil]
     # @api public
     def expires_in(seconds, public: false)
@@ -1366,7 +1445,12 @@ module Cybertrain
     # headers of fresh_when and stale?.
     def apply_validators(etag, last_modified, public)
       key = validator_key(etag)
-      @response.set_header("ETag", "W/\"#{Digest::SHA256.hexdigest(key).byteslice(0, 32)}\"") unless key.empty?
+      unless key.empty?
+        # The format and the build digest too (see fresh_when): "\0" never
+        # occurs in a format or a hex digest, so the parts cannot run together.
+        keyed = "#{key}\0#{@request.format}\0#{Assets.build_digest}"
+        @response.set_header("ETag", "W/\"#{Digest::SHA256.hexdigest(keyed).byteslice(0, 32)}\"")
+      end
       stamp = validator_time(last_modified)
       @response.set_header("Last-Modified", Request.http_date(Time.at(stamp).utc)) if stamp >= 0
       if @response.header("Cache-Control").nil?
@@ -1446,6 +1530,7 @@ module Cybertrain
           default_render(action) unless performed?
           run_after_callbacks(chain, action)
         end
+        apply_vary_accept
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
         # JSON::ParserError named (NOTES rule 33: not a StandardError under
         # Spinel) so an action's bad JSON.parse goes through
@@ -1454,6 +1539,28 @@ module Cybertrain
         # constant cannot be referenced as a value (rule 48), so no app can
         # register one there and the exception goes on to the error pages.
         rescue_with_handler(e)
+        apply_vary_accept
+      end
+      nil
+    end
+
+    # `Vary: Accept` on a response whose format came from the Accept header
+    # (the path has no extension, and the request sent one): one URL answers
+    # HTML, JSON or a Turbo Stream by Accept, so a cache must key on it, or
+    # a browser hands a cached HTML page to a later fetch for JSON (Rails'
+    # should_apply_vary_header?). Added to a Vary the action set, unless
+    # that already lists Accept or is `*`.
+    def apply_vary_accept
+      req = @request
+      return nil unless req.format_extension.empty?
+      return nil if req.header("Accept").to_s.empty?
+
+      r = @response
+      vary = r.header("Vary").to_s
+      if vary.strip.empty?
+        r.set_header("Vary", "Accept")
+      elsif !Controller.vary_lists_accept?(vary)
+        r.set_header("Vary", "#{vary}, Accept")
       end
       nil
     end
@@ -1621,14 +1728,15 @@ module Cybertrain
       "#{controller_path}/#{name}.#{format}.erb"
     end
 
-    # Whether a :turbo_stream request also takes HTML: its Accept (Turbo's
-    # "text/vnd.turbo-stream.html, text/html, application/xhtml+xml") lists
-    # text/html or */*, and no `.turbo_stream` extension asked for the
-    # stream alone. Rails lists both formats for such a request and answers
-    # in the first one the action has.
+    # Whether a request whose format is not :html also takes HTML: its
+    # format came from Accept (no extension asked for that format alone)
+    # and Accept lists text/html or */* (Turbo's
+    # "text/vnd.turbo-stream.html, text/html, application/xhtml+xml",
+    # axios' "application/json, text/plain, */*"). Rails lists every format
+    # of such a request and answers in the first one the action has.
     def html_fallback?
       req = @request
-      return false unless req.format == :turbo_stream && req.format_extension.empty?
+      return false if req.format == :html || !req.format_extension.empty?
 
       accept = req.header("Accept").to_s
       accept.include?("text/html") || accept.include?("*/*")

@@ -12,5 +12,7 @@ ok   layout :method returning false renders bare, returning "frame" uses it
 ok   layout :method returning nil uses the inherited layout
 ok   layout "admin", only: [:index] applies to index only
 ok   render layout: "frame" per call wins; render layout: false is bare
+ok   render layout: "layouts/frame" is not prefixed twice; a missing named layout raises
+ok   a layout line naming a missing layout raises; the default layout stays optional
 ok   a Turbo-Frame request picks the frame layout through a two-line method
-15 tests, 41 assertions, 0 failures
+17 tests, 48 assertions, 0 failures

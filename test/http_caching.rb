@@ -83,6 +83,10 @@ class PagesController < Cybertrain::Controller
     fresh_when etag: "v1"
     render plain: "body" unless performed?
   end
+
+  def bodied_304
+    render plain: "x", status: :not_modified
+  end
 end
 
 router = Cybertrain::Router.new
@@ -95,12 +99,16 @@ router.get("/check", "check") { |ctx| PagesController.new(ctx).process(:check) {
 router.get("/timed", "timed") { |ctx| PagesController.new(ctx).process(:timed) { |c| c.timed } }
 router.get("/timed_public", "timed_public") { |ctx| PagesController.new(ctx).process(:timed_public) { |c| c.timed_public } }
 router.get("/then", "then") { |ctx| PagesController.new(ctx).process(:timed_then_fresh) { |c| c.timed_then_fresh } }
+router.get("/bodied", "bodied") { |ctx| PagesController.new(ctx).process(:bodied_304) { |c| c.bodied_304 } }
 router.post("/text", "text_post") { |ctx| PagesController.new(ctx).process(:text) { |c| c.text } }
 
 CLIENT = Cybertrain::Test::Client.new(router)
 
-def tag_of(key)
-  "W/\"#{Digest::SHA256.hexdigest(key).byteslice(0, 32)}\""
+# The ETag of `key` for a request of `format`: the key, the format and
+# the build digest (Assets.build_digest), "\0"-separated.
+def tag_of(key, format = "html")
+  keyed = "#{key}\0#{format}\0#{Cybertrain::Assets.build_digest}"
+  "W/\"#{Digest::SHA256.hexdigest(keyed).byteslice(0, 32)}\""
 end
 
 test "fresh_when answers 304 to a matching If-None-Match" do
@@ -177,6 +185,41 @@ test "a 304 carries no Content-Type and no Content-Length" do
   ok = CLIENT.get("/text").to_http
   assert_includes ok.downcase, "content-type:"
   assert_includes ok, "Content-Length: 4\r\n"
+end
+
+test "the ETag depends on the request's format: a Turbo or JSON fetch never revalidates the HTML" do
+  html = CLIENT.get("/record", { "Accept" => "text/html" }).header("ETag")
+  stream = CLIENT.get("/record", { "Accept" => "text/vnd.turbo-stream.html, text/html" }).header("ETag")
+  json = CLIENT.get("/record", { "Accept" => "application/json" }).header("ETag")
+  assert_equal tag_of("posts/7-#{STAMP}"), html
+  assert_equal tag_of("posts/7-#{STAMP}", "turbo_stream"), stream
+  assert_equal tag_of("posts/7-#{STAMP}", "json"), json
+  refute html == stream
+  refute html == json
+  # the browser revalidating its cached HTML for a stream fetch gets a 200
+  res = CLIENT.get("/record", { "Accept" => "text/vnd.turbo-stream.html, text/html", "If-None-Match" => html })
+  assert_equal 200, res.status
+  assert_equal "Accept", res.header("Vary")
+  assert_equal 304, CLIENT.get("/record", { "Accept" => "text/html", "If-None-Match" => html }).status
+end
+
+test "the ETag changes with the build digest gen installs" do
+  before = CLIENT.get("/text").header("ETag")
+  Cybertrain::Assets.install(Cybertrain::Assets.empty_resolver, "{\"imports\":{}}", Array.new(0) { "" }, "0123456789abcdef")
+  after = CLIENT.get("/text").header("ETag")
+  assert_equal tag_of("v1"), after
+  Cybertrain::Assets.install(Cybertrain::Assets.empty_resolver, "{\"imports\":{}}", Array.new(0) { "" })
+  refute before == after
+  assert_equal "", Cybertrain::Assets.build_digest
+  assert_equal before, CLIENT.get("/text").header("ETag")
+end
+
+test "a 304 the action rendered with a body sends no body" do
+  res = CLIENT.get("/bodied")
+  assert_equal 304, res.status
+  raw = res.to_http
+  assert raw.end_with?("\r\n\r\n"), raw
+  refute raw.downcase.include?("content-length:")
 end
 
 test "an etag that is neither a String nor a record is an ArgumentError" do

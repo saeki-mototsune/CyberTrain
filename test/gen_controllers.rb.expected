@@ -28,6 +28,7 @@ ok   a helper_method whose def a template cannot fill (*rest, ...) is refused wi
 ok   scan_source reads layout lines: a name, false, a method, only: and except:
 ok   a layout after a one-line def (endless self./operator, or `; end # note`) is still read
 ok   emit writes controller_layout: the declarations in order, the first that applies wins
+ok   layout lines: %i[] and single quotes are read, only: wins over except:, a layouts/ prefix is kept once
 ok   a layout declared in a concern applies, at the include's position
 ok   a layout line gen cannot read is refused with its place
 ok   a local named layout in a method is no declaration; a layout line's comment may hold quotes
@@ -36,4 +37,4 @@ ok   scan_source reads the methods rate_limit lines name, over continuation line
 ok   emit writes rate_limit_key, rate_limit_condition? and the with: arm of run_callback
 ok   a rate_limit in a concern's included block gives the includer its tables
 ok   a rate_limit naming an undefined method, or a block, is refused with its line
-38 tests, 152 assertions, 0 failures
+39 tests, 159 assertions, 0 failures

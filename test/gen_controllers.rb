@@ -643,7 +643,7 @@ test "emit writes controller_layout: the declarations in order, the first that a
         end
         layout_chosen__ = frame_or_application
         return super if layout_chosen__.nil?
-        layout_chosen__ == false ? "" : "layouts/#{layout_chosen__}"
+        layout_chosen__ == false ? "" : Cybertrain::Controller.layout_path(layout_chosen__.to_s)
       end
     end
   RUBY
@@ -658,7 +658,27 @@ test "emit writes controller_layout: the declarations in order, the first that a
   out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, only], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
   assert_includes out, "  def controller_layout(layout_action__)\n    if layout_action__ == \"new\"\n      layout_chosen__ = pick\n" \
                        "      return super if layout_chosen__.nil?\n" \
-                       "      return layout_chosen__ == false ? \"\" : \"layouts/\#{layout_chosen__}\"\n    end\n    super\n  end\n"
+                       "      return layout_chosen__ == false ? \"\" : Cybertrain::Controller.layout_path(layout_chosen__.to_s)\n    end\n    super\n  end\n"
+end
+
+test "layout lines: %i[] and single quotes are read, only: wins over except:, a layouts/ prefix is kept once" do
+  src = <<~'RUBY'
+    class ArticlesController < ApplicationController
+      layout 'admin', only: %i[index show]
+      layout "print", except: %i[edit]
+      layout "layouts/frame", only: [:new], except: [:new]
+    end
+  RUBY
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", src)
+  assert_equal ["admin", "print", "layouts/frame"], info.layouts.map { |d| d.layout_name }
+  assert_equal [["index", "show"], [], ["new"]], info.layouts.map { |d| d.layout_only }
+  assert_equal [[], ["edit"], ["new"]], info.layouts.map { |d| d.layout_except }
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, info], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
+  assert_includes out, "    if layout_action__ == \"index\" || layout_action__ == \"show\"\n      return \"layouts/admin\"\n    end\n"
+  assert_includes out, "    if layout_action__ != \"edit\"\n      return \"layouts/print\"\n    end\n"
+  # only: and except: on one line: only: decides, as in Rails
+  assert_includes out, "    if layout_action__ == \"new\"\n      return \"layouts/frame\"\n    end\n"
+  refute out.include?("layouts/layouts/")
 end
 
 test "a layout declared in a concern applies, at the include's position" do
@@ -743,11 +763,11 @@ test "the method form's locals shadow no method: layout :chosen and layout :acti
                        "    if layout_action__ == \"show\"\n" \
                        "      layout_chosen__ = action\n" \
                        "      return super if layout_chosen__.nil?\n" \
-                       "      return layout_chosen__ == false ? \"\" : \"layouts/\#{layout_chosen__}\"\n" \
+                       "      return layout_chosen__ == false ? \"\" : Cybertrain::Controller.layout_path(layout_chosen__.to_s)\n" \
                        "    end\n" \
                        "    layout_chosen2__ = chosen\n" \
                        "    return super if layout_chosen2__.nil?\n" \
-                       "    layout_chosen2__ == false ? \"\" : \"layouts/\#{layout_chosen2__}\"\n" \
+                       "    layout_chosen2__ == false ? \"\" : Cybertrain::Controller.layout_path(layout_chosen2__.to_s)\n" \
                        "  end\n"
 end
 
