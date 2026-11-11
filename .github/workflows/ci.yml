@@ -78,6 +78,11 @@ env:
   # another branch's copy of this file still keys the toolchain it builds.
   SPINEL_TAG: "2026.11.04.7026"
 
+# Every job has a timeout-minutes, so that a hung compile or a server that
+# never answers ends the job instead of running to GitHub's limit of six
+# hours. Each is roughly twice the longest the job was seen to take, or more; the
+# measurements are in docs/design.md (D34, the status of 2026-11-11). Raise a
+# limit when the suite has grown into it, not when one run was slow.
 jobs:
   # Whether this run needs the jobs that compile (framework-tests, test,
   # setup-cybertrain): `framework` is false when every changed file is one
@@ -86,6 +91,7 @@ jobs:
   # everything, and so does a run whose changed files cannot be listed.
   changes:
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     outputs:
       framework: ${{ steps.decide.outputs.framework }}
     steps:
@@ -130,6 +136,7 @@ jobs:
   # well as docs/api/, and it takes under a minute.
   api-docs:
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -159,6 +166,7 @@ jobs:
       matrix:
         shard: [0, 1, 2, 3]
     runs-on: ubuntu-26.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -180,6 +188,8 @@ jobs:
       matrix:
         os: [ubuntu-26.04, macos-latest]
     runs-on: ${{ matrix.os }}
+    # macOS also runs the whole of `spin test` here, in one job.
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 120 || 60 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -364,6 +374,7 @@ jobs:
             route: git
     name: setup-cybertrain (${{ matrix.os }}, ${{ matrix.route }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       # The framework in framework/, where an application would keep a
       # submodule; the application itself goes at the workspace root.

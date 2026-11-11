@@ -39,6 +39,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-26.04
+    # A run takes 30 to 45 seconds; one of the last eight took 7 minutes.
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
