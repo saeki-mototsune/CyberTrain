@@ -1,0 +1,8 @@
+ok   nested mappings flatten to dotted keys
+ok   plain, single and double quoted scalars with escapes
+ok   block scalars | and >
+ok   sequences of scalars, block and flow, with ~ as empty
+ok   YAML 1.1 scalars, quotes, BOM, CRLF and tabs
+ok   refusals name file and line
+ok   rails-i18n's en.yml and ja.yml parse
+7 tests, 66 assertions, 0 failures
