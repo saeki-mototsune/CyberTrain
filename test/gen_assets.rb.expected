@@ -7,6 +7,7 @@ ok   a CSS digest is taken after rewriting, CSS files in dependency order
 ok   a stylesheet named with a ?query is still a dependency, even when its referrer sorts first
 ok   a CSS url() cycle through a suffixed url is refused
 ok   a symlinked file leading outside its tree, or nowhere, stops gen
+ok   an asset root that is itself a symlink stops gen
 ok   a CSS url() cycle is refused
 ok   a CSS digest changes when an image it names changes
 wrote public/assets/application-2cac91ee.css
@@ -47,4 +48,4 @@ wrote gen/console.rb
 wrote gen/app.rb
 stale: gen/assets.rb
 ok   gen --check compares gen/assets.rb only
-19 tests, 109 assertions, 0 failures
+20 tests, 112 assertions, 0 failures

@@ -190,6 +190,19 @@ test "a symlinked file leading outside its tree, or nowhere, stops gen" do
   assert_equal digest("logo.svg"), linked.asset_digest
 end
 
+test "an asset root that is itself a symlink stops gen" do
+  Dir.mkdir("#{TMP}/elsewhere")
+  File.write("#{TMP}/elsewhere/secret.js", "secret\n")
+  File.rename("#{TMP}/vendor/javascript", "#{TMP}/vendor/javascript.real")
+  File.symlink("#{TMP}/elsewhere", "#{TMP}/vendor/javascript")
+  message = assert_raises("ArgumentError") { scan_now }
+  File.delete("#{TMP}/vendor/javascript")
+  File.rename("#{TMP}/vendor/javascript.real", "#{TMP}/vendor/javascript")
+  remove_tree("#{TMP}/elsewhere")
+  assert_equal "vendor/javascript is a symlink; asset directories are never followed, so make it a real directory", message
+  assert_equal "chart.js", asset("chart.js").logical_path
+end
+
 test "a CSS url() cycle is refused" do
   File.write("#{TMP}/app/assets/stylesheets/a.css", "@import url(b.css);\n")
   File.write("#{TMP}/app/assets/stylesheets/b.css", "@import url(a.css);\n")

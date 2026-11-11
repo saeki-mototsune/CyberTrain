@@ -48,9 +48,9 @@ module Cybertrain
     # Finds the application's assets (spec section 7.1) under
     # app/assets/*/ (each subdirectory a root), app/javascript and
     # vendor/javascript, and digests them. Dotfiles (.keep, .DS_Store) and
-    # symlinked directories are skipped. A logical path found under two
-    # roots is refused (plan decision 29; Propshaft silently takes the
-    # first). Stylesheets have their url()s rewritten to digested paths
+    # symlinked directories are skipped (a root that is a symlink stops
+    # gen). A logical path found under two roots is refused (plan decision
+    # 29; Propshaft silently takes the first). Stylesheets have their url()s rewritten to digested paths
     # before they are digested, each after the stylesheets it names.
     module AssetScan
       URL_SKIPPED = ["data:", "http:", "https:", "//", "#", "%23"].freeze
@@ -69,8 +69,14 @@ module Cybertrain
         sorted
       end
 
-      # The roots, relative to root, in lookup order.
+      # The roots, relative to root, in lookup order. A root that is itself
+      # a symlink (app/assets, app/javascript, vendor/javascript) stops gen,
+      # as symlinked directories are never followed; a symlinked
+      # app/assets/<dir> is skipped like any other symlinked directory.
       def self.asset_roots(root)
+        refuse_linked_root(root, "app/assets")
+        refuse_linked_root(root, "app/javascript")
+        refuse_linked_root(root, "vendor/javascript")
         roots = Array.new(0) { "" }
         if File.directory?("#{root}/app/assets")
           Dir.children("#{root}/app/assets").sort.each do |entry|
@@ -83,6 +89,13 @@ module Cybertrain
         roots << "app/javascript"
         roots << "vendor/javascript"
         roots
+      end
+
+      def self.refuse_linked_root(root, dir)
+        return nil unless File.symlink?("#{root}/#{dir}")
+
+        message = "#{dir} is a symlink; asset directories are never followed, so make it a real directory"
+        raise ArgumentError, message
       end
 
       def self.collect(root, dir, prefix, files)
