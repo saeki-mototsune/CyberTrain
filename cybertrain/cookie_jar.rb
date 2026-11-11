@@ -31,7 +31,7 @@
 # Cybertrain.config.secure_cookies? as with SessionStore, and
 # `signed` / `encrypted` raise ArgumentError: there is no key.
 #
-# A write whose `name=value` (signed or sealed, as sent) is over 4096
+# A write whose `name=value` (signed or sealed, percent-encoded: as sent) is over 4096
 # bytes raises Session::CookieOverflow, as Rails does, instead of sending a
 # cookie the browser would silently drop.
 require "base64"
@@ -190,7 +190,9 @@ module Cybertrain
       end
       max_age = PERMANENT_MAX_AGE if permanent && max_age < 0 && expires.nil?
       stored = cookie_text(name, text, kind)
-      size = name.bytesize + 1 + stored.bytesize
+      # As sent: a plain value that needs percent-encoding grows (an "é"
+      # is two bytes, "%C3%A9" six).
+      size = name.bytesize + 1 + Cookies.encoded_value(stored).bytesize
       if size > Session::MAX_COOKIE_BYTES
         message = "cookie #{name} is #{size} bytes, over the 4096 a browser keeps"
         raise Session::CookieOverflow, message

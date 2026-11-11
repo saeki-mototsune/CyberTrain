@@ -115,6 +115,15 @@ module Cybertrain
       raise ArgumentError, message
     end
 
+    # The cookie value as {serialize} writes it: as it is when every byte
+    # is a letter, a digit or `* - . _`, percent-encoded otherwise.
+    # @param text [String]
+    # @return [String]
+    # @api private
+    def self.encoded_value(text)
+      Query.plain?(text) ? text : URI.encode_www_form_component(text)
+    end
+
     # A Set-Cookie value for {Response#add_cookie}, the value
     # percent-encoded. `same_site` `"None"` and `partitioned` both require
     # `Secure` (browsers drop such a cookie without it), so either adds
@@ -137,9 +146,8 @@ module Cybertrain
     def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false,
                        partitioned: false, expires: nil)
       Cookies.validate!(name, path, same_site)
-      text = value.to_s # a String for Query.plain?'s byte reads (see Html.escape)
-      encoded = Query.plain?(text) ? text : URI.encode_www_form_component(text)
-      out = +"#{name}=#{encoded}"
+      # value.to_s: a String for Query.plain?'s byte reads (see Html.escape)
+      out = +"#{name}=#{Cookies.encoded_value(value.to_s)}"
       out << "; Path=#{path}"
       out << "; HttpOnly" if http_only
       out << "; SameSite=#{same_site}"

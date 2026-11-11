@@ -106,6 +106,12 @@ class CookiesController < Cybertrain::Controller
     render plain: "ok"
   end
 
+  # `n` e-acutes: two bytes each, six ("%C3%A9") as sent.
+  def big_multibyte
+    cookies[:big] = "\u00e9" * params[:n].to_i
+    render plain: "ok"
+  end
+
   def big_encrypted
     cookies.encrypted[:big] = "x" * 3100
     render plain: "ok"
@@ -153,6 +159,7 @@ def build_router
   router.add("GET", "/read_other_signed", "") { |ctx| CookiesController.new(ctx).process(:read_other_signed) { |c| c.read_other_signed } }
   router.add("GET", "/bad_name", "") { |ctx| CookiesController.new(ctx).process(:bad_name) { |c| c.bad_name } }
   router.add("GET", "/big_plain", "") { |ctx| CookiesController.new(ctx).process(:big_plain) { |c| c.big_plain } }
+  router.add("GET", "/big_multibyte", "") { |ctx| CookiesController.new(ctx).process(:big_multibyte) { |c| c.big_multibyte } }
   router.add("GET", "/big_encrypted", "") { |ctx| CookiesController.new(ctx).process(:big_encrypted) { |c| c.big_encrypted } }
   router.add("GET", "/bad_delete", "") { |ctx| CookiesController.new(ctx).process(:bad_delete) { |c| c.bad_delete } }
   router.add("GET", "/write_twice", "") { |ctx| CookiesController.new(ctx).process(:write_twice) { |c| c.write_twice } }
@@ -306,6 +313,15 @@ test "a cookie over 4096 bytes raises CookieOverflow instead of being dropped by
   assert_equal 1, set_cookies_for(res, "big").size
   msg = assert_raises("CookieOverflow") { Cybertrain::Test::Client.new(APP).get("/big_plain?extra=1") }
   assert_equal "cookie big is 4097 bytes, over the 4096 a browser keeps", msg
+  # the size counted is the percent-encoded value's: 1500 e-acutes are 3000
+  # bytes, but 9000 as sent; 682 are 4092 as sent, and 683 one over
+  msg = assert_raises("CookieOverflow") { Cybertrain::Test::Client.new(APP).get("/big_multibyte?n=1500") }
+  assert_equal "cookie big is 9004 bytes, over the 4096 a browser keeps", msg
+  res = Cybertrain::Test::Client.new(APP).get("/big_multibyte?n=682")
+  assert_equal 200, res.status
+  assert_equal 1, set_cookies_for(res, "big").size
+  msg = assert_raises("CookieOverflow") { Cybertrain::Test::Client.new(APP).get("/big_multibyte?n=683") }
+  assert_equal "cookie big is 4102 bytes, over the 4096 a browser keeps", msg
   # the size counted is the sealed value's: 3100 bytes seal and encode past 4096
   msg = assert_raises("CookieOverflow") { Cybertrain::Test::Client.new(APP).get("/big_encrypted") }
   assert_includes msg, "cookie big is 4"

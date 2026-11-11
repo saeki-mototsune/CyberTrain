@@ -9,4 +9,4 @@ ok   without SessionStore the jar defaults Secure from Cybertrain.config.session
 ok   a cookie over 4096 bytes raises CookieOverflow instead of being dropped by the browser
 ok   Cookies.serialize writes Expires for a Time
 ok   Response#replace_cookie keeps one Set-Cookie per name
-11 tests, 52 assertions, 0 failures
+11 tests, 58 assertions, 0 failures
