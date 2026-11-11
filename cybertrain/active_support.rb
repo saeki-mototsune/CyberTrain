@@ -72,7 +72,8 @@ module ActiveSupport
     def before_action(name = nil, only: [], except: [], &block) = nil
     def after_action(name = nil, only: [], except: [], &block) = nil
     def skip_before_action(name, only: [], except: []) = nil
-    def rate_limit(to:, within:, only: [], except: [], by: :client_ip, redirect_to: "", alert: "") = nil
+    def rate_limit(to:, within:, only: [], except: [], by: :client_ip, with: nil, if: nil, unless: nil, name: "",
+                   store: :cache, redirect_to: "", alert: "") = nil
     def rescue_from(klass, with: nil, &block) = nil
     def helper_method(*names) = nil
     def layout(name = nil, only: [], except: []) = nil

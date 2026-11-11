@@ -1,4 +1,5 @@
 ok   rate_limit declarations are registered in order
+ok   a declaration keeps its by:, with:, if:, unless:, name: and store:
 ok   requests under the limit pass; the next is a 429 with Retry-After
 ok   only: leaves the other actions alone
 ok   the window closing resets the count
@@ -12,6 +13,17 @@ ok   a full table drops the oldest windows first
 ok   a full table drops every expired window before an open one
 ok   a window that reopens moves its key to the back of the table
 ok   the table never holds more than max_keys keys
-ok   rate_limit refuses a bad to:, within: or by:
+ok   rate_limit refuses a bad to:, within:, store: or name:
 ok   current_time follows the system clock once unfixed
-16 tests, 78 assertions, 0 failures
+ok   Retry-After is the rest of the aligned window
+ok   the cache key is rate-limit:<controller_path>:<name>:<key>:<window>
+ok   store: :memory keeps the per-process counter
+ok   reset_all! forgets the counts in the cache too
+ok   by: a method keys the count by its value
+ok   by: a method that answers an empty key is an error, not one bucket for everyone
+ok   with: answers instead of 429
+ok   a with: method that renders nothing is followed by the 429
+ok   if: false skips the limit; unless: true skips it
+ok   two limits with name: on one action count apart
+ok   a cache-store limit inherited from a parent counts each controller apart
+28 tests, 151 assertions, 0 failures

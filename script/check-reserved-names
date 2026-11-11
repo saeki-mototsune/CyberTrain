@@ -184,6 +184,8 @@ NAME_HOMES = {
   "after_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "skip_before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "rate_limit" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  # Controller#rate_limit_key raises; gen/controllers.rb's answers the by: method's String.
+  "rate_limit_key" => %w[cybertrain/controller.rb cybertrain/generator/controllers_emitter.rb],
   "rescue_from" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "helper_method" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   # What gen/concerns.rb calls around a model concern's spliced `included`

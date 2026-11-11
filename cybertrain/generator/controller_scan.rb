@@ -25,11 +25,25 @@ module Cybertrain
       end
     end
 
+    # One method a `rate_limit` line names (spec C-4): rate_limit_option is
+    # "by", "with", "if" or "unless", rate_limit_method the method's name,
+    # rate_limit_place the line ("app/controllers/x.rb:3"), for a refusal.
+    class RateLimitRef
+      attr_reader :rate_limit_option, :rate_limit_method, :rate_limit_place
+
+      def initialize(rate_limit_option, rate_limit_method, rate_limit_place)
+        @rate_limit_option = rate_limit_option
+        @rate_limit_method = rate_limit_method
+        @rate_limit_place = rate_limit_place
+      end
+    end
+
     # What the lexical scan found in one controller file.
     class ControllerInfo
       attr_reader :file, :class_name, :superclass_name, :ivars, :callbacks,
                   :includes, :include_positions, :rescue_positions, :include_lines,
-                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors, :layouts
+                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors, :layouts,
+                  :rate_limit_refs
 
       # includes: the module names of the class's `include` lines, in order.
       # include_positions / rescue_positions: per include, the count of
@@ -44,7 +58,8 @@ module Cybertrain
       # line); def_errors: per def, HelperScan's message when it could not
       # read the parameters ("" when it could), so a helper_method naming
       # that def is refused with it. layouts: a LayoutDecl per `layout`
-      # line of the class, in order.
+      # line of the class, in order. rate_limit_refs: a RateLimitRef per
+      # method its `rate_limit` lines name with by:, with:, if: or unless:.
       def initialize(file, class_name, superclass_name, ivars, callbacks,
                      includes = Array.new(0) { "" }, include_positions = Array.new(0) { 0 },
                      rescue_positions = Array.new(0) { 0 }, include_lines = Array.new(0) { 0 },
@@ -65,6 +80,7 @@ module Cybertrain
         @defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
         @def_errors = Array.new(0) { "" }
         @layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+        @rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
       end
 
       # A superclass written bare inside a module, once every controller is
@@ -99,6 +115,13 @@ module Cybertrain
       # The declarations that add one entry to the class's callback list.
       CALLBACK_DECLARATION = /\A\s*(?:before_action|after_action|rate_limit|prepend_before_action)\b/
       RESCUE_DECLARATION = /\A\s*rescue_from\b/
+      RATE_LIMIT_CALL = /\A\s*rate_limit\b/
+      # A rate_limit option that names a method, up to its value.
+      RATE_LIMIT_BY = /(?:\A|[\s,(])by:\s*/
+      RATE_LIMIT_WITH = /(?:\A|[\s,(])with:\s*/
+      RATE_LIMIT_IF = /(?:\A|[\s,(])if:\s*/
+      RATE_LIMIT_UNLESS = /(?:\A|[\s,(])unless:\s*/
+      RATE_LIMIT_SYMBOL = /\A:([a-z_]\w*[?!]?)/
       # "@post =", "@post ||=", "@count +=" but not "@post ==", "@@count =" or "@post.title =".
       IVAR_ASSIGN = /(?:\A|[^@\w])@([a-z_]\w*)\s*(?:\|\||&&|\+|-|\*)?=(?![=~>])/
       # "@a, @b = 1, 2" / "first, @c, *@rest = list" at the start of a statement.
@@ -139,6 +162,7 @@ module Cybertrain
         defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
         def_errors = Array.new(0) { "" }
         layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+        rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
         lines = source.lines
         # The open modules (full names) and their indentation.
         modules = Array.new(0) { "" }
@@ -191,6 +215,7 @@ module Cybertrain
               defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
               def_errors = Array.new(0) { "" }
               layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+              rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
@@ -215,6 +240,11 @@ module Cybertrain
               defs << def_at(file, lines, number, def_errors)
             end
             helper_method_names(line).each { |n| helper_methods << n unless helper_methods.include?(n) }
+            rate_limit_refs_at(file, lines, number).each do |ref|
+              rate_limit_refs << ref
+              n = ref.rate_limit_method
+              callbacks << n if ref.rate_limit_option == "with" && !callbacks.include?(n)
+            end
             # Declarations are class-body lines: not a method's (a local
             # named layout is no declaration).
             if def_indent >= 0
@@ -237,6 +267,7 @@ module Cybertrain
         defs.each { |d| info.defs << d }
         def_errors.each { |e| info.def_errors << e }
         layouts.each { |d| info.layouts << d }
+        rate_limit_refs.each { |r| info.rate_limit_refs << r }
         info
       end
 
@@ -293,6 +324,51 @@ module Cybertrain
           rest = rest[s.end(0), rest.size - s.end(0)].to_s
         end
         names
+      end
+
+      # The methods a `rate_limit` statement starting on line `number`
+      # (1-based) of `lines` names with by:, with:, if: and unless: (its
+      # lines joined while one ends in a comma or leaves a parenthesis
+      # open); [] for any other line. `by: :client_ip` and `by:
+      # :remote_addr` name the client's address, not a method. Raises
+      # ArgumentError, naming the line, for one of those options given
+      # anything but a Symbol (a lambda, a String).
+      def self.rate_limit_refs_at(file, lines, number)
+        refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        line = lines[number - 1].to_s
+        return refs unless line.match?(RATE_LIMIT_CALL)
+
+        text = HelperScan.strip_comment(line.strip)
+        j = number
+        while (text.end_with?(",") || HelperScan.open_parens(text) > 0) && j < lines.size
+          text = "#{text} #{HelperScan.strip_comment(lines[j].to_s.strip)}"
+          j += 1
+        end
+        place = "#{app_path(file)}:#{number}"
+        by = rate_limit_option_value(place, text, RATE_LIMIT_BY, "by")
+        refs << RateLimitRef.new("by", by, place) unless by.empty? || by == "client_ip" || by == "remote_addr"
+        with = rate_limit_option_value(place, text, RATE_LIMIT_WITH, "with")
+        refs << RateLimitRef.new("with", with, place) unless with.empty?
+        cond = rate_limit_option_value(place, text, RATE_LIMIT_IF, "if")
+        refs << RateLimitRef.new("if", cond, place) unless cond.empty?
+        cond = rate_limit_option_value(place, text, RATE_LIMIT_UNLESS, "unless")
+        refs << RateLimitRef.new("unless", cond, place) unless cond.empty?
+        refs
+      end
+
+      # The method name `option:` gives in a rate_limit statement ("" when
+      # the option is absent).
+      def self.rate_limit_option_value(place, text, pattern, option)
+        m = text.match(pattern)
+        return "" if m.nil?
+
+        rest = text[m.end(0), text.size - m.end(0)].to_s
+        s = rest.match(RATE_LIMIT_SYMBOL)
+        if s.nil?
+          msg = "#{place}: rate_limit #{option}: takes a method's name (#{option}: :name)"
+          raise ArgumentError, msg
+        end
+        s[1].to_s
       end
 
       # The LayoutDecl of a `layout` line (line `number` of `file`); nil for

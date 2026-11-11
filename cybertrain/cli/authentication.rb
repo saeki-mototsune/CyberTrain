@@ -16,9 +16,9 @@
 # made once, so running the generator again is harmless.
 #
 # Sign-in attempts are rate limited as in Rails' generator (`rate_limit to:
-# 10, within: 3 * 60, only: [:create]`, per client address, per process;
-# docs/design.md D26), and AppTest.sign_in resets the counts so a test
-# suite never reaches the limit.
+# 10, within: 3 * 60, only: [:create]`, per client address, counted in
+# Cybertrain::Cache; docs/design.md D26), and AppTest.sign_in resets the
+# counts so a test suite never reaches the limit.
 #
 # What it leaves out, and why: password reset (its e-mail needs the app's
 # SMTP settings for Cybertrain::Mailer, which the generator cannot know) and a `Current` object (templates read `@current_user` instead, an ivar
@@ -1424,10 +1424,14 @@ module Cybertrain
 
           # SessionsController's rate_limit: ten attempts per address, then even
           # the right password goes back to the form until the window closes.
+          # The counts live in Cybertrain::Cache, in windows aligned to the
+          # epoch: the cache's clock is held still, so the attempts share one
+          # window, then moved a whole window on.
           test "POST /session past ten attempts is refused for a while" do
             client = new_client
             AppTest.user
             Cybertrain::RateLimit.reset_all!
+            Cybertrain::Cache.clock = -> { 2_000_000_000 }
             client.get("/session/new")
             wrong_password = { "authenticity_token" => AppTest.form_token(client),
                                "email_address" => "ann@example.com", "password" => "wrong-password" }
@@ -1439,9 +1443,9 @@ module Cybertrain
             assert_equal 0, Session.count
             res = client.follow_redirect!
             assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
-            Cybertrain::RateLimit.current_time = Time.now.to_i + 3 * 60
+            Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
             res = client.post("/session", right_password)
-            Cybertrain::RateLimit.current_time = -1
+            Cybertrain::Cache.clock = -> { Time.now.to_i }
             assert_redirected_to res, "/"
             assert_equal 1, Session.count
           end

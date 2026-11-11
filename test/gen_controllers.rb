@@ -751,4 +751,125 @@ test "the method form's locals shadow no method: layout :chosen and layout :acti
                        "  end\n"
 end
 
+# --- rate_limit's by:, with:, if: and unless: (C-4) ------------------------
+
+LIMITED_SOURCE = <<~'RUBY'
+  class AccountsController < ApplicationController
+    rate_limit to: 5, within: 60, only: [:create], by: :account_key,
+               with: :slow_down, if: :limited?, name: "account"
+    rate_limit(to: 50, within: 3600, by: :remote_addr,
+               unless: :trusted?)
+    rate_limit to: 9, within: 60, by: :client_ip, name: "ip" # by: :not_a_method
+
+    def create = head(:ok)
+
+    private
+
+    def account_key = params[:account].to_s
+    def slow_down = render(plain: "slow down", status: :too_many_requests)
+    def limited? = true
+    def trusted? = false
+  end
+RUBY
+
+test "scan_source reads the methods rate_limit lines name, over continuation lines" do
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/accounts_controller.rb", LIMITED_SOURCE)
+  refs = info.rate_limit_refs.map { |r| "#{r.rate_limit_option} #{r.rate_limit_method} #{r.rate_limit_place}" }
+  assert_equal ["by account_key app/controllers/accounts_controller.rb:2", "with slow_down app/controllers/accounts_controller.rb:2",
+                "if limited? app/controllers/accounts_controller.rb:2", "unless trusted? app/controllers/accounts_controller.rb:4"], refs
+  # with: joins the run_callback list; by: and the conditions do not.
+  assert_equal ["slow_down"], info.callbacks
+end
+
+test "emit writes rate_limit_key, rate_limit_condition? and the with: arm of run_callback" do
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/accounts_controller.rb", LIMITED_SOURCE)
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, info], Cybertrain::Gen::JobsPageSpec.new("", ""), no_concerns, prices_helpers)
+  expected = <<~'RUBY'
+    class AccountsController < ApplicationController
+      def view_assigns
+        {}
+      end
+
+      def run_callback(name)
+        case name
+        when :slow_down then slow_down
+        else super
+        end
+      end
+
+      def rate_limit_key(name)
+        case name
+        when :account_key then account_key.to_s
+        else super
+        end
+      end
+
+      def rate_limit_condition?(name)
+        case name
+        when :limited? then !!limited?
+        when :trusted? then !!trusted?
+        else super
+        end
+      end
+    end
+  RUBY
+  assert_includes out, expected
+  refute out.include?("class ApplicationController < Cybertrain::Controller\n  def view_assigns\n    {}\n  end\n\n  def rate_limit"), "none for ApplicationController"
+end
+
+test "a rate_limit in a concern's included block gives the includer its tables" do
+  throttled = concern("app/controllers/concerns/throttled.rb", <<~'RUBY')
+    module Throttled
+      extend ActiveSupport::Concern
+
+      included do
+        rate_limit to: 3, within: 60, by: :tenant_key,
+                   with: :throttled, unless: :staff?
+      end
+
+      def tenant_key = "t"
+      def throttled = head(:too_many_requests)
+    end
+  RUBY
+  assert_equal ["by tenant_key", "with throttled", "unless staff?"],
+               throttled.concern_rate_limit_refs.map { |r| "#{r.rate_limit_option} #{r.rate_limit_method}" }
+  assert_equal ["throttled"], throttled.concern_callbacks
+  # staff? is the includer's own method.
+  source = "class ReportsController < ApplicationController\n  include Throttled\n\n  def staff? = false\nend\n"
+  reports = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/reports_controller.rb", source)
+  out = Cybertrain::Gen::ControllersEmitter.emit([app_controller, reports], Cybertrain::Gen::JobsPageSpec.new("", ""), [throttled], prices_helpers)
+  assert_includes out, "  def run_callback(name)\n    case name\n    when :throttled then throttled\n    else super\n    end\n  end\n"
+  assert_includes out, "  def rate_limit_key(name)\n    case name\n    when :tenant_key then tenant_key.to_s\n    else super\n    end\n  end\n"
+  assert_includes out, "  def rate_limit_condition?(name)\n    case name\n    when :staff? then !!staff?\n    else super\n    end\n  end\n"
+  # gen/concerns.rb splices the rate_limit line into the includer as written.
+  spliced = Cybertrain::Gen::ConcernsEmitter.emit([app_controller, reports], [throttled])
+  assert_includes spliced, "  rate_limit to: 3, within: 60, by: :tenant_key,\n             with: :throttled, unless: :staff?\n"
+  # Without staff? anywhere, the includer is refused at the concern's line.
+  bare = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/reports_controller.rb", "class ReportsController < ApplicationController\n  include Throttled\nend\n")
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ControllersEmitter.emit([app_controller, bare], Cybertrain::Gen::JobsPageSpec.new("", ""), [throttled], prices_helpers)
+  end
+  assert_equal "app/controllers/concerns/throttled.rb:5: rate_limit unless: :staff? in ReportsController: " \
+               "no def staff? in the controller, its parents or its concerns", msg
+end
+
+test "a rate_limit naming an undefined method, or a block, is refused with its line" do
+  jobs = Cybertrain::Gen::JobsPageSpec.new("", "")
+  missing = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/accounts_controller.rb",
+                                                        "class AccountsController < ApplicationController\n  rate_limit to: 1, within: 60, by: :account_key\nend\n")
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, missing], jobs, no_concerns, prices_helpers) }
+  assert_equal "app/controllers/accounts_controller.rb:2: rate_limit by: :account_key in AccountsController: " \
+               "no def account_key in the controller, its parents or its concerns", msg
+  # A parent's def counts.
+  inherited = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/accounts_controller.rb",
+                                                          "class AccountsController < ApplicationController\n  rate_limit to: 1, within: 60, if: :signed_in?\nend\n")
+  assert_includes Cybertrain::Gen::ControllersEmitter.emit([app_controller, inherited], jobs, no_concerns, prices_helpers),
+                  "    when :signed_in? then !!signed_in?\n"
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ControllerScan.scan_source("app/controllers/accounts_controller.rb",
+                                                "class AccountsController < ApplicationController\n  rate_limit to: 1, within: 60, with: -> { head(:too_many_requests) }\nend\n")
+  end
+  assert_equal "app/controllers/accounts_controller.rb:2: rate_limit with: takes a method's name (with: :name)", msg
+end
+
 Cybertrain::Test.run!

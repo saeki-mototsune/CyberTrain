@@ -32,4 +32,8 @@ ok   a layout declared in a concern applies, at the include's position
 ok   a layout line gen cannot read is refused with its place
 ok   a local named layout in a method is no declaration; a layout line's comment may hold quotes
 ok   the method form's locals shadow no method: layout :chosen and layout :action call the method
-34 tests, 135 assertions, 0 failures
+ok   scan_source reads the methods rate_limit lines name, over continuation lines
+ok   emit writes rate_limit_key, rate_limit_condition? and the with: arm of run_callback
+ok   a rate_limit in a concern's included block gives the includer its tables
+ok   a rate_limit naming an undefined method, or a block, is refused with its line
+38 tests, 152 assertions, 0 failures

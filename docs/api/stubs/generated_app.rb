@@ -1063,7 +1063,9 @@ module Admin
   #     end
   #
   # gen/controllers.rb adds the concern's callback methods to the class's
-  # `run_callback` table and the ivars its methods assign to
+  # `run_callback` table (with the `with:` methods of `rate_limit` lines),
+  # writes {#rate_limit_key} and {#rate_limit_condition?} for their `by:`
+  # and `if:` / `unless:` methods, and adds the ivars its methods assign to
   # `view_assigns`; for the `helper_method` names of the class and of the
   # concerns it includes, it writes {#helper_method?} and
   # {#call_helper_method}; for the `layout` lines of the class and of its
@@ -1123,6 +1125,34 @@ module Admin
         Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
         Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
         admin?
+      else super
+      end
+    end
+
+    # The key of a `rate_limit ..., by: :account_key` line of this
+    # controller or of its concerns' `included` blocks (spec C-4): the
+    # method's value as a String; a name it does not know goes to the
+    # parent's table. A `rate_limit` line's `with:` method is an arm of
+    # `run_callback`.
+    # @param name [Symbol] the `by:` method's name
+    # @return [String]
+    # @api private
+    def rate_limit_key(name)
+      case name
+      when :account_key then account_key.to_s
+      else super
+      end
+    end
+
+    # Whether the `if:` / `unless:` method of a `rate_limit` line
+    # (`unless: :admin?`) answers true; a name it does not know goes to
+    # the parent's table.
+    # @param name [Symbol] the method's name
+    # @return [Boolean]
+    # @api private
+    def rate_limit_condition?(name)
+      case name
+      when :admin? then !!admin?
       else super
       end
     end

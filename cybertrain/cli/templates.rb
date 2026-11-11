@@ -634,7 +634,7 @@ module Cybertrain
         safe_redirect_path apply_validators validator_key validator_time strip_weak
         respond_to head_not_acceptable send_rendered format_template_path
 
-        apply_rate_limit
+        apply_rate_limit rate_limit_key
         record_not_found resume_session require_authentication
         start_new_session_for terminate_session after_authentication_url
         cookies

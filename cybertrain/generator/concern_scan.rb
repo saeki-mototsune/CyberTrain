@@ -37,12 +37,15 @@ module Cybertrain
     # block_ends: the first and last line numbers of each `included do ...
     # end` and `class_methods do ... end` block (the lines gen/concerns/**
     # leaves blank); concern_layouts: a LayoutDecl per `layout` line of the
-    # `included` body (its line number in the concern's file).
+    # `included` body (its line number in the concern's file);
+    # concern_rate_limit_refs: a RateLimitRef per method the body's
+    # `rate_limit` lines name with by:, with:, if: or unless: (the with:
+    # names are in concern_callbacks too).
     class ConcernInfo
       attr_reader :concern_file, :concern_name, :concern_line, :included_body, :class_method_lines,
                   :class_method_names, :class_method_line_numbers, :concern_includes, :include_line_numbers,
                   :concern_ivars, :concern_callbacks, :concern_defs, :concern_def_errors, :callback_count, :rescue_count,
-                  :block_starts, :block_ends, :concern_layouts
+                  :block_starts, :block_ends, :concern_layouts, :concern_rate_limit_refs
 
       def initialize(concern_file, concern_name, concern_line)
         @concern_file = concern_file
@@ -63,6 +66,7 @@ module Cybertrain
         @block_starts = Array.new(0) { 0 }
         @block_ends = Array.new(0) { 0 }
         @concern_layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+        @concern_rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
       end
 
       def count_callback
@@ -268,6 +272,11 @@ module Cybertrain
           info.count_callback if raw.match?(ControllerScan::CALLBACK_DECLARATION)
           info.count_rescue if raw.match?(ControllerScan::RESCUE_DECLARATION)
           ControllerScan.callback_names(raw).each { |n| info.concern_callbacks << n unless info.concern_callbacks.include?(n) }
+          ControllerScan.rate_limit_refs_at(file, lines, j).each do |ref|
+            info.concern_rate_limit_refs << ref
+            n = ref.rate_limit_method
+            info.concern_callbacks << n if ref.rate_limit_option == "with" && !info.concern_callbacks.include?(n)
+          end
           decl = ControllerScan.layout_decl(file, j, raw)
           info.concern_layouts << decl unless decl.nil?
         end

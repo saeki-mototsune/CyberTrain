@@ -59,6 +59,8 @@ require "cybertrain/job"
 require "cybertrain/mailer/later"
 require "cybertrain/lease"
 require "cybertrain/scheduler"
+# The default store of Controller.rate_limit counts.
+require "cybertrain/cache"
 require "cybertrain/websocket/feed_table"
 require "cybertrain/application"
 require "cybertrain/main"
