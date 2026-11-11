@@ -10,6 +10,7 @@
 # session (so no CSRF token), no flash and empty params. It is typed by the
 # program that renders through it: cybertrain/controller.rb requires this
 # file, so this file does not require the controller back.
+require "cybertrain/assets"
 require "cybertrain/html"
 require "cybertrain/http/header_name"
 require "cybertrain/http/query"
@@ -35,6 +36,11 @@ module Cybertrain
       # The keywords turbo_frame_tag and time_tag take.
       TURBO_FRAME_KEYWORDS = %w[src loading target class data]
       TIME_TAG_KEYWORDS = %w[format class id title data]
+      # The keywords of the asset tag helpers (spec 7.2).
+      STYLESHEET_KEYWORDS = %w[media nonce]
+      JAVASCRIPT_INCLUDE_KEYWORDS = %w[nonce]
+      IMAGE_TAG_KEYWORDS = %w[alt size class]
+      JS_HEX = "0123456789abcdef"
 
       def initialize(controller)
         @controller = controller
@@ -130,6 +136,17 @@ module Cybertrain
           helper_no_keywords!(name, kwargs)
           content_security_policy_nonce
         when "javascript_tag" then javascript_tag(args, kwargs, block, interp, env)
+        when "asset_path"
+          helper_arity!(name, args, 1, 1)
+          helper_no_keywords!(name, kwargs)
+          asset_path(text_arg(args, 0, name))
+        when "stylesheet_link_tag" then stylesheet_link_tag(args, kwargs)
+        when "javascript_include_tag" then javascript_include_tag(args, kwargs)
+        when "image_tag" then image_tag(args, kwargs)
+        when "javascript_importmap_tags"
+          helper_arity!(name, args, 0, 1)
+          helper_no_keywords!(name, kwargs)
+          javascript_importmap_tags(args.empty? ? "application" : text_arg(args, 0, name))
         when "flash" then flash_messages
         when "params" then params
         when "request_path" then request_path
@@ -1626,6 +1643,181 @@ module Cybertrain
           attrs["nonce"] = nonce unless nonce.empty?
         end
         Html.build_tag("script", attrs, content, true)
+      end
+
+      # --- assets (spec 7.2, 7.3) -------------------------------------------
+
+      # asset_path("logo.svg") -> "/assets/logo-1a2b3c4d.svg" (Assets.path:
+      # an unknown name raises in development and test).
+      def asset_path(name)
+        Assets.path(name)
+      end
+
+      # A source as a tag helper writes it: a URL with a scheme (or `//`)
+      # as written; else ext added when the name lacks it (Rails'
+      # ASSET_EXTENSIONS; "" for none), then a path starting with `/` as
+      # written and anything else digested.
+      def asset_source(source, ext)
+        return source if Helpers.url_with_scheme?(source)
+
+        name = ext.empty? || source.end_with?(ext) ? source : "#{source}#{ext}"
+        return name if name.start_with?("/")
+
+        Assets.path(name)
+      end
+
+      # A URL a tag helper writes as given, as Rails' URI_REGEXP has it:
+      # "https://x" (a scheme then "://"), "//cdn/x", "data:..." or "cid:...".
+      # "javascript:x" is not one, so it is looked up as an asset name.
+      def self.url_with_scheme?(source)
+        s = source.to_s
+        return true if s.start_with?("//")
+
+        n = s.bytesize
+        i = 0
+        while i < n
+          b = s.getbyte(i)
+          if b == 58
+            return false if i == 0
+
+            scheme = s[0, i].to_s.downcase
+            return scheme == "data" || scheme == "cid" || s[i + 1, 2].to_s == "//"
+          end
+          letter = (b >= 97 && b <= 122) || (b >= 65 && b <= 90)
+          ok = i == 0 ? letter : (letter || (b >= 48 && b <= 57) || b == 43 || b == 45 || b == 46)
+          return false unless ok
+
+          i += 1
+        end
+        false
+      end
+
+      # The nonce attribute: ` nonce="..."` when nonce is true and a policy
+      # applies, else "".
+      def nonce_attr(nonce)
+        return "" unless nonce == true
+
+        value = content_security_policy_nonce
+        value.empty? ? "" : FormBuilder.attr_html("nonce", value)
+      end
+
+      # stylesheet_link_tag("application", media: "print", nonce: true):
+      # `<link rel="stylesheet" href="/assets/application-1a2b3c4d.css"
+      # media="print" nonce="...">` (".css" added when missing).
+      def stylesheet_link_tag(args, kwargs)
+        helper_arity!("stylesheet_link_tag", args, 1, 1)
+        helper_keywords!("stylesheet_link_tag", kwargs, STYLESHEET_KEYWORDS, 0)
+        href = asset_source(text_arg(args, 0, "stylesheet_link_tag"), ".css")
+        out = +"<link rel=\"stylesheet\""
+        out << FormBuilder.attr_html("href", href)
+        media = FormBuilder.value_text(kwargs["media"])
+        out << FormBuilder.attr_html("media", media) unless media.empty?
+        out << nonce_attr(kwargs["nonce"])
+        out << ">"
+        SafeString.of(out)
+      end
+
+      # javascript_include_tag("legacy", nonce: true):
+      # `<script src="/assets/legacy-1a2b3c4d.js" nonce="..."></script>`
+      # (".js" added when missing).
+      def javascript_include_tag(args, kwargs)
+        helper_arity!("javascript_include_tag", args, 1, 1)
+        helper_keywords!("javascript_include_tag", kwargs, JAVASCRIPT_INCLUDE_KEYWORDS, 0)
+        src = asset_source(text_arg(args, 0, "javascript_include_tag"), ".js")
+        out = +"<script"
+        out << FormBuilder.attr_html("src", src)
+        out << nonce_attr(kwargs["nonce"])
+        out << "></script>"
+        SafeString.of(out)
+      end
+
+      # image_tag("logo.svg", alt: "Logo", size: "16x16", class: "x"):
+      # `<img src="/assets/logo-1a2b3c4d.svg" alt="Logo" width="16"
+      # height="16" class="x">`. A source starting with `/` or a scheme is
+      # used as written; no alt is made up; size: is "WxH" or "N" (another
+      # shape is ignored, as in Rails).
+      def image_tag(args, kwargs)
+        helper_arity!("image_tag", args, 1, 1)
+        helper_keywords!("image_tag", kwargs, IMAGE_TAG_KEYWORDS, 0)
+        src = asset_source(text_arg(args, 0, "image_tag"), "")
+        out = +"<img"
+        out << FormBuilder.attr_html("src", src)
+        alt = FormBuilder.value_text(kwargs["alt"])
+        out << FormBuilder.attr_html("alt", alt) unless alt.empty?
+        size = FormBuilder.value_text(kwargs["size"])
+        x = size.index("x")
+        width = x.nil? ? size : size[0, x].to_s
+        height = x.nil? ? size : size[x + 1, size.size - x - 1].to_s
+        if Helpers.dimension?(width) && Helpers.dimension?(height)
+          out << FormBuilder.attr_html("width", width)
+          out << FormBuilder.attr_html("height", height)
+        end
+        klass = FormBuilder.value_text(kwargs["class"])
+        out << FormBuilder.attr_html("class", klass) unless klass.empty?
+        out << ">"
+        SafeString.of(out)
+      end
+
+      # Rails' image size part: digits, optionally "." and digits ("16", "1.5").
+      def self.dimension?(text)
+        s = text.to_s
+        n = s.bytesize
+        return false if n == 0
+
+        i = 0
+        dot = -1
+        while i < n
+          b = s.getbyte(i)
+          if b == 46
+            return false if dot >= 0 || i == 0 || i == n - 1
+
+            dot = i
+          elsif b < 48 || b > 57
+            return false
+          end
+          i += 1
+        end
+        true
+      end
+
+      # javascript_importmap_tags("application"): the import map, a
+      # modulepreload link per preloaded pin and the entry point's import,
+      # each with this request's nonce when a policy applies (spec C-5).
+      def javascript_importmap_tags(entry)
+        nonce = nonce_attr(true)
+        out = +"<script type=\"importmap\" data-turbo-track=\"reload\""
+        out << nonce << ">" << Assets.importmap_json << "</script>"
+        Assets.preload_paths.each do |path|
+          out << "\n<link rel=\"modulepreload\"" << FormBuilder.attr_html("href", path) << nonce << ">"
+        end
+        out << "\n<script type=\"module\"" << nonce << ">import " << Helpers.js_string(entry) << "</script>"
+        SafeString.of(out)
+      end
+
+      # text as a JavaScript string literal that can sit inside <script>:
+      # `"`, `\` and control characters escaped, `<` written \u003c.
+      def self.js_string(text)
+        s = text.to_s
+        out = +"\""
+        n = s.bytesize
+        i = 0
+        start = 0
+        while i < n
+          b = s.getbyte(i)
+          if b == 34 || b == 92 || b == 60 || b < 32 || b == 127
+            out << s.byteslice(start, i - start) if i > start
+            if b == 34 then out << "\\\""
+            elsif b == 92 then out << "\\\\"
+            else
+              out << "\\u00" << JS_HEX[b / 16].to_s << JS_HEX[b % 16].to_s
+            end
+            start = i + 1
+          end
+          i += 1
+        end
+        out << s.byteslice(start, n - start) if n > start
+        out << "\""
+        out
       end
 
       def flash_messages

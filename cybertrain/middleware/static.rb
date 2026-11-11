@@ -1,9 +1,14 @@
 require "cybertrain/middleware"
+require "cybertrain/assets"
 
 module Cybertrain
   # Serves files under `root` (the app's public/ directory) for GET and HEAD
   # requests; anything that is not a readable file falls through to the next
-  # app. A directory serves its index.html.
+  # app. A directory serves its index.html. A file under /assets whose name
+  # carries a digest gen wrote (Assets.kept_file?) is cached for a year as
+  # immutable (spec 7.4): its name changes with its content, so it is never
+  # rewritten in place and needs no ETag. Everything else, an undigested
+  # file under public/assets included, is cached for an hour.
   class Static < Middleware
     EXTENSIONS = {
       "html" => "text/html; charset=utf-8",
@@ -45,6 +50,7 @@ module Cybertrain
     # download. Add the extension here when an app needs it inline.
     DEFAULT_TYPE = "application/octet-stream"
     CACHE_CONTROL = "public, max-age=3600"
+    IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
     def initialize(app, root = "public")
       super(app)
@@ -56,7 +62,7 @@ module Cybertrain
       if request.get? || request.head?
         file = file_for(request)
         unless file.empty?
-          serve(ctx.response, file)
+          serve(ctx.response, file, immutable?(request))
           return nil
         end
       end
@@ -80,13 +86,33 @@ module Cybertrain
       end
       file = segments.empty? ? @root : "#{@root}/#{segments.join("/")}"
       file = "#{file}/index.html" if File.directory?(file)
-      File.file?(file) ? file : ""
+      return "" unless File.file?(file)
+
+      inside_root?(file) ? file : ""
     end
 
-    def serve(response, file)
+    # Whether file, after its symlinks, is still under the root: a symlink
+    # in public/ that leads elsewhere is not served (one inside it is).
+    def inside_root?(file)
+      root = File.realpath(@root)
+      real = File.realpath(file)
+      real.start_with?(root.end_with?("/") ? root : "#{root}/")
+    rescue SystemCallError
+      false
+    end
+
+    # A digested file under /assets: the segments after "assets" name it.
+    def immutable?(request)
+      segments = request.path_segments
+      return false if segments.size < 2 || segments[0] != "assets"
+
+      Assets.kept_file?(segments[1, segments.size - 1].to_a.join("/"))
+    end
+
+    def serve(response, file, immutable)
       response.status = 200
       response.content_type = content_type_for(file)
-      response.set_header("Cache-Control", CACHE_CONTROL)
+      response.set_header("Cache-Control", immutable ? IMMUTABLE_CACHE_CONTROL : CACHE_CONTROL)
       response.body = File.read(file)
     end
 

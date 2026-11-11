@@ -1,4 +1,5 @@
 require "cybertrain/app_name"
+require "cybertrain/assets"
 require "cybertrain/config"
 require "cybertrain/cast"
 require "cybertrain/version"
@@ -166,6 +167,10 @@ module Cybertrain
       c.resolve_secret!
       DB.connect(c.database_path, size: c.pool_size) unless DB.connected?
       Application.configure_views(c, @views, @url_resolver)
+      # The digests public/assets/.manifest keeps are served immutable too
+      # (Static); an unknown asset name raises outside production.
+      Assets.load_kept(c.public_root)
+      Assets.raise_on_unknown = !c.production?
       # Module-level settings, like Views': the parser and the blob store are
       # reached from places that have no Config. The upload directory is made
       # by the first write, not here, so a read-only deploy still boots.
