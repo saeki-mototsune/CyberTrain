@@ -5,17 +5,19 @@
 # clean stop on SIGTERM and the database kept on its volume across
 # containers. Also loads examples/blog/config/deploy.yml with Kamal. See
 # examples/blog/README.md, "Deploying with Kamal".
-# It runs from release.yml, by hand (Actions -> Blog image -> Run workflow,
-# which pushes nothing), and on a pull request that touches what the image
-# is built with (below; nothing is pushed): the app, and the CLI, the
+# It pushes nothing. It runs from release.yml, by hand (Actions -> Blog
+# image -> Run workflow), and on a pull request that touches what the image
+# is built with (below): the app, and the CLI, the
 # toolchain checks, the pins and the gemspec, since the build runs
 # `cybertrain setup` and `cybertrain build` on this image's package list. A
 # change to the rest of the framework alone is tested by ci.yml and reaches
 # the image at the next release. Pushes to main do not run it.
-# release.yml calls it twice for a tag vX.Y.Z: with `ref` as one of the
-# checks, and, only after every check has passed, with `release_tag`, which
-# also pushes the tested image to GHCR as X.Y.Z. Never latest: release.yml
-# moves it to the newest release once that release exists (promote-latest).
+# release.yml calls it once for a tag vX.Y.Z, as one of the checks, with
+# `artifact`: the image that passed the smoke test is then saved (docker
+# save) as a workflow artifact of that name, and its image ID is this
+# workflow's output. Once every check has passed, release.yml loads that
+# artifact and pushes it to GHCR as X.Y.Z (its blog-image-push job): the
+# image published is the one tested here, not a second build.
 name: Blog image
 
 on:
@@ -46,40 +48,35 @@ on:
         type: string
         required: false
         default: ""
-      release_tag:
-        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z (default: push nothing)"
+      artifact:
+        description: "Save the tested image as a workflow artifact of this name (default: do not save it)"
         type: string
         required: false
         default: ""
+    outputs:
+      image_id:
+        description: "ID (docker image inspect) of the tested image saved in the artifact; empty without `artifact`"
+        value: ${{ jobs.image.outputs.image_id }}
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  group: blog-image-${{ inputs.release_tag || inputs.ref || github.ref }}
+  group: blog-image-${{ inputs.ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  IMAGE: ghcr.io/saeki-mototsune/cybertrain-blog
 
 jobs:
   image:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    outputs:
+      image_id: ${{ steps.save.outputs.image_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || (inputs.release_tag && format('refs/tags/{0}', inputs.release_tag)) || '' }}
+          ref: ${{ inputs.ref }}
           persist-credentials: false
-
-      - name: The tag is v + Cybertrain::VERSION
-        if: inputs.release_tag
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
-          test "$RELEASE_TAG" = "v$version" || { echo "tag $RELEASE_TAG is not v$version (cybertrain/version.rb)"; exit 1; }
 
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
@@ -154,19 +151,27 @@ jobs:
           docker rm -f blog > /dev/null
           echo "smoke: ok"
 
-      - name: Log in to GHCR
-        if: inputs.release_tag
-        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push the tested image
-        if: inputs.release_tag
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
+      # After the smoke test, so the artifact exists only for an image that
+      # passed it. The ID names the image's content: release.yml compares it
+      # after docker load, before it pushes.
+      - name: Save the tested image
+        id: save
+        if: inputs.artifact
         run: |
-          version="${RELEASE_TAG#v}"
-          docker tag blog:ci "$IMAGE:$version"
-          docker push "$IMAGE:$version"
+          set -eu
+          docker save blog:ci | gzip > blog-image.tar.gz
+          echo "image_id=$(docker image inspect blog:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+          ls -l blog-image.tar.gz
+
+      # overwrite: a re-run of this job replaces the artifact of the attempt
+      # before it. Already gzipped, so stored as it is.
+      - name: Upload the tested image
+        if: inputs.artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.artifact }}
+          path: blog-image.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7

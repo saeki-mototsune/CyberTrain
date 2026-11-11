@@ -423,7 +423,8 @@ before the gem is pushed:
    playground image `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
    through
    [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml)
-   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` through
+   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z`, built
+   and smoke-tested by
    [.github/workflows/blog-image.yml](.github/workflows/blog-image.yml);
    check that run.
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
@@ -433,9 +434,11 @@ before the gem is pushed:
    the Spinel release the tag pins) and the blog image's smoke test on the
    tagged commit. If any of those fails, nothing is published. Once they
    pass, it pushes the playground and blog images (in parallel) and then
-   creates the release. If one image push fails, no release is created, but
-   the other image's `X.Y.Z` may already be pushed: check both
-   packages before re-running the failed jobs. For a tag pushed without a
+   creates the release. The blog image pushed is the one the smoke test
+   ran on, kept as a workflow artifact for 7 days, not a second build: to
+   re-run its push later than that, re-run the whole workflow. If one image
+   push fails, no release is created, but the other image's `X.Y.Z` may
+   already be pushed: check both packages before re-running the failed jobs. For a tag pushed without a
    release, run that workflow by hand with the tag. Last, its
    `promote-latest` job points `latest` of both images at the newest
    release: the highest `X.Y.Z` that has a published release, whichever run

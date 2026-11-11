@@ -23,10 +23,12 @@
 # tested commit stay pushed; only a tag ruleset (a repository setting) keeps
 # the tag from moving at all.
 #
-# Only once they have all passed does it build, smoke-test and push the
-# playground image (playground-image.yml) and the blog image
-# (blog-image.yml with release_tag), each as X.Y.Z, and the release is
-# created after both pushes succeed.
+# Only once they have all passed does it push the two images, each as
+# X.Y.Z: the playground image, which playground-image.yml builds and
+# smoke-tests first, and the blog image, which is the very image the
+# blog-image check built and smoke-tested, handed over as a workflow
+# artifact (blog-image-push), not built again. The release is created after
+# both pushes succeed.
 #
 # latest is moved last, by promote-latest, for both images in one job: to
 # the newest release there is (the highest X.Y.Z with a published release),
@@ -101,8 +103,11 @@ jobs:
     with:
       ref: ${{ needs.version.outputs.sha }}
 
-  # A check only: blog-image.yml pushes nothing without release_tag.
-  # (The workflow asks for packages: write for its release push.)
+  # A check only: blog-image.yml pushes nothing. It saves the image that
+  # passed the smoke test as the artifact blog-image-tested, which
+  # blog-image-push publishes once every check has passed.
+  # (packages: write only because blog-image.yml still declares it; nothing
+  # there uses it any more.)
   blog-image:
     needs: version
     permissions:
@@ -111,6 +116,7 @@ jobs:
     uses: ./.github/workflows/blog-image.yml
     with:
       ref: ${{ needs.version.outputs.sha }}
+      artifact: blog-image-tested
 
   # Between the checks and the first push: the tag still names what was tested.
   tag-unchanged:
@@ -138,15 +144,45 @@ jobs:
       ref: ${{ needs.version.outputs.sha }}
       release_tag: ${{ inputs.tag || github.ref_name }}
 
+  # Publishes the image the blog-image check tested: loads its artifact,
+  # checks that it is that image (the ID the check recorded) and pushes it as
+  # X.Y.Z. No build here, so nothing untested can be pushed; no artifact (the
+  # check failed, or it expired after 7 days: re-run the whole workflow)
+  # stops the job.
   blog-image-push:
-    needs: [version, tag-unchanged]
+    needs: [version, blog-image, tag-unchanged]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/blog-image.yml
-    with:
-      ref: ${{ needs.version.outputs.sha }}
-      release_tag: ${{ inputs.tag || github.ref_name }}
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      IMAGE: ghcr.io/saeki-mototsune/cybertrain-blog
+      IMAGE_ID: ${{ needs.blog-image.outputs.image_id }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: blog-image-tested
+
+      - name: Load the tested image
+        run: |
+          set -eu
+          test -n "$IMAGE_ID" || { echo "::error::the blog-image check recorded no image ID"; exit 1; }
+          gunzip -c blog-image.tar.gz | docker load
+          got=$(docker image inspect blog:ci --format '{{.Id}}')
+          test "$got" = "$IMAGE_ID" || { echo "::error::the artifact holds image $got, the check tested $IMAGE_ID; not pushing"; exit 1; }
+          echo "loaded $got, the image the check tested"
+
+      - name: Push the tested image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          version="${TAG#v}"
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker tag blog:ci "$IMAGE:$version"
+          docker push "$IMAGE:$version"
 
   release:
     needs: [version, gate, ci, blog-image, tag-unchanged, playground-image, blog-image-push]
