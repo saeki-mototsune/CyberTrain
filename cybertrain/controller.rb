@@ -12,6 +12,8 @@ require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
 require "cybertrain/generator/inflector"
 require "cybertrain/active_support"
+require "cybertrain/http/cookies"
+require "cybertrain/cookie_jar"
 
 module Cybertrain
   class MissingTemplate < StandardError
@@ -497,7 +499,7 @@ module Cybertrain
     # @api public
     attr_reader :rescued_exception
 
-    # This visitor's session, kept in a signed cookie.
+    # This visitor's session, kept in an encrypted cookie (AES-256-GCM).
     #
     # The session and flash installed by SessionStore (nil when the
     # middleware is not in the stack, e.g. in bare unit tests).
@@ -513,6 +515,26 @@ module Cybertrain
     # @api public
     def flash
       @ctx.flash
+    end
+
+    # The request's cookies: plain, `permanent`, `signed` and `encrypted`
+    # (see {CookieJar}). SessionStore builds the jar; without it in the
+    # stack, a jar over the request's Cookie header is built on first use,
+    # whose `signed` and `encrypted` raise (there is no key).
+    # @example
+    #   cookies[:theme] = "dark"
+    #   cookies.encrypted[:card] = "4242"
+    #   cookies.signed[:user_id]   # => "5" or nil
+    # @return [CookieJar]
+    # @api public
+    def cookies
+      jar = @ctx.cookie_jar
+      return jar unless jar.nil?
+
+      parsed = Cookies.parse(request.cookie_header)
+      built = CookieJar.new(parsed, response)
+      @ctx.cookie_jar = built
+      built
     end
 
     def initialize(ctx)

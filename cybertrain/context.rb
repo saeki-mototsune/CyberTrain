@@ -10,6 +10,9 @@ module Cybertrain
     attr_reader :request, :response
     attr_accessor :params, :route_params, :route_name
     attr_accessor :session, :flash   # set by SessionStore; nil when the middleware is absent
+    # The request's cookies (CookieJar), set by SessionStore; nil without it
+    # (Controller#cookies then builds one over the Cookie header).
+    attr_accessor :cookie_jar
 
     def initialize(request)
       @request = request
@@ -19,6 +22,7 @@ module Cybertrain
       @route_name = ""
       @session = nil
       @flash = nil
+      @cookie_jar = nil
     end
   end
 end

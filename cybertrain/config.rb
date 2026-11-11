@@ -64,7 +64,7 @@ module Cybertrain
     # @api public
     attr_accessor :database_path
 
-    # The secret the session cookie is signed with, from
+    # The secret the session and cookie keys are derived from, from
     # `CYBERTRAIN_SECRET_KEY_BASE`. Required in production (boot fails without
     # it; `openssl rand -hex 32` makes one); development and test create one
     # in `tmp/secret_key`. Changing it ends every session.
@@ -1395,7 +1395,7 @@ end
       "CYBERTRAIN_SESSION_SAME_SITE / session_same_site must be Lax, Strict or None (got \"#{value}\")"
     end
 
-    # The secret sessions are signed with. Production must set it
+    # The secret the session and cookie keys are derived from. Production must set it
     # (CYBERTRAIN_SECRET_KEY_BASE); other environments read secret_key_path,
     # creating it with a random 64-hex-digit key the first time.
     def resolve_secret!

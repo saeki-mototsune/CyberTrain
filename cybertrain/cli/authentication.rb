@@ -456,7 +456,7 @@ module Cybertrain
           # deleting their rows. Columns, the Cybertrain::Model superclass and
           # `user` (from the user_id foreign key) come from gen/models/session.rb.
           #
-          # Not to be confused with Cybertrain::Session, the signed cookie that
+          # Not to be confused with Cybertrain::Session, the encrypted cookie that
           # holds this row's id as `session[:session_id]`.
           class Session
           end
@@ -1498,7 +1498,7 @@ module Cybertrain
               assert_includes res.body, "<span>ann@example.com</span>"
               token = AppTest.form_token(client)
 
-              # Keep the signed cookie and its row, but move the creation time
+              # Keep the session cookie and its row, but move the creation time
               # to the expiration boundary. Saving updates updated_at too;
               # neither that nor a rewritten cookie extends authentication.
               row = Session.first

@@ -238,6 +238,26 @@ module Cybertrain
       @cookies << set_cookie_value
     end
 
+    # Adds a Set-Cookie header in place of any earlier one for the cookie
+    # `name` (a value starting `"name="`), so a cookie written twice in one
+    # request is sent once, with its last value ({CookieJar} writes through
+    # this). Raises ArgumentError, changing nothing, when the value contains
+    # CR or LF. The list is edited in place (`cookies` is a public reader).
+    # @param name [String]
+    # @param set_cookie [String] built with {Cookies.serialize}
+    # @return [nil]
+    # @api public
+    def replace_cookie(name, set_cookie)
+      reject_crlf!("Set-Cookie", set_cookie)
+      prefix = "#{name}="
+      kept = Array.new(0) { "" }
+      @cookies.each { |c| kept << c unless c.start_with?(prefix) }
+      @cookies.clear
+      kept.each { |c| @cookies << c }
+      @cookies << set_cookie
+      nil
+    end
+
     # Raises ArgumentError (leaving the response untouched) when location
     # contains CR or LF, e.g. a percent-decoded return_to param. Returns nil:
     # `redirect` is also the routes DSL's Mapper#redirect, and one name keeps

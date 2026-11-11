@@ -1,0 +1,9 @@
+ok   plain, permanent, signed and encrypted cookies
+ok   options: max_age, path, secure and same_site; values are percent-encoded
+ok   permanent.signed and permanent.encrypted last 20 years and read back
+ok   the views delete too
+ok   Secure by default where the session cookie is (Config#session_secure)
+ok   without SessionStore: plain cookies work, signed and encrypted refuse
+ok   Cookies.serialize writes Expires for a Time
+ok   Response#replace_cookie keeps one Set-Cookie per name
+8 tests, 40 assertions, 0 failures

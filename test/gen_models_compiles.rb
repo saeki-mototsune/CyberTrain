@@ -11,7 +11,8 @@ require "cybertrain/generator/models_emitter"
 # fixture's own app/models files and driven against SQLite. SQLite is FFI,
 # so the snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 # Post encrypts secret_note, so the program links cybertrain/encryptor (the
-# openssl package; gen/app.rb requires it in an app) and sets a key here.
+# openssl package; `require "cybertrain"` loads it in an app) and sets a
+# key here.
 require_relative "fixtures/gen_app/db/schema"
 require_relative "fixtures/gen_app/gen/models/comment"
 require_relative "fixtures/gen_app/gen/models/post"

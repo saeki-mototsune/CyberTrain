@@ -637,6 +637,7 @@ module Cybertrain
         apply_rate_limit
         record_not_found resume_session require_authentication
         start_new_session_for terminate_session after_authentication_url
+        cookies
       ]
 
       # Whether `field` as the name of the download action `def <field>` on

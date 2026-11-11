@@ -1,5 +1,6 @@
 require "uri"
 require "cybertrain/http/query"
+require "cybertrain/http/request"
 
 module Cybertrain
   # Cookie header parsing and Set-Cookie serialization. Values round-trip
@@ -10,8 +11,10 @@ module Cybertrain
   # ("promo=50%off", set by another app on the parent domain) must not turn
   # every dynamic page into a 400. Its raw value is kept, as Rack does.
   #
-  # Plain cookies besides the session (there is no `cookies` jar in
-  # controllers, and no signed or encrypted cookie other than the session).
+  # In a controller, `cookies` (Controller#cookies, a {CookieJar}) is the
+  # way to read and write cookies, signed and encrypted ones included; it
+  # writes through {.serialize} and {Response#replace_cookie}. This module
+  # is the layer under it, for middleware and code without a controller.
   # @example
   #   theme = Cybertrain::Cookies.parse(request.cookie_header)["theme"]
   #   response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark", max_age: 31_536_000))
@@ -28,7 +31,8 @@ module Cybertrain
     # method with one rescue clause by class: fine under Spinel (NOTES rules
     # 32, 47).
     def self.decode(value)
-      # Nothing to decode (a signed session cookie is base64url and "--"):
+      # Nothing to decode (the session cookie and signed and encrypted
+      # cookies are base64url, "-", "_" and hex):
       # the value as it is, which is also what an invalid byte sequence gets.
       return value if value.byteindex("%").nil? && value.byteindex("+").nil?
 
@@ -73,10 +77,12 @@ module Cybertrain
     # @param same_site [String] `"Lax"`, `"Strict"` or `"None"`
     # @param secure [Boolean]
     # @param partitioned [Boolean] adds `Partitioned` (and `Secure`)
+    # @param expires [Time, nil] adds `Expires=` with the time as an HTTP
+    #   date ({Request.http_date}); nil leaves it out
     # @return [String]
     # @api public
     def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false,
-                       partitioned: false)
+                       partitioned: false, expires: nil)
       text = value.to_s # a String for Query.plain?'s byte reads (see Html.escape)
       encoded = Query.plain?(text) ? text : URI.encode_www_form_component(text)
       out = +"#{name}=#{encoded}"
@@ -84,6 +90,7 @@ module Cybertrain
       out << "; HttpOnly" if http_only
       out << "; SameSite=#{same_site}"
       out << "; Max-Age=#{max_age}" if max_age >= 0
+      out << "; Expires=#{Request.http_date(expires)}" unless expires.nil?
       out << "; Secure" if secure || partitioned || same_site == "None"
       out << "; Partitioned" if partitioned
       out

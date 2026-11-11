@@ -195,8 +195,8 @@ module Cybertrain
     # (`"1:..."`, AES-256-GCM). Each must be a string or text column, named
     # with Symbols, no options (there is no deterministic encryption). The
     # application then needs `CYBERTRAIN_ENCRYPTION_KEY` (boot fails
-    # without it) and links openssl (cybertrain/encryptor.rb, which
-    # gen/app.rb requires). `where`, `where_like`, `where_between`,
+    # without it); the encryption is cybertrain/encryptor.rb's (openssl),
+    # which every program loads. `where`, `where_like`, `where_between`,
     # `update_all` and the bulk writes refuse an encrypted column
     # (ArgumentError); `pluck` answers the stored payload. At run time this
     # method does nothing; it exists so the model file loads.
