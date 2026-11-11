@@ -278,6 +278,10 @@ test "url_for names the route of an Array of one or three records" do
   assert_equal "post_post_post_path(7, 7, 7)", ROUTE_CALLS[ROUTE_CALLS.size - 1]
   msg = assert_raises("RuntimeError") { render_inline("<%= url_for([post, 'x', post]) %>") }
   assert_equal "posts/inline:1: url_for expects records in a nested route", msg
+  # A Symbol is a namespace: a name part with no route argument.
+  msg = assert_raises("RuntimeError") { render_inline("<%= url_for([:admin, post]) %>") }
+  assert_equal "posts/inline:1: no route admin_post_path", msg
+  assert_equal "admin_post_path(7)", ROUTE_CALLS[ROUTE_CALLS.size - 1]
 end
 
 test "an unknown helper is a RuntimeError" do

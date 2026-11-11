@@ -91,6 +91,13 @@ module Cybertrain
         when "link_to" then link_to(args, kwargs)
         when "button_to" then button_to(args, kwargs)
         when "form_with" then form_with(kwargs, block, interp, env)
+        when "select_tag" then select_tag(args, kwargs)
+        when "options_for_select" then options_for_select(args, kwargs)
+        when "options_from_collection_for_select" then options_from_collection_for_select(args, kwargs)
+        when "label_tag" then label_tag(args, kwargs)
+        when "text_field_tag" then text_field_tag(args, kwargs)
+        when "hidden_field_tag" then hidden_field_tag(args, kwargs)
+        when "submit_tag" then submit_tag(args, kwargs)
         when "render"
           return render_component_helper(kwargs, block, interp, env) if args.empty? && !kwargs["component"].nil?
 
@@ -378,11 +385,18 @@ module Cybertrain
       # collection route, a saved one patches its member route.
       # `multipart: true` adds enctype="multipart/form-data" (needed for
       # f.file_field); it raises ArgumentError on a GET form.
+      # `scope: :q` prefixes the field names (q[term]); with model: it
+      # replaces the model's prefix. `model: [:admin, article]` posts to the
+      # namespaced route (admin_article_path) with fields named after the
+      # last record. `data: { turbo_frame: "x" }` writes data- attributes;
+      # `local:` is accepted and changes nothing (every form submits as
+      # Turbo or the browser decides).
       def form_with(kwargs, block, interp, env)
         raise ArgumentError, "form_with needs a block (form_with(...) do |f| ... end)" if block.nil?
 
         model = kwargs["model"]
         record = form_record(model)
+        scope = kwargs["scope"].nil? ? "" : FormBuilder.value_text(kwargs["scope"])
         action = kwargs["url"].nil? ? form_action(model) : url_for(kwargs["url"], @no_url_options)
         verb = "post"
         if !kwargs["method"].nil?
@@ -400,9 +414,10 @@ module Cybertrain
         buf << " method=\"" << (verb == "get" ? "get" : "post") << "\""
         buf << " enctype=\"multipart/form-data\"" if multipart
         buf << " class=\"" << Html.escape(FormBuilder.value_text(kwargs["class"])) << "\"" unless kwargs["class"].nil?
+        buf << FormBuilder.attr_html("data", kwargs["data"]) unless kwargs["data"].nil?
         buf << ">"
         buf << hidden_fields(verb)
-        buf << interp.capture(block, env, FormBuilder.new(record))
+        buf << interp.capture(block, env, FormBuilder.new(record, scope))
         buf << "</form>"
         SafeString.of(buf)
       end
@@ -483,6 +498,77 @@ module Cybertrain
         out
       end
 
+      # --- form tags without a model -------------------------------------------
+      #
+      # Rails' standalone tag helpers. Other keywords become attributes in
+      # the order given (FormBuilder.attrs_html). Ids come from the name as
+      # Rails' sanitize_to_id ("q[term]" -> "q_term").
+
+      # select_tag "order", options_for_select(...), include_blank:, prompt:,
+      # multiple: (which names order[]). option_tags is HTML: a SafeString
+      # (the options_* helpers) goes in as it is, a String is escaped.
+      def select_tag(args, kwargs)
+        helper_arity!("select_tag", args, 1, 2)
+        name = text_arg(args, 0, "select_tag")
+        html_name = kwargs["multiple"] == true && !name.end_with?("[]") ? "#{name}[]" : name
+        prefix = FormBuilder.select_prefix(kwargs, true, "")
+        options = args.size > 1 ? FormBuilder.html_text(args[1]) : ""
+        SafeString.of("<select name=\"#{Html.escape(html_name)}\" id=\"#{Html.escape(FormBuilder.tag_id(name))}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::TAG_SELECT_KEYS, "")}>#{prefix}#{options}</select>")
+      end
+
+      # options_for_select(container, selected = nil): container as f.select's
+      # choices; selected a value or an Array of them, compared as Strings.
+      def options_for_select(args, kwargs)
+        helper_arity!("options_for_select", args, 1, 2)
+        helper_no_keywords!("options_for_select", kwargs)
+        selected = FormBuilder.text_list(args.size > 1 ? args[1] : nil)
+        SafeString.of(FormBuilder.options_html(args[0], selected, FormBuilder::NO_KEYS))
+      end
+
+      # options_from_collection_for_select(authors, :id, :name, selected = nil):
+      # each record's value and text read as f.collection_select reads them.
+      def options_from_collection_for_select(args, kwargs)
+        helper_arity!("options_from_collection_for_select", args, 3, 4)
+        helper_no_keywords!("options_from_collection_for_select", kwargs)
+        selected = FormBuilder.text_list(args.size > 3 ? args[3] : nil)
+        value_sym = FormBuilder.method_sym(args[1])
+        text_sym = FormBuilder.method_sym(args[2])
+        SafeString.of(FormBuilder.collection_options(args[0], value_sym, text_sym, selected, FormBuilder::NO_KEYS, "options_from_collection_for_select"))
+      end
+
+      # label_tag(:term) -> <label for="term">Term</label>; explicit text is
+      # escaped unless it is a SafeString.
+      def label_tag(args, kwargs)
+        helper_arity!("label_tag", args, 1, 2)
+        name = text_arg(args, 0, "label_tag")
+        text = args.size > 1 && !args[1].nil? ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(name))
+        SafeString.of("<label for=\"#{Html.escape(FormBuilder.tag_id(name))}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>#{text}</label>")
+      end
+
+      # text_field_tag(:term, value = nil, placeholder: ...); id: replaces
+      # the id taken from the name.
+      def text_field_tag(args, kwargs)
+        helper_arity!("text_field_tag", args, 1, 2)
+        name = text_arg(args, 0, "text_field_tag")
+        SafeString.of(FormBuilder.input_tag("text", name, args.size > 1 ? args[1] : nil, kwargs, ""))
+      end
+
+      # hidden_field_tag(:token, value = nil), with autocomplete="off" as
+      # Rails writes it (a browser restoring the page does not refill
+      # it from its form cache).
+      def hidden_field_tag(args, kwargs)
+        helper_arity!("hidden_field_tag", args, 1, 2)
+        name = text_arg(args, 0, "hidden_field_tag")
+        SafeString.of(FormBuilder.input_tag("hidden", name, args.size > 1 ? args[1] : nil, kwargs, " autocomplete=\"off\""))
+      end
+
+      # submit_tag(value = "Save changes"), named commit as f.submit is.
+      def submit_tag(args, kwargs)
+        helper_arity!("submit_tag", args, 0, 1)
+        text = args.empty? ? "Save changes" : FormBuilder.html_text(args[0])
+        SafeString.of("<input type=\"submit\" name=\"commit\" value=\"#{text}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>")
+      end
+
       # --- routes ------------------------------------------------------------
 
       # The template's keywords go along as the helper's options
@@ -523,8 +609,9 @@ module Cybertrain
       # url_for's Array case: the route named after the records in items,
       # in order ("post_comment_path"), called with those records. A last
       # record that is new names the collection route instead
-      # ("post_comments_path") and is left out of the arguments. Raises
-      # ArgumentError when an item of the general case is not a record.
+      # ("post_comments_path") and is left out of the arguments. A Symbol
+      # is a namespace (`[:admin, article]`: "admin_article_path").
+      # Raises ArgumentError when an item of the general case is neither.
       def nested_url(items, options)
         # [parent, child], the usual shape, in one interpolation.
         if items.size == 2
@@ -559,6 +646,11 @@ module Cybertrain
               route_args << item
             end
             name << "_" unless last
+          # A namespace ([:admin, article] -> admin_article_path): a name
+          # part only, no route argument.
+          when Symbol
+            name << FormBuilder.value_text(item)
+            name << "_" unless i == items.size - 1
           else raise ArgumentError, "url_for expects records in a nested route"
           end
           i += 1

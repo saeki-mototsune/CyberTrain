@@ -25,4 +25,4 @@ ok   paginate renders Newer / Older around Page N, keeping the query minus page
 ok   paginate leaves out a link to a page that does not exist
 ok   paginate escapes what it is given and takes a path's own query string
 ok   a template reads the Page
-27 tests, 108 assertions, 0 failures
+27 tests, 111 assertions, 0 failures
