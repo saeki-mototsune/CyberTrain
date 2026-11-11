@@ -30,12 +30,17 @@
 # plain and permanent cookies work, `Secure` follows
 # Cybertrain.config.secure_cookies? as with SessionStore, and
 # `signed` / `encrypted` raise ArgumentError: there is no key.
+#
+# A write whose `name=value` (signed or sealed, as sent) is over 4096
+# bytes raises Session::CookieOverflow, as Rails does, instead of sending a
+# cookie the browser would silently drop.
 require "base64"
 require "cybertrain/cast"
 require "cybertrain/crypto"
 require "cybertrain/encryptor"
 require "cybertrain/http/cookies"
 require "cybertrain/http/response"
+require "cybertrain/session"
 
 module Cybertrain
   # The request's cookies, from {Controller#cookies}. Names are Strings or
@@ -144,6 +149,12 @@ module Cybertrain
       EncryptedCookieJar.new(self, false)
     end
 
+    # Internal: the jar views (PermanentCookieJar, SignedCookieJar,
+    # EncryptedCookieJar) call the methods from here to the end of the
+    # class; they are public only so the views can reach them.
+
+    # Raises ArgumentError when the jar has no cookie keys.
+    # @api private
     def require_cookie_keys!
       return nil unless @signed_key.empty? || @encrypted_key.empty?
 
@@ -154,6 +165,9 @@ module Cybertrain
     # Writes `value` (a String, or a Hash of options) as the cookie `name`,
     # signed or encrypted per `kind`, for 20 years when `permanent` and the
     # options set neither `expires:` nor `max_age:`. Answers the plain text.
+    # Raises Session::CookieOverflow when `name=<value as sent>` passes
+    # Session::MAX_COOKIE_BYTES; nothing is written then.
+    # @api private
     def assign_cookie(name, value, kind, permanent)
       text = ""
       path = "/"
@@ -176,6 +190,11 @@ module Cybertrain
       end
       max_age = PERMANENT_MAX_AGE if permanent && max_age < 0 && expires.nil?
       stored = cookie_text(name, text, kind)
+      size = name.bytesize + 1 + stored.bytesize
+      if size > Session::MAX_COOKIE_BYTES
+        message = "cookie #{name} is #{size} bytes, over the 4096 a browser keeps"
+        raise Session::CookieOverflow, message
+      end
       set_cookie = Cookies.serialize(name, stored, path: path, max_age: max_age, http_only: http_only,
                                                    same_site: same_site, secure: secure, expires: expires)
       @response.replace_cookie(name, set_cookie)
@@ -184,6 +203,7 @@ module Cybertrain
     end
 
     # What the cookie carries for `text`: itself, signed or sealed.
+    # @api private
     def cookie_text(name, text, kind)
       return text if kind == PLAIN
 
@@ -201,6 +221,7 @@ module Cybertrain
 
     # The text of the signed cookie `name`, nil when it is missing or its
     # HMAC does not match.
+    # @api private
     def verified_cookie(name)
       value = @cookies[name]
       return nil if value.nil?
@@ -221,6 +242,7 @@ module Cybertrain
 
     # The text of the encrypted cookie `name`, nil when it is missing or
     # does not authenticate (under this key, for this name).
+    # @api private
     def opened_cookie(name)
       value = @cookies[name]
       return nil if value.nil?
@@ -232,6 +254,7 @@ module Cybertrain
     end
 
     # The bytes of urlsafe Base64 (padded or not), nil when it is not.
+    # @api private
     def self.decode_cookie_bytes(text)
       Base64.urlsafe_decode64(text)
     rescue ArgumentError

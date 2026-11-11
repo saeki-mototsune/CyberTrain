@@ -100,6 +100,17 @@ class CookiesController < Cybertrain::Controller
     render plain: "ok"
   end
 
+  # "big=" and 4092 bytes is 4096: written. `?extra=1` is one byte over.
+  def big_plain
+    cookies[:big] = ("x" * 4092) + params[:extra].to_s
+    render plain: "ok"
+  end
+
+  def big_encrypted
+    cookies.encrypted[:big] = "x" * 3100
+    render plain: "ok"
+  end
+
   def write_twice
     cookies[:theme] = "a"
     cookies[:theme] = "b"
@@ -141,6 +152,8 @@ def build_router
   router.add("GET", "/copy_signed", "") { |ctx| CookiesController.new(ctx).process(:copy_signed) { |c| c.copy_signed } }
   router.add("GET", "/read_other_signed", "") { |ctx| CookiesController.new(ctx).process(:read_other_signed) { |c| c.read_other_signed } }
   router.add("GET", "/bad_name", "") { |ctx| CookiesController.new(ctx).process(:bad_name) { |c| c.bad_name } }
+  router.add("GET", "/big_plain", "") { |ctx| CookiesController.new(ctx).process(:big_plain) { |c| c.big_plain } }
+  router.add("GET", "/big_encrypted", "") { |ctx| CookiesController.new(ctx).process(:big_encrypted) { |c| c.big_encrypted } }
   router.add("GET", "/bad_delete", "") { |ctx| CookiesController.new(ctx).process(:bad_delete) { |c| c.bad_delete } }
   router.add("GET", "/write_twice", "") { |ctx| CookiesController.new(ctx).process(:write_twice) { |c| c.write_twice } }
   router.add("GET", "/write_permanent_views", "") { |ctx| CookiesController.new(ctx).process(:write_permanent_views) { |c| c.write_permanent_views } }
@@ -276,10 +289,26 @@ end
 
 test "without SessionStore the jar defaults Secure from Cybertrain.config.session_secure" do
   saved = Cybertrain.config.session_secure
-  Cybertrain.config.session_secure = true
-  res = Cybertrain::Test::Client.new(BARE_APP).get("/write_plain")
-  Cybertrain.config.session_secure = saved
-  assert_equal ["theme=dark; Path=/; HttpOnly; SameSite=Lax; Secure"], set_cookies_for(res, "theme")
+  begin
+    Cybertrain.config.session_secure = true
+    res = Cybertrain::Test::Client.new(BARE_APP).get("/write_plain")
+    assert_equal ["theme=dark; Path=/; HttpOnly; SameSite=Lax; Secure"], set_cookies_for(res, "theme")
+  ensure
+    # restored even when the request or the assertion raises
+    Cybertrain.config.session_secure = saved
+  end
+end
+
+test "a cookie over 4096 bytes raises CookieOverflow instead of being dropped by the browser" do
+  client = Cybertrain::Test::Client.new(APP)
+  res = client.get("/big_plain")
+  assert_equal 200, res.status
+  assert_equal 1, set_cookies_for(res, "big").size
+  msg = assert_raises("CookieOverflow") { Cybertrain::Test::Client.new(APP).get("/big_plain?extra=1") }
+  assert_equal "cookie big is 4097 bytes, over the 4096 a browser keeps", msg
+  # the size counted is the sealed value's: 3100 bytes seal and encode past 4096
+  msg = assert_raises("CookieOverflow") { Cybertrain::Test::Client.new(APP).get("/big_encrypted") }
+  assert_includes msg, "cookie big is 4"
 end
 
 test "Cookies.serialize writes Expires for a Time" do
