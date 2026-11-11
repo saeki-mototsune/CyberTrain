@@ -145,6 +145,7 @@ has a workaround in CyberTrain or an open bug:
 | V | `Template::Helpers.time_tag_strftime` calls `strftime` with a literal pattern per directive (spikes/NOTES.md rule 96) | Nothing yet: seen in the framework, the cause read from the generated C, no reduced program written (see V). Not reported upstream yet |
 | W | `Component` passes `"#{@name}"`, a fresh local, to `Views.component_builder.call` (spikes/NOTES.md rule 97) | Nothing yet: seen only in examples/blog's program, not reduced (see W). Not reported upstream yet |
 | X | `Gen::Runner` has each emitter scan `app/controllers` for itself (spikes/NOTES.md rule 94) | Nothing yet: bisected to one change in examples/blog's generator, not reduced (see X). Not reported upstream yet |
+| Y | gen/locales.rb fills its Hash through methods of at most 50 stores (spikes/NOTES.md rule 99) | **Ready to report** as a compile-time cost, not a defect: spikes/phase4b/locale_hash.rb and its generator make_keys.rb, with the `--timing` figures (see Y). Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026; some of their
@@ -192,6 +193,7 @@ that it is fixed.
 | V. `strftime` with a built pattern on a Time or Date returns the pattern | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a, 2026-11-11; rule 96) |
 | W. An ivar String passed to a stored lambda is refused | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a, 2026-11-11; rule 97) |
 | X. Type inference does not converge in examples/blog's generator | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4a, 2026-11-10; rule 94) |
+| Y. A large Hash literal constant takes cc 13 s | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4b spike, 2026-11-11; rule 99) |
 
 ## What CyberTrain still works around
 
@@ -2119,3 +2121,31 @@ that change.
   `concerns_source`), so the directory is read twice (spikes/NOTES.md rule
   94).
 - Not reduced; not reported upstream.
+
+## Found in phase 4b of the Rails-gap programme (2026-11-11)
+
+The i18n and authentication part of the web-layer design
+(docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md, section 12,
+item 6) ran four checks against 2026.11.04.7026 before any code was
+written (spikes/phase4b/); all four passed, and this was found while
+measuring the second.
+
+### Y. A large Hash literal constant takes cc 13 s
+
+A module with a frozen Hash literal constant of 1,980 String pairs
+(`TEXTS = { "en.section_00.key_00" => "Value 0 plain", ... }.freeze`)
+takes 12.5 to 15.2 s to build on a 4-vCPU cloud machine. `spinel
+--timing` puts 13.2 s in cc_total and under 0.1 s in the analysis and C
+generation: the literal is written into the program's main body as 1,980
+inlined `sp_StrStrHash_set` calls, a single function that cc at -O2 is
+slow to optimise. A `case` over the same keys builds in 4.5 to 4.7 s, and
+the same Hash filled by 40 methods of 50 `h["k"] = "v"` stores in 4.7 to
+5.4 s. Lookups in the two Hash forms are equally fast (34 to 53 ns).
+
+- What CyberTrain does with it (phase 4b): gen/locales.rb and
+  cybertrain/locales/bundled.rb fill their Hash through `fill_NN(h)`
+  methods of at most 50 keys (spikes/NOTES.md rule 99).
+- A possible upstream change: emit a large constant literal's stores into
+  helper functions of bounded size, or from a static table in a loop.
+- Reproduced by spikes/phase4b/locale_hash.rb (written by make_keys.rb);
+  not reported upstream.

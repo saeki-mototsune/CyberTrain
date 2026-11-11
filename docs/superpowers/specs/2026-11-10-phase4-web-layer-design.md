@@ -666,6 +666,66 @@ spikes/phase4/ with their commands and output in each header):**
    429 KB binary (a 1-arm one: 1.2 s, 385 KB) and answers in 293 ns a
    lookup (the arms are tried in order). Fallback taken: none.
 
+**Results (2026-11-11, Spinel 2026.11.04.7026, programs kept in
+spikes/phase4b/ with their commands and output in each header; the
+fixtures are rails-i18n's en.yml and ja.yml at commit f5c999b8, vendored
+in test/fixtures/i18n/rails-i18n/ with its MIT license):**
+
+6. **PASS**, in four parts. The 2,000-key file and the lookup modules are
+   written by spikes/phase4b/make_keys.rb (40 sections of 50 keys: plain,
+   single- and double-quoted with `%{x}` and `\u` escapes, `|` block
+   scalars, and 20 sequences of day names).
+   - **6a, the YAML reader** (yaml_subset.rb, locale_yaml.rb). The
+     phase 4b plan's Psych option (its R3) was dropped before the spike,
+     so this measures the hand-written subset reader of section 8 only. A
+     minimal one
+     (`Gen::LocaleYaml.parse(text, path)` and `Gen::LocaleEntry`, the
+     names Task 2 gives the real one, which starts from it) compiles in a
+     program shaped like bin/gen.rb in 14 s (841 KB) and reads en.yml
+     (127 keys) and ja.yml (108) in 0.4 to 0.5 ms each and the 2,000-key
+     file in 5 to 6 ms (CRuby 3.3.6: 4 to 6 ms and 33 to 52 ms). Its
+     flattened output is the same compiled, under CRuby, and as CRuby's
+     `Psych.parse` gives each scalar's text, for all three files, and the
+     nine refusals of Task 2's tests give their messages and lines. Both
+     rails-i18n files start with a `---` line, write sequences at their
+     key's indentation and have empty items (`-`, `- `); ja.yml's
+     `date.order` holds `:year`, which `YAML.safe_load` refuses. Fallback
+     taken: none needed; gen uses the subset reader (section 8 as
+     written).
+   - **6b, the lookup shape** (locale_case.rb, locale_hash.rb,
+     locale_hash_split.rb). Over 1,980 String keys and 20 lists, mean of
+     10^6 lookups (first / middle / last / absent key): the `case`
+     compiles in 4.5 to 4.7 s (944 KB) and answers in 15 ns / 9.2 us /
+     19 us / 19 us, since its arms are tried in order; a Hash literal
+     constant answers in 33 to 53 ns (an absent key 6 ns) but compiles in
+     12.5 to 15.2 s, nearly all of it cc on the one C function that holds
+     all 1,980 stores (spikes/NOTES.md rule 99); the same Hash filled by
+     40 methods of 50 stores each (`TEXTS = Gen::Locales.texts.freeze`)
+     answers in 34 to 52 ns (6 ns absent) and compiles in 4.7 to 5.4 s
+     (1.3 MB). Fallback taken: none; gen/locales.rb is a Hash (the faster
+     shape), emitted as `fill_NN(h)` methods of at most 50 keys so that
+     it compiles in under 10 s.
+   - **6c, the per-request locale** (thread_locale.rb). With the whole
+     framework required and a DB.transaction open (so Thread.current also
+     holds the pool's Connection under TRANSACTION_KEY), two green
+     threads set `Thread.current[:cybertrain_i18n_locale]` to `:ja` and
+     `:en`, yield with `sleep 0`, and each reads back its own; the main
+     thread keeps its own value and a key never set reads nil, also with
+     SPINEL_WORKERS=4. Fallback taken: none; `I18n.locale` is
+     thread-local (R4), with no `locale` field on Context.
+   - **6d, the dictionary lambdas and `with_locale`**
+     (dictionary_lambda.rb). `->(key) { Gen::Locales.lookup(key) }`,
+     returned by `Gen::Locales.resolver` and passed positionally to
+     `I18n.install_dictionary`, answers a String or nil when called with
+     a local key, next to a bundled pair installed the same way and to
+     gen/assets.rb's `Gen::Assets.resolver` (a lambda answering a
+     String). `I18n.with_locale(l) { }` saving the locale, yielding into
+     a local and restoring in `ensure` compiles and restores the locale
+     for a block answering a String, one answering an Integer, one that
+     raises, one whose only statement is `raise`, and when nested; the
+     output matches CRuby's. Fallback taken: none; an absent key is nil
+     (no `I18n::MISSING`).
+
 ## 13. Out of scope (recorded so nothing is lost)
 
 AU-1 bcrypt; R-6 `mount`; A-3 / A-4 bundled JavaScript libraries; A-6

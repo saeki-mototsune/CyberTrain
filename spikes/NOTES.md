@@ -88,6 +88,8 @@ written up for upstream.
 | 93 | **Still there**: found on this build (its reduced program prints `true false`; CRuby prints `false false`). |
 | 94, 96, 97, 98 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
 | 95 | Works on this build: a record of a form that compiles, not of a defect. |
+| 99 | **Still there**: found on this build (phase 4b spike, 2026-11-11; spikes/phase4b/locale_hash.rb). |
+| 100, 101 | Work on this build: records of forms that compile (phase 4b spike, 2026-11-11), not of defects. |
 | 1, 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). 13, 16, 17, 23 and 24 describe language or tool behaviour rather than a defect. |
 
 ## Rules by topic
@@ -95,20 +97,21 @@ written up for upstream.
 The rules are numbered in the order they were found. By topic:
 
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
-  90, 92, 93, 95, 97
+  90, 92, 93, 95, 97, 101
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86
-- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93,
+  99
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79, 81, 89
+  79, 81, 89, 101
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
 - Memory and GC roots: 58, 64, 65
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
-  91
+  91, 100
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98
 
@@ -1158,6 +1161,45 @@ The rules are numbered in the order they were found. By topic:
     still exited 0). Write such files outside the package (the build
     directory, or a `TMPDIR` outside it) and delete them after the grep.
 
+99. A large Hash literal constant compiles slowly: Spinel 2026.11.04.7026
+    writes the literal as one C function (the program's main body) with
+    one inlined store per entry, and cc at -O2 is slow on so long a
+    function. 1,980 String pairs took 12.5 to 15.2 s to build, nearly all
+    of it cc (`spinel --timing`: cc_total 13.2 s; analysis and C
+    generation under 0.1 s), against 4.5 to 4.7 s for a `case` over the
+    same keys; the same Hash filled at load by 40 methods of 50 stores
+    each (`def self.fill_00(h) h["k"] = "v" ... h end`, then `TEXTS =
+    Gen::Locales.texts.freeze`) builds in 4.7 to 5.4 s and answers lookups
+    as fast (34 to 52 ns). So generated code writes a large table as
+    small fill methods, never as one literal (gen/locales.rb; phase 4b
+    spike, 2026-11-11, spikes/phase4b/locale_hash.rb and
+    locale_hash_split.rb; docs/spinel-feedback.md Y).
+
+100. A thread-local Symbol beside a Connection: on Spinel 2026.11.04.7026,
+     `Thread.current[:cybertrain_i18n_locale] = :ja` in a program where
+     the db pool stores a Connection under another key
+     (`Thread.current[TRANSACTION_KEY]`) compiles, and each green thread
+     reads back its own Symbol after `sleep 0` while another thread set a
+     different one (also with `SPINEL_WORKERS=4`); a key never set reads
+     nil. A record of a form that works, not of a defect: `I18n.locale`
+     is kept this way (phase 4b spike, 2026-11-11,
+     spikes/phase4b/thread_locale.rb).
+
+101. Stored lambdas answering String or nil, and a yield with `ensure`:
+     on Spinel 2026.11.04.7026 a lambda returned by a method
+     (`def self.resolver = ->(key) { Gen::Locales.lookup(key) }`, the
+     `case` answering a String or nil) and passed positionally to a
+     setter (rules 42 and 82) keeps nil when called with a local key, in
+     a program where another module's `resolver` returns a lambda
+     answering a String (gen/assets.rb's); and a module function that
+     saves a value, yields into a local (rule 90), restores in `ensure`
+     and returns the local compiles and restores for blocks answering a
+     String or an Integer, a block that raises and one whose only
+     statement is `raise` (rule 79's block, which fails only when the
+     yielding method itself rescues). A record of forms that work:
+     `I18n.install_dictionary` and `I18n.with_locale` (phase 4b spike,
+     2026-11-11, spikes/phase4b/dictionary_lambda.rb).
+
 ## Numbers worth remembering
 
 - HTTP hello-world (125-byte body, ab on the same host): keep-alive c=100 52-58k req/s at `SPINEL_WORKERS=1`, 31-49k at 10 workers; no keep-alive c=100 ~7k (10 workers) / 27k (1 worker). 200 idle connections time out at 5 s and threads/fds return to baseline.
@@ -1167,3 +1209,4 @@ The rules are numbered in the order they were found. By topic:
 - HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it.
 - PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (Spinel's docs/thread.md, "The execution model").
 - Asset digests (phase 4a spike, 2026-11-10, one cloud vCPU): `File.binread` of 1 MB 1.4 ms, `Digest::SHA256.digest` of it 0.8 ms compiled (CRuby 3.3.6: 5.0 ms for both); a generated 200-arm `case` of String literals compiles in 1.3 s, adds 44 KB to the binary and answers in 293 ns a lookup (arms tried in order; CRuby hashes them, 183 ns).
+- Locale dictionaries (phase 4b spike, 2026-11-11, a 4-vCPU cloud machine): the hand-written YAML subset reader, compiled, reads rails-i18n's en.yml or ja.yml (about 120 keys) in 0.4 to 0.5 ms and a 2,000-key file in 5 to 6 ms (CRuby 3.3.6: 4 to 6 ms and 33 to 52 ms). A 1,980-arm `case` of String literals answers in 15 ns for its first arm and 19 us for its last arm or an absent key (about 10 ns an arm); a Hash over the same keys in 34 to 53 ns, 6 ns for an absent key.

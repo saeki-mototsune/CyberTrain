@@ -51,6 +51,10 @@ Dir.chdir(ROOT)
 
 SKIP_PATH = %r{\A(site/assets/fonts/|site/api/|\.git/)}
 SKIP_EXT = %w[.expected .png .jpg .jpeg .gif .ico .woff .woff2 .ttf .otf .pdf .gz .zip .sqlite3 .gem].freeze
+# Third-party files kept byte for byte as fetched (their SOURCE file has
+# the checksums): exempt from the trailing-whitespace check only.
+# rails-i18n's ja.yml writes an empty sequence item as "- ".
+VENDORED_PATH = %r{\Atest/fixtures/i18n/rails-i18n/}
 RUBY_EXT = %w[.rb .gemspec .rake].freeze
 YAML_EXT = %w[.yml .yaml].freeze
 # Files the repository checks read; when none of them is in the set under
@@ -116,7 +120,7 @@ conflicts = []
 text_files.each do |f, data|
   data.each_line.with_index(1) do |line, n|
     body = line.chomp
-    whitespace << "#{f}:#{n}" if body.match?(/[ \t]+\z/)
+    whitespace << "#{f}:#{n}" if body.match?(/[ \t]+\z/) && !f.match?(VENDORED_PATH)
     crlf << "#{f}:#{n}" if line.end_with?("\r\n")
     conflicts << "#{f}:#{n}" if body.match?(/\A(<{7} |={7}\z|>{7} )/)
   end
