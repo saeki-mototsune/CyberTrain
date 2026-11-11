@@ -36,5 +36,6 @@ ok   counts go through number_with_delimiter and dates through time_tag
 ok   /admin/articles is 404 without the token and lists the articles with it
 ok   the admin list shows at most per_page (20) articles, newest first
 ok   DELETE /admin/articles/:id with the token deletes the article; without it, 404
+ok   DELETE /admin/articles/:id with the admin token but no authenticity_token is 403
 ok   a signed-in browser reaches /admin/articles, and the article page links to it
-35 tests, 242 assertions, 0 failures
+36 tests, 244 assertions, 0 failures

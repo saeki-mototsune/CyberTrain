@@ -559,7 +559,7 @@ test "the import map pins Turbo and the application entry point, with the CSP no
   assert_includes res.body, "<script type=\"module\" nonce=\"#{nonce}\">import \"application\"</script>"
   csp = res.header("Content-Security-Policy").to_s
   assert_includes csp, "default-src 'self'"
-  assert_includes csp, "script-src 'self' https://cdn.jsdelivr.net 'nonce-#{nonce}'"
+  assert_includes csp, "script-src 'self' https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/ 'nonce-#{nonce}'"
   assert_includes csp, "style-src 'self' 'nonce-#{nonce}'"
   assert_includes csp, "img-src 'self' data:"
 
@@ -672,6 +672,16 @@ test "DELETE /admin/articles/:id with the token deletes the article; without it,
   assert_equal 0, Comment.count
   assert_response client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf }, admin_header(ADMIN_TOKEN)),
                   :not_found
+end
+
+test "DELETE /admin/articles/:id with the admin token but no authenticity_token is 403" do
+  client = new_client
+  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  doomed = BlogTest.article("Protected article")
+  client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  res = client.delete("/admin/articles/#{doomed.id}", {}, admin_header(ADMIN_TOKEN))
+  assert_response res, :forbidden
+  assert_equal 1, Article.count
 end
 
 test "a signed-in browser reaches /admin/articles, and the article page links to it" do

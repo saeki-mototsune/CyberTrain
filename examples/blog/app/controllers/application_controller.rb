@@ -41,7 +41,7 @@ class ApplicationController < Cybertrain::Controller
 
   # What the admin session holds: derived from the current token, so a new
   # token signs out every browser signed in with the old one, and the
-  # token itself is never in the cookie (which the browser can read).
+  # token itself is never in the cookie, even encrypted.
   def admin_session_value(token)
     Cybertrain::Crypto.hmac_hex(Cybertrain.config.secret_key_base, token)
   end

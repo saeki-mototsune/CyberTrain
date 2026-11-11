@@ -11,14 +11,15 @@ Cybertrain.configure do |c|
   c.log_level = :none if c.test?
 
   # Content Security Policy, sent with every response. Scripts come from
-  # this origin and jsDelivr (Turbo, pinned in config/importmap.rb);
+  # this origin and the one jsDelivr path that holds Turbo (pinned in
+  # config/importmap.rb), not the whole CDN;
   # styles and images from this origin (and data: images). The inline
   # import map and its `import "application"` carry this response's nonce
   # (javascript_importmap_tags), as does the csp-nonce meta tag
   # (csp_meta_tag) for scripts that add elements.
   c.content_security_policy do |p|
     p.default_src :self
-    p.script_src :self, "https://cdn.jsdelivr.net"
+    p.script_src :self, "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/"
     p.style_src :self
     p.img_src :self, :data
   end

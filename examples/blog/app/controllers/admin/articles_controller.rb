@@ -7,7 +7,7 @@ module Admin
 
     # GET /admin/articles
     def index
-      @articles = Article.order(created_at: :desc).limit(self.class.per_page).to_a
+      @articles = Article.order(created_at: :desc).limit(self.class.per_page).includes(:comments).to_a
       @article_count = Article.count
     end
 
