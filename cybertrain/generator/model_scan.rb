@@ -160,7 +160,7 @@ module Cybertrain
       # Object methods (dup, tap, send, ...) and the Ruby keywords are
       # refused through Ident (reserved_scope_name?). script/check-reserved-names keeps it complete
       # against those files; a column name is checked by the emitter
-      # (ModelsEmitter.check_scope_names), which knows the schema.
+      # (ModelValidation.check_scope_names), which knows the schema.
       RESERVED_SCOPE_NAMES = %w[
         initialize binds add_where add_where_not check_not_json where_term range_term add_where_between merge_or
         relation_shape condition_sql set_distinct set_none column_type decimal_scale binary_column? bind_for
