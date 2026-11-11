@@ -961,5 +961,5 @@ adds its own notes here.
   `controller_formats`, `cookie_jar`, `csp`, `force_ssl`, `form_tags`,
   `gen_assets`, `gen_concerns`, `gen_model_concerns`, `helper_method`,
   `http_caching`, `number_helper`, `rate_limit_store`, `send_data`,
-  `turbo_helpers`), and examples/blog's two programs run 52 tests (35 and
+  `turbo_helpers`), and examples/blog's two programs run 53 tests (36 and
   17). The whole suite (`script/test-shard 0 1`) passed 177 of 177 at 0e183e6, before the final fix wave.
