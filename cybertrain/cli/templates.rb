@@ -185,6 +185,8 @@ module Cybertrain
             # mode, watch the browser console, then turn it on. The nonce lets
             # the tags csp_meta_tag, javascript_importmap_tags and
             # stylesheet_link_tag(nonce: true) through without "unsafe-inline".
+            # When you list style-src, add nonce: true to the layout's
+            # stylesheet_link_tag too, or the browser blocks the stylesheet.
             # c.content_security_policy do |p|
             #   p.default_src :self
             #   p.script_src :self, "https://cdn.jsdelivr.net"
