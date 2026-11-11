@@ -648,6 +648,24 @@ test "preferred_locale reads at most 4 KB and 32 entries and survives a huge hea
   assert_equal :en, locale_request("ja;q=#{'9' * 3000}").preferred_locale(both)
 end
 
+test "preferred_locale never raises on a header that is not valid UTF-8" do
+  I18n.default_locale = :en
+  both = [:en, :ja]
+  bad = "\xff,ja".dup.force_encoding("UTF-8")
+  assert_equal false, bad.valid_encoding?
+  assert_equal :en, locale_request(bad).preferred_locale(both)
+  bad = "ja,\xff".dup.force_encoding("UTF-8")
+  assert_equal :en, locale_request(bad).preferred_locale(both)
+  # a multibyte character cut by the 4 KB limit
+  cut = ("x" * 4095 + "\u00e9,ja").dup.force_encoding("UTF-8")
+  assert_equal :en, locale_request(cut).preferred_locale(both)
+  # valid multibyte text is only junk
+  assert_equal :ja, locale_request("\u00e9, ja").preferred_locale(both)
+  # an underscore in the request's tag matches a hyphenated locale
+  assert_equal :"pt-BR", locale_request("pt_BR").preferred_locale([:pt, :"pt-BR", :en])
+  assert_equal :"pt-BR", locale_request("pt_br, pt;q=0.5").preferred_locale([:pt, :"pt-BR", :en])
+end
+
 test "a ?locale= value from the query only passes when it names an available locale" do
   I18n.default_locale = :en
   I18n.available_locales = [:en, :ja]

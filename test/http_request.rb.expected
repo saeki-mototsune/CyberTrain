@@ -49,5 +49,6 @@ ok   header_params is empty for a missing header and one over 8 KiB
 ok   header_params tolerates any bytes in values
 ok   preferred_locale with q-values, regions, wildcards and junk
 ok   preferred_locale reads at most 4 KB and 32 entries and survives a huge header
+ok   preferred_locale never raises on a header that is not valid UTF-8
 ok   a ?locale= value from the query only passes when it names an available locale
-52 tests, 325 assertions, 0 failures
+53 tests, 332 assertions, 0 failures

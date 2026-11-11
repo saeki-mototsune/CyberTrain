@@ -206,9 +206,13 @@ module Cybertrain
       return I18n.default_locale if raw.empty?
 
       text = raw.bytesize > LOCALE_HEADER_LIMIT ? raw.byteslice(0, LOCALE_HEADER_LIMIT).to_s : raw
+      # A header that is not valid text (or was cut inside a character)
+      # cannot be split; it is no preference.
+      return I18n.default_locale unless text.valid_encoding?
+
       best = I18n.default_locale
       best_q = 0
-      entries = text.split(",")
+      entries = text.split(",", LOCALE_ENTRY_LIMIT + 1)
       i = 0
       while i < entries.size && i < LOCALE_ENTRY_LIMIT
         parts = entries[i].to_s.split(";")
@@ -268,6 +272,8 @@ module Cybertrain
     # finds `:ja`). nil for `*`, an unknown tag or an empty one.
     def self.locale_match(tag, available)
       return nil if tag.empty? || tag == "*"
+
+      tag = tag.tr("_", "-")
 
       available.each do |candidate|
         return candidate if candidate.to_s.downcase.tr("_", "-") == tag
