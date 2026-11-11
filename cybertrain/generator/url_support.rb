@@ -80,8 +80,47 @@ module Cybertrain
       out << path
       out << "." << Router.escape_segment(format) unless format.empty?
       out << "?" << query[1, query.size - 1].to_s unless query.empty?
-      out << "#" << Router.escape_segment(anchor) if has_anchor
+      out << "#" << escape_fragment(anchor) if has_anchor
       out
+    end
+
+    FRAGMENT_HEX = "0123456789ABCDEF"
+
+    # `anchor:` percent-encoded as a URL fragment, as Rails'
+    # `escape_fragment`: RFC 3986's pchar plus `/` and `?` stay as they are
+    # (letters, digits, `-._~!$&'()*+,;=:@/?`); every other byte, a space
+    # or `#` included, becomes `%XX`. `anchor: "a/b"` gives `#a/b`.
+    # @param value [String]
+    # @return [String]
+    def self.escape_fragment(value)
+      text = value.to_s # a fresh String for the byte scan (NOTES rule 62)
+      out = +""
+      i = 0
+      n = text.bytesize
+      while i < n
+        b = text.getbyte(i).to_i
+        if fragment_byte?(b)
+          out << text.byteslice(i, 1).to_s
+        else
+          out << "%" << FRAGMENT_HEX[b / 16].to_s << FRAGMENT_HEX[b % 16].to_s
+        end
+        i += 1
+      end
+      out
+    end
+
+    # Whether byte `b` stands for itself in a fragment.
+    def self.fragment_byte?(b)
+      return true if b >= 48 && b <= 57 # 0-9
+      return true if b >= 65 && b <= 90 # A-Z
+      return true if b >= 97 && b <= 122 # a-z
+
+      case b
+      when 45, 46, 95, 126 then true # - . _ ~
+      when 33, 36, 38, 39, 40, 41, 42, 43, 44, 59, 61 then true # ! $ & ' ( ) * + , ; =
+      when 58, 64, 47, 63 then true # : @ / ?
+      else false
+      end
     end
 
     # One query option as "&"-led `name=value` pairs ("" for nil).

@@ -470,7 +470,11 @@ test "Gen.with_options appends format, query and anchor (spec 2.6, plan decision
   assert_equal "/p?ids%5B%5D=1&ids%5B%5D=2", Cybertrain::Gen.with_options("/p", { ids: [1, 2] })
   assert_equal "/p.csv?page=3#top", Cybertrain::Gen.with_options("/p", { "page" => 3, "format" => "csv", "anchor" => "top" })
   assert_equal "/p#", Cybertrain::Gen.with_options("/p", { anchor: "" })
-  msg = "path helper option :q must be a String, Symbol, number, boolean or Array (got Hash)"
+  # the fragment keeps / ? : @ and sub-delims as Rails' escape_fragment does
+  assert_equal "/p#a/b", Cybertrain::Gen.with_options("/p", { anchor: "a/b" })
+  assert_equal "/p#q?x=1&y=@2:3", Cybertrain::Gen.with_options("/p", { anchor: "q?x=1&y=@2:3" })
+  assert_equal "/p#a%23b%25%20%C3%A9", Cybertrain::Gen.with_options("/p", { anchor: "a#b% é" })
+  msg ="path helper option :q must be a String, Symbol, number, boolean or Array (got Hash)"
   assert_equal msg, assert_raises("ArgumentError") { Cybertrain::Gen.with_options("/p", { q: { "a" => "b" } }) }
   assert_equal msg, assert_raises("ArgumentError") { Cybertrain::Gen.with_options("/p", { q: [{ "a" => "b" }] }) }
 end
