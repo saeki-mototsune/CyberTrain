@@ -578,7 +578,12 @@ explicitly retires a workaround.
     permission to remove synchronization from shared mutable state: a
     performance result is not a memory-safety argument. A shared cache can
     be read without mutation locks only when fully initialized before its
-    readers start and not subsequently modified. In particular, the
+    readers start and not subsequently modified, or when each immutable
+    snapshot is acquired through synchronization with its publisher.
+    TimeZone's replaceable cache now takes the same mutex for reading the
+    snapshot reference and publishing replacements; lookups on the captured
+    immutable snapshot run outside it. Copy-on-write alone is not a
+    publication barrier. In particular, the
     template engine's (`@template_index`, `@template_list`) used to be
     written on a template's first render, which two workers could do at
     once; `Engine.embedded` now parses every embedded template at boot
