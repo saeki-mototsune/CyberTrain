@@ -8,6 +8,7 @@ ok   pluralize picks singular or plural
 ok   truncate shortens long text with an ellipsis
 ok   number_with_delimiter groups thousands
 ok   number helpers from a template
+ok   number helpers render nil as an empty string
 ok   number helpers check their arguments
 ok   time_ago_in_words buckets
 ok   render a partial with strict locals
@@ -28,4 +29,4 @@ ok   a template reads the Page
 ok   time_tag for Time, Date, text and format:
 ok   time_tag format: Strings take flags, widths and composites; an unknown directive raises
 ok   current_page? path only, with query, false on POST
-30 tests, 148 assertions, 0 failures
+31 tests, 153 assertions, 0 failures

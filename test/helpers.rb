@@ -166,6 +166,17 @@ test "number helpers from a template" do
   assert_equal "1 Byte|1.21 KB|1.07 EB", render_inline("<%= number_to_human_size(1) %>|<%= number_to_human_size(1234) %>|<%= number_to_human_size(1234567890123456789) %>")
 end
 
+test "number helpers render nil as an empty string" do
+  # A nullable column prints nothing, as in Rails and 0.4; NumberHelper
+  # itself still raises for nil (test/number_helper.rb).
+  assert_equal "||||||", render_inline("<%= number_with_delimiter nil %>|<%= number_with_precision(nil, precision: 2) %>|<%= number_to_human(nil) %>|<%= number_to_percentage(nil) %>|<%= number_to_currency(nil) %>|<%= number_to_human_size(nil) %>|")
+  # Keywords are still checked, and a non-number that is not nil raises.
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= number_to_currency(nil, scale: 2) %>") }
+  assert_equal "posts/inline:1: unknown keyword 'scale' for 'number_to_currency' (known: unit, precision, format)", msg
+  msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= number_with_delimiter('') %>") }
+  assert_equal "posts/inline:1: number_with_delimiter: \"\" is not a number", msg
+end
+
 test "number helpers check their arguments" do
   msg = assert_raises("Cybertrain::Template::RuntimeError") { render_inline("<%= number_to_currency('abc') %>") }
   assert_equal "posts/inline:1: number_to_currency: \"abc\" is not a number", msg

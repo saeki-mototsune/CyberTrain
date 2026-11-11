@@ -78,11 +78,30 @@ test "rounding edges on the digits" do
   assert_equal "1 KB", N.number_to_human_size(1024)
 end
 
+test "number_to_human below 1 and just under a unit" do
+  assert_equal "0.5", N.number_to_human(0.5)
+  assert_equal "0.123", N.number_to_human(0.1234)
+  assert_equal "1 Thousand", N.number_to_human(999.9)
+  assert_equal "999", N.number_to_human(999)
+end
+
+test "NaN and Infinity are not numbers" do
+  msg = assert_raises("ArgumentError") { N.number_with_delimiter(0.0 / 0.0) }
+  assert_equal "number_with_delimiter: NaN is not a number", msg
+  msg = assert_raises("ArgumentError") { N.number_to_currency(1.0 / 0.0) }
+  assert_equal "number_to_currency: Infinity is not a number", msg
+  msg = assert_raises("ArgumentError") { N.number_to_human(-1.0 / 0.0) }
+  assert_equal "number_to_human: -Infinity is not a number", msg
+end
+
 test "a non-number raises ArgumentError" do
   msg = assert_raises("ArgumentError") { N.number_to_currency("abc") }
   assert_equal "number_to_currency: \"abc\" is not a number", msg
+  # nil raises here; the template helpers render "" for it (test/helpers.rb).
   msg = assert_raises("ArgumentError") { N.number_with_precision(nil) }
   assert_equal "number_with_precision: nil is not a number", msg
+  msg = assert_raises("ArgumentError") { N.number_with_delimiter(nil) }
+  assert_equal "number_with_delimiter: nil is not a number", msg
 end
 
 test "an oversized exponent or precision is rejected" do

@@ -2,10 +2,11 @@
 # Ruby code; the same six are template helpers (Template::Helpers).
 #
 # A number is an Integer, a Float or a numeric String (decimal columns are
-# Floats). Every result is built from the digits of Integer#to_s or
-# Float#to_s, rounded half up on those digits (what Rails gets from
-# BigDecimal(value.to_s)); Float#round is never used, so the output is the
-# same under CRuby and Spinel.
+# Floats). nil raises ArgumentError here, as any other non-number does; the
+# template helpers render "" for nil instead. Every result is built from
+# the digits of Integer#to_s or Float#to_s, rounded half up on those digits
+# (what Rails gets from BigDecimal(value.to_s)); Float#round is never used,
+# so the output is the same under CRuby and Spinel.
 module Cybertrain
   module NumberHelper
     UNIT_KEYS = [:unit, :thousand, :million, :billion, :trillion, :quadrillion]

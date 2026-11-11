@@ -5,6 +5,8 @@ ok   number_to_percentage
 ok   number_to_currency
 ok   number_to_human_size
 ok   rounding edges on the digits
+ok   number_to_human below 1 and just under a unit
+ok   NaN and Infinity are not numbers
 ok   a non-number raises ArgumentError
 ok   an oversized exponent or precision is rejected
-9 tests, 66 assertions, 0 failures
+11 tests, 78 assertions, 0 failures

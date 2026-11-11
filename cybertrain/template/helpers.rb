@@ -1151,9 +1151,14 @@ module Cybertrain
 
       # The number helpers are Cybertrain::NumberHelper's, with Rails'
       # keywords: 1234567 -> "1,234,567"; 1234.5 -> "1,234.5".
+      # nil renders "" in a template (as in Rails and 0.4: a nullable column
+      # prints nothing); NumberHelper's module functions, called from Ruby,
+      # raise ArgumentError for nil. Any other non-number raises in both.
       def number_with_delimiter(args, kwargs)
         helper_arity!("number_with_delimiter", args, 1, 1)
         helper_keywords!("number_with_delimiter", kwargs, ["delimiter", "separator"], 0)
+        return "" if args[0].nil?
+
         delimiter = kwargs["delimiter"].nil? ? "," : FormBuilder.value_text(kwargs["delimiter"])
         separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
         NumberHelper.number_with_delimiter(args[0], delimiter: delimiter, separator: separator)
@@ -1162,6 +1167,8 @@ module Cybertrain
       def number_with_precision(args, kwargs)
         helper_arity!("number_with_precision", args, 1, 1)
         helper_keywords!("number_with_precision", kwargs, ["precision", "delimiter", "separator", "strip_insignificant_zeros"], 0)
+        return "" if args[0].nil?
+
         precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
         delimiter = kwargs["delimiter"].nil? ? "" : FormBuilder.value_text(kwargs["delimiter"])
         separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
@@ -1173,6 +1180,8 @@ module Cybertrain
       def number_to_human(args, kwargs)
         helper_arity!("number_to_human", args, 1, 1)
         helper_keywords!("number_to_human", kwargs, ["precision", "units"], 0)
+        return "" if args[0].nil?
+
         precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
         names = NumberHelper::UNIT_NAMES.dup
         given = kwargs["units"]
@@ -1193,6 +1202,8 @@ module Cybertrain
       def number_to_percentage(args, kwargs)
         helper_arity!("number_to_percentage", args, 1, 1)
         helper_keywords!("number_to_percentage", kwargs, ["precision"], 0)
+        return "" if args[0].nil?
+
         precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
         NumberHelper.number_to_percentage(args[0], precision: precision)
       end
@@ -1200,6 +1211,8 @@ module Cybertrain
       def number_to_currency(args, kwargs)
         helper_arity!("number_to_currency", args, 1, 1)
         helper_keywords!("number_to_currency", kwargs, ["unit", "precision", "format"], 0)
+        return "" if args[0].nil?
+
         unit = kwargs["unit"].nil? ? "$" : FormBuilder.value_text(kwargs["unit"])
         precision = kwargs["precision"].nil? ? 2 : int_text(kwargs["precision"])
         fmt = kwargs["format"].nil? ? "%u%n" : FormBuilder.value_text(kwargs["format"])
@@ -1209,6 +1222,8 @@ module Cybertrain
       def number_to_human_size(args, kwargs)
         helper_arity!("number_to_human_size", args, 1, 1)
         helper_no_keywords!("number_to_human_size", kwargs)
+        return "" if args[0].nil?
+
         NumberHelper.number_to_human_size(args[0])
       end
 
