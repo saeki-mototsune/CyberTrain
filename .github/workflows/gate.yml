@@ -11,6 +11,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # For a merge queue on main, which is not turned on (docs/design.md, D34,
+  # the status of 2026-11-11): the queue waits for the required checks on a
+  # `merge_group` event. Until it is on, nothing sends the event.
+  merge_group:
   # release.yml runs this file on the tag before it creates a release.
   workflow_call:
     inputs:
