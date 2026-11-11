@@ -684,7 +684,7 @@ module Cybertrain
         run_action run_before_callbacks run_after_callbacks run_one
         rescue_with_handler render_partial send_html string_keys json_body
         safe_redirect_path apply_validators validator_key validator_time strip_weak
-        respond_to head_not_acceptable send_rendered format_template_path
+        respond_to head_not_acceptable send_rendered format_template_path apply_vary_accept
 
         apply_rate_limit rate_limit_key
         record_not_found resume_session require_authentication
