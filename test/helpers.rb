@@ -419,6 +419,21 @@ test "time_tag format: Strings take flags, widths and composites; an unknown dir
   assert_equal "posts/inline:1: time_tag format: incomplete directive %- in \"%Y %-\"", msg
 end
 
+test "time_tag format: a width replaces a number's padding; a width or flag strftime does not mean here raises" do
+  env = time_env
+  env["e"] = Time.utc(2026, 11, 5, 9, 3, 7, 123456)
+  # As Time#strftime: %1d is "5", %4d "0005", %_4d "   5", %3e "  5", %04e "0005".
+  assert_equal "<time datetime=\"2026-11-05T09:03:07Z\">5|0005|   5|  5|0005|9|  9</time>",
+               render_inline("<%= time_tag e, format: \"%1d|%4d|%_4d|%3e|%04e|%1H|%3k\" %>", env)
+  [["%6L", "%L takes no width or flag; use %3N, %6N or %9N"], ["%-N", "%N takes no flag"], ["%:Y", "the : flag is only for %:z"],
+   ["%::z", "%z takes no width and no flag but :"], ["%6z", "%z takes no width and no flag but :"], ["%5Z", "%Z takes no width"],
+   ["%-_d", "combine at most one of the flags - _ 0"], ["%^#b", "combine at most one of the flags ^ #"],
+   ["%-T", "%T takes no flag but ^"]].each do |directive, why|
+    msg = assert_raises("RuntimeError") { render_inline("<%= time_tag e, format: \"%Y #{directive}\" %>", env) }
+    assert_equal "posts/inline:1: time_tag format: #{directive} in \"%Y #{directive}\": #{why}", msg
+  end
+end
+
 def page_helpers(verb, target)
   ctx = Cybertrain::Context.new(Cybertrain::Request.new(verb, target, { "host" => "example.test" }, ""))
   Cybertrain::Template::Helpers.new(Cybertrain::Controller.new(ctx))

@@ -29,5 +29,6 @@ ok   paginate escapes what it is given and takes a path's own query string
 ok   a template reads the Page
 ok   time_tag for Time, Date, text and format:
 ok   time_tag format: Strings take flags, widths and composites; an unknown directive raises
+ok   time_tag format: a width replaces a number's padding; a width or flag strftime does not mean here raises
 ok   current_page? path only, with query, false on POST
-32 tests, 162 assertions, 0 failures
+33 tests, 181 assertions, 0 failures

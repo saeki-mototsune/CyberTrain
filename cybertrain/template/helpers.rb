@@ -1336,8 +1336,12 @@ module Cybertrain
       # zero padding, `^` upcase, `#` change case, `:` for `%:z`), a width,
       # then one of: Y C y m d e j H k I l M S L N s p P a A b h B u w U W
       # G g V Z z F T D R r c x X v n t %. `%3N` / `%6N` / `%9N` (any width
-      # for N) give that many fraction digits. Anything else raises
-      # ArgumentError, as does a lone `%` at the end. Text between
+      # for N) give that many fraction digits; a width on a number replaces
+      # its padding (`%1d`, `%5e`), as in strftime. Anything else raises
+      # ArgumentError, as does a lone `%` at the end, and so does a width or
+      # flag whose strftime meaning this walk does not reproduce
+      # (strftime_refusal: `%6L`, `%-N`, `%:Y`, `%::z`, `%5Z`, `%-T`, `%-_d`):
+      # it raises rather than render something else. Text between
       # directives (multibyte included) is copied as it is.
       def self.time_tag_strftime(time, pattern)
         s = pattern.to_s # NOTES rule 62: plain byte reads
@@ -1375,6 +1379,11 @@ module Cybertrain
           end
           conv = s.byteslice(i, 1).to_s
           i += 1
+          refused = Helpers.strftime_refusal(conv, flags, width)
+          unless refused.empty?
+            msg = "time_tag format: #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}: #{refused}"
+            raise ArgumentError, msg
+          end
           piece = Helpers.strftime_directive(time, conv, flags, width)
           if piece.nil?
             msg = "time_tag format: unknown directive #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}"
@@ -1383,6 +1392,29 @@ module Cybertrain
           out << piece
         end
         out
+      end
+
+      # Why a directive's flags or width are refused ("" when they are
+      # not): the combinations whose Time#strftime output this walk does
+      # not reproduce raise instead of rendering something else.
+      def self.strftime_refusal(conv, flags, width)
+        pads = 0
+        pads += 1 if flags.include?("-")
+        pads += 1 if flags.include?("_")
+        pads += 1 if flags.include?("0")
+        return "combine at most one of the flags - _ 0" if pads > 1
+        return "combine at most one of the flags ^ #" if flags.include?("^") && flags.include?("#")
+        if conv == "z"
+          return "%z takes no width and no flag but :" if width > 0 || flags.delete(":").size > 0 || flags.count(":") > 1
+        elsif flags.include?(":")
+          return "the : flag is only for %:z"
+        end
+        return "%L takes no width or flag; use %3N, %6N or %9N" if conv == "L" && (width > 0 || !flags.empty?)
+        return "%N takes no flag" if conv == "N" && !flags.empty?
+        return "%Z takes no width" if conv == "Z" && width > 0
+        return "%#{conv} takes no flag but ^" if "FTDRrcxXv".include?(conv) && !flags.delete("^").empty?
+
+        ""
       end
 
       # One directive of time_tag_strftime; nil for an unknown conversion.
@@ -1441,9 +1473,23 @@ module Cybertrain
         Helpers.strftime_flags(base, conv, flags, conv == "N" ? 0 : width)
       end
 
-      # Applies the flags and width of a directive to its default text.
+      # Applies the flags and width of a directive to its default text. A
+      # width on a number replaces its default padding, as in strftime
+      # (`%1d` is "5", `%5e` is "    5").
       def self.strftime_flags(base, conv, flags, width)
         text = base
+        numeric = "YCymdejHkIlMSsuwUWGgV".include?(conv)
+        if numeric && width > 0
+          k = 0
+          k += 1 while k < text.size - 1 && (text[k] == "0" || text[k] == " ")
+          text = text[k, text.size - k].to_s
+          return text if flags.include?("-") || width <= text.size
+
+          pad = "ekl".include?(conv) ? " " : "0"
+          pad = " " if flags.include?("_")
+          pad = "0" if flags.include?("0")
+          return "#{pad * (width - text.size)}#{text}"
+        end
         if flags.include?("-")
           # "05" -> "5", " 5" -> "5"
           k = 0
@@ -1463,7 +1509,6 @@ module Cybertrain
         text = text.upcase if flags.include?("^")
         text = text == text.upcase ? text.downcase : text.upcase if flags.include?("#")
         if width > text.size && !flags.include?("-")
-          numeric = "YCymdjHIMSLsuwUWGgV".include?(conv)
           pad = flags.include?("_") || !numeric ? " " : "0"
           pad = "0" if flags.include?("0")
           text = "#{pad * (width - text.size)}#{text}"
