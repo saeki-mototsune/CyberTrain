@@ -276,6 +276,14 @@ test "a component named after its only required keyword gets with_collection and
   refute Cybertrain::Gen::ComponentsEmitter.emit([pair]).include?("with_collection")
 end
 
+test "an app's own self.with_collection is an error: gen writes it" do
+  source = "class CommentComponent < Cybertrain::Component\n  def initialize(comment:)\n  end\n\n  def self.with_collection(items)\n    items\n  end\nend\n"
+  msg = scan_error(source, "comment_component.rb")
+  assert_equal "app/components/comment_component.rb:5: 'self.with_collection' is written by `spin run gen` (gen/components.rb) for a component whose only required keyword is named after it; remove this definition (render component: \"x\", collection: items, or X.with_collection(items))", msg
+  # Elsewhere, the name is just text.
+  assert_equal "CommentComponent", scan("class CommentComponent < Cybertrain::Component\n  def note = \"self.with_collection\"\nend\n", "comment_component.rb").class_name
+end
+
 test "the output always ends with the component_builder line" do
   line = "Cybertrain::Views.component_builder = ->(name, kwargs) { Gen::Components.build(name, kwargs) }\n"
   assert Cybertrain::Gen::ComponentsEmitter.emit([scan(CARD)]).end_with?(line)

@@ -103,6 +103,14 @@ test "turbo_stream refuses a missing or doubled content, and unknown actions" do
                render_error("<%= turbo_stream.remove %>")
   assert_equal "articles/inline:1: undefined method 'morph' for turbo_stream", render_error("<%= turbo_stream.morph \"x\" %>")
   assert_equal "", render_inline("<%= turbo_stream %>")
+  # html: nil is not given, as in the controller's builder; locals: go
+  # with partial: only.
+  assert_equal "articles/inline:1: turbo_stream.update needs exactly one of a block, partial:, html:",
+               render_error("<%= turbo_stream.update \"x\", html: nil %>")
+  assert_equal "<turbo-stream action=\"update\" target=\"x\"><template>b</template></turbo-stream>",
+               render_inline("<%= turbo_stream.update \"x\", html: nil do %>b<% end %>")
+  assert_equal "articles/inline:1: turbo_stream.update locals: go with partial:, not html: or a block",
+               render_error("<%= turbo_stream.update \"x\", html: \"a\", locals: { a: 1 } %>")
 end
 
 class ArticlesController < Cybertrain::Controller
@@ -129,6 +137,14 @@ class ArticlesController < Cybertrain::Controller
 
   def neither
     render turbo_stream: turbo_stream.before("list")
+  end
+
+  def nil_html
+    render turbo_stream: turbo_stream.after("list", html: nil)
+  end
+
+  def html_locals
+    render turbo_stream: turbo_stream.after("list", html: "x", locals: { a: 1 })
   end
 
   def view_assigns
@@ -188,6 +204,20 @@ test "render turbo_stream: refuses a plain String; the controller builder checks
     msg = e.message
   end
   assert_equal "turbo_stream.before needs exactly one of partial:, html:", msg
+  msg = ""
+  begin
+    controller.nil_html
+  rescue ArgumentError => e
+    msg = e.message
+  end
+  assert_equal "turbo_stream.after needs exactly one of partial:, html:", msg
+  msg = ""
+  begin
+    controller.html_locals
+  rescue ArgumentError => e
+    msg = e.message
+  end
+  assert_equal "turbo_stream.after locals: go with partial:, not html:", msg
 end
 
 test "a turbo_stream response carries the headers every response does" do

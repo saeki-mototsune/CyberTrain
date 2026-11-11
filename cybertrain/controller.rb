@@ -1027,6 +1027,29 @@ module Cybertrain
       TurboStreams.new(self)
     end
 
+    # The partial `name` rendered as `render partial:` renders it (found in
+    # this controller's directory, or another's for "comments/comment";
+    # strict locals checked; the controller's helpers and instance
+    # variables), as HTML. What `render partial:` sends and the
+    # {#turbo_stream} builder wraps.
+    # @param name [String]
+    # @param locals [Hash{Symbol => Object}]
+    # @return [String]
+    # @raise [MissingTemplate] when no views are configured
+    # @api private
+    def partial_body(name, locals)
+      engine = Views.engine
+      if engine.nil?
+        message = "no partial #{name} for #{self.class.name}"
+        raise MissingTemplate, message
+      end
+
+      path = Template::Helpers.partial_path(controller_path, name)
+      given = string_keys(locals)
+      Template::Helpers.check_locals(engine.template(path), given.keys)
+      engine.render(path, view_env(given), Views.helpers_builder.call(self))
+    end
+
     # What `render turbo_stream:` sends: a SafeString, or an Array of them
     # joined.
     def self.turbo_stream_body(value)
@@ -1579,13 +1602,7 @@ module Cybertrain
     end
 
     def render_partial(name, locals)
-      engine = Views.engine
-      raise MissingTemplate, "no partial #{name} for #{self.class.name}" if engine.nil?
-
-      path = Template::Helpers.partial_path(controller_path, name)
-      given = string_keys(locals)
-      Template::Helpers.check_locals(engine.template(path), given.keys)
-      send_html(engine.render(path, view_env(given), Views.helpers_builder.call(self)))
+      send_html(partial_body(name, locals))
     end
 
     def send_html(body)

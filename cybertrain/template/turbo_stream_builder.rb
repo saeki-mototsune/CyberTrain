@@ -75,16 +75,23 @@ module Cybertrain
         Helpers.helper_keywords!(name, kwargs, KEYWORDS, 0)
         given = 0
         given += 1 if has_block
-        given += 1 if kwargs.key?("partial")
-        given += 1 if kwargs.key?("html")
+        has_partial = kwargs.key?("partial")
+        # html: nil counts as not given, as in the controller's builder.
+        has_html = kwargs.key?("html") && !kwargs["html"].nil?
+        given += 1 if has_partial
+        given += 1 if has_html
         unless given == 1
           msg = "#{name} needs exactly one of a block, partial:, html:"
+          raise ArgumentError, msg
+        end
+        if !has_partial && kwargs.key?("locals")
+          msg = "#{name} locals: go with partial:, not html: or a block"
           raise ArgumentError, msg
         end
         html = ""
         if has_block
           html = content
-        elsif kwargs.key?("partial")
+        elsif has_partial
           rendered = @helpers.partial_html(FormBuilder.value_text(kwargs["partial"]), locals_of(name, kwargs), @interp, @env)
           html = rendered.to_s
         else

@@ -366,6 +366,31 @@ test "time_tag for Time, Date, text and format:" do
   assert_equal "posts/inline:1: time_tag expects a Time or a Date, got x", msg
 end
 
+test "time_tag format: Strings take flags, widths and composites; an unknown directive raises" do
+  env = time_env
+  env["e"] = Time.utc(2026, 11, 5, 9, 3, 7, 123456)
+  # 18:03:07 in Tokyo is 09:03:07 UTC.
+  env["k"] = Time.utc(2026, 11, 5, 9, 3, 7).getlocal("+09:00")
+  env["w"] = Time.utc(2026, 11, 5, 9, 3, 7).getlocal("-05:30")
+  assert_equal "<time datetime=\"2026-11-05T09:03:07Z\">November 5, 2026</time>", render_inline("<%= time_tag e, format: \"%B %-d, %Y\" %>", env)
+  assert_equal "<time datetime=\"2026-11-05T09:03:07Z\">2026-11-05 09:03:07</time>", render_inline("<%= time_tag e, format: \"%F %T\" %>", env)
+  assert_equal "<time datetime=\"2026-11-05T09:03:07Z\">11/05/26 09:03 9:3 NOV</time>", render_inline("<%= time_tag e, format: \"%D %R %-H:%-M %^b\" %>", env)
+  assert_equal "<time datetime=\"2026-11-05T09:03:07Z\">07.123 123456 123456000 1793869387</time>", render_inline("<%= time_tag e, format: \"%S.%L %6N %N %s\" %>", env)
+  assert_equal "<time datetime=\"2026-11-05T09:03:07Z\"> 5| 9|09 AM am|309|4 4|  Nov|00009</time>", render_inline("<%= time_tag e, format: \"%e|%_H|%I %p %P|%j|%u %w|%5b|%5H\" %>", env)
+  # Multibyte text between directives is copied as it is.
+  assert_equal "<time datetime=\"2026-11-05T09:03:07Z\">2026年11月5日 (木曜)</time>", render_inline("<%= time_tag e, format: \"%Y年%-m月%-d日 (木曜)\" %>", env)
+  # A Time with an offset: xmlschema with a colon, %z without, %:z with.
+  assert_equal "<time datetime=\"2026-11-05T18:03:07+09:00\">Thu, 05 Nov 2026 18:03:07 +0900</time>", render_inline("<%= time_tag k %>", env)
+  assert_equal "<time datetime=\"2026-11-05T18:03:07+09:00\">18:03 +0900 +09:00</time>", render_inline("<%= time_tag k, format: \"%R %z %:z\" %>", env)
+  assert_equal "<time datetime=\"2026-11-05T03:33:07-05:30\">Thu, 05 Nov 2026 03:33:07 -0530</time>", render_inline("<%= time_tag w %>", env)
+  # A Date takes the same directives.
+  assert_equal "<time datetime=\"2026-11-10\">Tuesday 10 %</time>", render_inline("<%= time_tag d, format: \"%A %-d %%\" %>", env)
+  msg = assert_raises("RuntimeError") { render_inline("<%= time_tag e, format: \"%Y %Q\" %>", env) }
+  assert_equal "posts/inline:1: time_tag format: unknown directive %Q in \"%Y %Q\"", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= time_tag e, format: \"%Y %-\" %>", env) }
+  assert_equal "posts/inline:1: time_tag format: incomplete directive %- in \"%Y %-\"", msg
+end
+
 def page_helpers(verb, target)
   ctx = Cybertrain::Context.new(Cybertrain::Request.new(verb, target, { "host" => "example.test" }, ""))
   Cybertrain::Template::Helpers.new(Cybertrain::Controller.new(ctx))

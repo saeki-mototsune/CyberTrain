@@ -95,31 +95,12 @@ module Cybertrain
         msg = "turbo_stream.#{action} needs exactly one of partial:, html:"
         raise ArgumentError, msg
       end
-      content = partial.empty? ? Html.out(html) : partial_text(partial, locals)
-      Turbo.action(action, target, SafeString.of(content))
-    end
-
-    # The partial rendered as Controller#render(partial:) renders it, to a
-    # String.
-    def partial_text(name, locals)
-      engine = Views.engine
-      if engine.nil?
-        msg = "no views configured (Cybertrain::Views.configure)"
+      if partial.empty? && !locals.empty?
+        msg = "turbo_stream.#{action} locals: go with partial:, not html:"
         raise ArgumentError, msg
       end
-
-      controller = @controller
-      path = Template::Helpers.partial_path(controller.controller_path, name)
-      given = { "" => [nil, 0, 0.0, "", true][0] }
-      given.delete("")
-      keys = locals.keys
-      i = 0
-      while i < keys.size
-        given[keys[i].to_s] = locals[keys[i]]
-        i += 1
-      end
-      Template::Helpers.check_locals(engine.template(path), given.keys)
-      engine.render(path, controller.view_env(given), Views.helpers_builder.call(controller)).to_s
+      content = partial.empty? ? Html.out(html) : @controller.partial_body(partial, locals).to_s
+      Turbo.action(action, target, SafeString.of(content))
     end
   end
 end

@@ -217,7 +217,19 @@ NAME_HOMES = {
   # Mailer's SMTP connection writes raw bytes with its own send_data(data).
   "send_data" => %w[cybertrain/controller.rb cybertrain/mailer.rb],
   "t" => %w[],
-  "l" => %w[]
+  "l" => %w[],
+  # The Turbo Stream actions: Turbo.x (SafeString), TurboStreams#x
+  # (SafeString, the controller's builder). Model#update returns a Boolean
+  # (compiled side by side with TurboStreams#update in test/turbo_helpers.rb
+  # and test/application.rb's program); cli/templates.rb's is the
+  # generated controller's `update` action, written in a template String.
+  "update" => %w[cybertrain/model.rb cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb cybertrain/cli/templates.rb],
+  "replace" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
+  "append" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
+  "prepend" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
+  "before" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
+  "after" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
+  "remove" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb]
 }.freeze
 # The names the phase 4a plan lists as the first candidates for a clash
 # must keep a row (Global Constraints of the plan).
