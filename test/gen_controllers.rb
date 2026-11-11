@@ -890,6 +890,25 @@ test "a rate_limit naming an undefined method, or a block, is refused with its l
                                                 "class AccountsController < ApplicationController\n  rate_limit to: 1, within: 60, with: -> { head(:too_many_requests) }\nend\n")
   end
   assert_equal "app/controllers/accounts_controller.rb:2: rate_limit with: takes a method's name (with: :name)", msg
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ControllerScan.scan_source("app/controllers/accounts_controller.rb",
+                                                "class AccountsController < ApplicationController\n  rate_limit to: 1, within: 60, by: \"key\"\nend\n")
+  end
+  assert_equal "app/controllers/accounts_controller.rb:2: rate_limit by: takes a method's name (by: :name)", msg
+end
+
+test "rate_limit options inside a String are not options, and nil names no method" do
+  source = <<~'RUBY'
+    class AccountsController < ApplicationController
+      rate_limit to: 1, within: 60, redirect_to: "/wait", alert: "Try again with: patience, by: :then",
+                 name: 'if: :x'
+      rate_limit to: 2, within: 60, by: nil, with: nil, if: nil, unless: nil, name: "nils",
+                 alert: "say \"with: x\" twice"
+    end
+  RUBY
+  info = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/accounts_controller.rb", source)
+  assert_equal [], info.rate_limit_refs.map { |r| r.rate_limit_option }
+  assert_equal "x  \"    \" '   '", Cybertrain::Gen::ControllerScan.blank_quoted("x  \"by: \" '\\'z'")
 end
 
 Cybertrain::Test.run!

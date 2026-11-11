@@ -19,6 +19,16 @@ module Cybertrain
   # client cannot pick a key that counts against another limit or
   # controller.
   #
+  # The `rate-limit:` prefix of the cache's keys is the framework's: an
+  # application's own {Cache} keys must not start with it.
+  #
+  # Each client opens one row per window, which expires at the window's
+  # end; nothing deletes it then but the scheduled `"cybertrain cache
+  # prune"` task ({Cache.prune}, every {Config#cache_prune_interval}
+  # seconds). Between two prunes the table grows by one row per client
+  # and window, so a flood of addresses costs disk until the next prune,
+  # never memory.
+  #
   # `store: :memory` keeps the counts in this object instead, per process
   # and lost on restart (several processes each count on their own), with
   # a window per key that the key's first request opens and that closes

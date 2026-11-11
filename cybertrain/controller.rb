@@ -298,6 +298,7 @@ module Cybertrain
 
     # Whether a rate_limit of klass or of its parents has this name. The
     # class is passed in, as to chain_for.
+    # @api private
     def self.rate_limit_named?(klass, name)
       chain = chain_for(klass)
       i = 0

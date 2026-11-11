@@ -1432,22 +1432,27 @@ module Cybertrain
             AppTest.user
             Cybertrain::RateLimit.reset_all!
             Cybertrain::Cache.clock = -> { 2_000_000_000 }
-            client.get("/session/new")
-            wrong_password = { "authenticity_token" => AppTest.form_token(client),
-                               "email_address" => "ann@example.com", "password" => "wrong-password" }
-            right_password = { "authenticity_token" => AppTest.form_token(client),
-                               "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
-            10.times { client.post("/session", wrong_password) }
-            res = client.post("/session", right_password)
-            assert_redirected_to res, "/session/new"
-            assert_equal 0, Session.count
-            res = client.follow_redirect!
-            assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
-            Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
-            res = client.post("/session", right_password)
-            Cybertrain::Cache.clock = -> { Time.now.to_i }
-            assert_redirected_to res, "/"
-            assert_equal 1, Session.count
+            begin
+              client.get("/session/new")
+              wrong_password = { "authenticity_token" => AppTest.form_token(client),
+                                 "email_address" => "ann@example.com", "password" => "wrong-password" }
+              right_password = { "authenticity_token" => AppTest.form_token(client),
+                                 "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
+              10.times { client.post("/session", wrong_password) }
+              res = client.post("/session", right_password)
+              assert_redirected_to res, "/session/new"
+              assert_equal 0, Session.count
+              res = client.follow_redirect!
+              assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
+              Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
+              res = client.post("/session", right_password)
+              assert_redirected_to res, "/"
+              assert_equal 1, Session.count
+            ensure
+              # The system clock again, even when an assertion fails: the
+              # tests after this one must not run at a frozen time.
+              Cybertrain::Cache.clock = -> { Time.now.to_i }
+            end
           end
 
           test "DELETE /session signs out and drops the Session row" do

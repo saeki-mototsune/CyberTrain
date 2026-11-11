@@ -1056,6 +1056,7 @@ module Admin
   #         # AdminGate (include AdminGate at app/controllers/admin/articles_controller.rb:4)
   #         concern_insert_at(1, 0)
   #         before_action :require_admin
+  #         rate_limit to: 30, within: 60, by: :account_key, unless: :admin?, name: "admin"
   #         helper_method :admin?
   #         layout "admin", except: [:show]
   #         concern_insert_done

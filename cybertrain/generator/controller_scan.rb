@@ -122,6 +122,7 @@ module Cybertrain
       RATE_LIMIT_IF = /(?:\A|[\s,(])if:\s*/
       RATE_LIMIT_UNLESS = /(?:\A|[\s,(])unless:\s*/
       RATE_LIMIT_SYMBOL = /\A:([a-z_]\w*[?!]?)/
+      RATE_LIMIT_NIL = /\Anil\b/
       # "@post =", "@post ||=", "@count +=" but not "@post ==", "@@count =" or "@post.title =".
       IVAR_ASSIGN = /(?:\A|[^@\w])@([a-z_]\w*)\s*(?:\|\||&&|\+|-|\*)?=(?![=~>])/
       # "@a, @b = 1, 2" / "first, @c, *@rest = list" at the start of a statement.
@@ -330,9 +331,11 @@ module Cybertrain
       # (1-based) of `lines` names with by:, with:, if: and unless: (its
       # lines joined while one ends in a comma or leaves a parenthesis
       # open); [] for any other line. `by: :client_ip` and `by:
-      # :remote_addr` name the client's address, not a method. Raises
+      # :remote_addr` name the client's address, not a method, and `nil`
+      # names none. The options are matched outside quoted Strings, so
+      # `alert: "try again with: care"` names nothing. Raises
       # ArgumentError, naming the line, for one of those options given
-      # anything but a Symbol (a lambda, a String).
+      # anything but a Symbol or nil (a lambda, a String).
       def self.rate_limit_refs_at(file, lines, number)
         refs = Array.new(0) { RateLimitRef.new("", "", "") }
         line = lines[number - 1].to_s
@@ -345,6 +348,7 @@ module Cybertrain
           j += 1
         end
         place = "#{app_path(file)}:#{number}"
+        text = blank_quoted(text)
         by = rate_limit_option_value(place, text, RATE_LIMIT_BY, "by")
         refs << RateLimitRef.new("by", by, place) unless by.empty? || by == "client_ip" || by == "remote_addr"
         with = rate_limit_option_value(place, text, RATE_LIMIT_WITH, "with")
@@ -357,18 +361,53 @@ module Cybertrain
       end
 
       # The method name `option:` gives in a rate_limit statement ("" when
-      # the option is absent).
+      # the option is absent or nil).
       def self.rate_limit_option_value(place, text, pattern, option)
         m = text.match(pattern)
         return "" if m.nil?
 
         rest = text[m.end(0), text.size - m.end(0)].to_s
+        return "" if rest.match?(RATE_LIMIT_NIL)
+
         s = rest.match(RATE_LIMIT_SYMBOL)
         if s.nil?
           msg = "#{place}: rate_limit #{option}: takes a method's name (#{option}: :name)"
           raise ArgumentError, msg
         end
         s[1].to_s
+      end
+
+      # `text` with the inside of each quoted String ("..." or '...')
+      # blanked to spaces, the quotes kept, so an option's name inside a
+      # String is not read as the option. A backslash escapes the next
+      # byte.
+      def self.blank_quoted(text)
+        src = text.to_s # a fresh String for the byte scan (NOTES rule 62)
+        out = +""
+        quote = 0
+        escaped = false
+        i = 0
+        n = src.bytesize
+        while i < n
+          b = src.getbyte(i).to_i
+          if quote == 0
+            quote = b if b == 34 || b == 39
+            out << src.byteslice(i, 1).to_s
+          elsif escaped
+            escaped = false
+            out << " "
+          elsif b == 92
+            escaped = true
+            out << " "
+          elsif b == quote
+            quote = 0
+            out << src.byteslice(i, 1).to_s
+          else
+            out << " "
+          end
+          i += 1
+        end
+        out
       end
 
       # The LayoutDecl of a `layout` line (line `number` of `file`); nil for
