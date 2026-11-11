@@ -21,6 +21,7 @@ def fixture_outputs
   concerns = Cybertrain::Gen::ConcernScan.scan_dir("#{FIXTURE}/app/controllers")
   out = {
     "gen/routes.rb" => Cybertrain::Gen::RoutesEmitter.emit(Cybertrain::Routes.specs),
+    "gen/assets.rb" => Cybertrain::Gen::Runner.assets_source(FIXTURE),
     "gen/controllers.rb" => Cybertrain::Gen::ControllersEmitter.emit(controllers, Cybertrain::Gen::JobsPageSpec.new("", ""), concerns, Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),
     "gen/concerns.rb" => Cybertrain::Gen::Runner.concerns_source(FIXTURE),
     "gen/helpers.rb" => Cybertrain::Gen::HelpersEmitter.emit(Cybertrain::Gen::HelperScan.scan_dir("#{FIXTURE}/app/helpers")),

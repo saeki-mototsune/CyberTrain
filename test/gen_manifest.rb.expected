@@ -1,6 +1,7 @@
 ok   manifest lists gen models and routes, helpers, components and console, then controllers, app models, jobs and controllers
 ok   manifest for the fixture app, whose Post encrypts a column and whose WelcomeJob names the mailer's TimeoutError
 wrote gen/routes.rb
+wrote gen/assets.rb
 wrote gen/controllers.rb
 wrote gen/concerns.rb
 wrote gen/views.rb
@@ -16,6 +17,7 @@ ok   runner writes the gen files
 stale: gen/concerns/models/concerns/gone.rb
 removed gen/concerns/models/concerns/gone.rb
 identical gen/routes.rb
+identical gen/assets.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -29,6 +31,7 @@ identical gen/console.rb
 identical gen/app.rb
 ok   a gen/concerns file whose concern is gone is removed (reported stale by --check)
 identical gen/routes.rb
+identical gen/assets.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -45,6 +48,7 @@ ok   runner --check passes when gen is fresh
 stale: gen/routes.rb
 stale: gen/app.rb
 wrote gen/routes.rb
+identical gen/assets.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb

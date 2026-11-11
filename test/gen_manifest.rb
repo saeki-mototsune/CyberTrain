@@ -30,7 +30,7 @@ TREE_FILES.each do |f|
   File.write("#{ROOT}/#{f}", CONCERN_SOURCES[f] || "class #{name} < #{parent}\nend\n")
 end
 
-GENERATED = ["gen/routes.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb", "gen/app.rb",
+GENERATED = ["gen/routes.rb", "gen/assets.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb", "gen/app.rb",
              "gen/concerns/controllers/concerns/audited.rb", "gen/concerns/controllers/concerns/trackable.rb",
              "gen/concerns/models/concerns/sluggable.rb"]
 GENERATED_DIRS = ["gen/concerns", "gen/concerns/controllers", "gen/concerns/controllers/concerns", "gen/concerns/models", "gen/concerns/models/concerns"]
@@ -56,6 +56,7 @@ test "manifest lists gen models and routes, helpers, components and console, the
     require_relative "models/comment"
     require_relative "models/post"
     require_relative "routes"
+    require_relative "assets"
     require_relative "../app/helpers/application_helper"
     require_relative "../app/helpers/posts_helper"
     require_relative "helpers"
@@ -93,6 +94,7 @@ test "manifest for the fixture app, whose Post encrypts a column and whose Welco
     require_relative "models/comment"
     require_relative "models/post"
     require_relative "routes"
+    require_relative "assets"
     require_relative "../app/helpers/prices_helper"
     require_relative "helpers"
     require_relative "../app/components/card_component"

@@ -1,23 +1,12 @@
 # The development loop (docs/design.md D12): Application#run in development
-# watches the Ruby sources, rebuilds the server with `spin run gen && spin
+# watches the Ruby sources and the asset roots (Dev::WATCHED, in
+# cybertrain/dev/watched.rb), rebuilds the server with `spin run gen && spin
 # build <name> -- --incremental` (the app's package name; without the flag
 # when the toolchain predates it), and replaces itself with the new
 # binary; ErrorPage shows exceptions and failed builds in the browser.
 # Production never loads any of it into the request path.
+require "cybertrain/dev/watched"
 require "cybertrain/dev/watcher"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/reexec"
 require "cybertrain/dev/error_page"
-
-module Cybertrain
-  module Dev
-    # The files whose changes trigger a rebuild. Views are not among them:
-    # the template engine rereads those by itself in development.
-    WATCHED = ["app/**/*.rb", "config/**/*.rb", "db/schema.rb", "gen/**/*.rb"]
-
-    # Matched by WATCHED but never a reason to rebuild: gen/views.rb is the
-    # empty table in development, and `cybertrain build` fills and restores
-    # it while a development server may be running.
-    IGNORED = ["gen/views.rb"]
-  end
-end

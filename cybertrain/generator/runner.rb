@@ -14,6 +14,7 @@ require "cybertrain/generator/helpers_emitter"
 require "cybertrain/generator/components_emitter"
 require "cybertrain/generator/console_emitter"
 require "cybertrain/generator/jobs_emitter"
+require "cybertrain/generator/assets_emitter"
 
 module Cybertrain
   module Gen
@@ -25,7 +26,10 @@ module Cybertrain
     # of an empty table. gen/concerns/** holds one file per concern of
     # app/controllers and app/models (ConcernsEmitter.module_files); a file
     # there whose concern is gone is removed. A jobs page drawn without before_action: prints a
-    # warning line first.
+    # warning line first. gen/assets.rb holds the asset manifest and the
+    # import map (AssetsEmitter); without --check the digested files are
+    # also written to public/assets (AssetsEmitter.sync_public), which
+    # --check never reads: it compares gen/assets.rb only.
     module Runner
       def self.run(root, argv)
         ControllerScan.use_root(root)
@@ -36,6 +40,7 @@ module Cybertrain
         puts warning unless warning.empty?
         outputs = [
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
+          ["gen/assets.rb", assets_output(root, check)],
           ["gen/controllers.rb", controllers_source(root, jobs_page)],
           ["gen/concerns.rb", concerns_source(root)],
           ["gen/views.rb", ViewsEmitter.emit(root, embed)],
@@ -103,6 +108,27 @@ module Cybertrain
         ControllerScan.use_root(root)
         ConcernsEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/controllers"),
                              ModelScan.scan_dir("#{root}/app/models"), ConcernScan.scan_dir("#{root}/app/models"))
+      end
+
+      # gen/assets.rb's source; without check, public/assets is brought up to
+      # date first (its log lines printed).
+      def self.assets_output(root, check)
+        files = AssetScan.scan(root)
+        AssetsEmitter.sync_public(root, files).each { |line| puts line } unless check
+        AssetsEmitter.emit(files, importmap_pins(root, files))
+      end
+
+      # gen/assets.rb's source, public/assets left alone.
+      def self.assets_source(root)
+        assets_output(root, true)
+      end
+
+      # The pins of root/config/importmap.rb (none without the file).
+      def self.importmap_pins(root, files)
+        path = "#{root}/#{ImportmapReader::PATH}"
+        return Array.new(0) { ImportmapPin.new("", "", false) } unless File.exist?(path)
+
+        ImportmapReader.read(File.read(path), files)
       end
 
       # gen/concerns/<path under app/> => source, for the concerns of

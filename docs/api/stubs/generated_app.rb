@@ -1211,3 +1211,36 @@ module Gen
     def article_comment_path(article, comment, options = {}); end
   end
 end
+
+module Gen
+  # What `spin run gen` writes into `gen/assets.rb` (cybertrain/generator/assets_emitter.rb):
+  # the asset manifest of app/assets/*/, app/javascript and vendor/javascript
+  # and the import map of config/importmap.rb, compiled into the binary. Its
+  # last line hands them to {Cybertrain::Assets.install}. An application
+  # with no assets gets an empty table. The values below are for an app with
+  # app/assets/images/logo.svg and `pin "application"`.
+  # @api public
+  module Assets
+    # @param logical [String] the path below an asset root (`"logo.svg"`,
+    #   `"controllers/hello_controller.js"`)
+    # @return [String] `"/assets/logo-1a2b3c4d.svg"`; `""` for a name that
+    #   is not an asset
+    # @api public
+    def self.digest_path(logical); end
+
+    # @return [String] `{"imports":{"application":"/assets/application-1a2b3c4d.js"}}`
+    #   (compact, pins in order, `</` written `</`)
+    # @api public
+    def self.importmap_json; end
+
+    # @return [Array<String>] `["/assets/application-1a2b3c4d.js"]`: the
+    #   pins without `preload: false`, in order
+    # @api public
+    def self.preload_paths; end
+
+    # @return [Proc] `->(name) { digest_path(name) }`, the resolver given to
+    #   {Cybertrain::Assets.install}
+    # @api public
+    def self.resolver = ->(name) { digest_path(name) }
+  end
+end

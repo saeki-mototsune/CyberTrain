@@ -2,6 +2,7 @@
 require_relative "models/article"
 require_relative "models/comment"
 require_relative "routes"
+require_relative "assets"
 require_relative "../app/helpers/comments_helper"
 require_relative "helpers"
 require_relative "../app/components/comment_component"

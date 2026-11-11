@@ -1,4 +1,5 @@
 wrote gen/routes.rb
+wrote gen/assets.rb
 wrote gen/controllers.rb
 wrote gen/concerns.rb
 wrote gen/views.rb
@@ -19,6 +20,7 @@ stale: gen/models/tag.rb
 stale: gen/console.rb
 stale: gen/app.rb
 identical gen/routes.rb
+identical gen/assets.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -39,6 +41,7 @@ stale: gen/console.rb
 stale: gen/models/tag.rb
 stale: gen/app.rb
 identical gen/routes.rb
+identical gen/assets.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -59,4 +62,4 @@ warning: jobs_page "/admin/jobs" has no before_action:, so anyone who can reach 
 stale: gen/routes.rb
 stale: gen/controllers.rb
 ok   a jobs page drawn without before_action: makes the runner print a warning
-5 tests, 32 assertions, 0 failures
+5 tests, 33 assertions, 0 failures

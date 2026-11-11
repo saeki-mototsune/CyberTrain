@@ -1,0 +1,43 @@
+ok   files are digested with the first 8 hex of their SHA-256
+ok   digested names keep every extension and a directory
+ok   a logical path under two roots is refused
+ok   url() suffixes, quotes and non-asset references
+ok   url() resolves against the stylesheet's logical directory and never climbs out of it
+ok   a CSS digest is taken after rewriting, CSS files in dependency order
+ok   a CSS url() cycle is refused
+ok   a CSS digest changes when an image it names changes
+wrote public/assets/application-2cac91ee.css
+wrote public/assets/application-71e4d6bc.js
+wrote public/assets/chart-354cefd4.js
+wrote public/assets/controllers/hello_controller-02d09301.js
+wrote public/assets/logo-96686f02.svg
+wrote public/assets/x-7aee4bab.woff2
+wrote public/assets/.manifest
+wrote public/assets/application-fa9503d6.css
+wrote public/assets/.manifest
+wrote public/assets/application-9bc24f22.css
+wrote public/assets/.manifest
+wrote public/assets/application-2befed0d.css
+removed public/assets/application-2cac91ee.css
+wrote public/assets/.manifest
+ok   three versions are kept, older ones deleted
+wrote public/assets/application-a45ecbb4.css
+removed public/assets/application-fa9503d6.css
+wrote public/assets/.manifest
+wrote public/assets/.manifest
+ok   a manifest line naming a path outside public/assets deletes nothing
+ok   the import map, preloads and the emitted case
+ok   an application with no assets gets an empty table
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/console.rb
+wrote gen/app.rb
+stale: gen/assets.rb
+ok   gen --check compares gen/assets.rb only
+13 tests, 78 assertions, 0 failures
