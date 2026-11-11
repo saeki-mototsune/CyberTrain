@@ -200,7 +200,11 @@ NAME_HOMES = {
   # variable); a fourth definer needs a reason here.
   "cookies" => %w[cybertrain/controller.rb cybertrain/http/response.rb cybertrain/test/client.rb],
   "signed" => %w[cybertrain/cookie_jar.rb],
-  "encrypted" => %w[cybertrain/cookie_jar.rb],
+  # model_scan.rb's is ModelInfo's `attr_reader ... :encrypted` (the
+  # encrypts attributes, an Array<String>), gen-only: a ModelInfo and a
+  # CookieJar never share a variable, so the receivers keep the two return
+  # types apart (test programs such as gen_model_concerns.rb compile both).
+  "encrypted" => %w[cybertrain/cookie_jar.rb cybertrain/generator/model_scan.rb],
   "permanent" => %w[cybertrain/cookie_jar.rb],
   "html" => %w[cybertrain/format_collector.rb],
   # schema/table.rb's are the `t.json` and `t.text` column types.
@@ -259,34 +263,56 @@ homeless = []
 # `def x`, `def self.x`, `private def x` and `protected def x`; an
 # attr_reader, attr_accessor or attr_writer line defines each name it lists
 # (a writer's `x=` is a different name, but the line is counted all the
-# same: a reader of the name is never far behind).
+# same: a reader of the name is never far behind), its continuation lines
+# too while a line ends in a comma (attr_names).
 def_line = /^\s*(?:(?:private|protected|public)\s+)?def\s+(?:self\.)?([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
 attr_line = /^\s*(?:(?:private|protected|public)\s+)?attr_(?:reader|accessor|writer)\s+((?::[a-z_][A-Za-z0-9_]*\s*,?\s*)+)/
 emitted_def = /(?:"|\\n)\s*def\s+(?:self\.)?([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
-# The two line shapes pin themselves: a regex edit that stops reading
-# `private def x` or a multi-name attr_reader fails here rather than
-# silently passing every file.
+# The names of the attr_* call starting at lines[index] (none when it is
+# not one), read across the lines that follow while the text so far ends in
+# a comma (a trailing ` # comment` aside).
+attr_names = lambda do |lines, index|
+  listed = []
+  a = lines[index].match(attr_line)
+  return listed if a.nil?
+
+  text = lines[index].sub(/\s#\s.*/, "").rstrip
+  k = index + 1
+  while text.end_with?(",") && k < lines.size
+    text = "#{text} #{lines[k].sub(/\s#\s.*/, "").strip}"
+    k += 1
+  end
+  text.sub(/\A\s*(?:(?:private|protected|public)\s+)?attr_(?:reader|accessor|writer)\s+/, "").scan(/:([a-z_][A-Za-z0-9_]*)/) { |(name)| listed << name }
+  listed
+end
+# The line shapes pin themselves: a regex edit that stops reading
+# `private def x`, a multi-name attr_reader or its continuation lines fails
+# here rather than silently passing every file. A sample of several lines
+# is read from its first.
 { "    private def layout_path(x)" => ["layout_path"], "  protected def self.x" => ["x"], "  def cookies" => ["cookies"],
   "    attr_reader :status, :cookies" => %w[status cookies], "  attr_accessor :layout" => ["layout"],
+  "    attr_reader :file, :class_name,\n                :condition_methods, :encrypted\n" => %w[file class_name condition_methods encrypted],
+  "  attr_reader :a, # the first\n              :b\n  def c = 1\n" => %w[a b],
+  "  attr_reader :a\n  attr_reader :b\n" => ["a"],
   "  def x=(v)" => [], "  # def cookies" => [] }.each do |sample, want|
   got = []
-  m = sample.match(def_line)
+  m = sample.lines[0].match(def_line)
   got << m[1] unless m.nil?
-  a = sample.match(attr_line)
-  a[1].scan(/:([a-z_][A-Za-z0-9_]*)/) { |(name)| got << name } unless a.nil?
+  attr_names.call(sample.lines, 0).each { |name| got << name }
   abort "check-reserved-names: self-check: #{sample.strip.inspect} gives #{got.inspect}, expected #{want.inspect}" unless got == want
 end
 Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
   rel = file.delete_prefix("#{root}/")
   emitter = rel.match?(%r{\Acybertrain/generator/[^/]+_emitter\.rb\z})
-  File.foreach(file, encoding: "UTF-8").with_index(1) do |line, number|
+  lines = File.readlines(file, encoding: "UTF-8")
+  lines.each_with_index do |line, index|
+    number = index + 1
     next if line.lstrip.start_with?("#")
 
     found = []
     m = line.match(def_line)
     found << m[1] unless m.nil?
-    a = line.match(attr_line)
-    a[1].scan(/:([a-z_][A-Za-z0-9_]*)/) { |(name)| found << name } unless a.nil?
+    attr_names.call(lines, index).each { |name| found << name }
     line.scan(emitted_def) { |(name)| found << name } if emitter
     found.uniq.each do |name|
       homes = NAME_HOMES[name]
