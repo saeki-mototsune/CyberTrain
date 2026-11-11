@@ -134,6 +134,21 @@ Cybertrain::Views.url_resolver = lambda do |name, args, options|
   end
 end
 
+# The application dictionary of the "by locale" test below: a Hash it
+# adds keys to, installed as gen/locales.rb installs Gen::Locales. Empty,
+# every other test reads the bundled en dictionary.
+module FormLocales
+  TEXTS = { "" => "" }
+  TEXTS.delete("")
+
+  def self.lookup(key) = TEXTS[key]
+  def self.lookup_list(key) = key == "\u0000" ? [""] : []
+  def self.resolver = ->(key) { FormLocales.lookup(key) }
+  def self.list_resolver = ->(key) { FormLocales.lookup_list(key) }
+end
+
+I18n.install_dictionary(FormLocales.resolver, FormLocales.list_resolver)
+
 def helpers
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/posts/new", { "host" => "example.test" }, ""))
   ctx.session = Cybertrain::Session.new({ "_csrf_token" => "T0K" })
@@ -430,6 +445,54 @@ test "nested and array field names round-trip through params.expect" do
   assert_equal "Hi", h["title"]
   assert_equal ["", "b"], h["tags"]
   assert_equal({ "source" => "rss" }, h["meta"])
+end
+
+test "form labels and submit text by locale" do
+  I18n.available_locales = [:en, :ja]
+  texts = FormLocales::TEXTS
+  texts["ja.activerecord.attributes.post.title"] = "タイトル"
+  texts["ja.activerecord.attributes.post.body"] = "ボディ"
+  texts["ja.activerecord.models.post"] = "投稿"
+  texts["ja.helpers.label.post.body"] = "本文"
+  texts["en.helpers.label.post.published"] = "Make it public"
+  form = "<%= form_with model: post do |f| %><%= f.label :title %>|<%= f.label :body %>|<%= f.label :published %>|<%= f.label :title, 'Own' %>|<%= f.submit %><% end %>"
+
+  html = render_inline(form, new_post)
+  assert_includes html, "<label for=\"post_title\">Title</label>|<label for=\"post_body\">Body</label>|<label for=\"post_published\">Make it public</label>|<label for=\"post_title\">Own</label>|<input type=\"submit\" name=\"commit\" value=\"Create Post\">"
+
+  I18n.locale = :ja
+  # helpers.label.<model>.<attr> first (in ja, then in en, as with
+  # fallbacks in Rails), then human_attribute_name; the
+  # submit text is ja.helpers.submit.create with %{model} = 投稿 (rails-i18n's
+  # ja text does not use it).
+  html = render_inline(form, new_post)
+  assert_includes html, "<label for=\"post_title\">タイトル</label>|<label for=\"post_body\">本文</label>|<label for=\"post_published\">Make it public</label>|<label for=\"post_title\">Own</label>|<input type=\"submit\" name=\"commit\" value=\"登録する\">"
+  assert_includes render_inline("<%= form_with model: post do |f| %><%= f.submit %><% end %>", saved_post), "<input type=\"submit\" name=\"commit\" value=\"更新する\">"
+  assert_includes render_inline("<%= form_with url: '/s' do |f| %><%= f.submit %><% end %>", new_post), "<input type=\"submit\" name=\"commit\" value=\"変更を保存\">"
+  assert_includes render_inline("<%= submit_tag %>", new_post), "<input type=\"submit\" name=\"commit\" value=\"変更を保存\">"
+  # A label of a field with errors keeps its class.
+  post = new_post
+  post.errors.add(:title, "を入力してください")
+  assert_includes render_inline("<%= form_with model: post do |f| %><%= f.label :title %><% end %>", post), "<label for=\"post_title\" class=\"field_with_errors\">タイトル</label>"
+
+  # An application text that uses %{model}, and one that needs escaping.
+  texts["ja.helpers.submit.create"] = "%{model}を作成"
+  texts["ja.activerecord.models.blog_comment"] = "コメント<1>"
+  assert_includes render_inline("<%= form_with model: post do |f| %><%= f.submit %><% end %>", new_post), "value=\"投稿を作成\""
+  assert_includes render_inline("<%= form_with model: [post, comment] do |f| %><%= f.submit %><% end %>", saved_post), "value=\"コメント&lt;1&gt;を作成\""
+  texts["ja.helpers.label.post.title"] = "題 & 名"
+  assert_includes render_inline("<%= form_with model: post do |f| %><%= f.label :title %><% end %>", new_post), "<label for=\"post_title\">題 &amp; 名</label>"
+
+  # A scope: names the label key, as Rails' object name does.
+  texts["ja.helpers.label.q.term"] = "検索語"
+  assert_includes render_inline("<%= form_with url: '/s', scope: 'q' do |f| %><%= f.label :term %>|<%= f.label :page_id %><% end %>", new_post),
+                  "<label for=\"q_term\">検索語</label>|<label for=\"q_page_id\">Page</label>"
+
+  I18n.locale = :en
+  assert_includes render_inline("<%= submit_tag %>", new_post), "<input type=\"submit\" name=\"commit\" value=\"Save changes\">"
+  assert_includes render_inline("<%= form_with model: post do |f| %><%= f.submit %><% end %>", new_post), "value=\"Create Post\""
+  texts.clear
+  I18n.locale = nil
 end
 
 Cybertrain::Test.run!

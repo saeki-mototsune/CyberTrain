@@ -86,6 +86,20 @@ class Article < Cybertrain::Model
   # @api public
   def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
 
+  # An attribute's name for people, as Rails':
+  # `activerecord.attributes.article.<attr>` in the current locale, else the
+  # attribute humanized (`:author_id` → `"Author"`). The model's
+  # dictionary key is its class name underscored (`Admin::Post` →
+  # `"admin/post"`). See {I18n.human_attribute_name}.
+  # @example
+  #   # config/locales/ja.yml: ja: { activerecord: { attributes: { article: { title: "タイトル" } } } }
+  #   I18n.with_locale(:ja) { Article.human_attribute_name(:title) }  # => "タイトル"
+  # @param attr [Symbol, String]
+  # @param options [Hash] accepted for Rails' signature; unused
+  # @return [String]
+  # @api public
+  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("article", attr)
+
   # A relation over the whole table; every query starts here or at one of
   # the shortcuts below. Nothing runs until rows are needed.
   # @example

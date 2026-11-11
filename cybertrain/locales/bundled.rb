@@ -6,6 +6,7 @@ module Cybertrain
       h["en.activerecord.errors.messages.record_invalid"] = "Validation failed: %{errors}"
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "Cannot delete record because dependent %{record} exist"
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "Cannot delete record because a dependent %{record} exists"
+      h["en.cybertrain.helpers.submit.no_model"] = "Save changes"
       h["en.date.formats.default"] = "%Y-%m-%d"
       h["en.date.formats.long"] = "%B %d, %Y"
       h["en.date.formats.short"] = "%b %d"
@@ -52,11 +53,11 @@ module Cybertrain
       h["en.errors.messages.model_invalid"] = "Validation failed: %{errors}"
       h["en.errors.messages.not_a_number"] = "is not a number"
       h["en.errors.messages.not_an_integer"] = "must be an integer"
-      h["en.errors.messages.odd"] = "must be odd"
       nil
     end
 
     def self.fill_texts_01(h)
+      h["en.errors.messages.odd"] = "must be odd"
       h["en.errors.messages.other_than"] = "must be other than %{count}"
       h["en.errors.messages.password_too_long"] = "is too long"
       h["en.errors.messages.present"] = "must be blank"
@@ -106,11 +107,11 @@ module Cybertrain
       h["en.number.human.storage_units.units.gb"] = "GB"
       h["en.number.human.storage_units.units.kb"] = "KB"
       h["en.number.human.storage_units.units.mb"] = "MB"
-      h["en.number.human.storage_units.units.pb"] = "PB"
       nil
     end
 
     def self.fill_texts_02(h)
+      h["en.number.human.storage_units.units.pb"] = "PB"
       h["en.number.human.storage_units.units.tb"] = "TB"
       h["en.number.human.storage_units.units.zb"] = "ZB"
       h["en.number.percentage.format.delimiter"] = ""
@@ -127,6 +128,7 @@ module Cybertrain
       h["ja.activerecord.errors.messages.record_invalid"] = "バリデーションに失敗しました: %{errors}"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "%{record}が存在しているので削除できません"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "%{record}が存在しているので削除できません"
+      h["ja.cybertrain.helpers.submit.no_model"] = "変更を保存"
       h["ja.date.formats.default"] = "%Y/%m/%d"
       h["ja.date.formats.long"] = "%Y年%m月%d日(%a)"
       h["ja.date.formats.short"] = "%m/%d"
@@ -159,12 +161,12 @@ module Cybertrain
       h["ja.errors.messages.less_than"] = "は%{count}より小さい値にしてください"
       h["ja.errors.messages.less_than_or_equal_to"] = "は%{count}以下の値にしてください"
       h["ja.errors.messages.model_invalid"] = "バリデーションに失敗しました: %{errors}"
-      h["ja.errors.messages.not_a_number"] = "は数値で入力してください"
-      h["ja.errors.messages.not_an_integer"] = "は整数で入力してください"
       nil
     end
 
     def self.fill_texts_03(h)
+      h["ja.errors.messages.not_a_number"] = "は数値で入力してください"
+      h["ja.errors.messages.not_an_integer"] = "は整数で入力してください"
       h["ja.errors.messages.odd"] = "は奇数にしてください"
       h["ja.errors.messages.other_than"] = "は%{count}以外の値にしてください"
       h["ja.errors.messages.password_too_long"] = "が長すぎます"
@@ -213,12 +215,12 @@ module Cybertrain
       h["ja.number.human.storage_units.units.pb"] = "PB"
       h["ja.number.human.storage_units.units.tb"] = "TB"
       h["ja.number.human.storage_units.units.zb"] = "ZB"
-      h["ja.number.percentage.format.delimiter"] = ""
-      h["ja.number.percentage.format.format"] = "%n%"
       nil
     end
 
     def self.fill_texts_04(h)
+      h["ja.number.percentage.format.delimiter"] = ""
+      h["ja.number.percentage.format.format"] = "%n%"
       h["ja.number.precision.format.delimiter"] = ""
       h["ja.support.array.last_word_connector"] = "、"
       h["ja.support.array.two_words_connector"] = "、"

@@ -447,4 +447,25 @@ test "model_concern_insert_at puts a concern's validates calls after the model's
   assert_equal ["token:format", "level:presence", "ratio:presence"], thing_rules[own.size + 3, 3]
 end
 
+test "the default messages come from the dictionary of the current locale, message: still wins" do
+  I18n.available_locales = [:en, :ja]
+  I18n.locale = :ja
+  assert_equal ["を入力してください", "は2文字以上で入力してください"], messages_for(:name, { name: "" })
+  assert_equal ["は3文字で入力してください"], messages_for(:code, { code: "abcd" })
+  assert_equal ["は一覧にありません"], messages_for(:state, { state: "gone" })
+  assert_equal ["は予約されています"], messages_for(:rating, { rating: 4 })
+  assert_equal ["は不正な値です"], messages_for(:token, { token: "A1" })
+  assert_equal ["has digits"], messages_for(:handle, { handle: "b0b" })
+  assert_equal ["は数値で入力してください"], messages_for(:count_text, { count_text: "x" })
+  assert_equal ["は整数で入力してください"], messages_for(:whole, { whole: 1.5 })
+  assert_equal ["は0以上の値にしてください"], messages_for(:qty, { qty: -1 })
+  assert_equal ["は100より小さい値にしてください"], messages_for(:qty, { qty: 100 })
+  assert_equal ["は10.5以下の値にしてください"], messages_for(:price, { price: 11.0 })
+  assert_equal ["は0より大きい値にしてください"], messages_for(:price, { price: 0.0 })
+  assert_equal ["は2にしてください"], messages_for(:level, { level: 3 })
+  assert_equal ["は7以外の値にしてください"], messages_for(:ratio, { ratio: 7.0 })
+  I18n.locale = nil
+  assert_equal ["must be less than or equal to 10.5"], messages_for(:price, { price: 11.0 })
+end
+
 Cybertrain::Test.run!

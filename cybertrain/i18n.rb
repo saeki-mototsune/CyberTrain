@@ -262,25 +262,10 @@ module I18n
   def self.find_translation(key, options = {})
     k = key.to_s
     loc = I18n.option_locale(options)
-    vars = { "" => "" }
-    vars.delete("")
-    counted = false
-    n = 0
-    options.each do |name, value|
-      if name == :count
-        unless value.is_a?(Integer)
-          message = "count: must be an Integer (got #{value.class.name})"
-          raise ArgumentError, message
-        end
-        counted = true
-        n = value.to_i
-        vars["count"] = n.to_s
-      elsif name == :count_text
-        vars["count"] = value.to_s unless counted
-      elsif name != :default && name != :locale
-        vars[name.to_s] = value.to_s
-      end
-    end
+    vars = I18n.interpolation_vars(options)
+    count = options[:count]
+    counted = count.is_a?(Integer)
+    n = counted ? count.to_i : 0
     found = I18n.find_in_locales(loc, k, counted, n)
     if found.nil?
       fallback = options[:default]
@@ -293,6 +278,29 @@ module I18n
     return nil if found.nil?
 
     I18n.interpolate_vars(found, vars)
+  end
+
+  # The `%{name}` values of options, keyed by name: `count:` (an Integer,
+  # else ArgumentError) and `count_text:` both fill `%{count}`, count:
+  # first; `default:` and `locale:` are no values.
+  # @api private
+  def self.interpolation_vars(options)
+    vars = { "" => "" }
+    vars.delete("")
+    options.each do |name, value|
+      if name == :count
+        unless value.is_a?(Integer)
+          message = "count: must be an Integer (got #{value.class.name})"
+          raise ArgumentError, message
+        end
+        vars["count"] = value.to_i.to_s
+      elsif name == :count_text
+        vars["count"] = value.to_s unless options.key?(:count)
+      elsif name != :default && name != :locale
+        vars[name.to_s] = value.to_s
+      end
+    end
+    vars
   end
 
   # The locale of a `locale:` option, else the thread's.
@@ -550,6 +558,141 @@ module I18n
     s = segment.to_s
     spaced = s.tr("_", " ")
     spaced.capitalize
+  end
+
+  # An attribute name as words, Rails' `humanize`: a trailing `_id` goes,
+  # `_` becomes a space and the first letter is capitalized
+  # (`"published_at"` → `"Published at"`, `"author_id"` → `"Author"`).
+  # Intermediate results are bound to locals, never chained: in threaded
+  # programs an unnamed temporary can be collected while the next call in
+  # the chain still reads it (see Inflector.underscore).
+  # @param name [String]
+  # @return [String]
+  # @api public
+  def self.humanize_attribute(name)
+    s = name.to_s
+    base = s.end_with?("_id") && s.length > 3 ? s[0, s.length - 3].to_s : s
+    spaced = base.tr("_", " ")
+    spaced.capitalize
+  end
+
+  # An attribute's name for people, as Rails' `human_attribute_name`:
+  # `activerecord.attributes.<model>.<attr>`, else the humanised attribute
+  # ({I18n.humanize_attribute}). A generated model answers it as
+  # `Post.human_attribute_name(:title)`.
+  # @example
+  #   # ja.yml: ja: { activerecord: { attributes: { post: { title: "タイトル" } } } }
+  #   I18n.with_locale(:ja) { I18n.human_attribute_name("post", :title) }  # => "タイトル"
+  #   I18n.human_attribute_name("post", :author_id)                       # => "Author"
+  # @param model_key [String] the model's key, `Inflector.underscore` of its
+  #   class name (`"post"`, `"admin/post"`); `""` skips the dictionary
+  # @param attr [Symbol, String]
+  # @return [String]
+  # @api public
+  def self.human_attribute_name(model_key, attr)
+    a = attr.to_s
+    mk = model_key.to_s
+    unless mk.empty?
+      found = I18n.find_translation("activerecord.attributes.#{mk}.#{a}")
+      return found unless found.nil?
+    end
+    I18n.humanize_attribute(a)
+  end
+
+  # A model's name for people, as Rails' `model_name.human`:
+  # `activerecord.models.<model>` (its `one:` form when it has plural
+  # forms), else the last segment of the key humanised (`"blog_comment"`
+  # → `"Blog comment"`, `"admin/post"` → `"Post"`).
+  # @param model_key [String]
+  # @return [String]
+  # @api public
+  def self.human_model_name(model_key)
+    mk = model_key.to_s
+    found = I18n.find_translation("activerecord.models.#{mk}", { count: 1 })
+    return found unless found.nil?
+
+    slash = mk.rindex("/")
+    element = slash.nil? ? mk : mk[(slash + 1)..].to_s
+    I18n.humanize_attribute(element)
+  end
+
+  # A validation message, looked up when the validator runs, along Rails'
+  # chain (plan decision D10):
+  # `activerecord.errors.models.<model>.attributes.<attr>.<type>`,
+  # `activerecord.errors.models.<model>.<type>`,
+  # `activerecord.errors.messages.<type>`, `errors.attributes.<attr>.<type>`,
+  # `errors.messages.<type>`; the whole chain in the current locale, then in
+  # the default one (as Rails' fallbacks run the defaults per locale).
+  # `%{attribute}` and `%{model}` are the human names, `%{count}` the
+  # `count:` (an Integer, which also picks the plural form) or `count_text:`
+  # (a String, numericality's limit: no plural form).
+  # @example
+  #   I18n.error_message("post", :title, :too_short, { count: 8 })
+  #   # => "is too short (minimum is 8 characters)"
+  #   I18n.error_message("post", :rating, :greater_than, { count_text: "1.5" })
+  #   # => "must be greater than 1.5"
+  # @param model_key [String] `""` skips the two model keys
+  # @param attr [Symbol, String]
+  # @param type [Symbol, String] Rails' key: `:blank`, `:too_short`, ...
+  # @param options [Hash{Symbol => Object}] `count:`, `count_text:`, other
+  #   interpolation values
+  # @return [String]
+  # @raise [MissingTranslationData] for a type no dictionary holds, when
+  #   asked to (the text names the most specific key)
+  # @api public
+  def self.error_message(model_key, attr, type, options = {})
+    mk = model_key.to_s
+    a = attr.to_s
+    ty = type.to_s
+    keys = Array.new(0) { "" }
+    unless mk.empty?
+      keys << "activerecord.errors.models.#{mk}.attributes.#{a}.#{ty}"
+      keys << "activerecord.errors.models.#{mk}.#{ty}"
+    end
+    keys << "activerecord.errors.messages.#{ty}"
+    keys << "errors.attributes.#{a}.#{ty}"
+    keys << "errors.messages.#{ty}"
+    vars = I18n.interpolation_vars(options)
+    count = options[:count]
+    counted = count.is_a?(Integer)
+    n = counted ? count.to_i : 0
+    loc = I18n.locale
+    found = I18n.first_in_locale(loc, keys, counted, n)
+    default = I18n.default_locale
+    found = I18n.first_in_locale(default, keys, counted, n) if found.nil? && default != loc
+    return I18n.missing_answer(loc, keys[0]) if found.nil?
+
+    # The human names cost a lookup each: made only for a text that uses them.
+    vars["attribute"] = I18n.human_attribute_name(mk, a) if found.include?("%{attribute}") && !vars.key?("attribute")
+    vars["model"] = I18n.human_model_name(mk) if found.include?("%{model}") && !vars.key?("model")
+    I18n.interpolate_vars(found, vars)
+  end
+
+  # One message of `errors.full_messages`: `errors.format`
+  # (`"%{attribute} %{message}"`, ja `"%{attribute}%{message}"`) with the
+  # attribute's human name; a `:base` message stands alone.
+  # @param model_key [String]
+  # @param attr [Symbol, String]
+  # @param message [String]
+  # @return [String]
+  # @api public
+  def self.full_message(model_key, attr, message)
+    a = attr.to_s
+    m = message.to_s
+    return m if a == "base"
+
+    attribute = I18n.human_attribute_name(model_key, a)
+    I18n.t("errors.format", { default: "%{attribute} %{message}", attribute: attribute, message: m })
+  end
+
+  # The first of keys one locale holds (no default-locale fallback).
+  # @api private
+  def self.first_in_locale(loc, keys, counted, n)
+    keys.each do |key|
+      found = I18n.text_in_locale(loc, key, counted, n)
+      return found unless found.nil?
+    end
+    nil
   end
 
   # `"translation missing: ja.foo.bar"` for the full key `"ja.foo.bar"`.

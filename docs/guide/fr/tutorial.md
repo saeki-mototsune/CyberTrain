@@ -1,5 +1,5 @@
 ---
-source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
+source_sha256: 7b4fe1d040482066a2463edf5d328539755086c6c82865fc5475ccd48a4c2063
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -483,7 +483,7 @@ end
 ```
 
 La déclaration `belongs_to` rend aussi invalide un commentaire sans article
-(«&nbsp;Article id can't be blank&nbsp;»), avant que la base ne le refuse.
+(«&nbsp;Article can't be blank&nbsp;»), avant que la base ne le refuse.
 
 > [!NOTE]
 > `Article#comments` est la relation des commentaires&nbsp;: le

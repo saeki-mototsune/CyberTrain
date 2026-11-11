@@ -231,6 +231,7 @@ class Post < Cybertrain::Model
   def self.table_name = "posts"
   def self.column_names = ["id", "title", "body", "views", "price", "comments_count", "meta", "published_on", "secret_note", "thumbnail", "hidden", "created_at", "updated_at"]
   def model_name = "Post"
+  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("post", attr)
 
   attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :thumbnail, :hidden, :created_at, :updated_at
 

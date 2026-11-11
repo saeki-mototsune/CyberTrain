@@ -177,7 +177,7 @@ module Cybertrain
         includes preload preloaded empty?
         where not where_sql where_like where_between or order order_sql limit offset distinct none to_a each
         first last find_by find_by! find find_or_create_by find_or_initialize_by destroy_all find_each size
-        all create create! from_row table_name column_names new name class
+        all create create! from_row table_name column_names human_attribute_name new name class
         validates before_validation before_save after_save before_create after_create before_update
         after_update before_destroy after_destroy add_model_callback validators_for callbacks_for now_string
         transaction upsert upsert_into scope encrypts refuse_encrypted has_many has_one belongs_to validates_foreign_key validate

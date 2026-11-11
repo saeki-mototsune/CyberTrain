@@ -1,5 +1,5 @@
 ---
-source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
+source_sha256: 7b4fe1d040482066a2463edf5d328539755086c6c82865fc5475ccd48a4c2063
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -470,7 +470,7 @@ end
 ```
 
 Объявленный `belongs_to` к тому же делает комментарий без статьи
-невалидным («Article id can't be blank») раньше, чем его отвергнет база.
+невалидным («Article can't be blank») раньше, чем его отвергнет база.
 
 > [!NOTE]
 > `Article#comments` — это relation комментариев, поэтому рельсовый

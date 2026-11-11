@@ -19,4 +19,5 @@ ok   one validates line for two attributes, under if:
 ok   run_custom_validations runs after the declared rules with the context
 ok   an unknown option, a lambda condition and an on: other than :create or :update raise ArgumentError
 ok   model_concern_insert_at puts a concern's validates calls after the model's own call of that index
-21 tests, 99 assertions, 0 failures
+ok   the default messages come from the dictionary of the current locale, message: still wins
+22 tests, 114 assertions, 0 failures

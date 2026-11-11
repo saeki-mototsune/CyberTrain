@@ -1,4 +1,5 @@
 require "cybertrain/cast"
+require "cybertrain/i18n"
 
 module Cybertrain
   # One validation rule, kept as data: Spinel cannot define validation
@@ -358,19 +359,20 @@ module Cybertrain
 
       case @kind
       when :presence
-        add_message(record, "can't be blank") if blank
+        add_message(record, :blank) if blank
       when :foreign_key
         # 0 is the id of no saved record (Model#id before the first save).
-        add_message(record, "can't be blank") if blank || value == 0
+        # The key stays blank, not Rails' required (plan decision D10).
+        add_message(record, :blank) if blank || value == 0
       when :length
         # nil is left to a presence rule, as `length` alone allows it.
         return nil if value.nil?
 
         check_length(record, Validator.length_of(value))
       when :inclusion
-        add_message(record, "is not included in the list") unless listed?(value)
+        add_message(record, :inclusion) unless listed?(value)
       when :exclusion
-        add_message(record, "is reserved") if listed?(value)
+        add_message(record, :exclusion) if listed?(value)
       when :format
         check_format(record, value)
       when :numericality
@@ -379,25 +381,36 @@ module Cybertrain
         sa = @scope_attr
         scope_value = sa.nil? ? nil : record.read_attribute(sa)
         if record.unique_value_taken?(@attr, value, sa, scope_value, record.id, @case_sensitive)
-          add_message(record, "has already been taken")
+          add_message(record, :taken)
         end
       end
       nil
     end
 
-    # The message: message: when the line gives one, else Rails' default.
-    def add_message(record, default)
-      record.errors.add(@attr, @message == "" ? default : @message)
+    # The message: message: when the line gives one, else type's text in
+    # the dictionaries (I18n.error_message, Rails' key chain, plan decision
+    # D10), looked up now, in the current locale. options carry the limit:
+    # count: an Integer (length, which picks the plural form), count_text:
+    # numericality's limit as written ("1.5": no plural form).
+    def add_message(record, type, options = {})
+      given = @message
+      unless given == ""
+        record.errors.add(@attr, given)
+        return nil
+      end
+      errors = record.errors
+      text = I18n.error_message(errors.model_key, @attr, type, options)
+      errors.add(@attr, text)
       nil
     end
 
     # Rails' LengthValidator order: is:, then minimum:, then maximum:.
     def check_length(record, size)
       if @exact_length >= 0 && size != @exact_length
-        add_message(record, "is the wrong length (should be #{@exact_length} characters)")
+        add_message(record, :wrong_length, { count: @exact_length })
       end
-      add_message(record, "is too short (minimum is #{@minimum} characters)") if @minimum >= 0 && size < @minimum
-      add_message(record, "is too long (maximum is #{@maximum} characters)") if @maximum >= 0 && size > @maximum
+      add_message(record, :too_short, { count: @minimum }) if @minimum >= 0 && size < @minimum
+      add_message(record, :too_long, { count: @maximum }) if @maximum >= 0 && size > @maximum
       nil
     end
 
@@ -441,20 +454,20 @@ module Cybertrain
       if value.nil?
         # nil matches no Regexp: a with: rule fails it, a without: rule
         # alone passes it (Rails).
-        add_message(record, "is invalid") unless @pattern.nil?
+        add_message(record, :invalid) unless @pattern.nil?
         return nil
       end
       text = Cast.str(value)
       re = @pattern
       unless re.nil?
         unless text.match?(re)
-          add_message(record, "is invalid")
+          add_message(record, :invalid)
           return nil
         end
       end
       re = @without
       unless re.nil?
-        add_message(record, "is invalid") if text.match?(re)
+        add_message(record, :invalid) if text.match?(re)
       end
       nil
     end
@@ -465,30 +478,30 @@ module Cybertrain
     # integer String ("12", "-3"), so a Float fails it as Rails' does.
     def check_number(record, value)
       unless Validator.numeric?(value)
-        add_message(record, "is not a number")
+        add_message(record, :not_a_number)
         return nil
       end
       if @only_integer && !Validator.integer_value?(value)
-        add_message(record, "must be an integer")
+        add_message(record, :not_an_integer)
         return nil
       end
       number = Validator.number_of(value)
       limit = @greater_than
-      add_message(record, "must be greater than #{@limit_texts[:greater_than]}") if !limit.nil? && !(number > limit)
+      add_message(record, :greater_than, { count_text: @limit_texts[:greater_than] }) if !limit.nil? && !(number > limit)
       limit = @greater_than_or_equal_to
       if !limit.nil? && !(number >= limit)
-        add_message(record, "must be greater than or equal to #{@limit_texts[:greater_than_or_equal_to]}")
+        add_message(record, :greater_than_or_equal_to, { count_text: @limit_texts[:greater_than_or_equal_to] })
       end
       limit = @equal_to
-      add_message(record, "must be equal to #{@limit_texts[:equal_to]}") if !limit.nil? && number != limit
+      add_message(record, :equal_to, { count_text: @limit_texts[:equal_to] }) if !limit.nil? && number != limit
       limit = @less_than
-      add_message(record, "must be less than #{@limit_texts[:less_than]}") if !limit.nil? && !(number < limit)
+      add_message(record, :less_than, { count_text: @limit_texts[:less_than] }) if !limit.nil? && !(number < limit)
       limit = @less_than_or_equal_to
       if !limit.nil? && !(number <= limit)
-        add_message(record, "must be less than or equal to #{@limit_texts[:less_than_or_equal_to]}")
+        add_message(record, :less_than_or_equal_to, { count_text: @limit_texts[:less_than_or_equal_to] })
       end
       limit = @other_than
-      add_message(record, "must be other than #{@limit_texts[:other_than]}") if !limit.nil? && number == limit
+      add_message(record, :other_than, { count_text: @limit_texts[:other_than] }) if !limit.nil? && number == limit
       nil
     end
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
+source_sha256: 7b4fe1d040482066a2463edf5d328539755086c6c82865fc5475ccd48a4c2063
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -365,7 +365,7 @@ class Comment
 end
 ```
 
-宣言した `belongs_to` は、記事のないコメントも、データベースが拒む前に無効にします（「Article id can't be blank」）。
+宣言した `belongs_to` は、記事のないコメントも、データベースが拒む前に無効にします（「Article can't be blank」）。
 
 > [!NOTE]
 > `Article#comments` はコメントのリレーションなので、Rails の `@article.comments.find(params[:id])` が `destroy` でそのまま使えます。別の記事に属するコメントを指定すると 404 が返ります。

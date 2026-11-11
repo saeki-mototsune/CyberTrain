@@ -521,7 +521,7 @@ module Cybertrain
         when Cybertrain::Model
           return url_for(model, @no_url_options) if model.persisted?
 
-          # Bound step by step (see FormBuilder.humanize).
+          # Bound step by step (see I18n.humanize_attribute).
           route("#{route_key_of(model_key(model))}_path", [], @no_url_options)
         when Array then url_for(model, @no_url_options)
         else raise ArgumentError, "form_with needs model: or url:"
@@ -607,7 +607,7 @@ module Cybertrain
       def label_tag(args, kwargs)
         helper_arity!("label_tag", args, 1, 2)
         name = text_arg(args, 0, "label_tag")
-        text = args.size > 1 && !args[1].nil? ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(name))
+        text = args.size > 1 && !args[1].nil? ? FormBuilder.html_text(args[1]) : Html.escape(I18n.humanize_attribute(name))
         SafeString.of("<label for=\"#{Html.escape(FormBuilder.tag_id(name))}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>#{text}</label>")
       end
 
@@ -628,10 +628,11 @@ module Cybertrain
         SafeString.of(FormBuilder.input_tag("hidden", name, args.size > 1 ? args[1] : nil, kwargs, " autocomplete=\"off\""))
       end
 
-      # submit_tag(value = "Save changes"), named commit as f.submit is.
+      # submit_tag(value = "Save changes"), named commit as f.submit is; the
+      # default is cybertrain.helpers.submit.no_model in the locale.
       def submit_tag(args, kwargs)
         helper_arity!("submit_tag", args, 0, 1)
-        text = args.empty? ? "Save changes" : FormBuilder.html_text(args[0])
+        text = args.empty? ? Html.escape(I18n.t("cybertrain.helpers.submit.no_model")) : FormBuilder.html_text(args[0])
         SafeString.of("<input type=\"submit\" name=\"commit\" value=\"#{text}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>")
       end
 
@@ -1861,7 +1862,7 @@ module Cybertrain
       end
 
       # `method: :DELETE` -> "delete"; `length: "10"` -> 10. The text is bound
-      # to a local before the second call (see FormBuilder.humanize).
+      # to a local before the second call (see I18n.humanize_attribute).
       # text.downcase, without the copy for an already lowercase method:.
       def lower_text(v)
         case v

@@ -460,7 +460,7 @@ end
 ```
 
 The declared `belongs_to` also makes a comment without an article invalid
-("Article id can't be blank"), before the database would refuse it.
+("Article can't be blank"), before the database would refuse it.
 
 > [!NOTE]
 > `Article#comments` is the comments' relation, so Rails'

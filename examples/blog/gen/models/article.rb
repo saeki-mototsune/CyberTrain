@@ -214,6 +214,7 @@ class Article < Cybertrain::Model
   def self.table_name = "articles"
   def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
   def model_name = "Article"
+  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("article", attr)
 
   attr_accessor :title, :body, :created_at, :updated_at
 

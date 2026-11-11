@@ -3,7 +3,8 @@
 # f5c999b88935d4c1389a1ffe8a00f29b43e10366, MIT License; the file as
 # fetched and its license are in test/fixtures/i18n/rails-i18n/), cut to
 # date, time, datetime.distance_in_words, number, errors,
-# activerecord.errors.messages, helpers.submit and support.array.
+# activerecord.errors.messages, helpers.submit and support.array; plus
+# the framework's own keys under cybertrain (plan decision D12).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
 ---
@@ -15,6 +16,10 @@ en:
         restrict_dependent_destroy:
           has_one: Cannot delete record because a dependent %{record} exists
           has_many: Cannot delete record because dependent %{record} exist
+  cybertrain:
+    helpers:
+      submit:
+        no_model: Save changes
   date:
     abbr_day_names:
     - Sun

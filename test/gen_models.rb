@@ -266,6 +266,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def self.table_name = "posts"
       def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
       def model_name = "Post"
+      def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("post", attr)
 
       attr_accessor :title, :body, :created_at, :updated_at
 
@@ -699,6 +700,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def self.table_name = "comments"
       def self.column_names = ["id", "post_id", "author", "body", "created_at", "updated_at"]
       def model_name = "Comment"
+      def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("comment", attr)
 
       attr_accessor :post_id, :author, :body, :created_at, :updated_at
 
@@ -1091,6 +1093,7 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def self.table_name = "flags"
       def self.column_names = ["id", "active", "score", "group"]
       def model_name = "Flag"
+      def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("flag", attr)
 
       attr_accessor :active, :score, :group
 
@@ -1309,7 +1312,8 @@ test "model_name and column_names lines" do
   assert_lines(post, [
     'def self.table_name = "posts"',
     'def self.column_names = ["id", "title", "body", "created_at", "updated_at"]',
-    'def model_name = "Post"'
+    'def model_name = "Post"',
+    'def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("post", attr)'
   ])
   comment = emit_for("comments")
   assert_lines(comment, [
@@ -1318,6 +1322,20 @@ test "model_name and column_names lines" do
     'class CommentRelation < Cybertrain::Relation',
     'class Comment < Cybertrain::Model'
   ])
+end
+
+test "human_attribute_name names the model's dictionary key" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "blog_posts" do |t|
+      t.string "title"
+    end
+  end
+  src = Cybertrain::Gen::ModelsEmitter.emit(definition.table("blog_posts"), definition, [], [])
+  assert_lines(src, [
+    'def model_name = "BlogPost"',
+    'def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("blog_post", attr)'
+  ])
+  assert_equal 1, src.scan("def self.human_attribute_name").size
 end
 
 test "casts per column follow type and null" do

@@ -1,5 +1,5 @@
 ---
-source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
+source_sha256: 7b4fe1d040482066a2463edf5d328539755086c6c82865fc5475ccd48a4c2063
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -365,7 +365,7 @@ class Comment
 end
 ```
 
-声明的 `belongs_to` 还会让没有文章的评论在数据库拒绝之前就无效（“Article id can't be blank”）。
+声明的 `belongs_to` 还会让没有文章的评论在数据库拒绝之前就无效（“Article can't be blank”）。
 
 > [!NOTE]
 > `Article#comments` 是评论的 relation，所以 Rails 的 `@article.comments.find(params[:id])` 在 `destroy` 中可以原样使用，不属于该文章的评论会返回 404。
