@@ -630,7 +630,9 @@ The rules are numbered in the order they were found. By topic:
     << "\n"; buf; end` prints `"\n\n"` (CRuby: `"ab\n\n"`); one direct
     append alone is fine. Rule 60's cousin. A buffer filled through helpers
     is filled only through helpers (`put_str(buf, "\n")`, as
-    test/time_zone.rb's TZif writer does).
+    test/time_zone.rb's TZif writer does). Re-checked on 2026-11-11: on
+    Spinel 2026.11.04.7026 the reduced repro prints `"ab\n\n"`, as
+    CRuby does (docs/spinel-feedback.md, "Rule 66").
     Separately, and not reduced: an instance method spelled `def name` on
     `Cybertrain::TimeZone` made test/template_integration.rb (the whole
     framework) fail at run time with "undefined method 'name' for an
@@ -906,7 +908,8 @@ The rules are numbered in the order they were found. By topic:
     end`: CRuby takes the first clause, Spinel neither (without `class
     Inner` inside `Inner` both agree). Spell a rescued class from the top
     (`rescue Cybertrain::Template::SyntaxError => e`, as Interpreter does),
-    and read the warnings `spin test` prints.
+    and read the warnings `spin test` prints (docs/spinel-feedback.md R,
+    the third shape; still so on 2026-11-11).
 82. A lambda literal assigned to a module-level instance variable in the
     module body (`module V; @b = ->(c) { H.new(c) }; end`) never learns the
     argument types of its call sites (Spinel 2026.11.04.7026): its
@@ -920,7 +923,8 @@ The rules are numbered in the order they were found. By topic:
     (`V.b = ->(c) { H2.new(c) }`, what gen/helpers.rb does), types its
     parameter from the `.call` sites. Rule 42's cousin: create a stored
     lambda in a method or pass it positionally, never as a module-body
-    ivar initialiser that is called with arguments.
+    ivar initialiser that is called with arguments
+    (docs/spinel-feedback.md Y; still so on 2026-11-11).
 
 83. `gets` on STDIN does not flush a pending partial line on STDOUT under
     Spinel 2026.11.04.7026; flush before reading. CRuby flushes STDOUT
@@ -992,7 +996,9 @@ The rules are numbered in the order they were found. By topic:
     expected. So a method that only callback blocks call has no stub on
     Cybertrain::Model: the generated `counter_cache_created` / `_destroyed`
     / `_was` / `_moved` (test/gen_models_compiles.rb covers them). Found
-    while writing declared associations (2026-11-06).
+    while writing declared associations (2026-11-06;
+    docs/spinel-feedback.md Z has the reduced program, still so on
+    2026-11-11).
 
 89. A `rescue` arm naming a qualified class the program does not define
     does not raise NameError when the arm is tried, as CRuby does: Spinel
