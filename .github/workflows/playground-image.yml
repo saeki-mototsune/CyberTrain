@@ -1,9 +1,11 @@
 # Builds the playground image (playground/Dockerfile, target playground) for
 # linux/amd64, smoke-tests it (playground/smoke.sh) and pushes the tested
-# image to GHCR: X.Y.Z and latest for a release tag vX.Y.Z, the given tag on
-# a manual run. It runs from release.yml, which calls it (with release_tag)
-# after the Gate, CI and the blog image have passed on the tag, and by hand
-# (Actions -> Playground image -> Run workflow). A pull request runs it,
+# image to GHCR: X.Y.Z for a release tag vX.Y.Z, the given tag on a manual
+# run. Never latest: release.yml alone moves it, to the newest release, once
+# that release exists (its promote-latest job), so a manual run with the tag
+# latest is refused. It runs from release.yml, which calls it (with
+# release_tag) after the Gate, CI and the blog image have passed on the tag,
+# and by hand (Actions -> Playground image -> Run workflow). A pull request runs it,
 # without pushing, only when it touches what the image is built with
 # (below): its own files, and the CLI, the toolchain checks, the pins and
 # the gemspec, since the build runs `cybertrain setup && cybertrain doctor`
@@ -44,13 +46,13 @@ on:
         required: false
         default: ""
       release_tag:
-        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z and latest"
+        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z"
         type: string
         required: true
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground (latest, X.Y.Z or a test name)"
+        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground (X.Y.Z or a test name; not latest)"
         required: true
         default: "test"
 
@@ -83,6 +85,18 @@ jobs:
           version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
           test "$RELEASE_TAG" = "v$version" || { echo "tag $RELEASE_TAG is not v$version (cybertrain/version.rb)"; exit 1; }
 
+      # latest is what Codespaces opens: only release.yml moves it, after it
+      # has checked which release is the newest.
+      - name: A manual run does not push latest
+        if: github.event_name == 'workflow_dispatch' && !inputs.release_tag
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$MANUAL_TAG" = latest ]; then
+            echo "::error::latest is moved only by the Release workflow (promote-latest), to the newest release; push another tag"
+            exit 1
+          fi
+
       - name: devcontainer.json is valid JSON
         run: jq empty .devcontainer/devcontainer.json
 
@@ -96,7 +110,6 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            type=raw,value=latest,enable=${{ inputs.release_tag != '' }}
             type=semver,pattern={{version}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             type=raw,value=${{ inputs.tag || 'manual' }},enable=${{ github.event_name == 'workflow_dispatch' && !inputs.release_tag }}
 

@@ -14,7 +14,8 @@
 # the image at the next release. Pushes to main do not run it.
 # release.yml calls it twice for a tag vX.Y.Z: with `ref` as one of the
 # checks, and, only after every check has passed, with `release_tag`, which
-# also pushes the tested image to GHCR as X.Y.Z and latest.
+# also pushes the tested image to GHCR as X.Y.Z. Never latest: release.yml
+# moves it to the newest release once that release exists (promote-latest).
 name: Blog image
 
 on:
@@ -46,7 +47,7 @@ on:
         required: false
         default: ""
       release_tag:
-        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z and latest (default: push nothing)"
+        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z (default: push nothing)"
         type: string
         required: false
         default: ""
@@ -167,7 +168,5 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           version="${RELEASE_TAG#v}"
-          for tag in "$version" latest; do
-            docker tag blog:ci "$IMAGE:$tag"
-            docker push "$IMAGE:$tag"
-          done
+          docker tag blog:ci "$IMAGE:$version"
+          docker push "$IMAGE:$version"

@@ -227,7 +227,8 @@ check, an article through the form, a clean SIGTERM stop, the database kept
 on its volume) and loads `config/deploy.yml` with Kamal. Pull requests and manual
 runs push nothing; for a release, once every check has passed on a
 tag `vX.Y.Z`, the Release workflow has it push the tested image as
-`ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` and `latest`.
+`ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z`, and then points `latest`
+at the newest release's image.
 
 [docs/deploy-kamal.md](../../docs/deploy-kamal.md) (part 8 of docs/deploy.md, in English) covers the rest:
 DNS, the registry, `builder.arch`, backups of the SQLite volume.

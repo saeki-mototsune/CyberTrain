@@ -421,10 +421,9 @@ before the gem is pushed:
 4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml),
    which tests the tag (below) and, only if every check passes, publishes the
    playground image `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
-   (and `latest`) through
+   through
    [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml)
-   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` (and
-   `latest`) through
+   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` through
    [.github/workflows/blog-image.yml](.github/workflows/blog-image.yml);
    check that run.
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
@@ -435,9 +434,17 @@ before the gem is pushed:
    tagged commit. If any of those fails, nothing is published. Once they
    pass, it pushes the playground and blog images (in parallel) and then
    creates the release. If one image push fails, no release is created, but
-   the other image's `X.Y.Z` and `latest` may already be pushed: check both
+   the other image's `X.Y.Z` may already be pushed: check both
    packages before re-running the failed jobs. For a tag pushed without a
-   release, run that workflow by hand with the tag. After the release is
+   release, run that workflow by hand with the tag. Last, its
+   `promote-latest` job points `latest` of both images at the newest
+   release: the highest `X.Y.Z` that has a published release, whichever run
+   it is in. Releases of different tags may run at the same time, and a
+   manual run may release an old tag, without `latest` going back; that job
+   runs one at a time across all release runs, and when several wait GitHub
+   cancels all but the newest waiting one, which is harmless (each would
+   move `latest` to the same image). Nothing else pushes `latest`; to repair
+   it, re-run that job. After the release is
    created, the same run attaches a Linux build of the fork's latest Spinel
    release (`spinel-<tag>-linux-x86_64.tar.gz`, for Claude Code cloud
    sessions; see below); check that its `spinel-prebuilt` job passed.

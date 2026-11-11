@@ -25,8 +25,15 @@
 #
 # Only once they have all passed does it build, smoke-test and push the
 # playground image (playground-image.yml) and the blog image
-# (blog-image.yml with release_tag), each as X.Y.Z and latest, and the
-# release is created after both pushes succeed.
+# (blog-image.yml with release_tag), each as X.Y.Z, and the release is
+# created after both pushes succeed.
+#
+# latest is moved last, by promote-latest, for both images in one job: to
+# the newest release there is (the highest X.Y.Z with a published release),
+# not to this run's tag. Runs for different tags go on in parallel, and a
+# manual run may release an old tag; whichever run comes last, in whatever
+# order, latest ends on the newest release, and on the same one for both
+# images. Nothing else pushes latest.
 #
 # After the release is created, spinel-prebuilt.yml attaches a Linux build of
 # the latest Spinel release of the fork, for Claude Code cloud sessions
@@ -162,6 +169,69 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes
+
+  # Points latest of both images at the newest release: the highest X.Y.Z
+  # among the published releases (drafts and prereleases apart), which is
+  # this run's tag unless a newer one was released first, or this run is a
+  # manual release of an old tag. It retags in the registry (the manifest
+  # X.Y.Z names, not a rebuild) and checks that the two digests are equal.
+  # One at a time across all release runs (the group below). GitHub keeps one
+  # waiting job per group and cancels an older waiting one, which is harmless
+  # here: every run moves latest to the same place, and the one that runs
+  # last has seen every release. Re-run this job to repair latest by hand.
+  promote-latest:
+    needs: release
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: release-promote-latest
+      cancel-in-progress: false
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      IMAGES: ghcr.io/saeki-mototsune/cybertrain-playground ghcr.io/saeki-mototsune/cybertrain-blog
+    steps:
+      - name: Find the newest release
+        id: newest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select((.draft or .prerelease) | not) | .tag_name' > releases.txt
+          newest=$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' releases.txt | sort -V | tail -n 1)
+          test -n "$newest" || { echo "::error::no published release vX.Y.Z found"; exit 1; }
+          if [ "$newest" = "$TAG" ]; then
+            echo "$TAG is the newest release: latest moves to it"
+          else
+            echo "::notice::$TAG is not the newest release ($newest is): latest goes to $newest, not to $TAG"
+          fi
+          echo "tag=$newest" >> "$GITHUB_OUTPUT"
+
+      - name: Point latest at the newest release (both images)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEWEST: ${{ steps.newest.outputs.tag }}
+        run: |
+          set -eu
+          version="${NEWEST#v}"
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          digest() { docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}'; }
+          # Both versions must be there before either latest moves.
+          for image in $IMAGES; do
+            digest "$image:$version" > /dev/null || { echo "::error::$image:$version is not in the registry; latest is left alone"; exit 1; }
+          done
+          for image in $IMAGES; do
+            # --prefer-index=false: the same manifest under another tag, not
+            # an index wrapped around it.
+            docker buildx imagetools create --prefer-index=false --tag "$image:latest" "$image:$version"
+            want=$(digest "$image:$version")
+            got=$(digest "$image:latest")
+            test "$got" = "$want" || { echo "::error::$image:latest is $got, not $want ($version)"; exit 1; }
+            echo "$image:latest -> $version ($got)"
+          done
 
   # Spinel prebuilt for Claude Code cloud sessions, attached to the release
   # just created (script/claude-cloud-setup downloads it from the latest one).
