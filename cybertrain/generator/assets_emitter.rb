@@ -67,7 +67,7 @@ module Cybertrain
       end
 
       # {"imports":{"name":"path",...}}, pins in order; `</` is written
-      # `</` so the JSON can sit inside a <script> element.
+      # `\u003c/` so the JSON can sit inside a <script> element.
       def self.importmap_json(pins, files)
         out = +"{\"imports\":{"
         pins.each_with_index do |pin, i|

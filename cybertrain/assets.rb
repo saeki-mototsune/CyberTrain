@@ -55,7 +55,8 @@ module Cybertrain
     end
 
     # @return [String] the import map of config/importmap.rb as compact
-    #   JSON (`{"imports":{...}}`), `</` written `</`
+    #   JSON (`{"imports":{...}}`), `</` written `\u003c/` so it can sit
+    #   inside a <script> element
     # @api public
     def self.importmap_json
       @importmap_json
