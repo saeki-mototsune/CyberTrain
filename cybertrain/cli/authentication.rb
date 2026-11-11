@@ -78,9 +78,12 @@ module Cybertrain
       # What ApplicationController gets right after its class line.
       INCLUDE_LINE = "include Authentication"
       # `cybertrain new`'s routes carry the jobs page as a comment of this
-      # line until ApplicationController has a require_admin; then it is
-      # drawn (enable_jobs_page).
-      JOBS_PAGE_LINE = "jobs_page \"/admin/jobs\", before_action: :require_admin"
+      # line (Templates.routes), there being no require_admin yet.
+      NEW_APP_JOBS_PAGE_LINE = "jobs_page \"/admin/jobs\", before_action: :require_admin"
+      # What enable_jobs_page draws in its place: require_admin alone
+      # decides, so a visitor gets its 404 rather than a redirect to sign in
+      # that shows the page exists (the skip is jobs_page's explicit option).
+      JOBS_PAGE_LINE = "jobs_page \"/admin/jobs\", before_action: :require_admin, skip_before_action: :require_authentication"
 
       # What generate_with_result did: the paths it created, the paths it
       # overwrote and the diffs to apply by hand where a file it writes
@@ -185,10 +188,16 @@ module Cybertrain
       # `include AuthenticationHelpers` or `include Authentication::X`.
       def self.included?(source)
         source.each_line do |line|
-          code = line.strip
-          return true if code == INCLUDE_LINE || code.start_with?("#{INCLUDE_LINE} #")
+          return true if Authentication.include_line?(line)
         end
         false
+      end
+
+      # Whether this one line is such an include (Attachment reads the
+      # concern's callbacks in its place).
+      def self.include_line?(line)
+        code = line.strip
+        code == INCLUDE_LINE || code.start_with?("#{INCLUDE_LINE} #")
       end
 
       # Inserts `include Authentication` right after the class line, once. A
@@ -213,27 +222,33 @@ module Cybertrain
         true
       end
 
-      # Draws the jobs page `cybertrain new` left as a comment
-      # (`# jobs_page "/admin/jobs", before_action: :require_admin`), once
+      # Draws the jobs page `cybertrain new` left as a comment (a line that
+      # is `# jobs_page "/admin/jobs", before_action: :require_admin`, or
+      # already JOBS_PAGE_LINE commented out) as JOBS_PAGE_LINE, once
       # ApplicationController includes the concern that defines
-      # require_admin. A routes file without that comment is left as it is.
-      # Returns true when the file was changed.
+      # require_admin. Any other routes file is left as it is. Returns true
+      # when the file was changed.
       def self.enable_jobs_page(routes_path, controller_path)
         source = File.read(routes_path)
-        comment = "# #{JOBS_PAGE_LINE}"
-        at = source.index(comment)
-        return false if at.nil?
+        comments = ["# #{NEW_APP_JOBS_PAGE_LINE}", "# #{JOBS_PAGE_LINE}"]
+        updated = +""
+        found = ""
+        source.each_line do |line|
+          code = line.strip
+          if found.empty? && comments.include?(code)
+            found = code
+            updated << line[0, line.index(code).to_i].to_s << JOBS_PAGE_LINE << "\n"
+          else
+            updated << line
+          end
+        end
+        return false if found.empty?
 
         unless Authentication.included?(File.read(controller_path))
-          puts "skip config/routes.rb (#{comment}): ApplicationController has no require_admin until it includes Authentication"
+          puts "skip config/routes.rb (#{found}): ApplicationController has no require_admin until it includes Authentication"
           return false
         end
 
-        updated = +""
-        updated << source[0, at].to_s
-        updated << JOBS_PAGE_LINE
-        rest = at + comment.size
-        updated << source[rest, source.size - rest].to_s
         File.write(routes_path, updated)
         puts "route #{JOBS_PAGE_LINE}"
         true
@@ -628,9 +643,10 @@ module Cybertrain
             # The before_action of the pages only admins may see: anyone but a
             # signed-in admin gets a 404, as if there were no such page. The user
             # command makes a user an admin (`user admin EMAIL`,
-            # app/commands/user_command.rb). On the jobs page (config/routes.rb)
-            # it runs alone, so a visitor gets the 404 too; in a controller that
-            # declares `before_action :require_admin` itself,
+            # app/commands/user_command.rb). The jobs page (config/routes.rb)
+            # names it with `skip_before_action: :require_authentication`, so it
+            # runs alone there and a visitor gets the 404 too; in a controller
+            # that declares `before_action :require_admin` itself,
             # require_authentication runs first and sends a visitor to sign in.
             def require_admin
               render plain: "Not Found", status: :not_found unless @current_user && @current_user.admin?

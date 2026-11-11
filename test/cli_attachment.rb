@@ -472,6 +472,14 @@ test "the Authentication concern's callbacks count as ApplicationController's" d
   File.delete(concern)
   refuse_download("concerned", "plan", "photo")
   File.write(concern, original)
+  # The include line is recognised as `generate authentication` recognises
+  # it (Authentication.include_line?): a trailing comment too, a commented
+  # one not (an unknown include line still refuses).
+  parent = "concerned/app/controllers/application_controller.rb"
+  included = read(parent)
+  File.write(parent, included.sub("  include Authentication\n", "  include AuthenticationHelpers\n"))
+  refuse_download("concerned", "plan", "photo")
+  File.write(parent, included.sub("  include Authentication\n", "  include Authentication # sign-in\n"))
   Cybertrain::CLI::Attachment.generate("concerned", "plan", "photo", false)
   assert_includes read(path), "allow_unauthenticated_access only: [:index, :show, :photo]"
 end

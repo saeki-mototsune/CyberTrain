@@ -211,7 +211,9 @@ module Cybertrain
       # The jobs page line is a comment: a new application has no
       # require_admin. `cybertrain generate authentication` provides one (the
       # Authentication concern's) and draws the page behind it
-      # (CLI::Authentication.enable_jobs_page).
+      # (CLI::Authentication.enable_jobs_page), as
+      #   jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+      # so that require_admin alone answers a visitor (404).
       def self.routes
         "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n"
       end

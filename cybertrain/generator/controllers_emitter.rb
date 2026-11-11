@@ -55,6 +55,7 @@ module Cybertrain
       def self.jobs_controller_source(page)
         path = RoutesEmitter.quote(page.jobs_path)
         guard = page.jobs_before_action
+        skip = page.jobs_skip_before_action
         out = +""
         out << "require \"cybertrain/jobs_page\"\n"
         out << "\n"
@@ -63,16 +64,15 @@ module Cybertrain
         out << "# before_action and CSRF protection.\n"
         out << "class CybertrainJobsController < ApplicationController\n"
         unless guard.empty?
-          # The guard alone decides: run after an inherited
-          # require_authentication (`generate authentication`'s), it would
-          # never see a visitor, who would be sent to sign in instead, which
-          # tells them the page exists. A skip of a callback the application
-          # does not have is a no-op. Controllers that declare the guard
-          # themselves keep Rails' order: authentication first.
-          out << "  # :#{guard} alone decides who sees the page: an application's\n"
-          out << "  # require_authentication is skipped, so a visitor gets the guard's\n"
-          out << "  # answer, not a redirect to sign in that shows the page exists.\n"
-          out << "  skip_before_action :require_authentication\n"
+          # Only jobs_page's explicit skip_before_action: (which Mapper
+          # refuses without a guard or naming the guard itself) leaves an
+          # inherited callback out; otherwise the guard runs after them all,
+          # in Rails' order.
+          unless skip.empty?
+            out << "  # jobs_page's skip_before_action: (config/routes.rb): #{skip}\n"
+            out << "  # does not run here, so :#{guard} alone decides who sees the page.\n"
+            out << "  skip_before_action :#{skip}\n"
+          end
           out << "  before_action :#{guard}\n"
           out << "\n"
           out << "  def run_callback(name)\n"

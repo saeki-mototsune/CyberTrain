@@ -201,10 +201,6 @@ test "emit writes CybertrainJobsController after the scanned controllers when a 
     # rows in Cybertrain::JobsPage, in the application's layout, behind its
     # before_action and CSRF protection.
     class CybertrainJobsController < ApplicationController
-      # :require_admin alone decides who sees the page: an application's
-      # require_authentication is skipped, so a visitor gets the guard's
-      # answer, not a redirect to sign in that shows the page exists.
-      skip_before_action :require_authentication
       before_action :require_admin
 
       def run_callback(name)
@@ -253,13 +249,31 @@ test "without before_action: the jobs controller has no callback and the generat
   source = Cybertrain::Gen::ControllersEmitter.emit([], page)
   assert_includes source, "class CybertrainJobsController < ApplicationController\n  def index\n    render html: Cybertrain::JobsPage.page_html(self, \"/ops/queue\")\n  end\n"
   refute source.include?("  before_action :"), "no before_action line"
-  # Without a guard of its own, the page keeps the application's
-  # authentication.
-  refute source.include?("skip_before_action"), "no skip without a guard"
+  refute source.include?("skip_before_action"), "no skip"
   refute source.include?("run_callback"), "no run_callback"
   assert_equal "warning: jobs_page \"/ops/queue\" has no before_action:, so anyone who can reach it can see, retry, discard and delete jobs " \
                "(add one: jobs_page \"/ops/queue\", before_action: :require_admin)",
                Cybertrain::Gen::ControllersEmitter.jobs_page_warning(page)
+end
+
+# skip_before_action: is jobs_page's own, explicit option: without it the
+# guard runs after every inherited callback (Rails' order), whatever its
+# name; with it, that one inherited callback is skipped, before the guard.
+test "jobs_page skip_before_action: is written only when given" do
+  head = "class CybertrainJobsController < ApplicationController\n"
+  explicit = Cybertrain::Gen::ControllersEmitter.emit([], Cybertrain::Gen::JobsPageSpec.new("/admin/jobs", "require_admin", "require_authentication"))
+  assert_includes explicit, "#{head}  # jobs_page's skip_before_action: (config/routes.rb): require_authentication\n" \
+                            "  # does not run here, so :require_admin alone decides who sees the page.\n" \
+                            "  skip_before_action :require_authentication\n  before_action :require_admin\n\n  def run_callback(name)\n"
+  assert_equal 1, explicit.scan("skip_before_action").size - 1
+  ["require_authentication", "check_staff", "require_admin"].each do |guard|
+    plain = Cybertrain::Gen::ControllersEmitter.emit([], Cybertrain::Gen::JobsPageSpec.new("/admin/jobs", guard))
+    assert_includes plain, "#{head}  before_action :#{guard}\n\n  def run_callback(name)\n"
+    refute plain.include?("skip_before_action"), "no skip for #{guard}"
+    assert_equal plain, Cybertrain::Gen::ControllersEmitter.emit([], Cybertrain::Gen::JobsPageSpec.new("/admin/jobs", guard, ""))
+  end
+  assert_equal "require_authentication", Cybertrain::Gen::JobsPageSpec.new("/a", "b", "require_authentication").jobs_skip_before_action
+  assert_equal "", Cybertrain::Gen::JobsPageSpec.new("/a", "b").jobs_skip_before_action
 end
 
 test "no jobs page, no jobs controller" do

@@ -177,9 +177,10 @@ test "writes the Authentication concern and includes it" do
       # The before_action of the pages only admins may see: anyone but a
       # signed-in admin gets a 404, as if there were no such page. The user
       # command makes a user an admin (`user admin EMAIL`,
-      # app/commands/user_command.rb). On the jobs page (config/routes.rb)
-      # it runs alone, so a visitor gets the 404 too; in a controller that
-      # declares `before_action :require_admin` itself,
+      # app/commands/user_command.rb). The jobs page (config/routes.rb)
+      # names it with `skip_before_action: :require_authentication`, so it
+      # runs alone there and a visitor gets the 404 too; in a controller
+      # that declares `before_action :require_admin` itself,
       # require_authentication runs first and sends a visitor to sign in.
       def require_admin
         render plain: "Not Found", status: :not_found unless @current_user && @current_user.admin?
@@ -267,8 +268,18 @@ test "ApplicationController that already defines require_authentication (0.4's b
   # Once it includes the concern, the jobs page is drawn behind require_admin.
   File.write("legacy/app/controllers/application_controller.rb", "class ApplicationController < Cybertrain::Controller\n  include Authentication\nend\n")
   assert_equal true, Cybertrain::CLI::Authentication.enable_jobs_page("legacy/config/routes.rb", "legacy/app/controllers/application_controller.rb")
-  assert_equal "Cybertrain::Routes.draw do\n  jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n", read("legacy/config/routes.rb")
+  assert_equal "Cybertrain::Routes.draw do\n  jobs_page \"/admin/jobs\", before_action: :require_admin, skip_before_action: :require_authentication\nend\n", read("legacy/config/routes.rb")
   assert_equal false, Cybertrain::CLI::Authentication.enable_jobs_page("legacy/config/routes.rb", "legacy/app/controllers/application_controller.rb")
+  # The explicit line commented out is drawn the same; a line with other
+  # options, or an already drawn page without the skip, is left alone.
+  File.write("legacy/config/routes.rb", "Cybertrain::Routes.draw do\n    # jobs_page \"/admin/jobs\", before_action: :require_admin, skip_before_action: :require_authentication\nend\n")
+  assert_equal true, Cybertrain::CLI::Authentication.enable_jobs_page("legacy/config/routes.rb", "legacy/app/controllers/application_controller.rb")
+  assert_equal "Cybertrain::Routes.draw do\n    jobs_page \"/admin/jobs\", before_action: :require_admin, skip_before_action: :require_authentication\nend\n", read("legacy/config/routes.rb")
+  ["  # jobs_page \"/admin/jobs\", before_action: :require_staff\n", "  jobs_page \"/admin/jobs\", before_action: :require_admin\n"].each do |line|
+    File.write("legacy/config/routes.rb", "Cybertrain::Routes.draw do\n#{line}end\n")
+    assert_equal false, Cybertrain::CLI::Authentication.enable_jobs_page("legacy/config/routes.rb", "legacy/app/controllers/application_controller.rb")
+    assert_equal "Cybertrain::Routes.draw do\n#{line}end\n", read("legacy/config/routes.rb")
+  end
 end
 
 test "the controllers open their sign-in actions and the views post to the routes" do
@@ -656,7 +667,7 @@ test "the routes and the layout's nav are inserted" do
       resource :session, only: [:new, :create, :destroy]
       get "/sign_up", to: "registrations#new", as: "sign_up"
       post "/sign_up", to: "registrations#create"
-      jobs_page "/admin/jobs", before_action: :require_admin
+      jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
     end
   RUBY
   layout = read("shop/app/views/layouts/application.html.erb")
@@ -722,7 +733,7 @@ test "the generator runs after a scaffold, with migration versions that follow" 
       get "/sign_up", to: "registrations#new", as: "sign_up"
       post "/sign_up", to: "registrations#create"
       resources :products
-      jobs_page "/admin/jobs", before_action: :require_admin
+      jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
     end
   RUBY
 end
@@ -763,7 +774,7 @@ test "--invite-only writes the user command and /setup instead of the sign-up pa
       resource :session, only: [:new, :create, :destroy]
       get "/setup", to: "setup#new", as: "setup"
       post "/setup", to: "setup#create"
-      jobs_page "/admin/jobs", before_action: :require_admin
+      jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
     end
   RUBY
 end

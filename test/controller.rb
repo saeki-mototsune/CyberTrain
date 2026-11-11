@@ -829,4 +829,101 @@ test "the locale is reset per action: a keep-alive pair, the first sets ja" do
   assert_equal "en can't be blank", client.get("/show").body
 end
 
+# The jobs page's controller as ControllersEmitter writes it for three
+# jobs_page forms (test/gen_controllers.rb pins those lines), under an
+# ApplicationController shaped like `generate authentication`'s:
+# resume_session then require_authentication (303 to sign in), and
+# require_admin (404 unless the user is an admin). The x-user header plays
+# the session: "" a visitor, "ann" a user, "admin" an admin.
+JOBS_CHAIN = []
+
+class JobsAppController < Cybertrain::Controller
+  before_action :resume_session
+  before_action :require_authentication
+
+  def resume_session
+    JOBS_CHAIN << "resume_session"
+    @user = request.header("x-user").to_s
+    nil
+  end
+
+  def require_authentication
+    JOBS_CHAIN << "require_authentication"
+    redirect_to "/session/new", status: :see_other if @user.empty?
+    nil
+  end
+
+  def require_admin
+    JOBS_CHAIN << "require_admin"
+    render plain: "Not Found", status: :not_found unless @user == "admin"
+    nil
+  end
+
+  # A guard that only restricts a user who exists (N2's shape).
+  def check_staff
+    JOBS_CHAIN << "check_staff"
+    head :forbidden if @user == "ann"
+    nil
+  end
+
+  def run_callback(name)
+    case name
+    when :resume_session then resume_session
+    when :require_authentication then require_authentication
+    when :require_admin then require_admin
+    when :check_staff then check_staff
+    else super
+    end
+  end
+
+  def index
+    render plain: "JOBS"
+  end
+end
+
+# jobs_page "/admin/jobs", before_action: :require_authentication
+class JobsByAuthenticationController < JobsAppController
+  before_action :require_authentication
+end
+
+# jobs_page "/admin/jobs", before_action: :check_staff
+class JobsByStaffController < JobsAppController
+  before_action :check_staff
+end
+
+# jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+class JobsByAdminController < JobsAppController
+  skip_before_action :require_authentication
+  before_action :require_admin
+end
+
+def jobs_get(klass, user)
+  JOBS_CHAIN.clear
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/admin/jobs", { "host" => "example.test", "x-user" => user }, ""))
+  c = case klass
+      when "authentication" then JobsByAuthenticationController.new(ctx)
+      when "staff" then JobsByStaffController.new(ctx)
+      else JobsByAdminController.new(ctx)
+      end
+  c.process(:index) { |x| x.index }
+  "#{c.response.status} #{c.response.body} #{JOBS_CHAIN.join(",")}"
+end
+
+test "a jobs page guarded by require_authentication alone does not let a visitor in" do
+  assert_equal "303  resume_session,require_authentication", jobs_get("authentication", "")
+  assert_equal "200 JOBS resume_session,require_authentication,require_authentication", jobs_get("authentication", "ann")
+end
+
+test "a jobs page guarded by another method keeps authentication in front of it" do
+  assert_equal "303  resume_session,require_authentication", jobs_get("staff", "")
+  assert_equal "403  resume_session,require_authentication,check_staff", jobs_get("staff", "ann")
+  assert_equal "200 JOBS resume_session,require_authentication,check_staff", jobs_get("staff", "admin")
+end
+
+test "with skip_before_action: :require_authentication, require_admin alone answers: 404 to a visitor" do
+  assert_equal "404 Not Found resume_session,require_admin", jobs_get("admin", "")
+  assert_equal "404 Not Found resume_session,require_admin", jobs_get("admin", "ann")
+  assert_equal "200 JOBS resume_session,require_admin", jobs_get("admin", "admin")
+end
+
 Cybertrain::Test.run!

@@ -161,11 +161,12 @@ module Cybertrain
           else
             seen << parent
             inherited = File.read(path)
-            # The authentication generator's include: its callbacks are read
-            # from the concern itself.
-            unless inherited.index(AUTHENTICATION_INCLUDE).nil?
+            # The authentication generator's include (the line
+            # Authentication.include_line? recognises, as that generator
+            # does): its callbacks are read from the concern itself.
+            if Authentication.included?(inherited)
               safe = !authentication_concern_checks_more?(root, spec)
-              inherited = inherited.sub(AUTHENTICATION_INCLUDE, "\n")
+              inherited = without_authentication_include(inherited)
             end
             head = "class #{parent} < "
             at = line_start(inherited, head, "start")
@@ -385,12 +386,15 @@ module Cybertrain
         true
       end
 
-      # The line `cybertrain generate authentication` puts into
-      # ApplicationController (CLI::Authentication::INCLUDE_LINE).
-      AUTHENTICATION_INCLUDE = "\n  include Authentication\n"
+      # source without its `include Authentication` lines.
+      def self.without_authentication_include(source)
+        kept = +""
+        source.each_line { |line| kept << line unless Authentication.include_line?(line) }
+        kept
+      end
 
       # Whether app/controllers/concerns/authentication.rb, which
-      # AUTHENTICATION_INCLUDE brings in, checks more for show than for the
+      # `include Authentication` brings in, checks more for show than for the
       # download (callback_checks_more?, its `extend ActiveSupport::Concern`
       # aside); true when the file is not there to read.
       def self.authentication_concern_checks_more?(root, spec)

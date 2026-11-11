@@ -1,3 +1,4 @@
+require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 require "cybertrain/generator/url_support"
@@ -536,6 +537,70 @@ test "a second jobs_page raises naming the first path" do
     end
   end
   assert_equal "jobs_page \"/ops/jobs\": the jobs page is already drawn at \"/admin/jobs\" (one per application)", message
+end
+
+test "jobs_page skip_before_action: records the inherited callback the page skips" do
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+  end
+  page = Cybertrain::Routes.jobs_page_spec
+  assert_equal "require_admin", page.jobs_before_action
+  assert_equal "require_authentication", page.jobs_skip_before_action
+  Cybertrain::Routes.reset!
+  Cybertrain::Routes.draw do
+    jobs_page "/admin/jobs", before_action: :require_admin
+  end
+  assert_equal "", Cybertrain::Routes.jobs_page_spec.jobs_skip_before_action
+  Cybertrain::Routes.reset!
+end
+
+# A skip that removes the page's own guard, or skips with no guard at all,
+# would open the page to everyone: refused, naming config/routes.rb and the
+# line when gen runs in the app (its current directory).
+test "jobs_page refuses a skip_before_action: that would open the page" do
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      jobs_page "/admin/jobs", before_action: :require_authentication, skip_before_action: :require_authentication
+    end
+  end
+  assert_equal "jobs_page \"/admin/jobs\": skip_before_action: :require_authentication is the page's own before_action:; " \
+               "skipping it would open the page to everyone", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      jobs_page "/admin/jobs", skip_before_action: :require_authentication
+    end
+  end
+  assert_equal "jobs_page \"/admin/jobs\": skip_before_action: :require_authentication needs a before_action: that decides " \
+               "who sees the page; without one it would open the page to everyone", message
+  Cybertrain::Routes.reset!
+  message = assert_raises("ArgumentError") do
+    Cybertrain::Routes.draw do
+      jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: "require auth"
+    end
+  end
+  assert_equal "jobs_page \"/admin/jobs\": skip_before_action: \"require auth\" is not a method name", message
+  Cybertrain::Routes.reset!
+
+  # Run where gen runs, the message starts with the file and line.
+  dir = Dir.mktmpdir("cybertrain-jobs-page-routes")
+  Dir.mkdir("#{dir}/config")
+  File.write("#{dir}/config/routes.rb", "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\"\n  root \"posts#index\"\n" \
+                                        "  jobs_page \"/admin/jobs\", skip_before_action: :require_authentication\nend\n")
+  message = Dir.chdir(dir) do
+    assert_raises("ArgumentError") do
+      Cybertrain::Routes.draw do
+        jobs_page "/admin/jobs", skip_before_action: :require_authentication
+      end
+    end
+  end
+  File.delete("#{dir}/config/routes.rb")
+  Dir.rmdir("#{dir}/config")
+  Dir.rmdir(dir)
+  assert message.start_with?("config/routes.rb:4: jobs_page \"/admin/jobs\": skip_before_action: :require_authentication needs"), message
+  Cybertrain::Routes.reset!
 end
 
 test "jobs_page refuses a path it cannot route and a before_action that is not a method name" do

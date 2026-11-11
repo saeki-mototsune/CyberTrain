@@ -39,4 +39,7 @@ ok   an exception the controller re-raises is not logged by it (ErrorPages logs 
 ok   an app exception sharing a bare name with a framework one is still raised (500 path)
 ok   local_path? and safe_redirect_path accept only an ordinary local path
 ok   the locale is reset per action: a keep-alive pair, the first sets ja
-41 tests, 200 assertions, 0 failures
+ok   a jobs page guarded by require_authentication alone does not let a visitor in
+ok   a jobs page guarded by another method keeps authentication in front of it
+ok   with skip_before_action: :require_authentication, require_admin alone answers: 404 to a visitor
+44 tests, 208 assertions, 0 failures

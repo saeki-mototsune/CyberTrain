@@ -99,7 +99,7 @@ run_variant() {
   cybertrain generate authentication $flag > generate.log || { cat generate.log >&2; fail "generate authentication $flag"; }
   test -f app/controllers/concerns/authentication.rb || fail "no Authentication concern"
   grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "ApplicationController does not include Authentication"
-  grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin$' config/routes.rb || fail "the jobs page is not drawn"
+  grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication$' config/routes.rb || fail "the jobs page is not drawn"
   if [ "$VARIANT" = "invite" ]; then
     test ! -e app/controllers/registrations_controller.rb || fail "--invite-only wrote a sign-up page"
   fi

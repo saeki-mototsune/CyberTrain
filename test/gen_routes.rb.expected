@@ -27,6 +27,8 @@ ok   Gen.with_options appends format, query and anchor (spec 2.6, plan decision 
 ok   jobs_page draws the six jobs routes to CybertrainJobsController
 ok   jobs_page without before_action: records an open page
 ok   a second jobs_page raises naming the first path
+ok   jobs_page skip_before_action: records the inherited callback the page skips
+ok   jobs_page refuses a skip_before_action: that would open the page
 ok   jobs_page refuses a path it cannot route and a before_action that is not a method name
 ok   namespace prefixes path, helper and controller, and nests
 ok   namespace draws root and a nested resource under its prefix
@@ -41,4 +43,4 @@ ok   redirect refuses a status that is not 3xx and a %{name} the pattern lacks
 ok   a route path's :param name must be a lowercase name
 ok   RouteSpec takes a format by default
 ok   misuse is refused with a message
-43 tests, 193 assertions, 0 failures
+45 tests, 204 assertions, 0 failures

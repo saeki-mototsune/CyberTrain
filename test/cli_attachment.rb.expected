@@ -339,7 +339,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/club.rb (./club user)
 create db/migrate/20260925120002_create_posts.rb
@@ -421,7 +421,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/blog.rb (./blog user)
 create db/migrate/20260925120003_add_cover_to_articles.rb
@@ -506,7 +506,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/desk.rb (./desk user)
 create db/migrate/20260925120003_add_scan_to_memos.rb
@@ -579,7 +579,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/yard.rb (./yard user)
 create db/migrate/20260925120003_add_photo_to_plans.rb
@@ -651,7 +651,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/barn.rb (./barn user)
 create spin.toml
@@ -711,7 +711,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/loft.rb (./loft user)
 create spin.toml
@@ -771,7 +771,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/shed.rb (./shed user)
 create spin.toml
@@ -831,7 +831,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/coop.rb (./coop user)
 create spin.toml
@@ -891,7 +891,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/hive.rb (./hive user)
 create spin.toml
@@ -951,7 +951,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/pen.rb (./pen user)
 ok   show restrictions are preserved or attachment generation is refused
@@ -1012,7 +1012,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/restricted.rb (./restricted user)
 create db/migrate/20260925120003_add_photo_to_plans.rb
@@ -1085,7 +1085,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/inherited.rb (./inherited user)
 create db/migrate/20260925120003_add_photo_to_plans.rb
@@ -1159,7 +1159,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/concerned.rb (./concerned user)
 create db/migrate/20260925120003_add_photo_to_plans.rb
@@ -1278,7 +1278,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
 insert test/attachment_product_photo.rb (sign in first)
@@ -1685,4 +1685,4 @@ create test/support/app_test.rb
 create test/attachment_item_set_post.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-34 tests, 347 assertions, 0 failures
+34 tests, 350 assertions, 0 failures

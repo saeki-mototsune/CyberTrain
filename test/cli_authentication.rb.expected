@@ -46,7 +46,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/shop.rb (./shop user)
 ok   generate authentication writes the migrations, models, controllers, views and tests
@@ -124,7 +124,8 @@ create tmp/.keep
 create test/.keep
 skip app/controllers/application_controller.rb (it defines require_authentication itself): replace that code with `include Authentication` (app/controllers/concerns/authentication.rb)
 skip config/routes.rb (# jobs_page "/admin/jobs", before_action: :require_admin): ApplicationController has no require_admin until it includes Authentication
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 ok   ApplicationController that already defines require_authentication (0.4's block) is left alone
 ok   the controllers open their sign-in actions and the views post to the routes
 ok   every view and flash string goes through t
@@ -212,7 +213,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /sign_up
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/store.rb (./store user)
 ok   the generator runs after a scaffold, with migration versions that follow
@@ -264,7 +265,7 @@ create test/authentication.rb
 create test/admin.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, get/post /setup
-route jobs_page "/admin/jobs", before_action: :require_admin
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/club.rb (./club user, the first-run warning)
 insert config/app.rb (CLUB_SETUP_OPEN)
@@ -416,4 +417,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-25 tests, 360 assertions, 0 failures
+25 tests, 366 assertions, 0 failures
