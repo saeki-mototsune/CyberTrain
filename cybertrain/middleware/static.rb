@@ -84,11 +84,17 @@ module Cybertrain
     # request: the Router reads the same cached Array afterwards (read-only
     # here, as there), and an invalid byte sequence in the path is raised from
     # there as the one QueryMalformed (400) decision, by whichever reads
-    # first -- this middleware for GET/HEAD.
+    # first -- this middleware for GET/HEAD. Under /assets a segment that
+    # starts with "." is not served: gen's .manifest and the
+    # .<name>.<pid>.tmp a crashed gen run leaves are its own files. Dotfiles
+    # placed elsewhere in public/ (/.well-known/...) are served.
     def file_for(request)
       segments = request.path_segments
       segments.each do |seg|
         return "" if seg == ".." || seg == "." || seg.include?("/") || seg.include?("\\") || seg.include?("\0")
+      end
+      if !segments.empty? && segments[0] == "assets"
+        segments.each { |seg| return "" if seg.start_with?(".") }
       end
       file = segments.empty? ? @root : "#{@root}/#{segments.join("/")}"
       file = "#{file}/index.html" if File.directory?(file)

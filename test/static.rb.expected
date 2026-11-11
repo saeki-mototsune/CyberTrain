@@ -12,6 +12,7 @@ ok   HEAD keeps Content-Length but sends no body
 ok   a current or kept digest is immutable
 ok   an undigested file under public/assets keeps max-age=3600
 ok   a digest-shaped name gen did not write keeps max-age=3600
+ok   dotfiles under /assets are not served; elsewhere in public/ they are
 ok   a symlink is served only when it stays inside the root
 ok   an absolute or encoded path cannot leave the root
-16 tests, 115 assertions, 0 failures
+17 tests, 126 assertions, 0 failures

@@ -25,6 +25,9 @@ ASSET_FILES = ["assets/app-1a2b3c4d.css", "assets/app-0badf00d.css", "assets/con
                "assets/LICENSE-2b3c4d5e", "assets/plain.txt", "assets/app-99999999.css", "x/app-1a2b3c4d.css"]
 ASSET_FILES.each { |f| File.write("#{ROOT}/#{f}", "/* #{f} */") }
 File.write(ROOT + "/assets/.manifest", "app.css 1a2b3c4d 0badf00d\n../escape.css 0badf00d\n")
+File.write(ROOT + "/assets/controllers/.hello_controller-abcdef01.js.123.tmp", "partial")
+Dir.mkdir(ROOT + "/.well-known")
+File.write(ROOT + "/.well-known/security.txt", "Contact: mailto:security@example.com\n")
 File.symlink(SECRET, ROOT + "/link.txt")
 File.symlink(OUTSIDE, ROOT + "/outdir")
 File.symlink(ROOT + "/robots.txt", ROOT + "/inner.txt")
@@ -49,6 +52,9 @@ Cybertrain::Assets.load_kept(ROOT)
 at_exit do
   ASSET_FILES.each { |f| File.delete("#{ROOT}/#{f}") }
   File.delete(ROOT + "/assets/.manifest")
+  File.delete(ROOT + "/assets/controllers/.hello_controller-abcdef01.js.123.tmp")
+  File.delete(ROOT + "/.well-known/security.txt")
+  Dir.rmdir(ROOT + "/.well-known")
   Dir.rmdir(ROOT + "/assets/controllers")
   Dir.rmdir(ROOT + "/assets")
   Dir.rmdir(ROOT + "/x")
@@ -219,6 +225,18 @@ test "a digest-shaped name gen did not write keeps max-age=3600" do
   refute Cybertrain::Assets.kept_file?("app-99999999.css")
   refute Cybertrain::Assets.kept_file?("controllers/hello_controller-0badf00d.js")
   refute Cybertrain::Assets.kept_file?("")
+end
+
+test "dotfiles under /assets are not served; elsewhere in public/ they are" do
+  ["/assets/.manifest", "/assets/%2emanifest", "/assets/controllers/.hello_controller-abcdef01.js.123.tmp"].each do |target|
+    res = serve("GET", target)
+    assert_equal 404, res.status
+    refute res.body.include?("1a2b3c4d"), target
+    refute res.body.include?("partial"), target
+  end
+  res = serve("GET", "/.well-known/security.txt")
+  assert_equal 200, res.status
+  assert_equal "Contact: mailto:security@example.com\n", res.body
 end
 
 test "a symlink is served only when it stays inside the root" do
