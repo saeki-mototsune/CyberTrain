@@ -4,6 +4,13 @@ require "cybertrain/test"
 require "cybertrain"
 require "cybertrain/websocket"
 
+# Requiring the framework must not create Cybertrain.config: one made then
+# keeps the environment of that moment (development), before the lines
+# below set CYBERTRAIN_ENV (or an embedded build's gen/views.rb defaults it
+# to production). cybertrain/cache's prune task once read its interval
+# through it at require time.
+CONFIG_AT_REQUIRE = Cybertrain.config_loaded?
+
 # The `worker` and `feeds` process roles of Cybertrain::Main.run: the
 # predicates, `help`, a worker that boots, runs a job on its job threads
 # and returns 0 once stopped, argument errors, and `feeds` refusing an
@@ -69,6 +76,11 @@ def job_state(id)
   Cybertrain::Cast.str(rows[0]["state"])
 end
 
+test "requiring the framework leaves the config to the first use, after CYBERTRAIN_ENV is set" do
+  refute CONFIG_AT_REQUIRE
+  assert_equal "test", Cybertrain.config.env
+end
+
 test "worker? and feeds? recognise their words; server? is false for both" do
   assert Cybertrain::Main.worker?(["worker"])
   refute Cybertrain::Main.worker?([])
@@ -91,7 +103,7 @@ test "feeds before any subscription: nothing to run is 0, any name is unknown" d
   assert_equal 1, run(["feeds", "nosuch"])
 end
 
-test "worker with only the built-in mail job and no task boots, waits for the stop and returns 0" do
+test "worker with only the built-in mail job and the cache prune task boots, waits for the stop and returns 0" do
   spawn_stopper(0.3)
   assert_equal 0, run(["worker"])
   refute Cybertrain::Job.running?
@@ -115,7 +127,7 @@ test "worker runs a due job on its job threads and stops them" do
   refute Cybertrain::Job.running?
   refute Cybertrain::Scheduler.running?
   assert_includes LOG.string, "[INFO] Job threads started: 3"
-  assert_includes LOG.string, "[INFO] Scheduler started: hourly every 3600s"
+  assert_includes LOG.string, "[INFO] Scheduler started: cybertrain cache prune every 300s, hourly every 3600s"
 end
 
 test "feeds runs only the named subscription and stops it" do
