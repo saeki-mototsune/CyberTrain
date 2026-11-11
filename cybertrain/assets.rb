@@ -3,7 +3,8 @@
 # vendor/javascript into public/assets and writes gen/assets.rb, whose last
 # line installs its tables here:
 #
-#   Cybertrain::Assets.install(Gen::Assets.resolver, Gen::Assets.importmap_json, Gen::Assets.preload_paths)
+#   Cybertrain::Assets.install(Gen::Assets.resolver, Gen::Assets.importmap_json, Gen::Assets.preload_paths,
+#                              "<build digest>")
 #
 # Until then (an application with no gen/assets.rb) the table is empty:
 # every name is unknown, the import map has no imports and nothing is
@@ -37,6 +38,7 @@ module Cybertrain
     @resolver = empty_resolver
     @importmap_json = "{\"imports\":{}}"
     @preload_paths = Array.new(0) { "" }
+    @build_digest = ""
     # The digested names below /assets that public/assets/.manifest keeps
     # (load_kept), name => true. Typed empty Hash (rule 9).
     @kept = { "" => true }
@@ -58,13 +60,27 @@ module Cybertrain
     #   `Gen::Assets.resolver`; pass it positionally (spikes/NOTES.md rule 42)
     # @param importmap_json [String] the import map, compact JSON
     # @param preload_paths [Array<String>] the paths and URLs to preload
+    # @param build_digest [String] a digest of this build's assets (and,
+    #   in a `cybertrain build` binary, its embedded views), {.build_digest}
     # @return [nil]
     # @api public
-    def self.install(resolver, importmap_json, preload_paths)
+    def self.install(resolver, importmap_json, preload_paths, build_digest = "")
       @resolver = resolver
       @importmap_json = importmap_json
       @preload_paths = preload_paths
+      @build_digest = build_digest
       nil
+    end
+
+    # A digest gen writes into gen/assets.rb: of the digested assets and
+    # the import map, and in a binary `cybertrain build` made, of the views
+    # and components embedded in it too. It changes when a deploy changes
+    # what a page renders, so {Controller#fresh_when} mixes it into every
+    # ETag; `""` until gen/assets.rb installs one.
+    # @return [String]
+    # @api public
+    def self.build_digest
+      @build_digest
     end
 
     # @example

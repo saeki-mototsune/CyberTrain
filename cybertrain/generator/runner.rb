@@ -38,12 +38,14 @@ module Cybertrain
         jobs_page = Cybertrain::Routes.jobs_page_spec
         warning = ControllersEmitter.jobs_page_warning(jobs_page)
         puts warning unless warning.empty?
+        views = ViewsEmitter.emit(root, embed)
         outputs = [
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
-          ["gen/assets.rb", assets_output(root, check)],
+          # An embedded build's views go into its build digest (the ETags).
+          ["gen/assets.rb", assets_output(root, check, embed ? views : "")],
           ["gen/controllers.rb", controllers_source(root, jobs_page)],
           ["gen/concerns.rb", concerns_source(root)],
-          ["gen/views.rb", ViewsEmitter.emit(root, embed)],
+          ["gen/views.rb", views],
           ["gen/helpers.rb", HelpersEmitter.emit(HelperScan.scan_dir("#{root}/app/helpers"))],
           ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))],
           ["gen/jobs.rb", JobsEmitter.emit(JobScan.scan_dir("#{root}/app/jobs"))]
@@ -111,16 +113,17 @@ module Cybertrain
       end
 
       # gen/assets.rb's source; without check, public/assets is brought up to
-      # date first (its log lines printed).
-      def self.assets_output(root, check)
+      # date first (its log lines printed). `views` is the embedded
+      # gen/views.rb of an --embed-views run, "" otherwise.
+      def self.assets_output(root, check, views)
         files = AssetScan.scan(root)
         AssetsEmitter.sync_public(root, files).each { |line| puts line } unless check
-        AssetsEmitter.emit(files, importmap_pins(root, files))
+        AssetsEmitter.emit(files, importmap_pins(root, files), views)
       end
 
       # gen/assets.rb's source, public/assets left alone.
       def self.assets_source(root)
-        assets_output(root, true)
+        assets_output(root, true, "")
       end
 
       # The pins of root/config/importmap.rb (none without the file).

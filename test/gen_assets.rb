@@ -279,7 +279,10 @@ test "the import map, preloads and the emitted case" do
   assert_includes source, "      else \"\"\n"
   assert_includes source, "      #{Cybertrain::Gen::ViewsEmitter.literal(json)}\n"
   assert_includes source, "    def self.resolver = ->(name) { digest_path(name) }\n"
-  assert_includes source, "\nCybertrain::Assets.install(Gen::Assets.resolver, Gen::Assets.importmap_json, Gen::Assets.preload_paths)\n"
+  build = Cybertrain::Gen::AssetsEmitter.build_digest_of(files, pins, "")
+  assert_equal 16, build.size
+  assert_includes source, "\nCybertrain::Assets.install(Gen::Assets.resolver, Gen::Assets.importmap_json, Gen::Assets.preload_paths,\n" \
+                          "                           \"#{build}\")\n"
   assert_includes source, %(      ["/assets/application-#{app}.js", "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js", "/assets/controllers/hello_controller-#{hello}.js"]\n)
   assert_equal json, Cybertrain::Gen::AssetsEmitter.importmap_json(pins, files)
 
@@ -297,6 +300,19 @@ test "the import map, preloads and the emitted case" do
   assert_equal "config/importmap.rb:2: pin \"x\": x.js is not an asset", message
   message = assert_raises("ArgumentError") { Cybertrain::Gen::ImportmapReader.read("pin \"y\", to: \"x.js\"\n", files) }
   assert_equal "config/importmap.rb:1: pin \"y\": x.js is not an asset", message
+end
+
+test "the build digest changes with an asset, the import map or the embedded views" do
+  files = scan_now
+  pins = Cybertrain::Gen::ImportmapReader.read(File.read("#{TMP}/config/importmap.rb"), files)
+  base = Cybertrain::Gen::AssetsEmitter.build_digest_of(files, pins, "")
+  assert_equal base, Cybertrain::Gen::AssetsEmitter.build_digest_of(files, pins, "")
+  refute base == Cybertrain::Gen::AssetsEmitter.build_digest_of(files, pins, "SOURCES = {}")
+  fewer = Cybertrain::Gen::ImportmapReader.read("pin \"application\"\n", files)
+  refute base == Cybertrain::Gen::AssetsEmitter.build_digest_of(files, fewer, "")
+  refute base == Cybertrain::Gen::AssetsEmitter.build_digest_of(files[1, files.size - 1].to_a, pins, "")
+  # an --embed-views run hands its gen/views.rb to the digest
+  refute Cybertrain::Gen::Runner.assets_output(TMP, true, "embedded views") == Cybertrain::Gen::Runner.assets_source(TMP)
 end
 
 test "an application with no assets gets an empty table" do

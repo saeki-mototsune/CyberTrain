@@ -27,4 +27,5 @@ module Gen
   end
 end
 
-Cybertrain::Assets.install(Gen::Assets.resolver, Gen::Assets.importmap_json, Gen::Assets.preload_paths)
+Cybertrain::Assets.install(Gen::Assets.resolver, Gen::Assets.importmap_json, Gen::Assets.preload_paths,
+                           "db34534427f2ed7a")

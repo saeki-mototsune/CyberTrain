@@ -32,6 +32,7 @@ ok   a manifest line naming a path outside public/assets deletes nothing
 wrote public/assets/.manifest
 ok   boot and gen read a malformed manifest line alike: the whole line is dropped
 ok   the import map, preloads and the emitted case
+ok   the build digest changes with an asset, the import map or the embedded views
 ok   an application with no assets gets an empty table
 ok   the fixture's compiled gen/assets.rb installs its table
 wrote gen/routes.rb
@@ -46,4 +47,4 @@ wrote gen/console.rb
 wrote gen/app.rb
 stale: gen/assets.rb
 ok   gen --check compares gen/assets.rb only
-18 tests, 103 assertions, 0 failures
+19 tests, 109 assertions, 0 failures
