@@ -16,9 +16,11 @@
 # Refused, as ArgumentError "path:line: problem": tabs in indentation,
 # anchors and aliases, tags, a second document, flow mappings, a duplicate
 # key, an unterminated quoted string, a top-level key that is not a locale,
-# a sequence item that is not a scalar. Multi-line plain and quoted
-# scalars and quoted keys are outside the subset: a continuation line is
-# refused as "expected a key followed by \":\"".
+# a sequence item that is not a scalar, quoted keys, text after a closed
+# quote or flow sequence, a bad \u escape, a block scalar header other than
+# | or > with - or +. Multi-line plain and quoted scalars are outside the
+# subset: a continuation line is refused as "expected a key followed by
+# ":"; multi-line scalars are not supported, use | or >".
 #
 # Spinel rules followed: 58 (each message is built into a local before
 # raise), 62 (the text is read through a fresh local), 10/34/41 (every
@@ -69,6 +71,11 @@ module Cybertrain
               message = "#{path}:#{number}: only one document per file"
               raise ArgumentError, message
             end
+            rest = LocaleYaml.strip_comment(line[3, line.size - 3].to_s).strip
+            unless rest.empty?
+              message = "#{path}:#{number}: nothing may follow --- on its line"
+              raise ArgumentError, message
+            end
             next
           end
           indent = LocaleYaml.indent_of(line, path, number)
@@ -82,9 +89,13 @@ module Cybertrain
             indents.pop
             prefixes.pop
           end
+          if content.start_with?("'") || content.start_with?("\"")
+            message = "#{path}:#{number}: quoted keys are not supported"
+            raise ArgumentError, message
+          end
           colon = LocaleYaml.key_colon(content)
           if colon < 0
-            message = "#{path}:#{number}: expected a key followed by \":\""
+            message = "#{path}:#{number}: expected a key followed by \":\"; multi-line scalars are not supported, use | or >"
             raise ArgumentError, message
           end
           name = content[0, colon].to_s.strip
@@ -122,6 +133,10 @@ module Cybertrain
               out << LocaleEntry.new(full, "", [], false, path, number)
             end
           elsif rest.start_with?("|") || rest.start_with?(">")
+            unless rest == "|" || rest == ">" || rest.size == 2 && (rest[1] == "-" || rest[1] == "+")
+              message = "#{path}:#{number}: unsupported block scalar header #{rest.inspect}"
+              raise ArgumentError, message
+            end
             j = i
             body = []
             while j < lines.size && (LocaleYaml.blank_text?(lines[j]) || LocaleYaml.indent_of(lines[j], path, j + 1) > indent)
@@ -200,7 +215,8 @@ module Cybertrain
       end
 
       def self.item_text(text, path, number)
-        if !text.start_with?("'") && !text.start_with?("\"") && !text.start_with?(":") && LocaleYaml.key_colon(text) > 0
+        nested = text.start_with?("[") || text.start_with?("{") || text.start_with?("|") || text.start_with?(">") || text == "-" || text.start_with?("- ")
+        if nested || !text.start_with?("'") && !text.start_with?("\"") && !text.start_with?(":") && LocaleYaml.key_colon(text) > 0
           message = "#{path}:#{number}: sequences may hold only scalars"
           raise ArgumentError, message
         end
@@ -239,6 +255,7 @@ module Cybertrain
               k += 2
               next
             end
+            LocaleYaml.nothing_after(t, k + 1, "a quoted string", path, number)
             return out
           end
           out << c
@@ -253,7 +270,10 @@ module Cybertrain
         k = 1
         while k < t.size
           c = t[k]
-          return out if c == "\""
+          if c == "\""
+            LocaleYaml.nothing_after(t, k + 1, "a quoted string", path, number)
+            return out
+          end
 
           if c == "\\" && k + 1 < t.size
             e = t[k + 1]
@@ -265,8 +285,21 @@ module Cybertrain
             when "\\" then out << "\\"
             when "/" then out << "/"
             when "u"
-              out << t[k, 4].to_s.to_i(16).chr(Encoding::UTF_8)
+              code = LocaleYaml.hex4(t, k, path, number)
               k += 4
+              if code >= 0xD800 && code <= 0xDBFF
+                low = t[k, 2] == "\\u" ? LocaleYaml.hex4(t, k + 2, path, number) : 0
+                if low < 0xDC00 || low > 0xDFFF
+                  message = "#{path}:#{number}: invalid \\u escape"
+                  raise ArgumentError, message
+                end
+                code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
+                k += 6
+              elsif code >= 0xDC00 && code <= 0xDFFF
+                message = "#{path}:#{number}: invalid \\u escape"
+                raise ArgumentError, message
+              end
+              out << code.chr(Encoding::UTF_8)
             else
               message = "#{path}:#{number}: unknown escape \\#{e}"
               raise ArgumentError, message
@@ -280,13 +313,57 @@ module Cybertrain
         raise ArgumentError, message
       end
 
+      # The four hex digits at t[k, 4] as an Integer, else the refusal.
+      def self.hex4(t, k, path, number)
+        digits = t[k, 4].to_s
+        unless digits.size == 4 && digits.match?(/\A[0-9a-fA-F]{4}\z/)
+          message = "#{path}:#{number}: invalid \\u escape"
+          raise ArgumentError, message
+        end
+        digits.to_i(16)
+      end
+
+      # Refuses anything but blanks in t from index k, after a closed quote or bracket.
+      def self.nothing_after(t, k, what, path, number)
+        return if t[k, t.size - k].to_s.strip.empty?
+
+        message = "#{path}:#{number}: unexpected text after #{what}"
+        raise ArgumentError, message
+      end
+
+      # The index of the first unquoted "]" in t, -1 if none, -2 if a nested [ or { comes first.
+      def self.flow_close(t)
+        quote = ""
+        k = 1
+        while k < t.size
+          c = t[k]
+          if quote.empty?
+            return k if c == "]"
+            return -2 if c == "[" || c == "{"
+
+            quote = c if c == "'" || c == "\""
+          elsif c == "\\" && quote == "\""
+            k += 1
+          elsif c == quote
+            quote = ""
+          end
+          k += 1
+        end
+        -1
+      end
+
       # `[a, 'b', "c"]`: scalars only.
       def self.flow_items(t, path, number)
-        close = t.rindex("]")
-        if close.nil?
+        close = LocaleYaml.flow_close(t)
+        if close == -2
+          message = "#{path}:#{number}: flow mappings are not supported; flow sequences may hold only scalars"
+          raise ArgumentError, message
+        end
+        if close < 0
           message = "#{path}:#{number}: unterminated flow sequence"
           raise ArgumentError, message
         end
+        LocaleYaml.nothing_after(t, close + 1, "a flow sequence", path, number)
         inner = t[1, close - 1].to_s
         items = []
         return items if inner.strip.empty?

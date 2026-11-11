@@ -106,4 +106,52 @@ test "rails-i18n's en.yml and ja.yml parse" do
   assert_equal true, ja.all? { |x| x.entry_key.start_with?("ja.") }
 end
 
+test "quoted keys are refused, not read with their quotes" do
+  assert_equal "config/locales/x.yml:2: quoted keys are not supported", refusal("en:\n  \"b\": y\n")
+  assert_equal "config/locales/x.yml:3: quoted keys are not supported", refusal("en:\n  a: x\n  'no': y\n")
+  assert_equal "y", text_of("en:\n  b: \"y\"\n", "en.b")
+end
+
+test "a block sequence item must be a plain or quoted scalar" do
+  m = "config/locales/x.yml:3: sequences may hold only scalars"
+  assert_equal m, refusal("en:\n  a:\n    - [a, b]\n")
+  assert_equal m, refusal("en:\n  a:\n    - - a\n")
+  assert_equal m, refusal("en:\n  a:\n    - |\n")
+  assert_equal m, refusal("en:\n  a:\n    - >\n")
+  assert_equal m, refusal("en:\n  a:\n    - {b: c}\n")
+  assert_equal ["[a, b]", "- a", "-x"], list_of("en:\n  a:\n    - \"[a, b]\"\n    - '- a'\n    - -x\n", "en.a")
+end
+
+test "text after a closed quoted scalar or flow sequence is refused" do
+  assert_equal "config/locales/x.yml:2: unexpected text after a quoted string", refusal("en:\n  a: \"x\" !tag\n")
+  assert_equal "config/locales/x.yml:2: unexpected text after a quoted string", refusal("en:\n  a: 'x' junk\n")
+  assert_equal "config/locales/x.yml:2: unexpected text after a flow sequence", refusal("en:\n  a: [a, b] junk\n")
+  assert_equal "config/locales/x.yml:2: unexpected text after a flow sequence", refusal("en:\n  a: [a][b]\n")
+  assert_equal "config/locales/x.yml:3: unexpected text after a quoted string", refusal("en:\n  a:\n    - 'x' y\n")
+  assert_equal "x", text_of("en:\n  a: \"x\"   # note\n", "en.a")
+  assert_equal ["a", "b"], list_of("en:\n  a: [a, b]  # note\n", "en.a")
+  assert_equal ["a]b"], list_of("en:\n  a: ['a]b']\n", "en.a")
+end
+
+test "\\u escapes need four hex digits and a valid code point" do
+  m = "config/locales/x.yml:2: invalid \\u escape"
+  assert_equal m, refusal("en:\n  a: \"\\u00zz\"\n")
+  assert_equal m, refusal("en:\n  a: \"\\u00e\"\n")
+  assert_equal m, refusal("en:\n  a: \"\\ud83d\"\n")
+  assert_equal m, refusal("en:\n  a: \"\\ude00\"\n")
+  assert_equal m, refusal("en:\n  a: \"\\ud83dx\"\n")
+  assert_equal "\u{1F600}", text_of("en:\n  a: \"\\ud83d\\ude00\"\n", "en.a")
+  assert_equal "é", text_of("en:\n  a: \"\\u00E9\"\n", "en.a")
+end
+
+test "multi-line scalars, a tag after --- and odd block headers are refused" do
+  assert_equal "config/locales/x.yml:3: expected a key followed by \":\"; multi-line scalars are not supported, use | or >", refusal("en:\n  a: one\n    two\n")
+  assert_equal "config/locales/x.yml:2: unterminated quoted string", refusal("en:\n  a: \"one\n    two\"\n")
+  assert_equal "config/locales/x.yml:1: nothing may follow --- on its line", refusal("--- !tag\nen:\n  a: x\n")
+  assert_equal "x", text_of("--- # c\nen:\n  a: x\n", "en.a")
+  assert_equal "config/locales/x.yml:2: unsupported block scalar header \"|2\"", refusal("en:\n  a: |2\n      x\n")
+  assert_equal "config/locales/x.yml:2: unsupported block scalar header \"|x\"", refusal("en:\n  a: |x\n    y\n")
+  assert_equal "y\n", text_of("en:\n  a: | # note\n    y\n", "en.a")
+end
+
 Cybertrain::Test.run!

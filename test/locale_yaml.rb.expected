@@ -5,4 +5,9 @@ ok   sequences of scalars, block and flow, with ~ as empty
 ok   YAML 1.1 scalars, quotes, BOM, CRLF and tabs
 ok   refusals name file and line
 ok   rails-i18n's en.yml and ja.yml parse
-7 tests, 66 assertions, 0 failures
+ok   quoted keys are refused, not read with their quotes
+ok   a block sequence item must be a plain or quoted scalar
+ok   text after a closed quoted scalar or flow sequence is refused
+ok   \u escapes need four hex digits and a valid code point
+ok   multi-line scalars, a tag after --- and odd block headers are refused
+12 tests, 97 assertions, 0 failures
