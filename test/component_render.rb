@@ -191,6 +191,7 @@ module Gen
         Cybertrain::Component.check_keywords!(name, kwargs, Array.new(0) { "" }, 0)
         ::LoopComponent.new
       when "comment"
+        Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
         return ::CommentComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
 
         Cybertrain::Component.check_keywords!(name, kwargs, ["comment", "comment_counter"], 1)
@@ -198,6 +199,7 @@ module Gen
         else ::CommentComponent.new(comment: kwargs["comment"])
         end
       when "pill"
+        Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
         return ::PillComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
 
         Cybertrain::Component.check_keywords!(name, kwargs, ["pill"], 1)
@@ -343,6 +345,9 @@ test "CommentComponent.with_collection(items) and render component: collection:"
   assert_equal "pages/inline:1: render component: collection: must be an Array, got 2", render_error("<%= render component: \"comment\", collection: v %>")
   assert_equal "pages/inline:1: unknown keyword 'collection' for component 'card' (known: title, value)",
                render_error("<%= render component: \"card\", title: \"x\", collection: comments %>")
+  # Another keyword next to collection: is refused, not dropped.
+  assert_equal "pages/inline:1: component 'comment' with collection: takes no other keyword (given comment_counter, extra)",
+               render_error("<%= render component: \"comment\", collection: comments, comment_counter: 1, extra: 2 %>")
 end
 
 Cybertrain::Test.run!

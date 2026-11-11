@@ -138,6 +138,19 @@ module Cybertrain
       end
       nil
     end
+
+    # `render component: "comment", collection: x` takes no other keyword:
+    # each item is built from the item alone (and its counter), so another
+    # keyword would be dropped. ArgumentError names the others.
+    # @api private
+    def self.check_collection_keywords!(name, kwargs)
+      others = Array.new(0) { "" }
+      kwargs.each_key { |key| others << key unless key == "collection" }
+      return nil if others.empty?
+
+      msg = "component '#{name}' with collection: takes no other keyword (given #{others.join(", ")})"
+      raise ArgumentError, msg
+    end
   end
 
   # A component rendered once per item, ViewComponent's

@@ -257,6 +257,7 @@ test "a component named after its only required keyword gets with_collection and
   RUBY
   arm = <<~'RUBY'
     when "comment"
+      Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
       return ::CommentComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
 
       Cybertrain::Component.check_keywords!(name, kwargs, ["comment", "comment_counter"], 1)
@@ -264,6 +265,7 @@ test "a component named after its only required keyword gets with_collection and
   assert_includes source, arm.lines.map { |l| l == "\n" ? l : "      #{l}" }.join
   arm = <<~'RUBY'
     when "admin/row"
+      Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
       return ::Admin::RowComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
 
       Cybertrain::Component.check_keywords!(name, kwargs, ["row"], 1)

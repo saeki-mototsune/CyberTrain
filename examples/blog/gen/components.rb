@@ -32,6 +32,7 @@ module Gen
     def self.build(name, kwargs)
       case name
       when "comment"
+        Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?("collection")
         return ::CommentComponent.with_collection(kwargs["collection"]) if kwargs.key?("collection")
 
         Cybertrain::Component.check_keywords!(name, kwargs, ["comment"], 1)

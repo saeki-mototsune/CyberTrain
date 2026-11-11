@@ -154,6 +154,8 @@ module Cybertrain
         known_source = known.empty? ? "Array.new(0) { \"\" }" : "[#{known.map { |k| "\"#{k}\"" }.join(", ")}]"
         out << "      when \"#{name}\"\n"
         unless collection_keyword(info).empty?
+          # Any other keyword next to collection: is refused, not dropped.
+          out << "        Cybertrain::Component.check_collection_keywords!(name, kwargs) if kwargs.key?(\"collection\")\n"
           out << "        return ::#{info.class_name}.with_collection(kwargs[\"collection\"]) if kwargs.key?(\"collection\")\n"
           out << "\n"
         end
