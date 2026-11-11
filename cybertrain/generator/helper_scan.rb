@@ -100,6 +100,7 @@ module Cybertrain
         partial_html render_collection render_records record_expected! record_partial
         record_partial_local render_items render_item render_partial_scope
         asset_path stylesheet_link_tag javascript_include_tag image_tag javascript_importmap_tags asset_source nonce_attr
+        t translate l localize translate_helper localize_helper
       ]
 
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/

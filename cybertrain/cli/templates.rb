@@ -693,6 +693,7 @@ module Cybertrain
         start_new_session_for terminate_session after_authentication_url
         cookies
         turbo_stream partial_body
+        t translate
       ]
 
       # Whether `field` as the name of the download action `def <field>` on

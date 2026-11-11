@@ -1,4 +1,6 @@
+require "date"
 require "cybertrain/locales/bundled"
+require "cybertrain/strftime"
 
 # I18n, a top-level module as in Rails (plan decision D1), so application
 # code writes `I18n.t` and `I18n.locale` as there.
@@ -244,9 +246,22 @@ module I18n
   # @raise [InvalidLocale] for a `locale:` that is not available
   # @api public
   def self.t(key, options = {})
+    found = I18n.find_translation(key, options)
+    return found unless found.nil?
+
+    I18n.missing_answer(I18n.option_locale(options), key.to_s)
+  end
+
+  # What {I18n.t} answers for key, or nil when no dictionary holds it and
+  # there is no `default:` (no missing-key answer, no raise): the template
+  # `t` helper answers its own `<span class="translation_missing">` then.
+  # @param key [String, Symbol]
+  # @param options [Hash{Symbol => Object}] as for {I18n.t}
+  # @return [String, nil]
+  # @api private
+  def self.find_translation(key, options = {})
     k = key.to_s
-    wanted = options[:locale]
-    loc = wanted.nil? ? I18n.locale : I18n.resolve_locale(wanted)
+    loc = I18n.option_locale(options)
     vars = { "" => "" }
     vars.delete("")
     counted = false
@@ -275,9 +290,16 @@ module I18n
         found = fallback.to_s
       end
     end
-    return I18n.interpolate_vars(found, vars) unless found.nil?
+    return nil if found.nil?
 
-    I18n.missing_answer(loc, k)
+    I18n.interpolate_vars(found, vars)
+  end
+
+  # The locale of a `locale:` option, else the thread's.
+  # @api private
+  def self.option_locale(options)
+    wanted = options[:locale]
+    wanted.nil? ? I18n.locale : I18n.resolve_locale(wanted)
   end
 
   # The same as {I18n.t}.
@@ -286,6 +308,169 @@ module I18n
   # @return [String]
   # @api public
   def self.translate(key, options = {}) = I18n.t(key, options)
+
+  # Whether key's text is HTML, as Rails decides it: the key ends in
+  # `_html` or `.html` (or is `html`). The template `t` and
+  # Controller#t escape the values interpolated into such a text.
+  # @param key [String]
+  # @return [Boolean]
+  # @api public
+  def self.html_key?(key)
+    k = key.to_s
+    k == "html" || k.end_with?("_html") || k.end_with?(".html")
+  end
+
+  # Whether a missing key answers the marked text (development and test)
+  # rather than the humanised last segment (production); see
+  # {I18n.mark_missing=}.
+  # @return [Boolean]
+  # @api public
+  def self.mark_missing? = @mark_missing
+
+  # value as text in the locale's format, as Rails' `I18n.l`: a Time in
+  # `time.formats.<format>`, a Date in `date.formats.<format>`. `format:`
+  # is a Symbol naming the format (`:default` when not given, `:short`,
+  # `:long`, or any other the dictionaries hold) or a strftime pattern
+  # String; `locale:` formats in another locale. `%a %A %b %B` take the
+  # dictionary's `date.abbr_day_names`, `date.day_names`,
+  # `date.abbr_month_names` and `date.month_names`, `%p` and `%P` its
+  # `time.am` / `time.pm` (upper- and lower-cased, as the i18n gem does;
+  # "" for a Date), `%^a` and the like upper-case the name; every other
+  # directive is strftime's.
+  # @example
+  #   I18n.l(Time.utc(2026, 11, 10, 9, 5), format: :long)    # => "November 10, 2026 09:05"
+  #   I18n.l(Date.new(2026, 11, 10), locale: :ja)            # => "2026/11/10"
+  #   I18n.l(Time.utc(2026, 11, 10, 9, 5), format: "%a %p", locale: :ja)  # => "火 午前"
+  # @param value [Time, Date]
+  # @param options [Hash{Symbol => Object}]
+  # @return [String]
+  # @raise [ArgumentError] `"l: expected a Time or a Date (got Integer)"`,
+  #   or a pattern directive the strftime walk does not know
+  # @raise [MissingTranslationData] `"translation missing: en.time.formats.nope"`
+  #   for a format Symbol no dictionary holds
+  # @raise [InvalidLocale] for a `locale:` that is not available
+  # @api public
+  def self.l(value, options = {})
+    loc = I18n.option_locale(options)
+    kind = ""
+    wday = 0
+    mon = 0
+    hour = -1
+    case value
+    when Time
+      kind = "time"
+      wday = value.wday
+      mon = value.mon
+      hour = value.hour
+    when Date
+      kind = "date"
+      wday = value.wday
+      mon = value.mon
+    else
+      message = "l: expected a Time or a Date (got #{value.class.name})"
+      raise ArgumentError, message
+    end
+    format = options[:format]
+    pattern = ""
+    if format.nil? || format.is_a?(Symbol)
+      name = format.nil? ? "default" : format.to_s
+      key = "#{kind}.formats.#{name}"
+      found = I18n.find_in_locales(loc, key, false, 0)
+      if found.nil?
+        message = I18n.missing_text("#{loc}.#{key}")
+        raise MissingTranslationData, message
+      end
+      pattern = found
+    elsif format.is_a?(String)
+      pattern = format.to_s
+    else
+      message = "l: format: must be a Symbol or a String (got #{format.class.name})"
+      raise ArgumentError, message
+    end
+    named = I18n.localized_names(pattern, loc, wday, mon, hour)
+    Cybertrain::Strftime.walk(value, named, "l format")
+  end
+
+  # The same as {I18n.l}.
+  # @param value [Time, Date]
+  # @param options [Hash{Symbol => Object}]
+  # @return [String]
+  # @api public
+  def self.localize(value, options = {}) = I18n.l(value, options)
+
+  # pattern with `%a %A %b %B %p %P` (and `%^a` ...) replaced by the
+  # locale's names, a `%` in a name doubled; `%%` and every other
+  # directive are left for the strftime walk. A name the dictionaries do
+  # not hold leaves its directive to strftime (English). hour is -1 for a
+  # Date.
+  # @api private
+  def self.localized_names(pattern, loc, wday, mon, hour)
+    s = pattern.to_s # NOTES rule 62: plain byte reads
+    return s unless s.include?("%")
+
+    out = +""
+    n = s.bytesize
+    start = 0
+    i = 0
+    while i < n
+      if s.getbyte(i) != 37 # "%"
+        i += 1
+        next
+      end
+      j = i + 1
+      upper = false
+      if j < n && s.getbyte(j) == 94 # "^"
+        upper = true
+        j += 1
+      end
+      c = j < n ? s.getbyte(j) : 0
+      if c == 37 && !upper
+        i = j + 1
+        next
+      end
+      name = I18n.directive_name(c, loc, wday, mon, hour)
+      if name.nil?
+        i += 1
+        next
+      end
+      out << s.byteslice(start, i - start) if i > start
+      text = upper ? name.upcase : name
+      out << (text.include?("%") ? text.gsub("%", "%%") : text)
+      i = j + 1
+      start = i
+    end
+    out << s.byteslice(start, n - start) if n > start
+    out
+  end
+
+  # The locale's text for one directive byte (a A b B p P), nil for any
+  # other byte or a name no dictionary holds.
+  # @api private
+  def self.directive_name(c, loc, wday, mon, hour)
+    case c
+    when 97 then I18n.list_name("date.abbr_day_names", loc, wday)  # a
+    when 65 then I18n.list_name("date.day_names", loc, wday)       # A
+    when 98 then I18n.list_name("date.abbr_month_names", loc, mon) # b
+    when 66 then I18n.list_name("date.month_names", loc, mon)      # B
+    when 112, 80 # p P
+      return "" if hour < 0
+
+      found = I18n.find_in_locales(loc, hour < 12 ? "time.am" : "time.pm", false, 0)
+      return nil if found.nil?
+
+      c == 112 ? found.upcase : found.downcase
+    end
+  end
+
+  # The index-th name of the list at key, nil when there is none.
+  # @api private
+  def self.list_name(key, loc, index)
+    list = I18n.list_in_locale(loc, key)
+    list = I18n.list_in_locale(I18n.default_locale, key) if list.empty?
+    return nil if index >= list.size
+
+    list[index]
+  end
 
   # The list at key (`"date.abbr_day_names"`), from the same dictionaries
   # in the same order as {I18n.t}; empty when none holds it. `locale:` is

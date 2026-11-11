@@ -24,6 +24,8 @@ require "cybertrain/stream"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
 require "cybertrain/template/turbo_stream_builder"
+require "cybertrain/strftime"
+require "cybertrain/i18n"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/url_support"
 
@@ -173,6 +175,8 @@ module Cybertrain
 
           TurboStreamBuilder.new(self, interp, env)
         when "time_tag" then time_tag(args, kwargs, block, interp, env)
+        when "t", "translate" then translate_helper(args, kwargs, interp)
+        when "l", "localize" then localize_helper(args, kwargs)
         when "current_page?" then current_page?(args, kwargs)
         when "signed_stream_name" then signed_stream_name(args)
         when "stream_source_path" then stream_source_path(args, kwargs)
@@ -1117,6 +1121,122 @@ module Cybertrain
         ""
       end
 
+      # --- i18n (spec 8) ------------------------------------------------------
+
+      # t(key, **options), as Rails' view helper: I18n.t, with a key
+      # starting with "." looked up under the rendering template's name
+      # (lazy lookup, plan decision D8: "posts/_form.html.erb" ->
+      # "posts.form.title"). A key ending in `_html` or `.html` answers
+      # its text as HTML, every interpolated value escaped (a SafeString
+      # value as it is); any other text is escaped. A missing key answers
+      # `<span class="translation_missing" title="translation missing:
+      # en.posts.index.subtitle">Subtitle</span>` (development and test),
+      # or the humanised last segment (production), or raises
+      # (I18n.raise_on_missing).
+      # @return [SafeString]
+      def translate_helper(args, kwargs, interp)
+        helper_arity!("t", args, 1, 1)
+        key = text_arg(args, 0, "t")
+        if key.start_with?(".")
+          scope = Helpers.lazy_scope(interp.current_template_name)
+          if scope.empty?
+            msg = "t: the lazy key #{key.inspect} needs a template name"
+            raise ArgumentError, msg
+          end
+          key = "#{scope}#{key}"
+        end
+        options = Helpers.symbol_options(kwargs)
+        html = I18n.html_key?(key)
+        options = Helpers.escaped_interpolations(options) if html
+        found = I18n.find_translation(key, options)
+        unless found.nil?
+          return SafeString.of(found) if html
+
+          return SafeString.of(Html.escape(found))
+        end
+        text = I18n.missing_answer(I18n.option_locale(options), key)
+        return SafeString.of(Html.escape(text)) unless I18n.mark_missing?
+
+        dot = key.rindex(".")
+        last = dot.nil? ? key : key[dot + 1, key.size - dot - 1].to_s
+        words = Helpers.titleized(last)
+        SafeString.of("<span class=\"translation_missing\" title=\"#{Html.escape(text)}\">#{Html.escape(words)}</span>")
+      end
+
+      # l(time_or_date, format: :short), as Rails' view helper: I18n.l
+      # in the current locale (`format:` a Symbol or a pattern, `locale:`).
+      # The text is escaped by the template.
+      # @return [String]
+      def localize_helper(args, kwargs)
+        helper_arity!("l", args, 1, 1)
+        options = Helpers.symbol_options(kwargs)
+        format = options[:format]
+        case format
+        when SafeString then options[:format] = format.to_s
+        end
+        I18n.l(args[0], options)
+      end
+
+      # A template's keywords as I18n's options (Symbol keys).
+      def self.symbol_options(kwargs)
+        options = { default: [nil, 0, 0.0, "", true][0] }
+        options.delete(:default)
+        kwargs.each { |name, value| options[name.to_sym] = value }
+        options
+      end
+
+      # The options of an `_html` key's lookup, as Rails' html-safe
+      # translation escapes them: every interpolation value escaped (a
+      # SafeString as it is), I18n's own `default:` and `locale:` and an
+      # Integer `count:` untouched. Shared with Controller#t.
+      # @param options [Hash{Symbol => Object}]
+      # @return [Hash{Symbol => Object}]
+      def self.escaped_interpolations(options)
+        out = { default: [nil, 0, 0.0, "", true][0] }
+        out.delete(:default)
+        options.each do |name, value|
+          if name == :default || name == :locale || (name == :count && value.is_a?(Integer))
+            out[name] = value
+          else
+            case value
+            when SafeString then out[name] = value.to_s
+            else out[name] = Html.escape(FormBuilder.value_text(value))
+            end
+          end
+        end
+        out
+      end
+
+      # The lazy-lookup scope of a template name (D8, Rails' virtual path):
+      # "posts/index.html.erb" -> "posts.index", "posts/_form.html.erb" ->
+      # "posts.form", "__components/card_component.html.erb" ->
+      # "card_component", "admin/posts/show" -> "admin.posts.show".
+      # @param name [String]
+      # @return [String]
+      def self.lazy_scope(name)
+        s = name.to_s
+        prefix = Engine::COMPONENTS_PREFIX
+        s = s[prefix.size, s.size - prefix.size].to_s if s.start_with?(prefix)
+        slash = s.rindex("/")
+        dir = slash.nil? ? "" : s[0, slash].to_s
+        base = slash.nil? ? s : s[slash + 1, s.size - slash - 1].to_s
+        base = base[1, base.size - 1].to_s if base.start_with?("_")
+        dot = base.index(".")
+        base = base[0, dot].to_s unless dot.nil?
+        return base if dir.empty?
+
+        "#{dir.tr("/", ".")}.#{base}"
+      end
+
+      # "bar_baz" -> "Bar Baz": the words of a missing key's last segment,
+      # as Rails' translation_missing span shows them (titleize).
+      def self.titleized(segment)
+        words = segment.to_s.tr("_", " ").split(" ")
+        out = Array.new(0) { "" }
+        words.each { |w| out << w.capitalize }
+        out.join(" ")
+      end
+
       # --- text --------------------------------------------------------------
 
       def pluralize(args)
@@ -1326,195 +1446,14 @@ module Cybertrain
         SafeString.of(out)
       end
 
-      # strftime of a pattern that is not a literal, one directive at a time
-      # with literal patterns. Time#strftime given a built String on a
-      # polymorphic receiver handed the pattern back unformatted under
-      # Spinel 2026.11.04.7026 (the call goes through a dispatch that reads
-      # the String's buffer and then returns that buffer).
-      #
-      # A directive is `%`, flags (`-` no padding, `_` space padding, `0`
-      # zero padding, `^` upcase, `#` change case, `:` for `%:z`), a width,
-      # then one of: Y C y m d e j H k I l M S L N s p P a A b h B u w U W
-      # G g V Z z F T D R r c x X v n t %. `%3N` / `%6N` / `%9N` (any width
-      # for N) give that many fraction digits; a width on a number replaces
-      # its padding (`%1d`, `%5e`), as in strftime. Anything else raises
-      # ArgumentError, as does a lone `%` at the end, and so does a width or
-      # flag whose strftime meaning this walk does not reproduce
-      # (strftime_refusal: `%6L`, `%-N`, `%:Y`, `%::z`, `%5Z`, `%-T`, `%-_d`):
-      # it raises rather than render something else. Text between
-      # directives (multibyte included) is copied as it is.
-      def self.time_tag_strftime(time, pattern)
-        s = pattern.to_s # NOTES rule 62: plain byte reads
-        n = s.bytesize
-        out = +""
-        i = 0
-        while i < n
-          start = i
-          i += 1 while i < n && s.getbyte(i) != 37
-          out << s.byteslice(start, i - start).to_s if i > start
-          break if i >= n
-
-          dstart = i
-          i += 1
-          flags = +""
-          while i < n
-            f = s.getbyte(i)
-            # - _ 0 ^ # :
-            break unless f == 45 || f == 95 || f == 48 || f == 94 || f == 35 || f == 58
-
-            flags << s.byteslice(i, 1).to_s
-            i += 1
-          end
-          width = 0
-          while i < n
-            w = s.getbyte(i)
-            break unless w >= 48 && w <= 57
-
-            width = width * 10 + (w - 48)
-            i += 1
-          end
-          if i >= n
-            msg = "time_tag format: incomplete directive #{s.byteslice(dstart, n - dstart)} in #{pattern.inspect}"
-            raise ArgumentError, msg
-          end
-          conv = s.byteslice(i, 1).to_s
-          i += 1
-          refused = Helpers.strftime_refusal(conv, flags, width)
-          unless refused.empty?
-            msg = "time_tag format: #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}: #{refused}"
-            raise ArgumentError, msg
-          end
-          piece = Helpers.strftime_directive(time, conv, flags, width)
-          if piece.nil?
-            msg = "time_tag format: unknown directive #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}"
-            raise ArgumentError, msg
-          end
-          out << piece
-        end
-        out
-      end
-
-      # Why a directive's flags or width are refused ("" when they are
-      # not): the combinations whose Time#strftime output this walk does
-      # not reproduce raise instead of rendering something else.
-      def self.strftime_refusal(conv, flags, width)
-        pads = 0
-        pads += 1 if flags.include?("-")
-        pads += 1 if flags.include?("_")
-        pads += 1 if flags.include?("0")
-        return "combine at most one of the flags - _ 0" if pads > 1
-        return "combine at most one of the flags ^ #" if flags.include?("^") && flags.include?("#")
-        if conv == "z"
-          return "%z takes no width and no flag but :" if width > 0 || flags.delete(":").size > 0 || flags.count(":") > 1
-        elsif flags.include?(":")
-          return "the : flag is only for %:z"
-        end
-        return "%L takes no width or flag; use %3N, %6N or %9N" if conv == "L" && (width > 0 || !flags.empty?)
-        return "%N takes no flag" if conv == "N" && !flags.empty?
-        return "%Z takes no width" if conv == "Z" && width > 0
-        return "%#{conv} takes no flag but ^" if "FTDRrcxXv".include?(conv) && !flags.delete("^").empty?
-
-        ""
-      end
-
-      # One directive of time_tag_strftime; nil for an unknown conversion.
-      def self.strftime_directive(time, conv, flags, width)
-        base = case conv
-               when "Y" then time.strftime("%Y")
-               when "C" then time.strftime("%C")
-               when "y" then time.strftime("%y")
-               when "m" then time.strftime("%m")
-               when "d" then time.strftime("%d")
-               when "e" then time.strftime("%e")
-               when "j" then time.strftime("%j")
-               when "H" then time.strftime("%H")
-               when "k" then time.strftime("%k")
-               when "I" then time.strftime("%I")
-               when "l" then time.strftime("%l")
-               when "M" then time.strftime("%M")
-               when "S" then time.strftime("%S")
-               when "L" then time.strftime("%L")
-               when "N"
-                 nine = time.strftime("%9N")
-                 digits = width > 0 ? width : 9
-                 digits <= 9 ? nine[0, digits].to_s : "#{nine}#{"0" * (digits - 9)}"
-               when "s" then time.strftime("%s")
-               when "p" then time.strftime("%p")
-               when "P" then time.strftime("%P")
-               when "a" then time.strftime("%a")
-               when "A" then time.strftime("%A")
-               when "b", "h" then time.strftime("%b")
-               when "B" then time.strftime("%B")
-               when "u" then time.strftime("%u")
-               when "w" then time.strftime("%w")
-               when "U" then time.strftime("%U")
-               when "W" then time.strftime("%W")
-               when "G" then time.strftime("%G")
-               when "g" then time.strftime("%g")
-               when "V" then time.strftime("%V")
-               when "Z" then time.strftime("%Z")
-               when "z"
-                 zone = time.strftime("%z")
-                 flags.include?(":") && zone.size == 5 ? "#{zone[0, 3]}:#{zone[3, 2]}" : zone
-               when "F" then time.strftime("%Y-%m-%d")
-               when "T", "X" then time.strftime("%H:%M:%S")
-               when "D", "x" then time.strftime("%m/%d/%y")
-               when "R" then time.strftime("%H:%M")
-               when "r" then time.strftime("%I:%M:%S %p")
-               when "c" then time.strftime("%a %b %e %H:%M:%S %Y")
-               when "v" then time.strftime("%e-%^b-%Y")
-               when "n" then "\n"
-               when "t" then "\t"
-               when "%" then "%"
-               end
-        return nil if base.nil?
-        return base if flags.empty? && (width == 0 || conv == "N")
-
-        Helpers.strftime_flags(base, conv, flags, conv == "N" ? 0 : width)
-      end
-
-      # Applies the flags and width of a directive to its default text. A
-      # width on a number replaces its default padding, as in strftime
-      # (`%1d` is "5", `%5e` is "    5").
-      def self.strftime_flags(base, conv, flags, width)
-        text = base
-        numeric = "YCymdejHkIlMSsuwUWGgV".include?(conv)
-        if numeric && width > 0
-          k = 0
-          k += 1 while k < text.size - 1 && (text[k] == "0" || text[k] == " ")
-          text = text[k, text.size - k].to_s
-          return text if flags.include?("-") || width <= text.size
-
-          pad = "ekl".include?(conv) ? " " : "0"
-          pad = " " if flags.include?("_")
-          pad = "0" if flags.include?("0")
-          return "#{pad * (width - text.size)}#{text}"
-        end
-        if flags.include?("-")
-          # "05" -> "5", " 5" -> "5"
-          k = 0
-          k += 1 while k < text.size - 1 && (text[k] == "0" || text[k] == " ")
-          text = text[k, text.size - k].to_s
-        elsif flags.include?("_")
-          k = 0
-          lead = +""
-          while k < text.size - 1 && text[k] == "0"
-            lead << " "
-            k += 1
-          end
-          text = "#{lead}#{text[k, text.size - k]}"
-        elsif flags.include?("0")
-          text = text.tr(" ", "0")
-        end
-        text = text.upcase if flags.include?("^")
-        text = text == text.upcase ? text.downcase : text.upcase if flags.include?("#")
-        if width > text.size && !flags.include?("-")
-          pad = flags.include?("_") || !numeric ? " " : "0"
-          pad = "0" if flags.include?("0")
-          text = "#{pad * (width - text.size)}#{text}"
-        end
-        text
-      end
+      # strftime of a pattern that is not a literal: Cybertrain::Strftime.walk
+      # (spikes/NOTES.md rule 96), which formats one directive at a time with
+      # literal patterns; its refusals read "time_tag format: ...".
+      # I18n.l formats its dictionary patterns through the same walk.
+      # @param time [Time, Date]
+      # @param pattern [String]
+      # @return [String]
+      def self.time_tag_strftime(time, pattern) = Strftime.walk(time, pattern, "time_tag format")
 
       # The strftime pattern of time_tag's format: (nil: the default).
       # Interpolated, so that strftime gets a plain String.

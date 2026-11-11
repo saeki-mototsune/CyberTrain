@@ -814,6 +814,33 @@ module Cybertrain
       env
     end
 
+    # I18n.t from an action: a key starting with "." is looked up under
+    # the controller path and the action, as Rails' controller `t` does
+    # (`t(".created")` in Admin::PostsController#create reads
+    # `admin.posts.create.created`). A key ending in `_html` or `.html`
+    # has its interpolated values escaped; the answer is a String all the
+    # same (wrap it in a SafeString to render it as HTML).
+    # @example
+    #   redirect_to posts_path, notice: t(".created", title: @post.title)
+    # @param key [String, Symbol]
+    # @param options [Hash{Symbol => Object}] as for I18n.t
+    # @return [String]
+    # @api public
+    def t(key, options = {})
+      k = key.to_s
+      k = "#{controller_path.tr("/", ".")}.#{@action_name}#{k}" if k.start_with?(".")
+      return I18n.t(k, Template::Helpers.escaped_interpolations(options)) if I18n.html_key?(k)
+
+      I18n.t(k, options)
+    end
+
+    # The same as {#t}.
+    # @param key [String, Symbol]
+    # @param options [Hash{Symbol => Object}]
+    # @return [String]
+    # @api public
+    def translate(key, options = {}) = t(key, options)
+
     # "posts" for PostsController: the directory under `app/views/` its
     # templates come from.
     # @return [String]

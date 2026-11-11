@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/i18n"
+require "cybertrain/generator/locale_yaml"
 
 # I18n (plan decisions D2 and D5-D7, Task 4): t with interpolation,
 # defaults, count: plurals and the fallback to the default locale, the
@@ -301,6 +302,99 @@ test "interpolation names are \\w+; anything else stays literal" do
   assert_equal "%{a b}, %{}, %{x-y}, 5% and %{", I18n.t("odd_marks")
   assert_equal "%{a b}, %{}, %{x-y}, 5% and %{", I18n.t("odd_marks", "a b": "z", "x-y": "w")
   assert_equal "ok_1 then 9", I18n.t("nope", default: "%{ok_1} then %{N9}", ok_1: "ok_1", N9: 9)
+end
+
+# Tuesday, 2026-11-10, 09:05 UTC (the morning) and 15:30:07 (the afternoon).
+L_MORNING = Time.utc(2026, 11, 10, 9, 5)
+L_AFTERNOON = Time.utc(2026, 11, 10, 15, 30, 7)
+L_DAY = Date.new(2026, 11, 10)
+
+test "l with :default, :short, :long and a pattern in en and ja" do
+  reset_i18n
+  # en: time.formats default "%a, %d %b %Y %H:%M:%S %z", short "%d %b %H:%M",
+  # long "%B %d, %Y %H:%M"; date.formats "%Y-%m-%d", "%b %d", "%B %d, %Y".
+  assert_equal "Tue, 10 Nov 2026 09:05:00 +0000", I18n.l(L_MORNING)
+  assert_equal "Tue, 10 Nov 2026 09:05:00 +0000", I18n.l(L_MORNING, format: :default)
+  assert_equal "10 Nov 09:05", I18n.l(L_MORNING, format: :short)
+  assert_equal "November 10, 2026 09:05", I18n.l(L_MORNING, format: :long)
+  assert_equal "2026-11-10", I18n.l(L_DAY)
+  assert_equal "Nov 10", I18n.l(L_DAY, format: :short)
+  assert_equal "November 10, 2026", I18n.l(L_DAY, format: :long)
+  # ja (rails-i18n's ja.yml): time.formats default
+  # "%Y年%m月%d日(%a) %H時%M分%S秒 %z", short "%m/%d %H:%M", long
+  # "%Y/%m/%d %H:%M"; date.formats "%Y/%m/%d", "%m/%d", "%Y年%m月%d日(%a)";
+  # each directive expanded by hand (%a of a Tuesday is 火).
+  assert_equal "2026/11/10 09:05", I18n.l(L_MORNING, format: :long, locale: :ja)
+  assert_equal "11/10 09:05", I18n.l(L_MORNING, format: :short, locale: :ja)
+  assert_equal "2026年11月10日(火) 09時05分00秒 +0000", I18n.l(L_MORNING, locale: :ja)
+  assert_equal "2026/11/10", I18n.l(L_DAY, locale: "ja")
+  assert_equal "11/10", I18n.l(L_DAY, format: :short, locale: :ja)
+  assert_equal "2026年11月10日(火)", I18n.l(L_DAY, format: :long, locale: :ja)
+  # The thread's locale answers when there is no locale:.
+  I18n.locale = :ja
+  assert_equal "2026/11/10", I18n.l(L_DAY)
+  assert_equal "2026/11/10 09:05", I18n.localize(L_MORNING, format: :long)
+  # A pattern: the names are the dictionary's; %p upper-cased and %P
+  # lower-cased as the i18n gem does (ja's 午前 / 午後 have no case).
+  assert_equal "火 午前", I18n.l(L_MORNING, format: "%a %p")
+  assert_equal "火曜日 午後 午後", I18n.l(L_AFTERNOON, format: "%A %p %P")
+  I18n.locale = :en
+  assert_equal "Tue Tuesday Nov November AM am", I18n.l(L_MORNING, format: "%a %A %b %B %p %P")
+  assert_equal "PM pm 3:30:07", I18n.l(L_AFTERNOON, format: "%p %P %-I:%M:%S")
+  # %^ upper-cases a name; %% stays a literal; the other directives are
+  # strftime's (%y %e %z %-d %-m among them).
+  assert_equal "TUE NOVEMBER %a %% 26 10 +0000 10 11", I18n.l(L_MORNING, format: "%^a %^B %%a %%%% %y %e %z %-d %-m")
+  assert_equal "Tuesday, November 10", I18n.l(L_DAY, format: "%A, %B %-d")
+  # A Date has no hour: %p and %P are empty, as in the i18n gem.
+  assert_equal "[][]", I18n.l(L_DAY, format: "[%p][%P]")
+  # The application's list answers before the bundled one (TestLocales:
+  # ja.date.abbr_month_names is ["", "一月", "二月"]); an index past the
+  # end of that list leaves the directive to strftime.
+  assert_equal "一月 2日", I18n.l(Date.new(2026, 1, 2), format: "%b %-d日", locale: :ja)
+  assert_equal "Nov", I18n.l(L_DAY, format: "%b", locale: :ja)
+end
+
+test "l refuses what it cannot format" do
+  reset_i18n
+  msg = assert_raises("ArgumentError") { I18n.l(5) }
+  assert_equal "l: expected a Time or a Date (got Integer)", msg
+  msg = assert_raises("ArgumentError") { I18n.l("2026-11-10") }
+  assert_equal "l: expected a Time or a Date (got String)", msg
+  msg = assert_raises("I18n::MissingTranslationData") { I18n.l(L_MORNING, format: :nope) }
+  assert_equal "translation missing: en.time.formats.nope", msg
+  msg = assert_raises("I18n::MissingTranslationData") { I18n.l(L_DAY, format: :nope, locale: :ja) }
+  assert_equal "translation missing: ja.date.formats.nope", msg
+  msg = assert_raises("ArgumentError") { I18n.l(L_MORNING, format: "%Y %Q") }
+  assert_equal "l format: unknown directive %Q in \"%Y %Q\"", msg
+  msg = assert_raises("ArgumentError") { I18n.l(L_MORNING, format: 3) }
+  assert_equal "l: format: must be a Symbol or a String (got Integer)", msg
+  msg = assert_raises("I18n::InvalidLocale") { I18n.l(L_DAY, locale: :xx) }
+  assert_equal "\"xx\" is not an available locale", msg
+end
+
+test "every bundled date and time format formats in every bundled locale" do
+  reset_i18n
+  seen = Array.new(0) { "" }
+  ["en", "ja"].each do |loc|
+    path = "cybertrain/locales/#{loc}.yml"
+    Cybertrain::Gen::LocaleYaml.parse(File.read(path), path).each do |entry|
+      key = entry.entry_key
+      date = key.start_with?("#{loc}.date.formats.")
+      next unless date || key.start_with?("#{loc}.time.formats.")
+
+      dot = key.rindex(".").to_i
+      name = key[dot + 1, key.size - dot - 1].to_s
+      text = date ? I18n.l(L_DAY, format: name.to_sym, locale: loc) : I18n.l(L_AFTERNOON, format: name.to_sym, locale: loc)
+      # Every directive was expanded: no "%" is left, and the day is there.
+      assert !text.include?("%"), "#{key} left a directive: #{text}"
+      assert text.include?("10"), "#{key} gave #{text}"
+      seen << key
+    end
+  end
+  assert_equal "en.date.formats.default en.date.formats.long en.date.formats.short en.time.formats.default " \
+               "en.time.formats.long en.time.formats.short ja.date.formats.default ja.date.formats.long " \
+               "ja.date.formats.short ja.time.formats.default ja.time.formats.long ja.time.formats.short",
+               seen.sort.join(" ")
 end
 
 Cybertrain::Test.run!

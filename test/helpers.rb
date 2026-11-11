@@ -456,4 +456,44 @@ test "current_page? path only, with query, false on POST" do
   assert_equal "false", render_inline("<%= current_page?(\"/posts\") %>")
 end
 
+test "time_tag_strftime formats every directive the bundled formats use" do
+  # The bundled en and ja date.formats / time.formats use %Y %m %d %b %B
+  # %a %H %M %S %z; %y %e %-d %-m are the other directives rails-i18n's
+  # locales use.
+  jan = Time.utc(2026, 1, 5, 3, 4, 9)
+  assert_equal "26| 5|+0000|5|1|2026/01/05 03:04:09|Mon Jan January",
+               Cybertrain::Template::Helpers.time_tag_strftime(jan, "%y|%e|%z|%-d|%-m|%Y/%m/%d %H:%M:%S|%a %b %B")
+  assert_equal "26| 5|5|1|2026-01-05",
+               Cybertrain::Template::Helpers.time_tag_strftime(Date.new(2026, 1, 5), "%y|%e|%-d|%-m|%Y-%m-%d")
+end
+
+test "t and l in a template: the bundled dictionary, lazy keys, the missing span" do
+  I18n.locale = nil
+  I18n.mark_missing = true
+  I18n.available_locales = [:en, :ja]
+  # An absolute key, escaped by the template ("can't" has an apostrophe).
+  assert_equal "can&#39;t be blank", render_inline("<%= t(\"errors.messages.blank\") %>")
+  assert_equal "can&#39;t be blank", render_inline("<%= translate(\"errors.messages.blank\") %>")
+  assert_equal "を入力してください", render_inline("<%= t(\"errors.messages.blank\", locale: :ja) %>")
+  # count: picks the plural form.
+  assert_equal "3 errors prohibited this post from being saved",
+               render_inline("<%= t(\"errors.template.header\", count: 3, model: \"post\") %>")
+  # A lazy key under the template's name, posts/inline.
+  assert_equal "<span class=\"translation_missing\" title=\"translation missing: en.posts.inline.page_title\">Page Title</span>",
+               render_inline("<%= t(\".page_title\") %>")
+  assert_equal "Fallback &amp; more", render_inline("<%= t(\".page_title\", default: \"Fallback & more\") %>")
+  # l, with the template's local t (a Time) as its argument: a local of
+  # that name is still the local.
+  assert_equal "2026-11-10|10 Nov 12:00|2026/11/10|PM", render_inline("<%= l(d) %>|<%= l(t, format: :short) %>|<%= localize(d, locale: :ja) %>|<%= l(t, format: raw(\"%p\")) %>", time_env)
+  # The wrong number of arguments, a value l cannot format, and a lazy key
+  # with no template name.
+  msg = assert_raises("RuntimeError") { render_inline("<%= t(\"a\", \"b\") %>") }
+  assert_equal "posts/inline:1: wrong number of arguments for 't' (given 2, expected 1)", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= l(\"2026-11-10\") %>") }
+  assert_equal "posts/inline:1: l: expected a Time or a Date (got String)", msg
+  nameless = Cybertrain::Template::Template.parse("<%= t(\".x\") %>", "")
+  msg = assert_raises("RuntimeError") { Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil)).render(nameless, new_env) }
+  assert_equal ":1: t: the lazy key \".x\" needs a template name", msg
+end
+
 Cybertrain::Test.run!
