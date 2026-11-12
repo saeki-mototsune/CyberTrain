@@ -1159,6 +1159,96 @@ header. The results are recorded below the list by those tasks.
    no lock; each line is one `write` of at most 4,096 bytes (a longer
    message is cut and marked), which a pipe does not interleave.
 
+**Results (2026-11-12, Spinel 2026.11.04.7026, programs kept in
+spikes/phase5/ with their commands and output in each header; a shared
+4-vCPU cloud machine):**
+
+1. **Override: yes.** With the whole framework required,
+   `class Time; def self.now = Cybertrain::Clock.now; end` changes what
+   `Time.now` answers at every call site, the framework's included
+   (`Model.now_string` printed the frozen instant). `Process.clock_gettime(
+   Process::CLOCK_REALTIME, :microsecond)` agrees with the builtin within
+   1 ms, `Time.at(s, us).utc` keeps the microseconds, and the builtin
+   `Time.new` is not overridden. Nested `travel_to` in rule 103's
+   save-yield-ensure form restores the outer instant after an inner block
+   raises, for String and Integer blocks and one whose only statement is
+   `raise`. No fallback: `cybertrain/test/time_now.rb` holds the override
+   (time_now.rb).
+2. **Methods on Integer and Time: yes; `1.month` fails at run time.**
+   `5.minutes == 300`, `2.weeks.ago`, `3.days.from_now`,
+   `beginning_of_day`, `advance(months: 1)` (31 January to 28 February),
+   `months_ago`, `in_time_zone`, `Time.current` and `Date.current` beside
+   `Schema.current` all compile and answer in one program with the whole
+   framework, beside every existing namesake: `Cron::Expression#minutes`,
+   `#hours` and `#days` (Array), `Net::Timer.seconds` (String),
+   `Stream::Poller.advance`, `Template::Parser#advance`, and the `now` of
+   Cache, Net::Timer, Test::Receiver and Flash. `ZonedTime#hour`, `min`,
+   `day`, `wday` and `zone` keep Rails' names: on a boxed receiver the
+   generated switch covers Date, ZonedTime and Integer and its default arm
+   calls the builtin Time's method before NoMethodError, so a boxed Time
+   still answers (rule 62's grep: one `sp_raise_nomethod` each for `hour`,
+   `day`, `minutes`, `seconds`, two for `wday`, `zone`, `advance`, none for
+   `min`; each the default arm). The framework-internal `Net::Timer.seconds`
+   and `Stream::Poller.advance` were renamed anyway (`format_seconds`,
+   `advance_to`); `Cron::Expression`'s public readers keep their names.
+   `1.month` is refused at build only while nothing in the program defines
+   `month`; with `ZonedTime#month` it builds and raises `NoMethodError`
+   ("undefined method 'month' for an instance of Integer") when reached,
+   so the guide says it fails at run time (durations.rb,
+   durations_month.rb).
+3. **The class form: yes.** `class_app/tests.rb`, in Task 10's shape over
+   D18's rewritten copies, compiles (about 4 minutes) and runs: an
+   application base class under `ActionDispatch::IntegrationTest` with
+   `setup` / `teardown` overrides, instance variables and a private helper;
+   `get article_path(@article)` and `post articles_path, params: { article:
+   { title: "x" } }` (nested, flattened to `article[title]`) beside
+   `Test::Client#get` / `#post` positional; `head` beside `Controller#head`
+   and `delete` beside every other `delete`; `assert_response :success`
+   beside the top-level two-argument one; the fixture accessor
+   `articles(:one)` as an instance method and as a top-level method beside
+   `User#articles` (has_many); class methods `self.setup`, `self.teardown`,
+   `self.test` and `self.fixtures` beside the instance methods; a
+   `ViewComponent::TestCase` with `render_inline`; the generated `case`
+   calling `before_case` / `run_body { }` / `after_case` through
+   `def self.dispatcher = ->(i) { run_case(i) }`. No fallback: Rails'
+   accessor name, nested `params:`, D6's instance `assert_response`, D9's
+   class methods. The spike compiled, from the application root,
+   `spinel tests.rb $(spin flags) -I .. -I test -o build/test/tests`
+   (`-I ..` only for its stand-ins); SQLite is linked through FFI with no
+   flag of its own, so D7's command is
+   `spinel gen/tests.rb $(spin flags) -I gen/test -I test -o build/test/tests`.
+   Forgery protection had to be off for `post` without a token (403
+   otherwise), as Rails' test environment has it. assert_select's
+   arguments (a positional String, Integer, true, false or nil; `text:` a
+   String or a Regexp) compile in one method (assert_select_args.rb).
+4. **`assert_raises` with a class: yes.** `assert_raises(ArgumentError)`
+   and `assert_raises(Cybertrain::DB::Error)` beside the String form, one
+   parameter, matched by name along the superclass chain (a subclass
+   matches, as Minitest's does), answering the message. Ruby's own
+   exception classes answer no `superclass` under Spinel, so the chain
+   above the first builtin is read from a table of their parents. A
+   top-level method called with and without a block (`block_given?`)
+   compiles: `perform_enqueued_jobs` and `assert_broadcasts` keep one name
+   each (assert_raises.rb).
+5. **Backtraces: only in a `--debug` build.** A release build answers an
+   empty Array and `-g` one `<main>` frame; `--debug` answers
+   `file:line:in 'method'` for each Ruby method on the way (`<main>` always
+   at line 1, no frame for a builtin's own raise). `--debug` compiles
+   faster (-O0: 11 s against 23 s for the probe) and serves about 45% of a
+   release build's in-process request rate (backtrace.rb).
+6. **The framework's 195 programs in one: not measured to the end.**
+   Nine are refused first, one at a time, each for a class defined with
+   two superclasses (the programs' own `PostsController`,
+   `PagesController` and `AccountsController` beside
+   test/fixtures/gen_app's); 84 top-level method names and 34 constants
+   defined in more than one of the remaining 186 are not refused (the
+   later wins). The type analysis of those 186 (59,287 lines) was killed by
+   the OOM killer twice, after 326 s and 772 s and at least 1.76 GB
+   resident, on a 16 GB machine shared with other builds, so the compile
+   time, the binary size and whether rules 41 and 63 stop any of them
+   remain to be measured on a dedicated machine (bundle_suite.sh). Nothing
+   in phase 5 depends on it.
+
 ## 17. Out of scope (recorded so nothing is lost)
 
 - **T-7 coverage**: Spinel's compiled programs carry no coverage

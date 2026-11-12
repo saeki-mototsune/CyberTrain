@@ -200,8 +200,10 @@ NAME_HOMES = {
   # values sent (Array<String>); Test::Client#cookies the client's jar
   # (Hash). Three return types under one name, kept apart by their
   # receivers (a Response, a Client and a Controller never share a
-  # variable); a fourth definer needs a reason here.
-  "cookies" => %w[cybertrain/controller.rb cybertrain/http/response.rb cybertrain/test/client.rb],
+  # variable); a fourth definer needs a reason here. The fourth is
+  # ActionDispatch::IntegrationTest#cookies (phase 5a), the test's client's
+  # jar, the same Hash as Test::Client#cookies.
+  "cookies" => %w[cybertrain/controller.rb cybertrain/http/response.rb cybertrain/test/client.rb cybertrain/test/integration.rb],
   "signed" => %w[cybertrain/cookie_jar.rb],
   # model_scan.rb's is ModelInfo's `attr_reader ... :encrypted` (the
   # encrypts attributes, an Array<String>), gen-only: a ModelInfo and a
@@ -315,13 +317,104 @@ NAME_HOMES = {
   "prepend" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "before" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "after" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
-  "remove" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb]
+  "remove" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
+  # Phase 5a (plan Task 1; spike results in spec section 16, programs in
+  # spikes/phase5/): the clock, durations, the zoned time and the test
+  # classes. Each name below was compiled beside its existing namesakes in
+  # one program with the whole framework (spikes/phase5/durations.rb,
+  # class_app/tests.rb) and answered correctly; a boxed receiver dispatches
+  # over every definer and falls back to the builtin Time's method.
+  # Net::Timer.now and Test::Receiver.now answer a monotonic Float,
+  # Cache.now an Integer, Flash#now a FlashNow, Clock.now a Time (and
+  # test/time_now.rb's Time.now answers Clock.now).
+  "now" => %w[cybertrain/net/socket.rb cybertrain/test/receiver.rb cybertrain/cache.rb cybertrain/flash.rb cybertrain/clock.rb
+              cybertrain/test/time_now.rb],
+  # Schema.current (the Definition, or nil), Time.current (a Time) and
+  # Date.current (a Date), the last two in clock.rb.
+  "current" => %w[cybertrain/schema.rb cybertrain/clock.rb],
+  # Clock.zone and Time.zone answer a TimeZone; ZonedTime#zone the
+  # abbreviation (a String, as the builtin Time#zone).
+  "zone" => %w[cybertrain/clock.rb cybertrain/zoned_time.rb],
+  # Template::Parser#advance (the token cursor) and Time#advance(months: 1)
+  # (a Time). Stream::Poller's was renamed advance_to (pre-flight B1).
+  "advance" => %w[cybertrain/template/parser.rb cybertrain/time_ext.rb],
+  # Integer#seconds and the rest answer an Integer; Net::Timer's
+  # formatter was renamed format_seconds (pre-flight B1). Cron::Expression's
+  # public readers minutes / hours / days answer Array<Integer>, kept apart
+  # from Integer's by their receivers (spike item 2 compiled both).
+  "seconds" => %w[cybertrain/durations.rb],
+  "minutes" => %w[cybertrain/durations.rb cybertrain/cron.rb],
+  "hours" => %w[cybertrain/durations.rb cybertrain/cron.rb],
+  "days" => %w[cybertrain/durations.rb cybertrain/cron.rb],
+  "weeks" => %w[cybertrain/durations.rb],
+  "second" => %w[cybertrain/durations.rb],
+  "minute" => %w[cybertrain/durations.rb],
+  "week" => %w[cybertrain/durations.rb],
+  "ago" => %w[cybertrain/durations.rb],
+  "from_now" => %w[cybertrain/durations.rb],
+  # Integer#hour / #day (seconds, an Integer) and ZonedTime#hour / #day
+  # (the wall clock's, an Integer), beside the builtin Time#hour / #day.
+  "hour" => %w[cybertrain/durations.rb cybertrain/zoned_time.rb],
+  "day" => %w[cybertrain/durations.rb cybertrain/zoned_time.rb],
+  "min" => %w[cybertrain/zoned_time.rb],
+  "sec" => %w[cybertrain/zoned_time.rb],
+  "month" => %w[cybertrain/zoned_time.rb],
+  "year" => %w[cybertrain/zoned_time.rb],
+  "wday" => %w[cybertrain/zoned_time.rb],
+  "yday" => %w[cybertrain/zoned_time.rb],
+  "utc_offset" => %w[cybertrain/zoned_time.rb],
+  "to_time" => %w[cybertrain/zoned_time.rb],
+  "to_date" => %w[cybertrain/zoned_time.rb],
+  "travel" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  "travel_to" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  "travel_back" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  "freeze_time" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  # CLI::Toolchain.setup (the `cybertrain setup` command); the top-level
+  # setup / teardown blocks; Test::Base#setup / #teardown (nil) beside the
+  # class methods of the same name that refuse an unrewritten file (D9).
+  "setup" => %w[cybertrain/cli/toolchain.rb cybertrain/test.rb cybertrain/test/test_case.rb],
+  "teardown" => %w[cybertrain/cli/toolchain.rb cybertrain/test.rb cybertrain/test/test_case.rb],
+  "test" => %w[cybertrain/test.rb cybertrain/test/test_case.rb],
+  "fixtures" => %w[cybertrain/test/test_case.rb],
+  # One method for the component and the partial form (rule 34); the
+  # generated helper tests' local one (cli/helper.rb's text) is renamed.
+  "render_inline" => %w[cybertrain/test/views.rb],
+  "assert_select" => %w[cybertrain/test/select.rb],
+  "node_tag" => %w[cybertrain/test/html_reader.rb],
+  "node_attr" => %w[cybertrain/test/html_reader.rb],
+  "node_text" => %w[cybertrain/test/html_reader.rb],
+  "node_html" => %w[cybertrain/test/html_reader.rb],
+  "deliveries" => %w[cybertrain/mailer.rb],
+  # The last Response everywhere: Test::Client's, the Context's, the
+  # Controller's and IntegrationTest's.
+  "response" => %w[cybertrain/test/client.rb cybertrain/context.rb cybertrain/controller.rb cybertrain/test/integration.rb],
+  # The top-level assert_response(response, expected) beside
+  # IntegrationTest#assert_response(expected): both nil, one shared helper
+  # (pre-flight R17).
+  "assert_response" => %w[cybertrain/test/client.rb cybertrain/test/integration.rb],
+  "assert_redirected_to" => %w[cybertrain/test/client.rb cybertrain/test/integration.rb],
+  # The requests: HttpClient's, the routes DSL's (gen only), Test::Client's
+  # and the Router's, plus IntegrationTest's (each answers the Response).
+  # delete: Session#delete, CookieJar#delete and its subclasses,
+  # BlobStore.delete and Cache.delete too. head: Controller#head(status)
+  # beside IntegrationTest#head(path). Spike item 3 compiled the
+  # IntegrationTest methods beside all of them.
+  "get" => %w[cybertrain/http_client.rb cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb
+              cybertrain/test/integration.rb],
+  "post" => %w[cybertrain/http_client.rb cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb
+               cybertrain/test/integration.rb],
+  "patch" => %w[cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb cybertrain/test/integration.rb],
+  "put" => %w[cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb cybertrain/test/integration.rb],
+  "delete" => %w[cybertrain/generator/routes_dsl.rb cybertrain/session.rb cybertrain/test/client.rb cybertrain/blob_store.rb
+                 cybertrain/cookie_jar.rb cybertrain/cache.rb cybertrain/router.rb cybertrain/test/integration.rb],
+  "head" => %w[cybertrain/controller.rb cybertrain/test/integration.rb]
 }.freeze
-# The names the phase 4a and 4b plans list as the first candidates for a
-# clash must keep a row (Global Constraints of the plans; 4b's `admin?` is
+# The names the phase 4a, 4b and 5a plans list as the first candidates for
+# a clash must keep a row (Global Constraints of the plans; 4b's `admin?` is
 # left out, see `t` above).
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
-                     csv xml text any permit scope t l translate localize locale remember].freeze
+                     csv xml text any permit scope t l translate localize locale remember
+                     current zone advance now render_inline setup teardown response travel_to travel_back hour day].freeze
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
 homeless = []

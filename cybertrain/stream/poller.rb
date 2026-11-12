@@ -84,7 +84,7 @@ module Cybertrain
 
       # Moves last_id up to `id` (never down); Hub#deliver_polled calls it
       # under the hub's lock.
-      def self.advance(id)
+      def self.advance_to(id)
         @last_id = id if id > @last_id
         nil
       end

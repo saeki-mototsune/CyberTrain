@@ -301,7 +301,7 @@ module Cybertrain
         count = 0
         @lock.synchronize do
           count = hub_offer(message)
-          Poller.advance(id)
+          Poller.advance_to(id)
         end
         count
       end
