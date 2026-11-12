@@ -72,7 +72,7 @@ module Cybertrain
       # checked the kind and derived the key).
       def self.insert(kind, payload, run_at, key)
         ensure_installed
-        now = Time.now.to_i
+        now = Clock.now.to_i
         binds = Cast.binds(kind, payload, run_at, now, now, key)
         id = 0
         DB.with do |c|

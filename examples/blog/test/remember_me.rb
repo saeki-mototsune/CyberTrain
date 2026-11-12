@@ -31,7 +31,7 @@ end
 # The first (in these tests, the browser's only) Session row, as if
 # started `started` seconds ago and last used `idle` seconds ago.
 def backdate(started, idle)
-  now = Time.now.to_i
+  now = Time.current.to_i
   Session.first.update_columns(created_at: Time.at(now - started).utc, last_active_at: Time.at(now - idle).utc)
   nil
 end
@@ -85,7 +85,7 @@ test "a sign-in restarts the lifetime of a cookie that already has one" do
   user = AppTest.user
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("POST", "/session", {}, ""))
   ctx.session = Cybertrain::Session.new
-  ctx.session["_issued_at"] = Time.now.to_i - 13 * DAY
+  ctx.session["_issued_at"] = Time.current.to_i - 13 * DAY
   assert ctx.session.issued_at > 0
   LifetimeProbeController.new(ctx).probe_start(user, false)
   assert_equal 0, ctx.session.issued_at
@@ -210,7 +210,7 @@ test "both end after 7 idle days" do
   client = new_client
   AppTest.user
   sign_in_with(client, true)
-  now = Time.now.to_i
+  now = Time.current.to_i
   Session.first.update_columns(created_at: Time.at(now - 7 * DAY + 60).utc, last_active_at: nil)
   assert signed_in?(client)
   refute Session.first.last_active_at.nil?
@@ -236,13 +236,13 @@ end
 test "last_active_at is touched at most once a minute" do
   client = new_client
   AppTest.user
-  before = Time.now.to_i
+  before = Time.current.to_i
   sign_in_with(client, false)
   started = Session.first.last_active_at
   refute started.nil?
   assert started.to_i >= before
   # Used 30 seconds ago: a request does not write the row.
-  now = Time.now.to_i
+  now = Time.current.to_i
   Session.first.update_columns(last_active_at: Time.at(now - 30).utc)
   updated_at = Session.first.updated_at.to_i
   assert signed_in?(client)

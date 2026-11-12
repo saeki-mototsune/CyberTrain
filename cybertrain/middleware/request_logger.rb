@@ -34,7 +34,7 @@ module Cybertrain
         target = "#{target}?#{log_field(ParameterFilter.filter_query(query))}"
       end
       @logger.info("Started #{log_field(request.method)} \"#{target}\" for #{request.remote_addr}")
-      started = Time.now
+      started = Clock.monotonic
       begin
         super
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
@@ -111,7 +111,7 @@ module Cybertrain
     end
 
     def log_completed(status, started)
-      elapsed = ((Time.now - started) * 1000).to_i
+      elapsed = ((Clock.monotonic - started) * 1000).to_i
       @logger.info("Completed #{status} in #{elapsed}ms")
     end
   end

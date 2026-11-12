@@ -129,7 +129,7 @@ module Cybertrain
         when "number_to_percentage" then number_to_percentage(args, kwargs)
         when "number_to_currency" then number_to_currency(args, kwargs)
         when "number_to_human_size" then number_to_human_size(args, kwargs)
-        when "time_ago_in_words" then distance_of_time_in_words(time_arg(args, 0, name), Time.now)
+        when "time_ago_in_words" then distance_of_time_in_words(time_arg(args, 0, name), Clock.now)
         when "distance_of_time_in_words"
           helper_arity!(name, args, 2, 2)
           helper_no_keywords!(name, kwargs)

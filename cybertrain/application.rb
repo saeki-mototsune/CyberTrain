@@ -373,19 +373,6 @@ module Cybertrain
       Roles.request_stop
     end
 
-    # The "now" (epoch seconds) `feeds status` measures ages from; 0, the
-    # default, is the clock. A test sets it to make the output repeatable.
-    # @api public
-    def self.status_now = @status_now.to_i
-
-    # @param value [Integer] epoch seconds; 0 for the clock
-    # @return [nil]
-    # @api public
-    def self.status_now=(value)
-      @status_now = value
-      nil
-    end
-
     def self.reset_roles_stop
       Roles.reset_stop
     end

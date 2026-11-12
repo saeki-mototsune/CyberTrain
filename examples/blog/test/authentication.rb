@@ -321,16 +321,15 @@ end
 # SessionsController's rate_limit: ten attempts per address, then even
 # the right password goes back to the form until the window closes.
 # The counts live in Cybertrain::Cache, in windows aligned to the
-# epoch: the cache's clock is held still, so the attempts share one
-# window, then moved a whole window on. The ten go to an address no
+# epoch: travel_to holds the clock still, so the attempts share one
+# window, then travel moves it a whole window on. The ten go to an address no
 # user has: the limit counts per client, whatever the address, and
 # there is no account for lockout (test/lockout.rb) to lock.
 test "POST /session past ten attempts is refused for a while" do
   client = new_client
   AppTest.user
   Cybertrain::RateLimit.reset_all!
-  Cybertrain::Cache.clock = -> { 2_000_000_000 }
-  begin
+  travel_to(Time.at(2_000_000_000)) do
     client.get("/session/new")
     wrong_password = { "authenticity_token" => AppTest.form_token(client),
                        "email_address" => "nobody@example.com", "password" => "wrong-password" }
@@ -342,14 +341,10 @@ test "POST /session past ten attempts is refused for a while" do
     assert_equal 0, Session.count
     res = client.follow_redirect!
     assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
-    Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
+    travel 3 * 60
     res = client.post("/session", right_password)
     assert_redirected_to res, "/"
     assert_equal 1, Session.count
-  ensure
-    # The system clock again, even when an assertion fails: the
-    # tests after this one must not run at a frozen time.
-    Cybertrain::Cache.clock = -> { Time.now.to_i }
   end
 end
 
@@ -409,7 +404,7 @@ test "an expired cookie cannot restore its user or reach a protected action" do
     # to the expiration boundary. Saving updates updated_at too;
     # neither that nor a rewritten cookie extends authentication.
     row = Session.first
-    row.created_at = Time.at(Time.now.to_i - Cybertrain.config.session_absolute_max_age).utc
+    row.created_at = Time.at(Time.current.to_i - Cybertrain.config.session_absolute_max_age).utc
     row.save!
     res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
                                  { "cookie" => cookie })

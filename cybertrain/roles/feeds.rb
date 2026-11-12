@@ -53,7 +53,7 @@ module Cybertrain
       # Application#run_feeds_status for the line.
       # @return [Integer] 0
       def feeds_status
-        now = Application.status_now > 0 ? Application.status_now : Time.now.to_i
+        now = Clock.now.to_i
         rows = WebSocket::FeedTable.read_feeds
         puts "no feed has reported status" if rows.empty?
         rows.each { |row| puts Application.feed_status_line(row, now) }

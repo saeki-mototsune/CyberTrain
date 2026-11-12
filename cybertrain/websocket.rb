@@ -679,7 +679,7 @@ module Cybertrain
       @running = true
       @generation += 1
       generation = @generation
-      started_at = Time.now.to_i
+      started_at = Clock.now.to_i
       i = 0
       while i < SUBSCRIPTIONS.size
         sub = SUBSCRIPTIONS[i]
@@ -905,12 +905,12 @@ module Cybertrain
         msg = client.receive(1)
         unless msg.nil?
           conn.conn_opcode!(msg.ws_opcode)
-          sub.sub_message!(Time.now.to_i)
+          sub.sub_message!(Clock.now.to_i)
           run_message(sub, conn, msg.ws_data)
         end
         if client.ws_pongs != pongs
           pongs = client.ws_pongs
-          sub.sub_activity!(Time.now.to_i)
+          sub.sub_activity!(Clock.now.to_i)
         end
         tick_if_due(sub, conn)
         now = Net::Timer.now

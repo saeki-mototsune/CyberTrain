@@ -7,7 +7,7 @@ module Cybertrain
   # SQLite file exactly one does a thing at a time (the {Scheduler}'s
   # recurring tasks).
   #
-  #   if Cybertrain::Lease.acquire("scheduler", holder, Time.now.to_i, ttl: 30)
+  #   if Cybertrain::Lease.acquire("scheduler", holder, Time.current.to_i, ttl: 30)
   #     # this process holds "scheduler" for the next 30 s; acquire again
   #     # before then to keep it
   #   end

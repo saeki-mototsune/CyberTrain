@@ -26,7 +26,7 @@ class NotifyCommentJob < Cybertrain::Job::Base
       message = "NotifyCommentJob.perform_in: args must be a Hash (a JSON object), not #{args.class.name}"
       raise ArgumentError, message
     end
-    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: Time.now + seconds)
+    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: Time.current + seconds)
   end
 
   def self.perform_now(args = {})

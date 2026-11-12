@@ -122,7 +122,7 @@ end
 # @return [Integer]
 # @raise [Cybertrain::Test::AssertionFailed] after 10,000 jobs in one call
 # @api public
-def perform_enqueued_jobs(now = Time.now)
+def perform_enqueued_jobs(now = Time.current)
   count = 0
   at = now.to_i
   while Cybertrain::Job.work_one(at)

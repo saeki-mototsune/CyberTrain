@@ -43,9 +43,9 @@ test "10 failures lock the account for an hour with the wrong-password message" 
     assert_nil User.find(user.id).locked_until
     refute User.find(user.id).locked?
   end
-  before = Time.now.to_i
+  before = Time.current.to_i
   page = attempt(client, "wrong-password")
-  after = Time.now.to_i
+  after = Time.current.to_i
   assert_includes page.body, WRONG
   locked = User.find(user.id)
   assert locked.locked?
@@ -74,12 +74,12 @@ test "a locked account refuses the right password until locked_until passes" do
   assert_equal 0, User.find(user.id).failed_attempts
   assert_equal ends, User.find(user.id).locked_until.to_i
   # A minute before the lock ends: still refused.
-  User.find(user.id).update_columns(locked_until: Time.at(Time.now.to_i + 60).utc)
+  User.find(user.id).update_columns(locked_until: Time.at(Time.current.to_i + 60).utc)
   page = attempt(client, "s3cr3t-s3cr3t")
   assert_includes page.body, WRONG
   assert_equal 0, Session.count
   # Once it has passed, the right password signs in and the lock is gone.
-  User.find(user.id).update_columns(locked_until: Time.at(Time.now.to_i - 1).utc)
+  User.find(user.id).update_columns(locked_until: Time.at(Time.current.to_i - 1).utc)
   res = AppTest.sign_in(client)
   assert_redirected_to res, "/"
   assert_equal 1, Session.count

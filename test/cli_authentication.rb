@@ -157,7 +157,7 @@ test "the User model hashes with Cybertrain::Password and validates in before_va
         user
       end
   RUBY
-  assert_includes model, "  def locked? = !locked_until.nil? && locked_until > Time.now\n"
+  assert_includes model, "  def locked? = !locked_until.nil? && locked_until > Time.current\n"
   # One write per failed attempt (I2): no separate increment and lock.
   assert model.index(".increment(").nil?
   assert_equal 1, model.scan("update_all_sql(").size
@@ -168,7 +168,7 @@ test "the User model hashes with Cybertrain::Password and validates in before_va
 
         count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
         lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
-        ends = Time.now + Cybertrain.config.auth_lockout_period
+        ends = Time.current + Cybertrain.config.auth_lockout_period
         User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
         nil
       end
@@ -232,7 +232,7 @@ test "writes the Authentication concern and includes it" do
           return nil
         end
         created_at = found.created_at
-        now = Time.now.to_i
+        now = Time.current.to_i
         if created_at.nil? || created_at.to_i + session_limit(found.remember) <= now
           found.destroy
           session.delete(:session_id)
@@ -252,7 +252,7 @@ test "writes the Authentication concern and includes it" do
           session.delete(:session_id)
           return nil
         end
-        found.update_columns(last_active_at: Time.now) if now - active >= 60
+        found.update_columns(last_active_at: Time.current) if now - active >= 60
         @current_session = found
         @current_user = user
         nil
@@ -291,7 +291,7 @@ test "writes the Authentication concern and includes it" do
       def start_new_session_for(user, remember: false)
         started = Session.create(user_id: user.id, ip_address: request.client_ip,
                                  user_agent: request.header("user-agent").to_s,
-                                 remember: remember, last_active_at: Time.now)
+                                 remember: remember, last_active_at: Time.current)
         session.restart_lifetime!
         session.stamp_lifetime!(session_limit(remember), remember)
         session[:session_id] = started.id
@@ -1419,7 +1419,7 @@ test "password reset: the token in the model, the base URL in the concern" do
       # valid for 15 minutes from now, and bound to password_reset_binding,
       # so it stops working once the password or the address changes
       # (Cybertrain::Token).
-      def password_reset_token(now = Time.now.to_i)
+      def password_reset_token(now = Time.current.to_i)
         Cybertrain::Token.issue("password_reset", id, 15 * 60, password_reset_binding, now)
       end
 
@@ -1488,7 +1488,7 @@ test "password reset: the generated tests and their helpers" do
                            "    c.smtp_tls = tls\n    c.smtp_from = from\n  end\n"
   assert_includes helpers, "    c.smtp_host = \"127.0.0.1\"\n    c.smtp_port = port\n    c.smtp_tls = \"none\"\n    c.smtp_from = \"noreply@example.com\"\n"
   assert_includes helpers, "def last_mail_link(receiver)\n"
-  assert_includes helpers, "def backdate_session(row, seconds)\n  at = Time.at(Time.now.to_i - seconds).utc\n  row.update_columns(created_at: at, last_active_at: at)\n  nil\nend\n"
+  assert_includes helpers, "def backdate_session(row, seconds)\n  at = Time.at(Time.current.to_i - seconds).utc\n  row.update_columns(created_at: at, last_active_at: at)\n  nil\nend\n"
   spec = read("shop/test/passwords.rb")
   assert_includes spec, "require_relative \"support/app_test\"\nrequire_relative \"support/authentication_helpers\"\n"
   ["reset answers the same for unknown addresses and links to base_url",
@@ -1924,7 +1924,7 @@ test "--confirmable writes the confirmation files and columns" do
   assert_includes model, "  MIN_PASSWORD_LENGTH = 8\n  # How long a confirmation link works: three days (--confirmable).\n  CONFIRMATION_TOKEN_TTL = 3 * 24 * 3600\n"
   assert_includes model, "    user.validate_password\n    user.validate_unconfirmed_email\n  end\n"
   assert_includes model, "  def confirmed? = !confirmed_at.nil?\n"
-  assert_includes model, "  def confirmation_token(now = Time.now.to_i)\n" \
+  assert_includes model, "  def confirmation_token(now = Time.current.to_i)\n" \
                          "    Cybertrain::Token.issue(\"confirmation\", id, CONFIRMATION_TOKEN_TTL, confirmation_binding, now)\n  end\n"
   assert_includes model, "  def confirmation_binding\n    pending = unconfirmed_email.to_s\n    address = email_address.to_s\n" \
                          "    at = confirmed_at\n    stamp = at.nil? ? 0 : at.to_i\n    \"\#{pending}:\#{address}:\#{stamp}\"\n  end\n"
@@ -1932,7 +1932,7 @@ test "--confirmable writes the confirmation files and columns" do
   # Review I1/m4: a taken address is forgotten, and the unique index's
   # refusal (a race) is the same answer.
   assert_includes model, "  def confirm\n    pending = unconfirmed_email.to_s\n    self.email_address = pending unless pending.empty?\n" \
-                         "    self.unconfirmed_email = nil\n    self.confirmed_at = Time.now\n    return true if save_confirmed\n\n"
+                         "    self.unconfirmed_email = nil\n    self.confirmed_at = Time.current\n    return true if save_confirmed\n\n"
   assert_includes model, "    update_columns(unconfirmed_email: nil) unless pending.empty?\n    false\n  end\n"
   assert_includes model, "  def save_confirmed\n    save\n  rescue Cybertrain::DB::Error => e\n    raise e unless e.message.include?(\"UNIQUE\")\n\n" \
                          "    errors.add(:email_address, I18n.error_message(\"user\", :email_address, :taken))\n    false\n  end\n"
@@ -2023,7 +2023,7 @@ test "--confirmable writes the confirmation files and columns" do
                              "        # The link went to email_address: a reset proves that mailbox, as a\n" \
                              "        # confirmation link does (--confirmable). A new address waiting\n" \
                              "        # (unconfirmed_email) is not confirmed: that takes its own link.\n" \
-                             "        user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n" \
+                             "        user.update_columns(confirmed_at: Time.current) unless user.confirmed?\n" \
                              "        Session.where(user_id: user.id).delete_all\n"
   # Final review B I3: and it withdraws the address waiting, with its link.
   withdraw = "      # A new address waiting (unconfirmed_email) is withdrawn, and with it\n" \
@@ -2035,7 +2035,7 @@ test "--confirmable writes the confirmation files and columns" do
   assert_equal PASSWORDS_CONTROLLER, passwords.sub("        # The link went to email_address: a reset proves that mailbox, as a\n" \
                                                    "        # confirmation link does (--confirmable). A new address waiting\n" \
                                                    "        # (unconfirmed_email) is not confirmed: that takes its own link.\n" \
-                                                   "        user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n", "")
+                                                   "        user.update_columns(confirmed_at: Time.current) unless user.confirmed?\n", "")
                                               .sub(withdraw, "")
   assert_equal CONFIRMATIONS_NEW_VIEW, read("conf/app/views/confirmations/new.html.erb")
   assert_equal CONFIRMATION_MAIL, read("conf/app/views/mail/_confirmation.html.erb")
@@ -2091,13 +2091,13 @@ test "--confirmable confirms the users nothing mails: the user command's and /se
   # The user command, in sign-up mode too.
   command = read("conf/app/commands/user_command.rb")
   assert_includes command, "    user.password = password\n    # A user made here gets no mail with a link: the address counts as\n" \
-                           "    # confirmed from the start (--confirmable).\n    user.confirmed_at = Time.now if created\n    unless user.save\n"
+                           "    # confirmed from the start (--confirmable).\n    user.confirmed_at = Time.current if created\n    unless user.save\n"
   assert_equal read("shop/app/commands/user_command.rb").gsub("shop", "conf"),
                command.sub("    # A user made here gets no mail with a link: the address counts as\n    # confirmed from the start (--confirmable).\n" \
-                           "    user.confirmed_at = Time.now if created\n", "")
+                           "    user.confirmed_at = Time.current if created\n", "")
   # AppTest.user's users have confirmed, so every other test signs them in.
   assert_includes read("conf/test/support/app_test.rb"), "    user.password = password\n    # Confirmed, as a user who signs in has to be (--confirmable;\n" \
-                                                         "    # test/confirmations.rb makes the unconfirmed ones).\n    user.confirmed_at = Time.now\n    user.save!\n"
+                                                         "    # test/confirmations.rb makes the unconfirmed ones).\n    user.confirmed_at = Time.current\n    user.save!\n"
   # --invite-only: /setup's first user, and the command's.
   Cybertrain::CLI::NewApp.create("cclub", "{ path = \"../cybertrain\" }")
   status = Dir.chdir("cclub") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only", "--confirmable"]) }
@@ -2105,10 +2105,10 @@ test "--confirmable confirms the users nothing mails: the user command's and /se
   setup = read("cclub/app/controllers/setup_controller.rb")
   assert_includes setup, "    @user.password_confirmation = fields[:password_confirmation].to_s\n" \
                          "    # Nothing mails the first user a link: the address counts as\n    # confirmed (--confirmable).\n" \
-                         "    @user.confirmed_at = Time.now\n    # The no-user check"
+                         "    @user.confirmed_at = Time.current\n    # The no-user check"
   assert_equal read("club/app/controllers/setup_controller.rb").gsub("CLUB", "CCLUB").gsub("club", "cclub"),
-               setup.sub("    # Nothing mails the first user a link: the address counts as\n    # confirmed (--confirmable).\n    @user.confirmed_at = Time.now\n", "")
-  assert_includes read("cclub/app/commands/user_command.rb"), "    user.confirmed_at = Time.now if created\n"
+               setup.sub("    # Nothing mails the first user a link: the address counts as\n    # confirmed (--confirmable).\n    @user.confirmed_at = Time.current\n", "")
+  assert_includes read("cclub/app/commands/user_command.rb"), "    user.confirmed_at = Time.current if created\n"
   CONF_ONLY_FILES.each { |f| assert(File.exist?("cclub/#{f}"), "missing #{f}") }
   refute File.exist?("cclub/app/controllers/registrations_controller.rb")
   assert_includes read("cclub/config/routes.rb"), "  resources :confirmations, param: :token, only: [:new, :create, :show]\n  resource :account,"

@@ -83,7 +83,7 @@ module Cybertrain
         @memory = +""
         @memory_events = 0
         @memory_wanted = events
-        @memory_deadline = Time.now.to_f + timeout.to_f
+        @memory_deadline = Clock.monotonic + timeout.to_f
       end
 
       def write(bytes)
@@ -97,14 +97,14 @@ module Cybertrain
       end
 
       def closed?
-        @closed = true if Time.now.to_f >= @memory_deadline
+        @closed = true if Clock.monotonic >= @memory_deadline
         @closed
       end
 
       def wait_closed(seconds)
         return true if closed?
 
-        left = @memory_deadline - Time.now.to_f
+        left = @memory_deadline - Clock.monotonic
         wait = seconds.to_f
         wait = left if left < wait
         sleep wait if wait > 0

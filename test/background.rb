@@ -182,13 +182,13 @@ def await_log(needle, count, wait)
 end
 
 # Each feed test starts from here, whatever the tests before it left: the
-# feeds and the supervisor stopped, the supervisor's state and clock
-# reset, not a feeds process, the writers quiet, and the feeds it needs
+# feeds and the supervisor stopped, the supervisor's state reset, the
+# clock real again, not a feeds process, the writers quiet, and the feeds it needs
 # registered (start! starts every registered feed).
 def fresh_feeds(names)
   B.stop_all
   B.reset_supervisor!
-  B.supervisor_clock = B.system_clock
+  travel_back
   B.exit_on_feed_death = false
   writer_mode("")
   subscribe_steady(dead_url("/steady")) if names.include?("steady") && WS.subscription_index("steady") < 0
@@ -298,8 +298,8 @@ end
 test "start_all starts the supervisor with the feeds; stop_all stops it before them" do
   fresh_feeds(["steady"])
   refute B.supervising?
-  # The supervisor thread reads the injected clock for the rows.
-  B.supervisor_clock = -> { 5000 }
+  # The supervisor thread reads the Clock for the rows.
+  travel_to(Time.at(5000))
   assert B.start_all(feeds_config) >= 1
   assert B.supervising?
   assert WS.running?
@@ -317,7 +317,7 @@ test "start_all starts the supervisor with the feeds; stop_all stops it before t
   refute WS.running?
   # A second stop_all does nothing.
   assert_nil B.stop_all
-  B.supervisor_clock = B.system_clock
+  travel_back
 end
 
 test "a feed thread that dies is restarted after the backoff and restarts counts it" do

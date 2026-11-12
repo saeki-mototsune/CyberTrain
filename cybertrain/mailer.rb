@@ -765,7 +765,7 @@ module Cybertrain
     # What goes after DATA (before dot-stuffing): the plain message, or the
     # multipart one `built` with the Date header in front.
     def self.message_for(sender, recipients, title, text, built, encoding)
-      date = Mailer.date_header(Time.now)
+      date = Mailer.date_header(Clock.now)
       return Mailer.build_message(sender, recipients, title, text, date, encoding) if built.empty?
 
       out = String.new

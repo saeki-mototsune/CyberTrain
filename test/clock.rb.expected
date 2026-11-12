@@ -8,4 +8,5 @@ ok   travel_back inside a block lasts to the end of that block
 ok   freeze_time with a block holds the clock and restores what it found
 ok   a raise out of a travel without a block leaves the next test on real time
 ok   the clock is real after the case that raised mid-travel
-10 tests, 29 assertions, 0 failures
+ok   no runtime or emitted code reads Time.now, and no removed seam is left
+11 tests, 31 assertions, 0 failures

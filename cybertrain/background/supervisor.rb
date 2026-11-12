@@ -25,8 +25,8 @@
 # The backoff, the window and the publish interval are measured on the
 # monotonic clock (Process::CLOCK_MONOTONIC, as Job and Scheduler do), so
 # a step of the wall clock neither delays a restart nor miscounts the
-# window; the rows' `updated_at` is epoch seconds from
-# {Background.supervisor_clock=}. The state below is written by the
+# window; the rows' `updated_at` is epoch seconds from {Clock.now}
+# (a test moves it with `travel_to`). The state below is written by the
 # supervisor thread only (and by the tests' direct
 # {Background.supervise_pass} calls while no supervisor runs); the flags
 # other threads read are plain booleans, as WebSocket.running? reads its
@@ -86,12 +86,6 @@ module Cybertrain
     # How long stop_supervisor! waits for the supervisor thread.
     SUPERVISOR_JOIN_SECONDS = 2.0
 
-    # The clock the rows' updated_at is read from: the system's until a
-    # test injects one.
-    def self.system_clock
-      -> { Time.now.to_i }
-    end
-
     # Whole seconds on the monotonic clock: the backoff, the window and
     # the publish interval.
     def self.monotonic_seconds
@@ -106,7 +100,6 @@ module Cybertrain
     # When the status rows are next due (monotonic seconds); -1 publishes
     # at the next pass.
     @next_publish_at = -1
-    @supervisor_clock = system_clock
 
     # Starts the supervisor thread, unless one runs. {Background.start_all}
     # and {Background.start_only} call it when a service with feeds started.
@@ -189,15 +182,6 @@ module Cybertrain
     # @api public
     def self.feeds_failed?
       @feeds_failed
-    end
-
-    # Replaces the clock the supervisor thread reads the rows' updated_at
-    # from, so a test can move it.
-    # @param clock [Proc] takes no arguments, answers epoch seconds
-    # @return [Proc]
-    # @api public
-    def self.supervisor_clock=(clock)
-      @supervisor_clock = clock
     end
 
     # Seconds the supervisor waits before starting a dead feed again,
@@ -334,7 +318,7 @@ module Cybertrain
 
     def self.supervisor_loop(config, generation)
       while supervisor_live?(generation)
-        supervise_tick(config, @supervisor_clock.call, monotonic_seconds, generation)
+        supervise_tick(config, Clock.now.to_i, monotonic_seconds, generation)
         return nil if @feeds_failed
 
         supervisor_wait(generation)

@@ -264,7 +264,7 @@ module Cybertrain
         end
         ping = @ping_interval.to_f
         slice = ping < SLICE ? ping : SLICE
-        started = Time.now.to_f
+        started = Clock.monotonic
         quiet_since = started
         empty_since = started
         while !sink.closed?
@@ -288,13 +288,13 @@ module Cybertrain
           # empty, so a client that unsubscribes its last stream and then
           # subscribes another is not cut off between the two.
           if sub.name_count > 0
-            empty_since = Time.now.to_f
-          elsif Time.now.to_f - empty_since >= ping
+            empty_since = Clock.monotonic
+          elsif Clock.monotonic - empty_since >= ping
             ws_close(sink, sub, 1008)
             return nil
           end
           msg = sub.stream_pop(slice)
-          now = Time.now.to_f
+          now = Clock.monotonic
           if msg.nil?
             if now - quiet_since >= ping
               ws_send(sink, WebSocket::Frame::OP_PING, "")
@@ -391,9 +391,9 @@ module Cybertrain
       # Sends close `code` and waits up to CLOSE_WAIT for the client's.
       def ws_close(sink, sub, code)
         ws_send(sink, WebSocket::Frame::OP_CLOSE, WebSocket::Frame.close_payload(code, ""))
-        deadline = Time.now.to_f + CLOSE_WAIT
+        deadline = Clock.monotonic + CLOSE_WAIT
         while !sink.closed?
-          left = deadline - Time.now.to_f
+          left = deadline - Clock.monotonic
           break if left <= 0
 
           msg = sub.stream_pop(left)

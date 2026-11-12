@@ -302,7 +302,7 @@ module Cybertrain
       return false if TASKS.empty? && !Job.handlers?
 
       prune_safely
-      schedule_all(Time.now.to_i, config.scheduler_tz)
+      schedule_all(Clock.now.to_i, config.scheduler_tz)
       # The thread's first tick that leads re-reads the table (run_due).
       @leader = false
       @lease_ttl = config.scheduler_lease_ttl
@@ -350,7 +350,7 @@ module Cybertrain
     end
 
     # Epoch seconds of the scheduler's last tick, 0 before the first. A
-    # health endpoint can compare it with `Time.now.to_i`: a value older
+    # health endpoint can compare it with `Clock.now.to_i`: a value older
     # than a few {Config#scheduler_interval}s means the loop is stuck in a
     # task (or not running).
     # @return [Integer]
@@ -702,7 +702,7 @@ module Cybertrain
 
     def self.run_loop(interval, generation)
       while @running && @generation == generation
-        run_due(Time.now.to_i)
+        run_due(Clock.now.to_i)
         sleep interval
       end
       nil

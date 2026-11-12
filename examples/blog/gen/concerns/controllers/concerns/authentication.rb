@@ -44,7 +44,7 @@ module Authentication
       return nil
     end
     created_at = found.created_at
-    now = Time.now.to_i
+    now = Time.current.to_i
     if created_at.nil? || created_at.to_i + session_limit(found.remember) <= now
       found.destroy
       session.delete(:session_id)
@@ -64,7 +64,7 @@ module Authentication
       session.delete(:session_id)
       return nil
     end
-    found.update_columns(last_active_at: Time.now) if now - active >= 60
+    found.update_columns(last_active_at: Time.current) if now - active >= 60
     @current_session = found
     @current_user = user
     nil
@@ -103,7 +103,7 @@ module Authentication
   def start_new_session_for(user, remember: false)
     started = Session.create(user_id: user.id, ip_address: request.client_ip,
                              user_agent: request.header("user-agent").to_s,
-                             remember: remember, last_active_at: Time.now)
+                             remember: remember, last_active_at: Time.current)
     session.restart_lifetime!
     session.stamp_lifetime!(session_limit(remember), remember)
     session[:session_id] = started.id

@@ -280,27 +280,13 @@ module Cybertrain
       nil
     end
 
-    # -1 while the system clock is used; see {.current_time=}.
-    @fixed_time = -1
-
     # The time the `store: :memory` limiters count with, in epoch seconds:
-    # the system clock, unless a test fixed it. The cache store counts with
-    # {Cache.now} instead (a test fixes it with {Cache.clock=}).
+    # {Clock.now}, so a test moves a window with `travel_to` / `travel`.
+    # The cache store counts with {Cache.now}, which reads the same clock.
     # @return [Integer]
     # @api public
     def self.current_time
-      fixed = @fixed_time
-      fixed < 0 ? Time.now.to_i : fixed
-    end
-
-    # Fixes the time the `store: :memory` limiters see, for a test that
-    # needs a window to pass; -1 goes back to the system clock.
-    # @param seconds [Integer] epoch seconds, or -1
-    # @return [nil]
-    # @api public
-    def self.current_time=(seconds)
-      @fixed_time = seconds
-      nil
+      Clock.now.to_i
     end
   end
 end

@@ -298,7 +298,7 @@ module Cybertrain
     def self.process_label
       label = @process_label
       if label.empty?
-        label = "#{Socket.gethostname}:#{Process.pid}:#{Time.now.to_i}:#{SecureRandom.hex(3)}"
+        label = "#{Socket.gethostname}:#{Process.pid}:#{Clock.now.to_i}:#{SecureRandom.hex(3)}"
         @process_label = label
       end
       label
@@ -396,7 +396,7 @@ module Cybertrain
     # A kind registered with a `concurrency_key:` stores the payload's
     # {Job.concurrency_key_for} with the row; its limit then counts per key.
     # @example run in ten minutes
-    #   Cybertrain::Job.enqueue("reminder", order.id.to_s, run_at: Time.now + 600)
+    #   Cybertrain::Job.enqueue("reminder", order.id.to_s, run_at: Time.current + 600)
     # @param kind [String] a kind registered with {Job.handle}
     # @param payload [String] handed to the handler as it is
     # @param run_at [Time] the earliest time to run it (now by default)
@@ -408,7 +408,7 @@ module Cybertrain
     # @raise [Cybertrain::DB::Error] when the database is not connected or
     #   the insert fails
     # @api public
-    def self.enqueue(kind, payload, run_at: Time.now)
+    def self.enqueue(kind, payload, run_at: Time.current)
       raise ArgumentError, "Job.enqueue: no handler registered for #{kind.inspect}" if handler_index(kind) < 0
 
       key = concurrency_key_for(kind, payload)

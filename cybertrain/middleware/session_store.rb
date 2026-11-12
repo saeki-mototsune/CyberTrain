@@ -50,8 +50,6 @@ module Cybertrain
                    same_site: "Lax", partitioned: false, absolute_max_age: 0)
       super(app)
       @absolute_max_age = absolute_max_age
-      # 0: the clock is Time.now. Tests set a fixed time with fixed_now=.
-      @fixed_now = 0
       @session_key = Crypto.derive_key(secret, SESSION_KEY_LABEL)
       @signed_key = Crypto.derive_key(secret, CookieJar::SIGNED_KEY_LABEL)
       @encrypted_key = Crypto.derive_key(secret, CookieJar::ENCRYPTED_KEY_LABEL)
@@ -127,15 +125,10 @@ module Cybertrain
       result
     end
 
-    # Pins the clock the absolute lifetime is measured with to `seconds`
-    # since the epoch (0 goes back to Time.now), for tests.
-    def fixed_now=(seconds)
-      @fixed_now = seconds
-    end
-
+    # The clock the absolute lifetime is measured with, in epoch seconds:
+    # {Clock.now}, so a test moves it with `travel_to` / `travel`.
     def current_time
-      fixed = @fixed_now
-      fixed > 0 ? fixed : Time.now.to_i
+      Clock.now.to_i
     end
   end
 end

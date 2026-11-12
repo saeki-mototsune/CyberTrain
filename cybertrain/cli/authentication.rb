@@ -1273,7 +1273,7 @@ module Cybertrain
             # (count_failed_attempt!): authenticate_by refuses it until then,
             # unless lockout is off (auth_lockout_attempts 0), which also stops
             # enforcing a lock made before.
-            def locked? = !locked_until.nil? && locked_until > Time.now
+            def locked? = !locked_until.nil? && locked_until > Time.current
 
             # A wrong password: one more failed attempt, counted by the database
             # in one UPDATE that reads the row as it is (so sign-ins at the same
@@ -1287,7 +1287,7 @@ module Cybertrain
 
               count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
               lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
-              ends = Time.now + Cybertrain.config.auth_lockout_period
+              ends = Time.current + Cybertrain.config.auth_lockout_period
               User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
               nil
             end
@@ -1307,7 +1307,7 @@ module Cybertrain
             # valid for 15 minutes from now, and bound to password_reset_binding,
             # so it stops working once the password or the address changes
             # (Cybertrain::Token).
-            def password_reset_token(now = Time.now.to_i)
+            def password_reset_token(now = Time.current.to_i)
               Cybertrain::Token.issue("password_reset", id, 15 * 60, password_reset_binding, now)
             end
 
@@ -1409,7 +1409,7 @@ module Cybertrain
           # signed, valid for CONFIRMATION_TOKEN_TTL from now, and bound to
           # confirmation_binding, so it confirms the address it was mailed to and
           # works once.
-          def confirmation_token(now = Time.now.to_i)
+          def confirmation_token(now = Time.current.to_i)
             Cybertrain::Token.issue("confirmation", id, CONFIRMATION_TOKEN_TTL, confirmation_binding, now)
           end
 
@@ -1437,7 +1437,7 @@ module Cybertrain
             pending = unconfirmed_email.to_s
             self.email_address = pending unless pending.empty?
             self.unconfirmed_email = nil
-            self.confirmed_at = Time.now
+            self.confirmed_at = Time.current
             return true if save_confirmed
 
             update_columns(unconfirmed_email: nil) unless pending.empty?
@@ -1563,7 +1563,7 @@ module Cybertrain
                 return nil
               end
               created_at = found.created_at
-              now = Time.now.to_i
+              now = Time.current.to_i
               if created_at.nil? || created_at.to_i + session_limit(found.remember) <= now
                 found.destroy
                 session.delete(:session_id)
@@ -1583,7 +1583,7 @@ module Cybertrain
                 session.delete(:session_id)
                 return nil
               end
-              found.update_columns(last_active_at: Time.now) if now - active >= 60
+              found.update_columns(last_active_at: Time.current) if now - active >= 60
               @current_session = found
               @current_user = user
               nil
@@ -1623,7 +1623,7 @@ module Cybertrain
               @CONFIRMED_ONLY@
               started = Session.create(user_id: user.id, ip_address: request.client_ip,
                                        user_agent: request.header("user-agent").to_s,
-                                       remember: remember, last_active_at: Time.now)
+                                       remember: remember, last_active_at: Time.current)
               session.restart_lifetime!
               session.stamp_lifetime!(session_limit(remember), remember)
               session[:session_id] = started.id
@@ -2081,7 +2081,7 @@ module Cybertrain
         chunk = margin("# The link went to email_address: a reset proves that mailbox, as a\n" \
                        "# confirmation link does (--confirmable). A new address waiting\n" \
                        "# (unconfirmed_email) is not confirmed: that takes its own link.\n" \
-                       "user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n", 8)
+                       "user.update_columns(confirmed_at: Time.current) unless user.confirmed?\n", 8)
         withdraw = margin("# A new address waiting (unconfirmed_email) is withdrawn, and with it\n" \
                           "# its link (the token is bound to it): whoever asked for it may be\n" \
                           "# the one the owner is taking the account back from.\n" \
@@ -3171,7 +3171,7 @@ module Cybertrain
           end
         RUBY
         chunk = margin("# Nothing mails the first user a link: the address counts as\n" \
-                       "# confirmed (--confirmable).\n@user.confirmed_at = Time.now\n", 4)
+                       "# confirmed (--confirmable).\n@user.confirmed_at = Time.current\n", 4)
         splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
       end
 
@@ -3340,7 +3340,7 @@ module Cybertrain
             end
         RUBY
         chunk = margin("# A user made here gets no mail with a link: the address counts as\n" \
-                       "# confirmed from the start (--confirmable).\nuser.confirmed_at = Time.now if created\n", 4)
+                       "# confirmed from the start (--confirmable).\nuser.confirmed_at = Time.current if created\n", 4)
         splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
       end
 
@@ -3538,7 +3538,7 @@ module Cybertrain
           APP = AppTest.boot
         RUBY
         chunk = margin("# Confirmed, as a user who signs in has to be (--confirmable;\n" \
-                       "# test/confirmations.rb makes the unconfirmed ones).\nuser.confirmed_at = Time.now\n", 4)
+                       "# test/confirmations.rb makes the unconfirmed ones).\nuser.confirmed_at = Time.current\n", 4)
         splice(text, "@CONFIRMED@", confirmable ? chunk : "")
       end
 
@@ -3706,7 +3706,7 @@ module Cybertrain
           # The first (in these tests, the browser's only) Session row, as if
           # started `started` seconds ago and last used `idle` seconds ago.
           def backdate(started, idle)
-            now = Time.now.to_i
+            now = Time.current.to_i
             Session.first.update_columns(created_at: Time.at(now - started).utc, last_active_at: Time.at(now - idle).utc)
             nil
           end
@@ -3760,7 +3760,7 @@ module Cybertrain
             user = AppTest.user
             ctx = Cybertrain::Context.new(Cybertrain::Request.new("POST", "/session", {}, ""))
             ctx.session = Cybertrain::Session.new
-            ctx.session["_issued_at"] = Time.now.to_i - 13 * DAY
+            ctx.session["_issued_at"] = Time.current.to_i - 13 * DAY
             assert ctx.session.issued_at > 0
             LifetimeProbeController.new(ctx).probe_start(user, false)
             assert_equal 0, ctx.session.issued_at
@@ -3885,7 +3885,7 @@ module Cybertrain
             client = new_client
             AppTest.user
             sign_in_with(client, true)
-            now = Time.now.to_i
+            now = Time.current.to_i
             Session.first.update_columns(created_at: Time.at(now - 7 * DAY + 60).utc, last_active_at: nil)
             assert signed_in?(client)
             refute Session.first.last_active_at.nil?
@@ -3911,13 +3911,13 @@ module Cybertrain
           test "last_active_at is touched at most once a minute" do
             client = new_client
             AppTest.user
-            before = Time.now.to_i
+            before = Time.current.to_i
             sign_in_with(client, false)
             started = Session.first.last_active_at
             refute started.nil?
             assert started.to_i >= before
             # Used 30 seconds ago: a request does not write the row.
-            now = Time.now.to_i
+            now = Time.current.to_i
             Session.first.update_columns(last_active_at: Time.at(now - 30).utc)
             updated_at = Session.first.updated_at.to_i
             assert signed_in?(client)
@@ -4002,9 +4002,9 @@ module Cybertrain
               assert_nil User.find(user.id).locked_until
               refute User.find(user.id).locked?
             end
-            before = Time.now.to_i
+            before = Time.current.to_i
             page = attempt(client, "wrong-password")
-            after = Time.now.to_i
+            after = Time.current.to_i
             assert_includes page.body, WRONG
             locked = User.find(user.id)
             assert locked.locked?
@@ -4033,12 +4033,12 @@ module Cybertrain
             assert_equal 0, User.find(user.id).failed_attempts
             assert_equal ends, User.find(user.id).locked_until.to_i
             # A minute before the lock ends: still refused.
-            User.find(user.id).update_columns(locked_until: Time.at(Time.now.to_i + 60).utc)
+            User.find(user.id).update_columns(locked_until: Time.at(Time.current.to_i + 60).utc)
             page = attempt(client, "s3cr3t-s3cr3t")
             assert_includes page.body, WRONG
             assert_equal 0, Session.count
             # Once it has passed, the right password signs in and the lock is gone.
-            User.find(user.id).update_columns(locked_until: Time.at(Time.now.to_i - 1).utc)
+            User.find(user.id).update_columns(locked_until: Time.at(Time.current.to_i - 1).utc)
             res = AppTest.sign_in(client)
             assert_redirected_to res, "/"
             assert_equal 1, Session.count
@@ -4190,7 +4190,7 @@ module Cybertrain
           # A Session row as if it had started, and last been used, `seconds`
           # ago.
           def backdate_session(row, seconds)
-            at = Time.at(Time.now.to_i - seconds).utc
+            at = Time.at(Time.current.to_i - seconds).utc
             row.update_columns(created_at: at, last_active_at: at)
             nil
           end
@@ -4431,7 +4431,7 @@ module Cybertrain
           test "the token expires after 15 minutes" do
             client = new_client
             user = AppTest.user
-            now = Time.now.to_i
+            now = Time.current.to_i
             assert user.password_reset_token(now).start_with?("#{user.id}--#{now + 15 * 60}--")
             stale = user.password_reset_token(now - 16 * 60)
             fresh = user.password_reset_token(now - 14 * 60)
@@ -4461,7 +4461,7 @@ module Cybertrain
             ann = AppTest.user
             bob = AppTest.user("bob@example.com")
             token = ann.password_reset_token
-            earlier = ann.password_reset_token(Time.now.to_i - 60)
+            earlier = ann.password_reset_token(Time.current.to_i - 60)
             # A token names its user and is bound to that user's password and
             # address: one with bob's id and ann's binding, ann's id and her
             # password alone, or another purpose, is no one's.
@@ -4507,7 +4507,7 @@ module Cybertrain
             AppTest.sign_in(laptop)
             # The laptop signed in a day ago.
             backdate_session(Session.first, 24 * 60 * 60)
-            assert Session.first.created_at.to_i <= Time.now.to_i - 24 * 60 * 60
+            assert Session.first.created_at.to_i <= Time.current.to_i - 24 * 60 * 60
             phone = Cybertrain::Test::Client.new(APP)
             AppTest.sign_in(phone)
             bobs = Cybertrain::Test::Client.new(APP)
@@ -4773,7 +4773,7 @@ module Cybertrain
             assert_nil ctx.session[:session_id]
             assert_nil ctx.session[:password_key]
             # Confirmed, the same call signs in.
-            ann.update_columns(confirmed_at: Time.now)
+            ann.update_columns(confirmed_at: Time.current)
             SessionStartProbeController.new(ctx).probe_start(User.find(ann.id))
             assert_equal 1, Session.count
             assert_equal Session.first.id, ctx.session[:session_id].to_i
@@ -4783,9 +4783,9 @@ module Cybertrain
             client = new_client
             ann = unconfirmed_user
             token = ann.confirmation_token
-            before = Time.now.to_i
+            before = Time.current.to_i
             res = client.get("/confirmations/#{token}")
-            after = Time.now.to_i
+            after = Time.current.to_i
             assert_redirected_to res, "/session/new"
             # The page's address holds the token: no Referer leaves it.
             assert_equal "no-referrer", res.header("Referrer-Policy")
@@ -4816,7 +4816,7 @@ module Cybertrain
             ann = unconfirmed_user
             bob = unconfirmed_user("bob@example.com")
             assert_equal 259_200, User::CONFIRMATION_TOKEN_TTL
-            now = Time.now.to_i
+            now = Time.current.to_i
             assert ann.confirmation_token(now).start_with?("#{ann.id}--#{now + 259_200}--")
             assert_equal ":ann@example.com:0", ann.confirmation_binding
             stale = ann.confirmation_token(now - 259_200 - 60)
@@ -5528,14 +5528,13 @@ module Cybertrain
           end
 
           # RegistrationsController's rate_limit: ten sign-ups per client
-          # address, then the form again until the window closes (the cache's
-          # clock held still, as in POST /session's test). The ten send no
+          # address, then the form again until the window closes (the clock
+          # held still by travel_to, as in POST /session's test). The ten send no
           # password, so none of them costs a hash.
           test "POST /sign_up past ten requests is refused for a while" do
             client = new_client
             Cybertrain::RateLimit.reset_all!
-            Cybertrain::Cache.clock = -> { 2_000_000_000 }
-            begin
+            travel_to(Time.at(2_000_000_000)) do
               client.get("/sign_up")
               token = AppTest.form_token(client)
               empty = { "authenticity_token" => token, "user[email_address]" => "nobody@example.com",
@@ -5548,12 +5547,9 @@ module Cybertrain
               assert_equal 0, User.count
               res = client.follow_redirect!
               assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
-              Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
+              travel 3 * 60
               client.post("/sign_up", right)
               assert_equal 1, User.count
-            ensure
-              # The system clock again, even when an assertion fails.
-              Cybertrain::Cache.clock = -> { Time.now.to_i }
             end
           end
 
@@ -5729,16 +5725,15 @@ module Cybertrain
           # SessionsController's rate_limit: ten attempts per address, then even
           # the right password goes back to the form until the window closes.
           # The counts live in Cybertrain::Cache, in windows aligned to the
-          # epoch: the cache's clock is held still, so the attempts share one
-          # window, then moved a whole window on. The ten go to an address no
+          # epoch: travel_to holds the clock still, so the attempts share one
+          # window, then travel moves it a whole window on. The ten go to an address no
           # user has: the limit counts per client, whatever the address, and
           # there is no account for lockout (test/lockout.rb) to lock.
           test "POST /session past ten attempts is refused for a while" do
             client = new_client
             AppTest.user
             Cybertrain::RateLimit.reset_all!
-            Cybertrain::Cache.clock = -> { 2_000_000_000 }
-            begin
+            travel_to(Time.at(2_000_000_000)) do
               client.get("/session/new")
               wrong_password = { "authenticity_token" => AppTest.form_token(client),
                                  "email_address" => "nobody@example.com", "password" => "wrong-password" }
@@ -5750,14 +5745,10 @@ module Cybertrain
               assert_equal 0, Session.count
               res = client.follow_redirect!
               assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
-              Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
+              travel 3 * 60
               res = client.post("/session", right_password)
               assert_redirected_to res, "/"
               assert_equal 1, Session.count
-            ensure
-              # The system clock again, even when an assertion fails: the
-              # tests after this one must not run at a frozen time.
-              Cybertrain::Cache.clock = -> { Time.now.to_i }
             end
           end
 
@@ -5817,7 +5808,7 @@ module Cybertrain
               # to the expiration boundary. Saving updates updated_at too;
               # neither that nor a rewritten cookie extends authentication.
               row = Session.first
-              row.created_at = Time.at(Time.now.to_i - Cybertrain.config.session_absolute_max_age).utc
+              row.created_at = Time.at(Time.current.to_i - Cybertrain.config.session_absolute_max_age).utc
               row.save!
               res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
                                            { "cookie" => cookie })

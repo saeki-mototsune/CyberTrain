@@ -56,7 +56,7 @@ end
 # A Session row as if it had started, and last been used, `seconds`
 # ago.
 def backdate_session(row, seconds)
-  at = Time.at(Time.now.to_i - seconds).utc
+  at = Time.at(Time.current.to_i - seconds).utc
   row.update_columns(created_at: at, last_active_at: at)
   nil
 end

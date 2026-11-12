@@ -192,7 +192,7 @@ end
 test "the token expires after 15 minutes" do
   client = new_client
   user = AppTest.user
-  now = Time.now.to_i
+  now = Time.current.to_i
   assert user.password_reset_token(now).start_with?("#{user.id}--#{now + 15 * 60}--")
   stale = user.password_reset_token(now - 16 * 60)
   fresh = user.password_reset_token(now - 14 * 60)
@@ -222,7 +222,7 @@ test "the token stops working once the password changed" do
   ann = AppTest.user
   bob = AppTest.user("bob@example.com")
   token = ann.password_reset_token
-  earlier = ann.password_reset_token(Time.now.to_i - 60)
+  earlier = ann.password_reset_token(Time.current.to_i - 60)
   # A token names its user and is bound to that user's password and
   # address: one with bob's id and ann's binding, ann's id and her
   # password alone, or another purpose, is no one's.
@@ -268,7 +268,7 @@ test "updating the password ends every other session" do
   AppTest.sign_in(laptop)
   # The laptop signed in a day ago.
   backdate_session(Session.first, 24 * 60 * 60)
-  assert Session.first.created_at.to_i <= Time.now.to_i - 24 * 60 * 60
+  assert Session.first.created_at.to_i <= Time.current.to_i - 24 * 60 * 60
   phone = Cybertrain::Test::Client.new(APP)
   AppTest.sign_in(phone)
   bobs = Cybertrain::Test::Client.new(APP)

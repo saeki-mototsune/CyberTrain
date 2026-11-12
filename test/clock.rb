@@ -102,4 +102,36 @@ test "the clock is real after the case that raised mid-travel" do
   refute Cybertrain::Clock.travelling?
 end
 
+# Spec section 2.3: the framework's runtime, and the code its emitters
+# write into an application, read the time through Cybertrain::Clock
+# (Time.current), never Time.now; the five clock seams it replaced are
+# gone. cybertrain/cli/ and the rest of cybertrain/generator/ run at build
+# time on the developer's clock; test/time_now.rb is the override itself.
+# Comment lines are not counted. Run from the repository root.
+def clock_scanned?(path)
+  return false if path.start_with?("cybertrain/cli/")
+  return false if path.start_with?("cybertrain/generator/") && !path.end_with?("_emitter.rb")
+
+  path != "cybertrain/test/time_now.rb"
+end
+
+test "no runtime or emitted code reads Time.now, and no removed seam is left" do
+  hits = []
+  seam_files = []
+  seams = ["def self.clock=", "system_clock", "current_time=", "fixed_now", "status_now", "supervisor_clock"]
+  Dir.glob("cybertrain/**/*.rb").sort.each do |path|
+    text = File.read(path)
+    seam_files << path if seams.any? { |w| text.include?(w) }
+    next unless clock_scanned?(path)
+
+    number = 0
+    text.each_line do |line|
+      number += 1
+      hits << "#{path}:#{number}" if !line.lstrip.start_with?("#") && line.include?("Time.now")
+    end
+  end
+  assert_equal [], hits
+  assert_equal [], seam_files
+end
+
 Cybertrain::Test.run!
