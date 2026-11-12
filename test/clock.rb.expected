@@ -1,0 +1,7 @@
+ok   Clock.now is real time until travel_to, then frozen without sub-seconds
+ok   travel and freeze_time with and without blocks
+ok   nested travel_to restores the outer instant after a raise
+ok   a travel without a block lasts to the end of its test
+ok   the clock is real again in the next test
+ok   Date.current follows the clock
+6 tests, 14 assertions, 0 failures

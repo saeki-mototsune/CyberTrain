@@ -5,6 +5,9 @@
 # blocks with `test "name" do ... end` and finishes with `Cybertrain::Test.run!`.
 # `spin test` compares the program's stdout against test/<name>.rb.expected,
 # so every line printed here is deterministic (no timings, no addresses).
+require "cybertrain/clock"
+require "cybertrain/test/time_helpers"
+
 module Cybertrain
   # The test harness for applications (and the framework's own tests).
   # minitest and RSpec cannot run under Spinel, so a test file is a plain
@@ -82,6 +85,9 @@ module Cybertrain
           @failures += 1
           puts "ERR  #{c.name}: #{e.class.name}: #{e.message}"
         end
+        # A travel without a block lasts to the end of its case, whatever
+        # happened (spec section 2.1): the next case starts on real time.
+        Cybertrain::Clock.travel_back
       end
       puts "#{@cases.size} tests, #{@assertions} assertions, #{@failures} failures"
       exit(1) if @failures > 0

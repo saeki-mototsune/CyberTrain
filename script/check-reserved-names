@@ -369,6 +369,10 @@ NAME_HOMES = {
   "travel_to" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
   "travel_back" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
   "freeze_time" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  # Clock.monotonic and DB::Connection.monotonic (the busy wait's deadline)
+  # both answer CLOCK_MONOTONIC seconds as a Float (Task 2; test/clock.rb
+  # compiles them with test.rb, test/time_travel.rb with the whole framework).
+  "monotonic" => %w[cybertrain/db/connection.rb cybertrain/clock.rb],
   # CLI::Toolchain.setup (the `cybertrain setup` command); the top-level
   # setup / teardown blocks; Test::Base#setup / #teardown (nil) beside the
   # class methods of the same name that refuse an unrewritten file (D9).
