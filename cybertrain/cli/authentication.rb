@@ -7,12 +7,16 @@
 #   app/controllers/concerns/authentication.rb   the Authentication concern
 #   app/controllers/sessions_controller.rb, registrations_controller.rb
 #   app/controllers/passwords_controller.rb      password reset by mail
+#   app/controllers/accounts_controller.rb       the account page: a new
+#                                                address or password, or
+#                                                the account deleted
 #   app/mailers/passwords_mailer.rb              its mail
 #   app/commands/user_command.rb                 `./<app> user ...`
 #   app/views/sessions/new.html.erb, _nav.html.erb, registrations/new.html.erb
 #   app/views/passwords/new.html.erb, edit.html.erb, mail/_password_reset.html.erb
+#   app/views/accounts/edit.html.erb
 #   test/authentication.rb, test/admin.rb, test/remember_me.rb,
-#   test/lockout.rb, test/passwords.rb, test/support/app_test.rb,
+#   test/lockout.rb, test/passwords.rb, test/accounts.rb, test/support/app_test.rb,
 #   test/support/authentication_helpers.rb
 #
 # and these edits: `include Authentication` into
@@ -55,6 +59,12 @@
 # concern's mail_link_base). A reset clears a lockout and ends every
 # session of the user.
 #
+# The account page (/account/edit, the nav's "Account"): a new address
+# (at once) or a new password, either only with the current password, and
+# the account deleted, only with the password. A new password ends the
+# user's other sessions and signs this browser in again, remembered as it
+# was. Wrong passwords there are rate limited as sign-ins are.
+#
 # What it leaves out, and why: a `Current` object (templates read `@current_user` instead, an ivar
 # `resume_session` sets on every controller). What it adds that Rails'
 # does not: a sign-up page, because there is no console to create the first
@@ -84,6 +94,10 @@ module Cybertrain
       # whose routes have the sign-in but not these yet.
       PASSWORDS_ROUTE_MARK = "resources :passwords"
       PASSWORDS_ROUTE = "resources :passwords, param: :token, only: [:new, :create, :edit, :update]"
+      # The account page's route, added after PASSWORDS_ROUTE_MARK's line the
+      # same way.
+      ACCOUNT_ROUTE_MARK = "resource :account"
+      ACCOUNT_ROUTE = "resource :account, only: [:edit, :update, :destroy]"
       NAV_LINE = "<%= render \"sessions/nav\" %>"
       # What an app test's new_client needs once the app has authentication:
       # empty the two tables, then a user signed in through the form.
@@ -172,6 +186,7 @@ module Cybertrain
           record(created, root, "app/controllers/registrations_controller.rb", registrations_controller)
         end
         record(created, root, "app/controllers/passwords_controller.rb", passwords_controller)
+        record(created, root, "app/controllers/accounts_controller.rb", accounts_controller)
         record(created, root, "app/mailers/passwords_mailer.rb", passwords_mailer)
         record(created, root, "app/commands/user_command.rb", user_command(app, invite_only))
         record(created, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only))
@@ -184,6 +199,7 @@ module Cybertrain
         record(created, root, "app/views/passwords/new.html.erb", passwords_new_view)
         record(created, root, "app/views/passwords/edit.html.erb", passwords_edit_view)
         record(created, root, "app/views/mail/_password_reset.html.erb", password_reset_mail_view)
+        record(created, root, "app/views/accounts/edit.html.erb", accounts_edit_view)
         record(created, root, "test/support/app_test.rb", app_test_support)
         record(created, root, "test/support/authentication_helpers.rb", authentication_helpers)
         record(created, root, "test/authentication.rb", invite_only ? invite_only_test(app) : authentication_test)
@@ -191,6 +207,7 @@ module Cybertrain
         record(created, root, "test/remember_me.rb", remember_me_test)
         record(created, root, "test/lockout.rb", lockout_test)
         record(created, root, "test/passwords.rb", passwords_test(app))
+        record(created, root, "test/accounts.rb", accounts_test)
         add_to_application_controller(controller_path)
         add_routes(routes_path, invite_only)
         enable_jobs_page(routes_path, controller_path)
@@ -287,28 +304,44 @@ module Cybertrain
         true
       end
 
-      # Inserts the sign-in, password reset and sign-up (or setup) routes
-      # after the draw line, once. Routes that have the sign-in but not the
-      # reset (an app generated before it) get the reset's line right after
-      # the sign-in's, indented as that one is.
+      # Inserts the sign-in, password reset, account and sign-up (or setup)
+      # routes after the draw line, once. Routes that have the sign-in but
+      # not the reset or the account page (an app generated before them) get
+      # the reset's line right after the sign-in's and the account's right
+      # after the reset's, each indented as the line before it is.
       def self.add_routes(path, invite_only = false)
         source = File.read(path)
         if source.index(ROUTE_MARK).nil?
           File.write(path, insert_after_line(source, Scaffold::DRAW_LINE, indent(routes_block(invite_only))))
-          puts "route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, get/post #{invite_only ? "/setup" : "/sign_up"}"
+          puts "route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{ACCOUNT_ROUTE_MARK}, get/post #{invite_only ? "/setup" : "/sign_up"}"
           return true
         end
-        unless source.index(PASSWORDS_ROUTE_MARK).nil?
-          puts "identical route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}"
+        added = Array.new(0) { "" }
+        if source.index(PASSWORDS_ROUTE_MARK).nil?
+          source = insert_route_after(source, ROUTE_MARK, PASSWORDS_ROUTE)
+          added << PASSWORDS_ROUTE_MARK
+        end
+        if source.index(ACCOUNT_ROUTE_MARK).nil?
+          source = insert_route_after(source, PASSWORDS_ROUTE_MARK, ACCOUNT_ROUTE)
+          added << ACCOUNT_ROUTE_MARK
+        end
+        if added.empty?
+          puts "identical route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{ACCOUNT_ROUTE_MARK}"
           return false
         end
 
-        at = source.index(ROUTE_MARK).to_i
+        File.write(path, source)
+        puts "route #{added.join(", ")}"
+        true
+      end
+
+      # source with route on a line of its own right after the first line
+      # that holds mark, indented as that line is.
+      def self.insert_route_after(source, mark, route)
+        at = source.index(mark).to_i
         start = line_start_before(source, at)
         margin = source[start, at - start].to_s
-        File.write(path, insert_after_line(source, ROUTE_MARK, "#{margin}#{PASSWORDS_ROUTE}\n"))
-        puts "route #{PASSWORDS_ROUTE_MARK}"
-        true
+        insert_after_line(source, mark, "#{margin}#{route}\n")
       end
 
       # Where the line holding offset `at` of source starts.
@@ -999,6 +1032,7 @@ module Cybertrain
           <nav class="session">
             <% if @current_user %>
               <span><%= @current_user.email_address %></span>
+              <%= link_to t(".account"), edit_account_path %>
               <%= button_to t(".sign_out"), session_path, method: :delete %>
             <% else %>
               <%= link_to t(".sign_in"), new_session_path %>
@@ -1249,6 +1283,433 @@ module Cybertrain
           <p><%= link_to t(".link"), url %></p>
           <p><%= t(".ignore") %></p>
         ERB
+      end
+
+      # ---- the account page ---------------------------------------------
+
+      # app/controllers/accounts_controller.rb: the signed-in user's own
+      # page. Every change asks for the current password; a wrong one is
+      # rate limited as a sign-in is (it does not count toward the lockout,
+      # which guards signing in). A new password restarts this browser's
+      # session through start_new_session_for with the row's own remember
+      # flag, so "keep me signed in" survives it (pre-flight finding 9).
+      def self.accounts_controller
+        <<~'RUBY'
+          # The signed-in user's account (cybertrain generate authentication): a new
+          # email address, a new password, or both, each only with the current
+          # password; and the account deleted, also only with the password.
+          #
+          # Written by the generator; it is yours to change.
+          class AccountsController < ApplicationController
+            # Ten changes or deletions per client address every three minutes, as for
+            # signing in: a current password is guessed here no faster than there.
+            rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], with: :rate_limited
+            before_action :set_user
+
+            # GET /account/edit
+            def edit
+            end
+
+            # PATCH/PUT /account
+            # The current password first, for any change. A new address takes effect
+            # at once. A new password ends every other session of the user and starts
+            # this browser's again (restart_sessions), and every password reset link
+            # sent before stops working (they are bound to the password).
+            def update
+              fields = params.expect(user: [:current_password, :email_address, :password, :password_confirmation])
+              digest = @user.password_digest
+              if @user.authenticate(fields["current_password"].to_s)
+                @user.email_address = fields["email_address"].to_s if fields.key?("email_address")
+                password = fields["password"].to_s
+                unless password.empty?
+                  @user.password = password
+                  @user.password_confirmation = fields["password_confirmation"].to_s
+                end
+                if @user.save
+                  restart_sessions if @user.password_digest != digest
+                  flash[:notice] = t(".updated")
+                  redirect_to edit_account_path, status: :see_other
+                else
+                  render :edit, status: :unprocessable_entity
+                end
+              else
+                flash.now[:alert] = t(".wrong_password")
+                render :edit, status: :unprocessable_entity
+              end
+            end
+
+            # DELETE /account
+            # With the password: the user's sessions (every browser's), then the user,
+            # are deleted, and this browser's cookie session is emptied.
+            def destroy
+              if @user.authenticate(params[:password].to_s)
+                Session.where(user_id: @user.id).delete_all
+                @user.destroy
+                terminate_session
+                flash[:notice] = t(".deleted")
+                redirect_to "/", status: :see_other
+              else
+                flash.now[:alert] = t(".wrong_password")
+                render :edit, status: :unprocessable_entity
+              end
+            end
+
+            private
+
+            # A copy of the signed-in user for the forms, so that a change that does
+            # not pass leaves @current_user, which the nav shows, as it is.
+            def set_user
+              @user = User.find(@current_user.id)
+            end
+
+            # After a new password: every Session row of the user ends, the other
+            # browsers' and this one's, and this browser signs in again at once with
+            # the new password key, remembered ("keep me signed in") as it was.
+            def restart_sessions
+              current = @current_session
+              remember = current.nil? ? false : current.remember
+              Session.where(user_id: @user.id).delete_all
+              start_new_session_for(@user, remember: remember)
+              nil
+            end
+
+            # What a client past the rate limit gets (the key is update's).
+            def rate_limited
+              flash[:alert] = t("accounts.update.rate_limited")
+              redirect_to edit_account_path, status: :see_other
+              nil
+            end
+          end
+        RUBY
+      end
+
+      # Two forms: the details (address, new password, current password)
+      # and the deletion (the password).
+      def self.accounts_edit_view
+        <<~ERB
+          <h1><%= t(".title") %></h1>
+
+          <%= form_with(model: @user, url: account_path) do |f| %>
+            <% if @user.errors.any? %>
+              <div id="error_explanation">
+                <h2><%= t("errors.template.header", count: @user.errors.count, model: t(".model")) %></h2>
+                <ul>
+                  <% @user.errors.full_messages.each do |message| %>
+                    <li><%= message %></li>
+                  <% end %>
+                </ul>
+              </div>
+            <% end %>
+
+            <div class="field">
+              <%= f.label :email_address %>
+              <%= f.email_field :email_address, autocomplete: "username" %>
+            </div>
+
+            <div class="field">
+              <%= f.label :password, t(".new_password") %>
+              <%= f.password_field :password, autocomplete: "new-password" %>
+              <p class="hint"><%= t(".password_hint") %></p>
+            </div>
+
+            <div class="field">
+              <%= f.label :password_confirmation %>
+              <%= f.password_field :password_confirmation, autocomplete: "new-password" %>
+            </div>
+
+            <div class="field">
+              <%= f.label :current_password %>
+              <%= f.password_field :current_password, autocomplete: "current-password", required: true %>
+            </div>
+
+            <div class="actions">
+              <%= f.submit t(".submit") %>
+            </div>
+          <% end %>
+
+          <h2><%= t(".delete_title") %></h2>
+          <p><%= t(".delete_intro") %></p>
+
+          <%= form_with(url: account_path, method: :delete) do |f| %>
+            <div class="field">
+              <%= f.label :password, t("activerecord.attributes.user.current_password") %>
+              <%= f.password_field :password, autocomplete: "current-password", required: true %>
+            </div>
+
+            <div class="actions">
+              <%= f.submit t(".delete") %>
+            </div>
+          <% end %>
+        ERB
+      end
+
+      # test/accounts.rb: the account page through the stack.
+      def self.accounts_test
+        <<~'RUBY'
+          # The account page (cybertrain generate authentication): a new address or
+          # password only with the current password, what a new password ends and
+          # keeps, and deleting the account. Run with `cybertrain spin test`; its
+          # snapshot comes from the compiled binary (the database is FFI).
+          require_relative "support/app_test"
+
+          WRONG_PASSWORD = "<p class=\"alert\">That is not your current password.</p>"
+          UPDATED = "<p class=\"notice\">Your account has been updated.</p>"
+          DELETED = "<p class=\"notice\">Your account has been deleted.</p>"
+          NEW_PASSWORD = "n3w-s3cr3t-n3w"
+
+          def new_client
+            Session.all.delete_all
+            User.all.delete_all
+            Cybertrain::Test::Client.new(APP)
+          end
+
+          # Sends the account form as a browser would: the current password and the
+          # fields given, each as user[name]. The rate limit's counts are forgotten
+          # first, as AppTest.sign_in does.
+          def update_account(client, current_password, fields)
+            Cybertrain::RateLimit.reset_all!
+            client.get("/account/edit")
+            form = { "authenticity_token" => AppTest.form_token(client), "user[current_password]" => current_password }
+            fields.each { |name, value| form["user[#{name}]"] = value }
+            client.patch("/account", form)
+          end
+
+          # Sends the delete form with this password.
+          def delete_account(client, password)
+            Cybertrain::RateLimit.reset_all!
+            client.get("/account/edit")
+            client.delete("/account", { "authenticity_token" => AppTest.form_token(client), "password" => password })
+          end
+
+          # Whether client is signed in as email_address: the nav names them.
+          def signed_in?(client, email_address = "ann@example.com")
+            client.get("/session/new").body.include?("<span>#{email_address}</span>")
+          end
+
+          # The Set-Cookie line of the session cookie in res ("" when none).
+          def session_cookie(res)
+            prefix = "#{Cybertrain.config.session_cookie_name}="
+            found = ""
+            res.cookies.each { |line| found = line if line.start_with?(prefix) }
+            found
+          end
+
+          test "changing email or password requires the current password" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.user("bob@example.com")
+            AppTest.sign_in(client)
+            digest = ann.password_digest
+            # A wrong current password: nothing changes, and the page says why.
+            res = update_account(client, "wrong-password", { "email_address" => "ann@new.example", "password" => NEW_PASSWORD, "password_confirmation" => NEW_PASSWORD })
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, WRONG_PASSWORD
+            same = User.find(ann.id)
+            assert_equal "ann@example.com", same.email_address
+            assert_equal digest, same.password_digest
+            # None at all, for the address alone: the same.
+            res = update_account(client, "", { "email_address" => "ann@new.example" })
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, WRONG_PASSWORD
+            assert_equal "ann@example.com", User.find(ann.id).email_address
+            # A wrong password ends no session.
+            assert signed_in?(client)
+            assert_equal 1, Session.count
+            session_id = Session.first.id
+            # The right one: the new address (normalized) at once; the password and
+            # the session stay as they were.
+            res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => " Ann@New.Example ", "password" => "", "password_confirmation" => "" })
+            assert_redirected_to res, "/account/edit"
+            page = client.follow_redirect!.body
+            assert_includes page, UPDATED
+            assert_includes page, "<span>ann@new.example</span>"
+            changed = User.find(ann.id)
+            assert_equal "ann@new.example", changed.email_address
+            assert_equal digest, changed.password_digest
+            assert_equal 1, Session.count
+            assert_equal session_id, Session.first.id
+            # Signing in takes the new address, not the old one.
+            other = Cybertrain::Test::Client.new(APP)
+            assert_redirected_to AppTest.sign_in(other, "ann@example.com"), "/session/new"
+            assert_redirected_to AppTest.sign_in(other, "ann@new.example"), "/"
+            # A taken address does not pass: the errors, and the nav still shows
+            # the address in use.
+            res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => "bob@example.com" })
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, "<li>Email address has already been taken</li>"
+            assert_includes res.body, "<span>ann@new.example</span>"
+            assert_equal "ann@new.example", User.find(ann.id).email_address
+            # A new password that does not pass: nothing changes.
+            res = update_account(client, "s3cr3t-s3cr3t", { "password" => "short", "password_confirmation" => "short" })
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, "<li>Password is too short (minimum is 8 characters)</li>"
+            res = update_account(client, "s3cr3t-s3cr3t", { "password" => NEW_PASSWORD, "password_confirmation" => "something-else" })
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, "<li>Password confirmation doesn&#39;t match Password</li>"
+            assert_equal digest, User.find(ann.id).password_digest
+            # The right current password and a new one: only the new one signs in.
+            res = update_account(client, "s3cr3t-s3cr3t", { "password" => NEW_PASSWORD, "password_confirmation" => NEW_PASSWORD })
+            assert_redirected_to res, "/account/edit"
+            refute User.find(ann.id).password_digest == digest
+            assert_redirected_to AppTest.sign_in(other, "ann@new.example"), "/session/new"
+            assert_redirected_to AppTest.sign_in(other, "ann@new.example", NEW_PASSWORD), "/"
+          end
+
+          test "a password change ends other sessions and keeps this one" do
+            laptop = new_client
+            ann = AppTest.user
+            bob = AppTest.user("bob@example.com")
+            # The laptop asked to stay signed in; the phone did not.
+            Cybertrain::RateLimit.reset_all!
+            laptop.get("/session/new")
+            laptop.post("/session", { "authenticity_token" => AppTest.form_token(laptop), "email_address" => "ann@example.com",
+                                      "password" => "s3cr3t-s3cr3t", "remember_me" => "1" })
+            laptop_id = Session.first.id
+            assert_equal true, Session.first.remember
+            phone = Cybertrain::Test::Client.new(APP)
+            AppTest.sign_in(phone)
+            bobs = Cybertrain::Test::Client.new(APP)
+            AppTest.sign_in(bobs, "bob@example.com")
+            assert_equal 2, Session.where(user_id: ann.id).count
+            token = ann.password_reset_token
+            refute User.find_by_password_reset_token(token).nil?
+            res = update_account(laptop, "s3cr3t-s3cr3t", { "password" => NEW_PASSWORD, "password_confirmation" => NEW_PASSWORD })
+            assert_redirected_to res, "/account/edit"
+            # This browser is signed in again at once, still remembered (the cookie
+            # keeps its Max-Age), on a new Session row with the new password key.
+            assert session_cookie(res).end_with?("; Max-Age=2592000"), session_cookie(res)
+            assert_includes laptop.follow_redirect!.body, UPDATED
+            rows = Session.where(user_id: ann.id).to_a
+            assert_equal 1, rows.size
+            refute rows[0].id == laptop_id
+            assert_equal true, rows[0].remember
+            assert signed_in?(laptop)
+            refute signed_in?(phone)
+            assert signed_in?(bobs, "bob@example.com")
+            assert_equal 1, Session.where(user_id: bob.id).count
+            # A reset link sent before no longer works.
+            assert_nil User.find_by_password_reset_token(token)
+            # A browser that did not ask to stay signed in still has not: no Max-Age.
+            AppTest.sign_in(phone, "ann@example.com", NEW_PASSWORD)
+            assert signed_in?(phone)
+            res = update_account(phone, NEW_PASSWORD, { "password" => "th1rd-s3cr3t", "password_confirmation" => "th1rd-s3cr3t" })
+            assert_redirected_to res, "/account/edit"
+            refute session_cookie(res).empty?
+            refute session_cookie(res).include?("Max-Age")
+            rows = Session.where(user_id: ann.id).to_a
+            assert_equal 1, rows.size
+            assert_equal false, rows[0].remember
+            assert signed_in?(phone)
+            refute signed_in?(laptop)
+            # A new address alone ends no session.
+            AppTest.sign_in(laptop, "ann@example.com", "th1rd-s3cr3t")
+            assert_equal 2, Session.where(user_id: ann.id).count
+            res = update_account(phone, "th1rd-s3cr3t", { "email_address" => "ann@new.example" })
+            assert_redirected_to res, "/account/edit"
+            assert_equal 2, Session.where(user_id: ann.id).count
+            assert signed_in?(laptop, "ann@new.example")
+            assert signed_in?(phone, "ann@new.example")
+          end
+
+          test "deleting the account requires the password and removes the user and sessions" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.user("bob@example.com")
+            AppTest.sign_in(client)
+            phone = Cybertrain::Test::Client.new(APP)
+            AppTest.sign_in(phone)
+            bobs = Cybertrain::Test::Client.new(APP)
+            AppTest.sign_in(bobs, "bob@example.com")
+            assert_equal 3, Session.count
+            # A wrong password, or none: nothing is deleted.
+            res = delete_account(client, "wrong-password")
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, WRONG_PASSWORD
+            res = delete_account(client, "")
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, WRONG_PASSWORD
+            refute User.find_by(id: ann.id).nil?
+            assert_equal 3, Session.count
+            assert signed_in?(client)
+            # The right one: the user, every session of theirs, and this browser's
+            # cookie session.
+            res = delete_account(client, "s3cr3t-s3cr3t")
+            assert_redirected_to res, "/"
+            assert_includes client.get("/session/new").body, DELETED
+            assert_nil User.find_by(id: ann.id)
+            assert_equal 0, Session.where(user_id: ann.id).count
+            assert_equal 1, Session.count
+            assert_equal 1, User.all.count
+            refute signed_in?(client)
+            refute signed_in?(phone)
+            assert signed_in?(bobs, "bob@example.com")
+            # The address signs in no more.
+            assert_redirected_to AppTest.sign_in(client), "/session/new"
+            assert_redirected_to client.get("/account/edit"), "/session/new"
+          end
+
+          test "a visitor is sent to sign in" do
+            client = new_client
+            ann = AppTest.user
+            assert_redirected_to client.get("/account/edit"), "/session/new"
+            # The forms' requests too, with a valid token and the right password:
+            # nothing changes.
+            client.get("/session/new")
+            token = AppTest.form_token(client)
+            res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "s3cr3t-s3cr3t",
+                                             "user[email_address]" => "eve@example.com" })
+            assert_redirected_to res, "/session/new"
+            res = client.delete("/account", { "authenticity_token" => token, "password" => "s3cr3t-s3cr3t" })
+            assert_redirected_to res, "/session/new"
+            assert_equal "ann@example.com", User.find(ann.id).email_address
+            assert_equal 1, User.all.count
+            # Signed in, the browser comes back to the page it asked for, which the
+            # nav links to.
+            assert_redirected_to AppTest.sign_in(client), "/account/edit"
+            res = client.get("/account/edit")
+            assert_response res, :ok
+            assert_includes res.body, "<h1>Account</h1>"
+            assert_includes res.body, "<a href=\"/account/edit\">Account</a>"
+            assert_includes res.body, "<form action=\"/account\" method=\"post\"><input type=\"hidden\" name=\"_method\" value=\"patch\">"
+            assert_includes res.body, "<input type=\"email\" name=\"user[email_address]\" id=\"user_email_address\" value=\"ann@example.com\" autocomplete=\"username\">"
+            assert_includes res.body, "<label for=\"user_current_password\">Current password</label>"
+            assert_includes res.body, "<form action=\"/account\" method=\"post\"><input type=\"hidden\" name=\"_method\" value=\"delete\">"
+          end
+
+          test "PATCH /account past ten requests is refused for a while" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            client.get("/account/edit")
+            token = AppTest.form_token(client)
+            Cybertrain::RateLimit.reset_all!
+            count = 0
+            while count < 10
+              res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "wrong-password" })
+              assert_response res, :unprocessable_entity
+              count += 1
+            end
+            # The right password now gets the limit's answer and changes nothing; a
+            # deletion counts in the same window.
+            res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "s3cr3t-s3cr3t",
+                                             "user[email_address]" => "ann@new.example" })
+            assert_redirected_to res, "/account/edit"
+            assert_includes client.follow_redirect!.body, "<p class=\"alert\">Try again later.</p>"
+            assert_equal "ann@example.com", User.find(ann.id).email_address
+            res = client.delete("/account", { "authenticity_token" => token, "password" => "s3cr3t-s3cr3t" })
+            assert_redirected_to res, "/account/edit"
+            refute User.find_by(id: ann.id).nil?
+            # Once the window is over (its counts forgotten), the same change passes.
+            Cybertrain::RateLimit.reset_all!
+            res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "s3cr3t-s3cr3t",
+                                             "user[email_address]" => "ann@new.example" })
+            assert_redirected_to res, "/account/edit"
+            assert_equal "ann@new.example", User.find(ann.id).email_address
+            Cybertrain::RateLimit.reset_all!
+          end
+
+          Cybertrain::Test.run!
+        RUBY
       end
 
       # ---- --invite-only ------------------------------------------------
@@ -1591,6 +2052,7 @@ module Cybertrain
           return <<~RUBY
             resource :session, only: [:new, :create, :destroy]
             #{PASSWORDS_ROUTE}
+            #{ACCOUNT_ROUTE}
             get "/setup", to: "setup#new", as: "setup"
             post "/setup", to: "setup#create"
           RUBY
@@ -1599,6 +2061,7 @@ module Cybertrain
         <<~RUBY
           resource :session, only: [:new, :create, :destroy]
           #{PASSWORDS_ROUTE}
+          #{ACCOUNT_ROUTE}
           get "/sign_up", to: "registrations#new", as: "sign_up"
           post "/sign_up", to: "registrations#create"
         RUBY

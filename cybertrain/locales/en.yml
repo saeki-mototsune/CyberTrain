@@ -6,16 +6,34 @@
 # activerecord.errors.messages, helpers.submit and support.array; plus
 # the framework's own keys under cybertrain (plan decision D12), and the
 # screens `cybertrain generate authentication` writes: their lazy keys
-# (sessions.*, registrations.*, setup.*, passwords.*, the reset mail's
+# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*, the reset mail's
 # mail.password_reset.* and passwords_mailer.reset.subject) and the User
 # model's attribute names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
 ---
 en:
+  accounts:
+    destroy:
+      deleted: Your account has been deleted.
+      wrong_password: That is not your current password.
+    edit:
+      delete: Delete account
+      delete_intro: This deletes your account and signs you out everywhere. It cannot be undone.
+      delete_title: Delete your account
+      model: account
+      new_password: New password
+      password_hint: Leave it blank to keep your password.
+      submit: Save changes
+      title: Account
+    update:
+      rate_limited: Try again later.
+      updated: Your account has been updated.
+      wrong_password: That is not your current password.
   activerecord:
     attributes:
       user:
+        current_password: Current password
         email_address: Email address
         password: Password
         password_confirmation: Password confirmation
@@ -310,6 +328,7 @@ en:
     destroy:
       signed_out: You have been signed out.
     nav:
+      account: Account
       sign_in: Sign in
       sign_out: Sign out
     new:

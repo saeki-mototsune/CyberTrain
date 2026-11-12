@@ -6,16 +6,34 @@
 # activerecord.errors.messages, helpers.submit and support.array; plus
 # the framework's own keys under cybertrain (plan decision D12), and the
 # screens `cybertrain generate authentication` writes: their lazy keys
-# (sessions.*, registrations.*, setup.*, passwords.*, the reset mail's
+# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*, the reset mail's
 # mail.password_reset.* and passwords_mailer.reset.subject) and the User
 # model's attribute names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
 ---
 ja:
+  accounts:
+    destroy:
+      deleted: アカウントを削除しました。
+      wrong_password: 現在のパスワードが違います。
+    edit:
+      delete: アカウントを削除する
+      delete_intro: アカウントを削除し、すべての端末からログアウトします。元に戻すことはできません。
+      delete_title: アカウントの削除
+      model: アカウント
+      new_password: 新しいパスワード
+      password_hint: 変更しない場合は空欄のままにしてください。
+      submit: 変更を保存
+      title: アカウント
+    update:
+      rate_limited: しばらくしてからもう一度お試しください。
+      updated: アカウントを更新しました。
+      wrong_password: 現在のパスワードが違います。
   activerecord:
     attributes:
       user:
+        current_password: 現在のパスワード
         email_address: メールアドレス
         password: パスワード
         password_confirmation: パスワード（確認用）
@@ -276,6 +294,7 @@ ja:
     destroy:
       signed_out: ログアウトしました。
     nav:
+      account: アカウント
       sign_in: ログイン
       sign_out: ログアウト
     new:

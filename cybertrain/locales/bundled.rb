@@ -3,6 +3,20 @@
 module Cybertrain
   module BundledLocales
     def self.fill_texts_00(h)
+      h["en.accounts.destroy.deleted"] = "Your account has been deleted."
+      h["en.accounts.destroy.wrong_password"] = "That is not your current password."
+      h["en.accounts.edit.delete"] = "Delete account"
+      h["en.accounts.edit.delete_intro"] = "This deletes your account and signs you out everywhere. It cannot be undone."
+      h["en.accounts.edit.delete_title"] = "Delete your account"
+      h["en.accounts.edit.model"] = "account"
+      h["en.accounts.edit.new_password"] = "New password"
+      h["en.accounts.edit.password_hint"] = "Leave it blank to keep your password."
+      h["en.accounts.edit.submit"] = "Save changes"
+      h["en.accounts.edit.title"] = "Account"
+      h["en.accounts.update.rate_limited"] = "Try again later."
+      h["en.accounts.update.updated"] = "Your account has been updated."
+      h["en.accounts.update.wrong_password"] = "That is not your current password."
+      h["en.activerecord.attributes.user.current_password"] = "Current password"
       h["en.activerecord.attributes.user.email_address"] = "Email address"
       h["en.activerecord.attributes.user.password"] = "Password"
       h["en.activerecord.attributes.user.password_confirmation"] = "Password confirmation"
@@ -39,6 +53,10 @@ module Cybertrain
       h["en.cybertrain.jobs_page.notices.not_retried"] = "Job %{id} was not retried: it is not failed or discarded."
       h["en.cybertrain.jobs_page.notices.retried"] = "Job %{id} was queued again."
       h["en.cybertrain.jobs_page.notices.retried_all"] = "%{count} failed job(s) queued again."
+      nil
+    end
+
+    def self.fill_texts_01(h)
       h["en.cybertrain.jobs_page.queued.next"] = "%{count} queued; the next is due at %{time}."
       h["en.cybertrain.jobs_page.queued.none"] = "No queued jobs."
       h["en.cybertrain.jobs_page.states.discarded"] = "discarded"
@@ -53,10 +71,6 @@ module Cybertrain
       h["en.cybertrain.pager.newer"] = "Newer"
       h["en.cybertrain.pager.older"] = "Older"
       h["en.cybertrain.pager.page"] = "Page %{page}"
-      nil
-    end
-
-    def self.fill_texts_01(h)
       h["en.date.formats.default"] = "%Y-%m-%d"
       h["en.date.formats.long"] = "%B %d, %Y"
       h["en.date.formats.short"] = "%b %d"
@@ -93,6 +107,10 @@ module Cybertrain
       h["en.errors.messages.equal_to"] = "must be equal to %{count}"
       h["en.errors.messages.even"] = "must be even"
       h["en.errors.messages.exclusion"] = "is reserved"
+      nil
+    end
+
+    def self.fill_texts_02(h)
       h["en.errors.messages.greater_than"] = "must be greater than %{count}"
       h["en.errors.messages.greater_than_or_equal_to"] = "must be greater than or equal to %{count}"
       h["en.errors.messages.in"] = "must be in %{count}"
@@ -107,10 +125,6 @@ module Cybertrain
       h["en.errors.messages.other_than"] = "must be other than %{count}"
       h["en.errors.messages.password_too_long"] = "is too long"
       h["en.errors.messages.present"] = "must be blank"
-      nil
-    end
-
-    def self.fill_texts_02(h)
       h["en.errors.messages.required"] = "must exist"
       h["en.errors.messages.taken"] = "has already been taken"
       h["en.errors.messages.too_long.one"] = "is too long (maximum is %{count} character)"
@@ -147,6 +161,10 @@ module Cybertrain
       h["en.number.human.decimal_units.units.billion"] = "Billion"
       h["en.number.human.decimal_units.units.million"] = "Million"
       h["en.number.human.decimal_units.units.quadrillion"] = "Quadrillion"
+      nil
+    end
+
+    def self.fill_texts_03(h)
       h["en.number.human.decimal_units.units.thousand"] = "Thousand"
       h["en.number.human.decimal_units.units.trillion"] = "Trillion"
       h["en.number.human.decimal_units.units.unit"] = ""
@@ -161,10 +179,6 @@ module Cybertrain
       h["en.number.human.storage_units.units.gb"] = "GB"
       h["en.number.human.storage_units.units.kb"] = "KB"
       h["en.number.human.storage_units.units.mb"] = "MB"
-      nil
-    end
-
-    def self.fill_texts_03(h)
       h["en.number.human.storage_units.units.pb"] = "PB"
       h["en.number.human.storage_units.units.tb"] = "TB"
       h["en.number.human.storage_units.units.zb"] = "ZB"
@@ -189,6 +203,7 @@ module Cybertrain
       h["en.sessions.create.invalid"] = "Try another email address or password."
       h["en.sessions.create.rate_limited"] = "Try again later."
       h["en.sessions.destroy.signed_out"] = "You have been signed out."
+      h["en.sessions.nav.account"] = "Account"
       h["en.sessions.nav.sign_in"] = "Sign in"
       h["en.sessions.nav.sign_out"] = "Sign out"
       h["en.sessions.new.email_address"] = "Email address"
@@ -200,6 +215,10 @@ module Cybertrain
       h["en.sessions.new.title"] = "Sign in"
       h["en.setup.create.welcome"] = "Welcome! Your account has been created."
       h["en.setup.new.intro"] = "Create the first account. This page is only shown on this machine, with the link the server printed when it started, and only until an account exists."
+      nil
+    end
+
+    def self.fill_texts_04(h)
       h["en.setup.new.model"] = "account"
       h["en.setup.new.submit"] = "Create account"
       h["en.setup.new.title"] = "Set up"
@@ -211,14 +230,24 @@ module Cybertrain
       h["en.time.formats.long"] = "%B %d, %Y %H:%M"
       h["en.time.formats.short"] = "%d %b %H:%M"
       h["en.time.pm"] = "pm"
+      h["ja.accounts.destroy.deleted"] = "アカウントを削除しました。"
+      h["ja.accounts.destroy.wrong_password"] = "現在のパスワードが違います。"
+      h["ja.accounts.edit.delete"] = "アカウントを削除する"
+      h["ja.accounts.edit.delete_intro"] = "アカウントを削除し、すべての端末からログアウトします。元に戻すことはできません。"
+      h["ja.accounts.edit.delete_title"] = "アカウントの削除"
+      h["ja.accounts.edit.model"] = "アカウント"
+      h["ja.accounts.edit.new_password"] = "新しいパスワード"
+      h["ja.accounts.edit.password_hint"] = "変更しない場合は空欄のままにしてください。"
+      h["ja.accounts.edit.submit"] = "変更を保存"
+      h["ja.accounts.edit.title"] = "アカウント"
+      h["ja.accounts.update.rate_limited"] = "しばらくしてからもう一度お試しください。"
+      h["ja.accounts.update.updated"] = "アカウントを更新しました。"
+      h["ja.accounts.update.wrong_password"] = "現在のパスワードが違います。"
+      h["ja.activerecord.attributes.user.current_password"] = "現在のパスワード"
       h["ja.activerecord.attributes.user.email_address"] = "メールアドレス"
       h["ja.activerecord.attributes.user.password"] = "パスワード"
       h["ja.activerecord.attributes.user.password_confirmation"] = "パスワード（確認用）"
       h["ja.activerecord.errors.messages.record_invalid"] = "バリデーションに失敗しました: %{errors}"
-      nil
-    end
-
-    def self.fill_texts_04(h)
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "%{record}が存在しているので削除できません"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "%{record}が存在しているので削除できません"
       h["ja.cybertrain.helpers.submit.no_model"] = "変更を保存"
@@ -240,6 +269,10 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.columns.updated"] = "更新日時"
       h["ja.cybertrain.jobs_page.empty.discarded"] = "破棄済みのジョブはありません。"
       h["ja.cybertrain.jobs_page.empty.failed"] = "失敗したジョブはありません。"
+      nil
+    end
+
+    def self.fill_texts_05(h)
       h["ja.cybertrain.jobs_page.empty.running"] = "実行中のジョブはありません。"
       h["ja.cybertrain.jobs_page.heartbeat.ago"] = "%{seconds}秒前"
       h["ja.cybertrain.jobs_page.heartbeat.none"] = "なし"
@@ -269,10 +302,6 @@ module Cybertrain
       h["ja.date.formats.long"] = "%Y年%m月%d日(%a)"
       h["ja.date.formats.short"] = "%m/%d"
       h["ja.datetime.distance_in_words.about_x_hours"] = "約%{count}時間"
-      nil
-    end
-
-    def self.fill_texts_05(h)
       h["ja.datetime.distance_in_words.about_x_months"] = "約%{count}ヶ月"
       h["ja.datetime.distance_in_words.about_x_years"] = "約%{count}年"
       h["ja.datetime.distance_in_words.almost_x_years"] = "%{count}年弱"
@@ -294,6 +323,10 @@ module Cybertrain
       h["ja.errors.messages.even"] = "は偶数にしてください"
       h["ja.errors.messages.exclusion"] = "は予約されています"
       h["ja.errors.messages.greater_than"] = "は%{count}より大きい値にしてください"
+      nil
+    end
+
+    def self.fill_texts_06(h)
       h["ja.errors.messages.greater_than_or_equal_to"] = "は%{count}以上の値にしてください"
       h["ja.errors.messages.in"] = "は%{count}の範囲に含めてください"
       h["ja.errors.messages.inclusion"] = "は一覧にありません"
@@ -323,10 +356,6 @@ module Cybertrain
       h["ja.mail.password_reset.link"] = "新しいパスワードを設定する"
       h["ja.number.currency.format.delimiter"] = ","
       h["ja.number.currency.format.format"] = "%n%u"
-      nil
-    end
-
-    def self.fill_texts_06(h)
       h["ja.number.currency.format.negative_format"] = "-%n%u"
       h["ja.number.currency.format.precision"] = "0"
       h["ja.number.currency.format.separator"] = "."
@@ -348,6 +377,10 @@ module Cybertrain
       h["ja.number.human.decimal_units.units.unit"] = ""
       h["ja.number.human.format.delimiter"] = ""
       h["ja.number.human.format.precision"] = "3"
+      nil
+    end
+
+    def self.fill_texts_07(h)
       h["ja.number.human.format.significant"] = "true"
       h["ja.number.human.format.strip_insignificant_zeros"] = "true"
       h["ja.number.human.storage_units.format"] = "%n%u"
@@ -377,13 +410,10 @@ module Cybertrain
       h["ja.registrations.new.sign_in"] = "ログイン"
       h["ja.registrations.new.submit"] = "登録する"
       h["ja.registrations.new.title"] = "アカウント登録"
-      nil
-    end
-
-    def self.fill_texts_07(h)
       h["ja.sessions.create.invalid"] = "メールアドレスかパスワードが違います。"
       h["ja.sessions.create.rate_limited"] = "しばらくしてからもう一度お試しください。"
       h["ja.sessions.destroy.signed_out"] = "ログアウトしました。"
+      h["ja.sessions.nav.account"] = "アカウント"
       h["ja.sessions.nav.sign_in"] = "ログイン"
       h["ja.sessions.nav.sign_out"] = "ログアウト"
       h["ja.sessions.new.email_address"] = "メールアドレス"
@@ -401,6 +431,10 @@ module Cybertrain
       h["ja.support.array.last_word_connector"] = "、"
       h["ja.support.array.two_words_connector"] = "、"
       h["ja.support.array.words_connector"] = "、"
+      nil
+    end
+
+    def self.fill_texts_08(h)
       h["ja.time.am"] = "午前"
       h["ja.time.formats.default"] = "%Y年%m月%d日(%a) %H時%M分%S秒 %z"
       h["ja.time.formats.long"] = "%Y/%m/%d %H:%M"
@@ -420,6 +454,7 @@ module Cybertrain
       fill_texts_05(h)
       fill_texts_06(h)
       fill_texts_07(h)
+      fill_texts_08(h)
       h
     end
 
