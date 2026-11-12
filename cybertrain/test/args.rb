@@ -79,7 +79,16 @@ module Cybertrain
         rel = arg
         rel = rel[2, rel.length - 2].to_s while rel.start_with?("./")
         prefix = root.end_with?("/") ? root : "#{root}/"
-        rel = rel[prefix.length, rel.length - prefix.length].to_s if !root.empty? && rel.start_with?(prefix)
+        if !root.empty? && rel.start_with?(prefix)
+          rel = rel[prefix.length, rel.length - prefix.length].to_s
+        elsif !root.empty? && rel.start_with?("/")
+          # The same place spelled through a symlink (macOS's /var is
+          # /private/var; Dir.pwd answers the real spelling).
+          real_root = real_path(root)
+          real_prefix = real_root.end_with?("/") ? real_root : "#{real_root}/"
+          real = real_path(rel)
+          rel = real[real_prefix.length, real.length - real_prefix.length].to_s if real.start_with?(real_prefix)
+        end
         rel = rel[0, rel.length - 1].to_s while rel.length > 1 && rel.end_with?("/")
         out = Array.new(0) { "" }
         if files.include?(rel)
@@ -89,6 +98,22 @@ module Cybertrain
         under = "#{rel}/"
         files.each { |f| out << f if f.start_with?(under) }
         out
+      end
+
+      # path with every symlink resolved: File.realpath of its longest
+      # existing part, the rest appended as written. The comparisons of the
+      # CLI and the bundle use it, so /var/... and /private/var/... (or a
+      # checkout reached through a link) are one place.
+      # @param path [String]
+      # @return [String]
+      def self.real_path(path)
+        return File.realpath(path) if File.exist?(path)
+
+        parent = File.dirname(path)
+        return path if parent == path
+
+        base = real_path(parent)
+        base.end_with?("/") ? "#{base}#{File.basename(path)}" : "#{base}/#{File.basename(path)}"
       end
 
       # The method name of a test: `test_` and the name with every

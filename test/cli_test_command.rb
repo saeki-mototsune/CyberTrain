@@ -13,7 +13,9 @@ APP = "#{ROOT}/app"
 FRAMEWORK = "#{ROOT}/framework"
 
 def rm_tree(path)
-  if File.directory?(path)
+  if File.symlink?(path)
+    File.delete(path)
+  elsif File.directory?(path)
     Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
     Dir.rmdir(path)
   elsif File.exist?(path)
@@ -278,7 +280,41 @@ end
 test "the framework roots are the -I directories of spin flags other than the application" do
   flags = "--strict-require -I /src/cybertrain -I #{APP} -I /src/other\n"
   assert_equal ["/src/cybertrain", "/src/other"], Cybertrain::CLI::TestCommand.framework_roots(APP, flags)
-  assert_equal [FRAMEWORK], Cybertrain::CLI::TestCommand.framework_roots(APP, `cd #{APP} && spin flags`)
+  # spin prints real paths (on macOS the temporary directory is under the
+  # /var symlink).
+  assert_equal [File.realpath(FRAMEWORK)], Cybertrain::CLI::TestCommand.framework_roots(APP, `cd #{APP} && spin flags`)
+end
+
+# LINK is a symlink to ROOT: LINK/app is the application spelled through it,
+# as /var/... is /private/var/... on macOS.
+LINK = "#{ROOT}/link"
+system("ln -s #{ROOT} #{LINK}")
+
+test "a path through a symlink means the same as its real spelling" do
+  assert File.directory?("#{LINK}/app/test")
+  real_model = "#{File.realpath(APP)}/test/models/article_test.rb"
+  # Only the argument through the link, from the application's directory.
+  Dir.chdir(APP)
+  runner = StubRunner.new(false, 0)
+  assert_equal 0, Cybertrain::CLI::TestCommand.run(".", ["#{LINK}/app/test/models/article_test.rb"], runner)
+  assert_equal [], runner.said
+  # Only the root through the link.
+  runner = StubRunner.new(false, 0)
+  assert_equal 0, Cybertrain::CLI::TestCommand.run("#{LINK}/app", [real_model], runner)
+  assert_equal [], runner.said
+  # Both, a directory.
+  runner = StubRunner.new(false, 0)
+  assert_equal 0, Cybertrain::CLI::TestCommand.run("#{LINK}/app", ["#{LINK}/app/test/models/"], runner)
+  assert_equal [], runner.said
+  # The bundle's parser (root Dir.pwd) agrees.
+  assert_equal ["test/models/article_test.rb"], Cybertrain::Test::Args.parse(["#{LINK}/app/test/models/article_test.rb"], files, APP).arg_files
+  assert_equal ["test/models/article_test.rb"], Cybertrain::Test::Args.parse([real_model], files, "#{LINK}/app").arg_files
+  # A path that does not exist keeps the spelling typed.
+  assert_equal "no test file at #{LINK}/app/test/modles", Cybertrain::Test::Args.parse(["#{LINK}/app/test/modles"], files, APP).arg_error
+  # The application's own -I is not a framework root, whichever spelling.
+  assert_equal [File.realpath(FRAMEWORK)], Cybertrain::CLI::TestCommand.framework_roots("#{LINK}/app", `cd #{LINK}/app && spin flags`)
+  assert_equal [File.realpath(FRAMEWORK)], Cybertrain::CLI::TestCommand.framework_roots("#{LINK}/app", "-I #{LINK}/framework -I #{APP}")
+  Dir.chdir(ROOT)
 end
 
 test "the compile command" do

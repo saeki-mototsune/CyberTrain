@@ -192,15 +192,17 @@ module Cybertrain
         false
       end
 
-      # The `-I` directories of `spin flags` output other than root's own.
+      # The `-I` directories of `spin flags` output other than root's own,
+      # each in its real spelling (spin prints real paths; root may be
+      # spelled through a symlink).
       def self.framework_roots(root, flags)
-        own = File.expand_path(root)
+        own = Cybertrain::Test::Args.real_path(File.expand_path(root))
         out = Array.new(0) { "" }
         words = flags.split
         i = 0
         while i < words.size
           if words[i] == "-I" && i + 1 < words.size
-            dir = File.expand_path(words[i + 1], own)
+            dir = Cybertrain::Test::Args.real_path(File.expand_path(words[i + 1], own))
             out << dir unless dir == own || out.include?(dir)
             i += 2
           else

@@ -10,8 +10,9 @@ ok   stale? after an edit to a test, a model, a fixture or the framework, not af
 ok   stale? when the record of the binary's inputs is missing or differs
 ok   stale? after a source edited while the binary compiled
 ok   the framework roots are the -I directories of spin flags other than the application
+ok   a path through a symlink means the same as its real spelling
 ok   the compile command
 ok   the run passes each argument as one word and answers the binary's status
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   cybertrain test outside an application
-15 tests, 75 assertions, 0 failures
+16 tests, 87 assertions, 0 failures
