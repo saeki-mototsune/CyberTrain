@@ -2984,8 +2984,9 @@ runtime's, which is why the C above sleeps again on `EINTR`.)
   lib/sp_sched.h: the call is bracketed by `sp_native_enter` and
   `sp_native_leave`, so that "a collection raised while the call runs
   does not wait for it". The worker leaves the collector's world; its
-  other green threads stay where they are. (cybertrain/db/sqlite_ffi.rb
-  still says the option is "accepted and ignored", which was 2026.09.12.)
+  other green threads stay where they are. (On 2026.09.12 the option
+  was accepted and ignored, which is what cybertrain/db/sqlite_ffi.rb
+  said until 2026-11-13.)
 - What it costs: a SQLite call that waits (a lock, a long query, a
   `VACUUM`) stalls every request of a one-worker server for as long. A
   writer waiting in SQLite's busy handler for a transaction whose green
