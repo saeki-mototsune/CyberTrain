@@ -2,9 +2,11 @@
 # get, post, patch, put, delete and head with nested params:, the cookie
 # jar per test, follow_redirect!, the instance assert_response /
 # assert_redirected_to beside the top-level forms (one shared check each,
-# pre-flight R17), Cybertrain::Test.flatten_params, forgery protection
-# turned back on for one test, and the bundle's boot silencing the
-# request log. A small application (articles kept in memory, routes in
+# pre-flight R17), *_url targets on the test host reduced to their
+# path (another host refused), Rails' header names and status Symbols,
+# Cybertrain::Test.flatten_params, with_forgery_protection (put back when
+# an assertion in it fails), and the bundle's boot silencing the request
+# log. A small application (articles kept in memory, routes in
 # the shape gen/routes.rb emits for `resources :articles` plus
 # `get "/remember"`) booted the way gen/tests.rb boots one. Application#boot
 # links SQLite through FFI, so this runs compiled only (NOTES rule 23).
@@ -51,6 +53,19 @@ class ArticlesController < Cybertrain::Controller
     cookies[:n] = params[:n].to_s
     render plain: "remembered #{params[:n]}"
   end
+
+  # An absolute redirect on the test host, and one to another host.
+  def go_here
+    redirect_to "http://www.example.com/articles"
+  end
+
+  def go_away
+    redirect_to "https://elsewhere.example/x"
+  end
+
+  def accept
+    render plain: "#{request.header("Accept")} #{request.header("X-Token")}"
+  end
 end
 
 def build_router
@@ -62,6 +77,9 @@ def build_router
   router.add("PUT", "/articles/:id", "article") { |ctx| ArticlesController.new(ctx).process(:update) { |c| c.update } }
   router.add("DELETE", "/articles/:id", "article") { |ctx| ArticlesController.new(ctx).process(:destroy) { |c| c.destroy } }
   router.add("GET", "/remember", "remember") { |ctx| ArticlesController.new(ctx).process(:remember) { |c| c.remember } }
+  router.add("GET", "/go_here", "go_here") { |ctx| ArticlesController.new(ctx).process(:go_here) { |c| c.go_here } }
+  router.add("GET", "/go_away", "go_away") { |ctx| ArticlesController.new(ctx).process(:go_away) { |c| c.go_away } }
+  router.add("GET", "/accept", "accept") { |ctx| ArticlesController.new(ctx).process(:accept) { |c| c.accept } }
   router
 end
 
@@ -74,6 +92,14 @@ module Gen
   module UrlHelpers
     def article_path(id, options = {})
       "/articles/#{id}"
+    end
+
+    def article_url(id, options = {})
+      Cybertrain.url_root + article_path(id, options)
+    end
+
+    def articles_url(options = {})
+      "#{Cybertrain.url_root}/articles"
     end
   end
 end
@@ -146,6 +172,67 @@ class ArticlesTest < ActionDispatch::IntegrationTest
       assert_equal "expected a redirect to \"/articles\", got 404", message
       message = assert_raises(RuntimeError) { follow_redirect! }
       assert_equal "not a redirect: last response was 404", message
+    end
+    nil
+  end
+end
+
+class UrlTest < ActionDispatch::IntegrationTest
+  def test_urls
+    begin
+      post "/articles", params: { article: { title: "New" } }
+      # redirect_to a path, asserted with the *_url helper, and the other way round.
+      assert_redirected_to article_url(1)
+      assert_redirected_to "http://www.example.com/articles/1"
+      get articles_url
+      assert_response :success
+      assert_equal "New", response.body
+      get "http://www.example.com/articles/1"
+      assert_equal "New: ", response.body
+      get "/go_here"
+      assert_redirected_to "/articles"
+      assert_redirected_to articles_url
+      follow_redirect!
+      assert_equal "New", response.body
+      get "/go_away"
+      assert_redirected_to "https://elsewhere.example/x"
+      message = assert_raises("AssertionFailed") { assert_redirected_to "/x" }
+      assert_equal "expected a redirect to \"/x\", got \"https://elsewhere.example/x\"", message
+      message = assert_raises(ArgumentError) { follow_redirect! }
+      assert_equal "https://elsewhere.example/x is on another host: an integration test requests the booted application " \
+                   "(www.example.com, or the host of Cybertrain.url_root)", message
+      message = assert_raises(ArgumentError) { get "https://elsewhere.example/articles" }
+      assert_includes message, "https://elsewhere.example/articles is on another host"
+      get "/remember#top", params: { n: 3 }
+      assert_equal "remembered 3", response.body
+      get "/accept", headers: { "HTTP_ACCEPT" => "application/json", "HTTP_X_TOKEN" => "t" }
+      assert_equal "application/json t", response.body
+    end
+    nil
+  end
+
+  def test_failing_inside_forgery_protection
+    begin
+      with_forgery_protection do
+        post "/articles", params: { article: { title: "Refused" } }
+        assert_response :success
+      end
+    end
+    nil
+  end
+
+  def test_forgery_protection
+    begin
+      with_forgery_protection do
+        post "/articles", params: { article: { title: "Refused" } }
+        assert_response :forbidden
+        get "/articles"
+        assert_response :success
+      end
+      assert_equal 0, TITLES.length
+      post "/articles", params: { article: { title: "Kept" } }
+      assert_response :see_other
+      assert_equal ["Kept"], TITLES
     end
     nil
   end
@@ -237,6 +324,7 @@ test "flatten_params encodes brackets and refuses arrays" do
   # The narrower form: keys already written with brackets are kept.
   assert_equal({ "article[title]" => "x" }, Cybertrain::Test.flatten_params({ "article[title]" => "x" }))
   assert Cybertrain::Test.flatten_params({}).empty?
+  assert_equal({ "q" => "" }, Cybertrain::Test.flatten_params({ q: nil }))
   message = assert_raises(ArgumentError) { Cybertrain::Test.flatten_params({ article: { ids: [1, 2] } }) }
   assert_equal "params: values must be Strings or Hashes (got Array at article[ids])", message
 end
@@ -256,21 +344,73 @@ test "the bundle's boot silences the request log and turns forgery protection of
   refute d.log_level_given?
 end
 
-test "forgery protection can be turned back on for one test" do
-  booted = APP
-  CONFIG.csrf = true
+test "with_forgery_protection turns it on for its block only" do
+  UrlTest.new.test_forgery_protection
+  assert_equal APP, Cybertrain::Test.app
+  refute CONFIG.csrf
+  refute CONFIG.csrf_given?
+end
+
+test "an assertion failing inside with_forgery_protection puts everything back" do
+  message = assert_raises("AssertionFailed") { UrlTest.new.test_failing_inside_forgery_protection }
+  assert_equal "expected response :success, got 403", message
+  assert_equal APP, Cybertrain::Test.app
+  refute CONFIG.csrf
+end
+
+test "and the next test's post is accepted" do
+  t = ArticlesTest.new
+  t.post("/articles", params: { article: { title: "After" } })
+  t.assert_response :see_other
+  assert_equal ["After"], TITLES
+end
+
+test "the backstop after the test restores the application and csrf" do
   strict = Cybertrain::Application.new(router: build_router, url_resolver: resolver).boot
   Cybertrain::Test.app = strict
+  CONFIG.csrf = true
+  Cybertrain::Test.forgery_restore(APP, false, false).call
+  assert_equal APP, Cybertrain::Test.app
+  refute CONFIG.csrf
+  refute CONFIG.csrf_given?
+end
+
+test "*_url helpers are requested and asserted by their path; another host is refused" do
+  UrlTest.new.test_urls
+end
+
+test "the top-level assert_redirected_to reduces a URL on the test host too" do
   t = ArticlesTest.new
-  t.post("/articles", params: { article: { title: "Refused" } })
-  t.assert_response :forbidden
-  assert_equal 0, TITLES.length
-  Cybertrain::Test.app = booted
-  CONFIG.csrf = false
-  u = ArticlesTest.new
-  u.post("/articles", params: { article: { title: "Kept" } })
-  u.assert_response :see_other
-  assert_equal ["Kept"], TITLES
+  res = t.get("/go_here")
+  assert_redirected_to res, "/articles"
+  assert_redirected_to res, "http://localhost:3000/articles"
+  res = t.get("/go_away")
+  message = assert_raises("AssertionFailed") { assert_redirected_to res, "/x" }
+  assert_equal "expected a redirect to \"/x\", got \"https://elsewhere.example/x\"", message
+  assert_equal "/a?b", Cybertrain::Test::Client.local_target("http://WWW.example.com/a?b")
+  assert_equal "http://www.example.com.evil/a", Cybertrain::Test::Client.local_target("http://www.example.com.evil/a")
+  assert_equal "/", Cybertrain::Test::Client.local_target("http://localhost:3000")
+end
+
+test "every status Symbol the controller knows, and Rails' :missing" do
+  # The two lists are kept by hand (the test layer loads without the
+  # Controller): this is where a drift shows.
+  Cybertrain::Controller::STATUS_SYMBOLS.each do |sym, code|
+    assert_equal [code, code], Cybertrain::Test::Client.status_range(sym)
+  end
+  assert_equal 66, Cybertrain::Controller::STATUS_SYMBOLS.size
+  assert_equal [404, 404], Cybertrain::Test::Client.status_range(:missing)
+  t = ArticlesTest.new
+  t.get("/articles/99")
+  t.assert_response :missing
+end
+
+test "Rails' CGI-style header names" do
+  assert_equal "accept", Cybertrain::Test.request_header_name("HTTP_ACCEPT")
+  assert_equal "x-token", Cybertrain::Test.request_header_name("HTTP_X_TOKEN")
+  assert_equal "content-type", Cybertrain::Test.request_header_name("CONTENT_TYPE")
+  assert_equal "content-length", Cybertrain::Test.request_header_name("CONTENT_LENGTH")
+  assert_equal "X-Token", Cybertrain::Test.request_header_name("X-Token")
 end
 
 Cybertrain::Test.run!

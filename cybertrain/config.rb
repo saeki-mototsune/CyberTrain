@@ -324,6 +324,18 @@ attr_accessor :trusted_proxies
       nil
     end
 
+    # Puts {#csrf} and whether it was given back as a test found them
+    # (ActionDispatch::IntegrationTest#with_forgery_protection).
+    # @param value [Boolean]
+    # @param given [Boolean]
+    # @return [nil]
+    # @api private
+    def restore_csrf(value, given)
+      @csrf = value
+      @csrf_given = given
+      nil
+    end
+
     # Path prefixes whose non-GET requests skip the CSRF check, `[]`: for an
     # API that other programs call with a token of its own (a webhook
     # receiver, an SDK's ingest endpoint), where no browser session exists.

@@ -65,7 +65,8 @@ module Cybertrain
       # protection off unless config/app.rb set `csrf` (Rails' test
       # environment), silences the request log unless config/app.rb set
       # `log_level` (its lines, with timings, would print between the test
-      # lines; Rails writes them to log/test.log), deletes the database and its -wal / -shm, migrates
+      # lines; Rails writes them to log/test.log; error-level lines, which
+      # carry no timings, still print), deletes the database and its -wal / -shm, migrates
       # Migration.all (quietly), boots, and sets {Cybertrain::Test.app}. Every test
       # then starts in the configured time zone (a reset hook).
       # @param router [Cybertrain::Router]

@@ -6,5 +6,12 @@ ok   assert_response with a symbol, an Integer and the wrong status
 ok   the top-level forms share the instance forms' checks
 ok   flatten_params encodes brackets and refuses arrays
 ok   the bundle's boot silences the request log and turns forgery protection off unless config gives them
-ok   forgery protection can be turned back on for one test
-9 tests, 65 assertions, 0 failures
+ok   with_forgery_protection turns it on for its block only
+ok   an assertion failing inside with_forgery_protection puts everything back
+ok   and the next test's post is accepted
+ok   the backstop after the test restores the application and csrf
+ok   *_url helpers are requested and asserted by their path; another host is refused
+ok   the top-level assert_redirected_to reduces a URL on the test host too
+ok   every status Symbol the controller knows, and Rails' :missing
+ok   Rails' CGI-style header names
+16 tests, 180 assertions, 0 failures

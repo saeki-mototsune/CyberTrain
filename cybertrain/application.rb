@@ -59,6 +59,12 @@ module Cybertrain
   class Application
     attr_reader :config, :router
 
+    # The resolver the path helpers of its templates call (what gen/routes.rb
+    # hands over as Gen::Routes.url_resolver).
+    # @return [Proc]
+    # @api private
+    attr_reader :url_resolver
+
     def initialize(router:, url_resolver:, views: Application.no_views, name: "server", config: Cybertrain.config)
       @router = router
       @url_resolver = url_resolver

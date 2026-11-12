@@ -3,6 +3,7 @@ require "cybertrain/context"
 require "cybertrain/http/request"
 require "cybertrain/http/response"
 require "cybertrain/http/query"
+require "cybertrain/generator/url_support"
 
 module Cybertrain
   module Test
@@ -139,6 +140,8 @@ module Cybertrain
     class Client
       FORM_TYPE = "application/x-www-form-urlencoded"
       REMOTE_ADDR = "127.0.0.1"
+      # The Host every request carries unless a test sends another.
+      TEST_HOST = "www.example.com"
 
       # The last response.
       # @return [Response]
@@ -169,6 +172,14 @@ module Cybertrain
         @cookies = {}
         @boundary_counter = 0
         @peer_address = REMOTE_ADDR
+      end
+
+      # Points this client (and its cookie jar) at another application:
+      # ActionDispatch::IntegrationTest#with_forgery_protection's.
+      # @param app [Application]
+      # @api private
+      def client_app=(app)
+        @app = app
       end
 
       # @param path [String] with its query string, if any (`"/articles?page=2"`)
@@ -292,7 +303,7 @@ module Cybertrain
       def request(method, path, body = "", headers = {})
         head = {}
         headers.each { |k, v| head[k.downcase] = v }
-        head["host"] = "www.example.com" unless head.key?("host")
+        head["host"] = TEST_HOST unless head.key?("host")
         head["content-length"] = body.bytesize.to_s unless body.empty?
         head["cookie"] = cookie_header unless @cookies.empty? || head.key?("cookie")
         ctx = Context.new(Request.new(method, path, head, body, @peer_address))
@@ -325,28 +336,75 @@ module Cybertrain
         slash.nil? ? "/" : location[slash..-1].to_s
       end
 
+      # The local path of a request or redirect target this application
+      # answers: a path as it is; an absolute URL on the test host
+      # (TEST_HOST) or on Cybertrain.url_root's host (what the `*_url`
+      # helpers write) reduced to its path; a URL on any other host
+      # unchanged (it still has its `://`).
+      # @example
+      #   Client.local_target("http://localhost:3000/articles/1")   # => "/articles/1"
+      #   Client.local_target("https://elsewhere.example/x")        # => "https://elsewhere.example/x"
+      # @param target [String]
+      # @return [String]
+      # @api private
+      def self.local_target(target)
+        return target if target.index("://").nil?
+
+        host = url_host_of(target)
+        return target unless host == TEST_HOST || host == url_host_of(Cybertrain.url_root)
+
+        local_path(target)
+      end
+
+      # "https://Example.com:3000/x?y" -> "example.com:3000"; "" without a scheme.
+      def self.url_host_of(url)
+        scheme = url.index("://")
+        return "" if scheme.nil?
+
+        from = scheme + 3
+        stop = url.length
+        ["/", "?", "#"].each do |mark|
+          at = url.index(mark, from)
+          stop = at if !at.nil? && at < stop
+        end
+        url[from, stop - from].to_s.downcase
+      end
+
       # The status a Rails-style symbol stands for, as [low, high]; [0, 0]
       # when the symbol is unknown. Every Symbol of
       # Controller::STATUS_SYMBOLS is here with its one code (the same list,
-      # kept by hand: the test layer loads without the Controller), plus the
-      # three ranges :success, :redirect and :error. A case, not a Hash, so
-      # a Symbol the program never mentions elsewhere still compiles to a
-      # comparison (test/client.rb checks every pair).
+      # kept by hand: the test layer loads without the Controller;
+      # test/test_integration.rb compares the two), plus :success (2xx),
+      # :redirect (3xx), :missing (404, Rails' name) and :error (exactly
+      # 500, as the earlier plan fixed it, test/client.rb; Rails takes any
+      # 5xx). A case, not a Hash, so a Symbol the program never mentions
+      # elsewhere still compiles to a comparison.
       def self.status_range(symbol)
         case symbol
-        when :ok then [200, 200]
         when :success then [200, 299]
+        when :redirect then [300, 399]
+        when :missing then [404, 404]
+        when :error then [500, 500]
+        when :continue then [100, 100]
+        when :switching_protocols then [101, 101]
+        when :processing then [102, 102]
+        when :early_hints then [103, 103]
+        when :ok then [200, 200]
         when :created then [201, 201]
         when :accepted then [202, 202]
+        when :non_authoritative_information then [203, 203]
         when :no_content then [204, 204]
         when :reset_content then [205, 205]
         when :partial_content then [206, 206]
-        when :redirect then [300, 399]
+        when :multi_status then [207, 207]
+        when :already_reported then [208, 208]
+        when :im_used then [226, 226]
         when :multiple_choices then [300, 300]
         when :moved_permanently then [301, 301]
         when :found then [302, 302]
         when :see_other then [303, 303]
         when :not_modified then [304, 304]
+        when :use_proxy then [305, 305]
         when :temporary_redirect then [307, 307]
         when :permanent_redirect then [308, 308]
         when :bad_request then [400, 400]
@@ -356,24 +414,43 @@ module Cybertrain
         when :not_found then [404, 404]
         when :method_not_allowed then [405, 405]
         when :not_acceptable then [406, 406]
+        when :proxy_authentication_required then [407, 407]
         when :request_timeout then [408, 408]
         when :conflict then [409, 409]
         when :gone then [410, 410]
         when :length_required then [411, 411]
         when :precondition_failed then [412, 412]
-        when :payload_too_large then [413, 413]
+        when :content_too_large then [413, 413]
+        when :uri_too_long then [414, 414]
         when :unsupported_media_type then [415, 415]
         when :range_not_satisfiable then [416, 416]
         when :expectation_failed then [417, 417]
-        when :unprocessable_entity then [422, 422]
+        when :misdirected_request then [421, 421]
+        when :unprocessable_content then [422, 422]
+        when :locked then [423, 423]
+        when :failed_dependency then [424, 424]
+        when :too_early then [425, 425]
+        when :upgrade_required then [426, 426]
+        when :precondition_required then [428, 428]
         when :too_many_requests then [429, 429]
         when :request_header_fields_too_large then [431, 431]
-        when :error then [500, 500]
+        when :unavailable_for_legal_reasons then [451, 451]
         when :internal_server_error then [500, 500]
         when :not_implemented then [501, 501]
         when :bad_gateway then [502, 502]
         when :service_unavailable then [503, 503]
         when :gateway_timeout then [504, 504]
+        when :http_version_not_supported then [505, 505]
+        when :variant_also_negotiates then [506, 506]
+        when :insufficient_storage then [507, 507]
+        when :loop_detected then [508, 508]
+        when :not_extended then [510, 510]
+        when :network_authentication_required then [511, 511]
+        when :payload_too_large then [413, 413]
+        when :request_entity_too_large then [413, 413]
+        when :unprocessable_entity then [422, 422]
+        when :request_uri_too_long then [414, 414]
+        when :requested_range_not_satisfiable then [416, 416]
         else [0, 0]
         end
       end
@@ -488,7 +565,9 @@ module Cybertrain
     end
 
     # `assert_redirected_to`, both forms: passes when the response is a 3xx
-    # whose Location is exactly `path`.
+    # whose Location is `path`, after reducing either side that is an
+    # absolute URL on this application's host to its path
+    # ({Client.local_target}); a URL on another host must match exactly.
     # @param response [Cybertrain::Response]
     # @param path [String]
     # @return [nil]
@@ -501,7 +580,10 @@ module Cybertrain
         fail_with(text)
       end
       location = response.header("Location")
-      return nil if location == path
+      # An absolute URL on this application's host and its path are the
+      # same target (`redirect_to article_path(a)` against
+      # `assert_redirected_to article_url(a)`, and the other way round).
+      return nil if !location.nil? && Client.local_target(location) == Client.local_target(path)
 
       moved = "expected a redirect to #{path.inspect}, got #{location.inspect}"
       fail_with(moved)
@@ -517,8 +599,8 @@ end
 # `:unauthorized`, `:forbidden`, `:not_found`, `:conflict`,
 # `:payload_too_large`, `:unsupported_media_type`, `:unprocessable_entity`,
 # `:too_many_requests`, `:service_unavailable`, ...), each standing for its
-# one code, plus the ranges `:success` (2xx), `:redirect` (3xx) and `:error`
-# (exactly 500). Needs `cybertrain/test/client`.
+# one code, plus `:success` (2xx), `:redirect` (3xx), `:missing` (404)
+# and `:error` (exactly 500; Rails takes any 5xx). Needs `cybertrain/test/client`.
 # @param response [Cybertrain::Response]
 # @param expected [Integer, Symbol]
 # @return [void]
@@ -527,7 +609,9 @@ def assert_response(response, expected)
   Cybertrain::Test.check_response(response, expected)
 end
 
-# Passes when the response is a 3xx whose Location is exactly `path`.
+# Passes when the response is a 3xx whose Location is `path`; an absolute
+# URL on the application's host (www.example.com, or Cybertrain.url_root's,
+# as the `*_url` helpers write) counts as its path, on either side.
 # @example
 #   assert_redirected_to res, "/articles/#{Article.last.id}"
 # @param response [Cybertrain::Response]
