@@ -35,9 +35,13 @@ class User
   # after it, and no comma, whitespace, angle bracket or control
   # character. Cybertrain::Mailer reads "a@x.example,b@y.example" as two
   # recipients, so without this an account could hold two mailboxes and
-  # have its mails (a confirmation link among them) sent to both. Some
-  # addresses the mail standards allow (a quoted local part with a
-  # space or a comma in it) are refused too.
+  # have its mails (a confirmation link among them) sent to both. It
+  # must also be an address the mailer sends to
+  # (Cybertrain::Mailer.address_problem: plain ASCII, none of
+  # ( ) [ ] ; : \ or ", within its length limits), so no account is
+  # saved that could never be mailed. Some addresses the mail
+  # standards allow (a quoted local part with a space or a comma in
+  # it) are refused too.
   def self.email_address_format?(value)
     s = value.to_s
     n = s.bytesize
@@ -53,7 +57,7 @@ class User
       end
       i += 1
     end
-    at > 0 && at < n - 1
+    at > 0 && at < n - 1 && Cybertrain::Mailer.address_problem(s).empty?
   end
 
   # The user with this address and password, or nil. A missing address

@@ -55,4 +55,4 @@ ok   a tampered locale cookie is ignored
 ok   the sign-in page and its messages are in the chosen language
 ok   validation errors in Japanese
 ok   an article's JSON has the cover's URL and none of the cover_* columns
-47 tests, 479 assertions, 0 failures
+47 tests, 488 assertions, 0 failures

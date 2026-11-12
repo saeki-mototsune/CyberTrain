@@ -1150,10 +1150,13 @@ each is recorded in the code and in docs/design.md D79 and D80 too.
   limited as sign-in is (ten per client address every three minutes),
   which section 9 did not ask for. The generated `User` accepts one
   address only (`User.email_address_format?`: exactly one `@`, no comma,
-  whitespace, angle bracket or control character), at every save that
-  sets one, because the mailer reads a comma as a second recipient; an
-  unusual address the standards allow is refused, and one saved before
-  the check is not checked again.
+  whitespace, angle bracket or control character, and nothing
+  `Cybertrain::Mailer.address_problem` refuses: non-ASCII bytes, so
+  Unicode spaces and controls, `()[];:\"`, and the length limits), at
+  every save that sets one, because the mailer reads a comma as a second
+  recipient and an address it refuses could never be mailed; an unusual
+  address the standards allow is refused, and one saved before the check
+  is not checked again.
 - Admin and the jobs page: the jobs page's line is
   `jobs_page "/admin/jobs", before_action: :require_admin,
   skip_before_action: :require_authentication` (a new route option), so

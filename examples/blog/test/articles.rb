@@ -913,8 +913,10 @@ test "an invalid locale param falls back to English" do
     assert_includes res.body, "<h1>Articles</h1>"
     refute sets_locale_cookie?(res), "?locale=#{value[0, 20]} is not written to the cookie"
     assert_nil locale_cookie(client)
-    # Nor is it written into the page: the language links name the path only.
-    assert_nil res.body.index("locale=#{value}&")
+    # Nor is it written into the page: the language links name the path
+    # and a supported locale only (a link ends at its closing quote).
+    assert_includes res.body, "<a href=\"/articles?locale=en\">English</a>"
+    assert_nil res.body.index("locale=#{value}\"")
   end
   assert_nil client.get("/articles?locale=#{hostile}").body.index("x" * 100)
   assert_nil client.get("/articles?locale=../../etc").body.index("../../etc")

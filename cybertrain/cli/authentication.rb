@@ -1166,9 +1166,13 @@ module Cybertrain
             # after it, and no comma, whitespace, angle bracket or control
             # character. Cybertrain::Mailer reads "a@x.example,b@y.example" as two
             # recipients, so without this an account could hold two mailboxes and
-            # have its mails (a confirmation link among them) sent to both. Some
-            # addresses the mail standards allow (a quoted local part with a
-            # space or a comma in it) are refused too.
+            # have its mails (a confirmation link among them) sent to both. It
+            # must also be an address the mailer sends to
+            # (Cybertrain::Mailer.address_problem: plain ASCII, none of
+            # ( ) [ ] ; : \\ or ", within its length limits), so no account is
+            # saved that could never be mailed. Some addresses the mail
+            # standards allow (a quoted local part with a space or a comma in
+            # it) are refused too.
             def self.email_address_format?(value)
               s = value.to_s
               n = s.bytesize
@@ -1184,7 +1188,7 @@ module Cybertrain
                 end
                 i += 1
               end
-              at > 0 && at < n - 1
+              at > 0 && at < n - 1 && Cybertrain::Mailer.address_problem(s).empty?
             end
 
             # The user with this address and password, or nil. A missing address
@@ -2739,6 +2743,13 @@ module Cybertrain
             assert_response res, :unprocessable_entity
             assert_includes res.body, "<li>Email address is invalid</li>"
             assert_equal "ann@new.example", User.find(ann.id).email_address
+            # Nor an address the mailer would refuse (Cybertrain::Mailer.address_problem).
+            ["ann@new.example\u00A0", "ann\u3000@new.example", "ann\u0085@new.example", "ann@new\u2028.example", "ann;x@new.example", "ann(x)@new.example"].each do |address|
+              res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => address })
+              assert_response res, :unprocessable_entity
+              assert_includes res.body, "<li>Email address is invalid</li>"
+              assert_equal "ann@new.example", User.find(ann.id).email_address
+            end
             # A new password that does not pass: nothing changes.
             res = update_account(client, "s3cr3t-s3cr3t", { "password" => "short", "password_confirmation" => "short" })
             assert_response res, :unprocessable_entity
@@ -4407,9 +4418,11 @@ module Cybertrain
             assert log.string.index("evil.example").nil?
           end
 
+          # Such an address is refused at entry now (User.email_address_format?),
+          # so this one was saved before that check existed.
           test "an address the mailer refuses gets the same answer, and the log says why" do
             client = new_client
-            AppTest.user("josé@example.com")
+            AppTest.user("jose@example.com").update_columns(email_address: "josé@example.com")
             log = StringIO.new
             with_config("test", NO_HOSTS, "https://shop.example", log) do
               refused = request_reset(client, "josé@example.com")
@@ -5130,7 +5143,9 @@ module Cybertrain
 
           test "send again: a refused address, no safe base and the rate limit" do
             client = new_client
-            unconfirmed_user("josé@example.com")
+            # Refused at entry now (User.email_address_format?), so saved
+            # before that check existed.
+            unconfirmed_user("jose@example.com").update_columns(email_address: "josé@example.com")
             unconfirmed_user
             # An address the mailer refuses: the same answer, and the log says why.
             log = StringIO.new
@@ -5511,11 +5526,16 @@ module Cybertrain
           end
 
           # One address only: Cybertrain::Mailer reads a comma as a second
-          # recipient, so the account would have two mailboxes.
+          # recipient, so the account would have two mailboxes. Nor any address
+          # the mailer would refuse (Cybertrain::Mailer.address_problem: a
+          # Unicode space or control character, ";", "(" and the like), which
+          # could never be sent its mails.
           test "POST /sign_up refuses an address list or a malformed address" do
             client = new_client
             client.get("/sign_up")
-            ["ann@example.com,eve@evil.example", "ann@example.com eve@evil.example", "<ann@example.com>", "ann", "@example.com", "ann@", "a@b@example.com"].each do |address|
+            ["ann@example.com,eve@evil.example", "ann@example.com eve@evil.example", "<ann@example.com>", "ann", "@example.com", "ann@", "a@b@example.com",
+             "ann@example.com\\u00A0", "ann\\u3000@example.com", "ann\\u0085@example.com", "ann@exa\\u2028mple.com", "ann;x@example.com", "ann(x)@example.com"].each do |address|
+              Cybertrain::RateLimit.reset_all!
               res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
                                               "user[email_address]" => address,
                                               "user[password]" => "s3cr3t-s3cr3t",
@@ -5525,6 +5545,14 @@ module Cybertrain
             end
             assert_equal 0, User.count
             assert_equal 0, Session.count
+            # A plus-address is one address the mailer sends to.
+            Cybertrain::RateLimit.reset_all!
+            client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
+                                      "user[email_address]" => "ann+news@example.com",
+                                      "user[password]" => "s3cr3t-s3cr3t",
+                                      "user[password_confirmation]" => "s3cr3t-s3cr3t" })
+            assert_equal 1, User.count
+            assert_equal "ann+news@example.com", User.first.email_address
           end
 
           # RegistrationsController's rate_limit: ten sign-ups per client
@@ -5625,12 +5653,14 @@ module Cybertrain
           # User.email_address_format?: one address, whatever the mail
           # standards allow beyond that.
           test "an address is one address: one @, nothing around it that splits it" do
-            ["ann@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
+            ["ann@example.com", "ann+news@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
               assert User.email_address_format?(address), address
             end
             ["", "ann", "@example.com", "ann@", "a@b@example.com", "ann@example.com,eve@evil.example",
              "ann@example.com eve@evil.example", "ann @example.com", "<ann@example.com>", "Ann <ann@example.com>",
-             "ann@example.com\\n", "ann@exa\\tmple.com", "\\"ann lee\\"@example.com"].each do |address|
+             "ann@example.com\\n", "ann@exa\\tmple.com", "\\"ann lee\\"@example.com",
+             "ann@example.com\\u00A0", "ann\\u3000@example.com", "ann\\u0085@example.com", "ann@exa\\u2028mple.com",
+             "ann;x@example.com", "ann(x)@example.com", "ann@[example].com", "ann:x@example.com"].each do |address|
               refute User.email_address_format?(address), address
             end
           end

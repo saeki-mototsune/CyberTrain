@@ -128,6 +128,13 @@ test "changing email or password requires the current password" do
   assert_response res, :unprocessable_entity
   assert_includes res.body, "<li>Email address is invalid</li>"
   assert_equal "ann@new.example", User.find(ann.id).email_address
+  # Nor an address the mailer would refuse (Cybertrain::Mailer.address_problem).
+  ["ann@new.example\u00A0", "ann\u3000@new.example", "ann\u0085@new.example", "ann@new\u2028.example", "ann;x@new.example", "ann(x)@new.example"].each do |address|
+    res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => address })
+    assert_response res, :unprocessable_entity
+    assert_includes res.body, "<li>Email address is invalid</li>"
+    assert_equal "ann@new.example", User.find(ann.id).email_address
+  end
   # A new password that does not pass: nothing changes.
   res = update_account(client, "s3cr3t-s3cr3t", { "password" => "short", "password_confirmation" => "short" })
   assert_response res, :unprocessable_entity

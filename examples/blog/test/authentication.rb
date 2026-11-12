@@ -217,12 +217,14 @@ end
 # User.email_address_format?: one address, whatever the mail
 # standards allow beyond that.
 test "an address is one address: one @, nothing around it that splits it" do
-  ["ann@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
+  ["ann@example.com", "ann+news@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
     assert User.email_address_format?(address), address
   end
   ["", "ann", "@example.com", "ann@", "a@b@example.com", "ann@example.com,eve@evil.example",
    "ann@example.com eve@evil.example", "ann @example.com", "<ann@example.com>", "Ann <ann@example.com>",
-   "ann@example.com\n", "ann@exa\tmple.com", "\"ann lee\"@example.com"].each do |address|
+   "ann@example.com\n", "ann@exa\tmple.com", "\"ann lee\"@example.com",
+   "ann@example.com\u00A0", "ann\u3000@example.com", "ann\u0085@example.com", "ann@exa\u2028mple.com",
+   "ann;x@example.com", "ann(x)@example.com", "ann@[example].com", "ann:x@example.com"].each do |address|
     refute User.email_address_format?(address), address
   end
 end
