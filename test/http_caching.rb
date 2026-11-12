@@ -169,6 +169,10 @@ test "If-None-Match: * is fresh for a response validated by date only" do
   assert_nil res.header("ETag")
   assert_equal stamp_date(0), res.header("Last-Modified")
   assert_equal 304, CLIENT.get("/dated", { "If-None-Match" => "\"x\", *" }).status
+  # an asterisk inside a quoted entity-tag is part of that tag, not the wildcard
+  assert_equal 200, CLIENT.get("/dated", { "If-None-Match" => "\"a,*,b\"" }).status
+  assert_equal 200, CLIENT.get("/dated", { "If-None-Match" => "\"*\"" }).status
+  assert_equal 304, CLIENT.get("/dated", { "If-None-Match" => "\"a,b\", *" }).status
   # it decides alone, like any If-None-Match
   assert_equal 304, CLIENT.get("/dated", { "If-None-Match" => "*", "If-Modified-Since" => stamp_date(-60) }).status
   # an ordinary tag has nothing to match on a response without an ETag

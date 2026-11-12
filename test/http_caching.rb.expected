@@ -15,4 +15,4 @@ ok   a 304 the action rendered with a body sends no body
 ok   an etag that is neither a String nor a record is an ArgumentError
 ok   Cache-Control from fresh_when and expires_in
 ok   http_date and parse_http_date
-15 tests, 92 assertions, 0 failures
+15 tests, 95 assertions, 0 failures

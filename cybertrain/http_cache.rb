@@ -159,12 +159,40 @@ module Cybertrain
       end
     end
 
-    # Whether the If-None-Match list is, or has an entry, `*`.
+    # Whether the If-None-Match list is, or has an entry, `*`: an entry
+    # that is the asterisk alone, outside quotes. A comma or an asterisk
+    # inside a quoted entity-tag (`"a,*,b"` is one tag: RFC 9110 8.8.3
+    # allows both characters there) is part of that tag, so the list is
+    # walked byte by byte rather than split on commas. Read through a
+    # fresh local (NOTES rule 62).
     def self.any_listed?(list)
-      list.split(",").each do |item|
-        return true if item.strip == "*"
+      text = list.to_s
+      n = text.bytesize
+      quoted = false
+      star = false
+      other = false
+      i = 0
+      while i < n
+        b = text.getbyte(i).to_i
+        if b == 34 # "
+          quoted = !quoted
+          other = true
+        elsif quoted
+          # inside an entity-tag: nothing here is list syntax
+        elsif b == 44 # ,
+          return true if star && !other
+
+          star = false
+          other = false
+        elsif b == 42 # *
+          other = true if star
+          star = true
+        elsif b != 32 && b != 9
+          other = true
+        end
+        i += 1
       end
-      false
+      star && !other
     end
 
     # Whether the If-None-Match list names `tag` (weak comparison: a W/
