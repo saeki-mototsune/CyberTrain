@@ -86,7 +86,9 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 
 `assert_response` and `assert_redirected_to` come with
 `require "cybertrain/test/client"`. Each is documented on the
-[Top Level Namespace](top-level-namespace.html) page.
+[Top Level Namespace](top-level-namespace.html) page. In an
+{ActionDispatch::IntegrationTest} both read the last response:
+`assert_response :success`, `assert_redirected_to "/articles/1"`.
 
 The job helpers come with `require "cybertrain/test/jobs"`:
 `assert_enqueued_jobs(count, kind = "")`, `assert_no_enqueued_jobs(kind = "")`,

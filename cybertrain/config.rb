@@ -119,10 +119,37 @@ module Cybertrain
 
     # `:info` (the default), `:debug`, `:warn`, `:error`, or `:none`, which
     # also turns off the request log but still prints errors. Lines go to
-    # standard output as `[INFO] ...`.
+    # standard output as `[INFO] ...`. `cybertrain test` sets `:none` for
+    # its tests unless config/app.rb assigns it (the request log would
+    # print between the test lines).
     # @return [Symbol]
     # @api public
-    attr_accessor :log_level
+    attr_reader :log_level
+
+    # Sets {#log_level}, and records that it was given ({#log_level_given?}).
+    # @param value [Symbol]
+    # @api public
+    def log_level=(value)
+      @log_level = value
+      @log_level_given = true
+    end
+
+    # Whether {#log_level} was assigned (by config/app.rb or later), rather
+    # than left at its default: what `cybertrain test`'s boot asks.
+    # @return [Boolean]
+    # @api private
+    def log_level_given? = @log_level_given
+
+    # Sets {#log_level} to `value` unless it was given, without counting as
+    # given: `cybertrain test`'s default (`:none`, no request log between
+    # the test lines).
+    # @param value [Symbol]
+    # @return [nil]
+    # @api private
+    def log_level_unless_given(value)
+      @log_level = value unless @log_level_given
+      nil
+    end
 
     # The session cookie's name, `"_cybertrain_session"`.
     # @return [String]
@@ -913,6 +940,7 @@ attr_accessor :trusted_proxies
       @public_root = "public"
       @layout = "layouts/application"
       @log_level = :info
+      @log_level_given = false
       @session_cookie_name = "_cybertrain_session"
       @session_max_age = 1209600
       # Absolute session lifetime, enforced by SessionStore: the two weeks

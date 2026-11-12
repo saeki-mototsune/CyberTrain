@@ -53,6 +53,9 @@ module Cybertrain
         out << "require_relative \"migrations\"\n" if File.directory?("#{root}/db/migrate")
         out << "require_relative \"test/data\"\n" if data
         out << "Cybertrain::Test.bundled!\n"
+        # The application's path helpers in every integration test (spec
+        # section 5.1), as gen/routes.rb gives them to controllers.
+        out << "class ActionDispatch::IntegrationTest\n  include ::Gen::UrlHelpers\nend\n"
         files.each { |f| out << "require_relative \"#{required(f)}\"\n" if f.support_file? }
         files.each do |f|
           next if f.support_file?

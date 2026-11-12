@@ -15,6 +15,7 @@ require "cybertrain/test/test_case"
 require "cybertrain/test/time_now"
 require "cybertrain/rate_limit"
 require "cybertrain/i18n"
+require "cybertrain/test/integration"
 
 module Cybertrain
   module Test

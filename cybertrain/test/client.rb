@@ -451,6 +451,62 @@ module Cybertrain
         end
       end
     end
+
+    # `assert_response`, both forms (the top-level
+    # `assert_response(response, expected)` and
+    # ActionDispatch::IntegrationTest#assert_response(expected)): passes
+    # when the status is `expected` (an Integer) or in the range a Symbol
+    # stands for ({Client.status_range}).
+    # @param response [Cybertrain::Response]
+    # @param expected [Integer, Symbol]
+    # @return [nil]
+    # @api private
+    def self.check_response(response, expected)
+      count_assertion
+      status = response.status
+      case expected
+      when Integer
+        return nil if status == expected
+
+        text = "expected response #{expected}, got #{status}"
+        fail_with(text)
+      when Symbol
+        range = Client.status_range(expected)
+        if range[0] == 0
+          unknown = "unknown status symbol #{expected.inspect}"
+          fail_with(unknown)
+        end
+        return nil if status >= range[0] && status <= range[1]
+
+        text = "expected response #{expected.inspect}, got #{status}"
+        fail_with(text)
+      else
+        text = "expected an Integer or Symbol status, got #{expected.inspect}"
+        fail_with(text)
+      end
+      nil
+    end
+
+    # `assert_redirected_to`, both forms: passes when the response is a 3xx
+    # whose Location is exactly `path`.
+    # @param response [Cybertrain::Response]
+    # @param path [String]
+    # @return [nil]
+    # @api private
+    def self.check_redirect(response, path)
+      count_assertion
+      status = response.status
+      if status < 300 || status > 399
+        text = "expected a redirect to #{path.inspect}, got #{status}"
+        fail_with(text)
+      end
+      location = response.header("Location")
+      return nil if location == path
+
+      moved = "expected a redirect to #{path.inspect}, got #{location.inspect}"
+      fail_with(moved)
+      nil
+    end
   end
 end
 
@@ -468,20 +524,7 @@ end
 # @return [void]
 # @api public
 def assert_response(response, expected)
-  Cybertrain::Test.count_assertion
-  status = response.status
-  case expected
-  when Integer
-    flunk("expected response #{expected}, got #{status}") unless status == expected
-  when Symbol
-    range = Cybertrain::Test::Client.status_range(expected)
-    flunk("unknown status symbol #{expected.inspect}") if range[0] == 0
-    unless status >= range[0] && status <= range[1]
-      flunk("expected response #{expected.inspect}, got #{status}")
-    end
-  else
-    flunk("expected an Integer or Symbol status, got #{expected.inspect}")
-  end
+  Cybertrain::Test.check_response(response, expected)
 end
 
 # Passes when the response is a 3xx whose Location is exactly `path`.
@@ -492,9 +535,5 @@ end
 # @return [void]
 # @api public
 def assert_redirected_to(response, path)
-  Cybertrain::Test.count_assertion
-  status = response.status
-  flunk("expected a redirect to #{path.inspect}, got #{status}") if status < 300 || status > 399
-  location = response.header("Location")
-  flunk("expected a redirect to #{path.inspect}, got #{location.inspect}") unless location == path
+  Cybertrain::Test.check_redirect(response, path)
 end

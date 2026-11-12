@@ -63,7 +63,9 @@ module Cybertrain
       # Boots the application on a new test database: refuses first
       # ({refusal}, raising ArgumentError, nothing deleted), turns forgery
       # protection off unless config/app.rb set `csrf` (Rails' test
-      # environment), deletes the database and its -wal / -shm, migrates
+      # environment), silences the request log unless config/app.rb set
+      # `log_level` (its lines, with timings, would print between the test
+      # lines; Rails writes them to log/test.log), deletes the database and its -wal / -shm, migrates
       # Migration.all (quietly), boots, and sets {Cybertrain::Test.app}. Every test
       # then starts in the configured time zone (a reset hook).
       # @param router [Cybertrain::Router]
@@ -75,6 +77,7 @@ module Cybertrain
 
         c = Cybertrain.config
         c.csrf_unless_given(false)
+        c.log_level_unless_given(:none)
         path = c.database_path
         [path, "#{path}-wal", "#{path}-shm"].each { |f| File.delete(f) if File.exist?(f) }
         connection = Cybertrain::DB::Connection.new(path)
