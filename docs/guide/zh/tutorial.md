@@ -1,5 +1,5 @@
 ---
-source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
+source_sha256: f252561d670fcd6091b2bd72200cfabc86c2a9ae1c6c9731a3fa0f54fa31f565
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -426,7 +426,7 @@ end
 
 表单用 `url:` 指明提交目标，用 `scope:` 为字段命名（`comment[commenter]`、`comment[body]`），所以它不需要 `Comment` 记录：未能保存的评论会被重定向回来，原因放在 flash 中（[第 10 步](#comments-controller)），表单永远不会带着错误再次渲染。
 
-`button_to ... [@article, comment]` 通过 `[parent, child]` 规则解析：新的子对象路由到嵌套集合（`article_comments_path`），已持久化的子对象路由到嵌套成员（`article_comment_path`），两者都由上面的嵌套 `resources` 块生成到 `gen/routes.rb` 中。`form_with(model: [@article, @comment])` 遵循同一条规则，`examples/blog` 就是这样写表单的，并在 `ArticlesController#show` 中写了 `@comment = Comment.new`。本教程让 `show` 保持脚手架写出的样子，也就是空的，因为[第 18 步](#attachments)的生成器要求如此。
+`button_to ... [@article, comment]` 通过 `[parent, child]` 规则解析：新的子对象路由到嵌套集合（`article_comments_path`），已持久化的子对象路由到嵌套成员（`article_comment_path`），两者都由上面的嵌套 `resources` 块生成到 `gen/routes.rb` 中。`form_with(model: [@article, @comment])` 遵循同一条规则，`examples/blog` 就是这样写表单的，并在 `ArticlesController#show` 中写了 `@comment = Comment.new`。本教程让 `show` 保持脚手架写出的样子，也就是空的：只有在它为空时，[第 18 步](#attachments)的生成器才会自动让封面图片与页面同样公开。
 
 > [!RULE] 视图是一套封闭的语法
 > ### 视图是一套封闭的语法，而不是 Ruby
@@ -712,7 +712,7 @@ $ curl http://127.0.0.1:3000/articles.json
 - `as_json` 给出记录的各列，时间为 ISO 8601 格式的 UTC。JSON 没有模板：动作用 `render json:` 返回它。
 - 块里只写 `format.` 开头的那些行：请求回退到 html 时，这个块会再运行一次。
 
-`show` 可以用同样的块，配上 `render json: @article.as_json`，`examples/blog` 中就是这样写的。请在[第 18 步](#attachments)之后再添加它，因为那一步的生成器在运行时要求 `show` 是空的。关于格式的全部内容：[格式与 `respond_to`](requests.md#formats-and-respond_to)。
+`show` 可以用同样的块，配上 `render json: @article.as_json`，`examples/blog` 中就是这样写的。请在[第 18 步](#attachments)之后再添加它：只要 `show` 是空的，那一步的生成器就会让下载随页面一起公开。关于格式的全部内容：[格式与 `respond_to`](requests.md#formats-and-respond_to)。
 
 <!-- step 16 #test stage: 构建时 · `cybertrain spin test` -->
 ## 测试
@@ -1010,7 +1010,7 @@ class ArticlesController < ApplicationController
 ```
 
 > [!NOTE]
-> 生成器会把 `show` 的访问规则复制到下载上，但只在它能读懂这些规则时才这样做：`show` 必须是脚手架生成的、受 `before_action :set_article` 保护的空动作。如果 `def show` 中有代码，或者另有一个 `before_action` 列出了 `:show` 却没有列出新动作，它会以 `cannot preserve show's authorization for :cover` 停止，什么也不写。这就是 `show` 一直保持为空的原因。从这里开始它可以增加内容了（[第 15 步](#json)的 JSON 响应、供表单使用的 `@comment`）；此后让 `cover` 与 `show` 受到同样的限制，就要由你自己来做了。
+> 生成器会把 `show` 的访问规则复制到下载上，但只复制它能读懂的那些，也就是回调。如果除 `set_article` 之外还有一个 `before_action` 列出了 `:show` 却没有列出新动作，它会以 `cannot preserve show's authorization for :cover` 停止，什么也不写。`def show` 中的代码检查的是什么，它读不出来，所以它会写出下载动作、打印一条警告，并且不把 `:cover` 加入 `allow_unauthenticated_access`：在你自己把 `:cover` 加到那一行之前，图片需要登录才能看到。这就是 `show` 一直保持为空的原因。从这里开始它可以增加内容了（[第 15 步](#json)的 JSON 响应、供表单使用的 `@comment`）；你写进 `show` 的检查，也要写进 `cover`。
 
 > [!RULE] Spinel 规则：has_one_attached
 > ### `has_one_attached` 被逐一写出

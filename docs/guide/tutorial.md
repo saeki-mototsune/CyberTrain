@@ -553,7 +553,8 @@ into `gen/routes.rb` from the nested `resources` block above.
 `form_with(model: [@article, @comment])` follows the same rule, and
 `examples/blog` writes the form that way, with `@comment = Comment.new` in
 `ArticlesController#show`. This tutorial leaves `show` as the scaffold wrote
-it, empty, because the generator of [step 18](#attachments) asks for that.
+it, empty: only while it is does the generator of [step 18](#attachments)
+make the cover image as public as the page by itself.
 
 > [!RULE] Views are a closed grammar
 > ### Views are a closed grammar, not Ruby
@@ -914,8 +915,8 @@ $ curl http://127.0.0.1:3000/articles.json
   the block runs a second time.
 
 `show` takes the same block, with `render json: @article.as_json`, and
-`examples/blog` has it. Add it after [step 18](#attachments), whose generator
-wants `show` empty when it runs. Everything about formats:
+`examples/blog` has it. Add it after [step 18](#attachments): while `show` is
+empty, that step's generator makes the download public along with the page. Everything about formats:
 [Formats and `respond_to`](requests.md#formats-and-respond_to).
 
 <!-- step 16 #test stage: Build time · `cybertrain spin test` -->
@@ -1402,13 +1403,15 @@ the image to the show page, right after the `<h1>`:
 
 > [!NOTE]
 > The generator copies the access rules of `show` to the download, and only
-> when it can read them: `show` must be the scaffold's empty action behind
-> `before_action :set_article`. With code inside `def show`, or a
-> second `before_action` that lists `:show` without the new action, it stops with
-> `cannot preserve show's authorization for :cover` and writes nothing. That
-> is why `show` stayed empty until now. From here on it can grow (the JSON
-> answer of [step 15](#json), a `@comment` for the form); keeping `cover` as
-> restricted as `show` is then yours to do.
+> those it can read: the callbacks. A `before_action` other than `set_article`
+> that lists `:show` without the new action stops it with `cannot preserve
+> show's authorization for :cover`, and nothing is written. Code inside
+> `def show` it cannot read for what it checks, so it writes the download,
+> prints a warning and leaves `:cover` out of `allow_unauthenticated_access`:
+> the image then needs a sign-in until you add `:cover` to that line yourself.
+> That is why `show` stayed empty until now. From here on it can grow (the
+> JSON answer of [step 15](#json), a `@comment` for the form); a check you
+> write into `show` belongs in `cover` too.
 
 > [!RULE] Spinel rule: has_one_attached
 > ### `has_one_attached` is written out

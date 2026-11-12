@@ -1,5 +1,5 @@
 ---
-source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
+source_sha256: f252561d670fcd6091b2bd72200cfabc86c2a9ae1c6c9731a3fa0f54fa31f565
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -579,7 +579,9 @@ partir du bloc `resources` imbriqué ci-dessus.
 `form_with(model: [@article, @comment])` suit la même règle, et
 `examples/blog` écrit le formulaire ainsi, avec `@comment = Comment.new` dans
 `ArticlesController#show`. Ce tutoriel laisse `show` tel que le scaffold l’a
-écrit, vide, parce que le générateur de l’[étape 18](#attachments) l’exige.
+écrit, vide&nbsp;: c’est seulement tant qu’il l’est que le générateur de
+l’[étape 18](#attachments) rend de lui-même l’image de couverture aussi
+publique que la page.
 
 > [!RULE] Les vues forment une grammaire fermée
 > ### Les vues forment une grammaire fermée, pas du Ruby
@@ -959,8 +961,9 @@ $ curl http://127.0.0.1:3000/articles.json
   sur html, le bloc s’exécute une seconde fois.
 
 `show` accepte le même bloc, avec `render json: @article.as_json`, et
-`examples/blog` l’a. Ajoutez-le après l’[étape 18](#attachments), dont le
-générateur veut un `show` vide au moment où il s’exécute. Tout sur les
+`examples/blog` l’a. Ajoutez-le après l’[étape 18](#attachments)&nbsp;: tant que
+`show` est vide, le générateur de cette étape rend le téléchargement public
+avec la page. Tout sur les
 formats&nbsp;: [Formats et `respond_to`](requests.md#formats-and-respond_to).
 
 <!-- step 16 #test stage: Compilation · `cybertrain spin test` -->
@@ -1476,15 +1479,18 @@ d’envoi, et l’image à la page d’affichage, juste après le `<h1>`&nbsp;:
 ```
 
 > [!NOTE]
-> Le générateur copie les règles d’accès de `show` sur le téléchargement, et
-> seulement quand il peut les lire&nbsp;: `show` doit être l’action vide du
-> scaffold, derrière `before_action :set_article`. Avec du code dans
-> `def show`, ou un autre `before_action` qui liste `:show` sans la nouvelle action,
-> il s’arrête avec `cannot preserve show's authorization for :cover` et
-> n’écrit rien. C’est pourquoi `show` est resté vide jusqu’ici. Désormais, il
-> peut s’étoffer (la réponse JSON de l’[étape 15](#json), un `@comment` pour
-> le formulaire)&nbsp;; garder `cover` aussi restreint que `show` vous revient
-> alors.
+> Le générateur copie les règles d’accès de `show` sur le téléchargement, mais
+> seulement celles qu’il peut lire&nbsp;: les callbacks. Un `before_action`
+> autre que `set_article` qui liste `:show` sans la nouvelle action l’arrête
+> avec `cannot preserve show's authorization for :cover`, et rien n’est écrit.
+> Le code placé dans `def show`, il ne peut pas lire ce qu’il vérifie&nbsp;: il
+> écrit donc le téléchargement, affiche un avertissement et n’ajoute pas
+> `:cover` à `allow_unauthenticated_access`&nbsp;; l’image exige alors une
+> connexion tant que vous n’ajoutez pas vous-même `:cover` à cette ligne.
+> C’est pourquoi `show` est resté vide jusqu’ici. Désormais, il peut
+> s’étoffer (la réponse JSON de l’[étape 15](#json), un `@comment` pour le
+> formulaire)&nbsp;; une vérification que vous écrivez dans `show` a aussi sa
+> place dans `cover`.
 
 > [!RULE] Règle Spinel&nbsp;: has_one_attached
 > ### `has_one_attached` est écrit en toutes lettres

@@ -1,5 +1,5 @@
 ---
-source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
+source_sha256: f252561d670fcd6091b2bd72200cfabc86c2a9ae1c6c9731a3fa0f54fa31f565
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -426,7 +426,7 @@ end
 
 フォームは送信先を `url:` で、フィールド名（`comment[commenter]`、`comment[body]`）を `scope:` で指定するので、`Comment` のレコードを必要としません。保存できなかったコメントは、理由をフラッシュに入れてリダイレクトで戻され（[ステップ 10](#comments-controller)）、エラー付きでフォームがレンダリングし直されることはないからです。
 
-`button_to ... [@article, comment]` は `[parent, child]` のルールで解決されます：新しい子はネストしたコレクション（`article_comments_path`）に、保存済みの子はネストしたメンバー（`article_comment_path`）にルーティングされます。どちらも上のネストした `resources` ブロックから `gen/routes.rb` に生成されます。`form_with(model: [@article, @comment])` も同じルールに従い、`examples/blog` はフォームをこの形で書いて、`ArticlesController#show` に `@comment = Comment.new` を置いています。このチュートリアルでは `show` を、スキャフォールドが書き出したとおりの空のままにしておきます。[ステップ 18](#attachments) のジェネレーターがそれを求めるからです。
+`button_to ... [@article, comment]` は `[parent, child]` のルールで解決されます：新しい子はネストしたコレクション（`article_comments_path`）に、保存済みの子はネストしたメンバー（`article_comment_path`）にルーティングされます。どちらも上のネストした `resources` ブロックから `gen/routes.rb` に生成されます。`form_with(model: [@article, @comment])` も同じルールに従い、`examples/blog` はフォームをこの形で書いて、`ArticlesController#show` に `@comment = Comment.new` を置いています。このチュートリアルでは `show` を、スキャフォールドが書き出したとおりの空のままにしておきます。[ステップ 18](#attachments) のジェネレーターが、カバー画像をページと同じだけ自動で公開するのは、`show` が空の間だけだからです。
 
 > [!RULE] ビューは閉じた文法
 > ### ビューは Ruby ではなく、閉じた文法
@@ -712,7 +712,7 @@ $ curl http://127.0.0.1:3000/articles.json
 - `as_json` はレコードのカラムで、時刻は ISO 8601 の UTC です。JSON にテンプレートはありません：アクションは `render json:` で応答します。
 - ブロックには `format.` の行だけを書いてください：リクエストが html にフォールバックすると、ブロックはもう一度実行されます。
 
-`show` にも同じブロックを `render json: @article.as_json` で書けます。`examples/blog` にはそれが入っています。追加するのは [ステップ 18](#attachments) の後にしてください。そのステップのジェネレーターは、実行時に `show` が空であることを求めます。フォーマットのすべては[フォーマットと `respond_to`](requests.md#formats-and-respond_to) にあります。
+`show` にも同じブロックを `render json: @article.as_json` で書けます。`examples/blog` にはそれが入っています。追加するのは [ステップ 18](#attachments) の後にしてください。`show` が空の間は、そのステップのジェネレーターが、ページと一緒にダウンロードも公開します。フォーマットのすべては[フォーマットと `respond_to`](requests.md#formats-and-respond_to) にあります。
 
 <!-- step 16 #test stage: ビルド時 · `cybertrain spin test` -->
 ## テストする
@@ -1010,7 +1010,7 @@ class ArticlesController < ApplicationController
 ```
 
 > [!NOTE]
-> ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、それはルールを読み取れる場合だけです：`show` は、`before_action :set_article` の対象になっている、スキャフォールドが書き出したままの空のアクションでなければなりません。`def show` の中にコードがあるか、新しいアクションを含まずに `:show` を挙げた別の `before_action` があると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。ここまで `show` を空のままにしてきたのはそのためです。ここから先は中身を増やせます（[ステップ 15](#json) の JSON での応答や、フォーム用の `@comment`）。その場合、`cover` を `show` と同じだけ制限された状態に保つのは、あなたの仕事です。
+> ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、写すのは読み取れるもの、つまりコールバックだけです。`set_article` 以外の `before_action` が、新しいアクションを含まずに `:show` を挙げていると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。`def show` の中のコードは、何を確かめているのかを読み取れません。そのためジェネレーターはダウンロードを書き出し、警告を表示し、`:cover` を `allow_unauthenticated_access` に加えません：その行に自分で `:cover` を足すまで、画像にはサインインが必要になります。ここまで `show` を空のままにしてきたのはそのためです。ここから先は中身を増やせます（[ステップ 15](#json) の JSON での応答や、フォーム用の `@comment`）。`show` に書いたチェックは、`cover` にも書いてください。
 
 > [!RULE] Spinel のルール：has_one_attached
 > ### `has_one_attached` は書き下される
