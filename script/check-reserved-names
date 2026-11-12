@@ -284,6 +284,10 @@ NAME_HOMES = {
   "confirmation_token" => %w[cybertrain/cli/authentication.rb],
   "confirm" => %w[cybertrain/cli/authentication.rb],
   "confirmation_instructions" => %w[cybertrain/cli/authentication.rb],
+  # --confirmable's User#save_confirmed (a Boolean) and
+  # User#request_email_change (nil).
+  "save_confirmed" => %w[cybertrain/cli/authentication.rb],
+  "request_email_change" => %w[cybertrain/cli/authentication.rb],
   # The generated PasswordsMailer.reset answers a Cybertrain::MailMessage
   # (Rails' name); the framework, which every app compiles with, keeps the
   # name free (WebSocket's Frame#clear_message was its private `reset`).

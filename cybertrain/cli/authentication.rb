@@ -208,7 +208,7 @@ module Cybertrain
         else
           record(created, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable))
         end
-        record(created, root, "app/controllers/passwords_controller.rb", passwords_controller)
+        record(created, root, "app/controllers/passwords_controller.rb", passwords_controller(confirmable))
         record(created, root, "app/controllers/confirmations_controller.rb", confirmations_controller) if confirmable
         record(created, root, "app/controllers/accounts_controller.rb", accounts_controller(confirmable))
         record(created, root, "app/mailers/passwords_mailer.rb", passwords_mailer)
@@ -874,15 +874,43 @@ module Cybertrain
 
           # Confirms what confirmation_binding names: a new account's address, or
           # the new address waiting, which takes the place of the old one. False,
-          # with nothing saved and the reason in errors, when another account has
-          # taken that address since it was asked for (validate_email_address_taken
-          # asks again here).
+          # with the reason in errors, when another account has taken that address
+          # since it was asked for (validate_email_address_taken asks again here,
+          # and the unique index behind it): then only the address waiting is
+          # forgotten, as it can never be confirmed now.
           def confirm
             pending = unconfirmed_email.to_s
             self.email_address = pending unless pending.empty?
             self.unconfirmed_email = nil
             self.confirmed_at = Time.now
+            return true if save_confirmed
+
+            update_columns(unconfirmed_email: nil) unless pending.empty?
+            false
+          end
+
+          # confirm's save. Another account that takes the address between the
+          # check and the write meets the unique index: the same answer as the
+          # check's, not an error page.
+          def save_confirmed
             save
+          rescue Cybertrain::DB::Error => e
+            raise e unless e.message.include?("UNIQUE")
+
+            errors.add(:email_address, I18n.error_message("user", :email_address, :taken))
+            false
+          end
+
+          # Asks for a new address (AccountsController#update): it waits in
+          # unconfirmed_email for the link mailed to it, and is checked
+          # (validate_unconfirmed_email) by this save only, so an address someone
+          # takes later never stops a reset, the user command or a rehash from
+          # saving the account.
+          def request_email_change(address)
+            requested = User.normalize_email_address(address)
+            @requested_email = requested
+            self.unconfirmed_email = requested
+            nil
           end
         RUBY
       end
@@ -890,18 +918,16 @@ module Cybertrain
       def self.validate_unconfirmed_email_method
         indent(<<~'RUBY')
 
-          # A new address waiting for its confirmation (AccountsController#update,
-          # --confirmable): normalized, and refused when blank or another
-          # account's address, on email_address (the field the form shows).
+          # The new address request_email_change asked for (--confirmable),
+          # refused when blank or another account's address, on email_address
+          # (the field the form shows). Any other save skips it.
           def validate_unconfirmed_email
-            pending = unconfirmed_email
-            return nil if pending.nil?
+            requested = @requested_email
+            return nil if requested.nil?
 
-            address = User.normalize_email_address(pending)
-            self.unconfirmed_email = address
-            if address.empty?
+            if requested.empty?
               errors.add(:email_address, I18n.error_message("user", :email_address, :blank))
-            elsif User.where(email_address: address).where_sql("id != ?", [id]).exists?
+            elsif User.where(email_address: requested).where_sql("id != ?", [id]).exists?
               errors.add(:email_address, I18n.error_message("user", :email_address, :taken))
             end
             nil
@@ -1344,8 +1370,9 @@ module Cybertrain
       # answer and work for an unknown address, the link's base from the
       # concern's mail_link_base, and a reset that clears a lockout and ends
       # every session of the user.
-      def self.passwords_controller
-        <<~'RUBY'
+      # With `confirmable` a reset also confirms the address it was mailed to.
+      def self.passwords_controller(confirmable = false)
+        text = <<~'RUBY'
           # Password reset (cybertrain generate authentication): the form that asks
           # for an address, the mail with a link (PasswordsMailer.reset), and the
           # form behind the link that sets a new password. The link's token
@@ -1400,6 +1427,7 @@ module Cybertrain
                 user.password_confirmation = params[:password_confirmation].to_s
                 if user.save
                   user.clear_failed_attempts!
+                  @CONFIRM_ON_RESET@
                   Session.where(user_id: user.id).delete_all
                   flash[:notice] = t(".updated")
                   redirect_to new_session_path, status: :see_other
@@ -1457,6 +1485,11 @@ module Cybertrain
             end
           end
         RUBY
+        chunk = margin("# The link went to email_address: a reset proves that mailbox, as a\n" \
+                       "# confirmation link does (--confirmable). A new address waiting\n" \
+                       "# (unconfirmed_email) is not confirmed: that takes its own link.\n" \
+                       "user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n", 8)
+        splice(text, "@CONFIRM_ON_RESET@", confirmable ? chunk : "")
       end
 
       # app/mailers/passwords_mailer.rb. `reset` takes the link as well as
@@ -1855,16 +1888,16 @@ module Cybertrain
       end
 
       # --confirmable's AccountsController#update: a new address goes into
-      # unconfirmed_email (the address in use cancels one waiting).
+      # unconfirmed_email (the address in use is no change).
       def self.accounts_pending_address_lines
         margin(<<~'RUBY', 6)
           address_changed = false
           if fields.key?("email_address")
             address = User.normalize_email_address(fields["email_address"].to_s)
-            if address == @user.email_address
-              @user.unconfirmed_email = nil
-            else
-              @user.unconfirmed_email = address
+            # The address in use, sent back as the form fills it in, is no change:
+            # a new address waiting stays.
+            unless address == @user.email_address
+              @user.request_email_change(address)
               address_changed = true
             end
           end
@@ -3993,6 +4026,31 @@ module Cybertrain
             client.post("/confirmations", { "authenticity_token" => AppTest.form_token(client), "email_address" => email_address })
           end
 
+          # Sends the new-password form of a password reset link with this token.
+          def reset_with(client, token, password)
+            client.get("/passwords/new")
+            client.put("/passwords/#{token}", { "authenticity_token" => AppTest.form_token(client),
+                                                "password" => password, "password_confirmation" => password })
+          end
+
+          # A trigger that, just before ann's row gets a new address, inserts
+          # another account with that address: what a sign-up that lands
+          # between User#confirm's check and its write does.
+          def add_race_trigger
+            Cybertrain::DB.with do |c|
+              c.execute("CREATE TRIGGER confirmation_race BEFORE UPDATE OF email_address ON users " \
+                        "WHEN NEW.email_address <> OLD.email_address BEGIN " \
+                        "INSERT INTO users (email_address, password_digest, created_at, updated_at) " \
+                        "VALUES (NEW.email_address, 'x', NEW.updated_at, NEW.updated_at); END")
+            end
+            nil
+          end
+
+          def drop_race_trigger
+            Cybertrain::DB.with { |c| c.execute("DROP TRIGGER IF EXISTS confirmation_race") }
+            nil
+          end
+
           # Sends the account form with the current password and a new address.
           def change_address(client, email_address)
             Cybertrain::RateLimit.reset_all!
@@ -4175,22 +4233,119 @@ module Cybertrain
             token = User.find(ann.id).confirmation_token
             # Meanwhile carol signs up with it: an address that only waits is free.
             carol = unconfirmed_user("carol@example.com")
+            # A pending address someone has taken since blocks nothing else of
+            # ann's account: a password reset, the user command, and the rehash a
+            # sign-in makes after the cost was raised all save.
+            stranger = Cybertrain::Test::Client.new(APP)
+            assert_redirected_to reset_with(stranger, User.find(ann.id).password_reset_token, "an0ther-s3cr3t"), "/session/new"
+            assert User.find(ann.id).authenticate("an0ther-s3cr3t")
+            assert_equal 0, UserCommand.run(["ann@example.com", "s3cr3t-s3cr3t"])
+            assert User.find(ann.id).authenticate("s3cr3t-s3cr3t")
+            assert_equal "carol@example.com", User.find(ann.id).unconfirmed_email
+            digest = User.find(ann.id).password_digest
+            begin
+              Cybertrain::Password.iterations = Cybertrain::Password::TEST_ITERATIONS + 1
+              assert_redirected_to AppTest.sign_in(client), "/"
+              refute User.find(ann.id).password_digest == digest
+              refute Cybertrain::Password.needs_rehash?(User.find(ann.id).password_digest)
+            ensure
+              Cybertrain::Password.iterations = Cybertrain::Password::TEST_ITERATIONS
+            end
+            # The link: the address is not moved in, and the one waiting is
+            # forgotten (it can never be confirmed now).
             res = client.get("/confirmations/#{token}")
             assert_redirected_to res, "/account/edit"
-            assert_includes client.follow_redirect!.body, TAKEN
+            page = client.follow_redirect!.body
+            assert_includes page, TAKEN
+            refute page.include?("Waiting for confirmation")
             assert_equal "ann@example.com", User.find(ann.id).email_address
+            assert_nil User.find(ann.id).unconfirmed_email
             assert_equal "carol@example.com", User.find(carol.id).email_address
             # Another new address ends the link to the one before.
             assert_redirected_to change_address(client, "ann@other.example"), "/account/edit"
-            assert_nil User.find_by_confirmation_token(token)
-            assert_equal "ann@other.example", User.find(ann.id).unconfirmed_email
-            # The address in use, sent again, cancels the one waiting.
-            res = change_address(client, "ann@example.com")
+            other_token = User.find(ann.id).confirmation_token
+            assert_redirected_to change_address(client, "ann@third.example"), "/account/edit"
+            assert_nil User.find_by_confirmation_token(other_token)
+            assert_equal "ann@third.example", User.find(ann.id).unconfirmed_email
+          end
+
+          test "a password-only change keeps the new address waiting" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            assert_redirected_to change_address(client, "ann@new.example"), "/account/edit"
+            token = User.find(ann.id).confirmation_token
+            # The form sends the address in use back (it is pre-filled) with a new
+            # password: no change of address, so the one waiting stays.
+            client.get("/account/edit")
+            res = client.patch("/account", { "authenticity_token" => AppTest.form_token(client), "user[current_password]" => "s3cr3t-s3cr3t",
+                                             "user[email_address]" => "ann@example.com",
+                                             "user[password]" => "n3w-s3cr3t-n3w", "user[password_confirmation]" => "n3w-s3cr3t-n3w" })
             assert_redirected_to res, "/account/edit"
             page = client.follow_redirect!.body
             assert_includes page, UPDATED
-            refute page.include?("Waiting for confirmation")
-            assert_nil User.find(ann.id).unconfirmed_email
+            assert_includes page, "<p class=\"hint\">Waiting for confirmation: ann@new.example</p>"
+            kept = User.find(ann.id)
+            assert_equal "ann@example.com", kept.email_address
+            assert_equal "ann@new.example", kept.unconfirmed_email
+            assert kept.authenticate("n3w-s3cr3t-n3w")
+            # The address alone, sent again unchanged: nothing changes either.
+            client.get("/account/edit")
+            res = client.patch("/account", { "authenticity_token" => AppTest.form_token(client), "user[current_password]" => "n3w-s3cr3t-n3w",
+                                             "user[email_address]" => " Ann@Example.com " })
+            assert_redirected_to res, "/account/edit"
+            assert_equal "ann@new.example", User.find(ann.id).unconfirmed_email
+            # The link still confirms it.
+            assert_equal ann.id, User.find_by_confirmation_token(token).id
+            assert_redirected_to client.get("/confirmations/#{token}"), "/account/edit"
+            assert_equal "ann@new.example", User.find(ann.id).email_address
+          end
+
+          test "two confirmations racing for one address: the second gets the taken answer" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            assert_redirected_to change_address(client, "carol@example.com"), "/account/edit"
+            token = User.find(ann.id).confirmation_token
+            # Another account takes the address between confirm's check and its
+            # write (a trigger inserts it just before the UPDATE): the unique index
+            # refuses the write, and the answer is the taken one, not a 500.
+            add_race_trigger
+            begin
+              res = client.get("/confirmations/#{token}")
+              assert_redirected_to res, "/account/edit"
+              assert_includes client.follow_redirect!.body, TAKEN
+            ensure
+              drop_race_trigger
+            end
+            raced = User.find(ann.id)
+            assert_equal "ann@example.com", raced.email_address
+            assert_nil raced.unconfirmed_email
+            assert raced.confirmed?
+            assert signed_in?(client)
+          end
+
+          test "a password reset confirms a new account's address, never a new address waiting" do
+            client = new_client
+            ann = unconfirmed_user
+            # The reset link went to ann's own address: it proves that mailbox, as
+            # the confirmation link does (and someone who signed up first with that
+            # address loses the account to its owner).
+            assert_redirected_to reset_with(client, ann.password_reset_token, "an0ther-s3cr3t"), "/session/new"
+            assert User.find(ann.id).confirmed?
+            assert_redirected_to AppTest.sign_in(client, "ann@example.com", "an0ther-s3cr3t"), "/"
+            # bob's new address waits; a reset proves only bob's old mailbox.
+            bob = AppTest.user("bob@example.com")
+            confirmed_at = User.find(bob.id).confirmed_at.to_i
+            bobs = Cybertrain::Test::Client.new(APP)
+            AppTest.sign_in(bobs, "bob@example.com")
+            assert_redirected_to change_address(bobs, "bob@new.example"), "/account/edit"
+            assert_redirected_to reset_with(client, bob.password_reset_token, "an0ther-s3cr3t"), "/session/new"
+            reset = User.find(bob.id)
+            assert_equal "bob@example.com", reset.email_address
+            assert_equal "bob@new.example", reset.unconfirmed_email
+            assert_equal confirmed_at, reset.confirmed_at.to_i
+            assert_redirected_to AppTest.sign_in(client, "bob@new.example", "an0ther-s3cr3t"), "/session/new"
           end
 
           test "send again answers the same for unknown addresses" do

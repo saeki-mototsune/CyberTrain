@@ -1909,9 +1909,18 @@ test "--confirmable writes the confirmation files and columns" do
   assert_includes model, "  def confirmation_binding\n    pending = unconfirmed_email.to_s\n    address = email_address.to_s\n" \
                          "    at = confirmed_at\n    stamp = at.nil? ? 0 : at.to_i\n    \"\#{pending}:\#{address}:\#{stamp}\"\n  end\n"
   assert_includes model, "    return nil unless Cybertrain::Token.valid?(text, \"confirmation\", user.confirmation_binding)\n"
+  # Review I1/m4: a taken address is forgotten, and the unique index's
+  # refusal (a race) is the same answer.
   assert_includes model, "  def confirm\n    pending = unconfirmed_email.to_s\n    self.email_address = pending unless pending.empty?\n" \
-                         "    self.unconfirmed_email = nil\n    self.confirmed_at = Time.now\n    save\n  end\n"
-  assert_includes model, "    elsif User.where(email_address: address).where_sql(\"id != ?\", [id]).exists?\n" \
+                         "    self.unconfirmed_email = nil\n    self.confirmed_at = Time.now\n    return true if save_confirmed\n\n"
+  assert_includes model, "    update_columns(unconfirmed_email: nil) unless pending.empty?\n    false\n  end\n"
+  assert_includes model, "  def save_confirmed\n    save\n  rescue Cybertrain::DB::Error => e\n    raise e unless e.message.include?(\"UNIQUE\")\n\n" \
+                         "    errors.add(:email_address, I18n.error_message(\"user\", :email_address, :taken))\n    false\n  end\n"
+  # Review I1: the new address is checked on the save that asks for it only.
+  assert_includes model, "  def request_email_change(address)\n    requested = User.normalize_email_address(address)\n" \
+                         "    @requested_email = requested\n    self.unconfirmed_email = requested\n    nil\n  end\n"
+  assert_includes model, "  def validate_unconfirmed_email\n    requested = @requested_email\n    return nil if requested.nil?\n"
+  assert_includes model, "    elsif User.where(email_address: requested).where_sql(\"id != ?\", [id]).exists?\n" \
                          "      errors.add(:email_address, I18n.error_message(\"user\", :email_address, :taken))\n"
   # Everything else of the model is the other modes'.
   assert_includes model, "  def password_reset_binding\n"
@@ -1970,14 +1979,31 @@ test "--confirmable writes the confirmation files and columns" do
                           "    address = pending.empty? ? user.email_address.to_s : pending\n"
   assert_includes mailer, "    subject = I18n.t(\"confirmations_mailer.confirmation_instructions.subject\")\n" \
                           "    Cybertrain::MailMessage.new(to: address, subject: subject, body: text, html: html)\n"
+  # Review m1: a reset confirms the address it was mailed to, never the one waiting.
+  passwords = read("conf/app/controllers/passwords_controller.rb")
+  assert_includes passwords, "        user.clear_failed_attempts!\n" \
+                             "        # The link went to email_address: a reset proves that mailbox, as a\n" \
+                             "        # confirmation link does (--confirmable). A new address waiting\n" \
+                             "        # (unconfirmed_email) is not confirmed: that takes its own link.\n" \
+                             "        user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n" \
+                             "        Session.where(user_id: user.id).delete_all\n"
+  assert passwords.index("unconfirmed_email =").nil?
+  assert_equal PASSWORDS_CONTROLLER, passwords.sub("        # The link went to email_address: a reset proves that mailbox, as a\n" \
+                                                   "        # confirmation link does (--confirmable). A new address waiting\n" \
+                                                   "        # (unconfirmed_email) is not confirmed: that takes its own link.\n" \
+                                                   "        user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n", "")
   assert_equal CONFIRMATIONS_NEW_VIEW, read("conf/app/views/confirmations/new.html.erb")
   assert_equal CONFIRMATION_MAIL, read("conf/app/views/mail/_confirmation.html.erb")
   # The account page: a new address waits in unconfirmed_email.
   accounts = read("conf/app/controllers/accounts_controller.rb")
+  # Review m3: the address in use sent back is no change; the one waiting stays.
   assert_includes accounts, "      if fields.key?(\"email_address\")\n" \
                             "        address = User.normalize_email_address(fields[\"email_address\"].to_s)\n" \
-                            "        if address == @user.email_address\n          @user.unconfirmed_email = nil\n        else\n" \
-                            "          @user.unconfirmed_email = address\n          address_changed = true\n        end\n      end\n"
+                            "        # The address in use, sent back as the form fills it in, is no change:\n" \
+                            "        # a new address waiting stays.\n" \
+                            "        unless address == @user.email_address\n          @user.request_email_change(address)\n" \
+                            "          address_changed = true\n        end\n      end\n"
+  assert accounts.index("unconfirmed_email = ").nil?
   assert accounts.index("@user.email_address = ").nil?
   assert_includes accounts, "        if address_changed\n          token = @user.confirmation_token\n" \
                             "          send_confirmation_mail(@user, token, true)\n          flash[:notice] = t(\".confirm\")\n"
@@ -2001,6 +2027,7 @@ test "--confirmable writes the confirmation files and columns" do
   same = CONF_FILES - CONF_ONLY_FILES - ["db/migrate/20260925120000_create_users.rb", "app/models/user.rb",
                                          "app/controllers/concerns/authentication.rb", "app/controllers/sessions_controller.rb",
                                          "app/controllers/registrations_controller.rb", "app/controllers/accounts_controller.rb",
+                                         "app/controllers/passwords_controller.rb",
                                          "app/commands/user_command.rb", "app/views/sessions/new.html.erb",
                                          "app/views/accounts/edit.html.erb", "test/support/app_test.rb",
                                          "test/authentication.rb", "test/accounts.rb"]
@@ -2135,6 +2162,9 @@ test "--confirmable: the generated test" do
    "the link lasts three days and belongs to its user and address",
    "an email change takes effect only when the new address confirms",
    "a new address someone takes before its link is opened is not moved in",
+   "a password-only change keeps the new address waiting",
+   "two confirmations racing for one address: the second gets the taken answer",
+   "a password reset confirms a new account's address, never a new address waiting",
    "send again answers the same for unknown addresses",
    "send again: a refused address, no safe base and the rate limit"].each do |name|
     assert_includes spec, "test \"#{name}\" do\n"
@@ -2151,7 +2181,12 @@ test "--confirmable: the generated test" do
   # The pending address is checked when asked for and when confirmed.
   assert_includes spec, "  res = change_address(client, \"bob@example.com\")\n  assert_response res, :unprocessable_entity\n"
   assert_includes spec, "  carol = unconfirmed_user(\"carol@example.com\")\n"
-  assert_includes spec, "  assert_includes client.follow_redirect!.body, TAKEN\n"
+  assert_includes spec, "  assert_includes page, TAKEN\n"
+  # Review I1: with the stale address taken, reset, the command and a rehash save.
+  assert_includes spec, "  assert_equal 0, UserCommand.run([\"ann@example.com\", \"s3cr3t-s3cr3t\"])\n"
+  assert_includes spec, "  assert_nil User.find(ann.id).unconfirmed_email\n"
+  # Review m4: a real unique-index refusal, through a trigger.
+  assert_includes spec, "  add_race_trigger\n"
   # The same answer for a registered, an unknown and a confirmed address.
   assert_includes spec, "  assert_equal known_body, unknown_body\n"
   assert_includes spec, "  assert_equal known_body, confirmed.body\n"
