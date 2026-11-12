@@ -14,4 +14,7 @@ ok   a rejected greeting, and a message refused after its data
 ok   auth: AUTH PLAIN is offered and accepted, and recorded
 ok   several deliveries to one receiver, through Mailer.deliver and Config
 ok   a message that never comes: nil after the bound, and stop is idempotent
-16 tests, 97 assertions, 0 failures
+ok   receivers a test starts and never stops are still serving at its end
+ok   the runner stopped them after that test
+ok   a receiver the test stops itself is stopped again by the runner without harm
+19 tests, 102 assertions, 0 failures

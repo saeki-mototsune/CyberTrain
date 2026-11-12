@@ -1,0 +1,5 @@
+ok   top-level setup and teardown wrap every case in order
+ok   a case that travels without a block
+ok   the order was reset, setup1, setup2, body, teardown2, teardown1 each time, and the clock is real
+ok   in_case? is true inside a case
+4 tests, 3 assertions, 0 failures

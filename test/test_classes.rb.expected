@@ -1,0 +1,10 @@
+ok   setup and teardown order with an inherited base
+ok   teardown after an exception; each test gets a new instance
+ok   a failing setup after freeze_time leaves the next test on real time
+ok   teardown runs after a failed assertion, and a teardown failure is reported after the body's
+ok   a teardown failure after a passing body is an ERR naming teardown
+ok   fixtures accepts :all only
+ok   the class-level test, setup and teardown refuse an unrewritten class-form file
+ok   test_help's reset hooks put the locale back before setup
+ok   a receiver left running by a failing test is stopped; one started outside a case is not
+9 tests, 29 assertions, 0 failures
