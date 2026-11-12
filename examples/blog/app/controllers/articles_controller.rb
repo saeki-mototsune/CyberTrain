@@ -1,10 +1,24 @@
 require "cybertrain/cache"
 
 class ArticlesController < ApplicationController
-  before_action :set_article, only: [:show, :edit, :update, :destroy]
+  before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
   # The article page links to /admin/articles for an admin
   # (ApplicationController#admin?).
   helper_method :admin?
+
+  # GET /articles/1/cover -- @article comes from before_action :set_article, so
+  # the download is scoped exactly like show: the blog has no accounts, so
+  # whoever may read the article may fetch its cover.
+  # send_blob is the one way to serve uploads: it sets the type from what the
+  # server detected, nosniff, a locked-down CSP and Content-Disposition
+  # (inline for images only, a download otherwise).
+  def cover
+    if @article.cover_attached? && Cybertrain::BlobStore.exist?(@article.cover_key)
+      send_blob(Cybertrain::BlobStore.read(@article.cover_key), filename: @article.cover_filename, content_type: @article.cover_content_type)
+    else
+      head 404
+    end
+  end
 
   # GET /articles (?from=YYYY-MM-DD&to=YYYY-MM-DD, either end optional;
   # ?order=old for the oldest first), and /articles.json
@@ -31,7 +45,7 @@ class ArticlesController < ApplicationController
     @article_count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.count }
     respond_to do |format|
       format.html
-      format.json { render json: @articles.map(&:as_json) }
+      format.json { render json: @articles.map { |article| article.public_json } }
     end
   end
 
@@ -40,7 +54,7 @@ class ArticlesController < ApplicationController
     @comment = Comment.new
     respond_to do |format|
       format.html
-      format.json { render json: @article.as_json }
+      format.json { render json: @article.public_json }
     end
   end
 
@@ -57,6 +71,7 @@ class ArticlesController < ApplicationController
   # POST /articles
   def create
     @article = Article.new(article_params)
+    @article.cover_file = params.nested(:article).upload(:cover)
     if @article.save
       flash[:notice] = "Article was successfully created."
       redirect_to article_path(@article), status: :see_other
@@ -67,6 +82,7 @@ class ArticlesController < ApplicationController
 
   # PATCH/PUT /articles/1
   def update
+    @article.cover_file = params.nested(:article).upload(:cover)
     if @article.update(article_params)
       flash[:notice] = "Article was successfully updated."
       redirect_to article_path(@article), status: :see_other

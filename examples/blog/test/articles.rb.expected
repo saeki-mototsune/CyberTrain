@@ -2,6 +2,8 @@
 done
 == 20260925174943 CreateComments: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   GET / renders the articles index
 ok   GET /articles lists every article with a link to it
 ok   GET /articles/new renders the form with a CSRF token
@@ -38,4 +40,5 @@ ok   the admin list shows at most per_page (20) articles, newest first
 ok   DELETE /admin/articles/:id with the token deletes the article; without it, 404
 ok   DELETE /admin/articles/:id with the admin token but no authenticity_token is 403
 ok   a signed-in browser reaches /admin/articles, and the article page links to it
-36 tests, 244 assertions, 0 failures
+ok   an article's JSON has the cover's URL and none of the cover_* columns
+37 tests, 251 assertions, 0 failures

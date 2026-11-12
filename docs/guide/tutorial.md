@@ -1474,8 +1474,9 @@ checks that a visitor can download the cover, and it fills the body with
 
 > [!NOTE]
 > Run `cybertrain spin test` as in [step 16](#test); the test uses SQLite, so
-> its snapshot comes from the compiled binary. `examples/blog` stops before
-> this step. Not built yet: several files per field, S3 or other remote
+> its snapshot comes from the compiled binary. `examples/blog` has this
+> step too, and keeps the `cover_*` columns out of its JSON
+> (`Article#public_json`). Not built yet: several files per field, S3 or other remote
 > storage, image variants, and streaming large bodies to disk (the whole body
 > is read into memory, up to `max_body_bytes`).
 

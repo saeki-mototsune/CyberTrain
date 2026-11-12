@@ -1,5 +1,5 @@
 ---
-source_sha256: ba422f93f9e001429de134b6deb1afce578e76c0c9d4e76303fe544f0a65439d
+source_sha256: 4d45506c9f1fd7bb0529787e3d5ff901de2faa91ea815d45a12a9dd188b19f5e
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -1056,7 +1056,7 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは `test/attachment_article_cover.rb` も書き出しています。このテストは一連の流れ全体を確かめ、アプリに `User` があるので最初にサインインします。ここでは `:cover` が公開されているので、訪問者がカバー画像をダウンロードできることを確かめます。本文には、[ステップ 05](#validations) の最小 10 文字に合わせて伸ばした `"A article."` を入れます。
 
 > [!NOTE]
-> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
+> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` にもこのステップが入っており、その JSON は `cover_*` のカラムを含みません（`Article#public_json`）。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 実行時 · `dist/blog` -->
 ## デプロイ用にビルドする

@@ -1,5 +1,5 @@
 ---
-source_sha256: ba422f93f9e001429de134b6deb1afce578e76c0c9d4e76303fe544f0a65439d
+source_sha256: 4d45506c9f1fd7bb0529787e3d5ff901de2faa91ea815d45a12a9dd188b19f5e
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -1056,7 +1056,7 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 启动服务器，编辑一篇文章并选择一张图片。生成器还写了 `test/attachment_article_cover.rb`，它测试整个流程，并且因为应用现在有了 `User`，会先登录。由于这里的 `:cover` 是公开的，它会检查访客能否下载封面；正文则填入 `"A article."`，长度补足到 [步骤 05](#validations) 要求的至少 10 个字符。
 
 > [!NOTE]
-> 和[步骤 16](#test) 一样用 `cybertrain spin test` 运行；这个测试会用到 SQLite，所以它的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
+> 和[步骤 16](#test) 一样用 `cybertrain spin test` 运行；这个测试会用到 SQLite，所以它的快照来自编译后的二进制。`examples/blog` 也包含这一步，并且它的 JSON 不包含 `cover_*` 列（`Article#public_json`）。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 运行时 · `dist/blog` -->
 ## 为部署而构建

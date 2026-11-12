@@ -1,5 +1,5 @@
 ---
-source_sha256: ba422f93f9e001429de134b6deb1afce578e76c0c9d4e76303fe544f0a65439d
+source_sha256: 4d45506c9f1fd7bb0529787e3d5ff901de2faa91ea815d45a12a9dd188b19f5e
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -1519,7 +1519,8 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 > [!NOTE]
 > Запускайте `cybertrain spin test`, как в [шаге 16](#test); тест использует
 > SQLite, поэтому его снимок берётся из скомпилированного бинарника.
-> `examples/blog` заканчивается до этого шага. Пока не сделано: несколько
+> В `examples/blog` этот шаг тоже есть, а его JSON не включает столбцы
+> `cover_*` (`Article#public_json`). Пока не сделано: несколько
 > файлов на поле, S3 и другое удалённое хранилище, варианты изображений и
 > потоковая запись больших тел на диск (тело читается в память целиком, до
 > `max_body_bytes`).

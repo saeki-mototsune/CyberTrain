@@ -4,3 +4,5 @@ require_relative "../db/migrate/20260925174942_create_articles"
 Cybertrain::Migration.register("20260925174942", CreateArticles.new)
 require_relative "../db/migrate/20260925174943_create_comments"
 Cybertrain::Migration.register("20260925174943", CreateComments.new)
+require_relative "../db/migrate/20261112174320_add_cover_to_articles"
+Cybertrain::Migration.register("20261112174320", AddCoverToArticles.new)

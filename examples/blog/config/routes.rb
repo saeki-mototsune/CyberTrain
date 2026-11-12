@@ -1,4 +1,5 @@
 Cybertrain::Routes.draw do
+  get "/articles/:id/cover", to: "articles#cover", as: "article_cover"
   root "articles#index"
 
   # Nested blocks take the mapper explicitly (Spinel cannot instance_eval

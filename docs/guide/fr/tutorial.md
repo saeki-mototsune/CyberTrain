@@ -1,5 +1,5 @@
 ---
-source_sha256: ba422f93f9e001429de134b6deb1afce578e76c0c9d4e76303fe544f0a65439d
+source_sha256: 4d45506c9f1fd7bb0529787e3d5ff901de2faa91ea815d45a12a9dd188b19f5e
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -1553,7 +1553,8 @@ et il remplit le corps avec `"A article."`, allongé jusqu’au minimum de
 > [!NOTE]
 > Lancez `cybertrain spin test` comme à l’[étape 16](#test)&nbsp;; le test
 > utilise SQLite, donc son instantané vient du binaire compilé.
-> `examples/blog` s’arrête avant cette étape. Pas encore pris en charge&nbsp;:
+> `examples/blog` comporte aussi cette étape, et son JSON n’inclut pas les
+> colonnes `cover_*` (`Article#public_json`). Pas encore pris en charge&nbsp;:
 > plusieurs fichiers par champ, S3 ou un autre stockage distant, les variantes
 > d’image, et l’envoi de gros corps en flux vers le disque (le corps entier
 > est lu en mémoire, jusqu’à `max_body_bytes`).
