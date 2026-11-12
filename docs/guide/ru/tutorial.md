@@ -1,17 +1,17 @@
 ---
-source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
+source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
 path: tutorial.html
 title: "Начало работы: блог"
-description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
+description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
 og_title: "Начало работы с CyberTrain: блог"
 og_description: "Повторяет Getting Started самого Rails: блог со статьями и комментариями, построенный на CyberTrain и Spinel."
 og_image: tutorial.png
 crumb: "Учебник"
 nav: tutorial
-toc_title: "Шаги 00–15"
+toc_title: "Шаги 00–19"
 meta:
   - term: "Что нужно"
-    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, заголовки SQLite 3 (Spinel установится сам) <a class="meta-link" href="#requirements">Шаг 00</a>'
+    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, заголовки SQLite 3, zlib и OpenSSL (Spinel установится сам) <a class="meta-link" href="#requirements">Шаг 00</a>'
   - term: "Начало"
     text: "`gem install cybertrain`"
   - term: "Результат"
@@ -23,11 +23,13 @@ meta:
 Повторяет
 [Getting Started](https://guides.rubyonrails.org/getting_started.html) самого
 Rails: блог со статьями и комментариями. Вы создадите скаффолд статей,
-добавите валидации, вложите в статьи комментарии, напишете тест, который
-прогоняет приложение внутри процесса, добавите вход, прикрепите загруженную
-картинку и соберёте приложение в готовый к развёртыванию каталог `dist/`.
-Готовое приложение — [`examples/blog`](../../examples/blog); оно проверяется в
-CI на Linux и macOS.
+добавите валидации, вложите в статьи комментарии, будете рассылать новые
+комментарии на все открытые страницы через Turbo, поставите в очередь фоновую
+задачу, ответите в JSON, напишете тесты, которые прогоняют приложение внутри
+процесса, добавите вход, прикрепите загруженную картинку и соберёте приложение
+в готовый к развёртыванию каталог `dist/`. Приложение, в которое всё это
+вырастает, — [`examples/blog`](../../examples/blog); оно проверяется в CI на
+Linux и macOS.
 
 
 <!-- step 00 #requirements stage: Подготовка · Ruby, `cc`, SQLite -->
@@ -50,10 +52,14 @@ CI на Linux и macOS.
 - Инструменты C (`cc` или компилятор, указанный в `CC`) и `make`, а также
   `git` и `curl` — для сборки Spinel, который компилирует каждую программу в
   C.
-- Заголовки и библиотеки SQLite 3 и zlib: `libsqlite3-dev` и `zlib1g-dev` в
-  Debian/Ubuntu; на macOS входят в Xcode command line tools.
+- Заголовки и библиотеки SQLite 3, zlib и OpenSSL: `libsqlite3-dev`,
+  `zlib1g-dev` и `libssl-dev` в Debian/Ubuntu. На macOS SQLite и zlib входят в
+  Xcode command line tools, а OpenSSL ставится из Homebrew
+  (`brew install openssl@3`, затем два пути, которые приведены в
+  [Требованиях](install.md#requirements)).
 
-`cybertrain doctor` проверяет всё это. Полный список и что необязательно:
+`cybertrain doctor` проверяет всё это и выводит команду установки для того,
+чего не хватает. Полный список и что необязательно:
 [Требования](install.md#requirements); где оказывается Spinel и как
 использовать другую установку: [как устанавливается Spinel](install.md#how-spinel-is-installed).
 
@@ -134,12 +140,14 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb
+  spin.toml  config/app.rb  config/routes.rb  .env.example
   db/schema.rb  db/migrate/
-  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
-  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
+  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/  app/jobs/
+  app/assets/stylesheets/application.css  app/assets/images/
+  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
-  gen/  storage/  tmp/  test/
+  gen/  storage/  tmp/  test/  .github/workflows/ci.yml
+  Dockerfile  config/deploy.yml  .kamal/secrets
 ```
 
 `bin/blog.rb` — единственная точка входа приложения, программа, которую
@@ -148,10 +156,18 @@ blog/
 (`spin run gen`), а `bin/db.rb` запускает мигратор во время разработки (его
 использует `cybertrain db migrate`, потому что `bin/blog.rb` не
 скомпилируется, пока первая миграция не сгенерирует `gen/models/`). В `gen/`
-уже лежит `views.rb` — закоммиченная пустая таблица встроенных представлений.
+уже лежит то, что записал `spin run gen`, в том числе `views.rb` —
+закоммиченная пустая таблица встроенных представлений.
+
 Лейаут подключает `app/assets/stylesheets/application.css` через
-`stylesheet_link_tag`; `spin run gen` записывает его с дайджестом в
-`public/assets/`, который исключён из git (см. [Ассеты](assets.md)).
+`stylesheet_link_tag` и загружает `app/javascript/application.js` через import
+map из `config/importmap.rb` с помощью `javascript_importmap_tags`;
+`spin run gen` записывает оба файла с дайджестом в `public/assets/`, который
+исключён из git (см. [Ассеты](assets.md)). В `.env.example` перечислены
+переменные, которые читает приложение, `.github/workflows/ci.yml` запускает
+тесты на GitHub
+([Непрерывная интеграция](testing.md#continuous-integration)), а последняя
+строка дерева — конфигурация Kamal из [шага 19](#ship).
 
 `ApplicationController` изначально выглядит так, поэтому отсутствующая запись
 через `rescue_from` превращается в 404:
@@ -181,8 +197,9 @@ cybertrain generate scaffold article title:string body:text
 Она создаёт миграцию, модель, контроллер и пять представлений (`index`,
 `show`, `new`, `edit`, `_form`) и вставляет `resources :articles` в
 `config/routes.rb`. Типы полей: `string`, `text`, `integer`, `float`,
-`boolean`, `date`, `datetime` и `references`; по умолчанию — `string`.
-`cybertrain g scaffold` из быстрого старта — та же самая команда.
+`boolean`, `date`, `datetime`, `references` и `attachment` (загруженный файл,
+[шаг 18](#attachments)); по умолчанию — `string`. `cybertrain g scaffold` из
+быстрого старта — та же самая команда.
 
 > [!NOTE]
 > Существующие файлы никогда не перезаписываются: для каждого файла выводится
@@ -326,8 +343,10 @@ Use Ctrl-C to stop
 
 <!-- list: points -->
 - Заново запускайте `cybertrain spin run gen` и коммитьте `gen/` после
-  изменения схемы, маршрутов или колбэков и переменных экземпляра контроллера
-  либо модели. Сервер разработки делает это за вас.
+  изменения схемы, маршрутов, колбэков и переменных экземпляра контроллера
+  либо модели, хелпера, компонента или задачи либо ассета. Сервер разработки
+  делает это за вас, а `cybertrain spin run gen -- --check` перечисляет
+  устаревшее, ничего не записывая.
 - Порт меняется так: `cybertrain server 4000` (или `PORT=4000`).
 - `cybertrain db` добавляет `--`, который нужен `spin run db` перед
   аргументами; `cybertrain db status` и другие команды базы данных работают
@@ -379,6 +398,13 @@ cybertrain db migrate    # скаффолд создал миграцию для
 
 Скаффолд вставляет отдельную строку `resources :comments`, которую заменит
 следующий шаг.
+
+> [!NOTE]
+> Оставленный запущенным `cybertrain server` пересобирает приложение, как
+> только скаффолд запишет свои файлы, ещё до появления таблицы, и пишет в лог
+> `Build failed; still serving the previous build (see tmp/rebuild.log)`. Он
+> пересоберёт его снова, когда `cybertrain db migrate` перезапишет
+> `db/schema.rb`.
 
 > [!EXAMPLE] Удаление статьи с комментариями
 > ### Удаление статьи с комментариями
@@ -482,36 +508,31 @@ end
 
 > [!WHY]
 > Страница статьи выводит список её комментариев и заканчивается формой,
-> привязанной к `[@article, @comment]`.
+> которая отправляется на вложенный маршрут.
 
 Сначала удалите ставшие недоступными представления комментариев `index`,
-`show`, `new` и `edit` и добавьте в `ArticlesController#show` пустой
-`@comment`:
-
-```ruby app/controllers/articles_controller.rb (фрагмент)
-  def show
-    @comment = Comment.new
-  end
-```
-
-Затем выведите комментарии и форму на странице статьи:
+`show`, `new` и `edit`. Затем выведите комментарии и форму в конце страницы
+статьи и замените форму комментария, созданную скаффолдом:
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
+<h2>Comments</h2>
 <% @article.comments.each do |comment| %>
   <%= render "comments/comment", comment: comment %>
 <% end %>
+
+<h2>Add a comment:</h2>
 <%= render "comments/form" %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(model: [@article, @comment]) do |f| %>
+<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit %>
+  <%= f.submit "Create Comment" %>
 <% end %>
 ```
 
-Партиал комментария в том виде, в каком он есть в примере:
+Партиал комментария:
 
 ```erb app/views/comments/_comment.html.erb
 <%# locals: (comment:) %>
@@ -530,12 +551,23 @@ end
 </div>
 ```
 
-И `button_to ... [@article, comment]`, и
-`form_with(model: [@article, @comment])` разрешаются по одному и тому же
-правилу `[parent, child]`: новый дочерний объект направляется во вложенную
-коллекцию (`article_comments_path`), сохранённый — во вложенный элемент
-(`article_comment_path`); эти хелперы генерируются в `gen/routes.rb` из
-вложенного блока `resources` выше.
+### Куда ведут форма и кнопка
+
+Форма задаёт свой адрес через `url:`, а имена полей (`comment[commenter]`,
+`comment[body]`) — через `scope:`, поэтому запись `Comment` ей не нужна: если
+комментарий не сохранился, выполняется редирект обратно с причиной во flash
+([шаг 10](#comments-controller)), и форма никогда не отрисовывается повторно
+со своими ошибками.
+
+`button_to ... [@article, comment]` разрешается по правилу `[parent, child]`:
+новый дочерний объект направляется во вложенную коллекцию
+(`article_comments_path`), сохранённый — во вложенный элемент
+(`article_comment_path`); оба хелпера генерируются в `gen/routes.rb` из
+вложенного блока `resources` выше. `form_with(model: [@article, @comment])`
+подчиняется тому же правилу, и в `examples/blog` форма написана именно так, с
+`@comment = Comment.new` в `ArticlesController#show`. В этом учебнике `show`
+остаётся таким, каким его написал скаффолд, — пустым, потому что этого требует
+генератор из [шага 18](#attachments).
 
 > [!RULE] Представления — замкнутая грамматика
 > ### Представления — замкнутая грамматика, а не Ruby
@@ -558,7 +590,7 @@ end
 >
 >   def index
 >     articles = Article.recent.includes(:comments)
->     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     from = Cybertrain::Cast.date_or_nil(params[:from])   # nil, если не YYYY-MM-DD
 >     unless from.nil?
 >       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
 >     end
@@ -571,7 +603,347 @@ end
 > `where_between`, потому что Spinel не строит Range из Time ([Условия и
 > поиск](models.md#conditions-and-finders)).
 
-<!-- step 12 #test stage: Сборка · `cybertrain spin test` -->
+<!-- step 12 #component stage: Вы пишете · `app/components/`, `app/helpers/` -->
+## Компонент и хелпер
+
+> [!WHY]
+> Начиная со следующего шага комментарий отрисовывается в двух местах: на
+> странице и в рассылке, за которой не стоит никакой запрос. Компонент — класс
+> с шаблоном рядом — отрисовывается одинаково в обоих случаях; хелпер — это
+> метод, который может вызвать любой шаблон.
+
+```shell терминал — blog/
+cybertrain generate component comment comment   # имя, затем атрибуты: один, тоже comment
+cybertrain generate helper comments
+```
+
+Первая пишет `app/components/comment_component.rb` — с одним именованным
+аргументом на каждый атрибут — и его шаблон; вторая пишет пустой
+`CommentsHelper`. Каждая пишет ещё и тест, к которому вернётся
+[шаг 16](#test). Класс уже такой, какой нужен блогу:
+
+```ruby app/components/comment_component.rb
+class CommentComponent < Cybertrain::Component
+  def initialize(comment:)
+    @comment = comment
+  end
+end
+```
+
+Замените сгенерированный шаблон разметкой комментария и добавьте в хелпер его
+единственный метод:
+
+```erb app/components/comment_component.html.erb
+<div class="comment" id="<%= dom_id(comment) %>">
+  <p><%= comment_author(comment) %> wrote:</p>
+
+  <p><%= comment.body %></p>
+
+  <%= button_to "Destroy comment", article_comment_path(comment.article_id, comment), method: :delete %>
+</div>
+```
+
+```ruby app/helpers/comments_helper.rb
+module CommentsHelper
+  # Имя комментатора в <strong>, экранированное: <%= comment_author(c) %>
+  def comment_author(comment)
+    name = case comment
+           when Comment then comment.commenter.to_s
+           else ""
+           end
+    Cybertrain::Html.tag("strong", { class: "comment-author" }, name)
+  end
+end
+```
+
+Затем отрисуйте компонент там, где страница отрисовывала партиал, и удалите
+`app/views/comments/_comment.html.erb`:
+
+```erb app/views/articles/show.html.erb (фрагмент)
+<% @article.comments.each do |comment| %>
+  <%= render component: "comment", comment: comment %>
+<% end %>
+```
+
+<!-- list: points -->
+- Шаблон видит переменные экземпляра компонента как локальные (`comment`), а
+  его публичные методы без параметров — по имени. Ему передаётся только
+  комментарий, без `@article` страницы, поэтому путь для кнопки строится из
+  `comment.article_id`.
+- `dom_id(comment)` — это `comment_7` для комментария с id 7: id элемента, на
+  который нацелены рассылки следующего шага.
+- Компонент называют так же, как партиал, — по его имени в snake_case без
+  `_component`: шаблоны не могут называть константы.
+- `Cybertrain::Html.tag` экранирует содержимое и возвращает `SafeString`,
+  который шаблон выводит как есть; обычный `String`, возвращённый хелпером,
+  экранируется.
+
+> [!RULE] Правило Spinel: хелперы и компоненты — сгенерированная диспетчеризация
+> ### Хелперы и компоненты — сгенерированная диспетчеризация
+>
+> Шаблоны не умеют `send`, поэтому `spin run gen` читает `app/helpers/` и
+> `app/components/` как текст и пишет диспетчеризацию в `gen/helpers.rb` и
+> `gen/components.rb`. Параметры хелпера именованы (никаких `*rest` и
+> `**opts`), а его аргументы приходят как значения шаблона — поэтому
+> `comment_author` сужает свой аргумент через `case ... when Comment`.
+> Остальное — в [Хелперах приложения](template-language.md#application-helpers)
+> и [Компонентах](template-language.md#components).
+
+<!-- step 13 #turbo stage: Запуск · Turbo Streams поверх Server-Sent Events -->
+## Живые комментарии через Turbo
+
+> [!WHY]
+> Комментарий, отправленный в одном браузере, должен появиться на каждой
+> открытой странице этой статьи без перезагрузки. Как и в приложении на
+> Rails 8, это Turbo Streams, и ничего не нужно ни устанавливать, ни запускать
+> рядом с сервером.
+
+### Подключение Turbo
+
+`cybertrain new` оставил обе строки закомментированными; раскомментируйте их:
+
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
+```
+
+`javascript_importmap_tags` в лейауте пишет import map и
+`import "application"`, так что теперь Turbo работает на каждой странице
+([Import map](assets.md#the-import-map)).
+
+### Подписка страницы
+
+Дайте списку и форме по id и подпишите страницу на поток статьи:
+
+```erb app/views/articles/show.html.erb (фрагмент)
+<h2>Comments</h2>
+
+<%= turbo_stream_from @article %>
+
+<div id="comments">
+  <% @article.comments.each do |comment| %>
+    <%= render component: "comment", comment: comment %>
+  <% end %>
+</div>
+
+<h2>Add a comment:</h2>
+
+<div id="comment_form">
+  <%= render "comments/form" %>
+</div>
+```
+
+### Рассылка и ответ
+
+`create` рассылает сохранённый комментарий, а затем отвечает браузеру, который
+его отправил; `destroy` сообщает остальным страницам, что элемент нужно
+убрать:
+
+```ruby app/controllers/comments_controller.rb (фрагмент)
+  def create
+    @comment = Comment.new(comment_params)
+    @comment.article_id = @article.id
+    unless @comment.save
+      flash[:alert] = "Comment could not be saved: #{@comment.errors.full_messages.join(", ")}"
+      redirect_to article_path(@article), status: :see_other
+      return
+    end
+
+    # Каждая страница, подписанная через turbo_stream_from @article, добавляет комментарий.
+    Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
+                                           component: CommentComponent.new(comment: @comment))
+    respond_to do |format|
+      format.turbo_stream   # app/views/comments/create.turbo_stream.erb
+      format.html do
+        flash[:notice] = "Comment was successfully created."
+        redirect_to article_path(@article), status: :see_other
+      end
+    end
+  end
+
+  def destroy
+    @comment = @article.comments.find(params[:id])
+    target = Cybertrain::Html.dom_id(@comment)   # читаем до того, как destroy очистит id
+    @comment.destroy
+    Cybertrain::Stream.broadcast_remove_to(@article, target: target)
+    flash[:notice] = "Comment was successfully destroyed."
+    redirect_to article_path(@article), status: :see_other
+  end
+```
+
+```erb app/views/comments/create.turbo_stream.erb
+<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
+<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+```
+
+Откройте одну статью в двух окнах и отправьте комментарий в одном: он появится
+в обоих, а форма, из которой он отправлен, вернётся пустой.
+
+### Что происходит
+
+<!-- list: points -->
+- `turbo_stream_from @article` пишет элемент `<turbo-stream-source>` для
+  потока `articles:<id>` с подписанным токеном. Turbo открывает его как
+  `EventSource` на `/cybertrain/stream`, который сервер уже обслуживает.
+- Рассылка — это строка в `cybertrain_messages`, таблице, которую фреймворк
+  создаёт сам. Каждый серверный процесс опрашивает её и передаёт строку
+  страницам, которые он держит, примерно за десятую долю секунды.
+- Turbo отправляет форму, запрашивая Turbo Stream, поэтому
+  `format.turbo_stream` отрисовывает `create.turbo_stream.erb` без лейаута.
+  Обычная отправка формы, с выключенным JavaScript, идёт через `format.html` и
+  получает редирект, как раньше.
+- Окно, отправившее комментарий, получает его дважды — в ответе и в рассылке —
+  и показывает один раз: Turbo заменяет элемент с тем же id.
+
+Подробнее, включая WebSocket и потоки для вашего собственного JavaScript:
+[Реальное время](realtime.md#turbo-streams).
+
+> [!NOTE]
+> Здесь Turbo загружается с jsDelivr. Чтобы отдавать его самостоятельно,
+> скопируйте `turbo.es2017-esm.js` в `vendor/javascript/` и укажите его в pin
+> через `to: "turbo.es2017-esm.js"`. Если вы включите Content Security Policy,
+> закомментированную в `config/app.rb`, её `script_src` должен разрешать тот
+> источник, с которого отдаётся Turbo
+> ([Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts)).
+
+<!-- step 14 #job stage: Вы пишете · `app/jobs/` -->
+## Фоновая задача
+
+> [!WHY]
+> Работа, которая не должна задерживать ответ, например уведомление,
+> выполняется после него. Как и в Active Job на Solid Queue, задача — это
+> класс в `app/jobs/` и строка в собственной базе данных приложения: никаких
+> других сервисов.
+
+```shell терминал — blog/
+cybertrain generate job notify_comment --retry StandardError:30:3
+```
+
+Она пишет `app/jobs/notify_comment_job.rb` — со строкой `retry_on`, которую
+запросила опция, и пустым `perform` — и тест. Заполните `perform`; здесь он
+только пишет в лог, а настоящее приложение отправило бы письмо:
+
+```ruby app/jobs/notify_comment_job.rb
+class NotifyCommentJob < Cybertrain::Job::Base
+  retry_on StandardError, wait: 30, attempts: 3
+
+  def perform(args)
+    comment_id = Cybertrain::Cast.int(args["comment_id"])
+    article_id = Cybertrain::Cast.int(args["article_id"])
+    Cybertrain.logger.info("new comment #{comment_id} on article #{article_id}")
+    nil
+  end
+end
+```
+
+Поставьте её в очередь из `create`, как только комментарий сохранён:
+
+```ruby app/controllers/comments_controller.rb (фрагмент)
+    NotifyCommentJob.perform_later("comment_id" => @comment.id, "article_id" => @article.id)
+    # Каждая страница, подписанная через turbo_stream_from @article, добавляет комментарий.
+    Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
+                                           component: CommentComponent.new(comment: @comment))
+```
+
+Отправьте комментарий — и в логе сервера будет видно, что задача выполняется
+после ответа:
+
+```text вывод — cybertrain server
+[INFO] Started POST "/articles/1/comments" for 127.0.0.1
+[INFO] Completed 200 in 2ms
+[INFO] new comment 1 on article 1
+[INFO] job 1 (NotifyCommentJob) done
+```
+
+<!-- list: points -->
+- `args` — это Hash, переданный в `perform_later`; он хранится как JSON и
+  читается обратно с ключами-строками (String): передавайте id, а не записи, и
+  сужайте значения через `Cybertrain::Cast`. `perform_in(seconds, args)` и
+  `perform_at(time, args)` ставят задачу в очередь на потом.
+- Задачи — это строки `cybertrain_jobs`; их выполняют три потока задач
+  обслуживающего процесса или отдельного, запущенного командой
+  `./blog worker`
+  ([Роли процессов](background-and-operations.md#process-roles)).
+- `retry_on StandardError, wait: 30, attempts: 3` снова ставит неудачное
+  выполнение в очередь через 30 секунд, всего три попытки; после этого строка
+  становится `failed` и сохраняется
+  ([Повторы и отбрасывание](background-and-operations.md#retries-and-discards)).
+- Задача может выполниться больше одного раза (если процесс умирает посреди
+  задачи, она запускается снова), поэтому пишите `perform` так, чтобы его
+  можно было безопасно повторить.
+- Неудавшиеся задачи просматривают, повторяют и отбрасывают командой
+  `./blog jobs` или на странице, которую подключает закомментированная строка
+  `jobs_page` в `config/routes.rb`
+  ([Страница задач](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
+
+> [!RULE] Правило Spinel: политики задач читаются как текст
+> ### Политики задач читаются как текст
+>
+> `spin run gen` читает каждый класс в `app/jobs/` и пишет его вторую половину
+> в `gen/jobs.rb`: `perform_later` и каждый `retry_on` в виде ветки `rescue`.
+> Поэтому `retry_on`, `discard_on` и `limits_concurrency` занимают по одной
+> строке и принимают литеральные значения: `wait: 30`, а не `wait: 30.seconds`
+> и не лямбду.
+
+> [!EXAMPLE] Удаление выполненных задач каждую ночь
+> ### Удаление выполненных задач каждую ночь
+>
+> Каждый комментарий оставляет после себя строку `done`. `config/app.rb`
+> заканчивается закомментированной задачей по расписанию, которая удаляет
+> такие строки недельной давности; раскомментируйте её:
+>
+> ```ruby config/app.rb (фрагмент)
+> Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
+>   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
+> end
+> ```
+>
+> Выражение cron читается в часовом поясе `CYBERTRAIN_SCHEDULER_TZ` (по
+> умолчанию UTC), а расписание в каждый момент выполняет только один процесс
+> ([Задачи по расписанию](background-and-operations.md#scheduled-tasks)).
+
+<!-- step 15 #json stage: Вы пишете · `app/controllers/` -->
+## Ответ в JSON
+
+> [!WHY]
+> Одно действие может обслуживать и страницу, и API: `respond_to`, как в
+> Rails.
+
+```ruby app/controllers/articles_controller.rb (фрагмент)
+  def index
+    @articles = Article.all.to_a
+    respond_to do |format|
+      format.html
+      format.json { render json: @articles.map(&:as_json) }
+    end
+  end
+```
+
+```console терминал — blog/
+$ curl http://127.0.0.1:3000/articles.json
+[{"id":1,"title":"Hello Rails","body":"I am on Rails! This is my first article.","created_at":"2026-11-12T10:22:45.852Z","updated_at":"2026-11-12T10:22:45.852Z"}]
+```
+
+<!-- list: points -->
+- Формат берётся из расширения (`/articles.json`) или, если его нет, из
+  заголовка `Accept`. На формат, которого действие не перечисляет, например
+  `/articles.xml`, приходит ответ `406 Not Acceptable`.
+- `format.html` без блока отрисовывает шаблон действия, как раньше.
+- `as_json` — это столбцы записи, время в ISO 8601, UTC. У JSON нет шаблонов:
+  действие отвечает им через `render json:`.
+- Оставляйте в блоке только строки `format.`: когда запрос откатывается к
+  html, блок выполняется второй раз.
+
+`show` принимает такой же блок, с `render json: @article.as_json`, и в
+`examples/blog` он есть. Добавьте его после [шага 18](#attachments):
+генератору этого шага при запуске нужно, чтобы `show` был пустым. Всё о
+форматах: [Форматы и `respond_to`](requests.md#formats-and-respond_to).
+
+<!-- step 16 #test stage: Сборка · `cybertrain spin test` -->
 ## Тестирование
 
 > [!WHY]
@@ -591,8 +963,8 @@ end
 ```
 
 Утверждения: `assert`, `refute`, `assert_equal`, `assert_nil`,
-`assert_includes`, `assert_raises("Class") { }`, `flunk`. В примере также
-используются `assert_response` и `assert_redirected_to`.
+`assert_includes`, `assert_raises("Class") { }`, `flunk`. Клиент добавляет
+`assert_response` и `assert_redirected_to`.
 
 ### Полный HTTP-сценарий
 
@@ -614,6 +986,63 @@ end
 хранилищем cookie, поэтому сессии и CSRF ведут себя так же, как за браузером.
 Запросы без токена получают 403.
 
+### Задача, Turbo Stream и компонент
+
+Тестовый клиент не запускает потоков задач, поэтому поставленная в очередь
+задача остаётся в очереди, пока тест её не выполнит. Третий аргумент `post`
+задаёт заголовки запроса — здесь это `Accept`, который Turbo отправляет с
+формой:
+
+```ruby test/comments.rb (отрывок)
+require_relative "support/blog_test"   # подключает и cybertrain/test/jobs
+
+def post_comment(client, article, headers = {})
+  client.get(BlogTest.article_path(article))
+  client.post("#{BlogTest.article_path(article)}/comments",
+              { "authenticity_token" => BlogTest.form_token(client),
+                "comment[commenter]" => "Dave", "comment[body]" => "First!" }, headers)
+end
+
+test "a comment queues its notification" do
+  BlogTest.reset
+  post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article)
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "a form Turbo submits is answered with a Turbo Stream" do
+  BlogTest.reset
+  res = post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article,
+                     { "accept" => "text/vnd.turbo-stream.html, text/html" })
+  assert_response res, :ok
+  assert_includes res.body, "<turbo-stream action=\"append\" target=\"comments\">"
+end
+```
+
+[Шаг 12](#component) записал `test/comment_component.rb`, который отрисовывает
+компонент со строкой (String) там, где шаблон теперь ожидает комментарий.
+Замените его содержимое:
+
+```ruby test/comment_component.rb
+require_relative "support/blog_test"
+require "cybertrain/test/views"   # Cybertrain::Test.render_component
+
+test "the comment component names its author" do
+  BlogTest.reset
+  comment = BlogTest.comment(BlogTest.article, "Alice", "Great post!")
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: comment))
+  assert_includes html, "<strong class=\"comment-author\">Alice</strong> wrote:"
+end
+
+Cybertrain::Test.run!
+```
+
+`render_component` отрисовывает так же, как рассылка, — без запроса. Остальные
+вспомогательные методы и то, как читать поток в тесте:
+[Тестирование задач](testing.md#testing-jobs) и
+[Тестирование потоков и компонентов](testing.md#testing-streams-and-components).
+
 > [!COMPILE] Что опущено в отрывках
 > ### Что опущено в отрывках
 >
@@ -621,9 +1050,11 @@ end
 >   [`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb):
 >   скопируйте его в `test/support/` вашего приложения, где файлы подключаются,
 >   а не запускаются. Он применяет миграции к новой `storage/test.sqlite3`,
->   загружает приложение как `BLOG`, подключает `Cybertrain::Test` и его клиент
->   и предоставляет `BlogTest.form_token` (CSRF-токен последней отрендеренной
->   формы) и `BlogTest.article_path`.
+>   загружает приложение как `BLOG`, подключает `Cybertrain::Test`, его клиент
+>   и вспомогательные методы для задач и предоставляет `BlogTest.form_token`
+>   (CSRF-токен последней отрендеренной формы), `BlogTest.article_path`,
+>   `BlogTest.article` и `BlogTest.comment` (каждый возвращает сохранённую
+>   запись) и `BlogTest.reset` (пустые таблицы, кэш и очередь задач).
 > - Завершите файл вызовом `Cybertrain::Test.run!`: он запускает тесты и выводит
 >   строки, которые сравниваются со снимком.
 > - Задайте `c.log_level = :none if c.test?` в `config/app.rb`, чтобы логи
@@ -640,7 +1071,9 @@ cybertrain spin test
 `spin test`. Он компилирует каждый `test/*.rb` в отдельную программу и
 сравнивает её вывод (stdout и stderr вместе) с закоммиченным снимком
 `test/<name>.rb.expected`. Файлы в `test/support/` подключаются, а не
-запускаются. Чтобы записать снимок:
+запускаются. Тесты, которые генераторы записали на шагах 12 и 14
+(`test/comments_helper.rb`, `test/notify_comment_job.rb`), запускаются вместе
+с остальными. Чтобы записать снимок:
 
 ```shell терминал — blog/
 cybertrain spin test --regen test/<name>.rb
@@ -657,7 +1090,7 @@ rm -f build/test/<name>; cybertrain spin test test/<name>.rb; [ -x build/test/<n
 > под CRuby, этот снимок нужен, прежде чем `cybertrain spin test` сможет
 > пройти; остальные тесты без снимка сравниваются с выводом CRuby.
 
-<!-- step 13 #authentication stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
+<!-- step 17 #authentication stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Добавление входа
 
 > [!WHY]
@@ -713,9 +1146,19 @@ class ArticlesController < ApplicationController
 
 <% if @current_user %>
   <h2>Add a comment:</h2>
-  <%= render "comments/form" %>
+
+  <div id="comment_form">
+    <%= render "comments/form" %>
+  </div>
 <% end %>
 ```
+
+Кнопка «Destroy comment» остаётся в компоненте комментария для всех: рассылка
+отрисовывает его один раз для всех зрителей, без запроса, а значит, и без
+текущего пользователя. Посетителя, который на неё нажмёт, отправят на страницу
+входа, поскольку `CommentsController` не открывает ни одного действия; новые
+комментарии по-прежнему доходят до страницы посетителя, потому что поток — не
+действие контроллера.
 
 Запустите сервер и откройте `http://127.0.0.1:3000/sign_up`, чтобы создать
 первого пользователя. У генератора Rails нет страницы регистрации — первого
@@ -885,7 +1328,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ### Обновление тестов
 
-Тесты из [шага 12](#test), которые ожидают форму, отправляют её или обращаются
+Тесты из [шага 16](#test), которые ожидают форму, отправляют её или обращаются
 к действию помимо `index` и `show`, теперь упираются в страницу входа. Сначала
 выполните вход клиентом с помощью хелперов, которые генератор записал в
 `test/support/app_test.rb`:
@@ -906,7 +1349,7 @@ end
 ```
 
 > [!NOTE]
-> Запускайте `cybertrain spin test`, как в [шаге 12](#test);
+> Запускайте `cybertrain spin test`, как в [шаге 16](#test);
 > `test/authentication.rb` и этот тест используют SQLite, поэтому их снимки
 > берутся из скомпилированного бинарника. `examples/blog` заканчивается до
 > этого шага. Частота попыток входа ограничена, как в генераторе Rails:
@@ -922,7 +1365,7 @@ end
 > [Отправка электронной почты](external-services.md#sending-e-mail)),
 > которых генератор знать не может.
 
-<!-- step 14 #attachments stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
+<!-- step 18 #attachments stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Добавление обложки
 
 > [!WHY]
@@ -945,7 +1388,7 @@ cybertrain db migrate                          # добавляет столбц
 
 ```ruby app/controllers/articles_controller.rb (фрагмент)
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 13 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -971,7 +1414,7 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-Шаг 13 закрыл все страницы, а картинка на публичной странице статьи
+Шаг 17 закрыл все страницы, а картинка на публичной странице статьи
 запрашивается с `/articles/1/cover`. Генератор делает скачивание ровно
 настолько публичным, насколько публична страница статьи: раз
 `allow_unauthenticated_access` перечисляет `:show`, он добавляет в этот список
@@ -997,6 +1440,17 @@ class ArticlesController < ApplicationController
 <h1>Article</h1>
 <% if @article.cover_attached? %><p><img src="<%= @article.cover_url %>" alt="<%= @article.cover_filename %>"></p><% end %>
 ```
+
+> [!NOTE]
+> Генератор переносит правила доступа `show` на скачивание, и только когда
+> может их прочитать: `show` должен быть пустым действием из скаффолда под
+> `before_action :set_article`. Если внутри `def show` есть код или
+> ещё один `before_action` перечисляет `:show` без нового действия,
+> генератор останавливается с сообщением
+> `cannot preserve show's authorization for :cover` и ничего не пишет. Вот
+> почему `show` до сих пор оставался пустым. С этого момента он может расти
+> (JSON-ответ из [шага 15](#json), `@comment` для формы); следить, чтобы
+> `cover` оставался так же ограничен, как `show`, теперь предстоит вам.
 
 > [!RULE] Правило Spinel: has_one_attached
 > ### `has_one_attached` расписан явно
@@ -1041,14 +1495,14 @@ class ArticlesController < ApplicationController
 минимума в 10 символов из [шага 05](#validations).
 
 > [!NOTE]
-> Запускайте `cybertrain spin test`, как в [шаге 12](#test); тест использует
+> Запускайте `cybertrain spin test`, как в [шаге 16](#test); тест использует
 > SQLite, поэтому его снимок берётся из скомпилированного бинарника.
 > `examples/blog` заканчивается до этого шага. Пока не сделано: несколько
 > файлов на поле, S3 и другое удалённое хранилище, варианты изображений и
 > потоковая запись больших тел на диск (тело читается в память целиком, до
 > `max_body_bytes`).
 
-<!-- step 15 #ship stage: Запуск · `dist/blog` -->
+<!-- step 19 #ship stage: Запуск · `dist/blog` -->
 ## Сборка для развёртывания
 
 > [!WHY]
@@ -1075,7 +1529,8 @@ cybertrain build
 Скопируйте `dist/` на машину с той же ОС и тем же процессором (бинарный файл
 компонуется с системной SQLite) и запустите там. Собранный бинарный файл по
 умолчанию работает в окружении production (`CYBERTRAIN_ENV` переопределяет
-это). Задайте `CYBERTRAIN_SECRET_KEY_BASE`; для примера:
+это). Задайте `CYBERTRAIN_SECRET_KEY_BASE` (его выводит и
+`cybertrain secret`); для примера:
 
 ```shell терминал — продакшен-сервер
 cd dist
@@ -1085,10 +1540,13 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"
 
 `./blog migrate` применяет миграции, вкомпилированные в бинарный файл, а
 `./blog db status` показывает их состояние; `PORT` задаёт порт. Не меняйте
-секрет между перезапусками: его смена завершает все сессии.
+секрет между перезапусками: его смена завершает все сессии. `./blog help`
+перечисляет остальные команды бинарного файла, среди них `worker`, `jobs`,
+`console` и `db backup`.
 
 `Cybertrain::Config` сначала читает переменные окружения; `config/app.rb` их
-переопределяет:
+переопределяет. Переменные, с которыми сталкивается первое развёртывание (все:
+[Конфигурация](configuration.md#configuration-and-environment-variables)):
 
 <div class="table-scroll" role="region" aria-label="Переменные окружения" tabindex="0" markdown="0">
 <table class="env">
@@ -1119,7 +1577,13 @@ end
   nginx или Caddy. В production cookie сессии имеет флаг `Secure`, поэтому
   отдавайте приложение по HTTPS (задавайте `c.session_secure = false` в
   `config/app.rb`, только если production действительно работает по обычному
-  http).
+  http). За таким прокси `CYBERTRAIN_FORCE_SSL=1` перенаправляет http на
+  https, а `CYBERTRAIN_HOSTS` называет хосты, на которые отвечает приложение
+  ([хосты и `force_ssl`](requests.md#content-security-policy-force_ssl-and-hosts)).
+- Обслуживающий процесс выполняет также задачи, задачи по расписанию и
+  опросчик потоков из шагов 13 и 14: один процесс — это всё развёртывание.
+  `./blog worker` выносит задачи в отдельный процесс
+  ([Роли процессов](background-and-operations.md#process-roles)).
 - Без `CYBERTRAIN_SECRET_KEY_BASE` production отказывается запускаться.
 - В production исключение даёт ответ 500, а голый ответ с ошибкой (текстовый
   404 маршрутизатора, `head :not_found`, `render plain:`) заменяется на
@@ -1186,17 +1650,21 @@ kamal deploy   # каждое следующее развёртывание
 - Только SQLite, через FFI Spinel.
 - Бэктрейсов нет: ошибки показывают класс, сообщение, строку запроса и
   имя/строку шаблона.
-- Атрибут с опечаткой в представлении выводится пустым вместо исключения; это
-  известный пробел.
+- Атрибут с опечаткой в представлении вызывает исключение
+  (`undefined method 'titel' for Article`); столбец, в котором `nil`,
+  выводится пустым.
 - Ассоциации выводятся из внешних ключей или однострочных объявлений; нет
   `has_many :through`, вложенного `includes`, enum, STI и полиморфных
   ассоциаций.
-- Нет `constraints` и `mount`; JSON отдаётся через `render json:`, который
-  минимален.
+- Нет `constraints` и `mount`; JSON отдаётся через `render json:` (шаблонов
+  JSON нет).
 - В модели, созданной скаффолдом, валидацию присутствия по умолчанию получает
   только первое строковое поле.
-- Генератор обрабатывает `app/controllers` и `app/models` лексическим
-  сканированием (регулярными выражениями), а не парсером.
+- Генератор обрабатывает `app/controllers`, `app/models`, `app/helpers`,
+  `app/components` и `app/jobs` лексическим сканированием (регулярными
+  выражениями), а не парсером.
+- Задачи выполняются хотя бы один раз, а рассылка доходит только до страниц,
+  открытых в момент её отправки или переподключившихся в течение минуты.
 - Представления встраиваются при сборке: даже изменение только в представлении
   требует `cybertrain build` и перезапуска, прежде чем оно попадёт в
   production.
@@ -1210,7 +1678,8 @@ kamal deploy   # каждое следующее развёртывание
 ## Что дальше
 
 <!-- list: next-list -->
-- [**`examples/blog`**](../../examples/blog) — Готовое приложение вместе с тестами.
+- [**`examples/blog`**](../../examples/blog) — Приложение, в которое вырастает этот учебник, вместе с тестами.
+- [**Руководства**](index.md) — По странице на тему: модели, запросы, шаблоны, реальное время, фоновая работа, тестирование.
 - [**CyberTrain на GitHub**](https://github.com/saeki-mototsune/CyberTrain) — Исходный код, README и релизы.
 - [**Справочник API**](site:api/index.html) — Все классы и методы, которые использует приложение, с примерами.
 - [**`spikes/NOTES.md`**](../../spikes/NOTES.md) — Спайки и обнаруженные ими ограничения компилятора.

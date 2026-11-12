@@ -1,17 +1,17 @@
 ---
-source_sha256: 700b1022f462cd4155bf911efa476f2a3dc59de1baf8b05b8c81c5e8138589fb
+source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
 path: tutorial.html
 title: "はじめよう：ブログを作る"
-description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
+description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
 og_title: "CyberTrain をはじめよう：ブログを作る"
 og_description: "Rails 公式の Getting Started に沿った内容です：記事とコメントのあるブログを、Spinel 上の CyberTrain で作ります。"
 og_image: tutorial.png
 crumb: "チュートリアル"
 nav: tutorial
-toc_title: "ステップ 00–15"
+toc_title: "ステップ 00–19"
 meta:
   - term: "必要なもの"
-    text: 'Ruby 3.2+、`cc`、`make`、`git`、`curl`、SQLite 3 のヘッダー（Spinel は自動でインストールされます） <a class="meta-link" href="#requirements">ステップ 00</a>'
+    text: 'Ruby 3.2+、`cc`、`make`、`git`、`curl`、SQLite 3・zlib・OpenSSL のヘッダー（Spinel は自動でインストールされます） <a class="meta-link" href="#requirements">ステップ 00</a>'
   - term: "出発点"
     text: "`gem install cybertrain`"
   - term: "完成物"
@@ -20,7 +20,7 @@ meta:
 
 # はじめよう：ブログを作る
 
-Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started.html) に沿って、記事とコメントのあるブログを作ります。記事をスキャフォールドし、バリデーションを追加し、記事の下にコメントをネストし、アプリをプロセス内で動かすテストを書き、サインインを追加し、アップロードした画像を添付し、最後にアプリをデプロイ可能な `dist/` フォルダーにビルドします。完成したアプリは [`examples/blog`](../../examples/blog) にあり、Linux と macOS の CI で検証されています。
+Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started.html) に沿って、記事とコメントのあるブログを作ります。記事をスキャフォールドし、バリデーションを追加し、記事の下にコメントをネストし、新しいコメントを Turbo で開いているすべてのページに届け、バックグラウンドジョブをキューに入れ、JSON で応答し、アプリをプロセス内で動かすテストを書き、サインインを追加し、アップロードした画像を添付し、最後にアプリをデプロイ可能な `dist/` フォルダーにビルドします。このアプリを発展させたものが [`examples/blog`](../../examples/blog) で、Linux と macOS の CI で検証されています。
 
 
 <!-- step 00 #requirements stage: 準備 · Ruby、`cc`、SQLite -->
@@ -33,9 +33,9 @@ Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started
 - Ruby 3.2+ と RubyGems。`cybertrain` コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。Ruby 3.2 では `gem install prism` も実行します。
 - Spinel の、CyberTrain が固定しているリリース（`cybertrain doctor` が表示します）。CyberTrain が必要とする修正を本家より先に取り込んだフォーク [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) のリリースです。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを `~/.cybertrain` にビルドします（数分、初回のみ）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます。
 - C ツールチェーン（`cc`、または `CC` で指定したコンパイラ）と `make`、さらに `git` と `curl`。すべてのプログラムを C にコンパイルする Spinel をビルドするために使います。
-- SQLite 3 と zlib のヘッダーとライブラリ：Debian/Ubuntu では `libsqlite3-dev` と `zlib1g-dev`、macOS では Xcode のコマンドラインツールに含まれています。
+- SQLite 3、zlib、OpenSSL のヘッダーとライブラリ：Debian/Ubuntu では `libsqlite3-dev`、`zlib1g-dev`、`libssl-dev`。macOS では、SQLite と zlib は Xcode のコマンドラインツールに含まれ、OpenSSL は Homebrew から入れます（`brew install openssl@3` を実行し、[必要なもの](install.md#requirements)にある 2 つのパスを設定します）。
 
-`cybertrain doctor` がこれらすべてを確認します。完全な一覧と、どれが任意か：[必要なもの](install.md#requirements)。Spinel がどこに置かれるか、別のインストールを使う方法：[Spinel のインストールの仕組み](install.md#how-spinel-is-installed)。
+`cybertrain doctor` がこれらすべてを確認し、足りないものにはインストール用のコマンドを表示します。完全な一覧と、どれが任意か：[必要なもの](install.md#requirements)。Spinel がどこに置かれるか、別のインストールを使う方法：[Spinel のインストールの仕組み](install.md#how-spinel-is-installed)。
 
 > [!NOTE]
 > インストールできるマシンがない場合は、[プレイグラウンド](site:playground.html)を使えば、ステップ 02、03、04、07 を済ませたこのブログを GitHub Codespace で開けます。
@@ -92,15 +92,19 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb
+  spin.toml  config/app.rb  config/routes.rb  .env.example
   db/schema.rb  db/migrate/
-  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
-  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
+  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/  app/jobs/
+  app/assets/stylesheets/application.css  app/assets/images/
+  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
-  gen/  storage/  tmp/  test/
+  gen/  storage/  tmp/  test/  .github/workflows/ci.yml
+  Dockerfile  config/deploy.yml  .kamal/secrets
 ```
 
-`bin/blog.rb` はアプリケーション唯一のエントリーポイントで、`spin build blog` がコンパイルするプログラムです：`./blog` でサーバーを起動し、`./blog migrate` と `./blog db status` でデータベースを管理します。`bin/gen.rb` はジェネレーターを実行し（`spin run gen`）、`bin/db.rb` は開発中にマイグレーターを実行します（`cybertrain db migrate` がこれを使います。最初のマイグレーションで `gen/models/` が生成されるまで、`bin/blog.rb` はコンパイルできないためです）。`gen/` にはすでに `views.rb` があります。これはコミットされる、空の埋め込みビューのテーブルです。レイアウトは `stylesheet_link_tag` で `app/assets/stylesheets/application.css` を読み込みます。`spin run gen` がそれをダイジェスト付きで `public/assets/` に書き出し、そこは git の管理から外してあります（[アセット](assets.md)を参照）。
+`bin/blog.rb` はアプリケーション唯一のエントリーポイントで、`spin build blog` がコンパイルするプログラムです：`./blog` でサーバーを起動し、`./blog migrate` と `./blog db status` でデータベースを管理します。`bin/gen.rb` はジェネレーターを実行し（`spin run gen`）、`bin/db.rb` は開発中にマイグレーターを実行します（`cybertrain db migrate` がこれを使います。最初のマイグレーションで `gen/models/` が生成されるまで、`bin/blog.rb` はコンパイルできないためです）。`gen/` にはすでに `spin run gen` が書き出したものが入っています。そのひとつが `views.rb` で、これはコミットされる、空の埋め込みビューのテーブルです。
+
+レイアウトは `stylesheet_link_tag` で `app/assets/stylesheets/application.css` を読み込み、`javascript_importmap_tags` で `config/importmap.rb` のインポートマップを通じて `app/javascript/application.js` を読み込みます。`spin run gen` がこの 2 つをダイジェスト付きで `public/assets/` に書き出し、そこは git の管理から外してあります（[アセット](assets.md)を参照）。`.env.example` にはアプリが読む環境変数の一覧があり、`.github/workflows/ci.yml` は GitHub 上でテストを実行します（[継続的インテグレーション](testing.md#continuous-integration)）。ツリーの最後の行は [ステップ 19](#ship) の Kamal 用の設定です。
 
 `ApplicationController` は最初は次のようになっており、レコードが見つからない場合は `rescue_from` によって 404 になります：
 
@@ -126,7 +130,7 @@ end
 cybertrain generate scaffold article title:string body:text
 ```
 
-マイグレーション、モデル、コントローラー、5 つのビュー（`index`、`show`、`new`、`edit`、`_form`）を書き出し、`config/routes.rb` に `resources :articles` を挿入します。フィールドの型は `string`、`text`、`integer`、`float`、`boolean`、`date`、`datetime`、`references` で、デフォルトは `string` です。クイックスタートの `cybertrain g scaffold` も同じコマンドです。
+マイグレーション、モデル、コントローラー、5 つのビュー（`index`、`show`、`new`、`edit`、`_form`）を書き出し、`config/routes.rb` に `resources :articles` を挿入します。フィールドの型は `string`、`text`、`integer`、`float`、`boolean`、`date`、`datetime`、`references`、`attachment`（アップロードされたファイル。[ステップ 18](#attachments)）で、デフォルトは `string` です。クイックスタートの `cybertrain g scaffold` も同じコマンドです。
 
 > [!NOTE]
 > 既存のファイルが上書きされることはありません：各ファイルは `create`、`identical`、`exist` のいずれかとして報告されます。
@@ -243,7 +247,7 @@ Use Ctrl-C to stop
 ```
 
 <!-- list: points -->
-- スキーマ、ルーティング、またはコントローラーやモデルのコールバックとインスタンス変数を変更したら、`cybertrain spin run gen` を再実行して `gen/` をコミットしてください。開発サーバーはこれを自動で行います。
+- スキーマ、ルーティング、コントローラーやモデルのコールバックとインスタンス変数、ヘルパー・コンポーネント・ジョブ、アセットのいずれかを変更したら、`cybertrain spin run gen` を再実行して `gen/` をコミットしてください。開発サーバーはこれを自動で行います。`cybertrain spin run gen -- --check` は、何も書き込まずに、古くなっているファイルを一覧します。
 - ポートは `cybertrain server 4000`（または `PORT=4000`）で変更できます。
 - `cybertrain db` は、`--`（`spin run db` が引数の前に必要とするもの）を補います。`cybertrain db status` などのデータベースコマンドも同じように動きます。
 
@@ -280,6 +284,9 @@ cybertrain db migrate    # スキャフォールドが comments テーブルの�
 ```
 
 スキャフォールドは独立した `resources :comments` の行を挿入しますが、これは次のステップで置き換えます。
+
+> [!NOTE]
+> `cybertrain server` を動かしたままにしていると、スキャフォールドがファイルを書き出した時点で、まだテーブルがないうちに再ビルドが走り、`Build failed; still serving the previous build (see tmp/rebuild.log)` とログに出ます。`cybertrain db migrate` が `db/schema.rb` を書き換えると、もう一度再ビルドされます。
 
 > [!EXAMPLE] コメントのある記事を削除する
 > ### コメントのある記事を削除する
@@ -374,34 +381,29 @@ end
 ## ビューとパーシャル
 
 > [!WHY]
-> 記事のページにはコメントの一覧を表示し、最後に `[@article, @comment]` に結び付いたフォームを置きます。
+> 記事のページにはコメントの一覧を表示し、最後に、ネストしたルートへ送信するフォームを置きます。
 
-まず、もう到達できなくなったコメントのビュー `index`、`show`、`new`、`edit` を削除し、`ArticlesController#show` に空の `@comment` を用意します：
-
-```ruby app/controllers/articles_controller.rb（抜粋）
-  def show
-    @comment = Comment.new
-  end
-```
-
-次に、記事のページでコメントとフォームをレンダリングします：
+まず、もう到達できなくなったコメントのビュー `index`、`show`、`new`、`edit` を削除します。次に、記事のページの末尾でコメントとフォームをレンダリングし、スキャフォールドが書き出したコメントのフォームを置き換えます：
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
+<h2>Comments</h2>
 <% @article.comments.each do |comment| %>
   <%= render "comments/comment", comment: comment %>
 <% end %>
+
+<h2>Add a comment:</h2>
 <%= render "comments/form" %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(model: [@article, @comment]) do |f| %>
+<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit %>
+  <%= f.submit "Create Comment" %>
 <% end %>
 ```
 
-サンプルに含まれているとおりのコメントのパーシャル：
+コメントのパーシャル：
 
 ```erb app/views/comments/_comment.html.erb
 <%# locals: (comment:) %>
@@ -420,7 +422,11 @@ end
 </div>
 ```
 
-`button_to ... [@article, comment]` と `form_with(model: [@article, @comment])` はどちらも同じ `[parent, child]` のルールで解決されます：新しい子はネストしたコレクション（`article_comments_path`）に、保存済みの子はネストしたメンバー（`article_comment_path`）にルーティングされます — これらは上のネストした `resources` ブロックから `gen/routes.rb` に生成されます。
+### フォームとボタンの送信先
+
+フォームは送信先を `url:` で、フィールド名（`comment[commenter]`、`comment[body]`）を `scope:` で指定するので、`Comment` のレコードを必要としません。保存できなかったコメントは、理由をフラッシュに入れてリダイレクトで戻され（[ステップ 10](#comments-controller)）、エラー付きでフォームがレンダリングし直されることはないからです。
+
+`button_to ... [@article, comment]` は `[parent, child]` のルールで解決されます：新しい子はネストしたコレクション（`article_comments_path`）に、保存済みの子はネストしたメンバー（`article_comment_path`）にルーティングされます。どちらも上のネストした `resources` ブロックから `gen/routes.rb` に生成されます。`form_with(model: [@article, @comment])` も同じルールに従い、`examples/blog` はフォームをこの形で書いて、`ArticlesController#show` に `@comment = Comment.new` を置いています。このチュートリアルでは `show` を、スキャフォールドが書き出したとおりの空のままにしておきます。[ステップ 18](#attachments) のジェネレーターがそれを求めるからです。
 
 > [!RULE] ビューは閉じた文法
 > ### ビューは Ruby ではなく、閉じた文法
@@ -437,7 +443,7 @@ end
 >
 >   def index
 >     articles = Article.recent.includes(:comments)
->     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     from = Cybertrain::Cast.date_or_nil(params[:from])   # nil unless YYYY-MM-DD
 >     unless from.nil?
 >       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
 >     end
@@ -447,7 +453,268 @@ end
 >
 > ビューの `article.comments.size` は先読みしたコメントから答えます。Rails の `where(created_at: from..)` はここでは `where_between` です。Spinel は Time の Range を作れないからです（[条件と検索](models.md#conditions-and-finders)）。
 
-<!-- step 12 #test stage: ビルド時 · `cybertrain spin test` -->
+<!-- step 12 #component stage: 自分で書く · `app/components/`, `app/helpers/` -->
+## コンポーネントとヘルパー
+
+> [!WHY]
+> 次のステップから、コメントは 2 か所でレンダリングされます：ページの中と、背後にリクエストのないブロードキャストの中です。コンポーネント（テンプレートを横に置いたクラス）はどちらでも同じようにレンダリングされます。ヘルパーは、どのテンプレートからも呼べるメソッドです。
+
+```shell ターミナル — blog/
+cybertrain generate component comment comment   # 名前、続いて属性：ここでは 1 つで、これも comment
+cybertrain generate helper comments
+```
+
+1 つ目は、属性ごとにキーワード引数を 1 つ持つ `app/components/comment_component.rb` とそのテンプレートを書き出し、2 つ目は空の `CommentsHelper` を書き出します。どちらもテストを 1 つ書き出しますが、これは [ステップ 16](#test) で扱います。クラスはすでに、このブログに必要な形になっています：
+
+```ruby app/components/comment_component.rb
+class CommentComponent < Cybertrain::Component
+  def initialize(comment:)
+    @comment = comment
+  end
+end
+```
+
+生成されたテンプレートをコメントのマークアップに置き換え、ヘルパーにメソッドを 1 つ書きます：
+
+```erb app/components/comment_component.html.erb
+<div class="comment" id="<%= dom_id(comment) %>">
+  <p><%= comment_author(comment) %> wrote:</p>
+
+  <p><%= comment.body %></p>
+
+  <%= button_to "Destroy comment", article_comment_path(comment.article_id, comment), method: :delete %>
+</div>
+```
+
+```ruby app/helpers/comments_helper.rb
+module CommentsHelper
+  # The commenter's name in a <strong>, escaped: <%= comment_author(c) %>
+  def comment_author(comment)
+    name = case comment
+           when Comment then comment.commenter.to_s
+           else ""
+           end
+    Cybertrain::Html.tag("strong", { class: "comment-author" }, name)
+  end
+end
+```
+
+そして、ページがパーシャルをレンダリングしていた箇所でコンポーネントをレンダリングし、`app/views/comments/_comment.html.erb` を削除します：
+
+```erb app/views/articles/show.html.erb（抜粋）
+<% @article.comments.each do |comment| %>
+  <%= render component: "comment", comment: comment %>
+<% end %>
+```
+
+<!-- list: points -->
+- テンプレートからは、コンポーネントのインスタンス変数がローカル変数として（`comment`）、引数のない public メソッドが名前で見えます。渡されるのはコメントだけで、ページの `@article` は渡されないので、ボタンのパスは `comment.article_id` から組み立てます。
+- `dom_id(comment)` は、id が 7 のコメントなら `comment_7` です：次のステップのブロードキャストが狙う要素の id になります。
+- コンポーネントは、パーシャルと同じように、`_component` を除いたスネークケースの名前で指定します：テンプレートは定数を名指しできません。
+- `Cybertrain::Html.tag` は内容をエスケープして `SafeString` を返し、テンプレートはこれをそのまま出力します。ヘルパーが返した素の `String` はエスケープされます。
+
+> [!RULE] Spinel のルール：ヘルパーとコンポーネントは生成されたディスパッチ
+> ### ヘルパーとコンポーネントは生成されたディスパッチ
+>
+> テンプレートは `send` を使えないため、`spin run gen` が `app/helpers/` と `app/components/` をテキストとして読み、ディスパッチを `gen/helpers.rb` と `gen/components.rb` に書き出します。ヘルパーのパラメーターにはすべて名前が付き（`*rest` も `**opts` も使えません）、引数はテンプレートの値として届きます。`comment_author` が引数を `case ... when Comment` で絞り込んでいるのはそのためです。詳しくは[アプリケーションヘルパー](template-language.md#application-helpers)と[コンポーネント](template-language.md#components)にあります。
+
+<!-- step 13 #turbo stage: 実行時 · Server-Sent Events 上の Turbo Streams -->
+## Turbo でコメントをライブ更新する
+
+> [!WHY]
+> あるブラウザーで投稿されたコメントは、その記事を開いているすべてのページに、再読み込みなしで現れてほしいものです。Rails 8 のアプリと同じく、これは Turbo Streams で実現します。サーバーのほかにインストールするものも、起動するものもありません。
+
+### Turbo を読み込む
+
+`cybertrain new` はどちらの行もコメントアウトした状態で書き出しています。コメントを外してください：
+
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
+```
+
+レイアウトの `javascript_importmap_tags` がインポートマップと `import "application"` を書き出すので、これですべてのページで Turbo が動きます（[インポートマップ](assets.md#the-import-map)）。
+
+### ページを購読させる
+
+一覧とフォームにそれぞれ id を付け、ページを記事のストリームに購読させます：
+
+```erb app/views/articles/show.html.erb（抜粋）
+<h2>Comments</h2>
+
+<%= turbo_stream_from @article %>
+
+<div id="comments">
+  <% @article.comments.each do |comment| %>
+    <%= render component: "comment", comment: comment %>
+  <% end %>
+</div>
+
+<h2>Add a comment:</h2>
+
+<div id="comment_form">
+  <%= render "comments/form" %>
+</div>
+```
+
+### ブロードキャストして応答する
+
+`create` は保存したコメントをブロードキャストし、続いて投稿したブラウザーに応答します。`destroy` は、ほかのページにその要素を取り除くよう伝えます：
+
+```ruby app/controllers/comments_controller.rb（抜粋）
+  def create
+    @comment = Comment.new(comment_params)
+    @comment.article_id = @article.id
+    unless @comment.save
+      flash[:alert] = "Comment could not be saved: #{@comment.errors.full_messages.join(", ")}"
+      redirect_to article_path(@article), status: :see_other
+      return
+    end
+
+    # Every page subscribed with turbo_stream_from @article appends the comment.
+    Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
+                                           component: CommentComponent.new(comment: @comment))
+    respond_to do |format|
+      format.turbo_stream   # app/views/comments/create.turbo_stream.erb
+      format.html do
+        flash[:notice] = "Comment was successfully created."
+        redirect_to article_path(@article), status: :see_other
+      end
+    end
+  end
+
+  def destroy
+    @comment = @article.comments.find(params[:id])
+    target = Cybertrain::Html.dom_id(@comment)   # read before destroy clears the id
+    @comment.destroy
+    Cybertrain::Stream.broadcast_remove_to(@article, target: target)
+    flash[:notice] = "Comment was successfully destroyed."
+    redirect_to article_path(@article), status: :see_other
+  end
+```
+
+```erb app/views/comments/create.turbo_stream.erb
+<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
+<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+```
+
+ひとつの記事を 2 つのウィンドウで開き、片方でコメントを投稿してみてください：コメントは両方に現れ、送信したフォームは空に戻ります。
+
+### 何が起きているか
+
+<!-- list: points -->
+- `turbo_stream_from @article` は、ストリーム `articles:<id>` に対する `<turbo-stream-source>` 要素を、署名付きのトークンとともに書き出します。Turbo はこれを `/cybertrain/stream` への `EventSource` として開きます。このエンドポイントはサーバーが最初から提供しています。
+- ブロードキャストは、フレームワークが自分で作るテーブル `cybertrain_messages` の 1 行です。各サーバープロセスがこのテーブルをポーリングし、自分が抱えているページにその行を、およそ 0.1 秒以内に渡します。
+- Turbo はフォームを、Turbo Stream を求める形で送信するので、`format.turbo_stream` が `create.turbo_stream.erb` をレイアウトなしでレンダリングします。JavaScript を切った素のフォーム送信は `format.html` を通り、これまでどおりリダイレクトされます。
+- 投稿したウィンドウはコメントを、応答とブロードキャストで 2 回受け取りますが、表示は 1 つです：Turbo は同じ id を持つ要素を置き換えます。
+
+WebSocket や、自分の JavaScript から使うストリームなど、詳しくは[リアルタイム](realtime.md#turbo-streams)にあります。
+
+> [!NOTE]
+> ここでは Turbo を jsDelivr から取得しています。自分で配信するには、`turbo.es2017-esm.js` を `vendor/javascript/` にコピーし、`to: "turbo.es2017-esm.js"` でピン留めします。`config/app.rb` にコメントアウトされている Content Security Policy を有効にする場合は、その `script_src` で、Turbo を配信するオリジンを許可する必要があります（[Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts)）。
+
+<!-- step 14 #job stage: 自分で書く · `app/jobs/` -->
+## バックグラウンドジョブ
+
+> [!WHY]
+> 通知のように、レスポンスを待たせるべきでない処理は、レスポンスの後に実行します。Solid Queue 上の Active Job と同じく、ジョブは `app/jobs/` のクラスであり、アプリケーション自身のデータベースの 1 行です：ほかのサービスは要りません。
+
+```shell ターミナル — blog/
+cybertrain generate job notify_comment --retry StandardError:30:3
+```
+
+オプションで指定した `retry_on` の行と空の `perform` を持つ `app/jobs/notify_comment_job.rb` と、テストを書き出します。`perform` の中身を書いてください。ここではログを出すだけですが、実際のアプリケーションならメールを送るところです：
+
+```ruby app/jobs/notify_comment_job.rb
+class NotifyCommentJob < Cybertrain::Job::Base
+  retry_on StandardError, wait: 30, attempts: 3
+
+  def perform(args)
+    comment_id = Cybertrain::Cast.int(args["comment_id"])
+    article_id = Cybertrain::Cast.int(args["article_id"])
+    Cybertrain.logger.info("new comment #{comment_id} on article #{article_id}")
+    nil
+  end
+end
+```
+
+コメントを保存した後、`create` からキューに入れます：
+
+```ruby app/controllers/comments_controller.rb（抜粋）
+    NotifyCommentJob.perform_later("comment_id" => @comment.id, "article_id" => @article.id)
+    # Every page subscribed with turbo_stream_from @article appends the comment.
+    Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
+                                           component: CommentComponent.new(comment: @comment))
+```
+
+コメントを投稿すると、サーバーのログから、ジョブがレスポンスの後に実行されたことが分かります：
+
+```text 出力 — cybertrain server
+[INFO] Started POST "/articles/1/comments" for 127.0.0.1
+[INFO] Completed 200 in 2ms
+[INFO] new comment 1 on article 1
+[INFO] job 1 (NotifyCommentJob) done
+```
+
+<!-- list: points -->
+- `args` は `perform_later` に渡した Hash で、JSON として保存され、String のキーで読み戻されます：レコードではなく id を渡し、値は `Cybertrain::Cast` で絞り込んでください。`perform_in(seconds, args)` と `perform_at(time, args)` は、後で実行するようにキューに入れます。
+- ジョブは `cybertrain_jobs` の行で、サーバーのプロセスの 3 本のジョブスレッドが実行します。`./blog worker` で起動した別のプロセスに実行させることもできます（[プロセスの役割](background-and-operations.md#process-roles)）。
+- `retry_on StandardError, wait: 30, attempts: 3` は、失敗した実行を 30 秒後にもう一度キューに入れ、試行は全部で 3 回です。それでも失敗した行は `failed` になり、残されます（[再試行と破棄](background-and-operations.md#retries-and-discards)）。
+- ジョブは 2 回以上実行されることがあります（実行の途中でプロセスが落ちると、そのジョブはもう一度実行されます）。`perform` は繰り返しても安全なように書いてください。
+- 失敗したジョブの一覧・再試行・破棄は、`./blog jobs` か、`config/routes.rb` にコメントアウトされている `jobs_page` の行がマウントするページで行います（[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
+
+> [!RULE] Spinel のルール：ジョブのポリシーはテキストとして読まれる
+> ### ジョブのポリシーはテキストとして読まれる
+>
+> `spin run gen` は `app/jobs/` の各クラスを読み、そのもう半分を `gen/jobs.rb` に書き出します：`perform_later` と、`rescue` 節としての各 `retry_on` です。そのため、`retry_on`、`discard_on`、`limits_concurrency` はそれぞれ 1 行で、リテラルの値を取ります：`wait: 30` と書き、`wait: 30.seconds` やラムダは書けません。
+
+> [!EXAMPLE] 終わったジョブを毎晩削除する
+> ### 終わったジョブを毎晩削除する
+>
+> コメントのたびに `done` の行が 1 つ残ります。`config/app.rb` の末尾には、1 週間たった行を削除する定期タスクがコメントアウトされた状態で入っています。コメントを外してください：
+>
+> ```ruby config/app.rb（抜粋）
+> Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
+>   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
+> end
+> ```
+>
+> cron 式は `CYBERTRAIN_SCHEDULER_TZ`（デフォルトは UTC）のタイムゾーンで読まれ、スケジュールを実行するのは一度に 1 つのプロセスだけです（[定期タスク](background-and-operations.md#scheduled-tasks)）。
+
+<!-- step 15 #json stage: 自分で書く · `app/controllers/` -->
+## JSON で応答する
+
+> [!WHY]
+> ひとつのアクションで、ページと API の両方に応えられます：Rails と同じ `respond_to` です。
+
+```ruby app/controllers/articles_controller.rb（抜粋）
+  def index
+    @articles = Article.all.to_a
+    respond_to do |format|
+      format.html
+      format.json { render json: @articles.map(&:as_json) }
+    end
+  end
+```
+
+```console ターミナル — blog/
+$ curl http://127.0.0.1:3000/articles.json
+[{"id":1,"title":"Hello Rails","body":"I am on Rails! This is my first article.","created_at":"2026-11-12T10:22:45.852Z","updated_at":"2026-11-12T10:22:45.852Z"}]
+```
+
+<!-- list: points -->
+- フォーマットは拡張子（`/articles.json`）から、拡張子がなければ `Accept` ヘッダーから決まります。`/articles.xml` のように、アクションが挙げていないフォーマットには `406 Not Acceptable` が返ります。
+- ブロックのない `format.html` は、これまでどおりアクションのテンプレートをレンダリングします。
+- `as_json` はレコードのカラムで、時刻は ISO 8601 の UTC です。JSON にテンプレートはありません：アクションは `render json:` で応答します。
+- ブロックには `format.` の行だけを書いてください：リクエストが html にフォールバックすると、ブロックはもう一度実行されます。
+
+`show` にも同じブロックを `render json: @article.as_json` で書けます。`examples/blog` にはそれが入っています。追加するのは [ステップ 18](#attachments) の後にしてください。そのステップのジェネレーターは、実行時に `show` が空であることを求めます。フォーマットのすべては[フォーマットと `respond_to`](requests.md#formats-and-respond_to) にあります。
+
+<!-- step 16 #test stage: ビルド時 · `cybertrain spin test` -->
 ## テストする
 
 > [!WHY]
@@ -465,7 +732,7 @@ test "title must be present" do
 end
 ```
 
-アサーション：`assert`、`refute`、`assert_equal`、`assert_nil`、`assert_includes`、`assert_raises("Class") { }`、`flunk`。サンプルでは `assert_response` と `assert_redirected_to` も使っています。
+アサーション：`assert`、`refute`、`assert_equal`、`assert_nil`、`assert_includes`、`assert_raises("Class") { }`、`flunk`。クライアントを読み込むと `assert_response` と `assert_redirected_to` も加わります。
 
 ### HTTP の一連の流れ
 
@@ -485,10 +752,59 @@ end
 
 `Cybertrain::Test::Client` は cookie jar を持ち、アプリをプロセス内で（ソケットなしで）動かすので、セッションと CSRF はブラウザ越しと同じように振る舞います。トークンのないリクエストには 403 が返ります。
 
+### ジョブ、Turbo Stream、コンポーネント
+
+テストクライアントはジョブスレッドを起動しないので、キューに入ったジョブは、テストが実行するまでキューに残ります。`post` の第 3 引数はリクエストヘッダーで、ここでは Turbo がフォームとともに送る `Accept` を指定します：
+
+```ruby test/comments.rb（スニペット）
+require_relative "support/blog_test"   # also loads cybertrain/test/jobs
+
+def post_comment(client, article, headers = {})
+  client.get(BlogTest.article_path(article))
+  client.post("#{BlogTest.article_path(article)}/comments",
+              { "authenticity_token" => BlogTest.form_token(client),
+                "comment[commenter]" => "Dave", "comment[body]" => "First!" }, headers)
+end
+
+test "a comment queues its notification" do
+  BlogTest.reset
+  post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article)
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "a form Turbo submits is answered with a Turbo Stream" do
+  BlogTest.reset
+  res = post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article,
+                     { "accept" => "text/vnd.turbo-stream.html, text/html" })
+  assert_response res, :ok
+  assert_includes res.body, "<turbo-stream action=\"append\" target=\"comments\">"
+end
+```
+
+[ステップ 12](#component) は `test/comment_component.rb` を書き出しましたが、このテストはコンポーネントを String でレンダリングします。テンプレートはいまやコメントを期待しているので、中身を次のように置き換えてください：
+
+```ruby test/comment_component.rb
+require_relative "support/blog_test"
+require "cybertrain/test/views"   # Cybertrain::Test.render_component
+
+test "the comment component names its author" do
+  BlogTest.reset
+  comment = BlogTest.comment(BlogTest.article, "Alice", "Great post!")
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: comment))
+  assert_includes html, "<strong class=\"comment-author\">Alice</strong> wrote:"
+end
+
+Cybertrain::Test.run!
+```
+
+`render_component` は、ブロードキャストと同じように、リクエストなしでレンダリングします。そのほかのヘルパーと、テストでストリームを読む方法は、[ジョブのテスト](testing.md#testing-jobs)と[ストリームとコンポーネントのテスト](testing.md#testing-streams-and-components)にあります。
+
 > [!COMPILE] スニペットで省略しているもの
 > ### スニペットで省略しているもの
 >
-> - `support/blog_test` は [`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb) のことです：これをアプリの `test/support/` にコピーしてください。このディレクトリのファイルは実行されず、require されるだけです。このファイルは新しい `storage/test.sqlite3` にマイグレーションを適用し、アプリを `BLOG` として起動し、`Cybertrain::Test` とそのクライアントを読み込み、`BlogTest.form_token`（最後にレンダリングされたフォームの CSRF トークン）と `BlogTest.article_path` を提供します。
+> - `support/blog_test` は [`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb) のことです：これをアプリの `test/support/` にコピーしてください。このディレクトリのファイルは実行されず、require されるだけです。このファイルは新しい `storage/test.sqlite3` にマイグレーションを適用し、アプリを `BLOG` として起動し、`Cybertrain::Test`、そのクライアント、ジョブ用のヘルパーを読み込み、`BlogTest.form_token`（最後にレンダリングされたフォームの CSRF トークン）、`BlogTest.article_path`、`BlogTest.article` と `BlogTest.comment`（それぞれ保存済みのレコードを返します）、`BlogTest.reset`（テーブル、キャッシュ、ジョブのキューを空にします）を提供します。
 > - ファイルの最後に `Cybertrain::Test.run!` を書きます。これがテストを実行し、スナップショットで比較される行を出力します。
 > - 比較される出力にリクエストログが混ざらないよう、`c.log_level = :none if c.test?` を `config/app.rb` で設定します。
 
@@ -498,7 +814,7 @@ end
 cybertrain spin test
 ```
 
-`cybertrain spin test` は固定された Spinel で `spin test` を実行します。ツールチェーンが `PATH` 上にあれば（[ステップ 00](#requirements)）、`spin test` でも同じです。各 `test/*.rb` をそれぞれ独立したプログラムにコンパイルし、その出力（stdout と stderr をまとめたもの）を、コミット済みのスナップショット `test/<name>.rb.expected` と比較します。`test/support/` 内のファイルは実行されず、require されるだけです。スナップショットを書き出すには：
+`cybertrain spin test` は固定された Spinel で `spin test` を実行します。ツールチェーンが `PATH` 上にあれば（[ステップ 00](#requirements)）、`spin test` でも同じです。各 `test/*.rb` をそれぞれ独立したプログラムにコンパイルし、その出力（stdout と stderr をまとめたもの）を、コミット済みのスナップショット `test/<name>.rb.expected` と比較します。`test/support/` 内のファイルは実行されず、require されるだけです。ステップ 12 と 14 でジェネレーターが書き出したテスト（`test/comments_helper.rb`、`test/notify_comment_job.rb`）も、ほかのテストと一緒に実行されます。スナップショットを書き出すには：
 
 ```shell ターミナル — blog/
 cybertrain spin test --regen test/<name>.rb
@@ -508,7 +824,7 @@ rm -f build/test/<name>; cybertrain spin test test/<name>.rb; [ -x build/test/<n
 > [!NOTE]
 > `--regen` は CRuby での出力からスナップショットを書き出します。FFI 経由で SQLite に触れるテストは CRuby では実行できないため、そのスナップショットはコンパイル済みバイナリから作ります（上の 2 行目）。スナップショットが古い間は `cybertrain spin test` が 0 以外で終了するため、後続は `;` でつなぎ、`&&` は使いません。`[ -x ]` のチェックにより、コンパイルに失敗したときは出力の取り込みをスキップするので、古いスナップショットが残ります。CRuby で実行できないテストは、このスナップショットがないと `cybertrain spin test` が通りません。スナップショットのないその他のテストは、CRuby での出力と比較されます。
 
-<!-- step 13 #authentication stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
+<!-- step 17 #authentication stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## サインインを追加する
 
 > [!WHY]
@@ -550,9 +866,14 @@ class ArticlesController < ApplicationController
 
 <% if @current_user %>
   <h2>Add a comment:</h2>
-  <%= render "comments/form" %>
+
+  <div id="comment_form">
+    <%= render "comments/form" %>
+  </div>
 <% end %>
 ```
+
+コメントのコンポーネントの「Destroy comment」ボタンは、誰に対しても表示されたままです：ブロードキャストはコンポーネントを、すべての閲覧者に向けて一度だけ、リクエストなしで、つまり現在のユーザーなしでレンダリングするからです。訪問者がこのボタンを押すと、サインイン画面に送られます。`CommentsController` はどのアクションも開放していないためです。新しいコメントは訪問者のページにも届きます。ストリームはコントローラーのアクションではないからです。
 
 サーバーを起動して `http://127.0.0.1:3000/sign_up` を開き、最初のユーザーを作成します。Rails のジェネレーターにはサインアップ画面がなく、最初のユーザーはコンソールで作りますが、CyberTrain は `RegistrationsController` を書き出すので、最初のユーザーはブラウザーでサインアップします。招待制のアプリでは、これとそのルートを削除してください。
 
@@ -609,7 +930,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ### テストを更新する
 
-[ステップ 12](#test) のテストのうち、フォームを期待するもの、フォームを送信するもの、`index` と `show` 以外のアクションに到達するものは、代わりにサインイン画面に行き着きます。ジェネレーターが `test/support/app_test.rb` に書いたヘルパーで、先にクライアントをサインインさせます：
+[ステップ 16](#test) のテストのうち、フォームを期待するもの、フォームを送信するもの、`index` と `show` 以外のアクションに到達するものは、代わりにサインイン画面に行き着きます。ジェネレーターが `test/support/app_test.rb` に書いたヘルパーで、先にクライアントをサインインさせます：
 
 ```ruby test/signed_in.rb
 require_relative "support/app_test"   # written by generate authentication: APP, AppTest
@@ -627,9 +948,9 @@ end
 ```
 
 > [!NOTE]
-> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。カウントはアプリのデータベース（`Cybertrain::Cache`）にあるので、アプリのすべてのプロセスがまとめて数えます。リバースプロキシの背後では、[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定しない限り、訪問者は全員がプロキシのアドレスとして数えられます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
+> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。カウントはアプリのデータベース（`Cybertrain::Cache`）にあるので、アプリのすべてのプロセスがまとめて数えます。リバースプロキシの背後では、[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定しない限り、訪問者は全員がプロキシのアドレスとして数えられます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
 
-<!-- step 14 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
+<!-- step 18 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する
 
 > [!WHY]
@@ -644,7 +965,7 @@ cybertrain db migrate                          # articles に cover_* のカラ�
 
 ```ruby app/controllers/articles_controller.rb （抜粋）
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 13 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -670,7 +991,7 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-ステップ 13 ですべてのページが非公開になり、公開された記事ページの画像は `/articles/1/cover` から取得されます。ジェネレーターは、ダウンロードを記事ページとちょうど同じだけ公開します。`allow_unauthenticated_access` に `:show` があるので、上のコードの 1 行目のように、そのリストに `:cover` を加えます。これで、記事を読める訪問者には画像も表示されます。記事ページにサインインが必要なら、ダウンロードにも必要になります。`set_article` がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。
+ステップ 17 ですべてのページが非公開になり、公開された記事ページの画像は `/articles/1/cover` から取得されます。ジェネレーターは、ダウンロードを記事ページとちょうど同じだけ公開します。`allow_unauthenticated_access` に `:show` があるので、上のコードの 1 行目のように、そのリストに `:cover` を加えます。これで、記事を読める訪問者には画像も表示されます。記事ページにサインインが必要なら、ダウンロードにも必要になります。`set_article` がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。
 
 ジェネレーターは、`config/routes.rb` に `get "/articles/:id/cover"` を、フォームに `multipart: true` と、送信ボタンの上のファイル入力を、表示ページの `<h1>` の直後に画像を、それぞれ追加します：
 
@@ -688,6 +1009,9 @@ class ArticlesController < ApplicationController
 <% if @article.cover_attached? %><p><img src="<%= @article.cover_url %>" alt="<%= @article.cover_filename %>"></p><% end %>
 ```
 
+> [!NOTE]
+> ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、それはルールを読み取れる場合だけです：`show` は、`before_action :set_article` の対象になっている、スキャフォールドが書き出したままの空のアクションでなければなりません。`def show` の中にコードがあるか、新しいアクションを含まずに `:show` を挙げた別の `before_action` があると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。ここまで `show` を空のままにしてきたのはそのためです。ここから先は中身を増やせます（[ステップ 15](#json) の JSON での応答や、フォーム用の `@comment`）。その場合、`cover` を `show` と同じだけ制限された状態に保つのは、あなたの仕事です。
+
 > [!RULE] Spinel のルール：has_one_attached
 > ### `has_one_attached` は書き下される
 >
@@ -704,9 +1028,9 @@ class ArticlesController < ApplicationController
 サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは `test/attachment_article_cover.rb` も書き出しています。このテストは一連の流れ全体を確かめ、アプリに `User` があるので最初にサインインします。ここでは `:cover` が公開されているので、訪問者がカバー画像をダウンロードできることを確かめます。本文には、[ステップ 05](#validations) の最小 10 文字に合わせて伸ばした `"A article."` を入れます。
 
 > [!NOTE]
-> [ステップ 12](#test) と同じく `cybertrain spin test` で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
+> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
 
-<!-- step 15 #ship stage: 実行時 · `dist/blog` -->
+<!-- step 19 #ship stage: 実行時 · `dist/blog` -->
 ## デプロイ用にビルドする
 
 > [!WHY]
@@ -725,7 +1049,7 @@ cybertrain build
   <li><code>dist/tmp/</code><span>空の状態で作成（再ビルドで空にされることはない）</span></li>
 </ul>
 
-`dist/` を同じ OS と CPU のマシンにコピーし（バイナリはシステムの SQLite にリンクします）、そこで実行します。ビルドしたバイナリはデフォルトで本番環境として動きます（`CYBERTRAIN_ENV` で上書きできます）。`CYBERTRAIN_SECRET_KEY_BASE` を設定してください。例：
+`dist/` を同じ OS と CPU のマシンにコピーし（バイナリはシステムの SQLite にリンクします）、そこで実行します。ビルドしたバイナリはデフォルトで本番環境として動きます（`CYBERTRAIN_ENV` で上書きできます）。`CYBERTRAIN_SECRET_KEY_BASE` を設定してください（`cybertrain secret` でも生成できます）。例：
 
 ```shell ターミナル — 本番ホスト
 cd dist
@@ -733,9 +1057,9 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"
 ./blog migrate && ./blog
 ```
 
-`./blog migrate` はバイナリに組み込まれたマイグレーションを適用し、`./blog db status` はその状態を表示します。ポートは `PORT` で設定します。シークレットは再起動をまたいで同じ値に保ってください：変更するとすべてのセッションが終了します。
+`./blog migrate` はバイナリに組み込まれたマイグレーションを適用し、`./blog db status` はその状態を表示します。ポートは `PORT` で設定します。シークレットは再起動をまたいで同じ値に保ってください：変更するとすべてのセッションが終了します。`./blog help` は、`worker`、`jobs`、`console`、`db backup` など、バイナリのほかのコマンドを一覧します。
 
-`Cybertrain::Config` はまず環境変数を読み、`config/app.rb` がそれを上書きします：
+`Cybertrain::Config` はまず環境変数を読み、`config/app.rb` がそれを上書きします。最初のデプロイで出会う変数は次のとおりです（すべての変数は[設定](configuration.md#configuration-and-environment-variables)にあります）：
 
 <div class="table-scroll" role="region" aria-label="環境変数" tabindex="0" markdown="0">
 <table class="env">
@@ -762,7 +1086,8 @@ end
 ```
 
 <!-- list: points -->
-- サーバーが話すのは素の HTTP/1.1 です：TLS と HTTP/2 には前段に nginx か Caddy を置いてください。本番環境ではセッション cookie が `Secure` になるので、HTTPS で配信してください（本番環境が本当に素の http である場合に限り、`c.session_secure = false` を `config/app.rb` で設定します）。
+- サーバーが話すのは素の HTTP/1.1 です：TLS と HTTP/2 には前段に nginx か Caddy を置いてください。本番環境ではセッション cookie が `Secure` になるので、HTTPS で配信してください（本番環境が本当に素の http である場合に限り、`c.session_secure = false` を `config/app.rb` で設定します）。そうしたプロキシの後ろでは、`CYBERTRAIN_FORCE_SSL=1` で http を https にリダイレクトし、`CYBERTRAIN_HOSTS` でアプリが応答するホスト名を指定します（[ホストと `force_ssl`](requests.md#content-security-policy-force_ssl-and-hosts)）。
+- サーバーのプロセスは、ステップ 13 と 14 のジョブ、定期タスク、ストリームのポーラーも実行します：プロセス 1 つでデプロイ全体が成り立ちます。`./blog worker` を使うと、ジョブを専用のプロセスに移せます（[プロセスの役割](background-and-operations.md#process-roles)）。
 - 本番環境では、`CYBERTRAIN_SECRET_KEY_BASE` がないと起動を拒否します。
 - 本番環境では例外に対して 500 を返し、素のエラーレスポンス（ルーターのプレーンテキストの 404、`head :not_found`、`render plain:`）は、`public/<status>.html` が存在すればそれに置き換えられます。`cybertrain new` は `404.html` と `500.html` を書き出します。
 - `SIGTERM` を受けると新たな受け付けを止め、処理中のリクエストを完了させ、それらが終わった時点か、サーバーの `drain_timeout`（10 秒）が過ぎた時点で終了します。
@@ -792,11 +1117,12 @@ kamal deploy   # 以降のデプロイ
 - セッションに保持できるのは String のみで、暗号化した cookie に入ります。
 - データベースは SQLite のみで、Spinel の FFI を経由します。
 - バックトレースはありません：エラーにはクラス、メッセージ、リクエスト行、テンプレート名と行番号が表示されます。
-- ビュー内で属性名を書き間違えると、例外にならず空としてレンダリングされます。これは既知の課題です。
+- ビュー内で属性名を書き間違えると例外になります（`undefined method 'titel' for Article`）。`nil` が入っているカラムは空としてレンダリングされます。
 - 関連付けは外部キーか一行の宣言から作られます。`has_many :through`、入れ子の `includes`、enum、STI、ポリモーフィック関連付けはありません。
-- `constraints` と `mount` はありません。JSON は `render json:` で返し、これは最小限です。
+- `constraints` と `mount` はありません。JSON は `render json:` で返します（JSON のテンプレートはありません）。
 - スキャフォールドで生成したモデルでは、最初の string フィールドにだけデフォルトで presence バリデーションが付きます。
-- ジェネレーターは `app/controllers` と `app/models` に対して、パーサーではなく字句スキャン（正規表現）を使います。
+- ジェネレーターは `app/controllers`、`app/models`、`app/helpers`、`app/components`、`app/jobs` に対して、パーサーではなく字句スキャン（正規表現）を使います。
+- ジョブは少なくとも 1 回実行されます。ブロードキャストが届くのは、送信の時点で開いているページか、1 分以内に再接続したページだけです。
 - ビューはビルド時に埋め込まれます：ビューだけの変更でも、本番環境に反映するには `cybertrain build` と再起動が必要です。
 - `dist/` は、実行するマシンと同じ OS と CPU でビルドしてください：バイナリはシステムの SQLite にリンクします。
 - `SPINEL_WORKERS` のデフォルトは `1` です。
@@ -807,7 +1133,8 @@ kamal deploy   # 以降のデプロイ
 ## 次に読むもの
 
 <!-- list: next-list -->
-- [**`examples/blog`**](../../examples/blog) — 完成したアプリとそのテスト。
+- [**`examples/blog`**](../../examples/blog) — このチュートリアルを発展させたアプリとそのテスト。
+- [**ガイド**](index.md) — トピックごとに 1 ページ：モデル、リクエスト、テンプレート、リアルタイム、バックグラウンド処理、テスト。
 - [**GitHub の CyberTrain**](https://github.com/saeki-mototsune/CyberTrain) — ソースコード、README、リリース。
 - [**API リファレンス**](site:api/index.html) — アプリが使うすべてのクラスとメソッドを、例とともに。
 - [**`spikes/NOTES.md`**](../../spikes/NOTES.md) — スパイク（技術検証）と、そこで見つかったコンパイラの制約。
