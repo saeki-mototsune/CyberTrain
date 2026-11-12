@@ -4,6 +4,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -132,6 +133,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -237,6 +239,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -297,6 +300,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -383,6 +387,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -481,6 +486,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -567,6 +573,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -652,6 +659,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -725,6 +733,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -798,6 +807,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -871,6 +881,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -944,6 +955,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1017,6 +1029,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1091,6 +1104,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1177,6 +1191,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1264,6 +1279,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1351,6 +1367,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1384,6 +1401,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1493,6 +1511,7 @@ identical test/passwords.rb
 identical test/accounts.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
 skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
 identical test/attachment_product_photo.rb (signs in already)
@@ -1505,6 +1524,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1575,6 +1595,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1623,6 +1644,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1677,6 +1699,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1747,6 +1770,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -1834,6 +1858,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
