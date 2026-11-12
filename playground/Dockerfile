@@ -39,15 +39,16 @@ ENV LANG=C.UTF-8 \
     XDG_CACHE_HOME=/opt/cybertrain-cache \
     PATH=/opt/cybertrain/bin:${PATH}
 
-# Ruby 3.2 for the CLI, a C toolchain, make, git, curl and the SQLite headers
-# (what `cybertrain doctor` checks); gcc + libc6-dev rather than
-# build-essential (no g++). procps: ps/pgrep for terminals and smoke.sh.
+# Ruby 3.2 for the CLI, a C toolchain, make, git, curl and the SQLite, zlib
+# and OpenSSL headers (what `cybertrain doctor` checks, and fails without:
+# every app links all three); gcc + libc6-dev rather than build-essential
+# (no g++). procps: ps/pgrep for terminals and smoke.sh.
 # ruby-dev and the prism gem: Spinel's build runs a Ruby generator that
 # requires prism, which Ruby 3.2 does not bundle (1.9.0 is PRISM_VERSION in
 # Spinel's Makefile at Cybertrain::SPINEL_TAG).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        ca-certificates curl git gcc make libc6-dev libsqlite3-dev zlib1g-dev procps ruby ruby-dev \
+        ca-certificates curl git gcc make libc6-dev libsqlite3-dev zlib1g-dev libssl-dev procps ruby ruby-dev \
  && rm -rf /var/lib/apt/lists/* \
  && gem install --no-document prism -v 1.9.0
 

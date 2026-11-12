@@ -10,6 +10,9 @@
 
 - [ ] `script/gate` passes (the pre-commit hook runs it; CI runs it as "Gate")
 - [ ] `spin test` passes, or the failures are explained below
+- [ ] A change to the framework's structure (code moved between methods, classes or
+      files, a new abstraction, different generator output) was run compiled under
+      Spinel, not only under CRuby; the tests run are named below
 - [ ] New or changed behaviour has a test under `test/`; changed snapshots
       (`test/*.rb.expected`) are explained below
 - [ ] Documentation that describes the changed behaviour is updated (README,

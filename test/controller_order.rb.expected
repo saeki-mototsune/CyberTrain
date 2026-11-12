@@ -1,0 +1,11 @@
+ok   before callbacks, the action, the implicit render, the after callbacks, then Vary
+ok   an action that rendered is not rendered again before the after callbacks
+ok   a before callback that renders stops the later callbacks, the action, the implicit render and the after callbacks
+ok   an exception in the action goes to rescue_from: no implicit render, no after callbacks
+ok   an exception in a before callback goes to rescue_from: nothing after it runs
+ok   an exception in an after callback goes to rescue_from, whose render replaces the action's
+ok   a handler runs on the response the action left: its headers stay, its render is replaced
+ok   a handler that renders nothing leaves the response unperformed: no implicit render after it
+ok   an exception in the implicit render skips the after callbacks and propagates
+ok   an exception without a handler skips the after callbacks and propagates
+10 tests, 36 assertions, 0 failures

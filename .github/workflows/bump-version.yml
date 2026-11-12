@@ -13,17 +13,21 @@
 #
 # The Gate and CI must run on this pull request, above all when Spinel moves,
 # but GitHub starts no workflows for a push or a pull request made with
-# GITHUB_TOKEN. Set the repository secret RELEASE_PR_TOKEN (a fine-grained
-# token for this repository with Contents, Pull requests and Workflows: read
-# and write) and the run pushes and opens the pull request with it, so they
-# run. Workflows is needed because a Spinel bump changes
-# .github/workflows/ci.yml, which GitHub refuses to take from a push without
-# it; GITHUB_TOKEN can never have it, so without RELEASE_PR_TOKEN a Spinel
-# bump stops before anything is pushed. A version-only bump still works
-# without it: the run uses GITHUB_TOKEN, which needs Settings -> Actions ->
-# General -> Workflow permissions -> "Allow GitHub Actions to create and
-# approve pull requests", and the pull request says the checks must be
-# started by hand.
+# GITHUB_TOKEN. So the run needs the repository secret RELEASE_PR_TOKEN: a
+# fine-grained personal access token for this repository with Contents, Pull
+# requests and Workflows: read and write (Settings -> Secrets and variables
+# -> Actions -> New repository secret). It pushes the branch and opens the
+# pull request with that token, so the checks start. Workflows is needed
+# because a Spinel bump changes .github/workflows/ci.yml, which GitHub
+# refuses to take from a push without it. Without the secret, or with one
+# GitHub no longer accepts, the run fails in its first step, before anything
+# is pushed: there is no fallback to GITHUB_TOKEN, which would open a pull
+# request that can be merged with no check ever run on it.
+#
+# After it has opened or updated the pull request, the run waits until the
+# Gate and CI have started on the commit it pushed, and fails if they have
+# not within three minutes: the pull request is then open but unchecked, and
+# the error says so.
 name: Bump version
 
 on:
@@ -54,17 +58,35 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # To see that the Gate and CI started on the pull request (last step).
+      actions: read
     env:
       # Inputs reach the scripts only through the environment, never spliced
       # into a command line.
       VERSION_INPUT: ${{ inputs.cybertrain_version }}
       SPINEL_INPUT: ${{ inputs.spinel_tag }}
-      HAS_PR_TOKEN: ${{ secrets.RELEASE_PR_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v7
+      # First, before anything is checked out or pushed. Secrets cannot be
+      # read in an `if:`, so the step looks at its environment.
+      - name: RELEASE_PR_TOKEN is set and GitHub accepts it
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::the repository secret RELEASE_PR_TOKEN is not set. Create a fine-grained personal access token for this repository with Contents, Pull requests and Workflows: read and write, and save it as RELEASE_PR_TOKEN (Settings -> Secrets and variables -> Actions). GITHUB_TOKEN is not used instead: a pull request it opens starts neither the Gate nor CI."
+            exit 1
+          fi
+          if ! gh api "repos/$GITHUB_REPOSITORY" --jq .full_name > /dev/null; then
+            echo "::error::GitHub does not accept RELEASE_PR_TOKEN for $GITHUB_REPOSITORY (expired, revoked, or not granted this repository). Replace the secret with a fine-grained token that has Contents, Pull requests and Workflows: read and write."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
-          token: ${{ secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PR_TOKEN }}
+          # Kept: "Open the pull request" pushes the branch with this token.
+          persist-credentials: true
 
       - name: Check the inputs
         id: inputs
@@ -107,15 +129,6 @@ jobs:
 
       # The same pins script/gate checks, so a pull request that would fail the
       # Gate on them is never opened.
-      # GITHUB_TOKEN cannot push a change to .github/workflows/ (no Workflows
-      # permission), so say why here rather than fail at the push.
-      - name: A change to ci.yml has a token that may push it
-        run: |
-          if ! git diff --quiet -- .github/workflows/ && [ "$HAS_PR_TOKEN" != "true" ]; then
-            echo "::error::moving Spinel changes .github/workflows/ci.yml, which GITHUB_TOKEN may not push; set the RELEASE_PR_TOKEN secret (Contents, Pull requests and Workflows: read and write)"
-            exit 1
-          fi
-
       - name: The pins agree
         run: |
           ruby -e '
@@ -130,8 +143,9 @@ jobs:
           '
 
       - name: Open the pull request
+        id: pr
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
           VERSION: ${{ steps.inputs.outputs.version }}
           BRANCH: release/bump-v${{ steps.inputs.outputs.version }}
         run: |
@@ -145,13 +159,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$BRANCH"
           git commit -q -a -m "$title" -m "Moved by script/bump-version in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
-          git push --force origin "$BRANCH"
-
-          if [ "$HAS_PR_TOKEN" = "true" ]; then
-            checks="The Gate and CI run on this pull request (its branch was pushed with RELEASE_PR_TOKEN)."
-          else
-            checks="**The Gate and CI did not start**: its branch was pushed with GITHUB_TOKEN, which starts no workflows. Close and reopen it (or push a commit to the branch) to run them, or set the RELEASE_PR_TOKEN secret (see .github/workflows/bump-version.yml)."
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if ! git push --force origin "$BRANCH"; then
+            echo "::error::RELEASE_PR_TOKEN could not push $BRANCH. It needs Contents: read and write, and Workflows: read and write when Spinel moves (the bump then changes .github/workflows/ci.yml)."
+            exit 1
           fi
+
+          checks="The Gate and CI run on this pull request (its branch was pushed with RELEASE_PR_TOKEN, and the run that opened it waits until both have started)."
           body="Moves main from cybertrain $old_version (Spinel $old_spinel) to cybertrain $VERSION (Spinel $spinel), with \`script/bump-version\`: \`cybertrain/version.rb\`, \`spin.toml\`, \`SPINEL_TAG\` in \`.github/workflows/ci.yml\` and the numbers the tests expect.
 
           $checks
@@ -169,3 +183,32 @@ jobs:
           else
             gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" --title "$title" --body "$body"
           fi
+
+      # The reason RELEASE_PR_TOKEN is required, checked rather than assumed:
+      # a pull_request run of each workflow exists for the pushed commit. Read
+      # with GITHUB_TOKEN (actions: read), which the secret need not have.
+      # A bump always changes cybertrain/version.rb, so CI's path filter
+      # lets it through.
+      - name: The Gate and CI started on the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          WORKFLOWS: gate.yml ci.yml
+        run: |
+          set -eu
+          missing="$WORKFLOWS"
+          for i in $(seq 1 18); do
+            started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&event=pull_request&per_page=100" \
+              --jq '.workflow_runs[].path' || true)
+            missing=""
+            for workflow in $WORKFLOWS; do
+              printf '%s\n' "$started" | grep -qx ".github/workflows/$workflow" || missing="$missing $workflow"
+            done
+            if [ -z "$missing" ]; then
+              echo "started on $SHA: $WORKFLOWS"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::the pull request is open, but no run of$missing started on $SHA within 3 minutes. Do not merge it unchecked: see the pull request's Checks tab, and close and reopen it to start them."
+          exit 1

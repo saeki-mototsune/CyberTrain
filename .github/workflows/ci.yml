@@ -4,14 +4,18 @@ name: CI
 # homepage, the tutorial, the deploy and playground pages: static files that
 # nothing below reads; pages.yml publishes it) and Markdown files anywhere.
 # The exception is the API reference's Markdown source (docs/api/README.md;
-# see .yardopts), which the "API reference builds" step below checks. Nor do the repository scripts and git hooks: the Gate
+# see .yardopts), which the api-docs job below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
-# reads them except script/api-docs and script/test-shard, which are brought
-# back in. Nor do the other workflows (release, images, pages, gate): only this
+# reads them except script/api-docs, script/test-shard and script/ci-changes,
+# which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
 # files back in (a later pattern wins).
+# `paths` starts the whole workflow or none of it. Which jobs a run needs is
+# the `changes` job's to say: a change to the API reference's own inputs
+# alone (docs/api/**, script/api-docs, .yardopts) runs the api-docs job and
+# skips the jobs that compile (script/ci-changes has the rule).
 # push runs only on main: a branch is tested by its pull request, and a push
 # to it would otherwise run everything a second time.
 on:
@@ -28,6 +32,7 @@ on:
       - "docs/api/**"
       - "script/api-docs"
       - "script/test-shard"
+      - "script/ci-changes"
   pull_request:
     paths:
       - "**"
@@ -40,6 +45,14 @@ on:
       - "docs/api/**"
       - "script/api-docs"
       - "script/test-shard"
+      - "script/ci-changes"
+  # For a merge queue on main, which is not turned on (docs/design.md, D34,
+  # the status of 2026-11-11, has what turning it on takes): the queue waits
+  # for the required checks on a `merge_group` event, and a workflow without
+  # this trigger never reports there. `merge_group` takes no `paths`, so
+  # every group starts this workflow and the `changes` job skips the jobs
+  # the group does not need. Until the queue is on, nothing sends the event.
+  merge_group:
   # release.yml runs this whole file on the tag before it creates a release
   # (with `ref` set to the tag on a manual release run, which takes this file
   # from the branch it was started on, but .github/actions/setup-spinel and
@@ -59,6 +72,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every job only reads the repository: it builds and tests, and publishes
+# nothing.
+permissions:
+  contents: read
+
 env:
   # Must equal Cybertrain::SPINEL_TAG (script/gate checks, in the Gate
   # workflow): the release the CLI installs and the framework is tested against.
@@ -67,22 +85,106 @@ env:
   # another branch's copy of this file still keys the toolchain it builds.
   SPINEL_TAG: "2026.11.04.7026"
 
+# Every job has a timeout-minutes, so that a hung compile or a server that
+# never answers ends the job instead of running to GitHub's limit of six
+# hours. Each is roughly twice the longest the job was seen to take, or more; the
+# measurements are in docs/design.md (D34, the status of 2026-11-11). Raise a
+# limit when the suite has grown into it, not when one run was slow.
 jobs:
+  # Whether this run needs the jobs that compile (framework-tests, test,
+  # setup-cybertrain): `framework` is false when every changed file is one
+  # only the API reference reads, or one `paths` above leaves out
+  # (script/ci-changes). A release run (release.yml passes `ref`) runs
+  # everything, and so does a run whose changed files cannot be listed.
+  changes:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      framework: ${{ steps.decide.outputs.framework }}
+    steps:
+      # Two commits: on a pull request the checkout is the merge commit, whose
+      # first parent is the base branch; on main, the commit before a merge.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+          fetch-depth: 2
+
+      - name: Decide from the changed files
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          CALLED_WITH_REF: ${{ inputs.ref }}
+          BEFORE: ${{ github.event.before }}
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          base=""
+          if [ -n "$CALLED_WITH_REF" ]; then
+            echo "a run for $CALLED_WITH_REF (release.yml): every job"
+          elif [ "$EVENT" = pull_request ]; then
+            # HEAD is the merge of the pull request into its base.
+            base=$(git rev-parse --verify --quiet "HEAD^2" > /dev/null && git rev-parse HEAD^1) || base=""
+          elif [ "$EVENT" = push ]; then
+            # The commit main was at before the push, when the checkout has
+            # it (it is HEAD's parent for a merged pull request).
+            if git cat-file -e "$BEFORE^{commit}" 2> /dev/null; then base="$BEFORE"; fi
+          elif [ "$EVENT" = merge_group ]; then
+            # The commit the queue built this group on: HEAD's parent.
+            if git cat-file -e "$MERGE_GROUP_BASE^{commit}" 2> /dev/null; then base="$MERGE_GROUP_BASE"; fi
+          fi
+          if [ -z "$base" ]; then
+            echo "no base commit to compare with: every job"
+            echo "framework=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$base" HEAD > "$RUNNER_TEMP/changed"
+          echo "changed since $base:"
+          sed 's/^/  /' "$RUNNER_TEMP/changed"
+          script/ci-changes < "$RUNNER_TEMP/changed" | tee -a "$GITHUB_OUTPUT"
+
+  # The API reference (YARD, published with the site) must build without
+  # a warning: an unknown tag or a {Link} to nothing fails it. On every run
+  # of this workflow: its inputs are the framework's sources (.yardopts) as
+  # well as docs/api/, and it takes under a minute.
+  api-docs:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          ruby-version: "3.3"
+
+      - name: API reference builds
+        run: |
+          gem install --no-document yard -v "~> 0.9"
+          gem install --no-document kramdown -v "~> 2.5"
+          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
+          script/api-docs
+
   # The framework's test programs on Ubuntu, in four parallel jobs: each
   # program is compiled on its own, so the programs split cleanly. A job of
   # its own, not steps of `test`: that job keeps its name and the end-to-end
   # checks. macOS stays one job (the step in `test`): shards there ran one
   # after another, so the run waited on them (docs/design.md, D34).
   framework-tests:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
     strategy:
       fail-fast: false
       matrix:
         shard: [0, 1, 2, 3]
     runs-on: ubuntu-26.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-spinel
 
@@ -92,30 +194,26 @@ jobs:
           script/test-shard ${{ matrix.shard }} 4
 
   test:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-26.04, macos-latest]
     runs-on: ${{ matrix.os }}
+    # macOS also runs the whole of `spin test` here, in one job.
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 120 || 60 }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-spinel
 
       # The version pins, script/check-reserved-names, check-client-faults and
       # check-http-layer run in the Gate workflow (script/gate), on every change.
-
-      # The API reference (YARD, published with the site) must build without
-      # a warning: an unknown tag or a {Link} to nothing fails it.
-      - name: API reference builds
-        if: runner.os == 'Linux'
-        run: |
-          gem install --no-document yard
-          gem install --no-document kramdown -v "~> 2.5"
-          gem install --no-document kramdown-parser-gfm -v "~> 1.1"
-          script/api-docs
+      # The API reference builds in the api-docs job.
 
       - name: Framework tests
         if: runner.os == 'macOS'
@@ -251,15 +349,138 @@ jobs:
           cybertrain db migrate
           cybertrain spin run gen -- --check
 
+      # `git status`, not `git diff`: a file the generator writes that was
+      # never committed is untracked, and `git diff` does not see it.
       - name: Generated code is fresh (examples/blog)
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
           spin run gen
-          git diff --exit-code -- gen/
+          changed=$(git status --porcelain --untracked-files=all -- gen/)
+          if [ -n "$changed" ]; then
+            echo "examples/blog/gen/ is not what \`spin run gen\` writes (M changed, D gone, ?? never committed):"
+            echo "$changed"
+            git diff -- gen/
+            exit 1
+          fi
 
       - name: Example app tests
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
           spin test
+
+  # The action applications use (.github/actions/setup-cybertrain, which the
+  # workflow `cybertrain new` writes calls at a release tag), run from this
+  # checkout the way an application's CI runs it: an application at the
+  # workspace root, the action, then that workflow's own steps (`spin lock`,
+  # `spin run gen -- --check`). The jobs above use setup-spinel, so without
+  # this job a change that breaks the published action passes everything.
+  # Both ways the action finds the framework: the commit in spin.lock (git)
+  # and the framework-path input. macOS runs the git route only: the steps
+  # that differ by OS (the packages, Homebrew's OpenSSL) are the same on
+  # both routes.
+  setup-cybertrain:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-26.04
+            route: git
+          - os: ubuntu-26.04
+            route: framework-path
+          - os: macos-latest
+            route: git
+    name: setup-cybertrain (${{ matrix.os }}, ${{ matrix.route }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # The framework in framework/, where an application would keep a
+      # submodule; the application itself goes at the workspace root.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+          path: framework
+
+      # For `cybertrain new` below only; the action sets up Ruby itself.
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          ruby-version: "3.3"
+
+      # --skip-spin: there is no Spinel yet, installing it is the action's
+      # job. So the git route's spin.lock is written here, in the form `spin
+      # lock` writes it (the last step fails when spin's own differs); the
+      # path route has none, as the action's comment says.
+      - name: Generate an application at the workspace root
+        env:
+          ROUTE: ${{ matrix.route }}
+        run: |
+          framework="$GITHUB_WORKSPACE/framework"
+          sha=$(git -C "$framework" rev-parse HEAD)
+          mkdir "$RUNNER_TEMP/new" && cd "$RUNNER_TEMP/new"
+          if [ "$ROUTE" = git ]; then
+            git -C "$framework" tag -f ci-setup-action HEAD
+            ruby -I "$framework" "$framework/exe/cybertrain" new app --git "file://$framework" --ref ci-setup-action --skip-spin
+            version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' "$framework/cybertrain/version.rb" | head -n 1)
+            {
+              echo "# generated by spin lock -- diff me, don't edit me"
+              echo
+              echo "[lock.cybertrain]"
+              echo "version = \"$version\""
+              echo "git = \"file://$framework\""
+              echo "ref = \"$sha\""
+            } > app/spin.lock
+          else
+            ruby -I "$framework" "$framework/exe/cybertrain" new app --path "$framework" --skip-spin
+          fi
+          cp -R app/. "$GITHUB_WORKSPACE/"
+          cd "$GITHUB_WORKSPACE"
+          test -f spin.toml
+          # Nothing has installed Spinel before the action.
+          if command -v spin || command -v spinel; then echo "spin is on PATH before the action ran"; exit 1; fi
+
+      - name: Run the action from this checkout
+        id: setup
+        uses: ./framework/.github/actions/setup-cybertrain
+        with:
+          framework-path: ${{ matrix.route == 'framework-path' && 'framework' || '' }}
+
+      - name: The action's outputs name the framework and its Spinel release
+        env:
+          ROUTE: ${{ matrix.route }}
+          FRAMEWORK_PATH: ${{ steps.setup.outputs.framework-path }}
+          FRAMEWORK_REF: ${{ steps.setup.outputs.framework-ref }}
+          SPINEL_TAG_INSTALLED: ${{ steps.setup.outputs.spinel-tag }}
+        run: |
+          sha=$(git -C framework rev-parse HEAD)
+          tag=$(sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' framework/cybertrain/version.rb | head -n 1)
+          test -n "$tag"
+          test "$SPINEL_TAG_INSTALLED" = "$tag"
+          if [ "$ROUTE" = git ]; then
+            test "$FRAMEWORK_REF" = "$sha"
+            test "$FRAMEWORK_PATH" -ef "$RUNNER_TEMP/cybertrain-framework"
+            # The commit in spin.lock is the one that was fetched.
+            test "$(git -C "$FRAMEWORK_PATH" rev-parse HEAD)" = "$sha"
+          else
+            test -z "$FRAMEWORK_REF"
+            test "$FRAMEWORK_PATH" -ef framework
+          fi
+          # spin and spinel are on PATH, at the release that commit pins.
+          spin --version | grep -F "$tag"
+          spinel --version | grep -F "$tag"
+
+      # What the generated workflow runs after the action (the app has no
+      # test/*.rb yet, so no `spin test`): spin resolves the framework, and
+      # the gen program compiles against it and runs.
+      - name: spin.lock is what spin writes, and gen/ builds
+        env:
+          ROUTE: ${{ matrix.route }}
+        run: |
+          if [ "$ROUTE" = git ]; then cp spin.lock "$RUNNER_TEMP/spin.lock.given"; fi
+          spin lock
+          if [ "$ROUTE" = git ]; then diff "$RUNNER_TEMP/spin.lock.given" spin.lock; fi
+          spin run gen
+          spin run gen -- --check

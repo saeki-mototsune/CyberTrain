@@ -1,0 +1,18 @@
+# actionlint's configuration (script/lint-workflows, run by the Gate workflow).
+
+# Runner labels the pinned actionlint does not list yet. It reads this key
+# for self-hosted runners; a label named here is simply not reported.
+# ubuntu-26.04 is GitHub's hosted image. Remove a label once the actionlint
+# version pinned in .github/workflows/gate.yml knows it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+
+paths:
+  .github/**/*.{yml,yaml}:
+    ignore:
+      # `for i in $(seq 1 40); do curl ... && break; sleep 0.5; done`: the
+      # loops that wait for a server to answer count and never read the
+      # counter. shellcheck's SC2034 for exactly that variable is left alone;
+      # any other unused variable is still reported.
+      - 'SC2034:.+: i appears unused'

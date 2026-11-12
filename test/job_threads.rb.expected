@@ -7,4 +7,4 @@ ok   the scheduler no longer runs jobs as a task
 ok   a keyed limit: two keys run at once, the same key does not
 ok   request_stop (the TERM trap) starts the drain: stop! waits only what is left of it
 ok   stop! waits at most job_drain_timeout and leaves an unfinished job running for recovery
-9 tests, 67 assertions, 0 failures
+9 tests, 70 assertions, 0 failures

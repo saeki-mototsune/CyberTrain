@@ -113,6 +113,8 @@ for the evidence needed to change a status.
 | 94, 96, 97 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
 | 95 | Works on this build: a record of a form that compiles, not of a defect. |
 | 98 | Tool behaviour, checked 2026-11-11: generated C inside a package is refused as input and can invalidate builds. Keep probe outputs outside the package. |
+| 99 | **Still there**: found on this build (2026-11-11, issue #188): `dup` on a user-defined class is a shallow copy that shares Array ivars. The generated `<Model>Relation#dup` (D72) is the workaround; test/relation_dup.rb fails without it. |
+| 100 | **Still there**: found on this build (2026-11-11, issue #189): `Float#round(n)` on a Float narrowed by a `case` in a method whose scale is a parameter rounds the binary product (1.005 at scale 2 is 1.0; CRuby and a Float local answer 1.01). `Cast.round_digits` (D73) rounds on the decimal digits instead; spikes/decimal/float_round.rb prints both, and test/decimal_contract.rb fails without it. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98) have their own rows. |
 
@@ -187,17 +189,119 @@ The rules are numbered in the order they were found. By topic:
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97
-- Polymorphic values and narrowing: 8, 14, 29, 35, 86
+- Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81, 89
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
-- Memory and GC roots: 58, 64, 65
+- Memory and GC roots: 58, 64, 65, 99 (a shallow built-in `dup`)
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
   91
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98
+
+## Workarounds that shape the design, and what a Spinel update re-checks
+
+The rules below are numbered in the order they were found, which is not
+the order a maintainer needs them in. This section is the index from the
+other side (issue #192): which shapes of the framework exist because of
+Spinel, whether each is how CyberTrain is written for good or a workaround
+for one build, and which compiled test fails if the shape is undone. It
+repeats no rule: the rule has the reason and the reduced program,
+docs/design.md the decision, docs/spinel-feedback.md what went upstream.
+
+### Permanent: how CyberTrain is written for an ahead-of-time compiler
+
+These follow from what Spinel is (no run-time code, one static type per
+method), not from a defect. They are API policy; a Spinel release does not
+retire them, and they are not re-checked on an update.
+
+| Shape in the framework | Constraint | Decision | Verified by |
+| --- | --- | --- | --- |
+| Callbacks and nested DSL blocks take their receiver (`before_action { \|c\| ... }`, `resources ... do \|r\|`); names dispatch through generated `case` tables | no `instance_exec` of a stored block, no computed `send` (rules 1, 2) | D4, D8, D38 | test/gen_controllers.rb, test/gen_helpers.rb, test/controller.rb |
+| Models, relations, routes, helpers, components, jobs and concerns are generated Ruby, not metaprogramming | no `define_method`, `method_missing`, `eval` (rules 1, 92, 93) | D3, D4, D60 | test/gen_*_compiles.rb, test/gen_concerns.rb; examples/blog's `gen/` freshness in CI |
+| One return type per method: `pluck_int`, `maximum_int`, `sum_float_by`, `Cache.fetch_hash`; `DB.transaction` and `Model.transaction` return nil | a method has one static return type (rules 5, 90) | D20, D22, D44, D45 | test/pluck.rb, test/aggregates.rb, test/db_transaction_api.rb |
+| A per-model Relation subclass whose chain methods wrap base setters and return `self` | a base method returning `self` is typed as the base (rule 5) | D10, D43, D72 | test/gen_models_compiles.rb, test/relation_where.rb |
+| Templates are a language of their own, interpreted over fixed dispatch tables | no `eval`, no run-time method lookup (verdict 3) | D9 | test/template_*.rb, docs/compatibility.md |
+| The console evaluates template expressions, not Ruby | the same | D41 | test/console.rb, test/main_console.rb |
+| Tests are programs compared with a snapshot, not minitest | no reflection to discover test methods (rule 23) | D13 | test/harness.rb |
+| Process-wide state lives in module-level ivars with `def self.x` accessors | `@@x` was miscompiled and unrooted (rules 18, 64); kept as the one idiom even where a build fixed it | D64 | test/harness_gc.rb, test/runtime.rb |
+| Empty containers are seeded with their element type; nullable ivars go through `Cast.*_or_nil` | static typing of containers and ivars (rules 7, 9, 11) | D10 | every compiled test (a wrong seed does not compile) |
+| A method name means one thing: distinct names for framework accessors (`reject_status`, `command_name`, `service_start`), reserved column names | same name, same return type across classes (rules 10, 34, 62) | D10 | `script/check-reserved-names`, test/openssl_dispatch.rb, test/cast_types.rb |
+| FFI fragments declare what they call (`extern` in `ffi_source`); the `-1` literal for `SQLITE_TRANSIENT` | Spinel's documented FFI rule (rule 59; spinel-feedback B) | D10 | test/db_sqlite.rb |
+| Request numbers are length-checked before `to_i` | `String#to_i` raises past 2**63-1 by design (rule 25; spinel-feedback D) | D14 | test/http_request.rb, test/params.rb, test/server.rb |
+
+### Tied to a build: workarounds a Spinel release may retire
+
+Each of these is there because the pinned build (or an earlier one)
+miscompiles or refuses the plain form. "Status" is the row of "Status on
+2026.11.04.7026" above. A workaround is removed only in a change that also
+shows the plain form compiling and passing under the new build, with the
+test named here (or a new one) covering the shape; until then new code
+follows the rule even where a probe passes.
+
+| Workaround | Rule | Where | Fails without it in | Status on the pin |
+| --- | --- | --- | --- | --- |
+| `begin/rescue` and `ensure` live in a plain method that takes the block as a Proc, one level down and no further (`DB.run_transaction`, `Controller#process` / `#run_action`, `Job`'s run loop, `Server#run_writer`, `Main.run_command`) | 32, 45, 67, 69, 79 | db.rb, controller.rb, job.rb, scheduler.rb, http_client.rb, http/server.rb, main.rb | test/db_transaction.rb, test/db_transaction_api.rb, test/db_rolled_back_transaction.rb, test/jobs.rb, test/cron.rb | 32: the described shape compiles, 79 still there; 45, 69 not re-checked |
+| `rescue JSON::NestingError, JSON::ParserError, StandardError`, in that order, wherever application code may raise | 33, 61 | db.rb, http/server.rb, job.rb, scheduler.rb, console.rb, middleware/error_pages.rb | test/server.rb, test/client_error.rb | 61: probe passes; 33 not re-checked |
+| Every client fault is listed in `ClientError::CLIENT_FAULTS`; assertions compare bare class names where the hierarchy is not visible | 46, 53, 54 | http/client_error.rb | `script/check-client-faults`, test/client_error.rb | 46: `Class#name` now carries the namespace; rest not re-checked |
+| Byte scanners read their parameter through a fresh `to_s` local; no Ruby method is named after a builtin (`getbyte`, `write`, `close`, `<<`) | 62, 66 | http/*.rb, cast.rb, http_client.rb, mailer.rb, net/*.rb | test/openssl_dispatch.rb, test/http_client_gzip.rb, test/template_integration.rb, test/websocket_integration.rb | reduced program passes; kept |
+| A String made in an argument is bound to a local before `new`; `SafeString.of` | 58, 65 | html.rb, mailer.rb, cron.rb, job.rb, model/bulk_writes.rb | test/uploaded_file.rb, test/cli_toolchain.rb, test/gen_models.rb | accepted as a constraint (spinel-feedback 1): not re-checked |
+| Lambdas kept in module state are returned by a method, never written as a literal into the module body or a keyword argument (`Views.default_helpers_builder`, `Assets.empty_resolver`, `Gen::Routes.url_resolver`) | 42, 82, 97 | views.rb, assets.rb, cache.rb, application.rb's header | test/views_detached.rb, test/assets.rb, test/application.rb (the path-helper case) | 82, 97 still there; 42 probe passes |
+| A stored block that must reach a subclass's override is registered through generated code that names the subclass (`FormatCollector`, job and mailer registration, counter caches) | 88, 89 | format_collector.rb, generator/jobs_emitter.rb, mailer/later.rb, controller.rb | test/counter_cache_two_models.rb, test/gen_jobs.rb, test/controller_formats.rb | still there |
+| The generator's scans stay separate passes whose results do not meet in one method (`Gen::Runner`) | 94 | generator/runner.rb | test/gen_runner_models.rb; `cd examples/blog && spin run gen` | still there |
+| Sockets: `wait_readable` before every `readpartial`; a socket reaches its thread through a method parameter; `connect_nonblock` instead of `connect_timeout:` | 20, 21, 72 | http/server.rb, http/body_writer.rb, net/socket.rb, websocket.rb | test/server.rb, test/response_stream.rb, test/main_roles.rb, test/http_client.rb | 20, 21 not re-checked; 72 required (spinel-feedback O) |
+| `SPINEL_WORKERS` is set to `workers + 1` before the first thread; development serves on one worker; no lock on the request path | 22, 57 | application.rb (`spinel_workers_for`), template/engine.rb, http/server.rb | test/dev_application.rb, test/template_embedded.rb, test/db_busy_wait.rb; bench/run's two-core run | required (spinel-feedback L); 57 not re-checked |
+| `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, application.rb | test/feeds_exit.rb | still there |
+| `Logger#log` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_tls.rb, test/logger_flush.rb, test/main_console.rb | still there (spinel-feedback K, M) |
+| Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | still there |
+| A program that requires a middleware exercises it | 36 | every test that requires `cybertrain/application` | test/application.rb, test/db_integration.rb, test/health.rb | not re-checked |
+
+### When the pinned Spinel changes
+
+`script/bump-version VERSION SPINEL_TAG` moves the pin (`Cybertrain::SPINEL_TAG`,
+CI's `SPINEL_TAG`, the numbers the tests print). The pull request that
+carries it also:
+
+1. Runs everything compiled: `spin test`, then `cd examples/blog && spin run gen && test -z "$(git status --porcelain --untracked-files=all -- gen/)" && spin test` (the status, not `git diff`: a new generated file is untracked and a diff does not show it), and the generated application of CI's end-to-end job. A snapshot that changes is a behaviour change of the compiler: explain it, do not regenerate it away.
+2. Runs `bench/run` on the one- and two-core configurations and compares with the last `bench/results/*.json` (D34, docs/benchmark.md): rules 22 and 57 and spinel-feedback 4 to 7 are about cost, which no test sees.
+3. Re-checks the rows of the second table above whose status says "still there" or "required", with the rule's reduced program, and writes the result into a new "Status on <tag>" section (keep the old one: a rule's history is part of the record). Rows marked accepted (spinel-feedback, "Accepted as Spinel constraints") and the first table are not re-checked.
+4. Reads Spinel's release notes and docs/limitations.md for a changed default (the worker count, `--int-overflow`, a new refusal): a refusal by design becomes a rule here, not a workaround.
+5. Leaves every workaround in place. Removing one is its own pull request, which shows the plain form passing its test under the new pin and marks the rule "no longer holds as of <tag>" without renumbering it.
+
+### What CRuby cannot tell you
+
+The commit gate and `ruby -I. test/<name>.rb` run under CRuby, where none
+of the constraints above exist. A change that moves code between methods,
+classes or files, changes what a block or a Proc crosses, introduces a
+shared helper or a base class, or changes what the generator emits is
+accepted only when the affected tests pass compiled (`spin test`), and,
+for generator changes, when examples/blog regenerates clean and passes.
+A CRuby pass is evidence for the logic and none for the structure: most
+rules above were found by a refactoring that was correct Ruby.
+
+### What a built binary still depends on
+
+`cybertrain build` produces one executable with the views and the asset
+manifest inside it, and that is the whole application; it is not a
+statically linked one. It needs, on the machine that runs it:
+
+| Dependency | Why | Condition |
+| --- | --- | --- |
+| The operating system and CPU it was built for | Spinel compiles through the system C compiler | built and tested on Linux (x86-64 and arm64, glibc) and macOS; no cross-compilation, no Windows (WSL2 works), musl untested. Build on the release you deploy to, or older: a binary linked against a newer glibc does not start on an older one |
+| `libsqlite3` (shared) | `ffi_lib "sqlite3"` (cybertrain/db/sqlite_ffi.rb) | the server's library is the one used, not the build machine's. 3.35 or newer covers the framework's own SQL (`RETURNING` in `insert_all` / `upsert_all`, `ALTER TABLE ... DROP COLUMN` in migrations); `db backup` needs 3.27 (`VACUUM INTO`) and says so, `db normalize` and taking over a Rails database need 3.37 (`PRAGMA table_list`) |
+| OpenSSL 3 (`libssl`, `libcrypto`, shared) | the session and encrypted cookies, `encrypts`, TLS for outbound HTTP, SMTP and WebSocket (Spinel's `openssl` package) | the same major version at build and run time |
+| zlib (shared) | gzip request bodies and responses | any current version |
+| jemalloc (shared), optional | only with `allocator = "jemalloc"` in `spin.toml` | installed on the server as well |
+| `/usr/share/zoneinfo` (or `TZDIR`) | `Cybertrain::TimeZone` reads TZif files (D19) | install `tzdata` in a minimal image, or use UTC only |
+| A writable directory for the database, `storage/uploads/` and, outside production, `tmp/secret_key` | SQLite's WAL files sit beside the database | a local file system: SQLite's locking is not reliable over NFS |
+
+docs/guide/install.md has the build-time packages, docs/deploy.md and
+docs/deploy.en.md the server's (`libsqlite3-0 zlib1g libssl3t64
+libjemalloc2` on Ubuntu 24.04, what examples/blog's Dockerfile installs in
+its runtime stage). Building in the same image family as the runtime
+stage, as that Dockerfile does, satisfies every row.
 
 <a id="rules-every-framework-file-must-follow-derived-from-the-spikes"></a>
 
@@ -1298,6 +1402,47 @@ explicitly retires a workaround.
     2026-11-11 with `spin run gen -- --check` in examples/blog, which
     still exited 0). Write such files outside the package (the build
     directory, or a `TMPDIR` outside it) and delete them after the grep.
+
+99. `dup` on an instance of a user-defined class compiles without a
+    `dup` method in the class, on Spinel 2026.11.04.7026, and is a shallow
+    copy: the new object has its own Integer, Boolean and String slots
+    (assigning `@limit` on one leaves the other), but an Array ivar is the
+    same Array in both, so `copy.where(...)` on a `rel.dup` appended to
+    the source's `@wheres` and `@binds` as well. Nothing warns. A class
+    whose instances are meant to be copied defines `dup` itself, building
+    a new instance and filling the new instance's own Arrays element by
+    element (the generated `<Model>Relation#dup`, design D72); such an
+    override compiles and is dispatched on the static type (issue #188,
+    2026-11-11, seen by removing the generated method under
+    `test/relation_dup.rb`: seven of twelve tests fail).
+
+100. `Float#round(n)` does not answer the same on every path under Spinel
+    2026.11.04.7026. On a Float local it agrees with CRuby (`x.round(2)`
+    with `x = "1.005".to_f` is 1.01: CRuby rounds the product and then
+    corrects a tie the binary product fell short of). On a Float narrowed
+    by a `case`/`when` inside a method whose scale is a parameter, followed
+    by `.to_f` (`f = case v when Float then v when String then v.to_f else
+    0.0 end; f.round(scale).to_f`, the body `Cast.round_scale` had), it
+    goes through the runtime's polymorphic rounding, which rounds the
+    binary product and stops: 1.005, 1.015 and 0.285 came back as 1.0,
+    1.01 and 0.28 where CRuby answers 1.01, 1.02 and 0.29
+    (spikes/decimal/float_round.rb prints both). Both runtimes also move a
+    value that needs no rounding once it has 17 significant digits
+    (`123456789012345.67.round(2)` is ...69). So a result that must be the
+    same decimal under both runtimes is not rounded with `Float#round(n)`:
+    round on the digits of `Float#to_s`, as `Cybertrain::NumberHelper` does
+    and, since issue #189 (2026-11-11), `Cast.round_scale`
+    (`Cast.round_digits`; docs/design.md D73). `Float#round` with no
+    argument (an Integer) was not seen to differ.
+    The same spike found what the exact types offer on this Spinel
+    (spikes/decimal/exact_types.rb): Integer is 64-bit and raises
+    `RangeError` ("integer overflow in +") past it, where CRuby grows a
+    bignum; `Rational` compiles and adds; the pre-installed `bigdecimal`
+    package now builds a BigDecimal from a String or an Integer, rounds
+    with every mode, compares, and compiles beside `cybertrain/db`, but has
+    no `to_s("F")` (ArgumentError at run time: `to_s` takes no format, the
+    only text is `0.125e2`), no `bigdecimal/util` (`to_d`), no
+    construction from a Float, no NaN or Infinity.
 
 <a id="numbers-worth-remembering"></a>
 

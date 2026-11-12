@@ -1,0 +1,120 @@
+#!/usr/bin/env ruby
+# Lints the GitHub Actions files with actionlint: every workflow under
+# .github/workflows/ and every composite action under .github/actions/.
+# The Gate workflow runs it (.github/workflows/gate.yml, job actionlint) on
+# every pull request; script/gate does not, since it promises CRuby alone and
+# actionlint is a Go program. `ruby -c` and a YAML load (script/gate) pass a
+# workflow whose `needs:` names no job, whose expression reads an input or a
+# step output that does not exist, that passes a reusable workflow or an
+# action an input it does not take, or whose `run:` script is broken shell;
+# GitHub reports those when the workflow runs, which for release.yml is at
+# release time. actionlint reports them here.
+#
+# actionlint reads workflows only. A composite action is linted as the
+# workflow it amounts to: its inputs as the inputs of a `workflow_call`, its
+# steps as the steps of one job, its outputs as that job's outputs. So an
+# `inputs.NAME` or `steps.ID.outputs.NAME` that names nothing and a broken
+# `run:` script are found there too. (A wrong `with:` key is found, here and
+# in a workflow, only for the actions actionlint carries the inputs of:
+# ruby/setup-ruby@v1 is one, actions/cache/restore@v6 is not in 1.7.12.
+# And only when the action is referenced by its major tag: the workflows
+# here pin actions to commits (script/check-workflows), which actionlint
+# 1.7.12 does not match against that list, so a misspelt `with:` key of a
+# pinned action is NOT reported. A reusable workflow's and a local
+# action's inputs are still checked.)
+# Two things a workflow does not need and a composite action does are checked
+# first: `runs.using: composite`, and a `shell:` on every `run:` step.
+# The line numbers actionlint prints for an action are those of that
+# workflow, which is printed after them, numbered.
+#
+# .github/actionlint.yaml is actionlint's configuration (the runner labels it
+# does not know yet, the one shellcheck finding left alone).
+#
+# usage: script/lint-workflows
+# Needs actionlint on PATH, or its path in ACTIONLINT (the Gate workflow
+# installs a pinned release; https://github.com/rhysd/actionlint has the
+# install lines). With shellcheck on PATH, as on the GitHub runners,
+# actionlint also checks the `run:` scripts with it.
+# Exit status 1 when anything is reported, 2 when actionlint is missing.
+require "open3"
+require "yaml"
+
+Dir.chdir(File.expand_path("..", __dir__))
+
+ACTIONLINT = ENV.fetch("ACTIONLINT", "actionlint")
+# The configuration by name: actionlint looks for it from the project root,
+# which it only finds inside a git checkout.
+OPTIONS = ["-color=false", "-config-file", ".github/actionlint.yaml"].freeze
+begin
+  version, = Open3.capture2e(ACTIONLINT, "-version")
+rescue SystemCallError
+  warn "script/lint-workflows: actionlint is not installed (or set ACTIONLINT to its path)"
+  exit 2
+end
+
+failures = 0
+
+workflows = Dir[".github/workflows/*.{yml,yaml}"].sort
+out, status = Open3.capture2e(ACTIONLINT, *OPTIONS, *workflows)
+if status.success?
+  puts "ok    #{workflows.size} workflows"
+else
+  failures += 1
+  puts "FAIL  workflows"
+  puts out
+end
+
+# The composite action at `path` as a reusable workflow, in YAML.
+def as_workflow(path, action)
+  inputs = (action["inputs"] || {}).to_h { |name, _| [name, { "type" => "string", "required" => false }] }
+  outputs = (action["outputs"] || {}).to_h { |name, output| [name, output["value"]] }
+  job = { "runs-on" => "ubuntu-latest", "steps" => action["runs"]["steps"] }
+  job["outputs"] = outputs unless outputs.empty?
+  workflow_call = inputs.empty? ? nil : { "inputs" => inputs }
+  YAML.dump({ "name" => path, "on" => { "workflow_call" => workflow_call }, "jobs" => { "action" => job } })
+end
+
+actions = Dir[".github/actions/*/action.{yml,yaml}"].sort
+actions.each do |path|
+  action = YAML.safe_load_file(path)
+  runs = action["runs"] || {}
+  unless runs["using"] == "composite"
+    failures += 1
+    puts "FAIL  #{path}", "      runs.using is #{runs["using"].inspect}: this script lints composite actions only"
+    next
+  end
+  steps = runs["steps"]
+  problems = []
+  problems << "runs.steps is not a list of steps" unless steps.is_a?(Array) && steps.all?(Hash)
+  if problems.empty?
+    steps.each_with_index do |step, i|
+      label = step["name"] || step["id"] || "step #{i + 1}"
+      problems << "#{label}: a step needs `run:` or `uses:`, one of them" unless step.key?("run") ^ step.key?("uses")
+      problems << "#{label}: a `run:` step of a composite action needs `shell:`" if step.key?("run") && step["shell"].to_s.empty?
+    end
+    (action["outputs"] || {}).each do |name, output|
+      problems << "output #{name}: no `value:`" unless output.is_a?(Hash) && !output["value"].to_s.empty?
+    end
+  end
+  source = problems.empty? ? as_workflow(path, action) : ""
+  out, status = problems.empty? ? Open3.capture2e(ACTIONLINT, *OPTIONS, "-stdin-filename", path, "-", stdin_data: source) : ["", nil]
+  if problems.empty? && status.success?
+    puts "ok    #{path}"
+  else
+    failures += 1
+    puts "FAIL  #{path}"
+    problems.each { |line| puts "      #{line}" }
+    unless out.empty?
+      puts out
+      puts "      (line numbers above are those of the action as a workflow:)"
+      source.each_line.with_index(1) { |line, n| puts format("      %3d  %s", n, line) }
+    end
+  end
+end
+
+if failures.zero?
+  puts "lint-workflows: passed (#{version.lines.first.to_s.strip})"
+else
+  puts "lint-workflows: #{failures} file set#{failures == 1 ? "" : "s"} failed"
+  exit 1
+end

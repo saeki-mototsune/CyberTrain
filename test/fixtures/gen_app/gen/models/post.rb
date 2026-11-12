@@ -79,6 +79,13 @@ class PostRelation < Cybertrain::Relation
     self
   end
 
+  def dup
+    rel = PostRelation.new(@table)
+    copy_chain_to(rel)
+    rel.preloaded(to_a) if records_preloaded?
+    rel
+  end
+
   def to_a
     if records_preloaded?
       copy = Array.new(0) { Post.new }
@@ -233,6 +240,10 @@ class Post < Cybertrain::Model
   def model_name = "Post"
 
   attr_accessor :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :thumbnail, :hidden, :created_at, :updated_at
+
+  model_concern_insert_at(0)
+  validates :price, numericality: { greater_than: -100000000, less_than: 100000000 }, allow_nil: true
+  model_concern_insert_done
 
   def initialize(attrs = {})
     super()
@@ -484,6 +495,15 @@ class Post < Cybertrain::Model
     when :summary then self.summary
     when :published? then self.published?
     else nil
+    end
+  end
+
+  def attribute_or_method?(name)
+    case name
+    when :id, :title, :body, :views, :price, :comments_count, :meta, :published_on, :secret_note, :thumbnail, :hidden, :created_at, :updated_at then true
+    when :comments then true
+    when :visible?, :summary, :published? then true
+    else false
     end
   end
 

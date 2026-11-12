@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d303742a866d81fb204cf10d6797d582398283dd581c2a9ae7274e86046fa65
+source_sha256: ad3169ddff720e3527105667bef185f816a9c1eeaf8f74207edb0ff4cf53d242
 ---
 # 模型与数据库
 
@@ -104,7 +104,7 @@ end
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
 | `t.float` | `FLOAT` | Float |
-| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float，存储时按 scale 舍入 |
+| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float，存储时按 scale 舍入，精确到 15 位有效数字 |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time（UTC，微秒） |
 | `t.date` | `DATE` | Date |
@@ -115,7 +115,14 @@ end
 
 ### decimal 是 Float
 
-Rails 把 `decimal` 列读成 BigDecimal；这里它是 Float，生成的模型每次存储时（`save`、`update_columns`、`update_all`、批量写入）都会按该列的 `scale:` 舍入，所以存下的就是 Rails 赋值之后会存的值。Spinel 的 BigDecimal 目前还不能由 Float 或 String 构造，也不能舍入，这就是重新考虑的条件（`docs/design.md` D42）。二进制浮点数在长的求和中会累积误差：在边界处舍入（`total.round(2)`），或者把金额以最小单位存在整数列中（`price_cents`）。
+Rails 把 `decimal` 列读成 BigDecimal；这里它是存放在 `DECIMAL(p,s)` 列中的 Float，遵循以下约定（`docs/design.md` D73）：
+
+- **精确到 15 位有效数字。** 当 `precision:` 不超过 15 时，声明精度以内、小数部分为 `scale:` 位的每个值，存入和读出都是它本身。超过 15 位时则是最接近的 Float：`decimal(18,8)` 只精确到 9,999,999.99999999，而不是它声明的十位整数。
+- **在存储处按 scale 舍入**（`save`、`update`、`update_columns`、`update_all`、批量写入），在十进制数位上按远离零的方向四舍五入：scale 为 2 时 1.005 是 1.01，与 Rails 存储的一致，在 CRuby 和 Spinel 下也相同。
+- **超出范围是验证错误。** 对于带 precision 的 decimal 列，`spin run gen` 会写出一条 `numericality` 验证，因此对超出精度的值、Infinity 和 NaN，`save` 返回 false 而不会存储。
+- **求和是 Float 求和。** 在边界处用 `Cybertrain::Cast.round_scale(total, 2)` 对总数舍入，而不是 `total.round(2)`。
+
+把金额以最小单位存在整数列中（`price_cents`）：Integer 运算和 `sum_int` 是精确的。用 `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` 读取表单字段，用 `number_to_currency(price_cents / 100.0)` 显示。升级说明：编译后的框架过去会向下舍入的临界值（1.005 被存为 1.0），现在会向上舍入后存储，仅影响新的写入；生成的验证会拒绝以前可以存入的值。把 decimal 列迁移为最小单位的步骤见 D73。
 
 ### JSON 列
 

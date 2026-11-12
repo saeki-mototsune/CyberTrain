@@ -1,0 +1,19 @@
+ok   gen writes the precision bound of every decimal column that declares one
+ok   save stores a REAL rounded to the scale, and the read is the same decimal
+ok   a whole value is stored as an INTEGER and read as a Float
+ok   nil and an empty field are NULL, never 0.0; text that is not a number is 0.0
+ok   rounding is half away from zero on the decimal digits
+ok   rounding is idempotent, also past 15 significant digits
+ok   the attribute keeps what was assigned; the row and a reload have the rounded value
+ok   every value of the declared precision reads back as the decimal that was written
+ok   15 significant digits round-trip through Cast and SQLite, 16 do not
+ok   save refuses a value outside the declared precision, Infinity and NaN
+ok   a value that rounds up to the bound is stored
+ok   update, update_columns and update_all round as save does
+ok   insert_all and upsert_all round as save does
+ok   the writers without validations store a value outside the range
+ok   sum_float, average, minimum_float and maximum_float answer Floats
+ok   a rounded sum of many prices equals the sum of their cents
+ok   to_json writes the decimal as a JSON number
+ok   minor units in an integer column are exact: parse, store, sum, display
+18 tests, 140 assertions, 0 failures

@@ -12,3 +12,15 @@ has the method, the recorded results and how to run it.
   lists every change from `rails new`).
 - `results/` holds the recorded runs; `tmp/` (ignored) the scratch copies,
   server logs and the pages each app served.
+
+The mixed-load measurement of the shared SQLite database is separate:
+[docs/sqlite-shared-load.md](../docs/sqlite-shared-load.md) has the scenario,
+the recorded runs and how to read them.
+
+- `mixed` compiles `mixed_load.rb` with Spinel and runs it
+  (`bench/mixed duration=5 workers=2`; the settings are listed at the top of
+  `mixed_load.rb`).
+- `mixed_load.rb` runs business writes and reads, jobs, the cache,
+  rate-limit counters and stream broadcasts in one process on one database
+  file under `tmp/mixed/`, each alone and then together, and prints one
+  table.

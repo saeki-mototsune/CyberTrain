@@ -1,0 +1,7 @@
+ok   validate_all answers one validated model per table, resolved against the schema
+ok   the view methods left to call_view_method leave out a column's and an association's reader
+ok   the emitter writes the same file from a validated model as from the schema and the scanned files
+ok   a declaration the schema does not bear out is refused with its file and line, without emitting
+ok   a table the generator cannot host is refused with the db/schema.rb line when the file's text is known
+ok   SchemaPlaces finds a table's create_table line and a column's line inside it
+6 tests, 61 assertions, 0 failures
