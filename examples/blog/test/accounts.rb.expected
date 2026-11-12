@@ -1,0 +1,19 @@
+== 20260925174942 CreateArticles: migrating
+done
+== 20260925174943 CreateComments: migrating
+done
+== 20261112102827 CreateUsers: migrating
+done
+== 20261112102828 CreateSessions: migrating
+done
+ok   changing email or password requires the current password
+ok   a password change ends other sessions and keeps this one
+ok   deleting the account requires the password and removes the user and sessions
+ok   a visitor is sent to sign in
+ok   PATCH /account past ten requests is refused for a while
+ok   wrong current passwords are limited per user too, from any address
+ok   the form's fields are the only ones a change takes
+ok   PATCH and DELETE /account without the form's token are refused
+ok   a new hash of the password stays with this browser when the change fails
+ok   a deletion the database refuses changes nothing and says so
+10 tests, 153 assertions, 0 failures

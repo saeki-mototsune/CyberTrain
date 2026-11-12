@@ -112,12 +112,32 @@ jobs:
           curl -fsS -D css.h -o /dev/null "http://127.0.0.1:3000$css"
           grep -qi '^cache-control:.*immutable' css.h
 
-          # An article through the form: the CSRF token from the page, the
-          # session cookie (Secure, so passed by hand over http) with it.
-          curl -fsS -D headers -o page.html http://127.0.0.1:3000/articles/new
+          # The pages in Japanese for a browser that asks for it.
+          curl -fsS -H "Accept-Language: ja" http://127.0.0.1:3000/ | grep -q '<html lang="ja">'
+
+          # Writing needs a user: one made with the user command, signed in
+          # through the form. The CSRF token from the page, the session
+          # cookie (Secure, so passed by hand over http) with it; signing in
+          # sends a new cookie.
+          docker exec blog ./blog user smoke@example.com smoke-test-password | grep -q "created smoke@example.com"
+          curl -fsS -D headers -o page.html http://127.0.0.1:3000/session/new
           token=$(grep -o 'name="authenticity_token" value="[^"]*"' page.html | head -n 1 | sed 's/.*value="//; s/"$//')
           cookie=$(grep -i '^set-cookie:' headers | head -n 1 | sed 's/^[^:]*: //; s/;.*//' | tr -d '\r')
           test -n "$token" && test -n "$cookie"
+          status=$(curl -sS -D headers -o /dev/null -w '%{http_code}' -H "Cookie: $cookie" \
+            --data-urlencode "authenticity_token=$token" \
+            --data-urlencode "email_address=smoke@example.com" \
+            --data-urlencode "password=smoke-test-password" \
+            http://127.0.0.1:3000/session)
+          test "$status" = 303 || { echo "POST /session answered $status"; docker logs blog; exit 1; }
+          cookie=$(grep -i '^set-cookie:' headers | head -n 1 | sed 's/^[^:]*: //; s/;.*//' | tr -d '\r')
+          test -n "$cookie"
+
+          # An article through the form, signed in.
+          curl -fsS -H "Cookie: $cookie" -o page.html http://127.0.0.1:3000/articles/new
+          grep -q '<h1>New article</h1>' page.html || { echo "GET /articles/new is not the form"; exit 1; }
+          token=$(grep -o 'name="authenticity_token" value="[^"]*"' page.html | head -n 1 | sed 's/.*value="//; s/"$//')
+          test -n "$token"
           status=$(curl -sS -o /dev/null -w '%{http_code}' -H "Cookie: $cookie" \
             --data-urlencode "authenticity_token=$token" \
             --data-urlencode "article[title]=Smoke test" \

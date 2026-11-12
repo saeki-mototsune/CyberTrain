@@ -1,0 +1,85 @@
+# The blog's Japanese texts, with the same keys as en.yml. The validation
+# messages ("を入力してください") and the sign-in pages' texts come from
+# the framework's dictionary (cybertrain/locales/ja.yml); the names of the
+# models and their attributes, which those messages start with, are here.
+ja:
+  activerecord:
+    models:
+      article: "記事"
+      comment: "コメント"
+    attributes:
+      article:
+        title: "タイトル"
+        body: "本文"
+      comment:
+        commenter: "名前"
+        body: "本文"
+  layouts:
+    application:
+      title: "ブログ"
+      brand: "ブログ"
+      english: "English"
+      japanese: "日本語"
+  articles:
+    index:
+      title: "記事"
+      count:
+        other: "%{number}件の記事"
+      from: "開始日"
+      to: "終了日"
+      order: "並び順"
+      newest_first: "新しい順"
+      oldest_first: "古い順"
+      filter: "絞り込む"
+      article_title: "タイトル"
+      body: "本文"
+      comments: "コメント"
+      show: "表示"
+      new_article: "記事を書く"
+    new:
+      title: "新しい記事"
+      back: "記事の一覧に戻る"
+    edit:
+      title: "記事の編集"
+      show: "この記事を表示"
+      back: "記事の一覧に戻る"
+    show:
+      written: "投稿日時"
+      edit: "編集"
+      back: "記事の一覧に戻る"
+      destroy: "この記事を削除"
+      manage: "記事の管理"
+      comments: "コメント"
+      add_comment: "コメントを書く"
+    form:
+      error_header:
+        other: "%{count}件のエラーがあるため、記事を保存できませんでした:"
+    create:
+      created: "記事を作成しました。"
+    update:
+      updated: "記事を更新しました。"
+    destroy:
+      destroyed: "記事を削除しました。"
+  comments:
+    create:
+      created: "コメントを投稿しました。"
+      not_saved: "コメントを保存できませんでした: %{errors}"
+    destroy:
+      destroyed: "コメントを削除しました。"
+  comment_component:
+    wrote_html: "%{author}さんのコメント:"
+    destroy: "コメントを削除"
+  admin:
+    articles:
+      index:
+        title: "管理: 記事"
+        count:
+          other: "%{number}件の記事"
+        article_title: "タイトル"
+        created: "作成日時"
+        comments: "コメント"
+        delete: "削除"
+        jobs: "ジョブ"
+        back: "記事の一覧に戻る"
+      destroy:
+        deleted: "記事を削除しました。"

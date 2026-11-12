@@ -4,3 +4,7 @@ require_relative "../db/migrate/20260925174942_create_articles"
 Cybertrain::Migration.register("20260925174942", CreateArticles.new)
 require_relative "../db/migrate/20260925174943_create_comments"
 Cybertrain::Migration.register("20260925174943", CreateComments.new)
+require_relative "../db/migrate/20261112102827_create_users"
+Cybertrain::Migration.register("20261112102827", CreateUsers.new)
+require_relative "../db/migrate/20261112102828_create_sessions"
+Cybertrain::Migration.register("20261112102828", CreateSessions.new)

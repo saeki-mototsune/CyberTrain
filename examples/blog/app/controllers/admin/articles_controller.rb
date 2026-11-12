@@ -1,6 +1,7 @@
 # /admin/articles: the newest articles, each with a delete button. Every
-# action is behind AdminGate (ApplicationController#require_admin: 404
-# unless BLOG_ADMIN_TOKEN is set and the request proves it).
+# action is behind AdminGate (the Authentication concern's require_admin:
+# 404 unless the signed-in user is an admin; require_authentication sends
+# a visitor to sign in first).
 module Admin
   class ArticlesController < ApplicationController
     include AdminGate
@@ -15,7 +16,7 @@ module Admin
     def destroy
       article = Article.find(params[:id])
       article.destroy
-      flash[:notice] = "Article was successfully deleted."
+      flash[:notice] = t(".deleted")
       redirect_to admin_articles_path, status: :see_other
     end
   end

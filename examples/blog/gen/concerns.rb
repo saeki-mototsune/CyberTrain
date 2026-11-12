@@ -12,14 +12,22 @@ module AdminGate
   def self.per_page = 20
 end
 
+class ApplicationController
+  # Authentication (include Authentication at app/controllers/application_controller.rb:6)
+  concern_insert_at(1, 0)
+  before_action :resume_session
+  before_action :require_authentication
+  helper_method :authenticated?
+  concern_insert_done
+end
+
 module Admin
   class ArticlesController
     def self.per_page(...) = AdminGate.per_page(...)
 
-    # AdminGate (include AdminGate at app/controllers/admin/articles_controller.rb:6)
+    # AdminGate (include AdminGate at app/controllers/admin/articles_controller.rb:7)
     concern_insert_at(0, 0)
     before_action :require_admin
-    helper_method :admin?
     concern_insert_done
   end
 end

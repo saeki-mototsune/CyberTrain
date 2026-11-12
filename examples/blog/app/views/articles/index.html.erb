@@ -1,23 +1,23 @@
-<h1>Articles</h1>
+<h1><%= t(".title") %></h1>
 
-<p class="article-count"><%= number_with_delimiter(@article_count) %> <%= @article_count == 1 ? "article" : "articles" %></p>
+<p class="article-count"><%= t(".count", count: @article_count, number: number_with_delimiter(@article_count)) %></p>
 
 <%= form_with url: articles_path, method: :get do |f| %>
-  <%= f.label :from, "From" %>
+  <%= f.label :from, t(".from") %>
   <%= f.date_field :from, value: @from %>
-  <%= f.label :to, "To" %>
+  <%= f.label :to, t(".to") %>
   <%= f.date_field :to, value: @to %>
-  <%= f.label :order, "Order" %>
-  <%= select_tag "order", options_for_select([["Newest first", "new"], ["Oldest first", "old"]], @order) %>
-  <%= f.submit "Filter" %>
+  <%= f.label :order, t(".order") %>
+  <%= select_tag "order", options_for_select([[t(".newest_first"), "new"], [t(".oldest_first"), "old"]], @order) %>
+  <%= f.submit t(".filter") %>
 <% end %>
 
 <table>
   <thead>
     <tr>
-      <th>Title</th>
-      <th>Body</th>
-      <th>Comments</th>
+      <th><%= t(".article_title") %></th>
+      <th><%= t(".body") %></th>
+      <th><%= t(".comments") %></th>
       <th></th>
     </tr>
   </thead>
@@ -27,10 +27,10 @@
         <td><%= article.title %></td>
         <td><%= article.body %></td>
         <td class="comment-count"><%= number_with_delimiter(article.comments.size) %></td>
-        <td><%= link_to "Show", article_path(article) %></td>
+        <td><%= link_to t(".show"), article_path(article) %></td>
       </tr>
     <% end %>
   </tbody>
 </table>
 
-<p><%= link_to "New article", new_article_path %></p>
+<p><%= link_to t(".new_article"), new_article_path %></p>

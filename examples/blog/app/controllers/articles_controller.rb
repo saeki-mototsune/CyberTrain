@@ -1,10 +1,11 @@
 require "cybertrain/cache"
 
 class ArticlesController < ApplicationController
+  # Anyone may read; writing, editing and deleting need a signed-in user
+  # (the Authentication concern's require_authentication). The article
+  # page links to /admin/articles for an admin (ApplicationController#admin?).
+  allow_unauthenticated_access only: [:index, :show]
   before_action :set_article, only: [:show, :edit, :update, :destroy]
-  # The article page links to /admin/articles for an admin
-  # (ApplicationController#admin?).
-  helper_method :admin?
 
   # GET /articles (?from=YYYY-MM-DD&to=YYYY-MM-DD, either end optional;
   # ?order=old for the oldest first), and /articles.json
@@ -58,7 +59,7 @@ class ArticlesController < ApplicationController
   def create
     @article = Article.new(article_params)
     if @article.save
-      flash[:notice] = "Article was successfully created."
+      flash[:notice] = t(".created")
       redirect_to article_path(@article), status: :see_other
     else
       render :new, status: :unprocessable_entity
@@ -68,7 +69,7 @@ class ArticlesController < ApplicationController
   # PATCH/PUT /articles/1
   def update
     if @article.update(article_params)
-      flash[:notice] = "Article was successfully updated."
+      flash[:notice] = t(".updated")
       redirect_to article_path(@article), status: :see_other
     else
       render :edit, status: :unprocessable_entity
@@ -78,7 +79,7 @@ class ArticlesController < ApplicationController
   # DELETE /articles/1
   def destroy
     @article.destroy
-    flash[:notice] = "Article was successfully destroyed."
+    flash[:notice] = t(".destroyed")
     redirect_to articles_path, status: :see_other
   end
 

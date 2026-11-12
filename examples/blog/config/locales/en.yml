@@ -1,0 +1,94 @@
+# The blog's English texts. `spin run gen` compiles every file under
+# config/locales into gen/locales.rb; a key here overrides the framework's
+# dictionary of the same name (cybertrain/locales/en.yml, which has the
+# validation messages and the sign-in pages' texts).
+#
+# Keys starting with "." in a template are relative to it:
+# <%= t(".title") %> in app/views/articles/index.html.erb reads
+# articles.index.title. In a controller, t(".created") in
+# ArticlesController#create reads articles.create.created. A key with
+# `one` and `other` is chosen by the count: t(".count", count: 2).
+en:
+  activerecord:
+    models:
+      article: "Article"
+      comment: "Comment"
+    attributes:
+      article:
+        title: "Title"
+        body: "Body"
+      comment:
+        commenter: "Commenter"
+        body: "Body"
+  layouts:
+    application:
+      title: "Blog"
+      brand: "Blog"
+      english: "English"
+      japanese: "日本語"
+  articles:
+    index:
+      title: "Articles"
+      count:
+        one: "%{number} article"
+        other: "%{number} articles"
+      from: "From"
+      to: "To"
+      order: "Order"
+      newest_first: "Newest first"
+      oldest_first: "Oldest first"
+      filter: "Filter"
+      article_title: "Title"
+      body: "Body"
+      comments: "Comments"
+      show: "Show"
+      new_article: "New article"
+    new:
+      title: "New article"
+      back: "Back to articles"
+    edit:
+      title: "Editing article"
+      show: "Show this article"
+      back: "Back to articles"
+    show:
+      written: "Written"
+      edit: "Edit"
+      back: "Back to articles"
+      destroy: "Destroy this article"
+      manage: "Manage articles"
+      comments: "Comments"
+      add_comment: "Add a comment:"
+    form:
+      error_header:
+        one: "1 error prohibited this article from being saved:"
+        other: "%{count} errors prohibited this article from being saved:"
+    create:
+      created: "Article was successfully created."
+    update:
+      updated: "Article was successfully updated."
+    destroy:
+      destroyed: "Article was successfully destroyed."
+  comments:
+    create:
+      created: "Comment was successfully created."
+      not_saved: "Comment could not be saved: %{errors}"
+    destroy:
+      destroyed: "Comment was successfully destroyed."
+  comment_component:
+    wrote_html: "%{author} wrote:"
+    destroy: "Destroy comment"
+  admin:
+    articles:
+      index:
+        title: "Admin: articles"
+        count:
+          one: "%{number} article"
+          other: "%{number} articles"
+        article_title: "Title"
+        created: "Created"
+        comments: "Comments"
+        delete: "Delete"
+        jobs: "Jobs"
+        back: "Back to articles"
+      destroy:
+        deleted: "Article was successfully deleted."
