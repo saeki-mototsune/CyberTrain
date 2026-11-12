@@ -94,14 +94,17 @@ spin's debug mode.** Every `spin run gen` and `spin run db` they run becomes
 `SPIN_DEBUG=1 spin run ...`: `cybertrain new`, `db`, `migration`, `server`,
 `build` (its two gen steps; the application itself stays a release build),
 `Dev::Rebuilder#command`, and the "gen/ is current" step of the CI workflow
-`cybertrain new` writes. One constant holds the prefix on each side (the CLI
-and the framework), and a test keeps them equal.
+`cybertrain new` writes. One constant holds the prefix,
+`Cybertrain::Shell::TOOL_SPIN`, in the leaf file the CLI and the framework
+both load.
 - Why not `--jobs` or `-O 1`: `spin run` passes nothing to spinel, and
   `spin build gen -- FLAGS` is never up to date to spin, so it would compile
   on every command. `SPIN_DEBUG` is the one switch spin tracks.
 - A hand-typed `spin run gen` still works; it builds a release gen (38 s, as
   today) and the next CLI command builds the debug one again (8.5 s). The
-  hints the CLI prints are not changed in this round (section 6).
+  hints that tell a person to type `spin run gen` are not changed in this
+  round (section 6); the one command line the CLI prints for recovery after
+  a failed `cybertrain new` carries the prefix.
 - docs/performance-next.md rejected `-O0` for the edit of 2026-11-05 because
   the C compiler was then 0.75 s of 8 s. That stands for the application's
   incremental build; for gen the C compiler is now 33 s of 38 s.

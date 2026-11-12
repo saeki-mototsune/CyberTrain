@@ -112,8 +112,8 @@ so is `gen/views.rb`, empty in development.
 A change runs `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`
 in the background: Spinel's incremental build, which recompiles only the C
 units the edit changed. A Spinel release without `--incremental` rejects the
-flag, and the loop then builds without it. The CLI and the loop build gen and
-`bin/db.rb` in spin's debug mode (`SPIN_DEBUG=1`, `-O0`): they run for
+flag, and the loop then builds without it. The CLI and the loop build gen, and
+the CLI `bin/db.rb`, in spin's debug mode (`SPIN_DEBUG=1`, `-O0`): they run for
 milliseconds, and gen compiles in a fraction of the time `-O2` takes; the
 application is always a release build.
 
