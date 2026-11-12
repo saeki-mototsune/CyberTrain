@@ -292,13 +292,14 @@ module Cybertrain
     # Who this process is in `claimed_by`: "<hostname>:<pid>:<epoch of the
     # first call>:<6 random hex digits>", computed once, so neither two
     # processes on one host nor a container restarted within the same
-    # second with the same pid share a label.
+    # second with the same pid share a label. The epoch is real time
+    # ({Clock.real_now}): an identity, not an instant a test travels.
     # @return [String]
     # @api public
     def self.process_label
       label = @process_label
       if label.empty?
-        label = "#{Socket.gethostname}:#{Process.pid}:#{Clock.now.to_i}:#{SecureRandom.hex(3)}"
+        label = "#{Socket.gethostname}:#{Process.pid}:#{Clock.real_now.to_i}:#{SecureRandom.hex(3)}"
         @process_label = label
       end
       label

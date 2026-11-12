@@ -1,4 +1,5 @@
 require "cybertrain/cast"
+require "cybertrain/clock"
 require "cybertrain/background"
 
 module Cybertrain

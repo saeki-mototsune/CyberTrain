@@ -1,5 +1,6 @@
 require "cybertrain/app_name"
 require "cybertrain/cast"
+require "cybertrain/clock"
 require "cybertrain/shell"
 
 module Cybertrain

@@ -18,6 +18,7 @@
 # Code inside Cybertrain::Template that names `Token` means the template
 # lexer's (cybertrain/template/lexer.rb); write `Cybertrain::Token` there.
 require "cybertrain/crypto"
+require "cybertrain/clock"
 require "cybertrain/config"
 
 module Cybertrain

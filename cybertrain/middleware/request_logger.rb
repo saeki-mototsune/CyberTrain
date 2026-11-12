@@ -1,6 +1,7 @@
 require "json"
 require "cybertrain/middleware"
 require "cybertrain/logger"
+require "cybertrain/clock"
 require "cybertrain/http/client_error"
 require "cybertrain/http/parameter_filter"
 

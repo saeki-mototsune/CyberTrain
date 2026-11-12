@@ -3,6 +3,7 @@ require "cybertrain/session"
 require "cybertrain/flash"
 require "cybertrain/http/cookies"
 require "cybertrain/crypto"
+require "cybertrain/clock"
 require "cybertrain/cookie_jar"
 
 module Cybertrain

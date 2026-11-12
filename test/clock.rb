@@ -104,34 +104,108 @@ end
 
 # Spec section 2.3: the framework's runtime, and the code its emitters
 # write into an application, read the time through Cybertrain::Clock
-# (Time.current), never Time.now; the five clock seams it replaced are
-# gone. cybertrain/cli/ and the rest of cybertrain/generator/ run at build
-# time on the developer's clock; test/time_now.rb is the override itself.
-# Comment lines are not counted. Run from the repository root.
+# (Time.current), never Time.now, Time.new without arguments, Date.today,
+# DateTime.now or the realtime clock itself; the five clock seams it
+# replaced are gone, from the framework, its tests and the blog.
+# cybertrain/cli/ and the rest of cybertrain/generator/ run at build time
+# on the developer's clock, except cli/authentication.rb, whose text is
+# application code; its one exception is 0.4's ApplicationController block,
+# which the upgrade must match as 0.4 wrote it. clock.rb and
+# test/time_now.rb are the clock itself. Comment lines are not counted.
+# Run from the repository root: from anywhere else the globs find nothing
+# and the test fails instead of passing on no files.
+LEGACY_START = "LEGACY_APPLICATION_CONTROLLER_BLOCKS = ["
+LEGACY_END = "      ]"
+IDENTIFIER_BYTES = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"
+
 def clock_scanned?(path)
+  return true if path == "cybertrain/cli/authentication.rb"
   return false if path.start_with?("cybertrain/cli/")
   return false if path.start_with?("cybertrain/generator/") && !path.end_with?("_emitter.rb")
 
-  path != "cybertrain/test/time_now.rb"
+  path != "cybertrain/test/time_now.rb" && path != "cybertrain/clock.rb"
+end
+
+# Whether `line` reads the time some other way than through the Clock.
+def reads_time_directly?(line)
+  return true if line.include?("Time.now") || line.include?("Time::now")
+  return true if line.include?("Date.today") || line.include?("DateTime.now")
+  return true if line.include?("CLOCK_REALTIME")
+
+  at = line.index("Time.new")
+  while !at.nil?
+    after = line[at + 8, 1].to_s
+    # Time.new( takes a date; Time.new alone is the current time.
+    return true if after.empty?
+    return true unless after == "(" || IDENTIFIER_BYTES.include?(after)
+
+    at = line.index("Time.new", at + 8)
+  end
+  false
+end
+
+# The clock-reading lines of one file, as "path:line", skipping comments
+# and, in cli/authentication.rb, 0.4's legacy block.
+def clock_hits(path)
+  out = []
+  number = 0
+  legacy = false
+  File.read(path).each_line do |line|
+    number += 1
+    legacy = true if line.include?(LEGACY_START)
+    if legacy
+      legacy = false if line.rstrip == LEGACY_END
+      next
+    end
+    out << "#{path}:#{number}" if !line.lstrip.start_with?("#") && reads_time_directly?(line)
+  end
+  out
+end
+
+# The files a removed seam may not appear in: the framework, the tests and
+# the examples, but not the frozen 0.4 application and its upgrade diff
+# (preflight ruling R5), not this file (which names the seams), and not
+# build output.
+def seam_scanned?(path)
+  return false if path.start_with?("test/fixtures/auth_04_app")
+  return false if path == "test/clock.rb"
+
+  !path.include?("/build/") && !path.include?("/tmp/")
 end
 
 test "no runtime or emitted code reads Time.now, and no removed seam is left" do
+  framework = Dir.glob("cybertrain/**/*.rb").sort
+  assert framework.size > 100, "run from the repository root: found #{framework.size} framework files"
   hits = []
+  framework.each { |path| hits.concat(clock_hits(path)) if clock_scanned?(path) }
+  assert_equal [], hits
+  # The legacy block is skipped, not absent: 0.4's text still reads Time.now.
+  assert File.read("cybertrain/cli/authentication.rb").include?("created_at.to_i + lifetime <= Time.now.to_i")
+
+  seams = ["def self.clock=", "Cache.clock", "system_clock", "current_time=", "current_time =", "fixed_now",
+           "status_now", "supervisor_clock"]
+  files = framework + Dir.glob("test/**/*.rb").sort + Dir.glob("examples/**/*.rb").sort
   seam_files = []
-  seams = ["def self.clock=", "system_clock", "current_time=", "fixed_now", "status_now", "supervisor_clock"]
-  Dir.glob("cybertrain/**/*.rb").sort.each do |path|
+  files.each do |path|
+    next unless seam_scanned?(path)
+
     text = File.read(path)
     seam_files << path if seams.any? { |w| text.include?(w) }
-    next unless clock_scanned?(path)
-
-    number = 0
-    text.each_line do |line|
-      number += 1
-      hits << "#{path}:#{number}" if !line.lstrip.start_with?("#") && line.include?("Time.now")
-    end
   end
-  assert_equal [], hits
   assert_equal [], seam_files
+end
+
+test "the scan's patterns catch each way of reading the time" do
+  assert reads_time_directly?("x = Time.now.to_i")
+  assert reads_time_directly?("x = Time.new\n")
+  assert reads_time_directly?("x = Time.new.utc")
+  assert reads_time_directly?("x = Time.new")
+  assert reads_time_directly?("d = Date.today")
+  assert reads_time_directly?("d = DateTime.now")
+  assert reads_time_directly?("us = Process.clock_gettime(Process::CLOCK_REALTIME)")
+  refute reads_time_directly?("t = Time.new(2026, 1, 1)")
+  refute reads_time_directly?("t = Time.current")
+  refute reads_time_directly?("t = Process.clock_gettime(Process::CLOCK_MONOTONIC)")
 end
 
 Cybertrain::Test.run!

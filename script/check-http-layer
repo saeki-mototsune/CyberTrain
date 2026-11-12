@@ -5,6 +5,13 @@
 # small files it is built on (Params, which Query parses into, and Logger),
 # and never Context, Middleware, Router, Controller and the like. CRuby only.
 #
+# A constant named in a method body resolves only when the method runs, so
+# a reference to a framework module the layer does not load (Clock, say)
+# passes the require check above and fails at call time. The second check
+# reads the loaded files' code (comments and string literals dropped) and
+# refuses any capitalised name that no loaded module defines. LAZY lists
+# the deliberate exceptions, each documented at its use.
+#
 # usage: ruby script/check-http-layer
 $LOAD_PATH.unshift(File.expand_path("..", __dir__))
 require "cybertrain/http/server"
@@ -16,6 +23,42 @@ stray = loaded.reject { |f| f.start_with?("cybertrain/http/") || allowed.include
 
 unless stray.empty?
   warn "cybertrain/http/server pulls in code outside the HTTP layer: #{stray.sort.join(", ")}"
+  exit 1
+end
+# The names a method may reach without the layer loading them, by file.
+LAZY = {
+  # Request#preferred_locale's default (its comment: a program that calls it
+  # loads cybertrain/i18n, as `require "cybertrain"` does).
+  "cybertrain/http/request.rb" => ["I18n"]
+}.freeze
+
+scopes = [Object]
+queue = [Cybertrain]
+until queue.empty?
+  mod = queue.shift
+  next if scopes.include?(mod)
+
+  scopes << mod
+  mod.constants(false).each do |c|
+    value = mod.const_get(c, false)
+    queue << value if value.is_a?(Module) && value.name.to_s.start_with?("Cybertrain")
+  end
+end
+unresolved = []
+loaded.each do |f|
+  File.foreach(root + f).with_index(1) do |line, n|
+    code = line.sub(/\A\s*#.*/, "").gsub(/"(?:\\.|[^"\\])*"/, '""').gsub(/'(?:\\.|[^'\\])*'/, "''").sub(/\s#.*/m, "")
+    code.scan(/(?<![\w:@$])(?:::)?([A-Z]\w*)/).flatten.uniq.each do |name|
+      next if scopes.any? { |s| s.const_defined?(name, false) }
+      next if LAZY.fetch(f, []).include?(name)
+
+      unresolved << "#{f}:#{n}: #{name}"
+    end
+  end
+end
+unless unresolved.empty?
+  warn "cybertrain/http names constants nothing in the HTTP layer defines (they would fail when called):"
+  unresolved.each { |u| warn "  #{u}" }
   exit 1
 end
 puts "http layer: #{loaded.length} files, none outside cybertrain/http/ besides #{allowed.join(", ")}"

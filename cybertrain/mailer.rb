@@ -29,6 +29,7 @@
 # needs no database: a program that only sends mail links no SQLite and
 # loads under CRuby.
 require "base64"
+require "cybertrain/clock"
 require "cybertrain/config"
 require "cybertrain/crypto"
 require "cybertrain/net/socket"

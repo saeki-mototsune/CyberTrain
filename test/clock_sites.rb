@@ -4,12 +4,21 @@ require "cybertrain"
 require "cybertrain/test"
 require "cybertrain/test/client"
 require "cybertrain/test/http_receiver"
+require "cybertrain/mailer"
+# The gen fixture's job classes and its checked-in gen/jobs.rb, in the order
+# gen/app.rb loads them (as test/gen_jobs_compiles.rb does): perform_in is
+# the emitter's own code.
+require_relative "fixtures/gen_app/app/jobs/admin/report_job"
+require_relative "fixtures/gen_app/app/jobs/digest_job"
+require_relative "fixtures/gen_app/app/jobs/welcome_job"
+require_relative "fixtures/gen_app/gen/jobs"
 
 # Spec section 2.3 and acceptance 1: the framework's times follow
 # Cybertrain::Clock, so travel_to / travel / freeze_time move them all: a
-# model's timestamps, a cache entry's expiry, a job's run_at and
-# perform_in, a rate-limit window (memory store, through a controller), a
-# session's stamped absolute lifetime, a signed token's expiry. Waits stay
+# model's timestamps, a cache entry's expiry, a job's run_at and the
+# emitted perform_in, a rate-limit window (memory store, through a
+# controller), a session's stamped absolute lifetime, a signed token's
+# expiry. Waits stay
 # on the monotonic clock, so a stream read and an HTTP receiver wait end
 # under freeze_time. (The idle limit lives in the generated Authentication
 # concern, not here: preflight ruling R4.) One SQLite file; it links
@@ -103,15 +112,8 @@ class Note < Cybertrain::Model
   end
 end
 
-# A job registered by hand, as test/job_helpers.rb registers its jobs, and
-# its perform_in in the shape gen/jobs.rb's emitter writes it.
+# A job registered by hand, as test/job_helpers.rb registers its jobs.
 Cybertrain::Job.register("noop") { |run| nil }
-
-class NoopJob
-  def self.perform_in(seconds)
-    Cybertrain::Job.enqueue("noop", "{}", run_at: Time.current + seconds)
-  end
-end
 
 def run_at_of(id)
   rows = DB.with { |c| c.execute("SELECT run_at FROM cybertrain_jobs WHERE id = ?", [id]) }
@@ -179,7 +181,7 @@ end
 test "a job's run_at and perform_in follow the clock" do
   travel_to(Time.at(1_000_000)) do
     assert_equal 1_000_000, run_at_of(Cybertrain::Job.enqueue("noop", "{}"))
-    assert_equal 1_000_060, run_at_of(NoopJob.perform_in(60))
+    assert_equal 1_000_060, run_at_of(DigestJob.perform_in(60))
   end
 end
 

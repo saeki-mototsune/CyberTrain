@@ -55,6 +55,7 @@
 require "json"
 require "cybertrain/logger"
 require "cybertrain/config"
+require "cybertrain/clock"
 require "cybertrain/background"
 require "cybertrain/http_client"
 require "cybertrain/websocket/frame"

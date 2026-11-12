@@ -35,6 +35,7 @@
 
 require "cybertrain/logger"
 require "cybertrain/config"
+require "cybertrain/clock"
 
 module Cybertrain
   module Background
