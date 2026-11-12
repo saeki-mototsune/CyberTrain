@@ -34,14 +34,15 @@ module Cybertrain
 
       # Refused: a class-form file runs with `cybertrain test FILE`.
       # @raise [ArgumentError]
-      def self.setup
+      # (Any arguments, so `setup :name` reaches this message too.)
+      def self.setup(*names)
         message = NOT_REWRITTEN
         raise ArgumentError, message
       end
 
       # Refused: a class-form file runs with `cybertrain test FILE`.
       # @raise [ArgumentError]
-      def self.teardown
+      def self.teardown(*names)
         message = NOT_REWRITTEN
         raise ArgumentError, message
       end

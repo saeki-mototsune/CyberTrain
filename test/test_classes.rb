@@ -152,6 +152,7 @@ test "the class-level test, setup and teardown refuse an unrewritten class-form 
   assert_equal refused, assert_raises("ArgumentError") { ActiveSupport::TestCase.test("a name") }
   assert_equal refused, assert_raises("ArgumentError") { ActiveSupport::TestCase.setup }
   assert_equal refused, assert_raises("ArgumentError") { ThingTest.teardown }
+  assert_equal refused, assert_raises("ArgumentError") { ThingTest.setup(:sign_in) }
 end
 
 test "test_help's reset hooks put the locale back before setup" do
@@ -163,6 +164,47 @@ test "test_help's reset hooks put the locale back before setup" do
   Cybertrain::Test.after_case(t)
   assert_equal :en, I18n.locale
   I18n.available_locales = [:en]
+end
+
+RESET_RAISES = [false]
+Cybertrain::Test.on_reset(-> { raise "rz" if RESET_RAISES[0] })
+
+test "a raising on_reset hook is an ERR in reset: setup and body skipped, teardown run" do
+  LOG.clear
+  t = ThingTest.new
+  RESET_RAISES[0] = true
+  Cybertrain::Test.run_body(t) { t.test_uses_ivar } if Cybertrain::Test.before_case(t)
+  RESET_RAISES[0] = false
+  Cybertrain::Test.after_case(t)
+  assert_equal ["ERR", "in reset: RuntimeError: rz"], [Cybertrain::Test.last_status, Cybertrain::Test.last_message]
+  assert_equal ["teardown", "base teardown"], LOG
+end
+
+LIMIT = Cybertrain::RateLimit.new(1, 60, false, "", "")
+Cybertrain::RateLimit.register(LIMIT)
+
+test "test_help's reset hooks clear the rate-limit counters before setup" do
+  LIMIT.hit("203.0.113.9", 1_000)
+  assert LIMIT.tracked?("203.0.113.9")
+  t = ThingTest.new
+  Cybertrain::Test.run_body(t) { t.test_uses_ivar } if Cybertrain::Test.before_case(t)
+  Cybertrain::Test.after_case(t)
+  refute LIMIT.tracked?("203.0.113.9")
+end
+
+test "travel and receivers are undone after a raising teardown" do
+  rx = Cybertrain::Test::HttpReceiver.new(accept_window: 30.0)
+  twice = TwiceFailingTest.new
+  if Cybertrain::Test.before_case(twice)
+    Cybertrain::Test.run_body(twice) do
+      freeze_time
+      rx.start
+    end
+  end
+  Cybertrain::Test.after_case(twice)
+  assert_equal ["ERR", "in teardown: RuntimeError: td"], [Cybertrain::Test.last_status, Cybertrain::Test.last_message]
+  refute Cybertrain::Clock.travelling?
+  refute rx.serving?
 end
 
 OUTSIDE = Cybertrain::Test::HttpReceiver.new(accept_window: 30.0)

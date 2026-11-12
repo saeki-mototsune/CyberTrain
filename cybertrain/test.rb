@@ -93,6 +93,11 @@ module Cybertrain
     @resets = Array.new(0) { -> { nil } }
     @after_this_case = Array.new(0) { -> { nil } }
     @in_case = false
+    # Per running case, innermost last: where its after_this_case callables
+    # start, and the travelled instant (microseconds, -1 for none) of the
+    # case it is nested in.
+    @case_marks = Array.new(0) { 0 }
+    @travel_marks = Array.new(0) { 0 }
     # The case just run: "ok", "FAIL" or "ERR", and its message.
     @status = ""
     @message = ""
@@ -156,12 +161,15 @@ module Cybertrain
     # registers them.
     # @param callable [Proc] a lambda taking no argument
     # @return [nil]
+    # @api private
     def self.before_each_bundled(callable)
       @before_each << callable
       nil
     end
 
     # The application `cybertrain test` booted (nil under `spin test`).
+    # @return [Cybertrain::Application, nil]
+    # @api private
     def self.app = @app
 
     def self.app=(app)
@@ -171,6 +179,7 @@ module Cybertrain
     # The HTML the last integration request or `render_inline` answered,
     # which `assert_select` reads.
     # @return [String]
+    # @api private
     def self.last_html = @last_html
 
     def self.last_html=(html)
@@ -218,7 +227,11 @@ module Cybertrain
 
     # Step 5: runs the body and records `ok`, `FAIL` (a failed assertion,
     # its message) or `ERR` (another exception, `<Class>: <message>`).
-    # @param t [Cybertrain::Test::Base]
+    # Only StandardError is caught, as Minitest's runner leaves Interrupt
+    # and the like alone: an exception outside it (`NotImplementedError`, a
+    # ScriptError) ends the program without teardown.
+    # @param t [Cybertrain::Test::Base, Cybertrain::Test::Case] the test
+    #   instance, or the top-level case; not used
     # @yield the test method
     # @return [nil]
     # @api public
@@ -264,6 +277,7 @@ module Cybertrain
     # nothing (`run!` and the bundle's runner do).
     # @param c [Cybertrain::Test::Case]
     # @return [nil]
+    # @api private
     def self.run_top_level_case(c)
       if top_level_setup(c.top_file)
         run_body(c) { c.block.call }
@@ -272,55 +286,52 @@ module Cybertrain
     end
 
     def self.top_level_setup(file)
-      return false unless case_begin
-
-      list = file.setup_blocks
-      i = 0
-      while i < list.length
-        list[i].call
-        i += 1
-      end
-      true
-    rescue AssertionFailed => e
-      step_failed("in setup", e.message)
-      false
-    rescue StandardError => e
-      step_failed("in setup", "#{e.class.name}: #{e.message}")
-      false
+      case_begin && run_case_hooks(file.setup_blocks, "in setup")
     end
 
+    # Every teardown block runs, newest first, each on its own: one that
+    # raises is reported and the others still run (step 6 is "always").
     def self.top_level_teardown(file)
       list = file.teardown_blocks
       i = list.length - 1
       while i >= 0
-        list[i].call
+        run_case_hook(list[i], "in teardown")
         i -= 1
       end
-      nil
-    rescue AssertionFailed => e
-      step_failed("in teardown", e.message)
-      nil
-    rescue StandardError => e
-      step_failed("in teardown", "#{e.class.name}: #{e.message}")
       nil
     ensure
       case_cleanup
     end
 
     # Steps 1-3; false when a hook raised (the case is ERR, the step named).
+    # A case begun inside a running case (driven by hand, as the
+    # framework's own tests do) records where the outer case stands, so
+    # its cleanup gives the outer case back its travel, its after_this_case
+    # callables and in_case?.
     def self.case_begin
       @status = ""
       @message = ""
+      @case_marks << @after_this_case.length
+      @travel_marks << (@in_case && Cybertrain::Clock.travelling? ? Cybertrain::Clock.travelled_micros : -1)
       @in_case = true
       run_case_hooks(@before_each, "in fixtures") && run_case_hooks(@resets, "in reset")
     end
 
+    # Runs the hooks in order and stops at the first that raises (false).
     def self.run_case_hooks(list, step)
       i = 0
       while i < list.length
-        list[i].call
+        return false unless run_case_hook(list[i], step)
+
         i += 1
       end
+      true
+    end
+
+    # Runs one hook or block; a failure is recorded under `step` (an
+    # assertion's message as it is, another exception with its class).
+    def self.run_case_hook(callable, step)
+      callable.call
       true
     rescue AssertionFailed => e
       step_failed(step, e.message)
@@ -332,26 +343,23 @@ module Cybertrain
 
     # Step 7: a travel without a block lasts to the end of its case,
     # whatever happened (spec section 2.1), so the clock is real again;
-    # then each after_this_case callable, newest first and each on its own
-    # (one that raises does not stop the others); then the list is emptied.
+    # then each after_this_case callable the case registered, newest first
+    # and each on its own (one that raises does not stop the others); then
+    # they are forgotten. A case nested in another hands the outer one back
+    # its travel and its own callables.
     def self.case_cleanup
       Cybertrain::Clock.travel_back
+      from = @case_marks.empty? ? 0 : @case_marks.pop
+      outer_micros = @travel_marks.empty? ? -1 : @travel_marks.pop
       list = @after_this_case
       i = list.length - 1
-      while i >= 0
-        run_cleanup_callable(list[i])
+      while i >= from
+        run_case_hook(list[i], "after teardown")
         i -= 1
       end
-      list.clear
-      @in_case = false
-      nil
-    end
-
-    def self.run_cleanup_callable(callable)
-      callable.call
-      nil
-    rescue StandardError => e
-      step_failed("after teardown", "#{e.class.name}: #{e.message}")
+      list.pop while list.length > from
+      Cybertrain::Clock.travel_to(Time.at(outer_micros / 1_000_000).utc) if outer_micros >= 0
+      @in_case = !@case_marks.empty?
       nil
     end
 
@@ -374,6 +382,7 @@ module Cybertrain
     # several lines continues on the lines that follow.
     # @param name [String]
     # @return [String]
+    # @api private
     def self.result_line(name)
       return "ok   #{name}" if @status == "ok"
 
