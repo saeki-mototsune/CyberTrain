@@ -1,5 +1,5 @@
 ---
-source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
+source_sha256: 989b7e6f36de9c823523f8e145ccd2d46ab37ab5b822f2f368fdc9e8e04dd4a8
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -83,10 +83,10 @@ version = "0.1.0"
 cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }
 ```
 
-然后它会确保 Spinel 已安装（第一次时，这意味着要把锁定版本的 Spinel 构建到 `~/.cybertrain` 中：需要几分钟，仅一次；参见[第 00 步](#requirements)），并运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，所以 `cybertrain server` 可以立即使用。最后它会打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
+然后它会确保 Spinel 已安装（第一次时，这意味着要把锁定版本的 Spinel 构建到 `~/.cybertrain` 中：需要几分钟，仅一次；参见[第 00 步](#requirements)），并运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `SPIN_DEBUG=1 spin run gen`（以 spin 的调试模式构建 gen），就像 `rails new` 会运行 `bundle install` 一样，所以 `cybertrain server` 可以立即使用。最后它会打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
 
 > [!NOTE]
-> 如果 Spinel 或两个 `spin` 步骤之一失败，已写出的文件会保留，`new` 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 `cybertrain setup`，再在新目录中运行 `cybertrain spin lock && cybertrain spin run gen`）。`--skip-spin` 只写出文件；`--path DIR` 改为依赖本地检出的代码，`--git URL [--ref R]` 依赖位于 URL 的框架（分支或标签 R），`--version V` 则在 `cybertrain` 进入 `spin-index` 后依赖索引中的版本。
+> 如果 Spinel 或两个 `spin` 步骤之一失败，已写出的文件会保留，`new` 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 `cybertrain setup`，再在新目录中运行 `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen`）。`--skip-spin` 只写出文件；`--path DIR` 改为依赖本地检出的代码，`--git URL [--ref R]` 依赖位于 URL 的框架（分支或标签 R），`--version V` 则在 `cybertrain` 进入 `spin-index` 后依赖索引中的版本。
 
 应用名使用小写字母、数字和 `_`，并以字母开头。生成的目录树：
 
@@ -230,7 +230,7 @@ end
 > 把 schema 和路由转换成 `gen/`，创建 SQLite 数据库，启动服务器。
 
 ```shell 终端 — blog/
-cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen（gen 和 db 为调试模式）
 cybertrain server        # http://127.0.0.1:3000；修改 Ruby 后会重新构建，视图无需重新构建即可重新加载
 ```
 
@@ -1040,7 +1040,7 @@ class ArticlesController < ApplicationController
 cybertrain build
 ```
 
-这会写出 `dist/`：嵌入了所有视图的应用二进制文件，以及放在它旁边、供它使用的文件。它会运行 `spin run gen -- --embed-views`、`spin build blog` 和 `spin run gen`（最后这一步会恢复已提交的、空的 `gen/views.rb`，即使在失败或按下 Ctrl-C 之后也是如此），然后组装出：
+这会写出 `dist/`：嵌入了所有视图的应用二进制文件，以及放在它旁边、供它使用的文件。它会运行 `SPIN_DEBUG=1 spin run gen -- --embed-views`、`spin build blog` 和 `SPIN_DEBUG=1 spin run gen`（最后这一步会恢复已提交的、空的 `gen/views.rb`，即使在失败或按下 Ctrl-C 之后也是如此），然后组装出：
 
 <ul class="ship-grid">
   <li class="ship-bin"><code>dist/blog</code><span>编译后的框架、控制器、模型和模板解释器，并嵌入了所有视图</span></li>

@@ -29,6 +29,11 @@ module Cybertrain
       # than `--incremental` fails the build with it.
       UNSUPPORTED_INCREMENTAL = "unknown option '--incremental'"
 
+      # The gen step: gen built in spin's debug mode, as the CLI builds it
+      # (Shell::TOOL_SPIN), so `cybertrain server`'s gen step and the
+      # rebuilds share one binary.
+      GEN_COMMAND = "#{Shell::TOOL_SPIN} run gen"
+
       # What `spin run gen` leaves behind, run without compiling it again.
       DIRECT_GEN = "./build/bin/gen"
 
@@ -67,9 +72,10 @@ module Cybertrain
         @incremental = true
       end
 
-      # Runs `spin run gen && spin build <target> -- --incremental` in root;
-      # true on success. While #gen_fresh?, gen is the binary already built,
-      # which saves compiling it; if that run fails, for whatever reason, the
+      # Runs `SPIN_DEBUG=1 spin run gen && spin build <target> --
+      # --incremental` in root (GEN_COMMAND); true on success. While
+      # #gen_fresh?, gen is the binary already built, which saves compiling
+      # it; if that run fails, for whatever reason, the
       # full command follows, so a broken binary never strands the loop. When
       # the toolchain refuses `--incremental`, runs the plain build at once
       # and keeps to it for the rest of the process. The check comes before
@@ -229,7 +235,7 @@ module Cybertrain
       # Everything after `spin build`'s `--` goes to spinel. A build with
       # such flags is never "up to date" to spin, which a rebuild that a
       # change triggered never is anyway.
-      def command(incremental = true, gen = "spin run gen")
+      def command(incremental = true, gen = GEN_COMMAND)
         log = log_file
         build = "spin build #{Shell.quote(@target)}"
         build += " -- --incremental" if incremental

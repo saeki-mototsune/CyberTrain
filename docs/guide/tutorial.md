@@ -113,7 +113,8 @@ Then it makes sure Spinel is installed (the first time, that means building
 the pinned Spinel release into `~/.cybertrain`: a few minutes, once; see
 [step 00](#requirements)) and runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in `spin.lock`)
-and `spin run gen`, much as `rails new` runs `bundle install`, so
+and `SPIN_DEBUG=1 spin run gen` (gen built in spin's debug mode), much as
+`rails new` runs `bundle install`, so
 `cybertrain server` works right away. It ends by printing the next steps.
 Nothing of the framework is copied into the app; commit `spin.toml` and
 `spin.lock`.
@@ -121,8 +122,8 @@ Nothing of the framework is copied into the app; commit `spin.toml` and
 > [!NOTE]
 > If Spinel or one of the two `spin` steps fails, the files stay, `new` exits
 > with 1 and prints what to run once the cause is fixed (for Spinel:
-> `cybertrain setup`, then `cybertrain spin lock && cybertrain spin run gen`
-> in the new directory). `--skip-spin` only writes the files; `--path DIR`
+> `cybertrain setup`, then `cybertrain spin lock && SPIN_DEBUG=1 cybertrain
+> spin run gen` in the new directory). `--skip-spin` only writes the files; `--path DIR`
 > depends on a local checkout instead, `--git URL [--ref R]` on the framework
 > at URL (at branch or tag R), and `--version V` on an index version once
 > `cybertrain` is on a `spin-index`.
@@ -310,7 +311,7 @@ and `destroy` too; the excerpt above omits them. In `index`,
 > server.
 
 ```shell terminal — blog/
-cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen (gen and db in debug mode)
 cybertrain server        # http://127.0.0.1:3000; rebuilds on Ruby edits, views reload without a rebuild
 ```
 
@@ -1470,8 +1471,8 @@ cybertrain build
 ```
 
 This writes `dist/`: the app binary with every view embedded, plus the files
-it uses beside it. It runs `spin run gen -- --embed-views`, `spin build blog`
-and `spin run gen` (which puts the committed, empty `gen/views.rb` back, even
+it uses beside it. It runs `SPIN_DEBUG=1 spin run gen -- --embed-views`,
+`spin build blog` and `SPIN_DEBUG=1 spin run gen` (which puts the committed, empty `gen/views.rb` back, even
 after a failure or Ctrl-C), then assembles:
 
 <ul class="ship-grid">

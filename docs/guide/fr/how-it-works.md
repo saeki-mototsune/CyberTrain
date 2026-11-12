@@ -1,5 +1,5 @@
 ---
-source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
+source_sha256: 076b3c771ca23ce41e8e792f622035c0c1ce6c3cc4cb81fb7c90dd6a6e3ebccb
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -30,7 +30,7 @@ Les fichiers `app/views/**/*.html.erb` ressemblent à de l’ERB de Rails, mais 
 L’origine du source dépend du mode&nbsp;:
 
 - En développement (et en test), le moteur lit `app/views/` depuis le disque, et en développement il réanalyse un template quand celui-ci change, donc modifier une vue ne demande pas de recompilation.
-- `cybertrain build` lance `spin run gen -- --embed-views`, qui écrit le source de chaque template dans `gen/views.rb` sous forme de table de chaînes pour ce seul `spin build`, puis relance `spin run gen` pour remettre la table vide versionnée.
+- `cybertrain build` lance `SPIN_DEBUG=1 spin run gen -- --embed-views`, qui écrit le source de chaque template dans `gen/views.rb` sous forme de table de chaînes pour ce seul `spin build`, puis relance `SPIN_DEBUG=1 spin run gen` pour remettre la table vide versionnée.
 - Le binaire de production ne rend que cette table (en analysant chaque template une seule fois) et refuse de démarrer quand elle est vide (`error: views are not embedded in this binary`).
 
 ## Le serveur HTTP
@@ -54,9 +54,9 @@ Comment une transaction emprunte l’une de ces connexions, et ce qui s’exécu
 
 ## La boucle de développement
 
-`cybertrain server` (`spin run gen`, puis `spin run NAME`) en `development` (le `CYBERTRAIN_ENV` par défaut, sauf dans un binaire issu de `cybertrain build`) surveille aussi `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb` et les racines des assets (`app/assets/**`, `app/javascript/**`, `vendor/javascript/**`) toutes les demi-secondes. Les vues sont exclues (le moteur les recharge lui-même), tout comme `gen/views.rb`, vide en développement.
+`cybertrain server` (`SPIN_DEBUG=1 spin run gen`&nbsp;; `spin build NAME -- --incremental` si un fichier Ruby est plus récent que `build/bin/NAME`&nbsp;; puis `spin run NAME`) en `development` (le `CYBERTRAIN_ENV` par défaut, sauf dans un binaire issu de `cybertrain build`) surveille aussi `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb` et les racines des assets (`app/assets/**`, `app/javascript/**`, `vendor/javascript/**`) toutes les demi-secondes. Les vues sont exclues (le moteur les recharge lui-même), tout comme `gen/views.rb`, vide en développement.
 
-Un changement lance `spin run gen && spin build NAME -- --incremental` en arrière-plan&nbsp;: la compilation incrémentale de Spinel, qui ne recompile que les unités C touchées par la modification. Une version de Spinel sans `--incremental` rejette l’option, et la boucle compile alors sans elle.
+Un changement lance `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` en arrière-plan&nbsp;: la compilation incrémentale de Spinel, qui ne recompile que les unités C touchées par la modification. Une version de Spinel sans `--incremental` rejette l’option, et la boucle compile alors sans elle. La CLI et la boucle compilent gen et `bin/db.rb` dans le mode debug de spin (`SPIN_DEBUG=1`, `-O0`)&nbsp;: ils ne tournent que quelques millisecondes, et gen se compile en une fraction du temps que prend `-O2`&nbsp;; l’application est toujours compilée en mode release.
 
 Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` externe)&nbsp;: un thread de surveillance arrête l’écoute et laisse se terminer les requêtes ouvertes, puis le thread principal fait `execv` du nouveau binaire sur le même port et le même PID, de façon invisible pour un client en pleine session. Une compilation échouée continue de servir l’ancien binaire et affiche la sortie du compilateur en bannière sur chaque réponse HTML. Les recompilations sont suspendues tant que `cybertrain build` détient `tmp/cybertrain-build.lock`. Rien de tout cela n’est chargé en production.
 

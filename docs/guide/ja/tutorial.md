@@ -1,5 +1,5 @@
 ---
-source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
+source_sha256: 989b7e6f36de9c823523f8e145ccd2d46ab37ab5b822f2f368fdc9e8e04dd4a8
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -83,10 +83,10 @@ version = "0.1.0"
 cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }
 ```
 
-次に Spinel がインストールされていることを確認し（初回は固定された Spinel のリリースを `~/.cybertrain` にビルドします：数分、初回のみ。[ステップ 00](#requirements) を参照）、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなもので、これで `cybertrain server` がすぐに動きます。最後に次の手順を表示して終わります。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
+次に Spinel がインストールされていることを確認し（初回は固定された Spinel のリリースを `~/.cybertrain` にビルドします：数分、初回のみ。[ステップ 00](#requirements) を参照）、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `SPIN_DEBUG=1 spin run gen`（gen は spin のデバッグモードでビルドされます）を実行します。`rails new` が `bundle install` を実行するのと同じようなもので、これで `cybertrain server` がすぐに動きます。最後に次の手順を表示して終わります。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
 
 > [!NOTE]
-> Spinel のインストールか、2 つの `spin` ステップのいずれかが失敗した場合、ファイルは残したまま `new` は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：`cybertrain setup` を実行し、続いて新しいディレクトリで `cybertrain spin lock && cybertrain spin run gen`）。`--skip-spin` はファイルを書き出すだけです。`--path DIR` は代わりにローカルのチェックアウトに依存し、`--git URL [--ref R]` は URL にあるフレームワーク（ブランチまたはタグ R）に、`--version V` は `cybertrain` が `spin-index` に登録された後、インデックスのバージョンに依存します。
+> Spinel のインストールか、2 つの `spin` ステップのいずれかが失敗した場合、ファイルは残したまま `new` は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：`cybertrain setup` を実行し、続いて新しいディレクトリで `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen`）。`--skip-spin` はファイルを書き出すだけです。`--path DIR` は代わりにローカルのチェックアウトに依存し、`--git URL [--ref R]` は URL にあるフレームワーク（ブランチまたはタグ R）に、`--version V` は `cybertrain` が `spin-index` に登録された後、インデックスのバージョンに依存します。
 
 アプリ名には英小文字、数字、`_` を使い、先頭は英字にします。生成されるツリー：
 
@@ -230,7 +230,7 @@ end
 > スキーマとルーティングを `gen/` に変換し、SQLite データベースを作成して、サーバーを起動します。
 
 ```shell ターミナル — blog/
-cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen（gen と db はデバッグモード）
 cybertrain server        # http://127.0.0.1:3000。Ruby を編集すると再ビルド、ビューは再ビルドなしで再読み込み
 ```
 
@@ -1040,7 +1040,7 @@ class ArticlesController < ApplicationController
 cybertrain build
 ```
 
-これは `dist/` を書き出します：すべてのビューを埋め込んだアプリのバイナリと、その横に置かれる、バイナリが使うファイルです。`spin run gen -- --embed-views`、`spin build blog`、`spin run gen`（失敗や Ctrl-C の後でも、コミット済みの空の `gen/views.rb` を元に戻します）を実行してから、次のものを組み立てます：
+これは `dist/` を書き出します：すべてのビューを埋め込んだアプリのバイナリと、その横に置かれる、バイナリが使うファイルです。`SPIN_DEBUG=1 spin run gen -- --embed-views`、`spin build blog`、`SPIN_DEBUG=1 spin run gen`（失敗や Ctrl-C の後でも、コミット済みの空の `gen/views.rb` を元に戻します）を実行してから、次のものを組み立てます：
 
 <ul class="ship-grid">
   <li class="ship-bin"><code>dist/blog</code><span>コンパイルされたフレームワーク、コントローラー、モデル、テンプレートインタプリタ。すべてのビューを埋め込み済み</span></li>

@@ -82,19 +82,23 @@ module Cybertrain
       # command strings stay safe for a caller that skipped that, whatever the
       # spelling. An empty name cannot reach these from the CLI (run_in_app
       # refuses it first); a direct caller passing "" gets `spin build ''`.
+      # gen is built in debug mode (Shell::TOOL_SPIN), the application in
+      # release mode.
       def self.commands(name)
-        ["spin run gen -- --embed-views", "spin build #{quote_arg(name)}", "spin run gen"]
+        ["#{Shell::TOOL_SPIN} run gen -- --embed-views", "spin build #{quote_arg(name)}", "#{Shell::TOOL_SPIN} run gen"]
       end
 
       # `cybertrain db ARGS`, through bin/db.rb (the app binary cannot compile
       # before the first migration has produced gen/models). bin/db.rb only
       # knows the migrations gen/migrations.rb lists, so gen runs first;
       # migrate and rollback rewrite db/schema.rb, which gen/models is
-      # derived from, so gen runs again after them.
+      # derived from, so gen runs again after them. Both tools are built in
+      # debug mode (Shell::TOOL_SPIN).
       def self.db_commands(args)
         words = args.map { |arg| quote_arg(arg) }.join(" ")
-        commands = ["spin run gen", "spin run db -- #{words}"]
-        commands << "spin run gen" if args[0] == "migrate" || args[0] == "rollback"
+        gen = "#{Shell::TOOL_SPIN} run gen"
+        commands = [gen, "#{Shell::TOOL_SPIN} run db -- #{words}"]
+        commands << gen if args[0] == "migrate" || args[0] == "rollback"
         commands
       end
 
@@ -110,11 +114,78 @@ module Cybertrain
         Shell.quote(text)
       end
 
-      # port is "" (the app's default, 3000) or a port? string.
+      # port is "" (the app's default, 3000) or a port? string. The gen step
+      # and the run step; run_server puts incremental_command between them
+      # when the binary is stale.
       def self.server_commands(name, port)
         target = quote_arg(name)
         run = port == "" ? "spin run #{target}" : "spin run #{target} -- #{quote_arg(port)}"
-        ["spin run gen", run]
+        ["#{Shell::TOOL_SPIN} run gen", run]
+      end
+
+      # The build the development rebuilder runs after an edit
+      # (Dev::Rebuilder#command): Spinel compiles the C units apart and
+      # reuses the objects in its cache, which a plain `spin run NAME` (every
+      # unit at -O2) neither reads nor fills. spin then reads the binary as
+      # up to date, so the `spin run NAME` after it only starts it.
+      def self.incremental_command(name)
+        "spin build #{quote_arg(name)} -- --incremental"
+      end
+
+      # Top-level entries of an application binary_stale? does not look in:
+      # build output, data, and what spin does not compile.
+      STALE_SKIPPED = ["build", "dist", "tmp", "storage", "public", ".git"]
+
+      # True when root/build/bin/NAME is missing, or a *.rb file under root
+      # (not under STALE_SKIPPED, not through a symlinked directory) is newer
+      # than it: spin's own rule for rebuilding an executable, close enough.
+      # Wrong either way costs only time: a stale verdict by mistake is one
+      # incremental build `spin run` would have skipped; a fresh one by
+      # mistake (a path dependency changed) leaves the build to `spin run`.
+      # A tree that cannot be read counts as stale.
+      def self.binary_stale?(root, name)
+        binary = "#{root}/build/bin/#{name}"
+        return true unless File.file?(binary)
+
+        newer_ruby?(root, mtime_ns(binary), true)
+      rescue StandardError
+        true
+      end
+
+      # True when a *.rb file under dir is newer than since (nanoseconds).
+      def self.newer_ruby?(dir, since, top)
+        children = Dir.children(dir)
+        i = 0
+        while i < children.size
+          child = children[i]
+          i += 1
+          next if top && STALE_SKIPPED.include?(child)
+
+          path = "#{dir}/#{child}"
+          if File.directory?(path)
+            next if File.symlink?(path)
+            return true if newer_ruby?(path, since, false)
+          elsif child.end_with?(".rb") && File.file?(path)
+            return true if mtime_ns(path) > since
+          end
+        end
+        false
+      end
+
+      def self.mtime_ns(path)
+        time = File.mtime(path)
+        time.to_i * 1_000_000_000 + time.nsec
+      end
+
+      # `cybertrain server`: gen, then, when the binary is stale, the
+      # incremental build, then the server. Stops at the first step that
+      # fails and returns 1; 0 when the server exits 0.
+      def self.run_server(root, name, port, runner = Runner.new)
+        steps = server_commands(name, port)
+        return 1 unless runner.run_step(root, steps[0])
+        return 1 if binary_stale?(root, name) && !runner.run_step(root, incremental_command(name))
+
+        runner.run_step(root, steps[1]) ? 0 : 1
       end
 
       # All digits, 1 to 65535 (the app reads 0 as "no port").
@@ -126,7 +197,8 @@ module Cybertrain
       end
 
       # Runs one build step (a spin command) in root; true when it succeeds.
-      # Build.run takes a Runner so tests can stand in for spin.
+      # Build.run and Build.run_server take a Runner so tests can stand in
+      # for spin.
       class Runner
         def run_step(root, command)
           Build.run_in(root, command)

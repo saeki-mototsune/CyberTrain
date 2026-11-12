@@ -625,8 +625,9 @@ module Cybertrain
                   run: spin lock && git diff --exit-code spin.lock
 
                 # gen/ is committed and fresh (nothing is written).
+                # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in.
                 - name: gen/ is current
-                  run: spin run gen -- --check
+                  run: SPIN_DEBUG=1 spin run gen -- --check
 
                 # `spin test` fails when there is no test/*.rb; a new app has none.
                 - name: Tests

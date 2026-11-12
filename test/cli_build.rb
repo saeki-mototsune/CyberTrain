@@ -131,18 +131,24 @@ test "an empty application name never reaches the commands from the CLI" do
   File.write("spin.toml", "[package]\nname = \"blog\"\n")
 end
 
+# gen and db are tools that run for milliseconds: they are built in spin's
+# debug mode (-O0), the application in release mode.
+test "gen and db are built in spin's debug mode" do
+  assert_equal "SPIN_DEBUG=1 spin", Cybertrain::Shell::TOOL_SPIN
+end
+
 test "build embeds the views, builds, then restores the empty table" do
-  assert_equal ["spin run gen -- --embed-views", "spin build blog", "spin run gen"], Cybertrain::CLI::Build.commands("blog")
-  assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.migration_commands
+  assert_equal ["SPIN_DEBUG=1 spin run gen -- --embed-views", "spin build blog", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.commands("blog")
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- migrate", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.migration_commands
   assert_equal "'a'\\''b'", Cybertrain::Shell.quote("a'b")
 end
 
 test "db commands generate first, and again after migrate and rollback" do
-  assert_equal ["spin run gen", "spin run db -- migrate", "spin run gen"], Cybertrain::CLI::Build.db_commands(["migrate"])
-  assert_equal ["spin run gen", "spin run db -- rollback 2", "spin run gen"], Cybertrain::CLI::Build.db_commands(["rollback", "2"])
-  assert_equal ["spin run gen", "spin run db -- status"], Cybertrain::CLI::Build.db_commands(["status"])
-  assert_equal ["spin run gen", "spin run db -- schema:dump"], Cybertrain::CLI::Build.db_commands(["schema:dump"])
-  assert_equal ["spin run gen", "spin run db -- 'a b' ''"], Cybertrain::CLI::Build.db_commands(["a b", ""])
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- migrate", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.db_commands(["migrate"])
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- rollback 2", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.db_commands(["rollback", "2"])
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- status"], Cybertrain::CLI::Build.db_commands(["status"])
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- schema:dump"], Cybertrain::CLI::Build.db_commands(["schema:dump"])
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- 'a b' ''"], Cybertrain::CLI::Build.db_commands(["a b", ""])
   assert_equal "migrate", Cybertrain::CLI::Build.quote_arg("migrate")
   assert_equal "'x;y'", Cybertrain::CLI::Build.quote_arg("x;y")
 end
@@ -152,8 +158,8 @@ test "db without a command prints its usage" do
 end
 
 test "server generates first and passes an optional port" do
-  assert_equal ["spin run gen", "spin run blog"], Cybertrain::CLI::Build.server_commands("blog", "")
-  assert_equal ["spin run gen", "spin run blog -- 4000"], Cybertrain::CLI::Build.server_commands("blog", "4000")
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "spin run blog"], Cybertrain::CLI::Build.server_commands("blog", "")
+  assert_equal ["SPIN_DEBUG=1 spin run gen", "spin run blog -- 4000"], Cybertrain::CLI::Build.server_commands("blog", "4000")
   assert Cybertrain::CLI::Build.port?("4000")
   assert Cybertrain::CLI::Build.port?("65535")
   refute Cybertrain::CLI::Build.port?("65536")
@@ -211,7 +217,7 @@ end
 test "build runs the three steps under tmp/cybertrain-build.lock, then assembles dist/" do
   runner = FakeRunner.new("")
   assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
-  assert_equal ["spin run gen -- --embed-views (locked)", "spin build blog (locked)", "spin run gen (locked)"], runner.log
+  assert_equal ["SPIN_DEBUG=1 spin run gen -- --embed-views (locked)", "spin build blog (locked)", "SPIN_DEBUG=1 spin run gen (locked)"], runner.log
   refute File.exist?("tmp/cybertrain-build.lock")
   assert_equal "#!/bin/sh\necho built\n", File.read("dist/blog")
   assert File.directory?("dist/public")
@@ -221,13 +227,13 @@ end
 test "a failed spin build still restores gen/views.rb, skips assemble and exits 1" do
   runner = FakeRunner.new("spin build blog")
   assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
-  assert_equal ["spin run gen -- --embed-views (locked)", "spin build blog (locked)", "spin run gen (locked)"], runner.log
+  assert_equal ["SPIN_DEBUG=1 spin run gen -- --embed-views (locked)", "spin build blog (locked)", "SPIN_DEBUG=1 spin run gen (locked)"], runner.log
   refute File.exist?("dist")
   refute File.exist?("tmp/cybertrain-build.lock")
 end
 
 test "a failed restore exits 1, warns about gen/views.rb and releases the lock" do
-  runner = FakeRunner.new("spin run gen")
+  runner = FakeRunner.new("SPIN_DEBUG=1 spin run gen")
   assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
   assert_equal 3, runner.log.size
   refute File.exist?("dist")
@@ -277,6 +283,97 @@ test "assemble fails clearly when the binary is missing" do
   File.delete("build/bin/blog")
   message = assert_raises("Cybertrain::CLI::InvalidArgument") { Cybertrain::CLI::Build.assemble(".", "blog") }
   assert_equal "build/bin/blog is missing: `spin build blog` did not produce it", message
+end
+
+test "the incremental build command quotes the name" do
+  assert_equal "spin build blog -- --incremental", Cybertrain::CLI::Build.incremental_command("blog")
+  assert_equal "spin build 'it'\\''s' -- --incremental", Cybertrain::CLI::Build.incremental_command("it's")
+end
+
+# A tree of its own, with modification times set by File.utime: a binary at
+# T, every file at T - 100 unless a case moves one to T + 100. app/linked is
+# a symlink to a directory outside the tree.
+STALE_APP = "#{ROOT}/stale_app"
+STALE_OUTSIDE = "#{ROOT}/stale_outside"
+STALE_T = 1_700_000_000
+
+def stale_touch(path, offset)
+  time = Time.at(STALE_T + offset)
+  File.utime(time, time, "#{STALE_APP}/#{path}")
+  nil
+end
+
+# The test's rm_tree follows symlinks: the link goes first.
+def stale_cleanup
+  File.delete("#{STALE_APP}/app/linked") if File.symlink?("#{STALE_APP}/app/linked")
+  rm_tree(STALE_APP) if File.exist?(STALE_APP)
+  rm_tree(STALE_OUTSIDE) if File.exist?(STALE_OUTSIDE)
+  nil
+end
+
+def stale_app
+  stale_cleanup
+  Dir.mkdir(STALE_OUTSIDE)
+  File.write("#{STALE_OUTSIDE}/linked.rb", "# linked\n")
+  ["", "/app", "/app/models", "/build", "/build/bin", "/tmp", "/dist", "/storage", "/public", "/.git", "/config"].each { |d| Dir.mkdir("#{STALE_APP}#{d}") }
+  ["app/models/post.rb", "config/routes.rb", "build/scratch.rb", "tmp/scratch.rb", "dist/scratch.rb", "storage/scratch.rb",
+   "public/scratch.rb", ".git/scratch.rb", "app/models/notes.txt"].each do |path|
+    File.write("#{STALE_APP}/#{path}", "# #{path}\n")
+    stale_touch(path, -100)
+  end
+  File.symlink(STALE_OUTSIDE, "#{STALE_APP}/app/linked")
+  stale_touch("app/linked/linked.rb", -100)
+  File.write("#{STALE_APP}/build/bin/blog", "binary")
+  stale_touch("build/bin/blog", 0)
+  nil
+end
+
+test "binary_stale? is true without a binary or with a newer Ruby file outside build/, dist/, tmp/, storage/, public/ and .git/" do
+  stale_app
+  refute Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog")
+  assert Cybertrain::CLI::Build.binary_stale?(STALE_APP, "other")
+  # Not Ruby, not followed (a symlinked directory), or skipped at the top level.
+  ["app/models/notes.txt", "app/linked/linked.rb", "build/scratch.rb", "tmp/scratch.rb", "dist/scratch.rb",
+   "storage/scratch.rb", "public/scratch.rb", ".git/scratch.rb"].each do |path|
+    stale_touch(path, 100)
+    refute Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog"), path
+    stale_touch(path, -100)
+  end
+  ["app/models/post.rb", "config/routes.rb"].each do |path|
+    stale_touch(path, 100)
+    assert Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog"), path
+    stale_touch(path, -100)
+  end
+  File.delete("#{STALE_APP}/build/bin/blog")
+  assert Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog")
+  stale_cleanup
+end
+
+test "server builds incrementally only when the binary is stale, then runs it" do
+  stale_app
+  runner = FakeRunner.new("")
+  assert_equal 0, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
+  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin run blog (unlocked)"], runner.log
+  stale_touch("app/models/post.rb", 100)
+  runner = FakeRunner.new("")
+  assert_equal 0, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "4000", runner)
+  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin build blog -- --incremental (unlocked)", "spin run blog -- 4000 (unlocked)"], runner.log
+  stale_cleanup
+end
+
+test "server stops at a failing gen or incremental build" do
+  stale_app
+  stale_touch("app/models/post.rb", 100)
+  runner = FakeRunner.new("SPIN_DEBUG=1 spin run gen")
+  assert_equal 1, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
+  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)"], runner.log
+  runner = FakeRunner.new("spin build blog -- --incremental")
+  assert_equal 1, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
+  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin build blog -- --incremental (unlocked)"], runner.log
+  runner = FakeRunner.new("spin run blog")
+  assert_equal 1, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
+  assert_equal 3, runner.log.size
+  stale_cleanup
 end
 
 test "the CLI needs spin.toml for migration, db, server and build" do

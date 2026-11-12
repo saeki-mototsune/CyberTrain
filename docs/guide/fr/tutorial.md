@@ -1,5 +1,5 @@
 ---
-source_sha256: 374c0e3be4ac9abc7be0662646bb138cae8018399c13784c9c44e119fe332343
+source_sha256: 989b7e6f36de9c823523f8e145ccd2d46ab37ab5b822f2f368fdc9e8e04dd4a8
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -126,7 +126,8 @@ compiler la version épinglée de Spinel dans `~/.cybertrain`&nbsp;: quelques
 minutes, une seule fois&nbsp;; voir l’[étape 00](#requirements)) et lance
 `spin lock` (spin récupère le framework dans son cache,
 `~/.cache/spin/packages/`, et épingle le commit dans `spin.lock`) et
-`spin run gen`, un peu comme `rails new` lance `bundle install`, pour que
+`SPIN_DEBUG=1 spin run gen` (gen compilé dans le mode debug de spin), un peu
+comme `rails new` lance `bundle install`, pour que
 `cybertrain server` fonctionne tout de suite. Il termine en affichant les
 étapes suivantes. Rien du framework n’est copié dans l’application&nbsp;;
 commitez `spin.toml` et `spin.lock`.
@@ -135,8 +136,8 @@ commitez `spin.toml` et `spin.lock`.
 > Si Spinel ou l’une des deux étapes `spin` échoue, les fichiers restent en
 > place, `new` sort avec le code 1 et affiche ce qu’il faut lancer une fois la
 > cause corrigée (pour Spinel&nbsp;: `cybertrain setup`, puis
-> `cybertrain spin lock && cybertrain spin run gen` dans le nouveau
-> répertoire). `--skip-spin` se contente d’écrire les fichiers&nbsp;;
+> `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen` dans le
+> nouveau répertoire). `--skip-spin` se contente d’écrire les fichiers&nbsp;;
 > `--path DIR` fait plutôt dépendre l’application d’une copie locale du dépôt,
 > `--git URL [--ref R]` du framework situé à URL (à la branche ou au tag R),
 > et `--version V` d’une version de l’index, une fois que `cybertrain` sera
@@ -329,7 +330,7 @@ Le scaffold écrit le contrôleur complet, avec aussi `index`, `show`, `edit`,
 > démarrer le serveur.
 
 ```shell terminal — blog/
-cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen (gen et db en mode debug)
 cybertrain server        # http://127.0.0.1:3000; recompile après une modification Ruby, les vues se rechargent sans recompilation
 ```
 
@@ -1550,7 +1551,8 @@ cybertrain build
 
 Elle écrit `dist/`&nbsp;: le binaire de l’application avec toutes les vues
 intégrées, plus les fichiers qu’il utilise, à côté de lui. Elle lance
-`spin run gen -- --embed-views`, `spin build blog` et `spin run gen` (qui
+`SPIN_DEBUG=1 spin run gen -- --embed-views`, `spin build blog` et
+`SPIN_DEBUG=1 spin run gen` (qui
 remet en place le `gen/views.rb` versionné et vide, même après un échec ou un
 Ctrl-C), puis assemble&nbsp;:
 

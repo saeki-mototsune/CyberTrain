@@ -1,5 +1,5 @@
 ---
-source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
+source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
 ---
 # Installer cybertrain
 
@@ -83,7 +83,8 @@ partir de là, de `cybertrain new` à `cybertrain build`.
 
 - `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]]
   [--skip-spin]` crée une application dans NAME, puis y lance `spin lock` et
-  `spin run gen`, en installant d’abord Spinel si nécessaire.
+  `SPIN_DEBUG=1 spin run gen`, en installant d’abord Spinel si nécessaire (la
+  CLI compile gen et `bin/db.rb` dans le mode debug de spin).
 - `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`)
   ajoute une ressource à l’application du répertoire courant.
 - `cybertrain generate authentication` y ajoute la connexion par adresse e-mail
@@ -103,15 +104,17 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   [Ajouter une image de couverture](tutorial.md#attachments)). Un champ de scaffold
   `cover:attachment` fait la même chose.
 - `cybertrain db migrate` génère, applique les migrations en attente, puis
-  génère à nouveau (`spin run gen; spin run db -- migrate; spin run gen`)&nbsp;;
+  génère à nouveau (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
+  migrate; SPIN_DEBUG=1 spin run gen`)&nbsp;;
   `cybertrain migration` est conservé comme alias.
 - `cybertrain db COMMAND...` lance toute autre commande de base de données
-  après `spin
+  après `SPIN_DEBUG=1 spin
   run gen`&nbsp;: `status`, `rollback [N]` (qui génère à nouveau ensuite),
   `schema:dump`, `create`.
 - `cybertrain server [PORT]` génère, puis démarre le serveur de développement
-  (`spin run gen; spin run NAME`, ou `spin run NAME -- PORT`&nbsp;; port 3000
-  par défaut).
+  (`SPIN_DEBUG=1 spin run gen`&nbsp;; `spin build NAME -- --incremental` si un
+  fichier Ruby est plus récent que `build/bin/NAME`&nbsp;; `spin run NAME`, ou
+  `spin run NAME -- PORT`&nbsp;; port 3000 par défaut).
 - `cybertrain build` compile NAME avec `app/views/` intégré et assemble
   `dist/` (le binaire, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` lance `spin` avec le Spinel épinglé, depuis
@@ -192,14 +195,14 @@ version correspondant à la CLI (`cybertrain = { git =
 X.Y.Z est ce qu’affiche `cybertrain version`), s’assure
 que Spinel est installé, puis lance `spin lock` (spin récupère le framework dans
 son cache, `~/.cache/spin/packages/`, et épingle le commit dans `spin.lock`) et
-`spin run gen`, un peu comme `rails new` lance `bundle install`, et affiche les
+`SPIN_DEBUG=1 spin run gen`, un peu comme `rails new` lance `bundle install`, et affiche les
 étapes suivantes. Rien du framework n’est copié dans l’application&nbsp;;
 commitez `spin.toml` et `spin.lock`.
 
 Si Spinel ou l’une des deux étapes `spin` échoue, les fichiers restent en
 place, `new` sort avec le code 1 et affiche ce qu’il faut lancer une fois la
 cause corrigée (pour Spinel&nbsp;: `cybertrain setup`, puis
-`cybertrain spin lock && cybertrain spin run gen` dans le nouveau répertoire).
+`cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen` dans le nouveau répertoire).
 
 Quatre options changent ce qu’elle écrit et lance&nbsp;:
 
