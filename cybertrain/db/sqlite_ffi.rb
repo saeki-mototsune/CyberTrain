@@ -12,9 +12,13 @@
 #   the bytes.
 #
 # `blocking: true` marks the calls that can wait on disk or on another
-# connection's lock. Spinel 2026.09.12 accepts and ignores the option, so
-# such a call holds its OS worker for as long as it runs: a lock wait inside
-# it is why the busy handler below can report instead of sleeping.
+# connection's lock. It does not free the OS worker: Spinel 2026.09.12
+# accepted and ignored the option, and 2026.11.04.7026 only takes the
+# worker out of the collector's stop for the call (a collection raised
+# meanwhile does not wait for it), so the worker's other green threads
+# still wait for as long as the call runs (spikes/NOTES.md rule 80,
+# docs/spinel-feedback.md AB). A lock wait inside such a call is why the
+# busy handler below can report instead of sleeping.
 module Cybertrain
   module DB
     module SQLite3
