@@ -1,0 +1,10 @@
+ok   durations are Integer seconds
+ok   advance and months_ago clamp month ends as Rails does
+ok   the other calendar methods
+ok   beginning_of_* in UTC
+ok   end_of_* in UTC
+ok   Time.zone and Date.current are UTC by default
+ok   boundaries in Asia/Tokyo
+ok   a DST transition in America/New_York
+ok   the zone comes back after a failing assertion
+9 tests, 52 assertions, 0 failures

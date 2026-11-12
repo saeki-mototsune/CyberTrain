@@ -1,4 +1,5 @@
 require "date"
+require "cybertrain/time_zone"
 
 module Cybertrain
   # The one clock of the framework (spec section 2.2): real time, or the
@@ -6,12 +7,16 @@ module Cybertrain
   # `travel`, `freeze_time` and `travel_back` move it;
   # an application never needs to. `Time.current` answers {Clock.now}.
   #
-  # The state is two module-level ivars (rules 18 and 64): a flag and the
+  # The clock also holds the zone whose calendar the methods of
+  # cybertrain/time_ext.rb and `Date.current` use ({zone}, `Time.zone`):
+  # UTC until something sets it.
+  #
+  # The state is module-level ivars (rules 18 and 64): a flag and the
   # instant as Integer microseconds since the epoch (an ivar holding a
-  # nullable Time miscompiles, rule 7). Real time is read with
-  # `Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)`, never
-  # through `Time.now`, so that a test program's override of `Time.now`
-  # (cybertrain/test/time_now.rb) cannot recurse.
+  # nullable Time miscompiles, rule 7), and the zone (never nil). Real
+  # time is read with `Process.clock_gettime(Process::CLOCK_REALTIME,
+  # :microsecond)`, never through `Time.now`, so that a test program's
+  # override of `Time.now` (cybertrain/test/time_now.rb) cannot recurse.
   #
   # Threads: the state is process-wide, so a job or server thread sees a
   # test's travel. Two ivars cannot change at once, and nothing locks them;
@@ -26,6 +31,7 @@ module Cybertrain
   module Clock
     @travelling = false
     @micros = 0
+    @zone = TimeZone::UTC
 
     # The current time as a UTC Time: real time, or the travelled instant.
     # @return [Time]
@@ -107,6 +113,24 @@ module Cybertrain
       @travelling
     end
 
+    # The zone whose calendar `beginning_of_day`, `advance` and the other
+    # calendar methods on Time, and `Date.current`, follow. UTC by default.
+    # Values stay UTC instants whatever the zone (spec section 4).
+    # @return [TimeZone]
+    # @api public
+    def self.zone
+      @zone
+    end
+
+    # Sets {zone}. Takes a {TimeZone} (`TimeZone.find("Asia/Tokyo")`); a
+    # test that sets it puts the one it found back when it ends.
+    # @param zone [TimeZone]
+    # @return [TimeZone]
+    # @api public
+    def self.zone=(zone)
+      @zone = zone
+    end
+
     # The travelled instant in microseconds since the epoch (a multiple of
     # 1_000_000); 0 when not travelling.
     # @return [Integer]
@@ -124,16 +148,25 @@ class Time
   # @return [Time]
   # @api public
   def self.current = Cybertrain::Clock.now
+
+  # The zone of {Cybertrain::Clock.zone}: a {Cybertrain::TimeZone}, UTC by
+  # default (Rails answers an ActiveSupport::TimeZone; its name is
+  # `Time.zone.zone_name`).
+  # @return [Cybertrain::TimeZone]
+  # @api public
+  def self.zone = Cybertrain::Clock.zone
 end
 
 # A class method added to Date from Ruby source (spikes/NOTES.md rule 87).
 class Date
-  # Today on {Cybertrain::Clock}, in UTC: follows `travel_to` in tests.
-  # `Date.today` stays the system's date.
+  # Today on {Cybertrain::Clock}, in `Time.zone`: the date of the zone's
+  # wall clock at `Time.current`, so it follows `travel_to` in tests and
+  # turns at the zone's midnight. `Date.today` stays the system's date.
   # @return [Date]
   # @api public
   def self.current
-    t = Cybertrain::Clock.now
-    Date.new(t.year, t.month, t.day)
+    zone = Cybertrain::Clock.zone
+    wall = Cybertrain::TimeZone.epoch_to_civil(zone.utc_to_local(Cybertrain::Clock.now.to_i))
+    Date.new(wall[0], wall[1], wall[2])
   end
 end
