@@ -1,4 +1,4 @@
-ok   manifest lists gen models and routes, helpers, components and console, then controllers, app models, jobs and controllers
+ok   manifest lists gen models and routes, helpers, components and console, then controllers, app models, jobs, mailers and controllers
 ok   manifest for the fixture app, whose Post encrypts a column and whose WelcomeJob names the mailer's TimeoutError
 wrote gen/routes.rb
 wrote gen/assets.rb

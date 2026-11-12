@@ -6,8 +6,9 @@
 # activerecord.errors.messages, helpers.submit and support.array; plus
 # the framework's own keys under cybertrain (plan decision D12), and the
 # screens `cybertrain generate authentication` writes: their lazy keys
-# (sessions.*, registrations.*, setup.*) and the User model's attribute
-# names (activerecord.attributes.user).
+# (sessions.*, registrations.*, setup.*, passwords.*, the reset mail's
+# mail.password_reset.* and passwords_mailer.reset.subject) and the User
+# model's attribute names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
 ---
@@ -186,6 +187,12 @@ ja:
       create: 登録する
       submit: 保存する
       update: 更新する
+  mail:
+    password_reset:
+      greeting: "%{email_address} 様"
+      ignore: 心当たりがない場合は、このメールを無視してください。パスワードは変わりません。
+      intro: 次のアドレスで、15分以内に新しいパスワードを設定できます。
+      link: 新しいパスワードを設定する
   number:
     currency:
       format:
@@ -237,6 +244,23 @@ ja:
     precision:
       format:
         delimiter: ''
+  passwords:
+    create:
+      rate_limited: しばらくしてからもう一度お試しください。
+      sent: そのメールアドレスが登録されていれば、パスワードを再設定するリンクを送りました。
+    edit:
+      invalid: パスワード再設定のリンクが無効か、期限が切れています。
+      submit: 保存する
+      title: 新しいパスワードの設定
+    new:
+      sign_in: ログイン
+      submit: リンクをメールで送る
+      title: パスワードをお忘れですか？
+    update:
+      updated: パスワードを再設定しました。新しいパスワードでログインしてください。
+  passwords_mailer:
+    reset:
+      subject: パスワードの再設定
   registrations:
     create:
       welcome: ようこそ。アカウントを登録しました。
@@ -256,6 +280,7 @@ ja:
       sign_out: ログアウト
     new:
       email_address: メールアドレス
+      forgot_password: パスワードをお忘れですか？
       password: パスワード
       remember_me: ログインしたままにする
       sign_up: アカウント登録

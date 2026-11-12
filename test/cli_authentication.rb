@@ -50,15 +50,22 @@ AUTH_FILES = [
   "app/controllers/concerns/authentication.rb",
   "app/controllers/sessions_controller.rb",
   "app/controllers/registrations_controller.rb",
+  "app/controllers/passwords_controller.rb",
+  "app/mailers/passwords_mailer.rb",
   "app/commands/user_command.rb",
   "app/views/sessions/new.html.erb",
   "app/views/sessions/_nav.html.erb",
   "app/views/registrations/new.html.erb",
+  "app/views/passwords/new.html.erb",
+  "app/views/passwords/edit.html.erb",
+  "app/views/mail/_password_reset.html.erb",
   "test/support/app_test.rb",
+  "test/support/authentication_helpers.rb",
   "test/authentication.rb",
   "test/admin.rb",
   "test/remember_me.rb",
-  "test/lockout.rb"
+  "test/lockout.rb",
+  "test/passwords.rb"
 ]
 
 test "generate authentication writes the migrations, models, controllers, views and tests" do
@@ -316,6 +323,23 @@ test "writes the Authentication concern and includes it" do
       def after_authentication_url
         safe_redirect_path(session.delete(:return_to_after_authenticating), "/")
       end
+
+      # Where links in mails start ("https://shop.example.com"): the base_url
+      # setting (SHOP_BASE_URL, config/app.rb) when set; else the address this
+      # request came to, outside production, or in production when
+      # CYBERTRAIN_HOSTS lists the hosts the app answers to (any other Host
+      # is refused before an action runs). Otherwise "" and an [ERROR] line:
+      # the mail named `mail` is not sent, as a link built from a Host header
+      # anyone can forge would carry its token to their site.
+      def mail_link_base(mail)
+        c = Cybertrain.config
+        configured = c.string_setting(:base_url)
+        return configured.delete_suffix("/") unless configured.empty?
+        return request.base_url if !c.production? || c.host_check?
+
+        Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
+        ""
+      end
     end
   RUBY
   # Included right after the class line; the rest of the file is as
@@ -419,7 +443,8 @@ test "the controllers open their sign-in actions and the views post to the route
 
       <div class="actions">
   ERB
-  assert_includes sign_in, "<p><%= link_to t(\".sign_up\"), sign_up_path %></p>\n"
+  assert sign_in.end_with?("<% end %>\n\n<p><%= link_to t(\".forgot_password\"), new_password_path %></p>\n" \
+                           "<p><%= link_to t(\".sign_up\"), sign_up_path %></p>\n"), sign_in
   sign_up = read("shop/app/views/registrations/new.html.erb")
   assert_includes sign_up, "<%= form_with(model: @user, url: sign_up_path) do |f| %>"
   assert_includes sign_up, "<% if @user.errors.any? %>"
@@ -738,12 +763,21 @@ def bundled(locale, key)
   text
 end
 
-SHOP_KEYS = ["errors.template.header",
-             "registrations.create.welcome", "registrations.new.model", "registrations.new.sign_in",
+# The password reset's keys (Task 13), in both modes: its form labels are
+# the User model's attribute names.
+RESET_KEYS = ["activerecord.attributes.user.email_address", "activerecord.attributes.user.password",
+              "activerecord.attributes.user.password_confirmation"]
+RESET_TAIL_KEYS = ["mail.password_reset.greeting", "mail.password_reset.ignore", "mail.password_reset.intro",
+                   "mail.password_reset.link",
+                   "passwords.create.rate_limited", "passwords.create.sent", "passwords.edit.invalid",
+                   "passwords.edit.submit", "passwords.edit.title", "passwords.new.sign_in", "passwords.new.submit",
+                   "passwords.new.title", "passwords.update.updated", "passwords_mailer.reset.subject"]
+SHOP_KEYS = RESET_KEYS + ["errors.template.header"] + RESET_TAIL_KEYS +
+            ["registrations.create.welcome", "registrations.new.model", "registrations.new.sign_in",
              "registrations.new.submit", "registrations.new.title",
              "sessions.create.invalid", "sessions.create.rate_limited", "sessions.destroy.signed_out",
              "sessions.nav.sign_in", "sessions.nav.sign_out",
-             "sessions.new.email_address", "sessions.new.password", "sessions.new.remember_me",
+             "sessions.new.email_address", "sessions.new.forgot_password", "sessions.new.password", "sessions.new.remember_me",
              "sessions.new.sign_up", "sessions.new.submit", "sessions.new.title"]
 
 test "every key the generated files use exists in the bundled en and ja dictionaries" do
@@ -760,6 +794,16 @@ test "every key the generated files use exists in the bundled en and ja dictiona
   assert_equal "ログインしたままにする", bundled("ja", "sessions.new.remember_me")
   assert_equal "You have been signed out.", bundled("en", "sessions.destroy.signed_out")
   assert_equal "Welcome! You have signed up.", bundled("en", "registrations.create.welcome")
+  # The reset's texts (D16's answer is the same for any address).
+  assert_equal "If that address is registered, a link to reset the password was sent to it.", bundled("en", "passwords.create.sent")
+  assert_equal "そのメールアドレスが登録されていれば、パスワードを再設定するリンクを送りました。", bundled("ja", "passwords.create.sent")
+  assert_equal "Reset your password", bundled("en", "passwords_mailer.reset.subject")
+  assert_equal "パスワードの再設定", bundled("ja", "passwords_mailer.reset.subject")
+  assert_equal "Forgot your password?", bundled("en", "sessions.new.forgot_password")
+  assert_equal "That password reset link is invalid or has expired.", bundled("en", "passwords.edit.invalid")
+  assert_equal "Your password has been reset. Sign in with the new one.", bundled("en", "passwords.update.updated")
+  assert_equal "Hello %{email_address},", bundled("en", "mail.password_reset.greeting")
+  assert_equal "Try again later.", bundled("en", "passwords.create.rate_limited")
   # The form labels of User come from activerecord.attributes.user.
   assert_equal "Email address", bundled("en", "activerecord.attributes.user.email_address")
   assert_equal "メールアドレス", bundled("ja", "activerecord.attributes.user.email_address")
@@ -775,6 +819,7 @@ test "the routes and the layout's nav are inserted" do
   assert_equal <<~RUBY, read("shop/config/routes.rb")
     Cybertrain::Routes.draw do
       resource :session, only: [:new, :create, :destroy]
+      resources :passwords, param: :token, only: [:new, :create, :edit, :update]
       get "/sign_up", to: "registrations#new", as: "sign_up"
       post "/sign_up", to: "registrations#create"
       jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
@@ -877,6 +922,7 @@ test "the generator runs after a scaffold, with migration versions that follow" 
   assert_equal <<~RUBY, read("store/config/routes.rb")
     Cybertrain::Routes.draw do
       resource :session, only: [:new, :create, :destroy]
+      resources :passwords, param: :token, only: [:new, :create, :edit, :update]
       get "/sign_up", to: "registrations#new", as: "sign_up"
       post "/sign_up", to: "registrations#create"
       resources :products
@@ -893,15 +939,22 @@ INVITE_FILES = [
   "app/controllers/concerns/authentication.rb",
   "app/controllers/sessions_controller.rb",
   "app/controllers/setup_controller.rb",
+  "app/controllers/passwords_controller.rb",
+  "app/mailers/passwords_mailer.rb",
   "app/commands/user_command.rb",
   "app/views/sessions/new.html.erb",
   "app/views/sessions/_nav.html.erb",
   "app/views/setup/new.html.erb",
+  "app/views/passwords/new.html.erb",
+  "app/views/passwords/edit.html.erb",
+  "app/views/mail/_password_reset.html.erb",
   "test/support/app_test.rb",
+  "test/support/authentication_helpers.rb",
   "test/authentication.rb",
   "test/admin.rb",
   "test/remember_me.rb",
-  "test/lockout.rb"
+  "test/lockout.rb",
+  "test/passwords.rb"
 ]
 
 test "--invite-only writes the user command and /setup instead of the sign-up page" do
@@ -910,17 +963,21 @@ test "--invite-only writes the user command and /setup instead of the sign-up pa
   assert_equal 0, status
   INVITE_FILES.each { |f| assert(File.exist?("club/#{f}"), "missing #{f}") }
   assert_equal INVITE_FILES.size, INVITE_FILES.select { |f| File.exist?("club/#{f}") }.size
-  # The same concern, whichever the mode.
-  assert_equal read("shop/app/controllers/concerns/authentication.rb"), read("club/app/controllers/concerns/authentication.rb")
+  # The same concern, whichever the mode; only the base URL's variable is
+  # named after the app.
+  club_concern = read("club/app/controllers/concerns/authentication.rb")
+  assert_includes club_concern, "set CLUB_BASE_URL (or CYBERTRAIN_HOSTS)"
+  assert_equal read("shop/app/controllers/concerns/authentication.rb").gsub("SHOP_BASE_URL", "CLUB_BASE_URL"), club_concern
   refute File.exist?("club/app/controllers/registrations_controller.rb")
   refute File.exist?("club/app/views/registrations/new.html.erb")
   # No link to a sign-up page that does not exist.
   sign_in_view = read("club/app/views/sessions/new.html.erb")
-  assert sign_in_view.end_with?("  </div>\n<% end %>\n"), sign_in_view
+  assert sign_in_view.end_with?("  </div>\n<% end %>\n\n<p><%= link_to t(\".forgot_password\"), new_password_path %></p>\n"), sign_in_view
   assert sign_in_view.index("sign_up").nil?
   assert_equal <<~RUBY, read("club/config/routes.rb")
     Cybertrain::Routes.draw do
       resource :session, only: [:new, :create, :destroy]
+      resources :passwords, param: :token, only: [:new, :create, :edit, :update]
       get "/setup", to: "setup#new", as: "setup"
       post "/setup", to: "setup#create"
       jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
@@ -930,10 +987,10 @@ end
 
 test "--invite-only's screens go through t, with keys the bundled dictionaries have" do
   assert_equal [], untranslated("club")
-  keys = ["errors.template.header",
-          "sessions.create.invalid", "sessions.create.rate_limited", "sessions.destroy.signed_out",
+  keys = RESET_KEYS + ["errors.template.header"] + RESET_TAIL_KEYS +
+         ["sessions.create.invalid", "sessions.create.rate_limited", "sessions.destroy.signed_out",
           "sessions.nav.sign_in", "sessions.nav.sign_out",
-          "sessions.new.email_address", "sessions.new.password", "sessions.new.remember_me",
+          "sessions.new.email_address", "sessions.new.forgot_password", "sessions.new.password", "sessions.new.remember_me",
           "sessions.new.submit", "sessions.new.title",
           "setup.create.welcome", "setup.new.intro", "setup.new.model", "setup.new.submit", "setup.new.title"]
   assert_equal keys, used_keys("club")
@@ -960,7 +1017,8 @@ test "--invite-only requires the command in bin/<app>.rb and declares setup_open
   RUBY
   club_config = read("club/config/app.rb")
   assert_includes club_config, "Cybertrain.configure do |c|\n  # /setup (the first user's page)"
-  assert_includes club_config, "  c.setting_bool :setup_open, env: \"CLUB_SETUP_OPEN\", default: false\n\n  # c.port = 3000\n"
+  assert_includes club_config, "  c.setting_bool :setup_open, env: \"CLUB_SETUP_OPEN\", default: false\n\n  # Links in mails"
+  assert_includes club_config, "  c.setting_string :base_url, env: \"CLUB_BASE_URL\", default: \"\"\n\n  # c.port = 3000\n"
 end
 
 test "--invite-only's /setup answers only to loopback with the one-time token while no user exists" do
@@ -1079,6 +1137,305 @@ test "either mode refuses an app whose bin/<app>.rb has no Main.run line, before
   status = Dir.chdir("bare") { Cybertrain::CLI.run(["generate", "authentication"]) }
   assert_equal 1, status
   refute File.exist?("bare/app/controllers/concerns/authentication.rb")
+end
+
+PASSWORDS_CONTROLLER = <<~RUBY
+  # Password reset (cybertrain generate authentication): the form that asks
+  # for an address, the mail with a link (PasswordsMailer.reset), and the
+  # form behind the link that sets a new password. The link's token
+  # (User#password_reset_token) is signed, lasts 15 minutes and is bound to
+  # the password, so it stops working once the password changes, and every
+  # link sent before with it. The address form answers the same whether or
+  # not the address is registered.
+  class PasswordsController < ApplicationController
+    allow_unauthenticated_access
+    # Ten requests per client address every three minutes, as for signing in.
+    rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
+
+    # GET /passwords/new
+    def new_action
+    end
+
+    # POST /passwords
+    # An address no user has gets the same answer after the same work (a
+    # token, the mail rendered), short of queueing the mail.
+    def create
+      address = User.normalize_email_address(params[:email_address].to_s)
+      user = User.find_by(email_address: address)
+      token = user.nil? ? Cybertrain::Token.issue("password_reset", 1, 15 * 60, Cybertrain::Password.dummy_digest) : user.password_reset_token
+      url = edit_password_url_for(token)
+      unless url.empty?
+        mail = PasswordsMailer.reset(user.nil? ? User.new(email_address: address) : user, url)
+        mail.deliver_later unless user.nil?
+      end
+      flash[:notice] = t(".sent")
+      redirect_to new_session_path, status: :see_other
+    end
+
+    # GET /passwords/:token/edit
+    def edit
+      @token = params[:token].to_s
+      invalid_link if User.find_by_password_reset_token(@token).nil?
+    end
+
+    # PUT /passwords/:token
+    # Sets the password, clears a lockout and ends every session of the
+    # user (their Session rows): each browser signs in again, with the new
+    # password.
+    def update
+      token = params[:token].to_s
+      user = User.find_by_password_reset_token(token)
+      if user.nil?
+        invalid_link
+      else
+        user.password = params[:password].to_s
+        user.password_confirmation = params[:password_confirmation].to_s
+        if user.save
+          user.clear_failed_attempts!
+          Session.where(user_id: user.id).delete_all
+          flash[:notice] = t(".updated")
+          redirect_to new_session_path, status: :see_other
+        else
+          flash[:alert] = user.errors.full_messages.join(" ")
+          redirect_to edit_password_path(token), status: :see_other
+        end
+      end
+    end
+
+    private
+
+    # The link in the mail: mail_link_base (the Authentication concern's)
+    # and the form's path; "" when there is no safe base, and then no mail
+    # is sent.
+    def edit_password_url_for(token)
+      base = mail_link_base("password reset")
+      return "" if base.empty?
+
+      path = edit_password_path(token)
+      base + path
+    end
+
+    # A token that is wrong, expired or spent: back to the address form.
+    # Not an action, so its key is written in full (edit's).
+    def invalid_link
+      flash[:alert] = t("passwords.edit.invalid")
+      redirect_to new_password_path, status: :see_other
+      nil
+    end
+
+    # What a client past the rate limit gets (the key is create's).
+    def rate_limited
+      flash[:alert] = t("passwords.create.rate_limited")
+      redirect_to new_password_path, status: :see_other
+      nil
+    end
+  end
+RUBY
+
+PASSWORDS_MAILER = <<~RUBY
+  # The password reset mail (cybertrain generate authentication): its HTML is
+  # app/views/mail/_password_reset.html.erb, its subject and text come from
+  # the dictionary (passwords_mailer.reset.subject, mail.password_reset.*),
+  # in the locale of the request that asked for it.
+  #
+  # Written by the generator; it is yours to change.
+  module PasswordsMailer
+    # The mail to user with url, the link PasswordsController#create built (a
+    # mailer has no request to take the site's address from). Its sender is
+    # Config#smtp_from (CYBERTRAIN_SMTP_FROM).
+    def self.reset(user, url)
+      address = user.email_address.to_s
+      html = Cybertrain::Views.render_mail("mail/password_reset", user: user, url: url)
+      greeting = I18n.t("mail.password_reset.greeting", { email_address: address })
+      text = +""
+      text << greeting << "\\n\\n"
+      text << I18n.t("mail.password_reset.intro") << "\\n" << url << "\\n\\n"
+      text << I18n.t("mail.password_reset.ignore") << "\\n"
+      subject = I18n.t("passwords_mailer.reset.subject")
+      Cybertrain::MailMessage.new(to: address, subject: subject, body: text, html: html)
+    end
+  end
+RUBY
+
+PASSWORDS_NEW_VIEW = <<~ERB
+  <h1><%= t(".title") %></h1>
+
+  <%= form_with(url: passwords_path) do |f| %>
+    <div class="field">
+      <%= f.label :email_address, t("activerecord.attributes.user.email_address") %>
+      <%= f.email_field :email_address, autocomplete: "username", autofocus: true %>
+    </div>
+
+    <div class="actions">
+      <%= f.submit t(".submit") %>
+    </div>
+  <% end %>
+
+  <p><%= link_to t(".sign_in"), new_session_path %></p>
+ERB
+
+PASSWORDS_EDIT_VIEW = <<~ERB
+  <h1><%= t(".title") %></h1>
+
+  <%= form_with(url: password_path(@token), method: :put) do |f| %>
+    <div class="field">
+      <%= f.label :password, t("activerecord.attributes.user.password") %>
+      <%= f.password_field :password, autocomplete: "new-password", autofocus: true %>
+    </div>
+
+    <div class="field">
+      <%= f.label :password_confirmation, t("activerecord.attributes.user.password_confirmation") %>
+      <%= f.password_field :password_confirmation, autocomplete: "new-password" %>
+    </div>
+
+    <div class="actions">
+      <%= f.submit t(".submit") %>
+    </div>
+  <% end %>
+ERB
+
+PASSWORD_RESET_MAIL = <<~ERB
+  <%# locals: (user:, url:) %>
+  <p><%= t(".greeting", email_address: user.email_address) %></p>
+  <p><%= t(".intro") %></p>
+  <p><%= link_to t(".link"), url %></p>
+  <p><%= t(".ignore") %></p>
+ERB
+
+test "password reset: the controller, the mailer and the views" do
+  assert_equal PASSWORDS_CONTROLLER, read("shop/app/controllers/passwords_controller.rb")
+  assert_equal PASSWORDS_MAILER, read("shop/app/mailers/passwords_mailer.rb")
+  assert_equal PASSWORDS_NEW_VIEW, read("shop/app/views/passwords/new.html.erb")
+  assert_equal PASSWORDS_EDIT_VIEW, read("shop/app/views/passwords/edit.html.erb")
+  assert_equal PASSWORD_RESET_MAIL, read("shop/app/views/mail/_password_reset.html.erb")
+  # The same files in --invite-only mode.
+  ["app/controllers/passwords_controller.rb", "app/mailers/passwords_mailer.rb", "app/views/passwords/new.html.erb",
+   "app/views/passwords/edit.html.erb", "app/views/mail/_password_reset.html.erb"].each do |f|
+    assert_equal read("shop/#{f}"), read("club/#{f}")
+  end
+end
+
+test "password reset: the token in the model, the base URL in the concern" do
+  model = read("shop/app/models/user.rb")
+  assert_includes model, indented(<<~RUBY, 2)
+      # The user a password_reset_token was made for, while it is valid against
+      # that user's password now; nil for any other token (a wrong, expired or
+      # spent one, or one made for another user).
+      def self.find_by_password_reset_token(token)
+        text = token.to_s
+        user = User.find_by(id: Cybertrain::Token.id_from(text))
+        return nil if user.nil?
+        return nil unless Cybertrain::Token.valid?(text, "password_reset", user.password_digest)
+
+        user
+      end
+  RUBY
+  assert_includes model, indented(<<~RUBY, 2)
+      # The token of a password reset link (PasswordsController): signed,
+      # valid for 15 minutes from now, and bound to password_digest, so it
+      # stops working once the password changes (Cybertrain::Token).
+      def password_reset_token(now = Time.now.to_i)
+        Cybertrain::Token.issue("password_reset", id, 15 * 60, password_digest, now)
+      end
+  RUBY
+  concern = read("shop/app/controllers/concerns/authentication.rb")
+  assert_includes concern, indented(<<~RUBY, 2)
+      # Where links in mails start ("https://shop.example.com"): the base_url
+      # setting (SHOP_BASE_URL, config/app.rb) when set; else the address this
+      # request came to, outside production, or in production when
+      # CYBERTRAIN_HOSTS lists the hosts the app answers to (any other Host
+      # is refused before an action runs). Otherwise "" and an [ERROR] line:
+      # the mail named `mail` is not sent, as a link built from a Host header
+      # anyone can forge would carry its token to their site.
+      def mail_link_base(mail)
+        c = Cybertrain.config
+        configured = c.string_setting(:base_url)
+        return configured.delete_suffix("/") unless configured.empty?
+        return request.base_url if !c.production? || c.host_check?
+
+        Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
+        ""
+      end
+  RUBY
+  # One copy of that decision: the controller asks the concern.
+  assert_equal 1, read("shop/app/controllers/passwords_controller.rb").scan("mail_link_base(").size
+  assert read("shop/app/controllers/passwords_controller.rb").index("base_url").nil?
+end
+
+test "password reset: the route, the sign-in link and the base_url setting in both modes" do
+  assert_includes read("shop/config/routes.rb"), "  resources :passwords, param: :token, only: [:new, :create, :edit, :update]\n"
+  assert_includes read("club/config/routes.rb"), "  resources :passwords, param: :token, only: [:new, :create, :edit, :update]\n"
+  assert_includes read("shop/app/views/sessions/new.html.erb"), "<p><%= link_to t(\".forgot_password\"), new_password_path %></p>\n"
+  shop_config = read("shop/config/app.rb")
+  assert_includes shop_config, <<~RUBY
+    Cybertrain.configure do |c|
+      # Links in mails (the password reset's) start with this, as in
+      # SHOP_BASE_URL=https://shop.example.com. Unset, they take the address
+      # the request came to, which production trusts only when
+      # CYBERTRAIN_HOSTS lists the app's hosts; with neither, a reset mail is
+      # not sent and the log says why.
+      c.setting_string :base_url, env: "SHOP_BASE_URL", default: ""
+
+      # c.port = 3000
+  RUBY
+  assert shop_config.index("setup_open").nil?
+  assert_equal 1, read("club/config/app.rb").scan("setting_string :base_url").size
+end
+
+test "password reset: the generated tests and their helpers" do
+  helpers = read("shop/test/support/authentication_helpers.rb")
+  assert_includes helpers, "require \"cybertrain/test/smtp_receiver\"\nrequire_relative \"app_test\"\n"
+  assert_includes helpers, "def with_smtp_receiver\n"
+  assert_includes helpers, "  yield receiver\n  receiver.stop\n"
+  assert_includes helpers, "  c.smtp_host = \"127.0.0.1\"\n  c.smtp_port = port\n  c.smtp_tls = \"none\"\n  c.smtp_from = \"noreply@example.com\"\n"
+  assert_includes helpers, "def last_mail_link(receiver)\n"
+  assert_includes helpers, "def backdate_session(row, seconds)\n  at = Time.at(Time.now.to_i - seconds).utc\n  row.update_columns(created_at: at, last_active_at: at)\n  nil\nend\n"
+  spec = read("shop/test/passwords.rb")
+  assert_includes spec, "require_relative \"support/app_test\"\nrequire_relative \"support/authentication_helpers\"\n"
+  ["reset answers the same for unknown addresses and links to base_url",
+   "without base_url a link takes the request's address only where that is safe",
+   "the token expires after 15 minutes", "the token stops working once the password changed",
+   "updating the password ends every other session", "a reset clears a lockout",
+   "the mail arrives through the SMTP receiver with the dictionary's subject",
+   "POST /passwords past ten requests is refused for a while"].each do |name|
+    assert_includes spec, "test \"#{name}\" do\n"
+  end
+  # Review Focus 4: a forged Host, both addresses, one mail, base_url.
+  assert_includes spec, "    known = request_reset(client, \"Ann@Example.com\", \"evil.example\")\n"
+  assert_includes spec, "    unknown = request_reset(client, \"nobody@example.com\", \"evil.example\")\n"
+  assert_includes spec, "    assert_equal known_body, unknown.body\n"
+  assert_includes spec, "    assert link.start_with?(\"https://shop.example/passwords/\"), link\n"
+  # Every branch of the base URL, with the app's own variable in the log line.
+  assert_includes spec, "  assert_includes log.string, \"[ERROR] password reset mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)\\n\"\n"
+  assert_includes read("club/test/passwords.rb"), "set CLUB_BASE_URL (or CYBERTRAIN_HOSTS)"
+  # 15 minutes: 16 minutes ago is too old, 14 is not.
+  assert_includes spec, "  stale = user.password_reset_token(now - 16 * 60)\n  fresh = user.password_reset_token(now - 14 * 60)\n"
+  assert_includes spec, "Cybertrain::Test.run!\n"
+end
+
+test "a re-run adds the reset route and the base_url setting to an app generated before them" do
+  Cybertrain::CLI::NewApp.create("older", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Authentication.generate("older")
+  routes = read("older/config/routes.rb")
+  File.write("older/config/routes.rb", routes.sub("  resources :passwords, param: :token, only: [:new, :create, :edit, :update]\n", ""))
+  config = read("older/config/app.rb")
+  start = config.index("  # Links in mails")
+  stop = config.index("default: \"\"\n\n", start) + 13
+  File.write("older/config/app.rb", config[0, start] + config[stop, config.size - stop])
+  refute read("older/config/app.rb").include?("base_url")
+  Cybertrain::CLI::Authentication.generate("older")
+  assert_equal routes, read("older/config/routes.rb")
+  assert_equal config, read("older/config/app.rb")
+end
+
+test "both modes refuse an app without config/app.rb's configure line, before writing" do
+  Cybertrain::CLI::NewApp.create("noconf", "{ path = \"../cybertrain\" }")
+  File.write("noconf/config/app.rb", "# settings\n")
+  assert_equal 1, Dir.chdir("noconf") { Cybertrain::CLI.run(["generate", "authentication"]) }
+  refute File.exist?("noconf/app/models/user.rb")
+  File.delete("noconf/config/app.rb")
+  assert_equal 1, Dir.chdir("noconf") { Cybertrain::CLI.run(["generate", "authentication"]) }
+  refute File.exist?("noconf/app/models/user.rb")
 end
 
 test "insert_before_line inserts at the start of the line" do

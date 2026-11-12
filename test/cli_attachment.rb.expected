@@ -330,20 +330,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/club.rb (./club user)
+insert config/app.rb (CLUB_BASE_URL)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
 create app/controllers/posts_controller.rb
@@ -414,20 +422,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/blog.rb (./blog user)
+insert config/app.rb (BLOG_BASE_URL)
 create db/migrate/20260925120003_add_cover_to_articles.rb
 insert app/views/articles/_form.html.erb (cover file field, multipart: true)
 insert app/views/articles/show.html.erb (cover)
@@ -501,20 +517,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/desk.rb (./desk user)
+insert config/app.rb (DESK_BASE_URL)
 create db/migrate/20260925120003_add_scan_to_memos.rb
 insert app/views/memos/_form.html.erb (scan file field, multipart: true)
 insert app/views/memos/show.html.erb (scan)
@@ -576,20 +600,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/yard.rb (./yard user)
+insert config/app.rb (YARD_BASE_URL)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -650,20 +682,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/barn.rb (./barn user)
+insert config/app.rb (BARN_BASE_URL)
 create spin.toml
 create .gitignore
 create .env.example
@@ -712,20 +752,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/loft.rb (./loft user)
+insert config/app.rb (LOFT_BASE_URL)
 create spin.toml
 create .gitignore
 create .env.example
@@ -774,20 +822,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/shed.rb (./shed user)
+insert config/app.rb (SHED_BASE_URL)
 create spin.toml
 create .gitignore
 create .env.example
@@ -836,20 +892,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/coop.rb (./coop user)
+insert config/app.rb (COOP_BASE_URL)
 create spin.toml
 create .gitignore
 create .env.example
@@ -898,20 +962,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/hive.rb (./hive user)
+insert config/app.rb (HIVE_BASE_URL)
 create spin.toml
 create .gitignore
 create .env.example
@@ -960,20 +1032,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/pen.rb (./pen user)
+insert config/app.rb (PEN_BASE_URL)
 ok   show restrictions are preserved or attachment generation is refused
 create spin.toml
 create .gitignore
@@ -1023,20 +1103,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/restricted.rb (./restricted user)
+insert config/app.rb (RESTRICTED_BASE_URL)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1098,20 +1186,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/inherited.rb (./inherited user)
+insert config/app.rb (INHERITED_BASE_URL)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1174,20 +1270,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/concerned.rb (./concerned user)
+insert config/app.rb (CONCERNED_BASE_URL)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1295,22 +1399,30 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 identical test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
 insert test/attachment_product_photo.rb (sign in first)
 insert bin/guild.rb (./guild user)
+insert config/app.rb (GUILD_BASE_URL)
 identical db/migrate/20260925120002_create_users.rb
 identical db/migrate/20260925120003_create_sessions.rb
 identical app/models/user.rb
@@ -1318,21 +1430,29 @@ identical app/models/session.rb
 identical app/controllers/concerns/authentication.rb
 identical app/controllers/sessions_controller.rb
 identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/mailers/passwords_mailer.rb
 identical app/commands/user_command.rb
 identical app/views/sessions/new.html.erb
 identical app/views/sessions/_nav.html.erb
 identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
 identical test/support/app_test.rb
+identical test/support/authentication_helpers.rb
 identical test/authentication.rb
 identical test/admin.rb
 identical test/remember_me.rb
 identical test/lockout.rb
+identical test/passwords.rb
 identical app/controllers/application_controller.rb (include Authentication)
-identical route resource :session
+identical route resource :session, resources :passwords
 identical app/views/layouts/application.html.erb (nav already rendered)
 skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
 identical test/attachment_product_photo.rb (signs in already)
 identical bin/guild.rb (user command already required)
+identical config/app.rb (base_url already declared)
 ok   authentication generated after the attachment adds the sign-in to its test
 create spin.toml
 create .gitignore

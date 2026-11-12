@@ -94,7 +94,7 @@ $LOAD_PATH.unshift(File.expand_path("..", __dir__))
 require "cybertrain/cli/templates"
 require "cybertrain/cli/authentication"
 controller_source = File.read(File.expand_path("../cybertrain/controller.rb", __dir__))
-app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.authentication_concern
+app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.authentication_concern("app")
 action_names = []
 [controller_source, app_source].each do |text|
   text.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| action_names << m }
@@ -272,6 +272,10 @@ NAME_HOMES = {
   # cli/authentication.rb's ApplicationController text.
   "allow_unauthenticated_access" => %w[cybertrain/controller.rb cybertrain/cli/authentication.rb],
   "password_reset_token" => %w[cybertrain/cli/authentication.rb],
+  # The generated PasswordsMailer.reset answers a Cybertrain::MailMessage
+  # (Rails' name); the framework, which every app compiles with, keeps the
+  # name free (WebSocket's Frame#clear_message was its private `reset`).
+  "reset" => %w[cybertrain/cli/authentication.rb],
   # Every CLI generator's `generate` answers the paths it created
   # (Array<String>). A generator that needs to answer more takes a new
   # name, as phase 4b's do (pre-flight finding 3): the signed token is
@@ -285,9 +289,11 @@ NAME_HOMES = {
   # The Turbo Stream actions: Turbo.x (SafeString), TurboStreams#x
   # (SafeString, the controller's builder). Model#update returns a Boolean
   # (compiled side by side with TurboStreams#update in test/turbo_helpers.rb
-  # and test/application.rb's program); cli/templates.rb's is the
-  # generated controller's `update` action, written in a template String.
-  "update" => %w[cybertrain/model.rb cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb cybertrain/cli/templates.rb],
+  # and test/application.rb's program); cli/templates.rb's and
+  # cli/authentication.rb's (PasswordsController) are generated controllers'
+  # `update` actions, written in template Strings.
+  "update" => %w[cybertrain/model.rb cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb cybertrain/cli/templates.rb
+                   cybertrain/cli/authentication.rb],
   "replace" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "append" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "prepend" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],

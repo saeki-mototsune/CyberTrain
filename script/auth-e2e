@@ -4,8 +4,10 @@
 # with a scaffold, the generator, `db migrate`, `build`, `spin run gen --
 # --check`, every test/*.rb the app has compiled and run from build/test/,
 # then the built binary served on a free port and probed with curl and
-# the user command. The first failure stops it with a non-zero status and
-# leaves the app's directory in place to look at.
+# the user command, and a password reset whose mail the server's job thread
+# sends to an SMTP receiver (cybertrain/test/smtp_receiver.rb, run by
+# CRuby) on another free port. The first failure stops it with a non-zero
+# status and leaves the app's directory in place to look at.
 #
 #   signup   generate authentication (the sign-up page)
 #   invite   generate authentication --invite-only (/setup, the boot warning)
@@ -66,14 +68,46 @@ expect_contains() {
 }
 
 SERVER_PID=""
+SMTP_PID=""
 stop_server() {
   if [ -n "$SERVER_PID" ]; then
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
     SERVER_PID=""
   fi
+  if [ -n "$SMTP_PID" ]; then
+    kill "$SMTP_PID" 2>/dev/null || true
+    wait "$SMTP_PID" 2>/dev/null || true
+    SMTP_PID=""
+  fi
 }
 trap stop_server EXIT
+
+# `start_smtp_receiver DIR`: the framework's test SMTP receiver, in the
+# background, for one message; its port lands in DIR/smtp.port, the message
+# (Subject, To, a blank line, the text part) in DIR/mail.txt.
+start_smtp_receiver() {
+  cat > "$1/smtp_receiver.rb" <<'RUBY'
+require "cybertrain/test/smtp_receiver"
+receiver = Cybertrain::Test::SmtpReceiver.new(accept_window: 120)
+port = receiver.start
+File.write("#{ARGV[0]}.tmp", port.to_s)
+File.rename("#{ARGV[0]}.tmp", ARGV[0])
+mail = receiver.received_message(120)
+receiver.stop
+exit 1 if mail.nil?
+
+text = mail.message_parts["text"]
+File.write(ARGV[1], "Subject: #{mail.message_header("Subject")}\nTo: #{mail.envelope_recipients.join(",")}\n\n#{text}")
+RUBY
+  ruby -I"$ROOT" "$1/smtp_receiver.rb" "$1/smtp.port" "$1/mail.txt" > "$1/smtp.log" 2>&1 &
+  SMTP_PID=$!
+  for _ in $(seq 1 40); do
+    [ -f "$1/smtp.port" ] && return 0
+    sleep 0.25
+  done
+  fail "the SMTP receiver did not start"
+}
 
 free_port() {
   ruby -rsocket -e 'server = TCPServer.new("127.0.0.1", 0); puts server.addr[1]; server.close'
@@ -98,6 +132,9 @@ run_variant() {
   # shellcheck disable=SC2086
   cybertrain generate authentication $flag > generate.log || { cat generate.log >&2; fail "generate authentication $flag"; }
   test -f app/controllers/concerns/authentication.rb || fail "no Authentication concern"
+  test -f app/mailers/passwords_mailer.rb || fail "no PasswordsMailer"
+  grep -q '^  resources :passwords, param: :token, only: \[:new, :create, :edit, :update\]$' config/routes.rb || fail "no password reset routes"
+  grep -q '^  c.setting_string :base_url, env: "SHOP_BASE_URL", default: ""$' config/app.rb || fail "no base_url setting"
   grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "ApplicationController does not include Authentication"
   grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication$' config/routes.rb || fail "the jobs page is not drawn"
   if [ "$VARIANT" = "invite" ]; then
@@ -129,8 +166,11 @@ run_variant() {
   local port
   port=$(free_port)
   local base="http://127.0.0.1:$port"
+  # The reset mail goes to the receiver; its link starts with SHOP_BASE_URL.
+  start_smtp_receiver "$PWD"
   SERVER_LOG="$PWD/server.log"
-  PORT=$port ./shop > "$SERVER_LOG" 2>&1 &
+  PORT=$port SHOP_BASE_URL="$base" CYBERTRAIN_SMTP_HOST=127.0.0.1 CYBERTRAIN_SMTP_PORT="$(cat smtp.port)" \
+    CYBERTRAIN_SMTP_TLS=none CYBERTRAIN_SMTP_FROM=noreply@example.com ./shop > "$SERVER_LOG" 2>&1 &
   SERVER_PID=$!
   local up=""
   for _ in $(seq 1 60); do
@@ -193,6 +233,60 @@ run_variant() {
     "$(./shop user unadmin ann@example.com)"
   expect_equal "GET /admin/jobs, no longer an admin" "404" \
     "$(curl -sS -o /dev/null -w '%{http_code}' -b "$jar" "$base/admin/jobs")"
+
+  step "password reset by mail"
+  # The address form is sent with a forged Host (evil.example): the answer
+  # is the same for an address no user has, and the link takes
+  # SHOP_BASE_URL, never the Host. Production's session cookie is Secure,
+  # which curl keeps over http only for 127.0.0.1, so it is passed by hand
+  # next to the forged Host.
+  local reset_jar="$PWD/reset-cookies.txt"
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/passwords/new")
+  expect_contains "GET /passwords/new" "<h1>Forgot your password?</h1>" "$page"
+  token=$(form_token "$page")
+  [ -n "$token" ] || fail "no authenticity_token on /passwords/new"
+  local cookie
+  cookie=$(awk -F '\t' 'NF >= 7 { print $6 "=" $7 }' "$reset_jar" | paste -sd ';' -)
+  [ -n "$cookie" ] || fail "no session cookie from /passwords/new"
+  local known unknown
+  known=$(curl -sS -o known.html -w '%{http_code} %{redirect_url}' -H "Host: evil.example" -H "Cookie: $cookie" \
+    --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=Ann@Example.com" "$base/passwords")
+  unknown=$(curl -sS -o unknown.html -w '%{http_code} %{redirect_url}' -H "Host: evil.example" -H "Cookie: $cookie" \
+    --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=nobody@example.com" "$base/passwords")
+  expect_equal "POST /passwords (registered)" "303 $base/session/new" "$known"
+  expect_equal "POST /passwords (unknown)" "$known" "$unknown"
+  cmp -s known.html unknown.html || fail "POST /passwords: the bodies differ between a registered and an unknown address"
+  local smtp_status=0
+  wait "$SMTP_PID" || smtp_status=$?
+  SMTP_PID=""
+  [ "$smtp_status" = "0" ] || { cat smtp.log >&2; fail "no reset mail reached the SMTP receiver"; }
+  local mail link
+  mail=$(cat mail.txt)
+  expect_contains "the reset mail" "Subject: Reset your password" "$mail"
+  expect_contains "the reset mail" "To: ann@example.com" "$mail"
+  link=$(printf '%s' "$mail" | tr -d '\r' | grep -o "$base/passwords/[^ ]*/edit" | head -n 1)
+  [ -n "$link" ] || fail "the reset mail has no link starting with $base/passwords/: $mail"
+  case "$link" in *evil.example*) fail "the reset link took the forged Host: $link" ;; esac
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$link")
+  expect_contains "GET the mail's link" "<h1>Choose a new password</h1>" "$page"
+  token=$(form_token "$page")
+  local action=${link%/edit}
+  expect_equal "PUT the new password" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" \
+       --data-urlencode "_method=put" --data-urlencode "authenticity_token=$token" \
+       --data-urlencode "password=n3w-pw-n3w-pw" --data-urlencode "password_confirmation=n3w-pw-n3w-pw" "$action")"
+  # Spent: the link answers with the address form now.
+  expect_equal "GET the mail's link again" "303 $base/passwords/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$reset_jar" "$link")"
+  # The reset ended the session signed in before it.
+  expect_equal "GET /products with the session from before the reset" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$jar" "$base/products")"
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/session/new")
+  token=$(form_token "$page")
+  expect_equal "POST /session with the new password" "303 $base/" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" \
+       --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=ann@example.com" \
+       --data-urlencode "password=n3w-pw-n3w-pw" "$base/session")"
 
   stop_server
   unset CYBERTRAIN_SECRET_KEY_BASE

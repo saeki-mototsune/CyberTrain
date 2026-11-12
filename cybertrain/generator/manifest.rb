@@ -9,8 +9,9 @@ module Cybertrain
     # everything: generated models, routes, assets and locales, the app's helpers and
     # components with their generated tables, the console tables, the
     # generated controllers, then the app's own models, jobs
-    # (application_job first) with their generated half (gen/jobs.rb), and
-    # controllers (application_controller first), and last gen/concerns.rb.
+    # (application_job first) with their generated half (gen/jobs.rb),
+    # mailers (app/mailers) and controllers (application_controller
+    # first), and last gen/concerns.rb.
     # The concerns (app/models/concerns, app/controllers/concerns) come
     # before the models and the controllers that include them, loaded from
     # gen/concerns/<path under app/> (ConcernsEmitter.module_files: their
@@ -62,6 +63,10 @@ module Cybertrain
         lines << "../#{job_base}" if jobs.include?(job_base)
         jobs.each { |f| lines << "../#{f}" unless f == job_base }
         lines << "jobs"
+        # The mailers (app/mailers, as Rails lays them out): modules whose
+        # methods build a Cybertrain::MailMessage, called from controllers
+        # and jobs.
+        rb_files(root, "app/mailers").each { |f| lines << "../#{f}" }
         # The concerns before the classes that include them, each after
         # the concerns it includes.
         concerns = concern_files(root, "app/controllers")

@@ -6,8 +6,9 @@
 # activerecord.errors.messages, helpers.submit and support.array; plus
 # the framework's own keys under cybertrain (plan decision D12), and the
 # screens `cybertrain generate authentication` writes: their lazy keys
-# (sessions.*, registrations.*, setup.*) and the User model's attribute
-# names (activerecord.attributes.user).
+# (sessions.*, registrations.*, setup.*, passwords.*, the reset mail's
+# mail.password_reset.* and passwords_mailer.reset.subject) and the User
+# model's attribute names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
 ---
@@ -218,6 +219,12 @@ en:
       create: Create %{model}
       submit: Save %{model}
       update: Update %{model}
+  mail:
+    password_reset:
+      greeting: "Hello %{email_address},"
+      ignore: "If you did not ask for this, ignore this mail: your password stays as it is."
+      intro: "You can choose a new password within the next 15 minutes at this address:"
+      link: Choose a new password
   number:
     currency:
       format:
@@ -271,6 +278,23 @@ en:
     precision:
       format:
         delimiter: ''
+  passwords:
+    create:
+      rate_limited: Try again later.
+      sent: If that address is registered, a link to reset the password was sent to it.
+    edit:
+      invalid: That password reset link is invalid or has expired.
+      submit: Save
+      title: Choose a new password
+    new:
+      sign_in: Sign in
+      submit: Email me a link
+      title: Forgot your password?
+    update:
+      updated: Your password has been reset. Sign in with the new one.
+  passwords_mailer:
+    reset:
+      subject: Reset your password
   registrations:
     create:
       welcome: Welcome! You have signed up.
@@ -290,6 +314,7 @@ en:
       sign_out: Sign out
     new:
       email_address: Email address
+      forgot_password: Forgot your password?
       password: Password
       remember_me: Keep me signed in
       sign_up: Sign up

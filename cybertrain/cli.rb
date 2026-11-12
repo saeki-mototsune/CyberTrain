@@ -350,7 +350,9 @@ module Cybertrain
         else
           puts "  cybertrain server      # then open /sign_up"
         end
-        puts "  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb and lockout.rb; snapshot them from the binaries"
+        puts "  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb and passwords.rb; snapshot them from the binaries"
+        base_url_env = Authentication.base_url_env(Build.app_name("."))
+        puts "  # password reset mails: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
       when "helper"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate helper NAME [--force]" unless args.size == 1

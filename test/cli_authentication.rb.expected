@@ -37,20 +37,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/shop.rb (./shop user)
+insert config/app.rb (SHOP_BASE_URL)
 ok   generate authentication writes the migrations, models, controllers, views and tests
 ok   the users migration has the NOT NULL columns, the admin flag, the lockout columns and a unique index
 ok   the User model hashes with Cybertrain::Password and validates in before_validation
@@ -141,24 +149,33 @@ identical app/models/session.rb
 identical app/controllers/concerns/authentication.rb
 identical app/controllers/sessions_controller.rb
 identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/mailers/passwords_mailer.rb
 identical app/commands/user_command.rb
 identical app/views/sessions/new.html.erb
 identical app/views/sessions/_nav.html.erb
 identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
 identical test/support/app_test.rb
+identical test/support/authentication_helpers.rb
 identical test/authentication.rb
 identical test/admin.rb
 identical test/remember_me.rb
 identical test/lockout.rb
+identical test/passwords.rb
 identical app/controllers/application_controller.rb (include Authentication)
-identical route resource :session
+identical route resource :session, resources :passwords
 identical app/views/layouts/application.html.erb (nav already rendered)
 identical bin/shop.rb (user command already required)
+identical config/app.rb (base_url already declared)
 
 next:
   cybertrain db migrate
   cybertrain server      # then open /sign_up
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb and lockout.rb; snapshot them from the binaries
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb and passwords.rb; snapshot them from the binaries
+  # password reset mails: set SHOP_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   running the generator again writes and edits nothing
 create spin.toml
 create .gitignore
@@ -208,20 +225,28 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /sign_up
+route resource :session, resources :passwords, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/store.rb (./store user)
+insert config/app.rb (STORE_BASE_URL)
 ok   the generator runs after a scaffold, with migration versions that follow
 create spin.toml
 create .gitignore
@@ -262,26 +287,35 @@ create app/models/session.rb
 create app/controllers/concerns/authentication.rb
 create app/controllers/sessions_controller.rb
 create app/controllers/setup_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
 create app/commands/user_command.rb
 create app/views/sessions/new.html.erb
 create app/views/sessions/_nav.html.erb
 create app/views/setup/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
 create test/support/app_test.rb
+create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
 create test/remember_me.rb
 create test/lockout.rb
+create test/passwords.rb
 insert app/controllers/application_controller.rb (include Authentication)
-route resource :session, get/post /setup
+route resource :session, resources :passwords, get/post /setup
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/club.rb (./club user, the first-run warning)
+insert config/app.rb (CLUB_BASE_URL)
 insert config/app.rb (CLUB_SETUP_OPEN)
 
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb and lockout.rb; snapshot them from the binaries
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb and passwords.rb; snapshot them from the binaries
+  # password reset mails: set CLUB_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   --invite-only writes the user command and /setup instead of the sign-up page
 ok   --invite-only's screens go through t, with keys the bundled dictionaries have
 ok   --invite-only requires the command in bin/<app>.rb and declares setup_open
@@ -332,25 +366,34 @@ identical app/models/session.rb
 identical app/controllers/concerns/authentication.rb
 identical app/controllers/sessions_controller.rb
 identical app/controllers/setup_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/mailers/passwords_mailer.rb
 identical app/commands/user_command.rb
 identical app/views/sessions/new.html.erb
 identical app/views/sessions/_nav.html.erb
 identical app/views/setup/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
 identical test/support/app_test.rb
+identical test/support/authentication_helpers.rb
 identical test/authentication.rb
 identical test/admin.rb
 identical test/remember_me.rb
 identical test/lockout.rb
+identical test/passwords.rb
 identical app/controllers/application_controller.rb (include Authentication)
-identical route resource :session
+identical route resource :session, resources :passwords
 identical app/views/layouts/application.html.erb (nav already rendered)
 identical bin/club.rb (user command already required)
+identical config/app.rb (base_url already declared)
 identical config/app.rb (setup_open already declared)
 
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb and lockout.rb; snapshot them from the binaries
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb and passwords.rb; snapshot them from the binaries
+  # password reset mails: set CLUB_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   --invite-only run again writes and edits nothing
 create spin.toml
 create .gitignore
@@ -389,6 +432,135 @@ error: usage: cybertrain generate authentication [--invite-only]
 error: ./bin/bare.rb has no line starting with `exit(Cybertrain::Main.run(`
 error: ./bin/bare.rb not found: run this inside a cybertrain app
 ok   either mode refuses an app whose bin/<app>.rb has no Main.run line, before writing
+ok   password reset: the controller, the mailer and the views
+ok   password reset: the token in the model, the base URL in the concern
+ok   password reset: the route, the sign-in link and the base_url setting in both modes
+ok   password reset: the generated tests and their helpers
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/older.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create test/support/app_test.rb
+create test/support/authentication_helpers.rb
+create test/authentication.rb
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/older.rb (./older user)
+insert config/app.rb (OLDER_BASE_URL)
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical test/support/app_test.rb
+identical test/support/authentication_helpers.rb
+identical test/authentication.rb
+identical test/admin.rb
+identical test/remember_me.rb
+identical test/lockout.rb
+identical test/passwords.rb
+identical app/controllers/application_controller.rb (include Authentication)
+route resources :passwords
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical bin/older.rb (user command already required)
+insert config/app.rb (OLDER_BASE_URL)
+ok   a re-run adds the reset route and the base_url setting to an app generated before them
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/noconf.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+error: ./config/app.rb has no `Cybertrain.configure do |c|` line
+error: ./config/app.rb not found: run this inside a cybertrain app
+ok   both modes refuse an app without config/app.rb's configure line, before writing
 ok   insert_before_line inserts at the start of the line
 ok   insert_after_line keeps the rest of the file
 error: ./config/routes.rb not found: run this inside a cybertrain app
@@ -428,4 +600,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-26 tests, 419 assertions, 0 failures
+32 tests, 581 assertions, 0 failures
