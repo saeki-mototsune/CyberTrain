@@ -7,7 +7,8 @@ module Cybertrain
     # trying the write again when the database raises. It holds no SQL and
     # starts no thread: a job thread of {Job::Worker} calls work_one in a
     # loop, and a test or a {Main.command} calls it directly. What it keeps
-    # is the list of attempts in flight here, which the heartbeat reads.
+    # is the list of claims in flight here (row id and attempt number),
+    # which the heartbeat reads.
     # The public entry points and their documentation are the `Job.*`
     # methods of cybertrain/job.rb, which delegate here.
     module Executor
@@ -15,10 +16,19 @@ module Cybertrain
       # thread reads.
       FLIGHT_LOCK = Mutex.new
 
-      # The ids of the jobs this process has claimed and not yet finished
-      # writing the outcome of: the only rows its heartbeat keeps alive. A
-      # constant (NOTES rule 64), seeded and emptied (rule 9).
+      # The jobs this process has claimed and not yet finished writing the
+      # outcome of: the only rows its heartbeat keeps alive. Two arrays of
+      # one length, the row's id and the attempt number of the claim at the
+      # same index: the pair is the claim (as (label, attempts) fences the
+      # outcome), so an attempt that outlived its claim does not heartbeat
+      # the row's next one (D78). Constants (NOTES rule 64), seeded and
+      # emptied (rule 9).
       IN_FLIGHT = Array.new(0) { 0 }
+      IN_FLIGHT_ATTEMPTS = Array.new(0) { 0 }
+
+      # The ticket of a claim made outside a pool ({Job.work_one} from a
+      # test or a {Main.command}): {Job.claim_open?} never refuses it.
+      NO_TICKET = -1
 
       # How many times an outcome write is tried before the row is left to
       # staleness recovery, and the pause before each retry (times the try).
@@ -32,17 +42,44 @@ module Cybertrain
         out
       end
 
-      def self.in_flight_add(id)
-        FLIGHT_LOCK.synchronize { IN_FLIGHT << id }
+      # The claims in flight, read under one lock: the id and then the
+      # attempt number of each, one after the other.
+      def self.in_flight_claims
+        out = Array.new(0) { 0 }
+        FLIGHT_LOCK.synchronize do
+          i = 0
+          while i < IN_FLIGHT.size
+            out << IN_FLIGHT[i]
+            out << IN_FLIGHT_ATTEMPTS[i]
+            i += 1
+          end
+        end
+        out
+      end
+
+      def self.in_flight_add(id, attempts)
+        FLIGHT_LOCK.synchronize do
+          IN_FLIGHT << id
+          IN_FLIGHT_ATTEMPTS << attempts
+        end
         nil
       end
 
-      # Removes one entry for id (the same row can be in flight twice when it
-      # was recovered and claimed again here while its first run went on).
-      def self.in_flight_remove(id)
+      # Removes the entry of the claim (id, attempts). The same row can be
+      # in flight twice, under two attempt numbers, when it was recovered
+      # and claimed again here while its first run went on.
+      def self.in_flight_remove(id, attempts)
         FLIGHT_LOCK.synchronize do
-          at = IN_FLIGHT.index(id)
-          IN_FLIGHT.delete_at(at) unless at.nil?
+          at = -1
+          i = 0
+          while at < 0 && i < IN_FLIGHT.size
+            at = i if IN_FLIGHT[i] == id && IN_FLIGHT_ATTEMPTS[i] == attempts
+            i += 1
+          end
+          if at >= 0
+            IN_FLIGHT.delete_at(at)
+            IN_FLIGHT_ATTEMPTS.delete_at(at)
+          end
         end
         nil
       end
@@ -50,7 +87,14 @@ module Cybertrain
       # {Job.work_one}: claims the oldest job due at `now`, runs it and has
       # its outcome written. True when a job was claimed.
       def self.work_one(now)
-        run = Store.claim(now, Job.process_label)
+        work_one_under(now, NO_TICKET)
+      end
+
+      # work_one for a caller whose claim can be withdrawn while it waits
+      # for the write lock: `ticket` is what {Job.claim_open?} is asked
+      # about under that lock (a job thread passes its pool's generation).
+      def self.work_one_under(now, ticket)
+        run = Store.claim(now, Job.process_label, ticket)
         return false if run.run_id < 0
 
         finish_in_flight(run)
@@ -58,17 +102,17 @@ module Cybertrain
       end
 
       # finish between in_flight_add and in_flight_remove, in a plain method
-      # with an `ensure` (NOTES rules 32/45): the id leaves IN_FLIGHT whatever
+      # with an `ensure` (NOTES rules 32/45): the claim leaves IN_FLIGHT whatever
       # the handler raised. run_handler rescues StandardError and the
       # NotImplementedError / SystemStackError / ScriptError arm; anything
       # else reaches Worker.claim_safely, which logs it, and without this the
       # row would be heartbeated for the life of the process and never
       # recovered.
       def self.finish_in_flight(run)
-        in_flight_add(run.run_id)
+        in_flight_add(run.run_id, run.run_attempts)
         finish(run)
       ensure
-        in_flight_remove(run.run_id)
+        in_flight_remove(run.run_id, run.run_attempts)
       end
 
       # {Job.work_due}.

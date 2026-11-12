@@ -6,5 +6,7 @@ ok   the heartbeat thread moves a running job's heartbeat_at
 ok   the scheduler no longer runs jobs as a task
 ok   a keyed limit: two keys run at once, the same key does not
 ok   request_stop (the TERM trap) starts the drain: stop! waits only what is left of it
+ok   a claim waiting for the write lock when the stop comes takes nothing
 ok   stop! waits at most job_drain_timeout and leaves an unfinished job running for recovery
-9 tests, 70 assertions, 0 failures
+ok   a thread of the pool before a restart does not start the new pool's drain clock
+11 tests, 84 assertions, 0 failures
