@@ -248,12 +248,12 @@ module Cybertrain
     #
     # A number that is not open, not a socket, or a socket that does not
     # listen is PortInUse::NOT_LISTENING, not an Errno nor an accept loop
-    # that fails forever. CRuby's for_fd refuses a non-socket (EBADF) and
-    # Spinel's a closed number (IOError, "fdopen failed"); SO_ACCEPTCONN
-    # catches the rest, a socket that does not listen (0) or a file
-    # (ENOTSOCK). Until the check passes autoclose is off: a refused number is
-    # not this server's, and the collector must not close what something
-    # else holds.
+    # that fails forever. CRuby's for_fd refuses a non-socket (EBADF);
+    # Spinel's refuses a closed number (EBADF) and one its fdopen cannot
+    # open read-write (IOError, "fdopen failed": a read-only file, a pipe)
+    # but takes any other, so accepting? decides the rest. Until the check
+    # passes autoclose is off: a refused number is not this server's, and
+    # the collector must not close what something else holds.
     def inherited_listener
       listener = TCPServer.for_fd(@listen_fd)
       listener.autoclose = false
@@ -265,10 +265,16 @@ module Cybertrain
       raise PortInUse.new(@host, @port, PortInUse::NOT_LISTENING)
     end
 
-    # Whether the socket listens (SO_ACCEPTCONN); raises ENOTSOCK for a
-    # descriptor that is not a socket.
+    # Whether the socket listens: SO_ACCEPTCONN is positive only then. A
+    # listening socket answers 1 on Linux and the option's own bit (2) on
+    # macOS, one that does not listen 0. For a descriptor that is not a
+    # socket CRuby raises ENOTSOCK, but Spinel's getsockopt answers -1
+    # instead of raising, so "non-zero" would take a read-write file for a
+    # listener and accept_loop would fail on it forever. Only a positive
+    # answer passes, so any failed read of the option refuses the number:
+    # at worst a listener is refused at boot, never a non-listener served.
     def accepting?(listener)
-      listener.getsockopt(Socket::SOL_SOCKET, Socket::SO_ACCEPTCONN).int != 0
+      listener.getsockopt(Socket::SOL_SOCKET, Socket::SO_ACCEPTCONN).int > 0
     end
 
     # A separate method so its rescue stays away from the raw socket calls'

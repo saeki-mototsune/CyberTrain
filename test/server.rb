@@ -949,25 +949,53 @@ def inherited_start_message(fd)
   assert_raises("Cybertrain::PortInUse") { server.start }
 end
 
-# A descriptor that is closed, a regular file, or a socket that does not
+# A descriptor that is not open, a regular file, or a socket that does not
 # listen: start refuses each with PortInUse, which the server role turns
 # into its `error:` line, rather than raising Errno or accepting forever on
-# something that never yields a connection. The file and the connected
-# socket keep their own descriptors: start leaves them open.
-test "listen_fd that is not a listening socket raises PortInUse" do
-  expected = "port 3000 on 127.0.0.1 #{Cybertrain::PortInUse::NOT_LISTENING}"
-  r, w = IO.pipe
-  closed = r.fileno
-  r.close
-  w.close
-  assert_equal expected, inherited_start_message(closed)
+# something that never yields a connection. One test each, so a failure
+# names its case. The file and the connected socket keep their own
+# descriptors: start leaves them open.
+NOT_LISTENING_MESSAGE = "port 3000 on 127.0.0.1 #{Cybertrain::PortInUse::NOT_LISTENING}"
+
+# Not a number just closed: the runtime opens descriptors of its own (its
+# scheduler's wakeup pipe and poller, created when first needed), and any
+# of them may take a freed number again, even a listener an earlier test
+# kept, and then no error is the right answer. 900 instead: /dev/fd lists
+# this process's open descriptors on Linux and macOS alike, every one is
+# below 900, and the kernel hands out the lowest free number, so 900 stays
+# closed until everything below it is open.
+test "listen_fd naming a descriptor that is not open raises PortInUse" do
+  assert Dir.children("/dev/fd").all? { |name| name.to_i < 900 }
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(900)
+end
+
+test "listen_fd naming a read-only regular file raises PortInUse" do
   file = File.open(__FILE__)
-  assert_equal expected, inherited_start_message(file.fileno)
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(file.fileno)
   assert_equal "#", file.read(1)
   file.close
+end
+
+# Read-write: Spinel's for_fd takes it (its fdopen refuses only a
+# descriptor whose access mode does not allow both), and its getsockopt
+# answers -1 for ENOTSOCK instead of raising, so the check must not read
+# "non-zero" as listening. So would a read-write descriptor of the
+# runtime's own, such as a poller, that took a number again.
+test "listen_fd naming a read-write regular file raises PortInUse" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/server_listen_fd_test"
+  File.write(path, "#")
+  file = File.open(path, "r+")
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(file.fileno)
+  assert_equal "#", file.read(1)
+  file.close
+  File.delete(path)
+end
+
+test "listen_fd naming a connected socket that does not listen raises PortInUse" do
   held = TCPServer.new("127.0.0.1", 0)
   client = TCPSocket.new("127.0.0.1", held.addr[1])
-  assert_equal expected, inherited_start_message(client.fileno)
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(client.fileno)
   client.write("x")
   client.close
   held.close
