@@ -14,7 +14,17 @@ module Cybertrain
     class Migrator
       def initialize(connection)
         @connection = connection
+        @quiet = false
         @connection.exec_script("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)")
+      end
+
+      # Stops the progress lines (`== <version> <Class>: migrating`,
+      # `done`): `cybertrain test` migrates its fresh database before the
+      # tests and prints nothing of it.
+      # @return [nil]
+      def quiet!
+        @quiet = true
+        nil
       end
 
       def applied_versions
@@ -43,7 +53,7 @@ module Cybertrain
         pending(migrations).each do |entry|
           version = entry[0]
           migration = entry[1]
-          puts "== #{version} #{migration.class.name}: migrating"
+          puts "== #{version} #{migration.class.name}: migrating" unless @quiet
           record(migration, true)
           ops = migration.operations
           apply_version(version, ops, empty_operations, "INSERT INTO schema_migrations (version) VALUES (?)")
@@ -85,7 +95,7 @@ module Cybertrain
         targets.each do |version|
           migration = find_migration(migrations, version)
           next if migration.nil?
-          puts "== #{version} #{migration.class.name}: reverting"
+          puts "== #{version} #{migration.class.name}: reverting" unless @quiet
           # The forward operations name the indexes the inverse drops
           # (Base#inverse turns add_index into a remove_index that keeps only
           # the columns), so they are recorded first and consulted below.
@@ -157,7 +167,7 @@ module Cybertrain
             @connection.exec_script("PRAGMA foreign_keys = ON") if enforced
           end
         end
-        puts "done"
+        puts "done" unless @quiet
         nil
       end
 

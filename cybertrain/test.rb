@@ -55,12 +55,25 @@ module Cybertrain
     # The top-level `setup` and `teardown` blocks of one top-level-form file
     # (under `spin test` the program is one file).
     class TopLevelFile
-      attr_reader :top_file_path, :setup_blocks, :teardown_blocks
+      attr_reader :top_file_path, :setup_blocks, :teardown_blocks, :case_names, :case_lines
 
       def initialize(path)
         @top_file_path = path
         @setup_blocks = Array.new(0) { -> { nil } }
         @teardown_blocks = Array.new(0) { -> { nil } }
+        # In the bundle, gen's record of the file's `test "<literal>"`
+        # calls and their lines (plan decision 10), from Test.begin_file.
+        @case_names = Array.new(0) { "" }
+        @case_lines = Array.new(0) { 0 }
+      end
+
+      # The line of the first `test` call whose literal is `name`; 0 for a
+      # computed name (gen records no line for it).
+      # @param name [String]
+      # @return [Integer]
+      def line_of(name)
+        k = @case_names.index(name)
+        k.nil? ? 0 : @case_lines[k]
       end
     end
 
@@ -105,6 +118,60 @@ module Cybertrain
     # bundle booted, and the HTML the last request or render answered.
     @app = nil
     @last_html = ""
+    # True inside `cybertrain test`'s program (Test.bundled!): run! at the
+    # end of a top-level-form file then does nothing.
+    @bundled = false
+
+    # Marks this program as the bundle `cybertrain test` compiles (gen's
+    # gen/tests.rb calls it before requiring the test files): {run!} then
+    # does nothing, since the bundle's runner runs every test once.
+    # @return [nil]
+    # @api private
+    def self.bundled!
+      @bundled = true
+      nil
+    end
+
+    # Whether {bundled!} was called.
+    # @return [Boolean]
+    # @api private
+    def self.bundled? = @bundled
+
+    # Sets the flag {bundled!} sets (the framework's own tests turn it off
+    # again).
+    # @param value [Boolean]
+    # @api private
+    def self.bundled=(value)
+      @bundled = value
+    end
+
+    # In the bundle, before each test file is required: the cases, `setup`
+    # and `teardown` blocks it registers belong to `path`, and gen's
+    # `names` / `lines` give each literal test name its line (plan
+    # decision 10).
+    # @param path [String] "test/legacy.rb"
+    # @param names [Array<String>]
+    # @param lines [Array<Integer>]
+    # @return [nil]
+    # @api private
+    def self.begin_file(path, names, lines)
+      file = TopLevelFile.new(path)
+      names.each { |n| file.case_names << n }
+      lines.each { |n| file.case_lines << n }
+      @top_file = file
+      nil
+    end
+
+    # The cases registered with the top-level `test`, in registration
+    # order (each knows its file: {begin_file}).
+    # @return [Array<Cybertrain::Test::Case>]
+    # @api private
+    def self.top_level_cases = @cases
+
+    # The assertions counted so far in this program.
+    # @return [Integer]
+    # @api private
+    def self.assertion_count = @assertions
 
     def self.register(name, block)
       @cases << Case.new(name, block, @top_file)
@@ -399,16 +466,24 @@ module Cybertrain
     # `ERR  <name>: <Class>: <message>` for another exception
     # (`ERR  <name>: in setup: <Class>: <message>` outside the body), then
     # `<n> tests, <n> assertions, <n> failures`. Call it at the end of
-    # every test file.
+    # every test file. Inside `cybertrain test`'s program ({bundled?}) it
+    # does nothing: the bundle runs every test once, at its end. The cases
+    # of a file the bundle began ({begin_file}) are the bundle's, not run!'s.
     # @return [void]
     # @api public
     def self.run!
+      return nil if @bundled
+
       @cases.each do |c|
+        next unless c.top_file.top_file_path.empty?
+
         run_top_level_case(c)
         @failures += 1 unless @status == "ok"
         puts result_line(c.name)
       end
-      puts "#{@cases.size} tests, #{@assertions} assertions, #{@failures} failures"
+      run = 0
+      @cases.each { |c| run += 1 if c.top_file.top_file_path.empty? }
+      puts "#{run} tests, #{@assertions} assertions, #{@failures} failures"
       exit(1) if @failures > 0
     end
   end

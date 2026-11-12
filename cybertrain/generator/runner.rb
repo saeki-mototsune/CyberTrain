@@ -19,6 +19,7 @@ require "cybertrain/generator/assets_emitter"
 require "cybertrain/generator/locale_scan"
 require "cybertrain/generator/locales_emitter"
 require "cybertrain/generator/test_scan"
+require "cybertrain/generator/tests_emitter"
 
 module Cybertrain
   module Gen
@@ -68,17 +69,27 @@ module Cybertrain
           outputs << [rel, source]
           concern_files << rel
         end
+        stale = 0
         test_copies = Array.new(0) { "" }
         TestScan.copies(root).each do |rel, source|
           outputs << [rel, source]
           test_copies << rel
+        end
+        # gen/tests.rb, the program `cybertrain test` compiles, whenever
+        # test/ exists (a refused bundle is a program that only aborts with
+        # the reason: gen itself still succeeds, pre-flight ruling B2).
+        # Task 8's fixtures pass `true` once gen/test/data.rb is written.
+        tests_rb = "#{root}/#{TestsEmitter::PATH}"
+        if File.directory?("#{root}/test")
+          outputs << [TestsEmitter::PATH, TestsEmitter.emit(root, TestScan.scan(root), false)]
+        elsif File.exist?(tests_rb) && File.read(tests_rb).start_with?(TestsEmitter::HEADER)
+          stale += remove_file(root, TestsEmitter::PATH, check)
         end
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).
         outputs << ["gen/migrations.rb", MigrationsEmitter.emit(root)] if File.directory?("#{root}/db/migrate")
         # gen/models/<model>.rb per table once db/schema.rb has been loaded.
         schema = Cybertrain::Schema.current
-        stale = 0
         # A gen/concerns file whose concern is gone, and the directories
         # that leaves empty.
         Manifest.rb_files(root, "gen/concerns").each do |f|

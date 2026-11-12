@@ -23,6 +23,7 @@ identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
 wrote gen/test/test_helper.rb
 wrote gen/test/support/sign_in.rb
+wrote gen/tests.rb
 identical gen/migrations.rb
 wrote gen/console.rb
 identical gen/app.rb
@@ -43,10 +44,12 @@ identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
 wrote gen/test/models/y_test.rb
 wrote gen/test/x_test.rb
+wrote gen/tests.rb
 identical gen/migrations.rb
 wrote gen/console.rb
 identical gen/app.rb
 stale: gen/test/x_test.rb
+stale: gen/tests.rb
 removed gen/test/models/y_test.rb
 removed gen/test/models/
 removed gen/test/x_test.rb
@@ -64,6 +67,7 @@ identical gen/concerns/controllers/concerns/admin_gate.rb
 identical gen/concerns/controllers/concerns/auditing.rb
 identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
 identical gen/migrations.rb
 identical gen/console.rb
 identical gen/app.rb
@@ -97,6 +101,7 @@ identical gen/concerns/controllers/concerns/auditing.rb
 identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
 wrote gen/test/x_test.rb
+wrote gen/tests.rb
 identical gen/migrations.rb
 wrote gen/console.rb
 identical gen/app.rb
@@ -116,6 +121,7 @@ identical gen/concerns/controllers/concerns/auditing.rb
 identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
 identical gen/test/x_test.rb
+identical gen/tests.rb
 identical gen/migrations.rb
 identical gen/console.rb
 identical gen/app.rb

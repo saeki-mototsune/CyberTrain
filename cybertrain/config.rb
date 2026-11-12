@@ -266,10 +266,26 @@ attr_accessor :trusted_proxies
     attr_accessor :static_files
 
     # Whether non-GET requests must carry the CSRF token, `true`. A request
-    # without it gets 403.
+    # without it gets 403. `cybertrain test` turns it off for its tests
+    # unless config/app.rb assigns it (Rails' test environment has
+    # forgery protection off).
     # @return [Boolean]
     # @api public
-    attr_accessor :csrf
+    attr_reader :csrf
+
+    # Sets {#csrf}, and records that it was given ({#csrf_given?}).
+    # @param value [Boolean]
+    # @api public
+    def csrf=(value)
+      @csrf = value
+      @csrf_given = true
+    end
+
+    # Whether {#csrf} was assigned (by config/app.rb or later), rather than
+    # left at its default: what `cybertrain test`'s boot asks.
+    # @return [Boolean]
+    # @api private
+    def csrf_given? = @csrf_given
 
     # Path prefixes whose non-GET requests skip the CSRF check, `[]`: for an
     # API that other programs call with a token of its own (a webhook
@@ -936,6 +952,7 @@ end
       @pool_size = 4
       @static_files = true
       @csrf = true
+      @csrf_given = false
       # An element-typed empty Array (spikes/NOTES.md rule 9): config/app.rb
       # assigns a literal, the stack reads it.
       @csrf_exempt_prefixes = Array.new(0) { "" }

@@ -1,0 +1,116 @@
+ok   the emitted program requires in order and has one arm per class-form test
+ok   with the fixtures' file, the bundle requires it and registers the clear and load
+ok   an application with no class-form test has an empty table
+ok   test names are written as literals that never interpolate
+ok   the bundle forces the test environment
+ok   a duplicate top-level helper is refused naming both files
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+ok   a refused bundle is a program that only aborts, and gen still succeeds
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+ok   assert_select with a block and render_inline with a block are refused
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/test/test_helper.rb
+wrote gen/test/controllers/pages_test.rb
+wrote gen/test/models/article_test.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+ok   the generated helper with an application base class loads
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+stale: gen/tests.rb
+removed gen/tests.rb
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/migrations.rb
+identical gen/console.rb
+identical gen/app.rb
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+ok   gen/tests.rb goes when test/ goes
+10 tests, 99 assertions, 0 failures
