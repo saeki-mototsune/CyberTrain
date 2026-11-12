@@ -1,5 +1,6 @@
 ok   handle refuses an empty kind and a taken one; enqueue refuses an unknown kind
 ok   enqueue creates the table; a job runs when due, oldest first, and ends done
+ok   a job that sets the locale does not leave it for the next job on the same thread
 ok   a failing job is retried with the backoff, counting attempts, until it is failed
 ok   NotImplementedError and SystemStackError from a job take the default retry, as a StandardError does
 ok   a job that fails and then succeeds ends done
@@ -37,4 +38,4 @@ ok   the unkeyable-row warnings list at most 20 ids and count the rest
 ok   recovery requeues a stale running row with its key in the same statement
 ok   an upgrade adds the column and the index to an existing table
 ok   schema dumps leave the jobs table out
-39 tests, 320 assertions, 0 failures
+40 tests, 325 assertions, 0 failures

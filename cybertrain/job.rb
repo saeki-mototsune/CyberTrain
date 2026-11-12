@@ -5,6 +5,7 @@ require "cybertrain/logger"
 require "cybertrain/cast"
 require "cybertrain/config"
 require "cybertrain/db"
+require "cybertrain/i18n"
 
 module Cybertrain
   # Cybertrain::Job -- a small database-backed job queue: "do this later,
@@ -1321,7 +1322,11 @@ module Cybertrain
     # (`raise NotImplementedError` in a helper not yet written, a recursion
     # too deep, a `require` that fails) take the default policy as a
     # StandardError does, instead of ending the job thread.
+    # Each run starts at the default locale, as a controller action does:
+    # a job thread is long-lived, so a locale one job set (`I18n.locale =
+    # user.locale`) would otherwise stay for the next job on the thread.
     def self.run_handler(handler, run)
+      I18n.locale = nil
       handler.handler_run_block.call(run)
       ""
     rescue JSON::NestingError, JSON::ParserError, StandardError => e

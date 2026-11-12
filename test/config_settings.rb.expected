@@ -50,4 +50,4 @@ ok   a nonce directive that is not a directive, or a CR in permissions_policy, s
 ok   content_security_policy builds the policy once and yields it
 ok   i18n settings from the environment and their checks
 ok   auth settings and their checks
-22 tests, 158 assertions, 0 failures
+22 tests, 159 assertions, 0 failures

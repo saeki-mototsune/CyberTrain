@@ -279,7 +279,6 @@ module Cybertrain
         return candidate if candidate.to_s.downcase.tr("_", "-") == tag
       end
       cut = tag.index("-")
-      cut = tag.index("_") if cut.nil?
       return nil if cut.nil? || cut == 0
 
       language = tag[0, cut].to_s

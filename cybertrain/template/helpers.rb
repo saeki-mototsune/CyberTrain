@@ -1356,7 +1356,7 @@ module Cybertrain
         i = 0
         while i < NumberHelper::UNIT_KEYS.length
           key = NumberHelper::UNIT_KEYS[i].to_s
-          names[i] = I18n.t("number.human.decimal_units.units.#{key}")
+          names[i] = Helpers.number_text("number.human.decimal_units.units.#{key}", false, 0)
           i += 1
         end
         case given
@@ -1370,7 +1370,7 @@ module Cybertrain
         when nil then nil
         else raise ArgumentError, "number_to_human units: must be a Hash"
         end
-        format = I18n.t("number.human.decimal_units.format")
+        format = Helpers.number_text("number.human.decimal_units.format", false, 0)
         delimiter = Helpers.number_setting("human", "delimiter")
         separator = Helpers.number_setting("human", "separator")
         NumberHelper.human_text(args[0], precision, names, format, delimiter, separator)
@@ -1410,10 +1410,10 @@ module Cybertrain
 
         bytes = NumberHelper.byte_count(args[0])
         names = Array.new(0) { "" }
-        names << I18n.t("number.human.storage_units.units.byte", { count: bytes })
-        STORAGE_UNIT_KEYS.each { |key| names << I18n.t("number.human.storage_units.units.#{key}") }
+        names << Helpers.number_text("number.human.storage_units.units.byte", true, bytes)
+        STORAGE_UNIT_KEYS.each { |key| names << Helpers.number_text("number.human.storage_units.units.#{key}", false, 0) }
         precision = Helpers.number_precision(kwargs, "human", 3)
-        format = I18n.t("number.human.storage_units.format")
+        format = Helpers.number_text("number.human.storage_units.format", false, 0)
         separator = Helpers.number_setting("human", "separator")
         NumberHelper.human_size_text(args[0], precision, names, format, separator)
       end
@@ -1426,18 +1426,22 @@ module Cybertrain
         given.nil? ? Helpers.number_setting(namespace, name) : FormBuilder.value_text(given)
       end
 
-      # The precision: keyword, else the locale's setting, else fallback.
+      # The precision: keyword read as 0.4 read it (its text's whole part:
+      # 2.0 is 2, "abc" is 0), else the locale's setting, else fallback.
       # @return [Integer]
       def self.number_precision(kwargs, namespace, fallback)
         given = kwargs["precision"]
-        text = given.nil? ? Helpers.number_setting(namespace, "precision") : FormBuilder.value_text(given)
-        Params.parse_int(text, fallback)
+        return FormBuilder.value_text(given).to_i unless given.nil?
+
+        Params.parse_int(Helpers.number_setting(namespace, "precision"), fallback)
       end
 
       # A number setting of the current locale, merged as Rails merges
       # them: number.<namespace>.format.<name> (none for namespace ""),
       # else number.format.<name>, in the current locale, then the same in
-      # the default locale; "" when no dictionary holds it.
+      # the default locale, then en's (Rails' helpers fall back to their
+      # English DEFAULTS), so a locale with no number keys never prints a
+      # wrong number; "" only for a name en lacks too.
       # @param namespace [String] "currency", "percentage", "precision", "human" or ""
       # @param name [String] "delimiter", "separator", "precision", "unit", "format", ...
       # @return [String]
@@ -1447,10 +1451,28 @@ module Cybertrain
         return found unless found.nil?
 
         default = I18n.default_locale
-        return "" if default == loc
+        unless default == loc
+          found = Helpers.number_setting_in(default, namespace, name)
+          return found unless found.nil?
+        end
+        english = Helpers.number_setting_in(:en, namespace, name)
+        english.nil? ? "" : english
+      end
 
-        fallback = Helpers.number_setting_in(default, namespace, name)
-        fallback.nil? ? "" : fallback
+      # A unit name or format of the human helpers: the text at key (its
+      # plural form for n when counted) in the current locale, then the
+      # default locale, then en; never a missing-key marker, as
+      # number_setting.
+      # @return [String]
+      def self.number_text(key, counted, n)
+        found = I18n.find_in_locales(I18n.locale, key, counted, n)
+        found = I18n.text_in_locale(:en, key, counted, n) if found.nil?
+        return "" if found.nil?
+
+        vars = { "" => "" }
+        vars.delete("")
+        vars["count"] = n.to_s if counted
+        I18n.interpolate_vars(found, vars)
       end
 
       # number_setting in one locale; nil when it holds neither key.

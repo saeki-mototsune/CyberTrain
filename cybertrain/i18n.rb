@@ -409,8 +409,9 @@ module I18n
   # pattern with `%a %A %b %B %p %P` (and `%^a` ...) replaced by the
   # locale's names, a `%` in a name doubled; `%%` and every other
   # directive are left for the strftime walk. A name the dictionaries do
-  # not hold leaves its directive to strftime (English). hour is -1 for a
-  # Date.
+  # not hold leaves its directive to strftime (English). So does a name
+  # directive with another flag or a width (`%-A`, `%10B`, `%#b`), which
+  # rails-i18n's formats do not use. hour is -1 for a Date.
   # @api private
   def self.localized_names(pattern, loc, wday, mon, hour)
     s = pattern.to_s # NOTES rule 62: plain byte reads
@@ -625,7 +626,8 @@ module I18n
   # the default one (as Rails' fallbacks run the defaults per locale).
   # `%{attribute}` and `%{model}` are the human names, `%{count}` the
   # `count:` (an Integer, which also picks the plural form) or `count_text:`
-  # (a String, numericality's limit: no plural form).
+  # (a String, numericality's limit: no plural form), `%{value}` the
+  # attribute's value as text when value is given (validators give it).
   # @example
   #   I18n.error_message("post", :title, :too_short, { count: 8 })
   #   # => "is too short (minimum is 8 characters)"
@@ -636,11 +638,12 @@ module I18n
   # @param type [Symbol, String] Rails' key: `:blank`, `:too_short`, ...
   # @param options [Hash{Symbol => Object}] `count:`, `count_text:`, other
   #   interpolation values
+  # @param value [String, nil] the attribute's value as text, for `%{value}`
   # @return [String]
   # @raise [MissingTranslationData] for a type no dictionary holds, when
   #   asked to (the text names the most specific key)
   # @api public
-  def self.error_message(model_key, attr, type, options = {})
+  def self.error_message(model_key, attr, type, options = {}, value = nil)
     mk = model_key.to_s
     a = attr.to_s
     ty = type.to_s
@@ -665,6 +668,7 @@ module I18n
     # The human names cost a lookup each: made only for a text that uses them.
     vars["attribute"] = I18n.human_attribute_name(mk, a) if found.include?("%{attribute}") && !vars.key?("attribute")
     vars["model"] = I18n.human_model_name(mk) if found.include?("%{model}") && !vars.key?("model")
+    vars["value"] = value.to_s if !value.nil? && !vars.key?("value")
     I18n.interpolate_vars(found, vars)
   end
 

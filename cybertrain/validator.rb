@@ -391,7 +391,8 @@ module Cybertrain
     # the dictionaries (I18n.error_message, Rails' key chain, plan decision
     # D10), looked up now, in the current locale. options carry the limit:
     # count: an Integer (length, which picks the plural form), count_text:
-    # numericality's limit as written ("1.5": no plural form).
+    # numericality's limit as written ("1.5": no plural form). A text's
+    # %{value} is the attribute's value, as Rails passes it.
     def add_message(record, type, options = {})
       given = @message
       unless given == ""
@@ -399,7 +400,8 @@ module Cybertrain
         return nil
       end
       errors = record.errors
-      text = I18n.error_message(errors.model_key, @attr, type, options)
+      value = Cast.str(record.read_attribute(@attr))
+      text = I18n.error_message(errors.model_key, @attr, type, options, value)
       errors.add(@attr, text)
       nil
     end

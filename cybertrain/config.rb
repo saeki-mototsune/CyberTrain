@@ -1531,7 +1531,7 @@ end
     def i18n_error
       default_name = @i18n_default_locale.to_s
       unless Config.locale_name?(default_name)
-        return "CYBERTRAIN_I18N_DEFAULT_LOCALE must be a locale name such as en or pt-BR (got #{default_name.inspect})"
+        return "i18n_default_locale (or CYBERTRAIN_I18N_DEFAULT_LOCALE) must be a locale name such as en or pt-BR (got #{default_name.inspect})"
       end
       list = @i18n_available_locales
       i = 0

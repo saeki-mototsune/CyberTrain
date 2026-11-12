@@ -1,7 +1,8 @@
 ok   English validation messages are unchanged
 ok   Japanese messages and errors.format
 ok   the model-specific key wins
+ok   a dictionary message can use %{value}, the attribute's value, as Rails passes it
 ok   base messages have no attribute
 ok   Post.human_attribute_name(:title) and the humanised fallback for author_id
 ok   raise_on_missing does not touch the fallbacks
-6 tests, 90 assertions, 0 failures
+7 tests, 94 assertions, 0 failures

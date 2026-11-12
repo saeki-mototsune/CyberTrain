@@ -240,6 +240,19 @@ test "the model-specific key wins" do
   assert_equal "translation missing: en.activerecord.errors.messages.nope", I18n.error_message("", "title", :nope)
 end
 
+test "a dictionary message can use %{value}, the attribute's value, as Rails passes it" do
+  reset_i18n
+  texts = ModelLocales::TEXTS
+  texts["en.errors.messages.taken"] = "%{value} is already taken"
+  texts["en.activerecord.errors.models.post.attributes.title.too_short"] = "%{value} is shorter than %{count}"
+  assert_equal ["Title short is shorter than 8", "Slug hello is already taken"], full_messages_of({ title: "short" }, true)
+  # A call with no value still names the missing argument.
+  msg = assert_raises("I18n::MissingInterpolationArgument") { I18n.error_message("post", "slug", :taken) }
+  assert_includes msg, "missing interpolation argument :value"
+  assert_equal "x is already taken", I18n.error_message("post", "slug", :taken, {}, "x")
+  reset_i18n
+end
+
 test "base messages have no attribute" do
   reset_i18n
   post = Post.new(VALID)

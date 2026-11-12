@@ -580,6 +580,44 @@ test "number helpers read every setting of an application's locale, then number.
   I18n.available_locales = [:en, :ja]
 end
 
+# The English settings of each helper, as Rails' NumberHelper DEFAULTS.
+NUMBER_SRC = "<%= number_with_delimiter(1234.5) %>|<%= number_with_precision(1.2345, precision: 2) %>|" \
+             "<%= number_to_currency(12.5) %>|<%= number_to_percentage(12.5) %>|<%= number_to_human(1234567) %>|" \
+             "<%= number_to_human_size(1) %>|<%= number_to_human_size(1234) %>"
+NUMBER_EN = "1,234.5|1.23|$12.50|12.500%|1.23 Million|1 Byte|1.21 KB"
+
+test "number helpers answer the English settings when neither the current nor the default locale has number keys" do
+  I18n.locale = nil
+  I18n.mark_missing = true
+  t = HelperLocales::TEXTS
+  t["fr.greeting"] = "Bonjour"
+  t["de.greeting"] = "Hallo"
+  # fr is the default and the current locale, and holds none of them.
+  I18n.default_locale = :fr
+  I18n.available_locales = [:fr, :de]
+  assert_equal NUMBER_EN, render_in(:fr, NUMBER_SRC)
+  # de is current, fr the default: neither has them.
+  assert_equal NUMBER_EN, render_in(:de, NUMBER_SRC)
+  # A setting one of them has still wins, the rest stay English.
+  t["fr.number.format.separator"] = ","
+  assert_equal "1,234,5|1,23|$12,50|12,500%|1,23 Million|1 Byte|1,21 KB", render_in(:de, NUMBER_SRC)
+  t.clear
+  I18n.default_locale = :en
+  I18n.available_locales = [:en, :ja]
+end
+
+test "a precision: keyword is read as 0.4 read it, in all four helpers" do
+  I18n.locale = nil
+  I18n.default_locale = :en
+  I18n.available_locales = [:en, :ja]
+  # A Float precision is its whole part; a text that is no number is 0.
+  assert_equal "1.23|1.23|1.23 Thousand|12.50%|$1.23", render_in(:en, "<%= number_with_precision(1.2345, precision: 2.0) %>|" \
+    "<%= number_with_precision(1.2345, precision: '2') %>|<%= number_to_human(1234, precision: 3.0) %>|" \
+    "<%= number_to_percentage(12.5, precision: 2.0) %>|<%= number_to_currency(1.234, precision: 2.0) %>")
+  assert_equal "1|1%|$1", render_in(:en, "<%= number_with_precision(1.2345, precision: 'abc') %>|" \
+    "<%= number_to_percentage(1.2, precision: 'abc') %>|<%= number_to_currency(1.234, precision: 'abc') %>")
+end
+
 test "time_ago_in_words and distance_of_time_in_words in en and ja" do
   I18n.locale = nil
   I18n.available_locales = [:en, :ja]

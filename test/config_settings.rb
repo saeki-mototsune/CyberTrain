@@ -375,12 +375,12 @@ test "i18n settings from the environment and their checks" do
 
   ENV["CYBERTRAIN_I18N_DEFAULT_LOCALE"] = "x y"
   conf = Cybertrain::Config.new
-  assert_equal "CYBERTRAIN_I18N_DEFAULT_LOCALE must be a locale name such as en or pt-BR (got \"x y\")", conf.i18n_error
+  assert_equal "i18n_default_locale (or CYBERTRAIN_I18N_DEFAULT_LOCALE) must be a locale name such as en or pt-BR (got \"x y\")", conf.i18n_error
 
   ["e", "english-language", "../en", "en/", "-en", "en-", "en--US", "1n", "en-U", "JA\n", "a" * 40].each do |junk|
     ENV["CYBERTRAIN_I18N_DEFAULT_LOCALE"] = junk
     conf = Cybertrain::Config.new
-    assert_equal "CYBERTRAIN_I18N_DEFAULT_LOCALE must be a locale name such as en or pt-BR (got #{junk.inspect})", conf.i18n_error
+    assert_equal "i18n_default_locale (or CYBERTRAIN_I18N_DEFAULT_LOCALE) must be a locale name such as en or pt-BR (got #{junk.inspect})", conf.i18n_error
   end
   ["en", "ja", "pt-BR", "pt_BR", "zh-Hant-TW", "EN", "es-419"].each do |name|
     assert_equal true, Cybertrain::Config.locale_name?(name)
@@ -394,6 +394,10 @@ test "i18n settings from the environment and their checks" do
   assert_equal [:en, :ja], conf.i18n_locales
   conf.i18n_default_locale = :ja
   assert_equal "", conf.i18n_error
+  # Set in config/app.rb rather than the environment: the message names both.
+  conf.i18n_default_locale = :"e n"
+  assert_equal "i18n_default_locale (or CYBERTRAIN_I18N_DEFAULT_LOCALE) must be a locale name such as en or pt-BR (got \"e n\")", conf.i18n_error
+  conf.i18n_default_locale = :ja
   conf.i18n_available_locales = [:en, :"j a"]
   assert_equal "i18n_available_locales entries must be locale names such as en or pt-BR (got \"j a\")", conf.i18n_error
 end
