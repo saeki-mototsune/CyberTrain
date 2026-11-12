@@ -161,7 +161,8 @@ controllers and views (`app/views/sessions/`, `passwords/`, `accounts/`,
   `ArticlesController`, `only: [:create]` in `CommentsController`); writing,
   editing and deleting articles, and deleting comments, need a signed-in
   user, and a visitor is sent to sign in first (then back to the page
-  they asked for). The admin pages need a user who is an admin
+  they asked for). Any signed-in writer may edit or delete any article,
+  not only their own: the blog keeps no author per article. The admin pages need a user who is an admin
   (`User#admin?`): the concern's `require_admin` answers anyone else 404,
   as if the pages did not exist. The jobs page names `require_admin` alone,
   so a visitor gets that 404 too; `/admin/articles` sends a visitor to sign
@@ -197,6 +198,8 @@ controllers and views (`app/views/sessions/`, `passwords/`, `accounts/`,
   Set `BLOG_BASE_URL` (as in `https://blog.example.com`, `config/app.rb`)
   wherever the blog is served: links in mails start with it, and in
   production no reset mail is sent without it (or `CYBERTRAIN_HOSTS`).
+  `config/deploy.yml` has both, commented out, to fill in before a Kamal
+  deploy.
 
 ## English and Japanese
 
@@ -215,8 +218,9 @@ come from the framework's own dictionaries.
 `ApplicationController#set_locale` (a `before_action`) picks the language
 of each request:
 
-1. `?locale=en` or `?locale=ja`, which is then kept in a `locale` cookie,
-   so that the plain links of the next pages stay in that language;
+1. `?locale=en` or `?locale=ja`, which is then kept in a `locale` cookie
+   until the browser is closed (a browser-session cookie), so that the
+   plain links of the next pages stay in that language;
 2. else the `locale` cookie;
 3. else the browser's `Accept-Language` (`request.preferred_locale`);
 4. else English.

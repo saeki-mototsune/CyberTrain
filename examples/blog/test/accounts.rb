@@ -122,6 +122,12 @@ test "changing email or password requires the current password" do
   assert_includes res.body, "<li>Email address has already been taken</li>"
   assert_includes res.body, "<span>ann@new.example</span>"
   assert_equal "ann@new.example", User.find(ann.id).email_address
+  # Nor does an address list (two mailboxes for one account), and no
+  # link is mailed for it.
+  res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => "ann@new.example,eve@evil.example" })
+  assert_response res, :unprocessable_entity
+  assert_includes res.body, "<li>Email address is invalid</li>"
+  assert_equal "ann@new.example", User.find(ann.id).email_address
   # A new password that does not pass: nothing changes.
   res = update_account(client, "s3cr3t-s3cr3t", { "password" => "short", "password_confirmation" => "short" })
   assert_response res, :unprocessable_entity

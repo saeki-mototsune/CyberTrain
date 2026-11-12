@@ -311,6 +311,7 @@ ja:
   registrations:
     create:
       confirm: ようこそ。メールアドレスを確認するリンクを送りました。リンクを開いてから、ログインしてください。
+      rate_limited: しばらくしてからもう一度お試しください。
       welcome: ようこそ。アカウントを登録しました。
     new:
       model: アカウント

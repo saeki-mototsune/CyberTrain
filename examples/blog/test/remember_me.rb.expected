@@ -6,10 +6,11 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+ok   a sign-in restarts the lifetime of a cookie that already has one
 ok   a remembered session is alive on day 15 and ended after day 30
 ok   an unremembered session ends after day 14
 ok   an unremembered session still ends with session_absolute_max_age off
 ok   both end after 7 idle days
 ok   last_active_at is touched at most once a minute
 ok   an unremembered sign-in sets a cookie without Max-Age
-6 tests, 54 assertions, 0 failures
+7 tests, 56 assertions, 0 failures

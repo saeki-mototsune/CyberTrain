@@ -579,7 +579,7 @@ test "a helper_method named like a framework helper, an app helper, or an undefi
   route = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
                                                       "class ArticlesController < ApplicationController\n  helper_method :home_url\n\n  def home_url = \"x\"\nend\n")
   msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, route], jobs, no_concerns, prices_helpers) }
-  assert_equal "helper_method :home_url: home_url is a framework helper", msg
+  assert_equal "helper_method :home_url: names ending in _path or _url are reserved for route helpers", msg
   app = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb",
                                                     "class ArticlesController < ApplicationController\n  helper_method :price\n\n  def price = 1\nend\n")
   msg = assert_raises("ArgumentError") { Cybertrain::Gen::ControllersEmitter.emit([app_controller, app], jobs, no_concerns, prices_helpers) }

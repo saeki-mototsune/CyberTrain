@@ -53,6 +53,20 @@ test "POST /articles/:article_id/comments adds a comment and redirects back to t
   assert_includes res.body, "First!"
 end
 
+test "a commenter's name with markup is shown as text" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                        "comment[commenter]" => "<b>Eve</b><script>alert(1)</script>",
+                                        "comment[body]" => "Hi" })
+  assert_equal "<b>Eve</b><script>alert(1)</script>", Comment.last.commenter
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<strong class=\"comment-author\">&lt;b&gt;Eve&lt;/b&gt;&lt;script&gt;alert(1)&lt;/script&gt;</strong> wrote:"
+  assert_nil res.body.index("<b>Eve</b>")
+  assert_nil res.body.index("<script>alert(1)")
+end
+
 test "a comment without a commenter is not saved and the article page says why" do
   client = new_client
   article = BlogTest.article("Hello Rails")

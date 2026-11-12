@@ -429,6 +429,7 @@ class User < Cybertrain::Model
     when :count_failed_attempt! then self.count_failed_attempt!
     when :clear_failed_attempts! then self.clear_failed_attempts!
     when :password_reset_binding then self.password_reset_binding
+    when :validate_email_address_format then self.validate_email_address_format
     when :validate_email_address_taken then self.validate_email_address_taken
     when :validate_password then self.validate_password
     else nil

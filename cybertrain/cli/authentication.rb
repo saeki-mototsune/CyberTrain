@@ -161,6 +161,9 @@ module Cybertrain
       # decides, so a visitor gets its 404 rather than a redirect to sign in
       # that shows the page exists (the skip is jobs_page's explicit option).
       JOBS_PAGE_LINE = "jobs_page \"/admin/jobs\", before_action: :require_admin, skip_before_action: :require_authentication"
+      # jobs_page_plan's reason for a routes file that draws a jobs_page line
+      # of its own (`admin.jobs_page "/jobs", ...`, say) without the skip.
+      JOBS_PAGE_OWN_LINE = "it draws a jobs_page line of its own"
       # The authentication block 0.4's generator inserted after CLASS_LINE
       # (v0.4.0's and v0.4.1's application_controller_block, the same text
       # in both), each line indented two spaces as it was inserted
@@ -355,12 +358,17 @@ module Cybertrain
         # sign-up gets no link. Their diffs say so first.
         unconfirmed_sign_in = confirmable ? "until this diff is applied, an unconfirmed account's right password is refused without its message (the concern refuses it)" : ""
         unconfirmed_sign_up = confirmable ? "until this diff is applied, a sign-up is mailed no confirmation link (the concern signs it in no more)" : ""
-        record_file(result, root, "app/models/user.rb", user_model(confirmable), force)
+        # An application generated before without --confirmable already has
+        # the concern: its confirmation check, the backstop the two warnings
+        # above lean on, then arrives only as this diff.
+        unconfirmed_concern = confirmable ? "this diff holds the check that refuses an unconfirmed account a session; until it is applied, unconfirmed accounts sign in (whatever the other diffs say)" : ""
+        unconfirmed_setup = confirmable ? "until this diff is applied, the first user /setup creates is not confirmed and cannot sign in (a password reset confirms it)" : ""
+        record_file(result, root, "app/models/user.rb", user_model(app, confirmable), force)
         record_file(result, root, "app/models/session.rb", session_model, force)
-        record_file(result, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable), force)
+        record_file(result, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable), force, unconfirmed_concern)
         record_file(result, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable), force, unconfirmed_sign_in)
         if invite_only
-          record_file(result, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable), force)
+          record_file(result, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable), force, unconfirmed_setup)
         else
           record_file(result, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable), force, unconfirmed_sign_up)
         end
@@ -621,6 +629,7 @@ module Cybertrain
         updated = +""
         updated << source[0, start].to_s << "  #{INCLUDE_LINE}\n\n" << source[stop, source.size - stop].to_s
         exact = LEGACY_APPLICATION_CONTROLLER_BLOCKS.any? { |legacy| indent(legacy) == block }
+        warn_own_require_admin(updated)
         if force && exact
           File.write(path, updated)
           puts "force  #{name} (0.4's authentication block replaced by #{INCLUDE_LINE})"
@@ -641,7 +650,7 @@ module Cybertrain
       # application_controller.rb's.
       def self.upgrade_jobs_page(result, routes_path, controller_path)
         source = File.read(routes_path)
-        plan = jobs_page_plan(source, true)
+        plan = jobs_page_plan(source, true, jobs_page_line(File.read(controller_path)))
         updated = plan[0]
         if updated.empty?
           report_jobs_page_skip(plan[1])
@@ -650,7 +659,7 @@ module Cybertrain
 
         if Authentication.included?(File.read(controller_path))
           File.write(routes_path, updated)
-          puts "route #{JOBS_PAGE_LINE}"
+          puts "route #{jobs_page_line(File.read(controller_path))}"
           return nil
         end
 
@@ -660,31 +669,53 @@ module Cybertrain
         nil
       end
 
+      # The jobs page's line for this ApplicationController source:
+      # JOBS_PAGE_LINE, which skips require_authentication so that a visitor
+      # gets the concern's require_admin's 404; NEW_APP_JOBS_PAGE_LINE (no
+      # skip) when the controller defines its own require_admin, which may
+      # count on require_authentication having run.
+      def self.jobs_page_line(controller_source)
+        Authentication.own_require_admin?(controller_source) ? NEW_APP_JOBS_PAGE_LINE : JOBS_PAGE_LINE
+      end
+
       # What to do with the jobs page's route, as [routes, reason]: routes
-      # is source with the jobs page drawn as JOBS_PAGE_LINE in place of the
-      # comment `cybertrain new` writes (or JOBS_PAGE_LINE commented out),
-      # or, with `add_missing` and no `jobs_page` anywhere in source, as the
-      # last line of the Cybertrain::Routes.draw block (before the `end` at
-      # the draw line's own indentation). When there is nothing to do,
-      # routes is "" and reason says why: "drawn" (the line is there), or
-      # the words report_jobs_page_skip prints.
-      def self.jobs_page_plan(source, add_missing)
+      # is source with the jobs page drawn as `line` (JOBS_PAGE_LINE unless
+      # given) in place of the comment `cybertrain new` writes (or
+      # JOBS_PAGE_LINE commented out), or, with `add_missing` and no
+      # `jobs_page` anywhere in source, as the last line of the
+      # Cybertrain::Routes.draw block (before the `end` at the draw line's
+      # own indentation). When there is nothing to do, routes is "" and
+      # reason says why: "drawn" (JOBS_PAGE_LINE is there), "drawn " and the
+      # line (`line`, or a jobs_page line of the application's own that
+      # already skips require_authentication), JOBS_PAGE_OWN_LINE (one of
+      # its own without the skip), or the words report_jobs_page_skip prints.
+      def self.jobs_page_plan(source, add_missing, line = JOBS_PAGE_LINE)
         comments = ["# #{NEW_APP_JOBS_PAGE_LINE}", "# #{JOBS_PAGE_LINE}"]
         updated = +""
         found = false
         drawn = false
-        source.each_line do |line|
-          code = line.strip
+        drawn_line = ""
+        own = false
+        source.each_line do |text|
+          code = text.strip
           drawn = true if code == JOBS_PAGE_LINE
+          if !code.start_with?("#") && !code.index("jobs_page ").nil?
+            own = true
+            # The line to draw (without the skip), or one of the application's
+            # own that already skips require_authentication: nothing to do.
+            drawn_line = code if code == line || !code.index("skip_before_action: :require_authentication").nil?
+          end
           if !found && comments.include?(code)
             found = true
-            updated << line[0, line.index(code).to_i].to_s << JOBS_PAGE_LINE << "\n"
+            updated << text[0, text.index(code).to_i].to_s << line << "\n"
           else
-            updated << line
+            updated << text
           end
         end
         return [updated.to_s, ""] if found
         return ["", "drawn"] if drawn
+        return ["", "drawn #{drawn_line}"] unless drawn_line.empty?
+        return ["", JOBS_PAGE_OWN_LINE] if own
         return ["", "it has a jobs_page line of its own"] unless source.index("jobs_page").nil?
         return ["", "no `# #{NEW_APP_JOBS_PAGE_LINE}` comment to draw"] unless add_missing
 
@@ -698,7 +729,7 @@ module Cybertrain
         return ["", "no `end` of the Cybertrain::Routes.draw block at its indentation"] if at.nil?
 
         out = +""
-        out << source[0, at + 1].to_s << "#{pad}  #{JOBS_PAGE_LINE}\n" << source[at + 1, source.size - at - 1].to_s
+        out << source[0, at + 1].to_s << "#{pad}  #{line}\n" << source[at + 1, source.size - at - 1].to_s
         [out.to_s, ""]
       end
 
@@ -707,6 +738,11 @@ module Cybertrain
       def self.report_jobs_page_skip(reason)
         if reason == "drawn"
           puts "identical config/routes.rb (#{JOBS_PAGE_LINE})"
+        elsif reason.start_with?("drawn ")
+          puts "identical config/routes.rb (#{reason[6, reason.size - 6]})"
+        elsif reason == JOBS_PAGE_OWN_LINE
+          puts "skip config/routes.rb (#{reason}): add `skip_before_action: :require_authentication` to that line " \
+               "so that a visitor gets require_admin's 404"
         else
           puts "skip config/routes.rb (#{reason}): to show the jobs page to admins, add " \
                "`#{JOBS_PAGE_LINE}` inside Cybertrain::Routes.draw"
@@ -760,7 +796,28 @@ module Cybertrain
 
         File.write(path, insert_after_line(source, CLASS_LINE, "  #{INCLUDE_LINE}\n\n"))
         puts "insert app/controllers/application_controller.rb (#{INCLUDE_LINE})"
+        warn_own_require_admin(source)
         true
+      end
+
+      # Whether source (an ApplicationController) defines require_admin
+      # itself, which then takes the place of the concern's in every
+      # controller.
+      def self.own_require_admin?(source)
+        source.each_line do |line|
+          code = line.strip
+          return true if code == "def require_admin" || code.start_with?("def require_admin ") || code.start_with?("def require_admin(")
+        end
+        false
+      end
+
+      # Says so when ApplicationController defines its own require_admin.
+      def self.warn_own_require_admin(source)
+        return nil unless Authentication.own_require_admin?(source)
+
+        puts "warn  app/controllers/application_controller.rb defines require_admin itself: it takes the place of " \
+             "the Authentication concern's in every controller (delete it to use the concern's)"
+        nil
       end
 
       # Draws the jobs page `cybertrain new` left as a comment (a line that
@@ -770,7 +827,8 @@ module Cybertrain
       # require_admin. Any other routes file is left as it is. Returns true
       # when the file was changed.
       def self.enable_jobs_page(routes_path, controller_path)
-        plan = jobs_page_plan(File.read(routes_path), false)
+        line = jobs_page_line(File.read(controller_path))
+        plan = jobs_page_plan(File.read(routes_path), false, line)
         updated = plan[0]
         if updated.empty?
           report_jobs_page_skip(plan[1])
@@ -783,7 +841,7 @@ module Cybertrain
         end
 
         File.write(routes_path, updated)
-        puts "route #{JOBS_PAGE_LINE}"
+        puts "route #{line}"
         true
       end
 
@@ -1067,7 +1125,7 @@ module Cybertrain
       # With `confirmable`, what --confirmable adds: confirmed?, the
       # confirmation token and confirm, and the check of a new address
       # waiting for its confirmation.
-      def self.user_model(confirmable = false)
+      def self.user_model(app, confirmable = false)
         text = <<~RUBY
           # Columns (email_address, password_digest, admin, failed_attempts,
           # locked_until@CONFIRMABLE_COLUMN_NAMES@), the Cybertrain::Model superclass and `sessions` (from
@@ -1086,11 +1144,13 @@ module Cybertrain
 
             validates :email_address, presence: true
 
-            # Normalizes the address, refuses a taken one, and checks the password
-            # on a new record or whenever one was given. Errors added here make
-            # the record invalid (Cybertrain::Model.before_validation).
+            # Normalizes the address, refuses one that is not a single address
+            # or is taken, and checks the password on a new record or whenever
+            # one was given. Errors added here make the record invalid
+            # (Cybertrain::Model.before_validation).
             before_validation do |user|
               user.email_address = User.normalize_email_address(user.email_address)
+              user.validate_email_address_format
               user.validate_email_address_taken
               user.validate_password
               @VALIDATE_UNCONFIRMED_EMAIL@
@@ -1100,6 +1160,31 @@ module Cybertrain
             # "ann@example.com", so a visitor signs in however they type it.
             def self.normalize_email_address(value)
               value.to_s.strip.downcase
+            end
+
+            # Whether value is one address: exactly one @, with text before and
+            # after it, and no comma, whitespace, angle bracket or control
+            # character. Cybertrain::Mailer reads "a@x.example,b@y.example" as two
+            # recipients, so without this an account could hold two mailboxes and
+            # have its mails (a confirmation link among them) sent to both. Some
+            # addresses the mail standards allow (a quoted local part with a
+            # space or a comma in it) are refused too.
+            def self.email_address_format?(value)
+              s = value.to_s
+              n = s.bytesize
+              at = -1
+              i = 0
+              while i < n
+                b = s.getbyte(i)
+                return false if b <= 32 || b == 127 || b == 44 || b == 60 || b == 62
+                if b == 64
+                  return false if at >= 0
+
+                  at = i
+                end
+                i += 1
+              end
+              at > 0 && at < n - 1
             end
 
             # The user with this address and password, or nil. A missing address
@@ -1181,7 +1266,7 @@ module Cybertrain
             end
 
             # Whether this user may see the admin pages (the Authentication
-            # concern's require_admin): `./<app> user admin EMAIL` sets it.
+            # concern's require_admin): `./@APP@ user admin EMAIL` sets it.
             def admin? = admin
 
             # Whether wrong passwords have locked the account for now
@@ -1208,7 +1293,7 @@ module Cybertrain
             end
 
             # No failed attempts and no lock: a successful sign-in calls it, and
-            # so do `./<app> user EMAIL PASSWORD` and a password reset
+            # so do `./@APP@ user EMAIL PASSWORD` and a password reset
             # (PasswordsController#update). Writes only when there is something
             # to clear.
             def clear_failed_attempts!
@@ -1240,6 +1325,18 @@ module Cybertrain
             # record, not an implicit self) can call them. Their messages come
             # from the dictionary of the current locale, as a validator's do.
 
+            # An address saved before this check existed is left as it is, so
+            # that account can still be reset and signed in to; a new or changed
+            # one must be a single address (User.email_address_format?).
+            def validate_email_address_format
+              address = email_address.to_s
+              return nil if address.empty? || User.email_address_format?(address)
+              return nil if persisted? && User.where(id: id, email_address: address).exists?
+
+              errors.add(:email_address, I18n.error_message("user", :email_address, :invalid))
+              nil
+            end
+
             def validate_email_address_taken
               address = email_address
               return nil if address.nil? || address.empty?
@@ -1266,6 +1363,7 @@ module Cybertrain
             @VALIDATE_UNCONFIRMED_EMAIL_METHOD@
           end
         RUBY
+        text = text.gsub("@APP@", app)
         text = text.sub("@CONFIRMABLE_COLUMN_NAMES@", confirmable ? ", confirmed_at,\n# unconfirmed_email" : "")
         text = splice(text, "@CONFIRMATION_TOKEN_TTL@", confirmable ? confirmation_token_ttl_lines : "")
         text = splice(text, "@VALIDATE_UNCONFIRMED_EMAIL@", confirmable ? "    user.validate_unconfirmed_email\n" : "")
@@ -1376,14 +1474,17 @@ module Cybertrain
         indent(<<~'RUBY')
 
           # The new address request_email_change asked for (--confirmable),
-          # refused when blank or another account's address, on email_address
-          # (the field the form shows). Any other save skips it.
+          # refused when blank, not a single address (User.email_address_format?)
+          # or another account's address, on email_address (the field the form
+          # shows). Any other save skips it.
           def validate_unconfirmed_email
             requested = @requested_email
             return nil if requested.nil?
 
             if requested.empty?
               errors.add(:email_address, I18n.error_message("user", :email_address, :blank))
+            elsif !User.email_address_format?(requested)
+              errors.add(:email_address, I18n.error_message("user", :email_address, :invalid))
             elsif User.where(email_address: requested).where_sql("id != ?", [id]).exists?
               errors.add(:email_address, I18n.error_message("user", :email_address, :taken))
             end
@@ -1708,6 +1809,10 @@ module Cybertrain
           # Delete it (and its routes) for an invitation-only application.
           class RegistrationsController < ApplicationController
             allow_unauthenticated_access only: [:new, :create]
+            # Ten sign-ups per client address every three minutes, as for signing
+            # in: each one hashes a password and may mail a link, and each
+            # "already been taken" says an address is registered.
+            rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
 
             # GET /sign_up
             def new_action
@@ -1725,6 +1830,16 @@ module Cybertrain
               else
                 render :new, status: :unprocessable_entity
               end
+            end
+
+            private
+
+            # What a client past the rate limit gets: the form again, with a
+            # message (the key is create's).
+            def rate_limited
+              flash[:alert] = t("registrations.create.rate_limited")
+              redirect_to sign_up_path, status: :see_other
+              nil
             end
           end
         RUBY
@@ -1902,6 +2017,7 @@ module Cybertrain
               else
                 user.password = params[:password].to_s
                 user.password_confirmation = params[:password_confirmation].to_s
+                @WITHDRAW_ON_RESET@
                 if user.save
                   user.clear_failed_attempts!
                   @CONFIRM_ON_RESET@
@@ -1966,6 +2082,11 @@ module Cybertrain
                        "# confirmation link does (--confirmable). A new address waiting\n" \
                        "# (unconfirmed_email) is not confirmed: that takes its own link.\n" \
                        "user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n", 8)
+        withdraw = margin("# A new address waiting (unconfirmed_email) is withdrawn, and with it\n" \
+                          "# its link (the token is bound to it): whoever asked for it may be\n" \
+                          "# the one the owner is taking the account back from.\n" \
+                          "user.unconfirmed_email = nil\n", 6)
+        text = splice(text, "@WITHDRAW_ON_RESET@", confirmable ? withdraw : "")
         splice(text, "@CONFIRM_ON_RESET@", confirmable ? chunk : "")
       end
 
@@ -2375,7 +2496,8 @@ module Cybertrain
           # Withdraws the new address waiting (a mistyped one, say): its link stops
           # working, as the token is bound to unconfirmed_email. No password is
           # asked: withdrawing only keeps the account where it is. A new password
-          # leaves the address waiting as it was; this is how it ends.
+          # on this page leaves the address waiting as it was; this and a
+          # password reset (PasswordsController#update) end it.
           def cancel_email_change
             @user.update_columns(unconfirmed_email: nil)
             flash[:notice] = t(".cancelled")
@@ -2610,6 +2732,12 @@ module Cybertrain
             assert_response res, :unprocessable_entity
             assert_includes res.body, "<li>Email address has already been taken</li>"
             assert_includes res.body, "<span>ann@new.example</span>"
+            assert_equal "ann@new.example", User.find(ann.id).email_address
+            # Nor does an address list (two mailboxes for one account), and no
+            # link is mailed for it.
+            res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => "ann@new.example,eve@evil.example" })
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, "<li>Email address is invalid</li>"
             assert_equal "ann@new.example", User.find(ann.id).email_address
             # A new password that does not pass: nothing changes.
             res = update_account(client, "s3cr3t-s3cr3t", { "password" => "short", "password_confirmation" => "short" })
@@ -3621,6 +3749,21 @@ module Cybertrain
             ctx.session = Cybertrain::Session.new
             LifetimeProbeController.new(ctx).probe_start(user, remember)
             ctx.session
+          end
+
+          # A cookie that already carries a start (a browser that signed in
+          # before, or the account page's restart after a new password, on day
+          # 13 of its sign-in) starts again: SessionStore stamps this request's
+          # time, so the new sign-in gets its whole limit.
+          test "a sign-in restarts the lifetime of a cookie that already has one" do
+            new_client
+            user = AppTest.user
+            ctx = Cybertrain::Context.new(Cybertrain::Request.new("POST", "/session", {}, ""))
+            ctx.session = Cybertrain::Session.new
+            ctx.session["_issued_at"] = Time.now.to_i - 13 * DAY
+            assert ctx.session.issued_at > 0
+            LifetimeProbeController.new(ctx).probe_start(user, false)
+            assert_equal 0, ctx.session.issued_at
           end
 
           test "a remembered session is alive on day 15 and ended after day 30" do
@@ -4762,10 +4905,10 @@ module Cybertrain
             # Meanwhile carol signs up with it: an address that only waits is free.
             carol = unconfirmed_user("carol@example.com")
             # A pending address someone has taken since blocks nothing else of
-            # ann's account: a password reset, the user command, and the rehash a
-            # sign-in makes after the cost was raised all save.
-            stranger = Cybertrain::Test::Client.new(APP)
-            assert_redirected_to reset_with(stranger, User.find(ann.id).password_reset_token, "an0ther-s3cr3t"), "/session/new"
+            # ann's account: the user command and the rehash a sign-in makes after
+            # the cost was raised save, and leave it waiting (a password reset
+            # saves too, below, and withdraws it).
+            assert_equal 0, UserCommand.run(["ann@example.com", "an0ther-s3cr3t"])
             assert User.find(ann.id).authenticate("an0ther-s3cr3t")
             assert_equal 0, UserCommand.run(["ann@example.com", "s3cr3t-s3cr3t"])
             assert User.find(ann.id).authenticate("s3cr3t-s3cr3t")
@@ -4795,6 +4938,13 @@ module Cybertrain
             assert_redirected_to change_address(client, "ann@third.example"), "/account/edit"
             assert_nil User.find_by_confirmation_token(other_token)
             assert_equal "ann@third.example", User.find(ann.id).unconfirmed_email
+            # A password reset saves with a taken address waiting, and withdraws it.
+            assert_redirected_to change_address(client, "zed@example.com"), "/account/edit"
+            unconfirmed_user("zed@example.com")
+            stranger = Cybertrain::Test::Client.new(APP)
+            assert_redirected_to reset_with(stranger, User.find(ann.id).password_reset_token, "an0ther-s3cr3t"), "/session/new"
+            assert User.find(ann.id).authenticate("an0ther-s3cr3t")
+            assert_nil User.find(ann.id).unconfirmed_email
           end
 
           test "a password-only change keeps the new address waiting" do
@@ -4899,7 +5049,7 @@ module Cybertrain
             assert signed_in?(client)
           end
 
-          test "a password reset confirms a new account's address, never a new address waiting" do
+          test "a password reset confirms a new account's address, and withdraws a new address waiting" do
             client = new_client
             ann = unconfirmed_user
             # The reset link went to ann's own address: it proves that mailbox, as
@@ -4908,17 +5058,25 @@ module Cybertrain
             assert_redirected_to reset_with(client, ann.password_reset_token, "an0ther-s3cr3t"), "/session/new"
             assert User.find(ann.id).confirmed?
             assert_redirected_to AppTest.sign_in(client, "ann@example.com", "an0ther-s3cr3t"), "/"
-            # bob's new address waits; a reset proves only bob's old mailbox.
+            # A new address waiting for bob: a reset proves only bob's old
+            # mailbox, so it never confirms it; it withdraws it, and its link
+            # (whoever asked for it may be who bob takes the account back from).
             bob = AppTest.user("bob@example.com")
             confirmed_at = User.find(bob.id).confirmed_at.to_i
             bobs = Cybertrain::Test::Client.new(APP)
             AppTest.sign_in(bobs, "bob@example.com")
             assert_redirected_to change_address(bobs, "bob@new.example"), "/account/edit"
+            pending_token = User.find(bob.id).confirmation_token
+            refute User.find_by_confirmation_token(pending_token).nil?
             assert_redirected_to reset_with(client, bob.password_reset_token, "an0ther-s3cr3t"), "/session/new"
             reset = User.find(bob.id)
             assert_equal "bob@example.com", reset.email_address
-            assert_equal "bob@new.example", reset.unconfirmed_email
+            assert_nil reset.unconfirmed_email
             assert_equal confirmed_at, reset.confirmed_at.to_i
+            assert_nil User.find_by_confirmation_token(pending_token)
+            res = Cybertrain::Test::Client.new(APP).get("/confirmations/#{pending_token}")
+            assert_redirected_to res, "/confirmations/new"
+            assert_equal "bob@example.com", User.find(bob.id).email_address
             assert_redirected_to AppTest.sign_in(client, "bob@new.example", "an0ther-s3cr3t"), "/session/new"
           end
 
@@ -5285,6 +5443,20 @@ module Cybertrain
             refute User.first.authenticate("s3cr3t-s3cr3t")
           end
 
+          test "POST /setup and ./#{app} user refuse an address list or a malformed address" do
+            client = new_client
+            client.get(setup_link)
+            form = setup_form(AppTest.form_token(client), "s3cr3t-s3cr3t", "s3cr3t-s3cr3t")
+            form["user[email_address]"] = "ann@example.com,eve@evil.example"
+            res = client.post("/setup", form)
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, "<li>Email address is invalid</li>"
+            assert_equal 0, User.count
+            assert_equal 1, run_command(["user", "ann@example.com,eve@evil.example", "s3cr3t-s3cr3t"])
+            assert_equal 1, run_command(["user", "ann", "s3cr3t-s3cr3t"])
+            assert_equal 0, User.count
+          end
+
           test "./#{app} user refuses bad arguments and an empty or short password" do
             new_client
             assert_equal 1, run_command(["user"])
@@ -5336,6 +5508,53 @@ module Cybertrain
                                             "user[password]" => "",
                                             "user[password_confirmation]" => "" })
             assert_includes res.body, "<li>Password can&#39;t be blank</li>"
+          end
+
+          # One address only: Cybertrain::Mailer reads a comma as a second
+          # recipient, so the account would have two mailboxes.
+          test "POST /sign_up refuses an address list or a malformed address" do
+            client = new_client
+            client.get("/sign_up")
+            ["ann@example.com,eve@evil.example", "ann@example.com eve@evil.example", "<ann@example.com>", "ann", "@example.com", "ann@", "a@b@example.com"].each do |address|
+              res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
+                                              "user[email_address]" => address,
+                                              "user[password]" => "s3cr3t-s3cr3t",
+                                              "user[password_confirmation]" => "s3cr3t-s3cr3t" })
+              assert_response res, :unprocessable_entity
+              assert_includes res.body, "<li>Email address is invalid</li>"
+            end
+            assert_equal 0, User.count
+            assert_equal 0, Session.count
+          end
+
+          # RegistrationsController's rate_limit: ten sign-ups per client
+          # address, then the form again until the window closes (the cache's
+          # clock held still, as in POST /session's test). The ten send no
+          # password, so none of them costs a hash.
+          test "POST /sign_up past ten requests is refused for a while" do
+            client = new_client
+            Cybertrain::RateLimit.reset_all!
+            Cybertrain::Cache.clock = -> { 2_000_000_000 }
+            begin
+              client.get("/sign_up")
+              token = AppTest.form_token(client)
+              empty = { "authenticity_token" => token, "user[email_address]" => "nobody@example.com",
+                        "user[password]" => "", "user[password_confirmation]" => "" }
+              right = { "authenticity_token" => token, "user[email_address]" => "ann@example.com",
+                        "user[password]" => "s3cr3t-s3cr3t", "user[password_confirmation]" => "s3cr3t-s3cr3t" }
+              10.times { client.post("/sign_up", empty) }
+              res = client.post("/sign_up", right)
+              assert_redirected_to res, "/sign_up"
+              assert_equal 0, User.count
+              res = client.follow_redirect!
+              assert_includes res.body, "<p class=\\"alert\\">Try again later.</p>"
+              Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
+              client.post("/sign_up", right)
+              assert_equal 1, User.count
+            ensure
+              # The system clock again, even when an assertion fails.
+              Cybertrain::Cache.clock = -> { Time.now.to_i }
+            end
           end
 
           test "an email address can be registered once" do
@@ -5403,6 +5622,52 @@ module Cybertrain
 
       def self.authentication_test_tail
         <<~RUBY
+          # User.email_address_format?: one address, whatever the mail
+          # standards allow beyond that.
+          test "an address is one address: one @, nothing around it that splits it" do
+            ["ann@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
+              assert User.email_address_format?(address), address
+            end
+            ["", "ann", "@example.com", "ann@", "a@b@example.com", "ann@example.com,eve@evil.example",
+             "ann@example.com eve@evil.example", "ann @example.com", "<ann@example.com>", "Ann <ann@example.com>",
+             "ann@example.com\\n", "ann@exa\\tmple.com", "\\"ann lee\\"@example.com"].each do |address|
+              refute User.email_address_format?(address), address
+            end
+          end
+
+          # An address saved before the check existed (an older release's) is not
+          # checked again: its owner can still reset the password.
+          test "an address saved before the format check still saves" do
+            new_client
+            ann = AppTest.user
+            ann.update_columns(email_address: "ann@example.com,old@example.com")
+            kept = User.find(ann.id)
+            kept.password = "an0ther-s3cr3t"
+            assert kept.save
+            kept.email_address = "ann@example.com,new@example.com"
+            refute kept.save
+            assert_includes kept.errors.full_messages, "Email address is invalid"
+          end
+
+          # Every form that signs in, out or resets carries the page's token
+          # (Cybertrain's CSRF check): without it, a 403 and nothing done.
+          test "POST /session, PUT /passwords/:token and DELETE /session without the form's token are refused" do
+            client = new_client
+            user = AppTest.user
+            res = client.post("/session", { "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" })
+            assert_response res, :forbidden
+            assert_equal 0, Session.count
+            token = user.password_reset_token
+            res = client.put("/passwords/\#{token}", { "password" => "an0ther-s3cr3t", "password_confirmation" => "an0ther-s3cr3t" })
+            assert_response res, :forbidden
+            refute User.find_by_password_reset_token(token).nil?
+            AppTest.sign_in(client)
+            assert_equal 1, Session.count
+            res = client.post("/session", { "_method" => "delete" })
+            assert_response res, :forbidden
+            assert_equal 1, Session.count
+          end
+
           test "POST /session signs in with the right password" do
             client = new_client
             AppTest.user

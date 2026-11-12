@@ -231,8 +231,9 @@ module Cybertrain
             # c.content_security_policy_report_only = true
 
             # Translations (config/locales/*.yml). The default locale starts each
-            # request; list more locales to accept them in I18n.locale= and
-            # request.preferred_locale. A missing key shows a marker, or raises
+            # request; list more locales to accept them in I18n.locale= (and
+            # pass I18n.available_locales to request.preferred_locale). A
+            # missing key shows a marker, or raises
             # with i18n_raise_on_missing. To pick the locale per request, see
             # docs/guide/i18n.md (a set_locale before_action in
             # ApplicationController using request.preferred_locale).

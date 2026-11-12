@@ -14,11 +14,13 @@ class User
 
   validates :email_address, presence: true
 
-  # Normalizes the address, refuses a taken one, and checks the password
-  # on a new record or whenever one was given. Errors added here make
-  # the record invalid (Cybertrain::Model.before_validation).
+  # Normalizes the address, refuses one that is not a single address
+  # or is taken, and checks the password on a new record or whenever
+  # one was given. Errors added here make the record invalid
+  # (Cybertrain::Model.before_validation).
   before_validation do |user|
     user.email_address = User.normalize_email_address(user.email_address)
+    user.validate_email_address_format
     user.validate_email_address_taken
     user.validate_password
   end
@@ -27,6 +29,31 @@ class User
   # "ann@example.com", so a visitor signs in however they type it.
   def self.normalize_email_address(value)
     value.to_s.strip.downcase
+  end
+
+  # Whether value is one address: exactly one @, with text before and
+  # after it, and no comma, whitespace, angle bracket or control
+  # character. Cybertrain::Mailer reads "a@x.example,b@y.example" as two
+  # recipients, so without this an account could hold two mailboxes and
+  # have its mails (a confirmation link among them) sent to both. Some
+  # addresses the mail standards allow (a quoted local part with a
+  # space or a comma in it) are refused too.
+  def self.email_address_format?(value)
+    s = value.to_s
+    n = s.bytesize
+    at = -1
+    i = 0
+    while i < n
+      b = s.getbyte(i)
+      return false if b <= 32 || b == 127 || b == 44 || b == 60 || b == 62
+      if b == 64
+        return false if at >= 0
+
+        at = i
+      end
+      i += 1
+    end
+    at > 0 && at < n - 1
   end
 
   # The user with this address and password, or nil. A missing address
@@ -107,7 +134,7 @@ class User
   end
 
   # Whether this user may see the admin pages (the Authentication
-  # concern's require_admin): `./<app> user admin EMAIL` sets it.
+  # concern's require_admin): `./blog user admin EMAIL` sets it.
   def admin? = admin
 
   # Whether wrong passwords have locked the account for now
@@ -134,7 +161,7 @@ class User
   end
 
   # No failed attempts and no lock: a successful sign-in calls it, and
-  # so do `./<app> user EMAIL PASSWORD` and a password reset
+  # so do `./blog user EMAIL PASSWORD` and a password reset
   # (PasswordsController#update). Writes only when there is something
   # to clear.
   def clear_failed_attempts!
@@ -164,6 +191,18 @@ class User
   # Public so the before_validation block above (which receives the
   # record, not an implicit self) can call them. Their messages come
   # from the dictionary of the current locale, as a validator's do.
+
+  # An address saved before this check existed is left as it is, so
+  # that account can still be reset and signed in to; a new or changed
+  # one must be a single address (User.email_address_format?).
+  def validate_email_address_format
+    address = email_address.to_s
+    return nil if address.empty? || User.email_address_format?(address)
+    return nil if persisted? && User.where(id: id, email_address: address).exists?
+
+    errors.add(:email_address, I18n.error_message("user", :email_address, :invalid))
+    nil
+  end
 
   def validate_email_address_taken
     address = email_address

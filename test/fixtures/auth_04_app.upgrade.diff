@@ -45,9 +45,52 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
  #
  # Written by `cybertrain generate authentication`; it is yours to change.
  # The password is hashed by Cybertrain::Password (PBKDF2-HMAC-SHA256) into
-@@ -29,17 +30,41 @@
+@@ -13,11 +14,13 @@
+ 
+   validates :email_address, presence: true
+ 
+-  # Normalizes the address, refuses a taken one, and checks the password
+-  # on a new record or whenever one was given. Errors added here make
+-  # the record invalid (Cybertrain::Model.before_validation).
++  # Normalizes the address, refuses one that is not a single address
++  # or is taken, and checks the password on a new record or whenever
++  # one was given. Errors added here make the record invalid
++  # (Cybertrain::Model.before_validation).
+   before_validation do |user|
+     user.email_address = User.normalize_email_address(user.email_address)
++    user.validate_email_address_format
+     user.validate_email_address_taken
+     user.validate_password
+   end
+@@ -28,18 +31,67 @@
+     value.to_s.strip.downcase
    end
  
++  # Whether value is one address: exactly one @, with text before and
++  # after it, and no comma, whitespace, angle bracket or control
++  # character. Cybertrain::Mailer reads "a@x.example,b@y.example" as two
++  # recipients, so without this an account could hold two mailboxes and
++  # have its mails (a confirmation link among them) sent to both. Some
++  # addresses the mail standards allow (a quoted local part with a
++  # space or a comma in it) are refused too.
++  def self.email_address_format?(value)
++    s = value.to_s
++    n = s.bytesize
++    at = -1
++    i = 0
++    while i < n
++      b = s.getbyte(i)
++      return false if b <= 32 || b == 127 || b == 44 || b == 60 || b == 62
++      if b == 64
++        return false if at >= 0
++
++        at = i
++      end
++      i += 1
++    end
++    at > 0 && at < n - 1
++  end
++
    # The user with this address and password, or nil. A missing address
 -  # costs a verification too (against Cybertrain::Password.dummy_digest),
 -  # so the response time does not say which of the two was wrong.
@@ -91,12 +134,12 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
    # The plain-text password given to `password=` in this request ("" when
    # none was), for the validations; never stored.
    def password
-@@ -81,27 +106,86 @@
+@@ -81,27 +133,98 @@
      true
    end
  
 +  # Whether this user may see the admin pages (the Authentication
-+  # concern's require_admin): `./<app> user admin EMAIL` sets it.
++  # concern's require_admin): `./shop user admin EMAIL` sets it.
 +  def admin? = admin
 +
 +  # Whether wrong passwords have locked the account for now
@@ -123,7 +166,7 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
 +  end
 +
 +  # No failed attempts and no lock: a successful sign-in calls it, and
-+  # so do `./<app> user EMAIL PASSWORD` and a password reset
++  # so do `./shop user EMAIL PASSWORD` and a password reset
 +  # (PasswordsController#update). Writes only when there is something
 +  # to clear.
 +  def clear_failed_attempts!
@@ -155,6 +198,18 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
 +  # record, not an implicit self) can call them. Their messages come
 +  # from the dictionary of the current locale, as a validator's do.
  
++  # An address saved before this check existed is left as it is, so
++  # that account can still be reset and signed in to; a new or changed
++  # one must be a single address (User.email_address_format?).
++  def validate_email_address_format
++    address = email_address.to_s
++    return nil if address.empty? || User.email_address_format?(address)
++    return nil if persisted? && User.where(id: id, email_address: address).exists?
++
++    errors.add(:email_address, I18n.error_message("user", :email_address, :invalid))
++    nil
++  end
++
    def validate_email_address_taken
      address = email_address
      return nil if address.nil? || address.empty?
@@ -250,7 +305,18 @@ manual  app/controllers/sessions_controller.rb: apply this diff by hand, or re-r
 manual  app/controllers/registrations_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
 --- a/app/controllers/registrations_controller.rb
 +++ b/app/controllers/registrations_controller.rb
-@@ -18,7 +18,7 @@
+@@ -4,6 +4,10 @@
+ # Delete it (and its routes) for an invitation-only application.
+ class RegistrationsController < ApplicationController
+   allow_unauthenticated_access only: [:new, :create]
++  # Ten sign-ups per client address every three minutes, as for signing
++  # in: each one hashes a password and may mail a link, and each
++  # "already been taken" says an address is registered.
++  rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
+ 
+   # GET /sign_up
+   def new_action
+@@ -18,10 +22,20 @@
      @user.password_confirmation = fields[:password_confirmation].to_s
      if @user.save
        start_new_session_for(@user)
@@ -259,6 +325,19 @@ manual  app/controllers/registrations_controller.rb: apply this diff by hand, or
        redirect_to after_authentication_url, status: :see_other
      else
        render :new, status: :unprocessable_entity
+     end
++  end
++
++  private
++
++  # What a client past the rate limit gets: the form again, with a
++  # message (the key is create's).
++  def rate_limited
++    flash[:alert] = t("registrations.create.rate_limited")
++    redirect_to sign_up_path, status: :see_other
++    nil
+   end
+ end
 manual  app/views/sessions/new.html.erb: apply this diff by hand, or re-run with --force to overwrite the file
 --- a/app/views/sessions/new.html.erb
 +++ b/app/views/sessions/new.html.erb
@@ -348,7 +427,114 @@ manual  test/support/app_test.rb: apply this diff by hand, or re-run with --forc
 manual  test/authentication.rb: apply this diff by hand, or re-run with --force to overwrite the file
 --- a/test/authentication.rb
 +++ b/test/authentication.rb
-@@ -90,30 +90,38 @@
+@@ -67,6 +67,53 @@
+   assert_includes res.body, "<li>Password can&#39;t be blank</li>"
+ end
+ 
++# One address only: Cybertrain::Mailer reads a comma as a second
++# recipient, so the account would have two mailboxes.
++test "POST /sign_up refuses an address list or a malformed address" do
++  client = new_client
++  client.get("/sign_up")
++  ["ann@example.com,eve@evil.example", "ann@example.com eve@evil.example", "<ann@example.com>", "ann", "@example.com", "ann@", "a@b@example.com"].each do |address|
++    res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
++                                    "user[email_address]" => address,
++                                    "user[password]" => "s3cr3t-s3cr3t",
++                                    "user[password_confirmation]" => "s3cr3t-s3cr3t" })
++    assert_response res, :unprocessable_entity
++    assert_includes res.body, "<li>Email address is invalid</li>"
++  end
++  assert_equal 0, User.count
++  assert_equal 0, Session.count
++end
++
++# RegistrationsController's rate_limit: ten sign-ups per client
++# address, then the form again until the window closes (the cache's
++# clock held still, as in POST /session's test). The ten send no
++# password, so none of them costs a hash.
++test "POST /sign_up past ten requests is refused for a while" do
++  client = new_client
++  Cybertrain::RateLimit.reset_all!
++  Cybertrain::Cache.clock = -> { 2_000_000_000 }
++  begin
++    client.get("/sign_up")
++    token = AppTest.form_token(client)
++    empty = { "authenticity_token" => token, "user[email_address]" => "nobody@example.com",
++              "user[password]" => "", "user[password_confirmation]" => "" }
++    right = { "authenticity_token" => token, "user[email_address]" => "ann@example.com",
++              "user[password]" => "s3cr3t-s3cr3t", "user[password_confirmation]" => "s3cr3t-s3cr3t" }
++    10.times { client.post("/sign_up", empty) }
++    res = client.post("/sign_up", right)
++    assert_redirected_to res, "/sign_up"
++    assert_equal 0, User.count
++    res = client.follow_redirect!
++    assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
++    Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
++    client.post("/sign_up", right)
++    assert_equal 1, User.count
++  ensure
++    # The system clock again, even when an assertion fails.
++    Cybertrain::Cache.clock = -> { Time.now.to_i }
++  end
++end
++
+ test "an email address can be registered once" do
+   client = new_client
+   AppTest.user("ann@example.com")
+@@ -80,6 +127,52 @@
+   assert_equal 1, User.count
+ end
+ 
++# User.email_address_format?: one address, whatever the mail
++# standards allow beyond that.
++test "an address is one address: one @, nothing around it that splits it" do
++  ["ann@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
++    assert User.email_address_format?(address), address
++  end
++  ["", "ann", "@example.com", "ann@", "a@b@example.com", "ann@example.com,eve@evil.example",
++   "ann@example.com eve@evil.example", "ann @example.com", "<ann@example.com>", "Ann <ann@example.com>",
++   "ann@example.com\n", "ann@exa\tmple.com", "\"ann lee\"@example.com"].each do |address|
++    refute User.email_address_format?(address), address
++  end
++end
++
++# An address saved before the check existed (an older release's) is not
++# checked again: its owner can still reset the password.
++test "an address saved before the format check still saves" do
++  new_client
++  ann = AppTest.user
++  ann.update_columns(email_address: "ann@example.com,old@example.com")
++  kept = User.find(ann.id)
++  kept.password = "an0ther-s3cr3t"
++  assert kept.save
++  kept.email_address = "ann@example.com,new@example.com"
++  refute kept.save
++  assert_includes kept.errors.full_messages, "Email address is invalid"
++end
++
++# Every form that signs in, out or resets carries the page's token
++# (Cybertrain's CSRF check): without it, a 403 and nothing done.
++test "POST /session, PUT /passwords/:token and DELETE /session without the form's token are refused" do
++  client = new_client
++  user = AppTest.user
++  res = client.post("/session", { "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" })
++  assert_response res, :forbidden
++  assert_equal 0, Session.count
++  token = user.password_reset_token
++  res = client.put("/passwords/#{token}", { "password" => "an0ther-s3cr3t", "password_confirmation" => "an0ther-s3cr3t" })
++  assert_response res, :forbidden
++  refute User.find_by_password_reset_token(token).nil?
++  AppTest.sign_in(client)
++  assert_equal 1, Session.count
++  res = client.post("/session", { "_method" => "delete" })
++  assert_response res, :forbidden
++  assert_equal 1, Session.count
++end
++
+ test "POST /session signs in with the right password" do
+   client = new_client
+   AppTest.user
+@@ -90,30 +183,38 @@
    assert_equal "127.0.0.1", Session.first.ip_address
  end
  
@@ -393,7 +579,7 @@ manual  test/authentication.rb: apply this diff by hand, or re-run with --force 
      refute controller.session.key?(:return_to_after_authenticating)
    end
  end
-@@ -132,26 +140,37 @@
+@@ -132,26 +233,37 @@
  
  # SessionsController's rate_limit: ten attempts per address, then even
  # the right password goes back to the form until the window closes.
@@ -447,7 +633,7 @@ manual  test/authentication.rb: apply this diff by hand, or re-run with --force 
  end
  
  test "DELETE /session signs out and drops the Session row" do
-@@ -206,7 +225,7 @@
+@@ -206,7 +318,7 @@
      assert_includes res.body, "<span>ann@example.com</span>"
      token = AppTest.form_token(client)
  
@@ -456,7 +642,7 @@ manual  test/authentication.rb: apply this diff by hand, or re-run with --force 
      # to the expiration boundary. Saving updates updated_at too;
      # neither that nor a rewritten cookie extends authentication.
      row = Session.first
-@@ -215,7 +234,7 @@
+@@ -215,7 +327,7 @@
      res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
                                   { "cookie" => cookie })
      assert_redirected_to res, "/session/new"

@@ -52,4 +52,4 @@ ok   an invalid locale param falls back to English
 ok   a tampered locale cookie is ignored
 ok   the sign-in page and its messages are in the chosen language
 ok   validation errors in Japanese
-46 tests, 456 assertions, 0 failures
+46 tests, 471 assertions, 0 failures

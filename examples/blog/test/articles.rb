@@ -868,6 +868,13 @@ test "the language links keep the current path" do
   assert_includes res.body, "<a href=\"/articles?locale=ja\">日本語</a>"
   res = client.get("/")
   assert_includes res.body, "<a href=\"/?locale=en\">English</a>"
+  # A path with doubled slashes routes as the plain one; its links stay on
+  # this site (no protocol-relative //articles, which names another host).
+  res = client.get("//articles")
+  assert_response res, :ok
+  assert_includes res.body, "<a href=\"/articles?locale=en\">English</a>"
+  assert_includes res.body, "<a href=\"/articles?locale=ja\">日本語</a>"
+  assert_nil res.body.index("href=\"//")
 end
 
 test "Accept-Language: ja renders Japanese" do
@@ -905,7 +912,11 @@ test "an invalid locale param falls back to English" do
     assert_includes res.body, "<h1>Articles</h1>"
     refute sets_locale_cookie?(res), "?locale=#{value[0, 20]} is not written to the cookie"
     assert_nil locale_cookie(client)
+    # Nor is it written into the page: the language links name the path only.
+    assert_nil res.body.index("locale=#{value}&")
   end
+  assert_nil client.get("/articles?locale=#{hostile}").body.index("x" * 100)
+  assert_nil client.get("/articles?locale=../../etc").body.index("../../etc")
   res = client.get("/articles?locale[]=ja")
   assert_includes res.body, "<h1>Articles</h1>"
   assert_nil locale_cookie(client)

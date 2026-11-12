@@ -437,6 +437,16 @@ test "the controllers open their sign-in actions and the views post to the route
   assert_includes registrations, "render :new, status: :unprocessable_entity"
   assert_includes registrations, "      flash[:notice] = t(\".welcome\")\n"
   assert_includes registrations, "      start_new_session_for(@user)\n"
+  # Final review B I1: sign-up is rate limited as sign-in is.
+  assert_includes registrations, "  allow_unauthenticated_access only: [:new, :create]\n" \
+                                 "  # Ten sign-ups per client address every three minutes, as for signing\n"
+  assert_includes registrations, "  rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited\n"
+  assert_includes registrations, "  def rate_limited\n    flash[:alert] = t(\"registrations.create.rate_limited\")\n" \
+                                 "    redirect_to sign_up_path, status: :see_other\n    nil\n  end\n"
+  sign_up_test = read("shop/test/authentication.rb")
+  assert_includes sign_up_test, "test \"POST /sign_up past ten requests is refused for a while\" do\n"
+  assert_includes sign_up_test, "    10.times { client.post(\"/sign_up\", empty) }\n"
+  assert_includes sign_up_test, "    assert_includes res.body, \"<p class=\\\"alert\\\">Try again later.</p>\"\n"
 
   sign_in = read("shop/app/views/sessions/new.html.erb")
   assert_includes sign_in, "<%= form_with(url: session_path) do |f| %>"
@@ -792,7 +802,7 @@ ACCOUNT_KEYS = ["accounts.destroy.deleted", "accounts.destroy.not_deleted", "acc
                 "accounts.edit.title", "accounts.update.rate_limited", "accounts.update.updated",
                 "accounts.update.wrong_password", "activerecord.attributes.user.current_password"]
 SHOP_KEYS = (ACCOUNT_KEYS + RESET_KEYS).sort + ["errors.template.header"] + RESET_TAIL_KEYS +
-            ["registrations.create.welcome", "registrations.new.model", "registrations.new.sign_in",
+            ["registrations.create.rate_limited", "registrations.create.welcome", "registrations.new.model", "registrations.new.sign_in",
              "registrations.new.submit", "registrations.new.title",
              "sessions.create.invalid", "sessions.create.rate_limited", "sessions.destroy.signed_out",
              "sessions.nav.account", "sessions.nav.sign_in", "sessions.nav.sign_out",
@@ -813,6 +823,8 @@ test "every key the generated files use exists in the bundled en and ja dictiona
   assert_equal "ログインしたままにする", bundled("ja", "sessions.new.remember_me")
   assert_equal "You have been signed out.", bundled("en", "sessions.destroy.signed_out")
   assert_equal "Welcome! You have signed up.", bundled("en", "registrations.create.welcome")
+  assert_equal "Try again later.", bundled("en", "registrations.create.rate_limited")
+  assert_equal "しばらくしてからもう一度お試しください。", bundled("ja", "registrations.create.rate_limited")
   # The reset's texts (D16's answer is the same for any address).
   assert_equal "If that address is registered, a link to reset the password was sent to it.", bundled("en", "passwords.create.sent")
   assert_equal "そのメールアドレスが登録されていれば、パスワードを再設定するリンクを送りました。", bundled("ja", "passwords.create.sent")
@@ -2013,11 +2025,18 @@ test "--confirmable writes the confirmation files and columns" do
                              "        # (unconfirmed_email) is not confirmed: that takes its own link.\n" \
                              "        user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n" \
                              "        Session.where(user_id: user.id).delete_all\n"
-  assert passwords.index("unconfirmed_email =").nil?
+  # Final review B I3: and it withdraws the address waiting, with its link.
+  withdraw = "      # A new address waiting (unconfirmed_email) is withdrawn, and with it\n" \
+             "      # its link (the token is bound to it): whoever asked for it may be\n" \
+             "      # the one the owner is taking the account back from.\n" \
+             "      user.unconfirmed_email = nil\n"
+  assert_includes passwords, "      user.password_confirmation = params[:password_confirmation].to_s\n#{withdraw}      if user.save\n"
+  assert_equal 1, passwords.scan("unconfirmed_email =").size
   assert_equal PASSWORDS_CONTROLLER, passwords.sub("        # The link went to email_address: a reset proves that mailbox, as a\n" \
                                                    "        # confirmation link does (--confirmable). A new address waiting\n" \
                                                    "        # (unconfirmed_email) is not confirmed: that takes its own link.\n" \
                                                    "        user.update_columns(confirmed_at: Time.now) unless user.confirmed?\n", "")
+                                              .sub(withdraw, "")
   assert_equal CONFIRMATIONS_NEW_VIEW, read("conf/app/views/confirmations/new.html.erb")
   assert_equal CONFIRMATION_MAIL, read("conf/app/views/mail/_confirmation.html.erb")
   # The account page: a new address waits in unconfirmed_email.
@@ -2203,7 +2222,7 @@ test "--confirmable: the generated test" do
    "a password-only change keeps the new address waiting",
    "a new address waiting can be withdrawn, and its link then moves nothing",
    "two confirmations racing for one address: the second gets the taken answer",
-   "a password reset confirms a new account's address, never a new address waiting",
+   "a password reset confirms a new account's address, and withdraws a new address waiting",
    "send again answers the same for unknown addresses",
    "send again: a refused address, no safe base and the rate limit"].each do |name|
     assert_includes spec, "test \"#{name}\" do\n"
@@ -2226,6 +2245,9 @@ test "--confirmable: the generated test" do
   assert_includes spec, "  assert_nil User.find(ann.id).unconfirmed_email\n"
   # Review m4: a real unique-index refusal, through a trigger.
   assert_includes spec, "  add_race_trigger\n"
+  # Final review B I3: the reset leaves no address waiting, and its link is dead.
+  assert_includes spec, "  assert_nil reset.unconfirmed_email\n  assert_equal confirmed_at, reset.confirmed_at.to_i\n" \
+                        "  assert_nil User.find_by_confirmation_token(pending_token)\n"
   # The same answer for a registered, an unknown and a confirmed address.
   assert_includes spec, "  assert_equal known_body, unknown_body\n"
   assert_includes spec, "  assert_equal known_body, confirmed.body\n"
@@ -2277,6 +2299,96 @@ test "both modes refuse an app without config/app.rb's configure line, before wr
   File.delete("noconf/config/app.rb")
   assert_equal 1, Dir.chdir("noconf") { Cybertrain::CLI.run(["generate", "authentication"]) }
   refute File.exist?("noconf/app/models/user.rb")
+end
+
+test "the User model takes one address only, at every save that sets it (final review B I2)" do
+  model = read("shop/app/models/user.rb")
+  assert_includes model, "  before_validation do |user|\n    user.email_address = User.normalize_email_address(user.email_address)\n" \
+                         "    user.validate_email_address_format\n    user.validate_email_address_taken\n"
+  assert_includes model, "  def self.email_address_format?(value)\n    s = value.to_s\n"
+  assert_includes model, "      return false if b <= 32 || b == 127 || b == 44 || b == 60 || b == 62\n"
+  assert_includes model, "    at > 0 && at < n - 1\n  end\n"
+  assert_includes model, "  def validate_email_address_format\n    address = email_address.to_s\n" \
+                         "    return nil if address.empty? || User.email_address_format?(address)\n" \
+                         "    return nil if persisted? && User.where(id: id, email_address: address).exists?\n\n" \
+                         "    errors.add(:email_address, I18n.error_message(\"user\", :email_address, :invalid))\n"
+  # The address waiting (--confirmable) is held to the same rule.
+  conf = read("conf/app/models/user.rb")
+  assert_includes conf, "    elsif !User.email_address_format?(requested)\n" \
+                        "      errors.add(:email_address, I18n.error_message(\"user\", :email_address, :invalid))\n"
+  # The generated tests try each entry: sign-up, /setup and the user
+  # command, and the account page.
+  assert_includes read("shop/test/authentication.rb"), "test \"POST /sign_up refuses an address list or a malformed address\" do\n"
+  assert_includes read("shop/test/authentication.rb"), "test \"an address is one address: one @, nothing around it that splits it\" do\n"
+  assert_includes read("shop/test/authentication.rb"), "test \"an address saved before the format check still saves\" do\n"
+  assert_includes read("club/test/authentication.rb"), "test \"POST /setup and ./club user refuse an address list or a malformed address\" do\n"
+  assert_includes read("shop/test/accounts.rb"), "  res = update_account(client, \"s3cr3t-s3cr3t\", { \"email_address\" => \"ann@new.example,eve@evil.example\" })\n"
+  assert_equal "is invalid", bundled("en", "errors.messages.invalid")
+  # The model's comments name the app's own command (final review B M10).
+  assert_includes model, "`./shop user admin EMAIL` sets it."
+  assert_includes model, "`./shop user EMAIL PASSWORD`"
+  assert model.index("./<app>").nil?
+end
+
+test "a re-run with --confirmable over an app generated without it marks the concern's and setup's diffs IMPORTANT" do
+  ["later", "laterinv"].each do |app|
+    Cybertrain::CLI::NewApp.create(app, "{ path = \"../cybertrain\" }")
+    Cybertrain::CLI::Authentication.generate(app, app == "laterinv", false)
+    result = Cybertrain::CLI::Authentication.generate_with_result(app, app == "laterinv", true)
+    concern = ""
+    setup = ""
+    result.manual.each do |m|
+      concern = m if m.start_with?("manual  app/controllers/concerns/authentication.rb:")
+      setup = m if m.start_with?("manual  app/controllers/setup_controller.rb:")
+    end
+    assert_includes concern, "\nIMPORTANT: this diff holds the check that refuses an unconfirmed account a session; " \
+                             "until it is applied, unconfirmed accounts sign in (whatever the other diffs say)\n"
+    next unless app == "laterinv"
+
+    assert_includes setup, "\nIMPORTANT: until this diff is applied, the first user /setup creates is not confirmed " \
+                           "and cannot sign in (a password reset confirms it)\n"
+  end
+  # Without --confirmable, no such line.
+  plain = Cybertrain::CLI::Authentication.generate_with_result("later", false, false, false)
+  plain.manual.each { |m| assert m.index("IMPORTANT").nil?, m[0, 80] }
+end
+
+test "an ApplicationController with its own require_admin: warned, and the jobs page drawn without the skip" do
+  Cybertrain::CLI::NewApp.create("own", "{ path = \"../cybertrain\" }")
+  path = "own/app/controllers/application_controller.rb"
+  File.write(path, "class ApplicationController < Cybertrain::Controller\n  def require_admin\n    head :not_found if @current_user && !@current_user.admin?\n  end\nend\n")
+  assert Cybertrain::CLI::Authentication.own_require_admin?(read(path))
+  refute Cybertrain::CLI::Authentication.own_require_admin?("  def require_administrator\n")
+  assert Cybertrain::CLI::Authentication.own_require_admin?("  def require_admin(x)\n")
+  # admin? of its own is no warning (the concern never calls it).
+  refute Cybertrain::CLI::Authentication.own_require_admin?("  def admin?\n")
+  assert Cybertrain::CLI::Authentication.add_to_application_controller(path)
+  assert_includes read(path), "  include Authentication\n"
+  assert_equal Cybertrain::CLI::Authentication::NEW_APP_JOBS_PAGE_LINE, Cybertrain::CLI::Authentication.jobs_page_line(read(path))
+  assert Cybertrain::CLI::Authentication.enable_jobs_page("own/config/routes.rb", path)
+  assert_includes read("own/config/routes.rb"), "  jobs_page \"/admin/jobs\", before_action: :require_admin\n"
+  assert read("own/config/routes.rb").index("skip_before_action").nil?
+  # Drawn: nothing more to do.
+  refute Cybertrain::CLI::Authentication.enable_jobs_page("own/config/routes.rb", path)
+  # The concern's own require_admin: the skip, as before.
+  assert_equal Cybertrain::CLI::Authentication::JOBS_PAGE_LINE,
+               Cybertrain::CLI::Authentication.jobs_page_line("class ApplicationController < Cybertrain::Controller\n  include Authentication\nend\n")
+end
+
+test "a jobs_page line of the application's own: drawn when it skips require_authentication, else the advice for that line" do
+  auth = Cybertrain::CLI::Authentication
+  namespaced = "Cybertrain::Routes.draw do\n  namespace :admin do |admin|\n" \
+               "    admin.jobs_page \"/jobs\", before_action: :require_admin, skip_before_action: :require_authentication\n  end\nend\n"
+  assert_equal ["", "drawn admin.jobs_page \"/jobs\", before_action: :require_admin, skip_before_action: :require_authentication"],
+               auth.jobs_page_plan(namespaced, false)
+  assert_equal ["", "drawn admin.jobs_page \"/jobs\", before_action: :require_admin, skip_before_action: :require_authentication"],
+               auth.jobs_page_plan(namespaced, true)
+  without = namespaced.sub(", skip_before_action: :require_authentication", "")
+  assert_equal ["", auth::JOBS_PAGE_OWN_LINE], auth.jobs_page_plan(without, true)
+  assert_equal ["", auth::JOBS_PAGE_OWN_LINE], auth.jobs_page_plan("Cybertrain::Routes.draw do\n  #{auth::NEW_APP_JOBS_PAGE_LINE}\nend\n", false)
+  # A commented line of other options is not the application's drawn line.
+  assert_equal ["", "it has a jobs_page line of its own"],
+               auth.jobs_page_plan("Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_staff\nend\n", false)
 end
 
 test "insert_before_line inserts at the start of the line" do

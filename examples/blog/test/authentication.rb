@@ -174,6 +174,20 @@ test "./blog user creates a user, then sets its password" do
   refute User.first.authenticate("s3cr3t-s3cr3t")
 end
 
+test "POST /setup and ./blog user refuse an address list or a malformed address" do
+  client = new_client
+  client.get(setup_link)
+  form = setup_form(AppTest.form_token(client), "s3cr3t-s3cr3t", "s3cr3t-s3cr3t")
+  form["user[email_address]"] = "ann@example.com,eve@evil.example"
+  res = client.post("/setup", form)
+  assert_response res, :unprocessable_entity
+  assert_includes res.body, "<li>Email address is invalid</li>"
+  assert_equal 0, User.count
+  assert_equal 1, run_command(["user", "ann@example.com,eve@evil.example", "s3cr3t-s3cr3t"])
+  assert_equal 1, run_command(["user", "ann", "s3cr3t-s3cr3t"])
+  assert_equal 0, User.count
+end
+
 test "./blog user refuses bad arguments and an empty or short password" do
   new_client
   assert_equal 1, run_command(["user"])
@@ -198,6 +212,52 @@ test "the boot warning is due while no user exists" do
   AppTest.user
   refute UserCommand.no_user?
   reconnect
+end
+
+# User.email_address_format?: one address, whatever the mail
+# standards allow beyond that.
+test "an address is one address: one @, nothing around it that splits it" do
+  ["ann@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
+    assert User.email_address_format?(address), address
+  end
+  ["", "ann", "@example.com", "ann@", "a@b@example.com", "ann@example.com,eve@evil.example",
+   "ann@example.com eve@evil.example", "ann @example.com", "<ann@example.com>", "Ann <ann@example.com>",
+   "ann@example.com\n", "ann@exa\tmple.com", "\"ann lee\"@example.com"].each do |address|
+    refute User.email_address_format?(address), address
+  end
+end
+
+# An address saved before the check existed (an older release's) is not
+# checked again: its owner can still reset the password.
+test "an address saved before the format check still saves" do
+  new_client
+  ann = AppTest.user
+  ann.update_columns(email_address: "ann@example.com,old@example.com")
+  kept = User.find(ann.id)
+  kept.password = "an0ther-s3cr3t"
+  assert kept.save
+  kept.email_address = "ann@example.com,new@example.com"
+  refute kept.save
+  assert_includes kept.errors.full_messages, "Email address is invalid"
+end
+
+# Every form that signs in, out or resets carries the page's token
+# (Cybertrain's CSRF check): without it, a 403 and nothing done.
+test "POST /session, PUT /passwords/:token and DELETE /session without the form's token are refused" do
+  client = new_client
+  user = AppTest.user
+  res = client.post("/session", { "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" })
+  assert_response res, :forbidden
+  assert_equal 0, Session.count
+  token = user.password_reset_token
+  res = client.put("/passwords/#{token}", { "password" => "an0ther-s3cr3t", "password_confirmation" => "an0ther-s3cr3t" })
+  assert_response res, :forbidden
+  refute User.find_by_password_reset_token(token).nil?
+  AppTest.sign_in(client)
+  assert_equal 1, Session.count
+  res = client.post("/session", { "_method" => "delete" })
+  assert_response res, :forbidden
+  assert_equal 1, Session.count
 end
 
 test "POST /session signs in with the right password" do

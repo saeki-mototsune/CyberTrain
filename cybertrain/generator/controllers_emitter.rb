@@ -301,7 +301,11 @@ module Cybertrain
       # A helper method may not take a name that a template helper of the
       # framework, a route helper or an application helper answers.
       def self.check_helper_method(name, helper_modules)
-        if HelperScan::RESERVED_HELPER_NAMES.include?(name) || name.end_with?("_path") || name.end_with?("_url")
+        if name.end_with?("_path") || name.end_with?("_url")
+          msg = "helper_method :#{name}: names ending in _path or _url are reserved for route helpers"
+          raise ArgumentError, msg
+        end
+        if HelperScan::RESERVED_HELPER_NAMES.include?(name)
           msg = "helper_method :#{name}: #{name} is a framework helper"
           raise ArgumentError, msg
         end

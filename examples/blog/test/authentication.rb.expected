@@ -18,6 +18,9 @@ ok   POST /setup with a short or mismatched password re-renders the form
 created bob@example.com
 updated bob@example.com
 ok   ./blog user creates a user, then sets its password
+error: Email address is invalid
+error: Email address is invalid
+ok   POST /setup and ./blog user refuse an address list or a malformed address
 usage: ./blog user EMAIL [PASSWORD] (without PASSWORD, it is read from standard input) | ./blog user admin EMAIL | ./blog user unadmin EMAIL
 usage: ./blog user EMAIL [PASSWORD] (without PASSWORD, it is read from standard input) | ./blog user admin EMAIL | ./blog user unadmin EMAIL
 usage: ./blog user EMAIL [PASSWORD] (without PASSWORD, it is read from standard input) | ./blog user admin EMAIL | ./blog user unadmin EMAIL
@@ -26,6 +29,9 @@ error: Password is too short (minimum is 8 characters)
 ok   ./blog user refuses bad arguments and an empty or short password
 ok   a password read from standard input loses one trailing newline
 ok   the boot warning is due while no user exists
+ok   an address is one address: one @, nothing around it that splits it
+ok   an address saved before the format check still saves
+ok   POST /session, PUT /passwords/:token and DELETE /session without the form's token are refused
 ok   POST /session signs in with the right password
 ok   authentication returns to a local path once
 ok   authentication rejects unsafe return destinations and consumes them
@@ -35,4 +41,4 @@ ok   DELETE /session signs out and drops the Session row
 ok   a session the database no longer has signs the browser out
 ok   changing the password signs out the sessions started before
 ok   an expired cookie cannot restore its user or reach a protected action
-22 tests, 193 assertions, 0 failures
+26 tests, 226 assertions, 0 failures

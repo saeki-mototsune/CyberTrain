@@ -219,6 +219,7 @@ module Cybertrain
     end
 
     def self.fill_texts_04(h)
+      h["en.registrations.create.rate_limited"] = "Try again later."
       h["en.registrations.create.welcome"] = "Welcome! You have signed up."
       h["en.registrations.new.model"] = "account"
       h["en.registrations.new.sign_in"] = "Sign in"
@@ -268,11 +269,11 @@ module Cybertrain
       h["ja.accounts.edit.title"] = "アカウント"
       h["ja.accounts.update.confirm"] = "新しいメールアドレスに確認用のリンクを送りました。リンクを開くと、メールアドレスが変わります。"
       h["ja.accounts.update.rate_limited"] = "しばらくしてからもう一度お試しください。"
-      h["ja.accounts.update.updated"] = "アカウントを更新しました。"
       nil
     end
 
     def self.fill_texts_05(h)
+      h["ja.accounts.update.updated"] = "アカウントを更新しました。"
       h["ja.accounts.update.wrong_password"] = "現在のパスワードが違います。"
       h["ja.activerecord.attributes.user.current_password"] = "現在のパスワード"
       h["ja.activerecord.attributes.user.email_address"] = "メールアドレス"
@@ -322,11 +323,11 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.notices.retried"] = "ジョブ %{id} を再びキューに入れました。"
       h["ja.cybertrain.jobs_page.notices.retried_all"] = "失敗したジョブ %{count}件を再びキューに入れました。"
       h["ja.cybertrain.jobs_page.queued.next"] = "待機中 %{count}件。次の実行予定は %{time} です。"
-      h["ja.cybertrain.jobs_page.queued.none"] = "待機中のジョブはありません。"
       nil
     end
 
     def self.fill_texts_06(h)
+      h["ja.cybertrain.jobs_page.queued.none"] = "待機中のジョブはありません。"
       h["ja.cybertrain.jobs_page.states.discarded"] = "破棄済み"
       h["ja.cybertrain.jobs_page.states.done"] = "完了"
       h["ja.cybertrain.jobs_page.states.failed"] = "失敗"
@@ -376,11 +377,11 @@ module Cybertrain
       h["ja.errors.messages.odd"] = "は奇数にしてください"
       h["ja.errors.messages.other_than"] = "は%{count}以外の値にしてください"
       h["ja.errors.messages.password_too_long"] = "が長すぎます"
-      h["ja.errors.messages.present"] = "は入力しないでください"
       nil
     end
 
     def self.fill_texts_07(h)
+      h["ja.errors.messages.present"] = "は入力しないでください"
       h["ja.errors.messages.required"] = "を入力してください"
       h["ja.errors.messages.taken"] = "はすでに存在します"
       h["ja.errors.messages.too_long"] = "は%{count}文字以内で入力してください"
@@ -430,11 +431,11 @@ module Cybertrain
       h["ja.number.human.storage_units.units.gb"] = "GB"
       h["ja.number.human.storage_units.units.kb"] = "KB"
       h["ja.number.human.storage_units.units.mb"] = "MB"
-      h["ja.number.human.storage_units.units.pb"] = "PB"
       nil
     end
 
     def self.fill_texts_08(h)
+      h["ja.number.human.storage_units.units.pb"] = "PB"
       h["ja.number.human.storage_units.units.tb"] = "TB"
       h["ja.number.human.storage_units.units.zb"] = "ZB"
       h["ja.number.percentage.format.delimiter"] = ""
@@ -451,6 +452,7 @@ module Cybertrain
       h["ja.passwords.update.updated"] = "パスワードを再設定しました。新しいパスワードでログインしてください。"
       h["ja.passwords_mailer.reset.subject"] = "パスワードの再設定"
       h["ja.registrations.create.confirm"] = "ようこそ。メールアドレスを確認するリンクを送りました。リンクを開いてから、ログインしてください。"
+      h["ja.registrations.create.rate_limited"] = "しばらくしてからもう一度お試しください。"
       h["ja.registrations.create.welcome"] = "ようこそ。アカウントを登録しました。"
       h["ja.registrations.new.model"] = "アカウント"
       h["ja.registrations.new.sign_in"] = "ログイン"
@@ -483,6 +485,10 @@ module Cybertrain
       h["ja.time.formats.default"] = "%Y年%m月%d日(%a) %H時%M分%S秒 %z"
       h["ja.time.formats.long"] = "%Y/%m/%d %H:%M"
       h["ja.time.formats.short"] = "%m/%d %H:%M"
+      nil
+    end
+
+    def self.fill_texts_09(h)
       h["ja.time.pm"] = "午後"
       nil
     end
@@ -499,6 +505,7 @@ module Cybertrain
       fill_texts_06(h)
       fill_texts_07(h)
       fill_texts_08(h)
+      fill_texts_09(h)
       h
     end
 

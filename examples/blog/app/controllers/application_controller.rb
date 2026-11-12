@@ -19,8 +19,9 @@ class ApplicationController < Cybertrain::Controller
 
   # This request's language (I18n.locale, which the framework resets to
   # the default before every action): `?locale=en` or `?locale=ja`,
-  # which is then kept in the `locale` cookie, so that the plain links of
-  # the next pages stay in it; else the cookie's; else the best match of
+  # which is then kept in the `locale` cookie (a browser-session cookie:
+  # until the browser is closed), so that the plain links of the next
+  # pages stay in it; else the cookie's; else the best match of
   # the browser's Accept-Language (English when nothing matches). A value
   # that is not one of config.i18n_available_locales, in the parameter or
   # in the cookie, is ignored, and never written to the cookie.
@@ -48,9 +49,14 @@ class ApplicationController < Cybertrain::Controller
   end
 
   # This page's path in another language, for the layout's language
-  # links: `/articles/1?locale=ja`.
+  # links: `/articles/1?locale=ja`. The path's leading slashes become one:
+  # `//articles` (which routes as `/articles`) must not give a
+  # protocol-relative `//articles?...`, a link to another host.
   def path_in_locale(locale)
-    "#{request.path}?locale=#{locale}"
+    path = request.path
+    start = 0
+    start += 1 while start < path.size && path[start] == "/"
+    "/#{path[start, path.size - start]}?locale=#{locale}"
   end
 
   # Whether a signed-in admin made this request (User#admin?, set with

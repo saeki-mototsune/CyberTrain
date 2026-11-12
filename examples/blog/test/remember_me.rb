@@ -76,6 +76,21 @@ def stamped_session(user, remember)
   ctx.session
 end
 
+# A cookie that already carries a start (a browser that signed in
+# before, or the account page's restart after a new password, on day
+# 13 of its sign-in) starts again: SessionStore stamps this request's
+# time, so the new sign-in gets its whole limit.
+test "a sign-in restarts the lifetime of a cookie that already has one" do
+  new_client
+  user = AppTest.user
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("POST", "/session", {}, ""))
+  ctx.session = Cybertrain::Session.new
+  ctx.session["_issued_at"] = Time.now.to_i - 13 * DAY
+  assert ctx.session.issued_at > 0
+  LifetimeProbeController.new(ctx).probe_start(user, false)
+  assert_equal 0, ctx.session.issued_at
+end
+
 test "a remembered session is alive on day 15 and ended after day 30" do
   client = new_client
   AppTest.user

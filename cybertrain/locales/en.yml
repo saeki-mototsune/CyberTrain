@@ -345,6 +345,7 @@ en:
   registrations:
     create:
       confirm: Welcome! A link to confirm your email address was sent to it. Open it, then sign in.
+      rate_limited: Try again later.
       welcome: Welcome! You have signed up.
     new:
       model: account
