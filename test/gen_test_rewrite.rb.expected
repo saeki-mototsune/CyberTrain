@@ -8,6 +8,24 @@ ok   a computed test name in a test class is refused
 ok   the form is told apart by content and through an application base class
 ok   what the scan records for the bundle
 ok   a copied helper's relative require is rebased
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/test/test_helper.rb
+wrote gen/test/support/sign_in.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
 ok   a require of a copied support file points at the copy
 ok   a computed require_relative is refused
 identical gen/routes.rb
@@ -50,4 +68,56 @@ identical gen/migrations.rb
 identical gen/console.rb
 identical gen/app.rb
 ok   gen writes gen/test copies, removes stale ones and --check reports them
-13 tests, 60 assertions, 0 failures
+ok   the probe's rewritten copy is fresh
+ok   rewritten methods answer nil through rescue, ensure, a bare return and a hand-written test
+ok   a return with a value in a test method is refused
+ok   heredocs, =begin and multi-line strings inside a test keep their text
+ok   an unterminated heredoc or string and mixed tabs and spaces are refused
+ok   a nested helper class and a heredoc in a helper are left alone
+ok   a nested test class and a test class inside a module are refused
+ok   a test class opened twice is refused naming both places
+ok   a hand-written test method beside a test block of the same name is refused
+ok   a hand-written test method is a case
+ok   setup in a reopened framework class, brace and symbol forms are refused
+ok   a class head with a body on its line is not taken for a closed class
+ok   escapes in test names
+ok   CRLF lines stay CRLF and a missing last newline is added before the footer
+ok   a require from a nested support directory that leaves test/ is rebased
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/test/x_test.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+stale: gen/test/old_test.rb
+removed gen/test/old_test.rb
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/test/x_test.rb
+identical gen/migrations.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   the sweep removes only gen's own copies and --check reports an orphan
+29 tests, 112 assertions, 0 failures

@@ -11,6 +11,25 @@ require "cybertrain/generator"
 require_relative "fixtures/gen_app/config/routes"
 
 FIXTURE = "test/fixtures/gen_app"
+PROBE_SOURCE = "test/fixtures/test_rewrite/probe_test.rb"
+PROBE_COPY = "test/fixtures/test_rewrite/gen/probe_test.rb"
+PROBE_LOG = Array.new(0) { "" }
+
+# The base of the probe's rewritten classes (ActiveSupport::TestCase's
+# stand-in: setup and teardown answer nil).
+class ProbeBase
+  def setup
+    PROBE_LOG << "base setup"
+    nil
+  end
+
+  def teardown
+    PROBE_LOG << "base teardown"
+    nil
+  end
+end
+
+require_relative "fixtures/test_rewrite/gen/probe_test"
 TEMP_ROOTS = Array.new(0) { "" }
 
 def copy_tree(from, to)
@@ -117,12 +136,12 @@ test "a class-form file is rewritten into methods with setup, teardown and lines
   out = Cybertrain::Gen::TestScan.rewrite(src, "test/controllers/articles_controller_test.rb")
   lines = out.lines
   assert_equal src.lines.size, lines.size
-  assert_equal "  def test_shows_an_article\n", lines[11]
-  assert_equal "  nil; end\n", lines[13]
+  assert_equal "  def test_shows_an_article; begin\n", lines[11]
+  assert_equal "  end; nil; end\n", lines[13]
   assert_equal "class ArticlesControllerTest < ActionDispatch::IntegrationTest; def setup; super; setup_articles_controller_test_1; nil; end; " \
                "def teardown; teardown_articles_controller_test_1; super; nil; end\n", lines[2]
-  assert_equal ["  def setup_articles_controller_test_1\n", "    @article = articles(:one)\n", "  nil; end\n"], lines[3, 3]
-  assert_equal ["  def teardown_articles_controller_test_1\n", "    Cybertrain.config.http_allow_private = false\n", "  nil; end\n"], lines[7, 3]
+  assert_equal ["  def setup_articles_controller_test_1; begin\n", "    @article = articles(:one)\n", "  end; nil; end\n"], lines[3, 3]
+  assert_equal ["  def teardown_articles_controller_test_1; begin\n", "    Cybertrain.config.http_allow_private = false\n", "  end; nil; end\n"], lines[7, 3]
   assert_equal "  def title_of(article) = article.title.upcase\n", lines[17]
   assert_equal "\n", lines[0]
   refute out.include?("require \"test_helper\"")
@@ -132,8 +151,8 @@ test "several setup blocks run in order, teardown blocks in reverse" do
   src = "class T < ActiveSupport::TestCase\n  setup do\n    a\n  end\n  setup do\n    b\n  end\n  teardown do\n    c\n  end\n  teardown do\n    d\n  end\n\n  test \"x\" do\n  end\nend\n"
   out = Cybertrain::Gen::TestScan.rewrite(src, "test/t_test.rb")
   assert_includes out.lines[0], "def setup; super; setup_t_1; setup_t_2; nil; end; def teardown; teardown_t_2; teardown_t_1; super; nil; end"
-  assert_equal "  def test_x\n", out.lines[14]
-  assert_equal "  nil; end\n", out.lines[15]
+  assert_equal "  def test_x; begin\n", out.lines[14]
+  assert_equal "  end; nil; end\n", out.lines[15]
   assert_equal src.lines.size, out.lines.size
 end
 
@@ -142,12 +161,12 @@ test "a test on one line, a class's own def setup and a class without blocks" do
         "class Plain < ActiveSupport::TestCase\n  test \"z\" do\n  end\nend\n"
   lines = Cybertrain::Gen::TestScan.rewrite(src, "test/one_test.rb").lines
   assert_equal "class OneTest < ActiveSupport::TestCase\n", lines[0]
-  assert_equal "  def test_x; assert true; nil; end\n", lines[1]
-  assert_equal "  def test_y; a; b; nil; end\n", lines[2]
-  assert_equal ["  def setup\n", "    super\n", "    @user = 1\n", "  nil; end\n"], lines[3, 4]
-  assert_equal "  def teardown; super; nil; end\n", lines[8]
+  assert_equal "  def test_x; begin; assert true; end; nil; end\n", lines[1]
+  assert_equal "  def test_y; begin; a; b; end; nil; end\n", lines[2]
+  assert_equal ["  def setup; begin\n", "    super\n", "    @user = 1\n", "  end; nil; end\n"], lines[3, 4]
+  assert_equal "  def teardown; begin; super; end; nil; end\n", lines[8]
   assert_equal "class Plain < ActiveSupport::TestCase\n", lines[10]
-  assert_equal "  def test_z\n", lines[11]
+  assert_equal "  def test_z; begin\n", lines[11]
   assert_equal src.lines.size, lines.size
 end
 
@@ -158,7 +177,7 @@ test "names that collide after the method-name rule, non-ASCII and quoted names"
   assert_equal "test_it_s_here", Cybertrain::Gen::TestScan.method_name("it's here")
   assert_equal "", refusal(two_tests("it's here", "say \"hi\""))
   out = Cybertrain::Gen::TestScan.rewrite(two_tests("it's here", "say \"hi\""), "test/x_test.rb")
-  assert_equal "  def test_say__hi_\n", out.lines[4]
+  assert_equal "  def test_say__hi_; begin\n", out.lines[4]
 end
 
 test "setup do beside def setup is refused naming both" do
@@ -218,10 +237,12 @@ test "a require of a copied support file points at the copy" do
   assert_equal ["gen/test/test_helper.rb", "gen/test/support/sign_in.rb"], copies.keys
   lines = copies["gen/test/test_helper.rb"].lines
   assert_equal "require_relative \"support/sign_in\"\n", lines[1]
-  assert File.exist?("#{root}/test/support/sign_in.rb")
-  assert_equal "gen/test/support/sign_in", Cybertrain::Gen::TestScan.normalize("gen/test/support/sign_in")
   assert_equal "require_relative(\"../../test/support/plain.rb\")\n", lines[2]
   assert_equal "# Generated by `spin run gen` from test/test_helper.rb. Do not edit.\n", lines[5]
+  # Written out, each rebased target names a file that exists.
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  assert File.exist?("#{root}/gen/test/support/sign_in.rb")
+  assert File.exist?("#{root}/gen/test/../../test/support/plain.rb")
 end
 
 test "a computed require_relative is refused" do
@@ -235,7 +256,7 @@ test "gen writes gen/test copies, removes stale ones and --check reports them" d
                   "test/models/y_test.rb" => "class YTest < ActiveSupport::TestCase\nend\n")
   assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
   assert File.exist?("#{root}/gen/test/x_test.rb")
-  assert_includes File.read("#{root}/gen/test/x_test.rb"), "  def test_a\n"
+  assert_includes File.read("#{root}/gen/test/x_test.rb"), "  def test_a; begin\n"
   assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
   File.write("#{root}/test/x_test.rb", File.read("#{root}/test/x_test.rb").sub("\"a\"", "\"b\""))
   assert_equal 1, Cybertrain::Gen::Runner.run(root, ["--check"])
@@ -244,6 +265,168 @@ test "gen writes gen/test copies, removes stale ones and --check reports them" d
   Cybertrain::Gen::Runner.run(root, [])
   refute File.exist?("#{root}/gen/test/x_test.rb")
   refute File.directory?("#{root}/gen/test")
+end
+
+def rewrite_lines(src)
+  Cybertrain::Gen::TestScan.rewrite(src, "test/x_test.rb").lines
+end
+
+def scan_refusal(root)
+  Cybertrain::Gen::TestScan.copies(root)
+  ""
+rescue ArgumentError => e
+  e.message
+end
+
+test "the probe's rewritten copy is fresh" do
+  copy = Cybertrain::Gen::TestScan.rewrite_in(File.read(PROBE_SOURCE), "test/probe_test.rb", ["ProbeBase"], Array.new(0) { "" })
+  if File.read(PROBE_COPY) != copy
+    File.write(PROBE_COPY, copy)
+    flunk("fixture stale: #{PROBE_COPY} (rewritten; rebuild and rerun)")
+  end
+  assert_equal File.read(PROBE_SOURCE).lines.size, copy.lines.size
+end
+
+test "rewritten methods answer nil through rescue, ensure, a bare return and a hand-written test" do
+  PROBE_LOG.clear
+  t = ProbeTest.new
+  assert_nil t.setup
+  assert_nil t.test_rescued
+  assert_nil t.test_bare_return
+  assert_nil t.test_one_line
+  assert_nil t.test_written
+  assert_nil t.teardown
+  assert_equal ["base setup", "setup", "setup ensure", "rescued", "one line", "written", "teardown", "base teardown"], PROBE_LOG
+  PROBE_LOG.clear
+  own = ProbeOwnTest.new
+  assert_nil own.setup
+  assert_nil own.teardown
+  assert_equal ["base setup", "own setup", "own ensure", "own teardown"], PROBE_LOG
+end
+
+RETURN_REFUSED = "`return <value>` in a test, setup or teardown method is not supported (each answers nil); use a bare `return`"
+
+test "a return with a value in a test method is refused" do
+  assert_equal "test/x_test.rb:3: #{RETURN_REFUSED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    return 5 if x\n  end\nend\n")
+  assert_equal "test/x_test.rb:2: #{RETURN_REFUSED}", refusal("class XTest < ActiveSupport::TestCase\n  def setup = (return 1)\nend\n")
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    return unless x\n    return nil\n    s = \"return 5\" # return 6\n  end\nend\n")
+end
+
+test "heredocs, =begin and multi-line strings inside a test keep their text" do
+  src = "class XTest < ActiveSupport::TestCase\n  test \"gen\" do\n    src = <<-RUBY\nclass Foo\nend\n    RUBY\n" \
+        "    assert_equal 2, src.lines.size\n  end\n\n  test \"second\" do\n  end\nend\n"
+  lines = rewrite_lines(src)
+  assert_equal ["class Foo\n", "end\n", "    RUBY\n"], lines[3, 3]
+  assert_equal "  end; nil; end\n", lines[7]
+  assert_equal "  def test_second; begin\n", lines[9]
+  src = "class XTest < ActiveSupport::TestCase\n  test \"doc\" do\n=begin\nend\n=end\n    s = \"line\nend\"\n    t = %w[a\nend]\n" \
+        "    u = <<~'TXT'.strip + <<~TXT\n      test \"inner\" do\n    TXT\n    end\n    TXT\n  end\nend\n"
+  lines = rewrite_lines(src)
+  assert_equal src.lines[2, 12], lines[2, 12]
+  assert_equal "  end; nil; end\n", lines[14]
+end
+
+test "an unterminated heredoc or string and mixed tabs and spaces are refused" do
+  assert_equal "test/x_test.rb:3: the heredoc <<~RUBY is not closed; gen cannot tell where this test class ends",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    s = <<~RUBY\n  end\nend\n")
+  assert_equal "test/x_test.rb:3: the string opened here is not closed; gen cannot tell where this test class ends",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    s = \"abc\n  end\nend\n")
+  assert_equal "test/x_test.rb:5: the indentation mixes tabs and spaces; indent this test class with one or the other",
+               refusal("class XTest < ActiveSupport::TestCase\n\ttest \"a\" do\n\t\tx\n\tend\n  test \"b\" do\n  end\nend\n")
+end
+
+test "a nested helper class and a heredoc in a helper are left alone" do
+  src = "class XTest < ActiveSupport::TestCase\n  class FakeClient\n    def setup\n      :configured\n    end\n  end\n\n  setup do\n  end\n\n" \
+        "  def sample\n    <<~RUBY\n  test \"a\" do\n  end\n    RUBY\n  end\nend\n"
+  lines = rewrite_lines(src)
+  assert_equal src.lines[1, 5], lines[1, 5]
+  assert_equal src.lines[10, 6], lines[10, 6]
+  root = temp_app("test/x_test.rb" => src)
+  assert_equal 0, Cybertrain::Gen::TestScan.scan(root).last.test_classes[0].cases.size
+end
+
+NESTED = "is nested in another class or module; define test classes at the top level of the file"
+
+test "a nested test class and a test class inside a module are refused" do
+  assert_equal "test/x_test.rb:3: InnerTest #{NESTED}",
+               refusal("class OuterTest < ActiveSupport::TestCase\n\n  class InnerTest < ActiveSupport::TestCase\n  end\nend\n")
+  assert_equal "test/x_test.rb:2: UsersControllerTest #{NESTED}",
+               refusal("module Admin\n  class UsersControllerTest < ActionDispatch::IntegrationTest\n    test \"a\" do\n    end\n  end\nend\n")
+  root = temp_app("test/admin_test.rb" => "module Admin\n  class UsersTest < ActiveSupport::TestCase\n  end\nend\n")
+  assert_equal "test/admin_test.rb:2: UsersTest #{NESTED}", scan_refusal(root)
+end
+
+test "a test class opened twice is refused naming both places" do
+  src = "class XTest < ActiveSupport::TestCase\n  test \"a\" do\n  end\nend\n\nclass XTest < ActiveSupport::TestCase\n  test \"a\" do\n  end\nend\n"
+  assert_equal "test/x_test.rb:6: XTest is opened again; it is opened at test/x_test.rb:1 too (open a test class once)", refusal(src)
+  root = temp_app("test/a_test.rb" => "class UserTest < ActiveSupport::TestCase\nend\n", "test/b_test.rb" => "\nclass UserTest\n  test \"b\" do\n  end\nend\n")
+  assert_equal "test/b_test.rb:2: UserTest is opened again; it is opened at test/a_test.rb:1 too (open a test class once)", scan_refusal(root)
+end
+
+test "a hand-written test method beside a test block of the same name is refused" do
+  src = "class XTest < ActiveSupport::TestCase\n  test \"x\" do\n  end\n\n  def test_x\n    flunk\n  end\nend\n"
+  assert_equal "test/x_test.rb:5: def test_x has the same method name test_x as test \"x\" (line 2)", refusal(src)
+  src = "class XTest < ActiveSupport::TestCase\n  def test_y = 1\n  def test_y = 2\nend\n"
+  assert_equal "test/x_test.rb:3: def test_y has the same method name test_y as def test_y (line 2)", refusal(src)
+  src = "class XTest < ActiveSupport::TestCase\n  def test_y\n  end\n\n  test \"y\" do\n  end\nend\n"
+  assert_equal "test/x_test.rb:5: test \"y\" has the same method name test_y as def test_y (line 2)", refusal(src)
+end
+
+test "a hand-written test method is a case" do
+  root = temp_app("test/x_test.rb" => "class XTest < ActiveSupport::TestCase\n  def test_written\n    assert true\n  end\n\n  def test_helper_arg(x) = x\nend\n")
+  cases = Cybertrain::Gen::TestScan.scan(root).last.test_classes[0].cases
+  assert_equal [["test_written", "test_written", 2]], cases.map { |c| [c.case_name, c.case_method, c.case_line] }
+end
+
+test "setup in a reopened framework class, brace and symbol forms are refused" do
+  assert_equal "test/test_helper.rb:3: `setup do` in a reopened ActiveSupport::TestCase is not supported; " \
+               "put it in an application base class (class ApplicationTest < ActiveSupport::TestCase with setup do ... end) and inherit from it",
+               refusal_at("ENV[\"X\"] = \"1\"\nclass ActiveSupport::TestCase\n  setup do\n  end\nend\n", "test/test_helper.rb")
+  assert_equal "test/x_test.rb:2: `teardown { ... }` is not supported in a test class; write `teardown do ... end`",
+               refusal("class XTest < ActiveSupport::TestCase\n  teardown { reset }\nend\n")
+  assert_equal "test/x_test.rb:2: `setup :name` is not supported in a test class; write `setup do ... end`",
+               refusal("class XTest < ActiveSupport::TestCase\n  setup :sign_in\nend\n")
+end
+
+test "a class head with a body on its line is not taken for a closed class" do
+  lines = rewrite_lines("class XTest < ActiveSupport::TestCase; include Foo\n  test \"a\" do\n  end\nend\n")
+  assert_equal "  def test_a; begin\n", lines[1]
+end
+
+test "escapes in test names" do
+  lines = rewrite_lines("class XTest < ActiveSupport::TestCase\n  test \"a\\sb\" do\n  end\nend\n")
+  assert_equal "  def test_a_b; begin\n", lines[1]
+  assert_equal "test/x_test.rb:2: the escape \\u in a test name is not supported; write the character itself",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"caf\\u00e9\" do\n  end\nend\n")
+end
+
+test "CRLF lines stay CRLF and a missing last newline is added before the footer" do
+  lines = rewrite_lines("class XTest < ActiveSupport::TestCase\r\n  test \"a\" do\r\n  end\r\nend\r\n")
+  assert_equal ["class XTest < ActiveSupport::TestCase\r\n", "  def test_a; begin\r\n", "  end; nil; end\r\n", "end\r\n"], lines
+  root = temp_app("test/x_test.rb" => "class XTest < ActiveSupport::TestCase\nend")
+  assert_equal "class XTest < ActiveSupport::TestCase\nend\n# Generated by `spin run gen` from test/x_test.rb. Do not edit.\n",
+               Cybertrain::Gen::TestScan.copies(root)["gen/test/x_test.rb"]
+end
+
+test "a require from a nested support directory that leaves test/ is rebased" do
+  root = temp_app("test/support/deep/x.rb" => "require_relative \"../../../lib/foo\"\nclass DeepTest < ActiveSupport::TestCase\nend\n")
+  assert_equal "require_relative \"../../../../lib/foo\"\n", Cybertrain::Gen::TestScan.copies(root)["gen/test/support/deep/x.rb"].lines[0]
+end
+
+test "the sweep removes only gen's own copies and --check reports an orphan" do
+  root = temp_app("test/x_test.rb" => "class XTest < ActiveSupport::TestCase\nend\n")
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  File.write("#{root}/gen/test/data.rb", "# fixtures\n")
+  File.write("#{root}/gen/test/mine.rb", "# written by hand\n")
+  File.write("#{root}/gen/test/old_test.rb", "\n# Generated by `spin run gen` from test/old_test.rb. Do not edit.\n")
+  assert_equal 1, Cybertrain::Gen::Runner.run(root, ["--check"])
+  assert File.exist?("#{root}/gen/test/old_test.rb")
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  refute File.exist?("#{root}/gen/test/old_test.rb")
+  assert File.exist?("#{root}/gen/test/data.rb")
+  assert File.exist?("#{root}/gen/test/mine.rb")
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
 end
 
 Cybertrain::Test.run!

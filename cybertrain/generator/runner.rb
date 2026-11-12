@@ -39,8 +39,9 @@ module Cybertrain
     # gen/test/** holds the rewritten copy of each file of test/ that holds
     # a class-form test class (TestScan.copies: the helper and support
     # files included); a copy whose file is gone or no longer class form is
-    # removed, as are the directories that leaves empty (gen/test/data.rb,
-    # the fixtures' file, is not a copy and is left alone).
+    # removed, as are the directories that leaves empty. Only gen's own
+    # copies (their last line names the file they came from) are swept:
+    # gen/test/data.rb, the fixtures' file, and anything else are left.
     module Runner
       def self.run(root, argv)
         ControllerScan.use_root(root)
@@ -88,6 +89,7 @@ module Cybertrain
         end
         Manifest.rb_files(root, "gen/test").each do |f|
           next if test_copies.include?(f + ".rb") || f + ".rb" == TestScan::DATA_FILE
+          next unless File.read("#{root}/#{f}.rb").include?("#{TestScan::FOOTER}test/")
 
           stale += remove_file(root, f + ".rb", check)
           remove_empty_dirs(root, File.dirname(f), "gen/test") unless check
