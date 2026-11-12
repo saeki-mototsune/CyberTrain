@@ -1,5 +1,5 @@
 ---
-source_sha256: b35f37f16880826acb2bafe697c2825122ae242cca33d6d88142122e5222f65e
+source_sha256: 326214473484c7dca6fd6dcd67e2506aaf44eb88422bf9f319d42b6343efc5d8
 title: Guides
 ---
 # Guides
@@ -7,7 +7,7 @@ title: Guides
 Tout ce que la documentation de CyberTrain couvre au-delà de la référence de l’API&nbsp;: le tutoriel qui construit le blog pas à pas, puis un guide pour chaque domaine du framework.
 
 <!-- list: next-list -->
-- [**Tutoriel**](tutorial.md) — Construire le blog pas à pas&nbsp;: scaffold, commentaires, authentification, envois de fichiers, déploiement
+- [**Tutoriel**](tutorial.md) — Construire le blog pas à pas&nbsp;: scaffold, commentaires, mises à jour en direct avec Turbo, un job d’arrière-plan, authentification, envois de fichiers, déploiement
 - [**Installation**](install.md) — Prérequis, la commande `cybertrain`, comment Spinel et le framework sont installés
 - [**Fonctionnement**](how-it-works.md) — Génération de code à la compilation, vues interprétées, le serveur, la boucle de développement et un tableau des différences avec Rails
 - [**Modèles et base de données**](models.md) — Migrations, types de colonnes, requêtes, associations, validations, colonnes chiffrées, transactions, reprise d’une base Rails
