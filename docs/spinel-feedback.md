@@ -90,7 +90,13 @@ Nine builds are covered, and the source of one more was read:
   open item. Where this document says "fixed on master" with this
   commit, it means the fixing commit and its test are there and the
   test's program is the one given here; nothing was compiled or run with
-  it. It is in no fork tag.
+  it for that reading. It was built once after that, on 2026-11-12, as
+  the base of the pull requests for Q, R and S: Q's first program, R's
+  first two and S's were run on it and answered as on the pin, except
+  that Q's String Range was matched and nothing raised at construction.
+  Those runs are named where they are used (the Q, R and S rows of "What
+  can go upstream" and the Q and R sections); every other mention of
+  494deaac is the reading. It is in no fork tag.
 - **matz/spinel master 1c0cc5e35** (2026-11-12 18:40 +0900), built from
   source on macOS arm64 on 2026-11-13 to run the reduced programs of the open
   items, and nothing else: CyberTrain was not built with it, `spin test`
@@ -120,9 +126,9 @@ final fixes. Two things were done for it. The programs that had only been
 rules in spikes/NOTES.md (66, 70, 81, 82 and 88) were run on the pinned
 2026.11.04.7026, which adds Y and Z, a third shape to R, and one rule
 that no longer holds (see "Re-checked on 2026-11-11"). And matz/spinel
-master 494deaac was read for every open item: master was not built, so
-each "fixed on master" below is to be confirmed with the item's program
-when a fork tag carries it.
+master 494deaac was read for every open item: master was not built for
+that, so each "fixed on master" below is to be confirmed with the item's
+program when a fork tag carries it.
 
 ### 1. A fork release that carries matz/spinel master
 
@@ -237,7 +243,7 @@ run on master 1c0cc5e35:
 | P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P). Still in no fork tag on 2026-11-11 |
 | Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. The first is **fixed on master** by matz/spinel#10998 ("Ranges of Times and of the program's comparable objects", 2026-11-05; a Range of Dates is a Range of objects in docs/limitations.md). For the second, master has tests of boxed Float and String Ranges (test/float_range_boxed_methods.rb, test/boxed_range_eq_float_range.rb, "boxed Range compares by ends", e0992bb9) but no commit was matched to Q's first program: to be run on a fork tag that carries master before anything is sent. Run on master 494deaac on 2026-11-12 instead: the String Range was matched; the Float Range and a Time Range held in a Hash were not. **Sent and merged**: matz/spinel#11639 (2026-11-12), "A boxed Range of Float, Time or object ends is a Range to when, in and a class value". Needs a fork tag that carries it |
 | R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception), and a third added on 2026-11-11 from rule 81, where every class exists and the `begin` still swallows the exception. **Asked**: not reported upstream yet, and no issue or commit found for it; 24d05c78 (2026-11-07) changed how a `rescue` arm finds its class, so the three programs are to be run on master first. Run on master 494deaac on 2026-11-12: the first two answered as on the pin. **Sent and merged**: matz/spinel#11650 (2026-11-12), "A rescue clause naming a path that fails past its first name raises NameError when reached", with #11689 and #11690 from its review. All three programs print CRuby's result on master 1c0cc5e35; which commit fixed the third was not looked for. Needs a fork tag that carries them |
-| S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. **Asked**: not reported upstream yet, and no issue or commit found for it on master 494deaac (test/yield_argument_diverging_block_types.rb, already in the pinned tree, covers this shape's TypeError and not how often the block runs). **Sent and merged**: matz/spinel#11643 (2026-11-12), which also fixes a method called again from its own block reading the outer call's arguments. Needs a fork tag that carries it |
+| S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. **Asked**: not reported upstream yet, and no issue or commit found for it on master 494deaac (test/yield_argument_diverging_block_types.rb, already in the pinned tree, covers this shape's TypeError and not how often the block runs). Run on master 494deaac on 2026-11-12: `one 42 a,a`, as on the pin. **Sent and merged**: matz/spinel#11643 (2026-11-12), which also fixes a method called again from its own block reading the outer call's arguments. Needs a fork tag that carries it |
 | T | the feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the exit status (spikes/NOTES.md rule 91) | **Ready to report**: the six-line program in T (CRuby exits 1; the compiled program goes on and exits 0). **Fixed on master**: test/thread_exit_raises_in_main.rb ("`exit` in a thread other than main ended that thread and nothing else ... CRuby raises the SystemExit in the main thread") is in master since before #11035 (2026-11-05) and not in the pinned tree. Needs a fork tag that carries it; nothing in CyberTrain has to change with it |
 | U | gen writes a concern's `class_methods` as `def self.x` on the concern plus a forwarder, and refuses a `class_methods` name an instance method of the concern or an including class has (phase 4a, spikes/NOTES.md rule 93) | **Ready to report**: the reduced program in U (CRuby prints `false false`; the compiled program `true false`). No fix written. **Asked**: not reported upstream yet, and no commit found for it on master 494deaac; the open proposals matz/spinel#9898 ("definitions at their point") and #10866 (method cells) are where a fix would belong. **Sent and merged**: matz/spinel#11683 (2026-11-12), "A block a class body hands to a method that never uses its block defines nothing"; it leaves the block's body out, so a call of a method only such a block defined is refused at build time (see U). Needs a fork tag that carries it |
 | V | `Template::Helpers.time_tag_strftime` calls `strftime` with a literal pattern per directive (spikes/NOTES.md rule 96) | Nothing yet: seen in the framework, the cause read from the generated C, no reduced program written: five standalone programs tried on 2026-11-11 all format correctly (see V). Not reported upstream yet |
@@ -257,7 +263,8 @@ their workarounds may also have an upstream fix to send.
 
 "Not re-checked" means no one has tried it on that build; it is not a claim
 that it is fixed. The table has no column for matz/spinel master
-494deaac, which was read and not built, nor for master 1c0cc5e35, built
+494deaac, which was read on 2026-11-11 and built only for the programs
+of Q, R and S on 2026-11-12, nor for master 1c0cc5e35, built
 on 2026-11-13 for the reduced programs only: what master has merged for K, M,
 N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 1c0cc5e35, is in "What is asked of Spinel now".
