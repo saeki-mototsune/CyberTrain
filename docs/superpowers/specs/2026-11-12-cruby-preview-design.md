@@ -68,9 +68,9 @@ first step.
    second on examples/blog (target: 0.5 s).
 2. The compiled binary takes the port over without the developer doing
    anything, and only ever a binary built from the sources as they are now.
-3. Every HTML page in development shows which runtime rendered it and the
-   state of the compiled build; every response carries the runtime in a
-   header.
+3. Under the supervisor, every HTML page shows which runtime rendered it
+   and the state of the compiled build, and every response carries the
+   runtime in a header. Today's loop gets neither (goal 6).
 4. No request is refused or reset by a switch.
 5. The framework's FFI files are not rewritten for CRuby: one shim
    implements the DSL they already use.
@@ -143,6 +143,7 @@ On every HTML page in development, a fixed corner indicator, one line:
 | Page rendered by CRuby, build running | `CRuby preview · Spinel building…` |
 | Page rendered by CRuby, binary now serving | `Spinel ready — reload` |
 | Page rendered by CRuby, build failed | `CRuby preview · Spinel build failed` (and today's banner with the compiler output) |
+| Page rendered by CRuby, the binary did not start or exited | `CRuby preview · Spinel binary failed` (and the banner, with what the binary reported) |
 | Page rendered by the binary, nothing changed since | `Spinel` |
 | Sources changed after this page was rendered | `Source changed — reload` |
 
@@ -151,8 +152,8 @@ JavaScript; a small script keeps it current. The exact wording and look
 are the builder's, within "one quiet line in a corner, never over the
 build-failed banner".
 
-Every response in development carries `X-Cybertrain-Runtime: cruby` or
-`spinel`.
+Every response under the supervisor carries `X-Cybertrain-Runtime: cruby`
+or `spinel`.
 
 Flags: `cybertrain server --spinel` runs today's loop (`spin run gen`,
 `spin run NAME`: the binary watches, rebuilds and re-execs itself) **(call)**.
@@ -203,10 +204,21 @@ HOLDING: gen failed, or the CRuby child could not boot.
   the compiler output and the pages show today's banner.
 - **gen failed, or the CRuby child exits before it is ready**: HOLDING.
   The supervisor itself answers every request with a 503 page that shows
-  the error (gen's output, or the child's stderr: a SyntaxError arrives
-  here in a fraction of a second) and says what it is waiting for. If gen
+  the error (gen's output, or what is known about the child, below: a
+  SyntaxError arrives here in a fraction of a second) and says what it is waiting for. If gen
   succeeded the Spinel build still runs, and a successful build takes the
   port; otherwise the next change leaves HOLDING.
+- **The compiled child does not become ready, or exits after it was
+  serving** (a crash only Spinel has): this is the kind of difference
+  approach C exists to show, so it is reported as loudly as a failed
+  build and never retried by itself. The supervisor starts a CRuby child
+  again so that work continues, and the state file records "binary
+  failed" with what is known (below); pages show the banner and the
+  indicator row for it. The next change builds and tries the binary
+  again **(call)**.
+- **The CRuby child exits after it was serving**: HOLDING with what is
+  known; a successful build still takes the port, and the next change
+  leaves HOLDING.
 - **`cybertrain build` holds `tmp/cybertrain-build.lock`**: the supervisor
   neither runs gen nor restarts a child (that build fills `gen/views.rb`,
   and a child booted on it would think it is production). It keeps the
@@ -237,8 +249,21 @@ Supervision variables (names are the builder's; these are the meanings):
 the number of the inherited listening descriptor; a path the child creates
 once its listener is accepting (readiness: a file, because `File.write`
 behaves the same on both runtimes; children keep the supervisor's STDOUT
-and STDERR so log lines are not delayed by a pipe) **(call)**; the path of
-the state file; the generation the child was started for.
+so log lines are not delayed by a pipe) **(call)**; the path of
+the state file; the generation the child was started for; a path for a
+boot failure's text.
+
+**What the supervisor knows about a dead child**, in this order: the
+failure file, the tail of the child's STDERR, the exit status or signal.
+The failure file is written by `Roles.fail_boot` (which prints
+`error: ...` on STDOUT and exits 1 today, `cybertrain/roles.rb`) when the
+variable is set, and by the preview's boot file under CRuby for an
+exception that ends the process (class, message, the first lines of the
+backtrace: a SyntaxError in an application file lands here). STDERR is
+piped and copied to the terminal as it arrives, STDOUT stays the
+terminal itself; if the spike finds that piping STDERR delays it on
+either runtime, the pipe goes and the page shows the failure file or the
+exit status and points at the terminal **(call)**.
 
 **Spinel build**: `spin build NAME -- --incremental`, falling back to no
 flag exactly as `Dev::Rebuilder` does, output to `tmp/rebuild.log`. Gen is
@@ -247,7 +272,8 @@ not compiled or run by spin here: the CRuby gen has already written
 
 **State file** (`tmp/` in the application; written whole and renamed into
 place): generation, which runtime is serving, build state (`building`,
-`ready`, `failed`), and the compiler output when failed. It is the only
+`ready`, `failed`, `binary failed`), and the output that goes with a
+failure (the compiler's, or what is known about the dead binary). It is the only
 channel from the supervisor to a child.
 
 **Stopping**: Ctrl-C or TERM stops the build, stops the child with TERM,
@@ -322,8 +348,9 @@ These must pass compiled (`spin test`), not only under CRuby.
    instance variable): a small status object that the `Rebuilder` fills in
    the old loop and a state-file reader fills under supervision. The
    state file is reread when its modification time changes.
-5. **Indicator and header.** A development middleware next to `ErrorPage`
-   adds `X-Cybertrain-Runtime` to every response and the indicator to HTML
+5. **Indicator and header.** A development middleware next to `ErrorPage`,
+   installed only under supervision (today's loop has no state file and
+   stays byte for byte what it is, snapshots included), adds `X-Cybertrain-Runtime` to every response and the indicator to HTML
    responses, with `banner_status?`'s rules for which responses may be
    touched. The indicator carries the generation and runtime it was
    rendered with. Its script is served by the same middleware from a
@@ -339,6 +366,8 @@ These must pass compiled (`spin test`), not only under CRuby.
    and port, used in startup step 4.
 7. **Runtime name.** One place answers "cruby" or "spinel" (`RUBY_ENGINE`
    is `"ruby"` under CRuby and tests already branch on it).
+8. **Boot failure text.** `Roles.fail_boot` also writes its message to the
+   failure file when the supervision variable names one.
 
 Nothing here is read by a production boot.
 
@@ -392,7 +421,7 @@ Then, each step leaving the tree working:
    with it and diffs against the committed `.expected` (which come from
    the binary). A test that cannot match is listed with its reason; that
    list is the documented gap between the runtimes.
-2. Framework changes 1 to 4, 6, 7 (section 8), compiled tests.
+2. Framework changes 1 to 4 and 6 to 8 (section 8), compiled tests.
 3. The supervisor with CRuby only (no handover yet), state-machine tests.
 4. The background build and the handover to the binary.
 5. The indicator and header (framework change 5).
@@ -427,7 +456,7 @@ Then, each step leaving the tree working:
 3. The supervisor learns the port by asking the application under CRuby
    when no port argument is given; an application that cannot load under
    CRuby at startup exits with the error and names `--spinel`.
-4. Readiness is a file; children write to the terminal directly.
+4. Readiness is a file; a child's STDOUT is the terminal itself (see 11).
 5. While `cybertrain build` runs, the preview does not reload, and catches
    up by itself afterwards.
 6. Jobs, scheduler, poller and feeds run in the CRuby child as well.
@@ -435,6 +464,15 @@ Then, each step leaving the tree working:
    compiled snapshots, with a list of the ones that cannot match.
 8. Reverting to a HOLDING page (served by the supervisor) when gen fails
    or the CRuby child cannot boot, instead of leaving stale code serving.
+9. A binary that does not start, or crashes while serving, is treated
+   like a failed build: CRuby serves again, the banner and the indicator
+   say "Spinel binary failed", and nothing retries until the next change.
+10. The indicator, the header and the reserved paths exist only under the
+    supervisor; `--spinel`, a direct `spin run NAME` and the native CLI
+    are unchanged down to their snapshots.
+11. A dead child's error reaches the page through a failure file
+    (`Roles.fail_boot`, and the preview's boot file) and a copy of STDERR;
+    STDOUT is never piped.
 
 ## 15. Left to the builder
 
