@@ -74,11 +74,15 @@ end
 
 test "no file under cybertrain/preview/ declares an Error class by a `class` line (test/gen_jobs.rb scans for them)" do
   assert_equal "Cybertrain::Preview::CompileError", Cybertrain::Preview::CompileError.name
-  Dir.glob("cybertrain/preview/**/*.rb").each do |path|
+  # gen_jobs matches `class <Name>Error <` with a plain name; this also
+  # catches a namespaced `class Foo::BarError <`, so it is the wider check.
+  offenders = []
+  Dir.glob("cybertrain/preview/**/*.rb").sort.each do |path|
     File.read(path, encoding: "UTF-8").each_line do |line|
-      assert !line.match?(/\A\s*class\s+\w*Error\b.*</), "#{path}: #{line}"
+      offenders << "#{path}: #{line.chomp}" if line.match?(/\A\s*class\s+[\w:]*Error\b.*</)
     end
   end
+  assert_equal [], offenders
 end
 
 Cybertrain::Test.run!
