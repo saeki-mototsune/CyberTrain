@@ -18,6 +18,7 @@ require "cybertrain/generator/jobs_emitter"
 require "cybertrain/generator/assets_emitter"
 require "cybertrain/generator/locale_scan"
 require "cybertrain/generator/locales_emitter"
+require "cybertrain/generator/test_scan"
 
 module Cybertrain
   module Gen
@@ -35,6 +36,11 @@ module Cybertrain
     # --check never reads: it compares gen/assets.rb only. gen/locales.rb
     # holds config/locales/**/*.yml (LocaleScan, LocalesEmitter), written
     # with empty tables when the application has no dictionary.
+    # gen/test/** holds the rewritten copy of each file of test/ that holds
+    # a class-form test class (TestScan.copies: the helper and support
+    # files included); a copy whose file is gone or no longer class form is
+    # removed, as are the directories that leaves empty (gen/test/data.rb,
+    # the fixtures' file, is not a copy and is left alone).
     module Runner
       def self.run(root, argv)
         ControllerScan.use_root(root)
@@ -61,6 +67,11 @@ module Cybertrain
           outputs << [rel, source]
           concern_files << rel
         end
+        test_copies = Array.new(0) { "" }
+        TestScan.copies(root).each do |rel, source|
+          outputs << [rel, source]
+          test_copies << rel
+        end
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).
         outputs << ["gen/migrations.rb", MigrationsEmitter.emit(root)] if File.directory?("#{root}/db/migrate")
@@ -74,6 +85,12 @@ module Cybertrain
 
           stale += remove_file(root, f + ".rb", check)
           remove_empty_dirs(root, File.dirname(f), "gen/concerns") unless check
+        end
+        Manifest.rb_files(root, "gen/test").each do |f|
+          next if test_copies.include?(f + ".rb") || f + ".rb" == TestScan::DATA_FILE
+
+          stale += remove_file(root, f + ".rb", check)
+          remove_empty_dirs(root, File.dirname(f), "gen/test") unless check
         end
         if schema.nil?
           outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
