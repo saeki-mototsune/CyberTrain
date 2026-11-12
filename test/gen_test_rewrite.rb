@@ -70,6 +70,10 @@ def temp_app(files)
   root = Dir.mktmpdir("cybertrain-gen-test")
   TEMP_ROOTS << root
   copy_tree(FIXTURE, root)
+  # The fixture app's gen/test/data.rb (Task 8's fixtures) is left to a
+  # gen that loads the schema, which this program does not: without it
+  # the copies are the only files of gen/test.
+  remove_tree("#{root}/gen/test")
   files.each do |rel, text|
     make_dirs(File.dirname("#{root}/#{rel}"))
     File.write("#{root}/#{rel}", text)

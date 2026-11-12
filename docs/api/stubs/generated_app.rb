@@ -1357,6 +1357,42 @@ module Gen
     # @api public
     def self.list_resolver = ->(key) { Gen::Locales.lookup_list(key) }
   end
+
+  # What `spin run gen` writes into `gen/test/data.rb`
+  # (cybertrain/generator/test_data_emitter.rb) when the application has a
+  # `test/` directory: the tables `cybertrain test` empties before each
+  # test and the rows of `test/fixtures/*.yml` it then inserts
+  # ({Cybertrain::Test::Database}). The values below are for a
+  # `test/fixtures/articles.yml` with the labels `one` and `two` (`id: 42`).
+  # @api public
+  module TestData
+    # @return [Array<String>] every table of db/schema.rb
+    TABLES = %w[articles comments].freeze
+    # @return [Array<String>] one INSERT per fixture row, a `?` for each
+    #   created_at / updated_at the row leaves to the Clock
+    FIXTURE_SQL = ["INSERT INTO \"articles\" (\"id\", \"title\", \"created_at\", \"updated_at\") VALUES (980190962, 'First', ?, ?)"].freeze
+    # @return [Array<Integer>] how many `?` each statement binds
+    FIXTURE_TIMESTAMPS = [2].freeze
+    # @return [Array<String>] the labels of test/fixtures/articles.yml
+    LABELS_articles = %w[one two].freeze
+    # @return [Array<Integer>] their ids: Rails' `Zlib.crc32(label) % (2**30 - 1)`, or `id:`
+    IDS_articles = [980_190_962, 42].freeze
+  end
+
+  # The fixture accessors of `gen/test/data.rb`, one per fixture file. The
+  # same names are instance methods of `ActiveSupport::TestCase` and
+  # top-level methods, each forwarding here.
+  # @api public
+  module TestFixtures
+    # @example
+    #   article = articles(:one)
+    # @param label [Symbol, String] a label of test/fixtures/articles.yml
+    # @return [Article] `Article.find(<the label's id>)`
+    # @raise [Cybertrain::Test::FixtureNotFound] "No fixture named 'three'
+    #   found for fixture set 'articles'"
+    # @api public
+    def self.articles(label); end
+  end
 end
 
 # What `spin run gen` writes into `gen/components.rb` for

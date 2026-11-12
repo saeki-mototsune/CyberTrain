@@ -1,0 +1,13 @@
+# The fixture app's posts (Task 8): `one` keeps its created_at, `two` its
+# own id; both get updated_at from the Clock when they are inserted.
+one:
+  title: First post
+  body: A body long enough.
+  price: 4.50
+  meta: '{"tags":["a"]}'
+  published_on: 2026-11-01
+  created_at: 2026-11-01 09:00:00
+
+two:
+  id: 42
+  title: Second post

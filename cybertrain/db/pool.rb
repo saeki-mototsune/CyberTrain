@@ -17,6 +17,9 @@ module Cybertrain
     class Pool
       attr_reader :size
 
+      # The path given to new (DB.connected_path).
+      def pool_path = @path
+
       def initialize(path, size = 4)
         @path = path
         # What a private in-memory or temporary path means is decided in one

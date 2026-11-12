@@ -20,6 +20,7 @@ require "cybertrain/generator/locale_scan"
 require "cybertrain/generator/locales_emitter"
 require "cybertrain/generator/test_scan"
 require "cybertrain/generator/tests_emitter"
+require "cybertrain/generator/test_data_emitter"
 
 module Cybertrain
   module Gen
@@ -43,6 +44,9 @@ module Cybertrain
     # removed, as are the directories that leaves empty. Only gen's own
     # copies (their last line names the file they came from) are swept:
     # gen/test/data.rb, the fixtures' file, and anything else are left.
+    # gen/test/data.rb itself (TestDataEmitter: the tables cleared before
+    # each test, test/fixtures/*.yml's rows and accessors) is written from
+    # the schema branch whenever test/ exists, and removed once it is gone.
     module Runner
       def self.run(root, argv)
         ControllerScan.use_root(root)
@@ -78,10 +82,11 @@ module Cybertrain
         # gen/tests.rb, the program `cybertrain test` compiles, whenever
         # test/ exists (a refused bundle is a program that only aborts with
         # the reason: gen itself still succeeds, pre-flight ruling B2).
-        # Task 8's fixtures pass `true` once gen/test/data.rb is written.
+        # With a loaded schema gen/test/data.rb is written too (below), and
+        # the bundle requires it and clears and loads before every test.
         tests_rb = "#{root}/#{TestsEmitter::PATH}"
         if File.directory?("#{root}/test")
-          outputs << [TestsEmitter::PATH, TestsEmitter.emit(root, TestScan.scan(root), false)]
+          outputs << [TestsEmitter::PATH, TestsEmitter.emit(root, TestScan.scan(root), !Cybertrain::Schema.current.nil?)]
         elsif File.exist?(tests_rb) && File.read(tests_rb).start_with?(TestsEmitter::HEADER)
           stale += remove_file(root, TestsEmitter::PATH, check)
         end
@@ -105,6 +110,10 @@ module Cybertrain
           stale += remove_file(root, f + ".rb", check)
           remove_empty_dirs(root, File.dirname(f), "gen/test") unless check
         end
+        if !File.directory?("#{root}/test") && File.exist?("#{root}/#{TestScan::DATA_FILE}")
+          stale += remove_file(root, TestScan::DATA_FILE, check)
+          remove_empty_dirs(root, "gen/test", "gen/test") unless check
+        end
         if schema.nil?
           outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
@@ -114,6 +123,7 @@ module Cybertrain
           # model that cannot be generated raises before anything is written.
           infos = ModelScan.scan_dir("#{root}/app/models")
           validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
+          outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, FixtureScan.scan(root, schema, infos))] if File.directory?("#{root}/test")
           models = Array.new(0) { "" }
           ModelsEmitter.outputs_for(validated).each do |rel, source|
             outputs << [rel, source]

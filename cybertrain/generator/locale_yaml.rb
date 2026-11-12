@@ -10,8 +10,10 @@
 # `-` / `+` chomping, block sequences of scalars (also at the parent key's
 # indentation, as rails-i18n writes them), flow `[a, b]` of scalars, and
 # `~` / `null` / an empty value as "". Every scalar is kept as its text
-# (D4: `3` -> "3", `no` -> "no", `:year` -> ":year"). The top-level key must
-# be a locale.
+# (D4: `3` -> "3", `no` -> "no", `:year` -> ":year"); entry_null tells a
+# `~` / `null` / empty value from a quoted "". The top-level key must be a
+# locale unless parse's locale_root is false (test/fixtures/*.yml, whose
+# top-level keys are fixture labels).
 #
 # Refused, as ArgumentError "path:line: problem": tabs in indentation,
 # anchors and aliases, tags, a second document, flow mappings, a duplicate
@@ -28,32 +30,37 @@
 module Cybertrain
   module Gen
     # One dictionary key: a String (entry_text) or a sequence of Strings
-    # (entry_list, entry_is_list true).
+    # (entry_list, entry_is_list true). entry_null is true when the value
+    # was `~`, `null` or nothing at all (entry_text is "" then, as it is for
+    # a quoted "").
     class LocaleEntry
-      attr_reader :entry_key, :entry_text, :entry_list, :entry_is_list, :entry_file, :entry_line
+      attr_reader :entry_key, :entry_text, :entry_list, :entry_is_list, :entry_file, :entry_line, :entry_null
 
-      def initialize(key, text, list, is_list, file, line)
+      def initialize(key, text, list, is_list, file, line, null = false)
         @entry_key = key
         @entry_text = text
         @entry_list = list
         @entry_is_list = is_list
         @entry_file = file
         @entry_line = line
+        @entry_null = null
       end
     end
 
     module LocaleYaml
-      # The entries of one dictionary file, in file order.
-      def self.parse(text, path)
+      # The entries of one dictionary file, in file order. With
+      # locale_root false any plain key may be at the top (a fixture file's
+      # labels).
+      def self.parse(text, path, locale_root = true)
         mappings = { "" => 0 }
         mappings.delete("")
-        LocaleYaml.parse_recording(text, path, mappings)
+        LocaleYaml.parse_recording(text, path, mappings, locale_root)
       end
 
       # parse, also filling `mappings` with each key that holds a nested
       # mapping ("ja.posts") => its line: LocaleScan names that line when
       # another file gives the key a value (plan decision D4).
-      def self.parse_recording(text, path, mappings)
+      def self.parse_recording(text, path, mappings, locale_root = true)
         # File.read answers the locale's encoding (US-ASCII under LANG=C):
         # the text is read as UTF-8, as http/query.rb does.
         raw = text.to_s
@@ -108,7 +115,7 @@ module Cybertrain
             raise ArgumentError, message
           end
           name = content[0, colon].to_s.strip
-          if prefixes.empty? && !LocaleYaml.locale_name?(name)
+          if prefixes.empty? && locale_root && !LocaleYaml.locale_name?(name)
             message = "#{path}:#{number}: the top-level key must be a locale such as en or pt-BR (got #{name.inspect})"
             raise ArgumentError, message
           end
@@ -140,7 +147,7 @@ module Cybertrain
               mappings[full] = number
               indents << indent
             else
-              out << LocaleEntry.new(full, "", [], false, path, number)
+              out << LocaleEntry.new(full, "", [], false, path, number, true)
             end
           elsif rest.start_with?("|") || rest.start_with?(">")
             unless rest == "|" || rest == ">" || rest.size == 2 && (rest[1] == "-" || rest[1] == "+")
@@ -158,7 +165,7 @@ module Cybertrain
           elsif rest.start_with?("[")
             out << LocaleEntry.new(full, "", LocaleYaml.flow_items(rest, path, number), true, path, number)
           else
-            out << LocaleEntry.new(full, LocaleYaml.scalar_text(rest, path, number), [], false, path, number)
+            out << LocaleEntry.new(full, LocaleYaml.scalar_text(rest, path, number), [], false, path, number, rest == "~" || rest == "null")
           end
         end
         out

@@ -36,6 +36,15 @@ module Cybertrain
       !@pool.nil?
     end
 
+    # The path the pool was connected to ("" before {DB.connect}): what
+    # Test::Database checks before it empties anything.
+    # @return [String]
+    # @api private
+    def self.connected_path
+      current = @pool
+      current.nil? ? "" : current.pool_path
+    end
+
     # Returns the block's value. Forward the block with &block: re-yielding
     # from an inner block loses the value under Spinel.
     #
