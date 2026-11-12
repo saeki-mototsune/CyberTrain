@@ -14,5 +14,7 @@ test/models/article_test.rb
   ok   ArticleTest: keeps a boolean, a datetime and a decimal
   ok   ArticleTest: starts from empty tables
   ok   ArticleTest: a slug from the support helper
+  ok   ArticleFixturesTest: fixtures: a test changes and adds rows
+  ok   ArticleFixturesTest: fixtures: the next test sees exactly the fixture rows
 
-10 tests, 15 assertions, 2 failures
+12 tests, 21 assertions, 2 failures

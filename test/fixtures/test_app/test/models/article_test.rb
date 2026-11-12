@@ -31,3 +31,22 @@ class ArticleTest < ApplicationTest
     assert_equal "hello-rails", slug_of(write_article("Hello Rails").title)
   end
 end
+
+# test/fixtures/*.yml: loaded before every test (ApplicationTest's setup
+# above empties the tables, so these tests use the base class directly).
+class ArticleFixturesTest < ActiveSupport::TestCase
+  test "fixtures: a test changes and adds rows" do
+    first = articles(:one)
+    first.title = "Changed"
+    assert first.save
+    Article.create(title: "Extra", author_id: users(:alice).id)
+    assert_equal 3, Article.count
+  end
+
+  test "fixtures: the next test sees exactly the fixture rows" do
+    assert_equal 2, Article.count
+    assert_equal "First post", articles(:one).title
+    assert_equal "Alice", articles(:two).author.name
+    assert_equal 4.5, articles(:one).price
+  end
+end

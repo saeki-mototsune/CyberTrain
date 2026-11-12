@@ -10,6 +10,7 @@ require_relative "../config/app"
 Cybertrain::Test::Bundle.check_database!
 require_relative "app"
 require_relative "migrations"
+require_relative "test/data"
 Cybertrain::Test.bundled!
 require_relative "test/test_helper"
 require_relative "../test/support/helpers"
@@ -21,11 +22,11 @@ require_relative "test/models/article_test"
 module Gen
   module Tests
     FILES = ["test/legacy.rb", "test/models/article_test.rb"].freeze
-    CASE_FILE = ["test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb"].freeze
-    CASE_LINE = [4, 10, 16, 25, 30].freeze
-    CASE_CLASS = ["ArticleTest", "ArticleTest", "ArticleTest", "ArticleTest", "ArticleTest"].freeze
-    CASE_NAME = ["title must be present", "belongs to its author", "keeps a boolean, a datetime and a decimal", "starts from empty tables", "a slug from the support helper"].freeze
-    CASE_METHOD = ["test_title_must_be_present", "test_belongs_to_its_author", "test_keeps_a_boolean__a_datetime_and_a_decimal", "test_starts_from_empty_tables", "test_a_slug_from_the_support_helper"].freeze
+    CASE_FILE = ["test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb", "test/models/article_test.rb"].freeze
+    CASE_LINE = [4, 10, 16, 25, 30, 38, 46].freeze
+    CASE_CLASS = ["ArticleTest", "ArticleTest", "ArticleTest", "ArticleTest", "ArticleTest", "ArticleFixturesTest", "ArticleFixturesTest"].freeze
+    CASE_NAME = ["title must be present", "belongs to its author", "keeps a boolean, a datetime and a decimal", "starts from empty tables", "a slug from the support helper", "fixtures: a test changes and adds rows", "fixtures: the next test sees exactly the fixture rows"].freeze
+    CASE_METHOD = ["test_title_must_be_present", "test_belongs_to_its_author", "test_keeps_a_boolean__a_datetime_and_a_decimal", "test_starts_from_empty_tables", "test_a_slug_from_the_support_helper", "test_fixtures__a_test_changes_and_adds_rows", "test_fixtures__the_next_test_sees_exactly_the_fixture_rows"].freeze
 
     # Runs the class-form test i: spec 5.2's four lines per arm.
     def self.run_case(i)
@@ -60,15 +61,36 @@ module Gen
           Cybertrain::Test.run_body(t) { t.test_a_slug_from_the_support_helper }
         end
         Cybertrain::Test.after_case(t)
+      when 5
+        t = ArticleFixturesTest.new
+        if Cybertrain::Test.before_case(t)
+          Cybertrain::Test.run_body(t) { t.test_fixtures__a_test_changes_and_adds_rows }
+        end
+        Cybertrain::Test.after_case(t)
+      when 6
+        t = ArticleFixturesTest.new
+        if Cybertrain::Test.before_case(t)
+          Cybertrain::Test.run_body(t) { t.test_fixtures__the_next_test_sees_exactly_the_fixture_rows }
+        end
+        Cybertrain::Test.after_case(t)
       end
       nil
     end
 
     def self.dispatcher = ->(i) { run_case(i) }
+
+    # Steps 1-2 of every test: the database cleared, the fixtures loaded.
+    def self.fixtures_hook
+      -> {
+        Cybertrain::Test::Database.clear_and_load!(Gen::TestData::TABLES, Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS)
+        nil
+      }
+    end
   end
 end
 
 Cybertrain::Test::Bundle.use_table(Gen::Tests::FILES, Gen::Tests::CASE_FILE, Gen::Tests::CASE_LINE, Gen::Tests::CASE_CLASS, Gen::Tests::CASE_NAME, Gen::Tests::CASE_METHOD)
 Cybertrain::Test::Bundle.check_args!(ARGV)
 Cybertrain::Test::Bundle.boot!(Gen::Routes.build(Cybertrain::Router.new), Gen::Routes.url_resolver)
+Cybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)
 exit(Cybertrain::Test::Bundle.run!(ARGV, Gen::Tests.dispatcher))
