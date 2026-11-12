@@ -972,6 +972,42 @@ route resource :account, resources :confirmations
 identical app/views/layouts/application.html.erb (nav already rendered)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/confirmations_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/mailers/confirmations_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/confirmations/new.html.erb
+identical app/views/mail/_confirmation.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/support/app_test.rb
+identical test/support/authentication_helpers.rb
+identical test/authentication.rb
+identical test/admin.rb
+identical test/remember_me.rb
+identical test/lockout.rb
+identical test/passwords.rb
+identical test/accounts.rb
+identical test/confirmations.rb
+identical app/controllers/application_controller.rb (include Authentication)
+route delete /account/pending_email
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical bin/conf.rb (user command already required)
+identical config/app.rb (base_url already declared)
 ok   --confirmable run again writes and edits nothing, and adds its route to routes without it
 create spin.toml
 create .gitignore
@@ -1047,4 +1083,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-41 tests, 1307 assertions, 0 failures
+41 tests, 1325 assertions, 0 failures

@@ -120,6 +120,10 @@ module Cybertrain
       # before the account's) the same way.
       CONFIRMATIONS_ROUTE_MARK = "resources :confirmations"
       CONFIRMATIONS_ROUTE = "resources :confirmations, param: :token, only: [:new, :create, :show]"
+      # --confirmable's button that withdraws a new address waiting, added
+      # after ACCOUNT_ROUTE_MARK's line.
+      PENDING_EMAIL_ROUTE_MARK = "/account/pending_email"
+      PENDING_EMAIL_ROUTE = "delete \"/account/pending_email\", to: \"accounts#cancel_email_change\", as: \"account_pending_email\""
       NAV_LINE = "<%= render \"sessions/nav\" %>"
       # What an app test's new_client needs once the app has authentication:
       # empty the two tables, then a user signed in through the form.
@@ -361,6 +365,10 @@ module Cybertrain
         if confirmable && source.index(CONFIRMATIONS_ROUTE_MARK).nil?
           source = insert_route_after(source, PASSWORDS_ROUTE_MARK, CONFIRMATIONS_ROUTE)
           added << CONFIRMATIONS_ROUTE_MARK
+        end
+        if confirmable && source.index(PENDING_EMAIL_ROUTE_MARK).nil?
+          source = insert_route_after(source, ACCOUNT_ROUTE_MARK, PENDING_EMAIL_ROUTE)
+          added << "delete #{PENDING_EMAIL_ROUTE_MARK}"
         end
         if added.empty?
           puts "identical route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{confirmations}#{ACCOUNT_ROUTE_MARK}"
@@ -1822,6 +1830,7 @@ module Cybertrain
                 render :edit, status: :unprocessable_entity
               end
             end
+            @CANCEL_EMAIL_CHANGE@
 
             private
 
@@ -1878,13 +1887,32 @@ module Cybertrain
                                                    "  # one's place once that is opened (ConfirmationsController#show).\n")
           text = splice(text, "@ADDRESS@", accounts_pending_address_lines)
           text = splice(text, "@SAVED@", accounts_pending_address_saved_lines)
+          text = splice(text, "@CANCEL_EMAIL_CHANGE@", accounts_cancel_email_change)
           return splice(text, "@PENDING@", "    # The new address waiting, as saved: the page shows it.\n" \
                                            "    @pending_email = @user.unconfirmed_email.to_s\n")
         end
         text = splice(text, "@ADDRESS_COMMENT@", "  # A new address takes effect at once.\n")
         text = splice(text, "@ADDRESS@", margin("@user.email_address = fields[\"email_address\"].to_s if fields.key?(\"email_address\")\n", 6))
         text = splice(text, "@SAVED@", margin("flash[:notice] = t(\".updated\")\n", 8))
+        text = splice(text, "@CANCEL_EMAIL_CHANGE@", "")
         splice(text, "@PENDING@", "")
+      end
+
+      # --confirmable's action that withdraws the new address waiting.
+      def self.accounts_cancel_email_change
+        indent(<<~'RUBY')
+
+          # DELETE /account/pending_email
+          # Withdraws the new address waiting (a mistyped one, say): its link stops
+          # working, as the token is bound to unconfirmed_email. No password is
+          # asked: withdrawing only keeps the account where it is. A new password
+          # leaves the address waiting as it was; this is how it ends.
+          def cancel_email_change
+            @user.update_columns(unconfirmed_email: nil)
+            flash[:notice] = t(".cancelled")
+            redirect_to edit_account_path, status: :see_other
+          end
+        RUBY
       end
 
       # --confirmable's AccountsController#update: a new address goes into
@@ -1962,6 +1990,7 @@ module Cybertrain
               <%= f.submit t(".submit") %>
             </div>
           <% end %>
+          @CANCEL_PENDING_BUTTON@
 
           <h2><%= t(".delete_title") %></h2>
           <p><%= t(".delete_intro") %></p>
@@ -1977,7 +2006,10 @@ module Cybertrain
             </div>
           <% end %>
         ERB
-        splice(text, "@PENDING_HINT@", confirmable ? accounts_pending_hint : "")
+        text = splice(text, "@PENDING_HINT@", confirmable ? accounts_pending_hint : "")
+        button = "\n<% unless @pending_email.empty? %>\n" \
+                 "  <p><%= button_to t(\".cancel_pending\"), account_pending_email_path, method: :delete %></p>\n<% end %>\n"
+        splice(text, "@CANCEL_PENDING_BUTTON@", confirmable ? button : "")
       end
 
       def self.accounts_pending_hint
@@ -2801,11 +2833,12 @@ module Cybertrain
       # Inserted (indented) after the draw line of config/routes.rb.
       def self.routes_block(invite_only = false, confirmable = false)
         confirmations = confirmable ? "#{CONFIRMATIONS_ROUTE}\n" : ""
+        pending = confirmable ? "\n#{PENDING_EMAIL_ROUTE}" : ""
         if invite_only
           return <<~RUBY
             resource :session, only: [:new, :create, :destroy]
             #{PASSWORDS_ROUTE}
-            #{confirmations}#{ACCOUNT_ROUTE}
+            #{confirmations}#{ACCOUNT_ROUTE}#{pending}
             get "/setup", to: "setup#new", as: "setup"
             post "/setup", to: "setup#create"
           RUBY
@@ -2814,7 +2847,7 @@ module Cybertrain
         <<~RUBY
           resource :session, only: [:new, :create, :destroy]
           #{PASSWORDS_ROUTE}
-          #{confirmations}#{ACCOUNT_ROUTE}
+          #{confirmations}#{ACCOUNT_ROUTE}#{pending}
           get "/sign_up", to: "registrations#new", as: "sign_up"
           post "/sign_up", to: "registrations#create"
         RUBY
@@ -3990,6 +4023,8 @@ module Cybertrain
           SENT = "<p class=\"notice\">If that address is registered and not confirmed yet, a link to confirm it was sent to it.</p>"
           ADDRESS_CHANGED = "<p class=\"notice\">A link to confirm the new address was sent to it. The address changes once the link is opened.</p>"
           UPDATED = "<p class=\"notice\">Your account has been updated.</p>"
+          CANCELLED = "<p class=\"notice\">The change of address was cancelled; its link no longer works.</p>"
+          CANCEL_BUTTON = "<form class=\"button_to\" method=\"post\" action=\"/account/pending_email\">"
 
           def new_client
             Session.all.delete_all
@@ -4299,6 +4334,52 @@ module Cybertrain
             assert_equal ann.id, User.find_by_confirmation_token(token).id
             assert_redirected_to client.get("/confirmations/#{token}"), "/account/edit"
             assert_equal "ann@new.example", User.find(ann.id).email_address
+          end
+
+          test "a new address waiting can be withdrawn, and its link then moves nothing" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            # Nothing waits: no button to withdraw it.
+            page = client.get("/account/edit").body
+            refute page.include?("/account/pending_email")
+            refute page.include?("Cancel this change")
+            # A mistyped address, a stranger's mailbox: the page offers to withdraw it.
+            assert_redirected_to change_address(client, "ann@stranger.example"), "/account/edit"
+            token = User.find(ann.id).confirmation_token
+            page = client.follow_redirect!.body
+            assert_includes page, CANCEL_BUTTON
+            assert_includes page, "Cancel this change"
+            # Without the form's token: refused, and still waiting.
+            res = client.delete("/account/pending_email", { "x" => "1" })
+            assert_response res, :forbidden
+            assert_equal "ann@stranger.example", User.find(ann.id).unconfirmed_email
+            # A visitor is sent to sign in, and nothing changes.
+            visitor = Cybertrain::Test::Client.new(APP)
+            visitor.get("/session/new")
+            res = visitor.delete("/account/pending_email", { "authenticity_token" => AppTest.form_token(visitor) })
+            assert_redirected_to res, "/session/new"
+            assert_equal "ann@stranger.example", User.find(ann.id).unconfirmed_email
+            # The button, with no password (withdrawing is the safe direction).
+            client.get("/account/edit")
+            res = client.delete("/account/pending_email", { "authenticity_token" => AppTest.form_token(client) })
+            assert_redirected_to res, "/account/edit"
+            page = client.follow_redirect!.body
+            assert_includes page, CANCELLED
+            refute page.include?("Waiting for confirmation")
+            refute page.include?("Cancel this change")
+            withdrawn = User.find(ann.id)
+            assert_nil withdrawn.unconfirmed_email
+            assert_equal "ann@example.com", withdrawn.email_address
+            # The stranger's link: invalid now, and the account stays where it was.
+            assert_nil User.find_by_confirmation_token(token)
+            stranger = Cybertrain::Test::Client.new(APP)
+            res = stranger.get("/confirmations/#{token}")
+            assert_redirected_to res, "/confirmations/new"
+            assert_includes stranger.follow_redirect!.body, INVALID
+            assert_equal "ann@example.com", User.find(ann.id).email_address
+            assert_nil User.find(ann.id).unconfirmed_email
+            assert signed_in?(client)
           end
 
           test "two confirmations racing for one address: the second gets the taken answer" do

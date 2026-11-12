@@ -2004,6 +2004,13 @@ test "--confirmable writes the confirmation files and columns" do
                             "        unless address == @user.email_address\n          @user.request_email_change(address)\n" \
                             "          address_changed = true\n        end\n      end\n"
   assert accounts.index("unconfirmed_email = ").nil?
+  # Fix round 2 (N1): the address waiting can be withdrawn, without the password.
+  assert_includes accounts, "  # DELETE /account/pending_email\n"
+  assert_includes accounts, "  def cancel_email_change\n    @user.update_columns(unconfirmed_email: nil)\n" \
+                            "    flash[:notice] = t(\".cancelled\")\n    redirect_to edit_account_path, status: :see_other\n  end\n"
+  assert_includes read("conf/app/views/accounts/edit.html.erb"),
+                  "<% end %>\n\n<% unless @pending_email.empty? %>\n" \
+                  "  <p><%= button_to t(\".cancel_pending\"), account_pending_email_path, method: :delete %></p>\n<% end %>\n\n<h2>"
   assert accounts.index("@user.email_address = ").nil?
   assert_includes accounts, "        if address_changed\n          token = @user.confirmation_token\n" \
                             "          send_confirmation_mail(@user, token, true)\n          flash[:notice] = t(\".confirm\")\n"
@@ -2021,6 +2028,7 @@ test "--confirmable writes the confirmation files and columns" do
       resources :passwords, param: :token, only: [:new, :create, :edit, :update]
       resources :confirmations, param: :token, only: [:new, :create, :show]
       resource :account, only: [:edit, :update, :destroy]
+      delete "/account/pending_email", to: "accounts#cancel_email_change", as: "account_pending_email"
       get "/sign_up", to: "registrations#new", as: "sign_up"
   RUBY
   # The files the modes share are the same, but for these.
@@ -2101,7 +2109,7 @@ test "without --confirmable none of them" do
                   "      @user.email_address = fields[\"email_address\"].to_s if fields.key?(\"email_address\")\n"
 end
 
-CONFIRM_KEYS = ["accounts.edit.pending", "accounts.update.confirm",
+CONFIRM_KEYS = ["accounts.cancel_email_change.cancelled", "accounts.edit.cancel_pending", "accounts.edit.pending", "accounts.update.confirm",
                 "confirmations.create.rate_limited", "confirmations.create.sent", "confirmations.new.intro",
                 "confirmations.new.sign_in", "confirmations.new.submit", "confirmations.new.title",
                 "confirmations.show.confirmed", "confirmations.show.invalid", "confirmations.show.taken",
@@ -2141,6 +2149,10 @@ test "--confirmable's screens and mails go through t, with keys the bundled dict
   assert_equal "A link to confirm the new address was sent to it. The address changes once the link is opened.", bundled("en", "accounts.update.confirm")
   assert_equal "Waiting for confirmation: %{email_address}", bundled("en", "accounts.edit.pending")
   assert_equal "確認待ち: %{email_address}", bundled("ja", "accounts.edit.pending")
+  assert_equal "Cancel this change", bundled("en", "accounts.edit.cancel_pending")
+  assert_equal "この変更を取り消す", bundled("ja", "accounts.edit.cancel_pending")
+  assert_equal "The change of address was cancelled; its link no longer works.", bundled("en", "accounts.cancel_email_change.cancelled")
+  assert_equal "メールアドレスの変更を取り消しました。リンクはもう使えません。", bundled("ja", "accounts.cancel_email_change.cancelled")
 end
 
 # test/accounts.rb without its mode's two helpers (ADDRESS_CHANGED and
@@ -2163,6 +2175,7 @@ test "--confirmable: the generated test" do
    "an email change takes effect only when the new address confirms",
    "a new address someone takes before its link is opened is not moved in",
    "a password-only change keeps the new address waiting",
+   "a new address waiting can be withdrawn, and its link then moves nothing",
    "two confirmations racing for one address: the second gets the taken answer",
    "a password reset confirms a new account's address, never a new address waiting",
    "send again answers the same for unknown addresses",
@@ -2221,6 +2234,11 @@ test "--confirmable run again writes and edits nothing, and adds its route to ro
   # Without the account line either: both come back, in order.
   File.write("conf/config/routes.rb", routes.sub("  resources :confirmations, param: :token, only: [:new, :create, :show]\n", "")
                                             .sub("  resource :account, only: [:edit, :update, :destroy]\n", ""))
+  Cybertrain::CLI::Authentication.generate("conf", false, true)
+  assert_equal routes, read("conf/config/routes.rb")
+  # Nor the withdraw button's (fix round 2): it comes back after the account's.
+  File.write("conf/config/routes.rb", routes.sub("  delete \"/account/pending_email\", to: \"accounts#cancel_email_change\", as: \"account_pending_email\"\n", ""))
+  refute read("conf/config/routes.rb").include?("pending_email")
   Cybertrain::CLI::Authentication.generate("conf", false, true)
   assert_equal routes, read("conf/config/routes.rb")
 end

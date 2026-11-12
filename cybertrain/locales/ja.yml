@@ -16,11 +16,14 @@
 ---
 ja:
   accounts:
+    cancel_email_change:
+      cancelled: メールアドレスの変更を取り消しました。リンクはもう使えません。
     destroy:
       deleted: アカウントを削除しました。
       not_deleted: アカウントを削除できませんでした。何も変更していません。
       wrong_password: 現在のパスワードが違います。
     edit:
+      cancel_pending: この変更を取り消す
       delete: アカウントを削除する
       delete_intro: アカウントを削除し、すべての端末からログアウトします。元に戻すことはできません。
       delete_title: アカウントの削除

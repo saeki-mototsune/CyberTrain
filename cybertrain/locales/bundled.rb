@@ -3,9 +3,11 @@
 module Cybertrain
   module BundledLocales
     def self.fill_texts_00(h)
+      h["en.accounts.cancel_email_change.cancelled"] = "The change of address was cancelled; its link no longer works."
       h["en.accounts.destroy.deleted"] = "Your account has been deleted."
       h["en.accounts.destroy.not_deleted"] = "Your account could not be deleted. Nothing has changed."
       h["en.accounts.destroy.wrong_password"] = "That is not your current password."
+      h["en.accounts.edit.cancel_pending"] = "Cancel this change"
       h["en.accounts.edit.delete"] = "Delete account"
       h["en.accounts.edit.delete_intro"] = "This deletes your account and signs you out everywhere. It cannot be undone."
       h["en.accounts.edit.delete_title"] = "Delete your account"
@@ -51,12 +53,12 @@ module Cybertrain
       h["en.cybertrain.jobs_page.columns.jobs"] = "Jobs"
       h["en.cybertrain.jobs_page.columns.kind"] = "Kind"
       h["en.cybertrain.jobs_page.columns.run_at"] = "Run at"
-      h["en.cybertrain.jobs_page.columns.state"] = "State"
-      h["en.cybertrain.jobs_page.columns.updated"] = "Updated"
       nil
     end
 
     def self.fill_texts_01(h)
+      h["en.cybertrain.jobs_page.columns.state"] = "State"
+      h["en.cybertrain.jobs_page.columns.updated"] = "Updated"
       h["en.cybertrain.jobs_page.empty.discarded"] = "No discarded jobs."
       h["en.cybertrain.jobs_page.empty.failed"] = "No failed jobs."
       h["en.cybertrain.jobs_page.empty.running"] = "No running jobs."
@@ -105,12 +107,12 @@ module Cybertrain
       h["en.datetime.distance_in_words.x_days.one"] = "%{count} day"
       h["en.datetime.distance_in_words.x_days.other"] = "%{count} days"
       h["en.datetime.distance_in_words.x_minutes.one"] = "%{count} minute"
-      h["en.datetime.distance_in_words.x_minutes.other"] = "%{count} minutes"
-      h["en.datetime.distance_in_words.x_months.one"] = "%{count} month"
       nil
     end
 
     def self.fill_texts_02(h)
+      h["en.datetime.distance_in_words.x_minutes.other"] = "%{count} minutes"
+      h["en.datetime.distance_in_words.x_months.one"] = "%{count} month"
       h["en.datetime.distance_in_words.x_months.other"] = "%{count} months"
       h["en.datetime.distance_in_words.x_seconds.one"] = "%{count} second"
       h["en.datetime.distance_in_words.x_seconds.other"] = "%{count} seconds"
@@ -159,12 +161,12 @@ module Cybertrain
       h["en.mail.password_reset.greeting"] = "Hello %{email_address},"
       h["en.mail.password_reset.ignore"] = "If you did not ask for this, ignore this mail: your password stays as it is."
       h["en.mail.password_reset.intro"] = "You can choose a new password within the next 15 minutes at this address:"
-      h["en.mail.password_reset.link"] = "Choose a new password"
-      h["en.number.currency.format.delimiter"] = ","
       nil
     end
 
     def self.fill_texts_03(h)
+      h["en.mail.password_reset.link"] = "Choose a new password"
+      h["en.number.currency.format.delimiter"] = ","
       h["en.number.currency.format.format"] = "%u%n"
       h["en.number.currency.format.negative_format"] = "-%u%n"
       h["en.number.currency.format.precision"] = "2"
@@ -213,12 +215,12 @@ module Cybertrain
       h["en.passwords.update.updated"] = "Your password has been reset. Sign in with the new one."
       h["en.passwords_mailer.reset.subject"] = "Reset your password"
       h["en.registrations.create.confirm"] = "Welcome! A link to confirm your email address was sent to it. Open it, then sign in."
-      h["en.registrations.create.welcome"] = "Welcome! You have signed up."
-      h["en.registrations.new.model"] = "account"
       nil
     end
 
     def self.fill_texts_04(h)
+      h["en.registrations.create.welcome"] = "Welcome! You have signed up."
+      h["en.registrations.new.model"] = "account"
       h["en.registrations.new.sign_in"] = "Sign in"
       h["en.registrations.new.submit"] = "Sign up"
       h["en.registrations.new.title"] = "Sign up"
@@ -250,9 +252,11 @@ module Cybertrain
       h["en.time.formats.long"] = "%B %d, %Y %H:%M"
       h["en.time.formats.short"] = "%d %b %H:%M"
       h["en.time.pm"] = "pm"
+      h["ja.accounts.cancel_email_change.cancelled"] = "メールアドレスの変更を取り消しました。リンクはもう使えません。"
       h["ja.accounts.destroy.deleted"] = "アカウントを削除しました。"
       h["ja.accounts.destroy.not_deleted"] = "アカウントを削除できませんでした。何も変更していません。"
       h["ja.accounts.destroy.wrong_password"] = "現在のパスワードが違います。"
+      h["ja.accounts.edit.cancel_pending"] = "この変更を取り消す"
       h["ja.accounts.edit.delete"] = "アカウントを削除する"
       h["ja.accounts.edit.delete_intro"] = "アカウントを削除し、すべての端末からログアウトします。元に戻すことはできません。"
       h["ja.accounts.edit.delete_title"] = "アカウントの削除"
@@ -265,14 +269,14 @@ module Cybertrain
       h["ja.accounts.update.confirm"] = "新しいメールアドレスに確認用のリンクを送りました。リンクを開くと、メールアドレスが変わります。"
       h["ja.accounts.update.rate_limited"] = "しばらくしてからもう一度お試しください。"
       h["ja.accounts.update.updated"] = "アカウントを更新しました。"
-      h["ja.accounts.update.wrong_password"] = "現在のパスワードが違います。"
-      h["ja.activerecord.attributes.user.current_password"] = "現在のパスワード"
-      h["ja.activerecord.attributes.user.email_address"] = "メールアドレス"
-      h["ja.activerecord.attributes.user.password"] = "パスワード"
       nil
     end
 
     def self.fill_texts_05(h)
+      h["ja.accounts.update.wrong_password"] = "現在のパスワードが違います。"
+      h["ja.activerecord.attributes.user.current_password"] = "現在のパスワード"
+      h["ja.activerecord.attributes.user.email_address"] = "メールアドレス"
+      h["ja.activerecord.attributes.user.password"] = "パスワード"
       h["ja.activerecord.attributes.user.password_confirmation"] = "パスワード（確認用）"
       h["ja.activerecord.errors.messages.record_invalid"] = "バリデーションに失敗しました: %{errors}"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "%{record}が存在しているので削除できません"
@@ -319,14 +323,14 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.notices.retried_all"] = "失敗したジョブ %{count}件を再びキューに入れました。"
       h["ja.cybertrain.jobs_page.queued.next"] = "待機中 %{count}件。次の実行予定は %{time} です。"
       h["ja.cybertrain.jobs_page.queued.none"] = "待機中のジョブはありません。"
-      h["ja.cybertrain.jobs_page.states.discarded"] = "破棄済み"
-      h["ja.cybertrain.jobs_page.states.done"] = "完了"
-      h["ja.cybertrain.jobs_page.states.failed"] = "失敗"
-      h["ja.cybertrain.jobs_page.states.queued"] = "待機中"
       nil
     end
 
     def self.fill_texts_06(h)
+      h["ja.cybertrain.jobs_page.states.discarded"] = "破棄済み"
+      h["ja.cybertrain.jobs_page.states.done"] = "完了"
+      h["ja.cybertrain.jobs_page.states.failed"] = "失敗"
+      h["ja.cybertrain.jobs_page.states.queued"] = "待機中"
       h["ja.cybertrain.jobs_page.states.running"] = "実行中"
       h["ja.cybertrain.jobs_page.tabs.discarded"] = "破棄済み (%{count})"
       h["ja.cybertrain.jobs_page.tabs.failed"] = "失敗 (%{count})"
@@ -373,14 +377,14 @@ module Cybertrain
       h["ja.errors.messages.other_than"] = "は%{count}以外の値にしてください"
       h["ja.errors.messages.password_too_long"] = "が長すぎます"
       h["ja.errors.messages.present"] = "は入力しないでください"
-      h["ja.errors.messages.required"] = "を入力してください"
-      h["ja.errors.messages.taken"] = "はすでに存在します"
-      h["ja.errors.messages.too_long"] = "は%{count}文字以内で入力してください"
-      h["ja.errors.messages.too_short"] = "は%{count}文字以上で入力してください"
       nil
     end
 
     def self.fill_texts_07(h)
+      h["ja.errors.messages.required"] = "を入力してください"
+      h["ja.errors.messages.taken"] = "はすでに存在します"
+      h["ja.errors.messages.too_long"] = "は%{count}文字以内で入力してください"
+      h["ja.errors.messages.too_short"] = "は%{count}文字以上で入力してください"
       h["ja.errors.messages.wrong_length"] = "は%{count}文字で入力してください"
       h["ja.errors.template.body"] = "次の項目を確認してください"
       h["ja.errors.template.header"] = "%{model}に%{count}個のエラーが発生しました"
@@ -427,14 +431,14 @@ module Cybertrain
       h["ja.number.human.storage_units.units.kb"] = "KB"
       h["ja.number.human.storage_units.units.mb"] = "MB"
       h["ja.number.human.storage_units.units.pb"] = "PB"
-      h["ja.number.human.storage_units.units.tb"] = "TB"
-      h["ja.number.human.storage_units.units.zb"] = "ZB"
-      h["ja.number.percentage.format.delimiter"] = ""
-      h["ja.number.percentage.format.format"] = "%n%"
       nil
     end
 
     def self.fill_texts_08(h)
+      h["ja.number.human.storage_units.units.tb"] = "TB"
+      h["ja.number.human.storage_units.units.zb"] = "ZB"
+      h["ja.number.percentage.format.delimiter"] = ""
+      h["ja.number.percentage.format.format"] = "%n%"
       h["ja.number.precision.format.delimiter"] = ""
       h["ja.passwords.create.rate_limited"] = "しばらくしてからもう一度お試しください。"
       h["ja.passwords.create.sent"] = "そのメールアドレスが登録されていれば、パスワードを再設定するリンクを送りました。"

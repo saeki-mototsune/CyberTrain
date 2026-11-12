@@ -16,11 +16,14 @@
 ---
 en:
   accounts:
+    cancel_email_change:
+      cancelled: The change of address was cancelled; its link no longer works.
     destroy:
       deleted: Your account has been deleted.
       not_deleted: Your account could not be deleted. Nothing has changed.
       wrong_password: That is not your current password.
     edit:
+      cancel_pending: Cancel this change
       delete: Delete account
       delete_intro: This deletes your account and signs you out everywhere. It cannot be undone.
       delete_title: Delete your account
