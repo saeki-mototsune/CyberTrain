@@ -97,6 +97,10 @@ Job.handle("long") do |payload|
   sleep 3
   record_event("long")
 end
+Job.handle("half") do |payload|
+  sleep 0.5
+  record_event("half")
+end
 # Exceptions outside StandardError: one run_handler takes the default
 # policy for, and one that only the job thread's own rescue survives.
 class JobAbort < Exception
@@ -281,6 +285,29 @@ test "request_stop (the TERM trap) starts the drain: stop! waits only what is le
   clear_events
 end
 
+test "a claim waiting for the write lock when the stop comes takes nothing" do
+  fresh_db
+  assert Job.start!(pool_config(1))
+  # The thread's first poll found nothing; its next is a poll interval
+  # (1 s) after it.
+  sleep 0.2
+  pending = enqueue_now("record", "pending")
+  # Hold the write lock over that next poll: the thread sees the due row
+  # (a read), passes its pool check and waits in the claim's BEGIN
+  # IMMEDIATE. The stop comes while it waits there.
+  DB.transaction(immediate: true) do |c|
+    sleep 1.3
+    Job.request_stop
+    sleep 0.1
+  end
+  # The lock is free: the waiting claim goes on, and must take nothing.
+  assert wait_until(3.0) { Job.live_loops == 0 }
+  assert_equal "queued", job_state(pending)
+  refute events_text.include?("pending")
+  Job.stop!
+  clear_events
+end
+
 # Last: the long job's thread outlives stop!, so the program waits for it.
 test "stop! waits at most job_drain_timeout and leaves an unfinished job running for recovery" do
   fresh_db
@@ -308,6 +335,31 @@ test "stop! waits at most job_drain_timeout and leaves an unfinished job running
   # Its outcome is fenced off: the requeued row stays queued.
   assert_equal "queued", job_state(long)
   assert_includes LOG.string, "[WARN] job #{long} (long) finished after it was reclaimed; outcome discarded"
+end
+
+# After the test above, on purpose: a stop! that timed out, then a restart.
+test "a thread of the pool before a restart does not start the new pool's drain clock" do
+  fresh_db
+  long = enqueue_now("long", "")
+  assert Job.start!(pool_config(1))
+  assert wait_until(0.5) { Job.running_count("long") == 1 }
+  Job.stop!
+  assert_equal 1, Job.live_loops
+  # The restart, while the first pool's thread is still in its job. That
+  # thread ends about 2 s from here and notes the stop it saw: a stop of
+  # the pool before this one.
+  assert Job.start!(pool_config(1))
+  assert wait_until(4.0) { events_text == "long" }
+  assert wait_until(1.0) { Job.live_loops == 1 }
+  # More than job_drain_timeout (1 s) later, the new pool is stopped with
+  # a job running: it is still given its drain.
+  sleep 1.2
+  half = enqueue_now("half", "")
+  assert wait_until(1.5) { Job.running_count("half") == 1 }
+  Job.stop!
+  assert_equal 0, Job.live_loops
+  assert_equal "done", job_state(half)
+  assert_equal "long,half", events_text
 end
 
 Cybertrain::Test.run!

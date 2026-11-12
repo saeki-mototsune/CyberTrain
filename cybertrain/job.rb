@@ -542,13 +542,25 @@ module Cybertrain
     # database stayed locked) is no longer in flight, so its heartbeat stops
     # and staleness recovery runs it again, rather than it staying
     # `running` (and holding a concurrency slot) for as long as the
-    # process lives. Judgement call: the spec's statement was `WHERE state
-    # = 'running' AND claimed_by = ?`; this adds `AND id IN (...)`.
+    # process lives. And only the attempts in flight here: a row recovered
+    # and claimed again by this process is kept alive by its new attempt,
+    # not by an older one that is still running (the heartbeat is fenced
+    # by the attempt number, as the outcome is). Judgement call: the spec's
+    # statement was `WHERE state = 'running' AND claimed_by = ?`; this adds
+    # the (id, attempts) of each claim in flight.
     # @param now [Integer] epoch seconds
     # @return [Integer] how many rows it touched
     # @api public
     def self.heartbeat!(now)
-      Store.touch_heartbeats(now, process_label, Executor.in_flight_ids)
+      Store.touch_heartbeats(now, process_label, Executor.in_flight_claims)
+    end
+
+    # Whether the claim made under `ticket` is still wanted: {Job::Store.claim}
+    # asks once it holds the write lock, before it takes a row. A claim
+    # outside a pool (ticket {Job::Executor::NO_TICKET}) always is; a job
+    # thread's is while its pool is the live one and no stop was requested.
+    def self.claim_open?(ticket)
+      ticket < 0 || Worker.pool_live?(ticket)
     end
 
     # A copy of the ids of the jobs in flight in this process.
