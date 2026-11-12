@@ -4,6 +4,7 @@ require "cybertrain/generator/url_support"
 module Gen
   module Routes
     def self.build(router)
+      router.add("GET", "/articles/:id/cover", "article_cover") { |ctx| ArticlesController.new(ctx).process(:cover) { |c| c.cover } }
       router.add("POST", "/session", "session") { |ctx| SessionsController.new(ctx).process(:create) { |c| c.create } }
       router.add("GET", "/session/new", "new_session") { |ctx| SessionsController.new(ctx).process(:new) { |c| c.new_action } }
       router.add("DELETE", "/session", "") { |ctx| SessionsController.new(ctx).process(:destroy) { |c| c.destroy } }
@@ -43,6 +44,8 @@ module Gen
     # The helper named by a String, for templates: path_for("admin_article_path", [article], { "page" => 2 }).
     def self.path_for(name, args, options = {})
       case name
+      when "article_cover_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/cover", options)
+      when "article_cover_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/cover", options)
       when "session_path" then Cybertrain::Gen.with_options("/session", options)
       when "session_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/session", options)
       when "new_session_path" then Cybertrain::Gen.with_options("/session/new", options)
@@ -90,6 +93,14 @@ module Gen
   end
 
   module UrlHelpers
+    def article_cover_path(article, options = {})
+      Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(article)}/cover", options)
+    end
+
+    def article_cover_url(article, options = {})
+      Cybertrain.url_root + article_cover_path(article, options)
+    end
+
     def session_path(options = {})
       Cybertrain::Gen.with_options("/session", options)
     end

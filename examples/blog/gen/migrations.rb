@@ -8,3 +8,5 @@ require_relative "../db/migrate/20261112102827_create_users"
 Cybertrain::Migration.register("20261112102827", CreateUsers.new)
 require_relative "../db/migrate/20261112102828_create_sessions"
 Cybertrain::Migration.register("20261112102828", CreateSessions.new)
+require_relative "../db/migrate/20261112174320_add_cover_to_articles"
+Cybertrain::Migration.register("20261112174320", AddCoverToArticles.new)

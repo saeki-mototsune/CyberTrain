@@ -5,9 +5,12 @@ module Gen
   module Locales
     def self.fill_texts_00(h)
       h["en.activerecord.attributes.article.body"] = "Body"
+      h["en.activerecord.attributes.article.cover"] = "Cover"
       h["en.activerecord.attributes.article.title"] = "Title"
       h["en.activerecord.attributes.comment.body"] = "Body"
       h["en.activerecord.attributes.comment.commenter"] = "Commenter"
+      h["en.activerecord.errors.models.article.attributes.cover.content_type"] = "must be a PNG, JPEG, GIF or WebP image"
+      h["en.activerecord.errors.models.article.attributes.cover.too_large"] = "is too large (maximum is 2 MB)"
       h["en.activerecord.models.article"] = "Article"
       h["en.activerecord.models.comment"] = "Comment"
       h["en.admin.articles.destroy.deleted"] = "Article was successfully deleted."
@@ -51,13 +54,13 @@ module Gen
       h["en.articles.show.manage"] = "Manage articles"
       h["en.articles.show.written"] = "Written"
       h["en.articles.update.updated"] = "Article was successfully updated."
-      h["en.comment_component.destroy"] = "Destroy comment"
-      h["en.comment_component.wrote_html"] = "%{author} wrote:"
-      h["en.comments.create.created"] = "Comment was successfully created."
       nil
     end
 
     def self.fill_texts_01(h)
+      h["en.comment_component.destroy"] = "Destroy comment"
+      h["en.comment_component.wrote_html"] = "%{author} wrote:"
+      h["en.comments.create.created"] = "Comment was successfully created."
       h["en.comments.create.not_saved"] = "Comment could not be saved: %{errors}"
       h["en.comments.destroy.destroyed"] = "Comment was successfully destroyed."
       h["en.layouts.application.brand"] = "Blog"
@@ -65,9 +68,12 @@ module Gen
       h["en.layouts.application.japanese"] = "日本語"
       h["en.layouts.application.title"] = "Blog"
       h["ja.activerecord.attributes.article.body"] = "本文"
+      h["ja.activerecord.attributes.article.cover"] = "カバー画像"
       h["ja.activerecord.attributes.article.title"] = "タイトル"
       h["ja.activerecord.attributes.comment.body"] = "本文"
       h["ja.activerecord.attributes.comment.commenter"] = "名前"
+      h["ja.activerecord.errors.models.article.attributes.cover.content_type"] = "はPNG、JPEG、GIF、WebPのいずれかの画像にしてください"
+      h["ja.activerecord.errors.models.article.attributes.cover.too_large"] = "は2MB以下にしてください"
       h["ja.activerecord.models.article"] = "記事"
       h["ja.activerecord.models.comment"] = "コメント"
       h["ja.admin.articles.destroy.deleted"] = "記事を削除しました。"
@@ -102,16 +108,16 @@ module Gen
       h["ja.articles.new.title"] = "新しい記事"
       h["ja.articles.show.add_comment"] = "コメントを書く"
       h["ja.articles.show.back"] = "記事の一覧に戻る"
+      nil
+    end
+
+    def self.fill_texts_02(h)
       h["ja.articles.show.comments"] = "コメント"
       h["ja.articles.show.destroy"] = "この記事を削除"
       h["ja.articles.show.edit"] = "編集"
       h["ja.articles.show.manage"] = "記事の管理"
       h["ja.articles.show.written"] = "投稿日時"
       h["ja.articles.update.updated"] = "記事を更新しました。"
-      nil
-    end
-
-    def self.fill_texts_02(h)
       h["ja.comment_component.destroy"] = "コメントを削除"
       h["ja.comment_component.wrote_html"] = "%{author}さんのコメント:"
       h["ja.comments.create.created"] = "コメントを投稿しました。"

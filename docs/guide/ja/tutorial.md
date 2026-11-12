@@ -1,5 +1,5 @@
 ---
-source_sha256: 572afbbe178df08ea38c0ed21dbe683f67b8287fd50bd7109dbb331e5fcab35e
+source_sha256: 30c5bfaf605978fa39236a6aa2328624515c5f4aeeee8990b493f831881f3020
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -381,9 +381,17 @@ end
 ## ビューとパーシャル
 
 > [!WHY]
-> 記事のページにはコメントの一覧を表示し、最後に、ネストしたルートへ送信するフォームを置きます。
+> 記事のページにはコメントの一覧を表示し、最後に `[@article, @comment]` に結び付いたフォームを置きます。
 
-まず、もう到達できなくなったコメントのビュー `index`、`show`、`new`、`edit` を削除します。次に、記事のページの末尾でコメントとフォームをレンダリングし、スキャフォールドが書き出したコメントのフォームを置き換えます：
+まず、もう到達できなくなったコメントのビュー `index`、`show`、`new`、`edit` を削除し、`ArticlesController#show` に空の `@comment` を用意します：
+
+```ruby app/controllers/articles_controller.rb（抜粋）
+  def show
+    @comment = Comment.new
+  end
+```
+
+次に、記事のページの末尾でコメントとフォームをレンダリングし、スキャフォールドが書き出したコメントのフォームを置き換えます：
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
@@ -393,13 +401,14 @@ end
 <% end %>
 
 <h2>Add a comment:</h2>
-<%= render "comments/form" %>
+<%= render "comments/form", comment: @comment %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
+<%# locals: (comment:) %>
+<%= form_with(model: [@article, comment]) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit "Create Comment" %>
+  <%= f.submit %>
 <% end %>
 ```
 
@@ -424,9 +433,7 @@ end
 
 ### フォームとボタンの送信先
 
-フォームは送信先を `url:` で、フィールド名（`comment[commenter]`、`comment[body]`）を `scope:` で指定するので、`Comment` のレコードを必要としません。保存できなかったコメントは、理由をフラッシュに入れてリダイレクトで戻され（[ステップ 10](#comments-controller)）、エラー付きでフォームがレンダリングし直されることはないからです。
-
-`button_to ... [@article, comment]` は `[parent, child]` のルールで解決されます：新しい子はネストしたコレクション（`article_comments_path`）に、保存済みの子はネストしたメンバー（`article_comment_path`）にルーティングされます。どちらも上のネストした `resources` ブロックから `gen/routes.rb` に生成されます。`form_with(model: [@article, @comment])` も同じルールに従い、`examples/blog` はフォームをこの形で書いて、`ArticlesController#show` に `@comment = Comment.new` を置いています。このチュートリアルでは `show` を、スキャフォールドが書き出したとおりの空のままにしておきます。[ステップ 18](#attachments) のジェネレーターがそれを求めるからです。
+`button_to ... [@article, comment]` と `form_with(model: [@article, comment])` はどちらも同じ `[parent, child]` のルールで解決されます：新しい子はネストしたコレクション（`article_comments_path`）に、保存済みの子はネストしたメンバー（`article_comment_path`）にルーティングされます。どちらも上のネストした `resources` ブロックから `gen/routes.rb` に生成されます。フォームはコメントをローカル変数として受け取ります。[ステップ 13](#turbo) で、新しいコメントを渡してもう一度レンダリングできるようにするためです。
 
 > [!RULE] ビューは閉じた文法
 > ### ビューは Ruby ではなく、閉じた文法
@@ -557,7 +564,7 @@ import "@hotwired/turbo"
 <h2>Add a comment:</h2>
 
 <div id="comment_form">
-  <%= render "comments/form" %>
+  <%= render "comments/form", comment: @comment %>
 </div>
 ```
 
@@ -578,6 +585,7 @@ import "@hotwired/turbo"
     # Every page subscribed with turbo_stream_from @article appends the comment.
     Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
                                            component: CommentComponent.new(comment: @comment))
+    @new_comment = Comment.new   # the empty form create.turbo_stream.erb puts back
     respond_to do |format|
       format.turbo_stream   # app/views/comments/create.turbo_stream.erb
       format.html do
@@ -599,7 +607,7 @@ import "@hotwired/turbo"
 
 ```erb app/views/comments/create.turbo_stream.erb
 <%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
-<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+<%= turbo_stream.update "comment_form", partial: "comments/form", locals: { comment: @new_comment } %>
 ```
 
 ひとつの記事を 2 つのウィンドウで開き、片方でコメントを投稿してみてください：コメントは両方に現れ、送信したフォームは空に戻ります。
@@ -699,6 +707,14 @@ end
       format.json { render json: @articles.map(&:as_json) }
     end
   end
+
+  def show
+    @comment = Comment.new
+    respond_to do |format|
+      format.html
+      format.json { render json: @article.as_json }
+    end
+  end
 ```
 
 ```console ターミナル — blog/
@@ -712,7 +728,7 @@ $ curl http://127.0.0.1:3000/articles.json
 - `as_json` はレコードのカラムで、時刻は ISO 8601 の UTC です。JSON にテンプレートはありません：アクションは `render json:` で応答します。
 - ブロックには `format.` の行だけを書いてください：リクエストが html にフォールバックすると、ブロックはもう一度実行されます。
 
-`show` にも同じブロックを `render json: @article.as_json` で書けます。`examples/blog` にはそれが入っています。追加するのは [ステップ 18](#attachments) の後にしてください。そのステップのジェネレーターは、実行時に `show` が空であることを求めます。フォーマットのすべては[フォーマットと `respond_to`](requests.md#formats-and-respond_to) にあります。
+`/articles/1.json` は記事 1 件で、`show` の同じブロックが返します。フォーマットのすべては[フォーマットと `respond_to`](requests.md#formats-and-respond_to) にあります。
 
 <!-- step 16 #test stage: ビルド時 · `cybertrain spin test` -->
 ## テストする
@@ -867,7 +883,7 @@ class ArticlesController < ApplicationController
   <h2>Add a comment:</h2>
 
   <div id="comment_form">
-    <%= render "comments/form" %>
+    <%= render "comments/form", comment: @comment %>
   </div>
 <% end %>
 ```
@@ -911,6 +927,12 @@ end
 > [!WHY]
 > 記事に画像を添えられるようにします。サインインと同じ役割分担です。フレームワークが `multipart/form-data` を解析してバイト列を保存し、残りはひとつのコマンドが、Active Storage の `has_one_attached` の代わりに、アプリが所有するコードとして書き出します。
 
+画像は記事のページに表示されます。このページはステップ 17 から訪問者も読めるので、画像のダウンロードも訪問者に開いておく必要があります。ジェネレーターを実行する前に、ステップ 17 で書いたリストに `:cover` を加えます：
+
+```ruby app/controllers/articles_controller.rb（抜粋）
+  allow_unauthenticated_access only: [:index, :show, :cover]
+```
+
 ```shell ターミナル — blog/
 cybertrain generate attachment article cover   # 新しいモデルなら: generate scaffold NAME field:type ... cover:attachment
 cybertrain db migrate                          # articles に cover_* のカラムを追加する
@@ -920,7 +942,7 @@ cybertrain db migrate                          # articles に cover_* のカラ�
 
 ```ruby app/controllers/articles_controller.rb （抜粋）
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; you added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -946,7 +968,13 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-ステップ 17 ですべてのページが非公開になり、公開された記事ページの画像は `/articles/1/cover` から取得されます。ジェネレーターは、ダウンロードを記事ページとちょうど同じだけ公開します。`allow_unauthenticated_access` に `:show` があるので、上のコードの 1 行目のように、そのリストに `:cover` を加えます。これで、記事を読める訪問者には画像も表示されます。記事ページにサインインが必要なら、ダウンロードにも必要になります。`set_article` がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。
+ダウンロードは `show` と同じく `set_article` を通して記事を見つけるので、`set_article` がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。この `show` には独自のコードがあるので、ジェネレーターは出力の中で警告を表示します：
+
+```text 出力 — cybertrain generate attachment
+warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
+```
+
+ここでは、そのコードはコメントを用意してフォーマットを選ぶだけで、誰の閲覧も拒みません。したがって `cover` に写すものはありません。
 
 ジェネレーターは、`config/routes.rb` に `get "/articles/:id/cover"` を、フォームに `multipart: true` と、送信ボタンの上のファイル入力を、表示ページの `<h1>` の直後に画像を、それぞれ追加します：
 
@@ -965,7 +993,7 @@ class ArticlesController < ApplicationController
 ```
 
 > [!NOTE]
-> ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、それはルールを読み取れる場合だけです：`show` は、`before_action :set_article` の対象になっている、スキャフォールドが書き出したままの空のアクションでなければなりません。`def show` の中にコードがあるか、新しいアクションを含まずに `:show` を挙げた別の `before_action` があると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。ここまで `show` を空のままにしてきたのはそのためです。ここから先は中身を増やせます（[ステップ 15](#json) の JSON での応答や、フォーム用の `@comment`）。その場合、`cover` を `show` と同じだけ制限された状態に保つのは、あなたの仕事です。
+> ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、写すのは読み取れるもの、つまりコールバックだけです。`set_article` 以外の `before_action` が、新しいアクションを含まずに `:show` を挙げていると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。`def show` の中のコードは、何を確かめているのかを読み取れません。警告が出るのはそのためです。`show` が空なら、`:show` が挙がっている `allow_unauthenticated_access` にジェネレーターが自分で `:cover` を加えます。`show` にコードがあるとその行には手を付けず、そこに `:cover` がなければ画像にはサインインが必要になります。
 
 > [!RULE] Spinel のルール：has_one_attached
 > ### `has_one_attached` は書き下される
@@ -983,7 +1011,7 @@ class ArticlesController < ApplicationController
 サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは `test/attachment_article_cover.rb` も書き出しています。このテストは一連の流れ全体を確かめ、アプリに `User` があるので最初にサインインします。ここでは `:cover` が公開されているので、訪問者がカバー画像をダウンロードできることを確かめます。本文には、[ステップ 05](#validations) の最小 10 文字に合わせて伸ばした `"A article."` を入れます。
 
 > [!NOTE]
-> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
+> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` にもこのステップが入っており、その JSON は `cover_*` のカラムを含みません（`Article#public_json`）。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 実行時 · `dist/blog` -->
 ## デプロイ用にビルドする

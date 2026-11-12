@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   changing email or password requires the current password
 ok   a password change ends other sessions and keeps this one
 ok   deleting the account requires the password and removes the user and sessions
@@ -16,4 +18,4 @@ ok   the form's fields are the only ones a change takes
 ok   PATCH and DELETE /account without the form's token are refused
 ok   a new hash of the password stays with this browser when the change fails
 ok   a deletion the database refuses changes nothing and says so
-10 tests, 156 assertions, 0 failures
+10 tests, 174 assertions, 0 failures

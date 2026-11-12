@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   a visitor is sent to the sign-in page
 ok   GET /session/new renders the sign-in form
 ok   GET /setup with the token shows the form to this machine while no user exists
@@ -41,4 +43,4 @@ ok   DELETE /session signs out and drops the Session row
 ok   a session the database no longer has signs the browser out
 ok   changing the password signs out the sessions started before
 ok   an expired cookie cannot restore its user or reach a protected action
-26 tests, 226 assertions, 0 failures
+26 tests, 235 assertions, 0 failures

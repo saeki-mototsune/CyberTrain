@@ -1150,10 +1150,13 @@ each is recorded in the code and in docs/design.md D79 and D80 too.
   limited as sign-in is (ten per client address every three minutes),
   which section 9 did not ask for. The generated `User` accepts one
   address only (`User.email_address_format?`: exactly one `@`, no comma,
-  whitespace, angle bracket or control character), at every save that
-  sets one, because the mailer reads a comma as a second recipient; an
-  unusual address the standards allow is refused, and one saved before
-  the check is not checked again.
+  whitespace, angle bracket or control character, and nothing
+  `Cybertrain::Mailer.address_problem` refuses: non-ASCII bytes, so
+  Unicode spaces and controls, `()[];:\"`, and the length limits), at
+  every save that sets one, because the mailer reads a comma as a second
+  recipient and an address it refuses could never be mailed; an unusual
+  address the standards allow is refused, and one saved before the check
+  is not checked again.
 - Admin and the jobs page: the jobs page's line is
   `jobs_page "/admin/jobs", before_action: :require_admin,
   skip_before_action: :require_authentication` (a new route option), so
@@ -1195,11 +1198,10 @@ each is recorded in the code and in docs/design.md D79 and D80 too.
   `%{value}`.
 - New Spinel rules: spikes/NOTES.md 101 to 103, all from the spike (101 a
   compile-time cost, 102 and 103 records of forms that work);
-  docs/spinel-feedback.md AA. The tasks after the spike found none.
-- Tests: `spin test` has 185 programs (8 new: `cli_authentication_upgrade`,
+  docs/spinel-feedback.md AI. The tasks after the spike found none.
+- Tests: `spin test` has 195 programs once main is merged in (185 before; 8 new: `cli_authentication_upgrade`,
   `gen_locales`, `i18n`, `i18n_models`, `i18n_views`, `locale_yaml`,
   `mail_message`, `token`), and examples/blog has eight (6 new:
   `accounts`, `admin`, `authentication`, `lockout`, `passwords`,
   `remember_me`); `script/auth-e2e signup invite confirmable upgrade04`
   drives generated applications end to end.
-TEST-COUNTS-PENDING

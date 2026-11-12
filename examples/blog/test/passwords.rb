@@ -168,9 +168,11 @@ test "any other environment without base_url sends no mail and answers the same"
   assert log.string.index("evil.example").nil?
 end
 
+# Such an address is refused at entry now (User.email_address_format?),
+# so this one was saved before that check existed.
 test "an address the mailer refuses gets the same answer, and the log says why" do
   client = new_client
-  AppTest.user("josé@example.com")
+  AppTest.user("jose@example.com").update_columns(email_address: "josé@example.com")
   log = StringIO.new
   with_config("test", NO_HOSTS, "https://shop.example", log) do
     refused = request_reset(client, "josé@example.com")

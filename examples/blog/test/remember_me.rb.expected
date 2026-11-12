@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   a sign-in restarts the lifetime of a cookie that already has one
 ok   a remembered session is alive on day 15 and ended after day 30
 ok   an unremembered session ends after day 14

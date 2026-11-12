@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   the article page lists its comments and has a comment form
 ok   POST /articles/:article_id/comments adds a comment and redirects back to the article
 ok   a commenter's name with markup is shown as text

@@ -102,10 +102,16 @@ sides, and no comma, whitespace, angle bracket or control character. The
 mailer reads `ann@example.com,eve@evil.example` as two recipients, so
 without the check one account could hold two mailboxes, have its reset
 link mailed to both and, with `--confirmable`, be confirmed by either.
-Some addresses the mail standards allow are refused too (a quoted local
-part with a space or a comma in it); the method is the application's to
-change. An address saved before the check existed is not checked again,
-so its account can still be reset and signed in to.
+The address must also pass the mailer's own check
+(`Cybertrain::Mailer.address_problem`): plain ASCII only, so no Unicode
+space or control character either, none of `( ) [ ] ; : \ "`, a local
+part of at most 64 bytes and at most 254 bytes in all. An address the
+mailer would refuse could be saved but never sent a mail, so it is
+refused when it is entered. Some addresses the mail standards allow are
+refused too (a quoted local part with a space or a comma in it, a
+non-ASCII address); the method is the application's to change. An
+address saved before the check existed is not checked again, so its
+account can still be reset and signed in to.
 
 `--invite-only` writes no sign-up page, the right default for an internal
 tool, where whoever reaches the server first would otherwise get an

@@ -2307,7 +2307,9 @@ test "the User model takes one address only, at every save that sets it (final r
                          "    user.validate_email_address_format\n    user.validate_email_address_taken\n"
   assert_includes model, "  def self.email_address_format?(value)\n    s = value.to_s\n"
   assert_includes model, "      return false if b <= 32 || b == 127 || b == 44 || b == 60 || b == 62\n"
-  assert_includes model, "    at > 0 && at < n - 1\n  end\n"
+  # Nor anything the mailer would refuse (final re-review N1): a Unicode
+  # space or control character, ";", "(" and the other specials.
+  assert_includes model, "    at > 0 && at < n - 1 && Cybertrain::Mailer.address_problem(s).empty?\n  end\n"
   assert_includes model, "  def validate_email_address_format\n    address = email_address.to_s\n" \
                          "    return nil if address.empty? || User.email_address_format?(address)\n" \
                          "    return nil if persisted? && User.where(id: id, email_address: address).exists?\n\n" \
@@ -2323,6 +2325,8 @@ test "the User model takes one address only, at every save that sets it (final r
   assert_includes read("shop/test/authentication.rb"), "test \"an address saved before the format check still saves\" do\n"
   assert_includes read("club/test/authentication.rb"), "test \"POST /setup and ./club user refuse an address list or a malformed address\" do\n"
   assert_includes read("shop/test/accounts.rb"), "  res = update_account(client, \"s3cr3t-s3cr3t\", { \"email_address\" => \"ann@new.example,eve@evil.example\" })\n"
+  assert_includes read("shop/test/accounts.rb"), "  [\"ann@new.example\\u00A0\", \"ann\\u3000@new.example\", \"ann\\u0085@new.example\", \"ann@new\\u2028.example\", \"ann;x@new.example\", \"ann(x)@new.example\"].each do |address|\n"
+  assert_includes read("shop/test/authentication.rb"), "   \"ann@example.com\\u00A0\", \"ann\\u3000@example.com\", \"ann\\u0085@example.com\", \"ann@exa\\u2028mple.com\", \"ann;x@example.com\", \"ann(x)@example.com\"].each do |address|\n"
   assert_equal "is invalid", bundled("en", "errors.messages.invalid")
   # The model's comments name the app's own command (final review B M10).
   assert_includes model, "`./shop user admin EMAIL` sets it."

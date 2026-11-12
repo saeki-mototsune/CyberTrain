@@ -1,0 +1,9 @@
+# Where Active Storage keeps uploaded files (Article#cover): on this machine's
+# disk, beside the SQLite database.
+local:
+  service: Disk
+  root: <%= Rails.root.join("storage/uploads") %>
+
+test:
+  service: Disk
+  root: <%= Rails.root.join("tmp/storage") %>

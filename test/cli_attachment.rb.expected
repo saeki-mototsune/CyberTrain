@@ -1023,6 +1023,207 @@ route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/hive.rb (./hive user)
 insert config/app.rb (HIVE_BASE_URL)
+ok   show restrictions are preserved or attachment generation is refused
+identical spin.toml
+identical .gitignore
+identical .env.example
+identical README.md
+exist config/app.rb
+exist config/routes.rb
+identical config/locales/en.yml
+identical db/schema.rb
+identical db/migrate/.keep
+exist app/controllers/application_controller.rb
+identical app/models/.keep
+identical app/helpers/.keep
+identical app/jobs/.keep
+identical app/assets/stylesheets/application.css
+identical app/assets/images/.keep
+identical app/javascript/application.js
+identical config/importmap.rb
+exist app/views/layouts/application.html.erb
+identical public/404.html
+identical public/500.html
+identical public/up.html
+exist bin/shed.rb
+identical bin/gen.rb
+identical bin/db.rb
+identical Dockerfile
+identical .dockerignore
+identical config/deploy.yml
+identical .kamal/secrets
+identical .github/workflows/ci.yml
+identical gen/.keep
+identical storage/.keep
+identical tmp/.keep
+identical test/.keep
+identical db/migrate/20260925120000_create_plans.rb
+identical app/models/plan.rb
+exist app/controllers/plans_controller.rb
+identical app/views/plans/index.html.erb
+identical app/views/plans/show.html.erb
+identical app/views/plans/new.html.erb
+identical app/views/plans/edit.html.erb
+identical app/views/plans/_form.html.erb
+identical route resources :plans
+identical db/migrate/20260925120001_create_users.rb
+identical db/migrate/20260925120002_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/support/app_test.rb
+identical test/support/authentication_helpers.rb
+identical test/authentication.rb
+identical test/admin.rb
+identical test/remember_me.rb
+identical test/lockout.rb
+identical test/passwords.rb
+identical test/accounts.rb
+identical app/controllers/application_controller.rb (include Authentication)
+identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical bin/shed.rb (user command already required)
+identical config/app.rb (base_url already declared)
+create db/migrate/20260925120003_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
+skip app/controllers/plans_controller.rb (:show is public, but def show has code of its own, which def photo does not run): the download needs a sign-in; add :photo to allow_unauthenticated_access yourself once def photo checks whatever that code checks
+warning: app/controllers/plans_controller.rb: def show has code of its own, which def photo does not run; if that code limits who may see plans, check the same in def photo
+insert app/controllers/plans_controller.rb (photo_file= in create)
+insert app/controllers/plans_controller.rb (photo_file= in update)
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_plan_photo.rb
+identical db/migrate/20260925120003_add_photo_to_plans.rb
+identical app/views/plans/_form.html.erb (file field already added)
+identical app/views/plans/show.html.erb (photo already shown)
+identical app/models/plan.rb (attachment photo already added)
+identical app/controllers/plans_controller.rb (def photo already added)
+skip app/controllers/plans_controller.rb (:show is public, but def show has code of its own, which def photo does not run): the download needs a sign-in; add :photo to allow_unauthenticated_access yourself once def photo checks whatever that code checks
+identical app/controllers/plans_controller.rb (photo_file= in create)
+identical app/controllers/plans_controller.rb (photo_file= in update)
+identical route plan_photo
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_plan_photo.rb
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/nook.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_plans.rb
+create app/models/plan.rb
+create app/controllers/plans_controller.rb
+create app/views/plans/index.html.erb
+create app/views/plans/show.html.erb
+create app/views/plans/new.html.erb
+create app/views/plans/edit.html.erb
+create app/views/plans/_form.html.erb
+route resources :plans
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/support/app_test.rb
+create test/support/authentication_helpers.rb
+create test/authentication.rb
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+create test/accounts.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/nook.rb (./nook user)
+insert config/app.rb (NOOK_BASE_URL)
+create db/migrate/20260925120003_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
+skip app/controllers/plans_controller.rb (:show is public, but def show has code of its own, which def photo does not run): the download needs a sign-in; add :photo to allow_unauthenticated_access yourself once def photo checks whatever that code checks
+warning: app/controllers/plans_controller.rb: def show has code of its own, which def photo does not run; if that code limits who may see plans, check the same in def photo
+insert app/controllers/plans_controller.rb (photo_file= in create)
+insert app/controllers/plans_controller.rb (photo_file= in update)
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_plan_photo.rb
+identical db/migrate/20260925120003_add_photo_to_plans.rb
+identical app/views/plans/_form.html.erb (file field already added)
+identical app/views/plans/show.html.erb (photo already shown)
+identical app/models/plan.rb (attachment photo already added)
+identical app/controllers/plans_controller.rb (def photo already added)
+skip app/controllers/plans_controller.rb (:show is public, but def show has code of its own, which def photo does not run): the download needs a sign-in; add :photo to allow_unauthenticated_access yourself once def photo checks whatever that code checks
+identical app/controllers/plans_controller.rb (photo_file= in create)
+identical app/controllers/plans_controller.rb (photo_file= in update)
+identical route plan_photo
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_plan_photo.rb
 create spin.toml
 create .gitignore
 create .env.example
@@ -1097,7 +1298,89 @@ route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert bin/pen.rb (./pen user)
 insert config/app.rb (PEN_BASE_URL)
-ok   show restrictions are preserved or attachment generation is refused
+create db/migrate/20260925120003_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
+skip app/controllers/plans_controller.rb (:show is public, but def show has code of its own, which def photo does not run): the download needs a sign-in; add :photo to allow_unauthenticated_access yourself once def photo checks whatever that code checks
+warning: app/controllers/plans_controller.rb: def show has code of its own, which def photo does not run; if that code limits who may see plans, check the same in def photo
+insert app/controllers/plans_controller.rb (photo_file= in create)
+insert app/controllers/plans_controller.rb (photo_file= in update)
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+create test/attachment_plan_photo.rb
+identical db/migrate/20260925120003_add_photo_to_plans.rb
+identical app/views/plans/_form.html.erb (file field already added)
+identical app/views/plans/show.html.erb (photo already shown)
+identical app/models/plan.rb (attachment photo already added)
+identical app/controllers/plans_controller.rb (def photo already added)
+skip app/controllers/plans_controller.rb (:show is public, but def show has code of its own, which def photo does not run): the download needs a sign-in; add :photo to allow_unauthenticated_access yourself once def photo checks whatever that code checks
+identical app/controllers/plans_controller.rb (photo_file= in create)
+identical app/controllers/plans_controller.rb (photo_file= in update)
+identical route plan_photo
+identical .gitignore (/storage/uploads/ already ignored)
+identical test/support/app_test.rb
+identical test/attachment_plan_photo.rb
+ok   a show with a body is accepted, warned about, and its download stays private
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/open.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/.keep
+create db/migrate/20260925120000_create_plans.rb
+create app/models/plan.rb
+create app/controllers/plans_controller.rb
+create app/views/plans/index.html.erb
+create app/views/plans/show.html.erb
+create app/views/plans/new.html.erb
+create app/views/plans/edit.html.erb
+create app/views/plans/_form.html.erb
+route resources :plans
+create db/migrate/20260925120001_add_photo_to_plans.rb
+insert app/views/plans/_form.html.erb (photo file field, multipart: true)
+insert app/views/plans/show.html.erb (photo)
+insert app/models/plan.rb (attachment photo)
+insert app/controllers/plans_controller.rb (def photo)
+insert app/controllers/plans_controller.rb (:photo in before_action :set_plan)
+warning: app/controllers/plans_controller.rb: def show has code of its own, which def photo does not run; if that code limits who may see plans, check the same in def photo
+insert app/controllers/plans_controller.rb (photo_file= in create)
+insert app/controllers/plans_controller.rb (photo_file= in update)
+route plan_photo (GET /plans/:id/photo)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/support/app_test.rb
+create test/attachment_plan_photo.rb
+ok   a show with a body is accepted without authentication as well
 create spin.toml
 create .gitignore
 create .env.example
@@ -1905,4 +2188,4 @@ create test/support/app_test.rb
 create test/attachment_item_set_post.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-34 tests, 350 assertions, 0 failures
+36 tests, 364 assertions, 0 failures

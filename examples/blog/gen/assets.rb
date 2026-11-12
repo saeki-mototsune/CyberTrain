@@ -6,7 +6,7 @@ module Gen
     # "logo.svg" -> "/assets/logo-1a2b3c4d.svg"; "" for a name that is not an asset.
     def self.digest_path(logical)
       case logical
-      when "application.css" then "/assets/application-9fd1aedf.css"
+      when "application.css" then "/assets/application-74b6a750.css"
       when "application.js" then "/assets/application-493948bc.js"
       when "logo.svg" then "/assets/logo-8177afd7.svg"
       else ""
@@ -28,4 +28,4 @@ module Gen
 end
 
 Cybertrain::Assets.install(Gen::Assets.resolver, Gen::Assets.importmap_json, Gen::Assets.preload_paths,
-                           "db34534427f2ed7a")
+                           "378e3b1c2c58de3e")

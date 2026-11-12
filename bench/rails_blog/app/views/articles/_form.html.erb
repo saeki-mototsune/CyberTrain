@@ -21,6 +21,11 @@
     <%= f.text_area :body %>
   </div>
 
+  <div class="field">
+    <%= f.label :cover %>
+    <%= f.file_field :cover, accept: "image/png,image/jpeg,image/gif,image/webp" %>
+  </div>
+
   <div class="actions">
     <%= f.submit %>
   </div>
