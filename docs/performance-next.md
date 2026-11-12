@@ -384,7 +384,7 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
 - Closure cells allocated where the block is made, not at method entry, so
   that a call which never reaches the block pays nothing (candidate 9,
   which CyberTrain now writes around in three methods). New on 2026-11-05;
-  not written up in spinel-feedback.md yet.
+  written up as spinel-feedback.md AA on 2026-11-13.
 - A `:str` FFI return that does not copy (candidate 7; spinel-feedback.md,
   "FFI and tools").
 - `Array#clear` and Hash values of objects boxing their containers (rule

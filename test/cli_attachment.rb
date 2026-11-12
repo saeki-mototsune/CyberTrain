@@ -392,26 +392,64 @@ test "show restrictions are preserved or attachment generation is refused" do
   Cybertrain::CLI::Authentication.generate("shed")
   controller_path = "shed/app/controllers/plans_controller.rb"
   add_after_class(controller_path, public_line)
-  source = read(controller_path)
-  File.write(controller_path, source.sub("  def show\n  end\n", "  def show\n    head 404 if @plan.title.empty?\n  end\n"))
-  refuse_download("shed", "plan", "photo")
 
-  # What it cannot read prevents generation too: a before_action
-  # continued on the next line, a list it cannot parse, a one-line show.
+  # A callback it cannot read prevents generation too: a before_action
+  # continued on the next line, a list it cannot parse.
   [
-    ["coop", "  before_action :hide_drafts,\n                only: [:show]\n", "  def show\n  end\n"],
-    ["hive", "  before_action :hide_drafts, only: %i[show]\n", "  def show\n  end\n"],
-    ["pen", "", "  def show; end\n"]
-  ].each do |app, callback, show|
+    ["coop", "  before_action :hide_drafts,\n                only: [:show]\n"],
+    ["hive", "  before_action :hide_drafts, only: %i[show]\n"]
+  ].each do |app, callback|
     Cybertrain::CLI::NewApp.create(app, "{ path = \"../cybertrain\" }")
     Cybertrain::CLI::Scaffold.generate(app, "plan", ["title:string"])
     Cybertrain::CLI::Authentication.generate(app)
     controller_path = "#{app}/app/controllers/plans_controller.rb"
     add_after_class(controller_path, "#{public_line}#{callback}")
-    source = read(controller_path)
-    File.write(controller_path, source.sub("  def show\n  end\n", show))
     refuse_download(app, "plan", "photo")
   end
+end
+
+# Code inside def show cannot be read for what it checks, so it is accepted
+# with a warning (the lines are in the snapshot), and the download is not
+# made public with show: it keeps the sign-in until the application says so.
+test "a show with a body is accepted, warned about, and its download stays private" do
+  public_line = "  allow_unauthenticated_access only: [:index, :show]\n"
+  [
+    ["shed", "  def show\n    head 404 if @plan.title.empty?\n  end\n"],
+    ["nook", "  def show\n    @note = Note.new\n    respond_to do |format|\n      format.html\n      format.json { render json: @plan.as_json }\n    end\n  end\n"],
+    ["pen", "  def show; end\n"]
+  ].each do |app, show|
+    Cybertrain::CLI::NewApp.create(app, "{ path = \"../cybertrain\" }")
+    Cybertrain::CLI::Scaffold.generate(app, "plan", ["title:string"])
+    Cybertrain::CLI::Authentication.generate(app)
+    controller_path = "#{app}/app/controllers/plans_controller.rb"
+    add_after_class(controller_path, public_line)
+    File.write(controller_path, read(controller_path).sub("  def show\n  end\n", show))
+    Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false)
+    controller = read(controller_path)
+    assert_includes controller, "  def photo\n"
+    assert_includes controller, show
+    assert_includes controller, public_line
+    assert_includes controller, "  before_action :set_plan, only: [:show, :edit, :update, :destroy, :photo]\n"
+    assert_includes read("#{app}/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+
+    # A second run edits nothing and does not warn again about an action
+    # it did not add.
+    before = attachment_tree(app)
+    Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false)
+    assert_equal before, attachment_tree(app)
+  end
+end
+
+# Without authentication nothing keeps the download closed: the warning is
+# all there is, so it is printed here too.
+test "a show with a body is accepted without authentication as well" do
+  Cybertrain::CLI::NewApp.create("open", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Scaffold.generate("open", "plan", ["title:string"])
+  controller_path = "open/app/controllers/plans_controller.rb"
+  File.write(controller_path, read(controller_path).sub("  def show\n  end\n", "  def show\n    @note = Note.new\n  end\n"))
+  Cybertrain::CLI::Attachment.generate("open", "plan", "photo", false)
+  assert_includes read(controller_path), "  def photo\n"
+  assert_includes read(controller_path), "  def show\n    @note = Note.new\n  end\n"
 end
 
 # Authentication is independent of record/role authorization. These checks

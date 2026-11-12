@@ -128,8 +128,9 @@ module Cybertrain
       # the columns and views itself. Appends the paths it created.
       def self.install_code(root, spec, created)
         add_model_block(root, spec)
-        add_action(root, spec)
+        added = add_action(root, spec)
         add_public_download(root, spec)
+        warn_show_body(root, spec) if added
         add_assignments(root, spec)
         add_route(root, spec)
         add_gitignore(root)
@@ -141,7 +142,11 @@ module Cybertrain
       # Check before writing anything, including when invoked by scaffold.
       # Authentication alone cannot replace a show-only authorization check.
       # Only the shared record callback is extended automatically; any other
-      # policy must explicitly cover both show and the download already.
+      # policy a callback declares must explicitly cover both show and the
+      # download already. Code inside def show is not refused: it cannot be
+      # read for what it checks, so the download is generated, never made
+      # public with show (add_public_download), and warned about
+      # (warn_show_body).
       def self.check_download_policy!(root, spec, source)
         coverage = set_record_coverage(source, spec, spec.field)
         new_action = line_start(source, "def #{spec.field}", "exact") < 0
@@ -149,7 +154,7 @@ module Cybertrain
         safe = line_start(source, controller_line(spec), "exact") >= 0 &&
                set_record_coverage(source, spec, "show") == "yes" &&
                set_record_coverage(source, spec, spec.field) == "yes" &&
-               !show_checks_more?(source, spec)
+               !callback_checks_more?(source, spec)
 
         # Read the actual ancestry rather than inferring policy from the child.
         parent = "ApplicationController"
@@ -369,8 +374,12 @@ module Cybertrain
           puts "skip #{path} (:show is public, but def #{spec.field} does not load the #{spec.singular} through before_action :set_#{spec.singular} as show does): add :#{spec.field} to allow_unauthenticated_access yourself if visitors may download it"
           return false
         end
-        if show_checks_more?(source, spec)
-          puts "skip #{path} (:show is public, but show may check more than set_#{spec.singular}: a before_action of its own, code in def show, or a line this cannot read): add :#{spec.field} to allow_unauthenticated_access yourself once def #{spec.field} checks the same"
+        if callback_checks_more?(source, spec)
+          puts "skip #{path} (:show is public, but show may check more than set_#{spec.singular}: a before_action of its own, or a line this cannot read): add :#{spec.field} to allow_unauthenticated_access yourself once def #{spec.field} checks the same"
+          return false
+        end
+        if show_has_body?(source)
+          puts "skip #{path} (:show is public, but def show has code of its own, which def #{spec.field} does not run): the download needs a sign-in; add :#{spec.field} to allow_unauthenticated_access yourself once def #{spec.field} checks whatever that code checks"
           return false
         end
 
@@ -410,11 +419,11 @@ module Cybertrain
         false
       end
 
-      # The scaffold's show is empty. Inline checks cannot safely be copied
-      # into a different action; the application must share an explicit policy.
-      def self.show_checks_more?(source, spec)
-        return true if callback_checks_more?(source, spec)
-
+      # Whether def show is anything but the scaffold's empty action. Code
+      # there cannot be read for what it checks (`@comment = Comment.new`
+      # and `head 404 if @post.draft?` are both a line), so any line counts,
+      # and so does a show this cannot find (`def show; end`, no show).
+      def self.show_has_body?(source)
         at = line_start(source, "def show", "exact")
         return true if at < 0
 
@@ -432,6 +441,17 @@ module Cybertrain
           end
         end
         body
+      end
+
+      # Said once, when the download action is added: the action runs what
+      # the callbacks run and nothing of def show. Without authentication
+      # this line is all that stands between a check in show and the file.
+      def self.warn_show_body(root, spec)
+        path = controller_file(spec)
+        return nil unless show_has_body?(File.read(File.join(root, path)))
+
+        puts "warning: #{path}: def show has code of its own, which def #{spec.field} does not run; if that code limits who may see #{spec.plural}, check the same in def #{spec.field}"
+        nil
       end
 
       # Who may download: "public" when allow_unauthenticated_access already

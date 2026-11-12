@@ -1,5 +1,5 @@
 ---
-source_sha256: 989b7e6f36de9c823523f8e145ccd2d46ab37ab5b822f2f368fdc9e8e04dd4a8
+source_sha256: 784f2a41d27411547f29595accf5896b57611dd7008eb2c1e4312fe0952a3c9c
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -519,12 +519,20 @@ La déclaration `belongs_to` rend aussi invalide un commentaire sans article
 
 > [!WHY]
 > La page d’un article liste ses commentaires et se termine par un formulaire
-> qui poste vers la route imbriquée.
+> lié à `[@article, @comment]`.
 
 Supprimez d’abord les vues de commentaire `index`, `show`, `new` et `edit`,
-désormais inaccessibles. Affichez ensuite les commentaires et le formulaire à
-la fin de la page de l’article, et remplacez le formulaire de commentaire du
-scaffold&nbsp;:
+désormais inaccessibles, et donnez à `ArticlesController#show` un `@comment`
+vide&nbsp;:
+
+```ruby app/controllers/articles_controller.rb (extrait)
+  def show
+    @comment = Comment.new
+  end
+```
+
+Affichez ensuite les commentaires et le formulaire à la fin de la page de
+l’article, et remplacez le formulaire de commentaire du scaffold&nbsp;:
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
@@ -534,13 +542,14 @@ scaffold&nbsp;:
 <% end %>
 
 <h2>Add a comment:</h2>
-<%= render "comments/form" %>
+<%= render "comments/form", comment: @comment %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
+<%# locals: (comment:) %>
+<%= form_with(model: [@article, comment]) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit "Create Comment" %>
+  <%= f.submit %>
 <% end %>
 ```
 
@@ -565,22 +574,14 @@ Le partiel de commentaire&nbsp;:
 
 ### Où pointent le formulaire et le bouton
 
-Le formulaire désigne sa cible avec `url:` et ses champs
-(`comment[commenter]`, `comment[body]`) avec `scope:`, il n’a donc besoin
-d’aucun enregistrement `Comment`&nbsp;: un commentaire qui ne s’enregistre pas
-entraîne une redirection vers la page, avec la raison dans le flash
-([étape 10](#comments-controller)), et le formulaire n’est jamais rendu de
-nouveau avec ses erreurs.
-
-`button_to ... [@article, comment]` se résout selon la règle
-`[parent, child]`&nbsp;: un nouvel enfant est routé vers la collection
+`button_to ... [@article, comment]` et
+`form_with(model: [@article, comment])` se résolvent tous deux selon la même
+règle `[parent, child]`&nbsp;: un nouvel enfant est routé vers la collection
 imbriquée (`article_comments_path`), un enfant persisté vers le membre
 imbriqué (`article_comment_path`), tous deux générés dans `gen/routes.rb` à
-partir du bloc `resources` imbriqué ci-dessus.
-`form_with(model: [@article, @comment])` suit la même règle, et
-`examples/blog` écrit le formulaire ainsi, avec `@comment = Comment.new` dans
-`ArticlesController#show`. Ce tutoriel laisse `show` tel que le scaffold l’a
-écrit, vide, parce que le générateur de l’[étape 18](#attachments) l’exige.
+partir du bloc `resources` imbriqué ci-dessus. Le formulaire reçoit son
+commentaire comme variable locale, pour que l’[étape 13](#turbo) puisse le
+rendre de nouveau avec un commentaire neuf.
 
 > [!RULE] Les vues forment une grammaire fermée
 > ### Les vues forment une grammaire fermée, pas du Ruby
@@ -751,7 +752,7 @@ de l’article&nbsp;:
 <h2>Add a comment:</h2>
 
 <div id="comment_form">
-  <%= render "comments/form" %>
+  <%= render "comments/form", comment: @comment %>
 </div>
 ```
 
@@ -773,6 +774,7 @@ posté&nbsp;; `destroy` dit aux autres pages de retirer l’élément&nbsp;:
     # Chaque page abonnée avec turbo_stream_from @article ajoute le commentaire à la fin de sa liste.
     Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
                                            component: CommentComponent.new(comment: @comment))
+    @new_comment = Comment.new   # le formulaire vide que create.turbo_stream.erb remet en place
     respond_to do |format|
       format.turbo_stream   # app/views/comments/create.turbo_stream.erb
       format.html do
@@ -794,7 +796,7 @@ posté&nbsp;; `destroy` dit aux autres pages de retirer l’élément&nbsp;:
 
 ```erb app/views/comments/create.turbo_stream.erb
 <%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
-<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+<%= turbo_stream.update "comment_form", partial: "comments/form", locals: { comment: @new_comment } %>
 ```
 
 Ouvrez un article dans deux fenêtres et postez un commentaire dans
@@ -941,6 +943,14 @@ après la réponse&nbsp;:
       format.json { render json: @articles.map(&:as_json) }
     end
   end
+
+  def show
+    @comment = Comment.new
+    respond_to do |format|
+      format.html
+      format.json { render json: @article.as_json }
+    end
+  end
 ```
 
 ```console terminal — blog/
@@ -959,10 +969,9 @@ $ curl http://127.0.0.1:3000/articles.json
 - Limitez le bloc à ses lignes `format.`&nbsp;: quand une requête se replie
   sur html, le bloc s’exécute une seconde fois.
 
-`show` accepte le même bloc, avec `render json: @article.as_json`, et
-`examples/blog` l’a. Ajoutez-le après l’[étape 18](#attachments), dont le
-générateur veut un `show` vide au moment où il s’exécute. Tout sur les
-formats&nbsp;: [Formats et `respond_to`](requests.md#formats-and-respond_to).
+`/articles/1.json` renvoie un seul article, grâce au même bloc dans `show`.
+Tout sur les formats&nbsp;:
+[Formats et `respond_to`](requests.md#formats-and-respond_to).
 
 <!-- step 16 #test stage: Compilation · `cybertrain spin test` -->
 ## Tester
@@ -1170,7 +1179,7 @@ lire `@current_user`. Masquez ce qu’un visiteur ne peut pas utiliser&nbsp;:
   <h2>Add a comment:</h2>
 
   <div id="comment_form">
-    <%= render "comments/form" %>
+    <%= render "comments/form", comment: @comment %>
   </div>
 <% end %>
 ```
@@ -1406,6 +1415,15 @@ end
 > octets, et une seule commande écrit le reste comme du code qui appartient à
 > l’application, à la place du `has_one_attached` d’Active Storage.
 
+L’image sera affichée sur la page de l’article, que les visiteurs peuvent lire
+depuis l’étape 17&nbsp;: son téléchargement doit donc leur être ouvert aussi.
+Avant de lancer le générateur, ajoutez `:cover` à la liste écrite à
+l’étape 17&nbsp;:
+
+```ruby app/controllers/articles_controller.rb (extrait)
+  allow_unauthenticated_access only: [:index, :show, :cover]
+```
+
 ```shell terminal — blog/
 cybertrain generate attachment article cover   # pour un nouveau modèle : generate scaffold NAME field:type ... cover:attachment
 cybertrain db migrate                          # ajoute les colonnes cover_* à articles
@@ -1422,7 +1440,7 @@ validation et des callbacks de sauvegarde et de suppression. Dans
 
 ```ruby app/controllers/articles_controller.rb (extrait)
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; you added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -1448,15 +1466,18 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-L’étape 17 a rendu toutes les pages privées, et l’image d’une page d’article
-publique est récupérée depuis `/articles/1/cover`. Le générateur rend le
-téléchargement exactement aussi public que la page de l’article&nbsp;: puisque
-`allow_unauthenticated_access` contient `:show`, il ajoute `:cover` à cette
-liste, comme dans la première ligne ci-dessus, et les visiteurs qui peuvent
-lire l’article voient son image. Si la page de l’article demande une
-connexion, le téléchargement aussi. Tout ce que `set_article` fait pour
-limiter les articles qu’un utilisateur peut voir limite aussi le
-téléchargement.
+Le téléchargement trouve son article par `set_article`, comme `show`&nbsp;:
+tout ce que `set_article` fait pour limiter les articles qu’un utilisateur
+peut voir limite donc aussi le téléchargement. Parmi les lignes qu’il affiche,
+le générateur émet un avertissement, parce que ce `show` a du code qui lui est
+propre&nbsp;:
+
+```text sortie — cybertrain generate attachment
+warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
+```
+
+Ici, ce code construit un commentaire et choisit un format&nbsp;; il ne refuse
+personne, il n’y a donc rien à recopier dans `cover`.
 
 Le générateur ajoute aussi `get "/articles/:id/cover"` à `config/routes.rb`,
 `multipart: true` et un champ de fichier au formulaire, au-dessus du bouton
@@ -1477,15 +1498,15 @@ d’envoi, et l’image à la page d’affichage, juste après le `<h1>`&nbsp;:
 ```
 
 > [!NOTE]
-> Le générateur copie les règles d’accès de `show` sur le téléchargement, et
-> seulement quand il peut les lire&nbsp;: `show` doit être l’action vide du
-> scaffold, derrière `before_action :set_article`. Avec du code dans
-> `def show`, ou un autre `before_action` qui liste `:show` sans la nouvelle action,
-> il s’arrête avec `cannot preserve show's authorization for :cover` et
-> n’écrit rien. C’est pourquoi `show` est resté vide jusqu’ici. Désormais, il
-> peut s’étoffer (la réponse JSON de l’[étape 15](#json), un `@comment` pour
-> le formulaire)&nbsp;; garder `cover` aussi restreint que `show` vous revient
-> alors.
+> Le générateur copie les règles d’accès de `show` sur le téléchargement, mais
+> seulement celles qu’il peut lire&nbsp;: les callbacks. Un `before_action`
+> autre que `set_article` qui liste `:show` sans la nouvelle action l’arrête
+> avec `cannot preserve show's authorization for :cover`, et rien n’est écrit.
+> Le code placé dans `def show`, il ne peut pas lire ce qu’il vérifie, d’où
+> l’avertissement. Avec un `show` vide, il ajoute de lui-même `:cover` à
+> `allow_unauthenticated_access` là où `:show` figure&nbsp;; avec du code dans
+> `show`, il ne touche pas à cette ligne, et sans `:cover` à cet endroit
+> l’image exige une connexion.
 
 > [!RULE] Règle Spinel&nbsp;: has_one_attached
 > ### `has_one_attached` est écrit en toutes lettres
@@ -1533,7 +1554,8 @@ et il remplit le corps avec `"A article."`, allongé jusqu’au minimum de
 > [!NOTE]
 > Lancez `cybertrain spin test` comme à l’[étape 16](#test)&nbsp;; le test
 > utilise SQLite, donc son instantané vient du binaire compilé.
-> `examples/blog` s’arrête avant cette étape. Pas encore pris en charge&nbsp;:
+> `examples/blog` comporte aussi cette étape, et son JSON n’inclut pas les
+> colonnes `cover_*` (`Article#public_json`). Pas encore pris en charge&nbsp;:
 > plusieurs fichiers par champ, S3 ou un autre stockage distant, les variantes
 > d’image, et l’envoi de gros corps en flux vers le disque (le corps entier
 > est lu en mémoire, jusqu’à `max_body_bytes`).

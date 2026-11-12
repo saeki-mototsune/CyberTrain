@@ -1,5 +1,5 @@
 ---
-source_sha256: 989b7e6f36de9c823523f8e145ccd2d46ab37ab5b822f2f368fdc9e8e04dd4a8
+source_sha256: 784f2a41d27411547f29595accf5896b57611dd7008eb2c1e4312fe0952a3c9c
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -509,11 +509,20 @@ end
 
 > [!WHY]
 > Страница статьи выводит список её комментариев и заканчивается формой,
-> которая отправляется на вложенный маршрут.
+> привязанной к `[@article, @comment]`.
 
 Сначала удалите ставшие недоступными представления комментариев `index`,
-`show`, `new` и `edit`. Затем выведите комментарии и форму в конце страницы
-статьи и замените форму комментария, созданную скаффолдом:
+`show`, `new` и `edit` и добавьте в `ArticlesController#show` пустой
+`@comment`:
+
+```ruby app/controllers/articles_controller.rb (фрагмент)
+  def show
+    @comment = Comment.new
+  end
+```
+
+Затем выведите комментарии и форму в конце страницы статьи и замените форму
+комментария, созданную скаффолдом:
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
@@ -523,13 +532,14 @@ end
 <% end %>
 
 <h2>Add a comment:</h2>
-<%= render "comments/form" %>
+<%= render "comments/form", comment: @comment %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
+<%# locals: (comment:) %>
+<%= form_with(model: [@article, comment]) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit "Create Comment" %>
+  <%= f.submit %>
 <% end %>
 ```
 
@@ -554,21 +564,14 @@ end
 
 ### Куда ведут форма и кнопка
 
-Форма задаёт свой адрес через `url:`, а имена полей (`comment[commenter]`,
-`comment[body]`) — через `scope:`, поэтому запись `Comment` ей не нужна: если
-комментарий не сохранился, выполняется редирект обратно с причиной во flash
-([шаг 10](#comments-controller)), и форма никогда не отрисовывается повторно
-со своими ошибками.
-
-`button_to ... [@article, comment]` разрешается по правилу `[parent, child]`:
-новый дочерний объект направляется во вложенную коллекцию
-(`article_comments_path`), сохранённый — во вложенный элемент
+И `button_to ... [@article, comment]`, и
+`form_with(model: [@article, comment])` разрешаются по одному и тому же
+правилу `[parent, child]`: новый дочерний объект направляется во вложенную
+коллекцию (`article_comments_path`), сохранённый — во вложенный элемент
 (`article_comment_path`); оба хелпера генерируются в `gen/routes.rb` из
-вложенного блока `resources` выше. `form_with(model: [@article, @comment])`
-подчиняется тому же правилу, и в `examples/blog` форма написана именно так, с
-`@comment = Comment.new` в `ArticlesController#show`. В этом учебнике `show`
-остаётся таким, каким его написал скаффолд, — пустым, потому что этого требует
-генератор из [шага 18](#attachments).
+вложенного блока `resources` выше. Форма получает свой комментарий как
+локальную переменную, чтобы [шаг 13](#turbo) мог отрисовать её заново с новым
+комментарием.
 
 > [!RULE] Представления — замкнутая грамматика
 > ### Представления — замкнутая грамматика, а не Ruby
@@ -734,7 +737,7 @@ import "@hotwired/turbo"
 <h2>Add a comment:</h2>
 
 <div id="comment_form">
-  <%= render "comments/form" %>
+  <%= render "comments/form", comment: @comment %>
 </div>
 ```
 
@@ -757,6 +760,7 @@ import "@hotwired/turbo"
     # Каждая страница, подписанная через turbo_stream_from @article, добавляет комментарий.
     Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
                                            component: CommentComponent.new(comment: @comment))
+    @new_comment = Comment.new   # пустая форма, которую вернёт на место create.turbo_stream.erb
     respond_to do |format|
       format.turbo_stream   # app/views/comments/create.turbo_stream.erb
       format.html do
@@ -778,7 +782,7 @@ import "@hotwired/turbo"
 
 ```erb app/views/comments/create.turbo_stream.erb
 <%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
-<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+<%= turbo_stream.update "comment_form", partial: "comments/form", locals: { comment: @new_comment } %>
 ```
 
 Откройте одну статью в двух окнах и отправьте комментарий в одном: он появится
@@ -922,6 +926,14 @@ end
       format.json { render json: @articles.map(&:as_json) }
     end
   end
+
+  def show
+    @comment = Comment.new
+    respond_to do |format|
+      format.html
+      format.json { render json: @article.as_json }
+    end
+  end
 ```
 
 ```console терминал — blog/
@@ -939,9 +951,7 @@ $ curl http://127.0.0.1:3000/articles.json
 - Оставляйте в блоке только строки `format.`: когда запрос откатывается к
   html, блок выполняется второй раз.
 
-`show` принимает такой же блок, с `render json: @article.as_json`, и в
-`examples/blog` он есть. Добавьте его после [шага 18](#attachments):
-генератору этого шага при запуске нужно, чтобы `show` был пустым. Всё о
+`/articles/1.json` — это одна статья, из такого же блока в `show`. Всё о
 форматах: [Форматы и `respond_to`](requests.md#formats-and-respond_to).
 
 <!-- step 16 #test stage: Сборка · `cybertrain spin test` -->
@@ -1149,7 +1159,7 @@ class ArticlesController < ApplicationController
   <h2>Add a comment:</h2>
 
   <div id="comment_form">
-    <%= render "comments/form" %>
+    <%= render "comments/form", comment: @comment %>
   </div>
 <% end %>
 ```
@@ -1375,6 +1385,14 @@ end
 > пишет в виде кода, которым владеет приложение, вместо `has_one_attached` из
 > Active Storage.
 
+Картинка будет показана на странице статьи, которую посетители могут читать с
+шага 17, поэтому её скачивание тоже должно быть им открыто. Перед запуском
+генератора добавьте `:cover` в список, который написал шаг 17:
+
+```ruby app/controllers/articles_controller.rb (фрагмент)
+  allow_unauthenticated_access only: [:index, :show, :cover]
+```
+
 ```shell терминал — blog/
 cybertrain generate attachment article cover   # для новой модели: generate scaffold NAME field:type ... cover:attachment
 cybertrain db migrate                          # добавляет столбцы cover_* в articles
@@ -1389,7 +1407,7 @@ cybertrain db migrate                          # добавляет столбц
 
 ```ruby app/controllers/articles_controller.rb (фрагмент)
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; you added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -1415,14 +1433,17 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-Шаг 17 закрыл все страницы, а картинка на публичной странице статьи
-запрашивается с `/articles/1/cover`. Генератор делает скачивание ровно
-настолько публичным, насколько публична страница статьи: раз
-`allow_unauthenticated_access` перечисляет `:show`, он добавляет в этот список
-`:cover`, как в первой строке выше, и посетители, которым можно читать статью,
-видят и картинку. Если страница статьи требует входа, то и скачивание тоже.
-Всё, что `set_article` делает для ограничения видимых пользователю статей,
-ограничивает и скачивание.
+Скачивание находит свою статью через `set_article`, как и `show`, поэтому всё,
+что `set_article` делает для ограничения видимых пользователю статей,
+ограничивает и скачивание. Среди своих строк генератор выводит предупреждение,
+потому что в этом `show` есть собственный код:
+
+```text вывод — cybertrain generate attachment
+warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
+```
+
+Здесь этот код создаёт комментарий и выбирает формат; он никому не отказывает,
+так что переносить в `cover` нечего.
 
 Генератор также добавляет `get "/articles/:id/cover"` в `config/routes.rb`,
 `multipart: true` и поле выбора файла в форму, над кнопкой отправки, а на
@@ -1443,15 +1464,16 @@ class ArticlesController < ApplicationController
 ```
 
 > [!NOTE]
-> Генератор переносит правила доступа `show` на скачивание, и только когда
-> может их прочитать: `show` должен быть пустым действием из скаффолда под
-> `before_action :set_article`. Если внутри `def show` есть код или
-> ещё один `before_action` перечисляет `:show` без нового действия,
-> генератор останавливается с сообщением
-> `cannot preserve show's authorization for :cover` и ничего не пишет. Вот
-> почему `show` до сих пор оставался пустым. С этого момента он может расти
-> (JSON-ответ из [шага 15](#json), `@comment` для формы); следить, чтобы
-> `cover` оставался так же ограничен, как `show`, теперь предстоит вам.
+> Генератор переносит правила доступа `show` на скачивание, но только те,
+> которые может прочитать: колбэки. Если какой-нибудь `before_action`, кроме
+> `set_article`, перечисляет `:show` без нового действия, генератор
+> останавливается с сообщением
+> `cannot preserve show's authorization for :cover` и ничего не пишет. Что
+> проверяет код внутри `def show`, он прочитать не может — отсюда и
+> предупреждение. При пустом `show` он сам добавляет `:cover` в
+> `allow_unauthenticated_access` там, где перечислен `:show`; если в `show`
+> есть код, он эту строку не трогает, а без `:cover` в ней изображение требует
+> входа.
 
 > [!RULE] Правило Spinel: has_one_attached
 > ### `has_one_attached` расписан явно
@@ -1498,7 +1520,8 @@ class ArticlesController < ApplicationController
 > [!NOTE]
 > Запускайте `cybertrain spin test`, как в [шаге 16](#test); тест использует
 > SQLite, поэтому его снимок берётся из скомпилированного бинарника.
-> `examples/blog` заканчивается до этого шага. Пока не сделано: несколько
+> В `examples/blog` этот шаг тоже есть, а его JSON не включает столбцы
+> `cover_*` (`Article#public_json`). Пока не сделано: несколько
 > файлов на поле, S3 и другое удалённое хранилище, варианты изображений и
 > потоковая запись больших тел на диск (тело читается в память целиком, до
 > `max_body_bytes`).

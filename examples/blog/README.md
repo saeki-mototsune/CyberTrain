@@ -74,10 +74,10 @@ as before.
 ## Formats
 
 `ArticlesController#index` and `#show` answer HTML and JSON through
-`respond_to`: `/articles.json` is the list (`render json:
-@articles.map(&:as_json)`, the same order and date filter as the page),
-`/articles/1.json` one article (`@article.as_json`; times in ISO 8601,
-UTC), and a request whose `Accept` asks for `application/json` gets JSON
+`respond_to`: `/articles.json` is the list (each article's `public_json`, in the same
+order and date filter as the page), `/articles/1.json` one article
+(`@article.public_json`: `as_json`, times in ISO 8601, UTC, without the
+cover's storage columns and with its `cover_url`), and a request whose `Accept` asks for `application/json` gets JSON
 too. Another format (`/articles.xml`) is `406 Not Acceptable`. The index
 also takes `?order=old` (a `select` beside the date filter; newest first
 otherwise), and its counts go through `number_with_delimiter`
@@ -87,7 +87,7 @@ otherwise), and its counts go through `number_with_delimiter`
 cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen (gen and db in debug mode)
 cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000`, or PORT=4000, to change it)
 cybertrain build       # dist/blog (views embedded) + dist/public/
-cybertrain spin test   # test/articles.rb, test/comments.rb against storage/test.sqlite3
+cybertrain spin test   # test/articles.rb, test/comments.rb, test/attachment_article_cover.rb against storage/test.sqlite3
 ```
 
 Run `cybertrain spin run gen` after changing the schema, the routes or a
@@ -97,6 +97,41 @@ controller's instance variables and callbacks, a job class, a file under
 `app/views/` are read at run time: edit them without rebuilding. A
 production binary (`cybertrain build`, or `CYBERTRAIN_ENV=production`)
 renders only the views embedded at build time.
+
+## A cover image
+
+An article can carry a picture, added the way the tutorial's cover image step
+adds it:
+
+```sh
+cybertrain generate attachment article cover
+cybertrain db migrate
+```
+
+- **What the generator wrote.** Five `cover_*` columns on `articles` (the
+  key and metadata; the bytes are files under `storage/uploads/`), a block in
+  `Article` (`cover_file=`, `cover_attached?`, `cover_url`, a validation and
+  the callbacks that store and delete the file), `ArticlesController#cover`
+  with its route (`GET /articles/1/cover`), one line each in `create` and
+  `update`, the file input of the form (now `multipart: true`), the image on
+  the article page, and `test/attachment_article_cover.rb` with
+  `test/support/app_test.rb`.
+- **Who may upload and download.** The blog has no accounts: whoever may
+  write an article may attach a cover, and whoever may read it may fetch the
+  cover. `show` has code of its own, so the generator printed its warning
+  that `cover` does not run it; that code builds a comment and picks a
+  format, and refuses nobody.
+- **What is accepted and how it is served.** PNG, JPEG, GIF and WebP up to
+  2 MB, the type detected from the bytes; anything else is a 422 with the
+  form again. The file goes out through `send_blob`, with `nosniff` and its
+  own `Content-Security-Policy: default-src 'none'; sandbox`.
+- **Written by hand.** `Article#public_json`, what the JSON answers show:
+  the columns without the five `cover_*` ones, plus `cover_url` (`""`
+  without a cover). And one stylesheet rule, so that an image is never wider
+  than the page's column.
+- **Deploying.** `storage/uploads/` is inside the `blog_storage` volume the
+  Kamal setup already mounts at `/app/storage`; back it up together with
+  the SQLite file.
 
 ## Jobs, a scheduled task, a cache and the jobs page
 

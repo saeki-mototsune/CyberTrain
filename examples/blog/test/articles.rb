@@ -33,7 +33,7 @@ test "GET /articles/new renders the form with a CSRF token" do
   client = new_client
   res = client.get("/articles/new")
   assert_response res, :ok
-  assert_includes res.body, "<form action=\"/articles\" method=\"post\">"
+  assert_includes res.body, "<form action=\"/articles\" method=\"post\" enctype=\"multipart/form-data\">"
   assert_includes res.body, "name=\"article[title]\""
   assert_includes res.body, "<textarea name=\"article[body]\""
   assert_includes res.body, "value=\"Create Article\""
@@ -119,7 +119,7 @@ test "GET /articles/:id/edit renders the form with the article's values" do
   article = BlogTest.article("Hello Rails")
   res = client.get("#{BlogTest.article_path(article)}/edit")
   assert_response res, :ok
-  assert_includes res.body, "<form action=\"#{BlogTest.article_path(article)}\" method=\"post\">"
+  assert_includes res.body, "<form action=\"#{BlogTest.article_path(article)}\" method=\"post\" enctype=\"multipart/form-data\">"
   assert_includes res.body, "<input type=\"hidden\" name=\"_method\" value=\"patch\">"
   assert_includes res.body, "value=\"Hello Rails\""
   assert_includes res.body, "value=\"Update Article\""
@@ -491,7 +491,8 @@ end
 
 def article_json(article, title, body = "I am on Rails! This is my first article.")
   "{\"id\":#{article.id},\"title\":\"#{title}\",\"body\":\"#{body}\"," \
-    "\"created_at\":\"2024-03-10T09:00:00.000Z\",\"updated_at\":\"2024-03-10T09:00:00.000Z\"}"
+    "\"created_at\":\"2024-03-10T09:00:00.000Z\",\"updated_at\":\"2024-03-10T09:00:00.000Z\"," \
+    "\"cover_url\":\"\"}"
 end
 
 test "/articles.json and /articles/:id.json answer JSON through respond_to; /articles.xml is 406" do
@@ -699,6 +700,32 @@ test "a signed-in browser reaches /admin/articles, and the article page links to
   ENV["BLOG_ADMIN_TOKEN"] = "a-rotated-token"
   assert_response client.get("/admin/articles"), :not_found
   assert_nil client.get(BlogTest.article_path(article)).body.index("/admin/articles")
+end
+
+# The JSON of an article names where its cover is served from and keeps the
+# cover_* columns (the storage key and its metadata) to itself.
+test "an article's JSON has the cover's URL and none of the cover_* columns" do
+  client = new_client
+  Cybertrain::BlobStore.root = "tmp/test_uploads"
+  client.get("/articles/new")
+  png = Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01])
+  upload = Cybertrain::Test::Upload.new("article[cover]", "cover.png", "image/png", png)
+  res = client.post_multipart("/articles", { "authenticity_token" => BlogTest.form_token(client),
+                                             "article[title]" => "With a cover",
+                                             "article[body]" => "An article with a picture." }, [upload])
+  assert_response res, :see_other
+  article = Article.last
+  assert article.cover_attached?, "expected the cover to be attached"
+
+  res = client.get("/articles/#{article.id}.json")
+  assert_response res, :ok
+  assert_includes res.body, "\"cover_url\":\"/articles/#{article.id}/cover?v="
+  assert_nil res.body.index("cover_key")
+  assert_nil res.body.index("cover_checksum")
+
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<img src=\"/articles/#{article.id}/cover?v="
+  article.destroy
 end
 
 Cybertrain::Test.run!
