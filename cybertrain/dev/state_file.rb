@@ -102,35 +102,64 @@ module Cybertrain
         true
       end
 
+      # One read of the state file: the stamp the file had just before its
+      # text was read, and the snapshot of that text. A Reader holds one
+      # and replaces it whole.
+      # @api private
+      class Reading
+        # @return [String] see Reader.state_stamp
+        attr_reader :reading_stamp
+        # @return [StateSnapshot]
+        attr_reader :reading_snapshot
+
+        def initialize(stamp, snapshot)
+          @reading_stamp = stamp
+          @reading_snapshot = snapshot
+        end
+      end
+
       # Reads the state file at a path, again only when its modification
-      # time (in nanoseconds) or its size has changed since the last read.
+      # time (in nanoseconds), its size or its inode has changed since the
+      # last read. Requests call #current concurrently and it takes no lock
+      # (NOTES rule 57): the stamp and the snapshot live in one Reading,
+      # replaced by one assignment, so a request never sees the stamp of
+      # one read beside the snapshot of another.
       # @api private
       class Reader
         # @param path [String]
         def initialize(path)
           @path = path
-          @stamp = ""
-          @snapshot = StateSnapshot.new
+          @reading = Reading.new("", StateSnapshot.new)
         end
 
         # The file's current snapshot; the default one while it is missing.
         # @return [StateSnapshot]
         def current
+          held = @reading
           stamp = Reader.state_stamp(@path)
-          if stamp != @stamp
-            @snapshot = stamp.empty? ? StateSnapshot.new : StateFile.parse(Reader.state_text(@path))
-            @stamp = stamp
-          end
-          @snapshot
+          return held.reading_snapshot if stamp == held.reading_stamp
+
+          # The stamp is taken before the text is read and both go into the
+          # Reading together. A file replaced between the two gives newer
+          # text under an older stamp, which the next call finds different
+          # from the file's and reads again; never a new stamp over old
+          # text. Two requests refreshing at once each store a consistent
+          # pair; if the older pair lands last, the next call reads again.
+          snapshot = stamp.empty? ? StateSnapshot.new : StateFile.parse(Reader.state_text(@path))
+          @reading = Reading.new(stamp, snapshot)
+          snapshot
         end
 
-        # "<seconds>.<nanoseconds>:<size>" of a regular file, "" when there
-        # is none (or it vanished meanwhile).
+        # "<seconds>.<nanoseconds>:<size>:<inode>" of a regular file, "" when
+        # there is none (or it vanished meanwhile). The inode tells apart two
+        # same-size files renamed into place within the clock's granularity:
+        # the new file is created while the old one still holds its inode.
         def self.state_stamp(path)
           return "" unless File.file?(path)
 
-          t = File.mtime(path)
-          "#{t.to_i}.#{t.nsec}:#{File.size(path)}"
+          st = File.stat(path)
+          t = st.mtime
+          "#{t.to_i}.#{t.nsec}:#{st.size}:#{st.ino}"
         rescue SystemCallError
           ""
         end

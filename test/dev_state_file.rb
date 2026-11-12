@@ -75,4 +75,59 @@ test "a build status with a reader answers from the state file as it is now" do
   assert !status.failed
 end
 
+# The supervisor's way of writing: the whole file to PATH.tmp, renamed over
+# PATH.
+def write_into_place(path, text)
+  File.write("#{path}.tmp", text)
+  File.rename("#{path}.tmp", path)
+  nil
+end
+
+test "two readers on one path are independent" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/dev_state_file_two_readers_test"
+  File.delete(path) if File.exist?(path)
+  first = F::Reader.new(path)
+  write_into_place(path, F.format(6, "cruby", "building", ""))
+  assert_equal 6, first.current.generation
+  write_into_place(path, F.format(7, "spinel", "ready", ""))
+  second = F::Reader.new(path)
+  assert_equal 7, second.current.generation
+  assert_equal "spinel", second.current.serving
+  assert_equal 7, first.current.generation
+  File.delete(path)
+end
+
+test "a same-size rewrite renamed into place is noticed" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/dev_state_file_same_size_test"
+  File.delete(path) if File.exist?(path)
+  reader = F::Reader.new(path)
+  write_into_place(path, F.format(8, "cruby", "failed", "aaaa"))
+  assert_equal "aaaa", reader.current.output
+  write_into_place(path, F.format(8, "cruby", "failed", "bbbb"))
+  assert_equal "bbbb", reader.current.output
+  write_into_place(path, F.format(8, "cruby", "failed", "cccc"))
+  assert_equal "cccc", reader.current.output
+  File.delete(path)
+end
+
+test "a file that goes away reads as the default snapshot, and is read again when it comes back" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/dev_state_file_reappearing_test"
+  File.delete(path) if File.exist?(path)
+  reader = F::Reader.new(path)
+  write_into_place(path, F.format(9, "cruby", "failed", "first"))
+  assert_equal "failed", reader.current.build
+  File.delete(path)
+  s = reader.current
+  assert_equal 0, s.generation
+  assert_equal "idle", s.build
+  assert_equal "", s.output
+  write_into_place(path, F.format(10, "cruby", "binary_failed", "second"))
+  assert_equal 10, reader.current.generation
+  assert_equal "second", reader.current.output
+  File.delete(path)
+end
+
 Cybertrain::Test.run!

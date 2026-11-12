@@ -4,4 +4,7 @@ ok   anything else is the default snapshot
 ok   the reader rereads a file that changed and survives its absence
 ok   build status fails for failed and binary_failed only
 ok   a build status with a reader answers from the state file as it is now
-6 tests, 41 assertions, 0 failures
+ok   two readers on one path are independent
+ok   a same-size rewrite renamed into place is noticed
+ok   a file that goes away reads as the default snapshot, and is read again when it comes back
+9 tests, 54 assertions, 0 failures
