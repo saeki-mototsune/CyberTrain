@@ -2727,8 +2727,8 @@ application, then `spin build` on each of its three executables:
 
 `bin/gen.rb` requires the routes and the schema; a controller cannot
 reach its binary. So an edit to a controller costs the next `spin run
-gen` 38 s and the next `spin run db` 72 s for binaries identical to the
-ones on disk, and a program that writes a Ruby file (the migrator writes
+gen` 38 s (18 s when its C is split, below) and the next `spin run db`
+72 s for binaries identical to the ones on disk, and a program that writes a Ruby file (the migrator writes
 `db/schema.rb`, the generator writes `gen/`) makes itself stale.
 
 - What would fix it: the compiler knows the files a program was compiled
@@ -2741,17 +2741,25 @@ ones on disk, and a program that writes a Ruby file (the migrator writes
   `db/schema.rb` that has not changed; the CLI builds gen and db with
   `SPIN_DEBUG=1`, which makes the needless compile cheaper, not rarer.
 
-### spin: no build flags per executable, and a 2.3 MB unit is one compile
+### spin: no build flags per executable, and a unit just under 4 MiB is one compile
 
-`bin/gen.rb` compiles to 2.3 MB of C, under the 4 MB at which spinel
-splits a unit, so one C compiler process runs over it at `-O2`:
+`bin/gen.rb` compiles to 4.15 MB of C (2.39 MB with `--no-line-map`) when
+the framework is checked out at `/home/user/CyberTrain`: 44 KB under the
+4 MiB at which spinel splits a unit, so one C compiler process runs over
+it at `-O2`. The 23,816 `#line` directives each carry a path, so the
+same program with the framework at a path of 88 characters is 5.6 MB,
+is split in four, and builds in less than half the time:
 
 | `spinel bin/gen.rb` | Total | Analysis | C compiler |
 | --- | --: | --: | --: |
-| as `spin run gen` builds it | 38.1 s | 4.5 s | 32.9 s |
-| `--jobs=4` | 16.9 s | 4.1 s | 12.2 s |
-| `-O 1` | 25.0 s | 4.9 s | 19.5 s |
-| `-O 0` | 11.5 s | 4.8 s | 6.1 s |
+| as `spin run gen` builds it, 4.15 MB of C | 38.1 s | 4.5 s | 32.9 s |
+| as `spin run gen` builds it, 5.6 MB of C (four parts) | 17.9 s | 4.4 s | 12.9 s |
+| the 4.15 MB with `--jobs=4` | 16.9 s | 4.1 s | 12.2 s |
+| the 4.15 MB with `-O 1` | 25.0 s | 4.9 s | 19.5 s |
+| the 4.15 MB with `-O 0` | 11.5 s | 4.8 s | 6.1 s |
+
+So the directory a framework is installed in decides whether a tool
+takes 38 s or 18 s to build.
 
 gen runs for 6 ms, so its optimisation level buys nothing. `spin run`
 passes nothing to spinel, `spin build gen -- -O 0` is never up to date,
@@ -2760,8 +2768,9 @@ the one switch spin remembers (`build/bin/.gen.mode`), and it is an
 environment variable every caller must set.
 
 - What would fix it: flags per executable in spin.toml (`[bin.gen]
-  opt = 0`), or a split threshold that follows the cores (a unit of 1 MB
-  or more when `--jobs` would use more than one).
+  opt = 0`), and a split threshold that follows the cores and counts the
+  C without its `#line` directives (a unit of 1 MB or more when `--jobs`
+  would use more than one).
 - What CyberTrain does today: `SPIN_DEBUG=1 spin run gen` and `... run
   db` wherever the CLI and the rebuilder run them
   (`Cybertrain::Shell::TOOL_SPIN`).

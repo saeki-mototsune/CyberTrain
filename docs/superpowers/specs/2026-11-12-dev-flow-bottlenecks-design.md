@@ -17,7 +17,7 @@ compare the columns of this table with each other, not with those.
 
 | Step of the flow | Time | Where it goes |
 | --- | --- | --- |
-| `cybertrain new` | 38 s | compiling `bin/gen.rb`: 4.5 s analysis, 33 s for the C compiler on one 2.3 MB unit at `-O2` |
+| `cybertrain new` | 38 s | compiling `bin/gen.rb`: 4.5 s analysis, 33 s for the C compiler on one unit at `-O2` (18 s in all when the unit is split, see C3) |
 | `generate scaffold` | 0.07 s | |
 | `cybertrain db migrate`, first | 157 s | gen compiled (38 s), `bin/db.rb` compiled (72 s), gen compiled again (38 s) |
 | `cybertrain db migrate`, nothing pending | 147 s | the same three compiles |
@@ -59,11 +59,17 @@ did: the command that just compiled `bin/db.rb` invalidates it, and the gen
 run that follows compiles gen for nothing.
 
 **C3. The tools are compiled like the server.** gen runs for 6 ms and db for
-about as long, yet both are built at `-O2`, and gen's C is under the 4 MB at
-which spinel splits a unit, so one C compiler process takes 33 s over it.
-With `SPIN_DEBUG=1` (spin's debug mode: `-O0 -g`, kept apart from release
-builds by `build/bin/.<name>.mode`) gen builds in 8.5 s and db in 57 s, and
-gen's output is byte-identical.
+about as long, yet both are built at `-O2`. gen's C, with its `#line`
+directives, is 4.15 MB for a framework checked out at `/home/user/CyberTrain`:
+44 KB under the 4 MiB at which spinel splits a unit, so one C compiler
+process takes 33 s over it and gen builds in 38 s. The 23,816 `#line`
+directives each hold a path, so a framework two characters deeper is over
+the line: at the path of the baseline run in section 5 the C is 5.6 MB,
+spinel compiles it in four parts and gen builds in 18 s on the four cores.
+Which of the two a developer gets depends on where spin keeps the
+framework. With `SPIN_DEBUG=1` (spin's debug mode: `-O0 -g`, kept apart from
+release builds by `build/bin/.<name>.mode`) gen builds in 8.5 s either way
+and db in 57 s instead of 72 s, and gen's output is byte-identical.
 
 **C4. The server's first build does not use the object cache the rebuilds
 use.** `cybertrain server` builds with `spin run NAME`: 90 s, every unit at
@@ -128,11 +134,12 @@ finds one it runs `spin build NAME -- --incremental` before `spin run NAME`.
   edit on: units compiled apart, no inlining across them. `cybertrain build`
   is not touched.
 
-Expected, from the measurements above: `db migrate` with nothing pending
-147 s to under 1 s; with a new migration 157 s to about 75 s; `new` 38 s to
-9 s; a server start after an edit 128 s to about 57 s; the first edit after
-a start 136 s to about 60 s; an edit that changes routes or the schema
-(gen's C changes) 91 s to about 62 s. Section 5 re-measures.
+Expected, when this was written: `db migrate` with nothing pending 147 s to
+under 1 s; with a new migration 157 s to about 75 s; `new` 38 s to 9 s; a
+server start after an edit 128 s to about 57 s; the first edit after a start
+136 s to about 60 s; an edit that changes routes or the schema (gen's C
+changes) 91 s to about 62 s. Section 5 has what was measured, which is less
+in three places.
 
 ## 4. What is not changed
 
@@ -150,8 +157,44 @@ a start 136 s to about 60 s; an edit that changes routes or the schema
 - `test/cli_build.rb`, `test/cli_new.rb`, `test/dev_error_page.rb`: the
   command strings, the staleness check on a temporary tree, the order of
   the server's steps and that a failed incremental build stops it.
-- The table of section 1, measured again on the same VM with the branch,
-  recorded in docs/performance-next.md.
+- The flow measured again, by one script, on the same VM: a new
+  application, object cache empty at the start, every step timed to the
+  first response that shows it. Before is 34c9b7e and after is 885b41e.
+  The before run had the framework at a path long enough for gen's C to be
+  split (C3), which is the case kinder to it: gen built in 18 s there, not
+  the 38 s of section 1.
+
+| Step | Before | After |
+| --- | --: | --: |
+| `cybertrain new` | 17.4 s | 11.3 s |
+| `db migrate`, the first migration | 118.5 s | 68.4 s |
+| `db migrate` again, nothing pending | 106.0 s | 64.3 s |
+| `db status` after that | 73.6 s | 0.1 s |
+| `cybertrain server`, first start | 87.6 s | 88.0 s |
+| a controller edit, the first after the start | 121.2 s | 78.1 s |
+| a controller edit, the second | 63.5 s | 65.6 s |
+| a route added (gen's C changes) | 88.9 s | 85.5 s |
+| the server stopped and started, nothing changed | 18.9 s | 9.6 s |
+| the server started after a controller edit | 103.7 s | 68.3 s |
+| `db status` after that edit | 78.3 s | 62.4 s |
+| `db migrate` with one new migration | 117.4 s | 88.2 s |
+
+  Where it fell short of what was expected:
+  - **`db migrate` with nothing pending is 64 s once, then 0.1 s.** The gen
+    step after the first migration writes `gen/models/`, which is newer
+    than the db binary that just ran, so the next `db` command compiles
+    `bin/db.rb` again (57 s) though nothing it requires changed. Every
+    `db` command after that is 0.1 s until a Ruby file changes; before,
+    each one compiled gen and db. The same holds after any edit: `db
+    status` is 62 s, all of it `bin/db.rb`. This is spin's staleness rule
+    (docs/spinel-feedback.md) meeting a program that is the whole
+    framework (section 6, item 2).
+  - **A restart with nothing changed is 9.6 s, not 1 s**: gen wrote
+    `gen/routes.rb` during the route edit, after its own binary was built,
+    so the next gen step compiles gen once more (8.5 s; 18 s before).
+  - **The second and later edits did not move**, as section 2 says they
+    could not: 63.5 s and 65.6 s are the same edit within the noise of
+    the VM.
 
 ## 6. Left for the maintainer
 
