@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   a visitor is sent to the sign-in page
 ok   GET /session/new renders the sign-in form
 ok   GET /setup with the token shows the form to this machine while no user exists

@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   user.admin? is false for a new user
 ok   require_admin answers 404 to a visitor and a non-admin and 200 to an admin
 ok   ./blog user admin and unadmin print what they did

@@ -1,5 +1,5 @@
 <%# locals: (article:) %>
-<%= form_with(model: article) do |f| %>
+<%= form_with(model: article, multipart: true) do |f| %>
   <% if article.errors.any? %>
     <div id="error_explanation">
       <h2><%= t(".error_header", count: article.errors.count) %></h2>
@@ -19,6 +19,11 @@
   <div class="field">
     <%= f.label :body %>
     <%= f.text_area :body %>
+  </div>
+
+  <div class="field">
+    <%= f.label :cover %>
+    <%= f.file_field :cover, accept: "image/png,image/jpeg,image/gif,image/webp" %>
   </div>
 
   <div class="actions">

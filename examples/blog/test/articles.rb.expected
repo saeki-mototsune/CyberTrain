@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   GET / renders the articles index
 ok   GET /articles lists every article with a link to it
 ok   GET /articles/new renders the form with a CSRF token
@@ -52,4 +54,5 @@ ok   an invalid locale param falls back to English
 ok   a tampered locale cookie is ignored
 ok   the sign-in page and its messages are in the chosen language
 ok   validation errors in Japanese
-46 tests, 471 assertions, 0 failures
+ok   an article's JSON has the cover's URL and none of the cover_* columns
+47 tests, 479 assertions, 0 failures

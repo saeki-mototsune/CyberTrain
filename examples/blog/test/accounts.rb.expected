@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   changing email or password requires the current password
 ok   a password change ends other sessions and keeps this one
 ok   deleting the account requires the password and removes the user and sessions

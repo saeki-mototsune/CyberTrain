@@ -17,9 +17,17 @@ en:
       article:
         title: "Title"
         body: "Body"
+        cover: "Cover"
       comment:
         commenter: "Commenter"
         body: "Body"
+    errors:
+      models:
+        article:
+          attributes:
+            cover:
+              too_large: "is too large (maximum is 2 MB)"
+              content_type: "must be a PNG, JPEG, GIF or WebP image"
   layouts:
     application:
       title: "Blog"

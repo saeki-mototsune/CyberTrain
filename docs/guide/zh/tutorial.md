@@ -1,5 +1,5 @@
 ---
-source_sha256: 572afbbe178df08ea38c0ed21dbe683f67b8287fd50bd7109dbb331e5fcab35e
+source_sha256: 30c5bfaf605978fa39236a6aa2328624515c5f4aeeee8990b493f831881f3020
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -381,9 +381,17 @@ end
 ## 视图与局部视图
 
 > [!WHY]
-> 文章页面列出它的评论，并在末尾放一个提交到嵌套路由的表单。
+> 文章页面列出它的评论，并在末尾放一个绑定到 `[@article, @comment]` 的表单。
 
-首先，删除现在已无法访问的评论视图 `index`、`show`、`new` 和 `edit`。然后在文章页面的末尾渲染评论和表单，并替换脚手架生成的评论表单：
+首先，删除现在已无法访问的评论视图 `index`、`show`、`new` 和 `edit`，并在 `ArticlesController#show` 中提供一个空白的 `@comment`：
+
+```ruby app/controllers/articles_controller.rb（节选）
+  def show
+    @comment = Comment.new
+  end
+```
+
+然后在文章页面的末尾渲染评论和表单，并替换脚手架生成的评论表单：
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
@@ -393,13 +401,14 @@ end
 <% end %>
 
 <h2>Add a comment:</h2>
-<%= render "comments/form" %>
+<%= render "comments/form", comment: @comment %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
+<%# locals: (comment:) %>
+<%= form_with(model: [@article, comment]) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit "Create Comment" %>
+  <%= f.submit %>
 <% end %>
 ```
 
@@ -424,9 +433,7 @@ end
 
 ### 表单和按钮指向哪里
 
-表单用 `url:` 指明提交目标，用 `scope:` 为字段命名（`comment[commenter]`、`comment[body]`），所以它不需要 `Comment` 记录：未能保存的评论会被重定向回来，原因放在 flash 中（[第 10 步](#comments-controller)），表单永远不会带着错误再次渲染。
-
-`button_to ... [@article, comment]` 通过 `[parent, child]` 规则解析：新的子对象路由到嵌套集合（`article_comments_path`），已持久化的子对象路由到嵌套成员（`article_comment_path`），两者都由上面的嵌套 `resources` 块生成到 `gen/routes.rb` 中。`form_with(model: [@article, @comment])` 遵循同一条规则，`examples/blog` 就是这样写表单的，并在 `ArticlesController#show` 中写了 `@comment = Comment.new`。本教程让 `show` 保持脚手架写出的样子，也就是空的，因为[第 18 步](#attachments)的生成器要求如此。
+`button_to ... [@article, comment]` 和 `form_with(model: [@article, comment])` 都通过同一条 `[parent, child]` 规则解析：新的子对象路由到嵌套集合（`article_comments_path`），已持久化的子对象路由到嵌套成员（`article_comment_path`），两者都由上面的嵌套 `resources` 块生成到 `gen/routes.rb` 中。表单以局部变量的形式接收它的评论，这样[第 13 步](#turbo)就能用一条新的评论再次渲染它。
 
 > [!RULE] 视图是一套封闭的语法
 > ### 视图是一套封闭的语法，而不是 Ruby
@@ -557,7 +564,7 @@ import "@hotwired/turbo"
 <h2>Add a comment:</h2>
 
 <div id="comment_form">
-  <%= render "comments/form" %>
+  <%= render "comments/form", comment: @comment %>
 </div>
 ```
 
@@ -578,6 +585,7 @@ import "@hotwired/turbo"
     # 每个用 turbo_stream_from @article 订阅的页面都会追加这条评论。
     Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
                                            component: CommentComponent.new(comment: @comment))
+    @new_comment = Comment.new   # create.turbo_stream.erb 放回的空表单
     respond_to do |format|
       format.turbo_stream   # app/views/comments/create.turbo_stream.erb
       format.html do
@@ -599,7 +607,7 @@ import "@hotwired/turbo"
 
 ```erb app/views/comments/create.turbo_stream.erb
 <%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
-<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+<%= turbo_stream.update "comment_form", partial: "comments/form", locals: { comment: @new_comment } %>
 ```
 
 在两个窗口中打开同一篇文章，并在其中一个窗口发表评论：评论会出现在两个窗口中，而提交它的表单会变回空白。
@@ -699,6 +707,14 @@ end
       format.json { render json: @articles.map(&:as_json) }
     end
   end
+
+  def show
+    @comment = Comment.new
+    respond_to do |format|
+      format.html
+      format.json { render json: @article.as_json }
+    end
+  end
 ```
 
 ```console 终端 — blog/
@@ -712,7 +728,7 @@ $ curl http://127.0.0.1:3000/articles.json
 - `as_json` 给出记录的各列，时间为 ISO 8601 格式的 UTC。JSON 没有模板：动作用 `render json:` 返回它。
 - 块里只写 `format.` 开头的那些行：请求回退到 html 时，这个块会再运行一次。
 
-`show` 可以用同样的块，配上 `render json: @article.as_json`，`examples/blog` 中就是这样写的。请在[第 18 步](#attachments)之后再添加它，因为那一步的生成器在运行时要求 `show` 是空的。关于格式的全部内容：[格式与 `respond_to`](requests.md#formats-and-respond_to)。
+`/articles/1.json` 是单篇文章，来自 `show` 中同样的块。关于格式的全部内容：[格式与 `respond_to`](requests.md#formats-and-respond_to)。
 
 <!-- step 16 #test stage: 构建时 · `cybertrain spin test` -->
 ## 测试
@@ -867,7 +883,7 @@ class ArticlesController < ApplicationController
   <h2>Add a comment:</h2>
 
   <div id="comment_form">
-    <%= render "comments/form" %>
+    <%= render "comments/form", comment: @comment %>
   </div>
 <% end %>
 ```
@@ -911,6 +927,12 @@ end
 > [!WHY]
 > 文章可以带一张图片。分工和登录一样：框架负责解析 `multipart/form-data` 并保存字节，其余部分由一条命令写成归应用所有的代码，以此取代 Active Storage 的 `has_one_attached`。
 
+图片会显示在文章页面上，而从步骤 17 起访客就可以阅读这个页面，所以它的下载也必须对他们开放。在运行生成器之前，先把 `:cover` 加入步骤 17 写下的列表：
+
+```ruby app/controllers/articles_controller.rb （节选）
+  allow_unauthenticated_access only: [:index, :show, :cover]
+```
+
 ```shell 终端 — blog/
 cybertrain generate attachment article cover   # 新模型则用：generate scaffold NAME field:type ... cover:attachment
 cybertrain db migrate                          # 给 articles 添加 cover_* 列
@@ -920,7 +942,7 @@ cybertrain db migrate                          # 给 articles 添加 cover_* 列
 
 ```ruby app/controllers/articles_controller.rb （节选）
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; you added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -946,7 +968,13 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-步骤 17 让每个页面都变成私有的，而公开文章页面上的图片是从 `/articles/1/cover` 获取的。生成器让下载与文章页面完全同样公开：由于 `allow_unauthenticated_access` 列出了 `:show`，它会像上面第一行那样把 `:cover` 加到这个列表中，这样可以阅读文章的访客也能看到图片。如果文章页面需要登录，下载也同样需要。`set_article` 中用来限制用户能看到哪些文章的任何做法，同样会限制下载。
+下载和 `show` 一样通过 `set_article` 找到它的文章，所以 `set_article` 中用来限制用户能看到哪些文章的任何做法，同样会限制下载。生成器打印的各行中有一条警告，因为这个 `show` 里有它自己的代码：
+
+```text 输出 — cybertrain generate attachment
+warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
+```
+
+在这里，那段代码构建一条评论并选择格式；它不拒绝任何人，所以没有什么需要复制到 `cover` 中。
 
 生成器还会在 `config/routes.rb` 中添加 `get "/articles/:id/cover"`，在表单中添加 `multipart: true` 和一个位于提交按钮上方的文件输入框，并在显示页面中紧跟 `<h1>` 之后添加这张图片：
 
@@ -965,7 +993,7 @@ class ArticlesController < ApplicationController
 ```
 
 > [!NOTE]
-> 生成器会把 `show` 的访问规则复制到下载上，但只在它能读懂这些规则时才这样做：`show` 必须是脚手架生成的、受 `before_action :set_article` 保护的空动作。如果 `def show` 中有代码，或者另有一个 `before_action` 列出了 `:show` 却没有列出新动作，它会以 `cannot preserve show's authorization for :cover` 停止，什么也不写。这就是 `show` 一直保持为空的原因。从这里开始它可以增加内容了（[第 15 步](#json)的 JSON 响应、供表单使用的 `@comment`）；此后让 `cover` 与 `show` 受到同样的限制，就要由你自己来做了。
+> 生成器会把 `show` 的访问规则复制到下载上，但只复制它能读懂的那些，也就是回调。如果除 `set_article` 之外还有一个 `before_action` 列出了 `:show` 却没有列出新动作，它会以 `cannot preserve show's authorization for :cover` 停止，什么也不写。`def show` 中的代码检查的是什么，它读不出来，所以才有那条警告。`show` 为空时，只要 `allow_unauthenticated_access` 列出了 `:show`，它就会自行把 `:cover` 加进去；`show` 中有代码时，它不改动这一行，而这一行里没有 `:cover` 的话，图片需要登录才能看到。
 
 > [!RULE] Spinel 规则：has_one_attached
 > ### `has_one_attached` 被逐一写出
@@ -983,7 +1011,7 @@ class ArticlesController < ApplicationController
 启动服务器，编辑一篇文章并选择一张图片。生成器还写了 `test/attachment_article_cover.rb`，它测试整个流程，并且因为应用现在有了 `User`，会先登录。由于这里的 `:cover` 是公开的，它会检查访客能否下载封面；正文则填入 `"A article."`，长度补足到 [步骤 05](#validations) 要求的至少 10 个字符。
 
 > [!NOTE]
-> 和[步骤 16](#test) 一样用 `cybertrain spin test` 运行；这个测试会用到 SQLite，所以它的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
+> 和[步骤 16](#test) 一样用 `cybertrain spin test` 运行；这个测试会用到 SQLite，所以它的快照来自编译后的二进制。`examples/blog` 也包含这一步，并且它的 JSON 不包含 `cover_*` 列（`Article#public_json`）。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 运行时 · `dist/blog` -->
 ## 为部署而构建

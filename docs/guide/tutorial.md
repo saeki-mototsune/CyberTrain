@@ -494,12 +494,20 @@ The declared `belongs_to` also makes a comment without an article invalid
 ## Views and partials
 
 > [!WHY]
-> The article page lists its comments and ends with a form that posts to the
-> nested route.
+> The article page lists its comments and ends with a form bound to
+> `[@article, @comment]`.
 
 First, delete the now-unreachable `index`, `show`, `new` and `edit` comment
-views. Then render the comments and the form at the end of the article page,
-and replace the scaffold's comment form:
+views, and give `ArticlesController#show` a blank `@comment`:
+
+```ruby app/controllers/articles_controller.rb (excerpt)
+  def show
+    @comment = Comment.new
+  end
+```
+
+Then render the comments and the form at the end of the article page, and
+replace the scaffold's comment form:
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
@@ -509,13 +517,14 @@ and replace the scaffold's comment form:
 <% end %>
 
 <h2>Add a comment:</h2>
-<%= render "comments/form" %>
+<%= render "comments/form", comment: @comment %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
+<%# locals: (comment:) %>
+<%= form_with(model: [@article, comment]) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit "Create Comment" %>
+  <%= f.submit %>
 <% end %>
 ```
 
@@ -540,20 +549,13 @@ The comment partial:
 
 ### Where the form and the button point
 
-The form names its target with `url:` and its fields (`comment[commenter]`,
-`comment[body]`) with `scope:`, so it needs no `Comment` record: a comment
-that does not save is redirected back with the reason in the flash
-([step 10](#comments-controller)), and the form is never rendered again with
-its errors.
-
-`button_to ... [@article, comment]` resolves through the `[parent, child]`
-rule: a new child routes to the nested collection (`article_comments_path`), a
-persisted one to the nested member (`article_comment_path`), both generated
-into `gen/routes.rb` from the nested `resources` block above.
-`form_with(model: [@article, @comment])` follows the same rule, and
-`examples/blog` writes the form that way, with `@comment = Comment.new` in
-`ArticlesController#show`. This tutorial leaves `show` as the scaffold wrote
-it, empty, because the generator of [step 18](#attachments) asks for that.
+Both `button_to ... [@article, comment]` and
+`form_with(model: [@article, comment])` resolve through the same
+`[parent, child]` rule: a new child routes to the nested collection
+(`article_comments_path`), a persisted one to the nested member
+(`article_comment_path`), both generated into `gen/routes.rb` from the nested
+`resources` block above. The form takes its comment as a local, so that
+[step 13](#turbo) can render it again with a fresh one.
 
 > [!RULE] Views are a closed grammar
 > ### Views are a closed grammar, not Ruby
@@ -716,7 +718,7 @@ article's stream:
 <h2>Add a comment:</h2>
 
 <div id="comment_form">
-  <%= render "comments/form" %>
+  <%= render "comments/form", comment: @comment %>
 </div>
 ```
 
@@ -738,6 +740,7 @@ it; `destroy` tells the other pages to drop the element:
     # Every page subscribed with turbo_stream_from @article appends the comment.
     Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
                                            component: CommentComponent.new(comment: @comment))
+    @new_comment = Comment.new   # the empty form create.turbo_stream.erb puts back
     respond_to do |format|
       format.turbo_stream   # app/views/comments/create.turbo_stream.erb
       format.html do
@@ -759,7 +762,7 @@ it; `destroy` tells the other pages to drop the element:
 
 ```erb app/views/comments/create.turbo_stream.erb
 <%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
-<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+<%= turbo_stream.update "comment_form", partial: "comments/form", locals: { comment: @new_comment } %>
 ```
 
 Open one article in two windows and post a comment in one: it appears in
@@ -896,6 +899,14 @@ response:
       format.json { render json: @articles.map(&:as_json) }
     end
   end
+
+  def show
+    @comment = Comment.new
+    respond_to do |format|
+      format.html
+      format.json { render json: @article.as_json }
+    end
+  end
 ```
 
 ```console terminal — blog/
@@ -913,10 +924,8 @@ $ curl http://127.0.0.1:3000/articles.json
 - Keep the block to its `format.` lines: when a request falls back to html
   the block runs a second time.
 
-`show` takes the same block, with `render json: @article.as_json`, and
-`examples/blog` has it. Add it after [step 18](#attachments), whose generator
-wants `show` empty when it runs. Everything about formats:
-[Formats and `respond_to`](requests.md#formats-and-respond_to).
+`/articles/1.json` is one article, from the same block in `show`. Everything
+about formats: [Formats and `respond_to`](requests.md#formats-and-respond_to).
 
 <!-- step 16 #test stage: Build time · `cybertrain spin test` -->
 ## Test it
@@ -1116,7 +1125,7 @@ class ArticlesController < ApplicationController
   <h2>Add a comment:</h2>
 
   <div id="comment_form">
-    <%= render "comments/form" %>
+    <%= render "comments/form", comment: @comment %>
   </div>
 <% end %>
 ```
@@ -1195,6 +1204,14 @@ end
 > the rest as code the app owns, in place of Active Storage&rsquo;s
 > `has_one_attached`.
 
+The image will be shown on the article page, which visitors may read since
+step 17, so its download has to be open to them too. Before running the
+generator, add `:cover` to the list step 17 wrote:
+
+```ruby app/controllers/articles_controller.rb (excerpt)
+  allow_unauthenticated_access only: [:index, :show, :cover]
+```
+
 ```shell terminal — blog/
 cybertrain generate attachment article cover   # a new model: generate scaffold NAME field:type ... cover:attachment
 cybertrain db migrate                          # adds the cover_* columns to articles
@@ -1209,7 +1226,7 @@ In `ArticlesController` it adds a `cover` action behind
 
 ```ruby app/controllers/articles_controller.rb (excerpt)
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; you added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -1235,13 +1252,17 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-Step 17 made every page private, and the image on a public article page is
-fetched from `/articles/1/cover`. The generator makes the download exactly as
-public as the article page: since `allow_unauthenticated_access` lists
-`:show`, it adds `:cover` to that list, as in the first line above, so
-visitors who may read the article see its image. Where the article page needs
-a signed-in user, so does the download. Whatever `set_article` does to limit
-which articles a user may see limits the download too.
+The download finds its article through `set_article`, as `show` does, so
+whatever `set_article` does to limit which articles a user may see limits the
+download too. Among its lines the generator prints a warning, because this
+`show` has code of its own:
+
+```text output — cybertrain generate attachment
+warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
+```
+
+Here that code builds a comment and picks a format; it refuses nobody, so
+there is nothing to copy into `cover`.
 
 The generator also adds `get "/articles/:id/cover"` to `config/routes.rb`,
 `multipart: true` and a file input to the form, above the submit button, and
@@ -1263,13 +1284,13 @@ the image to the show page, right after the `<h1>`:
 
 > [!NOTE]
 > The generator copies the access rules of `show` to the download, and only
-> when it can read them: `show` must be the scaffold's empty action behind
-> `before_action :set_article`. With code inside `def show`, or a
-> second `before_action` that lists `:show` without the new action, it stops with
-> `cannot preserve show's authorization for :cover` and writes nothing. That
-> is why `show` stayed empty until now. From here on it can grow (the JSON
-> answer of [step 15](#json), a `@comment` for the form); keeping `cover` as
-> restricted as `show` is then yours to do.
+> those it can read: the callbacks. A `before_action` other than `set_article`
+> that lists `:show` without the new action stops it with `cannot preserve
+> show's authorization for :cover`, and nothing is written. Code inside
+> `def show` it cannot read for what it checks, hence the warning. With an
+> empty `show` it adds `:cover` to `allow_unauthenticated_access` by itself
+> where `:show` is listed; with code in `show` it leaves the line alone, and
+> without `:cover` there the image needs a sign-in.
 
 > [!RULE] Spinel rule: has_one_attached
 > ### `has_one_attached` is written out
@@ -1314,8 +1335,9 @@ checks that a visitor can download the cover, and it fills the body with
 
 > [!NOTE]
 > Run `cybertrain spin test` as in [step 16](#test); the test uses SQLite, so
-> its snapshot comes from the compiled binary. `examples/blog` stops before
-> this step. Not built yet: several files per field, S3 or other remote
+> its snapshot comes from the compiled binary. `examples/blog` has this
+> step too, and keeps the `cover_*` columns out of its JSON
+> (`Article#public_json`). Not built yet: several files per field, S3 or other remote
 > storage, image variants, and streaming large bodies to disk (the whole body
 > is read into memory, up to `max_body_bytes`).
 

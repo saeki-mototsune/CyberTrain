@@ -256,7 +256,7 @@ follows the rule even where a probe passes.
 | The generator's scans stay separate passes whose results do not meet in one method (`Gen::Runner`) | 94 | generator/runner.rb | test/gen_runner_models.rb; `cd examples/blog && spin run gen` | still there |
 | Sockets: `wait_readable` before every `readpartial`; a socket reaches its thread through a method parameter; `connect_nonblock` instead of `connect_timeout:` | 20, 21, 72 | http/server.rb, http/body_writer.rb, net/socket.rb, websocket.rb | test/server.rb, test/response_stream.rb, test/main_roles.rb, test/http_client.rb | 20, 21 not re-checked; 72 required (spinel-feedback O) |
 | `SPINEL_WORKERS` is set to `workers + 1` before the first thread; development serves on one worker; no lock on the request path | 22, 57 | application.rb (`spinel_workers_for`), template/engine.rb, http/server.rb | test/dev_application.rb, test/template_embedded.rb, test/db_busy_wait.rb; bench/run's two-core run | required (spinel-feedback L); 57 not re-checked |
-| A large generated table (an application's dictionary, the bundled ones) is a Hash filled at load by methods of at most 50 stores, never one literal | 101 | generator/locales_emitter.rb, locales/bundled.rb | build time only: test/gen_locales.rb compiles it; one literal of 2,000 keys takes some 13 s of cc | still there (spinel-feedback AA) |
+| A large generated table (an application's dictionary, the bundled ones) is a Hash filled at load by methods of at most 50 stores, never one literal | 101 | generator/locales_emitter.rb, locales/bundled.rb | build time only: test/gen_locales.rb compiles it; one literal of 2,000 keys takes some 13 s of cc | still there (spinel-feedback AI) |
 | `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, application.rb | test/feeds_exit.rb | still there |
 | `Logger#log` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_tls.rb, test/logger_flush.rb, test/main_console.rb | still there (spinel-feedback K, M) |
 | Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` (and `I18n.l`) walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb, strftime.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | still there |
@@ -1463,7 +1463,7 @@ explicitly retires a workaround.
      as fast (34 to 52 ns). So generated code writes a large table as
      small fill methods, never as one literal (gen/locales.rb; phase 4b
      spike, 2026-11-11, spikes/phase4b/locale_hash.rb and
-     locale_hash_split.rb; docs/spinel-feedback.md AA). The shipped emitter
+     locale_hash_split.rb; docs/spinel-feedback.md AI). The shipped emitter
      (cybertrain/generator/locales_emitter.rb) names them
      `fill_texts_NN` / `fill_lists_NN` and the builders `text_table` /
      `list_table`, one name per return type; cybertrain/locales/bundled.rb

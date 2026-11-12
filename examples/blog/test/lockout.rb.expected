@@ -6,6 +6,8 @@ done
 done
 == 20261112102828 CreateSessions: migrating
 done
+== 20261112174320 AddCoverToArticles: migrating
+done
 ok   10 failures lock the account for an hour with the wrong-password message
 ok   a locked account refuses the right password until locked_until passes
 ok   a successful sign-in clears the count

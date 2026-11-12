@@ -11,9 +11,17 @@ ja:
       article:
         title: "タイトル"
         body: "本文"
+        cover: "カバー画像"
       comment:
         commenter: "名前"
         body: "本文"
+    errors:
+      models:
+        article:
+          attributes:
+            cover:
+              too_large: "は2MB以下にしてください"
+              content_type: "はPNG、JPEG、GIF、WebPのいずれかの画像にしてください"
   layouts:
     application:
       title: "ブログ"

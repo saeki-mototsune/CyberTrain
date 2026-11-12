@@ -1195,7 +1195,7 @@ each is recorded in the code and in docs/design.md D79 and D80 too.
   `%{value}`.
 - New Spinel rules: spikes/NOTES.md 101 to 103, all from the spike (101 a
   compile-time cost, 102 and 103 records of forms that work);
-  docs/spinel-feedback.md AA. The tasks after the spike found none.
+  docs/spinel-feedback.md AI. The tasks after the spike found none.
 - Tests: `spin test` has 195 programs once main is merged in (185 before; 8 new: `cli_authentication_upgrade`,
   `gen_locales`, `i18n`, `i18n_models`, `i18n_views`, `locale_yaml`,
   `mail_message`, `token`), and examples/blog has eight (6 new:

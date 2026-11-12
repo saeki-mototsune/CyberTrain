@@ -1,4 +1,5 @@
 Cybertrain::Routes.draw do
+  get "/articles/:id/cover", to: "articles#cover", as: "article_cover"
   resource :session, only: [:new, :create, :destroy]
   resources :passwords, param: :token, only: [:new, :create, :edit, :update]
   resource :account, only: [:edit, :update, :destroy]
