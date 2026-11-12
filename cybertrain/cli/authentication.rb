@@ -53,17 +53,19 @@
 #
 # Password reset (/passwords): a link by mail (deliver_later, so the app
 # needs the CYBERTRAIN_SMTP_* settings and a job thread), valid for 15
-# minutes and until the password changes; the answer is the same for an
-# unknown address. The link starts with the base_url setting, else with
+# minutes and until the password or the address changes; the answer is
+# the same for an unknown address. The link starts with the base_url setting, else with
 # the request's address only where a forged Host cannot reach it (the
 # concern's mail_link_base). A reset clears a lockout and ends every
 # session of the user.
 #
 # The account page (/account/edit, the nav's "Account"): a new address
-# (at once) or a new password, either only with the current password, and
-# the account deleted, only with the password. A new password ends the
-# user's other sessions and signs this browser in again, remembered as it
-# was. Wrong passwords there are rate limited as sign-ins are.
+# (at once; with --confirmable once confirmed) or a new password, either
+# only with the current password, and the account deleted (with its
+# sessions, in one transaction), only with the password. A new password
+# ends the user's other sessions and signs this browser in again,
+# remembered as it was. Wrong passwords there are rate limited per client
+# address as sign-ins are, and per user.
 #
 # What it leaves out, and why: a `Current` object (templates read `@current_user` instead, an ivar
 # `resume_session` sets on every controller). What it adds that Rails'
@@ -81,6 +83,22 @@
 # plus the boot warning while no user exists (in the user command's file,
 # called from bin/<app>.rb), and the `setup_open` setting into
 # config/app.rb's configure block.
+#
+# `--confirmable` (either mode) asks each new account to confirm its
+# address by mail before it can sign in, and a new address on the account
+# page to confirm itself before it takes the old one's place:
+#
+#   users.confirmed_at, users.unconfirmed_email   (in the users migration)
+#   app/controllers/confirmations_controller.rb   the link, and the form
+#                                                that sends it again
+#   app/mailers/confirmations_mailer.rb, app/views/confirmations/new.html.erb,
+#   app/views/mail/_confirmation.html.erb, test/confirmations.rb
+#
+# plus the confirmations route. Sign-up mails the link and signs nobody
+# in; a sign-in with the right password and an address not confirmed yet
+# is refused with its own message (the wrong-password one otherwise); the
+# link confirms, and the user then signs in. Users made by /setup and by
+# the user command are confirmed as they are created: nothing mails them.
 require "cybertrain/cli/templates"
 require "cybertrain/cli/scaffold"
 require "cybertrain/cli/build"
@@ -98,6 +116,10 @@ module Cybertrain
       # same way.
       ACCOUNT_ROUTE_MARK = "resource :account"
       ACCOUNT_ROUTE = "resource :account, only: [:edit, :update, :destroy]"
+      # --confirmable's routes, added after PASSWORDS_ROUTE_MARK's line (so
+      # before the account's) the same way.
+      CONFIRMATIONS_ROUTE_MARK = "resources :confirmations"
+      CONFIRMATIONS_ROUTE = "resources :confirmations, param: :token, only: [:new, :create, :show]"
       NAV_LINE = "<%= render \"sessions/nav\" %>"
       # What an app test's new_client needs once the app has authentication:
       # empty the two tables, then a user signed in through the form.
@@ -140,17 +162,18 @@ module Cybertrain
       end
 
       # The paths it created (generate_with_result's `created`).
-      def self.generate(root, invite_only = false)
-        generate_with_result(root, invite_only).created
+      def self.generate(root, invite_only = false, confirmable = false)
+        generate_with_result(root, invite_only, confirmable).created
       end
 
-      # Writes the files and makes the edits. Raises InvalidArgument, before
+      # Writes the files and makes the edits (with `confirmable`, those of
+      # --confirmable too). Raises InvalidArgument, before
       # anything is written, when `root` is not an application (no
       # config/routes.rb with the draw line, no
       # app/controllers/application_controller.rb with the class line, no
       # bin/<app>.rb with the Main.run line, no config/app.rb with the
       # configure line).
-      def self.generate_with_result(root, invite_only = false)
+      def self.generate_with_result(root, invite_only = false, confirmable = false)
         routes_path = File.join(root, "config/routes.rb")
         raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
         raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
@@ -174,22 +197,24 @@ module Cybertrain
 
         created = Array.new(0) { "" }
         users = migration_path(root, "users")
-        record(created, root, users, users_migration)
+        record(created, root, users, users_migration(confirmable))
         record(created, root, migration_path(root, "sessions"), sessions_migration)
-        record(created, root, "app/models/user.rb", user_model)
+        record(created, root, "app/models/user.rb", user_model(confirmable))
         record(created, root, "app/models/session.rb", session_model)
-        record(created, root, "app/controllers/concerns/authentication.rb", authentication_concern(app))
-        record(created, root, "app/controllers/sessions_controller.rb", sessions_controller)
+        record(created, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable))
+        record(created, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable))
         if invite_only
-          record(created, root, "app/controllers/setup_controller.rb", setup_controller(app))
+          record(created, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable))
         else
-          record(created, root, "app/controllers/registrations_controller.rb", registrations_controller)
+          record(created, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable))
         end
         record(created, root, "app/controllers/passwords_controller.rb", passwords_controller)
-        record(created, root, "app/controllers/accounts_controller.rb", accounts_controller)
+        record(created, root, "app/controllers/confirmations_controller.rb", confirmations_controller) if confirmable
+        record(created, root, "app/controllers/accounts_controller.rb", accounts_controller(confirmable))
         record(created, root, "app/mailers/passwords_mailer.rb", passwords_mailer)
-        record(created, root, "app/commands/user_command.rb", user_command(app, invite_only))
-        record(created, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only))
+        record(created, root, "app/mailers/confirmations_mailer.rb", confirmations_mailer) if confirmable
+        record(created, root, "app/commands/user_command.rb", user_command(app, invite_only, confirmable))
+        record(created, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only, confirmable))
         record(created, root, "app/views/sessions/_nav.html.erb", nav_partial)
         if invite_only
           record(created, root, "app/views/setup/new.html.erb", setup_new_view)
@@ -199,17 +224,22 @@ module Cybertrain
         record(created, root, "app/views/passwords/new.html.erb", passwords_new_view)
         record(created, root, "app/views/passwords/edit.html.erb", passwords_edit_view)
         record(created, root, "app/views/mail/_password_reset.html.erb", password_reset_mail_view)
-        record(created, root, "app/views/accounts/edit.html.erb", accounts_edit_view)
-        record(created, root, "test/support/app_test.rb", app_test_support)
+        if confirmable
+          record(created, root, "app/views/confirmations/new.html.erb", confirmations_new_view)
+          record(created, root, "app/views/mail/_confirmation.html.erb", confirmation_mail_view)
+        end
+        record(created, root, "app/views/accounts/edit.html.erb", accounts_edit_view(confirmable))
+        record(created, root, "test/support/app_test.rb", app_test_support(confirmable))
         record(created, root, "test/support/authentication_helpers.rb", authentication_helpers)
-        record(created, root, "test/authentication.rb", invite_only ? invite_only_test(app) : authentication_test)
+        record(created, root, "test/authentication.rb", invite_only ? invite_only_test(app) : authentication_test(confirmable))
         record(created, root, "test/admin.rb", admin_test(app))
         record(created, root, "test/remember_me.rb", remember_me_test)
         record(created, root, "test/lockout.rb", lockout_test)
         record(created, root, "test/passwords.rb", passwords_test(app))
-        record(created, root, "test/accounts.rb", accounts_test)
+        record(created, root, "test/accounts.rb", accounts_test(confirmable))
+        record(created, root, "test/confirmations.rb", confirmations_test(app, invite_only)) if confirmable
         add_to_application_controller(controller_path)
-        add_routes(routes_path, invite_only)
+        add_routes(routes_path, invite_only, confirmable)
         enable_jobs_page(routes_path, controller_path)
         add_nav_to_layout(File.join(root, "app/views/layouts/application.html.erb"))
         add_sign_in_to_attachment_tests(root)
@@ -304,16 +334,19 @@ module Cybertrain
         true
       end
 
-      # Inserts the sign-in, password reset, account and sign-up (or setup)
-      # routes after the draw line, once. Routes that have the sign-in but
-      # not the reset or the account page (an app generated before them) get
-      # the reset's line right after the sign-in's and the account's right
-      # after the reset's, each indented as the line before it is.
-      def self.add_routes(path, invite_only = false)
+      # Inserts the sign-in, password reset, (--confirmable) confirmation,
+      # account and sign-up (or setup) routes after the draw line, once.
+      # Routes that have the sign-in but not the reset, the confirmations or
+      # the account page (an app generated before them) get the reset's
+      # line right after the sign-in's, and the account's and then the
+      # confirmations' right after the reset's, each indented as the line
+      # before it is.
+      def self.add_routes(path, invite_only = false, confirmable = false)
         source = File.read(path)
+        confirmations = confirmable ? "#{CONFIRMATIONS_ROUTE_MARK}, " : ""
         if source.index(ROUTE_MARK).nil?
-          File.write(path, insert_after_line(source, Scaffold::DRAW_LINE, indent(routes_block(invite_only))))
-          puts "route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{ACCOUNT_ROUTE_MARK}, get/post #{invite_only ? "/setup" : "/sign_up"}"
+          File.write(path, insert_after_line(source, Scaffold::DRAW_LINE, indent(routes_block(invite_only, confirmable))))
+          puts "route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{confirmations}#{ACCOUNT_ROUTE_MARK}, get/post #{invite_only ? "/setup" : "/sign_up"}"
           return true
         end
         added = Array.new(0) { "" }
@@ -325,8 +358,12 @@ module Cybertrain
           source = insert_route_after(source, PASSWORDS_ROUTE_MARK, ACCOUNT_ROUTE)
           added << ACCOUNT_ROUTE_MARK
         end
+        if confirmable && source.index(CONFIRMATIONS_ROUTE_MARK).nil?
+          source = insert_route_after(source, PASSWORDS_ROUTE_MARK, CONFIRMATIONS_ROUTE)
+          added << CONFIRMATIONS_ROUTE_MARK
+        end
         if added.empty?
-          puts "identical route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{ACCOUNT_ROUTE_MARK}"
+          puts "identical route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{confirmations}#{ACCOUNT_ROUTE_MARK}"
           return false
         end
 
@@ -462,6 +499,16 @@ module Cybertrain
         out
       end
 
+      # `text` with `spaces` spaces before every non-blank line: a chunk
+      # written flush, moved to where splice puts it (inside a method's
+      # `if`, say).
+      def self.margin(text, spaces)
+        pad = " " * spaces
+        out = +""
+        text.each_line { |line| out << (line == "\n" ? line : "#{pad}#{line}") }
+        out
+      end
+
       # `source` with `block` (its own lines, each ending in a newline)
       # inserted right after the first line containing `marker`.
       def self.insert_after_line(source, marker, block)
@@ -477,6 +524,23 @@ module Cybertrain
         updated << rest
         updated << "\n" unless updated.end_with?("\n")
         updated
+      end
+
+      # `text` with the whole line that holds `mark` (a placeholder line in
+      # one of the templates below, wherever it is indented) replaced by
+      # `chunk`: lines of their own, each ending in a newline and indented
+      # as the file needs, or "" to drop the line. What --confirmable adds
+      # to a file the other modes write too goes in this way.
+      def self.splice(text, mark, chunk)
+        at = text.index(mark)
+        raise InvalidArgument, "no `#{mark}` in the template" if at.nil?
+
+        start = line_start_before(text, at)
+        stop = text.index("\n", at)
+        stop = stop.nil? ? text.size : stop + 1
+        out = +""
+        out << text[0, start].to_s << chunk << text[stop, text.size - stop].to_s
+        out
       end
 
       # Where the first line that starts with `marker` starts, or -1.
@@ -502,8 +566,11 @@ module Cybertrain
 
       # ---- the files ----------------------------------------------------
 
-      def self.users_migration
-        <<~RUBY
+      # With `confirmable`, the two columns --confirmable reads: when the
+      # address was confirmed (nil: not yet), and a new address waiting for
+      # its own confirmation (nil: none).
+      def self.users_migration(confirmable = false)
+        text = <<~RUBY
           class CreateUsers < Cybertrain::Migration::Base
             def change
               create_table "users" do |t|
@@ -512,12 +579,15 @@ module Cybertrain
                 t.boolean "admin", null: false, default: "false"
                 t.integer "failed_attempts", null: false, default: "0"
                 t.datetime "locked_until"
+                @CONFIRMABLE_COLUMNS@
                 t.timestamps
               end
               add_index "users", ["email_address"], unique: true
             end
           end
         RUBY
+        columns = confirmable ? "      t.datetime \"confirmed_at\"\n      t.string \"unconfirmed_email\"\n" : ""
+        splice(text, "@CONFIRMABLE_COLUMNS@", columns)
       end
 
       def self.sessions_migration
@@ -537,10 +607,13 @@ module Cybertrain
         RUBY
       end
 
-      def self.user_model
-        <<~RUBY
+      # With `confirmable`, what --confirmable adds: confirmed?, the
+      # confirmation token and confirm, and the check of a new address
+      # waiting for its confirmation.
+      def self.user_model(confirmable = false)
+        text = <<~RUBY
           # Columns (email_address, password_digest, admin, failed_attempts,
-          # locked_until), the Cybertrain::Model superclass and `sessions` (from
+          # locked_until@CONFIRMABLE_COLUMN_NAMES@), the Cybertrain::Model superclass and `sessions` (from
           # the sessions table's foreign key) come from gen/models/user.rb,
           # generated from db/schema.rb by `spin run gen`.
           #
@@ -552,6 +625,7 @@ module Cybertrain
           # run time, so they are written out).
           class User
             MIN_PASSWORD_LENGTH = 8
+            @CONFIRMATION_TOKEN_TTL@
 
             validates :email_address, presence: true
 
@@ -562,6 +636,7 @@ module Cybertrain
               user.email_address = User.normalize_email_address(user.email_address)
               user.validate_email_address_taken
               user.validate_password
+              @VALIDATE_UNCONFIRMED_EMAIL@
             end
 
             # The address lowercased and trimmed: "  Ann@Example.COM " is
@@ -594,16 +669,18 @@ module Cybertrain
             end
 
             # The user a password_reset_token was made for, while it is valid against
-            # that user's password now; nil for any other token (a wrong, expired or
-            # spent one, or one made for another user).
+            # that user's password and address now (password_reset_binding); nil for
+            # any other token (a wrong, expired or spent one, or one made for another
+            # user).
             def self.find_by_password_reset_token(token)
               text = token.to_s
               user = User.find_by(id: Cybertrain::Token.id_from(text))
               return nil if user.nil?
-              return nil unless Cybertrain::Token.valid?(text, "password_reset", user.password_digest)
+              return nil unless Cybertrain::Token.valid?(text, "password_reset", user.password_reset_binding)
 
               user
             end
+            @FIND_BY_CONFIRMATION_TOKEN@
 
             # The plain-text password given to `password=` in this request ("" when
             # none was), for the validations; never stored.
@@ -685,11 +762,22 @@ module Cybertrain
             end
 
             # The token of a password reset link (PasswordsController): signed,
-            # valid for 15 minutes from now, and bound to password_digest, so it
-            # stops working once the password changes (Cybertrain::Token).
+            # valid for 15 minutes from now, and bound to password_reset_binding,
+            # so it stops working once the password or the address changes
+            # (Cybertrain::Token).
             def password_reset_token(now = Time.now.to_i)
-              Cybertrain::Token.issue("password_reset", id, 15 * 60, password_digest, now)
+              Cybertrain::Token.issue("password_reset", id, 15 * 60, password_reset_binding, now)
             end
+
+            # What a password reset token is bound to: the password and the address,
+            # so a new password or a new address ends every link sent before (the
+            # old address's mailbox keeps no way into the account).
+            def password_reset_binding
+              digest = password_digest.to_s
+              address = email_address.to_s
+              "\#{digest}:\#{address}"
+            end
+            @CONFIRMATION_METHODS@
 
             # Public so the before_validation block above (which receives the
             # record, not an implicit self) can call them. Their messages come
@@ -718,6 +806,105 @@ module Cybertrain
               end
               nil
             end
+            @VALIDATE_UNCONFIRMED_EMAIL_METHOD@
+          end
+        RUBY
+        text = text.sub("@CONFIRMABLE_COLUMN_NAMES@", confirmable ? ", confirmed_at,\n# unconfirmed_email" : "")
+        text = splice(text, "@CONFIRMATION_TOKEN_TTL@", confirmable ? confirmation_token_ttl_lines : "")
+        text = splice(text, "@VALIDATE_UNCONFIRMED_EMAIL@", confirmable ? "    user.validate_unconfirmed_email\n" : "")
+        text = splice(text, "@FIND_BY_CONFIRMATION_TOKEN@", confirmable ? find_by_confirmation_token_method : "")
+        text = splice(text, "@CONFIRMATION_METHODS@", confirmable ? confirmation_methods : "")
+        splice(text, "@VALIDATE_UNCONFIRMED_EMAIL_METHOD@", confirmable ? validate_unconfirmed_email_method : "")
+      end
+
+      # --confirmable's pieces of app/models/user.rb (user_model).
+      def self.confirmation_token_ttl_lines
+        indent(<<~'RUBY')
+          # How long a confirmation link works: three days (--confirmable).
+          CONFIRMATION_TOKEN_TTL = 3 * 24 * 3600
+        RUBY
+      end
+
+      def self.find_by_confirmation_token_method
+        indent(<<~'RUBY')
+
+          # The user a confirmation_token was made for, while it still confirms
+          # what it was made to (confirmation_binding); nil for any other token (a
+          # wrong, expired or used one, or one made for another user).
+          def self.find_by_confirmation_token(token)
+            text = token.to_s
+            user = User.find_by(id: Cybertrain::Token.id_from(text))
+            return nil if user.nil?
+            return nil unless Cybertrain::Token.valid?(text, "confirmation", user.confirmation_binding)
+
+            user
+          end
+        RUBY
+      end
+
+      def self.confirmation_methods
+        indent(<<~'RUBY')
+
+          # Whether the address has been confirmed (--confirmable): until it is,
+          # SessionsController#create answers the right password with the
+          # message that asks for the confirmation, and signs nobody in.
+          def confirmed? = !confirmed_at.nil?
+
+          # The token of a confirmation link (ConfirmationsController#show):
+          # signed, valid for CONFIRMATION_TOKEN_TTL from now, and bound to
+          # confirmation_binding, so it confirms the address it was mailed to and
+          # works once.
+          def confirmation_token(now = Time.now.to_i)
+            Cybertrain::Token.issue("confirmation", id, CONFIRMATION_TOKEN_TTL, confirmation_binding, now)
+          end
+
+          # What a confirmation token is bound to: the address being confirmed
+          # (unconfirmed_email when a new one waits, else email_address), the
+          # address in use, and when an address was last confirmed (0: never).
+          # Confirming changes it (confirmed_at, and a new address moves into
+          # email_address), so a used link confirms nothing more; asking for
+          # another new address ends the link to the one before.
+          def confirmation_binding
+            pending = unconfirmed_email.to_s
+            address = email_address.to_s
+            at = confirmed_at
+            stamp = at.nil? ? 0 : at.to_i
+            "#{pending}:#{address}:#{stamp}"
+          end
+
+          # Confirms what confirmation_binding names: a new account's address, or
+          # the new address waiting, which takes the place of the old one. False,
+          # with nothing saved and the reason in errors, when another account has
+          # taken that address since it was asked for (validate_email_address_taken
+          # asks again here).
+          def confirm
+            pending = unconfirmed_email.to_s
+            self.email_address = pending unless pending.empty?
+            self.unconfirmed_email = nil
+            self.confirmed_at = Time.now
+            save
+          end
+        RUBY
+      end
+
+      def self.validate_unconfirmed_email_method
+        indent(<<~'RUBY')
+
+          # A new address waiting for its confirmation (AccountsController#update,
+          # --confirmable): normalized, and refused when blank or another
+          # account's address, on email_address (the field the form shows).
+          def validate_unconfirmed_email
+            pending = unconfirmed_email
+            return nil if pending.nil?
+
+            address = User.normalize_email_address(pending)
+            self.unconfirmed_email = address
+            if address.empty?
+              errors.add(:email_address, I18n.error_message("user", :email_address, :blank))
+            elsif User.where(email_address: address).where_sql("id != ?", [id]).exists?
+              errors.add(:email_address, I18n.error_message("user", :email_address, :taken))
+            end
+            nil
           end
         RUBY
       end
@@ -740,10 +927,12 @@ module Cybertrain
       # app/controllers/concerns/authentication.rb: what 0.4 inserted into
       # ApplicationController, as Rails 8's concern, plus require_admin and
       # mail_link_base (the one place that decides where a mail's links
-      # point: the reset's now, the confirmation's after it).
-      def self.authentication_concern(app)
+      # point: the reset's, and --confirmable's), plus with `confirmable`
+      # send_confirmation_mail, which the controllers that mail a
+      # confirmation share.
+      def self.authentication_concern(app, confirmable = false)
         env = base_url_env(app)
-        <<~RUBY
+        text = <<~RUBY
           # Sign-in for the whole application (cybertrain generate authentication),
           # as Rails 8's generator writes it: ApplicationController includes it, so
           # every action needs a signed-in user unless its controller opens it with
@@ -908,12 +1097,43 @@ module Cybertrain
               Cybertrain.logger.error("\#{mail} mail not sent: set #{env} (or CYBERTRAIN_HOSTS)")
               ""
             end
+            @SEND_CONFIRMATION_MAIL@
+          end
+        RUBY
+        splice(text, "@SEND_CONFIRMATION_MAIL@", confirmable ? send_confirmation_mail_method : "")
+      end
+
+      # --confirmable's private method of the concern: sign-up, the account
+      # page and the send-again form all mail a confirmation this way.
+      def self.send_confirmation_mail_method
+        indent(<<~'RUBY')
+
+          # The confirmation mail (ConfirmationsMailer, --confirmable) to the
+          # address user is confirming, with the link to
+          # ConfirmationsController#show for token, from mail_link_base. Queued
+          # only when deliver is true: the send-again form builds the mail for an
+          # address that gets none as well, so that its answer takes the same
+          # work. An address the mailer refuses is logged (the message never
+          # repeats the address), and the caller answers as it would have.
+          def send_confirmation_mail(user, token, deliver)
+            base = mail_link_base("confirmation")
+            return nil if base.empty?
+
+            path = confirmation_path(token)
+            mail = ConfirmationsMailer.confirmation_instructions(user, base + path)
+            mail.deliver_later if deliver
+            nil
+          rescue ArgumentError => e
+            Cybertrain.logger.error("confirmation mail not sent: #{e.message}")
+            nil
           end
         RUBY
       end
 
-      def self.sessions_controller
-        <<~RUBY
+      # With `confirmable`, the right password and an address not confirmed
+      # yet get their own message, and no session.
+      def self.sessions_controller(confirmable = false)
+        text = <<~RUBY
           # Sign in and out (cybertrain generate authentication).
           class SessionsController < ApplicationController
             allow_unauthenticated_access only: [:new, :create]
@@ -934,6 +1154,7 @@ module Cybertrain
               if user.nil?
                 flash[:alert] = t(".invalid")
                 redirect_to new_session_path, status: :see_other
+              @UNCONFIRMED@
               else
                 start_new_session_for(user, remember: params[:remember_me] == "1")
                 redirect_to after_authentication_url, status: :see_other
@@ -959,10 +1180,25 @@ module Cybertrain
             end
           end
         RUBY
+        splice(text, "@UNCONFIRMED@", confirmable ? sessions_unconfirmed_branch : "")
       end
 
-      def self.registrations_controller
-        <<~RUBY
+      # --confirmable's branch of SessionsController#create.
+      def self.sessions_unconfirmed_branch
+        margin(<<~'RUBY', 4)
+              elsif !user.confirmed?
+                # Said only once the password is right, so that it tells nobody
+                # without the password that the address is registered. The
+                # sign-in page links to the form that mails the link again.
+                flash[:alert] = t(".unconfirmed")
+                redirect_to new_session_path, status: :see_other
+        RUBY
+      end
+
+      # With `confirmable`, a sign-up mails the confirmation link and signs
+      # nobody in.
+      def self.registrations_controller(confirmable = false)
+        text = <<~RUBY
           # Sign up (cybertrain generate authentication). Rails' generator has no
           # sign-up page and expects the first user to be created in the console;
           # cybertrain has no console, so this is how the first user gets in.
@@ -982,19 +1218,39 @@ module Cybertrain
               @user.password = fields[:password].to_s
               @user.password_confirmation = fields[:password_confirmation].to_s
               if @user.save
-                start_new_session_for(@user)
-                flash[:notice] = t(".welcome")
-                redirect_to after_authentication_url, status: :see_other
+                @SIGNED_UP@
               else
                 render :new, status: :unprocessable_entity
               end
             end
           end
         RUBY
+        splice(text, "@SIGNED_UP@", confirmable ? registrations_confirm_lines : registrations_sign_in_lines)
       end
 
-      # With --invite-only there is no sign-up page to link to.
-      def self.sessions_new_view(invite_only = false)
+      def self.registrations_sign_in_lines
+        margin(<<~'RUBY', 6)
+                start_new_session_for(@user)
+                flash[:notice] = t(".welcome")
+                redirect_to after_authentication_url, status: :see_other
+        RUBY
+      end
+
+      # --confirmable: the link by mail, and the sign-in page.
+      def self.registrations_confirm_lines
+        margin(<<~'RUBY', 6)
+                # Signed in only once the address is confirmed (the mail's link),
+                # and then with the password.
+                token = @user.confirmation_token
+                send_confirmation_mail(@user, token, true)
+                flash[:notice] = t(".confirm")
+                redirect_to new_session_path, status: :see_other
+        RUBY
+      end
+
+      # With --invite-only there is no sign-up page to link to; with
+      # `confirmable`, a link to the form that mails the confirmation again.
+      def self.sessions_new_view(invite_only = false, confirmable = false)
         view = <<~ERB
           <h1><%= t(".title") %></h1>
 
@@ -1021,6 +1277,7 @@ module Cybertrain
 
           <p><%= link_to t(".forgot_password"), new_password_path %></p>
         ERB
+        view = "#{view}<p><%= link_to t(\".confirmation\"), new_confirmation_path %></p>\n" if confirmable
         return view if invite_only
 
         "#{view}<p><%= link_to t(\".sign_up\"), sign_up_path %></p>\n"
@@ -1093,9 +1350,9 @@ module Cybertrain
           # for an address, the mail with a link (PasswordsMailer.reset), and the
           # form behind the link that sets a new password. The link's token
           # (User#password_reset_token) is signed, lasts 15 minutes and is bound to
-          # the password, so it stops working once the password changes, and every
-          # link sent before with it. The address form answers the same whether or
-          # not the address is registered.
+          # the password and the address, so it stops working once either changes,
+          # and every link sent before with it. The address form answers the same
+          # whether or not the address is registered.
           class PasswordsController < ApplicationController
             allow_unauthenticated_access
             # Ten requests per client address every three minutes, as for signing in.
@@ -1285,16 +1542,180 @@ module Cybertrain
         ERB
       end
 
+      # ---- --confirmable --------------------------------------------------
+
+      # app/controllers/confirmations_controller.rb: the mail's link, and the
+      # form that sends it again (the same answer for any address, after
+      # the same work, as the password reset's address form).
+      def self.confirmations_controller
+        <<~'RUBY'
+          # Confirming an email address (cybertrain generate authentication
+          # --confirmable): the link a confirmation mail carries
+          # (ConfirmationsMailer), which confirms a new account's address or puts
+          # a new address in the old one's place, and the form that mails the link
+          # again. The link's token (User#confirmation_token) is signed, lasts
+          # three days (User::CONFIRMATION_TOKEN_TTL) and works once. Opening the
+          # link signs nobody in: the user then signs in with the password. The
+          # form answers the same whether or not the address is registered, or
+          # confirmed already.
+          #
+          # Written by the generator; it is yours to change.
+          class ConfirmationsController < ApplicationController
+            allow_unauthenticated_access
+            # Ten requests per client address every three minutes, as for signing in.
+            rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
+            # The link's page carries the token in its address: no Referer for it.
+            before_action :no_referrer, only: [:show]
+
+            # GET /confirmations/new
+            def new_action
+            end
+
+            # POST /confirmations
+            # A new link for an account whose address is not confirmed yet. Any
+            # other address (no account's, or one confirmed already) gets the same
+            # answer after the same work (a token, the mail rendered), short of
+            # queueing the mail.
+            def create
+              address = User.normalize_email_address(params[:email_address].to_s)
+              user = User.find_by(email_address: address)
+              if user.nil? || user.confirmed?
+                token = Cybertrain::Token.issue("confirmation", 1, User::CONFIRMATION_TOKEN_TTL, address)
+                send_confirmation_mail(User.new(email_address: address), token, false)
+              else
+                token = user.confirmation_token
+                send_confirmation_mail(user, token, true)
+              end
+              flash[:notice] = t(".sent")
+              redirect_to new_session_path, status: :see_other
+            end
+
+            # GET /confirmations/:token
+            # Confirms the address (User#confirm), unless another account has
+            # taken it since; signs nobody in.
+            def show
+              user = User.find_by_confirmation_token(params[:token].to_s)
+              if user.nil?
+                invalid_link
+              elsif user.confirm
+                flash[:notice] = t(".confirmed")
+                redirect_to after_confirmation_path, status: :see_other
+              else
+                flash[:alert] = t(".taken")
+                redirect_to after_confirmation_path, status: :see_other
+              end
+            end
+
+            private
+
+            # A browser signed in already (a new address, confirmed from the
+            # account page's browser) goes back to the account page; any other to
+            # the sign-in page.
+            def after_confirmation_path
+              authenticated? ? edit_account_path : new_session_path
+            end
+
+            # Browsers send no Referer from the link's page, whose address holds
+            # the token.
+            def no_referrer
+              response.set_header("Referrer-Policy", "no-referrer")
+              nil
+            end
+
+            # A token that is wrong, expired or used: to the form that mails a new
+            # link. Not an action, so its key is written in full (show's).
+            def invalid_link
+              flash[:alert] = t("confirmations.show.invalid")
+              redirect_to new_confirmation_path, status: :see_other
+              nil
+            end
+
+            # What a client past the rate limit gets (the key is create's).
+            def rate_limited
+              flash[:alert] = t("confirmations.create.rate_limited")
+              redirect_to new_confirmation_path, status: :see_other
+              nil
+            end
+          end
+        RUBY
+      end
+
+      # app/mailers/confirmations_mailer.rb: as PasswordsMailer, the link
+      # given (the concern's send_confirmation_mail builds it).
+      def self.confirmations_mailer
+        <<~'RUBY'
+          # The confirmation mail (cybertrain generate authentication --confirmable):
+          # its HTML is app/views/mail/_confirmation.html.erb, its subject and text
+          # come from the dictionary (confirmations_mailer.confirmation_instructions.subject,
+          # mail.confirmation.*), in the locale of the request that asked for it.
+          #
+          # Written by the generator; it is yours to change.
+          module ConfirmationsMailer
+            # The mail with url, the link that confirms user's address: the new one
+            # waiting (unconfirmed_email) when there is one, else the account's own.
+            # It goes to that address. Its sender is Config#smtp_from
+            # (CYBERTRAIN_SMTP_FROM).
+            def self.confirmation_instructions(user, url)
+              pending = user.unconfirmed_email.to_s
+              address = pending.empty? ? user.email_address.to_s : pending
+              html = Cybertrain::Views.render_mail("mail/confirmation", address: address, url: url)
+              greeting = I18n.t("mail.confirmation.greeting", { email_address: address })
+              text = +""
+              text << greeting << "\n\n"
+              text << I18n.t("mail.confirmation.intro") << "\n" << url << "\n\n"
+              text << I18n.t("mail.confirmation.ignore") << "\n"
+              subject = I18n.t("confirmations_mailer.confirmation_instructions.subject")
+              Cybertrain::MailMessage.new(to: address, subject: subject, body: text, html: html)
+            end
+          end
+        RUBY
+      end
+
+      def self.confirmations_new_view
+        <<~ERB
+          <h1><%= t(".title") %></h1>
+
+          <p><%= t(".intro") %></p>
+
+          <%= form_with(url: confirmations_path) do |f| %>
+            <div class="field">
+              <%= f.label :email_address, t("activerecord.attributes.user.email_address") %>
+              <%= f.email_field :email_address, autocomplete: "username", autofocus: true %>
+            </div>
+
+            <div class="actions">
+              <%= f.submit t(".submit") %>
+            </div>
+          <% end %>
+
+          <p><%= link_to t(".sign_in"), new_session_path %></p>
+        ERB
+      end
+
+      # The mail's HTML (Views.render_mail); its lazy keys are
+      # mail.confirmation.* (D8).
+      def self.confirmation_mail_view
+        <<~ERB
+          <%# locals: (address:, url:) %>
+          <p><%= t(".greeting", email_address: address) %></p>
+          <p><%= t(".intro") %></p>
+          <p><%= link_to t(".link"), url %></p>
+          <p><%= t(".ignore") %></p>
+        ERB
+      end
+
       # ---- the account page ---------------------------------------------
 
       # app/controllers/accounts_controller.rb: the signed-in user's own
       # page. Every change asks for the current password; a wrong one is
-      # rate limited as a sign-in is (it does not count toward the lockout,
-      # which guards signing in). A new password restarts this browser's
-      # session through start_new_session_for with the row's own remember
-      # flag, so "keep me signed in" survives it (pre-flight finding 9).
-      def self.accounts_controller
-        <<~'RUBY'
+      # rate limited per client address as a sign-in is, and per user (it
+      # does not count toward the lockout, which guards signing in). A new
+      # password restarts this browser's session through
+      # start_new_session_for with the row's own remember flag, so "keep me
+      # signed in" survives it (pre-flight finding 9). With `confirmable` a
+      # new address waits in unconfirmed_email for the link mailed to it.
+      def self.accounts_controller(confirmable = false)
+        text = <<~'RUBY'
           # The signed-in user's account (cybertrain generate authentication): a new
           # email address, a new password, or both, each only with the current
           # password; and the account deleted, also only with the password.
@@ -1302,8 +1723,11 @@ module Cybertrain
           # Written by the generator; it is yours to change.
           class AccountsController < ApplicationController
             # Ten changes or deletions per client address every three minutes, as for
-            # signing in: a current password is guessed here no faster than there.
+            # signing in, and ten per user whatever the address (account_key): a
+            # current password is guessed here no faster than there, from one
+            # address or from many.
             rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], with: :rate_limited
+            rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], by: :account_key, name: "user", with: :rate_limited
             before_action :set_user
 
             # GET /account/edit
@@ -1311,15 +1735,19 @@ module Cybertrain
             end
 
             # PATCH/PUT /account
-            # The current password first, for any change. A new address takes effect
-            # at once. A new password ends every other session of the user and starts
-            # this browser's again (restart_sessions), and every password reset link
-            # sent before stops working (they are bound to the password).
+            # The current password first, for any change.
+            @ADDRESS_COMMENT@
+            # A new password ends every other session of the user and starts this
+            # browser's again (restart_sessions). A new password or address ends
+            # every password reset link sent before (they are bound to both).
             def update
               fields = params.expect(user: [:current_password, :email_address, :password, :password_confirmation])
               digest = @user.password_digest
               if @user.authenticate(fields["current_password"].to_s)
-                @user.email_address = fields["email_address"].to_s if fields.key?("email_address")
+                # What authenticate left saved: digest, or a new hash of the same
+                # password when the cost was raised (User#authenticate).
+                verified = @user.password_digest
+                @ADDRESS@
                 password = fields["password"].to_s
                 unless password.empty?
                   @user.password = password
@@ -1327,9 +1755,12 @@ module Cybertrain
                 end
                 if @user.save
                   restart_sessions if @user.password_digest != digest
-                  flash[:notice] = t(".updated")
+                  @SAVED@
                   redirect_to edit_account_path, status: :see_other
                 else
+                  # A new hash saved by authenticate stays: this browser's key
+                  # follows it, or the browser would be signed out next time.
+                  session[:password_key] = Cybertrain::Password.session_key(verified) if verified != digest
                   render :edit, status: :unprocessable_entity
                 end
               else
@@ -1339,15 +1770,20 @@ module Cybertrain
             end
 
             # DELETE /account
-            # With the password: the user's sessions (every browser's), then the user,
-            # are deleted, and this browser's cookie session is emptied.
+            # With the password: the user's sessions (every browser's) and the user
+            # are deleted together, and this browser's cookie session is emptied.
+            # When the database refuses (a row of another table still refers to
+            # the user), nothing is deleted and the page says so.
             def destroy
               if @user.authenticate(params[:password].to_s)
-                Session.where(user_id: @user.id).delete_all
-                @user.destroy
-                terminate_session
-                flash[:notice] = t(".deleted")
-                redirect_to "/", status: :see_other
+                if delete_user_and_sessions
+                  terminate_session
+                  flash[:notice] = t(".deleted")
+                  redirect_to "/", status: :see_other
+                else
+                  flash.now[:alert] = t(".not_deleted")
+                  render :edit, status: :unprocessable_entity
+                end
               else
                 flash.now[:alert] = t(".wrong_password")
                 render :edit, status: :unprocessable_entity
@@ -1360,6 +1796,13 @@ module Cybertrain
             # not pass leaves @current_user, which the nav shows, as it is.
             def set_user
               @user = User.find(@current_user.id)
+              @PENDING@
+            end
+
+            # The second rate limit's key: the signed-in user's id
+            # (require_authentication has run first).
+            def account_key
+              @current_user.id.to_s
             end
 
             # After a new password: every Session row of the user ends, the other
@@ -1373,6 +1816,22 @@ module Cybertrain
               nil
             end
 
+            # The user's Session rows and the user, in one transaction: true once
+            # both are gone. When the database refuses the delete (a foreign key
+            # from another table: give that association a `dependent:`), both
+            # stay, so this browser stays signed in, and the log says why.
+            def delete_user_and_sessions
+              user = @user
+              User.transaction do |c|
+                Session.where(user_id: user.id).delete_all
+                user.destroy
+              end
+              true
+            rescue Cybertrain::DB::Error => e
+              Cybertrain.logger.error("account not deleted: #{e.message}")
+              false
+            end
+
             # What a client past the rate limit gets (the key is update's).
             def rate_limited
               flash[:alert] = t("accounts.update.rate_limited")
@@ -1381,12 +1840,55 @@ module Cybertrain
             end
           end
         RUBY
+        if confirmable
+          text = splice(text, "@ADDRESS_COMMENT@", "  # A new address waits for the link mailed to it, and takes the old\n" \
+                                                   "  # one's place once that is opened (ConfirmationsController#show).\n")
+          text = splice(text, "@ADDRESS@", accounts_pending_address_lines)
+          text = splice(text, "@SAVED@", accounts_pending_address_saved_lines)
+          return splice(text, "@PENDING@", "    # The new address waiting, as saved: the page shows it.\n" \
+                                           "    @pending_email = @user.unconfirmed_email.to_s\n")
+        end
+        text = splice(text, "@ADDRESS_COMMENT@", "  # A new address takes effect at once.\n")
+        text = splice(text, "@ADDRESS@", margin("@user.email_address = fields[\"email_address\"].to_s if fields.key?(\"email_address\")\n", 6))
+        text = splice(text, "@SAVED@", margin("flash[:notice] = t(\".updated\")\n", 8))
+        splice(text, "@PENDING@", "")
+      end
+
+      # --confirmable's AccountsController#update: a new address goes into
+      # unconfirmed_email (the address in use cancels one waiting).
+      def self.accounts_pending_address_lines
+        margin(<<~'RUBY', 6)
+          address_changed = false
+          if fields.key?("email_address")
+            address = User.normalize_email_address(fields["email_address"].to_s)
+            if address == @user.email_address
+              @user.unconfirmed_email = nil
+            else
+              @user.unconfirmed_email = address
+              address_changed = true
+            end
+          end
+        RUBY
+      end
+
+      # ...and, once saved, the link to it by mail.
+      def self.accounts_pending_address_saved_lines
+        margin(<<~'RUBY', 8)
+          if address_changed
+            token = @user.confirmation_token
+            send_confirmation_mail(@user, token, true)
+            flash[:notice] = t(".confirm")
+          else
+            flash[:notice] = t(".updated")
+          end
+        RUBY
       end
 
       # Two forms: the details (address, new password, current password)
-      # and the deletion (the password).
-      def self.accounts_edit_view
-        <<~ERB
+      # and the deletion (the password); with `confirmable`, the new address
+      # waiting for its confirmation under the address field.
+      def self.accounts_edit_view(confirmable = false)
+        text = <<~ERB
           <h1><%= t(".title") %></h1>
 
           <%= form_with(model: @user, url: account_path) do |f| %>
@@ -1404,6 +1906,7 @@ module Cybertrain
             <div class="field">
               <%= f.label :email_address %>
               <%= f.email_field :email_address, autocomplete: "username" %>
+              @PENDING_HINT@
             </div>
 
             <div class="field">
@@ -1441,21 +1944,37 @@ module Cybertrain
             </div>
           <% end %>
         ERB
+        splice(text, "@PENDING_HINT@", confirmable ? accounts_pending_hint : "")
       end
 
-      # test/accounts.rb: the account page through the stack.
-      def self.accounts_test
-        <<~'RUBY'
+      def self.accounts_pending_hint
+        margin(<<~'ERB', 4)
+          <% unless @pending_email.empty? %>
+            <p class="hint"><%= t(".pending", email_address: @pending_email) %></p>
+          <% end %>
+        ERB
+      end
+
+      # test/accounts.rb: the account page through the stack. The same tests
+      # in every mode: with `confirmable` a new address takes effect once its
+      # link is opened, which confirm_new_address does.
+      def self.accounts_test(confirmable = false)
+        text = <<~'RUBY'
           # The account page (cybertrain generate authentication): a new address or
           # password only with the current password, what a new password ends and
-          # keeps, and deleting the account. Run with `cybertrain spin test`; its
-          # snapshot comes from the compiled binary (the database is FFI).
+          # keeps, deleting the account, and the limits on guessing the password.
+          # Run with `cybertrain spin test`; its snapshot comes from the compiled
+          # binary (the database is FFI).
+          require "stringio"
           require_relative "support/app_test"
+          require_relative "support/authentication_helpers"
 
           WRONG_PASSWORD = "<p class=\"alert\">That is not your current password.</p>"
           UPDATED = "<p class=\"notice\">Your account has been updated.</p>"
           DELETED = "<p class=\"notice\">Your account has been deleted.</p>"
+          NOT_DELETED = "<p class=\"alert\">Your account could not be deleted. Nothing has changed.</p>"
           NEW_PASSWORD = "n3w-s3cr3t-n3w"
+          @ADDRESS_HELPERS@
 
           def new_client
             Session.all.delete_all
@@ -1494,12 +2013,29 @@ module Cybertrain
             found
           end
 
+          # A table of the app's own whose rows refer to users (as a migration's
+          # `t.references :user` makes one), with a row for user: the database
+          # then refuses to delete that user.
+          def add_note_for(user)
+            Cybertrain::DB.with do |c|
+              c.execute("CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))")
+              c.execute("INSERT INTO account_notes (user_id) VALUES (#{user.id})")
+            end
+            nil
+          end
+
+          def drop_notes
+            Cybertrain::DB.with { |c| c.execute("DROP TABLE IF EXISTS account_notes") }
+            nil
+          end
+
           test "changing email or password requires the current password" do
             client = new_client
             ann = AppTest.user
             AppTest.user("bob@example.com")
             AppTest.sign_in(client)
             digest = ann.password_digest
+            reset_token = ann.password_reset_token
             # A wrong current password: nothing changes, and the page says why.
             res = update_account(client, "wrong-password", { "email_address" => "ann@new.example", "password" => NEW_PASSWORD, "password_confirmation" => NEW_PASSWORD })
             assert_response res, :unprocessable_entity
@@ -1516,18 +2052,20 @@ module Cybertrain
             assert signed_in?(client)
             assert_equal 1, Session.count
             session_id = Session.first.id
-            # The right one: the new address (normalized) at once; the password and
-            # the session stay as they were.
+            # The right one: the new address (normalized), once it takes effect;
+            # the password and the session stay as they were.
             res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => " Ann@New.Example ", "password" => "", "password_confirmation" => "" })
             assert_redirected_to res, "/account/edit"
-            page = client.follow_redirect!.body
-            assert_includes page, UPDATED
-            assert_includes page, "<span>ann@new.example</span>"
+            assert_includes client.follow_redirect!.body, ADDRESS_CHANGED
+            confirm_new_address(ann)
+            assert_includes client.get("/account/edit").body, "<span>ann@new.example</span>"
             changed = User.find(ann.id)
             assert_equal "ann@new.example", changed.email_address
             assert_equal digest, changed.password_digest
             assert_equal 1, Session.count
             assert_equal session_id, Session.first.id
+            # A password reset link sent to the old address no longer works.
+            assert_nil User.find_by_password_reset_token(reset_token)
             # Signing in takes the new address, not the old one.
             other = Cybertrain::Test::Client.new(APP)
             assert_redirected_to AppTest.sign_in(other, "ann@example.com"), "/session/new"
@@ -1606,6 +2144,7 @@ module Cybertrain
             assert_equal 2, Session.where(user_id: ann.id).count
             res = update_account(phone, "th1rd-s3cr3t", { "email_address" => "ann@new.example" })
             assert_redirected_to res, "/account/edit"
+            confirm_new_address(ann)
             assert_equal 2, Session.where(user_id: ann.id).count
             assert signed_in?(laptop, "ann@new.example")
             assert signed_in?(phone, "ann@new.example")
@@ -1689,6 +2228,10 @@ module Cybertrain
               assert_response res, :unprocessable_entity
               count += 1
             end
+            # Wrong passwords here do not count toward the lockout, which guards
+            # signing in (a stolen session could lock the owner out).
+            assert_equal 0, User.find(ann.id).failed_attempts
+            assert_nil User.find(ann.id).locked_until
             # The right password now gets the limit's answer and changes nothing; a
             # deletion counts in the same window.
             res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "s3cr3t-s3cr3t",
@@ -1704,20 +2247,186 @@ module Cybertrain
             res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "s3cr3t-s3cr3t",
                                              "user[email_address]" => "ann@new.example" })
             assert_redirected_to res, "/account/edit"
+            confirm_new_address(ann)
             assert_equal "ann@new.example", User.find(ann.id).email_address
             Cybertrain::RateLimit.reset_all!
           end
 
+          test "wrong current passwords are limited per user too, from any address" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.user("bob@example.com")
+            AppTest.sign_in(client)
+            bobs = Cybertrain::Test::Client.new(APP)
+            AppTest.sign_in(bobs, "bob@example.com")
+            client.get("/account/edit")
+            token = AppTest.form_token(client)
+            Cybertrain::RateLimit.reset_all!
+            # Ten wrong guesses, each from another address: the per-address limit
+            # never fills.
+            count = 0
+            while count < 10
+              client.peer_address = "203.0.113.#{count + 1}"
+              res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "wrong-password" })
+              assert_response res, :unprocessable_entity
+              count += 1
+            end
+            # The eleventh, from yet another address and with the right password:
+            # the per-user limit answers, and nothing changes.
+            client.peer_address = "203.0.113.99"
+            res = client.patch("/account", { "authenticity_token" => token, "user[current_password]" => "s3cr3t-s3cr3t",
+                                             "user[email_address]" => "ann@new.example" })
+            assert_redirected_to res, "/account/edit"
+            assert_includes client.follow_redirect!.body, "<p class=\"alert\">Try again later.</p>"
+            assert_equal "ann@example.com", User.find(ann.id).email_address
+            # Another user, from that same address, is not held back by ann's count.
+            bobs.get("/account/edit")
+            bobs.peer_address = "203.0.113.99"
+            res = bobs.patch("/account", { "authenticity_token" => AppTest.form_token(bobs), "user[current_password]" => "s3cr3t-s3cr3t",
+                                           "user[password]" => NEW_PASSWORD, "user[password_confirmation]" => NEW_PASSWORD })
+            assert_redirected_to res, "/account/edit"
+            assert_includes bobs.follow_redirect!.body, UPDATED
+            Cybertrain::RateLimit.reset_all!
+          end
+
+          test "the form's fields are the only ones a change takes" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            # Fields the form does not have, sent with the right password: ignored.
+            res = update_account(client, "s3cr3t-s3cr3t", { "password" => NEW_PASSWORD, "password_confirmation" => NEW_PASSWORD,
+                                                            "admin" => "1", "failed_attempts" => "7", "locked_until" => "2099-01-01 00:00:00" })
+            assert_redirected_to res, "/account/edit"
+            changed = User.find(ann.id)
+            assert changed.authenticate(NEW_PASSWORD)
+            assert_equal false, changed.admin?
+            assert_equal 0, changed.failed_attempts
+            assert_nil changed.locked_until
+          end
+
+          test "PATCH and DELETE /account without the form's token are refused" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            res = client.patch("/account", { "user[current_password]" => "s3cr3t-s3cr3t", "user[email_address]" => "eve@example.com" })
+            assert_response res, :forbidden
+            res = client.delete("/account", { "password" => "s3cr3t-s3cr3t" })
+            assert_response res, :forbidden
+            # Nor with another browser's token.
+            other = Cybertrain::Test::Client.new(APP)
+            other.get("/session/new")
+            foreign = AppTest.form_token(other)
+            res = client.patch("/account", { "authenticity_token" => foreign, "user[current_password]" => "s3cr3t-s3cr3t",
+                                             "user[email_address]" => "eve@example.com" })
+            assert_response res, :forbidden
+            res = client.delete("/account", { "authenticity_token" => foreign, "password" => "s3cr3t-s3cr3t" })
+            assert_response res, :forbidden
+            assert_equal "ann@example.com", User.find(ann.id).email_address
+            refute User.find_by(id: ann.id).nil?
+            assert signed_in?(client)
+          end
+
+          test "a new hash of the password stays with this browser when the change fails" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.user("bob@example.com")
+            AppTest.sign_in(client)
+            digest = ann.password_digest
+            begin
+              # The cost raised since ann's digest was made: checking her password
+              # saves a new hash of it (User#authenticate).
+              Cybertrain::Password.iterations = Cybertrain::Password::TEST_ITERATIONS + 1
+              res = update_account(client, "s3cr3t-s3cr3t", { "email_address" => "bob@example.com" })
+              assert_response res, :unprocessable_entity
+              assert_includes res.body, "<li>Email address has already been taken</li>"
+              rehashed = User.find(ann.id).password_digest
+              refute rehashed == digest
+              assert Cybertrain::Password.verify?("s3cr3t-s3cr3t", rehashed)
+              # This browser is still signed in on its row.
+              assert signed_in?(client)
+              assert_equal 1, Session.where(user_id: ann.id).count
+            ensure
+              Cybertrain::Password.iterations = Cybertrain::Password::TEST_ITERATIONS
+            end
+          end
+
+          test "a deletion the database refuses changes nothing and says so" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            phone = Cybertrain::Test::Client.new(APP)
+            AppTest.sign_in(phone)
+            add_note_for(ann)
+            log = StringIO.new
+            begin
+              with_config("test", NO_HOSTS, "", log) do
+                refused = delete_account(client, "s3cr3t-s3cr3t")
+                assert_response refused, :unprocessable_entity
+                assert_includes refused.body, NOT_DELETED
+              end
+              # The user and both sessions are kept (one transaction), and the
+              # log says why.
+              refute User.find_by(id: ann.id).nil?
+              assert_equal 2, Session.where(user_id: ann.id).count
+              assert signed_in?(client)
+              assert signed_in?(phone)
+              assert_includes log.string, "[ERROR] account not deleted: FOREIGN KEY constraint failed"
+            ensure
+              drop_notes
+            end
+            # Once nothing refers to the user, the same deletion passes.
+            res = delete_account(client, "s3cr3t-s3cr3t")
+            assert_redirected_to res, "/"
+            assert_nil User.find_by(id: ann.id)
+            assert_equal 0, Session.where(user_id: ann.id).count
+          end
+
           Cybertrain::Test.run!
+        RUBY
+        splice(text, "@ADDRESS_HELPERS@", confirmable ? accounts_test_confirm_helpers : accounts_test_address_helpers)
+      end
+
+      # What a new address does on the account page, in test/accounts.rb:
+      # it takes effect at once.
+      def self.accounts_test_address_helpers
+        <<~'RUBY'
+          # What the page says after a new address, which takes effect at once.
+          ADDRESS_CHANGED = UPDATED
+
+          # Nothing more to do for a new address to take effect (with
+          # --confirmable, its link is opened here).
+          def confirm_new_address(user)
+            nil
+          end
+        RUBY
+      end
+
+      # --confirmable's: it takes effect once the link mailed to it is opened.
+      def self.accounts_test_confirm_helpers
+        <<~'RUBY'
+          # What the page says after a new address (--confirmable): it takes
+          # effect once the link mailed to it is opened.
+          ADDRESS_CHANGED = "<p class=\"notice\">A link to confirm the new address was sent to it. The address changes once the link is opened.</p>"
+
+          # Opens the link of the new address user is waiting for (from a browser
+          # that is not signed in, as a mail reader's would be), so it takes the
+          # old one's place. test/confirmations.rb follows the mailed link itself.
+          def confirm_new_address(user)
+            token = User.find(user.id).confirmation_token
+            res = Cybertrain::Test::Client.new(APP).get("/confirmations/#{token}")
+            assert_redirected_to res, "/session/new"
+            nil
+          end
         RUBY
       end
 
       # ---- --invite-only ------------------------------------------------
 
-      # The first user's page (--invite-only).
-      def self.setup_controller(app)
+      # The first user's page (--invite-only); with `confirmable` the user
+      # it creates is confirmed, as nothing mails them.
+      def self.setup_controller(app, confirmable = false)
         env = setup_env(app)
-        <<~RUBY
+        text = <<~RUBY
           # First-run setup (cybertrain generate authentication --invite-only):
           # the form that creates the first user and signs them in. It answers
           # only while no user exists, only with the one-time token the server
@@ -1760,6 +2469,7 @@ module Cybertrain
               @user = User.new(fields.permit(:email_address))
               @user.password = fields[:password].to_s
               @user.password_confirmation = fields[:password_confirmation].to_s
+              @CONFIRMED_AT_CREATION@
               # The no-user check and the insert are one write transaction
               # (BEGIN IMMEDIATE takes the lock first), so two requests that
               # both passed require_first_run cannot both create "the first"
@@ -1798,6 +2508,9 @@ module Cybertrain
             end
           end
         RUBY
+        chunk = margin("# Nothing mails the first user a link: the address counts as\n" \
+                       "# confirmed (--confirmable).\n@user.confirmed_at = Time.now\n", 4)
+        splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
       end
 
       def self.setup_new_view
@@ -1846,8 +2559,8 @@ module Cybertrain
       # bin/<app>.rb (and from the app's tests, which run it). With
       # --invite-only it also holds the boot warning, which names /setup's
       # token; a sign-up app has no SetupController to name.
-      def self.user_command(app, invite_only = false)
-        head = user_command_head(app, invite_only)
+      def self.user_command(app, invite_only = false, confirmable = false)
+        head = user_command_head(app, invite_only, confirmable)
         warning = invite_only ? user_command_warning(app) : ""
         tail = <<~RUBY
           end
@@ -1859,11 +2572,13 @@ module Cybertrain
         join_three(head, warning, tail)
       end
 
-      # The command's file up to the end of its last method, in both modes.
-      def self.user_command_head(app, invite_only)
+      # The command's file up to the end of its last method, in both modes;
+      # with `confirmable` a user it creates is confirmed, as nothing mails
+      # them (pre-flight finding 6).
+      def self.user_command_head(app, invite_only, confirmable = false)
         mode = invite_only ? " --invite-only" : ""
         warned = invite_only ? ", which also calls UserCommand.warn_if_no_user before serving" : ""
-        <<~RUBY
+        text = <<~RUBY
           # `./#{app} user EMAIL [PASSWORD]` (cybertrain generate authentication#{mode}):
           # creates the user with this address, or sets the password of the one
           # that has it (which signs that user's browsers out: their sessions'
@@ -1911,6 +2626,7 @@ module Cybertrain
               created = found.nil?
               user = found.nil? ? User.new(email_address: address) : found
               user.password = password
+              @CONFIRMED_AT_CREATION@
               unless user.save
                 user.errors.full_messages.each { |message| puts "error: \#{message}" }
                 return 1
@@ -1961,6 +2677,9 @@ module Cybertrain
               s
             end
         RUBY
+        chunk = margin("# A user made here gets no mail with a link: the address counts as\n" \
+                       "# confirmed from the start (--confirmable).\nuser.confirmed_at = Time.now if created\n", 4)
+        splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
       end
 
       # --invite-only: the boot warning and the question it asks, indented
@@ -2047,12 +2766,13 @@ module Cybertrain
       end
 
       # Inserted (indented) after the draw line of config/routes.rb.
-      def self.routes_block(invite_only = false)
+      def self.routes_block(invite_only = false, confirmable = false)
+        confirmations = confirmable ? "#{CONFIRMATIONS_ROUTE}\n" : ""
         if invite_only
           return <<~RUBY
             resource :session, only: [:new, :create, :destroy]
             #{PASSWORDS_ROUTE}
-            #{ACCOUNT_ROUTE}
+            #{confirmations}#{ACCOUNT_ROUTE}
             get "/setup", to: "setup#new", as: "setup"
             post "/setup", to: "setup#create"
           RUBY
@@ -2061,7 +2781,7 @@ module Cybertrain
         <<~RUBY
           resource :session, only: [:new, :create, :destroy]
           #{PASSWORDS_ROUTE}
-          #{ACCOUNT_ROUTE}
+          #{confirmations}#{ACCOUNT_ROUTE}
           get "/sign_up", to: "registrations#new", as: "sign_up"
           post "/sign_up", to: "registrations#create"
         RUBY
@@ -2071,9 +2791,10 @@ module Cybertrain
 
       # The same shape as examples/blog/test/support/blog_test.rb: boots the
       # app on a fresh test database. Shared by every test file; copy
-      # helpers into it as the app grows.
-      def self.app_test_support
-        <<~RUBY
+      # helpers into it as the app grows. With `confirmable`, AppTest.user's
+      # users have confirmed their address.
+      def self.app_test_support(confirmable = false)
+        text = <<~RUBY
           # Shared setup for the integration tests (test/*.rb): the app booted in
           # the test environment on a fresh storage/test.sqlite3. Required by the
           # test files, not run (`spin test` runs test/*.rb only).
@@ -2134,6 +2855,7 @@ module Cybertrain
             def self.user(email_address = "ann@example.com", password = "s3cr3t-s3cr3t")
               user = User.new(email_address: email_address)
               user.password = password
+              @CONFIRMED@
               user.save!
               user
             end
@@ -2152,6 +2874,9 @@ module Cybertrain
 
           APP = AppTest.boot
         RUBY
+        chunk = margin("# Confirmed, as a user who signs in has to be (--confirmable;\n" \
+                       "# test/confirmations.rb makes the unconfirmed ones).\nuser.confirmed_at = Time.now\n", 4)
+        splice(text, "@CONFIRMED@", confirmable ? chunk : "")
       end
 
       # test/authentication.rb: the head (requires, new_client, the sign-in
@@ -2160,9 +2885,9 @@ module Cybertrain
       # The pieces go through locals and `<<`: an interpolation of three
       # method calls could free one result while building the next under
       # Spinel (spikes/NOTES.md rule 65), and the CLI compiles there too.
-      def self.authentication_test
+      def self.authentication_test(confirmable = false)
         head = authentication_test_head(false)
-        middle = sign_up_tests
+        middle = sign_up_tests(confirmable)
         join_three(head, middle, authentication_test_tail)
       end
 
@@ -2791,6 +3516,33 @@ module Cybertrain
             row.update_columns(created_at: at, last_active_at: at)
             nil
           end
+
+          # Runs the block with Config#env, hosts_from_env and the base_url
+          # setting given (and Cybertrain.logger writing errors to log, unless it
+          # is nil), then puts them back, also when the block fails.
+          def with_config(env, hosts, base_url, log = nil)
+            c = Cybertrain.config
+            saved_env = c.env
+            saved_hosts = c.hosts_from_env
+            saved_base_url = c.string_setting(:base_url)
+            saved_logger = Cybertrain.logger
+            begin
+              c.env = env
+              c.hosts_from_env = hosts
+              c.set_string_setting(:base_url, base_url)
+              Cybertrain.logger = Cybertrain::Logger.new(log, :error) unless log.nil?
+              yield
+            ensure
+              c.env = saved_env
+              c.hosts_from_env = saved_hosts
+              c.set_string_setting(:base_url, saved_base_url)
+              Cybertrain.logger = saved_logger
+            end
+            nil
+          end
+
+          # with_config's `hosts` for an app that lists none (CYBERTRAIN_HOSTS unset).
+          NO_HOSTS = Array.new(0) { "" }
         RUBY
       end
 
@@ -2809,9 +3561,9 @@ module Cybertrain
         <<~'RUBY'
           # Password reset (cybertrain generate authentication): the address form,
           # the mail (through an SMTP receiver in this process), the link's token
-          # (15 minutes, bound to the password) and what a reset ends. Run with
-          # `cybertrain spin test`; its snapshot comes from the compiled binary (the
-          # database is FFI).
+          # (15 minutes, bound to the password and the address) and what a reset
+          # ends. Run with `cybertrain spin test`; its snapshot comes from the
+          # compiled binary (the database is FFI).
           require "stringio"
           require_relative "support/app_test"
           require_relative "support/authentication_helpers"
@@ -2857,32 +3609,6 @@ module Cybertrain
           def signed_in?(client, email_address = "ann@example.com")
             client.get("/session/new").body.include?("<span>#{email_address}</span>")
           end
-
-          # Runs the block with Config#env, hosts_from_env and the base_url
-          # setting given (and Cybertrain.logger writing errors to log, unless it
-          # is nil), then puts them back, also when the block fails.
-          def with_config(env, hosts, base_url, log = nil)
-            c = Cybertrain.config
-            saved_env = c.env
-            saved_hosts = c.hosts_from_env
-            saved_base_url = c.string_setting(:base_url)
-            saved_logger = Cybertrain.logger
-            begin
-              c.env = env
-              c.hosts_from_env = hosts
-              c.set_string_setting(:base_url, base_url)
-              Cybertrain.logger = Cybertrain::Logger.new(log, :error) unless log.nil?
-              yield
-            ensure
-              c.env = saved_env
-              c.hosts_from_env = saved_hosts
-              c.set_string_setting(:base_url, saved_base_url)
-              Cybertrain.logger = saved_logger
-            end
-            nil
-          end
-
-          NO_HOSTS = Array.new(0) { "" }
 
           test "reset answers the same for unknown addresses and links to base_url" do
             client = new_client
@@ -3058,12 +3784,15 @@ module Cybertrain
             bob = AppTest.user("bob@example.com")
             token = ann.password_reset_token
             earlier = ann.password_reset_token(Time.now.to_i - 60)
-            # A token names its user and is bound to that user's password: one
-            # with bob's id and ann's password, or another purpose, is no one's.
+            # A token names its user and is bound to that user's password and
+            # address: one with bob's id and ann's binding, ann's id and her
+            # password alone, or another purpose, is no one's.
+            assert_equal "#{ann.password_digest}:ann@example.com", ann.password_reset_binding
             assert_equal ann.id, User.find_by_password_reset_token(token).id
             assert_equal bob.id, User.find_by_password_reset_token(bob.password_reset_token).id
-            assert_nil User.find_by_password_reset_token(Cybertrain::Token.issue("password_reset", bob.id, 15 * 60, ann.password_digest))
-            assert_nil User.find_by_password_reset_token(Cybertrain::Token.issue("confirmation", ann.id, 15 * 60, ann.password_digest))
+            assert_nil User.find_by_password_reset_token(Cybertrain::Token.issue("password_reset", bob.id, 15 * 60, ann.password_reset_binding))
+            assert_nil User.find_by_password_reset_token(Cybertrain::Token.issue("password_reset", ann.id, 15 * 60, ann.password_digest))
+            assert_nil User.find_by_password_reset_token(Cybertrain::Token.issue("confirmation", ann.id, 15 * 60, ann.password_reset_binding))
             assert_nil User.find_by_password_reset_token("")
             # A new password that does not pass: the token still holds.
             res = reset_with(client, token, NEW_PASSWORD, "something-else")
@@ -3083,6 +3812,12 @@ module Cybertrain
             changed = User.find_by(email_address: "ann@example.com")
             fresh = changed.password_reset_token
             changed.password = "th1rd-s3cr3t-x"
+            changed.save!
+            assert_nil User.find_by_password_reset_token(fresh)
+            # And so does a new address (test/accounts.rb changes it through the page).
+            fresh = changed.password_reset_token
+            refute User.find_by_password_reset_token(fresh).nil?
+            changed.email_address = "ann@new.example"
             changed.save!
             assert_nil User.find_by_password_reset_token(fresh)
           end
@@ -3184,6 +3919,442 @@ module Cybertrain
           end
 
           Cybertrain::Test.run!
+        RUBY
+      end
+
+      # test/confirmations.rb (--confirmable): the mail through the SMTP
+      # receiver, sign-in refused until the address is confirmed, the link,
+      # a new address, the send-again form, and the users that /setup and the
+      # user command make. Its first test is the mode's: sign-up's mail, or
+      # (--invite-only) /setup's confirmed first user.
+      def self.confirmations_test(app, invite_only = false)
+        text = confirmations_test_body
+        text = splice(text, "@FIRST_USER_TEST@", invite_only ? confirmations_setup_test : confirmations_sign_up_test)
+        text = text.gsub(BASE_URL_ENV_MARK, base_url_env(app))
+        text.gsub("@APP@", app)
+      end
+
+      def self.confirmations_test_body
+        <<~'RUBY'
+          # Confirming the email address (cybertrain generate authentication
+          # --confirmable): the mail with the link (through an SMTP receiver in this
+          # process), sign-in refused until the link is opened, the link itself
+          # (three days, once, signing nobody in), a new address that takes effect
+          # only once its own link is opened, and the form that mails the link
+          # again. Run with `cybertrain spin test`; its snapshot comes from the
+          # compiled binary (the database is FFI).
+          require "stringio"
+          require_relative "support/app_test"
+          require_relative "support/authentication_helpers"
+          require_relative "../app/commands/user_command"
+
+          WRONG = "<p class=\"alert\">Try another email address or password.</p>"
+          UNCONFIRMED = "<p class=\"alert\">Confirm your email address first: open the link in the mail we sent you.</p>"
+          SEND_AGAIN_LINK = "<a href=\"/confirmations/new\">Send the confirmation link again</a>"
+          CONFIRMED = "<p class=\"notice\">Your email address has been confirmed.</p>"
+          INVALID = "<p class=\"alert\">That confirmation link is invalid or has expired.</p>"
+          TAKEN = "<p class=\"alert\">That email address belongs to another account now, so it was not changed.</p>"
+          SENT = "<p class=\"notice\">If that address is registered and not confirmed yet, a link to confirm it was sent to it.</p>"
+          ADDRESS_CHANGED = "<p class=\"notice\">A link to confirm the new address was sent to it. The address changes once the link is opened.</p>"
+          UPDATED = "<p class=\"notice\">Your account has been updated.</p>"
+
+          def new_client
+            Session.all.delete_all
+            User.all.delete_all
+            clear_enqueued_jobs
+            Cybertrain::Test::Client.new(APP)
+          end
+
+          # A user who has not confirmed the address yet, as a sign-up leaves one
+          # (AppTest.user's are confirmed).
+          def unconfirmed_user(email_address = "ann@example.com")
+            user = User.new(email_address: email_address)
+            user.password = "s3cr3t-s3cr3t"
+            user.save!
+            user
+          end
+
+          # The token in a link ("http://.../confirmations/<token>").
+          def token_in(link)
+            start = link.index("/confirmations/").to_i + 15
+            link[start, link.size - start].to_s
+          end
+
+          # Whether client is signed in as email_address: the nav names them.
+          def signed_in?(client, email_address = "ann@example.com")
+            client.get("/session/new").body.include?("<span>#{email_address}</span>")
+          end
+
+          # Sends the form that mails the link again, the rate limit's counts
+          # forgotten first (as AppTest.sign_in does).
+          def send_again(client, email_address)
+            Cybertrain::RateLimit.reset_all!
+            client.get("/confirmations/new")
+            client.post("/confirmations", { "authenticity_token" => AppTest.form_token(client), "email_address" => email_address })
+          end
+
+          # Sends the account form with the current password and a new address.
+          def change_address(client, email_address)
+            Cybertrain::RateLimit.reset_all!
+            client.get("/account/edit")
+            client.patch("/account", { "authenticity_token" => AppTest.form_token(client), "user[current_password]" => "s3cr3t-s3cr3t",
+                                       "user[email_address]" => email_address })
+          end
+
+          @FIRST_USER_TEST@
+
+          test "./@APP@ user makes a confirmed user, and mails nothing" do
+            client = new_client
+            assert_equal 0, UserCommand.run(["Dee@Example.com", "s3cr3t-s3cr3t"])
+            dee = User.find_by(email_address: "dee@example.com")
+            refute dee.nil?
+            assert_equal true, dee.confirmed?
+            assert_no_enqueued_jobs "cybertrain mail"
+            assert_redirected_to AppTest.sign_in(client, "dee@example.com"), "/"
+            # A new password for a user who exists leaves the confirmation as it was.
+            ann = unconfirmed_user
+            assert_equal 0, UserCommand.run(["ann@example.com", "an0ther-s3cr3t"])
+            assert_equal false, User.find(ann.id).confirmed?
+            assert_redirected_to AppTest.sign_in(client, "ann@example.com", "an0ther-s3cr3t"), "/session/new"
+            assert_includes client.follow_redirect!.body, UNCONFIRMED
+          end
+
+          test "sign-in is refused until confirmed, with the send-again link" do
+            client = new_client
+            ann = unconfirmed_user
+            # A wrong password, or an address no user has: the usual message, which
+            # says nothing of the address.
+            assert_redirected_to AppTest.sign_in(client, "ann@example.com", "wrong-password"), "/session/new"
+            page = client.follow_redirect!.body
+            assert_includes page, WRONG
+            refute page.include?(UNCONFIRMED)
+            assert_redirected_to AppTest.sign_in(client, "nobody@example.com"), "/session/new"
+            page = client.follow_redirect!.body
+            assert_includes page, WRONG
+            refute page.include?(UNCONFIRMED)
+            # The right password: refused all the same, with the reason, and the
+            # sign-in page links to the form that mails the link again.
+            assert_redirected_to AppTest.sign_in(client), "/session/new"
+            page = client.follow_redirect!.body
+            assert_includes page, UNCONFIRMED
+            refute page.include?(WRONG)
+            assert_includes page, SEND_AGAIN_LINK
+            assert_equal 0, Session.count
+            refute signed_in?(client)
+            # As any right password does, it cleared the wrong one's count.
+            assert_equal 0, User.find(ann.id).failed_attempts
+            # Confirmed, the same password signs in.
+            assert_redirected_to client.get("/confirmations/#{ann.confirmation_token}"), "/session/new"
+            assert_redirected_to AppTest.sign_in(client), "/"
+            assert_equal 1, Session.count
+            assert signed_in?(client)
+          end
+
+          test "the link confirms, and the user can then sign in" do
+            client = new_client
+            ann = unconfirmed_user
+            token = ann.confirmation_token
+            before = Time.now.to_i
+            res = client.get("/confirmations/#{token}")
+            after = Time.now.to_i
+            assert_redirected_to res, "/session/new"
+            # The page's address holds the token: no Referer leaves it.
+            assert_equal "no-referrer", res.header("Referrer-Policy")
+            page = client.follow_redirect!.body
+            assert_includes page, CONFIRMED
+            # A link opened from a mail signs nobody in.
+            refute page.include?("<span>ann@example.com</span>")
+            assert_equal 0, Session.count
+            confirmed = User.find(ann.id)
+            assert confirmed.confirmed?
+            assert confirmed.confirmed_at.to_i >= before
+            assert confirmed.confirmed_at.to_i <= after
+            assert_equal "ann@example.com", confirmed.email_address
+            # Used once, the link confirms nothing more.
+            assert_nil User.find_by_confirmation_token(token)
+            res = client.get("/confirmations/#{token}")
+            assert_redirected_to res, "/confirmations/new"
+            assert_equal "no-referrer", res.header("Referrer-Policy")
+            assert_includes client.follow_redirect!.body, INVALID
+            assert_equal confirmed.confirmed_at.to_i, User.find(ann.id).confirmed_at.to_i
+            # The user then signs in, with the password.
+            assert_redirected_to AppTest.sign_in(client), "/"
+            assert signed_in?(client)
+          end
+
+          test "the link lasts three days and belongs to its user and address" do
+            client = new_client
+            ann = unconfirmed_user
+            bob = unconfirmed_user("bob@example.com")
+            assert_equal 259_200, User::CONFIRMATION_TOKEN_TTL
+            now = Time.now.to_i
+            assert ann.confirmation_token(now).start_with?("#{ann.id}--#{now + 259_200}--")
+            assert_equal ":ann@example.com:0", ann.confirmation_binding
+            stale = ann.confirmation_token(now - 259_200 - 60)
+            fresh = ann.confirmation_token(now - 259_200 + 60)
+            assert_nil User.find_by_confirmation_token(stale)
+            assert_equal ann.id, User.find_by_confirmation_token(fresh).id
+            assert_redirected_to client.get("/confirmations/#{stale}"), "/confirmations/new"
+            assert_equal false, User.find(ann.id).confirmed?
+            # Another user's id with ann's binding, another purpose, or nothing at
+            # all: no one's.
+            assert_nil User.find_by_confirmation_token(Cybertrain::Token.issue("confirmation", bob.id, 900, ann.confirmation_binding))
+            assert_nil User.find_by_confirmation_token(ann.password_reset_token)
+            assert_nil User.find_by_password_reset_token(ann.confirmation_token)
+            assert_nil User.find_by_confirmation_token("")
+            assert_redirected_to client.get("/confirmations/not-a-token"), "/confirmations/new"
+            assert_equal bob.id, User.find_by_confirmation_token(bob.confirmation_token).id
+            assert_equal false, User.find(bob.id).confirmed?
+          end
+
+          test "an email change takes effect only when the new address confirms" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.user("bob@example.com")
+            AppTest.sign_in(client)
+            reset_token = ann.password_reset_token
+            res = change_address(client, " Ann@New.Example ")
+            assert_redirected_to res, "/account/edit"
+            page = client.follow_redirect!.body
+            assert_includes page, ADDRESS_CHANGED
+            # Not yet: the old address is in use, the new one waits.
+            assert_includes page, "<span>ann@example.com</span>"
+            assert_includes page, "<p class=\"hint\">Waiting for confirmation: ann@new.example</p>"
+            waiting = User.find(ann.id)
+            assert_equal "ann@example.com", waiting.email_address
+            assert_equal "ann@new.example", waiting.unconfirmed_email
+            other = Cybertrain::Test::Client.new(APP)
+            assert_redirected_to AppTest.sign_in(other, "ann@new.example"), "/session/new"
+            assert_redirected_to AppTest.sign_in(other), "/"
+            refute User.find_by_password_reset_token(reset_token).nil?
+            # A taken address is refused when it is asked for; the one waiting stays.
+            res = change_address(client, "bob@example.com")
+            assert_response res, :unprocessable_entity
+            assert_includes res.body, "<li>Email address has already been taken</li>"
+            assert_includes res.body, "<p class=\"hint\">Waiting for confirmation: ann@new.example</p>"
+            assert_equal "ann@new.example", User.find(ann.id).unconfirmed_email
+            # The mail goes to the new address.
+            assert_enqueued_jobs 1, "cybertrain mail"
+            with_smtp_receiver do |receiver|
+              assert_equal 1, perform_enqueued_jobs
+              mail = receiver.received_message
+              refute mail.nil?
+              assert_equal ["ann@new.example"], mail.envelope_recipients
+              assert_includes mail.message_parts["text"], "Hello ann@new.example,\r\n"
+              link = last_mail_link(receiver)
+              assert link.start_with?("http://www.example.com/confirmations/"), link
+              # Opened in the browser that asked: back to the account page, with
+              # the new address in use.
+              path = "/confirmations/#{token_in(link)}"
+              opened = client.get(path)
+              assert_redirected_to opened, "/account/edit"
+              account_page = client.follow_redirect!.body
+              assert_includes account_page, CONFIRMED
+              assert_includes account_page, "<span>ann@new.example</span>"
+              refute account_page.include?("Waiting for confirmation")
+              # The link is used up.
+              assert_redirected_to client.get(path), "/confirmations/new"
+            end
+            changed = User.find(ann.id)
+            assert_equal "ann@new.example", changed.email_address
+            assert_nil changed.unconfirmed_email
+            assert changed.confirmed?
+            # Both sessions go on; the old address signs in no more, the new one does.
+            assert_equal 2, Session.where(user_id: ann.id).count
+            assert_redirected_to AppTest.sign_in(other, "ann@example.com"), "/session/new"
+            assert_redirected_to AppTest.sign_in(other, "ann@new.example"), "/"
+            # A password reset link sent to the old address is spent.
+            assert_nil User.find_by_password_reset_token(reset_token)
+          end
+
+          test "a new address someone takes before its link is opened is not moved in" do
+            client = new_client
+            ann = AppTest.user
+            AppTest.sign_in(client)
+            assert_redirected_to change_address(client, "carol@example.com"), "/account/edit"
+            token = User.find(ann.id).confirmation_token
+            # Meanwhile carol signs up with it: an address that only waits is free.
+            carol = unconfirmed_user("carol@example.com")
+            res = client.get("/confirmations/#{token}")
+            assert_redirected_to res, "/account/edit"
+            assert_includes client.follow_redirect!.body, TAKEN
+            assert_equal "ann@example.com", User.find(ann.id).email_address
+            assert_equal "carol@example.com", User.find(carol.id).email_address
+            # Another new address ends the link to the one before.
+            assert_redirected_to change_address(client, "ann@other.example"), "/account/edit"
+            assert_nil User.find_by_confirmation_token(token)
+            assert_equal "ann@other.example", User.find(ann.id).unconfirmed_email
+            # The address in use, sent again, cancels the one waiting.
+            res = change_address(client, "ann@example.com")
+            assert_redirected_to res, "/account/edit"
+            page = client.follow_redirect!.body
+            assert_includes page, UPDATED
+            refute page.include?("Waiting for confirmation")
+            assert_nil User.find(ann.id).unconfirmed_email
+          end
+
+          test "send again answers the same for unknown addresses" do
+            client = new_client
+            ann = unconfirmed_user
+            AppTest.user("bob@example.com")
+            res = client.get("/confirmations/new")
+            assert_response res, :ok
+            assert_includes res.body, "<h1>Send the confirmation link again</h1>"
+            assert_includes res.body, "<form action=\"/confirmations\" method=\"post\">"
+            known = send_again(client, " Ann@Example.com ")
+            known_status = known.status
+            known_location = known.header("Location")
+            known_body = known.body
+            assert_includes client.follow_redirect!.body, SENT
+            unknown = send_again(client, "nobody@example.com")
+            unknown_status = unknown.status
+            unknown_location = unknown.header("Location")
+            unknown_body = unknown.body
+            assert_includes client.follow_redirect!.body, SENT
+            # An address confirmed already: the same answer too.
+            confirmed = send_again(client, "bob@example.com")
+            assert_equal 303, known_status
+            assert_equal "/session/new", known_location
+            assert_equal known_status, unknown_status
+            assert_equal known_location, unknown_location
+            assert_equal known_body, unknown_body
+            assert_equal known_status, confirmed.status
+            assert_equal known_location, confirmed.header("Location")
+            assert_equal known_body, confirmed.body
+            assert_includes client.follow_redirect!.body, SENT
+            # One mail, to the address that waits; its link confirms it.
+            assert_enqueued_jobs 1, "cybertrain mail"
+            with_smtp_receiver do |receiver|
+              assert_equal 1, perform_enqueued_jobs
+              mail = receiver.received_message
+              refute mail.nil?
+              assert_equal ["ann@example.com"], mail.envelope_recipients
+              link = last_mail_link(receiver)
+              assert_redirected_to client.get("/confirmations/#{token_in(link)}"), "/session/new"
+            end
+            assert User.find(ann.id).confirmed?
+            # Confirmed now, ann gets the same answer and no mail.
+            clear_enqueued_jobs
+            res = send_again(client, "ann@example.com")
+            assert_equal known_location, res.header("Location")
+            assert_equal known_body, res.body
+            assert_no_enqueued_jobs "cybertrain mail"
+          end
+
+          test "send again: a refused address, no safe base and the rate limit" do
+            client = new_client
+            unconfirmed_user("josé@example.com")
+            unconfirmed_user
+            # An address the mailer refuses: the same answer, and the log says why.
+            log = StringIO.new
+            with_config("test", NO_HOSTS, "", log) do
+              refused = send_again(client, "josé@example.com")
+              refused_location = refused.header("Location")
+              refused_body = refused.body
+              unknown = send_again(client, "nobody@example.com")
+              assert_equal 303, unknown.status
+              assert_equal "/session/new", refused_location
+              assert_equal refused_location, unknown.header("Location")
+              assert_equal refused_body, unknown.body
+            end
+            assert_no_enqueued_jobs "cybertrain mail"
+            assert_includes log.string, "[ERROR] confirmation mail not sent: the to address contains a space, a control character or a non-ASCII byte\n"
+            # Production with neither base_url nor CYBERTRAIN_HOSTS: no mail, an
+            # [ERROR] line, the same answer.
+            log = StringIO.new
+            with_config("production", NO_HOSTS, "", log) do
+              answer = send_again(client, "ann@example.com")
+              assert_redirected_to answer, "/session/new"
+              assert_includes client.follow_redirect!.body, SENT
+            end
+            assert_no_enqueued_jobs "cybertrain mail"
+            assert_includes log.string, "[ERROR] confirmation mail not sent: set @BASE_URL_ENV@ (or CYBERTRAIN_HOSTS)\n"
+            # Ten requests per client address, then the form again for a while.
+            Cybertrain::RateLimit.reset_all!
+            client.get("/confirmations/new")
+            token = AppTest.form_token(client)
+            count = 0
+            while count < 10
+              res = client.post("/confirmations", { "authenticity_token" => token, "email_address" => "nobody@example.com" })
+              assert_redirected_to res, "/session/new"
+              count += 1
+            end
+            res = client.post("/confirmations", { "authenticity_token" => token, "email_address" => "ann@example.com" })
+            assert_redirected_to res, "/confirmations/new"
+            assert_includes client.follow_redirect!.body, "<p class=\"alert\">Try again later.</p>"
+            assert_no_enqueued_jobs "cybertrain mail"
+            Cybertrain::RateLimit.reset_all!
+          end
+
+          Cybertrain::Test.run!
+        RUBY
+      end
+
+      # Sign-up mode's first test: the mail, and nobody signed in.
+      def self.confirmations_sign_up_test
+        <<~'RUBY'
+          test "sign-up sends a confirmation mail and signs nobody in" do
+            client = new_client
+            client.get("/sign_up")
+            res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
+                                            "user[email_address]" => " Ann@Example.com ",
+                                            "user[password]" => "s3cr3t-s3cr3t",
+                                            "user[password_confirmation]" => "s3cr3t-s3cr3t" })
+            assert_redirected_to res, "/session/new"
+            page = client.follow_redirect!.body
+            assert_includes page, "<p class=\"notice\">Welcome! A link to confirm your email address was sent to it. Open it, then sign in.</p>"
+            refute page.include?("<span>ann@example.com</span>")
+            user = User.first
+            assert_equal "ann@example.com", user.email_address
+            assert_equal false, user.confirmed?
+            assert_nil user.confirmed_at
+            assert_nil user.unconfirmed_email
+            assert_equal 0, Session.count
+            assert_enqueued_jobs 1, "cybertrain mail"
+            with_smtp_receiver do |receiver|
+              assert_equal 1, perform_enqueued_jobs
+              mail = receiver.received_message
+              refute mail.nil?
+              assert_equal "Confirm your email address", mail.message_header("Subject")
+              assert_equal I18n.t("confirmations_mailer.confirmation_instructions.subject"), mail.message_header("Subject")
+              assert_equal ["ann@example.com"], mail.envelope_recipients
+              assert_equal "noreply@example.com", mail.envelope_from
+              link = last_mail_link(receiver)
+              assert link.start_with?("http://www.example.com/confirmations/#{user.id}--"), link
+              assert_equal "Hello ann@example.com,\r\n\r\nOpen this link within the next 3 days to confirm your email address:\r\n" \
+                           "#{link}\r\n\r\nIf you did not ask for this, ignore this mail: nothing changes.\r\n", mail.message_parts["text"]
+              assert_includes mail.message_parts["html"], "<p>Hello ann@example.com,</p>"
+              assert_includes mail.message_parts["html"], "<p><a href=\"#{link}\">Confirm my email address</a></p>"
+              # The mailed link is the one that confirms this user.
+              assert_equal user.id, User.find_by_confirmation_token(token_in(link)).id
+            end
+            # Until it is opened, the right password signs nobody in.
+            assert_redirected_to AppTest.sign_in(client), "/session/new"
+            assert_equal 0, Session.count
+          end
+        RUBY
+      end
+
+      # --invite-only's first test: /setup's user is confirmed and signed in.
+      def self.confirmations_setup_test
+        <<~'RUBY'
+          test "/setup makes a confirmed first user, and mails nothing" do
+            client = new_client
+            client.get("/setup?token=#{SetupController.setup_token}")
+            res = client.post("/setup", { "authenticity_token" => AppTest.form_token(client),
+                                          "token" => SetupController.setup_token,
+                                          "user[email_address]" => "ann@example.com",
+                                          "user[password]" => "s3cr3t-s3cr3t",
+                                          "user[password_confirmation]" => "s3cr3t-s3cr3t" })
+            assert_redirected_to res, "/"
+            assert_equal true, User.first.confirmed?
+            assert signed_in?(client)
+            assert_no_enqueued_jobs "cybertrain mail"
+            # Signed out, the same password signs in again.
+            client.get("/session/new")
+            client.post("/session", { "_method" => "delete", "authenticity_token" => AppTest.form_token(client) })
+            assert_redirected_to AppTest.sign_in(client), "/"
+          end
         RUBY
       end
 
@@ -3414,24 +4585,11 @@ module Cybertrain
         RUBY
       end
 
-      def self.sign_up_tests
-        <<~RUBY
-          test "POST /sign_up creates the user and signs them in" do
-            client = new_client
-            client.get("/sign_up")
-            res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
-                                            "user[email_address]" => " Ann@Example.com ",
-                                            "user[password]" => "s3cr3t-s3cr3t",
-                                            "user[password_confirmation]" => "s3cr3t-s3cr3t" })
-            assert_redirected_to res, "/"
-            assert_equal 1, User.count
-            assert_equal "ann@example.com", User.first.email_address
-            assert User.first.password_digest.start_with?("$pbkdf2-sha256$")
-            assert_equal 1, Session.count
-            res = client.get("/session/new")
-            assert_includes res.body, "<span>ann@example.com</span>"
-            assert_includes res.body, "Sign out"
-          end
+      # With `confirmable` the first test's sign-up signs nobody in (the
+      # mail it sends is test/confirmations.rb's).
+      def self.sign_up_tests(confirmable = false)
+        text = <<~RUBY
+          @SIGN_UP_TEST@
 
           test "POST /sign_up with a short or mismatched password re-renders the form" do
             client = new_client
@@ -3464,6 +4622,53 @@ module Cybertrain
             assert_equal 1, User.count
           end
 
+        RUBY
+        splice(text, "@SIGN_UP_TEST@", confirmable ? sign_up_confirm_test : sign_up_sign_in_test)
+      end
+
+      def self.sign_up_sign_in_test
+        <<~RUBY
+          test "POST /sign_up creates the user and signs them in" do
+            client = new_client
+            client.get("/sign_up")
+            res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
+                                            "user[email_address]" => " Ann@Example.com ",
+                                            "user[password]" => "s3cr3t-s3cr3t",
+                                            "user[password_confirmation]" => "s3cr3t-s3cr3t" })
+            assert_redirected_to res, "/"
+            assert_equal 1, User.count
+            assert_equal "ann@example.com", User.first.email_address
+            assert User.first.password_digest.start_with?("$pbkdf2-sha256$")
+            assert_equal 1, Session.count
+            res = client.get("/session/new")
+            assert_includes res.body, "<span>ann@example.com</span>"
+            assert_includes res.body, "Sign out"
+          end
+        RUBY
+      end
+
+      # --confirmable's: the user, unconfirmed, and no session.
+      def self.sign_up_confirm_test
+        <<~RUBY
+          # --confirmable: nobody is signed in until the address is confirmed
+          # (test/confirmations.rb follows the mail's link).
+          test "POST /sign_up creates the user and asks them to confirm the address" do
+            client = new_client
+            client.get("/sign_up")
+            res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
+                                            "user[email_address]" => " Ann@Example.com ",
+                                            "user[password]" => "s3cr3t-s3cr3t",
+                                            "user[password_confirmation]" => "s3cr3t-s3cr3t" })
+            assert_redirected_to res, "/session/new"
+            assert_equal 1, User.count
+            assert_equal "ann@example.com", User.first.email_address
+            assert User.first.password_digest.start_with?("$pbkdf2-sha256$")
+            assert_equal false, User.first.confirmed?
+            assert_equal 0, Session.count
+            res = client.follow_redirect!
+            refute res.body.include?("<span>ann@example.com</span>")
+            assert_includes res.body, "<a href=\\"/session/new\\">Sign in</a>"
+          end
         RUBY
       end
 

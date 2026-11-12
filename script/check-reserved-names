@@ -94,7 +94,9 @@ $LOAD_PATH.unshift(File.expand_path("..", __dir__))
 require "cybertrain/cli/templates"
 require "cybertrain/cli/authentication"
 controller_source = File.read(File.expand_path("../cybertrain/controller.rb", __dir__))
-app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.authentication_concern("app")
+# The concern as --confirmable writes it, which has every method the
+# other modes' has and send_confirmation_mail.
+app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.authentication_concern("app", true)
 action_names = []
 [controller_source, app_source].each do |text|
   text.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| action_names << m }
@@ -272,6 +274,16 @@ NAME_HOMES = {
   # cli/authentication.rb's ApplicationController text.
   "allow_unauthenticated_access" => %w[cybertrain/controller.rb cybertrain/cli/authentication.rb],
   "password_reset_token" => %w[cybertrain/cli/authentication.rb],
+  # The generated User's token bindings (Strings), --confirmable's
+  # User#confirm (a Boolean, as Model#save's), User#confirmation_token
+  # (a String) and ConfirmationsMailer.confirmation_instructions (a
+  # Cybertrain::MailMessage): the framework, which every app compiles
+  # with, keeps these names free.
+  "password_reset_binding" => %w[cybertrain/cli/authentication.rb],
+  "confirmation_binding" => %w[cybertrain/cli/authentication.rb],
+  "confirmation_token" => %w[cybertrain/cli/authentication.rb],
+  "confirm" => %w[cybertrain/cli/authentication.rb],
+  "confirmation_instructions" => %w[cybertrain/cli/authentication.rb],
   # The generated PasswordsMailer.reset answers a Cybertrain::MailMessage
   # (Rails' name); the framework, which every app compiles with, keeps the
   # name free (WebSocket's Frame#clear_message was its private `reset`).

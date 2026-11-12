@@ -317,7 +317,7 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only]
+  cybertrain generate authentication [--invite-only] [--confirmable]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
       the Authentication concern (included into ApplicationController),
@@ -331,6 +331,10 @@ Usage:
       machine, only with the one-time token the server's boot warning
       prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
       the address check).
+      --confirmable: a new account confirms its address by mail
+      before it can sign in (a form sends the link again), and a new
+      address on the account page takes effect once its own link is
+      opened. Users the user command or /setup creates are confirmed.
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
@@ -404,7 +408,7 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only]
+  cybertrain generate authentication [--invite-only] [--confirmable]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
       the Authentication concern (included into ApplicationController),
@@ -418,6 +422,10 @@ Usage:
       machine, only with the one-time token the server's boot warning
       prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
       the address check).
+      --confirmable: a new account confirms its address by mail
+      before it can sign in (a form sends the link again), and a new
+      address on the account page takes effect once its own link is
+      opened. Users the user command or /setup creates are confirmed.
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
@@ -490,7 +498,7 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only]
+  cybertrain generate authentication [--invite-only] [--confirmable]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
       the Authentication concern (included into ApplicationController),
@@ -504,6 +512,10 @@ Usage:
       machine, only with the one-time token the server's boot warning
       prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
       the address check).
+      --confirmable: a new account confirms its address by mail
+      before it can sign in (a form sends the link again), and a new
+      address on the account page takes effect once its own link is
+      opened. Users the user command or /setup creates are confirmed.
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.

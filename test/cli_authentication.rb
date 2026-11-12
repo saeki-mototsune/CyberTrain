@@ -781,7 +781,7 @@ RESET_TAIL_KEYS = ["mail.password_reset.greeting", "mail.password_reset.ignore",
                    "passwords.edit.submit", "passwords.edit.title", "passwords.new.sign_in", "passwords.new.submit",
                    "passwords.new.title", "passwords.update.updated", "passwords_mailer.reset.subject"]
 # The account page's keys (Task 14), in both modes.
-ACCOUNT_KEYS = ["accounts.destroy.deleted", "accounts.destroy.wrong_password", "accounts.edit.delete",
+ACCOUNT_KEYS = ["accounts.destroy.deleted", "accounts.destroy.not_deleted", "accounts.destroy.wrong_password", "accounts.edit.delete",
                 "accounts.edit.delete_intro", "accounts.edit.delete_title", "accounts.edit.model",
                 "accounts.edit.new_password", "accounts.edit.password_hint", "accounts.edit.submit",
                 "accounts.edit.title", "accounts.update.rate_limited", "accounts.update.updated",
@@ -840,6 +840,8 @@ test "every key the generated files use exists in the bundled en and ja dictiona
   assert_equal "Try again later.", bundled("en", "accounts.update.rate_limited")
   assert_equal "Delete account", bundled("en", "accounts.edit.delete")
   assert_equal "アカウントを削除する", bundled("ja", "accounts.edit.delete")
+  assert_equal "Your account could not be deleted. Nothing has changed.", bundled("en", "accounts.destroy.not_deleted")
+  assert_equal "アカウントを削除できませんでした。何も変更していません。", bundled("ja", "accounts.destroy.not_deleted")
   # The scanner resolves lazy keys as D8 and Controller#t do, and refuses
   # one in a private method.
   assert_equal "sessions.nav", view_scope("sessions/_nav.html.erb")
@@ -1141,11 +1143,12 @@ test "the user command is written in both modes with admin and unadmin" do
   assert shop_bin.index("warn_if_no_user").nil?
 end
 
-test "--confirmable and --force are refused until they do something" do
+test "--force is refused until it does something (Task 16)" do
   Cybertrain::CLI::NewApp.create("flags", "{ path = \"../cybertrain\" }")
-  assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--confirmable"]) }
   assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--force"]) }
   assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only", "--force"]) }
+  assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--confirmable", "--force"]) }
+  assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--confirm"]) }
   refute File.exist?("flags/app/models/user.rb")
 end
 
@@ -1182,9 +1185,9 @@ PASSWORDS_CONTROLLER = <<~RUBY
   # for an address, the mail with a link (PasswordsMailer.reset), and the
   # form behind the link that sets a new password. The link's token
   # (User#password_reset_token) is signed, lasts 15 minutes and is bound to
-  # the password, so it stops working once the password changes, and every
-  # link sent before with it. The address form answers the same whether or
-  # not the address is registered.
+  # the password and the address, so it stops working once either changes,
+  # and every link sent before with it. The address form answers the same
+  # whether or not the address is registered.
   class PasswordsController < ApplicationController
     allow_unauthenticated_access
     # Ten requests per client address every three minutes, as for signing in.
@@ -1377,23 +1380,36 @@ test "password reset: the token in the model, the base URL in the concern" do
   model = read("shop/app/models/user.rb")
   assert_includes model, indented(<<~RUBY, 2)
       # The user a password_reset_token was made for, while it is valid against
-      # that user's password now; nil for any other token (a wrong, expired or
-      # spent one, or one made for another user).
+      # that user's password and address now (password_reset_binding); nil for
+      # any other token (a wrong, expired or spent one, or one made for another
+      # user).
       def self.find_by_password_reset_token(token)
         text = token.to_s
         user = User.find_by(id: Cybertrain::Token.id_from(text))
         return nil if user.nil?
-        return nil unless Cybertrain::Token.valid?(text, "password_reset", user.password_digest)
+        return nil unless Cybertrain::Token.valid?(text, "password_reset", user.password_reset_binding)
 
         user
       end
   RUBY
+  # Task 14's review, M5: the address is bound too, so a new address (at
+  # once, or with --confirmable once confirmed) ends the links sent before.
   assert_includes model, indented(<<~RUBY, 2)
       # The token of a password reset link (PasswordsController): signed,
-      # valid for 15 minutes from now, and bound to password_digest, so it
-      # stops working once the password changes (Cybertrain::Token).
+      # valid for 15 minutes from now, and bound to password_reset_binding,
+      # so it stops working once the password or the address changes
+      # (Cybertrain::Token).
       def password_reset_token(now = Time.now.to_i)
-        Cybertrain::Token.issue("password_reset", id, 15 * 60, password_digest, now)
+        Cybertrain::Token.issue("password_reset", id, 15 * 60, password_reset_binding, now)
+      end
+
+      # What a password reset token is bound to: the password and the address,
+      # so a new password or a new address ends every link sent before (the
+      # old address's mailbox keeps no way into the account).
+      def password_reset_binding
+        digest = password_digest.to_s
+        address = email_address.to_s
+        "\#{digest}:\#{address}"
       end
   RUBY
   concern = read("shop/app/controllers/concerns/authentication.rb")
@@ -1475,9 +1491,18 @@ test "password reset: the generated tests and their helpers" do
   assert_includes read("club/test/passwords.rb"), "set CLUB_BASE_URL (or CYBERTRAIN_HOSTS)"
   # 15 minutes: 16 minutes ago is too old, 14 is not.
   assert_includes spec, "  stale = user.password_reset_token(now - 16 * 60)\n  fresh = user.password_reset_token(now - 14 * 60)\n"
-  # Every change to global state is put back in an ensure (with_config).
-  assert_includes spec, "  ensure\n    c.env = saved_env\n    c.hosts_from_env = saved_hosts\n" \
-                        "    c.set_string_setting(:base_url, saved_base_url)\n    Cybertrain.logger = saved_logger\n  end\n"
+  # Bound to the password and the address: ann's id with her password alone
+  # is no one's, and a new address ends a link (M5).
+  assert_includes spec, "  assert_equal \"\#{ann.password_digest}:ann@example.com\", ann.password_reset_binding\n"
+  assert_includes spec, "  assert_nil User.find_by_password_reset_token(Cybertrain::Token.issue(\"password_reset\", ann.id, 15 * 60, ann.password_digest))\n"
+  assert_includes spec, "  changed.email_address = \"ann@new.example\"\n  changed.save!\n  assert_nil User.find_by_password_reset_token(fresh)\n"
+  # Every change to global state is put back in an ensure (with_config,
+  # in the helpers since test/confirmations.rb uses it too).
+  assert_includes helpers, "def with_config(env, hosts, base_url, log = nil)\n"
+  assert_includes helpers, "  ensure\n    c.env = saved_env\n    c.hosts_from_env = saved_hosts\n" \
+                           "    c.set_string_setting(:base_url, saved_base_url)\n    Cybertrain.logger = saved_logger\n  end\n"
+  assert_includes helpers, "NO_HOSTS = Array.new(0) { \"\" }\n"
+  assert spec.index("def with_config").nil?
   assert spec.index("Cybertrain.config.set_string_setting").nil?
   assert spec.index("config.env = ").nil?
   assert_includes spec, "  with_config(\"staging\", NO_HOSTS, \"\", log) do\n"
@@ -1508,8 +1533,11 @@ ACCOUNTS_CONTROLLER = <<~'RUBY'
   # Written by the generator; it is yours to change.
   class AccountsController < ApplicationController
     # Ten changes or deletions per client address every three minutes, as for
-    # signing in: a current password is guessed here no faster than there.
+    # signing in, and ten per user whatever the address (account_key): a
+    # current password is guessed here no faster than there, from one
+    # address or from many.
     rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], with: :rate_limited
+    rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], by: :account_key, name: "user", with: :rate_limited
     before_action :set_user
 
     # GET /account/edit
@@ -1517,14 +1545,18 @@ ACCOUNTS_CONTROLLER = <<~'RUBY'
     end
 
     # PATCH/PUT /account
-    # The current password first, for any change. A new address takes effect
-    # at once. A new password ends every other session of the user and starts
-    # this browser's again (restart_sessions), and every password reset link
-    # sent before stops working (they are bound to the password).
+    # The current password first, for any change.
+    # A new address takes effect at once.
+    # A new password ends every other session of the user and starts this
+    # browser's again (restart_sessions). A new password or address ends
+    # every password reset link sent before (they are bound to both).
     def update
       fields = params.expect(user: [:current_password, :email_address, :password, :password_confirmation])
       digest = @user.password_digest
       if @user.authenticate(fields["current_password"].to_s)
+        # What authenticate left saved: digest, or a new hash of the same
+        # password when the cost was raised (User#authenticate).
+        verified = @user.password_digest
         @user.email_address = fields["email_address"].to_s if fields.key?("email_address")
         password = fields["password"].to_s
         unless password.empty?
@@ -1536,6 +1568,9 @@ ACCOUNTS_CONTROLLER = <<~'RUBY'
           flash[:notice] = t(".updated")
           redirect_to edit_account_path, status: :see_other
         else
+          # A new hash saved by authenticate stays: this browser's key
+          # follows it, or the browser would be signed out next time.
+          session[:password_key] = Cybertrain::Password.session_key(verified) if verified != digest
           render :edit, status: :unprocessable_entity
         end
       else
@@ -1545,15 +1580,20 @@ ACCOUNTS_CONTROLLER = <<~'RUBY'
     end
 
     # DELETE /account
-    # With the password: the user's sessions (every browser's), then the user,
-    # are deleted, and this browser's cookie session is emptied.
+    # With the password: the user's sessions (every browser's) and the user
+    # are deleted together, and this browser's cookie session is emptied.
+    # When the database refuses (a row of another table still refers to
+    # the user), nothing is deleted and the page says so.
     def destroy
       if @user.authenticate(params[:password].to_s)
-        Session.where(user_id: @user.id).delete_all
-        @user.destroy
-        terminate_session
-        flash[:notice] = t(".deleted")
-        redirect_to "/", status: :see_other
+        if delete_user_and_sessions
+          terminate_session
+          flash[:notice] = t(".deleted")
+          redirect_to "/", status: :see_other
+        else
+          flash.now[:alert] = t(".not_deleted")
+          render :edit, status: :unprocessable_entity
+        end
       else
         flash.now[:alert] = t(".wrong_password")
         render :edit, status: :unprocessable_entity
@@ -1568,6 +1608,12 @@ ACCOUNTS_CONTROLLER = <<~'RUBY'
       @user = User.find(@current_user.id)
     end
 
+    # The second rate limit's key: the signed-in user's id
+    # (require_authentication has run first).
+    def account_key
+      @current_user.id.to_s
+    end
+
     # After a new password: every Session row of the user ends, the other
     # browsers' and this one's, and this browser signs in again at once with
     # the new password key, remembered ("keep me signed in") as it was.
@@ -1577,6 +1623,22 @@ ACCOUNTS_CONTROLLER = <<~'RUBY'
       Session.where(user_id: @user.id).delete_all
       start_new_session_for(@user, remember: remember)
       nil
+    end
+
+    # The user's Session rows and the user, in one transaction: true once
+    # both are gone. When the database refuses the delete (a foreign key
+    # from another table: give that association a `dependent:`), both
+    # stay, so this browser stays signed in, and the log says why.
+    def delete_user_and_sessions
+      user = @user
+      User.transaction do |c|
+        Session.where(user_id: user.id).delete_all
+        user.destroy
+      end
+      true
+    rescue Cybertrain::DB::Error => e
+      Cybertrain.logger.error("account not deleted: #{e.message}")
+      false
     end
 
     # What a client past the rate limit gets (the key is update's).
@@ -1658,8 +1720,17 @@ test "account pages: the controller, the view, the route and the nav link in bot
   assert_equal 1, controller.scan("start_new_session_for(").size
   assert_includes controller, "    remember = current.nil? ? false : current.remember\n"
   assert_includes controller, "    start_new_session_for(@user, remember: remember)\n"
-  # A wrong current password is rate limited with the sign-in's numbers.
+  # A wrong current password is rate limited with the sign-in's numbers, per
+  # client address and (Task 14's review, M1) per user.
   assert_includes controller, "  rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], with: :rate_limited\n"
+  assert_includes controller, "  rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], by: :account_key, name: \"user\", with: :rate_limited\n"
+  assert_includes controller, "  def account_key\n    @current_user.id.to_s\n  end\n"
+  # M2: a rehash kept when the save fails moves this browser's key with it.
+  assert_includes controller, "      session[:password_key] = Cybertrain::Password.session_key(verified) if verified != digest\n"
+  # M3: the sessions and the user go in one transaction, or neither does.
+  assert_includes controller, "    User.transaction do |c|\n      Session.where(user_id: user.id).delete_all\n      user.destroy\n    end\n    true\n" \
+                              "  rescue Cybertrain::DB::Error => e\n"
+  assert_equal 1, controller.scan("Session.where(user_id: user.id).delete_all").size
   # No mail is sent from here, so no link base either.
   assert controller.index("mail_link_base").nil?
   assert controller.index("base_url").nil?
@@ -1667,14 +1738,36 @@ end
 
 test "account pages: the generated test" do
   spec = read("shop/test/accounts.rb")
-  assert_includes spec, "require_relative \"support/app_test\"\n"
+  assert_includes spec, "require \"stringio\"\nrequire_relative \"support/app_test\"\nrequire_relative \"support/authentication_helpers\"\n"
   ["changing email or password requires the current password",
    "a password change ends other sessions and keeps this one",
    "deleting the account requires the password and removes the user and sessions",
    "a visitor is sent to sign in",
-   "PATCH /account past ten requests is refused for a while"].each do |name|
+   "PATCH /account past ten requests is refused for a while",
+   "wrong current passwords are limited per user too, from any address",
+   "the form's fields are the only ones a change takes",
+   "PATCH and DELETE /account without the form's token are refused",
+   "a new hash of the password stays with this browser when the change fails",
+   "a deletion the database refuses changes nothing and says so"].each do |name|
     assert_includes spec, "test \"#{name}\" do\n"
   end
+  # Task 14's review, M4: the fields the form lacks, the lockout count, and
+  # CSRF, each with concrete values.
+  assert_includes spec, "\"admin\" => \"1\", \"failed_attempts\" => \"7\""
+  assert_includes spec, "  assert_equal false, changed.admin?\n  assert_equal 0, changed.failed_attempts\n"
+  assert_includes spec, "  assert_equal 0, User.find(ann.id).failed_attempts\n  assert_nil User.find(ann.id).locked_until\n"
+  assert_includes spec, "  res = client.patch(\"/account\", { \"user[current_password]\" => \"s3cr3t-s3cr3t\", \"user[email_address]\" => \"eve@example.com\" })\n" \
+                        "  assert_response res, :forbidden\n"
+  # M1: ten addresses, one user; M3: a table that refers to users.
+  assert_includes spec, "    client.peer_address = \"203.0.113.\#{count + 1}\"\n"
+  assert_includes spec, "    c.execute(\"CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))\")\n"
+  assert_includes spec, "    assert_includes log.string, \"[ERROR] account not deleted: FOREIGN KEY constraint failed\"\n"
+  assert_includes spec, "    Cybertrain::Password.iterations = Cybertrain::Password::TEST_ITERATIONS + 1\n"
+  # M5: a reset link sent to the old address dies with the change.
+  assert_includes spec, "  assert_nil User.find_by_password_reset_token(reset_token)\n"
+  # Without --confirmable a new address needs nothing more to take effect.
+  assert_includes spec, "ADDRESS_CHANGED = UPDATED\n"
+  assert_includes spec, "def confirm_new_address(user)\n  nil\nend\n"
   assert_includes spec, "WRONG_PASSWORD = \"<p class=\\\"alert\\\">That is not your current password.</p>\"\n"
   # Both sides of the current password: wrong (nothing changes) and right.
   assert_includes spec, "  res = update_account(client, \"wrong-password\", { \"email_address\" => \"ann@new.example\", " \
@@ -1711,6 +1804,390 @@ test "a re-run adds the account route to an app generated before it" do
   # Once there, a third run leaves the file alone.
   Cybertrain::CLI::Authentication.generate("prior")
   assert_equal routes, read("prior/config/routes.rb")
+end
+
+# ---- --confirmable --------------------------------------------------------
+
+CONF_FILES = [
+  "db/migrate/20260925120000_create_users.rb",
+  "db/migrate/20260925120001_create_sessions.rb",
+  "app/models/user.rb",
+  "app/models/session.rb",
+  "app/controllers/concerns/authentication.rb",
+  "app/controllers/sessions_controller.rb",
+  "app/controllers/registrations_controller.rb",
+  "app/controllers/passwords_controller.rb",
+  "app/controllers/confirmations_controller.rb",
+  "app/controllers/accounts_controller.rb",
+  "app/mailers/passwords_mailer.rb",
+  "app/mailers/confirmations_mailer.rb",
+  "app/commands/user_command.rb",
+  "app/views/sessions/new.html.erb",
+  "app/views/sessions/_nav.html.erb",
+  "app/views/registrations/new.html.erb",
+  "app/views/passwords/new.html.erb",
+  "app/views/passwords/edit.html.erb",
+  "app/views/mail/_password_reset.html.erb",
+  "app/views/confirmations/new.html.erb",
+  "app/views/mail/_confirmation.html.erb",
+  "app/views/accounts/edit.html.erb",
+  "test/support/app_test.rb",
+  "test/support/authentication_helpers.rb",
+  "test/authentication.rb",
+  "test/admin.rb",
+  "test/remember_me.rb",
+  "test/lockout.rb",
+  "test/passwords.rb",
+  "test/accounts.rb",
+  "test/confirmations.rb"
+]
+# The files only --confirmable writes.
+CONF_ONLY_FILES = ["app/controllers/confirmations_controller.rb", "app/mailers/confirmations_mailer.rb",
+                   "app/views/confirmations/new.html.erb", "app/views/mail/_confirmation.html.erb", "test/confirmations.rb"]
+
+CONFIRMATIONS_NEW_VIEW = <<~ERB
+  <h1><%= t(".title") %></h1>
+
+  <p><%= t(".intro") %></p>
+
+  <%= form_with(url: confirmations_path) do |f| %>
+    <div class="field">
+      <%= f.label :email_address, t("activerecord.attributes.user.email_address") %>
+      <%= f.email_field :email_address, autocomplete: "username", autofocus: true %>
+    </div>
+
+    <div class="actions">
+      <%= f.submit t(".submit") %>
+    </div>
+  <% end %>
+
+  <p><%= link_to t(".sign_in"), new_session_path %></p>
+ERB
+
+CONFIRMATION_MAIL = <<~ERB
+  <%# locals: (address:, url:) %>
+  <p><%= t(".greeting", email_address: address) %></p>
+  <p><%= t(".intro") %></p>
+  <p><%= link_to t(".link"), url %></p>
+  <p><%= t(".ignore") %></p>
+ERB
+
+test "--confirmable writes the confirmation files and columns" do
+  Cybertrain::CLI::NewApp.create("conf", "{ path = \"../cybertrain\" }")
+  result = Cybertrain::CLI::Authentication.generate_with_result("conf", false, true)
+  assert_equal CONF_FILES, result.created
+  assert_equal AUTH_FILES, CONF_FILES - CONF_ONLY_FILES
+  CONF_FILES.each { |f| assert(File.exist?("conf/#{f}"), "missing #{f}") }
+  # The two columns, for a new application's users table (an older one's
+  # upgrade is Task 16's).
+  assert_equal <<~RUBY, read("conf/db/migrate/20260925120000_create_users.rb")
+    class CreateUsers < Cybertrain::Migration::Base
+      def change
+        create_table "users" do |t|
+          t.string "email_address", null: false
+          t.string "password_digest", null: false
+          t.boolean "admin", null: false, default: "false"
+          t.integer "failed_attempts", null: false, default: "0"
+          t.datetime "locked_until"
+          t.datetime "confirmed_at"
+          t.string "unconfirmed_email"
+          t.timestamps
+        end
+        add_index "users", ["email_address"], unique: true
+      end
+    end
+  RUBY
+  assert_equal read("shop/db/migrate/20260925120001_create_sessions.rb"), read("conf/db/migrate/20260925120001_create_sessions.rb")
+  # The model: the three-day token, bound to the address it confirms and to
+  # the confirmation state, and confirm, which checks the address again.
+  model = read("conf/app/models/user.rb")
+  assert_includes model, "  MIN_PASSWORD_LENGTH = 8\n  # How long a confirmation link works: three days (--confirmable).\n  CONFIRMATION_TOKEN_TTL = 3 * 24 * 3600\n"
+  assert_includes model, "    user.validate_password\n    user.validate_unconfirmed_email\n  end\n"
+  assert_includes model, "  def confirmed? = !confirmed_at.nil?\n"
+  assert_includes model, "  def confirmation_token(now = Time.now.to_i)\n" \
+                         "    Cybertrain::Token.issue(\"confirmation\", id, CONFIRMATION_TOKEN_TTL, confirmation_binding, now)\n  end\n"
+  assert_includes model, "  def confirmation_binding\n    pending = unconfirmed_email.to_s\n    address = email_address.to_s\n" \
+                         "    at = confirmed_at\n    stamp = at.nil? ? 0 : at.to_i\n    \"\#{pending}:\#{address}:\#{stamp}\"\n  end\n"
+  assert_includes model, "    return nil unless Cybertrain::Token.valid?(text, \"confirmation\", user.confirmation_binding)\n"
+  assert_includes model, "  def confirm\n    pending = unconfirmed_email.to_s\n    self.email_address = pending unless pending.empty?\n" \
+                         "    self.unconfirmed_email = nil\n    self.confirmed_at = Time.now\n    save\n  end\n"
+  assert_includes model, "    elsif User.where(email_address: address).where_sql(\"id != ?\", [id]).exists?\n" \
+                         "      errors.add(:email_address, I18n.error_message(\"user\", :email_address, :taken))\n"
+  # Everything else of the model is the other modes'.
+  assert_includes model, "  def password_reset_binding\n"
+  # The concern: one method mails every confirmation, through mail_link_base.
+  concern = read("conf/app/controllers/concerns/authentication.rb")
+  assert_includes concern, "  def send_confirmation_mail(user, token, deliver)\n    base = mail_link_base(\"confirmation\")\n    return nil if base.empty?\n\n" \
+                           "    path = confirmation_path(token)\n    mail = ConfirmationsMailer.confirmation_instructions(user, base + path)\n" \
+                           "    mail.deliver_later if deliver\n    nil\n  rescue ArgumentError => e\n" \
+                           "    Cybertrain.logger.error(\"confirmation mail not sent: \#{e.message}\")\n    nil\n  end\n"
+  assert concern.start_with?(read("shop/app/controllers/concerns/authentication.rb").gsub("SHOP_", "CONF_").delete_suffix("end\n"))
+  assert_equal 1, concern.scan("def mail_link_base(mail)").size
+  # The controllers that mail a confirmation ask the concern; none builds a
+  # link base of its own (pre-flight finding 16).
+  ["confirmations_controller.rb", "registrations_controller.rb", "accounts_controller.rb"].each do |f|
+    source = read("conf/app/controllers/#{f}")
+    assert_includes source, "send_confirmation_mail("
+    assert source.index("mail_link_base").nil?, f
+    assert source.index("base_url").nil?, f
+  end
+  # Sign-up mails the link and signs nobody in.
+  registrations = read("conf/app/controllers/registrations_controller.rb")
+  assert_includes registrations, "    if @user.save\n      # Signed in only once the address is confirmed (the mail's link),\n" \
+                                 "      # and then with the password.\n      token = @user.confirmation_token\n" \
+                                 "      send_confirmation_mail(@user, token, true)\n      flash[:notice] = t(\".confirm\")\n" \
+                                 "      redirect_to new_session_path, status: :see_other\n    else\n"
+  assert registrations.index("start_new_session_for").nil?
+  # Sign-in: the unconfirmed message only past the password.
+  sessions = read("conf/app/controllers/sessions_controller.rb")
+  assert_includes sessions, "    if user.nil?\n      flash[:alert] = t(\".invalid\")\n      redirect_to new_session_path, status: :see_other\n" \
+                            "    elsif !user.confirmed?\n"
+  assert_includes sessions, "      flash[:alert] = t(\".unconfirmed\")\n      redirect_to new_session_path, status: :see_other\n    else\n" \
+                            "      start_new_session_for(user, remember: params[:remember_me] == \"1\")\n"
+  assert read("conf/app/views/sessions/new.html.erb").end_with?(
+    "<p><%= link_to t(\".forgot_password\"), new_password_path %></p>\n" \
+    "<p><%= link_to t(\".confirmation\"), new_confirmation_path %></p>\n" \
+    "<p><%= link_to t(\".sign_up\"), sign_up_path %></p>\n"
+  )
+  # The confirmations controller: the same answer for any address, and a link
+  # that confirms, signs nobody in and carries no Referer.
+  confirmations = read("conf/app/controllers/confirmations_controller.rb")
+  assert_includes confirmations, "class ConfirmationsController < ApplicationController\n  allow_unauthenticated_access\n"
+  assert_includes confirmations, "  rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited\n"
+  assert_includes confirmations, "  before_action :no_referrer, only: [:show]\n"
+  assert_includes confirmations, "    if user.nil? || user.confirmed?\n" \
+                                 "      token = Cybertrain::Token.issue(\"confirmation\", 1, User::CONFIRMATION_TOKEN_TTL, address)\n" \
+                                 "      send_confirmation_mail(User.new(email_address: address), token, false)\n    else\n" \
+                                 "      token = user.confirmation_token\n      send_confirmation_mail(user, token, true)\n    end\n" \
+                                 "    flash[:notice] = t(\".sent\")\n    redirect_to new_session_path, status: :see_other\n"
+  assert_includes confirmations, "    user = User.find_by_confirmation_token(params[:token].to_s)\n    if user.nil?\n      invalid_link\n" \
+                                 "    elsif user.confirm\n"
+  assert confirmations.index("start_new_session_for").nil?
+  assert_includes confirmations, "    flash[:alert] = t(\"confirmations.show.invalid\")\n    redirect_to new_confirmation_path, status: :see_other\n"
+  # The mailer goes to the address being confirmed.
+  mailer = read("conf/app/mailers/confirmations_mailer.rb")
+  assert_includes mailer, "  def self.confirmation_instructions(user, url)\n    pending = user.unconfirmed_email.to_s\n" \
+                          "    address = pending.empty? ? user.email_address.to_s : pending\n"
+  assert_includes mailer, "    subject = I18n.t(\"confirmations_mailer.confirmation_instructions.subject\")\n" \
+                          "    Cybertrain::MailMessage.new(to: address, subject: subject, body: text, html: html)\n"
+  assert_equal CONFIRMATIONS_NEW_VIEW, read("conf/app/views/confirmations/new.html.erb")
+  assert_equal CONFIRMATION_MAIL, read("conf/app/views/mail/_confirmation.html.erb")
+  # The account page: a new address waits in unconfirmed_email.
+  accounts = read("conf/app/controllers/accounts_controller.rb")
+  assert_includes accounts, "      if fields.key?(\"email_address\")\n" \
+                            "        address = User.normalize_email_address(fields[\"email_address\"].to_s)\n" \
+                            "        if address == @user.email_address\n          @user.unconfirmed_email = nil\n        else\n" \
+                            "          @user.unconfirmed_email = address\n          address_changed = true\n        end\n      end\n"
+  assert accounts.index("@user.email_address = ").nil?
+  assert_includes accounts, "        if address_changed\n          token = @user.confirmation_token\n" \
+                            "          send_confirmation_mail(@user, token, true)\n          flash[:notice] = t(\".confirm\")\n"
+  assert_includes accounts, "    @pending_email = @user.unconfirmed_email.to_s\n"
+  # The rest of the account page is the other modes': M1-M3 too.
+  assert_equal read("shop/app/controllers/accounts_controller.rb").scan("rate_limit to:"), accounts.scan("rate_limit to:")
+  assert_includes accounts, "  def delete_user_and_sessions\n"
+  assert_includes read("conf/app/views/accounts/edit.html.erb"),
+                  "    <%= f.email_field :email_address, autocomplete: \"username\" %>\n" \
+                  "    <% unless @pending_email.empty? %>\n" \
+                  "      <p class=\"hint\"><%= t(\".pending\", email_address: @pending_email) %></p>\n    <% end %>\n  </div>\n"
+  assert_includes read("conf/config/routes.rb"), <<~RUBY
+    Cybertrain::Routes.draw do
+      resource :session, only: [:new, :create, :destroy]
+      resources :passwords, param: :token, only: [:new, :create, :edit, :update]
+      resources :confirmations, param: :token, only: [:new, :create, :show]
+      resource :account, only: [:edit, :update, :destroy]
+      get "/sign_up", to: "registrations#new", as: "sign_up"
+  RUBY
+  # The files the modes share are the same, but for these.
+  same = CONF_FILES - CONF_ONLY_FILES - ["db/migrate/20260925120000_create_users.rb", "app/models/user.rb",
+                                         "app/controllers/concerns/authentication.rb", "app/controllers/sessions_controller.rb",
+                                         "app/controllers/registrations_controller.rb", "app/controllers/accounts_controller.rb",
+                                         "app/commands/user_command.rb", "app/views/sessions/new.html.erb",
+                                         "app/views/accounts/edit.html.erb", "test/support/app_test.rb",
+                                         "test/authentication.rb", "test/accounts.rb"]
+  same.each { |f| assert_equal read("shop/#{f}").gsub("SHOP_", "CONF_").gsub("./shop ", "./conf "), read("conf/#{f}") }
+end
+
+test "--confirmable confirms the users nothing mails: the user command's and /setup's (pre-flight finding 6)" do
+  # The user command, in sign-up mode too.
+  command = read("conf/app/commands/user_command.rb")
+  assert_includes command, "    user.password = password\n    # A user made here gets no mail with a link: the address counts as\n" \
+                           "    # confirmed from the start (--confirmable).\n    user.confirmed_at = Time.now if created\n    unless user.save\n"
+  assert_equal read("shop/app/commands/user_command.rb").gsub("shop", "conf"),
+               command.sub("    # A user made here gets no mail with a link: the address counts as\n    # confirmed from the start (--confirmable).\n" \
+                           "    user.confirmed_at = Time.now if created\n", "")
+  # AppTest.user's users have confirmed, so every other test signs them in.
+  assert_includes read("conf/test/support/app_test.rb"), "    user.password = password\n    # Confirmed, as a user who signs in has to be (--confirmable;\n" \
+                                                         "    # test/confirmations.rb makes the unconfirmed ones).\n    user.confirmed_at = Time.now\n    user.save!\n"
+  # --invite-only: /setup's first user, and the command's.
+  Cybertrain::CLI::NewApp.create("cclub", "{ path = \"../cybertrain\" }")
+  status = Dir.chdir("cclub") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only", "--confirmable"]) }
+  assert_equal 0, status
+  setup = read("cclub/app/controllers/setup_controller.rb")
+  assert_includes setup, "    @user.password_confirmation = fields[:password_confirmation].to_s\n" \
+                         "    # Nothing mails the first user a link: the address counts as\n    # confirmed (--confirmable).\n" \
+                         "    @user.confirmed_at = Time.now\n    # The no-user check"
+  assert_equal read("club/app/controllers/setup_controller.rb").gsub("CLUB", "CCLUB").gsub("club", "cclub"),
+               setup.sub("    # Nothing mails the first user a link: the address counts as\n    # confirmed (--confirmable).\n    @user.confirmed_at = Time.now\n", "")
+  assert_includes read("cclub/app/commands/user_command.rb"), "    user.confirmed_at = Time.now if created\n"
+  CONF_ONLY_FILES.each { |f| assert(File.exist?("cclub/#{f}"), "missing #{f}") }
+  refute File.exist?("cclub/app/controllers/registrations_controller.rb")
+  assert_includes read("cclub/config/routes.rb"), "  resources :confirmations, param: :token, only: [:new, :create, :show]\n  resource :account,"
+  # Its confirmations test starts with /setup's user, not a sign-up.
+  spec = read("cclub/test/confirmations.rb")
+  assert_includes spec, "test \"/setup makes a confirmed first user, and mails nothing\" do\n"
+  assert spec.index("/sign_up").nil?
+  assert_includes spec, "test \"./cclub user makes a confirmed user, and mails nothing\" do\n"
+  assert_equal [], untranslated("cclub")
+  used_keys("cclub").each do |key|
+    refute bundled("en", key).nil?, "en.#{key}"
+    refute bundled("ja", key).nil?, "ja.#{key}"
+  end
+end
+
+# What only --confirmable's code says (password_confirmation, the form's
+# field, is every mode's).
+CONFIRM_WORDS = ["confirmed", "confirmation_token", "unconfirmed", "pending_email", "ConfirmationsMailer", "send_confirmation_mail",
+                 "confirmations"]
+
+test "without --confirmable none of them" do
+  ["shop", "club"].each do |app|
+    CONF_ONLY_FILES.each { |f| refute File.exist?("#{app}/#{f}"), "#{app}/#{f}" }
+    assert read("#{app}/db/migrate/20260925120000_create_users.rb").index("confirmed_at").nil?
+    assert read("#{app}/db/migrate/20260925120000_create_users.rb").index("unconfirmed_email").nil?
+    ["app/models/user.rb", "app/controllers/concerns/authentication.rb", "app/controllers/sessions_controller.rb",
+     "app/controllers/accounts_controller.rb", "app/commands/user_command.rb", "app/views/sessions/new.html.erb",
+     "app/views/accounts/edit.html.erb", "test/support/app_test.rb", "test/accounts.rb", "config/routes.rb"].each do |f|
+      text = read("#{app}/#{f}")
+      CONFIRM_WORDS.each { |word| assert text.index(word).nil?, "#{app}/#{f}: #{word}" }
+    end
+  end
+  CONFIRM_WORDS.each do |word|
+    assert read("shop/app/controllers/registrations_controller.rb").index(word).nil?, word
+    assert read("club/app/controllers/setup_controller.rb").index(word).nil?, word
+  end
+  # Sign-up signs in at once, as before.
+  assert_includes read("shop/app/controllers/registrations_controller.rb"),
+                  "    if @user.save\n      start_new_session_for(@user)\n      flash[:notice] = t(\".welcome\")\n"
+  assert_includes read("shop/test/authentication.rb"), "test \"POST /sign_up creates the user and signs them in\" do\n"
+  # The account page changes the address at once.
+  assert_includes read("shop/app/controllers/accounts_controller.rb"),
+                  "      @user.email_address = fields[\"email_address\"].to_s if fields.key?(\"email_address\")\n"
+end
+
+CONFIRM_KEYS = ["accounts.edit.pending", "accounts.update.confirm",
+                "confirmations.create.rate_limited", "confirmations.create.sent", "confirmations.new.intro",
+                "confirmations.new.sign_in", "confirmations.new.submit", "confirmations.new.title",
+                "confirmations.show.confirmed", "confirmations.show.invalid", "confirmations.show.taken",
+                "confirmations_mailer.confirmation_instructions.subject",
+                "mail.confirmation.greeting", "mail.confirmation.ignore", "mail.confirmation.intro", "mail.confirmation.link",
+                "registrations.create.confirm", "sessions.create.unconfirmed", "sessions.new.confirmation"]
+
+test "--confirmable's screens and mails go through t, with keys the bundled dictionaries have" do
+  assert_equal [], untranslated("conf")
+  # Sign-up no longer welcomes anyone in; everything else is shop's.
+  assert_equal (SHOP_KEYS - ["registrations.create.welcome"] + CONFIRM_KEYS).sort, used_keys("conf")
+  CONFIRM_KEYS.each do |key|
+    refute bundled("en", key).nil?, "en.#{key}"
+    refute bundled("ja", key).nil?, "ja.#{key}"
+  end
+  # Texts the generated tests assert (test/confirmations.rb, test/accounts.rb).
+  assert_equal "Confirm your email address first: open the link in the mail we sent you.", bundled("en", "sessions.create.unconfirmed")
+  assert_equal "先にメールアドレスを確認してください。お送りしたメールのリンクを開いてください。", bundled("ja", "sessions.create.unconfirmed")
+  # Not the wrong-password message: shown only once the password is right.
+  refute bundled("en", "sessions.create.unconfirmed") == bundled("en", "sessions.create.invalid")
+  assert_equal "Send the confirmation link again", bundled("en", "sessions.new.confirmation")
+  assert_equal "Send the confirmation link again", bundled("en", "confirmations.new.title")
+  assert_equal "If that address is registered and not confirmed yet, a link to confirm it was sent to it.", bundled("en", "confirmations.create.sent")
+  assert_equal "そのメールアドレスが登録されていて未確認であれば、確認用のリンクを送りました。", bundled("ja", "confirmations.create.sent")
+  assert_equal "Your email address has been confirmed.", bundled("en", "confirmations.show.confirmed")
+  assert_equal "メールアドレスを確認しました。", bundled("ja", "confirmations.show.confirmed")
+  assert_equal "That confirmation link is invalid or has expired.", bundled("en", "confirmations.show.invalid")
+  assert_equal "That email address belongs to another account now, so it was not changed.", bundled("en", "confirmations.show.taken")
+  assert_equal "Try again later.", bundled("en", "confirmations.create.rate_limited")
+  assert_equal "Confirm your email address", bundled("en", "confirmations_mailer.confirmation_instructions.subject")
+  assert_equal "メールアドレスの確認", bundled("ja", "confirmations_mailer.confirmation_instructions.subject")
+  assert_equal "Hello %{email_address},", bundled("en", "mail.confirmation.greeting")
+  assert_equal "Open this link within the next 3 days to confirm your email address:", bundled("en", "mail.confirmation.intro")
+  assert_equal "If you did not ask for this, ignore this mail: nothing changes.", bundled("en", "mail.confirmation.ignore")
+  assert_equal "Confirm my email address", bundled("en", "mail.confirmation.link")
+  assert_equal "Welcome! A link to confirm your email address was sent to it. Open it, then sign in.", bundled("en", "registrations.create.confirm")
+  assert_equal "A link to confirm the new address was sent to it. The address changes once the link is opened.", bundled("en", "accounts.update.confirm")
+  assert_equal "Waiting for confirmation: %{email_address}", bundled("en", "accounts.edit.pending")
+  assert_equal "確認待ち: %{email_address}", bundled("ja", "accounts.edit.pending")
+end
+
+# test/accounts.rb without its mode's two helpers (ADDRESS_CHANGED and
+# confirm_new_address), which are all that differ between the modes.
+def without_address_helpers(text)
+  start = text.index("# What the page says after a new address").to_i
+  stop = text.index("\nend\n", text.index("def confirm_new_address(user)").to_i).to_i + 5
+  text[0, start].to_s + text[stop, text.size - stop].to_s
+end
+
+test "--confirmable: the generated test" do
+  spec = read("conf/test/confirmations.rb")
+  assert_includes spec, "require_relative \"support/app_test\"\nrequire_relative \"support/authentication_helpers\"\n" \
+                        "require_relative \"../app/commands/user_command\"\n"
+  ["sign-up sends a confirmation mail and signs nobody in",
+   "./conf user makes a confirmed user, and mails nothing",
+   "sign-in is refused until confirmed, with the send-again link",
+   "the link confirms, and the user can then sign in",
+   "the link lasts three days and belongs to its user and address",
+   "an email change takes effect only when the new address confirms",
+   "a new address someone takes before its link is opened is not moved in",
+   "send again answers the same for unknown addresses",
+   "send again: a refused address, no safe base and the rate limit"].each do |name|
+    assert_includes spec, "test \"#{name}\" do\n"
+  end
+  # F7: the link confirms; signing in is a separate step, with the password.
+  assert spec.index("confirms and signs in").nil?
+  assert_includes spec, "  # A link opened from a mail signs nobody in.\n  refute page.include?(\"<span>ann@example.com</span>\")\n  assert_equal 0, Session.count\n"
+  # Both sides of the sign-in refusal: the unconfirmed message only past the password.
+  assert_includes spec, "  assert_redirected_to AppTest.sign_in(client, \"ann@example.com\", \"wrong-password\"), \"/session/new\"\n" \
+                        "  page = client.follow_redirect!.body\n  assert_includes page, WRONG\n  refute page.include?(UNCONFIRMED)\n"
+  assert_includes spec, "  assert_includes page, UNCONFIRMED\n  refute page.include?(WRONG)\n  assert_includes page, SEND_AGAIN_LINK\n"
+  # Three days: a minute either side.
+  assert_includes spec, "  stale = ann.confirmation_token(now - 259_200 - 60)\n  fresh = ann.confirmation_token(now - 259_200 + 60)\n"
+  # The pending address is checked when asked for and when confirmed.
+  assert_includes spec, "  res = change_address(client, \"bob@example.com\")\n  assert_response res, :unprocessable_entity\n"
+  assert_includes spec, "  carol = unconfirmed_user(\"carol@example.com\")\n"
+  assert_includes spec, "  assert_includes client.follow_redirect!.body, TAKEN\n"
+  # The same answer for a registered, an unknown and a confirmed address.
+  assert_includes spec, "  assert_equal known_body, unknown_body\n"
+  assert_includes spec, "  assert_equal known_body, confirmed.body\n"
+  assert_includes spec, "  assert_includes log.string, \"[ERROR] confirmation mail not sent: set CONF_BASE_URL (or CYBERTRAIN_HOSTS)\\n\"\n"
+  # Global settings change only through with_config.
+  assert spec.index("set_string_setting").nil?
+  assert spec.index("config.env = ").nil?
+  assert_includes spec, "Cybertrain::Test.run!\n"
+  # test/accounts.rb follows the link for a new address there.
+  accounts = read("conf/test/accounts.rb")
+  assert_includes accounts, "def confirm_new_address(user)\n  token = User.find(user.id).confirmation_token\n" \
+                            "  res = Cybertrain::Test::Client.new(APP).get(\"/confirmations/\#{token}\")\n"
+  assert_equal without_address_helpers(read("shop/test/accounts.rb")), without_address_helpers(accounts)
+  # test/authentication.rb's sign-up asks for the confirmation.
+  auth = read("conf/test/authentication.rb")
+  assert_includes auth, "test \"POST /sign_up creates the user and asks them to confirm the address\" do\n"
+  assert_includes auth, "  assert_equal false, User.first.confirmed?\n  assert_equal 0, Session.count\n"
+end
+
+test "--confirmable run again writes and edits nothing, and adds its route to routes without it" do
+  before = {}
+  (CONF_FILES + ["config/routes.rb", "app/controllers/application_controller.rb", "bin/conf.rb", "config/app.rb"]).each do |f|
+    before[f] = read("conf/#{f}")
+  end
+  status = Dir.chdir("conf") { Cybertrain::CLI.run(["generate", "authentication", "--confirmable"]) }
+  assert_equal 0, status
+  before.each { |f, content| assert_equal content, read("conf/#{f}") }
+  routes = before["config/routes.rb"]
+  File.write("conf/config/routes.rb", routes.sub("  resources :confirmations, param: :token, only: [:new, :create, :show]\n", ""))
+  Cybertrain::CLI::Authentication.generate("conf", false, true)
+  assert_equal routes, read("conf/config/routes.rb")
+  # Without the account line either: both come back, in order.
+  File.write("conf/config/routes.rb", routes.sub("  resources :confirmations, param: :token, only: [:new, :create, :show]\n", "")
+                                            .sub("  resource :account, only: [:edit, :update, :destroy]\n", ""))
+  Cybertrain::CLI::Authentication.generate("conf", false, true)
+  assert_equal routes, read("conf/config/routes.rb")
 end
 
 test "both modes refuse an app without config/app.rb's configure line, before writing" do

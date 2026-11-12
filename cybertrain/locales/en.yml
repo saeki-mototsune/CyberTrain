@@ -6,8 +6,10 @@
 # activerecord.errors.messages, helpers.submit and support.array; plus
 # the framework's own keys under cybertrain (plan decision D12), and the
 # screens `cybertrain generate authentication` writes: their lazy keys
-# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*, the reset mail's
-# mail.password_reset.* and passwords_mailer.reset.subject) and the User
+# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*,
+# confirmations.*, the reset mail's mail.password_reset.* and
+# passwords_mailer.reset.subject, the confirmation mail's
+# mail.confirmation.* and confirmations_mailer.*) and the User
 # model's attribute names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
@@ -16,6 +18,7 @@ en:
   accounts:
     destroy:
       deleted: Your account has been deleted.
+      not_deleted: Your account could not be deleted. Nothing has changed.
       wrong_password: That is not your current password.
     edit:
       delete: Delete account
@@ -24,9 +27,11 @@ en:
       model: account
       new_password: New password
       password_hint: Leave it blank to keep your password.
+      pending: 'Waiting for confirmation: %{email_address}'
       submit: Save changes
       title: Account
     update:
+      confirm: A link to confirm the new address was sent to it. The address changes once the link is opened.
       rate_limited: Try again later.
       updated: Your account has been updated.
       wrong_password: That is not your current password.
@@ -43,6 +48,22 @@ en:
         restrict_dependent_destroy:
           has_one: Cannot delete record because a dependent %{record} exists
           has_many: Cannot delete record because dependent %{record} exist
+  confirmations:
+    create:
+      rate_limited: Try again later.
+      sent: If that address is registered and not confirmed yet, a link to confirm it was sent to it.
+    new:
+      intro: If the address is waiting for its confirmation, a new link is mailed to it.
+      sign_in: Sign in
+      submit: Send the link
+      title: Send the confirmation link again
+    show:
+      confirmed: Your email address has been confirmed.
+      invalid: That confirmation link is invalid or has expired.
+      taken: That email address belongs to another account now, so it was not changed.
+  confirmations_mailer:
+    confirmation_instructions:
+      subject: Confirm your email address
   cybertrain:
     helpers:
       submit:
@@ -238,6 +259,11 @@ en:
       submit: Save %{model}
       update: Update %{model}
   mail:
+    confirmation:
+      greeting: "Hello %{email_address},"
+      ignore: "If you did not ask for this, ignore this mail: nothing changes."
+      intro: "Open this link within the next 3 days to confirm your email address:"
+      link: Confirm my email address
     password_reset:
       greeting: "Hello %{email_address},"
       ignore: "If you did not ask for this, ignore this mail: your password stays as it is."
@@ -315,6 +341,7 @@ en:
       subject: Reset your password
   registrations:
     create:
+      confirm: Welcome! A link to confirm your email address was sent to it. Open it, then sign in.
       welcome: Welcome! You have signed up.
     new:
       model: account
@@ -325,6 +352,7 @@ en:
     create:
       invalid: Try another email address or password.
       rate_limited: Try again later.
+      unconfirmed: 'Confirm your email address first: open the link in the mail we sent you.'
     destroy:
       signed_out: You have been signed out.
     nav:
@@ -332,6 +360,7 @@ en:
       sign_in: Sign in
       sign_out: Sign out
     new:
+      confirmation: Send the confirmation link again
       email_address: Email address
       forgot_password: Forgot your password?
       password: Password

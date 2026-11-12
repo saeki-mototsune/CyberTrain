@@ -11,8 +11,12 @@
 # with the password). The first failure stops it with a non-zero
 # status and leaves the app's directory in place to look at.
 #
-#   signup   generate authentication (the sign-up page)
-#   invite   generate authentication --invite-only (/setup, the boot warning)
+#   signup       generate authentication (the sign-up page)
+#   invite       generate authentication --invite-only (/setup, the boot warning)
+#   confirmable  generate authentication --confirmable: a sign-up whose mailed
+#                link confirms the address (the sign-in refused until then),
+#                and a new address that takes effect once its own link is
+#                opened
 #
 # Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
 # it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
@@ -25,14 +29,14 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SECRET=auth-e2e-secret-auth-e2e-secret-auth-e2e
 
 if [ $# -eq 0 ]; then
-  echo "usage: script/auth-e2e VARIANT... (signup, invite)" >&2
+  echo "usage: script/auth-e2e VARIANT... (signup, invite, confirmable)" >&2
   exit 2
 fi
 for variant in "$@"; do
   case "$variant" in
-    signup | invite) ;;
+    signup | invite | confirmable) ;;
     *)
-      echo "auth-e2e: unknown variant $variant (signup, invite)" >&2
+      echo "auth-e2e: unknown variant $variant (signup, invite, confirmable)" >&2
       exit 2
       ;;
   esac
@@ -85,30 +89,63 @@ stop_server() {
 }
 trap stop_server EXIT
 
-# `start_smtp_receiver DIR`: the framework's test SMTP receiver, in the
-# background, for one message; its port lands in DIR/smtp.port, the message
-# (Subject, To, a blank line, the text part) in DIR/mail.txt.
+# `start_smtp_receiver DIR COUNT`: the framework's test SMTP receiver, in the
+# background, for COUNT messages; its port lands in DIR/smtp.port, each
+# message (Subject, To, a blank line, the text part) in DIR/mail-N.txt as it
+# arrives (await_mail N waits for it).
 start_smtp_receiver() {
   cat > "$1/smtp_receiver.rb" <<'RUBY'
 require "cybertrain/test/smtp_receiver"
-receiver = Cybertrain::Test::SmtpReceiver.new(accept_window: 120)
+count = ARGV[2].to_i
+receiver = Cybertrain::Test::SmtpReceiver.new(accept_window: 120, max: count)
 port = receiver.start
 File.write("#{ARGV[0]}.tmp", port.to_s)
 File.rename("#{ARGV[0]}.tmp", ARGV[0])
-mail = receiver.received_message(120)
-receiver.stop
-exit 1 if mail.nil?
+got = 0
+while got < count
+  messages = receiver.received_messages(got + 1, 120)
+  break if messages.size <= got
 
-text = mail.message_parts["text"]
-File.write(ARGV[1], "Subject: #{mail.message_header("Subject")}\nTo: #{mail.envelope_recipients.join(",")}\n\n#{text}")
+  mail = messages[got]
+  got += 1
+  text = mail.message_parts["text"]
+  path = "#{ARGV[1]}-#{got}.txt"
+  File.write("#{path}.tmp", "Subject: #{mail.message_header("Subject")}\nTo: #{mail.envelope_recipients.join(",")}\n\n#{text}")
+  File.rename("#{path}.tmp", path)
+end
+receiver.stop
+exit(got == count ? 0 : 1)
 RUBY
-  ruby -I"$ROOT" "$1/smtp_receiver.rb" "$1/smtp.port" "$1/mail.txt" > "$1/smtp.log" 2>&1 &
+  ruby -I"$ROOT" "$1/smtp_receiver.rb" "$1/smtp.port" "$1/mail" "$2" > "$1/smtp.log" 2>&1 &
   SMTP_PID=$!
   for _ in $(seq 1 40); do
     [ -f "$1/smtp.port" ] && return 0
     sleep 0.25
   done
   fail "the SMTP receiver did not start"
+}
+
+# `await_mail N`: waits (at most two minutes) for the receiver's Nth message,
+# DIR/mail-N.txt in the current directory.
+await_mail() {
+  for _ in $(seq 1 240); do
+    [ -f "mail-$1.txt" ] && return 0
+    sleep 0.5
+  done
+  cat smtp.log >&2
+  fail "mail $1 did not reach the SMTP receiver"
+}
+
+# `post_status JAR URL FIELD...`: POSTs the url-encoded fields with the
+# cookie jar, and prints the status and the redirect.
+post_status() {
+  local jar=$1 url=$2
+  shift 2
+  local args=()
+  for field in "$@"; do
+    args+=(--data-urlencode "$field")
+  done
+  curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$jar" -b "$jar" "${args[@]}" "$url"
 }
 
 free_port() {
@@ -125,6 +162,7 @@ run_variant() {
   SERVER_LOG=""
   local flag=""
   [ "$VARIANT" = "invite" ] && flag="--invite-only"
+  [ "$VARIANT" = "confirmable" ] && flag="--confirmable"
 
   step "app in $WORK"
   cd "$WORK"
@@ -143,6 +181,16 @@ run_variant() {
   grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication$' config/routes.rb || fail "the jobs page is not drawn"
   if [ "$VARIANT" = "invite" ]; then
     test ! -e app/controllers/registrations_controller.rb || fail "--invite-only wrote a sign-up page"
+  fi
+  if [ "$VARIANT" = "confirmable" ]; then
+    test -f app/controllers/confirmations_controller.rb || fail "no ConfirmationsController"
+    test -f app/mailers/confirmations_mailer.rb || fail "no ConfirmationsMailer"
+    test -f test/confirmations.rb || fail "no test/confirmations.rb"
+    grep -q '^  resources :confirmations, param: :token, only: \[:new, :create, :show\]$' config/routes.rb || fail "no confirmation routes"
+    grep -q 't.datetime "confirmed_at"' db/migrate/*_create_users.rb || fail "no users.confirmed_at"
+    grep -q 't.string "unconfirmed_email"' db/migrate/*_create_users.rb || fail "no users.unconfirmed_email"
+  else
+    test ! -e app/controllers/confirmations_controller.rb || fail "$VARIANT wrote a ConfirmationsController"
   fi
 
   step "db migrate, build, gen --check"
@@ -170,8 +218,15 @@ run_variant() {
   local port
   port=$(free_port)
   local base="http://127.0.0.1:$port"
-  # The reset mail goes to the receiver; its link starts with SHOP_BASE_URL.
-  start_smtp_receiver "$PWD"
+  # The mails go to the receiver; their links start with SHOP_BASE_URL. The
+  # reset's is the one mail of signup and invite; confirmable has the
+  # sign-up's before it and the new address's after it.
+  local mails=1 reset_mail=1
+  if [ "$VARIANT" = "confirmable" ]; then
+    mails=3
+    reset_mail=2
+  fi
+  start_smtp_receiver "$PWD" "$mails"
   SERVER_LOG="$PWD/server.log"
   PORT=$port SHOP_BASE_URL="$base" CYBERTRAIN_SMTP_HOST=127.0.0.1 CYBERTRAIN_SMTP_PORT="$(cat smtp.port)" \
     CYBERTRAIN_SMTP_TLS=none CYBERTRAIN_SMTP_FROM=noreply@example.com ./shop > "$SERVER_LOG" 2>&1 &
@@ -208,6 +263,58 @@ run_variant() {
     grep -q '\[WARN\] no user exists yet' "$SERVER_LOG" || fail "no first-run warning in the server log"
   else
     expect_contains "GET /sign_up" "<h1>Sign up</h1>" "$(curl -fsS "$base/sign_up")"
+  fi
+
+  if [ "$VARIANT" = "confirmable" ]; then
+    step "sign up, refused until the mailed link is opened, then sign in"
+    local signup_jar="$PWD/signup-cookies.txt"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/sign_up")
+    token=$(form_token "$page")
+    [ -n "$token" ] || fail "no authenticity_token on /sign_up"
+    expect_equal "POST /sign_up" "303 $base/session/new" \
+      "$(post_status "$signup_jar" "$base/sign_up" "authenticity_token=$token" "user[email_address]=dee@example.com" \
+         "user[password]=dee-pw-dee-pw" "user[password_confirmation]=dee-pw-dee-pw")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "the sign-in page after signing up" "A link to confirm your email address was sent to it." "$page"
+    case "$page" in *"<span>dee@example.com</span>"*) fail "signing up signed the new user in" ;; esac
+    # A wrong password gets the usual message; the right one, the
+    # confirmation's, with the link to the form that mails it again.
+    token=$(form_token "$page")
+    expect_equal "POST /session, unconfirmed, wrong password" "303 $base/session/new" \
+      "$(post_status "$signup_jar" "$base/session" "authenticity_token=$token" "email_address=dee@example.com" "password=wrong-password")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "POST /session, unconfirmed, wrong password" "Try another email address or password." "$page"
+    case "$page" in *"Confirm your email address first"*) fail "a wrong password got the confirmation message" ;; esac
+    token=$(form_token "$page")
+    expect_equal "POST /session, unconfirmed" "303 $base/session/new" \
+      "$(post_status "$signup_jar" "$base/session" "authenticity_token=$token" "email_address=dee@example.com" "password=dee-pw-dee-pw")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "POST /session, unconfirmed" "Confirm your email address first: open the link in the mail we sent you." "$page"
+    expect_contains "POST /session, unconfirmed" '<a href="/confirmations/new">Send the confirmation link again</a>' "$page"
+    await_mail 1
+    mail=$(cat mail-1.txt)
+    expect_contains "the confirmation mail" "Subject: Confirm your email address" "$mail"
+    expect_contains "the confirmation mail" "To: dee@example.com" "$mail"
+    link=$(printf '%s' "$mail" | tr -d '\r' | grep -o "$base/confirmations/[^ ]*" | head -n 1)
+    [ -n "$link" ] || fail "the confirmation mail has no link starting with $base/confirmations/: $mail"
+    # Opened, the link confirms and signs nobody in; once used, it is spent.
+    expect_equal "GET the confirmation link" "303 $base/session/new" \
+      "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$signup_jar" -b "$signup_jar" "$link")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "GET the confirmation link" "Your email address has been confirmed." "$page"
+    case "$page" in *"<span>dee@example.com</span>"*) fail "the confirmation link signed the user in" ;; esac
+    expect_equal "GET the confirmation link again" "303 $base/confirmations/new" \
+      "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$signup_jar" "$link")"
+    local confirm_token=${link#*/confirmations/}
+    if grep -qF "$confirm_token" "$SERVER_LOG"; then
+      fail "the confirmation token is in the server log"
+    fi
+    grep -qF 'Started GET "/confirmations/[FILTERED]"' "$SERVER_LOG" || fail "no filtered confirmation request line in the server log"
+    token=$(form_token "$page")
+    expect_equal "POST /session, confirmed" "303 $base/" \
+      "$(post_status "$signup_jar" "$base/session" "authenticity_token=$token" "email_address=dee@example.com" "password=dee-pw-dee-pw")"
+    expect_contains "signed in after confirming" "<span>dee@example.com</span>" \
+      "$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")"
   fi
 
   step "./shop user"
@@ -260,12 +367,9 @@ run_variant() {
   expect_equal "POST /passwords (registered)" "303 $base/session/new" "$known"
   expect_equal "POST /passwords (unknown)" "$known" "$unknown"
   cmp -s known.html unknown.html || fail "POST /passwords: the bodies differ between a registered and an unknown address"
-  local smtp_status=0
-  wait "$SMTP_PID" || smtp_status=$?
-  SMTP_PID=""
-  [ "$smtp_status" = "0" ] || { cat smtp.log >&2; fail "no reset mail reached the SMTP receiver"; }
+  await_mail "$reset_mail"
   local mail link
-  mail=$(cat mail.txt)
+  mail=$(cat "mail-$reset_mail.txt")
   expect_contains "the reset mail" "Subject: Reset your password" "$mail"
   expect_contains "the reset mail" "To: ann@example.com" "$mail"
   link=$(printf '%s' "$mail" | tr -d '\r' | grep -o "$base/passwords/[^ ]*/edit" | head -n 1)
@@ -332,7 +436,24 @@ run_variant() {
        --data-urlencode "user[password]=th1rd-pw-th1rd" --data-urlencode "user[password_confirmation]=th1rd-pw-th1rd" \
        "$base/account")"
   page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/account/edit")
-  expect_contains "GET /account/edit after the change" "Your account has been updated." "$page"
+  if [ "$VARIANT" = "confirmable" ]; then
+    # The new address waits for the link mailed to it; the old one is in use.
+    expect_contains "GET /account/edit after the change" "A link to confirm the new address was sent to it." "$page"
+    expect_contains "GET /account/edit after the change" "<span>ann@example.com</span>" "$page"
+    expect_contains "GET /account/edit after the change" "Waiting for confirmation: ann@new.example" "$page"
+    await_mail 3
+    mail=$(cat mail-3.txt)
+    expect_contains "the new address's mail" "Subject: Confirm your email address" "$mail"
+    expect_contains "the new address's mail" "To: ann@new.example" "$mail"
+    link=$(printf '%s' "$mail" | tr -d '\r' | grep -o "$base/confirmations/[^ ]*" | head -n 1)
+    [ -n "$link" ] || fail "the new address's mail has no link starting with $base/confirmations/: $mail"
+    expect_equal "GET the new address's link (signed in)" "303 $base/account/edit" \
+      "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" "$link")"
+    page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/account/edit")
+    expect_contains "GET /account/edit after the confirmation" "Your email address has been confirmed." "$page"
+  else
+    expect_contains "GET /account/edit after the change" "Your account has been updated." "$page"
+  fi
   expect_contains "GET /account/edit after the change" "<span>ann@new.example</span>" "$page"
   # The other browser is signed out; this one stays signed in.
   expect_equal "GET /products from the other browser" "303 $base/session/new" \

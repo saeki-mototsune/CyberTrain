@@ -4,6 +4,7 @@ module Cybertrain
   module BundledLocales
     def self.fill_texts_00(h)
       h["en.accounts.destroy.deleted"] = "Your account has been deleted."
+      h["en.accounts.destroy.not_deleted"] = "Your account could not be deleted. Nothing has changed."
       h["en.accounts.destroy.wrong_password"] = "That is not your current password."
       h["en.accounts.edit.delete"] = "Delete account"
       h["en.accounts.edit.delete_intro"] = "This deletes your account and signs you out everywhere. It cannot be undone."
@@ -11,8 +12,10 @@ module Cybertrain
       h["en.accounts.edit.model"] = "account"
       h["en.accounts.edit.new_password"] = "New password"
       h["en.accounts.edit.password_hint"] = "Leave it blank to keep your password."
+      h["en.accounts.edit.pending"] = "Waiting for confirmation: %{email_address}"
       h["en.accounts.edit.submit"] = "Save changes"
       h["en.accounts.edit.title"] = "Account"
+      h["en.accounts.update.confirm"] = "A link to confirm the new address was sent to it. The address changes once the link is opened."
       h["en.accounts.update.rate_limited"] = "Try again later."
       h["en.accounts.update.updated"] = "Your account has been updated."
       h["en.accounts.update.wrong_password"] = "That is not your current password."
@@ -23,6 +26,16 @@ module Cybertrain
       h["en.activerecord.errors.messages.record_invalid"] = "Validation failed: %{errors}"
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "Cannot delete record because dependent %{record} exist"
       h["en.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "Cannot delete record because a dependent %{record} exists"
+      h["en.confirmations.create.rate_limited"] = "Try again later."
+      h["en.confirmations.create.sent"] = "If that address is registered and not confirmed yet, a link to confirm it was sent to it."
+      h["en.confirmations.new.intro"] = "If the address is waiting for its confirmation, a new link is mailed to it."
+      h["en.confirmations.new.sign_in"] = "Sign in"
+      h["en.confirmations.new.submit"] = "Send the link"
+      h["en.confirmations.new.title"] = "Send the confirmation link again"
+      h["en.confirmations.show.confirmed"] = "Your email address has been confirmed."
+      h["en.confirmations.show.invalid"] = "That confirmation link is invalid or has expired."
+      h["en.confirmations.show.taken"] = "That email address belongs to another account now, so it was not changed."
+      h["en.confirmations_mailer.confirmation_instructions.subject"] = "Confirm your email address"
       h["en.cybertrain.helpers.submit.no_model"] = "Save changes"
       h["en.cybertrain.jobs_page.buttons.delete"] = "Delete"
       h["en.cybertrain.jobs_page.buttons.discard"] = "Discard"
@@ -40,6 +53,10 @@ module Cybertrain
       h["en.cybertrain.jobs_page.columns.run_at"] = "Run at"
       h["en.cybertrain.jobs_page.columns.state"] = "State"
       h["en.cybertrain.jobs_page.columns.updated"] = "Updated"
+      nil
+    end
+
+    def self.fill_texts_01(h)
       h["en.cybertrain.jobs_page.empty.discarded"] = "No discarded jobs."
       h["en.cybertrain.jobs_page.empty.failed"] = "No failed jobs."
       h["en.cybertrain.jobs_page.empty.running"] = "No running jobs."
@@ -53,10 +70,6 @@ module Cybertrain
       h["en.cybertrain.jobs_page.notices.not_retried"] = "Job %{id} was not retried: it is not failed or discarded."
       h["en.cybertrain.jobs_page.notices.retried"] = "Job %{id} was queued again."
       h["en.cybertrain.jobs_page.notices.retried_all"] = "%{count} failed job(s) queued again."
-      nil
-    end
-
-    def self.fill_texts_01(h)
       h["en.cybertrain.jobs_page.queued.next"] = "%{count} queued; the next is due at %{time}."
       h["en.cybertrain.jobs_page.queued.none"] = "No queued jobs."
       h["en.cybertrain.jobs_page.states.discarded"] = "discarded"
@@ -94,6 +107,10 @@ module Cybertrain
       h["en.datetime.distance_in_words.x_minutes.one"] = "%{count} minute"
       h["en.datetime.distance_in_words.x_minutes.other"] = "%{count} minutes"
       h["en.datetime.distance_in_words.x_months.one"] = "%{count} month"
+      nil
+    end
+
+    def self.fill_texts_02(h)
       h["en.datetime.distance_in_words.x_months.other"] = "%{count} months"
       h["en.datetime.distance_in_words.x_seconds.one"] = "%{count} second"
       h["en.datetime.distance_in_words.x_seconds.other"] = "%{count} seconds"
@@ -107,10 +124,6 @@ module Cybertrain
       h["en.errors.messages.equal_to"] = "must be equal to %{count}"
       h["en.errors.messages.even"] = "must be even"
       h["en.errors.messages.exclusion"] = "is reserved"
-      nil
-    end
-
-    def self.fill_texts_02(h)
       h["en.errors.messages.greater_than"] = "must be greater than %{count}"
       h["en.errors.messages.greater_than_or_equal_to"] = "must be greater than or equal to %{count}"
       h["en.errors.messages.in"] = "must be in %{count}"
@@ -139,11 +152,19 @@ module Cybertrain
       h["en.helpers.submit.create"] = "Create %{model}"
       h["en.helpers.submit.submit"] = "Save %{model}"
       h["en.helpers.submit.update"] = "Update %{model}"
+      h["en.mail.confirmation.greeting"] = "Hello %{email_address},"
+      h["en.mail.confirmation.ignore"] = "If you did not ask for this, ignore this mail: nothing changes."
+      h["en.mail.confirmation.intro"] = "Open this link within the next 3 days to confirm your email address:"
+      h["en.mail.confirmation.link"] = "Confirm my email address"
       h["en.mail.password_reset.greeting"] = "Hello %{email_address},"
       h["en.mail.password_reset.ignore"] = "If you did not ask for this, ignore this mail: your password stays as it is."
       h["en.mail.password_reset.intro"] = "You can choose a new password within the next 15 minutes at this address:"
       h["en.mail.password_reset.link"] = "Choose a new password"
       h["en.number.currency.format.delimiter"] = ","
+      nil
+    end
+
+    def self.fill_texts_03(h)
       h["en.number.currency.format.format"] = "%u%n"
       h["en.number.currency.format.negative_format"] = "-%u%n"
       h["en.number.currency.format.precision"] = "2"
@@ -161,10 +182,6 @@ module Cybertrain
       h["en.number.human.decimal_units.units.billion"] = "Billion"
       h["en.number.human.decimal_units.units.million"] = "Million"
       h["en.number.human.decimal_units.units.quadrillion"] = "Quadrillion"
-      nil
-    end
-
-    def self.fill_texts_03(h)
       h["en.number.human.decimal_units.units.thousand"] = "Thousand"
       h["en.number.human.decimal_units.units.trillion"] = "Trillion"
       h["en.number.human.decimal_units.units.unit"] = ""
@@ -195,17 +212,24 @@ module Cybertrain
       h["en.passwords.new.title"] = "Forgot your password?"
       h["en.passwords.update.updated"] = "Your password has been reset. Sign in with the new one."
       h["en.passwords_mailer.reset.subject"] = "Reset your password"
+      h["en.registrations.create.confirm"] = "Welcome! A link to confirm your email address was sent to it. Open it, then sign in."
       h["en.registrations.create.welcome"] = "Welcome! You have signed up."
       h["en.registrations.new.model"] = "account"
+      nil
+    end
+
+    def self.fill_texts_04(h)
       h["en.registrations.new.sign_in"] = "Sign in"
       h["en.registrations.new.submit"] = "Sign up"
       h["en.registrations.new.title"] = "Sign up"
       h["en.sessions.create.invalid"] = "Try another email address or password."
       h["en.sessions.create.rate_limited"] = "Try again later."
+      h["en.sessions.create.unconfirmed"] = "Confirm your email address first: open the link in the mail we sent you."
       h["en.sessions.destroy.signed_out"] = "You have been signed out."
       h["en.sessions.nav.account"] = "Account"
       h["en.sessions.nav.sign_in"] = "Sign in"
       h["en.sessions.nav.sign_out"] = "Sign out"
+      h["en.sessions.new.confirmation"] = "Send the confirmation link again"
       h["en.sessions.new.email_address"] = "Email address"
       h["en.sessions.new.forgot_password"] = "Forgot your password?"
       h["en.sessions.new.password"] = "Password"
@@ -215,10 +239,6 @@ module Cybertrain
       h["en.sessions.new.title"] = "Sign in"
       h["en.setup.create.welcome"] = "Welcome! Your account has been created."
       h["en.setup.new.intro"] = "Create the first account. This page is only shown on this machine, with the link the server printed when it started, and only until an account exists."
-      nil
-    end
-
-    def self.fill_texts_04(h)
       h["en.setup.new.model"] = "account"
       h["en.setup.new.submit"] = "Create account"
       h["en.setup.new.title"] = "Set up"
@@ -231,6 +251,7 @@ module Cybertrain
       h["en.time.formats.short"] = "%d %b %H:%M"
       h["en.time.pm"] = "pm"
       h["ja.accounts.destroy.deleted"] = "アカウントを削除しました。"
+      h["ja.accounts.destroy.not_deleted"] = "アカウントを削除できませんでした。何も変更していません。"
       h["ja.accounts.destroy.wrong_password"] = "現在のパスワードが違います。"
       h["ja.accounts.edit.delete"] = "アカウントを削除する"
       h["ja.accounts.edit.delete_intro"] = "アカウントを削除し、すべての端末からログアウトします。元に戻すことはできません。"
@@ -238,18 +259,34 @@ module Cybertrain
       h["ja.accounts.edit.model"] = "アカウント"
       h["ja.accounts.edit.new_password"] = "新しいパスワード"
       h["ja.accounts.edit.password_hint"] = "変更しない場合は空欄のままにしてください。"
+      h["ja.accounts.edit.pending"] = "確認待ち: %{email_address}"
       h["ja.accounts.edit.submit"] = "変更を保存"
       h["ja.accounts.edit.title"] = "アカウント"
+      h["ja.accounts.update.confirm"] = "新しいメールアドレスに確認用のリンクを送りました。リンクを開くと、メールアドレスが変わります。"
       h["ja.accounts.update.rate_limited"] = "しばらくしてからもう一度お試しください。"
       h["ja.accounts.update.updated"] = "アカウントを更新しました。"
       h["ja.accounts.update.wrong_password"] = "現在のパスワードが違います。"
       h["ja.activerecord.attributes.user.current_password"] = "現在のパスワード"
       h["ja.activerecord.attributes.user.email_address"] = "メールアドレス"
       h["ja.activerecord.attributes.user.password"] = "パスワード"
+      nil
+    end
+
+    def self.fill_texts_05(h)
       h["ja.activerecord.attributes.user.password_confirmation"] = "パスワード（確認用）"
       h["ja.activerecord.errors.messages.record_invalid"] = "バリデーションに失敗しました: %{errors}"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_many"] = "%{record}が存在しているので削除できません"
       h["ja.activerecord.errors.messages.restrict_dependent_destroy.has_one"] = "%{record}が存在しているので削除できません"
+      h["ja.confirmations.create.rate_limited"] = "しばらくしてからもう一度お試しください。"
+      h["ja.confirmations.create.sent"] = "そのメールアドレスが登録されていて未確認であれば、確認用のリンクを送りました。"
+      h["ja.confirmations.new.intro"] = "確認を待っているメールアドレスであれば、新しいリンクをメールで送ります。"
+      h["ja.confirmations.new.sign_in"] = "ログイン"
+      h["ja.confirmations.new.submit"] = "リンクを送る"
+      h["ja.confirmations.new.title"] = "確認用リンクの再送信"
+      h["ja.confirmations.show.confirmed"] = "メールアドレスを確認しました。"
+      h["ja.confirmations.show.invalid"] = "確認用のリンクが無効か、期限が切れています。"
+      h["ja.confirmations.show.taken"] = "そのメールアドレスは別のアカウントが使っているため、変更しませんでした。"
+      h["ja.confirmations_mailer.confirmation_instructions.subject"] = "メールアドレスの確認"
       h["ja.cybertrain.helpers.submit.no_model"] = "変更を保存"
       h["ja.cybertrain.jobs_page.buttons.delete"] = "削除"
       h["ja.cybertrain.jobs_page.buttons.discard"] = "破棄"
@@ -269,10 +306,6 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.columns.updated"] = "更新日時"
       h["ja.cybertrain.jobs_page.empty.discarded"] = "破棄済みのジョブはありません。"
       h["ja.cybertrain.jobs_page.empty.failed"] = "失敗したジョブはありません。"
-      nil
-    end
-
-    def self.fill_texts_05(h)
       h["ja.cybertrain.jobs_page.empty.running"] = "実行中のジョブはありません。"
       h["ja.cybertrain.jobs_page.heartbeat.ago"] = "%{seconds}秒前"
       h["ja.cybertrain.jobs_page.heartbeat.none"] = "なし"
@@ -290,6 +323,10 @@ module Cybertrain
       h["ja.cybertrain.jobs_page.states.done"] = "完了"
       h["ja.cybertrain.jobs_page.states.failed"] = "失敗"
       h["ja.cybertrain.jobs_page.states.queued"] = "待機中"
+      nil
+    end
+
+    def self.fill_texts_06(h)
       h["ja.cybertrain.jobs_page.states.running"] = "実行中"
       h["ja.cybertrain.jobs_page.tabs.discarded"] = "破棄済み (%{count})"
       h["ja.cybertrain.jobs_page.tabs.failed"] = "失敗 (%{count})"
@@ -323,10 +360,6 @@ module Cybertrain
       h["ja.errors.messages.even"] = "は偶数にしてください"
       h["ja.errors.messages.exclusion"] = "は予約されています"
       h["ja.errors.messages.greater_than"] = "は%{count}より大きい値にしてください"
-      nil
-    end
-
-    def self.fill_texts_06(h)
       h["ja.errors.messages.greater_than_or_equal_to"] = "は%{count}以上の値にしてください"
       h["ja.errors.messages.in"] = "は%{count}の範囲に含めてください"
       h["ja.errors.messages.inclusion"] = "は一覧にありません"
@@ -344,12 +377,20 @@ module Cybertrain
       h["ja.errors.messages.taken"] = "はすでに存在します"
       h["ja.errors.messages.too_long"] = "は%{count}文字以内で入力してください"
       h["ja.errors.messages.too_short"] = "は%{count}文字以上で入力してください"
+      nil
+    end
+
+    def self.fill_texts_07(h)
       h["ja.errors.messages.wrong_length"] = "は%{count}文字で入力してください"
       h["ja.errors.template.body"] = "次の項目を確認してください"
       h["ja.errors.template.header"] = "%{model}に%{count}個のエラーが発生しました"
       h["ja.helpers.submit.create"] = "登録する"
       h["ja.helpers.submit.submit"] = "保存する"
       h["ja.helpers.submit.update"] = "更新する"
+      h["ja.mail.confirmation.greeting"] = "%{email_address} 様"
+      h["ja.mail.confirmation.ignore"] = "心当たりがない場合は、このメールを無視してください。何も変わりません。"
+      h["ja.mail.confirmation.intro"] = "次のリンクを3日以内に開いて、メールアドレスを確認してください。"
+      h["ja.mail.confirmation.link"] = "メールアドレスを確認する"
       h["ja.mail.password_reset.greeting"] = "%{email_address} 様"
       h["ja.mail.password_reset.ignore"] = "心当たりがない場合は、このメールを無視してください。パスワードは変わりません。"
       h["ja.mail.password_reset.intro"] = "次のアドレスで、15分以内に新しいパスワードを設定できます。"
@@ -377,10 +418,6 @@ module Cybertrain
       h["ja.number.human.decimal_units.units.unit"] = ""
       h["ja.number.human.format.delimiter"] = ""
       h["ja.number.human.format.precision"] = "3"
-      nil
-    end
-
-    def self.fill_texts_07(h)
       h["ja.number.human.format.significant"] = "true"
       h["ja.number.human.format.strip_insignificant_zeros"] = "true"
       h["ja.number.human.storage_units.format"] = "%n%u"
@@ -394,6 +431,10 @@ module Cybertrain
       h["ja.number.human.storage_units.units.zb"] = "ZB"
       h["ja.number.percentage.format.delimiter"] = ""
       h["ja.number.percentage.format.format"] = "%n%"
+      nil
+    end
+
+    def self.fill_texts_08(h)
       h["ja.number.precision.format.delimiter"] = ""
       h["ja.passwords.create.rate_limited"] = "しばらくしてからもう一度お試しください。"
       h["ja.passwords.create.sent"] = "そのメールアドレスが登録されていれば、パスワードを再設定するリンクを送りました。"
@@ -405,6 +446,7 @@ module Cybertrain
       h["ja.passwords.new.title"] = "パスワードをお忘れですか？"
       h["ja.passwords.update.updated"] = "パスワードを再設定しました。新しいパスワードでログインしてください。"
       h["ja.passwords_mailer.reset.subject"] = "パスワードの再設定"
+      h["ja.registrations.create.confirm"] = "ようこそ。メールアドレスを確認するリンクを送りました。リンクを開いてから、ログインしてください。"
       h["ja.registrations.create.welcome"] = "ようこそ。アカウントを登録しました。"
       h["ja.registrations.new.model"] = "アカウント"
       h["ja.registrations.new.sign_in"] = "ログイン"
@@ -412,10 +454,12 @@ module Cybertrain
       h["ja.registrations.new.title"] = "アカウント登録"
       h["ja.sessions.create.invalid"] = "メールアドレスかパスワードが違います。"
       h["ja.sessions.create.rate_limited"] = "しばらくしてからもう一度お試しください。"
+      h["ja.sessions.create.unconfirmed"] = "先にメールアドレスを確認してください。お送りしたメールのリンクを開いてください。"
       h["ja.sessions.destroy.signed_out"] = "ログアウトしました。"
       h["ja.sessions.nav.account"] = "アカウント"
       h["ja.sessions.nav.sign_in"] = "ログイン"
       h["ja.sessions.nav.sign_out"] = "ログアウト"
+      h["ja.sessions.new.confirmation"] = "確認用リンクを再送信する"
       h["ja.sessions.new.email_address"] = "メールアドレス"
       h["ja.sessions.new.forgot_password"] = "パスワードをお忘れですか？"
       h["ja.sessions.new.password"] = "パスワード"
@@ -431,10 +475,6 @@ module Cybertrain
       h["ja.support.array.last_word_connector"] = "、"
       h["ja.support.array.two_words_connector"] = "、"
       h["ja.support.array.words_connector"] = "、"
-      nil
-    end
-
-    def self.fill_texts_08(h)
       h["ja.time.am"] = "午前"
       h["ja.time.formats.default"] = "%Y年%m月%d日(%a) %H時%M分%S秒 %z"
       h["ja.time.formats.long"] = "%Y/%m/%d %H:%M"

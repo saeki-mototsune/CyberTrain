@@ -195,12 +195,14 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3997/setup?token=$setup_token")" = "404"
           kill %1
 
-      # Both authentication variants end to end (script/auth-e2e): a new app
-      # with a scaffold, the generator, every test the app has compiled and
-      # run, then the binary served: the sign-in page, `./shop user` and
-      # `user admin`, and the jobs page behind require_admin.
+      # The authentication variants end to end (script/auth-e2e): a new app
+      # with a scaffold, the generator (sign-up, --invite-only, --confirmable),
+      # every test the app has compiled and run, then the binary served: the
+      # sign-in page, `./shop user` and `user admin`, the jobs page behind
+      # require_admin, the mails (reset; with --confirmable the sign-up's and
+      # the new address's confirmation) and the account page.
       - name: Authentication end to end
-        run: script/auth-e2e signup invite
+        run: script/auth-e2e signup invite confirmable
 
       # File uploads end to end: a scaffold with an attachment field, the
       # app's own generated upload test, then one browser-shaped multipart

@@ -6,8 +6,10 @@
 # activerecord.errors.messages, helpers.submit and support.array; plus
 # the framework's own keys under cybertrain (plan decision D12), and the
 # screens `cybertrain generate authentication` writes: their lazy keys
-# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*, the reset mail's
-# mail.password_reset.* and passwords_mailer.reset.subject) and the User
+# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*,
+# confirmations.*, the reset mail's mail.password_reset.* and
+# passwords_mailer.reset.subject, the confirmation mail's
+# mail.confirmation.* and confirmations_mailer.*) and the User
 # model's attribute names (activerecord.attributes.user).
 # Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
 # an application's config/locales overrides any key.
@@ -16,6 +18,7 @@ ja:
   accounts:
     destroy:
       deleted: アカウントを削除しました。
+      not_deleted: アカウントを削除できませんでした。何も変更していません。
       wrong_password: 現在のパスワードが違います。
     edit:
       delete: アカウントを削除する
@@ -24,9 +27,11 @@ ja:
       model: アカウント
       new_password: 新しいパスワード
       password_hint: 変更しない場合は空欄のままにしてください。
+      pending: '確認待ち: %{email_address}'
       submit: 変更を保存
       title: アカウント
     update:
+      confirm: 新しいメールアドレスに確認用のリンクを送りました。リンクを開くと、メールアドレスが変わります。
       rate_limited: しばらくしてからもう一度お試しください。
       updated: アカウントを更新しました。
       wrong_password: 現在のパスワードが違います。
@@ -43,6 +48,22 @@ ja:
         restrict_dependent_destroy:
           has_one: "%{record}が存在しているので削除できません"
           has_many: "%{record}が存在しているので削除できません"
+  confirmations:
+    create:
+      rate_limited: しばらくしてからもう一度お試しください。
+      sent: そのメールアドレスが登録されていて未確認であれば、確認用のリンクを送りました。
+    new:
+      intro: 確認を待っているメールアドレスであれば、新しいリンクをメールで送ります。
+      sign_in: ログイン
+      submit: リンクを送る
+      title: 確認用リンクの再送信
+    show:
+      confirmed: メールアドレスを確認しました。
+      invalid: 確認用のリンクが無効か、期限が切れています。
+      taken: そのメールアドレスは別のアカウントが使っているため、変更しませんでした。
+  confirmations_mailer:
+    confirmation_instructions:
+      subject: メールアドレスの確認
   cybertrain:
     helpers:
       submit:
@@ -206,6 +227,11 @@ ja:
       submit: 保存する
       update: 更新する
   mail:
+    confirmation:
+      greeting: "%{email_address} 様"
+      ignore: 心当たりがない場合は、このメールを無視してください。何も変わりません。
+      intro: 次のリンクを3日以内に開いて、メールアドレスを確認してください。
+      link: メールアドレスを確認する
     password_reset:
       greeting: "%{email_address} 様"
       ignore: 心当たりがない場合は、このメールを無視してください。パスワードは変わりません。
@@ -281,6 +307,7 @@ ja:
       subject: パスワードの再設定
   registrations:
     create:
+      confirm: ようこそ。メールアドレスを確認するリンクを送りました。リンクを開いてから、ログインしてください。
       welcome: ようこそ。アカウントを登録しました。
     new:
       model: アカウント
@@ -291,6 +318,7 @@ ja:
     create:
       invalid: メールアドレスかパスワードが違います。
       rate_limited: しばらくしてからもう一度お試しください。
+      unconfirmed: 先にメールアドレスを確認してください。お送りしたメールのリンクを開いてください。
     destroy:
       signed_out: ログアウトしました。
     nav:
@@ -298,6 +326,7 @@ ja:
       sign_in: ログイン
       sign_out: ログアウト
     new:
+      confirmation: 確認用リンクを再送信する
       email_address: メールアドレス
       forgot_password: パスワードをお忘れですか？
       password: パスワード

@@ -4,7 +4,7 @@
 #   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
 #   cybertrain generate attachment MODEL FIELD [--any]
-#   cybertrain generate authentication [--invite-only]
+#   cybertrain generate authentication [--invite-only] [--confirmable]
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
@@ -52,7 +52,7 @@ module Cybertrain
             up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
             accepted, unless --any allows any file; the stored type is always
             the one detected from the bytes.
-        cybertrain generate authentication [--invite-only]
+        cybertrain generate authentication [--invite-only] [--confirmable]
             Add email-and-password sign-in to the application in the current
             directory: users and sessions tables, User and Session models,
             the Authentication concern (included into ApplicationController),
@@ -66,6 +66,10 @@ module Cybertrain
             machine, only with the one-time token the server's boot warning
             prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
             the address check).
+            --confirmable: a new account confirms its address by mail
+            before it can sign in (a form sends the link again), and a new
+            address on the account page takes effect once its own link is
+            opened. Users the user command or /setup creates are confirmed.
         cybertrain generate helper NAME [--force]
             Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
             `spin run gen` makes callable from every template) and a test.
@@ -335,11 +339,12 @@ module Cybertrain
         puts "  cybertrain server"
         puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary"
       when "authentication"
-        args = without_flag(argv[2, argv.size - 2], "--invite-only")
-        raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only]" unless args.empty?
+        args = without_flag(without_flag(argv[2, argv.size - 2], "--invite-only"), "--confirmable")
+        raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only] [--confirmable]" unless args.empty?
 
         invite_only = argv.include?("--invite-only")
-        result = Authentication.generate_with_result(".", invite_only)
+        confirmable = argv.include?("--confirmable")
+        result = Authentication.generate_with_result(".", invite_only, confirmable)
         result.manual.each { |diff| puts diff }
         puts ""
         puts "next:"
@@ -350,9 +355,11 @@ module Cybertrain
         else
           puts "  cybertrain server      # then open /sign_up"
         end
-        puts "  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb and accounts.rb; snapshot them from the binaries"
+        tests = confirmable ? "passwords.rb, accounts.rb and confirmations.rb" : "passwords.rb and accounts.rb"
+        puts "  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, #{tests}; snapshot them from the binaries"
         base_url_env = Authentication.base_url_env(Build.app_name("."))
-        puts "  # password reset mails: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
+        mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
+        puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
       when "helper"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate helper NAME [--force]" unless args.size == 1
