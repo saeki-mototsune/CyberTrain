@@ -1,5 +1,5 @@
 ---
-source_sha256: 2249f3239f3cc08531ce19f54fbd2b0f46fcdb8fc891d4942cea75b9cb1d0038
+source_sha256: 609dcbd39a00fda2aaabba958a05b3af0bc228dc6c93a9b499a3db747da14a18
 ---
 # Запросы
 
@@ -341,3 +341,7 @@ zlib с ограничением размера результата: по ум�
 - Все ETag меняются один раз (теперь в них входят формат запроса и отпечаток сборки), ответ, выбранный по `Accept`, отправляет `Vary: Accept`, а html-откат действует для любого `Accept`, где перечислены `text/html` или `*/*`.
 - `permit` и `expect` вызывают `ArgumentError` для фильтра, который не является Array; `layout`, называющий отсутствующий лейаут, вызывает `MissingTemplate` (лейаут `application` по умолчанию остаётся необязательным); cookie из jar больше 4096 байт вызывает `Session::CookieOverflow`.
 - `public/style.css` продолжает работать; перенос в `app/assets/stylesheets/` необязателен ([Ассеты](assets.md#moving-publicstylecss)).
+- Сообщения валидации берутся из встроенного словаря ([Интернационализация](i18n.md#models-and-validation-messages)) с тем же английским текстом, кроме трёх случаев: сообщение на `:base` больше не начинается с "Base", атрибут, оканчивающийся на `_id`, называется без "id" ("Article can't be blank", а не "Article id can't be blank"), а предел длины 1 читается как "1 character". Тесты, сравнивающие эти сообщения, меняются.
+- `time_tag` без `format:` или с именем формата форматирует через `I18n.l` (на английской странице — тот же английский текст, что и раньше).
+- gen пишет `gen/locales.rb` (пустой без `config/locales/`) и загружает `app/mailers/**/*.rb`; `cybertrain new` пишет `config/locales/en.yml`, который старое приложение может добавить.
+- `allow_unauthenticated_access` теперь метод фреймворка; тот, что генератор 0.4 записал в `ApplicationController`, продолжает работать и имеет приоритет. Повторный запуск `cybertrain generate authentication` добавляет сброс пароля, блокировку, «оставаться в системе», страницу учётной записи и администраторов и печатает diff-ы для файлов, записанных 0.4 ([Обновление с 0.4](authentication.md#upgrading-from-04)).

@@ -815,13 +815,18 @@ OAuth and two-factor authentication.
   controllers, mailer, views, the migration adding `admin`,
   `failed_attempts`, `locked_until`, `remember`, `last_active_at`) and
   prints, for each existing file it would have changed
-  (`sessions_controller.rb`, `authentication.rb`, `user.rb`,
-  `sessions/new.html.erb`), the lines to add by hand; the guide's upgrade
+  (`application_controller.rb`, whose 0.4 block becomes `include
+  Authentication`, `sessions_controller.rb`, `user.rb`,
+  `sessions/new.html.erb` and the other generated files), the lines to
+  add by hand; the guide's upgrade
   section shows the same diff. `cybertrain generate authentication
   --force` overwrites them instead, for an application that never edited
   them.
 - 4b: English validation messages now come from the bundled dictionary;
-  their text is unchanged.
+  their text is unchanged, except that a `:base` message is no longer
+  prefixed "Base", an attribute ending in `_id` is named without "id"
+  ("Article can't be blank"), and a length limit of 1 reads "1
+  character" (section 18, Part 4b).
 
 ## 15. Acceptance
 
@@ -1023,3 +1028,152 @@ adds its own notes here.
   `http_caching`, `number_helper`, `rate_limit_store`, `send_data`,
   `turbo_helpers`), and examples/blog's two programs run 53 tests (36 and
   17). The whole suite (`script/test-shard 0 1`) passed 177 of 177 at 0e183e6, before the final fix wave, and again 177 of 177 at 3bdc03d, after it.
+
+
+### Part 4b (2026-11-12, after part 4b's Tasks 1 to 19)
+
+What differed from the plan or from this document in part 4b, and why;
+each is recorded in the code and in docs/design.md D64 and D65 too.
+
+- The spike (section 12, item 6): no fallback was taken. The plan's Psych
+  option (its R3) was dropped before the spike (Psych types scalars, and
+  `YAML.safe_load` refuses rails-i18n's `:year`), so gen reads the
+  dictionaries with the hand-written subset reader of section 8 as
+  written; the locale is thread-local (no `Context` field); an absent key
+  is nil (no `I18n::MISSING`). Item 6b chose a shape the plan did not
+  list (plan decision D3): `gen/locales.rb` is a Hash, the faster shape,
+  filled by methods of at most 50 stores, because one Hash literal of
+  2,000 keys takes 12.5 to 15.2 s of cc (spikes/NOTES.md rule 99) and a
+  `case` takes 19 us to miss. `cybertrain/locales/bundled.rb` has the
+  same shape.
+- i18n (section 8): lazy lookup follows the rendering template's path, as
+  Rails' virtual path does (plan decision D8, pre-flight ruling F18), not
+  `<controller path>.<action>`: `render :new` from `create` reads
+  `posts.new.title`, a partial `posts/_form` reads `posts.form.title`, a
+  component `card_component.title`, a mail partial `mail/_password_reset`
+  `mail.password_reset.title`; only `Controller#t(".x")` reads
+  `<controller path>.<action>.x`. The template's missing-key span
+  titleizes the segment (`Page Title`), as Rails' span does, while
+  production answers it humanised (`Page title`). `I18n.l` upper-cases
+  `%p` (en `AM`), as the i18n gem does. `time_tag` with a format name,
+  and without `format:`, goes through `I18n.l` (a String pattern keeps
+  strftime's English names); the strftime walker moved to
+  `Cybertrain::Strftime.walk`, which `I18n.l` and
+  `Template::Helpers.time_tag_strftime` share, because `cybertrain/i18n`
+  must load under CRuby without the template layer.
+  `number_to_percentage` gained `format:`, `delimiter:` and `separator:`
+  so that the template helper reads `number.percentage.format`. ja's
+  `number_to_human` keeps rails-i18n's `"%n %u"` (`"1.23 百万"`).
+  `request.preferred_locale` reads `I18n.default_locale` without
+  requiring `cybertrain/i18n` (the HTTP layer stays standalone,
+  script/check-http-layer). `i18n_available_locales` defaults to `[]`,
+  read as the default locale alone, and boot refuses a default outside a
+  non-empty list. Two costs were accepted and left unmeasured outside the
+  tests: a bundled lookup probes the application's dictionary for the six
+  plural forms at the key (so an application's forms can hide a bundled
+  text), and interpolation runs on every text.
+- Models (plan decisions D9 and D10): `full_messages` writes a `:base`
+  message alone (0.4 wrote "Base ..."), `human_attribute_name` drops a
+  trailing `_id` (`author_id` is "Author", so 0.4's "Article id can't be
+  blank" reads "Article can't be blank"), and the length messages take
+  rails-i18n's plural forms (a limit of 1 reads "1 character"; 0.4 said
+  "characters"). Section 14's "their text is unchanged" is amended for
+  these three. Numericality's limit is passed as `count_text:`, which
+  fills `%{count}` without choosing a plural form. `Errors#model_key` is
+  a new public reader (the validator needs the record's key), and
+  `I18n.human_model_name` falls back to the last segment of the key, as
+  Rails' `model_name.human` does.
+- The concern (plan decision R1): the generator writes
+  `app/controllers/concerns/authentication.rb` and `include
+  Authentication`, so section 14's list of files a re-run diffs names
+  `application_controller.rb` (0.4's block lives there; 0.4 had no
+  `authentication.rb`). `allow_unauthenticated_access` is a framework
+  class method, `Cybertrain::Controller.allow_unauthenticated_access`
+  (plan decision D14): a concern's `class_methods` are defined in
+  `gen/concerns.rb`, after the controllers whose class bodies call them.
+- Session limits (section 9's remember me; plan decision R2): this
+  document's "session_max_age" for the absolute limit is
+  `Config#session_absolute_max_age`. The generated code stamps two
+  session keys through `Session#stamp_lifetime!(seconds, persistent)`,
+  `"_lifetime"` (the sign-in's own limit, in seconds) and `"_browser"`
+  (`"1"` for a cookie with no `Max-Age` and no `Expires`), which
+  `SessionStore` reads in place of `session_absolute_max_age` and
+  `session_max_age`. `restart_lifetime!` clears a stamp, so the generated
+  `start_new_session_for` restarts and then stamps. The limit stamped is
+  `session_limit(remember)`: `auth_remember_for` when remembered, else
+  `session_absolute_max_age`, else `session_max_age`, else two weeks, so
+  `session_absolute_max_age = 0` never stamps a cookie with no limit.
+- Password reset (section 9, AU-2): `PasswordsMailer.reset(user, url)`
+  takes the link as a second argument (pre-flight ruling F15): the link's
+  base may be the request's, and a mailer has no request. The token is
+  `Cybertrain::Token.issue` (the plan's `generate` was renamed), bound to
+  the password digest and the address (`"<digest>:<address>"`), so an
+  address change also ends the links sent before. The mail's text part
+  is built from dictionary keys, not from `Views.render_mail` (the one
+  partial is HTML). `create` does the same work for an unknown address
+  (a dummy token, the mail rendered) short of queueing it. A reset also
+  confirms an account never confirmed (the link proves the mailbox, and
+  this closes a pre-registration with someone else's address); a new
+  address waiting is not confirmed by it.
+- Mail links (plan decision D16): the link's base is the `base_url`
+  setting, else `request.base_url` only when `Config#host_check?`
+  (development, or `CYBERTRAIN_HOSTS` set) or in tests, not "when not in
+  production": `CYBERTRAIN_ENV` is free-form, and a staging deployment
+  would take a forged `Host`. One method in the generated concern,
+  `mail_link_base(mail)`, holds it for every mail. The reset and
+  confirmation pages answer `Referrer-Policy: no-referrer`, and
+  `ParameterFilter.filter_path` masks a token-shaped path segment in the
+  log lines written before routing, as the token stays in Rails' path
+  (`/passwords/:token/edit`).
+- `--confirmable`: the confirmation token is bound to the address being
+  confirmed, the address in use and the last confirmation time, so a
+  link works once; the mailer method is `confirmation_instructions`
+  (Devise's name; `confirm` is `User#confirm`); an address change can be
+  withdrawn (`DELETE /account/pending_email`); the concern's
+  `start_new_session_for` refuses an unconfirmed user too, so an upgrade
+  whose sessions controller diff was not applied still signs none in.
+  Users the user command and `/setup` create are confirmed.
+- Lockout and the account page: the count is one `UPDATE` through a new
+  `Relation#update_all_sql` (an `increment` followed by a second write
+  gave a timing signal); a wrong password for an existing account still
+  writes once, which unknown and locked addresses do not (accepted, as in
+  Devise). A wrong current password on the account page is rate limited
+  per client address and per user, and does not count toward lockout.
+- Admin and the jobs page: the jobs page's line is
+  `jobs_page "/admin/jobs", before_action: :require_admin,
+  skip_before_action: :require_authentication` (a new route option), so
+  a visitor gets `require_admin`'s 404 as section 9 says; an application
+  controller with `before_action :require_admin` keeps Rails' order and
+  sends a visitor to sign in (303). gen refuses a `skip_before_action:`
+  without a `before_action:` or naming it. The user command is generated
+  in both modes (plan decision R6). `check_box_tag` was added for the
+  remember-me box.
+- The upgrade (section 14, plan decision D19): the add-columns migration
+  holds exactly the columns the existing migrations lack, decided per
+  column (pre-flight ruling F19), so an application generated by 4b
+  without `--confirmable` and re-run with it gets one too; a second one is
+  named `_2`. `create_*` migrations are never diffed. A 0.4 application
+  has no jobs page comment, so its routes get the jobs page line as a
+  diff before the draw block's `end`. The diff of a file whose change a
+  security check depends on carries an `IMPORTANT:` line, repeated at the
+  end. The application may not build until the diffs are applied, and
+  the output says so.
+- Framework names: WebSocket's private `Frame#reset` became
+  `clear_message` (one return type per name, rule 34, beside
+  `PasswordsMailer.reset`); `MailMessage`'s readers are `mail_to`,
+  `mail_subject`, `mail_body`, `mail_html`, `mail_from`; gen loads
+  `app/mailers/**/*.rb`.
+- examples/blog uses `--invite-only`, sets the locale from `?locale=`, a
+  cookie, then `Accept-Language`, and turns on `i18n_raise_on_missing` in
+  its tests. `link_to` drops attributes it does not know (`lang:`), so
+  the language links carry none; the page's `<html lang>` does.
+- New Spinel rules: spikes/NOTES.md 99 to 101, all from the spike (99 a
+  compile-time cost, 100 and 101 records of forms that work);
+  docs/spinel-feedback.md Y. The tasks after the spike found none.
+- Tests: `spin test` has 185 programs (8 new: `cli_authentication_upgrade`,
+  `gen_locales`, `i18n`, `i18n_models`, `i18n_views`, `locale_yaml`,
+  `mail_message`, `token`), and examples/blog has eight (6 new:
+  `accounts`, `admin`, `authentication`, `lockout`, `passwords`,
+  `remember_me`); `script/auth-e2e signup invite confirmable upgrade04`
+  drives generated applications end to end.
+TEST-COUNTS-PENDING

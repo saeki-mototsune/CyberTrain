@@ -1139,7 +1139,10 @@ The rules are numbered in the order they were found. By topic:
     buffer. The literal-pattern form works. So `time_tag`'s `format:`
     (`Template::Helpers.time_tag_strftime`) walks the pattern itself and
     calls `strftime` with a literal for each directive it supports,
-    raising for an unknown one (phase 4a Task 17, 2026-11-11).
+    raising for an unknown one (phase 4a Task 17, 2026-11-11). Since
+    phase 4b the walk is `Cybertrain::Strftime.walk(time, pattern, label)`
+    (cybertrain/strftime.rb), which `time_tag_strftime` and `I18n.l`'s
+    dictionary formats both call, so it loads without the template layer.
 
 97. A String held in an instance variable, passed as an argument to a
     stored lambda that may append to its argument (`a proc.call`), is
@@ -1173,7 +1176,11 @@ The rules are numbered in the order they were found. By topic:
     as fast (34 to 52 ns). So generated code writes a large table as
     small fill methods, never as one literal (gen/locales.rb; phase 4b
     spike, 2026-11-11, spikes/phase4b/locale_hash.rb and
-    locale_hash_split.rb; docs/spinel-feedback.md Y).
+    locale_hash_split.rb; docs/spinel-feedback.md Y). The shipped emitter
+    (cybertrain/generator/locales_emitter.rb) names them
+    `fill_texts_NN` / `fill_lists_NN` and the builders `text_table` /
+    `list_table`, one name per return type; cybertrain/locales/bundled.rb
+    has the same shape (cross-checked 2026-11-12, test/gen_locales.rb).
 
 100. A thread-local Symbol beside a Connection: on Spinel 2026.11.04.7026,
      `Thread.current[:cybertrain_i18n_locale] = :ja` in a program where
@@ -1198,7 +1205,11 @@ The rules are numbered in the order they were found. By topic:
      statement is `raise` (rule 79's block, which fails only when the
      yielding method itself rescues). A record of forms that work:
      `I18n.install_dictionary` and `I18n.with_locale` (phase 4b spike,
-     2026-11-11, spikes/phase4b/dictionary_lambda.rb).
+     2026-11-11, spikes/phase4b/dictionary_lambda.rb, which also nests
+     `with_locale` three deep). The shipped gen/locales.rb answers from a
+     Hash (`TEXTS[key]`, rule 99) rather than the spike's `case`, through
+     the same lambdas; test/gen_locales.rb and test/i18n.rb compile it
+     (cross-checked 2026-11-12).
 
 ## Numbers worth remembering
 

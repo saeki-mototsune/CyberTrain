@@ -297,6 +297,10 @@ nil)`, `Article.find_each { }`, `Article.pluck(:id, :title)`,
   binds NULL in a numeric, boolean, date or json column (where `save` would
   store 0 / false / `{}`), leaves `updated_at` alone and runs no callback; `destroy_all` destroys each record, callbacks
   and `dependent:` included.
+- `update_all_sql(sql, binds = [])` sets columns with an SQL `SET` list, for a
+  value computed from the row (`User.where(id: id).update_all_sql("failed_attempts = failed_attempts + ?", [1])`);
+  every expression reads the row as it was, `?` takes the binds in order,
+  and, as `update_all`, it loads no model and runs no callback.
 - `find_each` walks by id in batches and ignores the relation's order,
   limit and offset, as Rails does.
 - `find_or_create_by` on a narrowed relation creates the record from the
@@ -562,13 +566,18 @@ class Article
 end
 ```
 
-The messages are Rails' English defaults: "can't be blank", "is too short
-(minimum is 3 characters)", "is the wrong length (should be 5 characters)",
-"is not included in the list", "is reserved", "is invalid", "is not a
-number", "must be an integer", "must be greater than or equal to 0", "has
-already been taken". `message:` replaces one, on the line or inside a rule's
-Hash. Rails' singular form ("1 character") is not there: a limit of 1 reads
-"1 characters".
+The messages are Rails' defaults, from the bundled dictionary in the
+request's locale: "can't be blank", "is too short (minimum is 3
+characters)", "is the wrong length (should be 5 characters)", "is not
+included in the list", "is reserved", "is invalid", "is not a number",
+"must be an integer", "must be greater than or equal to 0", "has already
+been taken" in English, "を入力してください" in Japanese. A limit of 1 reads
+"1 character". `message:` replaces one, on the line or inside a rule's
+Hash; `config/locales/` can replace them for every model or for one
+([Models and validation messages](i18n.md#models-and-validation-messages)).
+`errors.full_messages` names each attribute by
+`Post.human_attribute_name(:title)` ("Title"; `author_id` is "Author"),
+and writes a message on `:base` alone.
 
 - `length` takes `minimum`, `maximum`, `is` and `in` (an Integer Range).
 - `inclusion` and `exclusion` take an Array, or a Range of Integers (Spinel

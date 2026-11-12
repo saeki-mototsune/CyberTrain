@@ -1,5 +1,5 @@
 ---
-source_sha256: cf5a8c6dd814a8f7d284bf9bf02a6cca610f28753925229a7408b436c81f6011
+source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
 ---
 # 設定
 
@@ -54,6 +54,11 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`。秘密の値で、ログにも起動バナーにもエラーメッセージにも出ない |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：`from:` が与えられないときに `Mailer.deliver` が使う送信者 |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`。`tls`（暗黙の TLS）や `none`（平文。資格情報はループバックへのみ）も可。どちらの TLS モードにも `require "cybertrain/net/tls"` が必要 |
+| `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：すべてのリクエストが始まるロケール。`ja` や `pt-BR` のような名前（[ロケール](#locales) を参照）。それ以外は起動を止める |
+| `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`：アカウントがロックされるまでの間違ったパスワードの回数。`0` でロックアウトを無効にする（[認証の設定](#authentication-settings) を参照） |
+| `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`：ロックアウトが続く秒数。1 以上 |
+| `CYBERTRAIN_AUTH_REMEMBER_FOR` | `auth_remember_for` | `2592000`（30 日）：「ログインしたままにする」サインインが続く秒数。1 以上 |
+| `CYBERTRAIN_AUTH_IDLE_TIMEOUT` | `auth_idle_timeout` | `604800`（7 日）：リクエストがないままサインインが終わるまでの秒数。`0` で無効 |
 
 `None` を（`CYBERTRAIN_SESSION_PARTITIONED=1` とともに）使うのは、別のサイトのフレーム内に表示されるアプリだけにしてください。ブラウザーは HTTPS でアプリに到達する必要があります。
 
@@ -92,6 +97,23 @@ Cybertrain.config.int_setting(:prune_interval)
 
 各値は、起動時に `config/app.rb` が実行されるときに一度だけ読まれます。空の変数や設定されていない変数はデフォルトを意味します。真偽値は `1`/`true` または `0`/`false` を、整数は `min..max`（どちらも省略可能）の範囲の 10 進数の数字（先頭に省略可能な `-`）を受け取ります。それ以外の値はデフォルトに戻り、その旨を `[WARN]` の行でログに出します。宣言されていない名前や、別の型で宣言された名前を読むと `ArgumentError` を出し、同じ名前を二度宣言した場合も同様です。テストでは `set_string_setting`、`set_int_setting`、`set_bool_setting` で値を変更します。`./NAME help` は宣言されたすべての設定を変数とデフォルト値とともに一覧し、起動バナーは現在の値を表示します（`=> Settings: base_url="" worker=true ...`）。`secret: true` の設定は、どちらでも名前だけが `[FILTERED]` として表示されます。`Cybertrain.config.base_url` のようなアクセサーはありません：Spinel には `define_method` がないので、リーダーは名前を受け取る型付きのメソッドになっています。
 
+### ロケール
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.i18n_default_locale = :en               # または CYBERTRAIN_I18N_DEFAULT_LOCALE
+  c.i18n_available_locales = [:en, :ja]
+  c.i18n_raise_on_missing = true if c.test?
+end
+```
+
+`i18n_available_locales`（`[]`、デフォルトのロケールだけ）は、`I18n.locale=` と `I18n.locale_available?` が受け付けるロケールを並べます。起動時に、ロケール名でない要素と、空でないリストにないデフォルトは拒否されます。`i18n_raise_on_missing`（`false`）は、見つからない翻訳で目印（開発とテスト）や人が読める形のキー（本番）を返す代わりに `I18n::MissingTranslationData` を発生させます。辞書とリクエストごとのロケールは [国際化](i18n.md) にあります。
+
+### 認証の設定
+
+`cybertrain generate authentication` が書き出すコードは 4 つの設定を読みます（変数は上の表にあります）：[ロックアウト](authentication.md#lockout) の `auth_lockout_attempts`（10）と `auth_lockout_period`（3600 秒）、「ログインしたままにする」サインインの `auth_remember_for`（30 日）、使われないサインインの `auth_idle_timeout`（7 日）です（[ログインしたままにする](authentication.md#remember-me-and-session-limits)）。チェックなしのサインインは `session_absolute_max_age`（2 週間）続きます。範囲外の値は起動を止めます。ジェネレーターはアプリケーションの設定 `base_url` も宣言します。`<APP>_BASE_URL` から読み、メール中のリンクはここから始まります。アプリケーションを提供するすべての場所で、https で設定してください（[メール中のリンク](authentication.md#links-in-mails)）。
+
 ## タイムゾーン
 
 Spinel には tz データベースが同梱されておらず、時刻を変換するために `ENV["TZ"]` を設定すると、プロセスのすべてのスレッドで変わってしまいます。`Cybertrain::TimeZone` は代わりにシステムのゾーンファイルを読みます：`/usr/share/zoneinfo/<name>`、または `TZDIR` が設定されていれば `$TZDIR/<name>` です（スリムなコンテナーイメージには `tzdata` パッケージをインストールしてください）。TZif のバージョン 1〜4（RFC 8536）をパースし、「slim」なファイルが最後の遷移の後に頼る POSIX の TZ ルールにも対応します。各ゾーンはプロセスの存続期間中キャッシュされます（コピーオンライトなので、複数のワーカーからの参照でもロックを取りません）。
@@ -111,4 +133,4 @@ run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1],
 run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2] + 1, 9, 0, 0)) if run <= now
 ```
 
-夏時間の切り替わりでも `local_to_utc` は決定的です：前方へのジャンプで飛ばされる壁時計の時刻（米国で時計を進める日の 02:30）はジャンプ前のオフセットで読まれるので、ジャンプの後（03:30 EDT）になります。後方へのジャンプで繰り返される壁時計の時刻は、早いほうの瞬間になります。`find` は、空、`.`、`..` のセグメントを含まない、`A-Za-z0-9_+-./` からなる相対的な名前だけを受け付けるので、ユーザーのプロフィールから取ったゾーン名がゾーンディレクトリ外のファイルに到達することはありません。未知のゾーンや形式の壊れたゾーンはキャッシュされず、`"UTC"` にはファイルは不要です。テンプレート向けの書式化ヘルパー（`l(time, zone:)`）はまだありません。
+夏時間の切り替わりでも `local_to_utc` は決定的です：前方へのジャンプで飛ばされる壁時計の時刻（米国で時計を進める日の 02:30）はジャンプ前のオフセットで読まれるので、ジャンプの後（03:30 EDT）になります。後方へのジャンプで繰り返される壁時計の時刻は、早いほうの瞬間になります。`find` は、空、`.`、`..` のセグメントを含まない、`A-Za-z0-9_+-./` からなる相対的な名前だけを受け付けるので、ユーザーのプロフィールから取ったゾーン名がゾーンディレクトリ外のファイルに到達することはありません。未知のゾーンや形式の壊れたゾーンはキャッシュされず、`"UTC"` にはファイルは不要です。`l` はリクエストのロケールで時刻を整形しますが（[日付と時刻](i18n.md#dates-and-times)）、`zone:` はまだ取りません。

@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d303742a866d81fb204cf10d6797d582398283dd581c2a9ae7274e86046fa65
+source_sha256: 9162d493e7eb52e7625532b986b86fdb3271d8d3052a33e516ddadcb0a9690ba
 ---
 # 模型与数据库
 
@@ -175,6 +175,7 @@ done
 - 对 json 列或加密列用 `where` 会抛出 `ArgumentError`。
 - `distinct` 让读取列的方法对每个值只返回一次，并让聚合读取去重后的输入（`SUM(DISTINCT x)`）；`count` 和 `to_a` 不变，因为每行都有自己的 id。
 - `update_all(hash)` 像 `save` 存储时那样转换和舍入（只是在数值、布尔、日期或 json 列中 `""` 绑定为 NULL，而 `save` 会存 0 / false / `{}`），不改 `updated_at`，也不运行回调；`destroy_all` 逐条销毁记录，包括回调和 `dependent:`。
+- `update_all_sql(sql, binds = [])` 用 SQL 的 `SET` 列表设置列，用于从行计算出的值（`User.where(id: id).update_all_sql("failed_attempts = failed_attempts + ?", [1])`）；每个表达式读取的都是行原来的值，`?` 按顺序取绑定值，并且和 `update_all` 一样，它不加载模型，也不运行回调。
 - `find_each` 按 id 分批遍历，并像 Rails 一样忽略 relation 的排序、limit 和 offset。
 - 在收窄过的 relation 上，`find_or_create_by` 只用传给它的 Hash 创建记录；Rails 还会带上 relation 的相等条件。请传入新记录所需的全部属性。
 - `update_columns` 先赋值，再对这些列执行一次 UPDATE：不校验、不回调，`updated_at` 不变。
@@ -331,7 +332,7 @@ class Article
 end
 ```
 
-消息是 Rails 的英文默认值：“can't be blank”、“is too short (minimum is 3 characters)”、“is the wrong length (should be 5 characters)”、“is not included in the list”、“is reserved”、“is invalid”、“is not a number”、“must be an integer”、“must be greater than or equal to 0”、“has already been taken”。`message:` 可在行上或规则的 Hash 中替换消息。没有 Rails 的单数形式（“1 character”）：上限为 1 时显示 “1 characters”。
+消息是 Rails 的默认值，来自请求语言区域的捆绑词典：英语为 “can't be blank”、“is too short (minimum is 3 characters)”、“is the wrong length (should be 5 characters)”、“is not included in the list”、“is reserved”、“is invalid”、“is not a number”、“must be an integer”、“must be greater than or equal to 0”、“has already been taken”，日语为 “を入力してください” 等。上限为 1 时显示 “1 character”。`message:` 可在行上或规则的 Hash 中替换消息；`config/locales/` 也可以为所有模型或某一个模型替换它们（[模型和验证消息](i18n.md#models-and-validation-messages)）。`errors.full_messages` 用 `Post.human_attribute_name(:title)`（“Title”；`author_id` 为 “Author”）称呼每个属性，`:base` 上的消息单独写出。
 
 - `length` 接受 `minimum`、`maximum`、`is` 和 `in`（Integer 的 Range）。
 - `inclusion` 和 `exclusion` 接受 Array 或 Integer 的 Range（Spinel 无法构造其他 Range）；与 Rails 一样，`1...5` 接受 float 列上的 4.5。

@@ -1,5 +1,5 @@
 ---
-source_sha256: 7b4fe1d040482066a2463edf5d328539755086c6c82865fc5475ccd48a4c2063
+source_sha256: f72107180208b787ac715c62138f97dab65ed8acf6d9861bccf02e531aac3eae
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -134,7 +134,7 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb
+  spin.toml  config/app.rb  config/routes.rb  config/locales/en.yml
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
   app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
@@ -671,25 +671,17 @@ cybertrain generate authentication
 cybertrain db migrate    # создаёт таблицы users и sessions
 ```
 
-Она пишет миграции для `users` (`email_address`, `password_digest`, уникальный
-индекс) и `sessions` (по строке на каждый браузер, в котором выполнен вход),
-модели `User` и `Session`, `SessionsController` (`/session/new`,
-`POST /session`, `DELETE /session`) и `RegistrationsController` (`/sign_up`) с
-их представлениями, частичный шаблон `sessions/_nav` в начале макета, а также
-`test/authentication.rb` и `test/support/app_test.rb`. Ещё она вставляет
-маршруты и блок сразу после строки с объявлением класса
-`ApplicationController`:
+Генератор пишет миграции и модели `users` и `sessions`, concern `Authentication`, который он включает в `ApplicationController`, контроллеры и представления для входа, регистрации, сброса пароля и страницы учётной записи, почтовик, команду `./blog user` и тесты. Ещё он добавляет маршруты, partial `sessions/_nav` в начало макета и настройку `base_url` в `config/app.rb`, с которой начинаются ссылки в письмах. Все файлы перечислены в разделе [Аутентификация](authentication.md#generating-it).
 
-```ruby app/controllers/application_controller.rb (фрагмент)
-class ApplicationController < Cybertrain::Controller
-  before_action :resume_session          # sets @current_user and @current_session
-  before_action :require_authentication  # 303 to /session/new unless signed in
+```ruby app/controllers/concerns/authentication.rb (фрагмент)
+module Authentication
+  extend ActiveSupport::Concern
 
-  def self.allow_unauthenticated_access(only: [], except: [])
-    skip_before_action(:require_authentication, only: only, except: except)
+  included do
+    before_action :resume_session          # sets @current_user and @current_session
+    before_action :require_authentication  # 303 to /session/new unless signed in
+    helper_method :authenticated?
   end
-  # authenticated?, start_new_session_for(user), terminate_session,
-  # after_authentication_url ...
 ```
 
 Теперь каждое действие требует выполненного входа, а посетителя перенаправляет
@@ -717,95 +709,9 @@ class ArticlesController < ApplicationController
 <% end %>
 ```
 
-Запустите сервер и откройте `http://127.0.0.1:3000/sign_up`, чтобы создать
-первого пользователя. У генератора Rails нет страницы регистрации — первого
-пользователя создают в консоли; CyberTrain пишет `RegistrationsController`,
-чтобы первый пользователь зарегистрировался в браузере. Если в приложение попадают только по
-приглашению, удалите его вместе с маршрутами.
+Запустите сервер и откройте `http://127.0.0.1:3000/sign_up`, чтобы создать первого пользователя. У генератора Rails нет страницы регистрации, и первого пользователя создают в консоли; CyberTrain пишет `RegistrationsController`, так что первый пользователь регистрируется в браузере. Для приложения только по приглашениям запустите генератор с `--invite-only`: страницы регистрации нет, а первый пользователь появляется из `./blog user EMAIL` или со страницы `/setup`, которую можно открыть только с машины самого сервера ([Регистрация или только по приглашению](authentication.md#sign-up-or-invite-only)).
 
-<details><summary>Приложение только по приглашению: `--invite-only` — Без страницы регистрации; первый пользователь создаётся из командной строки или на странице, которую можно открыть только с машины сервера</summary>
-
-Страница регистрации позволяет зарегистрироваться любому, кто добрался до
-сервера, а для внутреннего инструмента такое поведение по умолчанию неверно:
-кто успел раньше администратора, тот и получил учётную запись. `--invite-only`
-не пишет ни `RegistrationsController`, ни ссылки на регистрацию; первый
-пользователь создаётся из командной строки или на странице, которую можно
-открыть только с машины самого сервера, по ссылке, которую сервер печатает при
-запуске:
-
-```shell терминал — blog/
-cybertrain generate authentication --invite-only
-cybertrain db migrate
-cybertrain server        # затем откройте на той же машине напечатанную ссылку http://127.0.0.1:3000/setup?token=...
-```
-
-В production — из каталога, в котором запускается бинарник:
-
-```shell терминал — продакшен-сервер
-./blog user ann@example.com                        # читает пароль из stdin (одну строку)
-printf '%s' "$PASSWORD" | ./blog user ann@example.com
-./blog user ann@example.com 's3cr3t-s3cr3t'        # или аргументом (виден в ps)
-```
-
-<!-- list: points -->
-- `app/commands/user_command.rb` регистрирует команду `user` через
-  `Cybertrain::Main.command` (поэтому `./blog help` её показывает) и
-  подключается из `bin/blog.rb`. `EMAIL [PASSWORD]` создаёт пользователя или
-  задаёт пароль пользователю с этим адресом (после чего, как и после любой
-  смены пароля, во всех браузерах этого пользователя выполняется выход);
-  команда печатает `created ADDRESS` или `updated ADDRESS` и завершается с
-  кодом 0. Без `PASSWORD` она читает одну строку стандартного ввода (с
-  приглашением, если это терминал; набранное отображается) и отбрасывает
-  завершающий перевод строки, так что пароль не попадает ни в `ps`, ни в
-  историю оболочки. Пустой пароль, запись, не прошедшая валидацию (пароль
-  короче 8 символов), или неверные аргументы печатают ошибку или строку с
-  использованием и завершаются с кодом 1.
-- `SetupController` (`GET`/`POST /setup`, `app/views/setup/new.html.erb`)
-  создаёт первого пользователя и выполняет за него вход. Он отвечает, только
-  пока нет ни одного пользователя, только с одноразовым токеном (см. ниже) и
-  только соединению, у которого на другом конце сокета loopback-адрес
-  (`request.loopback?`: `127.0.0.0/8` или `::1`) и в котором нет заголовка
-  `X-Forwarded-For` (прокси на том же хосте делает каждый запрос
-  loopback-запросом, но добавляет этот заголовок). Заголовок может закрыть
-  страницу, но никогда её не откроет. Все остальные, а также запросы без
-  токена или с неверным токеном, получают 404.
-- Токен: `SetupController::SETUP_TOKEN`, 32 случайных шестнадцатеричных
-  символа (`Cybertrain::Crypto.random_token(16)`); он создаётся при запуске
-  программы и хранится до её завершения, так что после перезапуска он новый.
-  `GET /setup` принимает его как `?token=`, форма возвращает его в скрытом
-  поле, и оба сравнивают его за постоянное время
-  (`Cybertrain::Crypto.secure_compare`). Именно он держит страницу закрытой,
-  когда проверка адреса бессильна: из-за прокси на том же хосте, который не
-  добавляет `X-Forwarded-For` (nginx без
-  `proxy_set_header X-Forwarded-For ...`), каждый клиент выглядит как
-  loopback, а токен есть только у того, кто может читать лог сервера. Лог
-  запросов его не повторяет: `token` входит в `filter_parameters` по
-  умолчанию, поэтому строка выглядит как `Started GET
-  "/setup?token=[FILTERED]"` (если только `config.filter_parameters` или
-  `CYBERTRAIN_FILTER_PARAMETERS` не исключает `token`). Когда пользователь
-  уже существует, токен ничего не открывает.
-- Для первого запуска за прокси на другом хосте `BLOG_SETUP_OPEN=1` (объявлена
-  в `config/app.rb` через `c.setting_bool :setup_open`) снимает проверку
-  адреса — по-прежнему только пока нет ни одного пользователя и только с
-  токеном. Уберите её, как только пользователь появится.
-- Пока нет ни одного пользователя, сервер перед запуском пишет в лог
-  `[WARN] no user exists yet: run ./blog user EMAIL, or open /setup?token=<token> from this machine`
-  (`UserCommand.warn_if_no_user`, вызывается из `bin/blog.rb`, когда
-  `Cybertrain::Main.server?(ARGV)`; он подключается к базе ради этого
-  единственного вопроса и молчит, если таблица users ещё не создана
-  миграцией). Эта строка — единственное место, где печатается токен.
-
-Сгенерированный `test/authentication.rb` проверяет и то и другое: `/setup` с
-токеном и без него (`SetupController.setup_token`) или с неверным, с другого
-адреса (`client.peer_address = "203.0.113.7"`), через прокси, когда
-пользователь уже есть и со включённым переключателем, а также команду `user`,
-запущенную внутри процесса через `Cybertrain::Main.run`. Всё это — код
-приложения, который можно менять (docs/design.md D29); фреймворк предоставляет
-только `request.loopback?`, `Main.command`, `Main.server?`,
-`Crypto.random_token` / `Crypto.secure_compare` и `peer_address` тестового
-клиента.
-
-</details>
+Страница входа также ссылается на сброс пароля по почте, а навигация — на страницу учётной записи; о них, а также о блокировке, «оставаться в системе», `--confirmable` и администраторах рассказывает руководство [Аутентификация](authentication.md). Письму сброса нужны настройки SMTP, а в продакшене — `BLOG_BASE_URL` ([Ссылки в письмах](authentication.md#links-in-mails)).
 
 > [!RULE] Правило Spinel: has_secure_password
 > ### `has_secure_password` расписан явно
@@ -818,70 +724,6 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 > пришлось бы линковать C-библиотеку. Стоимость повышается строкой
 > `Cybertrain::Password.iterations = 600_000` в `config/app.rb`;
 > `User#authenticate` заново хеширует пароль каждого пользователя при его входе.
-
-<details><summary>Аутентификация: что даёт фреймворк — Части, из которых собран генератор; ими можно пользоваться и без него</summary>
-
-Генератор выше пишет весь сценарий; части, из которых он собран, — это API
-фреймворка, и ими можно пользоваться без него (для API-токена, пароля
-администратора, входа, написанного вручную):
-
-<!-- list: points -->
-- **`Cybertrain::Password`**: `hash(plain)` создаёт дайджест
-  PBKDF2-HMAC-SHA256 с солью, который хранит собственные параметры
-  (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` проверяет
-  пароль по нему за постоянное время и никогда не выбрасывает исключение на
-  испорченном дайджесте, а `needs_rehash?(digest)` сообщает, отстаёт ли
-  дайджест от текущего `Password.iterations`. Для действия входа:
-  - `verify_serialized(plain, digest)` — это `verify?` по одному вызову за раз
-    на процесс (Mutex). Хеширование занимает около 0,2 с процессорного
-    времени; пачка одновременных попыток заняла бы все воркеры, а через этот
-    метод они встают в очередь, и остальные воркеры продолжают отдавать
-    страницы.
-  - `dummy_digest` — дайджест случайного пароля, создаваемый один раз на
-    процесс с текущей стоимостью. Проверяйте по нему, когда адрес неизвестен,
-    чтобы по времени ответа нельзя было понять, у каких адресов есть учётные
-    записи:
-    `Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`.
-  - `session_key(digest)` — HMAC дайджеста пароля под `secret_key_base`;
-    сохраните его в сессии при входе и проверяйте на каждом запросе через
-    `session_key_matches?(session[:password_key], user.password_digest)`.
-    Смена пароля создаёт новый дайджест, поэтому во всех сессиях, начатых до
-    неё, выполняется выход.
-  - `iterations` равно `Password::TEST_ITERATIONS` (1000), когда
-    `Cybertrain.config.test?`, так что наборы тестов не платят
-    production-стоимость за каждого пользователя; дайджесты хранят своё число
-    итераций, поэтому больше ничего не меняется.
-- **Сессия** (`session[:key]`, зашифрованный cookie): `clear` очищает её (вместе
-  с токеном CSRF) при выходе, а `config.session_absolute_max_age` (две недели;
-  `0` отключает) ограничивает всё время жизни сессии, как бы часто ею ни
-  пользовались: cookie хранит момент своей первой записи, cookie старше этого
-  срока загружается как пустая сессия, поэтому скопированный cookie нельзя
-  воспроизводить бесконечно. `session.restart_lifetime!` начинает отсчёт
-  заново (при входе).
-- **`Controller#local_path?(text)` и `safe_redirect_path(text, fallback)`**:
-  на путь, пришедший из запроса (параметр `return_to`, запомненная страница),
-  перенаправляют, только если он начинается с `/`, но не с `//` или `/\`,
-  содержит только печатаемые символы ASCII и занимает не больше 2048 байт:
-  `redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`.
-- **`skip_before_action(name, only:, except:)`** в классе контроллера убирает
-  унаследованный `before_action` для части действий; сгенерированный
-  `allow_unauthenticated_access` — однострочная обёртка над ним.
-- **`cybertrain generate authentication`** пишет в виде кода, которым владеет
-  приложение: миграции и модели `users` и `sessions`, `SessionsController`,
-  `RegistrationsController`, их представления и частичный шаблон навигации,
-  блок в `ApplicationController` (`resume_session`, `require_authentication`,
-  `start_new_session_for`, `terminate_session`, `after_authentication_url`) и
-  `test/authentication.rb`. Этот код использует всё из этого списка:
-  `User.authenticate_by` проверяет через `verify_serialized` и фиктивный
-  дайджест, `start_new_session_for` сохраняет ключ пароля и перезапускает
-  время жизни, `resume_session` завершает строку Session, ключ которой больше
-  не совпадает или которая старше `session_absolute_max_age`, а
-  `after_authentication_url` — это `safe_redirect_path`. Чтобы в браузере, где
-  сменили пароль, вход сохранился, запишите новый ключ после сохранения:
-  `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`.
-  Проектное решение: [docs/design.md](../design.md) D25.
-
-</details>
 
 ### Обновление тестов
 
@@ -906,21 +748,7 @@ end
 ```
 
 > [!NOTE]
-> Запускайте `cybertrain spin test`, как в [шаге 12](#test);
-> `test/authentication.rb` и этот тест используют SQLite, поэтому их снимки
-> берутся из скомпилированного бинарника. `examples/blog` заканчивается до
-> этого шага. Частота попыток входа ограничена, как в генераторе Rails:
-> `SessionsController` объявляет `rate_limit to: 10, within: 3 * 60, only:
-> [:create]`, десять попыток с одного адреса клиента за три минуты, затем
-> возврат к форме с "Try again later.", пока окно не закроется. Счётчики
-> хранятся в базе данных приложения (`Cybertrain::Cache`), поэтому все
-> процессы приложения считают вместе. За обратным
-> прокси каждый посетитель считается по адресу прокси, если не настроены
-> [доверенные прокси](requests.md#rate-limiting-and-the-client-address). Не
-> генерируется: сброс пароля — его письму нужны настройки SMTP приложения
-> (`Cybertrain::Mailer`,
-> [Отправка электронной почты](external-services.md#sending-e-mail)),
-> которых генератор знать не может.
+> Запускайте `cybertrain spin test`, как в [шаге 12](#test); `test/authentication.rb`, другие тесты, написанные генератором, и этот тест используют SQLite, так что их снимки берутся из скомпилированных бинарников. Попытки входа ограничены по частоте, как в генераторе Rails: десять на адрес клиента каждые три минуты, со счётом в базе данных приложения, так что все процессы считают вместе; за обратным прокси настройте [доверенные прокси](requests.md#rate-limiting-and-the-client-address). `examples/blog` проходит этот шаг с `--invite-only` и делает свои страницы `/admin` доступными только администраторам.
 
 <!-- step 14 #attachments stage: Вы пишете · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Добавление обложки
@@ -1211,6 +1039,8 @@ kamal deploy   # каждое следующее развёртывание
 
 <!-- list: next-list -->
 - [**`examples/blog`**](../../examples/blog) — Готовое приложение вместе с тестами.
+- [**Аутентификация**](authentication.md) — Сброс пароля, подтверждение, блокировка, «оставаться в системе», страница учётной записи и администраторы.
+- [**Интернационализация**](i18n.md) — Словари, `t` и `l` и локаль для каждого запроса.
 - [**CyberTrain на GitHub**](https://github.com/saeki-mototsune/CyberTrain) — Исходный код, README и релизы.
 - [**Справочник API**](site:api/index.html) — Все классы и методы, которые использует приложение, с примерами.
 - [**`spikes/NOTES.md`**](../../spikes/NOTES.md) — Спайки и обнаруженные ими ограничения компилятора.

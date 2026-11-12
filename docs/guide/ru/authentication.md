@@ -1,0 +1,224 @@
+---
+source_sha256: 5502bd2caed68a186ef25f7e4272ca06d97cb2a54c1b3c411d24a0726970c7bc
+---
+# Аутентификация
+
+`cybertrain generate authentication` пишет вход по адресу электронной почты и паролю так же, как генератор Rails 8, — кодом, которым владеет приложение, — вместе с тем, что добавляет Devise: сбросом пароля по почте, необязательным подтверждением адреса, блокировкой, «оставаться в системе», страницей учётной записи и администраторами.
+
+## Генерация
+
+```shell терминал — blog/
+cybertrain generate authentication                  # публичная страница регистрации
+cybertrain generate authentication --invite-only    # без регистрации: пользователи из командной строки или /setup
+cybertrain generate authentication --confirmable    # (в любом режиме) новые адреса подтверждаются по почте
+cybertrain db migrate
+```
+
+В приложении он пишет:
+
+| Файлы | Что это |
+| --- | --- |
+| `db/migrate/*_create_users.rb`, `*_create_sessions.rb` | `users` (`email_address`, `password_digest`, `admin`, `failed_attempts`, `locked_until`; с `--confirmable` ещё `confirmed_at`, `unconfirmed_email`) и `sessions` (строка на каждый вошедший браузер, с `remember` и `last_active_at`) |
+| `app/models/user.rb`, `session.rb` | `password=`, `authenticate`, `User.authenticate_by`, токены, блокировка |
+| `app/controllers/concerns/authentication.rb` | concern `Authentication`, включённый в `ApplicationController` |
+| `sessions_controller.rb`, `registrations_controller.rb` (или `setup_controller.rb`), `passwords_controller.rb`, `accounts_controller.rb`, `confirmations_controller.rb` | вход, регистрация (или страница первого пользователя), сброс пароля, страница учётной записи, подтверждение |
+| `app/mailers/passwords_mailer.rb`, `confirmations_mailer.rb` | письма |
+| `app/commands/user_command.rb` | `./<app> user ...`, подключается из `bin/<app>.rb` |
+| `app/views/...` | экраны, каждый текст через `t()`, и partial `sessions/_nav` |
+| `test/*.rb`, `test/support/*.rb` | тесты каждой части ([Тестирование](#testing)) |
+
+и правки, каждую один раз: `include Authentication` в `ApplicationController`, маршруты, строку страницы заданий ([Администраторы](#admin-users-and-the-jobs-page)), partial навигации в макете, команду пользователя в `bin/<app>.rb` и настройку `base_url` в `config/app.rb` ([Ссылки в письмах](#links-in-mails)). Повторный запуск не меняет того, что уже есть (для приложения, сгенерированного раньше, см. [Обновление с 0.4](#upgrading-from-04)).
+
+Тексты сгенерированных экранов лежат в английском и японском словарях фреймворка под своими ключами ленивого поиска (`sessions.new.title`, `passwords.create.sent`); приложение переопределяет их или добавляет язык в `config/locales/` ([Интернационализация](i18n.md#the-bundled-dictionaries)).
+
+## Вход и выход
+
+```ruby app/controllers/concerns/authentication.rb (фрагмент)
+module Authentication
+  extend ActiveSupport::Concern
+
+  included do
+    before_action :resume_session
+    before_action :require_authentication
+    helper_method :authenticated?
+  end
+```
+
+С этого момента каждое действие требует вошедшего пользователя, а посетитель отправляется на `/session/new` (303; GET запоминается и возвращается после входа, если это локальный путь). Контроллер открывает действия посетителям, как в Rails:
+
+```ruby app/controllers/articles_controller.rb (фрагмент)
+class ArticlesController < ApplicationController
+  allow_unauthenticated_access only: [:index, :show]
+```
+
+`allow_unauthenticated_access(only:, except:)` — метод `Cybertrain::Controller`, это `skip_before_action :require_authentication`. На открытых страницах `resume_session` всё равно выполняется, так что шаблон читает `@current_user` (и `@current_session`) или вызывает `authenticated?`. Объекта `Current` нет.
+
+<!-- list: points -->
+- `SessionsController` (`resource :session`): `GET /session/new`, `POST /session`, `DELETE /session`. Попытки входа ограничены десятью на адрес клиента каждые три минуты и считаются в кэше, так что все процессы считают вместе; за прокси настройте [доверенные прокси](requests.md#rate-limiting-and-the-client-address).
+- Неверный пароль, неизвестный адрес и заблокированная учётная запись получают одно и то же сообщение после одной и той же проверки пароля (по фиктивному дайджесту, если учётной записи нет).
+- `resume_session` завершает вход (и удаляет его строку Session), если пароль с тех пор сменился, по истечении его срока или после `auth_idle_timeout` без запросов ([Оставаться в системе](#remember-me-and-session-limits)).
+- Выход удаляет строку Session и очищает сессию в cookie.
+
+## Регистрация или только по приглашению
+
+По умолчанию генератор пишет `RegistrationsController` (`/sign_up`), который создаёт пользователя и выполняет его вход. У генератора Rails нет страницы регистрации, и первого пользователя он оставляет консоли; у CyberTrain нет консоли Ruby, поэтому он пишет такую страницу.
+
+`--invite-only` не пишет страницу регистрации — правильное значение по умолчанию для внутреннего инструмента, где иначе учётную запись получит тот, кто первым доберётся до сервера. Первый пользователь создаётся командой пользователя или в `SetupController` (`GET` и `POST /setup`), который создаёт пользователя и выполняет его вход:
+
+<!-- list: points -->
+- Он отвечает, только пока нет ни одного пользователя, только с одноразовым токеном и только соединению, у которого сокет-собеседник — адрес loopback и нет заголовка `X-Forwarded-For` (прокси на том же хосте делает каждый запрос loopback-запросом и добавляет этот заголовок). Все остальные получают 404.
+- Токен — 32 случайных шестнадцатеричных символа, созданных при запуске программы (`SetupController.setup_token`), сравниваемых за постоянное время. Он держит страницу закрытой там, где проверка адреса бессильна, — за прокси, не добавляющим `X-Forwarded-For`. В журнале запросов он показан как `[FILTERED]`.
+- Пока нет ни одного пользователя, сервер перед загрузкой пишет в журнал `[WARN] no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine`; это единственное место, где печатается токен.
+- `<APP>_SETUP_OPEN=1` (настройка `setup_open` в `config/app.rb`) снимает проверку адреса, но никогда не снимает проверку токена, — для первого запуска за прокси на другом хосте. Уберите её, когда пользователь появится.
+
+## Команда пользователя
+
+`./<app> user` пишется в обоих режимах:
+
+```shell терминал — рабочий сервер
+./blog user ann@example.com                       # создать или задать пароль; он читается из stdin
+printf '%s' "$PASSWORD" | ./blog user ann@example.com
+./blog user admin ann@example.com                 # сделать администратором
+./blog user unadmin ann@example.com
+```
+
+Без аргумента-пароля команда читает одну строку стандартного ввода (на терминале выводит приглашение; ввод отображается), так что пароль не попадает в `ps` и историю оболочки. Смена пароля завершает сеансы браузеров этого пользователя и снимает блокировку. С `--confirmable` создаваемые ею пользователи считаются подтверждёнными. Она печатает `created`, `updated`, `admin` или `unadmin` и адрес и завершается с кодом 0 либо печатает справку или ошибку и завершается с кодом 1.
+
+## Оставаться в системе и сроки сессий
+
+В форме входа есть флажок «Keep me signed in» (`check_box_tag :remember_me`). Вход длится:
+
+| | Отмечен | Не отмечен |
+| --- | --- | --- |
+| Строка Session и cookie заканчиваются через | `auth_remember_for` (30 дней) | `session_absolute_max_age` (две недели) |
+| Cookie | `Max-Age` на оставшееся время | ни `Max-Age`, ни `Expires`: заканчивается вместе с браузером |
+| Не используется в течение `auth_idle_timeout` (7 дней; `0` отключает) | заканчивается | заканчивается |
+
+`last_active_at` записывается не чаще раза в минуту. Сгенерированный `start_new_session_for(user, remember:)` вызывает `session.restart_lifetime!`, затем `session.stamp_lifetime!(seconds, persistent)`, именно в таком порядке: перезапуск стирает отметку. Срок, который он отмечает, никогда не равен 0: при `session_absolute_max_age = 0` вход без флажка длится `session_max_age` или две недели. Настройки — в разделе [Конфигурация](configuration.md#authentication-settings).
+
+## Блокировка
+
+`auth_lockout_attempts` (10) неверных паролей блокируют учётную запись на `auth_lockout_period` (час). Заблокированная учётная запись отвечает сообщением о неверном пароле, каким бы ни был пароль. Успешный вход, сброс пароля и `./<app> user EMAIL` обнуляют счётчик; `auth_lockout_attempts = 0` отключает блокировку и перестаёт применять уже наложенную. Счёт ведёт один `UPDATE`, читающий строку как она есть (`Relation#update_all_sql`), так что одновременные попытки входа учитываются все. Ограничение частоты по адресу остаётся.
+
+## Сброс пароля
+
+Страница входа ссылается на `/passwords/new`. Форма адреса всегда отвечает "If that address is registered, a link to reset the password was sent to it." и для неизвестного адреса выполняет ту же работу, кроме отправки. Письмо (`PasswordsMailer.reset(user, url).deliver_later`, на языке запроса) содержит `/passwords/<token>/edit`; токен действует 15 минут и только пока пароль и адрес остаются прежними, поэтому срабатывает один раз. Установка нового пароля снимает блокировку и завершает все сессии пользователя.
+
+<!-- list: points -->
+- Письмо отправляет поток заданий с настройками `CYBERTRAIN_SMTP_*` ([Отправка электронной почты](external-services.md#sending-e-mail)): нужны процесс, выполняющий задания, и база данных.
+- Страница ссылки отвечает с `Referrer-Policy: no-referrer`, а журнал запросов фреймворка пишет токен как `[FILTERED]`.
+- Десять запросов на адрес клиента каждые три минуты.
+
+### Ссылки в письмах
+
+Ссылка начинается с настройки `base_url`, которую генератор объявляет в `config/app.rb`, из `<APP>_BASE_URL` (`BLOG_BASE_URL=https://blog.example.com`). Задайте её с https везде, где работает приложение. Если она не задана, ссылка берёт адрес, на который пришёл запрос, только когда заголовок `Host` проверяется (в разработке или при заданном `CYBERTRAIN_HOSTS`) или в тестах; в остальных случаях письмо не отправляется, журнал пишет `[ERROR] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`, а страница отвечает как обычно. Поддельный `Host` никогда не попадает в ссылку.
+
+## Подтверждение адресов
+
+С `--confirmable` регистрация отправляет на адрес письмо со ссылкой и никого не впускает. Верный пароль для ещё не подтверждённого адреса отвергается своим сообщением (неверный получает обычное), а страница входа ссылается на форму, которая отправляет ссылку повторно. Открытие ссылки (`/confirmations/<token>`, действует три дня, один раз) подтверждает адрес; затем пользователь входит. `start_new_session_for` в concern тоже отказывает неподтверждённому пользователю, какой бы контроллер его ни вызвал.
+
+Новый адрес на странице учётной записи ждёт в `unconfirmed_email` и занимает место старого, когда открывают его собственную ссылку; страница может отозвать его (`DELETE /account/pending_email`), и эта ссылка перестаёт работать. Пользователи, созданные командой пользователя и через `/setup`, подтверждены. Сброс пароля подтверждает учётную запись, которая никогда не была подтверждена (ссылка доказала доступ к почтовому ящику), но никогда — ожидающий новый адрес.
+
+## Страница учётной записи
+
+`/account/edit` («Account» в навигации) меняет адрес или пароль, каждое только с текущим паролем, и удаляет учётную запись (вместе с её сессиями, в одной транзакции) только с паролем. Новый пароль завершает все сессии пользователя и снова впускает этот браузер, с прежним выбором «оставаться в системе». Неверные текущие пароли ограничены десятью каждые три минуты на адрес клиента и на пользователя и не учитываются в блокировке.
+
+## Администраторы и страница заданий
+
+`users.admin` (false) задаётся командой `./<app> user admin EMAIL`. `require_admin` из concern отвечает 404, если вошедший пользователь не администратор:
+
+```ruby app/controllers/concerns/admin_gate.rb (фрагмент, examples/blog)
+module AdminGate
+  extend ActiveSupport::Concern
+
+  included do
+    before_action :require_admin
+  end
+end
+```
+
+Генератор рисует за ним страницу заданий вместо комментария, который пишет `cybertrain new`:
+
+```ruby config/routes.rb (фрагмент)
+jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+```
+
+<!-- list: points -->
+- На странице заданий `require_admin` выполняется один, так что посетитель получает 404, будто страницы нет. В контроллере, который сам объявляет `before_action :require_admin`, первым выполняется `require_authentication` (порядок Rails), так что посетитель отправляется входить (303), а вошедший не-администратор получает 404.
+- gen отвергает `skip_before_action:` без `before_action:` и такой, что называет сам `before_action:`: и то и другое открыло бы страницу всем.
+- Строка `jobs_page`, которую приложение написало само, остаётся как есть; добавьте к ней `skip_before_action: :require_authentication`, чтобы получить 404.
+- `require_admin`, который приложение пишет само, должен сам отказывать посетителю, поскольку пропуск оставляет на странице только его.
+- `/setup` и команда пользователя создают обычных пользователей; сделайте первого администратором командой `./<app> user admin EMAIL`.
+
+## Что остаётся приложению
+
+Это выборы, которые делает сгенерированный код, у каждого своя причина:
+
+<!-- list: points -->
+- Неверный пароль для существующей незаблокированной учётной записи один раз записывает её строку (счётчик); неизвестный адрес и заблокированная учётная запись — нет. Эта одна запись даёт разницу во времени, принятую, как в lockable из Devise: такие же записи для неизвестных адресов добавили бы нагрузку ради сигнала, который уже ограничивает лимит частоты. У формы сброса пароля такая же разница: известный адрес ставит письмо в очередь — на одну строку больше.
+- Письма сброса и подтверждения ограничены только по адресу клиента, а не по адресу получателя: кто-то может слать письма на адрес с этой частотой. Вход ограничен десятью попытками каждые три минуты на адрес клиента — это порог блокировки, — так что один клиент может держать известную учётную запись заблокированной. Ограничение по адресу (`rate_limit ... by:`) и более длинное окно добавляет приложение.
+- Старый адрес не уведомляется о смене адреса, ожидающий новый адрес никогда не истекает (его ссылка истекает), а никогда не подтверждённая учётная запись никогда не удаляется.
+
+## Детали, которые даёт фреймворк
+
+Сгенерированный код собран из API фреймворка, которым можно пользоваться и отдельно:
+
+| API | Что делает |
+| --- | --- |
+| `Cybertrain::Password` | дайджесты PBKDF2-HMAC-SHA256: `hash`, `verify?`, `verify_serialized`, `dummy_digest`, `needs_rehash?`, `session_key`, `session_key_matches?` ([docs/design.md](../design.md) D25) |
+| `Cybertrain::Token` | `issue(purpose, id, expires_in, bound_to)` даёт `"<id>--<expires>--<hmac>"`; `id_from(token)`; `valid?(token, purpose, bound_to)` |
+| `Cybertrain::MailMessage` | то, что возвращает метод почтовика: `deliver_later` (задание) или `deliver_now` |
+| `Session#restart_lifetime!`, `stamp_lifetime!(seconds, persistent)` | собственный срок входа и cookie на сеанс браузера |
+| `Relation#update_all_sql(sql, binds)` | `UPDATE ... SET <sql>` для подходящих строк |
+| `Controller.allow_unauthenticated_access`, `skip_before_action` | открыть действия посетителям |
+| `Controller#safe_redirect_path(text, fallback)` | локальный путь из запроса или запасной |
+| `ParameterFilter.filter_path(path)` | путь, в котором сегменты в форме токена записаны как `[FILTERED]` |
+| `check_box_tag(name, value = "1", checked = false)` | флажок без скрытого поля |
+
+Вход, написанный вручную, использует `Password`, как сгенерированный `User`: `Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)` проверяет в процессе по одному паролю за раз (проверка занимает около 0,2 с процессорного времени) и для неизвестного адреса длится столько же; `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)` при входе, проверяемый через `session_key_matches?` в каждом запросе, завершает сеанс браузера после смены пароля.
+
+`Token.valid?` проверяет токен по переданному `bound_to`, поэтому сначала найдите запись по `Token.id_from` и проверяйте по её собственному значению, как это делает `User.find_by_password_reset_token`.
+
+## Тестирование
+
+Генератор пишет по тестовой программе на каждую часть: `test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`, `passwords.rb`, `accounts.rb`, а с `--confirmable` ещё `confirmations.rb`; они используют SQLite, так что запускайте их через `cybertrain spin test` и берите снимки из бинарников. Их вспомогательными файлами может пользоваться и приложение:
+
+<!-- list: points -->
+- `test/support/app_test.rb`: `AppTest.boot`, `AppTest.user(email, password)`, `AppTest.sign_in(client, email, password)` (который также сбрасывает счётчики ограничения частоты) и `AppTest.form_token(client)`.
+- `test/support/authentication_helpers.rb`: `with_smtp_receiver { |receiver| ... }` (почта приложения идёт получателю внутри тестового процесса), `last_mail_link(receiver)`, `backdate_session(row, seconds)` и `with_config(env, hosts, base_url, log = nil) { ... }`, который на время блока задаёт окружение, `CYBERTRAIN_HOSTS` и базовый URL и затем возвращает их.
+
+`script/auth-e2e signup invite confirmable upgrade04` в этом репозитории собирает приложения генератором и прогоняет их от начала до конца.
+
+## Обновление с 0.4
+
+Запустите генератор ещё раз в приложении, сгенерированном 0.4. Он пишет недостающие файлы, миграцию со столбцами, которых нет в существующих миграциях, и правки; для каждого файла, который он записал бы целиком, но который существует с другим содержимым, он ничего не меняет и печатает diff:
+
+```text вывод — cybertrain generate authentication (фрагмент)
+exist db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120002_add_authentication_columns.rb
+manual  app/models/user.rb (diff below)
+create app/controllers/concerns/authentication.rb
+manual  app/controllers/sessions_controller.rb (diff below)
+create app/controllers/passwords_controller.rb
+manual  app/controllers/application_controller.rb (diff below)
+...
+manual  app/controllers/application_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/controllers/application_controller.rb
++++ b/app/controllers/application_controller.rb
+@@ -1,95 +1,5 @@
+ class ApplicationController < Cybertrain::Controller
+-  # ---- Authentication (cybertrain generate authentication) -------------
+-  # Every action needs a signed-in user unless its controller opens it:
+...
+-  # ---- end of authentication ------------------------------------------
++  include Authentication
+```
+
+[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff) — полный вывод для приложения с регистрацией, сгенерированного 0.4.
+
+<!-- list: points -->
+- Сохраните вывод и примените его командой `patch -p1` из каталога приложения (patch пропускает строки, не входящие в diff), или примените каждый diff вручную там, где вы меняли файл. Пока они не применены, приложение может не собираться: новые файлы вызывают то, что добавляют diff-ы.
+- `--force` вместо этого записывает новые файлы поверх старых — для файлов, которые вы никогда не правили; блок 0.4 в `ApplicationController` заменяется, только если он ровно такой, каким его написал 0.4.
+- Новая миграция добавляет только недостающие столбцы; выполните `cybertrain db migrate`. С `--confirmable` она также считает уже существующих пользователей подтверждёнными (с момента создания), иначе ни один из них не смог бы войти.
+- С `--confirmable` diff-ы контроллеров sessions и registrations несут строку `IMPORTANT:`: пока они не применены, неподтверждённой учётной записи не объясняют, почему она не может войти, а при регистрации ссылка не отправляется. Concern по-прежнему не начинает сессию для неподтверждённой учётной записи, так что проверка действует, даже если эти diff-ы так и не применят.
+- При обновлении каждая сессия один раз заканчивается (cookie теперь зашифрован), и остальное из [Обновления приложения с 0.4](requests.md#upgrading-an-application-from-04) тоже применимо.

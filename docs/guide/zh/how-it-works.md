@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
+source_sha256: 9c254c3260efd44f46a0c94f25d007bcf1fdc798e5fedf29f7d4d5067f420ced
 ---
 # 工作原理
 
@@ -8,7 +8,7 @@ source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 
 ## 构建时代码生成
 
-`spin run gen`（`bin/gen.rb`）执行 `db/schema.rb` 的 `create_table` DSL 和 `config/routes.rb` 的 `Routes.draw` DSL，以获得表和路由的*数据*。另外，它还对 `app/controllers/**/*.rb` 和 `app/models/**/*.rb` 进行**词法扫描**（用正则表达式，而不是解析器——Spinel 在运行时不提供解析器），查找 `@ivar =` 赋值、`before_action`/`after_action`/`rescue_from ... with:` 的名称、`helper_method`、`layout` 和 `rate_limit` 行、对 concern 的 `include` 以及无参数的 `def`。它还给 `app/assets/`、`app/javascript/` 和 `vendor/javascript/` 下的文件加上摘要，并把 `config/importmap.rb` 当作文本读取。
+`spin run gen`（`bin/gen.rb`）执行 `db/schema.rb` 的 `create_table` DSL 和 `config/routes.rb` 的 `Routes.draw` DSL，以获得表和路由的*数据*。另外，它还对 `app/controllers/**/*.rb` 和 `app/models/**/*.rb` 进行**词法扫描**（用正则表达式，而不是解析器——Spinel 在运行时不提供解析器），查找 `@ivar =` 赋值、`before_action`/`after_action`/`rescue_from ... with:` 的名称、`helper_method`、`layout` 和 `rate_limit` 行、对 concern 的 `include` 以及无参数的 `def`。它还给 `app/assets/`、`app/javascript/` 和 `vendor/javascript/` 下的文件加上摘要，把 `config/importmap.rb` 当作文本读取，并用自己的 YAML 读取器读取 `config/locales/` 中的词典。
 
 据此，它在 `gen/` 下写出朴素、易读的 Ruby 代码：
 
@@ -17,6 +17,7 @@ source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 - `gen/controllers.rb`：每个控制器的 `view_assigns`、`run_callback`、`helper_method` 表和 `controller_layout`；
 - `gen/concerns.rb` 和 `gen/concerns/**`：插入到每个包含类中的 concern 的 `included` 块，以及清空了这些块的 concern 模块（[Concern](requests.md#concerns-and-helper_method)）；
 - `gen/assets.rb`：带摘要的资源路径和 import map（[资源](assets.md)），带摘要的文件放在 `public/assets/` 中；
+- `gen/locales.rb`：应用的词典，存为两个 Hash，供 `I18n.t` 读取（[国际化](i18n.md#dictionaries)）；
 - `gen/migrations.rb`；
 - `gen/views.rb`：内嵌视图表，除非为部署而构建，否则为空；
 - `gen/app.rb`：`require_relative` 清单。
@@ -89,14 +90,14 @@ source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 | 异常时的完整回溯 | 类名、消息、请求行、模板名和行号——Spinel 不提供回溯 |
 | Rack、它的中间件，以及 `Gemfile` 中的任意 gem | 不兼容 Rack；一小组固定的中间件；Spinel 自己的 `spin-index`，仅限能在其 Ruby 子集下编译的内容 |
 | minitest / RSpec | `Cybertrain::Test`——基于反射的运行器无法在提前编译下工作 |
-| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` 写出同样的结构，外加一个注册页面；密码使用 PBKDF2-HMAC-SHA256（bcrypt 需要 C 库，而 macOS 上的 `String#crypt` 不支持它）；没有密码重置（[添加登录](tutorial.md#authentication)） |
+| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` 写出同样的结构，外加一个注册页面；密码使用 PBKDF2-HMAC-SHA256（bcrypt 需要 C 库，而 macOS 上的 `String#crypt` 不支持它）；密码重置、确认、锁定和保持登录也会像 Devise 所增加的那样一并生成（[认证](authentication.md)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment` 写出五个 `cover_*` 列和模型方法；文件保存在本地磁盘的 `storage/uploads/` 下，由 `send_blob` 提供；每个字段一个文件，没有变体，也没有直接上传（[添加封面图片](tutorial.md#attachments)） |
 | `skip_before_action :x` | 相同，适用于有名称的 before 回调（块形式的回调没有可供跳过的名称）；没有 `skip_after_action` |
 | `resource :session` | 同样是指向 `SessionsController` 的六条路由；不能在其下嵌套 |
 | 先 `get "/x"` 再 `post "/x"` | 两者都可以：第二条路由推导出的名称已被占用，所以它没有名称，与 Rails 相同；重复的 `as:` 仍然是错误 |
 | `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport 自带的时区数据 | `Cybertrain::TimeZone.find("Asia/Tokyo")` 读取系统的 TZif 文件（`/usr/share/zoneinfo`，或 `TZDIR`），并转换 Integer 类型的纪元秒数（`utc_offset_at`、`utc_to_local`、`local_to_utc`）；暂时没有按请求设置的 `Time.zone`，也没有 `l(time, zone:)`（[时区](configuration.md#time-zones)） |
 | `Net::HTTP`、Faraday | 用于 webhook 和 API 的 `Cybertrain::HttpClient`：每次等待都有上限，默认拒绝非公网目标，只在要求时跟随重定向，支持流式和 gzip 响应，带有 Server-Sent Events 解析器，不保持连接（参见[出站 HTTP](external-services.md#outbound-http)）；Spinel 的 `Net::HTTP` 遇到停滞的对端会阻塞整个服务器 |
-| Action Mailer（`deliver_later`、邮件程序类、视图） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` 通过 SMTP 发送纯文本，或带有从局部模板渲染的 HTML 部分（`Views.render_mail`）的 `multipart/alternative`（STARTTLS、隐式 TLS，或对环回地址使用明文；AUTH PLAIN；每次等待都有上限）；`Mailer.deliver_later` 从一个内置作业发送；没有邮件程序类或附件（参见[发送电子邮件](external-services.md#sending-e-mail)） |
+| Action Mailer（`deliver_later`、邮件程序类、视图） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` 通过 SMTP 发送纯文本，或带有从局部模板渲染的 HTML 部分（`Views.render_mail`）的 `multipart/alternative`（STARTTLS、隐式 TLS，或对环回地址使用明文；AUTH PLAIN；每次等待都有上限）；`Mailer.deliver_later` 从一个内置作业发送；邮件程序是 `app/mailers` 中的模块，其方法返回 `Cybertrain::MailMessage`（`deliver_later`、`deliver_now`），生成的 `PasswordsMailer` 就是如此；没有附件（参见[发送电子邮件](external-services.md#sending-e-mail)） |
 | Active Job、`perform_later`、`solid_queue`、周期性任务、Mission Control | `app/jobs` 中的作业类（`< Cybertrain::Job::Base`，`perform(args)` 接收由 JSON 值组成的 Hash，`perform_later`、`retry_on`、`discard_on`、带键的 `limits_concurrency`），`Job.handle(kind)` 作为简短形式；带时区和保存在数据库中的时间表的 `Scheduler.every` 与 `Scheduler.cron`；作业页面（路由中的 `jobs_page`）和 `./<app> jobs`；每个进程 `job_threads` 个线程，在服务器或 `./<app> worker` 进程中运行，至少投递一次（[后台任务](background-and-operations.md#background-work)） |
 | `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | 应用 SQLite 数据库中的 `Cybertrain::Cache.fetch`，选项相同；值是 String，其他类型用 `fetch_hash`、`fetch_array` 和 `fetch_int`；没有内存或 Redis 存储（[缓存存储](background-and-operations.md#the-cache-store)） |
 | ActionCable 客户端、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` 在服务器运行期间保持订阅连接（重连、ping、静默检测）；`WebSocket::Client` 用于单个同步连接；仅限出站（[订阅 WebSocket 数据流](external-services.md#consuming-websocket-feeds)） |
@@ -105,6 +106,6 @@ source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 | 用于备份的 `bin/rails db:...` 任务（没有内置） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`，权限 0600，重命名到位）和 `./<app> db vacuum` |
 | Action Cable、`turbo_stream_from`、`broadcast_append_to` | 相同的辅助方法名称，基于签名的流，从一张 SQLite 表通过 Server-Sent Events 或 WebSocket 投递；没有频道类（[实时](realtime.md)） |
 | Propshaft、importmap-rails | 相同的目录布局（`app/assets`、`app/javascript`、`vendor/javascript`、`config/importmap.rb`），由 `spin run gen` 加上摘要写入 `public/assets/`；没有 `bin/importmap pin`，不内置 Turbo（[资源](assets.md)） |
-| i18n | 尚未构建（阶段 4b，`docs/design.md` D1） |
+| Rails 的 i18n、rails-i18n 的词典、`I18n.t`、`t(".title")` | 相同的 API 和键，捆绑英语和日语；`config/locales/*.yml` 由 `spin run gen` 从一个 YAML 子集（没有锚点、别名或标签）编译进程序，列表通过 `I18n.translate_list` 获取（[国际化](i18n.md)） |
 
 <!-- table-foot: 并不详尽：`docs/design.md` §8（“What was deliberately left out”）是更完整的记录。 -->

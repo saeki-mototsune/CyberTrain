@@ -1,5 +1,5 @@
 ---
-source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
+source_sha256: ef8c5bc57b3af6efc730c5a1f8f518d1f37931f4349c672de3518febebd3b834
 ---
 # 后台任务与运维
 
@@ -90,13 +90,14 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 ```ruby
 # config/routes.rb
 Cybertrain::Routes.draw do
-  jobs_page "/admin/jobs", before_action: :require_admin
+  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 end
 ```
 
 `jobs_page` 挂载的页面列出每种状态的行数、排队的数量和下一个到期时间、`failed` 和 `discarded` 的行（种类、参数、错误、尝试次数、时间）以及 `running` 的行（由谁认领、心跳有多旧），每个列表 `jobs_page_per_page` 行（50，`CYBERTRAIN_JOBS_PAGE_PER_PAGE`）。失败的行可以重试（立即重新排队，尝试次数清零）、丢弃或删除，已丢弃的行可以重试或删除，还可以一次重试或丢弃所有失败的行；每个操作只触及 `failed` 和 `discarded` 的行，所以 worker 刚刚认领的行不会被动到。
 
-- 生成的控制器继承 `ApplicationController`，所以应用的布局、辅助方法和 CSRF 保护都会生效，`before_action:` 指定它的一个方法：要拒绝访问，这个方法必须渲染或重定向（应用的登录检查，或者像 examples/blog 的 `require_admin` 那样的令牌检查）。没有 `before_action:` 时，页面对每个访问者开放，`spin run gen` 会打印一条警告说明这一点。
+- 生成的控制器继承 `ApplicationController`，所以应用的布局、辅助方法和 CSRF 保护都会生效，`before_action:` 指定它的一个方法：要拒绝访问，这个方法必须渲染或重定向。`cybertrain generate authentication` 用其关注点的 `require_admin`（除非管理员已登录，否则返回 404；[管理员用户](authentication.md#admin-users-and-the-jobs-page)）画出上面那一行。没有 `before_action:` 时，页面对每个访问者开放，`spin run gen` 会打印一条警告说明这一点。
+- `skip_before_action:` 指定页面不运行的一个继承的 before 回调。指定 `:require_authentication` 时，只有 `require_admin` 回答访客，返回 404，而不是重定向到登录。没有 `before_action:` 时，或者它指向 `before_action:` 本身时，gen 会拒绝。
 - 页面上的按钮是带 CSRF 令牌的表单。不要把页面的路径放进 `csrf_exempt_prefixes`：在豁免的前缀之下，这些表单会接受来自任何网站的提交。
 
 在 shell 中，`./<app> jobs` 对配置的数据库做同样的事（它不启动任何线程）：

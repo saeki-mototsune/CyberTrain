@@ -1,5 +1,5 @@
 ---
-source_sha256: 7b4fe1d040482066a2463edf5d328539755086c6c82865fc5475ccd48a4c2063
+source_sha256: f72107180208b787ac715c62138f97dab65ed8acf6d9861bccf02e531aac3eae
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -142,7 +142,7 @@ et commencent par une lettre. L’arborescence générée&nbsp;:
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb
+  spin.toml  config/app.rb  config/routes.rb  config/locales/en.yml
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
   app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
@@ -688,25 +688,17 @@ cybertrain generate authentication
 cybertrain db migrate    # crée les tables users et sessions
 ```
 
-Elle écrit les migrations de `users` (`email_address`, `password_digest`, un
-index unique) et de `sessions` (une ligne par navigateur connecté), les
-modèles `User` et `Session`, `SessionsController` (`/session/new`,
-`POST /session`, `DELETE /session`) et `RegistrationsController` (`/sign_up`)
-avec leurs vues, un partiel `sessions/_nav` rendu en haut du layout, ainsi que
-`test/authentication.rb` et `test/support/app_test.rb`. Elle insère aussi les
-routes, et un bloc juste après la ligne de classe
-d’`ApplicationController`&nbsp;:
+Il écrit les migrations et les modèles `users` et `sessions`, le concern `Authentication`, qu’il inclut dans `ApplicationController`, les contrôleurs et les vues de la connexion, de l’inscription, de la réinitialisation du mot de passe et de la page de compte, un mailer, la commande `./blog user`, et des tests. Il ajoute aussi les routes, un partial `sessions/_nav` en haut du layout, et un réglage `base_url` dans `config/app.rb`, par lequel commencent les liens des courriels. Chaque fichier est listé dans [Authentification](authentication.md#generating-it).
 
-```ruby app/controllers/application_controller.rb (extrait)
-class ApplicationController < Cybertrain::Controller
-  before_action :resume_session          # sets @current_user and @current_session
-  before_action :require_authentication  # 303 to /session/new unless signed in
+```ruby app/controllers/concerns/authentication.rb (extrait)
+module Authentication
+  extend ActiveSupport::Concern
 
-  def self.allow_unauthenticated_access(only: [], except: [])
-    skip_before_action(:require_authentication, only: only, except: except)
+  included do
+    before_action :resume_session          # sets @current_user and @current_session
+    before_action :require_authentication  # 303 to /session/new unless signed in
+    helper_method :authenticated?
   end
-  # authenticated?, start_new_session_for(user), terminate_session,
-  # after_authentication_url ...
 ```
 
 Désormais, chaque action exige un utilisateur connecté, et un visiteur est
@@ -733,96 +725,9 @@ lire `@current_user`. Masquez ce qu’un visiteur ne peut pas utiliser&nbsp;:
 <% end %>
 ```
 
-Lancez le serveur et ouvrez `http://127.0.0.1:3000/sign_up` pour créer le
-premier utilisateur. Le générateur de Rails n’a pas de page d’inscription et
-laisse cela à la console&nbsp;; CyberTrain écrit `RegistrationsController`,
-pour que le premier utilisateur s’inscrive dans le navigateur. Supprimez-le, avec ses routes, pour une application
-sur invitation.
+Démarrez le serveur et ouvrez `http://127.0.0.1:3000/sign_up` pour créer le premier utilisateur. Le générateur de Rails n’a pas de page d’inscription et laisse cela à la console&nbsp;; CyberTrain écrit `RegistrationsController`, si bien que le premier utilisateur s’inscrit dans le navigateur. Pour une application sur invitation, lancez plutôt le générateur avec `--invite-only`&nbsp;: il n’y a pas de page d’inscription, et le premier utilisateur vient de `./blog user EMAIL` ou d’une page `/setup` que seule la machine du serveur peut ouvrir ([Inscription, ou sur invitation](authentication.md#sign-up-or-invite-only)).
 
-<details><summary>Une application sur invitation&nbsp;: `--invite-only` — Pas de page d’inscription&nbsp;; le premier utilisateur vient de la ligne de commande ou d’une page que seule la machine du serveur peut ouvrir</summary>
-
-La page d’inscription permet à quiconque atteint le serveur de s’inscrire, ce
-qui est le mauvais comportement par défaut pour un outil interne&nbsp;: celui
-qui arrive avant l’administrateur a un compte. `--invite-only` n’écrit ni
-`RegistrationsController` ni lien d’inscription&nbsp;; le premier utilisateur
-vient de la ligne de commande ou d’une page que seule la machine du serveur
-elle-même peut ouvrir, avec un lien que le serveur affiche à son
-démarrage&nbsp;:
-
-```shell terminal — blog/
-cybertrain generate authentication --invite-only
-cybertrain db migrate
-cybertrain server        # puis ouvrez, sur la même machine, le lien http://127.0.0.1:3000/setup?token=... qu’il affiche
-```
-
-En production, depuis le répertoire où tourne le binaire&nbsp;:
-
-```shell terminal — hôte de production
-./blog user ann@example.com                        # lit le mot de passe sur stdin (une ligne)
-printf '%s' "$PASSWORD" | ./blog user ann@example.com
-./blog user ann@example.com 's3cr3t-s3cr3t'        # ou en argument (visible dans ps)
-```
-
-<!-- list: points -->
-- `app/commands/user_command.rb` enregistre la commande `user` avec
-  `Cybertrain::Main.command` (donc `./blog help` la liste) et est requis
-  depuis `bin/blog.rb`. `EMAIL [PASSWORD]` crée l’utilisateur, ou définit le
-  mot de passe de celui qui a cette adresse (ce qui déconnecte les navigateurs
-  de cet utilisateur, comme tout changement de mot de passe)&nbsp;; elle
-  affiche `created ADDRESS` ou `updated ADDRESS` et sort avec 0. Sans
-  `PASSWORD`, elle lit une ligne de l’entrée standard (avec une invite quand
-  c’est un terminal&nbsp;; la saisie s’affiche) et retire le saut de ligne
-  final, de sorte que le mot de passe reste hors de `ps` et de l’historique du
-  shell. Un mot de passe vide, un enregistrement qui ne passe pas la
-  validation (un mot de passe de moins de 8 caractères) ou de mauvais
-  arguments affichent une erreur ou la ligne d’usage et sortent avec 1.
-- `SetupController` (`GET`/`POST /setup`, `app/views/setup/new.html.erb`) crée
-  le premier utilisateur et le connecte. Il ne répond que tant qu’aucun
-  utilisateur n’existe, qu’avec le jeton à usage unique (ci-dessous), et qu’à
-  une connexion dont le pair de la socket est l’adresse de bouclage
-  (`request.loopback?`&nbsp;: `127.0.0.0/8` ou `::1`) et qui ne porte pas
-  d’en-tête `X-Forwarded-For` (un proxy sur le même hôte fait de chaque
-  requête une requête de bouclage, et il ajoute cet en-tête). Un en-tête peut
-  fermer la page, jamais l’ouvrir. Tous les autres, ainsi qu’un jeton absent
-  ou faux, reçoivent un 404.
-- Le jeton&nbsp;: `SetupController::SETUP_TOKEN`, 32 caractères hexadécimaux
-  aléatoires (`Cybertrain::Crypto.random_token(16)`) créés au démarrage du
-  programme et gardés jusqu’à sa sortie, donc un redémarrage en crée un
-  nouveau. `GET /setup` le reçoit en `?token=`, le formulaire le renvoie dans
-  un champ caché, et les deux le comparent en temps constant
-  (`Cybertrain::Crypto.secure_compare`). C’est lui qui garde la page fermée
-  quand la vérification d’adresse n’y suffit pas&nbsp;: un proxy sur le même
-  hôte qui n’ajoute pas `X-Forwarded-For` (nginx sans
-  `proxy_set_header X-Forwarded-For ...`) fait passer chaque client pour du
-  bouclage, et seul quelqu’un qui peut lire le journal du serveur a le jeton.
-  Le journal des requêtes ne le répète pas&nbsp;: `token` fait partie des
-  `filter_parameters` par défaut, donc la ligne s’écrit `Started GET
-  "/setup?token=[FILTERED]"` (sauf si `config.filter_parameters` ou
-  `CYBERTRAIN_FILTER_PARAMETERS` laisse `token` de côté). Le jeton n’ouvre
-  plus rien une fois l’utilisateur créé.
-- Pour un premier lancement derrière un proxy situé sur un autre hôte,
-  `BLOG_SETUP_OPEN=1` (déclaré dans `config/app.rb` avec
-  `c.setting_bool :setup_open`) lève la vérification d’adresse, toujours
-  seulement tant qu’aucun utilisateur n’existe et toujours seulement avec le
-  jeton. Retirez-le une fois l’utilisateur créé.
-- Tant qu’aucun utilisateur n’existe, le serveur journalise
-  `[WARN] no user exists yet: run ./blog user EMAIL, or open /setup?token=<token> from this machine`
-  avant de démarrer (`UserCommand.warn_if_no_user`, appelé depuis
-  `bin/blog.rb` quand `Cybertrain::Main.server?(ARGV)`&nbsp;; il se connecte
-  pour cette seule question et ne dit rien tant que la table users n’est pas
-  migrée). Cette ligne est le seul endroit où le jeton est affiché.
-
-Le `test/authentication.rb` généré couvre les deux&nbsp;: `/setup` avec et
-sans le jeton (`SetupController.setup_token`) ou avec un mauvais, depuis une
-autre adresse (`client.peer_address = "203.0.113.7"`), à travers un proxy, une
-fois qu’un utilisateur existe et avec l’interrupteur activé, ainsi que la
-commande `user` lancée dans le même processus via `Cybertrain::Main.run`. Tout
-cela est du code applicatif, à vous de le modifier (docs/design.md D29)&nbsp;;
-le framework ne fournit que `request.loopback?`, `Main.command`,
-`Main.server?`, `Crypto.random_token` / `Crypto.secure_compare` et le
-`peer_address` du client de test.
-
-</details>
+La page de connexion renvoie aussi vers une réinitialisation du mot de passe par courriel, et la navigation vers une page de compte&nbsp;; le guide [Authentification](authentication.md) les décrit, avec le verrouillage, «&nbsp;rester connecté&nbsp;», `--confirmable` et les administrateurs. Un courriel de réinitialisation a besoin des réglages SMTP et, en production, de `BLOG_BASE_URL` ([Liens dans les courriels](authentication.md#links-in-mails)).
 
 > [!RULE] Règle Spinel&nbsp;: has_secure_password
 > ### `has_secure_password` est écrit en toutes lettres
@@ -836,75 +741,6 @@ le framework ne fournit que `request.loopback?`, `Main.command`,
 > Augmentez le coût avec `Cybertrain::Password.iterations = 600_000` dans
 > `config/app.rb`&nbsp;; `User#authenticate` refait le hachage de chaque
 > utilisateur à sa connexion.
-
-<details><summary>Authentification&nbsp;: ce que fournit le framework — Les pièces dont le générateur est fait, utilisables sans lui</summary>
-
-Le générateur ci-dessus écrit le parcours&nbsp;; les pièces dont il est fait
-sont de l’API du framework, utilisables sans lui (pour un jeton d’API, un mot
-de passe d’administration, une connexion écrite à la main)&nbsp;:
-
-<!-- list: points -->
-- **`Cybertrain::Password`**&nbsp;: `hash(plain)` produit un condensat
-  PBKDF2-HMAC-SHA256 salé qui enregistre ses propres paramètres
-  (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` en vérifie un
-  en temps constant et ne lève jamais d’exception sur un condensat mal formé,
-  et `needs_rehash?(digest)` dit quand un condensat est en retard sur le
-  `Password.iterations` actuel. Pour une action de connexion&nbsp;:
-  - `verify_serialized(plain, digest)` est `verify?` un à la fois par
-    processus (un Mutex). Un hachage prend environ 0,2&nbsp;s de CPU&nbsp;;
-    une rafale de tentatives en parallèle occuperait tous les workers, alors
-    qu’avec cette méthode elles font la queue et les autres workers continuent
-    de servir les pages.
-  - `dummy_digest` est le condensat d’un mot de passe aléatoire, créé une fois
-    par processus au coût actuel. Vérifiez par rapport à lui quand l’adresse
-    est inconnue, pour que le temps de réponse ne révèle pas quelles adresses
-    ont un compte&nbsp;:
-    `Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`.
-  - `session_key(digest)` est un HMAC du condensat du mot de passe sous
-    `secret_key_base`&nbsp;; gardez-le dans la session à la connexion et
-    vérifiez-le avec
-    `session_key_matches?(session[:password_key], user.password_digest)` à
-    chaque requête. Un changement de mot de passe crée un nouveau condensat,
-    donc toute session commencée avant lui est déconnectée.
-  - `iterations` vaut `Password::TEST_ITERATIONS` (1&nbsp;000) quand
-    `Cybertrain.config.test?`, pour que les suites de tests ne paient pas le
-    coût de production par utilisateur&nbsp;; les condensats enregistrent leur
-    nombre d’itérations, donc rien d’autre ne change.
-- **La session** (`session[:key]`, un cookie chiffré)&nbsp;: `clear` la vide
-  (jeton CSRF compris) à la déconnexion, et `config.session_absolute_max_age`
-  (deux semaines&nbsp;; `0` la désactive) borne la vie entière d’une session,
-  quelle que soit la fréquence de son usage&nbsp;: le cookie enregistre quand
-  il a été écrit pour la première fois, un cookie plus ancien que cela se
-  charge comme une session vide, donc un cookie copié ne peut pas être rejoué
-  indéfiniment. `session.restart_lifetime!` relance le décompte (à la
-  connexion).
-- **`Controller#local_path?(text)` et
-  `safe_redirect_path(text, fallback)`**&nbsp;: un chemin venu de la requête
-  (un paramètre `return_to`, une page mémorisée) n’est la cible d’une
-  redirection que s’il commence par `/` mais pas par `//` ni `/\`, ne contient
-  que de l’ASCII imprimable et fait au plus 2&nbsp;048 octets&nbsp;:
-  `redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`.
-- **`skip_before_action(name, only:, except:)`** sur une classe de contrôleur
-  retire un `before_action` hérité pour certaines actions&nbsp;; le
-  `allow_unauthenticated_access` généré n’en est qu’une enveloppe d’une ligne.
-- **`cybertrain generate authentication`** écrit, comme du code qui appartient
-  à l’application&nbsp;: les migrations et modèles `users` et `sessions`,
-  `SessionsController`, `RegistrationsController`, leurs vues et le partiel de
-  navigation, le bloc d’`ApplicationController` (`resume_session`,
-  `require_authentication`, `start_new_session_for`, `terminate_session`,
-  `after_authentication_url`) et `test/authentication.rb`. Ce code utilise
-  tout ce que contient cette liste&nbsp;: `User.authenticate_by` vérifie avec
-  `verify_serialized` et le condensat factice, `start_new_session_for`
-  enregistre la clé du mot de passe et relance la durée de vie,
-  `resume_session` met fin à une ligne Session dont la clé ne correspond plus
-  ou qui est plus ancienne que `session_absolute_max_age`, et
-  `after_authentication_url` est `safe_redirect_path`. Pour garder connecté le
-  navigateur qui a changé un mot de passe, enregistrez la nouvelle clé après
-  la sauvegarde&nbsp;:
-  `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`.
-  La conception&nbsp;: [docs/design.md](../design.md) D25.
-
-</details>
 
 ### Mettre à jour les tests
 
@@ -929,23 +765,7 @@ end
 ```
 
 > [!NOTE]
-> Lancez `cybertrain spin test` comme à l’[étape 12](#test)&nbsp;;
-> `test/authentication.rb` et ce test utilisent SQLite, donc leurs instantanés
-> viennent du binaire compilé. `examples/blog` s’arrête avant cette étape. Les
-> tentatives de connexion sont soumises à une limitation de débit, comme dans
-> le générateur de Rails&nbsp;: `SessionsController` déclare `rate_limit to:
-> 10, within: 3 * 60, only: [:create]`, dix tentatives par adresse du client
-> toutes les trois minutes, puis retour au formulaire avec "Try again later."
-> jusqu’à la fin de la fenêtre. Les compteurs sont gardés dans la base de
-> données de l’application (`Cybertrain::Cache`), si bien que tous les
-> processus de l’application comptent ensemble. Derrière un reverse proxy, chaque visiteur est
-> compté sous l’adresse du proxy, sauf si des [proxys de
-> confiance](requests.md#rate-limiting-and-the-client-address) sont
-> configurés. Non générée&nbsp;: la réinitialisation du mot
-> de passe, dont l’e-mail demande les réglages SMTP de l’application
-> (`Cybertrain::Mailer`,
-> [Envoyer des e-mails](external-services.md#sending-e-mail)), que le
-> générateur ne peut pas connaître.
+> Lancez `cybertrain spin test` comme à l’[étape 12](#test)&nbsp;; `test/authentication.rb`, les autres tests qu’écrit le générateur et celui-ci utilisent SQLite, leurs instantanés viennent donc des binaires compilés. Les tentatives de connexion sont limitées comme dans le générateur de Rails&nbsp;: dix par adresse cliente toutes les trois minutes, comptées dans la base de données de l’application, si bien que tous les processus comptent ensemble&nbsp;; derrière un reverse proxy, configurez les [proxys de confiance](requests.md#rate-limiting-and-the-client-address). `examples/blog` fait cette étape avec `--invite-only` et réserve ses pages `/admin` aux administrateurs.
 
 <!-- step 14 #attachments stage: Vous écrivez · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Ajouter une image de couverture
@@ -1243,6 +1063,8 @@ et charge `config/deploy.yml` avec Kamal.
 
 <!-- list: next-list -->
 - [**`examples/blog`**](../../examples/blog) — L’application terminée, avec ses tests.
+- [**Authentification**](authentication.md) — Réinitialisation du mot de passe, confirmation, verrouillage, rester connecté, page de compte et administrateurs.
+- [**Internationalisation**](i18n.md) — Dictionnaires, `t` et `l`, et une locale par requête.
 - [**CyberTrain sur GitHub**](https://github.com/saeki-mototsune/CyberTrain) — Le code source, le README et les versions publiées.
 - [**Référence de l’API**](site:api/index.html) — Chaque classe et méthode qu’utilise une application, avec des exemples.
 - [**`spikes/NOTES.md`**](../../spikes/NOTES.md) — Les spikes et les contraintes du compilateur qu’ils ont révélées.

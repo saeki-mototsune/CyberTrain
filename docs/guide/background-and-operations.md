@@ -206,7 +206,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 ```ruby
 # config/routes.rb
 Cybertrain::Routes.draw do
-  jobs_page "/admin/jobs", before_action: :require_admin
+  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 end
 ```
 
@@ -223,9 +223,16 @@ has just claimed is left alone.
 - The generated controller inherits `ApplicationController`, so the
   application's layout, helpers and CSRF protection apply, and
   `before_action:` names one of its methods: it must render or redirect to
-  refuse (the application's login check, or a token check as examples/blog's
-  `require_admin` does). Without `before_action:` the page is open to every
-  visitor, and `spin run gen` prints a warning saying so.
+  refuse. `cybertrain generate authentication` draws the line above, with
+  its concern's `require_admin` (404 unless an admin is signed in;
+  [Admin users](authentication.md#admin-users-and-the-jobs-page)). Without
+  `before_action:` the page is open to every visitor, and `spin run gen`
+  prints a warning saying so.
+- `skip_before_action:` names one inherited before callback the page does
+  not run. With `:require_authentication`, `require_admin` alone answers a
+  visitor, with a 404 rather than a redirect to sign in. gen refuses it
+  without a `before_action:`, and when it names the `before_action:`
+  itself.
 - Its buttons are forms with the CSRF token. Keep the page's path out of
   `csrf_exempt_prefixes`: under an exempt prefix those forms would be
   accepted from any site.

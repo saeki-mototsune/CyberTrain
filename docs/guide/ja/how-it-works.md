@@ -1,5 +1,5 @@
 ---
-source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
+source_sha256: 9c254c3260efd44f46a0c94f25d007bcf1fdc798e5fedf29f7d4d5067f420ced
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -8,7 +8,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 
 ## ビルド時のコード生成
 
-`spin run gen`（`bin/gen.rb`）は、`db/schema.rb` の `create_table` DSL と `config/routes.rb` の `Routes.draw` DSL を実行してテーブルとルートの*データ*を得ます。それとは別に、`app/controllers/**/*.rb` と `app/models/**/*.rb` に対して**字句スキャン**（パーサーではなく正規表現。Spinel は実行時にパーサーを公開していません）を行い、`@ivar =` の代入、`before_action`/`after_action`/`rescue_from ... with:` の名前、`helper_method`・`layout`・`rate_limit` の行、コンサーンの `include`、引数なしの `def` を探します。`app/assets/`、`app/javascript/`、`vendor/javascript/` のファイルにダイジェストを付け、`config/importmap.rb` をテキストとして読みます。
+`spin run gen`（`bin/gen.rb`）は、`db/schema.rb` の `create_table` DSL と `config/routes.rb` の `Routes.draw` DSL を実行してテーブルとルートの*データ*を得ます。それとは別に、`app/controllers/**/*.rb` と `app/models/**/*.rb` に対して**字句スキャン**（パーサーではなく正規表現。Spinel は実行時にパーサーを公開していません）を行い、`@ivar =` の代入、`before_action`/`after_action`/`rescue_from ... with:` の名前、`helper_method`・`layout`・`rate_limit` の行、コンサーンの `include`、引数なしの `def` を探します。`app/assets/`、`app/javascript/`、`vendor/javascript/` のファイルにダイジェストを付け、`config/importmap.rb` をテキストとして読み、`config/locales/` の辞書を独自の YAML リーダーで読みます。
 
 そこから、素の読みやすい Ruby を `gen/` 以下に書き出します：
 
@@ -17,6 +17,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 - `gen/controllers.rb`：コントローラーごとの `view_assigns`、`run_callback`、`helper_method` の表、`controller_layout`
 - `gen/concerns.rb` と `gen/concerns/**`：コンサーンの `included` ブロックを include する各クラスに差し込んだものと、そのブロックを空にしたコンサーンのモジュール（[コンサーン](requests.md#concerns-and-helper_method)）
 - `gen/assets.rb`：ダイジェスト付きのアセットのパスとインポートマップ（[アセット](assets.md)）。ダイジェスト付きのファイルは `public/assets/` に置く
+- `gen/locales.rb`：アプリケーションの辞書を 2 つの Hash にしたもの。`I18n.t` がこれを読む（[国際化](i18n.md#dictionaries)）
 - `gen/migrations.rb`
 - `gen/views.rb`：埋め込みビューのテーブル。デプロイ用のビルド以外では空
 - `gen/app.rb`：`require_relative` のマニフェスト
@@ -89,14 +90,14 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | 例外時の完全なバックトレース | クラス、メッセージ、リクエスト行、テンプレート名と行 — Spinel はバックトレースを公開していない |
 | Rack、そのミドルウェア、`Gemfile` の任意の gem | Rack 互換性はない。小さな固定のミドルウェア群。Spinel 自身の `spin-index` で、その Ruby サブセットでコンパイルできるものに限られる |
 | minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくランナーは AOT では動かない |
-| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形に加えてサインアップのページを書き出す。パスワードには PBKDF2-HMAC-SHA256 を使う（bcrypt は C ライブラリを必要とし、macOS の `String#crypt` には bcrypt がない）。パスワードのリセットはない（[サインインを追加する](tutorial.md#authentication)） |
+| `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形に加えてサインアップのページを書き出す。パスワードには PBKDF2-HMAC-SHA256 を使う（bcrypt は C ライブラリを必要とし、macOS の `String#crypt` には bcrypt がない）。パスワードリセット、確認、ロックアウト、ログインしたままにする機能も、Devise が加えるように生成される（[認証](authentication.md)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment` は 5 つの `cover_*` カラムとモデルのメソッドを書き出す。ファイルはローカルディスクの `storage/uploads/` 以下に置かれ、`send_blob` で配信される。フィールドごとに 1 つで、バリアントやダイレクトアップロードはない（[カバー画像を追加する](tutorial.md#attachments)） |
 | `skip_before_action :x` | 名前付きの before コールバックについては同じ（ブロックのコールバックにはスキップする名前がない）。`skip_after_action` はない |
 | `resource :session` | `SessionsController` への同じ 6 つのルート。その下へのネストはない |
 | `get "/x"` の後に `post "/x"` | どちらも問題ない：2 つ目のルートから導かれる名前は使用済みなので、Rails と同じく名前なしになる。`as:` の重複は引き続きエラー |
 | `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport に同梱のタイムゾーンデータ | `Cybertrain::TimeZone.find("Asia/Tokyo")` はシステムの TZif ファイル（`/usr/share/zoneinfo`、または `TZDIR`）を読み、Integer のエポック秒を変換する（`utc_offset_at`、`utc_to_local`、`local_to_utc`）。リクエストごとの `Time.zone` や `l(time, zone:)` はまだない（[タイムゾーン](configuration.md#time-zones)） |
 | `Net::HTTP`、Faraday | Webhook や API には `Cybertrain::HttpClient`：すべての待ちに上限があり、公開されていない宛先はデフォルトで拒否され、リダイレクトは求められたときだけ、ストリーミングと gzip のレスポンス、Server-Sent Events のパーサーがあり、keep-alive はない（[外向きの HTTP](external-services.md#outbound-http) を参照）。Spinel の `Net::HTTP` は、相手が止まるとサーバー全体を止めてしまう |
-| Action Mailer（`deliver_later`、メーラークラス、ビュー） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` はプレーンテキスト、またはパーシャルからレンダーした HTML の部分（`Views.render_mail`）を持つ `multipart/alternative` を SMTP で送る（STARTTLS、暗黙の TLS、またはループバックへの平文。AUTH PLAIN。すべての待ちに上限がある）。`Mailer.deliver_later` は組み込みのジョブから送る。メーラークラスと添付ファイルはない（[メールを送る](external-services.md#sending-e-mail)を参照） |
+| Action Mailer（`deliver_later`、メーラークラス、ビュー） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` はプレーンテキスト、またはパーシャルからレンダーした HTML の部分（`Views.render_mail`）を持つ `multipart/alternative` を SMTP で送る（STARTTLS、暗黙の TLS、またはループバックへの平文。AUTH PLAIN。すべての待ちに上限がある）。`Mailer.deliver_later` は組み込みのジョブから送る。メーラーは `app/mailers` のモジュールで、そのメソッドは `Cybertrain::MailMessage` を返す（`deliver_later`、`deliver_now`）。生成される `PasswordsMailer` がその例。添付ファイルはない（[メールを送る](external-services.md#sending-e-mail)を参照） |
 | Active Job、`perform_later`、`solid_queue`、定期タスク、Mission Control | `app/jobs` のジョブクラス（`< Cybertrain::Job::Base`、JSON の値の Hash を受け取る `perform(args)`、`perform_later`、`retry_on`、`discard_on`、キー付きの `limits_concurrency`）、短い形の `Job.handle(kind)`。タイムゾーンとデータベースに保存される時刻表を持つ `Scheduler.every` と `Scheduler.cron`。ジョブページ（ルートの `jobs_page`）と `./<app> jobs`。サーバーか `./<app> worker` のプロセスで、プロセスあたり `job_threads` 本のスレッド。少なくとも 1 回の配信（[バックグラウンド処理](background-and-operations.md#background-work)） |
 | `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | アプリケーションの SQLite データベースの `Cybertrain::Cache.fetch`。オプションは同じ。値は String で、それ以外は `fetch_hash`、`fetch_array`、`fetch_int`。メモリや Redis のストアはない（[キャッシュストア](background-and-operations.md#the-cache-store)） |
 | ActionCable クライアント、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` はサーバーの動作中、フィードを接続したまま保つ（再接続、ping、無音の検出）。同期的な 1 本の接続には `WebSocket::Client`。外向きのみ（[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)） |
@@ -105,6 +106,6 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | バックアップ用の `bin/rails db:...` タスク（組み込みはない） | `./<app> db backup PATH` / `db backup DIR/ --keep N`（`VACUUM INTO`、モード 0600、所定の場所にリネーム）と `./<app> db vacuum` |
 | Action Cable、`turbo_stream_from`、`broadcast_append_to` | 同じヘルパー名で、1 つの SQLite テーブルから Server-Sent Events か WebSocket で配信される署名付きストリーム。チャンネルのクラスはない（[リアルタイム](realtime.md)） |
 | Propshaft、importmap-rails | 同じ配置（`app/assets`、`app/javascript`、`vendor/javascript`、`config/importmap.rb`）で、`spin run gen` がダイジェストを付けて `public/assets/` に書く。`bin/importmap pin` はなく、Turbo は同梱しない（[アセット](assets.md)） |
-| i18n | まだ作られていない（フェーズ 4b。`docs/design.md` D1） |
+| Rails の i18n、rails-i18n の辞書、`I18n.t`、`t(".title")` | 同じ API とキーで、英語と日本語を同梱。`config/locales/*.yml` は YAML のサブセット（アンカー、エイリアス、タグはなし）から `spin run gen` が組み込む。リストは `I18n.translate_list` で引く（[国際化](i18n.md)） |
 
 <!-- table-foot: これですべてではありません：より詳しい記録は docs/design.md §8（「What was deliberately left out」）にあります。 -->

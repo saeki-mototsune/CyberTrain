@@ -2149,3 +2149,32 @@ the same Hash filled by 40 methods of 50 `h["k"] = "v"` stores in 4.7 to
   helper functions of bounded size, or from a static table in a loop.
 - Reproduced by spikes/phase4b/locale_hash.rb (written by make_keys.rb);
   not reported upstream.
+
+### What the rest of phase 4b met (no new item)
+
+The eighteen tasks after the spike (2026-11-11 to 2026-11-12: the YAML
+reader, `I18n`, translated helpers and validation messages, tokens, mail,
+the authentication generator's additions and examples/blog in two
+languages) found no new defect on 2026.11.04.7026. Every new program
+compiled as written once the known rules were followed, and those rules
+shaped the code in four places:
+
+- One return type per method name (spikes/NOTES.md rule 34): WebSocket's
+  private `Frame#reset`, which answered a Boolean, became `clear_message`
+  beside the generated `PasswordsMailer.reset`, which answers a
+  `MailMessage`; the confirmation mailer's method is
+  `confirmation_instructions` because `User#confirm` answers a Boolean;
+  `MailMessage`'s readers are `mail_to`, `mail_subject` and the like.
+- A concern's `class_methods` are defined by gen after the controllers
+  that call them (rules 92 and 93), so `allow_unauthenticated_access`,
+  which a controller's class body calls, became a framework method of
+  `Cybertrain::Controller` rather than the concern's.
+- No stored block through a base-class receiver (rule 88): the generated
+  `rate_limit` lines name their `with:` and `by:` methods.
+- Byte scanners read through a fresh local (rule 62): the YAML reader,
+  the plural rules, `Accept-Language`, the locale-name check, token
+  parsing and `ParameterFilter.filter_path`.
+
+One finding was CRuby's, not Spinel's: under a C locale `File.read`
+answers US-ASCII text, which the authentication generator's diff
+compares with generated UTF-8 through `LineDiff.as_utf8`.
