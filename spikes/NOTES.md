@@ -137,6 +137,127 @@ framework-wide equivalence is claimed.
 | [openssl_dispatch.rb](rechecks/openssl_dispatch.rb) | `getbyte` on a boxed String with OpenSSL loaded (62) | Other builtin names and dispatch paths in a complete application |
 | [decimal.rb](rechecks/decimal.rb) | String construction, ordering and scale rounding (design D42); Float collapses two distinct decimal inputs | Framework integration, Float construction, storage precision and SQLite round-trips |
 
+## CRuby preview spike, 2026-11
+
+The spike of the CRuby preview design
+([docs/superpowers/specs/2026-11-12-cruby-preview-design.md](../docs/superpowers/specs/2026-11-12-cruby-preview-design.md),
+sections 7 and 13): can the unmodified framework serve examples/blog under
+CRuby, with a Fiddle shim for the `ffi_*` DSL? Throwaway programs:
+[preview/shim.rb](preview/shim.rb) (the DSL on `Module`) and
+[preview/run.sh](preview/run.sh) (copies the blog outside the tree,
+migrates, serves, times the first 200, posts a form). Measured on
+2026-11-12, Linux x86_64 (4 vCPU, cloud), CRuby 3.3.6, fiddle 1.1.2,
+GCC 13.3.0, the system libsqlite3 and libz; no Spinel build was made.
+
+**Result: it serves.** With the shim and no change to any file under
+`cybertrain/`, `ruby -I<repo> -I. -r <repo>/spikes/preview/shim
+bin/blog.rb migrate` ran the three migrations, and `bin/blog.rb 3999`
+answered `GET /articles` 200, `GET /articles/new` 200, `POST /articles`
+(multipart, with the form's `authenticity_token` and the session cookie,
+a non-ASCII title) 303 to `/articles/1`, and `GET /articles/1` 200 showing
+the title; the row in SQLite holds the title's UTF-8 bytes.
+
+- **Time from process start to the first 200** on `GET /articles`
+  (run.sh: `date` before the `ruby`, then curl every 5 ms): 187, 195,
+  197, 198, 199, 202, 218, 229, 246, 256, 313 ms over eleven runs with the
+  shim's compile cache warm (migrate fills it); 276, 304, 305 ms with it
+  empty at server start (the SQLite unit is compiled with `cc` during boot:
+  88 ms on its own). The zlib unit (88 ms) is compiled at the first gzip
+  request, not at boot, and `Dev::Reexec`'s never (nothing calls it).
+- **Pointers** are Integer addresses, 0 for NULL, as Spinel hands them
+  over: `:ptr` results are `Fiddle::Pointer#to_i`; a `:ptr` argument is
+  the Integer as given (SQLITE_TRANSIENT's `-1` included) or NULL for
+  `nil` (`sqlite3_open_v2(path, slot, flags, nil)`, the `nil` callbacks of
+  `sqlite3_exec`); `malloc` and `free` are the FFI modules' own
+  `ffi_func :malloc` / `:free`, found in libc; `read_ptr(addr)` is
+  `*(void **)(addr + offset)`. The callers' comparisons hold because no
+  caller compares a `:ptr` with `nil`: the gzip handle is a `:long`
+  compared with `== 0`, the statement cache's `stmt.nil?` is a Hash
+  lookup, and a NULL `:str` (`sqlite3_column_text`) comes back as `nil`,
+  which `read_row` turns into `""` as it does compiled.
+- **`static` functions**: no `ffi_func` names one. sqlite_ffi.rb's two
+  `static` helpers (`cybertrain_sqlite_busy`, `cybertrain_digits`) are
+  called only from its C; looking them up raises the shim's "no exported
+  symbol" error, and all 44 `ffi_func` symbols of the three files resolve
+  (the compiled unit first, then the `ffi_lib`, then the process). The
+  counts are 33 `ffi_func` and 4 `ffi_source` in sqlite_ffi.rb, not the
+  34 and 5 of the design's section 2.
+- **When to compile**: not at a module's first `ffi_func`, as the design
+  said: sqlite_ffi.rb declares three of its four `ffi_source` blocks after
+  its first `ffi_func`. The shim binds lazily, at the first call of any of
+  the module's functions, when every source has been read.
+- **Encodings**: a `:str` result is a copy up to the NUL tagged UTF-8, a
+  `:binstr` result a copy of `sp_ffi_bin_len` bytes tagged ASCII-8BIT
+  (the callers that want text, `GzipFFI.gunzip` and `gzip_pull`, already
+  `force_encoding("UTF-8")`); with these, 68 of the 70 tests whose
+  process calls through the shim (67 SQLite, 4 gzip; counted with a probe
+  wrapped around the shim's calls) match, and the two that do not differ
+  for reasons outside the FFI (http_gunzip, stream: below). A `:str` argument is passed as a NUL-terminated
+  binary copy, since a Ruby String's buffer is not always terminated.
+  Beyond FFI, rule 27 showed up twice: CRuby's `Encoding.default_external`
+  follows the locale (US-ASCII here, `LANG` unset), so `File.read` text
+  with non-ASCII bytes was never `==` to the framework's UTF-8 String
+  (the generators printed `exist` for `identical`, `gen_views` failed);
+  the shim sets UTF-8, which has to be done again when the main script is
+  compiled because CRuby applies the locale after the `-r` libraries load
+  (the real preview passes `-E UTF-8` instead). And
+  `Base64.urlsafe_decode64` answers ASCII-8BIT, so `Stream.verify` of a
+  non-ASCII stream name answers bytes (below).
+- **GVL**: Fiddle 1.1.2 releases it around a call: a main thread counted
+  33 million iterations while another thread was inside a 500 ms C call,
+  and four threads each in a 300 ms C call finished in 301 ms.
+  `blocking:` is accepted and ignored. **The `:binstr` length** is a
+  `static _Thread_local int sp_ffi_bin_len` the shim prepends to each
+  compiled unit, with an exported accessor the shim calls right after the
+  function returns, on the same thread (CRuby 3.3 threads are native
+  threads, and the two calls run on the caller's): eight threads making
+  200 `:binstr` calls each of differing lengths, with the GVL released,
+  read no wrong length.
+- **STDERR through a pipe**: under CRuby it is not delayed: a child
+  writing a time-stamped line every 200 ms with `$stderr.print`, `warn`
+  and `STDERR.write` reached a parent reading the pipe within 0.44 ms at
+  worst (15 lines). The compiled binary was not measured (the spike makes
+  no Spinel build). What was checked instead: the runtime's `$stderr` is
+  an `sp_File` over C's `stderr` (lib/sp_io.h), no object in
+  `libspinel_rt_mt.a` references `setvbuf`/`setbuf`, so C's default
+  (stderr unbuffered) applies, and a plain C child writing with
+  `fprintf(stderr, ...)` arrived within 0.18 ms. C's stdout, by the same
+  default, is fully buffered on a pipe, which agrees with the design
+  keeping STDOUT on the terminal.
+- **Framework files changed for CRuby: none** to serve the blog or pass
+  the suite's other tests. One file would make the remaining framework
+  test match: `cybertrain/stream.rb`, `Stream.decode64` returning
+  `Base64.urlsafe_decode64(padded).force_encoding("UTF-8")` (portable, no
+  CRuby branch; tried in a scratch copy, `test/stream.rb` then matched).
+  `cybertrain/dev/reexec.rb` needed no stub: it loads through the shim
+  and its C compiles; nothing calls it while serving.
+- **Gen**: `ruby -I<repo> -I. bin/gen.rb` in a copy of the blog with
+  `gen/` deleted wrote all 13 entries again in 0.10 s, and
+  `git diff --no-index` against the committed `gen/` showed no
+  difference.
+- **The framework's tests** (`ruby -I. -r ./spikes/preview/shim
+  test/<name>.rb`, from a copy of the tracked tree, compared with
+  `test/<name>.rb.expected`): with the final shim 184 of 187 match. The
+  first run, before the shim set UTF-8 and put itself in `RUBYOPT`, had
+  10 mismatches; by cause:
+
+  | Cause | Before | After | Tests |
+  | --- | --- | --- | --- |
+  | Locale encoding (`File.read` text US-ASCII) | 4 | 0 | cli_attachment, cli_authentication, gen_views, gen_views_compiles |
+  | A child `ruby` the test spawns has no shim (`ffi_lib` undefined) | 3 | 0 | boot_encryption, feeds_exit, rate_limit_store |
+  | `Base64.urlsafe_decode64` answers ASCII-8BIT (rule 27) | 1 | 1 | stream |
+  | The test's input comes from the runtime's own `Zlib.gzip`, whose bytes differ: flipping its middle byte still inflates to the same 2000 bytes (CRuby's zlib agrees), so no BodyUndecodable | 1 | 1 | http_gunzip |
+  | The test runs `$0` as an executable (only a binary can), and `Process.spawn` reports a non-executable `sqlite3` on PATH as ENOENT under CRuby, EACCES compiled | 1 | 1 | main_console |
+
+  None is a shim defect; the last two are the documented gap between the
+  runtimes the plan's first step expects to list. The suite took 184 s
+  under CRuby, one test at a time (websocket_subscription 33 s,
+  background 21 s, job_threads 20 s).
+- **Not covered**: under CRuby the server boots in development with the
+  watcher on ("Watching app/, config/ and db/schema.rb for changes"); no
+  file was edited, so what today's rebuilder does under CRuby was not
+  seen. An application's own `ffi_*` modules were not tried.
+
 ## Maintaining this inventory
 
 Use the compiler pin in `cybertrain/version.rb` and record the tested fork,

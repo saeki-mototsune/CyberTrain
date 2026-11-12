@@ -317,13 +317,24 @@ It defines, for any module, what the three FFI files call:
   The shim declares it in the compiled library with an accessor and reads
   the length on the same thread right after the call.
 
-Known points the spike must settle (section 13): how pointer values are
-represented so that the callers' comparisons hold; that every `ffi_func`
-names an exported symbol (two helpers in `sqlite_ffi.rb` are `static`, and
-are only called from C); the encoding of `:str` and `:binstr` results
-(spikes/NOTES.md rule 27: byte strings under CRuby, character strings
-under Spinel); Fiddle releasing the GVL around calls and the thread-local
-length.
+Known points, as the spike settled them (2026-11-12; spikes/NOTES.md,
+"CRuby preview spike, 2026-11"): pointers are Integer addresses, 0 for
+NULL, and a `nil` argument is NULL; no caller compares a `:ptr` with
+`nil`, and a NULL `:str` result is `nil`, so the callers' comparisons
+hold. Every `ffi_func` names an exported symbol (the two `static` helpers
+of `sqlite_ffi.rb` are only called from C). A module is compiled at the
+first call of one of its functions, not at its first `ffi_func`:
+`sqlite_ffi.rb` declares sources after its first `ffi_func`. `:str`
+results are tagged UTF-8 and `:binstr` results ASCII-8BIT (their text
+callers already `force_encoding`), and a `:str` argument is a
+NUL-terminated copy. The CRuby child needs `-E UTF-8` on its command line
+(the spike set it from the shim): CRuby's locale encoding (US-ASCII with
+`LANG` unset) made `File.read` text unequal to the framework's Strings. Fiddle releases the GVL around calls;
+`sp_ffi_bin_len` is a static thread-local in the compiled unit, read
+through an accessor right after the call on the same thread. The blog
+served `GET /articles` 200 and a form `POST` 303 with no framework file
+changed, the first 200 0.2 to 0.3 s after process start; CRuby gen matched
+the committed `gen/`.
 
 An application's own `ffi_*` modules go through the same shim. What the
 shim does not implement raises at load with the DSL method's name, and the
