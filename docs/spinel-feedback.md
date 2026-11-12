@@ -277,7 +277,7 @@ re-measured for this inventory. The first rows are the larger ones.
 | What Spinel does | What it costs CyberTrain, as measured | What CyberTrain does today | The change in Spinel | Where it stands |
 | --- | --- | --- | --- | --- |
 | 5 (a). The full-collection cadence falls to every cycle for a server's request garbage | 83% of collections full; fixing the interval at 8 gives 16 to 17% more requests a second (2026.10.27.7020; the same rule and the same 83% on the pin) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files; bench/run leaves it unset | Weigh what a full mark costs against the promoted garbage it frees, or make aging work with the slab | Open; not written |
-| AA. Closure cells are allocated on entry to the method that holds the block | 576 of an article page's 1,650 objects (35%), 756 on the list page (41%); writing around three methods took the pages to 1,073 and 1,058 objects (the pin, 2026-11-05) | `while` loops on the request path. 85 methods of examples/blog's program still allocate 176 cells on entry (generated C, 2026-11-13), ten cells a page on the request path | Allocate a cell where the block is made, so a call that never reaches the block pays nothing | Open; not reduced, not reported |
+| AA. Closure cells are allocated on entry to the method that holds the block | 576 of an article page's 1,650 objects (35%), and `eval_expr`'s alone 756 of the list page's (41%); writing around three methods took the pages to 1,073 and 1,058 objects (the pin, 2026-11-05) | `while` loops on the request path. 85 methods of examples/blog's program still allocate 176 cells on entry (generated C, 2026-11-13), ten cells a page on the request path | Allocate a cell where the block is made, so a call that never reaches the block pays nothing | Open; not reduced, not reported |
 | AB. A foreign call holds its OS worker | At one worker a long SQLite call stalls every request for as long; a writer waiting in the busy handler stalled the server for 5 s (saeki-mototsune/CyberTrain#134) | The wait is done in Ruby (`step_waiting`); long work is sent to another process; `getaddrinfo` still holds the worker | Around a `blocking: true` call, hand the worker's other green threads to another OS thread | Open; not reported |
 | 5 (b). At one worker the sweep is handed to a thread that shares the CPU | 5.4% fewer requests a second, 12% higher p99 (2026.10.27.7020) | Nothing (`SPINEL_GC_CONC=0` helps only on a one-CPU host) | Start no sweeper when the process may use one CPU | Fixed, #11646; in no fork tag |
 | L. `SPINEL_WORKERS=N` counts a main that only waits; a helper's spawns stay on that helper | A second worker gave 0 to 2% on the pages until the workaround, 24 to 44% with it; connections still split 15 to 3 between two helpers, which is queueing latency | `workers + 1` | Place a thread a helper spawns as main's spawns are placed | First half documented upstream; the second not looked for on master |
@@ -332,10 +332,12 @@ K (#11129), rule 79 (#11137, #11143 to #11145), M (#11193), N (#11184,
 table under "A fork release that carries matz/spinel master" has what
 each one's program did on master 1c0cc5e35.
 
-**Seen once, and not seen in a small program on the pin.** The rows of
-1.2 and 1.3: each was a real failure on the build named there, mostly
-2026.09.12, and is either gone or needs more of a program than the probe
-has. None is asked of Spinel until a program shows it on the pin.
+**Seen once, and not shown on the pin.** The rows of 1.2 and 1.3: each
+was a real failure on the build named there, mostly 2026.09.12. For the
+rows of 1.2 a small program of the shape passes on the pin, so the bug is
+either gone or needs more of a program than the probe has. The rows of
+1.3 were not tried on the pin at all, and nothing is known about them
+there. None is asked of Spinel until a program shows it on the pin.
 
 **Fixed in the pin.** 2, 3, 4, A, C and its refusal, F, G, H, I, the
 untyped `OpenSSL::Digest#to_s`, the linear `String#to_sym`, the two
@@ -2913,10 +2915,12 @@ block captures, the generated C of the enclosing method allocates a heap
 cell at the top of the function, before any branch, so a call that never
 reaches the block pays for it. `Interpreter#eval_expr` held one block, in
 its Hash-literal case, that captured `n`, `env` and `hash`: three cells
-for each of the 175 expressions an article page evaluates, though the
-page has no Hash literal. Those cells were 576 of the page's 1,650
-objects (35%; 756 on the list page, 41%), and the 2026.09.12 build
-allocates none for the same source line.
+for each of the 175 expressions an article page evaluates, 525 in all,
+though the page has no Hash literal. With `Helpers#nested_url` (33),
+`Response#set_header` (8) and five other methods (10), closure cells were
+576 of the page's 1,650 objects (35%). On the list page `eval_expr`'s
+cells alone were 756, 41% of its objects. The 2026.09.12 build allocates
+none for the same source line.
 
 - Seen again on 2026-11-13 in examples/blog's program of main 34c9b7e
   (`spinel bin/blog.rb $(spin flags) -c`): `sp_Interpreter_exec_each`
