@@ -143,6 +143,28 @@ test "status lists each migration as up" do
   assert_equal 0, run_db("status")
 end
 
+# spin rebuilds every executable of a package when one of its Ruby files is
+# newer than the binary, so a rewrite of an unchanged dump costs the next
+# command a compile of gen and of db.
+test "migrate with nothing pending and schema:dump leave an unchanged db/schema.rb untouched" do
+  path = "#{ROOT}/db/schema.rb"
+  dump = File.read(path)
+  old = Time.at(1_000_000_000)
+  File.utime(old, old, path)
+  assert_equal 0, run_db("migrate")
+  assert_equal 0, run_db("schema:dump")
+  assert_equal dump, File.read(path)
+  assert_equal 1_000_000_000, File.mtime(path).to_i
+end
+
+test "a db/schema.rb that differs from the dump is written again" do
+  path = "#{ROOT}/db/schema.rb"
+  dump = File.read(path)
+  File.write(path, "# edited by hand\n")
+  assert_equal 0, run_db("migrate")
+  assert_equal dump, File.read(path)
+end
+
 test "rollback reverts the newest migration and rewrites db/schema.rb" do
   assert_equal 0, run_db("rollback")
   schema = File.read("#{ROOT}/db/schema.rb")

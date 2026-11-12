@@ -58,10 +58,10 @@ Where the source comes from depends on the mode:
 - In development (and test) the engine reads `app/views/` from disk, and in
   development re-parses a template when it changes, so view edits need no
   rebuild.
-- `cybertrain build` runs `spin run gen -- --embed-views`, which writes every
-  template's source into `gen/views.rb` as a string table for that one
-  `spin build`, then runs `spin run gen` again to restore the empty table that
-  is committed.
+- `cybertrain build` runs `SPIN_DEBUG=1 spin run gen -- --embed-views`, which
+  writes every template's source into `gen/views.rb` as a string table for
+  that one `spin build`, then runs `SPIN_DEBUG=1 spin run gen` again to
+  restore the empty table that is committed.
 - The production binary renders only that table (parsing each template once)
   and refuses to boot when it is empty
   (`error: views are not embedded in this binary`).
@@ -100,17 +100,22 @@ How a transaction checks out one of these connections, and what runs on it:
 
 ## The development loop
 
-`cybertrain server` (`spin run gen`, then `spin run NAME`) in `development`
+`cybertrain server` (`SPIN_DEBUG=1 spin run gen`; `spin build NAME --
+--incremental` when a Ruby file is newer than `build/bin/NAME`; then `spin
+run NAME`) in `development`
 (the default `CYBERTRAIN_ENV`, except in a binary from `cybertrain build`)
 also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb`
 and the asset roots (`app/assets/**`, `app/javascript/**`,
 `vendor/javascript/**`) every half second. Views are excluded (the engine reloads those itself), and
 so is `gen/views.rb`, empty in development.
 
-A change runs `spin run gen && spin build NAME -- --incremental` in the
-background: Spinel's incremental build, which recompiles only the C units the
-edit changed. A Spinel release without `--incremental` rejects the flag, and
-the loop then builds without it.
+A change runs `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`
+in the background: Spinel's incremental build, which recompiles only the C
+units the edit changed. A Spinel release without `--incremental` rejects the
+flag, and the loop then builds without it. The CLI and the loop build gen, and
+the CLI `bin/db.rb`, in spin's debug mode (`SPIN_DEBUG=1`, `-O0`): they run for
+milliseconds, and gen compiles in a fraction of the time `-O2` takes; the
+application is always a release build.
 
 Success requests a restart (the same flag an external `kill -HUP` sets): a
 monitor thread stops the listener and drains open requests, then the main

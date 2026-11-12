@@ -5,6 +5,7 @@ ok   app_name rejects only a name that breaks the build/bin/<name> path
 ok   command strings quote every interpolated value
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   an empty application name never reaches the commands from the CLI
+ok   gen and db are built in spin's debug mode
 ok   build embeds the views, builds, then restores the empty table
 ok   db commands generate first, and again after migrate and rollback
 usage: cybertrain db (migrate|rollback [N]|status|schema|schema:dump|create|normalize)
@@ -30,9 +31,14 @@ ok   a failed restore exits 1, warns about gen/views.rb and releases the lock
 ok   assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/
 ok   assemble removes a symlink in dist/public without following it
 ok   assemble fails clearly when the binary is missing
+ok   the incremental build command quotes the name
+ok   binary_stale? is true without a binary or with a Ruby file as new as it outside build/, dist/, tmp/, storage/, public/, node_modules/ and dot directories
+ok   server builds incrementally only when the binary is stale, then runs it
+ok   server builds incrementally when the gen step wrote a Ruby file
+ok   server stops at a failing gen or incremental build
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-18 tests, 156 assertions, 0 failures
+24 tests, 188 assertions, 0 failures

@@ -210,7 +210,9 @@ test ".github/workflows/ci.yml sets up the toolchain and runs the app's checks" 
   assert_includes ci, "- uses: actions/checkout@v4\n"
   assert_includes ci, "- uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v#{Cybertrain::VERSION}\n"
   assert_includes ci, "run: spin lock && git diff --exit-code spin.lock\n"
-  assert_includes ci, "run: spin run gen -- --check\n"
+  # gen in the mode the CLI builds it in, so the check does not compile a
+  # release gen as well.
+  assert_includes ci, "run: SPIN_DEBUG=1 spin run gen -- --check\n"
   assert_includes ci, "      spin test\n"
   assert ci.index("setup-cybertrain") < ci.index("spin lock"), "the toolchain comes first"
 end
@@ -302,10 +304,10 @@ test "CLI new defaults to this version's release tag" do
                   "cybertrain = { git = \"https://github.com/saeki-mototsune/cybertrain\", ref = \"v#{Cybertrain::VERSION}\" }"
 end
 
-test "new bootstraps the app with spin lock and spin run gen" do
-  assert_equal "cd 'notes' && spin lock && spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("notes")
-  assert_equal "cd 'it'\\''s' && spin lock && spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("it's")
-  assert_equal "cd 'notes' && cybertrain spin lock && cybertrain spin run gen", Cybertrain::CLI::NewApp.recovery_command("notes")
+test "new bootstraps the app with spin lock and a debug-mode spin run gen" do
+  assert_equal "cd 'notes' && spin lock && SPIN_DEBUG=1 spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("notes")
+  assert_equal "cd 'it'\\''s' && spin lock && SPIN_DEBUG=1 spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("it's")
+  assert_equal "cd 'notes' && cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen", Cybertrain::CLI::NewApp.recovery_command("notes")
 end
 
 test "CLI spin needs arguments" do

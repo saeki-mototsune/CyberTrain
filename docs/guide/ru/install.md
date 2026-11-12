@@ -1,5 +1,5 @@
 ---
-source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
+source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
 ---
 # Установка
 
@@ -82,7 +82,8 @@ cybertrain doctor
 
 - `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]]
   [--skip-spin]` создаёт приложение в NAME, затем запускает в нём `spin lock` и
-  `spin run gen`, при необходимости сначала устанавливая Spinel.
+  `SPIN_DEBUG=1 spin run gen`, при необходимости сначала устанавливая Spinel
+  (CLI собирает gen и `bin/db.rb` в отладочном режиме spin).
 - `cybertrain generate scaffold NAME field:type ...` (псевдоним `g scaffold`)
   добавляет ресурс в приложение в текущем каталоге.
 - `cybertrain generate authentication` добавляет в него вход по адресу почты и
@@ -98,14 +99,16 @@ cybertrain doctor
   действие для скачивания, маршрут, поле формы и тест (см.
   [Добавление обложки](tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
 - `cybertrain db migrate` выполняет генерацию, применяет ожидающие миграции и
-  генерирует снова (`spin run gen; spin run db -- migrate; spin run gen`);
+  генерирует снова (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
+  migrate; SPIN_DEBUG=1 spin run gen`);
   `cybertrain migration` оставлена как псевдоним.
-- `cybertrain db COMMAND...` после `spin
+- `cybertrain db COMMAND...` после `SPIN_DEBUG=1 spin
   run gen` запускает любую другую команду базы данных: `status`, `rollback [N]`
   (после которой генерация выполняется снова), `schema:dump`, `create`.
 - `cybertrain server [PORT]` выполняет генерацию, затем запускает сервер
-  разработки (`spin run gen; spin run NAME` или `spin run NAME -- PORT`; порт
-  по умолчанию — 3000).
+  разработки (`SPIN_DEBUG=1 spin run gen`; `spin build NAME -- --incremental`,
+  если какой-то Ruby-файл новее `build/bin/NAME`; `spin run NAME` или `spin
+  run NAME -- PORT`; порт по умолчанию — 3000).
 - `cybertrain build` собирает NAME со встроенными `app/views/` и формирует
   `dist/` (бинарный файл, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` запускает `spin` с зафиксированным Spinel из
@@ -176,14 +179,14 @@ Spinel в геме нет. Фреймворк — это пакет Spinel, от
 X.Y.Z — то, что выводит `cybertrain version`), проверяет,
 что Spinel установлен, затем запускает `spin lock` (spin загружает фреймворк
 в свой кэш `~/.cache/spin/packages/` и фиксирует коммит в
-`spin.lock`) и `spin run gen` — примерно так же, как `rails new` запускает
+`spin.lock`) и `SPIN_DEBUG=1 spin run gen` — примерно так же, как `rails new` запускает
 `bundle install`, — и выводит следующие шаги. Ничего из фреймворка в приложение
 не копируется; закоммитьте `spin.toml` и `spin.lock`.
 
 Если не удаётся установить Spinel или выполнить один из двух шагов `spin`, файлы
 остаются, `new` завершается с кодом 1 и выводит, что запустить после устранения
 причины (для Spinel: `cybertrain setup`, затем
-`cybertrain spin lock && cybertrain spin run gen` в новом каталоге).
+`cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen` в новом каталоге).
 
 Четыре параметра меняют то, что она записывает и запускает:
 
