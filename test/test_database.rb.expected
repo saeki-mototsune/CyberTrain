@@ -6,6 +6,11 @@ ok   a test's rows are gone after the next clear
 ok   before each test the bundled hook cleared and loaded
 ok   a failing insert rolls the load back and turns foreign keys on again
 ok   clear_and_load! is one transaction: a failing insert keeps the previous rows
+ok   a belongs_to that names no row fails the load, which is rolled back
+ok   inside an open transaction the clear is refused
+ok   a failing rollback does not keep foreign keys off
+ok   a file: URI counts by its path, and odd forms are refused
+ok   a storage/test.sqlite3 symlinked to another file is refused
 ok   only a test database is emptied
 ok   the clear and the load refuse a connected database that is not a test one
-10 tests, 59 assertions, 0 failures
+15 tests, 84 assertions, 0 failures

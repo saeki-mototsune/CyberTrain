@@ -11,7 +11,7 @@
 # indentation, as rails-i18n writes them), flow `[a, b]` of scalars, and
 # `~` / `null` / an empty value as "". Every scalar is kept as its text
 # (D4: `3` -> "3", `no` -> "no", `:year` -> ":year"); entry_null tells a
-# `~` / `null` / empty value from a quoted "". The top-level key must be a
+# `~` / `null` / `Null` / `NULL` / empty value from a quoted "". The top-level key must be a
 # locale unless parse's locale_root is false (test/fixtures/*.yml, whose
 # top-level keys are fixture labels).
 #
@@ -165,13 +165,18 @@ module Cybertrain
           elsif rest.start_with?("[")
             out << LocaleEntry.new(full, "", LocaleYaml.flow_items(rest, path, number), true, path, number)
           else
-            out << LocaleEntry.new(full, LocaleYaml.scalar_text(rest, path, number), [], false, path, number, rest == "~" || rest == "null")
+            out << LocaleEntry.new(full, LocaleYaml.scalar_text(rest, path, number), [], false, path, number, LocaleYaml.null_word?(rest))
           end
         end
         out
       end
 
       def self.blank_text?(line) = line.strip.empty?
+
+      # YAML's plain null words (`~`, `null`, `Null`, `NULL`): entry_null
+      # is true for them. Their entry_text is unchanged (`NULL` stays
+      # "NULL" in a dictionary; `~` and `null` are "").
+      def self.null_word?(text) = %w[~ null Null NULL].include?(text)
 
       def self.blank_line?(line)
         t = line.strip

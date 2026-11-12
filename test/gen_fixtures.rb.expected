@@ -4,6 +4,8 @@ ok   values with quotes, YAML 1.1 words, newlines and nulls insert as written
 ok   a label with nothing under it and a datetime's spellings
 ok   files outside test/fixtures' top level are not fixtures
 ok   the refusals name file and line
+ok   a belongs_to label must name a label of the parent's file, by Rails' id
+ok   an accessor that would replace a harness, Kernel or test-helper method is refused
 identical gen/routes.rb
 identical gen/assets.rb
 identical gen/locales.rb
@@ -71,4 +73,4 @@ identical gen/app.rb
 ok   gen writes gen/test/data.rb and --check reports it stale
 ok   with test/ and no fixtures, data.rb holds the tables and empty lists
 ok   the fixture app's gen/test/data.rb and gen/tests.rb match the emitters (fixture stale otherwise)
-9 tests, 78 assertions, 0 failures
+11 tests, 98 assertions, 0 failures

@@ -83,7 +83,7 @@ end
 
 test "labels, id:, belongs_to by label, every column type, filled timestamps" do
   rows = scan("comments.yml" => "one:\n  post: one\n  commenter: Ann\n  body: Hi\n  approved: true\n  extras: '{\"a\":1}'\n  seen_on: 2026-11-01\n" \
-                                "two:\n  post: two\n  commenter: Bo\n  body: Yo\n  approved: false\n  extras: '{}'\n  seen_on: 2026-11-02\n",
+                                "two:\n  post_id: 42\n  commenter: Bo\n  body: Yo\n  approved: false\n  extras: '{}'\n  seen_on: 2026-11-02\n",
               "posts.yml" => "one:\n  title: First\n  created_at: 2026-11-01 09:00:00\n  price: 4.50\n  views: 3\n  meta: '{\"a\":1}'\n" \
                              "  published_on: 2026-11-01\ntwo:\n  id: 42\n  title: Second\n")
   assert_equal %w[comments comments posts posts], rows.map(&:row_table)
@@ -93,7 +93,7 @@ test "labels, id:, belongs_to by label, every column type, filled timestamps" do
   assert_equal ["980190962", "980190962", "'Ann'", "'Hi'", "1", "'{\"a\":1}'", "'2026-11-01'", "?", "?"], one.row_values
   assert_equal %w[created_at updated_at], one.row_timestamps
   assert_equal "0", row(rows, "two").row_values[4]
-  assert_equal "298486374", row(rows, "two").row_values[1]
+  assert_equal "42", row(rows, "two").row_values[1]
   post_one = rows[2]
   assert_equal 980_190_962, post_one.row_id
   assert_equal %w[id title created_at price views meta published_on updated_at], post_one.row_columns
@@ -108,7 +108,9 @@ end
 test "values with quotes, YAML 1.1 words, newlines and nulls insert as written" do
   files = { "posts.yml" => "a:\n  title: It's here\nb:\n  title: no\nc:\n  title: 123\nd:\n  body: \"x\\ny\"\ne:\n  published_on: ~\nf:\n  title:\nDEFAULTS:\n  title: d\n" }
   rows = scan(files)
-  assert_equal %w[a b c d e f DEFAULTS], rows.map(&:row_label)
+  # DEFAULTS is Rails' label for shared values: never inserted (Rails
+  # deletes it), and its anchors are refused below.
+  assert_equal %w[a b c d e f], rows.map(&:row_label)
   assert_equal "'It''s here'", row(rows, "a").row_values[1]
   assert_equal "'no'", row(rows, "b").row_values[1]
   assert_equal "'123'", row(rows, "c").row_values[1]
@@ -116,8 +118,6 @@ test "values with quotes, YAML 1.1 words, newlines and nulls insert as written" 
   assert_equal "NULL", row(rows, "e").row_values[1]
   assert_equal "INSERT INTO \"posts\" (\"id\", \"title\", \"created_at\", \"updated_at\") VALUES (#{Crc32.fixture_id("f")}, NULL, ?, ?)",
                insert(row(rows, "f"))
-  assert_equal "INSERT INTO \"posts\" (\"id\", \"title\", \"created_at\", \"updated_at\") VALUES (#{Crc32.fixture_id("DEFAULTS")}, 'd', ?, ?)",
-               insert(row(rows, "DEFAULTS"))
   sql = emitted(files)
   assert_includes sql, "'It''s here'"
   assert_includes sql, "'no'"
@@ -126,7 +126,17 @@ test "values with quotes, YAML 1.1 words, newlines and nulls insert as written" 
   assert_includes sql, "'x\\ny'"
   assert_includes sql, "VALUES (#{Crc32.fixture_id("f")}, NULL, ?, ?)"
   assert_includes sql, "VALUES (#{Crc32.fixture_id("e")}, NULL, ?, ?)"
-  assert_includes sql, "LABELS_posts = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"DEFAULTS\"]"
+  assert_includes sql, "LABELS_posts = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\"].freeze"
+  assert_not_includes sql, Crc32.fixture_id("DEFAULTS").to_s
+  assert_not_includes sql, "'d'"
+  # NULL and Null are YAML's nulls too; a quoted 'NULL' is the text.
+  nulls = scan("posts.yml" => "g:\n  body: NULL\nh:\n  body: Null\ni:\n  body: 'NULL'\n")
+  assert_equal ["NULL", "NULL", "'NULL'"], nulls.map { |r| r.row_values[1] }
+  # Anchors and merge keys (how Rails' DEFAULTS is used) are refused.
+  assert_equal "test/fixtures/posts.yml:1: anchors and aliases are not supported",
+               refusal("posts.yml" => "DEFAULTS: &d\n  title: d\none:\n  <<: *d\n")
+  assert_equal "test/fixtures/posts.yml:4: anchors and aliases are not supported",
+               refusal("posts.yml" => "DEFAULTS:\n  title: d\none:\n  <<: *d\n")
   # A quoted empty string is not NULL.
   assert_equal "''", row(scan("posts.yml" => "g:\n  title: \"\"\n"), "g").row_values[1]
 end
@@ -160,17 +170,76 @@ test "the refusals name file and line" do
                refusal("posts.yml" => "one:\n  title:\n    - x\n")
   assert_equal "test/fixtures/posts.yml:1: fixtures hold one level of columns under each label", refusal("posts.yml" => "one: x\n")
   assert_equal "test/fixtures/posts.yml:2: anchors and aliases are not supported", refusal("posts.yml" => "one:\n  title: &t x\n")
-  assert_equal "test/fixtures/posts.yml:2: posts.views takes an integer (got \"many\")", refusal("posts.yml" => "one:\n  views: many\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.views takes a 64-bit integer (got \"many\")", refusal("posts.yml" => "one:\n  views: many\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.views takes a 64-bit integer (got \"9223372036854775808\")",
+               refusal("posts.yml" => "one:\n  views: 9223372036854775808\n")
+  assert_equal "", refusal("posts.yml" => "one:\n  views: 9223372036854775807\ntwo:\n  views: -9223372036854775808\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.views takes a 64-bit integer (got \"-9223372036854775809\")",
+               refusal("posts.yml" => "one:\n  views: -9223372036854775809\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.published_on takes a date such as 2026-11-01 (got \"2026-02-30\")",
+               refusal("posts.yml" => "one:\n  published_on: 2026-02-30\n")
+  assert_equal "", refusal("posts.yml" => "one:\n  published_on: 2028-02-29\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.created_at takes a UTC time such as 2026-11-01 09:00:00 (got \"2026-99-99 99:99:99\")",
+               refusal("posts.yml" => "one:\n  created_at: 2026-99-99 99:99:99\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.created_at takes a UTC time such as 2026-11-01 09:00:00 (got \"2026-11-01 24:00:00\")",
+               refusal("posts.yml" => "one:\n  created_at: 2026-11-01 24:00:00\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.id takes a positive integer (got \"-5\")", refusal("posts.yml" => "one:\n  id: -5\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.id takes a positive integer (got \"0\")", refusal("posts.yml" => "one:\n  id: 0\n")
   assert_equal "test/fixtures/posts.yml:2: posts.price takes a number (got \"1,5\")", refusal("posts.yml" => "one:\n  price: 1,5\n")
   assert_equal "test/fixtures/comments.yml:2: comments.approved takes true or false (got \"no\")", refusal("comments.yml" => "one:\n  approved: no\n")
   assert_equal "test/fixtures/posts.yml:2: posts.published_on takes a date such as 2026-11-01 (got \"Nov 1\")",
                refusal("posts.yml" => "one:\n  published_on: Nov 1\n")
   assert_equal "test/fixtures/posts.yml:2: posts.created_at takes a UTC time such as 2026-11-01 09:00:00 (got \"2026-11-01 09:00:00+09:00\")",
                refusal("posts.yml" => "one:\n  created_at: 2026-11-01 09:00:00+09:00\n")
-  assert_equal "test/fixtures/posts.yml:2: posts.id takes an integer (got \"x\")", refusal("posts.yml" => "one:\n  id: x\n")
+  assert_equal "test/fixtures/posts.yml:2: posts.id takes a positive integer (got \"x\")", refusal("posts.yml" => "one:\n  id: x\n")
   assert_equal "test/fixtures/comments.yml:3: comments: post_id is set twice in \"one\"", refusal("comments.yml" => "one:\n  post: one\n  post_id: 3\n")
   assert_equal "test/fixtures/posts.yml:2: a NUL byte is not allowed", refusal("posts.yml" => "one:\n  title: \"a\\u0000b\"\n")
   assert_equal "test/fixtures/posts.yml:3: duplicate key \"title\"", refusal("posts.yml" => "one:\n  title: a\n  title: b\n")
+end
+
+test "a belongs_to label must name a label of the parent's file, by Rails' id" do
+  posts = "one:\n  title: x\ntwo:\n  id: 42\n  title: y\n"
+  assert_equal "test/fixtures/comments.yml:2: comments: post \"tpyo\" names no label of test/fixtures/posts.yml",
+               refusal("comments.yml" => "a:\n  post: tpyo\n", "posts.yml" => posts)
+  assert_equal "test/fixtures/comments.yml:2: comments: post \"two\" stands for id 298486374 (Rails' id for the label), but that label " \
+               "has id: 42 in test/fixtures/posts.yml; write post_id: 42",
+               refusal("comments.yml" => "a:\n  post: two\n", "posts.yml" => posts)
+  assert_equal "", refusal("comments.yml" => "a:\n  post: one\nb:\n  post_id: 42\n", "posts.yml" => posts)
+  # Without posts.yml the label is not checked here: the load's
+  # foreign-key check reports it (test/test_database.rb).
+  assert_equal "", refusal("comments.yml" => "a:\n  post: tpyo\n")
+end
+
+test "an accessor that would replace a harness, Kernel or test-helper method is refused" do
+  rows = scan("posts.yml" => "one:\n  title: x\n")
+  helper = Cybertrain::Gen::TestHelperInfo.new("posts", "def", 4)
+  file = Cybertrain::Gen::TestFile.new("test/test_helper.rb", :top_level, [], [], [helper], "")
+  message = ""
+  begin
+    Cybertrain::Gen::FixtureScan.refuse_accessor_clashes(rows, [file])
+  rescue ArgumentError => e
+    message = e.message
+  end
+  assert_equal "test/fixtures/posts.yml:1: the fixture accessor posts(label) would replace the top-level def posts at test/test_helper.rb:4; " \
+               "rename that helper", message
+  taken = Cybertrain::Gen::FixtureRow.new("test", "one", 1, ["id"], ["1"], 1, Array.new(0) { "" }, Array.new(0) { "" })
+  message = ""
+  begin
+    Cybertrain::Gen::FixtureScan.refuse_accessor_clashes([taken], Array.new(0) { file })
+  rescue ArgumentError => e
+    message = e.message
+  end
+  assert_equal "test/fixtures/test.yml:1: the fixture accessor test(label) would replace the top-level test of the test harness or Kernel", message
+  Cybertrain::Gen::FixtureScan.refuse_accessor_clashes(rows, Array.new(0) { file })
+  root = app_copy("posts.yml" => "one:\n  title: x\n")
+  File.write("#{root}/test/test_helper.rb", "def posts = 1\n")
+  message = ""
+  begin
+    Cybertrain::Gen::Runner.run(root, [])
+  rescue ArgumentError => e
+    message = e.message
+  end
+  assert_includes message, "the fixture accessor posts(label) would replace the top-level def posts at test/test_helper.rb:1"
 end
 
 test "gen writes gen/test/data.rb and --check reports it stale" do

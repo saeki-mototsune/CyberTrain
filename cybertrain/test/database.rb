@@ -125,15 +125,60 @@ module Cybertrain
       end
 
       # storage/test.sqlite3 (relative or under an application), the file
-      # CYBERTRAIN_TEST_DATABASE names, or a private in-memory database.
+      # CYBERTRAIN_TEST_DATABASE names, or a private in-memory database. A
+      # `file:` URI counts by its path only, and one with a query, a
+      # fragment or %-escapes is refused (only the in-memory forms are
+      # read). A file that exists is judged by its real path as well: a
+      # storage/test.sqlite3 that is a symlink to another file, or into
+      # another directory, is refused.
       # @return [Boolean]
       def self.test_path?(path)
         return true if DB::Connection.private_database?(path)
 
-        named = ENV["CYBERTRAIN_TEST_DATABASE"].to_s
-        return true if !named.empty? && path == named
+        file = Database.uri_file(path)
+        return false if file.empty?
 
-        path == TEST_PATH || path.end_with?("/#{TEST_PATH}")
+        named = ENV["CYBERTRAIN_TEST_DATABASE"].to_s
+        unless named.empty?
+          same = Database.real_path(file)
+          return true if file == named || (!same.empty? && same == Database.real_path(named))
+        end
+        return false unless file == TEST_PATH || file.end_with?("/#{TEST_PATH}")
+        return true unless File.exist?(file) || File.symlink?(file)
+
+        real = Database.real_path(file)
+        return false if real.empty?
+
+        File.basename(real) == File.basename(TEST_PATH) && File.dirname(real) == Database.real_path(File.dirname(file))
+      end
+
+      # The file a database path names: the path itself, or the path part
+      # of a `file:` URI ("" for a URI form this does not read).
+      # @return [String]
+      def self.uri_file(path)
+        return path unless path.start_with?("file:")
+
+        rest = path[5, path.size - 5].to_s
+        return "" if rest.include?("?") || rest.include?("#") || rest.include?("%")
+
+        rest = rest[11, rest.size - 11].to_s if rest.start_with?("//localhost/")
+        if rest.start_with?("//")
+          return "" unless rest.start_with?("///")
+
+          rest = rest[2, rest.size - 2].to_s
+        end
+        rest
+      end
+
+      # The real path of an existing file or directory; "" when there is
+      # none (a missing file, a dangling symlink).
+      # @return [String]
+      def self.real_path(path)
+        return "" unless File.exist?(path)
+
+        File.realpath(path)
+      rescue JSON::NestingError, JSON::ParserError, StandardError
+        ""
       end
 
       def self.refuse_unless_test_database
@@ -153,9 +198,17 @@ module Cybertrain
 
       # One transaction, foreign keys off around it: with `clear`, the
       # deletes of `tables`, of the framework tables present and of
-      # sqlite_sequence; then the inserts. On a failure it rolls
-      # back, turns foreign keys on again and re-raises.
+      # sqlite_sequence; then the inserts, and `PRAGMA foreign_key_check`
+      # before the COMMIT (a belongs_to label or id that names no row:
+      # spec section 7's foreign-key failure, which turning foreign keys on
+      # again would not report). On a failure it rolls back, turns foreign
+      # keys on again and re-raises. Refused inside an open transaction,
+      # whose rows the deletes would join.
       def self.reset_on(c, clear, tables, sql, counts, now)
+        if c.in_transaction?
+          message = "Test::Database cannot clear or load fixtures inside an open transaction (DB.transaction or a BEGIN)"
+          raise message
+        end
         present = Array.new(0) { "" }
         c.execute("SELECT name FROM sqlite_master WHERE type = 'table'").each { |r| present << r["name"].to_s } if clear
         c.execute("PRAGMA foreign_keys = OFF")
@@ -172,14 +225,73 @@ module Cybertrain
             c.execute(sql[i], binds)
             i += 1
           end
+          problem = sql.empty? ? "" : Database.foreign_key_problem(c)
+          raise problem unless problem.empty?
+
           c.commit!
         rescue JSON::NestingError, JSON::ParserError, StandardError => e
-          c.rollback!
-          c.execute("PRAGMA foreign_keys = ON")
+          Database.restore_after_failure(Database.rollback_step(c), Database.foreign_keys_step(c))
           raise e
         end
         c.execute("PRAGMA foreign_keys = ON")
         nil
+      end
+
+      # The first row PRAGMA foreign_key_check reports, as a message
+      # ("" when there is none): its table, its id (the fixture's id), the
+      # column and the parent table it names no row of.
+      # @return [String]
+      def self.foreign_key_problem(c)
+        rows = c.execute("PRAGMA foreign_key_check")
+        return "" if rows.empty?
+
+        r = rows[0]
+        table = r["table"].to_s
+        parent = r["parent"].to_s
+        rowid = Cybertrain::Cast.int(r["rowid"])
+        fkid = Cybertrain::Cast.int(r["fkid"])
+        column = ""
+        c.execute("PRAGMA foreign_key_list(\"#{table}\")").each { |f| column = f["from"].to_s if Cybertrain::Cast.int(f["id"]) == fkid }
+        value = ""
+        unless column.empty?
+          found = c.execute("SELECT \"#{column}\" AS v FROM \"#{table}\" WHERE rowid = ?", [rowid])
+          value = Cybertrain::Cast.int(found[0]["v"]).to_s unless found.empty?
+        end
+        "fixtures: #{table} row with id #{rowid} has #{column} #{value}, which names no row of #{parent} " \
+          "(a belongs_to label or id with no fixture in test/fixtures/#{parent}.yml)"
+      end
+
+      # After a failure: the rollback, then foreign keys on again, each
+      # attempted whatever the other did; neither may replace the error
+      # being re-raised.
+      # @param rollback [Proc]
+      # @param foreign_keys_on [Proc]
+      # @return [nil]
+      def self.restore_after_failure(rollback, foreign_keys_on)
+        Database.attempt(rollback)
+        Database.attempt(foreign_keys_on)
+        nil
+      end
+
+      def self.attempt(step)
+        step.call
+        nil
+      rescue JSON::NestingError, JSON::ParserError, StandardError
+        nil
+      end
+
+      def self.rollback_step(c)
+        -> {
+          c.rollback!
+          nil
+        }
+      end
+
+      def self.foreign_keys_step(c)
+        -> {
+          c.execute("PRAGMA foreign_keys = ON")
+          nil
+        }
       end
     end
   end

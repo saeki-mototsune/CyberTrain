@@ -123,7 +123,11 @@ module Cybertrain
           # model that cannot be generated raises before anything is written.
           infos = ModelScan.scan_dir("#{root}/app/models")
           validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
-          outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, FixtureScan.scan(root, schema, infos))] if File.directory?("#{root}/test")
+          if File.directory?("#{root}/test")
+            rows = FixtureScan.scan(root, schema, infos)
+            FixtureScan.refuse_accessor_clashes(rows, TestScan.scan(root))
+            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, rows)]
+          end
           models = Array.new(0) { "" }
           ModelsEmitter.outputs_for(validated).each do |rel, source|
             outputs << [rel, source]

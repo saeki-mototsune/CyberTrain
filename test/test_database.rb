@@ -57,6 +57,15 @@ def foreign_keys_on
   on
 end
 
+RESTORED = Array.new(0) { "" }
+def failing_rollback = -> { raise "rollback failed" }
+def noted_restore = -> { RESTORED << "foreign keys on"; nil }
+
+DANGLING = "INSERT INTO \"comments\" (\"id\", \"post_id\", \"commenter\", \"body\", \"extras\", \"seen_on\", \"created_at\", \"updated_at\") " \
+           "VALUES (5, 999, 'a', 'b', '{}', '2026-11-01', ?, ?)"
+DANGLING_MESSAGE = "fixtures: comments row with id 5 has post_id 999, which names no row of posts " \
+                   "(a belongs_to label or id with no fixture in test/fixtures/posts.yml)"
+
 def clear_and_load
   Database.clear!(Gen::TestData::TABLES)
   Database.load_fixtures!(Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS)
@@ -144,6 +153,63 @@ test "clear_and_load! is one transaction: a failing insert keeps the previous ro
   assert_equal 2, Post.count
   assert_equal Time.utc(2026, 11, 3), posts(:one).updated_at
   assert_equal 0, Post.where(title: "kept").count
+end
+
+test "a belongs_to that names no row fails the load, which is rolled back" do
+  message = assert_raises { Database.load_fixtures!([DANGLING], [2]) }
+  assert_equal DANGLING_MESSAGE, message
+  assert_equal 1, Comment.count
+  assert_equal 1, foreign_keys_on
+  sql = Gen::TestData::FIXTURE_SQL + [DANGLING]
+  counts = Gen::TestData::FIXTURE_TIMESTAMPS + [2]
+  message = assert_raises { Database.clear_and_load!(Gen::TestData::TABLES, sql, counts) }
+  assert_equal DANGLING_MESSAGE, message
+  # The clear was rolled back with the inserts.
+  Post.create(title: "kept too", body: "long enough body")
+  assert_equal 3, Post.count
+  assert_equal 1, foreign_keys_on
+end
+
+test "inside an open transaction the clear is refused" do
+  message = assert_raises { DB.transaction { |c| Database.clear!(Gen::TestData::TABLES) } }
+  assert_equal "Test::Database cannot clear or load fixtures inside an open transaction (DB.transaction or a BEGIN)", message
+  assert_equal 2, Post.count
+  assert_equal 1, foreign_keys_on
+end
+
+test "a failing rollback does not keep foreign keys off" do
+  RESTORED.clear
+  assert_nil Database.restore_after_failure(failing_rollback, noted_restore)
+  assert_equal ["foreign keys on"], RESTORED
+end
+
+test "a file: URI counts by its path, and odd forms are refused" do
+  assert_equal "", Database.refusal("test", "file:/srv/app/storage/test.sqlite3")
+  assert_equal "", Database.refusal("test", "file:///srv/app/storage/test.sqlite3")
+  assert_equal "", Database.refusal("test", "file:storage/test.sqlite3")
+  ["file:/app/storage/development.sqlite3#/storage/test.sqlite3", "file:/app/storage/development.sqlite3?x=/storage/test.sqlite3",
+   "file://otherhost/app/storage/test.sqlite3", "file:/app/storage/test%2Esqlite3", "file:/app/storage/development.sqlite3"].each do |uri|
+    assert_equal "Test::Database refuses to empty #{uri}: not a test database (env test)", Database.refusal("test", uri)
+  end
+end
+
+test "a storage/test.sqlite3 symlinked to another file is refused" do
+  Dir.mkdir("#{DIR}/app")
+  Dir.mkdir("#{DIR}/app/storage")
+  Dir.mkdir("#{DIR}/elsewhere")
+  File.write("#{DIR}/app/storage/development.sqlite3", "dev")
+  File.write("#{DIR}/elsewhere/test.sqlite3", "other")
+  link = "#{DIR}/app/storage/test.sqlite3"
+  File.symlink("#{DIR}/app/storage/development.sqlite3", link)
+  assert_equal "Test::Database refuses to empty #{link}: not a test database (env test)", Database.refusal("test", link)
+  File.delete(link)
+  File.symlink("#{DIR}/elsewhere/test.sqlite3", link)
+  assert_equal "Test::Database refuses to empty #{link}: not a test database (env test)", Database.refusal("test", link)
+  File.delete(link)
+  File.write(link, "test")
+  assert_equal "", Database.refusal("test", link)
+  [link, "#{DIR}/app/storage/development.sqlite3", "#{DIR}/elsewhere/test.sqlite3"].each { |f| File.delete(f) }
+  ["#{DIR}/app/storage", "#{DIR}/app", "#{DIR}/elsewhere"].each { |d| Dir.rmdir(d) }
 end
 
 test "only a test database is emptied" do
