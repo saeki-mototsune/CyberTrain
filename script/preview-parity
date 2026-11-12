@@ -1,15 +1,17 @@
 #!/bin/sh
 # How close the CRuby preview is to the compiled program, as a checked fact:
 # runs each test/*.rb as `ruby -E UTF-8 -I. -r cybertrain/preview <file>`
-# (PREVIEW_PARITY_TIMEOUT seconds at most, default 60) and compares its stdout and stderr, together, with the
-# snapshot the compiled binary produced (test/<name>.rb.expected).
+# (PREVIEW_PARITY_TIMEOUT seconds at most, default 60) and compares its stdout
+# and stderr, together, with the snapshot the compiled binary produced
+# (test/<name>.rb.expected). A test that matches must also exit with status 0
+# (none of the framework's tests exits otherwise when it passes).
 #
 # A test that is known to differ is listed in test/cruby/parity-gaps.txt,
 # one `<path><TAB><reason>` a line, `#` starting a comment line. A listed test
 # must still differ: one that now matches fails the script ("no longer a gap:
-# remove it from parity-gaps.txt"), so the list cannot go stale. A match is
-# not proof that the code compiles (spikes/NOTES.md, "What CRuby cannot tell
-# you"); it says the preview behaves as the compiled tests expect.
+# remove it from parity-gaps.txt"). A match is not proof that the code
+# compiles (spikes/NOTES.md, "What CRuby cannot tell you"); it says the
+# preview behaves as the compiled tests expect.
 #
 # A gap must not hide a new failure in the same file, so a listed test's CRuby
 # output is also compared with a snapshot of the gap as it is today,
@@ -29,10 +31,18 @@
 # snapshot is the program's output and the status is not part of it), and a
 # run that ends with another one is "unexpected", both statuses named.
 #
+# A default run (no file arguments) also keeps the list itself honest: a listed
+# path that is not a test with a snapshot any more ("stale gap: ...") and a
+# file under test/cruby/parity/ that belongs to no listed gap ("orphan gap
+# record: ...") are "unexpected". With file arguments only those files are
+# examined.
+#
 # A test may spawn `ruby` itself (the tests' CRuby branch re-runs $0 in a
 # child). The script sets RUBYOPT for every run, so such a child loads the
 # shim and reads text as UTF-8 too, as the test's own process does through
-# its command line; RUBYOPT is the one way a grandchild inherits them.
+# its command line; RUBYOPT is the one way a grandchild inherits them. RUBYOPT
+# is split at spaces and takes no quoting, so a checkout path with a space
+# cannot go into it: the script stops with a message instead.
 #
 # usage: script/preview-parity [test/<name>.rb ...]     (default: every test)
 #        script/preview-parity --regen-gaps [file ...]  rewrite the gap snapshots
@@ -53,13 +63,19 @@ if [ "${1:-}" = "--regen-gaps" ]; then
   shift
 fi
 
+default_run=false
 if [ "$#" -eq 0 ]; then
+  default_run=true
   if [ "$regen" = true ]; then
     set -- $(awk -F '\t' '$0 !~ /^#/ && NF >= 2 { print $1 }' "$gaps" | LC_ALL=C sort)
   else
     set -- $(printf '%s\n' test/*.rb | LC_ALL=C sort)
   fi
 fi
+
+case "$PWD" in
+  *" "*) echo "preview-parity: the checkout path has a space, which RUBYOPT cannot carry: $PWD" >&2; exit 2 ;;
+esac
 
 work=$(mktemp -d) || exit 2
 trap 'rm -rf "$work"' EXIT
@@ -70,6 +86,25 @@ limit=${PREVIEW_PARITY_TIMEOUT:-60}
 match=0
 known=0
 unexpected=0
+if [ "$default_run" = true ] && [ "$regen" = false ]; then
+  listed_paths=$(awk -F '\t' '$0 !~ /^#/ && NF >= 2 { print $1 }' "$gaps")
+  for path in $listed_paths; do
+    if [ ! -f "$path" ] || [ ! -f "$path.expected" ] || [ "$(dirname "$path")" != test ]; then
+      echo "FAIL stale gap: $path is not a test; remove it from parity-gaps.txt"
+      unexpected=$((unexpected + 1))
+    fi
+  done
+  for record in "$snapdir"/*; do
+    [ -e "$record" ] || continue
+    stem=$(basename "$record")
+    stem=${stem%.expected}
+    stem=${stem%.status}
+    if ! printf '%s\n' "$listed_paths" | grep -qxF "test/$stem"; then
+      echo "FAIL orphan gap record: $record belongs to no listed gap"
+      unexpected=$((unexpected + 1))
+    fi
+  done
+fi
 for file in "$@"; do
   if [ ! -f "$file" ] || [ ! -f "$file.expected" ]; then
     echo "preview-parity: $file or its .expected does not exist" >&2
@@ -96,6 +131,9 @@ for file in "$@"; do
   if cmp -s "$work/out" "$file.expected"; then
     if [ "$listed" -eq 0 ]; then
       echo "FAIL $file: no longer a gap: remove it from parity-gaps.txt"
+      unexpected=$((unexpected + 1))
+    elif [ "$rc" -ne 0 ]; then
+      echo "FAIL $file: the output matches but the exit status is $rc, not 0"
       unexpected=$((unexpected + 1))
     else
       match=$((match + 1))
