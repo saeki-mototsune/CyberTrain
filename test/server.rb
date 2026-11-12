@@ -921,4 +921,26 @@ test "reuse_port is off unless asked for" do
   refute server.reuse_port
 end
 
+# What a supervised development child does with the descriptor its
+# supervisor hands down: listen on it instead of binding. The Server's
+# listener owns the number from start on and closes it at stop, so the
+# TCPServer that bound it here is never closed (autoclose off), as a
+# supervisor's copy lives in another process.
+test "listen_fd serves on an inherited listener instead of binding the port" do
+  held = TCPServer.new("127.0.0.1", 0)
+  held.autoclose = false
+  port = held.addr[1]
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
+                                                                                     logger: Cybertrain::Logger.new($log, :info))
+  server.start
+  assert_equal port, server.port
+  c = RawClient.new(port)
+  res = c.get("/hello", "Connection: close\r\n")
+  c.close
+  assert_equal "HTTP/1.1 200 OK", res.status_line
+  assert_equal "hi", res.body
+  server.stop
+  assert port_refused?(port)
+end
+
 Cybertrain::Test.run!

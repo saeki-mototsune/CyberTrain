@@ -63,4 +63,6 @@ usage: db (migrate|rollback [N]|status|schema|schema:dump|create|backup PATH [--
 ok   db passes its arguments to DB::CLI
 schema dump skipped (no db/ directory here)
 ok   migrate is db migrate
-6 tests, 19 assertions, 0 failures
+127.0.0.1 3000
+ok   dev-address prints the configured host and port and is not in the usage
+7 tests, 21 assertions, 0 failures

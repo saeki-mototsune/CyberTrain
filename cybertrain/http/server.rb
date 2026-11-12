@@ -89,9 +89,14 @@ module Cybertrain
     # next request for up to read_timeout, and the drain ends that wait.
     ACCEPT_POLL = 0.1
 
-    # port is the bound port once #start has run (the ephemeral one with port: 0).
+    # port is the bound port once #start has run (the ephemeral one with port: 0;
+    # the configured one with listen_fd).
     attr_reader :host, :port, :reuse_port
 
+    # listen_fd: a listening descriptor this process inherited (a
+    # supervisor's, in development), listened on instead of binding host and
+    # port; -1, the default, binds. The HTTP layer takes the number only:
+    # deciding whether to use one is the caller's.
     # drain_timeout bounds how long #run and #stop wait for requests in
     # flight; keep it below the process manager's stop timeout (systemd's
     # TimeoutStopSec, 15 s in docs/deploy.md).
@@ -101,8 +106,9 @@ module Cybertrain
     def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
                    max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger,
                    reuse_port: false,
-                   stream_write_timeout: 15)
+                   stream_write_timeout: 15, listen_fd: -1)
       @handler = handler
+      @listen_fd = listen_fd
       @stream_write_timeout = stream_write_timeout
       @host = host
       @port = port
@@ -125,14 +131,18 @@ module Cybertrain
     end
 
     # Binds, listens and spawns the accept thread; returns once listening.
-    # Raises PortInUse when the port cannot be bound.
+    # Raises PortInUse when the port cannot be bound. With listen_fd the
+    # inherited listener is already bound and listening, and port stays the
+    # configured one.
     def start
       # spikes/NOTES.md rule 22: one worker is faster for an I/O-bound server.
       # It must be set before the first Thread.new starts the scheduler.
       ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]
       listener = bind_listener
-      listener.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, 1)
-      @port = listener.addr[1]
+      if @listen_fd < 0
+        listener.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, 1)
+        @port = listener.addr[1]
+      end
       @running = true
       @accept_thread = spawn_acceptor(listener)
       nil
@@ -196,7 +206,12 @@ module Cybertrain
     # decides from context instead: a port below 1024 refused to a non-root
     # process is a permission problem, not a competing listener, because the
     # kernel checks the capability before it checks whether the port is free.
+    #
+    # An inherited listener is not bound here at all: inherited_listener
+    # takes it over by number.
     def bind_listener
+      return inherited_listener if @listen_fd >= 0
+
       @reuse_port ? reuse_port_listener : TCPServer.new(@host, @port)
     rescue Errno::EACCES
       raise PortInUse.new(@host, @port, PortInUse::PERMISSION_DENIED)
@@ -221,6 +236,15 @@ module Cybertrain
       sock.autoclose = false
       @reuse_socket = sock
       TCPServer.for_fd(sock.fileno)
+    end
+
+    # The descriptor a supervisor handed down, already bound and listening.
+    # The same single-owner rule as reuse_port_listener: the TCPServer made
+    # here owns the number in this process and accept_loop closes it; the
+    # supervisor keeps its own copy open in its own process, so the port
+    # stays bound for the next child.
+    def inherited_listener
+      TCPServer.for_fd(@listen_fd)
     end
 
     # A separate method so its rescue stays away from the raw socket calls'

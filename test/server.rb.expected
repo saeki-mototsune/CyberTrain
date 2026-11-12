@@ -51,4 +51,5 @@ ok   reuse_port on an IPv6 literal binds it or says why not
 ok   reuse_port on a host that does not resolve stops with a message naming the setting
 ok   reuse_port on an address this machine does not have stops with the same message
 ok   reuse_port is off unless asked for
-53 tests, 203 assertions, 0 failures
+ok   listen_fd serves on an inherited listener instead of binding the port
+54 tests, 207 assertions, 0 failures

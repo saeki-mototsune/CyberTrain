@@ -4,9 +4,12 @@
 # build <name> -- --incremental` (the app's package name; without the flag
 # when the toolchain predates it), and replaces itself with the new
 # binary; ErrorPage shows exceptions and failed builds in the browser.
-# Production never loads any of it into the request path.
+# Production never loads any of it into the request path. Dev::Supervision
+# (cybertrain/dev/supervision.rb) reads what `cybertrain server` hands a
+# child it supervises; Roles requires that file on its own.
 require "cybertrain/dev/watched"
 require "cybertrain/dev/watcher"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/reexec"
 require "cybertrain/dev/error_page"
+require "cybertrain/dev/supervision"

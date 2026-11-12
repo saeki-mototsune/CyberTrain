@@ -47,10 +47,14 @@ module Cybertrain
         built = @server
         if built.nil?
           config = @config
+          # Under `cybertrain server` in development: the supervisor's
+          # listener, inherited by number, instead of a bind.
+          listen_fd = Dev::Supervision.active?(config.env) ? Dev::Supervision.listen_fd : -1
           built = Server.new(ContextHandler.new(front_app), host: config.host, port: config.port,
                                                             max_body_bytes: config.max_body_bytes,
                                                             reuse_port: reuse_port?,
-                                                            stream_write_timeout: config.stream_ping_interval)
+                                                            stream_write_timeout: config.stream_ping_interval,
+                                                            listen_fd: listen_fd)
           @server = built
         end
         built
@@ -99,6 +103,8 @@ module Cybertrain
           # endpoint mounted.
           Stream::Poller.start!(config) unless config.stream_path.empty?
           srv.start # bind first: a PortInUse error must not come after the banner
+          # The supervisor waits for this file before it sends traffic here.
+          Dev::Supervision.mark_ready if Dev::Supervision.active?(config.env)
           print_boot_banner
           # After boot connected the database and SPINEL_WORKERS is set;
           # only here, so `migrate`, `db` and Main.command never start it.
