@@ -1,8 +1,9 @@
 # A CRuby preview in the development loop
 
 Date: 2026-11-12. Status: agreed with the maintainer in conversation
-(2026-11-12: the reversal, the approach and the page indicator); the calls
-marked **(call)** are the author's and are listed again in section 14.
+(2026-11-12: the reversal, the approach, the page indicator and the
+playground); the calls
+marked **(call)** are the author's and are listed again in section 15.
 
 ## 0. Intent
 
@@ -57,7 +58,7 @@ that Spinel gives an FFI module (`SQLite3.malloc(8)`, `GzipFFI.free(out)`).
 Without a shim the server stops at the first `ffi_lib`
 (`cybertrain/http/gzip_ffi.rb:38`).
 
-Not measured: a real request served under CRuby. Section 12 makes that the
+Not measured: a real request served under CRuby. Section 13 makes that the
 first step.
 
 ## 3. Goals, non-goals, anti-goals
@@ -75,6 +76,8 @@ first step.
 5. The framework's FFI files are not rewritten for CRuby: one shim
    implements the DSL they already use.
 6. Today's loop remains available unchanged.
+7. The playground runs the preview: a visitor meets the development
+   experience a developer has (section 12).
 
 **Non-goals**
 
@@ -313,7 +316,7 @@ It defines, for any module, what the three FFI files call:
   The shim declares it in the compiled library with an accessor and reads
   the length on the same thread right after the call.
 
-Known points the spike must settle (section 12): how pointer values are
+Known points the spike must settle (section 13): how pointer values are
 represented so that the callers' comparisons hold; that every `ffi_func`
 names an exported symbol (two helpers in `sqlite_ffi.rb` are `static`, and
 are only called from C); the encoding of `:str` and `:binstr` results
@@ -405,7 +408,56 @@ edit now restarts it twice (into CRuby, then into the binary) instead of
 once, and SSE and WebSocket clients reconnect twice **(call: same services
 in both runtimes, for fidelity)**.
 
-## 12. Order of work, and the spike that comes first
+## 12. The playground
+
+Decided by the maintainer: the playground moves to the preview in this
+work, because it is where a visitor experiences what developing on
+CyberTrain is like. Today a Ruby edit there is rebuilt about 100 s after
+the save on the default 2-core codespace (playground/README.md); with the
+preview the edit answers at once and the binary follows.
+
+What changes:
+
+- `playground/playground-server` keeps running `cybertrain server`, now
+  the supervisor. Its "a server is already starting while it compiles"
+  branch, and the process patterns it and the smoke test match
+  (`build/bin/blog` as the one server process), are rewritten for a
+  supervisor with one child that is either `ruby` or the binary.
+- **The first start still compiles nothing.** The image holds a full
+  build, and spin reuses a binary newer than its sources. For that to
+  hold under the supervisor: CRuby gen leaves unchanged files alone (it
+  does: `Runner.sync_file` writes only a file whose content differs), the
+  startup build goes through `spin build` so that an up-to-date binary is
+  reused, and the image is built with the shim's compiled libraries
+  already in the cache (section 7), so the first CRuby child does not run
+  the C compiler either. The `cp -a` rule for copies of the blog stays.
+- `playground/smoke.sh`: A3 and E1 (nothing compiled at start) keep their
+  meaning; A9 becomes "a model edit answers 422 for a short body from
+  `X-Cybertrain-Runtime: cruby` within seconds, and later from `spinel`",
+  no longer waiting for "Build succeeded"; D2 and D4 are restated for the
+  supervisor; G3 (`cybertrain doctor` exits 0) now also proves `fiddle`
+  loads in the image. The suite's time budget, most of which is three
+  compiles of up to a minute, is revisited.
+- The words a visitor reads: the banner in `playground-server` ("A Ruby
+  change rebuilds the app (about a minute)"), step 2 of `PLAYGROUND.md`,
+  the "Start a fresh app" paragraph, `playground/README.md` (the
+  measurements, the limits, the reason `files.autoSave` is off), and
+  `site/playground.html` with its four translations where they describe
+  the wait (`script/check-site-i18n`). They say what the corner indicator
+  means and that the preview is CRuby.
+- A first `cybertrain server` of a new app (`cybertrain new shop`) has no
+  binary: the CRuby child serves while the first build runs (about a
+  minute there), which is the same path as everywhere else.
+
+`files.autoSave` stays off unless the builder finds a reason to change
+it: a save still starts a build, even if it no longer blocks the page.
+
+## 13. Order of work, and the spike that comes first
+
+The gate requires the Playground image workflow, which runs `smoke.sh`,
+on any pull request that touches a file the gemspec lists. So from the
+step that changes what `cybertrain server` does until the playground step,
+`playground-server` passes `--spinel` and the smoke test stays as it is.
 
 **Spike (throwaway, before the plan is final):** with a minimal Fiddle
 shim, get examples/blog to answer `GET /articles` and one `POST` under
@@ -426,12 +478,14 @@ Then, each step leaving the tree working:
 4. The background build and the handover to the binary.
 5. The indicator and header (framework change 5).
 6. `doctor`, the fallbacks, `--spinel`.
-7. Documentation (section 13), and one end-to-end script on
+7. The playground (section 12): `--spinel` comes off, the image warms the
+   shim's cache, the smoke test and the visitor's texts are rewritten.
+8. Documentation (section 14), and one end-to-end script on
    examples/blog in CI: start, request, edit a model, see the change from
    `cruby` within the target, wait for `spinel`, break the build, see the
    banner.
 
-## 13. Documentation
+## 14. Documentation
 
 - docs/design.md: the new record; principle 5 and section 8 reworded;
   D12 (the development loop) marked as the `--spinel` path.
@@ -445,7 +499,7 @@ Then, each step leaving the tree working:
 - The `cybertrain` usage text; the templates `cybertrain new` writes, if
   they mention the loop.
 
-## 14. The author's calls, for the maintainer to check
+## 15. The author's calls, for the maintainer to check
 
 1. `--spinel` as the name of the flag that keeps today's loop; today's
    loop also stays for a direct `spin run NAME` and for the native CLI.
@@ -474,7 +528,7 @@ Then, each step leaving the tree working:
     (`Roles.fail_boot`, and the preview's boot file) and a copy of STDERR;
     STDOUT is never piped.
 
-## 15. Left to the builder
+## 16. Left to the builder
 
 Names of files, variables, reserved paths and the state file; the
 indicator's markup, wording and polling; bounds on waits; how the shim
