@@ -758,7 +758,8 @@ module Cybertrain
     # Acceptable` (a `:json` request with no template and no `render`
     # included). A request whose Accept also lists HTML (Turbo's, or
     # `application/json, text/plain, */*`) gets the html template when
-    # there is none for its own format (`Rendering.accepts_html?`). After a
+    # there is none for its own format (`Rendering.accepts_html?`); a
+    # `text/html;q=0` there refuses it, also beside `*/*`. After a
     # {#respond_to} whose matching declaration's block rendered nothing,
     # the format it matched decides instead of the request's.
     def default_render(action)
@@ -862,6 +863,8 @@ module Cybertrain
     # The same holds for any format that came from an Accept header that
     # also lists `text/html` or `*/*` (axios sends `application/json,
     # text/plain, */*`): with no declaration for it, `format.html` answers.
+    # A `q=0` refuses its type: `application/json, text/html;q=0` gets no
+    # HTML and so the 406, with or without `*/*` beside it.
     #
     # Inside the matching declaration's block, `render :x` renders the
     # template of the format that matched (`x.json.erb` in `format.json`),
@@ -1256,14 +1259,20 @@ module Cybertrain
     # is keyed by `"<table>/<to_param>-<updated_at epoch>"`, so it changes
     # when the record is saved. The key is hashed together with the
     # request's format ({Request#format}), so the HTML and the JSON or
-    # Turbo Stream of one URL never share an ETag, and with
+    # Turbo Stream of one URL never share an ETag; with whether the request
+    # may be answered in HTML instead of its own format (an `Accept` of
+    # `application/json, text/html`, see {#respond_to}), so the ETag of a
+    # page sent to such a request is never the ETag of a request for JSON
+    # alone, which gets JSON or `406`; and with
     # {Assets.build_digest}, so a deploy that changes the assets (or, in a
     # `cybertrain build` binary, the views) changes every ETag. The key
     # names the record, not the visitor: a page that differs per user
     # needs the user in its key, as in Rails:
     # `etag: "posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`. The header is a weak ETag,
     # `W/"<first 32 hex digits of the SHA-256>"`; `If-None-Match` matches it
-    # in a list, in weak or strong form, or as `*`; any other `etag:` is an
+    # in a list, in weak or strong form; `If-None-Match: *` matches whatever
+    # was validated, also a response with only `Last-Modified` (RFC 9110
+    # 13.1.2); any other `etag:` is an
     # ArgumentError. `last_modified:` is a Time, sent as `Last-Modified`; an
     # unparseable `If-Modified-Since` is ignored. When the request sends an
     # `If-None-Match`, it alone decides and `If-Modified-Since` is ignored
@@ -1286,7 +1295,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def fresh_when(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
-      HttpCache.set_validators(@request, @response, etag, last_modified, public)
+      HttpCache.set_validators(@request, @response, etag, last_modified, public, Rendering.accepts_html?(@request))
       head :not_modified if HttpCache.validators_fresh?(@request, @response)
       nil
     end
@@ -1305,7 +1314,7 @@ module Cybertrain
     # @return [Boolean] true when the action should render
     # @api public
     def stale?(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
-      HttpCache.set_validators(@request, @response, etag, last_modified, public)
+      HttpCache.set_validators(@request, @response, etag, last_modified, public, Rendering.accepts_html?(@request))
       return true unless HttpCache.validators_fresh?(@request, @response)
 
       head :not_modified
