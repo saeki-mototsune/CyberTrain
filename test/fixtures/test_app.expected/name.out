@@ -1,0 +1,4 @@
+test/models/article_test.rb
+  ok   ArticleTest: keeps a boolean, a datetime and a decimal
+
+1 test, 3 assertions, 0 failures

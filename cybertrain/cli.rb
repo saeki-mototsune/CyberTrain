@@ -8,6 +8,7 @@
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
+#   cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
 #   cybertrain secret [--hex] | setup [--force] | doctor | version | help
 #
 # Every command that runs spin first puts a Spinel of the pinned release on
@@ -24,6 +25,7 @@ require "cybertrain/cli/component"
 require "cybertrain/cli/job"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
+require "cybertrain/cli/test_command"
 
 module Cybertrain
   module CLI
@@ -106,6 +108,14 @@ module Cybertrain
         cybertrain build
             Build NAME with app/views embedded and assemble dist/
             (the binary, public/, storage/, tmp/).
+        cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+            Run the application's tests (test/**/*_test.rb and test/*.rb)
+            as one program: spin run gen, then gen/tests.rb compiled into
+            build/test/tests when a source is newer than it, then run.
+            FILE or DIR keeps the tests of those files; -n NAME the test
+            named NAME (or its method name, test_...); -n /TEXT/ the tests
+            whose name contains TEXT. A filter never recompiles. Exits 1
+            when a test failed, 2 for bad arguments.
         cybertrain spin ARGS...
             Run spin with the pinned Spinel, from any directory
             (cybertrain spin test; cybertrain spin run gen -- --check).
@@ -136,6 +146,7 @@ module Cybertrain
       when "db" then run_in_app { |_name| run_db(argv) }
       when "server" then run_in_app { |name| run_server(name, argv) }
       when "build" then run_in_app { |name| build_app(name) }
+      when "test" then run_in_app { |_name| TestCommand.run(".", argv[1, argv.size - 1]) }
       when "spin" then run_spin_passthrough(argv)
       when "secret"
         puts secret_text(argv[1, argv.size - 1])

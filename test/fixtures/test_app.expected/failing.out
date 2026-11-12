@@ -1,0 +1,18 @@
+test/failing_test.rb
+  FAIL FailingTest: counts the articles (test/failing_test.rb:6)
+         Expected: 2
+           Actual: 1
+  ERR  FailingTest: raises (test/failing_test.rb:11)
+         ArgumentError: boom
+  ok   FailingTest: still passes
+test/legacy.rb
+  ok   shows an article
+  ok   the configured zone
+test/models/article_test.rb
+  ok   ArticleTest: title must be present
+  ok   ArticleTest: belongs to its author
+  ok   ArticleTest: keeps a boolean, a datetime and a decimal
+  ok   ArticleTest: starts from empty tables
+  ok   ArticleTest: a slug from the support helper
+
+10 tests, 15 assertions, 2 failures

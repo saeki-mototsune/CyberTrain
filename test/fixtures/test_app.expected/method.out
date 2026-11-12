@@ -1,0 +1,4 @@
+test/models/article_test.rb
+  ok   ArticleTest: belongs to its author
+
+1 test, 2 assertions, 0 failures

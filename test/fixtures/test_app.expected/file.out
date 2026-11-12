@@ -1,0 +1,8 @@
+test/models/article_test.rb
+  ok   ArticleTest: title must be present
+  ok   ArticleTest: belongs to its author
+  ok   ArticleTest: keeps a boolean, a datetime and a decimal
+  ok   ArticleTest: starts from empty tables
+  ok   ArticleTest: a slug from the support helper
+
+5 tests, 10 assertions, 0 failures

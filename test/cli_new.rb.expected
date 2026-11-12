@@ -381,6 +381,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+      Run the application's tests (test/**/*_test.rb and test/*.rb)
+      as one program: spin run gen, then gen/tests.rb compiled into
+      build/test/tests when a source is newer than it, then run.
+      FILE or DIR keeps the tests of those files; -n NAME the test
+      named NAME (or its method name, test_...); -n /TEXT/ the tests
+      whose name contains TEXT. A filter never recompiles. Exits 1
+      when a test failed, 2 for bad arguments.
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
@@ -478,6 +486,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+      Run the application's tests (test/**/*_test.rb and test/*.rb)
+      as one program: spin run gen, then gen/tests.rb compiled into
+      build/test/tests when a source is newer than it, then run.
+      FILE or DIR keeps the tests of those files; -n NAME the test
+      named NAME (or its method name, test_...); -n /TEXT/ the tests
+      whose name contains TEXT. A filter never recompiles. Exits 1
+      when a test failed, 2 for bad arguments.
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
@@ -574,6 +590,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+      Run the application's tests (test/**/*_test.rb and test/*.rb)
+      as one program: spin run gen, then gen/tests.rb compiled into
+      build/test/tests when a source is newer than it, then run.
+      FILE or DIR keeps the tests of those files; -n NAME the test
+      named NAME (or its method name, test_...); -n /TEXT/ the tests
+      whose name contains TEXT. A filter never recompiles. Exits 1
+      when a test failed, 2 for bad arguments.
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).

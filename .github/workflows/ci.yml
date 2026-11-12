@@ -7,7 +7,7 @@ name: CI
 # see .yardopts), which the api-docs job below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
 # reads them except script/api-docs, script/test-shard, script/ci-changes and
-# script/auth-e2e, which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
+# script/auth-e2e and script/test-command-e2e, which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
@@ -34,6 +34,7 @@ on:
       - "script/test-shard"
       - "script/ci-changes"
       - "script/auth-e2e"
+      - "script/test-command-e2e"
   pull_request:
     paths:
       - "**"
@@ -48,6 +49,7 @@ on:
       - "script/test-shard"
       - "script/ci-changes"
       - "script/auth-e2e"
+      - "script/test-command-e2e"
   # For a merge queue on main, which is not turned on (docs/design.md, D34,
   # the status of 2026-11-11, has what turning it on takes): the queue waits
   # for the required checks on a `merge_group` event, and a workflow without
@@ -351,6 +353,17 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3998/posts/2/cover)" = "404"
           test -n "$(find storage/uploads -type f)"
           kill %1
+
+      # `cybertrain test` (script/test-command-e2e): test/fixtures/test_app's
+      # tests compiled once into one binary and run with the filters (a
+      # file, -n NAME, a method name, -n /TEXT/) without a recompile, a
+      # failing file (exit 1, the test's line), gen's refusal of duplicate
+      # helpers, the three exits with status 2 (bad arguments seen by the
+      # CLI and by the binary, a database that is not a test database), and
+      # the development database and an exported CYBERTRAIN_DATABASE left
+      # untouched. gen and two compiles of a small application.
+      - name: cybertrain test end to end
+        run: script/test-command-e2e
 
       # What `cybertrain new` does for users: the framework as a git
       # dependency that spin fetches and locks (here this checkout, at a

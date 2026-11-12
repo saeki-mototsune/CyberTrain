@@ -1,0 +1,13 @@
+ok   file, directory and option arguments
+ok   bad arguments print the usage and the reason, exit 2 and run no step
+ok   gen, the compile when stale, then the run with the arguments and its status
+ok   no compile when nothing is newer than the binary
+ok   gen's refusal is printed and exits 1 without a compile or a run
+ok   an application without test files has 0 tests and runs no step
+ok   stale? after an edit to a test, a model, a fixture or the framework, not after a run
+ok   the framework roots are the -I directories of spin flags other than the application
+ok   the compile command
+ok   the run passes each argument as one word and answers the binary's status
+error: no spin.toml with a [package] name here; run this inside a cybertrain application
+ok   cybertrain test outside an application
+11 tests, 48 assertions, 0 failures
