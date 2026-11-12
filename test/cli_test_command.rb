@@ -92,8 +92,12 @@ def touch_later(path)
   File.write(path, File.read(path))
 end
 
+def record_now = Cybertrain::CLI::TestCommand.inputs_record(APP, `cd #{APP} && spin flags`)
+
+# A binary and the record a compile leaves beside it.
 def build_binary
   write("#{APP}/build/test/tests", "binary\n")
+  write("#{APP}/build/test/tests.inputs", record_now)
 end
 
 test "file, directory and option arguments" do
@@ -125,6 +129,41 @@ test "gen, the compile when stale, then the run with the arguments and its statu
                 "run test/models -n /title/"], runner.steps
   assert File.directory?("#{APP}/build/test")
   assert_equal [], runner.said
+  # The compile replaced the binary (the stub wrote none) and recorded its inputs.
+  refute File.exist?("#{APP}/build/test/tests")
+  assert_equal record_now, File.read("#{APP}/build/test/tests.inputs")
+  refute File.exist?("#{APP}/build/test/tests.inputs.tmp")
+end
+
+# Fails the compile step only.
+class FailingCompile < StubRunner
+  def run_step(root, command)
+    @steps << command
+    !command.start_with?("spinel ")
+  end
+end
+
+test "a failed compile exits 1, runs nothing and leaves no binary or record" do
+  build_binary
+  runner = FailingCompile.new(true, 0)
+  assert_equal 1, Cybertrain::CLI::TestCommand.run(APP, Array.new(0) { "" }, runner)
+  refute runner.steps.include?("run ")
+  refute File.exist?("#{APP}/build/test/tests")
+  refute File.exist?("#{APP}/build/test/tests.inputs")
+  refute File.exist?("#{APP}/build/test/tests.inputs.tmp")
+end
+
+# The CLI passes root "."; an absolute file argument means the same as to
+# the bundle, which parses against Dir.pwd.
+test "from the application's directory, absolute and ./ file arguments" do
+  Dir.chdir(APP)
+  ["#{APP}/test/models/article_test.rb", "./test/models/article_test.rb", "#{APP}/test/models/"].each do |arg|
+    runner = StubRunner.new(false, 0)
+    assert_equal 0, Cybertrain::CLI::TestCommand.run(".", [arg], runner)
+    assert_equal ["ready", "spin run gen", "stale?", "run #{arg}"], runner.steps
+    assert_equal [], runner.said
+  end
+  Dir.chdir(ROOT)
 end
 
 test "no compile when nothing is newer than the binary" do
@@ -186,6 +225,54 @@ test "stale? after an edit to a test, a model, a fixture or the framework, not a
   write("#{APP}/.github/workflows/ci.yml", "x")
   write("#{APP}/app/assets/application.css", "x")
   refute Cybertrain::CLI::TestCommand.stale?(APP, binary)
+end
+
+test "stale? when the record of the binary's inputs is missing or differs" do
+  binary = "#{APP}/build/test/tests"
+  record = "#{binary}.inputs"
+  build_binary
+  refute Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  File.delete(record)
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  write(record, "#{record_now}x\n")
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+
+  # Files older than the binary that change what it is built from: a
+  # dependency pointed elsewhere (spin.toml, spin.lock), another framework
+  # version, another framework checkout.
+  build_binary
+  toml = File.read("#{APP}/spin.toml")
+  File.write("#{APP}/spin.toml", "#{toml}# repointed\n")
+  File.utime(Time.at(0), Time.at(0), "#{APP}/spin.toml")
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  File.write("#{APP}/spin.toml", toml)
+  refute Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  write("#{APP}/spin.lock", "[lock.cybertrain]\nref = \"abc\"\n")
+  File.utime(Time.at(0), Time.at(0), "#{APP}/spin.lock")
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  File.delete("#{APP}/spin.lock")
+  write("#{FRAMEWORK}/cybertrain/version.rb", "VERSION = \"0.0.2\"\n")
+  File.utime(Time.at(0), Time.at(0), "#{FRAMEWORK}/cybertrain/version.rb")
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  build_binary
+  refute Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  other = "#{ROOT}/framework2"
+  write("#{other}/spin.toml", "[package]\nname = \"cybertrain\"\nversion = \"0.0.1\"\n")
+  write("#{other}/cybertrain.rb", "")
+  File.write("#{APP}/spin.toml", toml.sub("../framework", "../framework2"))
+  File.utime(Time.at(0), Time.at(0), "#{APP}/spin.toml")
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  File.write("#{APP}/spin.toml", toml)
+end
+
+test "stale? after a source edited while the binary compiled" do
+  binary = "#{APP}/build/test/tests"
+  # The record is written when the compile starts, the binary at its end.
+  write("#{binary}.inputs", record_now)
+  touch_later("#{APP}/app/models/article.rb")
+  sleep 0.02
+  write(binary, "binary\n")
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
 end
 
 test "the framework roots are the -I directories of spin flags other than the application" do
