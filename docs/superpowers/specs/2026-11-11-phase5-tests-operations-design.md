@@ -1248,6 +1248,25 @@ spikes/phase5/ with their commands and output in each header; a shared
    time, the binary size and whether rules 41 and 63 stop any of them
    remain to be measured on a dedicated machine (bundle_suite.sh). Nothing
    in phase 5 depends on it.
+   Task 10 measured again (2026-11-12, the same machine, about 13 GB free
+   at the start; 206 programs by then, the nine above left out): the
+   bundle of 197 files (61,481 lines; 88 duplicate method names, 37
+   duplicate constants) was refused once more in 35 s, for a module and a
+   class of one name (`Billing`). The remaining 196 files passed the whole
+   front end, rules 41 and 63 included: Spinel wrote 87.6 MB of C (1.17
+   million lines) about 6.5 minutes after it started, at about 1.65 GB
+   resident. Compiling that C (the default -O2, split into units compiled
+   in parallel) then ran for about 21 minutes and was killed by the
+   memory cgroup's OOM killer at a peak of 9.7 GB resident for the
+   build's processes together (one cc1 alone at 4.6 GB), with other
+   builds running by then. So the front end is no obstacle; the C
+   compiler's memory is, and the total time and binary size are still
+   not known (more than 29 minutes in all, against D34's 14 for the
+   separate programs). For an application, the bundle `cybertrain test`
+   builds is small by comparison: the blog's application with three
+   bundled test files (two class-form, one top-level form, eight tests)
+   compiled in 162 to 233 s at a peak of 2.2 GB, into an 8.1 MB binary,
+   about the cost of one of the blog's per-file test programs.
 
 ## 17. Out of scope (recorded so nothing is lost)
 
