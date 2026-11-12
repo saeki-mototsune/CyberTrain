@@ -1,9 +1,10 @@
 # A CRuby preview in the development loop
 
-Date: 2026-11-12. Status: agreed with the maintainer in conversation
-(2026-11-12: the reversal, the approach, the page indicator and the
-playground); the calls
-marked **(call)** are the author's and are listed again in section 15.
+Date: 2026-11-12. Status: approved by the maintainer on 2026-11-12 (the
+reversal, the approach, the page indicator and the playground were decided
+in conversation; the calls marked **(call)** are the author's, listed
+again in section 15, and were approved with the document). The plan is
+docs/superpowers/plans/2026-11-12-cruby-preview-plan.md.
 
 ## 0. Intent
 
