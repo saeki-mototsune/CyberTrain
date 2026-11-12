@@ -4,8 +4,10 @@ ok   a file filter and -n combine
 ok   0 tests is not a failure
 ok   bad arguments print the usage and the reason, run nothing and answer 2
 ok   an error outside the body names the step, and a computed name has no line
+ok   the arguments are checked before the boot
+ok   two top-level tests of one name each report their own line
 ok   Cybertrain::Test.run! does nothing inside the bundle
 ok   boot refuses a database that is not the test one
 ok   CYBERTRAIN_TEST_DATABASE is honoured
 ok   every test starts in the configured time zone
-10 tests, 62 assertions, 0 failures
+12 tests, 68 assertions, 0 failures

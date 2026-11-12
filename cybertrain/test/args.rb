@@ -46,6 +46,8 @@ module Cybertrain
             value = i + 1 < argv.length ? argv[i + 1] : ""
             return refused("-n needs a name or /text/") if value.empty?
 
+            return refused("-n needs a name or /text/") if value == "//"
+
             if value.length >= 2 && value.start_with?("/") && value.end_with?("/")
               pattern = value[1, value.length - 2].to_s
               name = ""

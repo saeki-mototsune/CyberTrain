@@ -67,13 +67,23 @@ module Cybertrain
         @case_lines = Array.new(0) { 0 }
       end
 
-      # The line of the first `test` call whose literal is `name`; 0 for a
-      # computed name (gen records no line for it).
+      # The line of the `nth` (from 0) `test` call whose literal is `name`;
+      # 0 for a computed name (gen records no line for it).
       # @param name [String]
+      # @param nth [Integer]
       # @return [Integer]
-      def line_of(name)
-        k = @case_names.index(name)
-        k.nil? ? 0 : @case_lines[k]
+      def line_for(name, nth)
+        seen = 0
+        k = 0
+        while k < @case_names.length
+          if @case_names[k] == name
+            return @case_lines[k] if seen == nth
+
+            seen += 1
+          end
+          k += 1
+        end
+        0
       end
     end
 

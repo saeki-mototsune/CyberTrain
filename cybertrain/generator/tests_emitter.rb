@@ -46,6 +46,9 @@ module Cybertrain
         out << "require \"cybertrain/test_help\"\n"
         out << "require \"cybertrain/test/bundle\"\n"
         out << "require_relative \"../config/app\"\n"
+        # D19's guard before anything of the application's tests loads (a
+        # support file may boot at load time).
+        out << "Cybertrain::Test::Bundle.check_database!\n"
         out << "require_relative \"app\"\n"
         out << "require_relative \"migrations\"\n" if File.directory?("#{root}/db/migrate")
         out << "require_relative \"test/data\"\n" if data
@@ -60,10 +63,12 @@ module Cybertrain
         out << "\n"
         out << table(files, data)
         out << "\n"
-        out << "Cybertrain::Test::Bundle.boot!(Gen::Routes.build(Cybertrain::Router.new), Gen::Routes.url_resolver)\n"
-        out << "Cybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)\n" if data
         out << "Cybertrain::Test::Bundle.use_table(Gen::Tests::FILES, Gen::Tests::CASE_FILE, Gen::Tests::CASE_LINE, " \
                "Gen::Tests::CASE_CLASS, Gen::Tests::CASE_NAME, Gen::Tests::CASE_METHOD)\n"
+        # Bad arguments exit 2 before the database is touched.
+        out << "Cybertrain::Test::Bundle.check_args!(ARGV)\n"
+        out << "Cybertrain::Test::Bundle.boot!(Gen::Routes.build(Cybertrain::Router.new), Gen::Routes.url_resolver)\n"
+        out << "Cybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)\n" if data
         out << "exit(Cybertrain::Test::Bundle.run!(ARGV, Gen::Tests.dispatcher))\n"
         out
       end
@@ -182,10 +187,31 @@ module Cybertrain
         k = 0
         while k < files.length
           f = files[k]
-          found = block_form(f.test_path, File.read("#{root}/#{f.test_path}"))
+          text = File.read("#{root}/#{f.test_path}")
+          found = f.support_file? ? support_blocks(f.test_path, text) : ""
+          return found unless found.empty?
+
+          found = block_form(f.test_path, text)
           return found unless found.empty?
 
           k += 1
+        end
+        ""
+      end
+
+      # A top-level `test`, `setup` or `teardown` in the helper or a support
+      # file: under `spin test` it joins the file that requires it, but the
+      # bundle runs only the tests of test files, so it would never run.
+      def self.support_blocks(path, text)
+        codes = CodeView.new(text).codes
+        i = 0
+        while i < codes.length
+          code = codes[i].to_s
+          if !code.start_with?(" ") && !code.start_with?("\t") && TestScan.dsl_line?(code)
+            return "#{path}:#{i + 1}: a top-level test, setup or teardown in the helper or test/support/ never runs in the bundle; " \
+                   "put it in a test file or in a test class"
+          end
+          i += 1
         end
         ""
       end
@@ -219,26 +245,91 @@ module Cybertrain
       end
 
       # The first `assert_select ... do` / `{ }` or `render_inline(...) do`
-      # / `{ }` of text (plan decision 14), as the refusal; "" for none.
+      # / `{ }` of text (plan decision 14), as the refusal; "" for none. A
+      # call whose arguments go on over several lines (a trailing `,`, an
+      # open bracket) is read to where they end; one that never ends is
+      # refused too, since gen cannot tell whether it takes a block.
       def self.block_form(path, text)
         view = CodeView.new(text)
         lines = text.lines
+        codes = view.codes
         i = 0
         while i < lines.length
-          raw = lines[i]
-          code = view.codes[i].to_s
-          at = word_at(code, "assert_select")
-          if at >= 0 && block_after?(code[at + 13, code.length - at - 13].to_s)
-            selector = first_argument(raw[at + 13, raw.length - at - 13].to_s)
+          code = codes[i].to_s
+          words = ["assert_select", "render_inline"]
+          w = 0
+          while w < words.length
+            word = words[w]
+            w += 1
+            at = word_at(code, word)
+            next if at < 0
+
+            from = at + word.length
+            last = call_end(codes, i, from)
+            if last < 0
+              return "#{path}:#{i + 1}: #{word}: gen cannot tell where this call's arguments end; close them before the end of the file"
+            end
+            next unless block_after?(joined(codes, i, from, last))
+
+            return "#{path}:#{i + 1}: render_inline: pass the content as content:, not a block" if word == "render_inline"
+
+            selector = first_argument(joined(lines, i, from, last))
             return "#{path}:#{i + 1}: assert_select: the nested block form is not supported (selector: #{selector})"
-          end
-          at = word_at(code, "render_inline")
-          if at >= 0 && block_after?(code[at + 13, code.length - at - 13].to_s)
-            return "#{path}:#{i + 1}: render_inline: pass the content as content:, not a block"
           end
           i += 1
         end
         ""
+      end
+
+      # The index of the line where the call starting at codes[i][from]
+      # ends: its brackets closed and its last line not ending in `,`, `\`
+      # or an operator; -1 when the file ends first.
+      def self.call_end(codes, i, from)
+        depth = 0
+        j = i
+        text = codes[i].to_s[from, codes[i].to_s.length - from].to_s
+        while true
+          k = 0
+          while k < text.length
+            ch = text[k].to_s
+            if ch == "(" || ch == "[" || ch == "{"
+              depth += 1
+            elsif ch == ")" || ch == "]" || ch == "}"
+              depth -= 1
+            end
+            k += 1
+          end
+          return j unless depth > 0 || continued?(text.rstrip)
+
+          j += 1
+          return -1 if j >= codes.length
+
+          text = codes[j].to_s
+        end
+      end
+
+      # Whether a code line goes on on the next one.
+      def self.continued?(t)
+        marks = [",", "\\", "+", "-", "*", "&&", "||", "="]
+        m = 0
+        while m < marks.length
+          return true if t.end_with?(marks[m])
+
+          m += 1
+        end
+        false
+      end
+
+      # Lines i..last of `lines` (from `from` on the first) on one line.
+      def self.joined(lines, i, from, last)
+        first = lines[i].to_s
+        out = +first[from, first.length - from].to_s.rstrip
+        j = i + 1
+        while j <= last
+          out << " " << lines[j].to_s.strip
+          j += 1
+        end
+        out
       end
 
       # Where `word` is called in code (not part of a longer name, followed

@@ -40,6 +40,9 @@ identical gen/migrations.rb
 wrote gen/console.rb
 identical gen/app.rb
 ok   assert_select with a block and render_inline with a block are refused
+ok   an assert_select or render_inline call over several lines is read to its end
+ok   a top-level test, setup or teardown in the helper or a support file is refused
+ok   a non-test configuration is refused before any test or support file is loaded
 identical gen/routes.rb
 identical gen/assets.rb
 identical gen/locales.rb
@@ -113,4 +116,4 @@ identical gen/migrations.rb
 wrote gen/console.rb
 identical gen/app.rb
 ok   gen/tests.rb goes when test/ goes
-10 tests, 99 assertions, 0 failures
+13 tests, 119 assertions, 0 failures

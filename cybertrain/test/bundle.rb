@@ -74,7 +74,7 @@ module Cybertrain
         raise ArgumentError, problem unless problem.empty?
 
         c = Cybertrain.config
-        c.csrf = false unless c.csrf_given?
+        c.csrf_unless_given(false)
         path = c.database_path
         [path, "#{path}-wal", "#{path}-shm"].each { |f| File.delete(f) if File.exist?(f) }
         connection = Cybertrain::DB::Connection.new(path)
@@ -97,12 +97,35 @@ module Cybertrain
       # (plan decision 19): what gen/tests.rb calls.
       # @return [nil]
       def self.boot!(router, url_resolver)
+        check_database!
+        boot(router, url_resolver)
+        nil
+      end
+
+      # When {refusal} refuses the configured database: the reason on
+      # STDOUT and exit status 2. gen/tests.rb calls it right after
+      # config/app.rb, before any helper, support or test file is loaded.
+      # @return [nil]
+      def self.check_database!
         problem = refusal
         unless problem.empty?
           puts problem
           exit(2)
         end
-        boot(router, url_resolver)
+        nil
+      end
+
+      # When argv is not good for the table handed over ({use_table}): the
+      # usage and the reason, exit status 2, before the boot.
+      # @param argv [Array<String>]
+      # @return [nil]
+      def self.check_args!(argv)
+        args = Args.parse(argv, @files, Dir.pwd)
+        unless args.arg_error.empty?
+          say(Args::USAGE)
+          say(args.arg_error)
+          exit(2)
+        end
         nil
       end
 
@@ -153,7 +176,7 @@ module Cybertrain
               dispatch.call(i)
               tests += 1
               failures += 1 unless Cybertrain::Test.last_status == "ok"
-              report("#{@case_class[i]}: #{@case_name[i]}", "#{file}:#{@case_line[i]}")
+              report_case("#{@case_class[i]}: #{@case_name[i]}", "#{file}:#{@case_line[i]}")
             end
             i += 1
           end
@@ -166,8 +189,8 @@ module Cybertrain
               Cybertrain::Test.run_top_level_case(c)
               tests += 1
               failures += 1 unless Cybertrain::Test.last_status == "ok"
-              line = c.top_file.line_of(c.name)
-              report(c.name, line > 0 ? "#{file}:#{line}" : file)
+              line = c.top_file.line_for(c.name, same_name_before(cases, k))
+              report_case(c.name, line > 0 ? "#{file}:#{line}" : file)
             end
             k += 1
           end
@@ -178,8 +201,22 @@ module Cybertrain
         failures > 0 ? 1 : 0
       end
 
+      # How many cases before cases[k] in its file have its name: the n-th
+      # of one name takes the n-th line gen recorded for it.
+      def self.same_name_before(cases, k)
+        c = cases[k]
+        n = 0
+        j = 0
+        while j < k
+          other = cases[j]
+          n += 1 if other.name == c.name && other.top_file.top_file_path == c.top_file.top_file_path
+          j += 1
+        end
+        n
+      end
+
       # The lines of the test just run.
-      def self.report(label, where)
+      def self.report_case(label, where)
         status = Cybertrain::Test.last_status
         if status == "ok"
           say("  ok   #{label}")

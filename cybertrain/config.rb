@@ -287,6 +287,16 @@ attr_accessor :trusted_proxies
     # @api private
     def csrf_given? = @csrf_given
 
+    # Sets {#csrf} to `value` unless it was given, without counting as
+    # given: `cybertrain test`'s default (forgery protection off).
+    # @param value [Boolean]
+    # @return [nil]
+    # @api private
+    def csrf_unless_given(value)
+      @csrf = value unless @csrf_given
+      nil
+    end
+
     # Path prefixes whose non-GET requests skip the CSRF check, `[]`: for an
     # API that other programs call with a token of its own (a webhook
     # receiver, an SDK's ingest endpoint), where no browser session exists.

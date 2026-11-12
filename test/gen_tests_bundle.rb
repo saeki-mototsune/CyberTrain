@@ -105,13 +105,15 @@ test "the emitted program requires in order and has one arm per class-form test"
   assert_includes src, "Cybertrain::Test.begin_file(\"test/legacy.rb\", [\"old style\"], [3])\n"
   assert_includes src, "Cybertrain::Test.begin_file(\"test/models/article_test.rb\", Array.new(0) { \"\" }, Array.new(0) { 0 })\n"
   order = ["ENV[\"CYBERTRAIN_ENV\"] = \"test\"\n", "require \"cybertrain\"\n", "require \"cybertrain/test_help\"\n",
-           "require \"cybertrain/test/bundle\"\n", "require_relative \"../config/app\"\n", "require_relative \"app\"\n",
+           "require \"cybertrain/test/bundle\"\n", "require_relative \"../config/app\"\n",
+           "Cybertrain::Test::Bundle.check_database!\n", "require_relative \"app\"\n",
            "require_relative \"migrations\"\n", "Cybertrain::Test.bundled!\n", "require_relative \"../test/test_helper\"\n",
            "require_relative \"../test/support/helpers\"\n", "Cybertrain::Test.begin_file(\"test/legacy.rb\"",
            "require_relative \"../test/legacy\"\n", "Cybertrain::Test.begin_file(\"test/models/article_test.rb\"",
            "require_relative \"test/models/article_test\"\n", "module Gen\n  module Tests\n",
+           "Cybertrain::Test::Bundle.use_table(", "Cybertrain::Test::Bundle.check_args!(ARGV)\n",
            "Cybertrain::Test::Bundle.boot!(Gen::Routes.build(Cybertrain::Router.new), Gen::Routes.url_resolver)\n",
-           "Cybertrain::Test::Bundle.use_table(", "exit(Cybertrain::Test::Bundle.run!(ARGV, Gen::Tests.dispatcher))\n"]
+           "exit(Cybertrain::Test::Bundle.run!(ARGV, Gen::Tests.dispatcher))\n"]
   at = -1
   order.each do |line|
     found = src.index(line)
@@ -136,7 +138,7 @@ test "with the fixtures' file, the bundle requires it and registers the clear an
   src = emitted(app_with_tests, true)
   assert_includes src, "require_relative \"migrations\"\nrequire_relative \"test/data\"\nCybertrain::Test.bundled!\n"
   assert_includes src, "        Cybertrain::Test::Database.clear!(Gen::TestData::TABLES)\n"
-  assert_includes src, "Cybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)\nCybertrain::Test::Bundle.use_table("
+  assert_includes src, "Gen::Routes.url_resolver)\nCybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)\nexit("
 end
 
 test "an application with no class-form test has an empty table" do
@@ -216,6 +218,51 @@ test "assert_select with a block and render_inline with a block are refused" do
   root = temp_app("test/x_test.rb" => select)
   assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
   assert_includes File.read("#{root}/gen/tests.rb"), "abort(\"test/x_test.rb:4: assert_select: the nested block form is not supported (selector: \\\"ul\\\")\")\n"
+end
+
+test "an assert_select or render_inline call over several lines is read to its end" do
+  # The block follows arguments that go on over lines: refused.
+  root = temp_app("test/x_test.rb" => "test \"list\" do\n  assert_select \"ul\",\n    count: 2 do\n    assert_select \"li\"\n  end\nend\n")
+  assert_equal "test/x_test.rb:2: assert_select: the nested block form is not supported (selector: \"ul\")", bundle_refusal(root)
+  root = temp_app("test/x_test.rb" => "test \"list\" do\n  assert_select(\"ul\",\n    count: 2) do\n    assert_select \"li\"\n  end\nend\n")
+  assert_equal "test/x_test.rb:2: assert_select: the nested block form is not supported (selector: \"ul\")", bundle_refusal(root)
+  root = temp_app("test/x_test.rb" => "test \"list\" do\n  assert_select(\n    \"ul\", count: 2\n  ) { |ul| ul }\nend\n")
+  assert_equal "test/x_test.rb:2: assert_select: the nested block form is not supported (selector: \"ul\")", bundle_refusal(root)
+  root = temp_app("test/x_test.rb" => "test \"card\" do\n  render_inline(Card.new(title: \"t\",\n                         body: \"b\")) do\n    \"x\"\n  end\nend\n")
+  assert_equal "test/x_test.rb:2: render_inline: pass the content as content:, not a block", bundle_refusal(root)
+  # The same calls without a block: not refused.
+  plain = "test \"list\" do\n  assert_select \"ul\",\n    count: 2\n  assert_select(\"li\",\n    text: \"a\")\n  " \
+          "render_inline(Card.new(title: \"t\",\n                         body: \"b\"))\n  [1].each do |n|\n    assert_select \"li\", count: n\n  end\nend\n"
+  root = temp_app("test/x_test.rb" => plain)
+  assert_equal "", bundle_refusal(root)
+  # Arguments that never close: gen cannot tell, so it refuses.
+  root = temp_app("test/x_test.rb" => "def helper\n  assert_select(\"ul\",\n")
+  assert_equal "test/x_test.rb:2: assert_select: gen cannot tell where this call's arguments end; close them before the end of the file",
+               bundle_refusal(root)
+end
+
+test "a top-level test, setup or teardown in the helper or a support file is refused" do
+  root = temp_app("test/test_helper.rb" => "require \"cybertrain/test_help\"\n\nsetup do\n  nil\nend\n", "test/legacy.rb" => LEGACY)
+  assert_equal "test/test_helper.rb:3: a top-level test, setup or teardown in the helper or test/support/ never runs in the bundle; " \
+               "put it in a test file or in a test class", bundle_refusal(root)
+  root = temp_app("test/support/more.rb" => "# more\ntest \"lost\" do\nend\n")
+  assert_equal "test/support/more.rb:2: a top-level test, setup or teardown in the helper or test/support/ never runs in the bundle; " \
+               "put it in a test file or in a test class", bundle_refusal(root)
+  # In a class of a support file, or as a helper method: fine.
+  root = temp_app("test/support/base.rb" => "class BaseTest < ActiveSupport::TestCase\n  setup do\n    @a = 1\n  end\nend\n\ndef setup_data = nil\n")
+  assert_equal "", bundle_refusal(root)
+end
+
+test "a non-test configuration is refused before any test or support file is loaded" do
+  src = emitted(app_with_tests)
+  lines = src.lines
+  guard = lines.index("Cybertrain::Test::Bundle.check_database!\n")
+  assert_equal "require_relative \"../config/app\"\n", lines[guard - 1]
+  lines.each_with_index do |line, k|
+    next unless line.start_with?("require_relative") && !line.include?("../config/app")
+
+    assert k > guard, "loaded before the guard: #{line}"
+  end
 end
 
 test "the generated helper with an application base class loads" do

@@ -223,6 +223,7 @@ test "bad arguments print the usage and the reason, run nothing and answer 2" do
   assert_equal [usage, "unknown option --seed", "exit 2"], bundle_run(["--seed", "1"])
   assert_equal [usage, "-n needs a name or /text/", "exit 2"], bundle_run(["-n"])
   assert_equal [usage, "no test file at test/modles", "exit 2"], bundle_run(["test/modles"])
+  assert_equal [usage, "-n needs a name or /text/", "exit 2"], bundle_run(["-n", "//"])
   assert_equal before, OLD_RUNS[0]
 end
 
@@ -238,6 +239,22 @@ test "an error outside the body names the step, and a computed name has no line"
               "2 tests, 0 assertions, 2 failures",
               "exit 1"]
   assert_equal expected, lines
+end
+
+test "the arguments are checked before the boot" do
+  use_files(FILES)
+  assert_nil Cybertrain::Test::Bundle.check_args!(["test/legacy.rb", "-n", "old style"])
+end
+
+test "two top-level tests of one name each report their own line" do
+  expected = ["test/twice.rb",
+              "  ok   same",
+              "  FAIL same (test/twice.rb:6)",
+              "         second",
+              "",
+              "2 tests, 1 assertion, 1 failure",
+              "exit 1"]
+  assert_equal expected, bundle_lines(["test/twice.rb"], [])
 end
 
 test "Cybertrain::Test.run! does nothing inside the bundle" do
@@ -293,8 +310,11 @@ test "CYBERTRAIN_TEST_DATABASE is honoured" do
   refute File.exist?("#{named}-wal") && File.read("#{named}-wal") == "stale"
   assert app.booted?
   assert Cybertrain::Test.app.booted?
-  # Forgery protection is off for the bundle's tests (Rails' test default).
+  # Forgery protection is off for the bundle's tests (Rails' test default),
+  # and that default does not count as given.
   refute c.csrf
+  refute c.csrf_given?
+  assert_nil Cybertrain::Test::Bundle.check_database!
   app.shutdown
   Cybertrain::Runtime.reset!
   # ... unless config/app.rb set it.
@@ -305,6 +325,7 @@ test "CYBERTRAIN_TEST_DATABASE is honoured" do
   app.shutdown
   Cybertrain::Runtime.reset!
   ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  [named, "#{named}-wal", "#{named}-shm", other].each { |f| File.delete(f) if File.exist?(f) }
 end
 
 test "every test starts in the configured time zone" do
@@ -318,6 +339,8 @@ test "every test starts in the configured time zone" do
   app.shutdown
   Cybertrain::Runtime.reset!
   ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  zone_db = "tmp/test_bundle/zone.sqlite3"
+  [zone_db, "#{zone_db}-wal", "#{zone_db}-shm"].each { |f| File.delete(f) if File.exist?(f) }
 end
 
 # The top-level-form files, as gen/tests.rb begins and requires them (the
@@ -333,6 +356,16 @@ Cybertrain::Test.begin_file("test/computed.rb", Array.new(0) { "" }, Array.new(0
 
 test "computed #{1 + 1}" do
   raise ArgumentError, "no line"
+end
+
+Cybertrain::Test.begin_file("test/twice.rb", ["same", "same"], [2, 6])
+
+test "same" do
+  assert true
+end
+
+test "same" do
+  flunk("second")
 end
 
 Cybertrain::Test.run!
