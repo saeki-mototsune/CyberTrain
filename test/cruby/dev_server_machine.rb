@@ -152,14 +152,17 @@ test "locked by cybertrain build: nothing runs, then the pending change is handl
   assert_equal [], calls_after(r)
 end
 
-test "a build that finishes while locked does not take the port until the lock is gone" do
+test "a build that finishes while locked is not handed over: a fresh build starts once the lock is gone" do
   r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
   r.locked = true
   m.on_build_done(1, true, "")
   assert_equal [], calls_after(r)
   r.locked = false
   m.on_tick
-  assert_equal [[:stop_child], [:start_child, :binary, 1]], calls_after(r)
+  assert_equal [[:start_build, 1]], calls_after(r)
+  assert_equal [1, :cruby, :building], [m.generation, m.serving, m.build]
+  m.on_tick
+  assert_equal [], calls_after(r)
 end
 
 test "events of another generation are ignored; stop ends everything" do
@@ -385,6 +388,59 @@ test "a build success for the current generation while an interrupted round wait
   assert_equal [], calls_after(r)
   m.on_tick
   assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+end
+
+LOCK_HOLD = [:hold, "cybertrain build in progress", "the server starts when it finishes"]
+
+test "the lock appears during the handover's stop: hold, then CRuby and a fresh build, never the old binary" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.define_singleton_method(:stop_child) { @calls << [:stop_child]; @locked = true }
+  m.on_build_done(1, true, "")
+  assert_equal [[:stop_child], LOCK_HOLD], calls_after(r)
+  assert_equal [1, :holding, :idle], [m.generation, m.serving, m.build]
+  assert_equal 1, r.lines.count(LOCK_LINE)
+  m.on_tick
+  assert_equal [], calls_after(r)
+  assert_equal 1, r.lines.count(LOCK_LINE)
+  r.locked = false
+  m.on_tick
+  assert_equal [[:release_hold], [:start_child, :cruby, 1], [:start_build, 1]], calls_after(r)
+  assert_equal [1, :cruby, :building], [m.generation, m.serving, m.build]
+  m.on_tick
+  assert_equal [], calls_after(r)
+end
+
+test "the lock appears during the handover's stop and a change arrives: the change round runs" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.define_singleton_method(:stop_child) { @calls << [:stop_child]; @locked = true }
+  m.on_build_done(1, true, "")
+  calls_after(r)
+  m.on_change(["a.rb"])
+  assert_equal [], calls_after(r)
+  r.locked = false
+  m.on_tick
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:release_hold], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+  m.on_tick
+  assert_equal [], calls_after(r)
+end
+
+test "a pending change wins over the lock after the handover's stop" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.define_singleton_method(:stop_child) { @calls << [:stop_child]; @locked = true }
+  r.pending = true
+  m.on_build_done(1, true, "")
+  assert_equal [[:stop_child]], calls_after(r)
+end
+
+test "the CRuby child died under the lock, then a build succeeded: nothing handed over after the lock" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.locked = true
+  m.on_child_exit(:cruby, 1, "boom"); calls_after(r)
+  m.on_build_done(1, true, "")
+  assert_equal [], calls_after(r)
+  r.locked = false
+  m.on_tick
+  assert_equal [[:start_build, 1]], calls_after(r)
 end
 
 Cybertrain::Test.run!
