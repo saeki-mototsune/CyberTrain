@@ -64,6 +64,13 @@ class ArticleRelation < Cybertrain::Relation
     self
   end
 
+  def dup
+    rel = ArticleRelation.new(@table)
+    copy_chain_to(rel)
+    rel.preloaded(to_a) if records_preloaded?
+    rel
+  end
+
   def to_a
     if records_preloaded?
       copy = Array.new(0) { Article.new }
@@ -411,6 +418,14 @@ class Article < Cybertrain::Model
   end
 
   def call_view_method(name) = nil
+
+  def attribute_or_method?(name)
+    case name
+    when :id, :title, :body, :created_at, :updated_at then true
+    when :comments then true
+    else false
+    end
+  end
 
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
     rel = ArticleRelation.new("articles")

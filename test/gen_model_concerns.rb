@@ -82,10 +82,12 @@ test "validates from a model concern runs at the include's position" do
   assert_equal ["Body is too long (maximum is 10000 characters)"], post.errors.full_messages
   post.body = "x" * 10000
   assert post.valid?
-  # Post: title presence, include Visible (body length), title uniqueness
+  # Post: the generated range of the decimal price (D73), title presence,
+  # include Visible (body length), title uniqueness
   # and length, views numericality.
   rules = Cybertrain::Model.validators_for("Post").map { |v| "#{v.attr}:#{v.kind}" }
-  assert_equal ["title:presence", "body:length", "title:uniqueness", "title:length", "views:numericality"], rules
+  assert_equal ["price:numericality", "title:presence", "body:length", "title:uniqueness", "title:length",
+                "views:numericality"], rules
   generated = File.read("#{FIXTURE}/gen/concerns.rb")
   assert_includes generated, "class Post\n  # Visible (include Visible at app/models/post.rb:4)\n  model_concern_insert_at(1)\n" \
                              "  validates :body, length: { maximum: 10000 }\n  scope :visible, -> { where(hidden: 0) }\n" \

@@ -11,6 +11,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # For a merge queue on main, which is not turned on (docs/design.md, D34,
+  # the status of 2026-11-11): the queue waits for the required checks on a
+  # `merge_group` event. Until it is on, nothing sends the event.
+  merge_group:
   # release.yml runs this file on the tag before it creates a release.
   workflow_call:
     inputs:
@@ -23,28 +27,86 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the Gate still running for its
+# previous commit; only that. Every other run (a push to main, a release
+# run) is in a group of its own, its run id, so it is never cancelled and
+# never waits: with one group for main, a third merge arriving while the
+# first run is going would cancel the second one's pending run, and that
+# commit would have no Gate result.
+concurrency:
+  group: gate-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The whole run takes 20 to 30 seconds (docs/design.md, D34, the status of
+# 2026-11-11); ten minutes is for a slow gem install, not for the checks.
 jobs:
   gate:
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
-      - uses: ruby/setup-ruby@v1
+          persist-credentials: false
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
           ruby-version: "3.3"
       - run: script/gate
+
+  # actionlint over every workflow and composite action (script/lint-workflows):
+  # what a YAML load does not see, such as a `needs:` that names no job, an
+  # expression reading an input or a step output that does not exist, an
+  # input a reusable workflow or an action does not take, a broken `run:`
+  # script (the runner has shellcheck, which actionlint calls). Here and not
+  # in ci.yml because this workflow runs on every change: a change to
+  # release.yml alone starts no other. A job of its own because actionlint
+  # is a Go program and script/gate promises CRuby alone.
+  # The release is pinned by version and by the SHA-256 of its Linux x86_64
+  # archive (actionlint_<version>_checksums.txt on its release page); move
+  # the two together. On a release run for a tag from before this job,
+  # script/lint-workflows is not in the checkout and the job fails, as
+  # ci.yml's jobs do for a tag older than the files they use.
+  actionlint:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          ruby-version: "3.3"
+      - name: Install actionlint
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tar.gz" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "ACTIONLINT=$RUNNER_TEMP/actionlint/actionlint" >> "$GITHUB_ENV"
+      # shellcheck comes with the runner image; without it actionlint would
+      # skip the `run:` scripts and say nothing.
+      - name: Lint the workflows and the composite actions
+        run: |
+          command -v shellcheck > /dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
+          shellcheck --version
+          script/lint-workflows
 
   # The guide pages' tests and a test build of docs/guide/ (script/guide-pages).
   # A job of its own because they need gems (kramdown, kramdown-parser-gfm,
   # rouge) and script/gate promises CRuby with no gems.
   guide-pages:
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
-      - uses: ruby/setup-ruby@v1
+          persist-credentials: false
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
           ruby-version: "3.3"
       - name: Install the gems (pinned as in docs/guide/README.md)

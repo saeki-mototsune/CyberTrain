@@ -1,0 +1,90 @@
+#!/bin/sh
+# Which CI jobs a change needs: reads the changed paths, one a line, on
+# stdin and prints `framework=true` or `framework=false`. The `changes` job
+# of .github/workflows/ci.yml runs it and the jobs that compile (the
+# framework tests, the end-to-end jobs, the setup-cybertrain action's) run
+# only on `true`. The api-docs job runs on every CI run and is not decided
+# here.
+#
+# `on.paths` in ci.yml decides whether the workflow starts at all; it cannot
+# tell the jobs apart, so its rule is repeated here, with one more case: the
+# paths only the API reference reads (script/api-docs, .yardopts) start the
+# workflow and need no compiling.
+#
+#   false  docs/api/**, script/api-docs, .yardopts (the API reference only)
+#   true   .github/workflows/ci.yml, script/test-shard, script/ci-changes,
+#          script/auth-e2e
+#   false  what on.paths leaves out: site/**, **.md, script/**, .githooks/**,
+#          .github/workflows/** (in a change that started the workflow
+#          through another file)
+#   true   everything else
+#
+# One path that says true is enough. A path this file does not know says
+# true, and so does one git printed quoted (an unusual character in the
+# name): the jobs run when in doubt.
+#
+# usage: git diff --name-only BASE HEAD | script/ci-changes
+#        script/ci-changes --self-test    check the rule against known cases
+
+decide() {
+  framework=false
+  while IFS= read -r path; do
+    case "$path" in
+      "") ;;
+      docs/api/* | script/api-docs | .yardopts) ;;
+      .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e) framework=true ;;
+      site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
+      *) framework=true ;;
+    esac
+  done
+  echo "framework=$framework"
+}
+
+# expect WANT PATH...: decide on the paths and compare.
+expect() {
+  want="framework=$1"
+  shift
+  got=$(printf '%s\n' "$@" | decide)
+  if [ "$got" = "$want" ]; then return 0; fi
+  echo "script/ci-changes: $* gave $got, expected $want" >&2
+  failed=1
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+  failed=0
+  # The API reference alone: no compiling.
+  expect false docs/api/README.md
+  expect false docs/api/yard_setup.rb docs/api/stubs/models.rb docs/api/templates/default/layout/html/setup.rb
+  expect false script/api-docs .yardopts
+  # With a page or a script on.paths leaves out, still none.
+  expect false docs/api/README.md site/index.html README.md script/gate .githooks/pre-commit .github/workflows/pages.yml
+  # Code, tests, the example, the actions, the pins: the tests run.
+  expect true cybertrain/router.rb
+  expect true docs/api/README.md cybertrain/router.rb
+  expect true test/router.rb.expected
+  expect true examples/blog/app/models/post.rb
+  expect true .github/actions/setup-cybertrain/action.yml
+  expect true .github/actions/setup-spinel/action.yml
+  expect true .github/workflows/ci.yml
+  expect true script/test-shard
+  expect true script/ci-changes
+  expect true script/auth-e2e
+  expect true spin.toml
+  expect true cybertrain.gemspec
+  expect true playground/Dockerfile
+  expect true docs/guide/images/a.png
+  # Not the API reference's: only docs/api/ is.
+  expect true docs/apiary.rb
+  # A quoted path is not recognised.
+  expect true '"docs/api/caf\303\251.rb"'
+  if [ "$failed" = 0 ]; then echo "script/ci-changes: self-test passed"; fi
+  exit "$failed"
+fi
+
+if [ $# -ne 0 ]; then
+  echo "usage: git diff --name-only BASE HEAD | script/ci-changes" >&2
+  echo "       script/ci-changes --self-test" >&2
+  exit 2
+fi
+
+decide

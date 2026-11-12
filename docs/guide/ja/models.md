@@ -1,5 +1,5 @@
 ---
-source_sha256: 9162d493e7eb52e7625532b986b86fdb3271d8d3052a33e516ddadcb0a9690ba
+source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
 ---
 # モデルとデータベース
 
@@ -104,7 +104,7 @@ end
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
 | `t.float` | `FLOAT` | Float |
-| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float。保存時に scale に丸められる |
+| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float。保存時に scale に丸められ、有効数字 15 桁まで正確 |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time（UTC、マイクロ秒） |
 | `t.date` | `DATE` | Date |
@@ -115,7 +115,14 @@ NULL を許すカラムの属性は nil にもなります。`new`、`update`、
 
 ### decimal は Float
 
-Rails は `decimal` カラムを BigDecimal として読みますが、ここでは Float です。生成されるモデルは、値を保存するたびに（`save`、`update_columns`、`update_all`、一括書き込み）カラムの `scale:` に丸めるので、保存される値は代入後に Rails が保存する値と同じです。Spinel の BigDecimal はまだ Float や String から作れず、丸めもできません。これが見直しの条件です（`docs/design.md` D42）。二進の浮動小数点は長い合計でずれていきます：端で丸めるか（`total.round(2)`）、金額を整数カラムに最小単位で持ってください（`price_cents`）。
+Rails は `decimal` カラムを BigDecimal として読みますが、ここでは `DECIMAL(p,s)` カラムに入った Float で、次の契約に従います（`docs/design.md` D73）：
+
+- **有効数字 15 桁まで正確です。** `precision:` が 15 以下なら、宣言した精度に収まる、小数部が `scale:` 桁の値はすべて、そのまま保存され、そのまま読み出されます。15 桁を超えると最も近い Float になります：`decimal(18,8)` が正確なのは 9,999,999.99999999 までで、宣言した整数部 10 桁までではありません。
+- **保存されるところで scale に丸められます**（`save`、`update`、`update_columns`、`update_all`、一括書き込み）。十進の桁の上で、0 から遠い方への四捨五入です：scale 2 での 1.005 は、Rails が保存するのと同じ 1.01 で、CRuby でも Spinel でも同じです。
+- **範囲外はバリデーションエラーです。** precision のある decimal カラムに対して `spin run gen` は `numericality` のバリデーションを書くので、精度を超える値、Infinity、NaN に対して `save` は保存せずに false を返します。
+- **合計は Float の合計です。** 合計は端で `Cybertrain::Cast.round_scale(total, 2)` で丸めてください。`total.round(2)` ではありません。
+
+金額は整数カラムに最小単位で持ってください（`price_cents`）：Integer の演算と `sum_int` は正確です。フォームの項目は `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` で読み、`number_to_currency(price_cents / 100.0)` で表示します。アップグレード時の注意：コンパイルしたフレームワークがこれまで切り捨てていた境界値（1.005 が 1.0 として保存されていた）は、新しい書き込みに限り、切り上げて保存されるようになりました。また、生成されるバリデーションは、これまで保存されていた値を拒否します。decimal カラムを最小単位に移す手順は D73 にあります。
 
 ### JSON のカラム
 

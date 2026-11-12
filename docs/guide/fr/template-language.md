@@ -1,5 +1,5 @@
 ---
-source_sha256: 2f2c328fde36b079acea86515c42f22d3af9b2c18510dfd6025c30023d98325b
+source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -256,7 +256,7 @@ Une sous-classe de `Cybertrain::Model` (un `Post`, un `Note` générés, ...) r�
 
 Si les quatre répondent `nil`, `attribute_or_method?(:name)` décide s’il s’agissait d’un nom légitime qui contient simplement `nil` (renvoie le `nil`) ou d’une faute de frappe (`"undefined method 'bogus' for Post"`).
 
-**Tel qu’implémenté, une vraie lacune que signale le fichier de l’interpréteur lui-même** (voir le commentaire `TODO(integrator)` au-dessus de `class Model` dans `interpreter.rb`)&nbsp;: le `Cybertrain::Model#attribute_or_method?` *de base* renvoie toujours `true`. Seul un modèle généré qui le redéfinit avec un `case` explicite (comme le font les modèles de test écrits à la main) lève réellement une erreur sur une faute de frappe&nbsp;; sans cette redéfinition, un attribut ou une méthode mal orthographié s’affiche silencieusement vide au lieu d’échouer. Ne supposez pas que les fautes de frappe sont détectées, sauf si vous savez que le modèle redéfinit ce hook.
+**Les modèles générés y répondent d’après leur schéma.** `spin run gen` émet `attribute_or_method?` dans chaque modèle sous la forme d’un `case` sur ses colonnes (une colonne renommée sous ses deux noms), ses associations et ses méthodes de vue publiques&nbsp;: `<%= post.titel %>` sur un modèle généré donne donc `"posts/show:3: undefined method 'titel' for Post"`, tandis qu’une colonne qui contient `nil` s’affiche vide. Le `Cybertrain::Model#attribute_or_method?` *de base* (dans `model.rb`) renvoie toujours `true`&nbsp;: une sous-classe de `Cybertrain::Model` écrite à la main qui ne le redéfinit pas affiche un nom inconnu comme vide. Note de mise à niveau&nbsp;: un template qui lisait un nom que son modèle n’a jamais eu s’affichait vide jusqu’ici et lève une erreur après le prochain `spin run gen` (docs/design.md D71).
 
 Deux modèles se comparent avec `==` par classe et par `id` (`Model#==`), accessible via l’opérateur `==` ordinaire (dispatch natif de l’égalité, pas `call_method`).
 
@@ -527,7 +527,7 @@ Toute `StandardError` ordinaire venant d’un helper ou d’un appel de méthode
 | `:"quoted symbol"`, symboles d’opérateur `:+` | Les symboles ne contiennent que des caractères d’identifiant |
 | `foo (x)`, `foo [x]` (espace toléré, parfois avec un avertissement) | Les deux sont des `SyntaxError` franches — pas d’espace avant la `(` d’un appel ni le `[` d’une indexation |
 | Appels imbriqués sans parenthèses résolus par le propre parseur de Ruby | Seul l’appel le plus externe d’une expression reçoit des arguments sans parenthèses |
-| Un attribut non déclaré/mal orthographié lève de façon fiable `NoMethodError` | S’affiche silencieusement vide, sauf si le modèle généré concerné redéfinit `attribute_or_method?` (lacune connue, pas une garantie) |
+| Un attribut non déclaré/mal orthographié lève de façon fiable `NoMethodError` | Un modèle généré lève `"undefined method 'x' for Post"` (une `Template::RuntimeError`) et affiche vide un attribut existant qui vaut `nil`&nbsp;; un modèle écrit à la main qui ne redéfinit pas `attribute_or_method?` affiche un nom inconnu comme vide |
 | `1 / 0` et `1.0 / 0` lèvent tous deux `ZeroDivisionError` | La division/le modulo d’un `Integer` par zéro lève `"divided by 0"`&nbsp;; `Float` suit l’IEEE-754 (`Infinity`/`NaN`), sans erreur |
 | `distance_of_time_in_words`/la pluralisation prennent en charge les locales i18n | `time_ago_in_words`, `distance_of_time_in_words`, les helpers de nombres et `time_tag` lisent le dictionnaire de la locale&nbsp;; `pluralize` n’infléchit que l’anglais ([Internationalisation](i18n.md#helpers-that-follow-the-locale)) |
 | Chaque module de `app/helpers` est mélangé dans la vue&nbsp;; n’importe quelle signature&nbsp;; un helper peut en remplacer un du framework | Les modules sont analysés à la compilation en un `case` généré&nbsp;: paramètres nommés seulement, au plus trois optionnels, aucun nom de helper du framework et pas de terminaison `_path`/`_url` ([Helpers de l’application](#application-helpers)) |

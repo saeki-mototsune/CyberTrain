@@ -140,7 +140,9 @@ that format only). The same fallback covers any `Accept` that lists
 `application/json, text/plain, */*` to an action with only an html
 template gets the html and not a 406. The fallback runs the block a second
 time, for html, so a statement in it other than the `format.` lines runs
-twice: keep the block to the `format.` lines.
+twice: keep the block to the `format.` lines. An entry with `q=0` refuses
+its type: `application/json, text/html;q=0` gets no html, with or without
+`*/*` beside it.
 
 A response whose format came from `Accept` (no extension, an `Accept`
 header sent) carries `Vary: Accept`, merged into a `Vary` the action set,
@@ -284,6 +286,8 @@ does the same and returns whether the action should render. Only GET and
 HEAD get a 304. `Cache-Control` is `max-age=0, private, must-revalidate`
 (`public` with `public: true`) unless `expires_in seconds` set
 `max-age=<seconds>` first. There is no automatic ETag on other responses.
+`If-None-Match: *` matches whatever the action validated, an `ETag` or
+only a `Last-Modified`.
 
 The ETag is made from the key you give, the request's format and a digest
 of the build (the asset digests and import map, and the views in a
@@ -575,7 +579,12 @@ What changes for an application written for 0.4 (the full list is section
   `include` of a module that is not a concern is left to Ruby.
 - Every ETag changes once (it now holds the request's format and a build
   digest), a response negotiated by `Accept` sends `Vary: Accept`, and the
-  html fallback covers any `Accept` that lists `text/html` or `*/*`.
+  html fallback covers any `Accept` that lists `text/html` or `*/*`. A
+  request that may fall back to html (`application/json, text/html`) has
+  an ETag of its own, apart from the one of a request for that format
+  alone; `text/html;q=0` in `Accept` gets no html fallback (406 where the
+  action has only html), also beside `*/*`; and `If-None-Match: *` gets a
+  304 from a response validated by `last_modified:` alone.
 - `permit` and `expect` raise `ArgumentError` for a filter that is not an
   Array; a `layout` that names a missing layout raises `MissingTemplate`
   (the default `application` layout stays optional); a jar cookie over 4096

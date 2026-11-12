@@ -20,7 +20,17 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   `instance_variable_get`, `eval`) do not exist. [spikes/NOTES.md](spikes/NOTES.md)
   lists the constraints found so far and how the code works around them.
   When something will not compile, look there first, and add a note when you
-  find a new one.
+  find a new one. Its section "Workarounds that shape the design" says which
+  shapes are permanent, which are tied to the pinned build and which test
+  covers each, and what a Spinel update re-checks.
+- **A CRuby pass is not acceptance for a structural change.** The commit
+  gate and `ruby -I. test/<name>.rb` run under CRuby, where none of Spinel's
+  constraints exist. A change that moves code between methods, classes or
+  files, changes what a block or a Proc crosses, adds a shared helper or a
+  base class, or changes what the generator emits must pass the affected
+  tests compiled (`spin test`), and a generator change must leave
+  `examples/blog` regenerating clean and passing. Say in the pull request
+  which compiled tests you ran.
 - **Every design decision is written down.** [docs/design.md](docs/design.md)
   records what was decided, what was rejected and why. Read the
   relevant section before changing a behaviour, and update it when a
@@ -74,8 +84,10 @@ at [.githooks/](.githooks/), after which:
   `script/check-reserved-names`, `check-client-faults` and `check-http-layer`
   pass (see [Conventions](#conventions-ci-enforces) for what each guards),
   every file `cybertrain.gemspec` lists exists, the CLI loads under CRuby and
-  `playground/Dockerfile` copies each of those files into its gem stage, and
-  every `test/*.rb` has its `.expected` snapshot.
+  `playground/Dockerfile` copies each of those files into its gem stage, the
+  Playground image and Blog image workflows run for a pull request that
+  changes one of them or a pin, and every `test/*.rb` has its `.expected`
+  snapshot.
 - **commit-msg** checks the message's shape (see [Commits](#commits)).
 
 `script/gate` with no arguments runs the same checks over the whole
@@ -156,14 +168,24 @@ generator emits or how an application runs:
 
 ```sh
 cd examples/blog
-spin run gen && git diff --exit-code -- gen/   # generated code must be fresh
+spin run gen && git status --short -- gen/     # generated code must be fresh: this prints nothing
 spin test
 ```
+
+`git status` rather than `git diff`: a file the generator writes for the
+first time is untracked, and `git diff` passes over it. CI fails on either.
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs all of this on
 Ubuntu and macOS, builds and installs the gem, scaffolds and serves an
 application end to end, and builds the API reference with YARD (any warning
-fails it: `script/api-docs`).
+fails it: `script/api-docs`, the `api-docs` job). A change to nothing but
+the API reference's own inputs (`docs/api/`, `script/api-docs`, `.yardopts`)
+runs that job alone; [script/ci-changes](script/ci-changes) holds the rule
+and `script/ci-changes --self-test` checks it. Its `setup-cybertrain` jobs run the action
+applications use in their own CI
+([.github/actions/setup-cybertrain](.github/actions/setup-cybertrain/action.yml))
+on a newly generated application, so a change to that action is tested like
+any other.
 
 ## Conventions CI enforces
 
@@ -181,6 +203,20 @@ way; the script or workflow step that checks it says so in its comment.
 - **The CLI runs under CRuby and lists its files by hand.** A file the CLI
   requires must be in `cybertrain.gemspec`'s `spec.files`; CI installs the
   built gem and runs it.
+- **A workflow's token can do only what its jobs need.** Every workflow
+  states `permissions:` at the top, so nothing relies on the repository's
+  default: read access for what only checks (the Gate, CI, `required`),
+  write access only where something is published (a release, a package,
+  the site), on the job that publishes when the workflow has others. Every
+  `actions/checkout` sets `persist-credentials: false`, so the token is not
+  left in `.git/config` for the steps after it, unless a later step pushes
+  with it (the Bump version workflow, which says so)
+  (`script/check-workflows`).
+- **What a workflow runs is pinned.** An action from another repository is
+  named by commit, `uses: owner/name@<commit> # vX.Y.Z`, never by a tag,
+  and a `gem install` in a workflow names a version
+  (`script/check-workflows`; see
+  [Dependencies and their updates](#dependencies-and-their-updates)).
 - **Versions are pinned in one place.** `Cybertrain::VERSION` equals
   `spin.toml`'s version; `Cybertrain::SPINEL_TAG` equals `SPINEL_TAG` in
   `ci.yml`. (`script/claude-cloud-setup` pins no tag: it builds the latest
@@ -203,7 +239,16 @@ way; the script or workflow step that checks it says so in its comment.
   say so in the pull request and leave the English change; a maintainer will
   follow up.
 
-There is no formatter or linter beyond the gate. Follow the surrounding code:
+- **The workflows pass actionlint.** A workflow or a composite action under
+  `.github/` that loads as YAML can still name a job, an input or a step
+  output that does not exist, and GitHub says so only when it runs, which for
+  the release workflow is at release time. The Gate workflow's `actionlint`
+  job runs [script/lint-workflows](script/lint-workflows) on every pull
+  request; with [actionlint](https://github.com/rhysd/actionlint) installed
+  (and shellcheck, which it calls for the `run:` scripts) the same command
+  runs locally. The commit gate does not run it.
+
+There is no formatter or linter for the Ruby code beyond the gate. Follow the surrounding code:
 two-space indentation, comments that explain why rather than what, methods
 and files named for what they hold. Prefer the plain construct Spinel compiles
 well over the clever one; when a compiler constraint forces an odd shape, say
@@ -253,9 +298,11 @@ blank second line) and leaves merge, revert, fixup! and squash! commits alone.
    does and why, how it was checked, and what the reviewer should know; the
    checklist is the gate above in prose. Mark it a draft if it is not ready
    for review.
-4. CI must be green: the Gate workflow and the CI workflow (both operating
-   systems). A failure you believe is unrelated to your change is still worth
-   a sentence in the pull request.
+4. CI must be green: the Gate workflow, the CI workflow (both operating
+   systems) and, when the change touches an image, that image's workflow.
+   The `required` check waits for all of them and is what `main` asks for
+   (see [Branch rules](#branch-rules)). A failure you believe is unrelated
+   to your change is still worth a sentence in the pull request.
 5. A maintainer reviews it. Expect questions about the design and requests
    for tests; answer on the thread and push follow-up commits (do not
    force-push over commits a reviewer has already read). Approved pull
@@ -276,6 +323,97 @@ if you change `docs/guide/` also run `script/guide-pages --out <tmpdir>`, as
 the Gate workflow's `guide-pages` job does: it fails on a broken link or
 anchor, which the gate does not see.
 
+## Branch rules
+
+`main` takes changes through pull requests only, and a pull request merges
+only when two checks have passed on its latest commit:
+
+- **`gate`**, the Gate workflow's job that runs `script/gate`;
+- **`required`**, the one job of
+  [.github/workflows/required.yml](.github/workflows/required.yml). It waits
+  for every other workflow the pull request started (the Gate, CI, the image
+  workflows) and passes only if each of them did. CI and the image workflows
+  start only for the paths they test, so their jobs cannot be required one by
+  one: a documentation pull request would wait for ever for a job that never
+  starts. `required` starts on every pull request and waits only for what
+  did start, which for a documentation change is the Gate, about a minute.
+
+A pull request whose workflows did not start (one opened with
+`GITHUB_TOKEN`, see [Releasing](#releasing), step 1) has neither check and
+cannot be merged until they run. After re-running a failed job, re-run
+`required` as well: it reported on the attempt it saw.
+
+The rule itself is a repository setting, which only an owner can change. Its
+definition is checked in as
+[.github/rulesets/main.json](.github/rulesets/main.json): pull requests
+required (no approval count, so a sole maintainer can merge their own), the
+two checks above required from GitHub Actions, no force push and no deletion.
+To apply it, either import the file (Settings → Rules → Rulesets → New
+ruleset → Import a ruleset) or run, as an owner:
+
+```sh
+gh api --method POST repos/saeki-mototsune/CyberTrain/rulesets --input .github/rulesets/main.json
+```
+
+Then check it on two pull requests: one that changes only a Markdown file
+must show `gate` and `required` green within minutes, with CI not started,
+and be mergeable; one that breaks a test must show `required` red and the
+merge blocked. When a required job is renamed, change the file, the ruleset
+and this section together.
+
+## Dependencies and their updates
+
+What CI and a release run is pinned, so that a run can be repeated and a
+change in someone else's code arrives as a pull request, not as a surprise:
+
+| What | Pinned how | Updated by |
+|---|---|---|
+| Actions (`uses:` in `.github/workflows/` and `.github/actions/`) | A commit, with the release in a comment: `actions/checkout@<commit> # vX.Y.Z` | Dependabot ([.github/dependabot.yml](.github/dependabot.yml)): one pull request a week for all of them |
+| Spinel | `Cybertrain::SPINEL_TAG`, one release, equal to `SPINEL_TAG` in `ci.yml` | The Bump version workflow ([Releasing](#releasing)) |
+| Gems a workflow installs (`yard`, `kramdown`, `kramdown-parser-gfm`, `rouge`, `kamal`) | `-v "~> X.Y"`: a fixed minor, the newest patch | By hand, in every workflow that installs the gem and in [docs/guide/README.md](docs/guide/README.md) |
+| `prism`, for building Spinel | The exact version Spinel's Makefile names | With Spinel |
+| Ruby for the scripts and the CLI | `ruby-version: "3.3"` | By hand |
+| Runners and base images | `ubuntu-26.04` runners, `ubuntu:24.04` images. `macos-latest` is not pinned: it follows GitHub's current macOS image | By hand |
+
+The gem itself has no runtime dependency and the repository has no
+`Gemfile`: the gems above are tools of the documentation build and of the
+Kamal check, installed in the job that uses them. A lockfile for them was
+considered and left out: it would put Bundler in every job that today
+needs one `gem install`, for tools whose builds already fail on a warning
+or a broken link. Dependabot does not read `gem install` lines, so these
+constraints move by hand.
+
+To pin a new action, or move one by hand, take the commit from the
+release's tag and write both:
+
+```sh
+git ls-remote https://github.com/actions/checkout 'refs/tags/v7*'
+# an annotated tag also lists <tag>^{}: that line is the commit to use
+```
+
+An update is verified by the checks its pull request starts. Dependabot's
+pull request changes every file that uses an updated action, and each
+workflow a pull request can start runs on it: the Gate always (with
+`script/check-workflows`), CI on both systems when `ci.yml` or a local
+action changes, an image's build and smoke test when that image's workflow
+changes; `required` waits for them all.
+Three things no pull request exercises, because they only run when
+something is published; look at them after merging an update that touches
+them:
+
+- the Pages actions (`configure-pages`, `upload-pages-artifact`,
+  `deploy-pages`): the next Pages run on `main`, or run the Pages workflow
+  by hand;
+- `docker/login-action` and the pushes: run the Playground image workflow
+  by hand with the tag `test`;
+- the Release, Bump version and Spinel prebuilt workflows: read the diff;
+  their next run is the next release.
+
+When a gem's constraint moves, run what uses it before pushing:
+`script/api-docs` (yard, kramdown) and `script/guide-pages --out <tmpdir>`
+with the tests under `script/guide-pages.d/test/` (kramdown, rouge); the
+Blog image workflow loads `config/deploy.yml` with Kamal.
+
 ## Releasing
 
 The gem and the framework are released from the same tag, and `cybertrain
@@ -290,22 +428,24 @@ before the gem is pushed:
    give it the new version and, to move to another Spinel release, the new
    `Cybertrain::SPINEL_TAG`. It runs
    [script/bump-version](script/bump-version), which also moves
-   `SPINEL_TAG` in `ci.yml` and the numbers the tests expect. With the
-   repository secret `RELEASE_PR_TOKEN` set (a fine-grained token for this
-   repository with Contents, Pull requests and Workflows: read and write),
-   the Gate and CI run on that pull request. Without it a version-only bump
-   still opens the pull request, but the checks do not start until it is
-   closed and reopened, and a Spinel bump stops: only a token with Workflows
-   may push the change to `ci.yml`.
+   `SPINEL_TAG` in `ci.yml` and the numbers the tests expect. It needs the
+   repository secret `RELEASE_PR_TOKEN` (a fine-grained personal access
+   token for this repository with Contents, Pull requests and Workflows:
+   read and write; Workflows because a Spinel bump changes `ci.yml`): a
+   pull request opened with `GITHUB_TOKEN` starts no workflows, so there is
+   no fallback to it, and without the secret the run fails in its first
+   step with nothing pushed. With it, the Gate and CI run on the pull
+   request, and the run waits until both have started and fails if they
+   have not. Renew the secret when the token expires.
 2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
 4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml),
    which tests the tag (below) and, only if every check passes, publishes the
    playground image `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
-   (and `latest`) through
+   through
    [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml)
-   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z` (and
-   `latest`) through
+   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z`, built
+   and smoke-tested by
    [.github/workflows/blog-image.yml](.github/workflows/blog-image.yml);
    check that run.
 5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
@@ -315,10 +455,20 @@ before the gem is pushed:
    the Spinel release the tag pins) and the blog image's smoke test on the
    tagged commit. If any of those fails, nothing is published. Once they
    pass, it pushes the playground and blog images (in parallel) and then
-   creates the release. If one image push fails, no release is created, but
-   the other image's `X.Y.Z` and `latest` may already be pushed: check both
-   packages before re-running the failed jobs. For a tag pushed without a
-   release, run that workflow by hand with the tag. After the release is
+   creates the release. The blog image pushed is the one the smoke test
+   ran on, kept as a workflow artifact for 7 days, not a second build: to
+   re-run its push later than that, re-run the whole workflow. If one image
+   push fails, no release is created, but the other image's `X.Y.Z` may
+   already be pushed: check both packages before re-running the failed jobs. For a tag pushed without a
+   release, run that workflow by hand with the tag. Last, its
+   `promote-latest` job points `latest` of both images at the newest
+   release: the highest `X.Y.Z` that has a published release, whichever run
+   it is in. Releases of different tags may run at the same time, and a
+   manual run may release an old tag, without `latest` going back; that job
+   runs one at a time across all release runs, and when several wait GitHub
+   cancels all but the newest waiting one, which is harmless (each would
+   move `latest` to the same image). Nothing else pushes `latest`; to repair
+   it, re-run that job. After the release is
    created, the same run attaches a Linux build of the fork's latest Spinel
    release (`spinel-<tag>-linux-x86_64.tar.gz`, for Claude Code cloud
    sessions; see below); check that its `spinel-prebuilt` job passed.

@@ -548,7 +548,7 @@ from `secret_key_base`.
   `param:`, redirects, query strings), D59 formats and `respond_to`, D60
   concerns and `helper_method`, D61 the controller additions and the
   encrypted session, D62 the view additions, D63 assets and importmap; 4b
-  adds D64 i18n and D65 the authentication additions. D7, D8, D15, D25
+  adds D79 i18n and D80 the authentication additions. D7, D8, D15, D25
   and section 8 are amended where they say "not built"; section 13 gets the
   dated entries.
 - Guides: requests.md (routing, formats, concerns, controller additions,
@@ -699,7 +699,7 @@ in test/fixtures/i18n/rails-i18n/ with its MIT license):**
      19 us / 19 us, since its arms are tried in order; a Hash literal
      constant answers in 33 to 53 ns (an absent key 6 ns) but compiles in
      12.5 to 15.2 s, nearly all of it cc on the one C function that holds
-     all 1,980 stores (spikes/NOTES.md rule 99); the same Hash filled by
+     all 1,980 stores (spikes/NOTES.md rule 101); the same Hash filled by
      40 methods of 50 stores each (`TEXTS = Gen::Locales.texts.freeze`)
      answers in 34 to 52 ns (6 ns absent) and compiles in 4.7 to 5.4 s
      (1.3 MB). Fallback taken: none; gen/locales.rb is a Hash (the faster
@@ -1033,7 +1033,7 @@ adds its own notes here.
 ### Part 4b (2026-11-12, after part 4b's Tasks 1 to 19)
 
 What differed from the plan or from this document in part 4b, and why;
-each is recorded in the code and in docs/design.md D64 and D65 too.
+each is recorded in the code and in docs/design.md D79 and D80 too.
 
 - The spike (section 12, item 6): no fallback was taken. The plan's Psych
   option (its R3) was dropped before the spike (Psych types scalars, and
@@ -1043,7 +1043,7 @@ each is recorded in the code and in docs/design.md D64 and D65 too.
   is nil (no `I18n::MISSING`). Item 6b chose a shape the plan did not
   list (plan decision D3): `gen/locales.rb` is a Hash, the faster shape,
   filled by methods of at most 50 stores, because one Hash literal of
-  2,000 keys takes 12.5 to 15.2 s of cc (spikes/NOTES.md rule 99) and a
+  2,000 keys takes 12.5 to 15.2 s of cc (spikes/NOTES.md rule 101) and a
   `case` takes 19 us to miss. `cybertrain/locales/bundled.rb` has the
   same shape.
 - i18n (section 8): lazy lookup follows the rendering template's path, as
@@ -1193,9 +1193,9 @@ each is recorded in the code and in docs/design.md D64 and D65 too.
   is read as 0.4 read it; jobs and scheduled tasks start at the default
   locale, as an action does; a dictionary validation message may use
   `%{value}`.
-- New Spinel rules: spikes/NOTES.md 99 to 101, all from the spike (99 a
-  compile-time cost, 100 and 101 records of forms that work);
-  docs/spinel-feedback.md Y. The tasks after the spike found none.
+- New Spinel rules: spikes/NOTES.md 101 to 103, all from the spike (101 a
+  compile-time cost, 102 and 103 records of forms that work);
+  docs/spinel-feedback.md AA. The tasks after the spike found none.
 - Tests: `spin test` has 185 programs (8 new: `cli_authentication_upgrade`,
   `gen_locales`, `i18n`, `i18n_models`, `i18n_views`, `locale_yaml`,
   `mail_message`, `token`), and examples/blog has eight (6 new:

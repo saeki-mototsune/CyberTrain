@@ -1,5 +1,5 @@
 ---
-source_sha256: 609dcbd39a00fda2aaabba958a05b3af0bc228dc6c93a9b499a3db747da14a18
+source_sha256: fe2c05ecaf069531464f4c4acba55c5839ea809973a39f81eec7caf7f761d280
 ---
 # 请求
 
@@ -80,7 +80,7 @@ def show
 end
 ```
 
-收集器（`Cybertrain::FormatCollector`）有 `html`、`json`、`turbo_stream`、`csv`、`xml`、`text` 和 `any`。第一个匹配的声明会立即运行它的块，因此块能看到动作的实例变量；没有块的声明会渲染该格式的动作模板（`show.html.erb` 在布局中，`show.turbo_stream.erb` 不带布局）。一个都不匹配时，响应是 `406 Not Acceptable`。`any` 匹配除 `:unknown` 以外的任何格式。Turbo 提交表单时请求 `text/vnd.turbo-stream.html, text/html`：这样的请求格式是 `:turbo_stream`，没有 `format.turbo_stream` 的动作会像 Rails 那样通过它的 `format.html` 响应（`.turbo_stream` 扩展名只请求该格式）。同样的回退适用于任何在非 html 格式旁边列出 `text/html` 或 `*/*` 的 `Accept`：客户端向只有 html 模板的动作发送 `application/json, text/plain, */*`，得到的是 html，而不是 406。回退会为 html 把块再运行一次，所以块中 `format.` 行以外的语句会运行两次：块里只放 `format.` 行。
+收集器（`Cybertrain::FormatCollector`）有 `html`、`json`、`turbo_stream`、`csv`、`xml`、`text` 和 `any`。第一个匹配的声明会立即运行它的块，因此块能看到动作的实例变量；没有块的声明会渲染该格式的动作模板（`show.html.erb` 在布局中，`show.turbo_stream.erb` 不带布局）。一个都不匹配时，响应是 `406 Not Acceptable`。`any` 匹配除 `:unknown` 以外的任何格式。Turbo 提交表单时请求 `text/vnd.turbo-stream.html, text/html`：这样的请求格式是 `:turbo_stream`，没有 `format.turbo_stream` 的动作会像 Rails 那样通过它的 `format.html` 响应（`.turbo_stream` 扩展名只请求该格式）。同样的回退适用于任何在非 html 格式旁边列出 `text/html` 或 `*/*` 的 `Accept`：客户端向只有 html 模板的动作发送 `application/json, text/plain, */*`，得到的是 html，而不是 406。回退会为 html 把块再运行一次，所以块中 `format.` 行以外的语句会运行两次：块里只放 `format.` 行。带 `q=0` 的条目表示拒绝该类型：对 `application/json, text/html;q=0`，无论旁边有没有 `*/*`，都不会返回 html。
 
 格式来自 `Accept` 的响应（没有扩展名、发送了 `Accept` 头）带有 `Vary: Accept`，并与动作已设置的 `Vary` 合并，这样浏览器或缓存不会把某个 URL 的 html 交给请求其 JSON 或 Turbo Stream 的请求；带扩展名的路径则没有。
 
@@ -147,7 +147,7 @@ def feed
 end
 ```
 
-`fresh_when` 设置弱 `ETag`（来自 String，或来自记录的表名、`to_param` 和 `updated_at`）和 `Last-Modified`，当请求的 `If-None-Match`（没有它时为 `If-Modified-Since`）表明客户端已有当前版本时，以 `304 Not Modified` 响应；`stale?` 做同样的事并返回动作是否应当渲染。只有 GET 和 HEAD 会得到 304。`Cache-Control` 为 `max-age=0, private, must-revalidate`（`public: true` 时为 `public`），除非 `expires_in seconds` 先设置了 `max-age=<seconds>`。其他响应不会自动带 ETag。
+`fresh_when` 设置弱 `ETag`（来自 String，或来自记录的表名、`to_param` 和 `updated_at`）和 `Last-Modified`，当请求的 `If-None-Match`（没有它时为 `If-Modified-Since`）表明客户端已有当前版本时，以 `304 Not Modified` 响应；`stale?` 做同样的事并返回动作是否应当渲染。只有 GET 和 HEAD 会得到 304。`Cache-Control` 为 `max-age=0, private, must-revalidate`（`public: true` 时为 `public`），除非 `expires_in seconds` 先设置了 `max-age=<seconds>`。其他响应不会自动带 ETag。`If-None-Match: *` 与动作设置的任何验证器匹配，无论是 `ETag` 还是只有 `Last-Modified`。
 
 ETag 由你给的键、请求的格式和构建摘要（资源摘要和 import map，在 `cybertrain build` 的二进制中还有视图）组成，所以同一 URL 的 html 和 JSON 永远不会共用一个 ETag，改动资源或视图的部署会让所有客户端重新验证。由此有两点。在开发中，不带 `--embed-views` 时模板是从磁盘读取的，不在摘要里：编辑视图后仍可能得到 `304`，直到记录改变或页面在不带缓存副本的情况下重新加载。还有，键表示页面显示什么，而不是谁在看：因用户而异的内容需要把用户放进键里（`etag: "posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`），否则会展示给错误的人。不要把带有 CSP nonce 的页面设为 `public`（带 nonce 的 `content_security_policy`、`javascript_importmap_tags`）：共享缓存会把同一个页面，也就是同一个 nonce，交给每位访客，nonce 也就起不到任何保护作用。
 
@@ -275,7 +275,7 @@ Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: g
 - `rate_limit` 在缓存中计数：`store: :memory` 保留原来的按进程计数，同一控制器中的两个限制需要各自的 `name:`，返回 nil 或 `""` 的 `by:` 方法会抛出异常，什么都不渲染的 `with:` 方法之后仍返回 429。
 - 数字辅助方法对不是数字的值，以及超出 0 到 100 的精度，会抛出异常（nil 在模板中仍渲染为 `""`）。
 - 控制器或模型中的 `include A, B` 与 Ruby 一样先包含 B；`include` 一个不是 concern 的模块会留给 Ruby。
-- 所有 ETag 变化一次（现在包含请求的格式和构建摘要），由 `Accept` 决定的响应会发送 `Vary: Accept`，html 回退适用于任何列出 `text/html` 或 `*/*` 的 `Accept`。
+- 所有 ETag 变化一次（现在包含请求的格式和构建摘要），由 `Accept` 决定的响应会发送 `Vary: Accept`，html 回退适用于任何列出 `text/html` 或 `*/*` 的 `Accept`。可能回退到 html 的请求（`application/json, text/html`）有自己的 ETag，与只请求该格式的请求不同；`Accept` 中的 `text/html;q=0` 不会得到 html 回退（只有 html 的动作响应 406），旁边有 `*/*` 时也一样；`If-None-Match: *` 对只用 `last_modified:` 验证的响应也会得到 304。
 - `permit` 和 `expect` 对不是 Array 的过滤器抛出 `ArgumentError`；`layout` 指向不存在的布局会抛出 `MissingTemplate`（默认的 `application` 布局仍是可选的）；jar cookie 超过 4096 字节会抛出 `Session::CookieOverflow`。
 - `public/style.css` 继续可用；把它移到 `app/assets/stylesheets/` 是可选的（[资源](assets.md#moving-publicstylecss)）。
 - 验证消息来自捆绑的词典（[国际化](i18n.md#models-and-validation-messages)），英语文本相同，只有三处不同：`:base` 上的消息不再以 "Base" 开头，以 `_id` 结尾的属性名不带 "id"（"Article can't be blank"，而不是 "Article id can't be blank"），长度上限为 1 时显示 "1 character"。比较这些消息的测试会改变。

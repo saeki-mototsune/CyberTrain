@@ -8,6 +8,8 @@ require "cybertrain/logger"
 require "cybertrain/callback"
 require "cybertrain/rate_limit"
 require "cybertrain/views"
+require "cybertrain/rendering"
+require "cybertrain/http_cache"
 require "cybertrain/assets"
 require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
@@ -19,9 +21,6 @@ require "cybertrain/cookie_jar"
 require "cybertrain/i18n"
 
 module Cybertrain
-  class MissingTemplate < StandardError
-  end
-
   class UnknownCallback < StandardError
   end
 
@@ -153,6 +152,8 @@ module Cybertrain
     # the same way: one call site passing `false` and another a String must
     # both reach a parameter that can hold either.
     DEFAULT_LAYOUT = [true, ""][0]
+
+    HTML_CONTENT_TYPE = "text/html; charset=utf-8"
     # What run_before_callbacks consults when no controller declared a skip:
     # seeded with the element type and emptied (spikes/NOTES.md rule 9).
     NO_SKIPS = Array.new(0) { Callback.new(:skip, nil, nil, [], [], -1) }
@@ -778,26 +779,18 @@ module Cybertrain
     # Acceptable` (a `:json` request with no template and no `render`
     # included). A request whose Accept also lists HTML (Turbo's, or
     # `application/json, text/plain, */*`) gets the html template when
-    # there is none for its own format (see #html_fallback?). After a
+    # there is none for its own format (`Rendering.accepts_html?`); a
+    # `text/html;q=0` there refuses it, also beside `*/*`. After a
     # {#respond_to} whose matching declaration's block rendered nothing,
     # the format it matched decides instead of the request's.
     def default_render(action)
-      engine = Views.engine
-      if engine.nil?
-        message = "no template for #{self.class.name}##{action}"
-        raise MissingTemplate, message
-      end
-
-      wanted = @respond_format == :none ? @request.format : @respond_format
       name = action.to_s
-      if wanted == :html
-        render_template(name)
-      elsif wanted != :unknown && engine.exists?(format_template_path(name, wanted))
-        render_template(name, format: wanted)
-      elsif html_fallback?
-        render_template(name)
-      else
+      wanted = @respond_format == :none ? @request.format : @respond_format
+      chosen = Rendering.implicit_format(self.class.name, controller_path, name, wanted, @request)
+      if chosen == :none
         head_not_acceptable
+      else
+        render_template(name, format: chosen)
       end
     end
 
@@ -811,27 +804,7 @@ module Cybertrain
     # String), then flash (a Hash of the current messages), params and the
     # directory partials are looked up in.
     def view_env(extra)
-      env = {}
-      assigns = view_assigns
-      # keys + while: an each_key block is a Proc and closure per request.
-      assign_keys = assigns.keys
-      i = 0
-      while i < assign_keys.size
-        env[assign_keys[i]] = assigns[assign_keys[i]]
-        i += 1
-      end
-      extra_keys = extra.keys
-      i = 0
-      while i < extra_keys.size
-        env[extra_keys[i]] = extra[extra_keys[i]]
-        i += 1
-      end
-      env["flash"] = Template::Helpers.flash_messages(flash)
-      env["params"] = @params
-      path = controller_path
-      env["__template_dir"] = path
-      env["__controller_path"] = path
-      env
+      Rendering.page_env(view_assigns, extra, flash, @params, controller_path)
     end
 
     # I18n.t from an action: a key starting with "." is looked up under
@@ -869,8 +842,8 @@ module Cybertrain
       known = @controller_path
       return known unless known.empty?
 
-      # Asked for at least three times in a render (view_env, render_template,
-      # the layout), each an underscore of the class name: remembered.
+      # Asked for several times in a render (the environment, the template's
+      # path), each an underscore of the class name: remembered.
       name = Inflector.underscore(self.class.name)
       path = name.end_with?("_controller") ? name[0, name.length - 11] : name
       @controller_path = path
@@ -916,32 +889,10 @@ module Cybertrain
     #   default that does not exist
     # @api private
     def render_template(name, locals = {}, layout: controller_layout(@action_name), format: :html)
-      engine = Views.engine
-      if engine.nil?
-        message = "no template #{name} for #{self.class.name}"
-        raise MissingTemplate, message
-      end
-
-      env = view_env(string_keys(locals))
+      env = view_env(Rendering.stringify_locals(locals))
       helpers = Views.helpers_builder.call(self)
-      if format == :html
-        path = "#{controller_path}/#{name}"
-        if layout.empty?
-          send_html(engine.render(path, env, helpers))
-        elsif engine.exists?(layout)
-          send_html(engine.render_with_layout(path, layout, env, helpers))
-        elsif layout == Views.layout_name
-          # The default layout is optional: without it, pages render bare.
-          send_html(engine.render(path, env, helpers))
-        else
-          # A layout a `layout` line or `render layout:` named: a typo
-          # must not render every page bare without a word.
-          message = "missing layout #{layout} for #{self.class.name}"
-          raise MissingTemplate, message
-        end
-      else
-        send_rendered(engine.render(format_template_path(name, format), env, helpers), Request.mime_type(format))
-      end
+      body = Rendering.page_body(self.class.name, controller_path, name, env, helpers, layout, format)
+      send_rendered(body, format == :html ? HTML_CONTENT_TYPE : Request.mime_type(format))
     end
 
     # Answers by the request's format ({Request#format}): the block gets a
@@ -960,6 +911,8 @@ module Cybertrain
     # The same holds for any format that came from an Accept header that
     # also lists `text/html` or `*/*` (axios sends `application/json,
     # text/plain, */*`): with no declaration for it, `format.html` answers.
+    # A `q=0` refuses its type: `application/json, text/html;q=0` gets no
+    # HTML and so the 406, with or without `*/*` beside it.
     #
     # Inside the matching declaration's block, `render :x` renders the
     # template of the format that matched (`x.json.erb` in `format.json`),
@@ -990,7 +943,7 @@ module Cybertrain
       @respond_format = @request.format
       collector = FormatCollector.new(@request.format)
       block.call(collector)
-      if collector.matched_format == :none && html_fallback?
+      if collector.matched_format == :none && Rendering.accepts_html?(@request)
         # Nothing ran in the first pass, so running the block again for
         # :html runs at most one declaration's block.
         @respond_format = :html
@@ -1078,16 +1031,16 @@ module Cybertrain
 
       @response.status = Controller.status_code(status)
       if !turbo_stream.nil?
-        @response.body = Controller.turbo_stream_body(turbo_stream)
+        @response.body = Rendering.turbo_stream_text(turbo_stream)
         @response.content_type = Request.mime_type(:turbo_stream)
       elsif !plain.nil?
         @response.body = plain
         @response.content_type = "text/plain; charset=utf-8"
       elsif !html.nil?
         @response.body = Html.out(html)
-        @response.content_type = "text/html; charset=utf-8"
+        @response.content_type = HTML_CONTENT_TYPE
       elsif !json.nil?
-        @response.body = json_body(json)
+        @response.body = Rendering.json_text(json)
         @response.content_type = "application/json; charset=utf-8"
       elsif !partial.nil?
         render_partial(partial.to_s, locals)
@@ -1096,7 +1049,7 @@ module Cybertrain
         if layout == true
           chosen = controller_layout(@action_name)
         elsif layout != false
-          chosen = Controller.layout_path(layout.to_s)
+          chosen = Rendering.layout_named(layout.to_s)
         end
         wanted = @respond_format == :none ? :html : @respond_format
         render_template(template.to_s, locals, layout: chosen, format: wanted)
@@ -1129,72 +1082,18 @@ module Cybertrain
     # @raise [MissingTemplate] when no views are configured
     # @api private
     def partial_body(name, locals)
-      engine = Views.engine
-      if engine.nil?
-        message = "no partial #{name} for #{self.class.name}"
-        raise MissingTemplate, message
-      end
-
-      path = Template::Helpers.partial_path(controller_path, name)
-      given = string_keys(locals)
-      Template::Helpers.check_locals(engine.template(path), given.keys)
-      engine.render(path, view_env(given), Views.helpers_builder.call(self))
+      given = Rendering.stringify_locals(locals)
+      helpers = Views.helpers_builder.call(self)
+      Rendering.partial_html(self.class.name, controller_path, name, given, view_env(given), helpers)
     end
 
-    # Whether a Vary value already covers Accept (lists it, in any case,
-    # or is `*`).
-    # @param vary [String]
-    # @return [Boolean]
-    # @api private
-    def self.vary_lists_accept?(vary)
-      vary.split(",").each do |item|
-        name = item.strip.downcase
-        return true if name == "accept" || name == "*"
-      end
-      false
-    end
-
-    # The layout `render layout: name` names: `"layouts/<name>"`, or
-    # `name` itself when it already starts with `layouts/` (Rails'
-    # `_normalize_layout`), so `layout: "layouts/admin"` is not
-    # `layouts/layouts/admin`.
+    # The layout `render layout: name` names (`Rendering.layout_named`);
+    # gen/controllers.rb calls it for a `layout :method` line's value.
     # @param name [String]
     # @return [String]
     # @api private
     def self.layout_path(name)
-      name.start_with?("layouts/") ? name : "layouts/#{name}"
-    end
-
-    # What `render turbo_stream:` sends: a SafeString, or an Array of them
-    # joined.
-    def self.turbo_stream_body(value)
-      case value
-      when SafeString then return value.to_s
-      when String then nil
-      # Time before Array (spikes/NOTES.md rule 8).
-      when Time then nil
-      when Array
-        out = +""
-        i = 0
-        while i < value.size
-          out << Controller.turbo_stream_part(value[i])
-          i += 1
-        end
-        return out
-      end
-      Controller.turbo_stream_refused(value)
-    end
-
-    def self.turbo_stream_part(value)
-      case value
-      when SafeString then return value.to_s
-      end
-      Controller.turbo_stream_refused(value)
-    end
-
-    def self.turbo_stream_refused(value)
-      msg = "render turbo_stream: takes a SafeString or an Array of them (turbo_stream.replace and the others build them), got #{value.class.name}"
-      raise ArgumentError, msg
+      Rendering.layout_named(name)
     end
 
     # Answers with a redirect (302 by default) to a URL String: build it with
@@ -1408,14 +1307,20 @@ module Cybertrain
     # is keyed by `"<table>/<to_param>-<updated_at epoch>"`, so it changes
     # when the record is saved. The key is hashed together with the
     # request's format ({Request#format}), so the HTML and the JSON or
-    # Turbo Stream of one URL never share an ETag, and with
+    # Turbo Stream of one URL never share an ETag; with whether the request
+    # may be answered in HTML instead of its own format (an `Accept` of
+    # `application/json, text/html`, see {#respond_to}), so the ETag of a
+    # page sent to such a request is never the ETag of a request for JSON
+    # alone, which gets JSON or `406`; and with
     # {Assets.build_digest}, so a deploy that changes the assets (or, in a
     # `cybertrain build` binary, the views) changes every ETag. The key
     # names the record, not the visitor: a page that differs per user
     # needs the user in its key, as in Rails:
     # `etag: "posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`. The header is a weak ETag,
     # `W/"<first 32 hex digits of the SHA-256>"`; `If-None-Match` matches it
-    # in a list, in weak or strong form, or as `*`; any other `etag:` is an
+    # in a list, in weak or strong form; `If-None-Match: *` matches whatever
+    # was validated, also a response with only `Last-Modified` (RFC 9110
+    # 13.1.2); any other `etag:` is an
     # ArgumentError. `last_modified:` is a Time, sent as `Last-Modified`; an
     # unparseable `If-Modified-Since` is ignored. When the request sends an
     # `If-None-Match`, it alone decides and `If-Modified-Since` is ignored
@@ -1438,8 +1343,8 @@ module Cybertrain
     # @return [nil]
     # @api public
     def fresh_when(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
-      apply_validators(etag, last_modified, public)
-      head :not_modified if request_fresh?
+      HttpCache.set_validators(@request, @response, etag, last_modified, public, Rendering.accepts_html?(@request))
+      head :not_modified if HttpCache.validators_fresh?(@request, @response)
       nil
     end
 
@@ -1457,8 +1362,8 @@ module Cybertrain
     # @return [Boolean] true when the action should render
     # @api public
     def stale?(etag: DEFAULT_VALIDATOR, last_modified: DEFAULT_VALIDATOR, public: false)
-      apply_validators(etag, last_modified, public)
-      return true unless request_fresh?
+      HttpCache.set_validators(@request, @response, etag, last_modified, public, Rendering.accepts_html?(@request))
+      return true unless HttpCache.validators_fresh?(@request, @response)
 
       head :not_modified
       false
@@ -1477,8 +1382,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def expires_in(seconds, public: false)
-      @response.set_header("Cache-Control", "max-age=#{seconds.to_i}, #{public ? "public" : "private"}")
-      nil
+      HttpCache.lifetime(@response, seconds, public)
     end
 
     # @return [Boolean] true once this request has been rendered,
@@ -1489,84 +1393,6 @@ module Cybertrain
     end
 
     private
-
-    # The ETag, Last-Modified and (unless expires_in set one) Cache-Control
-    # headers of fresh_when and stale?.
-    def apply_validators(etag, last_modified, public)
-      key = validator_key(etag)
-      unless key.empty?
-        # The format and the build digest too (see fresh_when): "\0" never
-        # occurs in a format or a hex digest, so the parts cannot run together.
-        keyed = "#{key}\0#{@request.format}\0#{Assets.build_digest}"
-        @response.set_header("ETag", "W/\"#{Digest::SHA256.hexdigest(keyed).byteslice(0, 32)}\"")
-      end
-      stamp = validator_time(last_modified)
-      @response.set_header("Last-Modified", Request.http_date(Time.at(stamp).utc)) if stamp >= 0
-      if @response.header("Cache-Control").nil?
-        @response.set_header("Cache-Control", public ? "max-age=0, public, must-revalidate" : "max-age=0, private, must-revalidate")
-      end
-      nil
-    end
-
-    # The text an ETag is made from: a String as given, a record as
-    # "posts/1-<updated_at epoch>", "" for nil; anything else is an
-    # ArgumentError.
-    def validator_key(value)
-      case value
-      when String then value.to_s
-      when nil then ""
-      when Model
-        name = Inflector.pluralize(Inflector.underscore(value.model_name))
-        at = Cast.time_or_nil(value.read_attribute(:updated_at))
-        at.nil? ? "#{name}/#{value.to_param}" : "#{name}/#{value.to_param}-#{at.to_i}"
-      else
-        message = "etag: must be a String or a record, got #{value.class}"
-        raise ArgumentError, message
-      end
-    end
-
-    # A Last-Modified value as epoch seconds, -1 for none. `when Time`
-    # first (NOTES rule 8).
-    def validator_time(value)
-      case value
-      when Time then value.to_i
-      else -1
-      end
-    end
-
-    # Whether the request's validators say the client's copy is current:
-    # RFC 9110 section 13.1.3 and 13.1.4 for GET and HEAD: a non-empty
-    # If-None-Match decides alone and If-Modified-Since is ignored; without
-    # one, a parseable If-Modified-Since decides.
-    def request_fresh?
-      return false unless @request.get? || @request.head?
-
-      since = Request.parse_http_date(@request.header("If-Modified-Since").to_s)
-      none_match = @request.header("If-None-Match").to_s
-      return etag_listed?(none_match, @response.header("ETag").to_s) unless none_match.empty?
-      return false if since < 0
-
-      stamp = Request.parse_http_date(@response.header("Last-Modified").to_s)
-      stamp >= 0 && stamp <= since
-    end
-
-    # Whether the If-None-Match list names `tag` (weak comparison: a W/
-    # prefix is ignored) or is `*`.
-    def etag_listed?(list, tag)
-      return false if tag.empty?
-
-      want = strip_weak(tag)
-      list.split(",").each do |item|
-        entry = item.strip
-        return true if entry == "*"
-        return true if strip_weak(entry) == want
-      end
-      false
-    end
-
-    def strip_weak(tag)
-      tag.start_with?("W/") ? tag.byteslice(2, tag.bytesize - 2).to_s : tag
-    end
 
     def run_action(action, body)
       @action_name = action.to_s
@@ -1586,7 +1412,7 @@ module Cybertrain
           default_render(action) unless performed?
           run_after_callbacks(chain, action)
         end
-        apply_vary_accept
+        HttpCache.add_vary_accept(@request, @response)
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
         # JSON::ParserError named (NOTES rule 33: not a StandardError under
         # Spinel) so an action's bad JSON.parse goes through
@@ -1595,28 +1421,7 @@ module Cybertrain
         # constant cannot be referenced as a value (rule 48), so no app can
         # register one there and the exception goes on to the error pages.
         rescue_with_handler(e)
-        apply_vary_accept
-      end
-      nil
-    end
-
-    # `Vary: Accept` on a response whose format came from the Accept header
-    # (the path has no extension, and the request sent one): one URL answers
-    # HTML, JSON or a Turbo Stream by Accept, so a cache must key on it, or
-    # a browser hands a cached HTML page to a later fetch for JSON (Rails'
-    # should_apply_vary_header?). Added to a Vary the action set, unless
-    # that already lists Accept or is `*`.
-    def apply_vary_accept
-      req = @request
-      return nil unless req.format_extension.empty?
-      return nil if req.header("Accept").to_s.empty?
-
-      r = @response
-      vary = r.header("Vary").to_s
-      if vary.strip.empty?
-        r.set_header("Vary", "Accept")
-      elsif !Controller.vary_lists_accept?(vary)
-        r.set_header("Vary", "#{vary}, Accept")
+        HttpCache.add_vary_accept(@request, @response)
       end
       nil
     end
@@ -1769,7 +1574,7 @@ module Cybertrain
     end
 
     def send_html(body)
-      send_rendered(body, "text/html; charset=utf-8")
+      send_rendered(body, HTML_CONTENT_TYPE)
     end
 
     def send_rendered(body, content_type)
@@ -1777,25 +1582,6 @@ module Cybertrain
       @response.content_type = content_type
       @response.performed!
       nil
-    end
-
-    # "articles/index.csv.erb": the template of a format other than html.
-    def format_template_path(name, format)
-      "#{controller_path}/#{name}.#{format}.erb"
-    end
-
-    # Whether a request whose format is not :html also takes HTML: its
-    # format came from Accept (no extension asked for that format alone)
-    # and Accept lists text/html or */* (Turbo's
-    # "text/vnd.turbo-stream.html, text/html, application/xhtml+xml",
-    # axios' "application/json, text/plain, */*"). Rails lists every format
-    # of such a request and answers in the first one the action has.
-    def html_fallback?
-      req = @request
-      return false if req.format == :html || !req.format_extension.empty?
-
-      accept = req.header("Accept").to_s
-      accept.include?("text/html") || accept.include?("*/*")
     end
 
     # 406 for a format the action does not answer (respond_to with no
@@ -1807,27 +1593,6 @@ module Cybertrain
       r.body = "Not Acceptable"
       r.performed!
       nil
-    end
-
-    # `locals: { post: @post }` comes with Symbol keys; templates look
-    # names up by String.
-    def string_keys(locals)
-      out = {}
-      keys = locals.keys
-      i = 0
-      while i < keys.size
-        out[keys[i].to_s] = locals[keys[i]]
-        i += 1
-      end
-      out
-    end
-
-    # A String is taken to be JSON already.
-    def json_body(value)
-      case value
-      when String then value
-      else JSON.generate(value)
-      end
     end
   end
 end

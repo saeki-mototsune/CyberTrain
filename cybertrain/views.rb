@@ -22,7 +22,13 @@ module Cybertrain
     # base MissingTemplate errors.
     @engine = nil
     @layout_name = "layouts/application"
-    @url_resolver = ->(name, args, options) { raise NoRoutes, "no routes" }
+    # The resolver before an application installs one. Returned by a
+    # method for the reason default_helpers_builder is (NOTES rule 82).
+    # @api private
+    def self.default_url_resolver
+      ->(name, args, options) { raise NoRoutes, "no routes" }
+    end
+    @url_resolver = default_url_resolver
     # Template::Helpers is defined by cybertrain/template/helpers.rb, which
     # requires this file; the lambda only names it when called. Returned by
     # a method, not written here as a literal: a lambda literal assigned to
@@ -63,6 +69,19 @@ module Cybertrain
     # all parsed now (`eager`), or each when first rendered ({Template::Engine.embedded}).
     def self.configure_embedded(sources, max_render_depth: Template::MAX_RENDER_DEPTH, eager: true)
       @engine = Template::Engine.embedded(sources, max_render_depth: max_render_depth, eager: eager)
+      nil
+    end
+
+    # No engine, the default layout and the resolver that raises NoRoutes,
+    # as before any boot (Runtime.reset!). The builders gen/helpers.rb and
+    # gen/components.rb installed when they loaded are registrations, not
+    # settings: they stay.
+    # @return [nil]
+    # @api private
+    def self.reset!
+      @engine = nil
+      @layout_name = "layouts/application"
+      @url_resolver = default_url_resolver
       nil
     end
 

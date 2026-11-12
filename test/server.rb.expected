@@ -17,6 +17,14 @@ ok   a body with NUL bytes is framed by bytes, not cut at the NUL
 ok   chunked transfer encoding gets 411 and the connection closes
 ok   an invalid Content-Length gets 400
 ok   duplicate Content-Length headers get 400 and close the connection
+ok   Transfer-Encoding beside a Content-Length is refused, and the bytes behind it are never read as a request
+ok   Transfer-Encoding: identity is a transfer coding too: 411
+ok   a rejected request ends the connection: a request pipelined behind it is not answered
+ok   Expect: 100-continue gets no interim response; the body is awaited and answered
+ok   a head ended by bare LFs is not a head: nothing is answered and the connection closes at read_timeout
+ok   an absolute-form target is not rewritten: the handler sees it as the path
+ok   HTTP/1.1 without a Host header is served: the host is HostAuthorization's to check
+ok   HTTP/1.0 with Connection: keep-alive keeps the connection
 ok   an exception in the app gets 500 and the connection stays usable
 ok   parameters past Query's limits get 400, not 500, and the connection stays usable
 ok   a JSON::NestingError in the app gets 500, the connection is closed and the server keeps serving
@@ -43,4 +51,4 @@ ok   reuse_port on an IPv6 literal binds it or says why not
 ok   reuse_port on a host that does not resolve stops with a message naming the setting
 ok   reuse_port on an address this machine does not have stops with the same message
 ok   reuse_port is off unless asked for
-45 tests, 187 assertions, 0 failures
+53 tests, 203 assertions, 0 failures

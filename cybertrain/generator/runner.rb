@@ -7,6 +7,7 @@ require "cybertrain/generator/concerns_emitter"
 require "cybertrain/generator/manifest"
 require "cybertrain/schema"
 require "cybertrain/generator/model_scan"
+require "cybertrain/generator/model_validation"
 require "cybertrain/generator/models_emitter"
 require "cybertrain/generator/migrations_emitter"
 require "cybertrain/generator/views_emitter"
@@ -79,9 +80,12 @@ module Cybertrain
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
           stale += sync_file(root, "gen/app.rb", Manifest.emit(root), check)
         else
+          # Scan, then the semantic validation, then the emitter (D69): a
+          # model that cannot be generated raises before anything is written.
           infos = ModelScan.scan_dir("#{root}/app/models")
+          validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
           models = Array.new(0) { "" }
-          ModelsEmitter.outputs(schema, infos).each do |rel, source|
+          ModelsEmitter.outputs_for(validated).each do |rel, source|
             outputs << [rel, source]
             models << rel.delete_suffix(".rb")
           end

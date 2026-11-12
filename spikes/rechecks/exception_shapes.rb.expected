@@ -1,0 +1,6 @@
+unraised message: kept
+Recheck::TooDeep is_a LimitExceeded: true
+Recheck::Other is_a LimitExceeded: false
+JSON::ParserError is_a LimitExceeded: false
+Recheck::TooDeep < Recheck::LimitExceeded < Recheck::Invalid < StandardError < Exception < Object < BasicObject
+Recheck::Other < StandardError < Exception < Object < BasicObject

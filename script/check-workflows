@@ -1,0 +1,86 @@
+#!/usr/bin/env ruby
+# The rules this repository's workflows (.github/workflows/*.yml) and local
+# actions (.github/actions/*/action.yml) keep, checked by the gate
+# (script/gate) when one of those files changes. CRuby only, no gems.
+# CONTRIBUTING.md, "Conventions CI enforces", says why.
+#
+#   * Every workflow states its token's permissions at the top level, so that
+#     no job runs with the repository's default (which may be read and write).
+#     Start from `contents: read` and raise a permission on the job that
+#     needs it.
+#   * Every actions/checkout step states `persist-credentials`: false unless
+#     a later step of the job pushes with the checkout's token (then true,
+#     with a comment saying which step).
+#   * Every action from another repository is pinned to a commit: `uses:
+#     owner/name@<40 hex digits> # vX.Y.Z`. A tag can be moved to other code;
+#     a commit cannot. The comment names the release, which is what
+#     Dependabot (.github/dependabot.yml) reads and moves with the commit.
+#   * Every `gem install` names a version (`-v "~> X.Y"`), or installs a
+#     file built in the job (`--local`).
+#
+# usage: script/check-workflows [FILE...]   (default: every workflow and local action)
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+Dir.chdir(ROOT)
+
+files = ARGV.empty? ? Dir[".github/workflows/*.{yml,yaml}", ".github/actions/*/action.{yml,yaml}"].sort : ARGV
+problems = []
+
+# Every mapping with a `uses:` key, wherever it is (a job's steps, a
+# composite action's steps), with a name to report it by.
+def each_use(node, path = [], &block)
+  case node
+  when Hash
+    yield node, path if node["uses"].is_a?(String)
+    node.each { |key, value| each_use(value, path + [key.to_s], &block) }
+  when Array
+    node.each_with_index { |value, i| each_use(value, path + [(value.is_a?(Hash) && value["name"]) || "##{i + 1}"], &block) }
+  end
+end
+
+files.each do |file|
+  doc = YAML.safe_load(File.read(file), aliases: true)
+  unless doc.is_a?(Hash)
+    problems << "#{file}: not a mapping"
+    next
+  end
+
+  workflow = file.start_with?(".github/workflows/")
+  if workflow && !doc.key?("permissions")
+    problems << "#{file}: no top-level `permissions:` (start from `contents: read`; raise a permission on the job that needs it)"
+  end
+
+  # Raw lines for these two: the release comment after a `uses:` is not in
+  # the parsed document, and a `gem install` is text inside a `run:` block.
+  File.foreach(file).with_index(1) do |line, n|
+    next if line.match?(/\A\s*#/)
+
+    if (m = line.match(/\A\s*(?:-\s+)?uses:\s*(\S+)(.*)$/)) && !m[1].start_with?("./")
+      pinned = m[1].match?(%r{\A[^@\s]+/[^@\s]+@\h{40}\z}) && m[2].match?(/\A\s+#\s*v\d+(\.\d+)*\s*\z/)
+      problems << "#{file}:#{n}: `uses: #{m[1]}` is not `owner/name@<commit> # vX.Y.Z`" unless pinned
+    end
+    if line.match?(/\bgem install\b/) && !line.match?(/\s(-v|--version)[\s=]|\s--local\s/)
+      problems << "#{file}:#{n}: `gem install` without a version (-v \"~> X.Y\")"
+    end
+  end
+
+  each_use(doc) do |step, path|
+    next unless step["uses"].start_with?("actions/checkout@")
+
+    with = step["with"].is_a?(Hash) ? step["with"] : {}
+    next if [true, false].include?(with["persist-credentials"])
+
+    problems << "#{file}: #{path.join(" / ")}: actions/checkout without `persist-credentials:` " \
+                "(false, unless a later step pushes with this token)"
+  end
+rescue Psych::Exception => e
+  problems << "#{file}: #{e.message.lines.first.strip}"
+end
+
+if problems.empty?
+  puts "check-workflows: #{files.size} files"
+else
+  puts problems
+  exit 1
+end

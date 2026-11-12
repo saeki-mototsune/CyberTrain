@@ -1,5 +1,5 @@
 ---
-source_sha256: 2f2c328fde36b079acea86515c42f22d3af9b2c18510dfd6025c30023d98325b
+source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
 ---
 # Cybertrain 模板语言参考
 
@@ -256,7 +256,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 如果四者都返回 `nil`，就由 `attribute_or_method?(:name)` 判断这是一个只是值为 `nil` 的合法名称（返回 `nil`），还是一个拼写错误（`"undefined method 'bogus' for Post"`）。
 
-**实际实现中有一个真正的缺口，解释器文件本身也标注了它**（参见 `interpreter.rb` 中 `class Model` 上方的 `TODO(integrator)` 注释）：*基类* `Cybertrain::Model#attribute_or_method?` 总是返回 `true`。只有用显式的 `case` 覆盖了它的生成模型（就像手写的测试模型那样）才会在拼写错误时真正抛出异常；没有这个覆盖时，拼错的属性或方法会悄悄地渲染为空，而不是失败。除非你知道模型覆盖了这个钩子，否则不要假定拼写错误会被捕获。
+**生成的模型根据其 schema 来回答。** `spin run gen` 会在每个模型中生成 `attribute_or_method?`，它是一个针对该模型的列（重命名的列以两个名称出现）、关联和公开视图方法的 `case`。因此，对生成的模型写 `<%= post.titel %>` 会得到 `"posts/show:3: undefined method 'titel' for Post"`，而值为 `nil` 的列则渲染为空。*基类* `Cybertrain::Model#attribute_or_method?`（位于 `model.rb`）仍然返回 `true`：没有覆盖它的手写 `Cybertrain::Model` 子类会把未知名称渲染为空。升级说明：读取模型从未拥有的名称的模板，此前会渲染为空，在下一次 `spin run gen` 之后会抛出异常（docs/design.md D71）。
 
 两个模型用 `==` 按类和 `id` 比较（`Model#==`），通过普通的 `==` 运算符即可使用（原生的相等分派，而不是 `call_method`）。
 
@@ -527,7 +527,7 @@ end
 | `:"quoted symbol"`、`:+` 运算符符号 | 符号只能由标识符字符组成 |
 | `foo (x)`、`foo [x]`（允许空格，有时会给出警告） | 两者都是硬性的 `SyntaxError`——调用的 `(` 或索引的 `[` 之前不能有空格 |
 | 嵌套的无括号调用由 Ruby 自己的解析器解析 | 只有表达式中最外层的调用可以使用无括号参数 |
-| 未声明/拼错的属性必定会抛出 `NoMethodError` | 会悄悄地渲染为空，除非特定的生成模型覆盖了 `attribute_or_method?`（已记录的缺口，并非保证） |
+| 未声明/拼错的属性必定会抛出 `NoMethodError` | 生成的模型会抛出 `"undefined method 'x' for Post"`（`Template::RuntimeError`），而存在但为 `nil` 的属性渲染为空；没有覆盖 `attribute_or_method?` 的手写模型会把未知名称渲染为空 |
 | `1 / 0` 和 `1.0 / 0` 都会抛出 `ZeroDivisionError` | `Integer` 除以零或对零取模会抛出 `"divided by 0"`；`Float` 遵循 IEEE-754（`Infinity`/`NaN`），不报错 |
 | `distance_of_time_in_words`/复数化支持 i18n 语言区域 | `time_ago_in_words`、`distance_of_time_in_words`、数字辅助方法和 `time_tag` 读取语言区域的词典；`pluralize` 只做英语的词形变化（[国际化](i18n.md#helpers-that-follow-the-locale)） |
 | `app/helpers` 中的每个模块都会被混入；签名任意；辅助方法可以覆盖框架的辅助方法 | 模块在构建时被扫描为生成的 `case`：只能用具名参数，最多三个可选参数，不能使用框架辅助方法的名称，也不能以 `_path`/`_url` 结尾（[应用的辅助方法](#application-helpers)） |

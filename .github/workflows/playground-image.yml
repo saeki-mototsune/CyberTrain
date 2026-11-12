@@ -1,12 +1,17 @@
 # Builds the playground image (playground/Dockerfile, target playground) for
 # linux/amd64, smoke-tests it (playground/smoke.sh) and pushes the tested
-# image to GHCR: X.Y.Z and latest for a release tag vX.Y.Z, the given tag on
-# a manual run. It runs from release.yml, which calls it (with release_tag)
-# after the Gate, CI and the blog image have passed on the tag, and by hand
-# (Actions -> Playground image -> Run workflow). A pull request runs it,
-# without pushing, only when it touches the image's own files (below); a
-# framework change alone is tested by ci.yml and reaches the image at the
-# next release. Pushes to main do not run it. See playground/README.md.
+# image to GHCR: X.Y.Z for a release tag vX.Y.Z, the given tag on a manual
+# run. Never latest: release.yml alone moves it, to the newest release, once
+# that release exists (its promote-latest job), so a manual run with the tag
+# latest is refused. It runs from release.yml, which calls it (with
+# release_tag) after the Gate, CI and the blog image have passed on the tag,
+# and by hand (Actions -> Playground image -> Run workflow). A pull request runs it,
+# without pushing, only when it touches what the image is built with
+# (below): its own files, and the CLI, the toolchain checks, the pins and
+# the gemspec, since the build runs `cybertrain setup && cybertrain doctor`
+# and nothing else runs doctor on this image's package list. A change to the
+# rest of the framework alone is tested by ci.yml and reaches the image at
+# the next release. Pushes to main do not run it. See playground/README.md.
 name: Playground image
 
 on:
@@ -17,6 +22,21 @@ on:
       - "!playground/README.md"
       - ".devcontainer/**"
       - ".github/workflows/playground-image.yml"
+      # The gem the image builds and runs (the Dockerfile's cli-src stage,
+      # which is cybertrain.gemspec's spec.files) and the pins: the version
+      # and the Spinel release in cybertrain/version.rb, the packages in
+      # spin.toml.
+      - "cybertrain.gemspec"
+      - "spin.toml"
+      - "exe/**"
+      - "cybertrain/cli.rb"
+      - "cybertrain/cli/**"
+      - "cybertrain/version.rb"
+      - "cybertrain/app_name.rb"
+      - "cybertrain/shell.rb"
+      - "cybertrain/ident.rb"
+      - "cybertrain/crypto.rb"
+      - "cybertrain/generator/inflector.rb"
   # From release.yml, after every check passed on the release tag.
   workflow_call:
     inputs:
@@ -26,19 +46,20 @@ on:
         required: false
         default: ""
       release_tag:
-        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z and latest"
+        description: "Release tag vX.Y.Z to build, test and push as X.Y.Z"
         type: string
         required: true
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground (latest, X.Y.Z or a test name)"
+        description: "Tag to push to ghcr.io/saeki-mototsune/cybertrain-playground (X.Y.Z or a test name; not latest)"
         required: true
         default: "test"
 
+# The image job builds and tests with a read-only token, also on a pull
+# request; only the push job, which never runs for one, may write packages.
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: playground-image-${{ inputs.release_tag || github.ref }}
@@ -51,8 +72,11 @@ jobs:
   image:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      image_id: ${{ steps.save.outputs.image_id }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || (inputs.release_tag && format('refs/tags/{0}', inputs.release_tag)) || '' }}
           persist-credentials: false
@@ -65,25 +89,48 @@ jobs:
           version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
           test "$RELEASE_TAG" = "v$version" || { echo "tag $RELEASE_TAG is not v$version (cybertrain/version.rb)"; exit 1; }
 
+      # latest is what Codespaces opens: only release.yml moves it, after it
+      # has checked which release is the newest. A release's X.Y.Z is that
+      # release's image: a manual run must not replace it with a build of
+      # another commit, which promote-latest would then copy to latest. The
+      # value is checked as the action below will use it (it trims
+      # whitespace), so only a plain tag name gets through.
+      - name: A manual run pushes neither latest nor a release's tag
+        if: github.event_name == 'workflow_dispatch' && !inputs.release_tag
+        env:
+          MANUAL_TAG: ${{ inputs.tag }}
+        run: |
+          case "$MANUAL_TAG" in
+            "" | *[!A-Za-z0-9_.-]* | [.-]*)
+              echo "::error::the tag must be a plain tag name (letters, digits, _ . -), got '$MANUAL_TAG'"
+              exit 1 ;;
+            latest)
+              echo "::error::latest is moved only by the Release workflow (promote-latest), to the newest release; push another tag"
+              exit 1 ;;
+          esac
+          if printf '%s' "$MANUAL_TAG" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$MANUAL_TAG is a release's tag: only the Release workflow pushes X.Y.Z; push another tag"
+            exit 1
+          fi
+
       - name: devcontainer.json is valid JSON
         run: jq empty .devcontainer/devcontainer.json
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Tags and labels
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.IMAGE }}
           flavor: |
             latest=false
           tags: |
-            type=raw,value=latest,enable=${{ inputs.release_tag != '' }}
             type=semver,pattern={{version}},value=${{ inputs.release_tag }},enable=${{ inputs.release_tag != '' }}
             type=raw,value=${{ inputs.tag || 'manual' }},enable=${{ github.event_name == 'workflow_dispatch' && !inputs.release_tag }}
 
       - name: Build (linux/amd64, target playground)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: playground/Dockerfile
@@ -99,18 +146,65 @@ jobs:
       - name: Smoke test
         run: bash playground/smoke.sh cybertrain-playground:ci
 
-      - name: Log in to GHCR
+      # After the smoke test, so the artifact exists only for an image that
+      # passed it. The ID names the image's content: the push job compares
+      # it after docker load, before it pushes.
+      - name: Save the tested image
+        id: save
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
+        run: |
+          set -eu
+          docker save cybertrain-playground:ci | gzip > playground-image.tar.gz
+          echo "image_id=$(docker image inspect cybertrain-playground:ci --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+          ls -l playground-image.tar.gz
+
+      # overwrite: a re-run of this job replaces the artifact of the attempt
+      # before it. Already gzipped, so stored as it is.
+      - name: Upload the tested image
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          name: playground-image-tested
+          path: playground-image.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7
+
+  # Publishes what the image job built and tested, without building again:
+  # the one job of this workflow with a token that may write packages, and it
+  # does not run for a pull request.
+  push:
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: playground-image-tested
+
+      - name: Load the tested image
+        env:
+          IMAGE_ID: ${{ needs.image.outputs.image_id }}
+        run: |
+          set -eu
+          gunzip -c playground-image.tar.gz | docker load
+          loaded=$(docker image inspect cybertrain-playground:ci --format '{{.Id}}')
+          test "$loaded" = "$IMAGE_ID" || { echo "::error::the loaded image is $loaded, the tested one was $IMAGE_ID"; exit 1; }
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
 
       - name: Push the tested image
-        if: github.event_name != 'pull_request'
         env:
-          TAGS: ${{ steps.meta.outputs.tags }}
+          TAGS: ${{ needs.image.outputs.tags }}
         run: |
           test -n "$TAGS" || { echo "no tag to push"; exit 1; }
           for tag in $TAGS; do

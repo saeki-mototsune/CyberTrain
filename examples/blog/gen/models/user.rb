@@ -64,6 +64,13 @@ class UserRelation < Cybertrain::Relation
     self
   end
 
+  def dup
+    rel = UserRelation.new(@table)
+    copy_chain_to(rel)
+    rel.preloaded(to_a) if records_preloaded?
+    rel
+  end
+
   def to_a
     if records_preloaded?
       copy = Array.new(0) { User.new }
@@ -433,6 +440,15 @@ class User < Cybertrain::Model
     when :validate_email_address_taken then self.validate_email_address_taken
     when :validate_password then self.validate_password
     else nil
+    end
+  end
+
+  def attribute_or_method?(name)
+    case name
+    when :id, :email_address, :password_digest, :admin, :failed_attempts, :locked_until, :created_at, :updated_at then true
+    when :sessions then true
+    when :password, :password_confirmation, :admin?, :locked?, :count_failed_attempt!, :clear_failed_attempts!, :password_reset_binding, :validate_email_address_format, :validate_email_address_taken, :validate_password then true
+    else false
     end
   end
 

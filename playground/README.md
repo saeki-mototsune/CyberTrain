@@ -168,7 +168,7 @@ environment already sets the three for every process).
 [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) is the
 repository's default dev container configuration:
 
-- `image`: `ghcr.io/saeki-mototsune/cybertrain-playground:latest`, the latest build of `main` that passed the smoke test.
+- `image`: `ghcr.io/saeki-mototsune/cybertrain-playground:latest`, the image of the newest release (it passed the smoke test before it was pushed).
 - `remoteUser`: `dev`.
 - `workspaceFolder`: `/workspace/blog`, the prebuilt blog, outside the clone of this repository under `/workspaces`.
 - `postCreateCommand`: empty, so no setup step runs.
@@ -216,8 +216,11 @@ server started by hand (D4) and the offline app (B3).
 
 [.github/workflows/playground-image.yml](../.github/workflows/playground-image.yml)
 ("Playground image") runs on pull requests that touch `playground/` (except
-this README), `.devcontainer/` or the workflow itself, without pushing; a
-framework change alone does not run it. Pushes to `main` do not run it. It
+this README), `.devcontainer/`, the workflow itself, or what the image's
+toolchain is built from (the CLI's files, `cybertrain.gemspec`,
+`cybertrain/version.rb` and `spin.toml`: the build runs `cybertrain setup`
+and `cybertrain doctor`), without pushing; a change to the rest of the
+framework alone does not run it. Pushes to `main` do not run it. It
 also runs from the Release workflow
 ([.github/workflows/release.yml](../.github/workflows/release.yml)), which
 calls it for a tag `vX.Y.Z` after the Gate, CI and the blog image have
@@ -226,9 +229,11 @@ checks that `devcontainer.json` is valid JSON and, for a release tag, that
 the tag is `v` + `Cybertrain::VERSION`, builds the `playground` target for `linux/amd64` with the GitHub
 Actions cache (a change to the framework alone rebuilds only the mirror and
 the blog), runs the smoke test and then pushes the image it tested:
-`X.Y.Z` and `latest` for a release tag `vX.Y.Z`, and the given tag from a
+`X.Y.Z` for a release tag `vX.Y.Z`, and the given tag from a
 manual run (Actions → Playground image →
-Run workflow, on `main`).
+Run workflow, on `main`). It never pushes `latest`, and a manual run with
+that tag is refused: the Release workflow's `promote-latest` job points
+`latest` at the newest release's image, after the release is created.
 
 ## Owner's one-time steps
 

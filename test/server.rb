@@ -387,6 +387,78 @@ test "duplicate Content-Length headers get 400 and close the connection" do
   c.close
 end
 
+# ---- protocol boundaries the server takes a position on (docs/http-contract.md) ----
+
+test "Transfer-Encoding beside a Content-Length is refused, and the bytes behind it are never read as a request" do
+  c = RawClient.new($server.port)
+  c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nContent-Length: 3\r\nTransfer-Encoding: chunked\r\n\r\n" \
+             "0\r\n\r\nGET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  assert_equal "HTTP/1.1 411 Length Required", c.read_response(false).status_line
+  assert c.closed_by_server?
+  c.close
+end
+
+test "Transfer-Encoding: identity is a transfer coding too: 411" do
+  c = RawClient.new($server.port)
+  c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nTransfer-Encoding: identity\r\nContent-Length: 2\r\n\r\nok")
+  assert_equal "HTTP/1.1 411 Length Required", c.read_response(false).status_line
+  assert c.closed_by_server?
+  c.close
+end
+
+test "a rejected request ends the connection: a request pipelined behind it is not answered" do
+  c = RawClient.new($server.port)
+  c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nContent-Length: 1x\r\n\r\nGET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  assert_equal "HTTP/1.1 400 Bad Request", c.read_response(false).status_line
+  assert c.closed_by_server?
+  c.close
+end
+
+test "Expect: 100-continue gets no interim response; the body is awaited and answered" do
+  c = RawClient.new($server.port)
+  c.send_raw("POST /echo HTTP/1.1\r\nHost: t\r\nContent-Type: text/plain\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\n")
+  assert c.silent_for?(0.3)
+  c.send_raw("ok")
+  res = c.read_response(false)
+  assert_equal "HTTP/1.1 200 OK", res.status_line
+  assert_equal "ok", res.body
+  c.close
+end
+
+test "a head ended by bare LFs is not a head: nothing is answered and the connection closes at read_timeout" do
+  c = RawClient.new($server.port)
+  c.send_raw("GET /hello HTTP/1.1\nHost: t\n\n")
+  assert c.closed_by_server?
+  c.close
+end
+
+test "an absolute-form target is not rewritten: the handler sees it as the path" do
+  c = RawClient.new($server.port)
+  res = c.get("http://test/hello")
+  assert_equal "HTTP/1.1 404 Not Found", res.status_line
+  assert_equal "hi", c.get("/hello").body
+  c.close
+end
+
+test "HTTP/1.1 without a Host header is served: the host is HostAuthorization's to check" do
+  c = RawClient.new($server.port)
+  c.send_raw("GET /hello HTTP/1.1\r\n\r\n")
+  assert_equal "hi", c.read_response(false).body
+  c.close
+end
+
+test "HTTP/1.0 with Connection: keep-alive keeps the connection" do
+  c = RawClient.new($server.port)
+  c.send_raw("GET /hello HTTP/1.0\r\nConnection: keep-alive\r\n\r\n")
+  res = c.read_response(false)
+  assert_equal "keep-alive", res.header("connection")
+  c.send_raw("GET /hello HTTP/1.0\r\n\r\n")
+  res = c.read_response(false)
+  assert_equal "close", res.header("connection")
+  assert c.closed_by_server?
+  c.close
+end
+
 test "an exception in the app gets 500 and the connection stays usable" do
   c = RawClient.new($server.port)
   res = c.get("/boom")
@@ -423,7 +495,8 @@ test "a JSON::ParserError in the app gets 500 and the server keeps serving" do
   c = RawClient.new($server.port)
   res = c.get("/json")
   assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
-  # Spinel's class names carry no namespace ("ParserError"), CRuby's do.
+  # Matches either spelling: Spinel 2026.09.12 logged the bare "ParserError";
+  # the pinned Spinel and CRuby log "JSON::ParserError" (NOTES rule 46).
   assert_includes $log.string, "ParserError: unexpected token"
   c.close
   c2 = RawClient.new($server.port)

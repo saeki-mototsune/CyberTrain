@@ -448,8 +448,37 @@ module Cybertrain
     def assign_attributes(attrs) = self
     def to_row = { "" => Cast.to_sql(nil) }   # seeds the Hash<String, value> type
     def load_row(row) = nil
+    # --- what a template may read (the reference contract) ------------------
+    # `<%= post.title %>` has no `send` to go through (spikes/NOTES.md rule
+    # 1), so a record answers a template by name, and these four hooks are
+    # everything the template layer (Template::Interpreter#model_method,
+    # FormBuilder.record_value) asks of a model besides id, persisted?,
+    # new_record?, to_param and errors:
+    #
+    #   read_attribute(name)       a column's value (`:id` too)
+    #   read_association(name)     an association's record, or a has_many's records as an Array
+    #   call_view_method(name)     an arity-0 public method of app/models/<model>.rb
+    #   attribute_or_method?(name) whether one of the three answers `name`
+    #
+    # The first three return nil both for a nil value and for a name they do
+    # not know; attribute_or_method? is what tells the two apart. Templates
+    # only read: no hook writes, saves or queries by a computed name.
+    # None of them needs a request, so a record reads the same in
+    # Views.render_partial / render_mail / render_component.
     def read_association(name) = nil
     def call_view_method(name) = nil
+
+    # Whether a template may read `name` from this record. A generated
+    # model answers with a `case` over its columns, associations and view
+    # methods (ModelsEmitter.emit_attribute_or_method), so a name it does
+    # not have is an "undefined method" error in the template instead of an
+    # empty string (docs/design.md D71). The base answer is true: a model
+    # that does not declare its names (a hand-written subclass) keeps
+    # every unanswered name a nil.
+    # @param name [Symbol]
+    # @return [Boolean]
+    # @api private
+    def attribute_or_method?(name) = true
     # Declared associations (has_many / has_one / belongs_to): the
     # `dependent:` children, the caches {#reload} clears, and counter_cache.
     # counter_cache_created / _destroyed / _was / _moved have no stub: only

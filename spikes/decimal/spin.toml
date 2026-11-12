@@ -1,0 +1,6 @@
+[package]
+name = "decimal-spike"
+version = "0.0.0"
+
+[dependencies]
+cybertrain = { path = "../.." }

@@ -14,18 +14,6 @@ require "cybertrain/template/inode"
 require "cybertrain/template/limits"
 
 module Cybertrain
-  # Templates ask a record whether a name it answered nil for exists at all
-  # (a nil column vs. a typo). The permissive default keeps every nil a nil;
-  # a model that knows its names overrides it with a `case`.
-  # TODO(integrator): this stub belongs in cybertrain/model.rb, with the
-  # model generator emitting the override (columns, associations, view
-  # methods) and the default flipped to false. Until then a misspelt name on a
-  # generated model renders empty instead of raising (a known gap, listed in
-  # docs/design.md section 13).
-  class Model
-    def attribute_or_method?(name) = true
-  end
-
   module Views
     # A helper that needs a request (csrf_token, params, ...) called while
     # rendering outside one (Views.render_partial, render_component). Defined
@@ -1448,9 +1436,13 @@ module Cybertrain
         end
       end
 
-      # Generated models answer by name: columns (read_attribute), then
-      # associations (read_association), then the arity-0 methods the model
-      # generator found in app/models (call_view_method).
+      # A record answers by name through the reference contract
+      # Cybertrain::Model declares (cybertrain/model.rb, "what a template
+      # may read"): columns (read_attribute), then associations
+      # (read_association), then the arity-0 methods the model generator
+      # found in app/models (call_view_method). A name all three answer nil
+      # for is a nil value when the model knows the name
+      # (attribute_or_method?), else an undefined method.
       def model_method(rec, sym, name, node)
         case sym
         when :id then return rec.id

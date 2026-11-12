@@ -2,6 +2,8 @@ require "cybertrain/schema"
 require "cybertrain/generator/inflector"
 require "cybertrain/ident"
 require "cybertrain/generator/model_scan"
+require "cybertrain/generator/model_naming"
+require "cybertrain/generator/model_validation"
 require "cybertrain/generator/association_emitter"
 
 module Cybertrain
@@ -11,85 +13,43 @@ module Cybertrain
     # casts, finders and associations are spelled out as plain Ruby, because
     # Spinel cannot define methods at runtime. test/model.rb hand-writes
     # this exact shape and is its executable specification.
+    #
+    # It emits from a ValidatedModel (emit_validated) and refuses nothing:
+    # every check of the declarations and of the schema is
+    # ModelValidation's, the stage before this one (docs/design.md D69).
+    # The entry points that take a schema and scanned files (outputs,
+    # emit_model, emit) validate first, without the schema's text, so their
+    # diagnostics about a table carry no db/schema.rb line; Gen::Runner
+    # runs the two stages itself and has it.
     module ModelsEmitter
-      # "posts" -> "Post"; "blog_posts" -> "BlogPost".
-      def self.model_class_name(table)
-        Inflector.camelize(Inflector.singularize(table.to_s))
-      end
-
-      # "posts" -> "post.rb".
-      def self.file_name(table)
-        Inflector.singularize(table.to_s) + ".rb"
-      end
+      # The names a generated model spells: ModelNaming's.
+      def self.model_class_name(table) = ModelNaming.model_class_name(table)
+      def self.file_name(table) = ModelNaming.file_name(table)
+      def self.modelled_tables(definition) = ModelNaming.modelled_tables(definition)
+      def self.reader_name(column_name) = ModelNaming.reader_name(column_name)
+      def self.renamed?(column_name) = ModelNaming.renamed?(column_name)
+      def self.ivar_name(column_name) = ModelNaming.ivar_name(column_name)
+      def self.shadow_note(what, name) = ModelNaming.shadow_note(what, name)
 
       # The view methods ModelScan found for `class_name` (empty when its
       # app/models file is missing or defines none).
-      def self.view_methods_for(class_name, infos)
-        infos.each { |info| return info.view_methods if info.class_name == class_name }
-        Array.new(0) { "" }
-      end
+      def self.view_methods_for(class_name, infos) = ModelValidation.view_methods_for(class_name, infos)
 
       # The scopes ModelScan found for `class_name` (empty when its
       # app/models file is missing or declares none).
-      def self.scopes_for(class_name, infos)
-        infos.each { |info| return info.scopes if info.class_name == class_name }
-        Array.new(0) { ScopeInfo.new("", "", "", "", 0) }
-      end
-
-      # The columns `class_name`'s model file encrypts (`encrypts`), checked
-      # against `table`: each must be one of its string or text columns,
-      # else ModelScan::Error with the file and line. Empty when the file is
-      # missing or declares none.
-      def self.encrypted_columns_for(class_name, table, infos)
-        out = Array.new(0) { "" }
-        infos.each do |info|
-          next unless info.class_name == class_name
-
-          i = 0
-          while i < info.encrypted.size
-            name = info.encrypted[i]
-            at = "#{info.file}:#{info.encrypted_lines[i]}: encrypts :#{name}"
-            type = :none
-            table.columns.each { |c| type = c.type if c.name == name }
-            raise ModelScan::Error, "#{at} names no column of #{table.name}" if type == :none
-            unless type == :string || type == :text
-              raise ModelScan::Error, "#{at}: only a string or text column can be encrypted (#{name} is #{type})"
-            end
-
-            out << name
-            i += 1
-          end
-          j = 0
-          while j < info.unique_columns.size
-            name = info.unique_columns[j]
-            if info.encrypted.include?(name)
-              raise ModelScan::Error, "#{info.file}:#{info.unique_lines[j]}: validates :#{name}, uniqueness: " \
-                                      "#{name} is encrypted (encrypts :#{name}), and its stored payloads never " \
-                                      "compare equal: uniqueness on an encrypted column is not supported"
-            end
-            j += 1
-          end
-        end
-        out
-      end
-
-      # The tables that get a model: every table but an `id: false` one (a
-      # join table, or a table a dump found without an id primary key),
-      # which is reached with DB.with.
-      def self.modelled_tables(definition)
-        definition.tables.reject { |t| t.without_id? }
-      end
+      def self.scopes_for(class_name, infos) = ModelValidation.scopes_for(class_name, infos)
 
       # { "gen/models/post.rb" => source, ... } for every modelled table, by
       # table name.
       def self.outputs(definition, infos)
+        outputs_for(ModelValidation.validate_all(definition, infos, SchemaPlaces.absent))
+      end
+
+      # The same, from the models ModelValidation.validate_all answered.
+      def self.outputs_for(validated)
         out = { "" => "" }
         out.delete("")
-        modelled_tables(definition).each do |table|
-          model = model_class_name(table.name)
-          methods = view_methods_for(model, infos)
-          out["gen/models/" + file_name(table.name)] = emit_model(table, definition, methods, scopes_for(model, infos), infos)
-        end
+        validated.each { |v| out["gen/models/" + file_name(v.source_table.name)] = emit_validated(v) }
         out
       end
 
@@ -118,15 +78,16 @@ module Cybertrain
       # this model's declared associations, and the parent's has_many name a
       # counter_cache column is named after, come from them.
       def self.emit_model(table, definition, view_methods, scopes, infos)
-        raise ArgumentError, "table #{table.name} has no columns" if table.columns.empty?
+        emit_validated(ModelValidation.validate_table(table, definition, view_methods, scopes, infos, SchemaPlaces.absent))
+      end
 
-        check_column_names(table)
-        check_binary_defaults(table)
-        check_scope_names(table, scopes)
-        plans = association_plans(table, definition, infos)
-        check_association_ivars(table, plans)
-        model = model_class_name(table.name)
-        encrypted = encrypted_columns_for(model, table, infos)
+      # The gen/models file of a validated model.
+      def self.emit_validated(validated)
+        table = validated.source_table
+        model = validated.model
+        scopes = validated.scopes
+        plans = validated.plans
+        encrypted = validated.encrypted_columns
         # Each part builds and returns its own String: a String argument
         # appended to inside the callee does not reliably update the
         # caller's copy under Spinel (`<<` may reallocate the buffer).
@@ -135,8 +96,8 @@ module Cybertrain
         src << "\n"
         src << emit_model_head(model, table, plans, encrypted)
         src << emit_persistence(model, table, scopes, encrypted)
-        src << emit_dispatch(table, definition, infos, plans, view_methods)
-        src << emit_validations(model, table, infos, plans, encrypted)
+        src << emit_dispatch(table, plans, validated.view_methods, validated.counter_columns)
+        src << emit_validations(model, table, validated.condition_methods, validated.custom_validations, encrypted)
         src << "end\n"
         src
       end
@@ -145,22 +106,11 @@ module Cybertrain
       # unique_value_taken? for every model, then validation_condition? (a
       # `case` over the if: / unless: names of the model file's `validates`
       # lines) and run_custom_validations (its `validate` lines) when the
-      # file has any. Each name must be a method the model has -- a `def` in
-      # its file or a column or association reader -- or this raises
-      # ModelScan::Error with the file and line, rather than the generated
-      # call failing at run time.
-      def self.emit_validations(model, table, infos, plans, encrypted)
+      # file has any. Each name is a method the model has
+      # (ModelValidation.check_validation_methods).
+      def self.emit_validations(model, table, names, validations, encrypted)
         src = +"\n"
         src << emit_unique_value_taken(model, table, encrypted)
-        names = Array.new(0) { "" }
-        validations = Array.new(0) { CustomValidationInfo.new("", "", "", "", "", 0) }
-        infos.each do |info|
-          next unless info.class_name == model
-
-          check_validation_methods(model, table, info, plans)
-          names = info.condition_methods
-          validations = info.custom_validations
-        end
         src << emit_validation_condition(names, "app/models/#{file_name(table.name)}")
         src << emit_custom_validations(validations)
         src
@@ -246,69 +196,6 @@ module Cybertrain
         src
       end
 
-      def self.check_validation_methods(model, table, info, plans)
-        known = Array.new(0) { "" }
-        info.defined_methods.each { |m| known << m }
-        table.columns.each { |c| known << reader_name(c.name) }
-        plans.each { |plan| known << plan.name }
-        where = info.file
-        i = 0
-        while i < info.condition_methods.size
-          name = info.condition_methods[i]
-          unless known.include?(name)
-            raise ModelScan::Error, "#{where}:#{info.condition_lines[i]}: if: / unless: :#{name} names no method " \
-                                    "of #{model}: define it in #{where} (the generated validation_condition? calls it)"
-          end
-          i += 1
-        end
-        info.custom_validations.each do |v|
-          [v.name, v.condition_if, v.condition_unless].each do |name|
-            next if name == "" || known.include?(name)
-
-            what = name == v.name ? "validate :#{name}" : "validate :#{v.name}: if: / unless: :#{name}"
-            raise ModelScan::Error, "#{where}:#{v.line}: #{what} names no method of #{model}: define it in " \
-                                    "#{where} (the generated run_custom_validations calls it)"
-          end
-        end
-        nil
-      end
-
-      # The Ruby name a column's reader, writer and ivar carry: the column's
-      # own name, except for Ident::RESERVED_COLUMN_NAMES and Ruby keywords
-      # (Ident::RUBY_KEYWORDS), which take `<column>_column`. This is the one
-      # place that decides it. A reader named `errors`, `save`, `hash` or
-      # `to_ary` would shadow a method of Cybertrain::Model or Object that
-      # the framework (or Ruby itself) calls on the record, and an ivar named
-      # `@errors` / `@persisted` is one the Model owns; a keyword column
-      # (`end`, `begin`, `class`) would need `def class` / `@class`, which is
-      # not a shape worth supporting. All of them are renamed; everything
-      # keyed by the column's SQL name (column_names, to_row, load_row,
-      # params) stays keyed by it; read_attribute / write_attribute answer
-      # both spellings (attribute_keys), so a template, which reaches a column
-      # through read_attribute, can always use the Ruby name. The query API
-      # (Relation#where / order / find_by, order_sql) does not: Relation is
-      # built from a table name and knows no per-model rename table, and a
-      # column is its SQL name there, so `Post.where(hash: 1)` is right and
-      # `Post.where(hash_column: 1)` is "no such column". The Ruby name is the
-      # reader, the writer, the constructor key and the template name only
-      # (rename_note says so beside the accessor). An existing
-      # schema must keep generating on upgrade, so such a column is renamed
-      # rather than refused (`cybertrain generate scaffold` still refuses to
-      # invent one).
-      def self.reader_name(column_name)
-        renamed?(column_name) ? column_name + "_column" : column_name
-      end
-
-      # Whether reader_name renames the column.
-      def self.renamed?(column_name)
-        Ident.reserved_column?(column_name) || Ident.keyword?(column_name)
-      end
-
-      # The ivar behind reader_name.
-      def self.ivar_name(column_name)
-        "@" + reader_name(column_name)
-      end
-
       # The `when` keys of read_attribute / write_attribute for a column: its
       # SQL name, plus the reader's name when reader_name renamed it (the
       # query API takes the SQL name only: see reader_name). The
@@ -321,73 +208,6 @@ module Cybertrain
       def self.attribute_keys(column_name)
         key = ":" + column_name
         reader_name(column_name) == column_name ? key : key + ", :" + reader_name(column_name)
-      end
-
-      # Raises ArgumentError (the generator exits non-zero) for a column the
-      # generated class cannot host: not an ASCII Ruby method name
-      # (Ident.column?: `[A-Za-z_][A-Za-z0-9_]*`), or one whose fallback
-      # `<column>_column` another column already owns. A reserved name or a
-      # keyword alone is not an error (reader_name renames it), and a column
-      # named like another Object method (Ident::SHADOWING_COLUMN_NAMES,
-      # `display`, `tap`) is accepted with a note in the generated file: an
-      # existing schema must keep generating. `cybertrain generate scaffold`
-      # is stricter (and wants snake_case): it refuses keywords, reserved and
-      # shadowing names before it writes any file, since it invents them.
-      def self.check_column_names(table)
-        names = table.columns.map { |c| c.name }
-        table.columns.each do |c|
-          name = c.name
-          unless Ident.column?(name)
-            raise ArgumentError, "table #{table.name}: column #{name.inspect} is not a valid attribute name " \
-                                 "(a column name is an ASCII identifier: ASCII letters, digits and _, " \
-                                 "not starting with a digit)"
-          end
-          next unless renamed?(name)
-
-          fallback = reader_name(name)
-          # The fallback is `<column>_column`, which no RESERVED_COLUMN_NAMES
-          # entry or keyword ends in, so the only way it is taken is by
-          # another column of the table.
-          if names.include?(fallback)
-            raise ArgumentError, "table #{table.name}: column #{name.inspect} can be neither #{name.inspect} nor " \
-                                 "#{fallback.inspect} (a Ruby keyword or a Cybertrain::Model or Object method " \
-                                 "owns the first, another column of the table owns the second); rename a column"
-          end
-        end
-        nil
-      end
-
-      # A binary column's default would have to be bytes the model writes
-      # into the ivar; initial_value has no literal for it and would fall
-      # back to "", silently replacing the declared default (INSERT writes
-      # every column, so the database's DEFAULT never applies).
-      def self.check_binary_defaults(table)
-        table.columns.each do |c|
-          next unless c.type == :binary
-
-          raw = c.default
-          next if raw.nil? || raw.strip.upcase == "NULL"
-
-          raise ArgumentError, "table #{table.name}: column #{c.name.inspect} is a binary column with a default " \
-                               "(#{raw}); a BLOB column takes no default, set the bytes in the model instead"
-        end
-        nil
-      end
-
-      # A scope named like a column (either spelling: reader_name) or `id`
-      # raises ModelScan::Error, like the scan's own scope checks; Relation
-      # method names were refused by ModelScan.scope_on already.
-      def self.check_scope_names(table, scopes)
-        scopes.each do |scope|
-          name = scope.name
-          clash = name == "id" ? "id" : ""
-          table.columns.each { |c| clash = c.name if c.name == name || reader_name(c.name) == name }
-          next if clash == ""
-
-          raise ModelScan::Error, "#{scope.file}:#{scope.line}: scope :#{name} clashes with the column #{clash} " \
-                                  "of table #{table.name}; rename the scope"
-        end
-        nil
       end
 
       # `def recent = (order(created_at: :desc))`: the scope's parameter
@@ -454,6 +274,7 @@ module Cybertrain
         src << "  def having_sql(s, b = []) = (set_having_sql(s, b); self)\n"
         src << "\n"
         src << emit_includes(model, plans)
+        src << emit_relation_dup(model, table)
         src << "  def to_a\n"
         # A preloaded relation hands out a copy: the Array is the record's
         # cache, and the caller may mutate what to_a returns.
@@ -577,6 +398,25 @@ module Cybertrain
         src
       end
 
+      # `dup` (issue #188, design D72): an independent relation of the same
+      # generated class, so the copy's `first` / `to_a` stay typed by the
+      # model (a base-class copy would be typed Cybertrain::Relation: NOTES
+      # rule 5). The chain state goes through Relation#copy_chain_to; the
+      # preloaded records, when the source answers from them, into an
+      # Array of the copy's own (the source's is a record's association
+      # cache).
+      def self.emit_relation_dup(model, table)
+        src = +""
+        src << "  def dup\n"
+        src << "    rel = #{model}Relation.new(@table)\n"
+        src << "    copy_chain_to(rel)\n"
+        src << "    rel.preloaded(to_a) if records_preloaded?\n"
+        src << "    rel\n"
+        src << "  end\n"
+        src << "\n"
+        src
+      end
+
       # The column types `column_type` answers, in the order its `when`
       # lines are written. A column of any other type answers :unknown.
       COLUMN_TYPES = [:integer, :float, :decimal, :boolean, :datetime, :date, :json, :binary, :string, :text]
@@ -645,6 +485,36 @@ module Cybertrain
         src
       end
 
+      # `validates :price, numericality: { greater_than: -100000000,
+      # less_than: 100000000 }` for every decimal column that declares a
+      # precision: DECIMAL(10,2) holds less than 10**(10-2) either side of
+      # zero, and SQLite does not enforce it. The comparisons also refuse
+      # Infinity and NaN (`"1e999"` from a form), which would otherwise be
+      # stored as Inf and NULL. `allow_nil: true` on a nullable column. A
+      # bound past the Integer range (precision - scale > 18) is a Float
+      # literal. docs/design.md D73. "" when there is no such column.
+      def self.emit_decimal_range(table)
+        src = +""
+        table.columns.each do |c|
+          next unless c.type == :decimal && c.precision > 0
+
+          whole = c.precision - (c.scale < 0 ? 0 : c.scale)
+          next if whole < 0
+
+          bound = whole > 18 ? "1.0e+#{whole}" : "1#{"0" * whole}"
+          src << "  validates :#{c.name}, numericality: { greater_than: -#{bound}, less_than: #{bound} }"
+          src << ", allow_nil: true" if c.null
+          src << "\n"
+        end
+        return src if src == ""
+
+        # Declared inside a splice (Model.model_concern_insert_at): the
+        # rules are appended without counting as `validates` calls of the
+        # model, so gen/concerns.rb's positions, which count the calls in
+        # app/models, still point where the `include` was written.
+        "  model_concern_insert_at(0)\n#{src}  model_concern_insert_done\n\n"
+      end
+
       # `decimal_scale(name)`: one `when` per decimal column with a scale.
       def self.emit_decimal_scale(table)
         scaled = table.columns.select { |c| c.type == :decimal && c.scale >= 0 }
@@ -697,6 +567,7 @@ module Cybertrain
         src << "  attr_accessor #{symbols}\n"
         src << "\n"
         src << emit_date_presence(table)
+        src << emit_decimal_range(table)
         src << emit_association_rules(plans)
         src << "  def initialize(attrs = {})\n"
         src << "    super()\n"
@@ -844,14 +715,6 @@ module Cybertrain
         src
       end
 
-      # Same note a column gets (emit_model_head) when the reader's name is an
-      # Object method nothing in Cybertrain calls on a record: the association
-      # keeps its name, the generated file says what it shadows.
-      def self.shadow_note(what, name)
-        "# NOTE: #{what} #{name.inspect} shadows Object##{name} on this model (nothing in " \
-          "Cybertrain calls it on a record; Ident::SHADOWING_COLUMN_NAMES)"
-      end
-
       # The note beside the attr_accessor of a column reader_name renamed.
       # Every note ends by telling that queries take the SQL name (the reader
       # name is not a column to Relation). A keyword is told so, not that it
@@ -883,20 +746,11 @@ module Cybertrain
 
       # The association readers and the methods behind them, then the
       # read_association / call_view_method case tables the template
-      # interpreter dispatches through by name.
-      def self.emit_dispatch(table, definition, infos, plans, view_methods)
+      # interpreter dispatches through by name. `methods` are the view
+      # methods left to call_view_method, `counter_columns` the columns
+      # another model's counter_cache counts in (both from ModelValidation).
+      def self.emit_dispatch(table, plans, methods, counter_columns)
         src = +""
-        taken = owned_names(table)
-        assoc_names = Array.new(0) { "" }
-        plans.each { |plan| assoc_names << plan.name }
-
-        methods = Array.new(0) { "" }
-        view_methods.each do |m|
-          next if taken.include?(m) || assoc_names.include?(m) || methods.include?(m)
-
-          methods << m
-        end
-
         # Each reader, with the method includes fills its cache through,
         # then a blank line.
         plans.each do |plan|
@@ -909,10 +763,34 @@ module Cybertrain
         src << emit_destroy_dependents(plans)
         src << emit_reset_association_caches(plans)
         src << emit_counter_cache(table, plans)
-        src << emit_counter_cache_columns(counter_columns_on(table, definition, infos))
+        src << emit_counter_cache_columns(counter_columns)
         src << emit_read_association(plans)
         src << "\n" unless plans.empty? && methods.empty?
         src << emit_case("call_view_method", methods)
+        src << "\n"
+        assoc_names = Array.new(0) { "" }
+        plans.each { |plan| assoc_names << plan.name }
+        src << emit_attribute_or_method(table, assoc_names, methods)
+        src
+      end
+
+      # attribute_or_method?: the names read_attribute, read_association and
+      # call_view_method above answer, one `when` per group, so that the
+      # template layer can tell a nil value from a name the model does not
+      # have (Cybertrain::Model, "what a template may read"). The keys are
+      # the same ones those three use: a renamed column under both its
+      # names (attribute_keys).
+      def self.emit_attribute_or_method(table, assoc_names, methods)
+        columns = [":id"]
+        table.columns.each { |c| columns << attribute_keys(c.name) }
+        src = +"  def attribute_or_method?(name)\n"
+        src << "    case name\n"
+        src << "    when #{columns.join(", ")} then true\n"
+        src << "    when #{assoc_names.map { |n| ":" + n }.join(", ")} then true\n" unless assoc_names.empty?
+        src << "    when #{methods.map { |n| ":" + n }.join(", ")} then true\n" unless methods.empty?
+        src << "    else false\n"
+        src << "    end\n"
+        src << "  end\n"
         src
       end
 

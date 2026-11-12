@@ -1,0 +1,95 @@
+# The one check that says "everything this pull request started has passed".
+# The ruleset for main (.github/rulesets/main.json; CONTRIBUTING.md, "Branch
+# rules") requires it, with the Gate's `gate` job.
+#
+# A required check must report on every pull request, or the pull request
+# waits for it for ever. CI and the image workflows have path filters (a
+# documentation change starts none of them), so none of their jobs can be
+# required directly, and a job inside one of them cannot speak for the
+# others. This workflow has no path filter: its job waits until every other
+# workflow run started for the same commit by the same event has finished,
+# and passes only if each one succeeded (or was skipped). A documentation
+# change therefore waits for the Gate alone, about a minute; a framework
+# change waits for the Gate and CI; a change to an image waits for that
+# image's build and smoke test too. A workflow that was not started is not
+# waited for, and a workflow added later is covered without a change here.
+#
+# After re-running a failed job in another workflow, re-run this one too: it
+# reported on the attempt it saw.
+name: Required
+
+on:
+  pull_request:
+  # For a merge queue, should one be enabled: the queue waits for the same
+  # check on the commit it builds.
+  merge_group:
+
+# Reads the list of workflow runs; nothing is checked out and nothing from
+# the pull request runs here.
+permissions:
+  actions: read
+
+concurrency:
+  group: required-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The job's name is the check's name in the ruleset: renaming it means
+  # changing .github/rulesets/main.json and the ruleset itself.
+  required:
+    runs-on: ubuntu-26.04
+    # Longer than the slowest workflow it waits for plus the time that one
+    # may spend queued. The slowest is CI: its macOS job allows itself 120
+    # minutes (65 measured), and the first run on a pull request took 98
+    # minutes from start to finish while this job, then waiting 80, gave up
+    # on it (run 43086752319, 2026-11-11). The wait below is 170 minutes,
+    # and this limit a little more, so that the job reports its own
+    # message rather than being cut off.
+    timeout-minutes: 180
+    steps:
+      - name: Every other workflow run for this commit has passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -eu
+          deadline=$(( $(date +%s) + ${WAIT_SECONDS:-10200} ))
+          interval=${POLL_SECONDS:-30}
+          list() {
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=$GITHUB_EVENT_NAME&per_page=100" \
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | [.status, (.conclusion // \"-\"), .name, .html_url] | @tsv"
+          }
+          # The Gate starts on every pull request, so an empty list means the
+          # runs are not listed yet, never that there is nothing to wait for.
+          # Two quiet polls in a row: a run that starts late is still seen.
+          quiet=0
+          while :; do
+            sleep "$interval"
+            if runs=$(list); then
+              waiting=$(printf '%s\n' "$runs" | awk -F'\t' 'NF && $1 != "completed"')
+              if [ -n "$runs" ] && [ -z "$waiting" ]; then
+                quiet=$((quiet + 1))
+                if [ "$quiet" -ge 2 ]; then break; fi
+              else
+                quiet=0
+              fi
+            else
+              echo "could not list the workflow runs; trying again"
+              runs=""
+              quiet=0
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::gave up waiting for the other workflow runs of $HEAD_SHA"
+              printf '%s\n' "${runs:-(none listed)}"
+              exit 1
+            fi
+          done
+          printf '%s\n' "$runs"
+          failed=$(printf '%s\n' "$runs" | awk -F'\t' '$2 != "success" && $2 != "skipped" && $2 != "neutral" { print $3 " (" $2 "): " $4 }')
+          if [ -n "$failed" ]; then
+            echo "::error::not every workflow run for $HEAD_SHA passed"
+            printf '%s\n' "$failed"
+            exit 1
+          fi
+          echo "required: every other workflow run for $HEAD_SHA passed"

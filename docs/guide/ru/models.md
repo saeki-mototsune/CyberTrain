@@ -1,5 +1,5 @@
 ---
-source_sha256: 9162d493e7eb52e7625532b986b86fdb3271d8d3052a33e516ddadcb0a9690ba
+source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
 ---
 # Модели и база данных
 
@@ -176,7 +176,7 @@ Rails](#taking-over-a-database-rails-created)).
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
 | `t.float` | `FLOAT` | Float |
-| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, округлённый до scale при записи |
+| `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, округлённый до scale при записи, точный до 15 значащих цифр |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time (UTC, микросекунды) |
 | `t.date` | `DATE` | Date |
@@ -193,15 +193,34 @@ Rails](#taking-over-a-database-rails-created)).
 
 ### Десятичные числа — это Float
 
-Rails читает столбец `decimal` как BigDecimal; здесь это Float, и
-сгенерированная модель округляет его до `scale:` столбца всякий раз, когда
-он записывается (`save`, `update_columns`, `update_all`, массовые записи),
-так что хранится то, что Rails сохранил бы после присваивания. BigDecimal
-Spinel пока нельзя построить из Float или String и нельзя округлить; это
-условие для пересмотра решения (`docs/design.md` D42). Двоичная плавающая
-точка накапливает ошибку в длинных суммах: округляйте на краю
-(`total.round(2)`) или храните деньги в минимальных единицах в
-целочисленном столбце (`price_cents`).
+Rails читает столбец `decimal` как BigDecimal; здесь это Float в столбце
+`DECIMAL(p,s)` со следующим контрактом (`docs/design.md` D73):
+
+- **Точность — 15 значащих цифр.** При `precision:` не больше 15 каждое
+  значение с `scale:` дробными цифрами в пределах объявленной точности
+  сохраняется и читается обратно как оно есть. За пределами 15 цифр это
+  ближайший Float: `decimal(18,8)` точен до 9,999,999.99999999, а не до
+  объявленных десяти целых цифр.
+- **Округляется до scale там, где записывается** (`save`, `update`,
+  `update_columns`, `update_all`, массовые записи), от нуля, по десятичным
+  цифрам: 1.005 при scale 2 — это 1.01, как сохраняет Rails, и одинаково
+  под CRuby и Spinel.
+- **Выход за диапазон — ошибка валидации.** Для столбца decimal с precision
+  `spin run gen` пишет валидацию `numericality`, поэтому `save` отвечает
+  false для значения за пределами точности, для Infinity и для NaN, а не
+  сохраняет его.
+- **Суммы — это суммы Float.** Округляйте итог на краю с помощью
+  `Cybertrain::Cast.round_scale(total, 2)`, а не `total.round(2)`.
+
+Храните деньги в минимальных единицах в целочисленном столбце
+(`price_cents`): арифметика Integer и `sum_int` точны. Читайте поле формы
+через `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` и
+показывайте через `number_to_currency(price_cents / 100.0)`. Замечание при
+обновлении: пограничное значение, которое скомпилированный фреймворк раньше
+округлял вниз (1.005 сохранялось как 1.0), теперь сохраняется округлённым
+вверх, только для новых записей, а сгенерированная валидация отклоняет
+значения, которые раньше сохранялись; шаги переноса столбца decimal в
+минимальные единицы — в D73.
 
 ### Столбцы JSON
 

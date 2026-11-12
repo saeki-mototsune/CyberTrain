@@ -20,7 +20,7 @@
 # `spinel --timing` puts 13.2 s of the build in cc_total (analysis and C
 # generation take under 0.1 s): the literal becomes one C function, the
 # program's main body, with 1,980 inlined sp_StrStrHash_set calls, and cc
-# at -O2 is slow on so long a function (spikes/NOTES.md rule 99). Over the
+# at -O2 is slow on so long a function (spikes/NOTES.md rule 101). Over the
 # 10 s the plan allows; locale_hash_split.rb builds the same Hash in 4.7
 # to 5.4 s. CRuby 3.3.6: 109 / 97 / 102 / 76 ns.
 # BEGIN generated

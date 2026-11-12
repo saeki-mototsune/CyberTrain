@@ -9,7 +9,7 @@ module Cybertrain
     # (empty when absent), and `resolver` / `list_resolver`, the two as
     # lambdas. Texts and lists are two Hash constants, each filled at load
     # by methods of at most FILL_SIZE stores, keys sorted: one literal of
-    # every key compiles slowly (spikes/NOTES.md rule 99, spec section 12
+    # every key compiles slowly (spikes/NOTES.md rule 101, spec section 12
     # item 6b). With `install`, the file first requires cybertrain/i18n, so
     # it loads on its own, and its last line hands both lambdas to
     # I18n.install_dictionary (positionally, rule 42).

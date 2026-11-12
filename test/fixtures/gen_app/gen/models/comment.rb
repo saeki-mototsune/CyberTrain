@@ -67,6 +67,13 @@ class CommentRelation < Cybertrain::Relation
     self
   end
 
+  def dup
+    rel = CommentRelation.new(@table)
+    copy_chain_to(rel)
+    rel.preloaded(to_a) if records_preloaded?
+    rel
+  end
+
   def to_a
     if records_preloaded?
       copy = Array.new(0) { Comment.new }
@@ -490,6 +497,14 @@ class Comment < Cybertrain::Model
   end
 
   def call_view_method(name) = nil
+
+  def attribute_or_method?(name)
+    case name
+    when :id, :post_id, :commenter, :body, :approved, :extras, :seen_on, :due_on, :created_at, :updated_at then true
+    when :post then true
+    else false
+    end
+  end
 
   def unique_value_taken?(attr, value, scope_attr, scope_value, exclude_id, case_sensitive)
     rel = CommentRelation.new("comments")

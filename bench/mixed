@@ -1,0 +1,36 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Compiles bench/mixed_load.rb with Spinel (the flags `spin test` compiles a
+# test with) and runs it: business writes and reads, jobs, the cache,
+# rate-limit counters and stream broadcasts on one SQLite file, each kind
+# alone and then all together. docs/sqlite-shared-load.md describes the
+# scenario and how to read the table.
+#
+# usage: bench/mixed [--no-build] [name=value ...]
+#
+#   bench/mixed                              the defaults, 5 s per phase
+#   bench/mixed duration=10 workers=2        two serving workers
+#   bench/mixed writers=8 think_ms=0         eight writers as fast as they can
+#
+# The settings are listed at the top of bench/mixed_load.rb. Needs Spinel
+# (`cybertrain setup`); the database is bench/tmp/mixed/ (ignored).
+ROOT = File.expand_path("..", __dir__)
+SOURCE = File.join(ROOT, "bench", "mixed_load.rb")
+BINARY = File.join(ROOT, "build", "bench", "mixed_load")
+
+args = ARGV.dup
+build = !args.delete("--no-build")
+bad = args.reject { |a| a.match?(/\A[a-z_]+=\d+\z/) }
+abort "bench/mixed: not a name=value setting: #{bad.join(" ")}" unless bad.empty?
+
+Dir.chdir(ROOT)
+if build
+  require "fileutils"
+  FileUtils.mkdir_p(File.dirname(BINARY))
+  command = ["spinel", SOURCE, "--strict-require", "-I", ROOT, "-O", "1", "-o", BINARY]
+  warn "compiling bench/mixed_load.rb ..."
+  system(*command) || abort("bench/mixed: the compile failed (#{command.join(" ")})")
+end
+abort "bench/mixed: #{BINARY} is missing; run without --no-build" unless File.executable?(BINARY)
+exec(BINARY, *args)

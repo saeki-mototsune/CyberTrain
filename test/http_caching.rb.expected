@@ -2,15 +2,17 @@ etag W/"54c5d08adf9b12e50904ea3b941ccab7"
 ok   fresh_when answers 304 to a matching If-None-Match
 ok   etag: a record is keyed by table, id and updated_at
 ok   If-None-Match takes a list, a strong form and *
+ok   If-None-Match: * is fresh for a response validated by date only
 ok   only GET and HEAD are answered 304
 last-modified Tue, 14 Nov 2023 22:13:20 GMT
 ok   If-Modified-Since and stale?
 ok   If-None-Match decides alone when the request sends both validators
 ok   a 304 carries no Content-Type and no Content-Length
 ok   the ETag depends on the request's format: a Turbo or JSON fetch never revalidates the HTML
+ok   a request that falls back to HTML does not share its ETag with one for the format alone
 ok   the ETag changes with the build digest gen installs
 ok   a 304 the action rendered with a body sends no body
 ok   an etag that is neither a String nor a record is an ArgumentError
 ok   Cache-Control from fresh_when and expires_in
 ok   http_date and parse_http_date
-13 tests, 70 assertions, 0 failures
+15 tests, 95 assertions, 0 failures

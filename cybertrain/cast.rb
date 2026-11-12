@@ -1,6 +1,7 @@
 require "date"
 require "json"
 require "cybertrain/db/blob"
+require "cybertrain/number_helper"
 
 module Cybertrain
   # Converts loosely typed values (SQLite cells, form strings) into the one
@@ -556,18 +557,21 @@ module Cybertrain
       end
     end
 
-    # A decimal value rounded to the column's scale: `v` as a Float,
-    # `round(scale)`; a negative scale (none declared) leaves it unrounded.
-    # A Float at every scale: `Float#round(0)` answers an Integer, so the
-    # rounded value goes through `to_f`.
+    # A decimal value rounded to the column's scale: `v` as a Float, rounded
+    # half away from zero on its decimal digits ({Cast.round_digits}); a
+    # negative scale (none declared) and a non-finite value (`"1e999"`) are
+    # left as they are. The contract of a decimal column is docs/design.md
+    # D73.
+    # @example
+    #   Cast.round_scale("1.005", 2)  # => 1.01
+    #   Cast.round_scale(2.6, 0)      # => 3.0
     # @param v [Float, Integer, String]
     # @param scale [Integer]
     # @return [Float]
     # @api public
     def self.round_scale(v, scale)
       f = float(v)
-      # Float#round raises FloatDomainError on Infinity/NaN ("1e999").
-      (scale < 0 || !f.finite?) ? f : f.round(scale).to_f
+      (scale < 0 || !f.finite?) ? f : round_digits(f, scale)
     end
 
     # {Cast.round_scale} for a nullable decimal column: nil (and `""`, an
@@ -581,8 +585,25 @@ module Cybertrain
     def self.round_scale_or_nil(v, scale)
       f = float_or_nil(v)
       return nil if f.nil?
-      # Float#round raises FloatDomainError on Infinity/NaN ("1e999").
-      (scale < 0 || !f.finite?) ? f : f.round(scale).to_f
+
+      (scale < 0 || !f.finite?) ? f : round_digits(f, scale)
+    end
+
+    # A finite Float rounded to `scale` fractional digits on the digits of
+    # its shortest decimal text (`Float#to_s`), half away from zero, as the
+    # number helpers round and as Rails' `BigDecimal(float.to_s).round`
+    # does. Not `Float#round`: it rounds the binary product, and under
+    # Spinel 2026.11.04 that sent 1.005 to 1.0 where CRuby answers 1.01
+    # (spikes/NOTES.md rule 100); beyond 15 significant digits it also
+    # moved a value that already had `scale` digits (123456789012345.67
+    # became ...69 under both). A value with no more than `scale`
+    # fractional digits comes back as it is.
+    # @api private
+    def self.round_digits(f, scale)
+      d = NumberHelper.parse_text(f.to_s)
+      return f if d.nil? || d.places <= scale
+
+      NumberHelper.render_fixed(NumberHelper.round_places(d, scale), scale, "", ".", false).to_f
     end
 
     # A NOT NULL json column's value as a Hash: a Hash's pairs (keys
