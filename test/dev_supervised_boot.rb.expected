@@ -1,0 +1,5 @@
+ok   a descriptor variable that is not a number is a boot failure, not a bind
+ok   a descriptor that is not open is a boot failure
+ok   a regular file's descriptor is a boot failure, not a hang
+ok   outside development the variable is ignored: the port is bound as always
+4 tests, 5 assertions, 0 failures

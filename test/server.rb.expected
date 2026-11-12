@@ -52,4 +52,5 @@ ok   reuse_port on a host that does not resolve stops with a message naming the 
 ok   reuse_port on an address this machine does not have stops with the same message
 ok   reuse_port is off unless asked for
 ok   listen_fd serves on an inherited listener instead of binding the port
-54 tests, 207 assertions, 0 failures
+ok   listen_fd that is not a listening socket raises PortInUse
+55 tests, 214 assertions, 0 failures

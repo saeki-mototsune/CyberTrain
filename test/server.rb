@@ -943,4 +943,34 @@ test "listen_fd serves on an inherited listener instead of binding the port" do
   assert port_refused?(port)
 end
 
+def inherited_start_message(fd)
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 3000, listen_fd: fd,
+                                                                                     logger: Cybertrain::Logger.new($log, :info))
+  assert_raises("Cybertrain::PortInUse") { server.start }
+end
+
+# A descriptor that is closed, a regular file, or a socket that does not
+# listen: start refuses each with PortInUse, which the server role turns
+# into its `error:` line, rather than raising Errno or accepting forever on
+# something that never yields a connection. The file and the connected
+# socket keep their own descriptors: start leaves them open.
+test "listen_fd that is not a listening socket raises PortInUse" do
+  expected = "port 3000 on 127.0.0.1 #{Cybertrain::PortInUse::NOT_LISTENING}"
+  r, w = IO.pipe
+  closed = r.fileno
+  r.close
+  w.close
+  assert_equal expected, inherited_start_message(closed)
+  file = File.open(__FILE__)
+  assert_equal expected, inherited_start_message(file.fileno)
+  assert_equal "#", file.read(1)
+  file.close
+  held = TCPServer.new("127.0.0.1", 0)
+  client = TCPSocket.new("127.0.0.1", held.addr[1])
+  assert_equal expected, inherited_start_message(client.fileno)
+  client.write("x")
+  client.close
+  held.close
+end
+
 Cybertrain::Test.run!

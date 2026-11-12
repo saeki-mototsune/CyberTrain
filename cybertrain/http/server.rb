@@ -17,7 +17,8 @@ module Cybertrain
   # apart there) -- its own reason so the operator does not hunt for a
   # process that is not there. With reuse_port a host that does not resolve
   # or is not this machine's is a third reason and a name with several
-  # addresses a fourth, both naming the setting. The message is what
+  # addresses a fourth, both naming the setting; with listen_fd, a
+  # descriptor that is not a listening socket is a fifth. The message is what
   # Application#serve prints before exiting.
   class PortInUse < StandardError
     attr_reader :port
@@ -26,6 +27,7 @@ module Cybertrain
     PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
     REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine (check CYBERTRAIN_HOST)"
     REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses (set CYBERTRAIN_HOST to one of them)"
+    NOT_LISTENING = "cannot be served: the inherited descriptor is not a listening socket"
 
     def initialize(host, port, reason = IN_USE)
       super("port #{port} on #{host} #{reason}")
@@ -243,8 +245,30 @@ module Cybertrain
     # here owns the number in this process and accept_loop closes it; the
     # supervisor keeps its own copy open in its own process, so the port
     # stays bound for the next child.
+    #
+    # A number that is not open, not a socket, or a socket that does not
+    # listen is PortInUse::NOT_LISTENING, not an Errno nor an accept loop
+    # that fails forever. CRuby's for_fd refuses a non-socket (EBADF) and
+    # Spinel's a closed number (IOError, "fdopen failed"); SO_ACCEPTCONN
+    # catches the rest, a socket that does not listen (0) or a file
+    # (ENOTSOCK). Until the check passes autoclose is off: a refused number is
+    # not this server's, and the collector must not close what something
+    # else holds.
     def inherited_listener
-      TCPServer.for_fd(@listen_fd)
+      listener = TCPServer.for_fd(@listen_fd)
+      listener.autoclose = false
+      raise PortInUse.new(@host, @port, PortInUse::NOT_LISTENING) unless accepting?(listener)
+
+      listener.autoclose = true
+      listener
+    rescue SystemCallError, IOError
+      raise PortInUse.new(@host, @port, PortInUse::NOT_LISTENING)
+    end
+
+    # Whether the socket listens (SO_ACCEPTCONN); raises ENOTSOCK for a
+    # descriptor that is not a socket.
+    def accepting?(listener)
+      listener.getsockopt(Socket::SOL_SOCKET, Socket::SO_ACCEPTCONN).int != 0
     end
 
     # A separate method so its rescue stays away from the raw socket calls'

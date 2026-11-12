@@ -89,6 +89,13 @@ module Cybertrain
           Roles.fail_boot(problem) unless problem.empty?
           @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name)
         end
+        # Supervised, the descriptor is the listener: a variable that is
+        # not a number must not fall back to binding the port the
+        # supervisor holds. A number that is no listener fails at
+        # srv.start (PortInUse, below).
+        if Dev::Supervision.active?(config.env) && Dev::Supervision.listen_fd < 0
+          Roles.fail_boot("#{Dev::Supervision::LISTEN_FD} is not a descriptor number")
+        end
         # A service that would refuse to start (a WebSocket subscription
         # without on_message) fails the boot here, before the port is
         # bound, not with an exception after the banner.
