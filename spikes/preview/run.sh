@@ -16,7 +16,7 @@ work=${1:-$(mktemp -d "${TMPDIR:-/tmp}/cybertrain-preview.XXXXXX")}
 port=${PORT:-3999}
 mkdir -p "$work"
 # Absolute: the script changes directory into the copied blog below.
-work=$(cd "$work" && pwd)
+work=$(cd "$work" && pwd) || exit 2
 export CYBERTRAIN_PREVIEW_CACHE="$work/ffi-cache"
 [ "${COLD:-0}" = 1 ] && rm -rf "$CYBERTRAIN_PREVIEW_CACHE"
 printf 'work: %s\n' "$work"
