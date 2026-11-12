@@ -40,6 +40,9 @@ module Cybertrain
         @depths = Array.new(0) { 0 }
         @interps = Array.new(0) { false }
         @opened_at = Array.new(0) { 0 }
+        # Opened on a guess (a `/` or `%` after a name and a space): such a
+        # literal must close on its own line.
+        @guessed = Array.new(0) { false }
         # Heredocs announced on a line, read from the next one on.
         @tags = Array.new(0) { "" }
         @indented = Array.new(0) { false }
@@ -68,7 +71,7 @@ module Cybertrain
           end
           if heredoc_reading && !@tags.empty?
             tag = @tags[0]
-            done = @indented[0] ? raw.strip == tag : raw.chomp == tag
+            done = @indented[0] ? raw.chomp.lstrip == tag : raw.chomp == tag
             if done
               @tags.shift
               @indented.shift
@@ -93,16 +96,18 @@ module Cybertrain
           heredoc_reading = !@tags.empty?
         end
         if in_doc > 0
-          fail_at(in_doc, "=begin is not closed")
+          fail_at(in_doc, "=begin is not closed; gen cannot tell where this test class ends")
         elsif !@tags.empty?
-          fail_at(@tag_lines[0], "the heredoc #{@tag_texts[0]} is not closed")
+          fail_at(@tag_lines[0], "the heredoc #{@tag_texts[0]} is not closed; gen cannot tell where this test class ends")
         elsif !@kinds.empty?
-          fail_at(@opened_at[0], "the string opened here is not closed")
+          fail_at(@opened_at[0], "the string opened here is not closed; gen cannot tell where this test class ends")
         end
         nil
       end
 
       def fail_at(line, text)
+        return nil unless @error_line.zero?
+
         @error_line = line
         @error_text = text
         nil
@@ -121,6 +126,7 @@ module Cybertrain
         @depths << 0
         @interps << interp
         @opened_at << line
+        @guessed << false
         nil
       end
 
@@ -131,6 +137,7 @@ module Cybertrain
         @depths.pop
         @interps.pop
         @opened_at.pop
+        @guessed.pop
         nil
       end
 
@@ -172,6 +179,13 @@ module Cybertrain
             i += 1
             next
           end
+          # $', $`, $" ...: globals, not literal openers.
+          if ch == "$" && nxt != "" && !word_char?(nxt) && nxt != " " && nxt != "\n" && nxt != "\r" && nxt != "{"
+            out << ch
+            out << nxt
+            i += 2
+            next
+          end
           if ch == "\"" || ch == "'" || ch == "`"
             push(1, ch, ch, ch != "'", number)
             out << ch
@@ -185,8 +199,9 @@ module Cybertrain
               next
             end
           end
-          if ch == "/" && operand_expected?(out, nxt)
+          if ch == "/" && operand_expected?(out, nxt) > 0
             push(1, "/", "/", true, number)
+            @guessed[@guessed.size - 1] = operand_expected?(out, nxt) == 2
             out << ch
             i += 1
             next
@@ -210,6 +225,16 @@ module Cybertrain
           end
           out << ch
           i += 1
+        end
+        if !@kinds.empty? && @kinds.last == 1 && @guessed.last
+          if @opens.last == "/"
+            fail_at(number, "the `/` here reads as a regexp that does not close on this line; " \
+                            "write division with a space after `/` (x / y) or keep the regexp on one line")
+          else
+            fail_at(number, "the `%` here reads as a %-literal that does not close on this line; " \
+                            "write `x % y` with a space after `%` or keep the literal on one line")
+          end
+          pop
         end
         out.join
       end
@@ -259,10 +284,12 @@ module Cybertrain
           delim = letter
           letter = ""
           used = 2
-          return 0 unless delimiter?(delim) && "([{<|!/^".include?(delim) && operand_expected?(out, cs[i + 2].to_s)
+          return 0 unless delimiter?(delim) && "([{<|!/^".include?(delim) && operand_expected?(out, cs[i + 2].to_s) > 0
         end
+        guess = letter.empty? && operand_expected?(out, cs[i + 2].to_s) == 2
         close = closer(delim)
         push(1, close, delim, letter.empty? || "QWIrx".include?(letter), number)
+        @guessed[@guessed.size - 1] = guess
         out << "%"
         out << letter unless letter.empty?
         out << delim
@@ -322,15 +349,16 @@ module Cybertrain
       end
 
       # Whether a `/` or `%` here opens a literal: an operand is expected
-      # after what the line holds so far (`nxt` is the character after it).
+      # after what the line holds so far (`nxt` is the character after it):
+      # 0 no, 1 yes, 2 on a guess (after a name and a space, with no space
+      # after it, as Ruby guesses for a method call's argument).
       def operand_expected?(out, nxt)
         prev = last_code(out)
-        return true if prev.empty? || OPERATORS.include?(prev)
-        return false unless word_char?(prev)
+        return 1 if prev.empty? || OPERATORS.include?(prev)
+        return 0 unless word_char?(prev)
+        return 1 if KEYWORDS.include?(last_word(out))
 
-        return true if KEYWORDS.include?(last_word(out))
-
-        after_space?(out) && nxt != " " && nxt != "=" && nxt != ""
+        after_space?(out) && nxt != " " && nxt != "=" && nxt != "" ? 2 : 0
       end
 
       def last_code(out)

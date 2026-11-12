@@ -120,4 +120,15 @@ identical gen/migrations.rb
 identical gen/console.rb
 identical gen/app.rb
 ok   the sweep removes only gen's own copies and --check reports an orphan
-29 tests, 112 assertions, 0 failures
+ok   which raw lines look like test declarations
+ok   the safety net refuses a test declaration the rewrite did not place
+ok   a division read as a regexp that runs on is refused, globals are not literals
+ok   common shapes are not refused
+ok   the body level comes from the test declarations
+ok   Rails' nested spelling of a reopened framework class is refused too
+ok   next, break or redo at a test body's own level is refused
+ok   an end with a condition after it is refused
+ok   a return with a value in a lambda is still refused, saying why
+ok   a test class opened after a semicolon is refused as nested
+ok   a heredoc terminator with trailing spaces does not end the heredoc
+40 tests, 155 assertions, 0 failures

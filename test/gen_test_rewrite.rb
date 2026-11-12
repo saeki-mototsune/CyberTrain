@@ -304,7 +304,7 @@ test "rewritten methods answer nil through rescue, ensure, a bare return and a h
   assert_equal ["base setup", "own setup", "own ensure", "own teardown"], PROBE_LOG
 end
 
-RETURN_REFUSED = "`return <value>` in a test, setup or teardown method is not supported (each answers nil); use a bare `return`"
+RETURN_REFUSED = "`return <value>` in a test, setup or teardown method is not supported (each answers nil, and gen cannot tell a return in a lambda or block from the method's own); use a bare `return`"
 
 test "a return with a value in a test method is refused" do
   assert_equal "test/x_test.rb:3: #{RETURN_REFUSED}",
@@ -321,7 +321,7 @@ test "heredocs, =begin and multi-line strings inside a test keep their text" do
   assert_equal "  end; nil; end\n", lines[7]
   assert_equal "  def test_second; begin\n", lines[9]
   src = "class XTest < ActiveSupport::TestCase\n  test \"doc\" do\n=begin\nend\n=end\n    s = \"line\nend\"\n    t = %w[a\nend]\n" \
-        "    u = <<~'TXT'.strip + <<~TXT\n      test \"inner\" do\n    TXT\n    end\n    TXT\n  end\nend\n"
+        "    u = <<~'TXT'.strip + <<~TXT\n      run \"inner\" do\n    TXT\n    end\n    TXT\n  end\nend\n"
   lines = rewrite_lines(src)
   assert_equal src.lines[2, 12], lines[2, 12]
   assert_equal "  end; nil; end\n", lines[14]
@@ -338,7 +338,7 @@ end
 
 test "a nested helper class and a heredoc in a helper are left alone" do
   src = "class XTest < ActiveSupport::TestCase\n  class FakeClient\n    def setup\n      :configured\n    end\n  end\n\n  setup do\n  end\n\n" \
-        "  def sample\n    <<~RUBY\n  test \"a\" do\n  end\n    RUBY\n  end\nend\n"
+        "  def sample\n    <<~RUBY\n  end\n  end\n    RUBY\n  end\nend\n"
   lines = rewrite_lines(src)
   assert_equal src.lines[1, 5], lines[1, 5]
   assert_equal src.lines[10, 6], lines[10, 6]
@@ -427,6 +427,100 @@ test "the sweep removes only gen's own copies and --check reports an orphan" do
   assert File.exist?("#{root}/gen/test/data.rb")
   assert File.exist?("#{root}/gen/test/mine.rb")
   assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
+end
+
+UNPLACED = "gen could not place this line as a test of the class; write `test \"...\" do` (or `setup do`, `teardown do`) " \
+           "directly in the class body, not inside a condition, loop, string or heredoc"
+
+test "which raw lines look like test declarations" do
+  ["test \"a\" do", "test 'a' do", "test(\"a\") do", "test (x) do", "setup do", "setup{ x }", "teardown { y }", "setup :sign_in", "teardown(:x)",
+   "  test \"n #{"\#{n}"}\" do"].each do |line|
+    assert Cybertrain::Gen::TestScan.dsl_line?(line), line
+  end
+  ["test_helper", "tested \"a\"", "setup_x do", "@setup = 1", "setup = 1", "def setup", "# test \"a\" do", "testing do", "teardown"].each do |line|
+    refute Cybertrain::Gen::TestScan.dsl_line?(line), line
+  end
+end
+
+test "the safety net refuses a test declaration the rewrite did not place" do
+  assert_equal "test/x_test.rb:3: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  if ENV[\"CI\"]\n    test \"ci only\" do\n    end\n  end\nend\n")
+  assert_equal "test/x_test.rb:3: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  unless false\n    setup do\n    end\n  end\nend\n")
+  assert_equal "test/x_test.rb:3: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  %w[a b].each do |n|\n    test \"x \#{n}\" do\n    end\n  end\nend\n")
+  assert_equal "test/x_test.rb:4: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  def sample\n    <<~RUBY\n  test \"a\" do\n    RUBY\n  end\nend\n")
+  assert_equal "test/x_test.rb:3: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  class FakeClient\n    test \"stray\" do\n    end\n  end\nend\n")
+  assert_equal "test/x_test.rb:5: #{UNPLACED}", refusal("class XTest < ActiveSupport::TestCase\nend\n\n\ntest \"top\" do\nend\n")
+end
+
+GUESSED_REGEXP = "the `/` here reads as a regexp that does not close on this line; " \
+                 "write division with a space after `/` (x / y) or keep the regexp on one line"
+
+test "a division read as a regexp that runs on is refused, globals are not literals" do
+  src = "class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    ratio = @total /count\n  end\n\n  test \"b\" do\n    assert_equal 2, a/b\n  end\nend\n"
+  assert_equal "test/x_test.rb:3: #{GUESSED_REGEXP}", refusal(src)
+  assert_equal "test/x_test.rb:3: #{GUESSED_REGEXP}", refusal(src.sub("@total /count", "x = 10 /2"))
+  lines = rewrite_lines("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    x = $'\n  end\n\n  test \"b\" do\n    y = $' + $` + $\" + $/\n  end\nend\n")
+  assert_equal "  def test_b; begin\n", lines[5]
+  assert_equal "  end; nil; end\n", lines[7]
+end
+
+test "common shapes are not refused" do
+  body = ["assert_equal 2, x / y", "assert_match /foo/, s", "s =~ /end/", "a = %w[a b].map(&:upcase)", "b = 10 % 3", "puts %(x end)",
+          "c = (1 > 0) ? \"y\" : \"n\"", "d = [?#, ?\"]", "e = \"\#{h[\"k\"]} and \#{ { a: \"}\" }[:a] } end\"", "f = \"\#{x.map { |v| \"\#{v}\" }.join}\"",
+          "g = \"%.2f\" % v", "h = { end: 1 }[:end]"]
+  src = "class XTest < ActiveSupport::TestCase\n  test \"a\" do\n#{body.map { |l| "    #{l}\n" }.join}  end\n\n  test \"b\" do\n  end\nend\n"
+  lines = rewrite_lines(src)
+  assert_equal src.lines[2, body.size], lines[2, body.size]
+  assert_equal "  end; nil; end\n", lines[2 + body.size]
+  assert_equal "  def test_b; begin\n", lines[4 + body.size]
+end
+
+test "the body level comes from the test declarations" do
+  lines = rewrite_lines("class XTest < ActiveSupport::TestCase\n    FOO = 1\n  test \"a\" do\n  end\nend\n")
+  assert_equal "  def test_a; begin\n", lines[2]
+end
+
+REOPENED = "in a reopened ActiveSupport::TestCase is not supported; " \
+           "put it in an application base class (class ApplicationTest < ActiveSupport::TestCase with setup do ... end) and inherit from it"
+
+test "Rails' nested spelling of a reopened framework class is refused too" do
+  assert_equal "test/test_helper.rb:4: `setup do` #{REOPENED}",
+               refusal_at("module ActiveSupport\n  class TestCase\n    fixtures :all\n    setup do\n      @x = 1\n    end\n  end\nend\n", "test/test_helper.rb")
+  assert_equal "test/test_helper.rb:3: `teardown` #{REOPENED.sub("ActiveSupport::TestCase is", "ActionDispatch::IntegrationTest is")}",
+               refusal_at("module ActionDispatch\n  class IntegrationTest\n    teardown { reset! }\n  end\nend\n", "test/test_helper.rb")
+  assert_equal "", refusal_at("module ActiveSupport\n  class TestCase\n    fixtures :all\n  end\nend\n", "test/test_helper.rb")
+end
+
+test "next, break or redo at a test body's own level is refused" do
+  assert_equal "test/x_test.rb:3: `next` in a test, setup or teardown body is not supported (the block is now a method); use `return`",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    next if skip_it?\n    flunk\n  end\nend\n")
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    [1].each do |x|\n      next if x\n    end\n  end\nend\n")
+end
+
+test "an end with a condition after it is refused" do
+  assert_equal "test/x_test.rb:3: the `end` closing test \"a\" must stand alone (nothing but a comment after it)",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n  end if ENV[\"CI\"]\nend\n")
+end
+
+test "a return with a value in a lambda is still refused, saying why" do
+  assert_equal "test/x_test.rb:3: #{RETURN_REFUSED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    f = -> { return 5 }\n  end\nend\n")
+end
+
+test "a test class opened after a semicolon is refused as nested" do
+  assert_equal "test/x_test.rb:1: UsersTest #{NESTED}",
+               refusal("module Admin; class UsersTest < ActiveSupport::TestCase\n  test \"a\" do\n  end\nend; end\n")
+end
+
+test "a heredoc terminator with trailing spaces does not end the heredoc" do
+  src = "class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    s = <<~X\n    X  \n  end\n    X\n  end\nend\n"
+  lines = rewrite_lines(src)
+  assert_equal src.lines[2, 4], lines[2, 4]
+  assert_equal "  end; nil; end\n", lines[6]
 end
 
 Cybertrain::Test.run!
