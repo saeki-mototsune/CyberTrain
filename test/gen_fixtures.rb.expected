@@ -17,6 +17,7 @@ identical gen/concerns/controllers/concerns/admin_gate.rb
 identical gen/concerns/controllers/concerns/auditing.rb
 identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
+identical gen/tests.rb
 identical gen/migrations.rb
 wrote gen/test/data.rb
 identical gen/models/comment.rb
@@ -37,13 +38,16 @@ identical gen/concerns/controllers/concerns/admin_gate.rb
 identical gen/concerns/controllers/concerns/auditing.rb
 identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
+identical gen/tests.rb
 identical gen/migrations.rb
 wrote gen/test/data.rb
 identical gen/models/comment.rb
 identical gen/models/post.rb
 identical gen/console.rb
 identical gen/app.rb
+stale: gen/tests.rb
 stale: gen/test/data.rb
+removed gen/tests.rb
 removed gen/test/data.rb
 removed gen/test/
 identical gen/routes.rb
@@ -66,5 +70,5 @@ identical gen/console.rb
 identical gen/app.rb
 ok   gen writes gen/test/data.rb and --check reports it stale
 ok   with test/ and no fixtures, data.rb holds the tables and empty lists
-ok   the fixture app's gen/test/data.rb matches the emitter (fixture stale otherwise)
-9 tests, 73 assertions, 0 failures
+ok   the fixture app's gen/test/data.rb and gen/tests.rb match the emitters (fixture stale otherwise)
+9 tests, 78 assertions, 0 failures

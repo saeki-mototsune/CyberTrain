@@ -50,6 +50,11 @@ def temp_app(files)
   root = Dir.mktmpdir("cybertrain-gen-tests")
   TEMP_ROOTS << root
   copy_tree(FIXTURE, root)
+  # Without the fixture app's own test/ (Task 8's fixtures) and what gen
+  # writes from it, the tree holds only the test files written here.
+  remove_tree("#{root}/test")
+  remove_tree("#{root}/gen/test")
+  File.delete("#{root}/gen/tests.rb")
   files.each do |rel, text|
     make_dirs(File.dirname("#{root}/#{rel}"))
     File.write("#{root}/#{rel}", text)
@@ -137,7 +142,7 @@ end
 test "with the fixtures' file, the bundle requires it and registers the clear and load" do
   src = emitted(app_with_tests, true)
   assert_includes src, "require_relative \"migrations\"\nrequire_relative \"test/data\"\nCybertrain::Test.bundled!\n"
-  assert_includes src, "        Cybertrain::Test::Database.clear!(Gen::TestData::TABLES)\n"
+  assert_includes src, "        Cybertrain::Test::Database.clear_and_load!(Gen::TestData::TABLES, Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS)\n"
   assert_includes src, "Gen::Routes.url_resolver)\nCybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)\nexit("
 end
 

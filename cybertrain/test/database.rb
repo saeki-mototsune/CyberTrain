@@ -3,15 +3,22 @@
 # the fixtures are inserted. `cybertrain test`'s program (gen/tests.rb)
 # registers both through Test.before_each_bundled:
 #
-#   Cybertrain::Test.before_each_bundled(-> {
-#     Cybertrain::Test::Database.clear!(Gen::TestData::TABLES)
-#     Cybertrain::Test::Database.load_fixtures!(Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS)
-#   })
+#   def self.fixtures_hook
+#     -> {
+#       Cybertrain::Test::Database.clear_and_load!(Gen::TestData::TABLES, Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS)
+#       nil
+#     }
+#   end
+#   Cybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)
+#
+# gen/tests.rb registers both in one call, Database.clear_and_load!, one
+# transaction for the clear and the inserts together (plan decision D8);
+# clear! and load_fixtures! are the same steps as a transaction each.
 #
 # Not Rails' transactional tests: every table's rows are deleted instead
-# (spec section 6 says why). Each step is one transaction on one
-# connection, with `PRAGMA foreign_keys = OFF` around it (a no-op inside a
-# transaction, so it brackets the BEGIN and the COMMIT).
+# (spec section 6 says why). Each transaction is on one connection, with
+# `PRAGMA foreign_keys = OFF` around it (a no-op inside a transaction, so
+# it brackets the BEGIN and the COMMIT).
 #
 # Both steps refuse a database that is not a test one, before touching
 # it: the configured environment must be "test" and the connected file
@@ -93,6 +100,22 @@ module Cybertrain
         nil
       end
 
+      # Steps 1 and 2 in one transaction (what the bundle runs before each
+      # test): the clear of {clear!}, then the inserts of {load_fixtures!},
+      # committed together, foreign keys off around them.
+      # @param tables [Array<String>] Gen::TestData::TABLES
+      # @param sql [Array<String>] Gen::TestData::FIXTURE_SQL
+      # @param counts [Array<Integer>] Gen::TestData::FIXTURE_TIMESTAMPS
+      # @return [nil]
+      # @raise [RuntimeError] when the database is not a test database
+      #   (nothing is deleted)
+      def self.clear_and_load!(tables, sql, counts)
+        Database.refuse_unless_test_database
+        now = Cybertrain::Model.now_string
+        DB.with { |c| Database.reset_on(c, true, tables, sql, counts, now) }
+        nil
+      end
+
       # "" when env and path name a test database, else the refusal.
       # @return [String]
       def self.refusal(env, path)
@@ -121,28 +144,28 @@ module Cybertrain
       end
 
       def self.clear_on(c, tables)
-        present = Array.new(0) { "" }
-        c.execute("SELECT name FROM sqlite_master WHERE type = 'table'").each { |r| present << r["name"].to_s }
-        c.execute("PRAGMA foreign_keys = OFF")
-        begin
-          c.begin!
-          tables.each { |t| c.execute("DELETE FROM \"#{t}\"") }
-          FRAMEWORK_TABLES.each { |t| c.execute("DELETE FROM \"#{t}\"") if present.include?(t) }
-          c.execute("DELETE FROM sqlite_sequence") if present.include?("sqlite_sequence")
-          c.commit!
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
-          c.rollback!
-          c.execute("PRAGMA foreign_keys = ON")
-          raise e
-        end
-        c.execute("PRAGMA foreign_keys = ON")
-        nil
+        Database.reset_on(c, true, tables, Array.new(0) { "" }, Array.new(0) { 0 }, "")
       end
 
       def self.load_on(c, sql, counts, now)
+        Database.reset_on(c, false, Array.new(0) { "" }, sql, counts, now)
+      end
+
+      # One transaction, foreign keys off around it: with `clear`, the
+      # deletes of `tables`, of the framework tables present and of
+      # sqlite_sequence; then the inserts. On a failure it rolls
+      # back, turns foreign keys on again and re-raises.
+      def self.reset_on(c, clear, tables, sql, counts, now)
+        present = Array.new(0) { "" }
+        c.execute("SELECT name FROM sqlite_master WHERE type = 'table'").each { |r| present << r["name"].to_s } if clear
         c.execute("PRAGMA foreign_keys = OFF")
         begin
           c.begin!
+          if clear
+            tables.each { |t| c.execute("DELETE FROM \"#{t}\"") }
+            FRAMEWORK_TABLES.each { |t| c.execute("DELETE FROM \"#{t}\"") if present.include?(t) }
+            c.execute("DELETE FROM sqlite_sequence") if present.include?("sqlite_sequence")
+          end
           i = 0
           while i < sql.size
             binds = Array.new(counts[i]) { now }

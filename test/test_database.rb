@@ -134,6 +134,18 @@ test "a failing insert rolls the load back and turns foreign keys on again" do
   assert_equal 1, foreign_keys_on
 end
 
+test "clear_and_load! is one transaction: a failing insert keeps the previous rows" do
+  Post.create(title: "kept", body: "long enough body")
+  message = assert_raises { Database.clear_and_load!(Gen::TestData::TABLES, ["INSERT INTO nope VALUES (1)"], [0]) }
+  assert_includes message, "nope"
+  assert_equal 3, Post.count
+  assert_equal 1, foreign_keys_on
+  travel_to(Time.utc(2026, 11, 3)) { Database.clear_and_load!(Gen::TestData::TABLES, Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS) }
+  assert_equal 2, Post.count
+  assert_equal Time.utc(2026, 11, 3), posts(:one).updated_at
+  assert_equal 0, Post.where(title: "kept").count
+end
+
 test "only a test database is emptied" do
   assert_equal "", Database.refusal("test", "storage/test.sqlite3")
   assert_equal "", Database.refusal("test", "/srv/app/storage/test.sqlite3")
@@ -157,8 +169,10 @@ test "the clear and the load refuse a connected database that is not a test one"
   assert_equal 2, Post.count
   ENV.delete("CYBERTRAIN_TEST_DATABASE")
   message = assert_raises { Database.load_fixtures!(Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS) }
+  combined = assert_raises { Database.clear_and_load!(Gen::TestData::TABLES, Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS) }
   ENV["CYBERTRAIN_TEST_DATABASE"] = DB_PATH
   assert_equal "Test::Database refuses to empty #{DB_PATH}: not a test database (env test)", message
+  assert_equal message, combined
   assert_equal 2, Post.count
 end
 

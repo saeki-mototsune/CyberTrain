@@ -182,6 +182,12 @@ test "gen writes gen/test/data.rb and --check reports it stale" do
   assert_includes data, "  def posts(label) = Gen::TestFixtures.posts(label)\n"
   assert_includes data, "\ndef posts(label) = Gen::TestFixtures.posts(label)\n"
   assert_not_includes data, "LABELS_comments"
+  # The bundle requires the file and registers its clear and load.
+  bundle = File.read("#{root}/gen/tests.rb")
+  assert_includes bundle, "require \"cybertrain/test_help\"\n"
+  assert_includes bundle, "require_relative \"test/data\"\n"
+  assert_includes bundle, "Cybertrain::Test::Database.clear_and_load!(Gen::TestData::TABLES, Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS)"
+  assert_includes bundle, "Cybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)\n"
   # The Runner's sweep of gen/test/ removes only gen's own copies.
   assert_not_includes data, Cybertrain::Gen::TestScan::FOOTER
   File.write("#{root}/test/fixtures/posts.yml", "one:\n  title: y\n")
@@ -202,10 +208,13 @@ test "with test/ and no fixtures, data.rb holds the tables and empty lists" do
   assert_includes data, "FIXTURE_TIMESTAMPS = Array.new(0) { 0 }.freeze"
 end
 
-test "the fixture app's gen/test/data.rb matches the emitter (fixture stale otherwise)" do
+test "the fixture app's gen/test/data.rb and gen/tests.rb match the emitters (fixture stale otherwise)" do
   expected = Cybertrain::Gen::TestDataEmitter.emit(Cybertrain::Schema.current, scan_root(FIXTURE))
   Cybertrain::Test.count_assertion
   flunk("fixture stale: #{FIXTURE}/gen/test/data.rb") unless File.read("#{FIXTURE}/gen/test/data.rb") == expected
+  bundle = Cybertrain::Gen::TestsEmitter.emit(FIXTURE, Cybertrain::Gen::TestScan.scan(FIXTURE), true)
+  Cybertrain::Test.count_assertion
+  flunk("fixture stale: #{FIXTURE}/gen/tests.rb") unless File.read("#{FIXTURE}/gen/tests.rb") == bundle
 end
 
 Cybertrain::Test.run!

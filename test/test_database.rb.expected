@@ -5,6 +5,7 @@ ok   posts(:missing) raises FixtureNotFound
 ok   a test's rows are gone after the next clear
 ok   before each test the bundled hook cleared and loaded
 ok   a failing insert rolls the load back and turns foreign keys on again
+ok   clear_and_load! is one transaction: a failing insert keeps the previous rows
 ok   only a test database is emptied
 ok   the clear and the load refuse a connected database that is not a test one
-9 tests, 50 assertions, 0 failures
+10 tests, 59 assertions, 0 failures
