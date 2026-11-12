@@ -21,4 +21,14 @@ ok   log lines
 ok   a ready child of the wrong kind is ignored
 ok   a state is written whenever one of its four values changes, and only then
 ok   stop from holding releases the hold once
-23 tests, 61 assertions, 0 failures
+ok   a build that succeeds while a change waits is discarded, not handed over (A)
+ok   a build that succeeded under the lock is dropped when a change arrives before the tick
+ok   a failed build while a change waits is discarded too
+ok   the binary dies while the lock is held: hold, then CRuby on the first tick after (B)
+ok   the binary dies under the lock with a change pending: the change round runs instead
+ok   the CRuby child dies while the lock is held: hold, nothing started
+ok   the child still serving after an interrupted round is still watched (C)
+ok   the binary serving through an interrupted round is still watched
+ok   the serving child's ready is seen after an interrupted round
+ok   a build success for the current generation while an interrupted round waits is discarded
+33 tests, 93 assertions, 0 failures

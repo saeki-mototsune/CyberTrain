@@ -258,4 +258,133 @@ test "stop from holding releases the hold once" do
   assert_equal [[:cancel_build], [:stop_child], [:release_hold]], calls_after(r)
 end
 
+test "a build that succeeds while a change waits is discarded, not handed over (A)" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.locked = true
+  m.on_change(["a.rb"])
+  r.locked = false
+  m.on_build_done(1, true, "")
+  assert_equal [], calls_after(r)
+  assert_equal [1, :cruby, :building], [m.generation, m.serving, m.build]
+  m.on_tick
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+  m.on_tick
+  assert_equal [], calls_after(r)
+end
+
+test "a build that succeeded under the lock is dropped when a change arrives before the tick" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.locked = true
+  m.on_build_done(1, true, "")
+  m.on_change(["a.rb"])
+  r.locked = false
+  m.on_tick
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+  assert_equal [2, :cruby, :building], [m.generation, m.serving, m.build]
+  m.on_tick
+  assert_equal [], calls_after(r)
+end
+
+test "a failed build while a change waits is discarded too" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.locked = true
+  m.on_change(["a.rb"])
+  m.on_build_done(1, false, "late")
+  assert_equal [:building, ""], [m.build, m.output]
+end
+
+test "the binary dies while the lock is held: hold, then CRuby on the first tick after (B)" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; m.on_build_done(1, true, ""); calls_after(r)
+  r.locked = true
+  m.on_child_exit(:binary, 1, "segv")
+  assert_equal [[:hold, "the compiled binary stopped", "segv"]], calls_after(r)
+  assert_equal [1, :holding, :binary_failed, "segv"], [m.generation, m.serving, m.build, m.output]
+  m.on_tick
+  assert_equal [], calls_after(r)
+  assert_equal 1, r.lines.count(LOCK_LINE)
+  r.locked = false
+  m.on_tick
+  assert_equal [[:release_hold], [:start_child, :cruby, 1]], calls_after(r)
+  assert_equal [1, :cruby, :binary_failed], [m.generation, m.serving, m.build]
+  assert_equal [1, "cruby", "binary_failed", "segv"], r.states.last
+  m.on_tick
+  assert_equal [], calls_after(r)
+end
+
+test "the binary dies under the lock with a change pending: the change round runs instead" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; m.on_build_done(1, true, ""); calls_after(r)
+  r.locked = true
+  m.on_change(["a.rb"])
+  m.on_child_exit(:binary, 1, "segv")
+  assert_equal [[:hold, "the compiled binary stopped", "segv"]], calls_after(r)
+  r.locked = false
+  m.on_tick
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:release_hold], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+  m.on_tick
+  assert_equal [], calls_after(r)
+end
+
+test "the CRuby child dies while the lock is held: hold, nothing started" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.locked = true
+  m.on_child_exit(:cruby, 1, "boom")
+  assert_equal [[:hold, "the CRuby preview stopped", "boom"]], calls_after(r)
+  r.locked = false
+  m.on_tick
+  assert_equal [], calls_after(r)
+  m.on_change(["a.rb"])
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:release_hold], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+end
+
+test "the child still serving after an interrupted round is still watched (C)" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.during_gen = ->(fake) { fake.locked = true }
+  m.on_change(["a.rb"])
+  assert_equal [[:cancel_build], [:run_gen]], calls_after(r)
+  m.on_child_exit(:cruby, 1, "boom")
+  assert_equal [[:hold, "the CRuby preview stopped", "boom"]], calls_after(r)
+  assert_equal [1, :holding], [m.generation, m.serving]
+  r.during_gen = nil
+  r.locked = false
+  m.on_tick
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:release_hold], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+  assert_equal [2, :cruby, :building], [m.generation, m.serving, m.build]
+end
+
+test "the binary serving through an interrupted round is still watched" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; m.on_build_done(1, true, ""); calls_after(r)
+  r.during_gen = ->(fake) { fake.locked = true }
+  m.on_change(["a.rb"])
+  calls_after(r)
+  m.on_child_exit(:binary, 1, "segv")
+  assert_equal [[:hold, "the compiled binary stopped", "segv"]], calls_after(r)
+  r.during_gen = nil
+  r.locked = false
+  m.on_tick
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:release_hold], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+end
+
+test "the serving child's ready is seen after an interrupted round" do
+  r = FakeRunner.new; r.clock = 0.0; m = Machine.new(r); m.start
+  r.during_gen = ->(fake) { fake.locked = true }
+  m.on_change(["a.rb"])
+  r.lines.clear
+  r.clock = 0.3
+  m.on_child_ready(:cruby, 1)
+  assert_equal ["=> preview: CRuby (0.3s)"], r.lines
+end
+
+test "a build success for the current generation while an interrupted round waits is discarded" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.during_gen = ->(fake) { fake.locked = true }
+  m.on_change(["a.rb"])
+  calls_after(r)
+  r.during_gen = nil
+  r.locked = false
+  m.on_build_done(1, true, "")
+  assert_equal [], calls_after(r)
+  m.on_tick
+  assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
+end
+
 Cybertrain::Test.run!
