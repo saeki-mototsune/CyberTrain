@@ -1,5 +1,5 @@
 ---
-source_sha256: 2249f3239f3cc08531ce19f54fbd2b0f46fcdb8fc891d4942cea75b9cb1d0038
+source_sha256: c3fdfe6dfa20ecfa65983a2d32a087f3ded3169cea41670686a8b55891174b0f
 ---
 # リクエスト
 
@@ -80,7 +80,7 @@ def show
 end
 ```
 
-コレクター（`Cybertrain::FormatCollector`）には `html`、`json`、`turbo_stream`、`csv`、`xml`、`text`、`any` があります。最初にマッチした宣言がその場でブロックを実行するので、ブロックからアクションのインスタンス変数が見えます。ブロックのない宣言は、そのフォーマットのアクションのテンプレートを描画します（`show.html.erb` はレイアウトの中、`show.turbo_stream.erb` はレイアウトなし）。どれもマッチしなければ `406 Not Acceptable` を返します。`any` は `:unknown` 以外のどのフォーマットにもマッチします。Turbo はフォームを `text/vnd.turbo-stream.html, text/html` を求めて送ります。このリクエストのフォーマットは `:turbo_stream` で、`format.turbo_stream` のないアクションは Rails と同じく `format.html` で応えます（`.turbo_stream` の拡張子はそのフォーマットだけを求めます）。同じフォールバックは、html 以外のフォーマットと並べて `text/html` か `*/*` を挙げるどの `Accept` にも働きます。html のテンプレートしかないアクションに `application/json, text/plain, */*` を送るクライアントは、406 ではなく html を受け取ります。フォールバックはブロックを html のためにもう一度実行するので、`format.` の行以外の文はブロックの中で二度実行されます。ブロックには `format.` の行だけを書いてください。
+コレクター（`Cybertrain::FormatCollector`）には `html`、`json`、`turbo_stream`、`csv`、`xml`、`text`、`any` があります。最初にマッチした宣言がその場でブロックを実行するので、ブロックからアクションのインスタンス変数が見えます。ブロックのない宣言は、そのフォーマットのアクションのテンプレートを描画します（`show.html.erb` はレイアウトの中、`show.turbo_stream.erb` はレイアウトなし）。どれもマッチしなければ `406 Not Acceptable` を返します。`any` は `:unknown` 以外のどのフォーマットにもマッチします。Turbo はフォームを `text/vnd.turbo-stream.html, text/html` を求めて送ります。このリクエストのフォーマットは `:turbo_stream` で、`format.turbo_stream` のないアクションは Rails と同じく `format.html` で応えます（`.turbo_stream` の拡張子はそのフォーマットだけを求めます）。同じフォールバックは、html 以外のフォーマットと並べて `text/html` か `*/*` を挙げるどの `Accept` にも働きます。html のテンプレートしかないアクションに `application/json, text/plain, */*` を送るクライアントは、406 ではなく html を受け取ります。フォールバックはブロックを html のためにもう一度実行するので、`format.` の行以外の文はブロックの中で二度実行されます。ブロックには `format.` の行だけを書いてください。`q=0` の付いた項目はその型を拒否します。`application/json, text/html;q=0` には、`*/*` が並んでいてもいなくても html は返りません。
 
 フォーマットが `Accept` から決まった応答（拡張子がなく、`Accept` ヘッダーが送られたもの）には `Vary: Accept` が付きます。アクションが設定した `Vary` があればそこに統合されます。これで、ブラウザーやキャッシュが、ある URL の html を、その JSON や Turbo Stream を求めるリクエストに渡すことはなくなります。拡張子付きのパスには付きません。
 
@@ -147,7 +147,7 @@ def feed
 end
 ```
 
-`fresh_when` は弱い `ETag`（String から、またはレコードのテーブル、`to_param`、`updated_at` から）と `Last-Modified` を付け、リクエストの `If-None-Match`（それがなければ `If-Modified-Since`）がクライアントが最新の版を持っていると示すときは `304 Not Modified` を返します。`stale?` も同じことをして、アクションが描画すべきかを返します。304 になるのは GET と HEAD だけです。`Cache-Control` は `max-age=0, private, must-revalidate`（`public: true` なら `public`）ですが、先に `expires_in seconds` が `max-age=<seconds>` を付けていればそれが残ります。ほかの応答に自動で ETag は付きません。
+`fresh_when` は弱い `ETag`（String から、またはレコードのテーブル、`to_param`、`updated_at` から）と `Last-Modified` を付け、リクエストの `If-None-Match`（それがなければ `If-Modified-Since`）がクライアントが最新の版を持っていると示すときは `304 Not Modified` を返します。`stale?` も同じことをして、アクションが描画すべきかを返します。304 になるのは GET と HEAD だけです。`Cache-Control` は `max-age=0, private, must-revalidate`（`public: true` なら `public`）ですが、先に `expires_in seconds` が `max-age=<seconds>` を付けていればそれが残ります。ほかの応答に自動で ETag は付きません。`If-None-Match: *` は、アクションが付けた検証子が `ETag` でも `Last-Modified` だけでもマッチします。
 
 ETag は、渡したキー、リクエストのフォーマット、ビルドのダイジェスト（アセットのダイジェストとインポートマップ、`cybertrain build` のバイナリではビューも）から作られます。そのため、同じ URL の html と JSON が ETag を共有することはなく、アセットやビューを変えるデプロイは、すべてのクライアントに再検証をさせます。これには二つの帰結があります。開発では、`--embed-views` なしだとテンプレートはディスクから読まれ、ダイジェストには入りません。ビューを編集しても、レコードが変わるか、キャッシュされたコピーなしでページを再読み込みするまで `304` が返ることがあります。また、キーはページが何を表示するかを表すもので、誰が見るかではありません。ユーザーごとに内容が違うページは、キーにユーザーを入れてください（`etag: "posts/#{@post.id}-#{@post.updated_at.to_i}-#{current_user.id}"`）。入れないと、別の人に見せてしまいます。CSP のナンス（ナンス付きの `content_security_policy`、`javascript_importmap_tags`）を含むページを `public` にしないでください。共有キャッシュはすべての訪問者に同じページ、つまり同じナンスを渡し、ナンスは何も守らなくなります。
 
@@ -275,6 +275,6 @@ Rack は gzip されたリクエストボディをそのままにします。こ
 - `rate_limit` はキャッシュで数えます：`store: :memory` で以前のプロセスごとのカウンターになり、一つのコントローラーの二つの制限にはそれぞれの `name:` が要り、nil か `""` を返す `by:` のメソッドは例外を発生させ、何も描画しない `with:` のメソッドの後には 429 が続きます。
 - 数値のヘルパーは、数でない値と、0 から 100 の範囲外の精度で例外を発生させます（nil はテンプレートでは従来どおり `""` になります）。
 - コントローラーやモデルの `include A, B` は、Ruby と同じく B を先に include します。コンサーンでないモジュールの `include` は Ruby に任されます。
-- すべての ETag が一度変わります（リクエストのフォーマットとビルドのダイジェストを含むようになったため）。`Accept` で決まった応答は `Vary: Accept` を送り、html のフォールバックは `text/html` か `*/*` を挙げるどの `Accept` にも働きます。
+- すべての ETag が一度変わります（リクエストのフォーマットとビルドのダイジェストを含むようになったため）。`Accept` で決まった応答は `Vary: Accept` を送り、html のフォールバックは `text/html` か `*/*` を挙げるどの `Accept` にも働きます。html にフォールバックしうるリクエスト（`application/json, text/html`）は、そのフォーマットだけを求めるリクエストとは別の ETag を持ちます。`Accept` の `text/html;q=0` には、`*/*` が並んでいても html のフォールバックは働きません（html しかないアクションでは 406）。`If-None-Match: *` は、`last_modified:` だけで検証した応答からも 304 を受け取ります。
 - `permit` と `expect` は、Array でないフィルターで `ArgumentError` を発生させます。存在しないレイアウトを指す `layout` は `MissingTemplate` を発生させます（既定の `application` レイアウトは省略可能なままです）。ジャーの Cookie が 4096 バイトを超えると `Session::CookieOverflow` を発生させます。
 - `public/style.css` はそのまま動きます。`app/assets/stylesheets/` への移動は任意です（[アセット](assets.md#moving-publicstylecss)）。

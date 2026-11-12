@@ -237,6 +237,33 @@ test "any format from an Accept that lists */* falls back to html (axios)" do
   assert_equal 406, client.get("/articles.json", AXIOS_ACCEPT).status
 end
 
+test "text/html refused with q=0 is no fallback, with or without a wildcard" do
+  # implicit render: index has an html template only
+  assert_equal 406, client.get("/articles", { "accept" => "application/json, text/html;q=0" }).status
+  assert_equal 406, client.get("/articles", { "accept" => "application/json, text/html;q=0, */*" }).status
+  assert_equal 406, client.get("/articles", { "accept" => "application/json, */*, Text/HTML ; Q=0.0" }).status
+  # respond_to: peek offers format.html only
+  assert_equal 406, client.get("/articles/1/peek", { "accept" => "text/vnd.turbo-stream.html, text/html;q=0" }).status
+  assert_equal 406, client.get("/articles/1/peek", { "accept" => "application/json, text/html;q=0, */*;q=0.5" }).status
+  # a wildcard refused with q=0 offers nothing either
+  assert_equal 406, client.get("/articles", { "accept" => "application/json, */*;q=0" }).status
+  # also on the 406: the answer depended on Accept
+  assert_equal "Accept", client.get("/articles", { "accept" => "application/json, text/html;q=0" }).header("Vary")
+end
+
+test "a low but non-zero q still takes html" do
+  res = client.get("/articles", { "accept" => "application/json, text/html;q=0.1" })
+  assert_equal 200, res.status
+  assert_equal "text/html; charset=utf-8", res.header("content-type")
+  assert_equal "<p>Index</p>", res.body.strip
+  assert_equal 200, client.get("/articles", { "accept" => "application/json, */*;q=0.1" }).status
+  assert_equal 200, client.get("/articles", { "accept" => "application/json, text/html;level=1" }).status
+  # text/html wins over a refused wildcard: it is the more specific entry
+  assert_equal 200, client.get("/articles", { "accept" => "application/json, */*;q=0, text/html" }).status
+  peek = client.get("/articles/1/peek", { "accept" => "application/json, text/html;q=0.5" })
+  assert_equal "<p>Peek From html</p>", peek.body.strip
+end
+
 test "a format chosen by Accept sends Vary: Accept" do
   assert_equal "Accept", client.get("/articles/1", TURBO_ACCEPT).header("Vary")
   assert_equal "Accept", client.get("/articles/1", JSON_ACCEPT).header("Vary")
