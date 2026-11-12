@@ -1,0 +1,67 @@
+#!/bin/sh
+# Run the CRuby-only tests: test/cruby/*.rb, which exercise the preview's own
+# code (cybertrain/preview/) and so cannot be compiled by Spinel. Each file
+# runs as `ruby -E UTF-8 -I. <file>` and its stdout and stderr, together, are
+# compared with test/cruby/<name>.rb.expected, the way `spin test` compares a
+# compiled test. `spin test` and script/test-shard glob test/*.rb only and
+# never see these.
+#
+# usage: script/test-cruby [file...]          run these files (default: all)
+#        script/test-cruby --regen [file...]  rewrite their snapshots
+#
+# Exit status 1 when any file differs or fails; 2 for a bad argument.
+set -u
+
+regen=false
+if [ "${1:-}" = "--regen" ]; then
+  regen=true
+  shift
+fi
+
+cd "$(dirname "$0")/.." || exit 2
+
+if [ "$#" -eq 0 ]; then
+  set -- $(printf '%s\n' test/cruby/*.rb | LC_ALL=C sort)
+fi
+
+work=$(mktemp -d) || exit 2
+trap 'rm -rf "$work"' EXIT
+
+status=0
+for file in "$@"; do
+  if [ ! -f "$file" ]; then
+    echo "test-cruby: $file does not exist" >&2
+    exit 2
+  fi
+  snapshot="$file.expected"
+  out="$work/out"
+  ruby -E UTF-8 -I. "$file" > "$out" 2>&1
+  rc=$?
+  if [ "$regen" = true ]; then
+    # A failing run is never kept as its own expectation.
+    if [ "$rc" -ne 0 ]; then
+      echo "test-cruby: $file failed (exit $rc); kept the previous snapshot" >&2
+      grep -v '^ok   ' "$out" >&2
+      status=1
+      continue
+    fi
+    cp "$out" "$snapshot"
+    echo "test-cruby: wrote $snapshot"
+    continue
+  fi
+  if [ "$rc" -ne 0 ]; then
+    echo "FAIL $file (exit $rc)"
+    grep -v '^ok   ' "$out"
+    status=1
+  elif [ ! -f "$snapshot" ]; then
+    echo "FAIL $file has no $snapshot (script/test-cruby --regen $file)"
+    status=1
+  elif ! diff -u "$snapshot" "$out" > "$work/diff"; then
+    echo "FAIL $file differs from its snapshot"
+    cat "$work/diff"
+    status=1
+  else
+    echo "ok   $file"
+  fi
+done
+exit "$status"
