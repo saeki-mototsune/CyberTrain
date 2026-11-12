@@ -133,6 +133,15 @@ test "assert_raises with an exception that is not a StandardError" do
     passed_through = e.message
   end
   assert_equal "through", passed_through
+  # With nothing expected only a StandardError matches (Minitest's default).
+  assert_equal "x", assert_raises { raise "x" }
+  bare_through = ""
+  begin
+    assert_raises { raise NotImplementedError, "bare" }
+  rescue NotImplementedError => e
+    bare_through = e.message
+  end
+  assert_equal "bare", bare_through
 end
 
 # Ruby's own namespaced classes answer no superclass under Spinel: their

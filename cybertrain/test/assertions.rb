@@ -46,7 +46,8 @@ module Cybertrain
       "Encoding::InvalidByteSequenceError" => "EncodingError", "Encoding::ConverterNotFoundError" => "EncodingError",
       "URI::Error" => "StandardError", "URI::InvalidURIError" => "URI::Error",
       "URI::InvalidComponentError" => "URI::Error", "URI::BadURIError" => "URI::Error",
-      "IO::EAGAINWaitReadable" => "Errno::EAGAIN", "IO::EAGAINWaitWritable" => "Errno::EAGAIN"
+      "IO::EAGAINWaitReadable" => "Errno::EAGAIN", "IO::EAGAINWaitWritable" => "Errno::EAGAIN",
+      "IO::TimeoutError" => "IOError", "Regexp::TimeoutError" => "RegexpError"
     }.freeze
 
     # Fails the current assertion with `text`.
@@ -227,10 +228,13 @@ module Cybertrain
 
     # Whether the raised class `raised` is what `expected` names: a Class
     # by name along the superclass chain (rules 46, 47), a String as part
-    # of the name, "" anything.
-    def self.raised_matches?(expected, raised)
+    # of the name, "" any StandardError (`standard`: the exception is one,
+    # Minitest's default). A built-in class whose parent is unknown fails
+    # the assertion when it is a StandardError, and does not match (so it
+    # is raised on) when it is not.
+    def self.raised_matches?(expected, raised, standard)
       if expected.is_a?(String)
-        return true if expected == ""
+        return standard if expected == ""
 
         return raised.name.to_s.include?(expected)
       end
@@ -245,6 +249,8 @@ module Cybertrain
         if parent.nil? && !builtin
           up = superclass_or_nil(k)
           if up.nil?
+            return false unless standard
+
             text = "assert_raises: the parent class of #{name} is not known under Spinel; " \
                    "expect #{name} itself, or compare by name: assert_raises(\"#{want}\")"
             fail_with(text)
@@ -289,7 +295,7 @@ module Cybertrain
       if name.include?("AssertionFailed") && !expected_text(expected).include?("AssertionFailed")
         raise exception
       end
-      return nil if raised_matches?(expected, exception.class)
+      return nil if raised_matches?(expected, exception.class, exception.is_a?(StandardError))
       raise exception unless exception.is_a?(StandardError)
 
       text = "[#{expected_text(expected)}] exception expected, not\nClass: <#{name}>\nMessage: <#{exception.message.inspect}>"
