@@ -1,16 +1,16 @@
 ---
 path: tutorial.html
 title: "Getting started: the blog"
-description: "Build the Rails Getting Started blog, articles with comments, with CyberTrain: scaffold, migrate, nest routes, test with Cybertrain::Test and build for deployment with cybertrain build."
+description: "Build the Rails Getting Started blog, articles with comments, with CyberTrain: scaffold, migrate, nest routes, push live comments with Turbo, queue a job, test with Cybertrain::Test and build for deployment with cybertrain build."
 og_title: "Getting started with CyberTrain: the blog"
 og_description: "Mirrors Rails' own Getting Started: a blog with articles and comments, built with CyberTrain on Spinel."
 og_image: tutorial.png
 crumb: Tutorial
 nav: tutorial
-toc_title: "Steps 00–15"
+toc_title: "Steps 00–19"
 meta:
   - term: You need
-    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, SQLite 3 headers (Spinel is installed for you) <a class="meta-link" href="#requirements">Step 00</a>'
+    text: 'Ruby 3.2+, `cc`, `make`, `git`, `curl`, SQLite 3, zlib and OpenSSL headers (Spinel is installed for you) <a class="meta-link" href="#requirements">Step 00</a>'
   - term: You start from
     text: "`gem install cybertrain`"
   - term: You finish with
@@ -21,9 +21,10 @@ meta:
 
 Mirrors Rails' own [Getting Started](https://guides.rubyonrails.org/getting_started.html):
 a blog with articles and comments. You will scaffold articles, add
-validations, nest comments under them, write a test that drives the app
-in-process, add sign-in, attach an uploaded image, and build the app into a
-deployable `dist/` folder. The finished app is
+validations, nest comments under them, push new comments to every open page
+with Turbo, queue a background job, answer JSON, write tests that drive the
+app in-process, add sign-in, attach an uploaded image, and build the app into
+a deployable `dist/` folder. The app this grows into is
 [`examples/blog`](../../examples/blog), exercised by CI on Linux and macOS.
 
 <!-- step 00 #requirements stage: Setup · Ruby, `cc`, SQLite -->
@@ -44,10 +45,14 @@ deployable `dist/` folder. The finished app is
   minutes, once), unless a `spinel` of that release is already on `PATH`.
 - A C toolchain (`cc`, or the compiler `CC` names) and `make`, plus `git` and
   `curl`, to build Spinel, which compiles every program to C.
-- SQLite 3 and zlib headers and libraries: `libsqlite3-dev` and `zlib1g-dev`
-  on Debian/Ubuntu; present with Xcode's command line tools on macOS.
+- SQLite 3, zlib and OpenSSL headers and libraries: `libsqlite3-dev`,
+  `zlib1g-dev` and `libssl-dev` on Debian/Ubuntu. On macOS, SQLite and zlib
+  come with Xcode's command line tools and OpenSSL from Homebrew
+  (`brew install openssl@3`, then the two paths
+  [Requirements](install.md#requirements) gives).
 
-`cybertrain doctor` checks all of this. The full list and what is optional:
+`cybertrain doctor` checks all of this and prints the install command for
+whatever is missing. The full list and what is optional:
 [Requirements](install.md#requirements); where Spinel goes and how to use
 another install: [how Spinel is installed](install.md#how-spinel-is-installed).
 
@@ -127,12 +132,14 @@ generated tree:
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb  config/locales/en.yml
+  spin.toml  config/app.rb  config/routes.rb  config/locales/en.yml  .env.example
   db/schema.rb  db/migrate/
-  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/
-  app/assets/stylesheets/application.css  app/javascript/application.js  config/importmap.rb
+  app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/  app/jobs/
+  app/assets/stylesheets/application.css  app/assets/images/
+  app/javascript/application.js  config/importmap.rb
   public/  bin/blog.rb  bin/gen.rb  bin/db.rb
-  gen/  storage/  tmp/  test/
+  gen/  storage/  tmp/  test/  .github/workflows/ci.yml
+  Dockerfile  config/deploy.yml  .kamal/secrets
 ```
 
 `bin/blog.rb` is the application's one entry point, the program
@@ -140,11 +147,18 @@ blog/
 `./blog db status` manage the database. `bin/gen.rb` runs the generator
 (`spin run gen`), and `bin/db.rb` runs the migrator during development
 (`cybertrain db migrate` uses it, since `bin/blog.rb` cannot compile until the
-first migration has generated `gen/models/`). `gen/` already holds `views.rb`,
-the committed, empty table of embedded views. The layout links
-`app/assets/stylesheets/application.css` with `stylesheet_link_tag`; `spin
-run gen` writes it digested into `public/assets/`, which is git-ignored
-(see [Assets](assets.md)).
+first migration has generated `gen/models/`). `gen/` already holds what
+`spin run gen` wrote, `views.rb` among it: the committed, empty table of
+embedded views.
+
+The layout links `app/assets/stylesheets/application.css` with
+`stylesheet_link_tag` and loads `app/javascript/application.js` through the
+import map of `config/importmap.rb` with `javascript_importmap_tags`; `spin
+run gen` writes both digested into `public/assets/`, which is git-ignored
+(see [Assets](assets.md)). `.env.example` lists the variables the app reads,
+`.github/workflows/ci.yml` runs the tests on GitHub
+([Continuous integration](testing.md#continuous-integration)), and the last
+line of the tree is the Kamal setup of [step 19](#ship).
 
 `ApplicationController` starts like this, so a missing record maps to a 404
 through `rescue_from`:
@@ -174,8 +188,9 @@ cybertrain generate scaffold article title:string body:text
 It writes a migration, a model, a controller and five views (`index`, `show`,
 `new`, `edit`, `_form`), and inserts `resources :articles` into
 `config/routes.rb`. Field types are `string`, `text`, `integer`, `float`,
-`boolean`, `date`, `datetime` and `references`; the default is `string`. The
-quick start's `cybertrain g scaffold` is the same command.
+`boolean`, `date`, `datetime`, `references` and `attachment` (an uploaded
+file, [step 18](#attachments)); the default is `string`. The quick start's
+`cybertrain g scaffold` is the same command.
 
 > [!NOTE]
 > Existing files are never overwritten: each file is reported as `create`,
@@ -318,8 +333,10 @@ Use Ctrl-C to stop
 
 <!-- list: points -->
 - Re-run `cybertrain spin run gen` and commit `gen/` after touching the
-  schema, routes, or a controller's or model's callbacks and ivars. The
-  development server does this for you.
+  schema, routes, a controller's or model's callbacks and ivars, a helper,
+  component or job, or an asset. The development server does this for you,
+  and `cybertrain spin run gen -- --check` lists what is stale without
+  writing anything.
 - Change the port with `cybertrain server 4000` (or `PORT=4000`).
 - `cybertrain db` adds the `--` that `spin run db` needs before its arguments;
   `cybertrain db status` and the other database commands work the same way.
@@ -369,6 +386,12 @@ schema:
 
 The scaffold inserts an independent `resources :comments` line, which the next
 step replaces.
+
+> [!NOTE]
+> A `cybertrain server` left running rebuilds as soon as the scaffold writes
+> its files, before the table exists, and logs `Build failed; still serving
+> the previous build (see tmp/rebuild.log)`. It rebuilds again once
+> `cybertrain db migrate` has rewritten `db/schema.rb`.
 
 > [!EXAMPLE] Deleting an article with comments
 > ### Deleting an article with comments
@@ -471,36 +494,32 @@ The declared `belongs_to` also makes a comment without an article invalid
 ## Views and partials
 
 > [!WHY]
-> The article page lists its comments and ends with a form bound to
-> `[@article, @comment]`.
+> The article page lists its comments and ends with a form that posts to the
+> nested route.
 
 First, delete the now-unreachable `index`, `show`, `new` and `edit` comment
-views, and give `ArticlesController#show` a blank `@comment`:
-
-```ruby app/controllers/articles_controller.rb (excerpt)
-  def show
-    @comment = Comment.new
-  end
-```
-
-Then render the comments and the form on the article page:
+views. Then render the comments and the form at the end of the article page,
+and replace the scaffold's comment form:
 
 ```erb app/views/articles/show.html.erb · app/views/comments/_form.html.erb
 <%# app/views/articles/show.html.erb %>
+<h2>Comments</h2>
 <% @article.comments.each do |comment| %>
   <%= render "comments/comment", comment: comment %>
 <% end %>
+
+<h2>Add a comment:</h2>
 <%= render "comments/form" %>
 
 <%# app/views/comments/_form.html.erb %>
-<%= form_with(model: [@article, @comment]) do |f| %>
+<%= form_with(url: article_comments_path(@article), scope: :comment) do |f| %>
   <%= f.label :commenter %> <%= f.text_field :commenter %>
   <%= f.label :body %> <%= f.text_area :body %>
-  <%= f.submit %>
+  <%= f.submit "Create Comment" %>
 <% end %>
 ```
 
-The comment partial, as it ships in the example:
+The comment partial:
 
 ```erb app/views/comments/_comment.html.erb
 <%# locals: (comment:) %>
@@ -519,12 +538,22 @@ The comment partial, as it ships in the example:
 </div>
 ```
 
-Both `button_to ... [@article, comment]` and
-`form_with(model: [@article, @comment])` resolve through the same
-`[parent, child]` rule: a new child routes to the nested collection
-(`article_comments_path`), a persisted one to the nested member
-(`article_comment_path`) — generated into `gen/routes.rb` from the nested
-`resources` block above.
+### Where the form and the button point
+
+The form names its target with `url:` and its fields (`comment[commenter]`,
+`comment[body]`) with `scope:`, so it needs no `Comment` record: a comment
+that does not save is redirected back with the reason in the flash
+([step 10](#comments-controller)), and the form is never rendered again with
+its errors.
+
+`button_to ... [@article, comment]` resolves through the `[parent, child]`
+rule: a new child routes to the nested collection (`article_comments_path`), a
+persisted one to the nested member (`article_comment_path`), both generated
+into `gen/routes.rb` from the nested `resources` block above.
+`form_with(model: [@article, @comment])` follows the same rule, and
+`examples/blog` writes the form that way, with `@comment = Comment.new` in
+`ArticlesController#show`. This tutorial leaves `show` as the scaffold wrote
+it, empty, because the generator of [step 18](#attachments) asks for that.
 
 > [!RULE] Views are a closed grammar
 > ### Views are a closed grammar, not Ruby
@@ -546,7 +575,7 @@ Both `button_to ... [@article, comment]` and
 >
 >   def index
 >     articles = Article.recent.includes(:comments)
->     from = Cybertrain::Cast.date_or_nil(params[:from])
+>     from = Cybertrain::Cast.date_or_nil(params[:from])   # nil unless YYYY-MM-DD
 >     unless from.nil?
 >       articles = articles.where_between(:created_at, Time.utc(from.year, from.month, from.day), nil)
 >     end
@@ -558,7 +587,338 @@ Both `button_to ... [@article, comment]` and
 > Rails' `where(created_at: from..)` is `where_between` here, because Spinel
 > builds no Range of Times ([Conditions and finders](models.md#conditions-and-finders)).
 
-<!-- step 12 #test stage: Build time · `cybertrain spin test` -->
+<!-- step 12 #component stage: You write · `app/components/`, `app/helpers/` -->
+## A component and a helper
+
+> [!WHY]
+> From the next step on a comment is rendered in two places: on the page, and
+> in a broadcast that no request is behind. A component, a class with its
+> template beside it, renders the same in both; a helper is a method every
+> template can call.
+
+```shell terminal — blog/
+cybertrain generate component comment comment   # the name, then its attributes: one, also called comment
+cybertrain generate helper comments
+```
+
+The first writes `app/components/comment_component.rb`, with one keyword per
+attribute, and its template; the second writes an empty `CommentsHelper`.
+Each also writes a test, which [step 16](#test) comes back to. The class is
+already what the blog needs:
+
+```ruby app/components/comment_component.rb
+class CommentComponent < Cybertrain::Component
+  def initialize(comment:)
+    @comment = comment
+  end
+end
+```
+
+Replace the generated template with the comment's markup, and give the helper
+its one method:
+
+```erb app/components/comment_component.html.erb
+<div class="comment" id="<%= dom_id(comment) %>">
+  <p><%= comment_author(comment) %> wrote:</p>
+
+  <p><%= comment.body %></p>
+
+  <%= button_to "Destroy comment", article_comment_path(comment.article_id, comment), method: :delete %>
+</div>
+```
+
+```ruby app/helpers/comments_helper.rb
+module CommentsHelper
+  # The commenter's name in a <strong>, escaped: <%= comment_author(c) %>
+  def comment_author(comment)
+    name = case comment
+           when Comment then comment.commenter.to_s
+           else ""
+           end
+    Cybertrain::Html.tag("strong", { class: "comment-author" }, name)
+  end
+end
+```
+
+Then render the component where the page rendered the partial, and delete
+`app/views/comments/_comment.html.erb`:
+
+```erb app/views/articles/show.html.erb (excerpt)
+<% @article.comments.each do |comment| %>
+  <%= render component: "comment", comment: comment %>
+<% end %>
+```
+
+<!-- list: points -->
+- The template sees the component's instance variables as locals (`comment`)
+  and its public methods without parameters by name. It is given the comment
+  only, not the page's `@article`, so the button's path is built from
+  `comment.article_id`.
+- `dom_id(comment)` is `comment_7` for the comment with id 7: the element id
+  the next step's broadcasts aim at.
+- A component is named as a partial is, by its snake-case name without
+  `_component`: templates cannot name constants.
+- `Cybertrain::Html.tag` escapes its content and returns a `SafeString`, which
+  a template prints as it is; a plain `String` a helper returns is escaped.
+
+> [!RULE] Spinel rule: helpers and components are generated dispatch
+> ### Helpers and components are generated dispatch
+>
+> Templates cannot `send`, so `spin run gen` reads `app/helpers/` and
+> `app/components/` as text and writes the dispatch into `gen/helpers.rb` and
+> `gen/components.rb`. A helper's parameters are named (no `*rest`, no
+> `**opts`), and its arguments arrive as the template's values, which is why
+> `comment_author` narrows its argument with `case ... when Comment`. The rest
+> is in [Application helpers](template-language.md#application-helpers) and
+> [Components](template-language.md#components).
+
+<!-- step 13 #turbo stage: Run time · Turbo Streams over Server-Sent Events -->
+## Live comments with Turbo
+
+> [!WHY]
+> A comment posted in one browser should appear on every open page of that
+> article without a reload. As in a Rails 8 app, that is Turbo Streams, and
+> there is nothing to install or to start beside the server.
+
+### Load Turbo
+
+`cybertrain new` left both lines commented out; uncomment them:
+
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
+```
+
+The layout's `javascript_importmap_tags` writes the import map and
+`import "application"`, so every page now runs Turbo
+([The import map](assets.md#the-import-map)).
+
+### Subscribe the page
+
+Give the list and the form an id each, and subscribe the page to the
+article's stream:
+
+```erb app/views/articles/show.html.erb (excerpt)
+<h2>Comments</h2>
+
+<%= turbo_stream_from @article %>
+
+<div id="comments">
+  <% @article.comments.each do |comment| %>
+    <%= render component: "comment", comment: comment %>
+  <% end %>
+</div>
+
+<h2>Add a comment:</h2>
+
+<div id="comment_form">
+  <%= render "comments/form" %>
+</div>
+```
+
+### Broadcast and answer
+
+`create` broadcasts the saved comment, then answers the browser that posted
+it; `destroy` tells the other pages to drop the element:
+
+```ruby app/controllers/comments_controller.rb (excerpt)
+  def create
+    @comment = Comment.new(comment_params)
+    @comment.article_id = @article.id
+    unless @comment.save
+      flash[:alert] = "Comment could not be saved: #{@comment.errors.full_messages.join(", ")}"
+      redirect_to article_path(@article), status: :see_other
+      return
+    end
+
+    # Every page subscribed with turbo_stream_from @article appends the comment.
+    Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
+                                           component: CommentComponent.new(comment: @comment))
+    respond_to do |format|
+      format.turbo_stream   # app/views/comments/create.turbo_stream.erb
+      format.html do
+        flash[:notice] = "Comment was successfully created."
+        redirect_to article_path(@article), status: :see_other
+      end
+    end
+  end
+
+  def destroy
+    @comment = @article.comments.find(params[:id])
+    target = Cybertrain::Html.dom_id(@comment)   # read before destroy clears the id
+    @comment.destroy
+    Cybertrain::Stream.broadcast_remove_to(@article, target: target)
+    flash[:notice] = "Comment was successfully destroyed."
+    redirect_to article_path(@article), status: :see_other
+  end
+```
+
+```erb app/views/comments/create.turbo_stream.erb
+<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>
+<%= turbo_stream.update "comment_form", partial: "comments/form" %>
+```
+
+Open one article in two windows and post a comment in one: it appears in
+both, and the form that sent it comes back empty.
+
+### What happens
+
+<!-- list: points -->
+- `turbo_stream_from @article` writes a `<turbo-stream-source>` element for
+  the stream `articles:<id>`, with a signed token. Turbo opens it as an
+  `EventSource` on `/cybertrain/stream`, which the server already serves.
+- A broadcast is a row in `cybertrain_messages`, a table the framework creates
+  itself. Each server process polls it and hands the row to the pages it
+  holds, within about a tenth of a second.
+- Turbo submits the form asking for a Turbo Stream, so `format.turbo_stream`
+  renders `create.turbo_stream.erb`, without a layout. A plain form post, with
+  JavaScript off, takes `format.html` and is redirected as before.
+- The window that posted gets the comment twice, in the answer and in the
+  broadcast, and shows it once: Turbo replaces an element that has the same
+  id.
+
+More, including WebSocket and streams for your own JavaScript:
+[Realtime](realtime.md#turbo-streams).
+
+> [!NOTE]
+> Turbo is fetched from jsDelivr here. To serve it yourself, copy
+> `turbo.es2017-esm.js` into `vendor/javascript/` and pin it with
+> `to: "turbo.es2017-esm.js"`. If you turn on the Content Security Policy
+> `config/app.rb` has commented out, its `script_src` must allow whichever
+> origin serves Turbo
+> ([Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts)).
+
+<!-- step 14 #job stage: You write · `app/jobs/` -->
+## A background job
+
+> [!WHY]
+> Work that should not hold up the response, such as a notification, runs
+> after it. As with Active Job on Solid Queue, a job is a class in
+> `app/jobs/` and a row in the application's own database: no other service.
+
+```shell terminal — blog/
+cybertrain generate job notify_comment --retry StandardError:30:3
+```
+
+It writes `app/jobs/notify_comment_job.rb`, with the `retry_on` line the
+option asked for and an empty `perform`, and a test. Fill `perform` in; this
+one only logs, where a real application would send a mail:
+
+```ruby app/jobs/notify_comment_job.rb
+class NotifyCommentJob < Cybertrain::Job::Base
+  retry_on StandardError, wait: 30, attempts: 3
+
+  def perform(args)
+    comment_id = Cybertrain::Cast.int(args["comment_id"])
+    article_id = Cybertrain::Cast.int(args["article_id"])
+    Cybertrain.logger.info("new comment #{comment_id} on article #{article_id}")
+    nil
+  end
+end
+```
+
+Queue it from `create`, once the comment is saved:
+
+```ruby app/controllers/comments_controller.rb (excerpt)
+    NotifyCommentJob.perform_later("comment_id" => @comment.id, "article_id" => @article.id)
+    # Every page subscribed with turbo_stream_from @article appends the comment.
+    Cybertrain::Stream.broadcast_append_to(@article, target: "comments",
+                                           component: CommentComponent.new(comment: @comment))
+```
+
+Post a comment, and the server's log shows the job running after the
+response:
+
+```text output — cybertrain server
+[INFO] Started POST "/articles/1/comments" for 127.0.0.1
+[INFO] Completed 200 in 2ms
+[INFO] new comment 1 on article 1
+[INFO] job 1 (NotifyCommentJob) done
+```
+
+<!-- list: points -->
+- `args` is the Hash given to `perform_later`, stored as JSON and read back
+  with String keys: pass ids, not records, and narrow the values with
+  `Cybertrain::Cast`. `perform_in(seconds, args)` and `perform_at(time, args)`
+  queue it for later.
+- Jobs are rows of `cybertrain_jobs`, run by three job threads of the serving
+  process, or of a separate one started with `./blog worker`
+  ([Process roles](background-and-operations.md#process-roles)).
+- `retry_on StandardError, wait: 30, attempts: 3` queues a failed run again
+  30 seconds later, three attempts in all; the row is then `failed` and kept
+  ([Retries and discards](background-and-operations.md#retries-and-discards)).
+- A job can run more than once (a process that dies in the middle of one has
+  it run again), so write `perform` to be safe to repeat.
+- Failed jobs are listed, retried and discarded with `./blog jobs`, or on the
+  page the commented `jobs_page` line in `config/routes.rb` mounts
+  ([The jobs page](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
+
+> [!RULE] Spinel rule: job policies are read as text
+> ### Job policies are read as text
+>
+> `spin run gen` reads each class under `app/jobs/` and writes its other half
+> into `gen/jobs.rb`: `perform_later`, and each `retry_on` as a `rescue` arm.
+> So `retry_on`, `discard_on` and `limits_concurrency` take one line each with
+> literal values: `wait: 30`, not `wait: 30.seconds` or a lambda.
+
+> [!EXAMPLE] Deleting finished jobs every night
+> ### Deleting finished jobs every night
+>
+> Every comment leaves a `done` row behind. `config/app.rb` ends with a
+> scheduled task, commented out, that deletes the ones a week old; uncomment
+> it:
+>
+> ```ruby config/app.rb (excerpt)
+> Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
+>   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
+> end
+> ```
+>
+> The cron expression is read in `CYBERTRAIN_SCHEDULER_TZ` (UTC by default),
+> and one process at a time runs the schedule
+> ([Scheduled tasks](background-and-operations.md#scheduled-tasks)).
+
+<!-- step 15 #json stage: You write · `app/controllers/` -->
+## Answer JSON
+
+> [!WHY]
+> One action can serve the page and an API: `respond_to`, as in Rails.
+
+```ruby app/controllers/articles_controller.rb (excerpt)
+  def index
+    @articles = Article.all.to_a
+    respond_to do |format|
+      format.html
+      format.json { render json: @articles.map(&:as_json) }
+    end
+  end
+```
+
+```console terminal — blog/
+$ curl http://127.0.0.1:3000/articles.json
+[{"id":1,"title":"Hello Rails","body":"I am on Rails! This is my first article.","created_at":"2026-11-12T10:22:45.852Z","updated_at":"2026-11-12T10:22:45.852Z"}]
+```
+
+<!-- list: points -->
+- The format comes from the extension (`/articles.json`) or, without one,
+  from the `Accept` header. A format the action does not list, such as
+  `/articles.xml`, is answered `406 Not Acceptable`.
+- `format.html` without a block renders the action's template, as before.
+- `as_json` is the record's columns, times in ISO 8601, UTC. JSON has no
+  templates: an action answers it with `render json:`.
+- Keep the block to its `format.` lines: when a request falls back to html
+  the block runs a second time.
+
+`show` takes the same block, with `render json: @article.as_json`, and
+`examples/blog` has it. Add it after [step 18](#attachments), whose generator
+wants `show` empty when it runs. Everything about formats:
+[Formats and `respond_to`](requests.md#formats-and-respond_to).
+
+<!-- step 16 #test stage: Build time · `cybertrain spin test` -->
 ## Test it
 
 > [!WHY]
@@ -578,8 +938,8 @@ end
 ```
 
 Assertions: `assert`, `refute`, `assert_equal`, `assert_nil`,
-`assert_includes`, `assert_raises("Class") { }`, `flunk`. The example also
-uses `assert_response` and `assert_redirected_to`.
+`assert_includes`, `assert_raises("Class") { }`, `flunk`. The client adds
+`assert_response` and `assert_redirected_to`.
 
 ### A full HTTP flow
 
@@ -601,6 +961,62 @@ end
 jar, so sessions and CSRF behave as behind a browser. Requests without the
 token get a 403.
 
+### The job, the Turbo Stream and the component
+
+The test client starts no job thread, so a queued job stays queued until the
+test runs it. A third argument to `post` sets request headers, here the
+`Accept` Turbo sends with a form:
+
+```ruby test/comments.rb (snippet)
+require_relative "support/blog_test"   # also loads cybertrain/test/jobs
+
+def post_comment(client, article, headers = {})
+  client.get(BlogTest.article_path(article))
+  client.post("#{BlogTest.article_path(article)}/comments",
+              { "authenticity_token" => BlogTest.form_token(client),
+                "comment[commenter]" => "Dave", "comment[body]" => "First!" }, headers)
+end
+
+test "a comment queues its notification" do
+  BlogTest.reset
+  post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article)
+  assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
+  assert_equal 1, perform_enqueued_jobs
+  assert_no_enqueued_jobs
+end
+
+test "a form Turbo submits is answered with a Turbo Stream" do
+  BlogTest.reset
+  res = post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article,
+                     { "accept" => "text/vnd.turbo-stream.html, text/html" })
+  assert_response res, :ok
+  assert_includes res.body, "<turbo-stream action=\"append\" target=\"comments\">"
+end
+```
+
+[Step 12](#component) wrote `test/comment_component.rb`, which renders the
+component with a String where the template now expects a comment. Replace its
+content:
+
+```ruby test/comment_component.rb
+require_relative "support/blog_test"
+require "cybertrain/test/views"   # Cybertrain::Test.render_component
+
+test "the comment component names its author" do
+  BlogTest.reset
+  comment = BlogTest.comment(BlogTest.article, "Alice", "Great post!")
+  html = Cybertrain::Test.render_component(CommentComponent.new(comment: comment))
+  assert_includes html, "<strong class=\"comment-author\">Alice</strong> wrote:"
+end
+
+Cybertrain::Test.run!
+```
+
+`render_component` renders as a broadcast does, with no request. The other
+helpers, and how to read a stream in a test:
+[Testing jobs](testing.md#testing-jobs) and
+[Testing streams and components](testing.md#testing-streams-and-components).
+
 > [!COMPILE] What the snippets leave out
 > ### What the snippets leave out
 >
@@ -608,8 +1024,10 @@ token get a 403.
 >   [`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb):
 >   copy it into your app&rsquo;s `test/support/`, where files are required, not
 >   run. It migrates a fresh `storage/test.sqlite3`, boots the app as `BLOG`,
->   loads `Cybertrain::Test` and its client, and gives you `BlogTest.form_token`
->   (the CSRF token of the last rendered form) and `BlogTest.article_path`.
+>   loads `Cybertrain::Test`, its client and the job helpers, and gives you
+>   `BlogTest.form_token` (the CSRF token of the last rendered form),
+>   `BlogTest.article_path`, `BlogTest.article` and `BlogTest.comment` (a saved
+>   record each) and `BlogTest.reset` (empty tables, cache and job queue).
 > - End the file with `Cybertrain::Test.run!`, which runs the tests and prints
 >   the lines the snapshot compares.
 > - Set `c.log_level = :none if c.test?` in `config/app.rb` to keep request logs
@@ -625,7 +1043,9 @@ cybertrain spin test
 toolchain on `PATH` ([step 00](#requirements)), `spin test` does the same. It
 compiles each `test/*.rb` into its own program and diffs its output (stdout
 and stderr together) against a committed `test/<name>.rb.expected` snapshot.
-Files in `test/support/` are required, not run. To write a snapshot:
+Files in `test/support/` are required, not run. The tests the generators
+wrote in steps 12 and 14 (`test/comments_helper.rb`,
+`test/notify_comment_job.rb`) run with the rest. To write a snapshot:
 
 ```shell terminal — blog/
 cybertrain spin test --regen test/<name>.rb
@@ -642,7 +1062,7 @@ rm -f build/test/<name>; cybertrain spin test test/<name>.rb; [ -x build/test/<n
 > `cybertrain spin test` can pass; other tests without a snapshot are compared
 > with CRuby's output.
 
-<!-- step 13 #authentication stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
+<!-- step 17 #authentication stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Add sign-in
 
 > [!WHY]
@@ -694,9 +1114,18 @@ class ArticlesController < ApplicationController
 
 <% if @current_user %>
   <h2>Add a comment:</h2>
-  <%= render "comments/form" %>
+
+  <div id="comment_form">
+    <%= render "comments/form" %>
+  </div>
 <% end %>
 ```
+
+The comment component keeps its "Destroy comment" button for everyone: a
+broadcast renders it once for all viewers, with no request and so no current
+user. A visitor who clicks it is sent to the sign-in page, since
+`CommentsController` opens no action; new comments still reach a visitor's
+page, because the stream is not an action of a controller.
 
 Start the server and open `http://127.0.0.1:3000/sign_up` to create the first
 user. Rails&rsquo; generator has no sign-up page and leaves that to the
@@ -726,7 +1155,7 @@ mail needs the SMTP settings and, in production, `BLOG_BASE_URL`
 
 ### Update the tests
 
-Any [step 12](#test) test that expects a form, submits one, or reaches an
+Any [step 16](#test) test that expects a form, submits one, or reaches an
 action other than `index` and `show` now meets the sign-in page instead. Sign
 the client in first, with the helpers the generator wrote into
 `test/support/app_test.rb`:
@@ -747,7 +1176,7 @@ end
 ```
 
 > [!NOTE]
-> Run `cybertrain spin test` as in [step 12](#test); `test/authentication.rb`,
+> Run `cybertrain spin test` as in [step 16](#test); `test/authentication.rb`,
 > the other tests the generator wrote and this one use SQLite, so their
 > snapshots come from the compiled binaries. Sign-in attempts are rate
 > limited as in Rails' generator, ten per client address every three
@@ -757,7 +1186,7 @@ end
 > `examples/blog` takes this step with `--invite-only` and makes its
 > `/admin` pages admin-only.
 
-<!-- step 14 #attachments stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
+<!-- step 18 #attachments stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Add a cover image
 
 > [!WHY]
@@ -780,7 +1209,7 @@ In `ArticlesController` it adds a `cover` action behind
 
 ```ruby app/controllers/articles_controller.rb (excerpt)
 class ArticlesController < ApplicationController
-  allow_unauthenticated_access only: [:index, :show, :cover]   # step 13 wrote [:index, :show]; the generator added :cover
+  allow_unauthenticated_access only: [:index, :show, :cover]   # step 17 wrote [:index, :show]; the generator added :cover
   before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
@@ -806,7 +1235,7 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-Step 13 made every page private, and the image on a public article page is
+Step 17 made every page private, and the image on a public article page is
 fetched from `/articles/1/cover`. The generator makes the download exactly as
 public as the article page: since `allow_unauthenticated_access` lists
 `:show`, it adds `:cover` to that list, as in the first line above, so
@@ -831,6 +1260,16 @@ the image to the show page, right after the `<h1>`:
 <h1>Article</h1>
 <% if @article.cover_attached? %><p><img src="<%= @article.cover_url %>" alt="<%= @article.cover_filename %>"></p><% end %>
 ```
+
+> [!NOTE]
+> The generator copies the access rules of `show` to the download, and only
+> when it can read them: `show` must be the scaffold's empty action behind
+> `before_action :set_article`. With code inside `def show`, or a
+> second `before_action` that lists `:show` without the new action, it stops with
+> `cannot preserve show's authorization for :cover` and writes nothing. That
+> is why `show` stayed empty until now. From here on it can grow (the JSON
+> answer of [step 15](#json), a `@comment` for the form); keeping `cover` as
+> restricted as `show` is then yours to do.
 
 > [!RULE] Spinel rule: has_one_attached
 > ### `has_one_attached` is written out
@@ -874,13 +1313,13 @@ checks that a visitor can download the cover, and it fills the body with
 [step 05](#validations).
 
 > [!NOTE]
-> Run `cybertrain spin test` as in [step 12](#test); the test uses SQLite, so
+> Run `cybertrain spin test` as in [step 16](#test); the test uses SQLite, so
 > its snapshot comes from the compiled binary. `examples/blog` stops before
 > this step. Not built yet: several files per field, S3 or other remote
 > storage, image variants, and streaming large bodies to disk (the whole body
 > is read into memory, up to `max_body_bytes`).
 
-<!-- step 15 #ship stage: Run time · `dist/blog` -->
+<!-- step 19 #ship stage: Run time · `dist/blog` -->
 ## Build for deployment
 
 > [!WHY]
@@ -905,8 +1344,8 @@ after a failure or Ctrl-C), then assembles:
 
 Copy `dist/` to a machine with the same OS and CPU (the binary links the
 system SQLite) and run it there. A built binary is production by default
-(`CYBERTRAIN_ENV` overrides). Set `CYBERTRAIN_SECRET_KEY_BASE`; for
-illustration:
+(`CYBERTRAIN_ENV` overrides). Set `CYBERTRAIN_SECRET_KEY_BASE`
+(`cybertrain secret` prints one too); for illustration:
 
 ```shell terminal — production host
 cd dist
@@ -916,9 +1355,13 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"
 
 `./blog migrate` applies the migrations compiled into the binary, and
 `./blog db status` shows their status; `PORT` sets the port. Keep the secret
-the same across restarts: changing it ends every session.
+the same across restarts: changing it ends every session. `./blog help` lists
+the binary's other commands, among them `worker`, `jobs`, `console` and
+`db backup`.
 
-`Cybertrain::Config` reads the environment first; `config/app.rb` overrides:
+`Cybertrain::Config` reads the environment first; `config/app.rb` overrides.
+The variables a first deploy meets (all of them:
+[Configuration](configuration.md#configuration-and-environment-variables)):
 
 <div class="table-scroll" role="region" aria-label="Environment variables" tabindex="0" markdown="0">
 <table class="env">
@@ -948,7 +1391,13 @@ end
 - The server speaks plain HTTP/1.1: put nginx or Caddy in front for TLS and
   HTTP/2. The session cookie is `Secure` in production, so serve it over HTTPS
   (set `c.session_secure = false` in `config/app.rb` only if production really
-  is plain http).
+  is plain http). Behind such a proxy, `CYBERTRAIN_FORCE_SSL=1` redirects http
+  to https and `CYBERTRAIN_HOSTS` names the hosts the app answers to
+  ([hosts and `force_ssl`](requests.md#content-security-policy-force_ssl-and-hosts)).
+- The serving process also runs the jobs, the scheduled tasks and the stream
+  poller of steps 13 and 14: one process is a whole deployment. `./blog
+  worker` moves the jobs into a process of their own
+  ([Process roles](background-and-operations.md#process-roles)).
 - Production refuses to start without `CYBERTRAIN_SECRET_KEY_BASE`.
 - In production an exception answers 500, and a bare error response (the
   router's plain-text 404, `head :not_found`, `render plain:`) is replaced by
@@ -1010,17 +1459,20 @@ a clean stop and the database kept on its volume, and loads
 - SQLite only, through Spinel&rsquo;s FFI.
 - No backtraces: errors show class, message, request line and template
   name/line.
-- A misspelled attribute in a view renders blank instead of raising; this is a
-  known gap.
+- A misspelled attribute in a view raises (`undefined method 'titel' for
+  Article`); a column that holds `nil` renders empty.
 - Associations come from foreign keys or one-line declarations; no
   `has_many :through`, nested `includes`, enums, STI or polymorphic
   associations.
-- No `constraints` or `mount`; JSON is answered with `render json:`, which
-  is minimal.
+- No `constraints` or `mount`; JSON is answered with `render json:` (there
+  are no JSON templates).
 - Only the first string field gets a default presence validation in a
   scaffolded model.
 - The generator uses a lexical scan (regexes), not a parser, over
-  `app/controllers` and `app/models`.
+  `app/controllers`, `app/models`, `app/helpers`, `app/components` and
+  `app/jobs`.
+- Jobs run at least once, and a broadcast reaches only the pages open when it
+  is sent, or reconnecting within a minute.
 - Views are embedded at build time: a view-only change needs
   `cybertrain build` and a restart before it reaches production.
 - Build `dist/` on the same OS and CPU as the machine that runs it: the binary
@@ -1033,9 +1485,10 @@ a clean stop and the database kept on its volume, and loads
 ## Where next
 
 <!-- list: next-list -->
-- [**`examples/blog`**](../../examples/blog) — The finished app, with its tests.
+- [**`examples/blog`**](../../examples/blog) — The app this tutorial grows into, with its tests.
 - [**Authentication**](authentication.md) — Password reset, confirmation, lockout, remember me, the account page and admin users.
 - [**Internationalization**](i18n.md) — Dictionaries, `t` and `l`, and a locale per request.
+- [**Guides**](index.md) — One page per topic: models, requests, templates, realtime, background work, testing.
 - [**CyberTrain on GitHub**](https://github.com/saeki-mototsune/CyberTrain) — The source, the README and releases.
 - [**API reference**](site:api/index.html) — Every class and method an app uses, with examples.
 - [**`spikes/NOTES.md`**](../../spikes/NOTES.md) — Spikes and the compiler constraints they found.
