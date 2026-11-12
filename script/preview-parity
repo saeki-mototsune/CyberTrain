@@ -1,7 +1,7 @@
 #!/bin/sh
 # How close the CRuby preview is to the compiled program, as a checked fact:
 # runs each test/*.rb as `ruby -E UTF-8 -I. -r cybertrain/preview <file>`
-# (60 seconds at most) and compares its stdout and stderr, together, with the
+# (PREVIEW_PARITY_TIMEOUT seconds at most, default 60) and compares its stdout and stderr, together, with the
 # snapshot the compiled binary produced (test/<name>.rb.expected).
 #
 # A test that is known to differ is listed in test/cruby/parity-gaps.txt,
@@ -20,6 +20,14 @@
 # script/test-cruby and the gate's snapshot check glob test/cruby/*.rb and
 # never look into test/cruby/parity/. `--regen-gaps` rewrites them, for the
 # listed tests only (reviewed, never regenerated to make the check pass).
+#
+# The exit status counts too. A run that timed out (status 124) or died by a
+# signal (above 128) is "unexpected" whatever it printed, listed or not (a
+# hang after the right output is not a match), and `--regen-gaps` refuses to
+# record it. Any other status of a listed test is recorded beside its output
+# snapshot, in test/cruby/parity/<name>.rb.status (a file of its own: the
+# snapshot is the program's output and the status is not part of it), and a
+# run that ends with another one is "unexpected", both statuses named.
 #
 # A test may spawn `ruby` itself (the tests' CRuby branch re-runs $0 in a
 # child). The script sets RUBYOPT for every run, so such a child loads the
@@ -58,6 +66,7 @@ trap 'rm -rf "$work"' EXIT
 export RUBYOPT="-E UTF-8 -I$PWD -rcybertrain/preview"
 export CYBERTRAIN_PREVIEW_CACHE="$work/ffi-cache"
 
+limit=${PREVIEW_PARITY_TIMEOUT:-60}
 match=0
 known=0
 unexpected=0
@@ -72,8 +81,18 @@ for file in "$@"; do
     echo "preview-parity: $file is not in $gaps" >&2
     exit 2
   fi
-  timeout 60 ruby -E UTF-8 -I. -r cybertrain/preview "$file" > "$work/out" 2>&1
+  timeout "$limit" ruby -E UTF-8 -I. -r cybertrain/preview "$file" > "$work/out" 2>&1
   rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -gt 128 ]; then
+    if [ "$rc" -eq 124 ]; then how="timed out after ${limit} s"; else how="killed by a signal (status $rc)"; fi
+    if [ "$regen" = true ]; then
+      echo "FAIL $file: $how; not recorded as a gap"
+    else
+      echo "FAIL $file: $how, whatever it printed"
+    fi
+    unexpected=$((unexpected + 1))
+    continue
+  fi
   if cmp -s "$work/out" "$file.expected"; then
     if [ "$listed" -eq 0 ]; then
       echo "FAIL $file: no longer a gap: remove it from parity-gaps.txt"
@@ -83,24 +102,30 @@ for file in "$@"; do
     fi
   elif [ "$listed" -eq 0 ]; then
     snapshot="$snapdir/$(basename "$file").expected"
+    statusfile="$snapdir/$(basename "$file").status"
     # The path is not a regexp: a literal replacement through awk's index().
     awk -v root="$PWD" '{ out = ""; while ((i = index($0, root)) > 0) { out = out substr($0, 1, i - 1) "<repo>"; $0 = substr($0, i + length(root)) } print out $0 }' "$work/out" > "$work/norm"
     if [ "$regen" = true ]; then
       mkdir -p "$snapdir"
       cp "$work/norm" "$snapshot"
+      echo "$rc" > "$statusfile"
       echo "preview-parity: wrote $snapshot"
       known=$((known + 1))
     elif [ -f "$snapshot" ] && cmp -s "$work/norm" "$snapshot"; then
-      known=$((known + 1))
+      recorded=$(cat "$statusfile" 2> /dev/null)
+      if [ "$recorded" = "$rc" ]; then
+        known=$((known + 1))
+      else
+        echo "FAIL $file: exit status ${rc}, the recorded gap has ${recorded:-none} ($statusfile; --regen-gaps if the change is understood)"
+        unexpected=$((unexpected + 1))
+      fi
     else
       echo "FAIL $file: its CRuby output is not the recorded gap ($snapshot; --regen-gaps if the change is understood)"
       [ -f "$snapshot" ] && diff -u "$snapshot" "$work/norm" | head -n 20
       unexpected=$((unexpected + 1))
     fi
   else
-    note=""
-    [ "$rc" -eq 124 ] && note=" (timed out after 60 s)"
-    echo "FAIL $file differs from its snapshot$note"
+    echo "FAIL $file differs from its snapshot"
     diff -u "$file.expected" "$work/out" | head -n 20
     unexpected=$((unexpected + 1))
   fi
