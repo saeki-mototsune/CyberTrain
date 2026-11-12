@@ -35,4 +35,9 @@ ok   the lock appears during the handover's stop: hold, then CRuby and a fresh b
 ok   the lock appears during the handover's stop and a change arrives: the change round runs
 ok   a pending change wins over the lock after the handover's stop
 ok   the CRuby child died under the lock, then a build succeeded: nothing handed over after the lock
-37 tests, 109 assertions, 0 failures
+ok   the lock appears in a change round's stop_child: hold, the round runs again from the start (S7)
+ok   the same when the round began from the binary serving
+ok   a change round that started from holding and meets the lock in stop_child holds again
+ok   the first round never stops a child, so the lock cannot appear between its check and its start
+ok   no child was ever started while the build lock was held, in any test of this file
+42 tests, 126 assertions, 0 failures

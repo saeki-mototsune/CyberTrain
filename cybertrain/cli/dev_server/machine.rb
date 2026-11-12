@@ -8,7 +8,9 @@
 # The runner answers: run_gen -> [ok, output] (blocks), start_child(kind,
 # generation) with kind :cruby or :binary, stop_child (blocks; nothing without
 # a child), start_build(generation), cancel_build, hold(title, text),
-# release_hold, write_state(generation, serving, build, output) with strings,
+# release_hold (hold replaces whatever hold page is showing, and one
+# release_hold ends holding however many holds preceded it),
+# write_state(generation, serving, build, output) with strings,
 # log(line), build_locked? (`cybertrain build` holds its lock), change_pending?
 # (a change was seen that the machine has not been told of yet) and now (a
 # monotonic clock in seconds).
@@ -21,14 +23,21 @@ module Cybertrain
       # once it is past its last lock check, so until then the old child is still
       # the one of the current generation and its events are still seen.
       #
-      # on_change         any state, lock free  -> a round (see run_round)
-      #                   any state, lock held  -> log once, pending, no calls
+      # on_change         any state, lock free  -> a round (see run_round); the lock is read
+      #                                            after gen and after stop_child, and a round
+      #                                            that finds it held holds and stays pending
+      #                   any state, lock held  -> the "Changed" line, the lock line once, pending,
+      #                                            no calls
+      #                   gen fails             -> stop_child (not on the first round), hold
+      #                                            "gen failed"; no child, no build; the
+      #                                            generation moves
       # start             lock free             -> the first round
       #                   lock held             -> hold, log once, pending
-      # on_tick           pending, lock free    -> the round
+      # on_tick           pending, lock free    -> the round, from the start (gen again)
       #                   recover :cruby, lock free -> release_hold, CRuby child (no gen, no build)
       #                   recover :rebuild, lock free -> release_hold, CRuby child, build (no gen)
-      #                   rebuild, lock free    -> start_build (the child keeps serving)
+      #                   rebuild, lock free    -> start_build (no gen, no restart; the serving
+      #                                            child, if any, keeps serving)
       #                   anything waiting, lock held -> nothing (the lock line is logged once)
       #                   otherwise             -> nothing
       # on_build_done ok  other generation, build not building, or pending -> ignored
@@ -45,7 +54,9 @@ module Cybertrain
       #   :binary         serving spinel, lock free -> CRuby child again, build binary_failed
       #                   serving spinel, lock held -> hold, binary_failed, CRuby child on the tick
       #                   serving anything else -> ignored
-      #   :cruby          serving cruby         -> hold (lock or not); a build that succeeds takes the port
+      #   :cruby          serving cruby         -> hold (lock or not); a build that succeeds
+      #                                            later takes the port, unless the lock was held
+      #                                            when it finished (then it is dropped and rebuilt)
       #                   serving anything else -> ignored
       # on_child_ready    other generation, or the kind is not the one serving -> ignored
       #                   serving child         -> log the seconds
@@ -68,8 +79,9 @@ module Cybertrain
           @started = false
           # A round is wanted and has not completed.
           @pending = false
-          # The binary died while the lock was held; the CRuby child is started
-          # on the first tick after it.
+          # What the first tick after the lock must do: :cruby (the binary died
+          # while the lock was held) starts the CRuby child; :rebuild (the lock
+          # stopped a handover) starts it and a fresh build.
           @recover = nil
           # A build succeeded while the lock was held. build/bin/NAME is shared
           # with `cybertrain build`, which replaces it under the lock, so the
@@ -159,8 +171,9 @@ module Cybertrain
           sync
         end
 
-        # Takes up what was put off: a round while the lock was held, or a
-        # handover to a binary that finished building in the meantime.
+        # Takes up what was put off while the lock was held: a round, the CRuby
+        # child after a dead binary or a stopped handover, or a fresh build
+        # for a result that waited through the lock.
         def on_tick
           if @pending
             run_pending
@@ -208,7 +221,9 @@ module Cybertrain
 
         # One round: cancel the build, run gen (the old child still serves),
         # stop the child, start the CRuby child, start the build. The first
-        # round has no build to cancel and no child to stop.
+        # round has no build to cancel and no child to stop. The lock is read
+        # after gen and again after the stop; the generation moves only when
+        # the round goes on to start a child (or to hold on a gen failure).
         def run_round
           first = !@started
           @round_started = @runner.now
@@ -234,12 +249,26 @@ module Cybertrain
             return
           end
 
+          @runner.stop_child unless first
+          # stop_child blocks, and the lock may have appeared meanwhile. A round
+          # that is about to start a child holds instead and stays pending; the
+          # generation has not moved, and the next round runs gen again from the
+          # start (the lock holder rewrote the generated files). The first round
+          # stops nothing, so its check above is directly before the start.
+          if ok && !first && @runner.build_locked?
+            log_lock_once
+            @runner.hold("cybertrain build in progress", "the server starts when it finishes")
+            @serving = :holding
+            @build = :idle
+            sync
+            return
+          end
+
           @generation += 1
           @pending = false
           @recover = nil
           @binary_info = nil
           @started = true
-          @runner.stop_child unless first
           if ok
             leave_holding
             @runner.start_child(:cruby, @generation)
