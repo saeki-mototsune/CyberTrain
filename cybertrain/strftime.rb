@@ -58,13 +58,20 @@ module Cybertrain
       offset == 0 ? time : time.getlocal(offset)
     end
 
-    # Whether zone is UTC itself (not merely at offset 0, as London in
-    # winter): xmlschema writes `Z` for it and the offset for any other.
+    # Whether zone is UTC itself at epoch (not merely at offset 0, as
+    # London in winter): xmlschema writes `Z` for it and the offset for any
+    # other. Decided as Rails' TimeWithZone#utc? decides it, by what the
+    # zone is rather than its name: offset 0 with the abbreviation "UTC"
+    # or "UCT", so every alias (`Etc/UTC`, `Etc/Universal`, `Etc/Zulu`,
+    # `Etc/UCT`) counts.
     # @param zone [TimeZone]
+    # @param epoch [Integer]
     # @return [Boolean]
-    def self.utc_zone?(zone)
-      name = zone.zone_name
-      name == "UTC" || name == "Etc/UTC"
+    def self.utc_zone?(zone, epoch)
+      return false unless zone.utc_offset_at(epoch) == 0
+
+      abbr = zone.abbreviation_at(epoch)
+      abbr == "UTC" || abbr == "UCT"
     end
 
     # walk's directive loop. abbr is what `%Z` writes; "" leaves it to

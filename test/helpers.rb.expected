@@ -43,4 +43,4 @@ ok   time_ago_in_words and distance_of_time_in_words in en and ja
 ok   pluralize leaves a word alone outside English
 ok   paginate in ja, and an application's pager text escaped
 ok   time_tag's format names go through I18n.l: a ja page gets ja dates
-45 tests, 277 assertions, 0 failures
+45 tests, 279 assertions, 0 failures

@@ -483,7 +483,10 @@ test "time_tag renders in Time.zone, or once in zone:; a Date as it is" do
                  render_inline("<%= time_tag nov, format: \"%H:%M %Z\", zone: \"America/New_York\", class: \"at\" %>", env)
     assert_equal "<time datetime=\"2026-11-11T15:00:00-05:00\">Wed, 11 Nov 2026 15:00:00 -0500</time>", render_inline("<%= time_tag nov, zone: \"America/New_York\" %>", env)
     assert_equal "<time datetime=\"2026-11-11T20:00:00Z\">20:00</time>", render_inline("<%= time_tag nov, format: \"%H:%M\", zone: \"UTC\" %>", env)
-    # A zone at offset 0 that is not UTC writes the offset, not Z.
+    # A UTC alias is UTC (Z); a zone at offset 0 that is not UTC writes
+    # the offset.
+    assert_equal "<time datetime=\"2026-11-11T20:00:00Z\">20:00 UTC</time>", render_inline("<%= time_tag nov, format: \"%H:%M %Z\", zone: \"Etc/Universal\" %>", env)
+    assert_equal "<time datetime=\"2026-11-11T20:00:00Z\">20:00</time>", render_inline("<%= time_tag nov, format: \"%H:%M\", zone: \"Etc/Zulu\" %>", env)
     assert_equal "<time datetime=\"2026-11-11T20:00:00+00:00\">20:00 GMT</time>", render_inline("<%= time_tag nov, format: \"%H:%M %Z\", zone: \"Europe/London\" %>", env)
     # A Date is rendered as it is, in Time.zone or zone:.
     assert_equal "<time datetime=\"2026-11-11\">2026-11-11</time>", render_inline("<%= time_tag day %>", env)

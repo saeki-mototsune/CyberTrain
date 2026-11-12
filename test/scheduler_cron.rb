@@ -458,22 +458,37 @@ test "config: scheduler_tz defaults to time_zone; CYBERTRAIN_SCHEDULER_TZ and an
   assert_equal "time_zone \"Mars/Base\" is not a known time zone", unknown.validation_error
 end
 
+# Sets Cybertrain.config.time_zone to name, with scheduler_tz following
+# it, for the block, and puts both back when it ends, also when an
+# assertion in it fails (spikes/NOTES.md rule 103's save-yield-ensure in a
+# module function).
+module ConfigZone
+  def self.during(name)
+    c = Cybertrain.config
+    saved = c.time_zone
+    saved_tz = c.scheduler_tz
+    c.scheduler_tz = ""
+    c.time_zone = name
+    _value = yield
+    nil
+  ensure
+    Cybertrain.config.time_zone = saved
+    Cybertrain.config.scheduler_tz = saved_tz
+  end
+end
+
 test "a cron task without tz: runs in time_zone; a task's tz: still wins" do
   fresh
-  saved = Cybertrain.config.time_zone
-  saved_tz = Cybertrain.config.scheduler_tz
-  Cybertrain.config.scheduler_tz = ""
-  Cybertrain.config.time_zone = "Asia/Tokyo"
-  S.cron("0 9 * * *", "zone morning") { RAN << "zone" }
-  S.cron("0 9 * * *", "utc morning", tz: "UTC") { RAN << "utc" }
-  S.schedule_all(utc(2026, 11, 10, 1, 0))
-  assert_equal "Asia/Tokyo", S::TASKS[0].task_zone.zone_name
-  assert_equal "UTC", S::TASKS[1].task_zone.zone_name
-  # 09:00 in Tokyo is 00:00 UTC.
-  assert_equal Time.utc(2026, 11, 11, 0).to_i, next_run_of("zone morning")
-  assert_equal Time.utc(2026, 11, 10, 9).to_i, next_run_of("utc morning")
-  Cybertrain.config.time_zone = saved
-  Cybertrain.config.scheduler_tz = saved_tz
+  ConfigZone.during("Asia/Tokyo") do
+    S.cron("0 9 * * *", "zone morning") { RAN << "zone" }
+    S.cron("0 9 * * *", "utc morning", tz: "UTC") { RAN << "utc" }
+    S.schedule_all(utc(2026, 11, 10, 1, 0))
+    assert_equal "Asia/Tokyo", S::TASKS[0].task_zone.zone_name
+    assert_equal "UTC", S::TASKS[1].task_zone.zone_name
+    # 09:00 in Tokyo is 00:00 UTC.
+    assert_equal Time.utc(2026, 11, 11, 0).to_i, next_run_of("zone morning")
+    assert_equal Time.utc(2026, 11, 10, 9).to_i, next_run_of("utc morning")
+  end
 end
 
 # Last: the thread it starts keeps running until the program exits.

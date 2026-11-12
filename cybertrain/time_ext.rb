@@ -376,7 +376,9 @@ class Time
   # @example
   #   Time.utc(2026, 11, 11, 20).in_time_zone("Asia/Tokyo").hour  # => 5
   # @param zone [Cybertrain::TimeZone, String] `Time.zone` when not
-  #   given; a String is an IANA name ({Time.find_zone!})
+  #   given; a String is an IANA name ({Time.find_zone!}). nil is refused
+  #   (an ArgumentError), where Rails answers the Time itself: one method
+  #   answers one type here.
   # @return [Cybertrain::ZonedTime]
   # @raise [ArgumentError] `unknown time zone "Mars/Base"`
   # @api public

@@ -1571,7 +1571,7 @@ module Cybertrain
           # which strftime's %z does not write.
           offset = shown.utc_offset
           stamp = shown.strftime("%Y-%m-%dT%H:%M:%S")
-          datetime = offset == 0 && Strftime.utc_zone?(zone) ? "#{stamp}Z" : "#{stamp}#{Helpers.offset_text(offset, ":")}"
+          datetime = offset == 0 && Strftime.utc_zone?(zone, instant.to_i) ? "#{stamp}Z" : "#{stamp}#{Helpers.offset_text(offset, ":")}"
           text = Helpers.time_tag_text(instant, format, zone, given) if args.size < 2 && block.nil?
         when Date
           datetime = value.strftime("%Y-%m-%d")

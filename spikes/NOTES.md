@@ -1383,8 +1383,9 @@ explicitly retires a workaround.
     (`Template::Helpers.time_tag_strftime`) walks the pattern itself and
     calls `strftime` with a literal for each directive it supports,
     raising for an unknown one (phase 4a Task 17, 2026-11-11). Since
-    phase 4b the walk is `Cybertrain::Strftime.walk(time, pattern, label)`
-    (cybertrain/strftime.rb), which `time_tag_strftime` and `I18n.l`'s
+    phase 4b the walk is `Cybertrain::Strftime.walk(time, pattern, label, zone)`
+    (cybertrain/strftime.rb; `zone`, the TimeZone a Time at offset 0 is
+    rendered in, since phase 5a), which `time_tag_strftime` and `I18n.l`'s
     dictionary formats both call, so it loads without the template layer.
 
 97. A String held in an instance variable, passed as an argument to a

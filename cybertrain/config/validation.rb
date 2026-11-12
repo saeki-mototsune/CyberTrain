@@ -2,9 +2,9 @@
 # per area, and Config#validation_error, which asks them in boot's order
 # (docs/design.md D65).
 #
-# Every method here only reads the Config (and, for scheduler_tz, the
-# system's zone files): none connects the database, creates a file or a
-# directory, or resolves the secret. Those effects are
+# Every method here only reads the Config (and, for time_zone and
+# scheduler_tz, the system's zone files): none connects the database,
+# creates a file or a directory, or resolves the secret. Those effects are
 # cybertrain/config/files.rb's and Application#boot's, after the checks.
 #
 # The class is reopened here, not split into a validator object that takes
@@ -16,9 +16,10 @@ module Cybertrain
     # The first problem boot would refuse to start with, "" when the
     # configuration is usable. The areas in the order boot has always
     # reported them: the session cookie and CSRF, the request and upload
-    # limits, the time zone, the background work, pagination, the proxies, the health
-    # check, the feeds, the stream endpoint, the locales, the
-    # authentication limits, the security headers and the encryption keys. Reads only; safe to call from a test or a
+    # limits, the time zone, the background work, pagination, the
+    # proxies, the health check, the feeds, the stream endpoint, the
+    # locales, the authentication limits, the security headers and the
+    # encryption keys. Reads only; safe to call from a test or a
     # `--check`-style command with no database and no writable disk.
     # @return [String]
     # @api public

@@ -48,4 +48,4 @@ ok   reuse_port reaches the server outside development
 ok   development warns once and ignores reuse_port
 ok   every request starts at the default locale, also one no controller action answers
 ok   the server listens on the configured host and port
-45 tests, 222 assertions, 0 failures
+45 tests, 223 assertions, 0 failures
