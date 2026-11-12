@@ -1,5 +1,5 @@
 ---
-source_sha256: 5502bd2caed68a186ef25f7e4272ca06d97cb2a54c1b3c411d24a0726970c7bc
+source_sha256: bf76107df3cdd4c82d1f4ac76516e56c5642ba63dac0216c31cd68886477dd46
 ---
 # 认证
 
@@ -27,7 +27,7 @@ cybertrain db migrate
 | `app/views/...` | 各个页面（每段文本都经过 `t()`）以及 `sessions/_nav` 局部模板 |
 | `test/*.rb`、`test/support/*.rb` | 每个部分的测试（[测试](#testing)） |
 
-以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令，以及 `config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)）。再次运行不会改动已经存在的内容（对于以前生成的应用，见 [从 0.4 升级](#upgrading-from-04)）。
+以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令，以及 `config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)）。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[从 0.4 升级](#upgrading-from-04)、[之后再开启确认](#turning-on-confirmation-later)）。
 
 生成的页面上的文本在框架的英语和日语词典中，使用各自的惰性查找键（`sessions.new.title`、`passwords.create.sent`）；应用可以在 `config/locales/` 中覆盖它们或添加一种语言（[国际化](i18n.md#the-bundled-dictionaries)）。
 
@@ -61,7 +61,9 @@ class ArticlesController < ApplicationController
 
 ## 开放注册，或仅限邀请
 
-默认情况下，生成器写出 `RegistrationsController`（`/sign_up`），它创建用户并让其登录。Rails 的生成器没有注册页面，把第一个用户留给控制台；CyberTrain 没有 Ruby 控制台，所以写出了这个页面。
+默认情况下，生成器写出 `RegistrationsController`（`/sign_up`），它创建用户并让其登录。Rails 的生成器没有注册页面，把第一个用户留给控制台；CyberTrain 没有 Ruby 控制台，所以写出了这个页面。注册和登录一样，按客户端地址限制为每三分钟十次：每次注册都要计算一次密码哈希，可能发送一封带链接的邮件，而它的 "has already been taken" 会说出某个地址是否已注册。
+
+生成的代码保存的每个地址，无论来自注册页面、`/setup`、账户页面还是用户命令，都必须是一个地址：`User.email_address_format?` 要求恰好一个两边都有文字的 `@`，并且没有逗号、空白、尖括号或控制字符。邮件发送器把 `ann@example.com,eve@evil.example` 读作两个收件人，所以没有这项检查，一个账户就可能拥有两个邮箱，重置链接会发给两者，而在 `--confirmable` 下任一邮箱都能完成确认。邮件标准允许的一些地址也会被拒绝（带空格或逗号的加引号本地部分）；这个方法由应用自行修改。检查出现之前保存的地址不会再次检查，所以该账户仍然可以重置密码和登录。
 
 `--invite-only` 不写注册页面，这对内部工具才是正确的默认值，否则最先到达服务器的人就会得到账户。第一个用户来自用户命令，或来自 `SetupController`（`GET` 和 `POST /setup`），它创建用户并让其登录：
 
@@ -98,11 +100,11 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ## 锁定
 
-密码错误 `auth_lockout_attempts`（10）次，账户就会被锁定 `auth_lockout_period`（一小时）。被锁定的账户无论密码是什么，都回答密码错误的消息。登录成功、密码重置和 `./<app> user EMAIL` 会清除计数；`auth_lockout_attempts = 0` 关闭锁定，并不再执行之前的锁定。计数是一条按行当前值读取的 `UPDATE`（`Relation#update_all_sql`），所以同一时刻的登录都会被计入。按地址的速率限制仍然保留。
+密码错误 `auth_lockout_attempts`（10）次，账户就会被锁定 `auth_lockout_period`（一小时）。被锁定的账户无论密码是什么，都回答密码错误的消息。登录成功、密码重置和 `./<app> user EMAIL` 会清除计数；`auth_lockout_attempts = 0` 关闭锁定，并不再执行之前的锁定。计数是一条按行当前值读取的 `UPDATE`（`Relation#update_all_sql`），所以同一时刻的登录都会被计入。按客户端地址的速率限制仍然保留。
 
 ## 密码重置
 
-登录页面链接到 `/passwords/new`。地址表单总是回答 "If that address is registered, a link to reset the password was sent to it."，对未知地址也做同样的工作，只是不发送。邮件（`PasswordsMailer.reset(user, url).deliver_later`，使用请求的语言）带有 `/passwords/<token>/edit`；令牌有效 15 分钟，并且只在密码和地址保持不变时有效，所以只能用一次。设置新密码会解除锁定，并结束该用户的所有会话。
+登录页面链接到 `/passwords/new`。地址表单总是回答 "If that address is registered, a link to reset the password was sent to it."，对未知地址也做同样的工作，只是不发送。邮件（`PasswordsMailer.reset(user, url).deliver_later`，使用请求的语言）带有 `/passwords/<token>/edit`；令牌有效 15 分钟，并且只在密码和地址保持不变时有效，所以只能用一次。设置新密码会解除锁定，并结束该用户的所有会话；使用 `--confirmable` 时还会撤回等待中的新地址（[确认地址](#confirming-addresses)）。
 
 <!-- list: points -->
 - 邮件由作业线程使用 `CYBERTRAIN_SMTP_*` 设置发送（[发送电子邮件](external-services.md#sending-e-mail)）：需要一个运行作业的进程和数据库。
@@ -115,13 +117,13 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ## 确认地址
 
-使用 `--confirmable` 时，注册会向该地址发送链接邮件，不让任何人登录。对尚未确认的地址输入正确的密码会以专门的消息拒绝（错误的密码得到通常的消息），登录页面链接到一个重新发送链接的表单。打开链接（`/confirmations/<token>`，有效三天，只能用一次）即确认地址；之后用户再登录。无论哪个控制器调用，关注点的 `start_new_session_for` 也会拒绝未确认的用户。
+使用 `--confirmable` 时，注册会向该地址发送链接邮件，不让任何人登录。对尚未确认的地址输入正确的密码会以专门的消息拒绝（错误的密码得到通常的消息），登录页面链接到一个重新发送链接的表单。打开链接（`/confirmations/<token>`，有效三天，只能用一次）即确认地址；之后用户再登录。无论哪个控制器调用，关注点的 `start_new_session_for` 也会拒绝未确认的用户，并记录 `[WARN] no session started: user <id> has not confirmed its address`。这项检查位于生成器在 `--confirmable` 下写出的关注点中：新应用里是这样，在 0.4 升级中也是，因为那里的关注点是新文件。已经有关注点的应用会以差异的形式收到这项检查（[之后再开启确认](#turning-on-confirmation-later)）。
 
-账户页面上的新地址在 `unconfirmed_email` 中等待，打开发往它的链接后才取代旧地址；页面可以撤回它（`DELETE /account/pending_email`），该链接随之失效。用户命令和 `/setup` 创建的用户是已确认的。密码重置会确认从未确认过的账户（链接证明了邮箱），但从不确认等待中的新地址。
+账户页面上的新地址在 `unconfirmed_email` 中等待，打开发往它的链接后才取代旧地址；页面可以撤回它（`DELETE /account/pending_email`），该链接随之失效。用户命令和 `/setup` 创建的用户是已确认的。密码重置会确认从未确认过的账户（链接证明了邮箱），但从不确认等待中的新地址：它会撤回该地址，其链接随之失效，因为请求它的人可能正是所有者要从其手中收回账户的人。所有者之后再重新请求即可。在账户页面上设置新密码则保留等待中的地址（用户就在那里，看得到它）。
 
 ## 账户页面
 
-`/account/edit`（nav 中的 "Account"）只在给出当前密码时修改地址或密码，只在给出密码时删除账户（连同其会话，在一个事务中）。新密码会结束该用户的所有会话，并让这个浏览器按原来的“保持登录”状态重新登录。当前密码的错误按客户端地址和按用户分别限制为每三分钟十次，并且不计入锁定。
+`/account/edit`（nav 中的 "Account"）只在给出当前密码时修改地址或密码，只在给出密码时删除账户（连同其会话，在一个事务中）。新密码会结束该用户的所有会话，并让这个浏览器按原来的“保持登录”状态重新登录。账户的修改和删除（因而也包括当前密码的错误）按客户端地址和按用户分别限制为每三分钟十次，当前密码的错误不计入锁定。
 
 ## 管理员用户与作业页面
 
@@ -146,8 +148,9 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 <!-- list: points -->
 - 在作业页面上只运行 `require_admin`，所以访客得到 404，就像没有这个页面一样。在自己声明 `before_action :require_admin` 的控制器中，`require_authentication` 先运行（Rails 的顺序），所以访客被送去登录（303），已登录的非管理员得到 404。
 - gen 拒绝没有 `before_action:` 的 `skip_before_action:`，也拒绝指向 `before_action:` 本身的那种：两者都会把页面向所有人开放。
-- 应用自己写的 `jobs_page` 行保持不变；要得到 404，请给它加上 `skip_before_action: :require_authentication`。
-- 应用自己写的 `require_admin` 必须自行拒绝访客，因为跳过之后页面上只运行它。
+- 应用自己写的 `jobs_page` 行保持不变。已经带有 `skip_before_action: :require_authentication` 的行视为已绘制；对其他行，生成器会提示加上它。要得到 404，请把这一行写成 `jobs_page "...", before_action: :require_admin, skip_before_action: :require_authentication`（gen 会拒绝没有 `before_action:` 的跳过）。
+- 当 `ApplicationController` 自己定义了 `require_admin` 时，这个方法会在每个控制器中取代关注点的方法。生成器在插入 `include Authentication` 时会这样提示（`warn  app/controllers/application_controller.rb defines require_admin itself: ...`），并且不带跳过地绘制作业页面（`jobs_page "/admin/jobs", before_action: :require_admin`），这样那里也先运行 `require_authentication`。要使用关注点的方法，请删除它。
+- 失败或被丢弃的邮件作业会在其行中保留邮件，而作业页面会显示行的参数：管理员可以在链接有效期间在那里读到重置或确认链接。这个页面只对管理员开放，而管理员本来就可以操作任何账户。
 - `/setup` 和用户命令创建的是普通用户；用 `./<app> user admin EMAIL` 把第一个用户设为管理员。
 
 ## 留给应用的部分
@@ -156,8 +159,9 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 <!-- list: points -->
 - 对存在且未锁定的账户输入错误的密码，会写一次该行（计数）；未知地址和已锁定的账户不会。这一次写入是一个时间差，和 Devise 的 lockable 一样被接受：为未知地址做同样的写入，会为一个速率限制已经约束的信号增加负载。密码重置表单也有同类的差异：已知地址会把邮件放入队列，多写一行。
-- 重置和确认邮件只按客户端地址限制，而不是按收件地址：有人可以按这个频率让某个地址收到邮件。登录按客户端地址限制为每三分钟十次，等于锁定阈值，所以一个客户端可以让一个已知账户一直处于锁定状态。按地址的限制（`rate_limit ... by:`）和更长的时间窗口由应用自行添加。
-- 地址变更不会通知旧地址，等待中的新地址永不过期（其链接会过期），从未确认的账户也永远不会被删除。
+- 注册、重置和确认邮件只按客户端地址限制，而不是按收件地址：有人可以按这个频率让某个地址收到邮件。登录按客户端地址限制为每三分钟十次，等于锁定阈值，所以一个客户端可以让一个已知账户一直处于锁定状态。按地址的限制（`rate_limit ... by:`）和更长的时间窗口由应用自行添加。
+- 地址变更不会通知旧地址，等待中的新地址永不过期（其链接会过期，密码重置也会撤回它），从未确认的账户也永远不会被删除。
+- 账户页面的 "has already been taken" 会告诉已登录、并给出了当前密码的用户某个地址已注册（与 Devise 相同），受该页面的速率限制约束。
 
 ## 框架提供的部件
 
@@ -200,6 +204,7 @@ manual  app/models/user.rb (diff below)
 create app/controllers/concerns/authentication.rb
 manual  app/controllers/sessions_controller.rb (diff below)
 create app/controllers/passwords_controller.rb
+...
 manual  app/controllers/application_controller.rb (diff below)
 ...
 manual  app/controllers/application_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
@@ -220,5 +225,9 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 - 保存输出，在应用目录中用 `patch -p1` 应用（patch 会跳过不属于差异的行），或者在你修改过文件的地方手工应用每个差异。在应用这些差异之前，应用可能无法构建：新文件会调用差异所添加的内容。
 - `--force` 则用新文件覆盖旧文件，适用于你从未编辑过的文件；`ApplicationController` 中 0.4 的代码块只有在与 0.4 所写完全相同时才会被替换。
 - 新迁移只添加缺少的列；运行 `cybertrain db migrate`。使用 `--confirmable` 时，它还把已有用户视为（自创建起）已确认，否则他们都无法登录。
-- 使用 `--confirmable` 时，sessions 和 registrations 控制器的差异带有一行 `IMPORTANT:`：在应用它们之前，未确认的账户不会被告知为何无法登录，注册也不会收到链接邮件。关注点仍然不会为未确认的账户开始会话，所以即使这些差异从未应用，检查也依然成立。
+- 使用 `--confirmable` 时，sessions 和 registrations 控制器的差异带有一行 `IMPORTANT:`：在应用它们之前，未确认的账户不会被告知为何无法登录，注册也不会收到链接邮件。在 0.4 的应用中关注点是新文件，连同确认检查一起写出，所以即使这些差异从未应用，它仍然不会为未确认的账户开始会话（并记录 `[WARN] no session started: user <id> has not confirmed its address`）。
 - 升级时每个会话都会结束一次（cookie 现在是加密的），[升级 0.4 的应用](requests.md#upgrading-an-application-from-04) 的其余部分也同样适用。
+
+### 之后再开启确认
+
+在没有确认功能时生成的应用中运行 `cybertrain generate authentication --confirmable`（如果应用使用 `--invite-only`，也加上它）。它写出确认相关的文件和一个添加列的迁移（把已有的用户视为已确认），并为它以前写过的每个文件打印差异。这里关注点已经存在，所以确认检查作为这些差异之一到来，输出把它标为 `IMPORTANT:`：在应用关注点的差异之前，无论其他差异如何，未确认的账户都能登录。部署之前请应用它和 sessions 控制器的差异。使用 `--invite-only` 时，setup 控制器的差异也会被标出：在应用它之前，`/setup` 创建的第一个用户未被确认，无法登录（密码重置会确认它）。

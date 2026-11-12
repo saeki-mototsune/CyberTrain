@@ -31,9 +31,12 @@ and edits, once each: `include Authentication` in `ApplicationController`,
 the routes, the jobs page's line ([Admin users](#admin-users-and-the-jobs-page)),
 the nav partial in the layout, the user command in `bin/<app>.rb`, and the
 `base_url` setting in `config/app.rb` ([Links in mails](#links-in-mails)).
-Running it again changes nothing that is already there
-([Upgrading from 0.4](#upgrading-from-04) for an application generated
-before).
+Running it again with the same options changes nothing: an edit already
+made is found and skipped, and a file already as it would write it is
+left. A file it would write differently (one you edited, or one an older
+generator or other options wrote) is never overwritten without `--force`:
+its diff is printed instead ([Upgrading from 0.4](#upgrading-from-04),
+[Turning on confirmation later](#turning-on-confirmation-later)).
 
 The texts of the generated screens are in the framework's English and
 Japanese dictionaries, under their lazy keys (`sessions.new.title`,
@@ -87,7 +90,22 @@ is no `Current` object.
 By default the generator writes `RegistrationsController` (`/sign_up`),
 which creates a user and signs them in. Rails' generator has no sign-up
 page and leaves the first user to the console; CyberTrain has no Ruby
-console, so it writes one.
+console, so it writes one. Sign-ups are limited to ten per client address
+every three minutes, as sign-ins are: each one hashes a password, may mail
+a link, and its "has already been taken" tells whether an address is
+registered.
+
+Every address the generated code saves, from the sign-up page, `/setup`,
+the account page and the user command, must be one address:
+`User.email_address_format?` asks for exactly one `@` with text on both
+sides, and no comma, whitespace, angle bracket or control character. The
+mailer reads `ann@example.com,eve@evil.example` as two recipients, so
+without the check one account could hold two mailboxes, have its reset
+link mailed to both and, with `--confirmable`, be confirmed by either.
+Some addresses the mail standards allow are refused too (a quoted local
+part with a space or a comma in it); the method is the application's to
+change. An address saved before the check existed is not checked again,
+so its account can still be reset and signed in to.
 
 `--invite-only` writes no sign-up page, the right default for an internal
 tool, where whoever reaches the server first would otherwise get an
@@ -158,7 +176,7 @@ password reset and `./<app> user EMAIL` clear the count;
 `auth_lockout_attempts = 0` turns lockout off and stops enforcing a lock
 made before. The count is one `UPDATE` that reads the row as it is
 (`Relation#update_all_sql`), so sign-ins at the same moment all count. The
-per-address rate limit stays.
+per-client-address rate limit stays.
 
 ## Password reset
 
@@ -169,7 +187,8 @@ The mail (`PasswordsMailer.reset(user, url).deliver_later`, in the
 request's language) carries `/passwords/<token>/edit`; the token is valid
 for 15 minutes and only while the password and the address stay as they
 were, so it works once. Setting the new password clears a lockout and ends
-every session of the user.
+every session of the user; with `--confirmable` it also withdraws a new
+address waiting ([Confirming addresses](#confirming-addresses)).
 
 <!-- list: points -->
 - The mail is sent by a job thread with the `CYBERTRAIN_SMTP_*` settings
@@ -198,14 +217,22 @@ with its own message (a wrong one gets the usual message), and the sign-in
 page links to a form that mails the link again. Opening the link
 (`/confirmations/<token>`, valid for three days, once) confirms the
 address; the user then signs in. The concern's `start_new_session_for`
-refuses an unconfirmed user too, whichever controller asks.
+refuses an unconfirmed user too, whichever controller asks, and logs
+`[WARN] no session started: user <id> has not confirmed its address`. That
+check is in the concern the generator writes with `--confirmable`: in a
+new application, and in a 0.4 upgrade, where the concern is a new file.
+An application that already has the concern gets the check as a diff
+([Turning on confirmation later](#turning-on-confirmation-later)).
 
 A new address on the account page waits in `unconfirmed_email`, and takes
 the old one's place when its own link is opened; the page can withdraw it
 (`DELETE /account/pending_email`), which ends that link. Users made by the
 user command and by `/setup` are confirmed. A password reset confirms an
 account that was never confirmed (the link proved the mailbox), never a
-new address waiting.
+new address waiting: it withdraws that address, which ends its link,
+since whoever asked for it may be the one the owner is taking the account
+back from. The owner asks for it again afterwards. A new password on the
+account page keeps the address waiting (the user is there and sees it).
 
 ## The account page
 
@@ -213,8 +240,9 @@ new address waiting.
 each only with the current password, and deletes the account (with its
 sessions, in one transaction) only with the password. A new password ends
 every session of the user and signs this browser in again, remembered as
-it was. Wrong current passwords are limited to ten every three minutes per
-client address and per user, and do not count toward lockout.
+it was. Account changes and deletions (so also wrong current passwords)
+are limited to ten every three minutes per client address and per user,
+and a wrong current password does not count toward lockout.
 
 ## Admin users and the jobs page
 
@@ -247,10 +275,23 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 - gen refuses a `skip_before_action:` without a `before_action:`, and one
   that names the `before_action:` itself: either would open the page to
   everyone.
-- A `jobs_page` line the application wrote itself is left alone; add
-  `skip_before_action: :require_authentication` to it for the 404.
-- A `require_admin` the application writes for itself must refuse a
-  visitor on its own, since the skip leaves it alone on the page.
+- A `jobs_page` line the application wrote itself is left alone. One that
+  already has `skip_before_action: :require_authentication` counts as
+  drawn; for any other, the generator says to add it. Make the line read
+  `jobs_page "...", before_action: :require_admin, skip_before_action:
+  :require_authentication` for the 404 (gen refuses the skip without the
+  `before_action:`).
+- When `ApplicationController` defines `require_admin` itself, that method
+  takes the concern's place in every controller. The generator says so as
+  it inserts `include Authentication` (`warn  app/controllers/application_controller.rb
+  defines require_admin itself: ...`), and draws the jobs page without the
+  skip (`jobs_page "/admin/jobs", before_action: :require_admin`), so
+  `require_authentication` runs before it there too. Delete the method to
+  use the concern's.
+- A failed or discarded mail job keeps the mail in its row, and the jobs
+  page shows the row's arguments: an admin can read a reset or
+  confirmation link there while it is valid. The page is for admins only,
+  who can act on any account already.
 - `/setup` and the user command make ordinary users; make the first one an
   admin with `./<app> user admin EMAIL`.
 
@@ -265,15 +306,18 @@ These are choices the generated code makes, each with its reason:
   writes for unknown addresses would add load for a signal the rate limit
   already bounds. The password reset form has the same kind of
   difference: a known address queues its mail, one row more.
-- Reset and confirmation mails are limited per client address only, not
-  per address mailed: someone can mail an address at that rate. Sign-ins
-  are limited to ten every three minutes per client address, the lockout
-  threshold, so one client can keep a known account locked. A per-address
-  limit (`rate_limit ... by:`) and a longer window are the application's
-  to add.
+- Sign-up, reset and confirmation mails are limited per client address
+  only, not per address mailed: someone can mail an address at that rate.
+  Sign-ins are limited to ten every three minutes per client address, the
+  lockout threshold, so one client can keep a known account locked. A
+  per-address limit (`rate_limit ... by:`) and a longer window are the
+  application's to add.
 - The old address is not told of an address change, a new address waiting
-  never expires (its link does), and an account never confirmed is never
-  deleted.
+  never expires (its link does, and a password reset withdraws it), and an
+  account never confirmed is never deleted.
+- The account page's "has already been taken" tells a signed-in user, who
+  gave the current password, that an address is registered (as Devise
+  does), within the page's rate limit.
 
 ## The pieces the framework provides
 
@@ -340,6 +384,7 @@ manual  app/models/user.rb (diff below)
 create app/controllers/concerns/authentication.rb
 manual  app/controllers/sessions_controller.rb (diff below)
 create app/controllers/passwords_controller.rb
+...
 manual  app/controllers/application_controller.rb (diff below)
 ...
 manual  app/controllers/application_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
@@ -371,8 +416,24 @@ is the whole output for a sign-up application 0.4 generated.
 - With `--confirmable`, the diffs of the sessions and registrations
   controllers carry an `IMPORTANT:` line: until they are applied, an
   unconfirmed account is not told why it cannot sign in, and a sign-up is
-  mailed no link. The concern still starts no session for an unconfirmed
-  account, so the check holds even if those diffs are never applied.
+  mailed no link. In a 0.4 application the concern is a new file, written
+  with its confirmation check, so it still starts no session for an
+  unconfirmed account (and logs `[WARN] no session started: user <id> has
+  not confirmed its address`) even if those diffs are never applied.
 - Every session ends once at the upgrade (the cookie is encrypted now), and
   the rest of [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04)
   applies too.
+
+### Turning on confirmation later
+
+Run `cybertrain generate authentication --confirmable` (with
+`--invite-only` if the application has it) in an application generated
+without it. It writes the confirmation files and an add-columns migration,
+which counts the users already there as confirmed, and prints a diff for
+each file it wrote before. Here the concern exists, so its confirmation
+check arrives as one of those diffs, and the output marks it `IMPORTANT:`:
+until the concern's diff is applied, unconfirmed accounts sign in,
+whatever the other diffs say. Apply it, and the sessions controller's,
+before deploying. With `--invite-only`, the setup controller's diff is
+marked too: until it is applied, the first user `/setup` creates is not
+confirmed and cannot sign in (a password reset confirms it).

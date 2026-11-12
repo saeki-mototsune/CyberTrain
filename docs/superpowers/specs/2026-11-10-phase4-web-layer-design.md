@@ -1130,22 +1130,42 @@ each is recorded in the code and in docs/design.md D64 and D65 too.
   link works once; the mailer method is `confirmation_instructions`
   (Devise's name; `confirm` is `User#confirm`); an address change can be
   withdrawn (`DELETE /account/pending_email`); the concern's
-  `start_new_session_for` refuses an unconfirmed user too, so an upgrade
-  whose sessions controller diff was not applied still signs none in.
-  Users the user command and `/setup` create are confirmed.
+  `start_new_session_for` refuses an unconfirmed user too, so a 0.4
+  upgrade (where the concern is a new file) whose sessions controller
+  diff was not applied still signs none in. When `--confirmable` is
+  added later to an application that already has the concern, the check
+  arrives as the concern's diff, which the output marks `IMPORTANT:`
+  (the setup controller's diff too). Users the user command and `/setup`
+  create are confirmed. A completed password reset withdraws a new
+  address waiting, and so its link (final review B I3): whoever asked
+  for it may be who the owner is taking the account back from.
 - Lockout and the account page: the count is one `UPDATE` through a new
   `Relation#update_all_sql` (an `increment` followed by a second write
   gave a timing signal); a wrong password for an existing account still
   writes once, which unknown and locked addresses do not (accepted, as in
-  Devise). A wrong current password on the account page is rate limited
-  per client address and per user, and does not count toward lockout.
+  Devise). Account changes and deletions (so also a wrong current
+  password) are rate limited per client address and per user, and a
+  wrong current password does not count toward lockout.
+- Sign-up and addresses (final review B I1 and I2): sign-up is rate
+  limited as sign-in is (ten per client address every three minutes),
+  which section 9 did not ask for. The generated `User` accepts one
+  address only (`User.email_address_format?`: exactly one `@`, no comma,
+  whitespace, angle bracket or control character), at every save that
+  sets one, because the mailer reads a comma as a second recipient; an
+  unusual address the standards allow is refused, and one saved before
+  the check is not checked again.
 - Admin and the jobs page: the jobs page's line is
   `jobs_page "/admin/jobs", before_action: :require_admin,
   skip_before_action: :require_authentication` (a new route option), so
   a visitor gets `require_admin`'s 404 as section 9 says; an application
   controller with `before_action :require_admin` keeps Rails' order and
   sends a visitor to sign in (303). gen refuses a `skip_before_action:`
-  without a `before_action:` or naming it. The user command is generated
+  without a `before_action:` or naming it. When `ApplicationController`
+  defines `require_admin` itself, the generator warns and draws the line
+  without the skip; a `jobs_page` line of the application's own that
+  skips `require_authentication` counts as drawn. A failed or discarded
+  mail job's row, shown on the jobs page to admins, holds its link
+  (left as is: the page is admin-only). The user command is generated
   in both modes (plan decision R6). `check_box_tag` was added for the
   remember-me box.
 - The upgrade (section 14, plan decision D19): the add-columns migration
@@ -1167,6 +1187,12 @@ each is recorded in the code and in docs/design.md D64 and D65 too.
   cookie, then `Accept-Language`, and turns on `i18n_raise_on_missing` in
   its tests. `link_to` drops attributes it does not know (`lang:`), so
   the language links carry none; the page's `<html lang>` does.
+- The final review's runtime fixes: a template number helper answers
+  en's setting when neither the current nor the default locale has it
+  (Rails' defaults), not an empty one; a `precision:` given in the call
+  is read as 0.4 read it; jobs and scheduled tasks start at the default
+  locale, as an action does; a dictionary validation message may use
+  `%{value}`.
 - New Spinel rules: spikes/NOTES.md 99 to 101, all from the spike (99 a
   compile-time cost, 100 and 101 records of forms that work);
   docs/spinel-feedback.md Y. The tasks after the spike found none.
