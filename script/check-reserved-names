@@ -217,8 +217,12 @@ NAME_HOMES = {
   "xml" => %w[cybertrain/format_collector.rb],
   # template/ast.rb's TextNode#text and template/lexer.rb's Token#text are
   # attr_readers (a String), never compiled next to a FormatCollector or a
-  # Table receiver.
-  "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb cybertrain/template/ast.rb cybertrain/template/lexer.rb],
+  # Table receiver. dev/indicator.rb's is Dev::Indicator.text (the
+  # indicator's line, a String, as theirs), a class method called on its
+  # class; compiled beside FormatCollector#text in examples/blog (its
+  # controllers answer formats, its server role loads cybertrain/dev).
+  "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb cybertrain/template/ast.rb cybertrain/template/lexer.rb
+               cybertrain/dev/indicator.rb],
   # cli/attachment.rb's and cli/scaffold.rb's are the --any option
   # (attr_reader, a Boolean) of the generators' name records.
   "any" => %w[cybertrain/format_collector.rb cybertrain/cli/attachment.rb cybertrain/cli/scaffold.rb],

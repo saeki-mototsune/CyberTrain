@@ -273,13 +273,18 @@ module Cybertrain
       # The stack the server runs: diagnostics must stay inside hostname
       # authorization too, including when the stack was built before
       # serving. Supervised, the failed-build banner comes from the
-      # supervisor's state file, reread when it changes.
+      # supervisor's state file, reread when it changes, and Dev::Indicator
+      # names the runtime; it sits outside the stack, so the development
+      # paths it answers never reach RequestLogger.
       def front_app
         app = @stack
         config = @config
         if Dev::Supervision.active?(config.env)
-          status = Dev::BuildStatus.new(Dev::StateFile::Reader.new(Dev::Supervision.state_file))
-          return HostAuthorization.new(Dev::ErrorPage.new(app, nil, status), config.checked_hosts, config.health_path)
+          reader = Dev::StateFile::Reader.new(Dev::Supervision.state_file)
+          status = Dev::BuildStatus.new(reader)
+          indicator = Dev::Indicator.new(Dev::ErrorPage.new(app, nil, status), reader, status, Dev::Supervision.runtime,
+                                         Dev::Supervision.generation, config.content_security_policy_nonce_directives)
+          return HostAuthorization.new(indicator, config.checked_hosts, config.health_path)
         end
         rebuilder = @rebuilder
         unless rebuilder.nil?

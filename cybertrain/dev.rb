@@ -8,7 +8,9 @@
 # (cybertrain/dev/supervision.rb) reads what `cybertrain server` hands a
 # child it supervises; Roles requires that file on its own. Such a child
 # learns about the background build from the supervisor's state file
-# (Dev::StateFile), which ErrorPage reads through a Dev::BuildStatus.
+# (Dev::StateFile), which ErrorPage reads through a Dev::BuildStatus, and
+# in front of ErrorPage Dev::Indicator names the runtime on every response
+# and in a corner of every HTML page.
 require "cybertrain/dev/watched"
 require "cybertrain/dev/watcher"
 require "cybertrain/dev/rebuilder"
@@ -17,3 +19,4 @@ require "cybertrain/dev/error_page"
 require "cybertrain/dev/supervision"
 require "cybertrain/dev/state_file"
 require "cybertrain/dev/build_status"
+require "cybertrain/dev/indicator"

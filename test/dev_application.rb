@@ -82,8 +82,10 @@ config.views_root = "#{ROOT}/views"
 config.public_root = "#{ROOT}/public"
 config.layout = "layouts/site"
 
-# Request and error logs stay out of the snapshot.
-Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
+# Request and error logs stay out of the snapshot; the supervised case
+# reads the request log.
+LOG_IO = StringIO.new
+Cybertrain.logger = Cybertrain::Logger.new(LOG_IO)
 APP = Cybertrain::Application.new(router: router, url_resolver: DevRoutes.url_resolver, config: config)
 APP.boot
 
@@ -199,6 +201,8 @@ end
 # readiness file, asks for two pages through the role's own listener and
 # stops the server, as the supervisor's TERM would.
 SUPERVISED_PAGES = Array.new(0) { "" }
+# Dev::Indicator's reserved paths, asked after the two pages.
+SUPERVISED_DEV_PATHS = Array.new(0) { "" }
 
 # A whole response read off a Connection: close request.
 def supervised_get(port, path)
@@ -225,6 +229,8 @@ def supervised_client(port, ready_path)
   end
   SUPERVISED_PAGES << supervised_get(port, "/")
   SUPERVISED_PAGES << supervised_get(port, "/status")
+  SUPERVISED_DEV_PATHS << supervised_get(port, "/__cybertrain/dev/state?runtime=spinel&generation=7")
+  SUPERVISED_DEV_PATHS << supervised_get(port, "/__cybertrain/dev/indicator.js")
   APP.server.stop
   nil
 end
@@ -256,6 +262,27 @@ test "supervised, the role serves the state file's failed build on its inherited
   assert_includes json, "{\"ok\":true}"
   assert json.index("Build failed").nil?, "no banner on JSON"
   assert !APP.server_runner.rebuilding?, "no Rebuilder under supervision"
+end
+
+# The same run, read from the side of Dev::Indicator: front_app puts it in
+# front of ErrorPage, outside the stack's RequestLogger.
+test "supervised, every response names its runtime, HTML pages carry the indicator and the development paths are not logged" do
+  runtime = RUBY_ENGINE == "ruby" ? "cruby" : "spinel"
+  page = SUPERVISED_PAGES[0]
+  assert_includes page, "X-Cybertrain-Runtime: #{runtime}\r\n"
+  assert_includes page, "<div id=\"cybertrain-dev-indicator\" data-runtime=\"#{runtime}\" data-generation=\"7\">"
+  assert page.index("cybertrain-dev-indicator").to_i < page.index("</body>").to_i
+  json = SUPERVISED_PAGES[1]
+  assert_includes json, "X-Cybertrain-Runtime: #{runtime}\r\n"
+  assert json.index("cybertrain-dev-indicator").nil?, "no indicator on JSON"
+  assert_equal 2, SUPERVISED_DEV_PATHS.size
+  state = SUPERVISED_DEV_PATHS[0]
+  assert_includes state, "X-Cybertrain-Runtime: #{runtime}\r\n"
+  assert_includes state, "{\"generation\":7,\"serving\":\"cruby\",\"build\":\"failed\",\"text\":\"Spinel\"}"
+  assert_includes SUPERVISED_DEV_PATHS[1], "Content-Type: text/javascript"
+  log = LOG_IO.string
+  assert_includes log, "Started GET \"/status\""
+  assert log.index("__cybertrain").nil?, "the development paths stay out of the request log"
 end
 
 Cybertrain::Test.run!

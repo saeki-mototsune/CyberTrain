@@ -76,6 +76,20 @@ module Cybertrain
         message[0, i]
       end
 
+      # Redirects (3xx) and the statuses that never carry a body (1xx, 204,
+      # 304: a client reads no body there, so on a keep-alive connection the
+      # bytes would prefix the next response) get no banner. Dev::Indicator
+      # touches a response under the same rule.
+      def self.banner_status?(status)
+        status >= 200 && status < 300 && status != 204 || status >= 400
+      end
+
+      # Whether the response is HTML (or says nothing of its type).
+      def self.html_response?(response)
+        type = response.header("Content-Type")
+        type.nil? || type.downcase.start_with?("text/html")
+      end
+
       private
 
       # Response#reset_to drops the failed action's headers and cookies; the
@@ -176,9 +190,9 @@ module Cybertrain
         status = @status
         failed = (!rebuilder.nil? && rebuilder.last_failed) || (!status.nil? && status.failed)
         return nil unless failed
-        return nil unless banner_status?(response.status)
+        return nil unless ErrorPage.banner_status?(response.status)
         return nil if response.body.empty? # `head :ok` and friends stay bodyless
-        return nil unless html?(response)
+        return nil unless ErrorPage.html_response?(response)
 
         output = ""
         if !rebuilder.nil? && rebuilder.last_failed
@@ -192,13 +206,6 @@ module Cybertrain
         nil
       end
 
-      # Redirects (3xx) and the statuses that never carry a body (1xx, 204,
-      # 304: a client reads no body there, so on a keep-alive connection the
-      # bytes would prefix the next response) get no banner.
-      def banner_status?(status)
-        status >= 200 && status < 300 && status != 204 || status >= 400
-      end
-
       # Just after the <body ...> tag, or the very start without one.
       def banner_offset(body)
         tag = body.index("<body")
@@ -206,11 +213,6 @@ module Cybertrain
 
         close = body.index(">", tag)
         close.nil? ? 0 : close + 1
-      end
-
-      def html?(response)
-        type = response.header("Content-Type")
-        type.nil? || type.downcase.start_with?("text/html")
       end
 
       def banner(output)
