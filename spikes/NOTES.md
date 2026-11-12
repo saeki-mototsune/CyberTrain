@@ -1080,9 +1080,10 @@ explicitly retires a workaround.
     `sp_native_enter` / `sp_native_leave`, lib/sp_sched.h, so that a
     collection raised meanwhile does not wait for it; the worker's other
     green threads still wait. Checked on 2026-11-13 with a C function that
-    sleeps 0.6 s: at `SPINEL_WORKERS=1` the main thread got one 0.05 s
-    sleep back in 0.5 s, with the option and without it;
-    docs/spinel-feedback.md AB.) A transaction that holds the
+    sleeps 0.6 s: at `SPINEL_WORKERS=1` the main thread's first 0.05 s
+    sleep came back only once the call had returned (`ticks=1` in the
+    program of docs/spinel-feedback.md AB), with the option and without
+    it; at `SPINEL_WORKERS=2` it counted ten in the same 0.5 s.) A transaction that holds the
     write lock and parks its green thread (I/O, a `sleep`, a safepoint)
     then cannot reach its COMMIT while a second writer sits in the busy
     handler, which slept 100 us at a time inside `sqlite3_step` for about
