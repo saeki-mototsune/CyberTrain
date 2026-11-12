@@ -6,8 +6,9 @@ name: CI
 # The exception is the API reference's Markdown source (docs/api/README.md;
 # see .yardopts), which the api-docs job below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
-# reads them except script/api-docs, script/test-shard and script/ci-changes,
-# which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
+# reads them except script/api-docs, script/test-shard, script/ci-changes,
+# script/preview-parity and script/test-cruby, which are brought back in.
+# Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
@@ -33,6 +34,8 @@ on:
       - "script/api-docs"
       - "script/test-shard"
       - "script/ci-changes"
+      - "script/preview-parity"
+      - "script/test-cruby"
   pull_request:
     paths:
       - "**"
@@ -46,6 +49,8 @@ on:
       - "script/api-docs"
       - "script/test-shard"
       - "script/ci-changes"
+      - "script/preview-parity"
+      - "script/test-cruby"
   # For a merge queue on main, which is not turned on (docs/design.md, D34,
   # the status of 2026-11-11, has what turning it on takes): the queue waits
   # for the required checks on a `merge_group` event, and a workflow without
@@ -101,6 +106,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       framework: ${{ steps.decide.outputs.framework }}
+      cruby_preview: ${{ steps.decide.outputs.cruby_preview }}
     steps:
       # Two commits: on a pull request the checkout is the merge commit, whose
       # first parent is the base branch; on main, the commit before a merge.
@@ -135,6 +141,7 @@ jobs:
           if [ -z "$base" ]; then
             echo "no base commit to compare with: every job"
             echo "framework=true" >> "$GITHUB_OUTPUT"
+            echo "cruby_preview=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git diff --name-only "$base" HEAD > "$RUNNER_TEMP/changed"
@@ -165,6 +172,37 @@ jobs:
           gem install --no-document kramdown -v "~> 2.5"
           gem install --no-document kramdown-parser-gfm -v "~> 1.1"
           script/api-docs
+
+  # The CRuby preview (cybertrain/preview/): the CRuby-only tests, then every
+  # framework test under CRuby with the Fiddle shim against the compiled
+  # snapshots (script/preview-parity; the known differences are listed in
+  # test/cruby/parity-gaps.txt). No Spinel: a pass here is no evidence the
+  # code compiles (spikes/NOTES.md, "What CRuby cannot tell you"). Runs when
+  # the framework, the tests or the two scripts change.
+  cruby-preview:
+    needs: changes
+    if: needs.changes.outputs.cruby_preview == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          ruby-version: "3.3"
+
+      # The shim compiles the framework's C units with cc, linked against
+      # SQLite and zlib.
+      - name: Install SQLite and zlib headers
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev
+
+      - name: CRuby-only tests, then the framework's tests under CRuby
+        run: |
+          script/test-cruby
+          script/preview-parity
 
   # The framework's test programs on Ubuntu, in four parallel jobs: each
   # program is compiled on its own, so the programs split cleanly. A job of

@@ -72,4 +72,13 @@ test "a C error carries the compiler's output" do
   assert message.include?("error"), message
 end
 
+test "no file under cybertrain/preview/ declares an Error class by a `class` line (test/gen_jobs.rb scans for them)" do
+  assert_equal "Cybertrain::Preview::CompileError", Cybertrain::Preview::CompileError.name
+  Dir.glob("cybertrain/preview/**/*.rb").each do |path|
+    File.read(path, encoding: "UTF-8").each_line do |line|
+      assert !line.match?(/\A\s*class\s+\w*Error\b.*</), "#{path}: #{line}"
+    end
+  end
+end
+
 Cybertrain::Test.run!

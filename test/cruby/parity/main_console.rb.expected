@@ -1,0 +1,11 @@
+FAIL console evaluates lines from the terminal until exit: expected "0|Cybertrain console (test). Type help for commands, exit to quit.\n>> 3\n>> n\n-\n7\n(1 row)\n>> ", got "126|<repo>/test/main_console.rb: 1: <repo>/test/main_console.rb: Permission denied\n"
+FAIL console ends with status 0 at the end of its input: expected "0|Cybertrain console (test). Type help for commands, exit to quit.\n>> 3\n>> \n", got "126|<repo>/test/main_console.rb: 1: <repo>/test/main_console.rb: Permission denied\n"
+ok   console and dbconsole are built-in words, not server words
+ok   dbconsole runs sqlite3 on the database and passes its exit status through
+ok   dbconsole answers 1 when a signal ends sqlite3
+ok   a database path starting with - reaches sqlite3 as ./-...
+sqlite3 not found: install the sqlite3 CLI
+ok   dbconsole reports an sqlite3 it cannot run, not a missing one
+sqlite3 not found: install the sqlite3 CLI
+ok   dbconsole without sqlite3 says how to get it
+8 tests, 19 assertions, 2 failures

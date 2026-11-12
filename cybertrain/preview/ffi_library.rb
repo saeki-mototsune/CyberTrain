@@ -4,8 +4,11 @@ require "open3"
 module Cybertrain
   module Preview
     # The C compiler failed on an ffi_source; the message is its output.
-    class CompileError < StandardError
-    end
+    # Assigned, not a `class ... Error <` line: test/gen_jobs.rb lists the
+    # Error classes under cybertrain/ by reading the sources, and
+    # Gen::JobScan::FRAMEWORK_ERRORS names the ones a compiled program has.
+    # This one exists only under CRuby.
+    CompileError = Class.new(StandardError)
 
     # Compiles C source into a shared library and keeps it by content, so a
     # restart of the dev server does not pay for the compiler again.

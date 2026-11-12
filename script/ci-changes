@@ -1,10 +1,11 @@
 #!/bin/sh
 # Which CI jobs a change needs: reads the changed paths, one a line, on
-# stdin and prints `framework=true` or `framework=false`. The `changes` job
-# of .github/workflows/ci.yml runs it and the jobs that compile (the
-# framework tests, the end-to-end jobs, the setup-cybertrain action's) run
-# only on `true`. The api-docs job runs on every CI run and is not decided
-# here.
+# stdin and prints `framework=true|false` and `cruby_preview=true|false`.
+# The `changes` job of .github/workflows/ci.yml runs it. The jobs that
+# compile (the framework tests, the end-to-end jobs, the setup-cybertrain
+# action's) run only on `framework=true`; the cruby-preview job only on
+# `cruby_preview=true`. The api-docs job runs on every CI run and is not
+# decided here.
 #
 # `on.paths` in ci.yml decides whether the workflow starts at all; it cannot
 # tell the jobs apart, so its rule is repeated here, with one more case: the
@@ -18,6 +19,12 @@
 #          through another file)
 #   true   everything else
 #
+# cruby_preview (the framework's tests and the generator under CRuby, no
+# Spinel): true for cybertrain/**, cybertrain.rb, test/**,
+# script/preview-parity, script/test-cruby, .github/workflows/ci.yml and
+# script/ci-changes (and a quoted path); false for everything else. For the
+# two scripts it is the only job that runs: `framework` stays false.
+#
 # One path that says true is enough. A path this file does not know says
 # true, and so does one git printed quoted (an unusual character in the
 # name): the jobs run when in doubt.
@@ -27,7 +34,11 @@
 
 decide() {
   framework=false
+  cruby=false
   while IFS= read -r path; do
+    case "$path" in
+      cybertrain/* | cybertrain.rb | test/* | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | \"*) cruby=true ;;
+    esac
     case "$path" in
       "") ;;
       docs/api/* | script/api-docs | .yardopts) ;;
@@ -37,13 +48,23 @@ decide() {
     esac
   done
   echo "framework=$framework"
+  echo "cruby_preview=$cruby"
 }
 
-# expect WANT PATH...: decide on the paths and compare.
+# expect WANT PATH...: decide on the paths and compare `framework`;
+# expect_cruby does the same for `cruby_preview`.
 expect() {
   want="framework=$1"
   shift
-  got=$(printf '%s\n' "$@" | decide)
+  got=$(printf '%s\n' "$@" | decide | grep '^framework=')
+  if [ "$got" = "$want" ]; then return 0; fi
+  echo "script/ci-changes: $* gave $got, expected $want" >&2
+  failed=1
+}
+expect_cruby() {
+  want="cruby_preview=$1"
+  shift
+  got=$(printf '%s\n' "$@" | decide | grep '^cruby_preview=')
   if [ "$got" = "$want" ]; then return 0; fi
   echo "script/ci-changes: $* gave $got, expected $want" >&2
   failed=1
@@ -75,6 +96,18 @@ if [ "${1:-}" = "--self-test" ]; then
   expect true docs/apiary.rb
   # A quoted path is not recognised.
   expect true '"docs/api/caf\303\251.rb"'
+  # The CRuby preview job: the framework, its tests and its two scripts.
+  expect_cruby true cybertrain/router.rb
+  expect_cruby true cybertrain/preview/ffi.rb
+  expect_cruby true test/cruby/parity-gaps.txt
+  expect_cruby true script/preview-parity
+  expect_cruby true script/test-cruby
+  expect_cruby true .github/workflows/ci.yml
+  expect_cruby true '"docs/api/caf\303\251.rb"'
+  expect_cruby false docs/api/README.md site/index.html README.md script/gate script/api-docs examples/blog/app/models/post.rb
+  expect_cruby true docs/api/README.md test/router.rb
+  # The two scripts start the workflow and need no compiling.
+  expect false script/preview-parity script/test-cruby
   if [ "$failed" = 0 ]; then echo "script/ci-changes: self-test passed"; fi
   exit "$failed"
 fi

@@ -402,6 +402,14 @@ for generator changes, when examples/blog regenerates clean and passes.
 A CRuby pass is evidence for the logic and none for the structure: most
 rules above were found by a refactoring that was correct Ruby.
 
+How far the preview is from the compiled program is a checked fact:
+`script/preview-parity` (the `cruby-preview` CI job) runs every framework
+test under CRuby with the shim against the compiled snapshots, and the
+tests that differ, each with its verified cause, are listed in
+[test/cruby/parity-gaps.txt](../test/cruby/parity-gaps.txt). A match says
+the preview behaves as the compiled tests expect; it does not say the code
+compiles.
+
 ### What a built binary still depends on
 
 `cybertrain build` produces one executable with the views and the asset

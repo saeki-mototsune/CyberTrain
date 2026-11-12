@@ -4,4 +4,5 @@ ok   :str and :binstr results
 ok   an unknown type is refused by name
 ok   the compiled library is cached by content
 ok   a C error carries the compiler's output
-6 tests, 18 assertions, 0 failures
+ok   no file under cybertrain/preview/ declares an Error class by a `class` line (test/gen_jobs.rb scans for them)
+7 tests, 357 assertions, 0 failures
