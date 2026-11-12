@@ -529,25 +529,39 @@ def assert_includes(haystack, needle)
 end
 
 # Passes when the block raises the exception `expected` names, and answers
-# its message. A Class matches that class or a subclass, as Minitest's
-# does (`assert_raises(ArgumentError)`, `assert_raises(Cybertrain::DB::Error)`);
+# that exception's **message**, a String. A Class matches that class or a
+# subclass, as Minitest's does (`assert_raises(ArgumentError)`,
+# `assert_raises(NotImplementedError)`, `assert_raises(Cybertrain::DB::Error)`);
 # a String matches a class whose name contains it (`"RecordNotFound"`);
 # nothing given matches any StandardError. The failures are Minitest's:
 # `[ArgumentError] exception expected, not` with the raised class and
 # message on the next two lines, or `ArgumentError expected but nothing was
 # raised.`
 #
+# Unlike Rails (Minitest answers the exception), the answer is already the
+# message: where Rails writes `error = assert_raises(X) { ... }` and then
+# `error.message`, write `message = assert_raises(X) { ... }` and use
+# `message` itself.
+#
+# An exception that is not a StandardError (`SystemExit`, `Interrupt`,
+# `NoMemoryError`, ...) and is not the one expected is raised on untouched.
 # A failed assertion inside the block is not "the expected exception":
 # AssertionFailed is a StandardError, so it is raised on (the test fails
 # with that assertion's message) unless `expected` names AssertionFailed,
 # which is how the assertion helpers themselves are tested
 # (`assert_raises("AssertionFailed") { ... }`).
+#
+# Ruby's own exception classes answer no `superclass` under Spinel, so a
+# subclass is recognised above them from a table of their parents (the
+# Errno family, JSON's, Encoding's, URI's and the core classes); a
+# built-in class outside it fails with its name, asking for the
+# exact class or the name form (`assert_raises("Name")`).
 # @example
 #   message = assert_raises(Cybertrain::RecordNotFound) { Article.find(999) }
 #   assert_includes message, "id=999"
 # @param expected [Class, String] the exception's class, or part of its name
-# @yield the code that must raise a StandardError
-# @return [String] the exception's message
+# @yield the code that must raise
+# @return [String] the exception's message (not the exception)
 # @api public
 def assert_raises(expected = "")
   Cybertrain::Test.count_assertion
@@ -555,9 +569,11 @@ def assert_raises(expected = "")
   raised = false
   begin
     yield
-  rescue StandardError => e
-    # One clause only (a second `=> e` of another type in this yielding
-    # method is untested under Spinel, NOTES rule 32); the class is told
+  rescue Exception => e
+    # Exception, so NotImplementedError and other non-StandardErrors can be
+    # expected; the helper raises on what was not. One clause only (a
+    # second `=> e` of another type in this yielding method is untested
+    # under Spinel, NOTES rule 32); the class is told
     # apart by name in the helper, which reads `name.to_s` (Class#name is
     # nil for an anonymous class under CRuby, and a NoMethodError from
     # here would replace the exception being asserted on).

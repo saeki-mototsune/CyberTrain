@@ -22,7 +22,9 @@ module Cybertrain
     # Ruby's own exception classes answer no `superclass` under Spinel
     # ("undefined method 'superclass' for module RuntimeError"; phase 5a
     # spike item 4, spikes/phase5/assert_raises.rb), so above the first
-    # builtin the chain `assert_raises` walks is read from their parents.
+    # builtin the chain `assert_raises` walks is read from their parents
+    # (checked against CRuby 3.3's `superclass`); every `Errno::` class's
+    # parent is SystemCallError (see {builtin_parent}).
     BUILTIN_PARENTS = {
       "Exception" => "", "StandardError" => "Exception", "ScriptError" => "Exception",
       "NoMemoryError" => "Exception", "SecurityError" => "Exception", "SignalException" => "Exception",
@@ -35,7 +37,16 @@ module Cybertrain
       "TypeError" => "StandardError", "ZeroDivisionError" => "StandardError", "EOFError" => "IOError",
       "KeyError" => "IndexError", "StopIteration" => "IndexError", "ClosedQueueError" => "StopIteration",
       "NoMethodError" => "NameError", "FloatDomainError" => "RangeError", "FrozenError" => "RuntimeError",
-      "UncaughtThrowError" => "ArgumentError"
+      "UncaughtThrowError" => "ArgumentError", "NoMatchingPatternError" => "StandardError",
+      "NoMatchingPatternKeyError" => "NoMatchingPatternError", "Math::DomainError" => "StandardError",
+      "Timeout::Error" => "RuntimeError", "Timeout::ExitException" => "Exception", "SocketError" => "StandardError",
+      "Date::Error" => "ArgumentError", "JSON::JSONError" => "StandardError", "JSON::ParserError" => "JSON::JSONError",
+      "JSON::NestingError" => "JSON::ParserError", "JSON::GeneratorError" => "JSON::JSONError",
+      "Encoding::CompatibilityError" => "EncodingError", "Encoding::UndefinedConversionError" => "EncodingError",
+      "Encoding::InvalidByteSequenceError" => "EncodingError", "Encoding::ConverterNotFoundError" => "EncodingError",
+      "URI::Error" => "StandardError", "URI::InvalidURIError" => "URI::Error",
+      "URI::InvalidComponentError" => "URI::Error", "URI::BadURIError" => "URI::Error",
+      "IO::EAGAINWaitReadable" => "Errno::EAGAIN", "IO::EAGAINWaitWritable" => "Errno::EAGAIN"
     }.freeze
 
     # Fails the current assertion with `text`.
@@ -60,18 +71,20 @@ module Cybertrain
       count_assertion
       return nil unless expected == actual
 
-      text = "Expected #{actual.inspect} to not be equal to #{expected.inspect}"
+      text = "Expected #{actual.inspect} to not be equal to #{expected.inspect}."
       fail_with(text)
       nil
     end
 
-    # `assert_in_delta`: Minitest's text, the difference as a Float.
+    # `assert_in_delta`: Minitest's text, the difference an Integer when
+    # both values are.
     def self.check_in_delta(expected, actual, delta)
       count_assertion
       diff = (expected.to_f - actual.to_f).abs
       return nil if diff <= delta.to_f
 
-      text = "Expected |#{expected} - #{actual}| (#{diff}) to be <= #{delta}"
+      shown = expected.is_a?(Integer) && actual.is_a?(Integer) ? diff.to_i.to_s : diff.to_s
+      text = "Expected |#{expected} - #{actual}| (#{shown}) to be <= #{delta}."
       fail_with(text)
       nil
     end
@@ -91,7 +104,7 @@ module Cybertrain
       count_assertion
       return nil if matcher_matches?(matcher, string) == want
 
-      text = want ? "Expected #{matcher.inspect} to match #{string.inspect}" : "Expected #{matcher.inspect} to not match #{string.inspect}"
+      text = want ? "Expected #{matcher.inspect} to match #{string.inspect}." : "Expected #{matcher.inspect} to not match #{string.inspect}."
       fail_with(text)
       nil
     end
@@ -101,7 +114,7 @@ module Cybertrain
       count_assertion
       return nil unless object.nil?
 
-      text = "Expected #{object.inspect} to not be nil"
+      text = "Expected #{object.inspect} to not be nil."
       fail_with(text)
       nil
     end
@@ -131,7 +144,7 @@ module Cybertrain
       end
       return nil unless found
 
-      text = "Expected #{collection.inspect} to not include #{object.inspect}"
+      text = "Expected #{collection.inspect} to not include #{object.inspect}."
       fail_with(text)
       nil
     end
@@ -151,7 +164,7 @@ module Cybertrain
       count_assertion
       return nil if empty_value?(object) == want
 
-      text = want ? "Expected #{object.inspect} to be empty" : "Expected #{object.inspect} to not be empty"
+      text = want ? "Expected #{object.inspect} to be empty." : "Expected #{object.inspect} to not be empty."
       fail_with(text)
       nil
     end
@@ -228,9 +241,15 @@ module Cybertrain
       loop do
         return true if name == want
 
-        parent = BUILTIN_PARENTS[name]
+        parent = builtin_parent(name)
         if parent.nil? && !builtin
-          k = k.superclass
+          up = superclass_or_nil(k)
+          if up.nil?
+            text = "assert_raises: the parent class of #{name} is not known under Spinel; " \
+                   "expect #{name} itself, or compare by name: assert_raises(\"#{want}\")"
+            fail_with(text)
+          end
+          k = up
           name = k.name.to_s
         else
           builtin = true
@@ -242,15 +261,36 @@ module Cybertrain
       false
     end
 
+    # The parent of one of Ruby's own exception classes, by name: the
+    # table's, SystemCallError for every `Errno::` class, else nil.
+    def self.builtin_parent(name)
+      parent = BUILTIN_PARENTS[name]
+      return parent unless parent.nil?
+      return "SystemCallError" if name.start_with?("Errno::")
+
+      nil
+    end
+
+    # A user class's superclass; nil for a class of Ruby's own, which
+    # answers none under Spinel (a NoMethodError there).
+    def self.superclass_or_nil(klass)
+      klass.superclass
+    rescue StandardError
+      nil
+    end
+
     # `assert_raises`, given what its block raised: a failed assertion the
-    # caller did not name is raised on; another class than expected fails
-    # with Minitest's text.
+    # caller did not name is raised on, and so is an unexpected exception
+    # that is not a StandardError (`SystemExit`, `Interrupt`, as Minitest
+    # lets them through); another class than expected fails with
+    # Minitest's text.
     def self.raise_unless_expected(expected, exception)
       name = exception.class.name.to_s
       if name.include?("AssertionFailed") && !expected_text(expected).include?("AssertionFailed")
         raise exception
       end
       return nil if raised_matches?(expected, exception.class)
+      raise exception unless exception.is_a?(StandardError)
 
       text = "[#{expected_text(expected)}] exception expected, not\nClass: <#{name}>\nMessage: <#{exception.message.inspect}>"
       fail_with(text)
@@ -360,7 +400,8 @@ end
 # @example
 #   assert_nothing_raised { Article.find(article.id) }
 # @yield the code that must not raise
-# @return [nil]
+# @return [nil] not the block's value, as in Rails: one return type per
+#   method name (spikes/NOTES.md rules 10, 34)
 # @api public
 def assert_nothing_raised
   begin
@@ -382,7 +423,8 @@ end
 # @param expression [Proc] a lambda answering an Integer
 # @param difference [Integer]
 # @yield the code that makes the change
-# @return [nil]
+# @return [nil] not the block's value, as in Rails: one return type per
+#   method name (spikes/NOTES.md rules 10, 34)
 # @api public
 def assert_difference(expression, difference = 1)
   before = expression.call
@@ -394,7 +436,8 @@ end
 # Passes when the block leaves the value of `expression` unchanged.
 # @param expression [Proc] a lambda answering an Integer
 # @yield the code that must not change it
-# @return [nil]
+# @return [nil] not the block's value, as in Rails: one return type per
+#   method name (spikes/NOTES.md rules 10, 34)
 # @api public
 def assert_no_difference(expression)
   before = expression.call
@@ -415,7 +458,8 @@ end
 # @param from [Object] the value before
 # @param to [Object] the value after
 # @yield the code that makes the change
-# @return [nil]
+# @return [nil] not the block's value, as in Rails: one return type per
+#   method name (spikes/NOTES.md rules 10, 34)
 # @api public
 def assert_changes(expression, from: Cybertrain::Test::UNSET, to: Cybertrain::Test::UNSET)
   before = expression.call

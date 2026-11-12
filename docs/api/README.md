@@ -68,7 +68,7 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 | `assert_equal(expected, actual)` | `expected == actual` (a failure prints `Expected:` and `  Actual:` on two lines, as Minitest) |
 | `assert_nil(actual)` | it is nil |
 | `assert_includes(haystack, needle)` | a String contains it, or an Array includes it |
-| `assert_raises(ArgumentError) { ... }` | the block raises that class or a subclass (or, given a String, a class whose name contains it); returns its message |
+| `assert_raises(ArgumentError) { ... }` | the block raises that class or a subclass (or, given a String, a class whose name contains it); returns its message, a String (Rails answers the exception) |
 | `assert_not_equal(expected, actual)` | `expected != actual` |
 | `assert_not_nil(object)` | it is not nil |
 | `assert_not(object)` | it is false or nil (`refute`) |

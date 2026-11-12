@@ -8,5 +8,7 @@ ok   assert_difference and assert_no_difference
 ok   assert_changes
 ok   assert_raises with a class answers the message
 ok   assert_raises fails with Minitest's text
+ok   assert_raises with an exception that is not a StandardError
+ok   assert_raises with Ruby's namespaced exceptions
 ok   assert_raises(StandardError) lets a failed assertion in its block through
-11 tests, 122 assertions, 0 failures
+13 tests, 144 assertions, 0 failures

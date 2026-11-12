@@ -22,7 +22,8 @@ end
 test "assert_in_delta" do
   assert_in_delta 0.1, 0.1004
   assert_in_delta 1, 1.5, 0.5
-  assert_equal "Expected |0.1 - 0.2| (0.1) to be <= 0.001", assert_raises("AssertionFailed") { assert_in_delta 0.1, 0.2 }
+  assert_equal "Expected |0.1 - 0.2| (0.1) to be <= 0.001.", assert_raises("AssertionFailed") { assert_in_delta 0.1, 0.2 }
+  assert_equal "Expected |1 - 3| (2) to be <= 0.001.", assert_raises("AssertionFailed") { assert_in_delta 1, 3 }
 end
 
 test "assert_match with a String and a Regexp" do
@@ -30,9 +31,9 @@ test "assert_match with a String and a Regexp" do
   assert_match(/h.l/, "hello")
   assert_no_match(/z/, "hello")
   assert_no_match "z", "hello"
-  assert_equal "Expected /z/ to match \"hello\"", assert_raises("AssertionFailed") { assert_match(/z/, "hello") }
-  assert_equal "Expected \"z\" to match \"hello\"", assert_raises("AssertionFailed") { assert_match "z", "hello" }
-  assert_equal "Expected /h/ to not match \"hello\"", assert_raises("AssertionFailed") { assert_no_match(/h/, "hello") }
+  assert_equal "Expected /z/ to match \"hello\".", assert_raises("AssertionFailed") { assert_match(/z/, "hello") }
+  assert_equal "Expected \"z\" to match \"hello\".", assert_raises("AssertionFailed") { assert_match "z", "hello" }
+  assert_equal "Expected /h/ to not match \"hello\".", assert_raises("AssertionFailed") { assert_no_match(/h/, "hello") }
 end
 
 test "assert_not_equal, assert_not_nil, assert_not_includes, assert_empty, assert_not_empty" do
@@ -40,18 +41,18 @@ test "assert_not_equal, assert_not_nil, assert_not_includes, assert_empty, asser
   assert_not_nil 0
   assert_not_includes [1, 2], 3
   assert_not_includes "hello", "z"
-  assert_equal "Expected 1 to not be equal to 1", assert_raises("AssertionFailed") { assert_not_equal 1, 1 }
-  assert_equal "Expected nil to not be nil", assert_raises("AssertionFailed") { assert_not_nil nil }
-  assert_equal "Expected [1, 2] to not include 2", assert_raises("AssertionFailed") { assert_not_includes [1, 2], 2 }
-  assert_equal "Expected \"hello\" to not include \"ell\"", assert_raises("AssertionFailed") { assert_not_includes "hello", "ell" }
+  assert_equal "Expected 1 to not be equal to 1.", assert_raises("AssertionFailed") { assert_not_equal 1, 1 }
+  assert_equal "Expected nil to not be nil.", assert_raises("AssertionFailed") { assert_not_nil nil }
+  assert_equal "Expected [1, 2] to not include 2.", assert_raises("AssertionFailed") { assert_not_includes [1, 2], 2 }
+  assert_equal "Expected \"hello\" to not include \"ell\".", assert_raises("AssertionFailed") { assert_not_includes "hello", "ell" }
   assert_empty({})
   assert_empty ""
   assert_empty []
   assert_not_empty [1]
   assert_not_empty "a"
   assert_not_empty({ "k" => 1 })
-  assert_equal "Expected [1] to be empty", assert_raises("AssertionFailed") { assert_empty [1] }
-  assert_equal "Expected \"\" to not be empty", assert_raises("AssertionFailed") { assert_not_empty "" }
+  assert_equal "Expected [1] to be empty.", assert_raises("AssertionFailed") { assert_empty [1] }
+  assert_equal "Expected \"\" to not be empty.", assert_raises("AssertionFailed") { assert_not_empty "" }
 end
 
 test "assert_not is refute" do
@@ -117,6 +118,32 @@ test "assert_raises fails with Minitest's text" do
   assert_equal "RecordNotFound expected but nothing was raised.",
                assert_raises("AssertionFailed") { assert_raises("RecordNotFound") { 2 } }
   assert_equal "StandardError expected but nothing was raised.", assert_raises("AssertionFailed") { assert_raises { 3 } }
+end
+
+test "assert_raises with an exception that is not a StandardError" do
+  assert_equal "abstract", assert_raises(NotImplementedError) { raise NotImplementedError, "abstract" }
+  assert_equal "sub", assert_raises(ScriptError) { raise NotImplementedError, "sub" }
+  assert_equal "any", assert_raises(Exception) { raise "any" }
+  # Not expected and not a StandardError: raised on untouched, as Minitest
+  # lets SystemExit and Interrupt through.
+  passed_through = ""
+  begin
+    assert_raises(ArgumentError) { raise NotImplementedError, "through" }
+  rescue NotImplementedError => e
+    passed_through = e.message
+  end
+  assert_equal "through", passed_through
+end
+
+# Ruby's own namespaced classes answer no superclass under Spinel: their
+# parents come from the table (Errno::* is a SystemCallError).
+test "assert_raises with Ruby's namespaced exceptions" do
+  assert_includes assert_raises(StandardError) { File.read("/nonexistent/assertions") }, "No such file"
+  assert_includes assert_raises(SystemCallError) { File.read("/nonexistent/assertions") }, "No such file"
+  assert_includes assert_raises(Errno::ENOENT) { File.read("/nonexistent/assertions") }, "No such file"
+  assert_includes assert_raises(StandardError) { Math.sqrt(-1) }, "out of domain"
+  assert_equal "[ArgumentError] exception expected, not\nClass: <Math::DomainError>\nMessage: <\"Numerical argument is out of domain - sqrt\">",
+               assert_raises("AssertionFailed") { assert_raises(ArgumentError) { Math.sqrt(-1) } }
 end
 
 test "assert_raises(StandardError) lets a failed assertion in its block through" do
