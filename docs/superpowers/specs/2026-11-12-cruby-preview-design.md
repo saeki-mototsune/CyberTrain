@@ -307,8 +307,8 @@ It defines, for any module, what the three FFI files call:
 
 - `ffi_lib name`: the library to open (`libsqlite3`, `libz`), by the
   platform's naming (`.so`, `.dylib`).
-- `ffi_source text`: collected per module. At the first `ffi_func` the
-  module's sources are compiled once into a shared library with the C
+- `ffi_source text`: collected per module. At the first call of one of
+  the module's functions its sources are compiled once into a shared library with the C
   compiler (`cc -shared -fPIC`, linked against the module's `ffi_lib`),
   cached under the application's `tmp/` by a digest of the source, the
   flags and the compiler's version. The same C runs on both runtimes.

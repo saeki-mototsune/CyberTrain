@@ -13,7 +13,8 @@
 #   linked against its `ffi_lib`, at the first *call* of any of its
 #   functions (not at the first `ffi_func`: sqlite_ffi.rb declares sources
 #   after its first ffi_func). The shared object is cached under
-#   CYBERTRAIN_PREVIEW_CACHE (default: $TMPDIR/cybertrain-preview-spike) by a
+#   CYBERTRAIN_PREVIEW_CACHE (default: a private directory made for this
+#   process) by a
 #   digest of the sources, the flags and `cc --version`.
 # * `sp_ffi_bin_len` is declared in the compiled unit as a static
 #   thread-local int with an accessor; a :binstr call reads it right after
