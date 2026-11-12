@@ -30,7 +30,7 @@ test "assert_raises lets a failing assertion in its block propagate" do
   rescue Cybertrain::Test::AssertionFailed => e
     failure = e.message
   end
-  assert_includes failure, "expected 1, got 2"
+  assert_includes failure, "Expected: 1\n  Actual: 2"
 
   failure = ""
   begin
@@ -45,7 +45,7 @@ end
 # helpers themselves are tested (test/client.rb).
 test "assert_raises accepts AssertionFailed when it is named" do
   msg = assert_raises("AssertionFailed") { assert_equal 1, 2 }
-  assert_equal "expected 1, got 2", msg
+  assert_equal "Expected: 1\n  Actual: 2", msg
 end
 
 test "refute and assert_nil" do

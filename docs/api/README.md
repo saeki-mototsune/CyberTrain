@@ -65,10 +65,21 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 | --- | --- |
 | `assert(condition, message = ...)` | the condition is truthy |
 | `refute(condition, message = ...)` | it is false or nil |
-| `assert_equal(expected, actual)` | `expected == actual` |
+| `assert_equal(expected, actual)` | `expected == actual` (a failure prints `Expected:` and `  Actual:` on two lines, as Minitest) |
 | `assert_nil(actual)` | it is nil |
 | `assert_includes(haystack, needle)` | a String contains it, or an Array includes it |
-| `assert_raises("ClassName") { ... }` | the block raises a matching StandardError; returns its message |
+| `assert_raises(ArgumentError) { ... }` | the block raises that class or a subclass (or, given a String, a class whose name contains it); returns its message |
+| `assert_not_equal(expected, actual)` | `expected != actual` |
+| `assert_not_nil(object)` | it is not nil |
+| `assert_not(object)` | it is false or nil (`refute`) |
+| `assert_not_includes(haystack, needle)` | the opposite of `assert_includes` |
+| `assert_empty(object)` / `assert_not_empty(object)` | a String, Array or Hash is (is not) empty |
+| `assert_in_delta(expected, actual, delta = 0.001)` | the two numbers are within `delta` |
+| `assert_match(matcher, string)` / `assert_no_match` | a Regexp matches (a String is found) in it (or not) |
+| `assert_nothing_raised { ... }` | the block raises nothing |
+| `assert_difference(-> { Article.count }, 1) { ... }` | the block changes the lambda's value by that much |
+| `assert_no_difference(-> { Article.count }) { ... }` | it leaves it unchanged |
+| `assert_changes(-> { article.reload.title }, from: "a", to: "b") { ... }` | it changes the value (from and to, when given) |
 | `flunk(message)` | never |
 | `assert_response(response, :ok)` | the status matches (an Integer, or `:success`, `:redirect`, `:not_found`, ...) |
 | `assert_redirected_to(response, "/path")` | it is a redirect to exactly that Location |

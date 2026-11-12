@@ -480,16 +480,14 @@ def refute(condition, message = "expected condition to be falsy")
   flunk(message) if condition
 end
 
-# Passes when `expected == actual`; fails with `expected X, got Y`.
+# Passes when `expected == actual`; fails with Minitest's text, the two
+# values' `inspect` on two lines (`Expected: 1` / `  Actual: 0`).
 # @param expected [Object]
 # @param actual [Object]
 # @return [void]
 # @api public
 def assert_equal(expected, actual)
-  Cybertrain::Test.count_assertion
-  unless expected == actual
-    flunk("expected #{expected.inspect}, got #{actual.inspect}")
-  end
+  Cybertrain::Test.check_equal(expected, actual)
 end
 
 # Passes when `actual` is nil.
@@ -530,23 +528,28 @@ def assert_includes(haystack, needle)
   end
 end
 
-# Passes when the block raises. `class_name` (optional) must be a substring of
-# the raised exception's class name; the raised message is returned so callers
-# can assert on it. A failing assertion inside the block is not "the expected
-# exception": AssertionFailed is a StandardError, so without its own clause
-# (first, it is the more specific class) the rescue below would swallow it and
-# the test would pass vacuously. It is re-raised so the enclosing test fails,
-# unless the caller names it (`assert_raises("AssertionFailed") { ... }` is how
-# the assertion helpers themselves are tested).
+# Passes when the block raises the exception `expected` names, and answers
+# its message. A Class matches that class or a subclass, as Minitest's
+# does (`assert_raises(ArgumentError)`, `assert_raises(Cybertrain::DB::Error)`);
+# a String matches a class whose name contains it (`"RecordNotFound"`);
+# nothing given matches any StandardError. The failures are Minitest's:
+# `[ArgumentError] exception expected, not` with the raised class and
+# message on the next two lines, or `ArgumentError expected but nothing was
+# raised.`
+#
+# A failed assertion inside the block is not "the expected exception":
+# AssertionFailed is a StandardError, so it is raised on (the test fails
+# with that assertion's message) unless `expected` names AssertionFailed,
+# which is how the assertion helpers themselves are tested
+# (`assert_raises("AssertionFailed") { ... }`).
 # @example
-#   message = assert_raises("RecordNotFound") { Article.find(999) }
+#   message = assert_raises(Cybertrain::RecordNotFound) { Article.find(999) }
 #   assert_includes message, "id=999"
-# @param class_name [String] part of the expected exception's class name
-#   (`"RecordNotFound"`); the class itself cannot be given
+# @param expected [Class, String] the exception's class, or part of its name
 # @yield the code that must raise a StandardError
 # @return [String] the exception's message
 # @api public
-def assert_raises(class_name = "")
+def assert_raises(expected = "")
   Cybertrain::Test.count_assertion
   message = ""
   raised = false
@@ -554,20 +557,16 @@ def assert_raises(class_name = "")
     yield
   rescue StandardError => e
     # One clause only (a second `=> e` of another type in this yielding
-    # method is untested under Spinel, NOTES rule 32). `to_s`: Class#name is
-    # nil for an anonymous class under CRuby (`Class.new(StandardError)`), and
-    # a NoMethodError from inside this rescue clause would replace the very
-    # exception being asserted on.
-    name = e.class.name.to_s
-    if name.include?("AssertionFailed") && !(class_name != "" && name.include?(class_name))
-      raise e
-    end
+    # method is untested under Spinel, NOTES rule 32); the class is told
+    # apart by name in the helper, which reads `name.to_s` (Class#name is
+    # nil for an anonymous class under CRuby, and a NoMethodError from
+    # here would replace the exception being asserted on).
+    Cybertrain::Test.raise_unless_expected(expected, e)
     raised = true
     message = e.message
-    if class_name != "" && !name.include?(class_name)
-      flunk("expected #{class_name} to be raised, got #{name}: #{e.message}")
-    end
   end
-  flunk("expected #{class_name == "" ? "an exception" : class_name} to be raised") unless raised
+  Cybertrain::Test.check_raised(expected, raised)
   message
 end
+
+require "cybertrain/test/assertions"

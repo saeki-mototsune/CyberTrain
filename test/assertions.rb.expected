@@ -1,0 +1,12 @@
+ok   assert_equal prints Expected and Actual on two lines
+ok   assert_in_delta
+ok   assert_match with a String and a Regexp
+ok   assert_not_equal, assert_not_nil, assert_not_includes, assert_empty, assert_not_empty
+ok   assert_not is refute
+ok   assert_nothing_raised reports the class and message
+ok   assert_difference and assert_no_difference
+ok   assert_changes
+ok   assert_raises with a class answers the message
+ok   assert_raises fails with Minitest's text
+ok   assert_raises(StandardError) lets a failed assertion in its block through
+11 tests, 122 assertions, 0 failures
