@@ -151,6 +151,41 @@ test "RequestLogger filters with the installed list; an empty list filters nothi
   assert !Cybertrain::ParameterFilter.filter?("username")
 end
 
+# A Cybertrain::Token (the password reset link's): id, expiry, 64 hex.
+PATH_TOKEN = "7--1900--#{"0123456789abcdef" * 4}"
+
+test "RequestLogger writes a signed token in the path as [FILTERED]" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
+  stack.call(build_ctx("GET", "/passwords/#{PATH_TOKEN}/edit"))
+  stack.call(build_ctx("PUT", "/passwords/#{PATH_TOKEN}"))
+  stack.call(build_ctx("GET", "/passwords/#{PATH_TOKEN}.json?token=#{PATH_TOKEN}&page=2"))
+  # With no names to filter, a token in the path is still a secret.
+  Cybertrain::ParameterFilter.names = []
+  stack.call(build_ctx("GET", "/confirmations/#{PATH_TOKEN.upcase}"))
+  Cybertrain::ParameterFilter.names = Cybertrain::ParameterFilter::DEFAULT_NAMES
+  lines = sink.string.split("\n")
+  assert_equal "[INFO] Started GET \"/passwords/[FILTERED]/edit\" for 127.0.0.1", lines[0]
+  assert_equal "[INFO] Started PUT \"/passwords/[FILTERED]\" for 127.0.0.1", lines[2]
+  assert_equal "[INFO] Started GET \"/passwords/[FILTERED].json?token=[FILTERED]&page=2\" for 127.0.0.1", lines[4]
+  assert_equal "[INFO] Started GET \"/confirmations/[FILTERED]\" for 127.0.0.1", lines[6]
+  assert_equal 8, lines.size
+  assert sink.string.index("0123456789abcdef").nil?
+  assert sink.string.index("0123456789ABCDEF").nil?
+end
+
+test "ParameterFilter.filter_path masks token-shaped segments only" do
+  f = Cybertrain::ParameterFilter
+  assert_equal "/passwords/[FILTERED]/edit", f.filter_path("/passwords/#{PATH_TOKEN}/edit")
+  assert_equal "[FILTERED]", f.filter_path(PATH_TOKEN)
+  assert_equal "/a/[FILTERED]//[FILTERED]", f.filter_path("/a/#{PATH_TOKEN}//#{PATH_TOKEN}")
+  # Not that shape: kept as sent.
+  kept = ["", "/", "/posts/12/edit", "/p/12--34--abc", "/p/#{PATH_TOKEN.chop}", "/p/#{PATH_TOKEN}0",
+          "/p/x#{PATH_TOKEN}", "/p/#{PATH_TOKEN}x", "/p/7-1900-#{"ab" * 32}", "/p/--1900--#{"ab" * 32}",
+          "/p/#{"1" * 19}--1900--#{"ab" * 32}", "/p/7--1900--#{"g" * 64}", "/p/\xff\x00"]
+  kept.each { |path| assert_equal path, f.filter_path(path) }
+end
+
 test "Config#filter_parameters comes from CYBERTRAIN_FILTER_PARAMETERS, Rails' list by default" do
   ENV["CYBERTRAIN_FILTER_PARAMETERS"] = ""
   assert_equal Cybertrain::ParameterFilter::DEFAULT_NAMES, Cybertrain::Config.new.filter_parameters

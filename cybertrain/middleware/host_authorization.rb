@@ -1,6 +1,7 @@
 require "cybertrain/middleware"
 require "cybertrain/http/parser"
 require "cybertrain/logger"
+require "cybertrain/http/parameter_filter"
 
 module Cybertrain
   # Keeps requests on explicitly trusted hostnames, even when an attacker's
@@ -23,7 +24,10 @@ module Cybertrain
 
       # One line so a CYBERTRAIN_HOSTS typo shows (Rails logs blocked
       # hosts too); inspect escapes whatever bytes the client sent.
-      Cybertrain.logger.warn("Blocked host: #{request.header("host").to_s.inspect} for #{request.path.inspect}")
+      # A signed token in the path is masked (ParameterFilter.filter_path).
+      host = request.header("host").to_s.inspect
+      path = ParameterFilter.filter_path(request.path).inspect
+      Cybertrain.logger.warn("Blocked host: #{host} for #{path}")
       ctx.response.reset_to(403, "Blocked host")
       nil
     end

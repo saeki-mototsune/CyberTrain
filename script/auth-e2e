@@ -278,6 +278,15 @@ run_variant() {
   # Spent: the link answers with the address form now.
   expect_equal "GET the mail's link again" "303 $base/passwords/new" \
     "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$reset_jar" "$link")"
+  # The token never reaches the log: the request lines write it [FILTERED].
+  local reset_token=${link#*/passwords/}
+  reset_token=${reset_token%/edit}
+  [ -n "$reset_token" ] || fail "no token in the reset link: $link"
+  if grep -qF "$reset_token" "$SERVER_LOG"; then
+    fail "the reset token is in the server log"
+  fi
+  grep -qF 'Started GET "/passwords/[FILTERED]/edit"' "$SERVER_LOG" || fail "no filtered reset request line in the server log"
+  grep -qE 'Started (POST|PUT) "/passwords/\[FILTERED\]"' "$SERVER_LOG" || fail "no filtered PUT line in the server log"
   # The reset ended the session signed in before it.
   expect_equal "GET /products with the session from before the reset" "303 $base/session/new" \
     "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$jar" "$base/products")"

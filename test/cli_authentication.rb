@@ -326,16 +326,18 @@ test "writes the Authentication concern and includes it" do
 
       # Where links in mails start ("https://shop.example.com"): the base_url
       # setting (SHOP_BASE_URL, config/app.rb) when set; else the address this
-      # request came to, outside production, or in production when
-      # CYBERTRAIN_HOSTS lists the hosts the app answers to (any other Host
-      # is refused before an action runs). Otherwise "" and an [ERROR] line:
-      # the mail named `mail` is not sent, as a link built from a Host header
+      # request came to, but only where the Host header is known to be
+      # safe: the Host is checked (development, or CYBERTRAIN_HOSTS lists
+      # the hosts the app answers to, so any other Host is refused before
+      # an action runs), or the app runs its tests. In any other
+      # environment (production, staging, ...) "" and an [ERROR] line: the
+      # mail named `mail` is not sent, as a link built from a Host header
       # anyone can forge would carry its token to their site.
       def mail_link_base(mail)
         c = Cybertrain.config
         configured = c.string_setting(:base_url)
         return configured.delete_suffix("/") unless configured.empty?
-        return request.base_url if !c.production? || c.host_check?
+        return request.base_url if c.host_check? || c.test?
 
         Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
         ""
@@ -1151,6 +1153,8 @@ PASSWORDS_CONTROLLER = <<~RUBY
     allow_unauthenticated_access
     # Ten requests per client address every three minutes, as for signing in.
     rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
+    # The link's page carries the token in its address: no Referer for it.
+    before_action :no_referrer, only: [:edit, :update]
 
     # GET /passwords/new
     def new_action
@@ -1166,7 +1170,7 @@ PASSWORDS_CONTROLLER = <<~RUBY
       url = edit_password_url_for(token)
       unless url.empty?
         mail = PasswordsMailer.reset(user.nil? ? User.new(email_address: address) : user, url)
-        mail.deliver_later unless user.nil?
+        queue_reset_mail(mail) unless user.nil?
       end
       flash[:notice] = t(".sent")
       redirect_to new_session_path, status: :see_other
@@ -1213,6 +1217,24 @@ PASSWORDS_CONTROLLER = <<~RUBY
 
       path = edit_password_path(token)
       base + path
+    end
+
+    # Queues the mail. An address the mailer refuses (a space or a
+    # non-ASCII byte: Cybertrain::Mailer.check_address) is logged, and
+    # the answer stays the one every other address gets.
+    def queue_reset_mail(mail)
+      mail.deliver_later
+      nil
+    rescue ArgumentError => e
+      Cybertrain.logger.error("password reset mail not sent: \#{e.message}")
+      nil
+    end
+
+    # Browsers send no Referer from the link's page, whose address holds
+    # the token.
+    def no_referrer
+      response.set_header("Referrer-Policy", "no-referrer")
+      nil
     end
 
     # A token that is wrong, expired or spent: back to the address form.
@@ -1342,16 +1364,18 @@ test "password reset: the token in the model, the base URL in the concern" do
   assert_includes concern, indented(<<~RUBY, 2)
       # Where links in mails start ("https://shop.example.com"): the base_url
       # setting (SHOP_BASE_URL, config/app.rb) when set; else the address this
-      # request came to, outside production, or in production when
-      # CYBERTRAIN_HOSTS lists the hosts the app answers to (any other Host
-      # is refused before an action runs). Otherwise "" and an [ERROR] line:
-      # the mail named `mail` is not sent, as a link built from a Host header
+      # request came to, but only where the Host header is known to be
+      # safe: the Host is checked (development, or CYBERTRAIN_HOSTS lists
+      # the hosts the app answers to, so any other Host is refused before
+      # an action runs), or the app runs its tests. In any other
+      # environment (production, staging, ...) "" and an [ERROR] line: the
+      # mail named `mail` is not sent, as a link built from a Host header
       # anyone can forge would carry its token to their site.
       def mail_link_base(mail)
         c = Cybertrain.config
         configured = c.string_setting(:base_url)
         return configured.delete_suffix("/") unless configured.empty?
-        return request.base_url if !c.production? || c.host_check?
+        return request.base_url if c.host_check? || c.test?
 
         Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
         ""
@@ -1370,10 +1394,11 @@ test "password reset: the route, the sign-in link and the base_url setting in bo
   assert_includes shop_config, <<~RUBY
     Cybertrain.configure do |c|
       # Links in mails (the password reset's) start with this, as in
-      # SHOP_BASE_URL=https://shop.example.com. Unset, they take the address
-      # the request came to, which production trusts only when
-      # CYBERTRAIN_HOSTS lists the app's hosts; with neither, a reset mail is
-      # not sent and the log says why.
+      # SHOP_BASE_URL=https://shop.example.com: set it, with https, wherever the
+      # app is served. Unset, they take the address the request came to,
+      # which is trusted only in development, in tests, or when
+      # CYBERTRAIN_HOSTS lists the app's hosts; anywhere else a reset mail
+      # is not sent and the log says why.
       c.setting_string :base_url, env: "SHOP_BASE_URL", default: ""
 
       # c.port = 3000
@@ -1386,14 +1411,18 @@ test "password reset: the generated tests and their helpers" do
   helpers = read("shop/test/support/authentication_helpers.rb")
   assert_includes helpers, "require \"cybertrain/test/smtp_receiver\"\nrequire_relative \"app_test\"\n"
   assert_includes helpers, "def with_smtp_receiver\n"
-  assert_includes helpers, "  yield receiver\n  receiver.stop\n"
-  assert_includes helpers, "  c.smtp_host = \"127.0.0.1\"\n  c.smtp_port = port\n  c.smtp_tls = \"none\"\n  c.smtp_from = \"noreply@example.com\"\n"
+  # The settings come back even when the block fails.
+  assert_includes helpers, "    yield receiver\n  ensure\n    receiver.stop\n    c.smtp_host = host\n    c.smtp_port = given_port\n" \
+                           "    c.smtp_tls = tls\n    c.smtp_from = from\n  end\n"
+  assert_includes helpers, "    c.smtp_host = \"127.0.0.1\"\n    c.smtp_port = port\n    c.smtp_tls = \"none\"\n    c.smtp_from = \"noreply@example.com\"\n"
   assert_includes helpers, "def last_mail_link(receiver)\n"
   assert_includes helpers, "def backdate_session(row, seconds)\n  at = Time.at(Time.now.to_i - seconds).utc\n  row.update_columns(created_at: at, last_active_at: at)\n  nil\nend\n"
   spec = read("shop/test/passwords.rb")
   assert_includes spec, "require_relative \"support/app_test\"\nrequire_relative \"support/authentication_helpers\"\n"
   ["reset answers the same for unknown addresses and links to base_url",
    "without base_url a link takes the request's address only where that is safe",
+   "any other environment without base_url sends no mail and answers the same",
+   "an address the mailer refuses gets the same answer, and the log says why",
    "the token expires after 15 minutes", "the token stops working once the password changed",
    "updating the password ends every other session", "a reset clears a lockout",
    "the mail arrives through the SMTP receiver with the dictionary's subject",
@@ -1410,6 +1439,13 @@ test "password reset: the generated tests and their helpers" do
   assert_includes read("club/test/passwords.rb"), "set CLUB_BASE_URL (or CYBERTRAIN_HOSTS)"
   # 15 minutes: 16 minutes ago is too old, 14 is not.
   assert_includes spec, "  stale = user.password_reset_token(now - 16 * 60)\n  fresh = user.password_reset_token(now - 14 * 60)\n"
+  # Every change to global state is put back in an ensure (with_config).
+  assert_includes spec, "  ensure\n    c.env = saved_env\n    c.hosts_from_env = saved_hosts\n" \
+                        "    c.set_string_setting(:base_url, saved_base_url)\n    Cybertrain.logger = saved_logger\n  end\n"
+  assert spec.index("Cybertrain.config.set_string_setting").nil?
+  assert spec.index("config.env = ").nil?
+  assert_includes spec, "  with_config(\"staging\", NO_HOSTS, \"\", log) do\n"
+  assert_includes spec, "  assert_equal \"no-referrer\", res.header(\"Referrer-Policy\")\n"
   assert_includes spec, "Cybertrain::Test.run!\n"
 end
 

@@ -859,16 +859,18 @@ module Cybertrain
 
             # Where links in mails start ("https://shop.example.com"): the base_url
             # setting (#{env}, config/app.rb) when set; else the address this
-            # request came to, outside production, or in production when
-            # CYBERTRAIN_HOSTS lists the hosts the app answers to (any other Host
-            # is refused before an action runs). Otherwise "" and an [ERROR] line:
-            # the mail named `mail` is not sent, as a link built from a Host header
+            # request came to, but only where the Host header is known to be
+            # safe: the Host is checked (development, or CYBERTRAIN_HOSTS lists
+            # the hosts the app answers to, so any other Host is refused before
+            # an action runs), or the app runs its tests. In any other
+            # environment (production, staging, ...) "" and an [ERROR] line: the
+            # mail named `mail` is not sent, as a link built from a Host header
             # anyone can forge would carry its token to their site.
             def mail_link_base(mail)
               c = Cybertrain.config
               configured = c.string_setting(:base_url)
               return configured.delete_suffix("/") unless configured.empty?
-              return request.base_url if !c.production? || c.host_check?
+              return request.base_url if c.host_check? || c.test?
 
               Cybertrain.logger.error("\#{mail} mail not sent: set #{env} (or CYBERTRAIN_HOSTS)")
               ""
@@ -1064,6 +1066,8 @@ module Cybertrain
             allow_unauthenticated_access
             # Ten requests per client address every three minutes, as for signing in.
             rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
+            # The link's page carries the token in its address: no Referer for it.
+            before_action :no_referrer, only: [:edit, :update]
 
             # GET /passwords/new
             def new_action
@@ -1079,7 +1083,7 @@ module Cybertrain
               url = edit_password_url_for(token)
               unless url.empty?
                 mail = PasswordsMailer.reset(user.nil? ? User.new(email_address: address) : user, url)
-                mail.deliver_later unless user.nil?
+                queue_reset_mail(mail) unless user.nil?
               end
               flash[:notice] = t(".sent")
               redirect_to new_session_path, status: :see_other
@@ -1126,6 +1130,24 @@ module Cybertrain
 
               path = edit_password_path(token)
               base + path
+            end
+
+            # Queues the mail. An address the mailer refuses (a space or a
+            # non-ASCII byte: Cybertrain::Mailer.check_address) is logged, and
+            # the answer stays the one every other address gets.
+            def queue_reset_mail(mail)
+              mail.deliver_later
+              nil
+            rescue ArgumentError => e
+              Cybertrain.logger.error("password reset mail not sent: #{e.message}")
+              nil
+            end
+
+            # Browsers send no Referer from the link's page, whose address holds
+            # the token.
+            def no_referrer
+              response.set_header("Referrer-Policy", "no-referrer")
+              nil
             end
 
             # A token that is wrong, expired or spent: back to the address form.
@@ -1539,10 +1561,11 @@ module Cybertrain
         env = base_url_env(app)
         <<~RUBY
           # Links in mails (the password reset's) start with this, as in
-          # #{env}=https://#{app}.example.com. Unset, they take the address
-          # the request came to, which production trusts only when
-          # CYBERTRAIN_HOSTS lists the app's hosts; with neither, a reset mail is
-          # not sent and the log says why.
+          # #{env}=https://#{app}.example.com: set it, with https, wherever the
+          # app is served. Unset, they take the address the request came to,
+          # which is trusted only in development, in tests, or when
+          # CYBERTRAIN_HOSTS lists the app's hosts; anywhere else a reset mail
+          # is not sent and the log says why.
           c.setting_string :base_url, env: "#{env}", default: ""
 
         RUBY
@@ -2252,8 +2275,9 @@ module Cybertrain
 
           # Runs the block with the app's mail going to a receiver on 127.0.0.1
           # (Config#smtp_*: plain text, from noreply@example.com), then stops the
-          # receiver and puts the settings back. A mail sent with deliver_later
-          # goes out when the test runs the jobs (perform_enqueued_jobs).
+          # receiver and puts the settings back, also when the block fails (an
+          # assertion raises). A mail sent with deliver_later goes out when the
+          # test runs the jobs (perform_enqueued_jobs).
           def with_smtp_receiver
             receiver = Cybertrain::Test::SmtpReceiver.new
             port = receiver.start
@@ -2262,16 +2286,19 @@ module Cybertrain
             given_port = c.smtp_port
             tls = c.smtp_tls
             from = c.smtp_from
-            c.smtp_host = "127.0.0.1"
-            c.smtp_port = port
-            c.smtp_tls = "none"
-            c.smtp_from = "noreply@example.com"
-            yield receiver
-            receiver.stop
-            c.smtp_host = host
-            c.smtp_port = given_port
-            c.smtp_tls = tls
-            c.smtp_from = from
+            begin
+              c.smtp_host = "127.0.0.1"
+              c.smtp_port = port
+              c.smtp_tls = "none"
+              c.smtp_from = "noreply@example.com"
+              yield receiver
+            ensure
+              receiver.stop
+              c.smtp_host = host
+              c.smtp_port = given_port
+              c.smtp_tls = tls
+              c.smtp_from = from
+            end
             nil
           end
 
@@ -2368,11 +2395,36 @@ module Cybertrain
             client.get("/session/new").body.include?("<span>#{email_address}</span>")
           end
 
+          # Runs the block with Config#env, hosts_from_env and the base_url
+          # setting given (and Cybertrain.logger writing errors to log, unless it
+          # is nil), then puts them back, also when the block fails.
+          def with_config(env, hosts, base_url, log = nil)
+            c = Cybertrain.config
+            saved_env = c.env
+            saved_hosts = c.hosts_from_env
+            saved_base_url = c.string_setting(:base_url)
+            saved_logger = Cybertrain.logger
+            begin
+              c.env = env
+              c.hosts_from_env = hosts
+              c.set_string_setting(:base_url, base_url)
+              Cybertrain.logger = Cybertrain::Logger.new(log, :error) unless log.nil?
+              yield
+            ensure
+              c.env = saved_env
+              c.hosts_from_env = saved_hosts
+              c.set_string_setting(:base_url, saved_base_url)
+              Cybertrain.logger = saved_logger
+            end
+            nil
+          end
+
+          NO_HOSTS = Array.new(0) { "" }
+
           test "reset answers the same for unknown addresses and links to base_url" do
             client = new_client
             AppTest.user
-            Cybertrain.config.set_string_setting(:base_url, "https://shop.example")
-            with_smtp_receiver do |receiver|
+            with_config("test", NO_HOSTS, "https://shop.example") do
               # A forged Host on both: the link takes base_url, never the header.
               known = request_reset(client, "Ann@Example.com", "evil.example")
               known_status = known.status
@@ -2391,6 +2443,8 @@ module Cybertrain
               assert_includes unknown_page, SENT
               # One mail, for the registered address only.
               assert_enqueued_jobs 1, "cybertrain mail"
+            end
+            with_smtp_receiver do |receiver|
               assert_equal 1, perform_enqueued_jobs
               link = last_mail_link(receiver)
               assert link.start_with?("https://shop.example/passwords/"), link
@@ -2404,43 +2458,45 @@ module Cybertrain
               res = client.get("/passwords/#{token}/edit")
               assert_redirected_to res, "/passwords/new"
             end
-            Cybertrain.config.set_string_setting(:base_url, "")
           end
 
           test "without base_url a link takes the request's address only where that is safe" do
             client = new_client
             AppTest.user
-            config = Cybertrain.config
-            config.set_string_setting(:base_url, "")
-            hosts = config.hosts_from_env
-            # Outside production: the address the request came to.
-            with_smtp_receiver do |receiver|
+            # Tests: the address the request came to.
+            with_config("test", NO_HOSTS, "") do
               request_reset(client, "ann@example.com", "www.example.com")
+            end
+            with_smtp_receiver do |receiver|
               assert_equal 1, perform_enqueued_jobs
               link = last_mail_link(receiver)
               assert link.start_with?("http://www.example.com/passwords/"), link
             end
+            # Development checks the Host header: the request's address.
+            with_config("development", NO_HOSTS, "") do
+              assert Cybertrain.config.host_check?
+              assert_redirected_to request_reset(client, "ann@example.com", "localhost:3000"), "/session/new"
+            end
+            with_smtp_receiver do |receiver|
+              assert_equal 1, perform_enqueued_jobs
+              link = last_mail_link(receiver)
+              assert link.start_with?("http://localhost:3000/passwords/"), link
+            end
             # Production with CYBERTRAIN_HOSTS (the Host header is checked): the
             # request's address too.
-            config.env = "production"
-            config.hosts_from_env = ["shop.example"]
-            assert config.host_check?
-            res = request_reset(client, "ann@example.com", "shop.example")
-            config.env = "test"
-            config.hosts_from_env = hosts
-            assert_redirected_to res, "/session/new"
+            with_config("production", ["shop.example"], "") do
+              assert Cybertrain.config.host_check?
+              assert_redirected_to request_reset(client, "ann@example.com", "shop.example"), "/session/new"
+            end
             with_smtp_receiver do |receiver|
               assert_equal 1, perform_enqueued_jobs
               link = last_mail_link(receiver)
               assert link.start_with?("http://shop.example/passwords/"), link
             end
             # Production with base_url: base_url, whatever the Host.
-            config.env = "production"
-            config.set_string_setting(:base_url, "https://shop.example")
-            res = request_reset(client, "ann@example.com", "evil.example")
-            config.env = "test"
-            config.set_string_setting(:base_url, "")
-            assert_redirected_to res, "/session/new"
+            with_config("production", NO_HOSTS, "https://shop.example") do
+              assert_redirected_to request_reset(client, "ann@example.com", "evil.example"), "/session/new"
+            end
             with_smtp_receiver do |receiver|
               assert_equal 1, perform_enqueued_jobs
               link = last_mail_link(receiver)
@@ -2448,17 +2504,61 @@ module Cybertrain
             end
             # Production with neither: no mail, an [ERROR] line, the same answer.
             log = StringIO.new
-            logger = Cybertrain.logger
-            Cybertrain.logger = Cybertrain::Logger.new(log, :error)
-            config.env = "production"
-            refute config.host_check?
-            res = request_reset(client, "ann@example.com", "evil.example")
-            config.env = "test"
-            Cybertrain.logger = logger
-            assert_redirected_to res, "/session/new"
-            assert_includes client.follow_redirect!.body, SENT
+            with_config("production", NO_HOSTS, "", log) do
+              refute Cybertrain.config.host_check?
+              res = request_reset(client, "ann@example.com", "evil.example")
+              assert_redirected_to res, "/session/new"
+              assert_includes client.follow_redirect!.body, SENT
+            end
             assert_no_enqueued_jobs "cybertrain mail"
             assert_includes log.string, "[ERROR] password reset mail not sent: set @BASE_URL_ENV@ (or CYBERTRAIN_HOSTS)\n"
+          end
+
+          test "any other environment without base_url sends no mail and answers the same" do
+            client = new_client
+            AppTest.user
+            log = StringIO.new
+            # A staging server reached with a forged Host: not production, but
+            # nothing checks its Host header either.
+            with_config("staging", NO_HOSTS, "", log) do
+              refute Cybertrain.config.host_check?
+              known = request_reset(client, "ann@example.com", "evil.example")
+              known_status = known.status
+              known_location = known.header("Location")
+              known_body = known.body
+              assert_includes client.follow_redirect!.body, SENT
+              unknown = request_reset(client, "nobody@example.com", "evil.example")
+              assert_equal 303, known_status
+              assert_equal known_status, unknown.status
+              assert_equal "/session/new", known_location
+              assert_equal known_location, unknown.header("Location")
+              assert_equal known_body, unknown.body
+              assert_includes client.follow_redirect!.body, SENT
+            end
+            assert_no_enqueued_jobs "cybertrain mail"
+            assert_includes log.string, "[ERROR] password reset mail not sent: set @BASE_URL_ENV@ (or CYBERTRAIN_HOSTS)\n"
+            assert log.string.index("evil.example").nil?
+          end
+
+          test "an address the mailer refuses gets the same answer, and the log says why" do
+            client = new_client
+            AppTest.user("josé@example.com")
+            log = StringIO.new
+            with_config("test", NO_HOSTS, "https://shop.example", log) do
+              refused = request_reset(client, "josé@example.com")
+              refused_status = refused.status
+              refused_location = refused.header("Location")
+              refused_body = refused.body
+              assert_includes client.follow_redirect!.body, SENT
+              unknown = request_reset(client, "nobody@example.com")
+              assert_equal 303, refused_status
+              assert_equal refused_status, unknown.status
+              assert_equal "/session/new", refused_location
+              assert_equal refused_location, unknown.header("Location")
+              assert_equal refused_body, unknown.body
+            end
+            assert_no_enqueued_jobs "cybertrain mail"
+            assert_includes log.string, "[ERROR] password reset mail not sent: the to address contains a space, a control character or a non-ASCII byte\n"
           end
 
           test "the token expires after 15 minutes" do
@@ -2474,11 +2574,18 @@ module Cybertrain
             assert_equal user.id, found.id
             res = client.get("/passwords/#{stale}/edit")
             assert_redirected_to res, "/passwords/new"
+            assert_equal "no-referrer", res.header("Referrer-Policy")
             assert_includes client.follow_redirect!.body, INVALID
-            assert_redirected_to reset_with(client, stale, NEW_PASSWORD), "/passwords/new"
+            res = reset_with(client, stale, NEW_PASSWORD)
+            assert_redirected_to res, "/passwords/new"
+            assert_equal "no-referrer", res.header("Referrer-Policy")
             assert_equal user.password_digest, User.find_by(id: user.id).password_digest
             res = client.get("/passwords/#{fresh}/edit")
             assert_response res, :ok
+            # The page's address holds the token: no Referer leaves it.
+            assert_equal "no-referrer", res.header("Referrer-Policy")
+            # The address form's page is not the link's.
+            assert_nil client.get("/passwords/new").header("Referrer-Policy")
             assert_includes res.body, "<form action=\"/passwords/#{fresh}\" method=\"post\"><input type=\"hidden\" name=\"_method\" value=\"put\">"
           end
 
@@ -2498,6 +2605,7 @@ module Cybertrain
             # A new password that does not pass: the token still holds.
             res = reset_with(client, token, NEW_PASSWORD, "something-else")
             assert_redirected_to res, "/passwords/#{token}/edit"
+            assert_equal "no-referrer", res.header("Referrer-Policy")
             assert_includes client.follow_redirect!.body, "<p class=\"alert\">Password confirmation doesn&#39;t match Password</p>"
             refute User.find_by_password_reset_token(token).nil?
             assert_redirected_to reset_with(client, token, NEW_PASSWORD), "/session/new"
@@ -2570,10 +2678,11 @@ module Cybertrain
           test "the mail arrives through the SMTP receiver with the dictionary's subject" do
             client = new_client
             AppTest.user
-            Cybertrain.config.set_string_setting(:base_url, "https://shop.example/")
-            with_smtp_receiver do |receiver|
+            with_config("test", NO_HOSTS, "https://shop.example/") do
               request_reset(client, "ann@example.com")
-              assert_enqueued_jobs 1, "cybertrain mail"
+            end
+            assert_enqueued_jobs 1, "cybertrain mail"
+            with_smtp_receiver do |receiver|
               assert_equal 1, perform_enqueued_jobs
               mail = receiver.received_message
               refute mail.nil?
@@ -2590,7 +2699,6 @@ module Cybertrain
               assert_includes parts["html"], "<p>Hello ann@example.com,</p>"
               assert_includes parts["html"], "<p><a href=\"#{link}\">Choose a new password</a></p>"
             end
-            Cybertrain.config.set_string_setting(:base_url, "")
           end
 
           test "POST /passwords past ten requests is refused for a while" do
