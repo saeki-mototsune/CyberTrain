@@ -1,0 +1,15 @@
+== 20260925174942 CreateArticles: migrating
+done
+== 20260925174943 CreateComments: migrating
+done
+== 20261112174320 AddCoverToArticles: migrating
+done
+ok   a PNG upload is stored on disk and served back with safe headers
+ok   HTML and SVG bytes are refused even when named .png and declared image/png
+ok   a file over the model's limit is a 422 with a message
+ok   the client's filename is a display name: it never reaches the disk path
+ok   replacing the file deletes the old blob; destroying the record deletes the current one
+ok   a record whose blob is gone answers 404
+ok   a multipart POST without the CSRF token is refused
+ok   an update without a file keeps the stored one
+8 tests, 44 assertions, 0 failures

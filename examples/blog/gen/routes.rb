@@ -4,6 +4,7 @@ require "cybertrain/generator/url_support"
 module Gen
   module Routes
     def self.build(router)
+      router.add("GET", "/articles/:id/cover", "article_cover") { |ctx| ArticlesController.new(ctx).process(:cover) { |c| c.cover } }
       router.add("GET", "/", "root") { |ctx| ArticlesController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/articles/:article_id/comments", "article_comments") { |ctx| CommentsController.new(ctx).process(:create) { |c| c.create } }
       router.add("DELETE", "/articles/:article_id/comments/:id", "article_comment") { |ctx| CommentsController.new(ctx).process(:destroy) { |c| c.destroy } }
@@ -31,6 +32,8 @@ module Gen
     # The helper named by a String, for templates: path_for("admin_login_path", [], { "page" => 2 }).
     def self.path_for(name, args, options = {})
       case name
+      when "article_cover_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/cover", options)
+      when "article_cover_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/cover", options)
       when "root_path" then Cybertrain::Gen.with_options("/", options)
       when "root_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/", options)
       when "article_comments_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/comments", options)
@@ -62,6 +65,14 @@ module Gen
   end
 
   module UrlHelpers
+    def article_cover_path(article, options = {})
+      Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(article)}/cover", options)
+    end
+
+    def article_cover_url(article, options = {})
+      Cybertrain.url_root + article_cover_path(article, options)
+    end
+
     def root_path(options = {})
       Cybertrain::Gen.with_options("/", options)
     end

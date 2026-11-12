@@ -7,9 +7,9 @@ class ArticleRelation < Cybertrain::Relation
 
   def column_type(name)
     case name
-    when "id" then :integer
+    when "id", "cover_byte_size" then :integer
     when "created_at", "updated_at" then :datetime
-    when "title" then :string
+    when "title", "cover_key", "cover_filename", "cover_content_type", "cover_checksum" then :string
     when "body" then :text
     else :unknown
     end
@@ -219,10 +219,10 @@ end
 
 class Article < Cybertrain::Model
   def self.table_name = "articles"
-  def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
+  def self.column_names = ["id", "title", "body", "created_at", "updated_at", "cover_key", "cover_filename", "cover_content_type", "cover_byte_size", "cover_checksum"]
   def model_name = "Article"
 
-  attr_accessor :title, :body, :created_at, :updated_at
+  attr_accessor :title, :body, :created_at, :updated_at, :cover_key, :cover_filename, :cover_content_type, :cover_byte_size, :cover_checksum
 
   def initialize(attrs = {})
     super()
@@ -230,6 +230,11 @@ class Article < Cybertrain::Model
     @body = nil
     @created_at = nil
     @updated_at = nil
+    @cover_key = ""
+    @cover_filename = ""
+    @cover_content_type = ""
+    @cover_byte_size = 0
+    @cover_checksum = ""
     @comments_preloaded = nil
     assign_attributes(attrs) unless attrs.empty?
   end
@@ -246,6 +251,11 @@ class Article < Cybertrain::Model
     @body = Cybertrain::Cast.str_or_nil(row["body"])
     @created_at = Cybertrain::Cast.time_or_nil(row["created_at"])
     @updated_at = Cybertrain::Cast.time_or_nil(row["updated_at"])
+    @cover_key = Cybertrain::Cast.str(row["cover_key"])
+    @cover_filename = Cybertrain::Cast.str(row["cover_filename"])
+    @cover_content_type = Cybertrain::Cast.str(row["cover_content_type"])
+    @cover_byte_size = Cybertrain::Cast.int(row["cover_byte_size"])
+    @cover_checksum = Cybertrain::Cast.str(row["cover_checksum"])
     mark_persisted!
     nil
   end
@@ -257,6 +267,11 @@ class Article < Cybertrain::Model
     when :body then @body
     when :created_at then @created_at
     when :updated_at then @updated_at
+    when :cover_key then @cover_key
+    when :cover_filename then @cover_filename
+    when :cover_content_type then @cover_content_type
+    when :cover_byte_size then @cover_byte_size
+    when :cover_checksum then @cover_checksum
     else nil
     end
   end
@@ -267,6 +282,11 @@ class Article < Cybertrain::Model
     when :body then @body = Cybertrain::Cast.str_or_nil(value)
     when :created_at then @created_at = Cybertrain::Cast.time_or_nil(value)
     when :updated_at then @updated_at = Cybertrain::Cast.time_or_nil(value)
+    when :cover_key then @cover_key = Cybertrain::Cast.str(value)
+    when :cover_filename then @cover_filename = Cybertrain::Cast.str(value)
+    when :cover_content_type then @cover_content_type = Cybertrain::Cast.str(value)
+    when :cover_byte_size then @cover_byte_size = Cybertrain::Cast.int(value)
+    when :cover_checksum then @cover_checksum = Cybertrain::Cast.str(value)
     end
     nil
   end
@@ -281,7 +301,12 @@ class Article < Cybertrain::Model
       "title" => Cybertrain::Cast.to_sql(@title),
       "body" => Cybertrain::Cast.to_sql(@body),
       "created_at" => Cybertrain::Cast.to_sql(@created_at),
-      "updated_at" => Cybertrain::Cast.to_sql(@updated_at)
+      "updated_at" => Cybertrain::Cast.to_sql(@updated_at),
+      "cover_key" => Cybertrain::Cast.to_sql(@cover_key),
+      "cover_filename" => Cybertrain::Cast.to_sql(@cover_filename),
+      "cover_content_type" => Cybertrain::Cast.to_sql(@cover_content_type),
+      "cover_byte_size" => Cybertrain::Cast.to_sql(@cover_byte_size),
+      "cover_checksum" => Cybertrain::Cast.to_sql(@cover_checksum)
     }
   end
 
@@ -362,7 +387,12 @@ class Article < Cybertrain::Model
     "title" => :string,
     "body" => :text,
     "created_at" => :datetime,
-    "updated_at" => :datetime
+    "updated_at" => :datetime,
+    "cover_key" => :string,
+    "cover_filename" => :string,
+    "cover_content_type" => :string,
+    "cover_byte_size" => :integer,
+    "cover_checksum" => :string
   }
   DECIMAL_SCALES = Cybertrain::Model.no_decimal_scales
   ENCRYPTED_COLUMNS = Cybertrain::Model.no_encrypted_columns
@@ -416,12 +446,25 @@ class Article < Cybertrain::Model
     end
   end
 
-  def call_view_method(name) = nil
+  def call_view_method(name)
+    case name
+    when :cover_attached? then self.cover_attached?
+    when :cover_url then self.cover_url
+    when :validate_cover_upload then self.validate_cover_upload
+    when :store_cover_upload then self.store_cover_upload
+    when :delete_replaced_cover then self.delete_replaced_cover
+    when :purge_cover then self.purge_cover
+    when :cover_pending_upload then self.cover_pending_upload
+    when :public_json then self.public_json
+    else nil
+    end
+  end
 
   def attribute_or_method?(name)
     case name
-    when :id, :title, :body, :created_at, :updated_at then true
+    when :id, :title, :body, :created_at, :updated_at, :cover_key, :cover_filename, :cover_content_type, :cover_byte_size, :cover_checksum then true
     when :comments then true
+    when :cover_attached?, :cover_url, :validate_cover_upload, :store_cover_upload, :delete_replaced_cover, :purge_cover, :cover_pending_upload, :public_json then true
     else false
     end
   end

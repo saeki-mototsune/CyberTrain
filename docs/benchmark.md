@@ -2,7 +2,9 @@
 
 [examples/blog](../examples/blog) is the Rails Guides' "Getting Started"
 blog built on CyberTrain. [bench/rails_blog](../bench/rails_blog) is the same
-blog written in Rails 8.1. [bench/run](../bench/run) builds both, runs each in
+blog written in Rails 8.1, as examples/blog was when the results below were
+recorded; examples/blog has grown since ([The apps today](#the-apps-today)).
+[bench/run](../bench/run) builds both, runs each in
 production mode on the same machine and loads them with the same requests;
 [bench/report](../bench/report) turns its JSON into the tables below. The
 recorded run is [bench/results/2026-11-05.json](../bench/results/2026-11-05.json)
@@ -174,18 +176,21 @@ commented out, with that note.
 
 ## What is compared
 
-The two apps are the same application:
+The results on this page were recorded when the two apps were the same
+application, and this section describes them as they were then (the last run
+is of 2026-11-05). examples/blog has grown since: [The apps today](#the-apps-today)
+lists what a run made now would be comparing.
 
-- **Same pages.** `bench/rails_blog/app/views/` is a copy of examples/blog's
-  views (the two trees are byte-identical), with the same layout and
-  `public/style.css`. The HTML both apps send for an article page differs only
+- **Same pages.** `bench/rails_blog/app/views/` was a copy of examples/blog's
+  views (the two trees were byte-identical), with the same layout and
+  `public/style.css`. The HTML both apps sent for an article page differed only
   in markup details: the tokens themselves, where `button_to` puts its hidden
   token field, `/>` against `>`, and two attributes Rails adds to forms
   (`accept-charset`, `data-disable-with`).
-- **Same code.** The routes, the two controllers and the two models are
+- **Same code.** The routes, the two controllers and the two models were
   examples/blog's, in Rails' spelling (`def new`, a nested `resources` block,
   `has_many`/`belongs_to`); the validations, flash messages, redirects and
-  `rescue_from` are the same. `db/schema.rb` is the same schema.
+  `rescue_from` were the same. `db/schema.rb` was the same schema.
 - **Same storage.** One SQLite file in WAL mode, foreign keys on. CyberTrain
   links the system's SQLite (3.45.1 here); the sqlite3 gem brings its own
   (3.53.2).
@@ -204,7 +209,48 @@ separate CSRF token for each form (`per_form_csrf_tokens`) and computes an
 CyberTrain signs its session cookie (HMAC-SHA256) without encrypting it and
 puts one CSRF token per session in every form.
 
+### The apps today
+
+Since the run of 2026-11-05 examples/blog has taken on the features the
+framework gained, and `bench/rails_blog` has not followed, the cover image
+aside. On the measured requests examples/blog now does work the Rails app
+does not, so a run made now would not compare like with like:
+
+- **The article list** preloads each article's comments for a count column,
+  reads the number of articles from the cache table, renders a date and order
+  filter, and answers JSON as well.
+- **The article page** renders each comment as a component through an
+  application helper, subscribes to the article's Turbo Stream (a signed
+  stream name per page), dates the article with `time_tag`, checks for an
+  admin (an HMAC comparison) and loads Turbo through an import map; every
+  response carries a Content Security Policy with a fresh nonce.
+- **Posting a comment** also enqueues a job and broadcasts the comment (two
+  more inserts and a component rendered) before it redirects.
+- **The models.** `Article` validates the title's uniqueness, a query on every
+  save, and destroys an article's comments one by one (`dependent: :destroy`);
+  the Rails app has neither (`dependent: :delete_all`).
+- **The stylesheet.** examples/blog serves a digested
+  `/assets/application-<digest>.css` and has no `public/style.css` any more.
+  `bench/run` still requests `GET /style.css` from both apps: examples/blog
+  answers 404, and `bench/run` stops on a response that is not 2xx or 3xx.
+- **A cover image in both, since 2026-11-12.** examples/blog attaches an
+  article's picture with the code `cybertrain generate attachment` writes;
+  `bench/rails_blog` with Active Storage (`has_one_attached :cover`), which
+  loads Active Storage and Active Job into the Rails app. The benchmark
+  requests no cover and seeds none, but Rails' startup and memory figures
+  would include those two frameworks.
+
+Only in examples/blog, and on no measured request: the admin namespace, the
+jobs page and the scheduled task.
+
+So `bench/run` cannot be run as it stands, and its figures would not mean
+what the ones below mean. Before the next run, `bench/rails_blog` has to be
+brought up to examples/blog (or the comparison narrowed to what both have),
+and the static request pointed at a file both apps serve.
+
 ## Method
+
+How the results below were measured.
 
 - **Machine.** One cloud VM (details under Results). Each server is pinned
   with `taskset` to CPU 0 (the 1-CPU runs) or CPUs 0-1 (the 2-CPU runs); wrk
@@ -420,7 +466,9 @@ Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 C
 
 ## Running it
 
-On Linux with at least 4 CPUs, from a checkout:
+As the two apps stand, the run stops at the static request and would not
+compare like with like: see [The apps today](#the-apps-today). Once they are
+in step again, on Linux with at least 4 CPUs, from a checkout:
 
 ```sh
 cybertrain setup                 # Spinel, for examples/blog
