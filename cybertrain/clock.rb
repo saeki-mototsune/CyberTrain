@@ -12,6 +12,16 @@ module Cybertrain
   # `Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)`, never
   # through `Time.now`, so that a test program's override of `Time.now`
   # (cybertrain/test/time_now.rb) cannot recurse.
+  #
+  # Threads: the state is process-wide, so a job or server thread sees a
+  # test's travel. Two ivars cannot change at once, and nothing locks them;
+  # the order of the writes is the whole guarantee that a reader never pairs
+  # `@travelling == true` with an instant that was not travelled to (such
+  # as 0, 1970). `@micros` is only ever written with a travelled instant,
+  # and before `@travelling` becomes true; going back to real time clears
+  # `@travelling` alone and leaves `@micros` as it was; {now} reads the
+  # flag before the instant. So a reader that saw the flag set reads the
+  # instant of this travel or of the one being restored, never 0.
   # @api public
   module Clock
     @travelling = false
@@ -21,6 +31,7 @@ module Cybertrain
     # @return [Time]
     # @api public
     def self.now
+      # The flag first, then the instant (the module's comment).
       us = @travelling ? @micros : Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)
       Time.at(us / 1_000_000, us % 1_000_000).utc
     end
@@ -49,6 +60,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.travel_to(time)
+      # The instant first, then the flag (the module's comment).
       @micros = time.to_i * 1_000_000
       @travelling = true
       nil
@@ -57,12 +69,15 @@ module Cybertrain
     # {travel_to} for the duration of the block: the state found before
     # (real time, or the instant of an outer travel) comes back when the
     # block ends, also when it raises. What the block forms of the test
-    # helpers call. Spikes/NOTES.md rule 103: a module function that saves,
-    # yields into a local (rule 90) and restores in `ensure` nests safely.
+    # helpers call; not for applications. Spikes/NOTES.md rule 103: a
+    # module function that saves, yields into a local (rule 90) and
+    # restores in `ensure` nests safely. The writes keep the order the
+    # module's comment gives: the instant before the flag; when restoring
+    # real time, the flag alone.
     # @param time [Time]
     # @yield the code that runs at `time`
     # @return [nil]
-    # @api public
+    # @api private
     def self.travel_during(time)
       saved_micros = @micros
       saved_travelling = @travelling
@@ -71,15 +86,16 @@ module Cybertrain
       _value = yield
       nil
     ensure
-      @micros = saved_micros
+      @micros = saved_micros if saved_travelling
       @travelling = saved_travelling
     end
 
-    # Back to real time.
+    # Back to real time. Clears the flag only: `@micros` keeps the last
+    # travelled instant, so a thread reading the clock meanwhile never sees
+    # the flag set beside a cleared instant (see the module's comment).
     # @return [nil]
     # @api public
     def self.travel_back
-      @micros = 0
       @travelling = false
       nil
     end

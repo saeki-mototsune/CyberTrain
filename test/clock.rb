@@ -7,8 +7,14 @@ require "cybertrain/test"
 # is required (test/time_travel.rb).
 
 test "Clock.now is real time until travel_to, then frozen without sub-seconds" do
-  gap = (Cybertrain::Clock.now.to_f - Process.clock_gettime(Process::CLOCK_REALTIME)).abs
-  assert gap < 0.01
+  # Real: between two readings of CLOCK_REALTIME taken around it (a
+  # millisecond's slack for the microsecond truncation), with no bound on
+  # how long a loaded machine takes between them; a frozen clock fails.
+  before = Process.clock_gettime(Process::CLOCK_REALTIME)
+  now = Cybertrain::Clock.now.to_f
+  after = Process.clock_gettime(Process::CLOCK_REALTIME)
+  assert before - 0.001 <= now, "Clock.now #{now} before the reading taken first, #{before}"
+  assert now <= after + 0.001, "Clock.now #{now} after the reading taken last, #{after}"
   Cybertrain::Clock.travel_to(Time.utc(2026, 11, 11, 12, 0, 0.75))
   assert_equal Time.utc(2026, 11, 11, 12, 0, 0), Time.current
   assert_equal 0, Time.current.usec
@@ -47,6 +53,53 @@ end
 
 test "Date.current follows the clock" do
   travel_to(Time.utc(2026, 2, 28, 23, 59, 59)) { assert_equal Date.new(2026, 2, 28), Date.current }
+  travel_to(Time.utc(2026, 3, 1, 0, 0, 0)) { assert_equal Date.new(2026, 3, 1), Date.current }
+end
+
+test "travel_back inside a block lasts to the end of that block" do
+  travel_to Time.utc(2026, 1, 1) do
+    travel_to Time.utc(2030, 1, 1) do
+      travel_back
+      refute Cybertrain::Clock.travelling?
+    end
+    assert_equal Time.utc(2026, 1, 1), Time.current
+    travel_back
+    refute Cybertrain::Clock.travelling?
+  end
+  refute Cybertrain::Clock.travelling?
+end
+
+test "freeze_time with a block holds the clock and restores what it found" do
+  freeze_time do
+    assert Cybertrain::Clock.travelling?
+    assert_equal 0, Time.current.usec
+  end
+  refute Cybertrain::Clock.travelling?
+  travel_to Time.utc(2026, 1, 1, 8) do
+    freeze_time do
+      assert_equal Time.utc(2026, 1, 1, 8), Time.current
+      travel 5
+      assert_equal Time.utc(2026, 1, 1, 8, 0, 5), Time.current
+    end
+    assert_equal Time.utc(2026, 1, 1, 8), Time.current
+  end
+end
+
+test "a raise out of a travel without a block leaves the next test on real time" do
+  # Test.run! cannot report a failing case inside a passing program, so the
+  # case raises and rescues itself: the travel outlives the raise, and the
+  # runner's travel_back after the case is what clears it (next case).
+  begin
+    travel_to Time.utc(2026, 1, 1)
+    raise "mid-travel"
+  rescue RuntimeError => e
+    assert_equal "mid-travel", e.message
+  end
+  assert_equal Time.utc(2026, 1, 1), Time.current
+end
+
+test "the clock is real after the case that raised mid-travel" do
+  refute Cybertrain::Clock.travelling?
 end
 
 Cybertrain::Test.run!

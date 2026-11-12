@@ -14,8 +14,10 @@ test "Time.now follows a travel when the override is loaded" do
 end
 
 test "Time.now is real time outside a travel" do
-  gap = (Time.now.to_f - Process.clock_gettime(Process::CLOCK_REALTIME)).abs
-  assert gap < 0.01
+  before = Process.clock_gettime(Process::CLOCK_REALTIME)
+  now = Time.now.to_f
+  after = Process.clock_gettime(Process::CLOCK_REALTIME)
+  assert before - 0.001 <= now && now <= after + 0.001, "Time.now #{now} outside #{before}..#{after}"
 end
 
 test "a framework time read through Time.now follows the travel" do

@@ -4,4 +4,8 @@ ok   nested travel_to restores the outer instant after a raise
 ok   a travel without a block lasts to the end of its test
 ok   the clock is real again in the next test
 ok   Date.current follows the clock
-6 tests, 14 assertions, 0 failures
+ok   travel_back inside a block lasts to the end of that block
+ok   freeze_time with a block holds the clock and restores what it found
+ok   a raise out of a travel without a block leaves the next test on real time
+ok   the clock is real after the case that raised mid-travel
+10 tests, 29 assertions, 0 failures
