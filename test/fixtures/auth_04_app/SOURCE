@@ -15,8 +15,10 @@ Tag: v0.4.1 (commit d8a9825). Produced once, on 2026-11-12, with:
 
 `new` then tried to bootstrap (spin lock, spin run gen) against ../..,
 which holds no framework from $TMP, and stopped there: gen/ has only its
-.keep, as `new` wrote it, and that is what is kept. Every file is as
-written, except:
+.keep, as `new` wrote it, and that is what is kept. A real 0.4
+application commits a populated gen/; the upgrade never reads it and
+`build` writes it again, but a stale gen/ file that today's gen no
+longer writes is left untested here. Every file is as written, except:
 
   * build/ (the empty build directory of the failed bootstrap) is left out;
   * tmp/.keep is left out (the repository's .gitignore ignores tmp/);

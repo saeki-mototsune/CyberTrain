@@ -182,7 +182,10 @@ test "it prints a diff for each changed file and leaves them alone" do
   output.each_line { |line| headings << line.split(":")[0].to_s.delete_prefix("manual  ") if line.start_with?("manual  ") && line.include?(": apply") }
   assert_equal CHANGED + ["app/controllers/application_controller.rb", "config/routes.rb"], headings
   assert_equal headings, UPGRADE.manual.map { |entry| entry.lines[0].split(":")[0].to_s.delete_prefix("manual  ") }
-  assert output.end_with?("next: apply the diffs above, or re-run with --force for files you never edited\n")
+  # The closing lines: what to do, and that the app may not build before
+  # (D19 leaves the existing files as they are; review M1).
+  assert output.end_with?("\nnext: apply the diffs above, or re-run with --force for files you never edited\n" \
+                          "  # the app may not build until these diffs are applied: the files written now need them\n")
   # The whole output, given to patch -p1, makes the 0.4 application the one
   # today's generator writes.
   assert patch_in("printed", output)
@@ -299,11 +302,14 @@ test "--confirmable over a 0.4 application adds all seven columns and confirms t
       end
     end
   RUBY
-  # Until the sessions and registrations diffs are applied, an unconfirmed
-  # account signs in: their headings say so first.
-  ["app/controllers/sessions_controller.rb", "app/controllers/registrations_controller.rb"].each do |f|
+  # Until the sessions and registrations diffs are applied, they do not
+  # ask for a confirmation (the concern still refuses the session): their
+  # headings say so first.
+  [["app/controllers/sessions_controller.rb", "until this diff is applied, an unconfirmed account's right password is refused without its message (the concern refuses it)"],
+   ["app/controllers/registrations_controller.rb", "until this diff is applied, a sign-up is mailed no confirmation link (the concern signs it in no more)"]].each do |pair|
+    f = pair[0]
     assert manual_for(result, f).start_with?("manual  #{f}: apply this diff by hand, or re-run with --force to overwrite the file\n" \
-                                             "IMPORTANT: until this diff is applied, an account that has not confirmed its address can sign in\n--- a/#{f}\n")
+                                             "IMPORTANT: #{pair[1]}\n--- a/#{f}\n")
   end
   assert_includes manual_for(result, "app/controllers/sessions_controller.rb"), "user.confirmed?"
   assert_includes read("confirm04/config/routes.rb"), "resources :confirmations, param: :token, only: [:new, :create, :show]\n"
@@ -347,6 +353,109 @@ test "the add-columns migration is decided per missing column (F19)" do
   # db/schema.rb counts as well as the migrations.
   assert_equal true, Cybertrain::CLI::Authentication.declares_column?("Cybertrain::Schema.define(version: \"1\") do |s|\n  s.create_table \"users\" do |t|\n    t.datetime \"locked_until\"\n  end\nend\n", "users", "locked_until")
   assert_equal false, Cybertrain::CLI::Authentication.declares_column?("  s.create_table \"sessions\" do |t|\n    t.datetime \"locked_until\"\n  end\n", "users", "locked_until")
+end
+
+test "declares_column? names a column only where it ends (review M3)" do
+  auth = Cybertrain::CLI::Authentication
+  # The reviewer's five: each names another column, another table, or a
+  # comment.
+  assert_equal false, auth.declares_column?("    add_column :users, :admin_notes, :string\n", "users", "admin")
+  assert_equal false, auth.declares_column?("    add_column :sessions, :remember_token, :string\n", "sessions", "remember")
+  assert_equal false, auth.declares_column?("    create_table :users_archive do |t|\n      t.boolean :admin\n    end\n", "users", "admin")
+  assert_equal false, auth.declares_column?("    create_table \"users\" do |t|\n      # t.datetime \"confirmed_at\"\n    end\n", "users", "confirmed_at")
+  assert_equal false, auth.declares_column?("    create_table \"users\" do |t|\n      t.string \"email\", comment: \"admin\"\n    end\n", "users", "admin")
+  # A commented add_column is not one either.
+  assert_equal false, auth.declares_column?("    # add_column \"users\", \"admin\", :boolean\n", "users", "admin")
+  # What does name it: strings or symbols, in create_table, the schema
+  # dump or add_column, with options after it or none.
+  assert_equal true, auth.declares_column?("    create_table \"users\" do |t|\n      t.boolean \"admin\", null: false\n    end\n", "users", "admin")
+  assert_equal true, auth.declares_column?("    create_table :users do |t|\n      t.boolean :admin\n    end\n", "users", "admin")
+  assert_equal true, auth.declares_column?("  s.create_table \"users\" do |t|\n    t.datetime \"locked_until\"\n  end\n", "users", "locked_until")
+  assert_equal true, auth.declares_column?("    add_column :users, :admin, :boolean\n", "users", "admin")
+  assert_equal true, auth.declares_column?("    add_column \"sessions\", \"remember\", :boolean, null: false, default: \"false\"\n", "sessions", "remember")
+  assert_equal true, auth.declares_column?("    add_column \"users\", :admin\n", "users", "admin")
+  assert_equal true, auth.declares_column?("    add_column :users, \"admin\", :boolean\n", "users", "admin")
+end
+
+test "a block that is there twice, or has lost its end line, is left alone (review M2, M6)" do
+  block = Cybertrain::CLI::Authentication.indent(Cybertrain::CLI::Authentication::LEGACY_APPLICATION_CONTROLLER_BLOCKS[0])
+  copy_fixture("twice")
+  path = "twice/app/controllers/application_controller.rb"
+  twice = read(path).sub(block, "#{block}#{block}")
+  File.write(path, twice)
+  result = Cybertrain::CLI::Authentication.generate_with_result("twice", false, false, true)
+  assert_equal twice, read(path)
+  refute result.forced.include?("app/controllers/application_controller.rb")
+  assert_equal "", manual_for(result, "app/controllers/application_controller.rb")
+  copy_fixture("endless")
+  path = "endless/app/controllers/application_controller.rb"
+  endless = read(path).sub(Cybertrain::CLI::Authentication::LEGACY_BLOCK_END, "")
+  refute endless == read(path)
+  File.write(path, endless)
+  result = Cybertrain::CLI::Authentication.generate_with_result("endless", false, false, true)
+  assert_equal endless, read(path)
+  refute result.forced.include?("app/controllers/application_controller.rb")
+  assert_equal "", manual_for(result, "app/controllers/application_controller.rb")
+  # Through the command line, each says why.
+  copy_fixture("twice_cli")
+  File.write("twice_cli/app/controllers/application_controller.rb", twice)
+  assert_includes run_cli("twice_cli", "--force"), "skip app/controllers/application_controller.rb (0.4's authentication block is there more than once): " \
+                                                   "replace each with one `include Authentication` (app/controllers/concerns/authentication.rb)\n"
+  copy_fixture("endless_cli")
+  File.write("endless_cli/app/controllers/application_controller.rb", endless)
+  assert_includes run_cli("endless_cli", "--force"), "skip app/controllers/application_controller.rb (0.4's authentication block has no end line): " \
+                                                     "replace that code with `include Authentication` (app/controllers/concerns/authentication.rb)\n"
+end
+
+test "the jobs page's line goes inside the draw block, or a skip line says why not (review M4)" do
+  auth = Cybertrain::CLI::Authentication
+  line = auth::JOBS_PAGE_LINE
+  # The draw block's own end, at the draw line's indentation: not a later
+  # top-level end, and inside a module too.
+  assert_equal ["Cybertrain::Routes.draw do\n  get \"/\", to: \"home#index\"\n  #{line}\nend\n\nmodule Later\nend\n", ""],
+               auth.jobs_page_plan("Cybertrain::Routes.draw do\n  get \"/\", to: \"home#index\"\nend\n\nmodule Later\nend\n", true)
+  assert_equal ["module App\n  Cybertrain::Routes.draw do\n    #{line}\n  end\nend\n", ""],
+               auth.jobs_page_plan("module App\n  Cybertrain::Routes.draw do\n  end\nend\n", true)
+  # A last end with no newline after it.
+  assert_equal ["Cybertrain::Routes.draw do\n  #{line}\nend", ""], auth.jobs_page_plan("Cybertrain::Routes.draw do\nend", true)
+  # The reasons.
+  assert_equal ["", "drawn"], auth.jobs_page_plan("Cybertrain::Routes.draw do\n  #{line}\nend\n", true)
+  assert_equal ["", "it has a jobs_page line of its own"], auth.jobs_page_plan("Cybertrain::Routes.draw do\n  # jobs_page \"/jobs\"\nend\n", true)
+  assert_equal ["", "no `end` of the Cybertrain::Routes.draw block at its indentation"],
+               auth.jobs_page_plan("Cybertrain::Routes.draw do\n  get \"/\", to: \"home#index\" end\n", true)
+  assert_equal ["", "no `# jobs_page \"/admin/jobs\", before_action: :require_admin` comment to draw"],
+               auth.jobs_page_plan("Cybertrain::Routes.draw do\nend\n", false)
+  # Through generate: a 0.4 app whose routes mention jobs_page already, one
+  # whose draw block has no end of its own line, and a re-run after only
+  # the application_controller diff was applied (no comment to draw).
+  skip = ": to show the jobs page to admins, add `#{line}` inside Cybertrain::Routes.draw\n"
+  copy_fixture("mentioned")
+  File.write("mentioned/config/routes.rb", "#{read("mentioned/config/routes.rb").delete_suffix("end\n")}  # jobs_page later\nend\n")
+  assert_includes run_cli("mentioned", ""), "skip config/routes.rb (it has a jobs_page line of its own)#{skip}"
+  copy_fixture("shapeless")
+  File.write("shapeless/config/routes.rb", "#{read("shapeless/config/routes.rb").delete_suffix("end\n")}  end\n")
+  assert_includes run_cli("shapeless", ""), "skip config/routes.rb (no `end` of the Cybertrain::Routes.draw block at its indentation)#{skip}"
+  copy_fixture("half")
+  run_cli("half", "")
+  diff = manual_for(Cybertrain::CLI::Authentication.generate_with_result(copy_fixture("half_probe")), "app/controllers/application_controller.rb")
+  assert patch_in("half", diff)
+  output = run_cli("half", "")
+  assert_includes output, "skip config/routes.rb (no `# jobs_page \"/admin/jobs\", before_action: :require_admin` comment to draw)#{skip}"
+end
+
+test "--confirmable's warnings come again at the end, with what the diffs are for (review M1, M6)" do
+  copy_fixture("confirm_cli")
+  output = run_cli("confirm_cli", "--confirmable")
+  assert output.end_with?("IMPORTANT: app/controllers/sessions_controller.rb: until this diff is applied, an unconfirmed account's right password is refused without its message (the concern refuses it)\n" \
+                          "IMPORTANT: app/controllers/registrations_controller.rb: until this diff is applied, a sign-up is mailed no confirmation link (the concern signs it in no more)\n" \
+                          "\n" \
+                          "next: apply the diffs above, or re-run with --force for files you never edited\n" \
+                          "  # the app may not build until these diffs are applied: the files written now need them\n")
+  # With nothing to apply by hand, neither is said.
+  copy_fixture("confirm_forced")
+  forced = run_cli("confirm_forced", "--confirmable --force")
+  assert forced.index("IMPORTANT:").nil?
+  assert forced.index("may not build").nil?
 end
 
 test "LineDiff.unified writes diff -u's hunks" do

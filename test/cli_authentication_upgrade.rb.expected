@@ -125,6 +125,7 @@ identical test/passwords.rb
 identical test/accounts.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
 identical bin/shop.rb (user command already required)
 identical config/app.rb (base_url already declared)
@@ -335,6 +336,7 @@ manual  test/accounts.rb (diff below)
 create test/confirmations.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resources :confirmations, delete /account/pending_email
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
 identical bin/plain.rb (user command already required)
 identical config/app.rb (base_url already declared)
@@ -371,6 +373,7 @@ manual  test/accounts.rb (diff below)
 identical test/confirmations.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resources :confirmations, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
 identical bin/plain.rb (user command already required)
 identical config/app.rb (base_url already declared)
@@ -408,6 +411,109 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 ok   the add-columns migration is decided per missing column (F19)
+ok   declares_column? names a column only where it ends (review M3)
+exist db/migrate/20260925120000_create_users.rb
+exist db/migrate/20260925120001_create_sessions.rb
+create db/migrate/20260925120002_add_authentication_columns.rb
+force  app/models/user.rb
+force  app/models/session.rb
+create app/controllers/concerns/authentication.rb
+force  app/controllers/sessions_controller.rb
+force  app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+force  app/views/sessions/new.html.erb
+force  app/views/sessions/_nav.html.erb
+force  app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+force  test/support/app_test.rb
+create test/support/authentication_helpers.rb
+force  test/authentication.rb
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+create test/accounts.rb
+skip app/controllers/application_controller.rb (0.4's authentication block is there more than once): replace each with one `include Authentication` (app/controllers/concerns/authentication.rb)
+route resources :passwords, resource :account
+manual  config/routes.rb (diff below)
+identical app/views/layouts/application.html.erb (nav already rendered)
+insert bin/shop.rb (./shop user)
+insert config/app.rb (SHOP_BASE_URL)
+exist db/migrate/20260925120000_create_users.rb
+exist db/migrate/20260925120001_create_sessions.rb
+create db/migrate/20260925120002_add_authentication_columns.rb
+force  app/models/user.rb
+force  app/models/session.rb
+create app/controllers/concerns/authentication.rb
+force  app/controllers/sessions_controller.rb
+force  app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+force  app/views/sessions/new.html.erb
+force  app/views/sessions/_nav.html.erb
+force  app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+force  test/support/app_test.rb
+create test/support/authentication_helpers.rb
+force  test/authentication.rb
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+create test/accounts.rb
+skip app/controllers/application_controller.rb (0.4's authentication block has no end line): replace that code with `include Authentication` (app/controllers/concerns/authentication.rb)
+route resources :passwords, resource :account
+manual  config/routes.rb (diff below)
+identical app/views/layouts/application.html.erb (nav already rendered)
+insert bin/shop.rb (./shop user)
+insert config/app.rb (SHOP_BASE_URL)
+ok   a block that is there twice, or has lost its end line, is left alone (review M2, M6)
+exist db/migrate/20260925120000_create_users.rb
+exist db/migrate/20260925120001_create_sessions.rb
+create db/migrate/20260925120002_add_authentication_columns.rb
+manual  app/models/user.rb (diff below)
+manual  app/models/session.rb (diff below)
+create app/controllers/concerns/authentication.rb
+manual  app/controllers/sessions_controller.rb (diff below)
+manual  app/controllers/registrations_controller.rb (diff below)
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+manual  app/views/sessions/new.html.erb (diff below)
+manual  app/views/sessions/_nav.html.erb (diff below)
+manual  app/views/registrations/new.html.erb (diff below)
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+manual  test/support/app_test.rb (diff below)
+create test/support/authentication_helpers.rb
+manual  test/authentication.rb (diff below)
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+create test/accounts.rb
+manual  app/controllers/application_controller.rb (diff below)
+route resources :passwords, resource :account
+manual  config/routes.rb (diff below)
+identical app/views/layouts/application.html.erb (nav already rendered)
+insert bin/shop.rb (./shop user)
+insert config/app.rb (SHOP_BASE_URL)
+ok   the jobs page's line goes inside the draw block, or a skip line says why not (review M4)
+ok   --confirmable's warnings come again at the end, with what the diffs are for (review M1, M6)
 ok   LineDiff.unified writes diff -u's hunks
 ok   LineDiff.unified output applies with patch -p1
-10 tests, 169 assertions, 0 failures
+14 tests, 205 assertions, 0 failures

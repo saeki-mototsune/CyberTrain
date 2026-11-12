@@ -349,18 +349,20 @@ module Cybertrain
         record_migration(result, root, migration_path(root, "sessions"), sessions_migration)
         add_columns = add_columns_migration(root, confirmable)
         record_migration(result, root, add_columns_path(root), add_columns) unless add_columns.empty?
-        # Until these two are changed, an account that has not confirmed
-        # its address signs in (or is signed in by sign-up): their diffs
-        # say so first.
-        unconfirmed = confirmable ? "until this diff is applied, an account that has not confirmed its address can sign in" : ""
+        # Until these two are changed, they do not ask for a confirmation: the
+        # concern's start_new_session_for still refuses an unconfirmed account
+        # (so neither signs one in), but the user is not told why, and a
+        # sign-up gets no link. Their diffs say so first.
+        unconfirmed_sign_in = confirmable ? "until this diff is applied, an unconfirmed account's right password is refused without its message (the concern refuses it)" : ""
+        unconfirmed_sign_up = confirmable ? "until this diff is applied, a sign-up is mailed no confirmation link (the concern signs it in no more)" : ""
         record_file(result, root, "app/models/user.rb", user_model(confirmable), force)
         record_file(result, root, "app/models/session.rb", session_model, force)
         record_file(result, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable), force)
-        record_file(result, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable), force, unconfirmed)
+        record_file(result, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable), force, unconfirmed_sign_in)
         if invite_only
           record_file(result, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable), force)
         else
-          record_file(result, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable), force, unconfirmed)
+          record_file(result, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable), force, unconfirmed_sign_up)
         end
         record_file(result, root, "app/controllers/passwords_controller.rb", passwords_controller(confirmable), force)
         record_file(result, root, "app/controllers/confirmations_controller.rb", confirmations_controller, force) if confirmable
@@ -540,27 +542,48 @@ module Cybertrain
         false
       end
 
-      # Whether source has a line naming `column` inside a `create_table
+      # Whether source declares `column` of `table`: a `t.<type> "<column>"`
+      # line (its first argument; a symbol too) inside a `create_table
       # "<table>"` block (the schema dump's `s.create_table` too), or an
-      # `add_column "<table>", "<column>"` line (with symbols too).
+      # `add_column "<table>", "<column>"` line (symbols too). Each name
+      # must end where the line says it does (`:admin_notes` is not
+      # `admin`, `:users_archive` not `users`), and comment lines are
+      # skipped. Not read: remove_column and change_table (a column they
+      # remove still counts, and one they add does not, so db migrate
+      # then refuses the duplicate add_column, loudly).
       def self.declares_column?(source, table, column)
         heads = ["create_table \"#{table}\"", "create_table :#{table}", "s.create_table \"#{table}\""]
-        adds = ["add_column \"#{table}\", \"#{column}\"", "add_column :#{table}, :#{column}",
-                "add_column \"#{table}\", :#{column}", "add_column :#{table}, \"#{column}\""]
+        names = ["\"#{column}\"", ":#{column}"]
+        adds = Array.new(0) { "" }
+        ["\"#{table}\"", ":#{table}"].each { |t| names.each { |n| adds << "add_column #{t}, #{n}" } }
         inside = false
         source.each_line do |raw|
           code = raw.strip
-          if heads.any? { |head| code.start_with?(head) }
+          next if code.start_with?("#")
+
+          if heads.any? { |head| word_prefix?(code, head) }
             inside = true
           elsif inside && code == "end"
             inside = false
-          elsif inside && (!code.index("\"#{column}\"").nil? || !code.index(":#{column},").nil? || code.end_with?(":#{column}"))
-            return true
-          elsif adds.any? { |add| code.start_with?(add) }
+          elsif inside && code.start_with?("t.")
+            space = code.index(" ")
+            first = space.nil? ? "" : code[space + 1, code.size - space - 1].to_s.strip
+            return true if names.any? { |name| word_prefix?(first, name) }
+          elsif adds.any? { |add| word_prefix?(code, add) }
             return true
           end
         end
         false
+      end
+
+      # Whether text starts with prefix and the name there ends with it: the
+      # next character, if any, is not a letter, a digit or `_`.
+      def self.word_prefix?(text, prefix)
+        return false unless text.start_with?(prefix)
+        return true if text.size == prefix.size
+
+        b = text.getbyte(prefix.bytesize).to_i
+        !((b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95)
       end
 
       # Whether source holds 0.4's authentication block (its first line)
@@ -580,6 +603,11 @@ module Cybertrain
         name = "app/controllers/application_controller.rb"
         source = File.read(path)
         start = source.index(LEGACY_BLOCK_START).to_i
+        unless source.index(LEGACY_BLOCK_START, start + LEGACY_BLOCK_START.size).nil?
+          puts "skip #{name} (0.4's authentication block is there more than once): " \
+               "replace each with one `#{INCLUDE_LINE}` (app/controllers/concerns/authentication.rb)"
+          return nil
+        end
         last = source.index(LEGACY_BLOCK_END, start)
         if last.nil?
           puts "skip #{name} (0.4's authentication block has no end line): " \
@@ -606,15 +634,19 @@ module Cybertrain
         nil
       end
 
-      # The jobs page of an application 0.4 generated (jobs_page_routes,
+      # The jobs page of an application 0.4 generated (jobs_page_plan,
       # which adds the line where 0.4's `cybertrain new` wrote no comment
       # of it): drawn once ApplicationController includes the concern,
       # else its diff into result.manual, to apply with
       # application_controller.rb's.
       def self.upgrade_jobs_page(result, routes_path, controller_path)
         source = File.read(routes_path)
-        updated = jobs_page_routes(source, true)
-        return nil if updated.empty?
+        plan = jobs_page_plan(source, true)
+        updated = plan[0]
+        if updated.empty?
+          report_jobs_page_skip(plan[1])
+          return nil
+        end
 
         if Authentication.included?(File.read(controller_path))
           File.write(routes_path, updated)
@@ -628,16 +660,22 @@ module Cybertrain
         nil
       end
 
-      # source with the jobs page drawn as JOBS_PAGE_LINE in place of the
+      # What to do with the jobs page's route, as [routes, reason]: routes
+      # is source with the jobs page drawn as JOBS_PAGE_LINE in place of the
       # comment `cybertrain new` writes (or JOBS_PAGE_LINE commented out),
-      # or, with `add_missing` and no `jobs_page` anywhere in it, as a line
-      # of its own before the last `end`; "" when there is nothing to do.
-      def self.jobs_page_routes(source, add_missing)
+      # or, with `add_missing` and no `jobs_page` anywhere in source, as the
+      # last line of the Cybertrain::Routes.draw block (before the `end` at
+      # the draw line's own indentation). When there is nothing to do,
+      # routes is "" and reason says why: "drawn" (the line is there), or
+      # the words report_jobs_page_skip prints.
+      def self.jobs_page_plan(source, add_missing)
         comments = ["# #{NEW_APP_JOBS_PAGE_LINE}", "# #{JOBS_PAGE_LINE}"]
         updated = +""
         found = false
+        drawn = false
         source.each_line do |line|
           code = line.strip
+          drawn = true if code == JOBS_PAGE_LINE
           if !found && comments.include?(code)
             found = true
             updated << line[0, line.index(code).to_i].to_s << JOBS_PAGE_LINE << "\n"
@@ -645,15 +683,35 @@ module Cybertrain
             updated << line
           end
         end
-        return updated if found
-        return "" unless add_missing && source.index("jobs_page").nil?
+        return [updated.to_s, ""] if found
+        return ["", "drawn"] if drawn
+        return ["", "it has a jobs_page line of its own"] unless source.index("jobs_page").nil?
+        return ["", "no `# #{NEW_APP_JOBS_PAGE_LINE}` comment to draw"] unless add_missing
 
-        at = source.rindex("\nend")
-        return "" if at.nil?
+        draw = source.index(Scaffold::DRAW_LINE).to_i
+        start = line_start_before(source, draw)
+        pad = source[start, draw - start].to_s
+        return ["", "its draw line is not at the start of a line"] unless pad.strip.empty?
+
+        at = source.index("\n#{pad}end\n", draw)
+        at = source.index("\n#{pad}end", draw) if at.nil? && source.end_with?("\n#{pad}end")
+        return ["", "no `end` of the Cybertrain::Routes.draw block at its indentation"] if at.nil?
 
         out = +""
-        out << source[0, at + 1].to_s << "  #{JOBS_PAGE_LINE}\n" << source[at + 1, source.size - at - 1].to_s
-        out
+        out << source[0, at + 1].to_s << "#{pad}  #{JOBS_PAGE_LINE}\n" << source[at + 1, source.size - at - 1].to_s
+        [out.to_s, ""]
+      end
+
+      # Says why config/routes.rb gets no jobs page line (jobs_page_plan's
+      # reason).
+      def self.report_jobs_page_skip(reason)
+        if reason == "drawn"
+          puts "identical config/routes.rb (#{JOBS_PAGE_LINE})"
+        else
+          puts "skip config/routes.rb (#{reason}): to show the jobs page to admins, add " \
+               "`#{JOBS_PAGE_LINE}` inside Cybertrain::Routes.draw"
+        end
+        nil
       end
 
       # db/migrate/<version>_create_<table>.rb, or the existing one; the
@@ -712,23 +770,15 @@ module Cybertrain
       # require_admin. Any other routes file is left as it is. Returns true
       # when the file was changed.
       def self.enable_jobs_page(routes_path, controller_path)
-        source = File.read(routes_path)
-        comments = ["# #{NEW_APP_JOBS_PAGE_LINE}", "# #{JOBS_PAGE_LINE}"]
-        updated = +""
-        found = ""
-        source.each_line do |line|
-          code = line.strip
-          if found.empty? && comments.include?(code)
-            found = code
-            updated << line[0, line.index(code).to_i].to_s << JOBS_PAGE_LINE << "\n"
-          else
-            updated << line
-          end
+        plan = jobs_page_plan(File.read(routes_path), false)
+        updated = plan[0]
+        if updated.empty?
+          report_jobs_page_skip(plan[1])
+          return false
         end
-        return false if found.empty?
 
         unless Authentication.included?(File.read(controller_path))
-          puts "skip config/routes.rb (#{found}): ApplicationController has no require_admin until it includes Authentication"
+          puts "skip config/routes.rb (the jobs page): ApplicationController has no require_admin until it includes Authentication"
           return false
         end
 
@@ -1469,6 +1519,7 @@ module Cybertrain
             # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
             # to keep the browser that changed it signed in.
             def start_new_session_for(user, remember: false)
+              @CONFIRMED_ONLY@
               started = Session.create(user_id: user.id, ip_address: request.client_ip,
                                        user_agent: request.header("user-agent").to_s,
                                        remember: remember, last_active_at: Time.now)
@@ -1533,7 +1584,26 @@ module Cybertrain
             @SEND_CONFIRMATION_MAIL@
           end
         RUBY
+        text = splice(text, "@CONFIRMED_ONLY@", confirmable ? confirmed_only_lines : "")
         splice(text, "@SEND_CONFIRMATION_MAIL@", confirmable ? send_confirmation_mail_method : "")
+      end
+
+      # --confirmable's first lines of the concern's start_new_session_for:
+      # no session for an account whose address is not confirmed, whichever
+      # action asks. SessionsController#create refuses such an account
+      # first, with its own message; this holds where that check is
+      # missing too (a sessions controller an upgrade's diff never reached).
+      def self.confirmed_only_lines
+        margin(<<~'RUBY', 4)
+          # --confirmable: an account whose address is not confirmed gets no
+          # session, whichever action asks (SessionsController#create says
+          # why first; this holds where that check is missing too).
+          unless user.confirmed?
+            Cybertrain.logger.warn("no session started: user #{user.id} has not confirmed its address")
+            return nil
+          end
+
+        RUBY
       end
 
       # --confirmable's private method of the concern: sign-up, the account
@@ -4540,6 +4610,30 @@ module Cybertrain
             assert_redirected_to AppTest.sign_in(client), "/"
             assert_equal 1, Session.count
             assert signed_in?(client)
+          end
+
+          # start_new_session_for is private (the Authentication concern's): a
+          # controller made for these tests calls it, as any action could.
+          class SessionStartProbeController < ApplicationController
+            def probe_start(user)
+              start_new_session_for(user)
+            end
+          end
+
+          test "the concern itself starts no session for an unconfirmed account" do
+            new_client
+            ann = unconfirmed_user
+            ctx = Cybertrain::Context.new(Cybertrain::Request.new("POST", "/session", {}, ""))
+            ctx.session = Cybertrain::Session.new
+            SessionStartProbeController.new(ctx).probe_start(ann)
+            assert_equal 0, Session.count
+            assert_nil ctx.session[:session_id]
+            assert_nil ctx.session[:password_key]
+            # Confirmed, the same call signs in.
+            ann.update_columns(confirmed_at: Time.now)
+            SessionStartProbeController.new(ctx).probe_start(User.find(ann.id))
+            assert_equal 1, Session.count
+            assert_equal Session.first.id, ctx.session[:session_id].to_i
           end
 
           test "the link confirms, and the user can then sign in" do

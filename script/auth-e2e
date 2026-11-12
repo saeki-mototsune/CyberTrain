@@ -23,8 +23,11 @@
 #                test/*.rb (0.4's test/authentication.rb, patched, and the
 #                new ones); then a fresh copy with --force, the same; then a
 #                copy migrated by 0.4's migrations with a user in it, run
-#                with --confirmable --force: the add-columns migration keeps
-#                the user and counts it as confirmed
+#                with --confirmable: the add-columns migration keeps the
+#                user and counts it as confirmed; with every diff applied
+#                but the sessions controller's, the app builds and the
+#                concern still signs no unconfirmed account in; with that
+#                one applied too, every test passes
 #
 # Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
 # it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
@@ -242,18 +245,64 @@ run_upgrade04() {
   expect_upgrade_tests
   build_and_test
 
-  step "a copy with a 0.4 user in its database, run over with --confirmable --force"
+  step "a copy with a 0.4 user in its database, run over with --confirmable"
   copy_04_app populated
   cybertrain db migrate > migrate-04.log 2>&1 || { cat migrate-04.log >&2; fail "db migrate (0.4's migrations)"; }
   local db=storage/development.sqlite3
   test -f "$db" || fail "no $db after 0.4's migrations"
   sqlite3 "$db" "INSERT INTO users (email_address, password_digest, created_at, updated_at) VALUES ('old@example.com', 'x', '2026-09-25 12:00:00.000000', '2026-09-25 12:00:00.000000')" \
     || fail "insert a 0.4 user"
-  cybertrain generate authentication --confirmable --force > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication --confirmable --force"; }
+  cybertrain generate authentication --confirmable > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication --confirmable"; }
   grep -q "confirmed_at = COALESCE(created_at" db/migrate/*_add_authentication_columns.rb || fail "the add-columns migration does not confirm the users there"
+  grep -q '^IMPORTANT: app/controllers/sessions_controller.rb: ' generate.out || fail "no closing IMPORTANT line for sessions_controller.rb"
+  # Every diff but the sessions controller's: what a user whose patch
+  # rejected that hunk (an edited file) is left with.
+  awk '/^manual  [^ ]*: / { skip = ($2 == "app/controllers/sessions_controller.rb:") } !skip' generate.out > others.diff
+  awk '/^manual  [^ ]*: / { keep = ($2 == "app/controllers/sessions_controller.rb:") } keep' generate.out > sessions.diff
+  grep -q '^+++ b/app/controllers/sessions_controller.rb$' sessions.diff || fail "no sessions controller diff to hold back"
+  if grep -q '^+++ b/app/controllers/sessions_controller.rb$' others.diff; then
+    fail "the sessions controller diff was not held back"
+  fi
+  patch -p1 < others.diff > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < every diff but the sessions controller's"; }
+  cmp -s app/controllers/sessions_controller.rb "$fixture/app/controllers/sessions_controller.rb" || fail "the sessions controller changed"
   cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate (the add-columns migration)"; }
   expect_equal "the 0.4 user after the migration" "old@example.com|0|0|2026-09-25 12:00:00.000000|" \
     "$(sqlite3 "$db" "SELECT email_address, admin, failed_attempts, confirmed_at, unconfirmed_email FROM users")"
+  # 0.4's SessionsController#create calls start_new_session_for for any
+  # right password: the concern's own check must refuse the account.
+  cat > test/unconfirmed_backstop.rb <<'RUBY'
+require_relative "support/app_test"
+
+test "an unconfirmed account gets no session, whichever sessions controller asks" do
+  Session.all.delete_all
+  User.all.delete_all
+  client = Cybertrain::Test::Client.new(APP)
+  user = User.new(email_address: "new@example.com")
+  user.password = "s3cr3t-s3cr3t"
+  user.save!
+  assert_equal false, user.confirmed?
+  AppTest.sign_in(client, "new@example.com")
+  assert_equal 0, Session.count
+  refute client.get("/session/new").body.include?("<span>new@example.com</span>")
+  user.update_columns(confirmed_at: Time.now)
+  AppTest.sign_in(client, "new@example.com")
+  assert_equal 1, Session.count
+  assert_includes client.get("/session/new").body, "<span>new@example.com</span>"
+end
+
+Cybertrain::Test.run!
+RUBY
+  cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build, every diff but the sessions controller's applied"; }
+  cybertrain spin test test/unconfirmed_backstop.rb > test-unconfirmed_backstop.log 2>&1 || true
+  test -x build/test/unconfirmed_backstop || { tail -n 40 test-unconfirmed_backstop.log >&2; fail "test/unconfirmed_backstop.rb did not compile"; }
+  out=$(./build/test/unconfirmed_backstop 2>&1) || { printf '%s\n' "$out" >&2; fail "an unconfirmed account signed in through 0.4's sessions controller"; }
+  expect_contains "test/unconfirmed_backstop.rb" " 0 failures" "$out"
+
+  step "the sessions controller's diff applied too: every test"
+  patch -p1 < sessions.diff > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < the sessions controller's diff"; }
+  expect_upgrade_tests
+  test -f test/confirmations.rb || fail "no test/confirmations.rb"
+  build_and_test
 
   cd "$ROOT"
   rm -rf "$WORK"

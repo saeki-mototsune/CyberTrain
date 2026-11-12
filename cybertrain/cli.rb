@@ -367,8 +367,9 @@ module Cybertrain
         mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
         puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
         unless result.manual.empty?
-          # The warnings above a diff (an account that has not confirmed
-          # its address signs in until it is applied), once more at the end.
+          # The warnings above a diff (with --confirmable, what the sessions
+          # and registrations controllers leave out until theirs is
+          # applied), once more at the end.
           result.manual.each do |diff|
             lines = diff.lines
             next if lines.size < 2 || !lines[1].start_with?("IMPORTANT: ")
@@ -379,6 +380,7 @@ module Cybertrain
           end
           puts ""
           puts "next: apply the diffs above, or re-run with --force for files you never edited"
+          puts "  # the app may not build until these diffs are applied: the files written now need them"
         end
       when "helper"
         args = without_flag(argv[2, argv.size - 2], "--force")

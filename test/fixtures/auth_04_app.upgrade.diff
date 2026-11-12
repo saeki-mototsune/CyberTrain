@@ -582,3 +582,4 @@ next:
   # password reset mails: set SHOP_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 
 next: apply the diffs above, or re-run with --force for files you never edited
+  # the app may not build until these diffs are applied: the files written now need them

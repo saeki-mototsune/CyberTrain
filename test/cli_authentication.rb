@@ -1933,7 +1933,25 @@ test "--confirmable writes the confirmation files and columns" do
                            "    path = confirmation_path(token)\n    mail = ConfirmationsMailer.confirmation_instructions(user, base + path)\n" \
                            "    mail.deliver_later if deliver\n    nil\n  rescue ArgumentError => e\n" \
                            "    Cybertrain.logger.error(\"confirmation mail not sent: \#{e.message}\")\n    nil\n  end\n"
-  assert concern.start_with?(read("shop/app/controllers/concerns/authentication.rb").gsub("SHOP_", "CONF_").delete_suffix("end\n"))
+  # Task 16 review I1: the concern itself starts no session for an account
+  # whose address is not confirmed, so a sessions controller without that
+  # check (an upgrade's diff not applied) signs nobody unconfirmed in.
+  backstop = "  def start_new_session_for(user, remember: false)\n" \
+             "    # --confirmable: an account whose address is not confirmed gets no\n" \
+             "    # session, whichever action asks (SessionsController#create says\n" \
+             "    # why first; this holds where that check is missing too).\n" \
+             "    unless user.confirmed?\n" \
+             "      Cybertrain.logger.warn(\"no session started: user \#{user.id} has not confirmed its address\")\n" \
+             "      return nil\n" \
+             "    end\n\n" \
+             "    started = Session.create("
+  assert_includes concern, backstop
+  assert read("shop/app/controllers/concerns/authentication.rb").index("confirmed?").nil?
+  assert concern.sub(Cybertrain::CLI::Authentication.confirmed_only_lines, "")
+                .start_with?(read("shop/app/controllers/concerns/authentication.rb").gsub("SHOP_", "CONF_").delete_suffix("end\n"))
+  confirmations = read("conf/test/confirmations.rb")
+  assert_includes confirmations, "test \"the concern itself starts no session for an unconfirmed account\" do\n"
+  assert_includes confirmations, "  SessionStartProbeController.new(ctx).probe_start(ann)\n  assert_equal 0, Session.count\n"
   assert_equal 1, concern.scan("def mail_link_base(mail)").size
   # The controllers that mail a confirmation ask the concern; none builds a
   # link base of its own (pre-flight finding 16).

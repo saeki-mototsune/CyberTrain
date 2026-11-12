@@ -97,6 +97,12 @@ module Cybertrain
         out
       end
 
+      # Cost: the table holds (n + 1) * (m + 1) Integers for the n and m
+      # lines left once the common head and tail are taken off, so time and
+      # memory grow with their product. It is meant for files of the size
+      # the generator writes (hundreds of lines); a file of several thousand
+      # changed lines would take tens of millions of cells.
+      #
       # Fills kinds, froms and tos with the steps from a to b: each step's
       # kind and the index of its line in a (SAME, REMOVED) or b (ADDED);
       # froms holds a's index, tos b's, for every step (the next line's
