@@ -4,6 +4,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -244,6 +245,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb

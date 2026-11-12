@@ -79,6 +79,11 @@ test "generate authentication writes the migrations, models, controllers, views 
   AUTH_FILES.each { |f| assert(File.exist?("shop/#{f}"), "missing #{f}") }
 end
 
+test "generate authentication leaves the new app's config/locales/en.yml as it was (its screens' keys are the framework's)" do
+  assert_equal Cybertrain::CLI::Templates.locales_en_yml, read("shop/config/locales/en.yml")
+  assert_equal ["en.yml"], Dir.children("shop/config/locales")
+end
+
 test "the users migration has the NOT NULL columns, the admin flag, the lockout columns and a unique index" do
   assert_equal <<~RUBY, read("shop/db/migrate/20260925120000_create_users.rb")
     class CreateUsers < Cybertrain::Migration::Base

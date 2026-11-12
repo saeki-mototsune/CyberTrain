@@ -4,6 +4,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -33,6 +34,8 @@ create test/.keep
 ok   new writes the app skeleton and returns the created paths
 ok   spin.toml names the package and references the framework
 ok   config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)
+ok   config/locales/en.yml is a dictionary gen's reader accepts, with hello
+ok   config/app.rb documents the i18n settings, commented
 ok   bin/blog.rb is the app's one binary: server, migrate, db
 ok   bin/gen.rb drives the generator
 ok   bin/db.rb runs migrations in development without the app's models
@@ -48,6 +51,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -81,6 +85,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -120,6 +125,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -153,6 +159,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -185,6 +192,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -222,6 +230,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -256,6 +265,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -616,4 +626,4 @@ ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-26 tests, 324 assertions, 0 failures
+28 tests, 332 assertions, 0 failures

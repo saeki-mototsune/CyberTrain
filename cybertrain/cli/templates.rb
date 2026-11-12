@@ -160,6 +160,41 @@ module Cybertrain
         MARKDOWN
       end
 
+      # config/locales/en.yml: Rails' stock comment block adapted, then one key.
+      def self.locales_en_yml
+        <<~YAML
+          # Files in the config/locales directory are read by `spin run gen` and
+          # compiled into the program; the app has no YAML at run time. Every
+          # *.yml under config/locales (subdirectories too) is read, and a key
+          # here overrides the framework's own dictionary of the same name.
+          #
+          # The first key of a file is the locale: en, ja, pt-BR. To add a language,
+          # add a file (config/locales/ja.yml) and list it in config/app.rb:
+          #   c.i18n_available_locales = [:en, :ja]
+          #
+          # To look a key up, write it out in full in code, I18n.t("hello"), or
+          # in a template, <%= t("hello") %>. A key starting with "." in a
+          # template is relative to the template: in app/views/posts/index.html.erb,
+          # <%= t(".title") %> reads posts.index.title:
+          #
+          #   en:
+          #     posts:
+          #       index:
+          #         title: "Posts"
+          #
+          # Values may hold %{name} placeholders, filled from the call:
+          # t("greeting", name: "Ada"). A key with `one` and `other` entries
+          # is chosen by count: t("posts", count: 2).
+          #
+          # I18n.locale is the language of the current request (it starts as the
+          # default locale on each request); I18n.locale = :ja switches it.
+          #
+          # To learn more, see docs/guide/i18n.md.
+          en:
+            hello: "Hello world"
+        YAML
+      end
+
       def self.config_app
         <<~RUBY
           # Application settings; see Cybertrain::Config for every option.
@@ -194,6 +229,16 @@ module Cybertrain
             # end
             # c.content_security_policy_nonce_directives = %w[script-src style-src]
             # c.content_security_policy_report_only = true
+
+            # Translations (config/locales/*.yml). The default locale starts each
+            # request; list more locales to accept them in I18n.locale= and
+            # request.preferred_locale. A missing key shows a marker, or raises
+            # with i18n_raise_on_missing. To pick the locale per request, see
+            # docs/guide/i18n.md (a set_locale before_action in
+            # ApplicationController using request.preferred_locale).
+            # c.i18n_default_locale = :en
+            # c.i18n_available_locales = [:en, :ja]
+            # c.i18n_raise_on_missing = true
           end
 
           # A scheduled task: a cron expression (read in CYBERTRAIN_SCHEDULER_TZ,

@@ -28,6 +28,7 @@ module Cybertrain
           ["README.md", Templates.readme(title, package)],
           ["config/app.rb", Templates.config_app],
           ["config/routes.rb", Templates.routes],
+          ["config/locales/en.yml", Templates.locales_en_yml],
           ["db/schema.rb", Templates.schema],
           ["db/migrate/.keep", ""],
           ["app/controllers/application_controller.rb", Templates.application_controller],
