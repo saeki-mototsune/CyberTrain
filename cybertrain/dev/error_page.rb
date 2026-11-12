@@ -3,6 +3,7 @@ require "cybertrain/html"
 require "cybertrain/logger"
 require "json"
 require "cybertrain/dev/rebuilder"
+require "cybertrain/dev/build_status"
 require "cybertrain/http/client_error"
 require "cybertrain/http/response"
 require "cybertrain/http/parameter_filter"
@@ -17,7 +18,9 @@ module Cybertrain
     # Router built, and a JSON body), with the values of filtered names
     # (Config#filter_parameters) shown as "[FILTERED]". While the last
     # rebuild failed, every HTML response also carries a banner with the
-    # compiler output.
+    # compiler output. The answer comes from the Rebuilder in the loop the
+    # binary runs itself, or from a BuildStatus (the supervisor's state
+    # file) under `cybertrain server`; either slot may be nil.
     class ErrorPage < Middleware
       BANNER_ID = "cybertrain-build-failed"
 
@@ -29,9 +32,10 @@ module Cybertrain
       # The largest JSON body the page parses for its dump, 1 MiB.
       MAX_DUMP_BODY_BYTES = 1_048_576
 
-      def initialize(app, rebuilder = nil)
+      def initialize(app, rebuilder = nil, status = nil)
         super(app)
         @rebuilder = rebuilder
+        @status = status
       end
 
       def call(ctx)
@@ -169,14 +173,22 @@ module Cybertrain
 
       def inject_banner(response)
         rebuilder = @rebuilder
-        return nil if rebuilder.nil? || !rebuilder.last_failed
+        status = @status
+        failed = (!rebuilder.nil? && rebuilder.last_failed) || (!status.nil? && status.failed)
+        return nil unless failed
         return nil unless banner_status?(response.status)
         return nil if response.body.empty? # `head :ok` and friends stay bodyless
         return nil unless html?(response)
 
+        output = ""
+        if !rebuilder.nil? && rebuilder.last_failed
+          output = rebuilder.last_output
+        elsif !status.nil?
+          output = status.output
+        end
         body = response.body
         at = banner_offset(body)
-        response.body = "#{body[0, at]}#{banner(rebuilder.last_output)}#{body[at, body.size - at]}"
+        response.body = "#{body[0, at]}#{banner(output)}#{body[at, body.size - at]}"
         nil
       end
 

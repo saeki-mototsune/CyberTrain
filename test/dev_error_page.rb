@@ -1,6 +1,7 @@
 # Cybertrain::Dev::ErrorPage (the development diagnostics middleware) and
 # Cybertrain::Dev::Rebuilder: its command, the cybertrain-build lock, and the
-# last_failed/last_output the page reads. Runs under CRuby too: no
+# last_failed/last_output the page reads; and Dev::BuildStatus, the page's
+# other source of that answer under `cybertrain server`. Runs under CRuby too: no
 # FFI is required here (cybertrain/dev/reexec is left out on purpose).
 require "stringio"
 require "cybertrain/logger"
@@ -8,6 +9,7 @@ require "cybertrain/middleware"
 require "cybertrain/template/ast"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/error_page"
+require "cybertrain/dev/build_status"
 require "cybertrain/http/query"
 require "cybertrain/test"
 
@@ -243,6 +245,33 @@ test "no banner once a later build succeeds" do
   rebuilder.record_build(true, "")
   res = request(Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), rebuilder), "/")
   assert res.body.index("Build failed").nil?, "no banner expected"
+end
+
+# Under `cybertrain server` the answer comes from a Dev::BuildStatus (filled
+# from the supervisor's state file) in the page's second slot.
+def build_status(build, output)
+  status = Cybertrain::Dev::BuildStatus.new
+  status.update(Cybertrain::Dev::StateFile.parse(Cybertrain::Dev::StateFile.format(3, "cruby", build, output)))
+  status
+end
+
+test "a failed build status injects the banner with its output into HTML, not JSON" do
+  app = Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status("failed", "app/models/post.rb:4: syntax error <here>\n"))
+  res = request(app, "/")
+  assert_equal 200, res.status
+  assert_includes res.body, "<body class=\"app\"><div id=\"cybertrain-build-failed\""
+  assert_includes res.body, "app/models/post.rb:4: syntax error &lt;here&gt;"
+  assert_includes res.body, "<h1>Posts</h1>"
+  assert_equal "{\"ok\":true}", request(app, "/json").body
+  binary = Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status("binary_failed", "signal 11"))
+  assert_includes request(binary, "/").body, "signal 11"
+end
+
+test "a build status that is not failed shows no banner" do
+  ["idle", "building", "ready"].each do |build|
+    res = request(Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status(build, "")), "/")
+    assert res.body.index("Build failed").nil?, "no banner expected while #{build}"
+  end
 end
 
 test "the rebuild command runs gen then an incremental build in the app root, logging to tmp/rebuild.log" do

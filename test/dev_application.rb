@@ -1,13 +1,16 @@
 # The development loop's pieces inside the whole framework (spikes/NOTES.md
 # rules 36 and 41): Dev::ErrorPage in front of a booted Application's full
 # stack, a real template error, the failed-build banner, and
-# Application.port_argument. The rebuild + re-exec path itself cannot run
-# in-process; it is verified by hand against a generated app.
+# Application.port_argument, and the server role as `cybertrain server`
+# supervises it (on an inherited listener, the banner from the state file,
+# no Rebuilder). The rebuild + re-exec path itself cannot run in-process; it
+# is verified by hand against a generated app.
 #
 # It links SQLite (Application#boot) and the execv shim through FFI, so it
 # cannot run under CRuby: its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
 require "stringio"
+require "socket"
 require "cybertrain"
 require "cybertrain/application"
 require "cybertrain/dev"
@@ -190,6 +193,69 @@ end
 test "the rebuilder targets the app's build/bin/blog" do
   assert_equal File.expand_path("#{ROOT}/build/bin/blog"), REBUILDER.binary_path
   assert_equal File.expand_path("#{ROOT}/tmp/rebuild.log"), REBUILDER.log_file
+end
+
+# The supervised role, run in this process: the client thread waits for the
+# readiness file, asks for two pages through the role's own listener and
+# stops the server, as the supervisor's TERM would.
+SUPERVISED_PAGES = Array.new(0) { "" }
+
+# A whole response read off a Connection: close request.
+def supervised_get(port, path)
+  sock = TCPSocket.new("127.0.0.1", port)
+  sock.write("GET #{path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+  response = read_until_closed(sock)
+  sock.close
+  response
+end
+
+def read_until_closed(sock)
+  response = +""
+  response << sock.readpartial(65536) until sock.wait_readable(5).nil?
+  response
+rescue EOFError, Errno::ECONNRESET
+  response
+end
+
+def supervised_client(port, ready_path)
+  tries = 0
+  while !File.exist?(ready_path) && tries < 200
+    sleep 0.05
+    tries += 1
+  end
+  SUPERVISED_PAGES << supervised_get(port, "/")
+  SUPERVISED_PAGES << supervised_get(port, "/status")
+  APP.server.stop
+  nil
+end
+
+test "supervised, the role serves the state file's failed build on its inherited listener and builds no Rebuilder" do
+  state_path = "#{ROOT}/state"
+  ready_path = "#{ROOT}/ready"
+  File.write(state_path, Cybertrain::Dev::StateFile.format(7, "cruby", "failed", "app/models/post.rb:4: syntax error\n"))
+  held = TCPServer.new("127.0.0.1", 0)
+  held.autoclose = false
+  port = held.addr[1]
+  ENV["CYBERTRAIN_DEV_LISTEN_FD"] = held.fileno.to_s
+  ENV["CYBERTRAIN_DEV_STATE_FILE"] = state_path
+  ENV["CYBERTRAIN_DEV_READY_FILE"] = ready_path
+  ENV["CYBERTRAIN_DEV_GENERATION"] = "7"
+  client = Thread.new { supervised_client(port, ready_path) }
+  APP.serve([])
+  client.join
+  ["CYBERTRAIN_DEV_LISTEN_FD", "CYBERTRAIN_DEV_STATE_FILE", "CYBERTRAIN_DEV_READY_FILE",
+   "CYBERTRAIN_DEV_GENERATION"].each { |name| ENV.delete(name) }
+  assert_equal "7", File.read(ready_path)
+  assert_equal 2, SUPERVISED_PAGES.size
+  page = SUPERVISED_PAGES[0]
+  assert_includes page, "HTTP/1.1 200 OK"
+  assert_includes page, "<body class=\"site\"><div id=\"cybertrain-build-failed\""
+  assert_includes page, "app/models/post.rb:4: syntax error"
+  assert_includes page, "<h1>Home</h1>"
+  json = SUPERVISED_PAGES[1]
+  assert_includes json, "{\"ok\":true}"
+  assert json.index("Build failed").nil?, "no banner on JSON"
+  assert !APP.server_runner.rebuilding?, "no Rebuilder under supervision"
 end
 
 Cybertrain::Test.run!

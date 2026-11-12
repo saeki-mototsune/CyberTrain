@@ -172,7 +172,10 @@ jobs_missing = job_names - Cybertrain::Gen::JobScan::RESERVED_CLASS_METHODS
 # none. Rows may name files that do not exist yet. An empty row (t, l)
 # means no file may define the name yet.
 NAME_HOMES = {
-  "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb],
+  # dev/state_file.rb's is Dev::StateFile.format (the state file's text, a
+  # String, as Console::Printer.format's), a module function called on its
+  # module; compiled beside Request#format (a Symbol) in test/main.rb.
+  "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb cybertrain/dev/state_file.rb],
   "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb],
   "select" => %w[cybertrain/template/form_builder.rb],
   # cli/templates.rb's is `def self.layout` (the generated layout's text);
@@ -245,7 +248,12 @@ NAME_HOMES = {
   # (compiled side by side with TurboStreams#update in test/turbo_helpers.rb
   # and test/application.rb's program); cli/templates.rb's is the
   # generated controller's `update` action, written in a template String.
-  "update" => %w[cybertrain/model.rb cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb cybertrain/cli/templates.rb],
+  # dev/build_status.rb's is Dev::BuildStatus#update(snapshot) (nil), only
+  # ever called on a BuildStatus; compiled beside Model#update in
+  # examples/blog (its controllers update records, its server role builds
+  # the status).
+  "update" => %w[cybertrain/model.rb cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb cybertrain/cli/templates.rb
+                 cybertrain/dev/build_status.rb],
   "replace" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "append" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "prepend" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],

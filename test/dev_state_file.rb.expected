@@ -1,0 +1,7 @@
+ok   format and parse agree
+ok   an empty output and an output with an empty line survive
+ok   anything else is the default snapshot
+ok   the reader rereads a file that changed and survives its absence
+ok   build status fails for failed and binary_failed only
+ok   a build status with a reader answers from the state file as it is now
+6 tests, 41 assertions, 0 failures
