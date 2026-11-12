@@ -1,4 +1,5 @@
 <h1><%= @article.title %></h1>
+<% if @article.cover.attached? %><p><%= image_tag @article.cover, alt: @article.cover.filename.to_s %></p><% end %>
 
 <p><%= @article.body %></p>
 

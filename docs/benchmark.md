@@ -186,6 +186,13 @@ The two apps are the same application:
   examples/blog's, in Rails' spelling (`def new`, a nested `resources` block,
   `has_many`/`belongs_to`); the validations, flash messages, redirects and
   `rescue_from` are the same. `db/schema.rb` is the same schema.
+- **A cover image in both, since 2026-11-12.** examples/blog attaches an
+  article's picture with the code `cybertrain generate attachment` writes;
+  `bench/rails_blog` with Active Storage (`has_one_attached :cover`), which
+  loads Active Storage and Active Job into the Rails app. The benchmark
+  requests no cover and seeds none, but the startup and memory figures of a
+  run made after that date include those two frameworks for Rails: do not
+  compare them with the earlier runs'. The results below are all earlier.
 - **Same storage.** One SQLite file in WAL mode, foreign keys on. CyberTrain
   links the system's SQLite (3.45.1 here); the sqlite3 gem brings its own
   (3.53.2).
