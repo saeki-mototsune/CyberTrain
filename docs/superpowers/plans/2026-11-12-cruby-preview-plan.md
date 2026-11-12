@@ -10,7 +10,7 @@
 
 **Spec:** docs/superpowers/specs/2026-11-12-cruby-preview-design.md (approved 2026-11-12). Read it first; section numbers below are its.
 
-**Execution notes:** Task 1 is a throwaway spike and a gate: its record amends Decisions P3 and Task 2, and may stop the work. Tasks run in order, one at a time (never two Spinel builds in one build directory). From Task 7 until Task 9, `playground/playground-server` passes `--spinel` (spec §13).
+**Execution notes:** Task 1 is a throwaway spike and a gate: its record amends Decisions P3 and Task 2, and may stop the work. Tasks run one at a time (never two Spinel builds in one build directory), in this order: 1, 2, 3, 4, 5, 6, 8a, 7, 8b, 9, 10. Task 8 is split (P18): its framework half, 8a, comes before Task 7, whose end-to-end script reads the header 8a adds. From Task 7 until Task 9, `playground/playground-server` passes `--spinel` (spec §13).
 
 ## Global Constraints
 
@@ -53,6 +53,12 @@ Rulings where the spec leaves a choice. Tasks build on these names.
 - **P12. Order within a change round**: cancel the build, run gen (the old child still serves), stop the child, start the CRuby child, start the build. If gen fails: stop the child, hold; no build.
 - **P13. CRuby-only tests** live in `test/cruby/<name>.rb` with `test/cruby/<name>.rb.expected` (same harness, `cybertrain/test.rb`), run by `script/test-cruby [file…]` (`ruby -I. <file>` diffed against its snapshot; `--regen` rewrites). `spin test` and `script/test-shard` glob `test/*.rb` only, so they never see these. The gate's "every test has its snapshot" check is extended to `test/cruby/`.
 - **P14. One supervisor per application.** `supervisor.pid` naming a live `cybertrain server` refuses a second one (`error: a cybertrain server is already running here (pid N)`, exit 1). A live process named by a leftover `child.pid` whose command line contains this application's `bin/NAME.rb` or `build/bin/NAME` is stopped (TERM, 5 s, KILL) before the socket is bound: a supervisor killed with SIGKILL must not leave the port taken.
+
+- **P15. A listed gap is pinned.** For each file in `test/cruby/parity-gaps.txt`, `script/preview-parity` also compares the CRuby output with `test/cruby/parity/<name>.rb.expected` (the checkout's path written as `<repo>`); a difference is "unexpected". `--regen-gaps` rewrites those snapshots. A listed gap never hides a new failure in the same file.
+- **P16. No stale binary after a blocking stop.** The runner also answers `change_pending? -> Boolean` (a change the watcher has seen and the machine has not been given). In a handover to the binary, the machine asks it after `stop_child`; when true it does not start the binary (the change round that follows starts the CRuby child). Task 6 tests it: `[[:stop_child]]` and nothing else.
+- **P17. The lock is read twice in a round.** After `run_gen` and before `stop_child`, the machine asks `build_locked?` again; when the lock has appeared the round stops there, stays pending, and is taken up by `on_tick` once the lock is gone. Task 6 tests it with a fake whose lock appears during `run_gen`. (`cybertrain build` creating its lock atomically is out of scope: that window is the existing lock's, in today's loop as well.)
+- **P18. Task 8 in two halves.** 8a: `Dev::Indicator`, the header, the reserved paths, `front_app`, their compiled tests (Task 8's `cybertrain/dev/indicator.rb`, `cybertrain/dev.rb`, `cybertrain/roles/server.rb`, `test/dev_indicator.rb`, `test/dev_application.rb`). 8b, after Task 7: the fallbacks, `doctor`, their tests, and Task 8 Step 5's additions to `script/preview-e2e`.
+- **P19. Children run with `ruby -E UTF-8`** (P9, gen and `dev-address` included): the locale may be US-ASCII, which breaks text comparisons (spike).
 
 ## Review Focus
 
@@ -172,7 +178,7 @@ end
 
   Adjust the encoding assertions of the `:str` / `:binstr` test to what Task 1 recorded, if it differs.
 - [ ] **Step 2:** Write `script/test-cruby` (P13) and run `script/test-cruby test/cruby/preview_ffi.rb`. Expected: fails, `cannot load such file -- cybertrain/preview`.
-- [ ] **Step 3:** Implement the four files to the Interfaces block and Task 1's record. `ffi_source` texts are collected per module and compiled at that module's first `ffi_func`; the compiled unit is prefixed with `__thread int sp_ffi_bin_len; int cybertrain_preview_bin_len(void) { return sp_ffi_bin_len; }`; symbols are looked up in the compiled library first, then in `ffi_lib`'s.
+- [ ] **Step 3:** Implement the four files to the Interfaces block and Task 1's record. `ffi_source` texts are collected per module and compiled at the first call of one of that module's functions (never at `ffi_func`: `sqlite_ffi.rb` declares sources after its first `ffi_func`; an unknown type is still refused at `ffi_func`); the compiled unit is prefixed with `__thread int sp_ffi_bin_len; int cybertrain_preview_bin_len(void) { return sp_ffi_bin_len; }`; symbols are looked up in the compiled library first, then in `ffi_lib`'s.
 - [ ] **Step 4:** `script/test-cruby --regen test/cruby/preview_ffi.rb test/cruby/preview_failure.rb`, read the snapshots, then `script/test-cruby` — all pass. Extend the gate's snapshot check to `test/cruby/*.rb`; `ruby script/gate` green.
 - [ ] **Step 5:** Commit (`preview: a Fiddle shim for the ffi_* DSL, and CRuby-only tests`).
 

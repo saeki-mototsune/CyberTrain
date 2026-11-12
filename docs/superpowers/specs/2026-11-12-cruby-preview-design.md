@@ -49,8 +49,8 @@ preview shows logic early; the compiled binary and `spin test` decide.
 | CRuby loading `cybertrain`, `config/app`, `gen/app`, `gen/migrations` of the blog, with the FFI DSL stubbed to no-ops | 0.18 s |
 | `spin flags` in the blog (prints `--strict-require -I <framework> -I <app>`) | 0.004 s |
 
-The FFI surface is three files: `cybertrain/db/sqlite_ffi.rb` (34
-`ffi_func`, 5 `ffi_source`, 14 `ffi_const`, 1 `ffi_read_ptr`),
+The FFI surface is three files: `cybertrain/db/sqlite_ffi.rb` (33
+`ffi_func`, 4 `ffi_source`, 14 `ffi_const`, 1 `ffi_read_ptr`),
 `cybertrain/http/gzip_ffi.rb` (10 `ffi_func`, 1 `ffi_source`, 1
 `ffi_read_ptr`) and `cybertrain/dev/reexec.rb` (1 `ffi_func`, not loaded
 under supervision). Types used: `:ptr :int :long :size_t :double :str
@@ -59,8 +59,12 @@ that Spinel gives an FFI module (`SQLite3.malloc(8)`, `GzipFFI.free(out)`).
 Without a shim the server stops at the first `ffi_lib`
 (`cybertrain/http/gzip_ffi.rb:38`).
 
-Not measured: a real request served under CRuby. Section 13 makes that the
-first step.
+Measured afterwards by the spike of section 13 (2026-11-12, recorded in
+spikes/NOTES.md, "CRuby preview spike"): examples/blog answers `GET` and
+`POST` under CRuby with no change to the framework, the first 200 comes
+0.19 to 0.31 s after the process starts, and CRuby gen leaves `gen/`
+unchanged. Not measured there: the compiled binary's STDERR through a
+pipe, and a file edited while the preview serves.
 
 ## 3. Goals, non-goals, anti-goals
 

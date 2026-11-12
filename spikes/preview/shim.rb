@@ -43,7 +43,10 @@ end
 
 module CybertrainPreviewSpike
   CC = ENV["CC"] || "cc"
-  CACHE = ENV["CYBERTRAIN_PREVIEW_CACHE"] || File.join(Dir.tmpdir, "cybertrain-preview-spike")
+  # A directory of this process's own (mode 0700) unless one is named: a
+  # fixed name under the shared temporary directory could be made first by
+  # another user, with a library for this process to load.
+  CACHE = ENV["CYBERTRAIN_PREVIEW_CACHE"] || Dir.mktmpdir("cybertrain-preview-spike")
   BIN_LEN_ACCESSOR = "cybertrain_preview_bin_len"
   PRELUDE = <<~C
     #include <stddef.h>
