@@ -17,6 +17,14 @@
 #                link confirms the address (the sign-in refused until then),
 #                and a new address that takes effect once its own link is
 #                opened
+#   upgrade04    test/fixtures/auth_04_app (a sign-up app v0.4.1 generated)
+#                with today's generator run over it: its printed diffs
+#                applied with patch -p1, then db migrate, build and every
+#                test/*.rb (0.4's test/authentication.rb, patched, and the
+#                new ones); then a fresh copy with --force, the same; then a
+#                copy migrated by 0.4's migrations with a user in it, run
+#                with --confirmable --force: the add-columns migration keeps
+#                the user and counts it as confirmed
 #
 # Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
 # it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
@@ -29,14 +37,14 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SECRET=auth-e2e-secret-auth-e2e-secret-auth-e2e
 
 if [ $# -eq 0 ]; then
-  echo "usage: script/auth-e2e VARIANT... (signup, invite, confirmable)" >&2
+  echo "usage: script/auth-e2e VARIANT... (signup, invite, confirmable, upgrade04)" >&2
   exit 2
 fi
 for variant in "$@"; do
   case "$variant" in
-    signup | invite | confirmable) ;;
+    signup | invite | confirmable | upgrade04) ;;
     *)
-      echo "auth-e2e: unknown variant $variant (signup, invite, confirmable)" >&2
+      echo "auth-e2e: unknown variant $variant (signup, invite, confirmable, upgrade04)" >&2
       exit 2
       ;;
   esac
@@ -157,7 +165,106 @@ form_token() {
   printf '%s' "$1" | sed -n 's/.*name="authenticity_token" value="\([^"]*\)".*/\1/p' | head -n 1
 }
 
+# In the app's directory: db migrate, build, gen --check, then every
+# test/*.rb the app has compiled and run.
+build_and_test() {
+  step "db migrate, build, gen --check"
+  cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate"; }
+  cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build"; }
+  test -x dist/shop || fail "no dist/shop"
+  cybertrain spin run gen -- --check > gen-check.log 2>&1 || { cat gen-check.log >&2; fail "spin run gen -- --check"; }
+
+  # The app's own tests link SQLite, so they have no CRuby snapshot: `spin
+  # test` compiles each one (and fails for want of a snapshot), then the
+  # binary is run here and must pass.
+  for test_file in test/*.rb; do
+    name=$(basename "$test_file" .rb)
+    step "test/$name.rb"
+    cybertrain spin test "$test_file" > "test-$name.log" 2>&1 || true
+    test -x "build/test/$name" || { tail -n 40 "test-$name.log" >&2; fail "test/$name.rb did not compile"; }
+    out=$("./build/test/$name" 2>&1) || { printf '%s\n' "$out" | grep -v '^ok ' >&2; fail "test/$name.rb"; }
+    expect_contains "test/$name.rb" " 0 failures" "$out"
+  done
+}
+
+# `copy_04_app NAME`: test/fixtures/auth_04_app copied to $WORK/NAME, its
+# framework this checkout; the current directory becomes the copy.
+copy_04_app() {
+  cp -R "$ROOT/test/fixtures/auth_04_app" "$WORK/$1"
+  cd "$WORK/$1"
+  mkdir -p tmp
+  sed -i.bak "s#path = \"../../..\"#path = \"$ROOT\"#" spin.toml spin.lock
+  rm -f spin.toml.bak spin.lock.bak
+  grep -qF "path = \"$ROOT\"" spin.toml || fail "spin.toml of $1 does not name $ROOT"
+}
+
+# The generated tests every upgraded copy must have, and pass.
+UPGRADE_TESTS="authentication admin remember_me lockout passwords accounts"
+
+expect_upgrade_tests() {
+  for name in $UPGRADE_TESTS; do
+    test -f "test/$name.rb" || fail "no test/$name.rb"
+  done
+}
+
+run_upgrade04() {
+  WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
+  SERVER_LOG=""
+  local fixture="$ROOT/test/fixtures/auth_04_app"
+  step "the 0.4 app in $WORK, run over and patched"
+  copy_04_app patched
+  cybertrain generate authentication > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication"; }
+  # Left alone until patched: the files 0.4 wrote that today's generator
+  # writes otherwise, and the 0.4 block in ApplicationController.
+  for f in app/controllers/application_controller.rb app/controllers/sessions_controller.rb app/models/user.rb \
+           app/views/sessions/new.html.erb test/authentication.rb; do
+    cmp -s "$f" "$fixture/$f" || fail "$f changed before the diffs were applied"
+  done
+  grep -q '^manual  app/controllers/application_controller.rb: ' generate.out || fail "no diff for application_controller.rb"
+  grep -q '^next: apply the diffs above, or re-run with --force for files you never edited$' generate.out || fail "no closing next: line"
+  ls db/migrate/*_add_authentication_columns.rb > /dev/null 2>&1 || fail "no add-columns migration"
+  patch -p1 < generate.out > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < the generator's output"; }
+  grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "patched ApplicationController does not include Authentication"
+  if grep -q 'def require_authentication' app/controllers/application_controller.rb; then
+    fail "patched ApplicationController still has 0.4's block"
+  fi
+  grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication$' config/routes.rb || fail "the jobs page is not drawn after patching"
+  expect_upgrade_tests
+  build_and_test
+
+  step "a fresh copy, run over with --force"
+  copy_04_app forced
+  cybertrain generate authentication --force > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication --force"; }
+  if grep -q '^manual  ' generate.out; then
+    fail "--force left diffs to apply: $(grep '^manual  ' generate.out)"
+  fi
+  grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "--force did not include Authentication"
+  expect_upgrade_tests
+  build_and_test
+
+  step "a copy with a 0.4 user in its database, run over with --confirmable --force"
+  copy_04_app populated
+  cybertrain db migrate > migrate-04.log 2>&1 || { cat migrate-04.log >&2; fail "db migrate (0.4's migrations)"; }
+  local db=storage/development.sqlite3
+  test -f "$db" || fail "no $db after 0.4's migrations"
+  sqlite3 "$db" "INSERT INTO users (email_address, password_digest, created_at, updated_at) VALUES ('old@example.com', 'x', '2026-09-25 12:00:00.000000', '2026-09-25 12:00:00.000000')" \
+    || fail "insert a 0.4 user"
+  cybertrain generate authentication --confirmable --force > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication --confirmable --force"; }
+  grep -q "confirmed_at = COALESCE(created_at" db/migrate/*_add_authentication_columns.rb || fail "the add-columns migration does not confirm the users there"
+  cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate (the add-columns migration)"; }
+  expect_equal "the 0.4 user after the migration" "old@example.com|0|0|2026-09-25 12:00:00.000000|" \
+    "$(sqlite3 "$db" "SELECT email_address, admin, failed_attempts, confirmed_at, unconfirmed_email FROM users")"
+
+  cd "$ROOT"
+  rm -rf "$WORK"
+  step "PASS"
+}
+
 run_variant() {
+  if [ "$VARIANT" = "upgrade04" ]; then
+    run_upgrade04
+    return
+  fi
   WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
   SERVER_LOG=""
   local flag=""
@@ -193,23 +300,7 @@ run_variant() {
     test ! -e app/controllers/confirmations_controller.rb || fail "$VARIANT wrote a ConfirmationsController"
   fi
 
-  step "db migrate, build, gen --check"
-  cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate"; }
-  cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build"; }
-  test -x dist/shop || fail "no dist/shop"
-  cybertrain spin run gen -- --check > gen-check.log 2>&1 || { cat gen-check.log >&2; fail "spin run gen -- --check"; }
-
-  # The app's own tests link SQLite, so they have no CRuby snapshot: `spin
-  # test` compiles each one (and fails for want of a snapshot), then the
-  # binary is run here and must pass.
-  for test_file in test/*.rb; do
-    name=$(basename "$test_file" .rb)
-    step "test/$name.rb"
-    cybertrain spin test "$test_file" > "test-$name.log" 2>&1 || true
-    test -x "build/test/$name" || { tail -n 40 "test-$name.log" >&2; fail "test/$name.rb did not compile"; }
-    out=$("./build/test/$name" 2>&1) || { printf '%s\n' "$out" | grep -v '^ok ' >&2; fail "test/$name.rb"; }
-    expect_contains "test/$name.rb" " 0 failures" "$out"
-  done
+  build_and_test
 
   step "serve dist/shop"
   cd dist

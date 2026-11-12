@@ -26,8 +26,19 @@
 # into bin/<app>.rb, the base_url setting (<APP>_BASE_URL, where links in
 # mails start) into config/app.rb (plus a sign-in in any
 # test/attachment_*.rb written before it, which now needs one). Every file is written once
-# (Templates.write never overwrites) and every edit is made once, so
-# running the generator again is harmless.
+# and every edit is made once, so running the generator again is
+# harmless.
+#
+# Run over an application an older generator wrote (0.4's, or one
+# without --confirmable; D19 of docs/superpowers/plans/2026-11-11-phase4b-i18n-auth-plan.md),
+# it writes the files that are missing, a db/migrate/<v>_add_authentication_columns.rb
+# with the columns the existing migrations lack, and the edits above; a
+# file it writes whole that exists with other content is left alone and
+# its diff printed (CLI::LineDiff; `patch -p1` applies the whole output),
+# or overwritten with --force. 0.4's authentication block in
+# ApplicationController (LEGACY_APPLICATION_CONTROLLER_BLOCKS) becomes
+# `include Authentication` the same way, --force replacing it only as 0.4
+# wrote it, and the jobs page's route follows it.
 #
 # Every word the screens show goes through t(): lazy keys
 # (`t(".title")`, sessions.new.title) in the views and the actions,
@@ -102,6 +113,7 @@
 require "cybertrain/cli/templates"
 require "cybertrain/cli/scaffold"
 require "cybertrain/cli/build"
+require "cybertrain/cli/line_diff"
 
 module Cybertrain
   module CLI
@@ -149,13 +161,138 @@ module Cybertrain
       # decides, so a visitor gets its 404 rather than a redirect to sign in
       # that shows the page exists (the skip is jobs_page's explicit option).
       JOBS_PAGE_LINE = "jobs_page \"/admin/jobs\", before_action: :require_admin, skip_before_action: :require_authentication"
+      # The authentication block 0.4's generator inserted after CLASS_LINE
+      # (v0.4.0's and v0.4.1's application_controller_block, the same text
+      # in both), each line indented two spaces as it was inserted
+      # (indent). A re-run over a 0.4 application replaces it with
+      # `include Authentication`: as a diff to apply by hand, or with
+      # --force when the file holds it exactly.
+      LEGACY_APPLICATION_CONTROLLER_BLOCKS = [
+        <<~RUBY
+          # ---- Authentication (cybertrain generate authentication) -------------
+          # Every action needs a signed-in user unless its controller opens it:
+          # `allow_unauthenticated_access only: [:new, :create]`. resume_session
+          # sets @current_user (and @current_session), which templates can read.
+          before_action :resume_session
+          before_action :require_authentication
+
+          def self.allow_unauthenticated_access(only: [], except: [])
+            skip_before_action(:require_authentication, only: only, except: except)
+          end
+
+          # @return [Boolean] whether this request has a signed-in user
+          def authenticated?
+            !@current_user.nil?
+          end
+
+          # Loads the Session row the cookie names (and its user); a stale or
+          # expired id is dropped. Cookie Max-Age alone cannot stop replay:
+          # authentication expires session_absolute_max_age seconds after
+          # sign-in (SessionStore enforces the same on the cookie). A cookie
+          # whose password key no longer matches (the password changed since
+          # it signed in) ends its Session row.
+          def resume_session
+            @current_session = nil
+            @current_user = nil
+            id = session[:session_id]
+            return nil if id.nil? || id.empty? || id.size > 18
+
+            found = Session.find_by(id: id.to_i)
+            if found.nil?
+              session.delete(:session_id)
+              return nil
+            end
+            created_at = found.created_at
+            lifetime = Cybertrain.config.session_absolute_max_age
+            if created_at.nil? || (lifetime > 0 && created_at.to_i + lifetime <= Time.now.to_i)
+              session.delete(:session_id)
+              return nil
+            end
+            user = found.user
+            if user.nil? || !Cybertrain::Password.session_key_matches?(session[:password_key], user.password_digest)
+              found.destroy
+              session.delete(:session_id)
+              return nil
+            end
+            @current_session = found
+            @current_user = user
+            nil
+          end
+
+          # Sends a visitor to the sign-in page, remembering a GET to come back to.
+          def require_authentication
+            return nil if authenticated?
+
+            session[:return_to_after_authenticating] = request.path if request.method == "GET"
+            redirect_to new_session_path, status: :see_other
+            nil
+          end
+
+          # Also stores the password key resume_session compares, and restarts
+          # the cookie's absolute lifetime. After a password change, call
+          # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
+          # to keep the browser that changed it signed in.
+          def start_new_session_for(user)
+            started = Session.create(user_id: user.id, ip_address: request.client_ip,
+                                     user_agent: request.header("user-agent").to_s)
+            session.restart_lifetime!
+            session[:session_id] = started.id
+            session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
+            @current_session = started
+            @current_user = user
+            nil
+          end
+
+          # Deletes the Session row and empties the cookie session (the CSRF
+          # token with it, so forms rendered before no longer submit).
+          def terminate_session
+            current = @current_session
+            current.destroy unless current.nil?
+            session.clear
+            @current_session = nil
+            @current_user = nil
+            nil
+          end
+
+          # Where to go after signing in: the page that asked for it, if it is a
+          # local path (Cybertrain::Controller#safe_redirect_path), or /.
+          def after_authentication_url
+            safe_redirect_path(session.delete(:return_to_after_authenticating), "/")
+          end
+          # ---- end of authentication ------------------------------------------
+
+        RUBY
+      ]
+      # The block's first and last lines, as inserted: where a diff finds an
+      # edited block.
+      LEGACY_BLOCK_START = "  # ---- Authentication (cybertrain generate authentication) -------------\n"
+      LEGACY_BLOCK_END = "  # ---- end of authentication ------------------------------------------\n"
+      # The columns the users and sessions migrations above create that an
+      # application generated before them may lack: table, column, and the
+      # rest of the add_column line. --confirmable's two are CONFIRMABLE_COLUMNS.
+      AUTHENTICATION_COLUMNS = [
+        ["users", "admin", ":boolean, null: false, default: \"false\""],
+        ["users", "failed_attempts", ":integer, null: false, default: \"0\""],
+        ["users", "locked_until", ":datetime"],
+        ["sessions", "remember", ":boolean, null: false, default: \"false\""],
+        ["sessions", "last_active_at", ":datetime"]
+      ]
+      CONFIRMABLE_COLUMNS = [
+        ["users", "confirmed_at", ":datetime"],
+        ["users", "unconfirmed_email", ":string"]
+      ]
+      # What heads each diff in GenerateResult#manual.
+      MANUAL_NOTE = "apply this diff by hand, or re-run with --force to overwrite the file"
 
       # What generate_with_result did: the paths it created, the paths it
-      # overwrote and the diffs to apply by hand where a file it writes
-      # whole exists with other content. The generator leaves such a file
-      # alone and reports nothing yet, so the last two are empty.
+      # overwrote (--force) and the changes to make by hand, each a heading
+      # line (`manual  <path>: ...`) and a unified diff (LineDiff.unified)
+      # that `patch -p1` applies: one per file it writes whole that exists
+      # with other content, and one each for ApplicationController and the
+      # jobs page's route of an application 0.4 generated.
       class GenerateResult
         # @return [Array<String>] each one's path from the app's root
+        #   (`manual`: each one's heading and diff)
         attr_reader :created, :forced, :manual
 
         def initialize(created, forced, manual)
@@ -177,7 +314,15 @@ module Cybertrain
       # app/controllers/application_controller.rb with the class line, no
       # bin/<app>.rb with the Main.run line, no config/app.rb with the
       # configure line).
-      def self.generate_with_result(root, invite_only = false, confirmable = false)
+      #
+      # Run again over an application generated before (by 0.4, say, or
+      # without --confirmable), it writes the files that are missing, a
+      # `<v>_add_authentication_columns.rb` migration with the columns the
+      # existing migrations lack, and makes the marker edits. A file it
+      # writes whole that exists with other content is left alone and its
+      # diff put in `manual`, or, with `force`, overwritten (`forced`). The
+      # create_* migrations are never rewritten: they may have run.
+      def self.generate_with_result(root, invite_only = false, confirmable = false, force = false)
         routes_path = File.join(root, "config/routes.rb")
         raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
         raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
@@ -199,62 +344,316 @@ module Cybertrain
         raise InvalidArgument, "#{config_path} not found: run this inside a cybertrain app" unless File.exist?(config_path)
         raise InvalidArgument, "#{config_path} has no `#{CONFIGURE_LINE}` line" if File.read(config_path).index(CONFIGURE_LINE).nil?
 
-        created = Array.new(0) { "" }
-        users = migration_path(root, "users")
-        record(created, root, users, users_migration(confirmable))
-        record(created, root, migration_path(root, "sessions"), sessions_migration)
-        record(created, root, "app/models/user.rb", user_model(confirmable))
-        record(created, root, "app/models/session.rb", session_model)
-        record(created, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable))
-        record(created, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable))
+        result = GenerateResult.new(Array.new(0) { "" }, Array.new(0) { "" }, Array.new(0) { "" })
+        record_migration(result, root, migration_path(root, "users"), users_migration(confirmable))
+        record_migration(result, root, migration_path(root, "sessions"), sessions_migration)
+        add_columns = add_columns_migration(root, confirmable)
+        record_migration(result, root, add_columns_path(root), add_columns) unless add_columns.empty?
+        # Until these two are changed, an account that has not confirmed
+        # its address signs in (or is signed in by sign-up): their diffs
+        # say so first.
+        unconfirmed = confirmable ? "until this diff is applied, an account that has not confirmed its address can sign in" : ""
+        record_file(result, root, "app/models/user.rb", user_model(confirmable), force)
+        record_file(result, root, "app/models/session.rb", session_model, force)
+        record_file(result, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable), force)
+        record_file(result, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable), force, unconfirmed)
         if invite_only
-          record(created, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable))
+          record_file(result, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable), force)
         else
-          record(created, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable))
+          record_file(result, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable), force, unconfirmed)
         end
-        record(created, root, "app/controllers/passwords_controller.rb", passwords_controller(confirmable))
-        record(created, root, "app/controllers/confirmations_controller.rb", confirmations_controller) if confirmable
-        record(created, root, "app/controllers/accounts_controller.rb", accounts_controller(confirmable))
-        record(created, root, "app/mailers/passwords_mailer.rb", passwords_mailer)
-        record(created, root, "app/mailers/confirmations_mailer.rb", confirmations_mailer) if confirmable
-        record(created, root, "app/commands/user_command.rb", user_command(app, invite_only, confirmable))
-        record(created, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only, confirmable))
-        record(created, root, "app/views/sessions/_nav.html.erb", nav_partial)
+        record_file(result, root, "app/controllers/passwords_controller.rb", passwords_controller(confirmable), force)
+        record_file(result, root, "app/controllers/confirmations_controller.rb", confirmations_controller, force) if confirmable
+        record_file(result, root, "app/controllers/accounts_controller.rb", accounts_controller(confirmable), force)
+        record_file(result, root, "app/mailers/passwords_mailer.rb", passwords_mailer, force)
+        record_file(result, root, "app/mailers/confirmations_mailer.rb", confirmations_mailer, force) if confirmable
+        record_file(result, root, "app/commands/user_command.rb", user_command(app, invite_only, confirmable), force)
+        record_file(result, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only, confirmable), force)
+        record_file(result, root, "app/views/sessions/_nav.html.erb", nav_partial, force)
         if invite_only
-          record(created, root, "app/views/setup/new.html.erb", setup_new_view)
+          record_file(result, root, "app/views/setup/new.html.erb", setup_new_view, force)
         else
-          record(created, root, "app/views/registrations/new.html.erb", registrations_new_view)
+          record_file(result, root, "app/views/registrations/new.html.erb", registrations_new_view, force)
         end
-        record(created, root, "app/views/passwords/new.html.erb", passwords_new_view)
-        record(created, root, "app/views/passwords/edit.html.erb", passwords_edit_view)
-        record(created, root, "app/views/mail/_password_reset.html.erb", password_reset_mail_view)
+        record_file(result, root, "app/views/passwords/new.html.erb", passwords_new_view, force)
+        record_file(result, root, "app/views/passwords/edit.html.erb", passwords_edit_view, force)
+        record_file(result, root, "app/views/mail/_password_reset.html.erb", password_reset_mail_view, force)
         if confirmable
-          record(created, root, "app/views/confirmations/new.html.erb", confirmations_new_view)
-          record(created, root, "app/views/mail/_confirmation.html.erb", confirmation_mail_view)
+          record_file(result, root, "app/views/confirmations/new.html.erb", confirmations_new_view, force)
+          record_file(result, root, "app/views/mail/_confirmation.html.erb", confirmation_mail_view, force)
         end
-        record(created, root, "app/views/accounts/edit.html.erb", accounts_edit_view(confirmable))
-        record(created, root, "test/support/app_test.rb", app_test_support(confirmable))
-        record(created, root, "test/support/authentication_helpers.rb", authentication_helpers)
-        record(created, root, "test/authentication.rb", invite_only ? invite_only_test(app) : authentication_test(confirmable))
-        record(created, root, "test/admin.rb", admin_test(app))
-        record(created, root, "test/remember_me.rb", remember_me_test)
-        record(created, root, "test/lockout.rb", lockout_test)
-        record(created, root, "test/passwords.rb", passwords_test(app))
-        record(created, root, "test/accounts.rb", accounts_test(confirmable))
-        record(created, root, "test/confirmations.rb", confirmations_test(app, invite_only)) if confirmable
-        add_to_application_controller(controller_path)
+        record_file(result, root, "app/views/accounts/edit.html.erb", accounts_edit_view(confirmable), force)
+        record_file(result, root, "test/support/app_test.rb", app_test_support(confirmable), force)
+        record_file(result, root, "test/support/authentication_helpers.rb", authentication_helpers, force)
+        record_file(result, root, "test/authentication.rb", invite_only ? invite_only_test(app) : authentication_test(confirmable), force)
+        record_file(result, root, "test/admin.rb", admin_test(app), force)
+        record_file(result, root, "test/remember_me.rb", remember_me_test, force)
+        record_file(result, root, "test/lockout.rb", lockout_test, force)
+        record_file(result, root, "test/passwords.rb", passwords_test(app), force)
+        record_file(result, root, "test/accounts.rb", accounts_test(confirmable), force)
+        record_file(result, root, "test/confirmations.rb", confirmations_test(app, invite_only), force) if confirmable
+        legacy = legacy_application_controller?(File.read(controller_path))
+        if legacy
+          upgrade_application_controller(result, controller_path, force)
+        else
+          add_to_application_controller(controller_path)
+        end
         add_routes(routes_path, invite_only, confirmable)
-        enable_jobs_page(routes_path, controller_path)
+        if legacy
+          upgrade_jobs_page(result, routes_path, controller_path)
+        else
+          enable_jobs_page(routes_path, controller_path)
+        end
         add_nav_to_layout(File.join(root, "app/views/layouts/application.html.erb"))
         add_sign_in_to_attachment_tests(root)
         add_command_to_bin(bin_path, app, invite_only)
         add_setting_to_config(config_path, app, invite_only)
-        GenerateResult.new(created, Array.new(0) { "" }, Array.new(0) { "" })
+        result
       end
 
-      def self.record(created, root, path, content)
-        created << path if Templates.write(root, path, content) == "create"
+      # Writes a file the generator writes whole (Templates.write: create,
+      # or identical). One that exists with other content is left alone
+      # and answered "manual", or, with `force`, overwritten and answered
+      # "force".
+      # @return [String] "create", "identical", "manual" or "force"
+      def self.write_or_diff(root, path, content, force)
+        full = File.join(root, path)
+        return Templates.write(root, path, content) unless File.exist?(full)
+
+        if LineDiff.as_utf8(File.read(full)) == content
+          puts "identical #{path}"
+          return "identical"
+        end
+
+        if force
+          File.write(full, content)
+          puts "force  #{path}"
+          return "force"
+        end
+        puts "manual  #{path} (diff below)"
+        "manual"
+      end
+
+      # write_or_diff, and what it did put into result; `warning`, when
+      # given, is a second heading line above the diff.
+      def self.record_file(result, root, path, content, force = false, warning = "")
+        status = write_or_diff(root, path, content, force)
+        if status == "create"
+          result.created << path
+        elsif status == "force"
+          result.forced << path
+        elsif status == "manual"
+          result.manual << manual_change(path, File.read(File.join(root, path)), content, MANUAL_NOTE, warning)
+        end
         nil
+      end
+
+      # A migration is written once and never rewritten (it may have run):
+      # one that exists with other content is left as it is (Templates.write
+      # says "exist"), and the columns it lacks go into the add-columns
+      # migration.
+      def self.record_migration(result, root, path, content)
+        result.created << path if Templates.write(root, path, content) == "create"
+        nil
+      end
+
+      # GenerateResult#manual's entry: the heading, the warning line if
+      # any, and the diff from old_text to new_text.
+      def self.manual_change(path, old_text, new_text, note, warning = "")
+        out = +""
+        out << "manual  #{path}: #{note}\n"
+        out << "IMPORTANT: #{warning}\n" unless warning.empty?
+        out << LineDiff.unified(path, old_text, new_text)
+        out
+      end
+
+      # The add_column lines (each indented for the migration's change, and
+      # with its newline) of the columns this generator's migrations create
+      # that db/schema.rb and db/migrate/*.rb do not have; with
+      # `confirmable`, --confirmable's two too.
+      def self.missing_column_lines(root, confirmable)
+        out = Array.new(0) { "" }
+        AUTHENTICATION_COLUMNS.each do |col|
+          out << "    add_column \"#{col[0]}\", \"#{col[1]}\", #{col[2]}\n" unless column_present?(root, col[0], col[1])
+        end
+        if confirmable
+          CONFIRMABLE_COLUMNS.each do |col|
+            out << "    add_column \"#{col[0]}\", \"#{col[1]}\", #{col[2]}\n" unless column_present?(root, col[0], col[1])
+          end
+        end
+        out
+      end
+
+      # The migration that adds the missing columns (missing_column_lines),
+      # or "" when none is missing. When it adds users.confirmed_at, the
+      # users already there count as confirmed (since they were created):
+      # they signed up when nobody was asked to confirm, and would
+      # otherwise never sign in again.
+      def self.add_columns_migration(root, confirmable)
+        lines = missing_column_lines(root, confirmable)
+        return "" if lines.empty?
+
+        name = File.basename(add_columns_path(root), ".rb")
+        name = name[Scaffold.leading_digits(name).size + 1, name.size].to_s
+        out = +""
+        out << "# The columns `cybertrain generate authentication` reads that the\n"
+        out << "# migrations before this one did not create.\n"
+        out << "class #{Inflector.camelize(name)} < Cybertrain::Migration::Base\n"
+        out << "  def change\n"
+        lines.each { |line| out << line }
+        if confirmable && !column_present?(root, "users", "confirmed_at")
+          out << "    # The users already here signed up when nobody was asked to\n"
+          out << "    # confirm an address: they count as confirmed since they were\n"
+          out << "    # created, or none of them could sign in again.\n"
+          out << "    reversible do |dir|\n"
+          out << "      dir.up { execute \"UPDATE users SET confirmed_at = COALESCE(created_at, strftime('%Y-%m-%d %H:%M:%S.000000', 'now')) WHERE confirmed_at IS NULL\" }\n"
+          out << "    end\n"
+        end
+        out << "  end\n"
+        out << "end\n"
+        out
+      end
+
+      # db/migrate/<version>_add_authentication_columns.rb; when one is
+      # there already (an earlier upgrade), the next free name of
+      # ..._add_authentication_columns_2.rb, _3 and so on.
+      def self.add_columns_path(root)
+        base = "add_authentication_columns"
+        name = base
+        n = 1
+        until Dir.glob(File.join(root, "db/migrate/*_#{name}.rb")).empty?
+          n += 1
+          name = "#{base}_#{n}"
+        end
+        "db/migrate/#{Scaffold.next_version(root, Scaffold.timestamp)}_#{name}.rb"
+      end
+
+      # Whether db/schema.rb or a migration in db/migrate has `column` in
+      # `table` (declares_column?).
+      def self.column_present?(root, table, column)
+        sources = Dir.glob(File.join(root, "db/migrate/*.rb")).sort
+        schema = File.join(root, "db/schema.rb")
+        sources << schema if File.exist?(schema)
+        sources.each do |path|
+          return true if declares_column?(File.read(path), table, column)
+        end
+        false
+      end
+
+      # Whether source has a line naming `column` inside a `create_table
+      # "<table>"` block (the schema dump's `s.create_table` too), or an
+      # `add_column "<table>", "<column>"` line (with symbols too).
+      def self.declares_column?(source, table, column)
+        heads = ["create_table \"#{table}\"", "create_table :#{table}", "s.create_table \"#{table}\""]
+        adds = ["add_column \"#{table}\", \"#{column}\"", "add_column :#{table}, :#{column}",
+                "add_column \"#{table}\", :#{column}", "add_column :#{table}, \"#{column}\""]
+        inside = false
+        source.each_line do |raw|
+          code = raw.strip
+          if heads.any? { |head| code.start_with?(head) }
+            inside = true
+          elsif inside && code == "end"
+            inside = false
+          elsif inside && (!code.index("\"#{column}\"").nil? || !code.index(":#{column},").nil? || code.end_with?(":#{column}"))
+            return true
+          elsif adds.any? { |add| code.start_with?(add) }
+            return true
+          end
+        end
+        false
+      end
+
+      # Whether source holds 0.4's authentication block (its first line)
+      # and no include: what generate_with_result upgrades rather than
+      # inserts into.
+      def self.legacy_application_controller?(source)
+        !source.index(LEGACY_BLOCK_START).nil? && !Authentication.included?(source)
+      end
+
+      # 0.4's ApplicationController with its authentication block (from
+      # LEGACY_BLOCK_START to LEGACY_BLOCK_END and the blank line after it)
+      # replaced by `include Authentication`. With `force` and the block as
+      # 0.4 wrote it (LEGACY_APPLICATION_CONTROLLER_BLOCKS), the file is
+      # changed; otherwise the change goes into result.manual. A block
+      # whose end line is gone is left alone with a note.
+      def self.upgrade_application_controller(result, path, force)
+        name = "app/controllers/application_controller.rb"
+        source = File.read(path)
+        start = source.index(LEGACY_BLOCK_START).to_i
+        last = source.index(LEGACY_BLOCK_END, start)
+        if last.nil?
+          puts "skip #{name} (0.4's authentication block has no end line): " \
+               "replace that code with `#{INCLUDE_LINE}` (app/controllers/concerns/authentication.rb)"
+          return nil
+        end
+
+        stop = last + LEGACY_BLOCK_END.size
+        stop += 1 if source[stop, 1] == "\n"
+        block = source[start, stop - start].to_s
+        updated = +""
+        updated << source[0, start].to_s << "  #{INCLUDE_LINE}\n\n" << source[stop, source.size - stop].to_s
+        exact = LEGACY_APPLICATION_CONTROLLER_BLOCKS.any? { |legacy| indent(legacy) == block }
+        if force && exact
+          File.write(path, updated)
+          puts "force  #{name} (0.4's authentication block replaced by #{INCLUDE_LINE})"
+          result.forced << name
+          return nil
+        end
+
+        note = exact ? MANUAL_NOTE : "apply this diff by hand (0.4's authentication block was edited, so --force leaves it alone)"
+        puts "manual  #{name} (diff below)"
+        result.manual << manual_change(name, source, updated, note)
+        nil
+      end
+
+      # The jobs page of an application 0.4 generated (jobs_page_routes,
+      # which adds the line where 0.4's `cybertrain new` wrote no comment
+      # of it): drawn once ApplicationController includes the concern,
+      # else its diff into result.manual, to apply with
+      # application_controller.rb's.
+      def self.upgrade_jobs_page(result, routes_path, controller_path)
+        source = File.read(routes_path)
+        updated = jobs_page_routes(source, true)
+        return nil if updated.empty?
+
+        if Authentication.included?(File.read(controller_path))
+          File.write(routes_path, updated)
+          puts "route #{JOBS_PAGE_LINE}"
+          return nil
+        end
+
+        puts "manual  config/routes.rb (diff below)"
+        result.manual << manual_change("config/routes.rb", source, updated,
+                                       "apply this diff by hand with application_controller.rb's (require_admin comes with #{INCLUDE_LINE})")
+        nil
+      end
+
+      # source with the jobs page drawn as JOBS_PAGE_LINE in place of the
+      # comment `cybertrain new` writes (or JOBS_PAGE_LINE commented out),
+      # or, with `add_missing` and no `jobs_page` anywhere in it, as a line
+      # of its own before the last `end`; "" when there is nothing to do.
+      def self.jobs_page_routes(source, add_missing)
+        comments = ["# #{NEW_APP_JOBS_PAGE_LINE}", "# #{JOBS_PAGE_LINE}"]
+        updated = +""
+        found = false
+        source.each_line do |line|
+          code = line.strip
+          if !found && comments.include?(code)
+            found = true
+            updated << line[0, line.index(code).to_i].to_s << JOBS_PAGE_LINE << "\n"
+          else
+            updated << line
+          end
+        end
+        return updated if found
+        return "" unless add_missing && source.index("jobs_page").nil?
+
+        at = source.rindex("\nend")
+        return "" if at.nil?
+
+        out = +""
+        out << source[0, at + 1].to_s << "  #{JOBS_PAGE_LINE}\n" << source[at + 1, source.size - at - 1].to_s
+        out
       end
 
       # db/migrate/<version>_create_<table>.rb, or the existing one; the

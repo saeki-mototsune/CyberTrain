@@ -1143,13 +1143,16 @@ test "the user command is written in both modes with admin and unadmin" do
   assert shop_bin.index("warn_if_no_user").nil?
 end
 
-test "--force is refused until it does something (Task 16)" do
+test "an unknown flag is refused before writing; --force is taken" do
   Cybertrain::CLI::NewApp.create("flags", "{ path = \"../cybertrain\" }")
-  assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--force"]) }
-  assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only", "--force"]) }
-  assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--confirmable", "--force"]) }
   assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--confirm"]) }
+  assert_equal 1, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--force", "--forced"]) }
   refute File.exist?("flags/app/models/user.rb")
+  # On a new application --force has nothing to overwrite
+  # (test/cli_authentication_upgrade.rb runs it over a 0.4 one).
+  assert_equal 0, Dir.chdir("flags") { Cybertrain::CLI.run(["generate", "authentication", "--invite-only", "--confirmable", "--force"]) }
+  assert File.exist?("flags/app/models/user.rb")
+  assert File.exist?("flags/app/controllers/confirmations_controller.rb")
 end
 
 test "--invite-only run again writes and edits nothing" do

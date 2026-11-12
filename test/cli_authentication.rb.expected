@@ -367,11 +367,53 @@ create gen/.keep
 create storage/.keep
 create tmp/.keep
 create test/.keep
-error: usage: cybertrain generate authentication [--invite-only] [--confirmable]
-error: usage: cybertrain generate authentication [--invite-only] [--confirmable]
-error: usage: cybertrain generate authentication [--invite-only] [--confirmable]
-error: usage: cybertrain generate authentication [--invite-only] [--confirmable]
-ok   --force is refused until it does something (Task 16)
+error: usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]
+error: usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/setup_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/confirmations_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/mailers/confirmations_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/setup/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/confirmations/new.html.erb
+create app/views/mail/_confirmation.html.erb
+create app/views/accounts/edit.html.erb
+create test/support/app_test.rb
+create test/support/authentication_helpers.rb
+create test/authentication.rb
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+create test/accounts.rb
+create test/confirmations.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /setup
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/flags.rb (./flags user, the first-run warning)
+insert config/app.rb (FLAGS_BASE_URL)
+insert config/app.rb (FLAGS_SETUP_OPEN)
+
+next:
+  cybertrain db migrate
+  cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run flags -- user EMAIL)
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb, accounts.rb and confirmations.rb; snapshot them from the binaries
+  # password reset and confirmation mails: set FLAGS_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
+ok   an unknown flag is refused before writing; --force is taken
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -444,7 +486,7 @@ create storage/.keep
 create tmp/.keep
 create test/.keep
 error: ./bin/bare.rb has no line starting with `exit(Cybertrain::Main.run(`
-error: usage: cybertrain generate authentication [--invite-only] [--confirmable]
+error: usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 error: ./bin/bare.rb has no line starting with `exit(Cybertrain::Main.run(`
 error: ./bin/bare.rb not found: run this inside a cybertrain app
 ok   either mode refuses an app whose bin/<app>.rb has no Main.run line, before writing
@@ -1047,7 +1089,7 @@ ok   both modes refuse an app without config/app.rb's configure line, before wri
 ok   insert_before_line inserts at the start of the line
 ok   insert_after_line keeps the rest of the file
 error: ./config/routes.rb not found: run this inside a cybertrain app
-error: usage: cybertrain generate authentication [--invite-only] [--confirmable]
+error: usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 error: only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported
 create spin.toml
 create .gitignore
@@ -1083,4 +1125,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-41 tests, 1325 assertions, 0 failures
+41 tests, 1326 assertions, 0 failures

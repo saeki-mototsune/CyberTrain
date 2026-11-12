@@ -1,0 +1,7 @@
+/build/
+/dist/
+/storage/*.sqlite3*
+/storage/uploads/
+/tmp/*
+!/tmp/.keep
+/log/

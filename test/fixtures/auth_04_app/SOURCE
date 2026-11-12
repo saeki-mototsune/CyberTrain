@@ -1,0 +1,29 @@
+A sign-up application as cybertrain v0.4.1's generators wrote it, kept so
+that test/cli_authentication_upgrade.rb and `script/auth-e2e upgrade04`
+can re-run today's `generate authentication` over a 0.4 application
+(the upgrade path, D19 of the phase 4b plan).
+
+Tag: v0.4.1 (commit d8a9825). Produced once, on 2026-11-12, with:
+
+  git worktree add $TMP/v041 v0.4.1
+  cd $TMP
+  export CYBERTRAIN_TIMESTAMP=20260925120000
+  ruby -I$TMP/v041 $TMP/v041/exe/cybertrain new shop --path ../..
+  cd shop
+  ruby -I../v041 ../v041/exe/cybertrain generate authentication
+  git worktree remove $TMP/v041
+
+`new` then tried to bootstrap (spin lock, spin run gen) against ../..,
+which holds no framework from $TMP, and stopped there: gen/ has only its
+.keep, as `new` wrote it, and that is what is kept. Every file is as
+written, except:
+
+  * build/ (the empty build directory of the failed bootstrap) is left out;
+  * tmp/.keep is left out (the repository's .gitignore ignores tmp/);
+  * spin.toml and spin.lock name the framework as path "../../.." (the
+    repository root, seen from this directory) in place of the absolute
+    path `new` wrote. script/auth-e2e points a copy at the checkout it
+    tests.
+
+Nothing under this directory is a test of the framework: test/*.rb here
+are the application's own, run only by script/auth-e2e upgrade04.

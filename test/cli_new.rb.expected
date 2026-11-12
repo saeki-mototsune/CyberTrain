@@ -317,7 +317,7 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only] [--confirmable]
+  cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
       the Authentication concern (included into ApplicationController),
@@ -335,6 +335,12 @@ Usage:
       before it can sign in (a form sends the link again), and a new
       address on the account page takes effect once its own link is
       opened. Users the user command or /setup creates are confirmed.
+      Run again over an application generated before (by 0.4, or
+      without --confirmable), it writes the missing files and a
+      migration with the missing columns, and prints a diff for each
+      file it would change, to apply by hand (patch -p1 applies them).
+      --force: overwrite those files instead (and replace 0.4's
+      authentication block in ApplicationController, unless edited).
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
@@ -408,7 +414,7 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only] [--confirmable]
+  cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
       the Authentication concern (included into ApplicationController),
@@ -426,6 +432,12 @@ Usage:
       before it can sign in (a form sends the link again), and a new
       address on the account page takes effect once its own link is
       opened. Users the user command or /setup creates are confirmed.
+      Run again over an application generated before (by 0.4, or
+      without --confirmable), it writes the missing files and a
+      migration with the missing columns, and prints a diff for each
+      file it would change, to apply by hand (patch -p1 applies them).
+      --force: overwrite those files instead (and replace 0.4's
+      authentication block in ApplicationController, unless edited).
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
@@ -498,7 +510,7 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only] [--confirmable]
+  cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
       the Authentication concern (included into ApplicationController),
@@ -516,6 +528,12 @@ Usage:
       before it can sign in (a form sends the link again), and a new
       address on the account page takes effect once its own link is
       opened. Users the user command or /setup creates are confirmed.
+      Run again over an application generated before (by 0.4, or
+      without --confirmable), it writes the missing files and a
+      migration with the missing columns, and prints a diff for each
+      file it would change, to apply by hand (patch -p1 applies them).
+      --force: overwrite those files instead (and replace 0.4's
+      authentication block in ApplicationController, unless edited).
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
