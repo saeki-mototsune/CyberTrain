@@ -4,7 +4,7 @@ What building and speeding up CyberTrain found in Spinel itself, written so
 each item can become an issue upstream. Each says what happens, how it was
 seen, what CyberTrain does about it today, and what would fix it in Spinel.
 
-Eight builds are covered, and the source of a ninth was read:
+Nine builds are covered, and the source of one more was read:
 
 - **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
   was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
@@ -91,12 +91,29 @@ Eight builds are covered, and the source of a ninth was read:
   commit, it means the fixing commit and its test are there and the
   test's program is the one given here; nothing was compiled or run with
   it. It is in no fork tag.
+- **matz/spinel master 1c0cc5e35** (2026-11-12 18:40 +0900), built from
+  source on macOS arm64 on 2026-11-13 to run the reduced programs of the open
+  items, and nothing else: CyberTrain was not built with it, `spin test`
+  was not run, and it is in no fork tag. It carries the fixes sent from
+  this project and merged on 2026-11-12:
+  #11639 (Q, the Float half), #11643 (S), #11646 (5 (b)), #11650 (R) and
+  #11683 (U). The programs of K, N, Q, R (all three), S, T, U and rule 79
+  print CRuby's result on it; Y's and Z's fail as on the pin; M's, O's,
+  P's and J's were not run (see "What is asked of Spinel now").
 
 The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22, 56 to
 59, 62, 64 to 66, 70, 72, 77 to 79, 81 to 84, 86 and 88 to 97),
 [benchmark.md](benchmark.md) and [performance-next.md](performance-next.md).
 
 ## What is asked of Spinel now
+
+Brought up to date on 2026-11-13. Since this section was written, the first,
+fourth and fifth of its open bugs (S, R, U), the sweeper half of 5 and
+the Float half of Q were sent to matz/spinel and merged (#11643, #11650,
+#11683, #11646, #11639), and master 1c0cc5e35 was built to run each item's
+program. Those items moved from "Bugs still open" to the table under 1,
+which gained a column for that run. The rest reads as it did on
+2026-11-11.
 
 Written on 2026-11-11, after phase 4a of the Rails-gap programme and its
 final fixes. Two things were done for it. The programs that had only been
@@ -112,20 +129,27 @@ when a fork tag carries it.
 This is the first thing asked, and it is asked of the fork, not of
 upstream. The fork has no tag after 2026.11.04.7026 (its master,
 da8d4ba8, is one commit past it), and master has since merged a fix for
-eight items here, five of them (K, rule 79, M, N, O) sent from this
-project. Any tag that carries master up to matz/spinel#11219
-(2026-11-07) has them all:
+thirteen items here, ten of them sent from this project (K, rule 79, M,
+N and O, and on 2026-11-12 Q's Float half, R, S, U and 5 (b)). Any tag
+that carries master up to matz/spinel#11697 (2026-11-13) has them all.
+The third column is the item's program built with master 1c0cc5e35 on
+2026-11-13:
 
-| Item | On master | What changes in CyberTrain once pinned to it |
-| --- | --- | --- |
-| K. `puts` on a nil-only receiver does not compile with the TLS layer | #11129, merged 2026-11-06 | `Logger#log` goes back to `@io.puts(line)` |
-| Rule 79. A rescuing method's value from a block that only raises | #11137, merged 2026-11-06 (and #11143 to #11145) | the test idiom of rule 79 is no longer needed |
-| M. `gets` on STDIN does not show a partial STDOUT line first | #11193, merged 2026-11-06 | `Console.run`'s flushes go |
-| N. A Hash return does not follow an ivar widened late | #11184 and #11219, merged 2026-11-06 and 2026-11-07 | nothing here; Daicho's `n.to_i` goes |
-| O. `TCPSocket.new` ignores `connect_timeout:` | #11183, merged 2026-11-06 | a sentence in socket.rb's header and the guides |
-| P. Net::HTTP against a silent TLS peer | dcc46945c, 2026-11-05 | the header comment of http_client.rb and the guides' "why it exists" |
-| T. `exit` on a thread other than main | test/thread_exit_raises_in_main.rb, in master before #11035 (2026-11-05) | nothing; rule 91 becomes history |
-| Q, the Time and Date half | #10998, merged 2026-11-05 | `where(col: t1..t2)` and the validators can be looked at again |
+| Item | On master | Its program on master 1c0cc5e35 | What changes in CyberTrain once pinned to it |
+| --- | --- | --- | --- |
+| K. `puts` on a nil-only receiver does not compile with the TLS layer | #11129, merged 2026-11-06 | builds and prints `ok` | `Logger#log` goes back to `@io.puts(line)` |
+| Rule 79. A rescuing method's value from a block that only raises | #11137, merged 2026-11-06 (and #11143 to #11145) | prints `["b"]` | the test idiom of rule 79 is no longer needed |
+| M. `gets` on STDIN does not show a partial STDOUT line first | #11193, merged 2026-11-06 | not run (it needs a terminal) | `Console.run`'s flushes go |
+| N. A Hash return does not follow an ivar widened late | #11184 and #11219, merged 2026-11-06 and 2026-11-07 | prints `0` | nothing here; Daicho's `n.to_i` goes |
+| O. `TCPSocket.new` ignores `connect_timeout:` | #11183, merged 2026-11-06 | not run | a sentence in socket.rb's header and the guides |
+| P. Net::HTTP against a silent TLS peer | dcc46945c, 2026-11-05 | not run | the header comment of http_client.rb and the guides' "why it exists" |
+| T. `exit` on a thread other than main | test/thread_exit_raises_in_main.rb, in master before #11035 (2026-11-05) | exits 1 and prints nothing, as CRuby does | nothing; rule 91 becomes history |
+| Q, the Time and Date half | #10998, merged 2026-11-05 | `t1..t2`, `Range.new(t1, t2)` and a Range of Dates are built and answer `begin` | `where(col: t1..t2)` and the validators can be looked at again |
+| Q, the Float half: `when Range` misses a boxed Float Range, or a Time Range held in a Hash | #11639, merged 2026-11-12 | Q's first program prints `["1.5", "2.5"]`, `["a", "z"]` and `2` | the same look at `where(col: a..b)` and the validators covers Float ends |
+| R. A `rescue` arm Spinel does not resolve matches by its last segment, or the `begin` swallows the exception | #11650, merged 2026-11-12 (and #11689 and #11690 from its review, merged later that day and not in 1c0cc5e35) | all three programs print CRuby's result | nothing has to change; the warning on a `rescue` line (rule 89) and the spelling from the top (rule 81) stop being what keeps an exception from being lost |
+| S. A `yield` passed as an argument runs the block twice | #11643, merged 2026-11-12 | prints `one 42 a` | `Cybertrain::Cache`'s fetch family can pass `yield` to the cast again (rule 90) |
+| U. A `def` inside a block that never runs defines the method | #11683, merged 2026-11-12 | prints `false false` | gen's refusal of a `class_methods` name (`ConcernScan::RULE_93`) can be looked at again |
+| 5 (b). At one worker the sweep is handed to a thread that shares the CPU | #11646, merged 2026-11-12 (and #11697, its test made stricter, 2026-11-13) | not run (the change shows on Linux held to one CPU; the pull request's figures are under 5) | nothing to change; a one-CPU deployment stops paying for the sweeper |
 
 With the tag: run each item's program, `spin test`, and examples/blog's
 `spin run gen`, tests and the side-by-side run of "Re-checked side by
@@ -134,39 +158,31 @@ tag and 494deaac).
 
 ### 2. Bugs still open, each with a program that shows it
 
-None of these has an upstream issue or a fixing commit that was found on
-2026-11-11 (matz/spinel's issues searched by keyword, master's history
-from 2026-11-04 to 494deaac by subject), and none is reported yet. The
-order is by harm: the first five give a wrong result with no error at
-compile time, and each has a workaround in the framework that an
-application author has to know as well.
+On 2026-11-11 none of these had an upstream issue or a fixing commit
+(matz/spinel's issues searched by keyword, master's history from
+2026-11-04 to 494deaac by subject), and none was reported. Five of the
+eight listed then are merged since and are in the table under 1: S, R,
+U, 5 (b) and the Float half of Q. Four are left, in order of harm. The
+first two give a wrong result with no error at compile time, each has a
+workaround in the framework that an application author has to know as
+well, and both fail on master 1c0cc5e35 as on the pin (2026-11-13); neither is
+reported yet.
 
-1. **S**: a `yield` passed as an argument runs the block twice when the
-   method's blocks differ in type. Side effects happen twice. 21 lines.
-2. **Z** (new here): a stored block called with a base-class receiver
-   runs the base class's method, not the subclass's override. 22 lines.
-3. **Y** (new here): a lambda written into a module-body ivar is called
-   with an Integer in place of its argument. 14 lines.
-4. **R**: a `rescue` arm that Spinel does not resolve makes the whole
-   `begin` swallow every exception, or matches by its last segment.
-   Three programs, the third (rule 81) with every class defined.
-5. **U**: a `def` inside a block that never runs defines the method.
-   13 lines.
-6. **J**: with the slab off, AddressSanitizer finds a thread's captured
+1. **Z**: a stored block called with a base-class receiver runs the base
+   class's method, not the subclass's override. 22 lines.
+2. **Y**: a lambda written into a module-body ivar is called with an
+   Integer in place of its argument. 14 lines.
+3. **J**: with the slab off, AddressSanitizer finds a thread's captured
    variables freed before it runs. Whether the default is affected is
    still open. (matz/spinel#11138, merged 2026-11-06, fixed another
    object freed while still referenced that showed with
    `SPINEL_GC_SLAB=0`, an interned frozen String; it does not touch a
    thread's captures, and J's program is to be run again on a tag that
-   carries it.)
-7. **5**: at one worker 83% of collections are full, and the sweep goes
-   to a thread that shares the CPU. Two fixes are described, (a) for the
-   cadence rule and (b) for the sweeper; neither is written as a patch.
-   (a) is what would take `SPINEL_GC_FULL_INTERVAL=8` out of the deploy
+   carries it. It was not run on 1c0cc5e35.)
+4. **5 (a)**: at one worker 83% of collections are full. The change to
+   the cadence rule is described under 5 and not written as a patch; it
+   is what would take `SPINEL_GC_FULL_INTERVAL=8` out of the deploy
    files.
-8. **Q, the Float and String half**: `when Range` misses a boxed
-   `1.5..2.5` or `"a".."z"` on the pinned release. To be run on master
-   first (see Q).
 
 ### 3. Seen in the framework, not reduced yet
 
@@ -199,13 +215,15 @@ Looked at on 2026-11-05, against 2026.11.04.7026 and the fork's master
 has a workaround in CyberTrain or an open bug. The rows were brought up
 to date on 2026-11-11 with what matz/spinel master 494deaac has merged
 since (read, not built; see "What is asked of Spinel now"), and Y and Z
-were added:
+were added. On 2026-11-13 the rows of 5 (b), Q, R, S and U were brought up to
+date with what was sent and merged on 2026-11-12, and Y's and Z's with a
+run on master 1c0cc5e35:
 
 | Item | Workaround it would remove | What can be sent |
 | --- | --- | --- |
 | K | `Logger#log`'s `@io.write` instead of `@io.puts` | **Ready**: a nine-line reduced program and a one-line fix in src/codegen_call_io.c, tested on a build of 2026.11.04.7026 (see K). **Sent and merged**: matz/spinel#11129 (2026-11-06), which reads the argument through `emit_to_s_expr` and covers `print` as well. Needs a fork tag that carries it |
 | 5 (a) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files | A change to the full-collection cadence rule (`SP_GC_PROMOTED_DEAD_CUT`), a policy change that upstream's benchmarks would have to support; not written yet |
-| 5 (b) | none (a gain of about 5% on one CPU) | Small: start no sweeper in `sp_cs_start_sweepers` (lib/sp_sched.c) when `SPINEL_GC_SWEEPERS` is unset and the process may use one CPU; not written or measured as a patch |
+| 5 (b) | none (a gain of about 5% on one CPU) | Small: start no sweeper in `sp_cs_start_sweepers` (lib/sp_sched.c) when `SPINEL_GC_SWEEPERS` is unset and the process may use one CPU; not written or measured as a patch. **Sent and merged**: matz/spinel#11646 (2026-11-12), measured there on Linux/aarch64 held to one CPU (see 5), with its test made stricter by #11697 (2026-11-13). Needs a fork tag that carries it |
 | J | none | Nothing yet: where the capture struct becomes unreachable is not known |
 | L | `Application.spinel_workers` (`workers + 1` above 1) | **Ready to report**: the 15-line program and its table in L show it without a server; a choice of fix for upstream (main pumps while it joins, or N helpers when main only waits), plus the separate placement of a helper's spawns. **Settled upstream as documented behaviour**: docs/thread.md on master says a program whose main only starts and joins threads has N-1 threads of work and is to be given `SPINEL_WORKERS=N+1` (da4485a5, 2026-11-06), which is what `Application.spinel_workers` does. Nothing more is asked |
 | `"#{v}"` copies | the idioms of rule 56 | Not as stated in the table: CRuby's `"#{s}"` also answers a new, unfrozen String that `<<` does not share with `s`, so the copy can only be skipped where the result is never mutated |
@@ -217,17 +235,17 @@ were added:
 | N | none (the shape is not in the framework) | **Ready to report**: Daicho's 16-line program (CRuby prints `0`; the C does not compile on 2026.11.03.7025, 2026.11.04.7026 and master 60381c464) and the two fixes the report suggests (see N). **Sent and merged**: matz/spinel#11184 (2026-11-06) and #11219 (2026-11-07), the first of the two fixes (the return type follows the widened ivar). Needs a fork tag that carries them |
 | O | the non-blocking connect of cybertrain/net/socket.rb (rule 72), kept anyway for the deadline; a sentence in socket.rb's header and the guides | **Ready to report**: a nine-line program, and the cause named to the line: `sp_net_connect_timeout` has been in lib/sp_net.c since 59c06d979 and nothing emits a call to it (see O). **Sent and merged**: matz/spinel#11183 (2026-11-06). Needs a fork tag that carries it |
 | P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P). Still in no fork tag on 2026-11-11 |
-| Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. The first is **fixed on master** by matz/spinel#10998 ("Ranges of Times and of the program's comparable objects", 2026-11-05; a Range of Dates is a Range of objects in docs/limitations.md). For the second, master has tests of boxed Float and String Ranges (test/float_range_boxed_methods.rb, test/boxed_range_eq_float_range.rb, "boxed Range compares by ends", e0992bb9) but no commit was matched to Q's first program: to be run on a fork tag that carries master before anything is sent |
-| R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception), and a third added on 2026-11-11 from rule 81, where every class exists and the `begin` still swallows the exception. **Asked**: not reported upstream yet, and no issue or commit found for it; 24d05c78 (2026-11-07) changed how a `rescue` arm finds its class, so the three programs are to be run on master first |
-| S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. **Asked**: not reported upstream yet, and no issue or commit found for it on master 494deaac (test/yield_argument_diverging_block_types.rb, already in the pinned tree, covers this shape's TypeError and not how often the block runs) |
+| Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. The first is **fixed on master** by matz/spinel#10998 ("Ranges of Times and of the program's comparable objects", 2026-11-05; a Range of Dates is a Range of objects in docs/limitations.md). For the second, master has tests of boxed Float and String Ranges (test/float_range_boxed_methods.rb, test/boxed_range_eq_float_range.rb, "boxed Range compares by ends", e0992bb9) but no commit was matched to Q's first program: to be run on a fork tag that carries master before anything is sent. Run on master 494deaac on 2026-11-12 instead: the String Range was matched; the Float Range and a Time Range held in a Hash were not. **Sent and merged**: matz/spinel#11639 (2026-11-12), "A boxed Range of Float, Time or object ends is a Range to when, in and a class value". Needs a fork tag that carries it |
+| R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception), and a third added on 2026-11-11 from rule 81, where every class exists and the `begin` still swallows the exception. **Asked**: not reported upstream yet, and no issue or commit found for it; 24d05c78 (2026-11-07) changed how a `rescue` arm finds its class, so the three programs are to be run on master first. Run on master 494deaac on 2026-11-12: the first two answered as on the pin. **Sent and merged**: matz/spinel#11650 (2026-11-12), "A rescue clause naming a path that fails past its first name raises NameError when reached", with #11689 and #11690 from its review. All three programs print CRuby's result on master 1c0cc5e35; which commit fixed the third was not looked for. Needs a fork tag that carries them |
+| S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. **Asked**: not reported upstream yet, and no issue or commit found for it on master 494deaac (test/yield_argument_diverging_block_types.rb, already in the pinned tree, covers this shape's TypeError and not how often the block runs). **Sent and merged**: matz/spinel#11643 (2026-11-12), which also fixes a method called again from its own block reading the outer call's arguments. Needs a fork tag that carries it |
 | T | the feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the exit status (spikes/NOTES.md rule 91) | **Ready to report**: the six-line program in T (CRuby exits 1; the compiled program goes on and exits 0). **Fixed on master**: test/thread_exit_raises_in_main.rb ("`exit` in a thread other than main ended that thread and nothing else ... CRuby raises the SystemExit in the main thread") is in master since before #11035 (2026-11-05) and not in the pinned tree. Needs a fork tag that carries it; nothing in CyberTrain has to change with it |
-| U | gen writes a concern's `class_methods` as `def self.x` on the concern plus a forwarder, and refuses a `class_methods` name an instance method of the concern or an including class has (phase 4a, spikes/NOTES.md rule 93) | **Ready to report**: the reduced program in U (CRuby prints `false false`; the compiled program `true false`). No fix written. **Asked**: not reported upstream yet, and no commit found for it on master 494deaac; the open proposals matz/spinel#9898 ("definitions at their point") and #10866 (method cells) are where a fix would belong |
+| U | gen writes a concern's `class_methods` as `def self.x` on the concern plus a forwarder, and refuses a `class_methods` name an instance method of the concern or an including class has (phase 4a, spikes/NOTES.md rule 93) | **Ready to report**: the reduced program in U (CRuby prints `false false`; the compiled program `true false`). No fix written. **Asked**: not reported upstream yet, and no commit found for it on master 494deaac; the open proposals matz/spinel#9898 ("definitions at their point") and #10866 (method cells) are where a fix would belong. **Sent and merged**: matz/spinel#11683 (2026-11-12), "A block a class body hands to a method that never uses its block defines nothing"; it leaves the block's body out, so a call of a method only such a block defined is refused at build time (see U). Needs a fork tag that carries it |
 | V | `Template::Helpers.time_tag_strftime` calls `strftime` with a literal pattern per directive (spikes/NOTES.md rule 96) | Nothing yet: seen in the framework, the cause read from the generated C, no reduced program written: five standalone programs tried on 2026-11-11 all format correctly (see V). Not reported upstream yet |
 | W | `Component` passes `"#{@name}"`, a fresh local, to `Views.component_builder.call` (spikes/NOTES.md rule 97) | Nothing yet: seen only in examples/blog's program, not reduced (see W). Not reported upstream yet |
 | X | `Gen::Runner` has each emitter scan `app/controllers` for itself (spikes/NOTES.md rule 94) | Nothing yet: bisected to one change in examples/blog's generator, not reduced (see X). Not reported upstream yet |
 | M | `Console.run`'s `flush` after the banner and every prompt (rule 83) | **Sent and merged**: matz/spinel#11193 (2026-11-06), "STDOUT on a terminal is written through, as CRuby's is". Needs a fork tag that carries it |
-| Y | every stored lambda of the framework is made in a method, not written into a module-body ivar: `Views.default_helpers_builder`, `Assets.empty_resolver`, `Cache.system_clock` (spikes/NOTES.md rule 82) | **Ready to report**: the 14-line program in Y (CRuby prints `sess`; the compiled program raises NoMethodError on an Integer). No fix written. Not reported upstream yet |
-| Z | no method that only stored blocks call has a stub on its base class (the generated `counter_cache_*` on `Cybertrain::Model`, a job's `run_job` on `Job::Base`), and `respond_to`, a controller's `content_security_policy` and the Turbo Stream builder run a block at once instead of storing it (spikes/NOTES.md rule 88) | **Ready to report**: the 22-line program in Z (CRuby prints `"sub"`; the compiled program `""`). No fix written. Not reported upstream yet |
+| Y | every stored lambda of the framework is made in a method, not written into a module-body ivar: `Views.default_helpers_builder`, `Assets.empty_resolver`, `Cache.system_clock` (spikes/NOTES.md rule 82) | **Ready to report**: the 14-line program in Y (CRuby prints `sess`; the compiled program raises NoMethodError on an Integer). No fix written. Not reported upstream yet; the same on master 1c0cc5e35 (2026-11-13) |
+| Z | no method that only stored blocks call has a stub on its base class (the generated `counter_cache_*` on `Cybertrain::Model`, a job's `run_job` on `Job::Base`), and `respond_to`, a controller's `content_security_policy` and the Turbo Stream builder run a block at once instead of storing it (spikes/NOTES.md rule 88) | **Ready to report**: the 22-line program in Z (CRuby prints `"sub"`; the compiled program `""`). No fix written. Not reported upstream yet; the same on master 1c0cc5e35 (2026-11-13) |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026, except 66 (its
@@ -239,8 +257,10 @@ their workarounds may also have an upstream fix to send.
 
 "Not re-checked" means no one has tried it on that build; it is not a claim
 that it is fixed. The table has no column for matz/spinel master
-494deaac, which was read and not built: what it has merged for K, M, N,
-O, P, Q, T and rule 79 is in "What is asked of Spinel now".
+494deaac, which was read and not built, nor for master 1c0cc5e35, built
+on 2026-11-13 for the reduced programs only: what master has merged for K, M,
+N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
+1c0cc5e35, is in "What is asked of Spinel now".
 
 | Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d | 2026.10.27.7020 | fork master 49ccdced | 2026.11.04.7026 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -731,6 +751,20 @@ with the interval fixed at 8. Peak RSS is 14 to 15 MB in every row.
   the worker cap and leaves the concurrent-sweep hooks unset when no
   sweeper started. (b) is a gain only; it is (a) that would let the
   deploy files drop `SPINEL_GC_FULL_INTERVAL=8`.
+- Upstream: (b) is matz/spinel#11646 ("A process that may use one CPU
+  sweeps under the collector's stop and starts no sweeper thread", merged
+  2026-11-12). With `SPINEL_GC_SWEEPERS` unset and `sp_available_cpus()`
+  below two, `sp_cs_start_sweepers` starts no sweeper and the collector
+  sweeps under its own stop; `SPINEL_GC_SWEEPERS=N` still starts N, and
+  with two CPUs or more nothing changes. Measured in the pull request,
+  not here: eight green threads on one worker building request-shaped
+  objects, Linux/aarch64 in a container held to one CPU,
+  `SPINEL_WORKERS=1`, 39,600 collections: 79,533 voluntary context
+  switches before and 1,004 after, and 6.5 to 8.2% less wall time
+  (Welch's t 2.1 and 2.2 over 7 and 10 alternated runs, on a busy host).
+  examples/blog was not measured with it. #11697 (2026-11-13) makes its
+  test run the two-CPU cases under a quota of two CPUs and take only a
+  child that exits cleanly. In no fork tag yet. (a) is still not written.
 
 ### 6. The system allocator
 
@@ -2024,6 +2058,20 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
   both pass there, `where(col: a..b)` and the validators can take Time,
   Date, Float and String ends, and `where_between` stays as the spelling
   for mixed bounds.
+- Sent and merged (2026-11-13): the first program was run on master
+  494deaac on 2026-11-12. Nothing raised at construction there (#10998),
+  and the String Range was matched, but the Float Range and the Time
+  Range held in a Hash value were not (`[]` and `0`). matz/spinel#11639
+  ("A boxed Range of Float, Time or object ends is a Range to when, in
+  and a class value", merged 2026-11-12) fixes that: a boxed Range
+  carries the class id of its representation, one of five, and the three
+  places that ask whether a boxed value is a Range named only some of
+  them. `when Range`, `in Range`, `is_a?` with the class held in a value
+  and `is_a?(Enumerable)` now agree for Float, Time and object ends. On
+  master 1c0cc5e35 the first program prints `["1.5", "2.5"]`, `["a",
+  "z"]` and `2`, `Range.new(t1, t2).begin.year` is 2026, and a Range of
+  Dates answers `begin` and `cover?`. In no fork tag yet, so
+  `where(col: a..b)` and the validators are as they were.
 
 ## Found in phase 3 of the Rails-gap programme (2026-11-09)
 
@@ -2159,6 +2207,25 @@ swallowing the exception, reached from a constant that does exist.
   changed how an arm finds its class; whether the three programs answer
   differently after it is not known without a build, so they are to be
   run on master before a report is written.
+- Sent and merged (2026-11-13): on master 494deaac the first program still
+  printed `rescued by Outer::Missing` and the second `[]`.
+  matz/spinel#11650 ("A rescue clause naming a path that fails past its
+  first name raises NameError when reached", merged 2026-11-12) answers
+  (a) and (c): the arm finds the segment of the path the lookup fails
+  on, reading left to right as CRuby does, and raises that segment's
+  NameError when an exception reaches the arm; an arm is no longer
+  matched by its last segment when the module before it holds no such
+  constant. Two changes came out of its review, both merged the same
+  day: #11689 (the lookup asks each ancestor once; a program of 35
+  modules that each include the three before them did not finish
+  compiling in 90 s, and takes 0.3 s) and #11690 (a `const_missing`
+  given by `define_singleton_method` or `define_method` counts as the
+  hook, as a `def` does). On master 1c0cc5e35, which has #11650 and
+  not the other two, the first program prints `outer NameError:
+  uninitialized constant Outer::Missing` when wrapped in an outer
+  `rescue NameError`, the second `["NameError"]`, and the third `oops`.
+  Which commit fixed the third, (b), was not looked for. In no fork tag
+  yet.
 
 ### S. A `yield` passed as an argument runs the block twice when blocks differ in type
 
@@ -2210,6 +2277,17 @@ C.str(block.call)`, called the same way, runs it once.
   already has, is this shape (a `yield` as an argument, blocks of
   different types) and checks only the values; the program above, with
   its count of runs, would extend it.
+- Sent and merged (2026-11-13): matz/spinel#11643 ("A yield passed as an
+  argument runs its block once; a method called again from its own block
+  runs its own arguments", merged 2026-11-12). A call runs an argument
+  into a temporary ahead of binding it; the code that boxes a value for
+  a parameter of more than one type did not ask whether a `yield` had
+  already run, and ran the block again. The same change fixes what that
+  second run had been hiding: `def self.k(x) = C.cat(note(x), yield)`
+  called from its own block (`M.k("p") { M.k("q") { "s" } }`) answered
+  `p/p/s` where CRuby answers `p/q/s`. On master 1c0cc5e35 the program
+  above prints `one 42 a`. In no fork tag yet, so the fetch family keeps
+  its local.
 
 ### T. `exit` on a thread other than the main one ends only that thread
 
@@ -2298,6 +2376,22 @@ around the block, and `C` has it through the include.
   at their point") and #10866 ("a call reaches the method CRuby's table
   holds when the call runs") are about when a definition takes effect,
   and are where this program belongs.
+- Sent and merged (2026-11-13): matz/spinel#11683 ("A block a class body
+  hands to a method that never uses its block defines nothing", merged
+  2026-11-12). The block's body is left out, as the dead arm of `if
+  false` is, when the call is on `self` in a class or module body, the
+  method is a `def` of the program's, and no `def` of that name anywhere
+  uses its block (a `yield`, a read of the block parameter, `&`, `...`,
+  a `super`), is redefined another way, or is removed. On master
+  1c0cc5e35 the program above prints `false false`. Two things to
+  know before the pin moves: a method only such a block would have
+  defined is now defined nowhere, so a call of it is refused when the
+  program is built (CRuby raises NoMethodError when the call runs); and
+  blocks handed over in a loop, on another receiver, or to a method that
+  tests or keeps its block parameter without calling it still define
+  their methods. `ActiveSupport::Concern#class_methods` takes `&block`
+  and does nothing with it, the shape the fix covers, so the refusal of
+  rule 93 can be looked at again then. In no fork tag yet.
 
 ### A refusal inside a block that never runs (by design)
 
@@ -2433,7 +2527,9 @@ Integer default, so `H.new` was handed the object as an Integer.
   module-body ivar assignment from the `.call` sites of that ivar's
   readers, as is done for a lambda a method returns; or, until then,
   refuse the call at compile time instead of passing an Integer.
-- Not reported upstream yet; no issue found for it on 2026-11-11.
+- Not reported upstream yet; no issue found for it on 2026-11-11. On
+  matz/spinel master 1c0cc5e35 (2026-11-13) the program raises the same
+  NoMethodError.
 
 ### Z. A stored block called with a base-class receiver runs the base class's method, not the override
 
@@ -2499,7 +2595,9 @@ self inside a `Base` method dispatches to the override as expected (rule
   block runs a subclass's own method", 2026-11-08) are near this code;
   neither names this shape, and the program is to be run on a tag that
   carries them before it is reported.
-- Not reported upstream yet; no issue found for it on 2026-11-11.
+- Not reported upstream yet; no issue found for it on 2026-11-11. On
+  matz/spinel master 1c0cc5e35 (2026-11-13) the program prints `""` as on
+  the pin.
 
 ### Rule 66: direct appends to a String local no longer lose a helper's
 
