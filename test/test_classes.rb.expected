@@ -5,9 +5,10 @@ ok   teardown runs after a failed assertion, and a teardown failure is reported 
 ok   a teardown failure after a passing body is an ERR naming teardown
 ok   fixtures accepts :all only
 ok   the class-level test, setup and teardown refuse an unrewritten class-form file
+ok   a declaration reached inside a running test raises; the hooks without a block answer nil
 ok   test_help's reset hooks put the locale back before setup
 ok   a raising on_reset hook is an ERR in reset: setup and body skipped, teardown run
 ok   test_help's reset hooks clear the rate-limit counters before setup
 ok   travel and receivers are undone after a raising teardown
 ok   a receiver left running by a failing test is stopped; one started outside a case is not
-12 tests, 39 assertions, 0 failures
+13 tests, 48 assertions, 0 failures

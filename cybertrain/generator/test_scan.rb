@@ -264,24 +264,45 @@ module Cybertrain
       # framework class.
       def self.check_classes(path, view, forms, names, places)
         codes = view.codes
+        margin_module = -1
         codes.each_with_index do |code, i|
           next unless view.code_start[i]
 
           s = code.strip
-          # `module Admin; class UsersTest < ActiveSupport::TestCase`.
+          ind = ControllerScan.indent_of(code)
+          # `module Admin; class UsersTest < ActiveSupport::TestCase`, and
+          # Rails' `module ActiveSupport; class TestCase` reopening.
           pieces = s.split(";")
           pieces.each_with_index do |piece, n|
             inner = class_head(piece.strip)
-            next if n.zero? || inner[1].empty? || !forms.include?(inner[1])
+            next if n.zero? || inner[0].empty?
+
+            if inner[1].empty?
+              before = pieces[n - 1].strip
+              full = "#{before[7, before.size - 7].to_s.strip}::#{inner[0]}"
+              check_reopened_base(path, codes, view.code_start, i, full, ind) if before.start_with?("module ") && BASES.include?(full)
+              next
+            end
+            next unless forms.include?(inner[1])
 
             msg = "#{path}:#{i + 1}: #{inner[0]} #{NESTED}"
             raise ArgumentError, msg
+          end
+          # A module opened at the margin and not yet closed there: a class
+          # at the margin below it is inside it.
+          if ind.zero? && s.start_with?("module ") && !one_line_class?(s)
+            margin_module = i
+          elsif ind.zero? && ControllerScan.closing_end?(s)
+            margin_module = -1
           end
           head = class_head(s)
           next if head[0].empty?
 
           name = head[0]
-          ind = ControllerScan.indent_of(code)
+          if ind.zero? && margin_module >= 0 && !head[1].empty? && forms.include?(head[1])
+            msg = "#{path}:#{i + 1}: #{name} #{NESTED}"
+            raise ArgumentError, msg
+          end
           if ind.positive?
             if head[1].empty?
               # Rails' spelling: `module ActiveSupport` / `class TestCase`.
@@ -402,7 +423,7 @@ module Cybertrain
           refuse_unreadable(path, view)
           scratch = Array.new(0) { "" }
           lines.each { |raw| scratch << raw }
-          classes = rewrite_classes(path, lines, codes, view.code_start, scratch, forms)
+          classes = rewrite_classes(path, lines, view, scratch, forms)
         end
         form = classes.empty? ? :top_level : :class
         TestFile.new(path, form, classes, tests, helpers, copied.include?(path) ? "gen/#{path}" : "")
@@ -434,21 +455,23 @@ module Cybertrain
             out[i] = raw[0, ind].to_s + rebased_require(rs, path, i + 1, copied) + tail(raw, ind + s.size)
           end
         end
-        rewrite_classes(path, lines, codes, view.code_start, out, forms)
+        rewrite_classes(path, lines, view, out, forms)
         out.join
       end
 
       # Rewrites every class-form class of the file into out, then checks
       # that each line shaped like a test declaration was one of them
       # (check_placed); answers the classes.
-      def self.rewrite_classes(path, lines, codes, starts, out, forms)
+      def self.rewrite_classes(path, lines, view, out, forms)
+        codes = view.codes
+        starts = view.code_start
         classes = Array.new(0) { TestClassInfo.new("", "", 0, []) }
         placed = Array.new(0) { 0 }
         each_form_class(path, codes, starts, forms) do |start, last, name|
           head = class_head(codes[start].strip)
           classes << TestClassInfo.new(name, head[1], start + 1, rewrite_class(lines, codes, starts, out, start, last, name, path, placed))
         end
-        check_placed(path, lines, placed)
+        check_placed(path, lines, codes, view.commented, placed)
         classes
       end
 
@@ -456,10 +479,18 @@ module Cybertrain
       # test declaration (dsl_line?) must be one the rewrite converted
       # (`placed`, 0-based); any other (inside a condition, a loop, a
       # nested class, or a string or heredoc, or one a lexical guess hid)
-      # is refused, so that no test is ever silently left out.
-      def self.check_placed(path, lines, placed)
+      # is refused, so that no test is ever silently left out. A line's
+      # statements after a `;` (read in its code form, strings blank) are
+      # checked too, the converted ones included: a second declaration
+      # there would end up inside the converted method. Lines of an
+      # =begin block or after __END__ are not code and are skipped.
+      def self.check_placed(path, lines, codes, commented, placed)
         lines.each_with_index do |raw, i|
-          next if placed.include?(i) || !dsl_line?(raw)
+          next if commented[i]
+
+          unplaced = !placed.include?(i) && dsl_line?(raw)
+          codes[i].split(";").each_with_index { |piece, n| unplaced = true if n.positive? && dsl_line?(piece) }
+          next unless unplaced
 
           msg = "#{path}:#{i + 1}: #{UNPLACED}"
           raise ArgumentError, msg
@@ -473,8 +504,8 @@ module Cybertrain
         s = raw.strip
         if s.start_with?("test")
           rest = s[4, s.size - 4].to_s
-          return true if rest.start_with?("(")
-          return false unless rest.start_with?(" ")
+          return true if rest.start_with?("(") || rest.start_with?("\"") || rest.start_with?("'")
+          return false unless rest.start_with?(" ") || rest.start_with?("\t")
 
           r = rest.lstrip
           return r.start_with?("\"") || r.start_with?("'") || r.start_with?("(")

@@ -59,6 +59,31 @@ class ThingTest < AppBase
   private def helper = "h"
 end
 
+# What gen's rewrite would leave if a second declaration shared a line
+# with a converted one: a declaration reached inside a running test.
+class StrayTest < AppBase
+  def test_declares_a_test
+    test "b" do
+      LOG << "never"
+    end
+    nil
+  end
+
+  def test_declares_a_setup
+    setup do
+      LOG << "never"
+    end
+    nil
+  end
+
+  def test_declares_a_teardown
+    teardown do
+      LOG << "never"
+    end
+    nil
+  end
+end
+
 test "setup and teardown order with an inherited base" do
   t = ThingTest.new
   Cybertrain::Test.run_body(t) { t.test_uses_ivar } if Cybertrain::Test.before_case(t)
@@ -153,6 +178,18 @@ test "the class-level test, setup and teardown refuse an unrewritten class-form 
   assert_equal refused, assert_raises("ArgumentError") { ActiveSupport::TestCase.setup }
   assert_equal refused, assert_raises("ArgumentError") { ThingTest.teardown }
   assert_equal refused, assert_raises("ArgumentError") { ThingTest.setup(:sign_in) }
+end
+
+test "a declaration reached inside a running test raises; the hooks without a block answer nil" do
+  stray = "a test, setup or teardown declaration was reached inside a running test (gen did not convert it); declare it directly in the class body"
+  t = StrayTest.new
+  assert_equal stray, assert_raises("ArgumentError") { t.test_declares_a_test }
+  assert_equal stray, assert_raises("ArgumentError") { t.test_declares_a_setup }
+  assert_equal stray, assert_raises("ArgumentError") { t.test_declares_a_teardown }
+  base = ActiveSupport::TestCase.new
+  assert_nil base.setup
+  assert_nil base.teardown
+  refute LOG.include?("never")
 end
 
 test "test_help's reset hooks put the locale back before setup" do

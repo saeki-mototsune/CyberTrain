@@ -20,7 +20,7 @@ module Cybertrain
     # itself guesses; `<<~X`, `<<-X` and `<<X` (X uppercase or quoted) open
     # heredocs.
     class CodeView
-      attr_reader :codes, :code_start, :error_line, :error_text
+      attr_reader :codes, :code_start, :commented, :error_line, :error_text
 
       KEYWORDS = %w[if unless when and or not return elsif while until puts p in then do].freeze
       OPERATORS = "(,=[{;|&!:+-*<>?~%^".freeze
@@ -29,6 +29,8 @@ module Cybertrain
       def initialize(text)
         @codes = Array.new(0) { "" }
         @code_start = Array.new(0) { false }
+        # True for a line of an =begin ... =end block or after __END__.
+        @commented = Array.new(0) { false }
         @error_line = 0
         @error_text = ""
         # The open literals, innermost last: kind 1 a string-like literal
@@ -66,7 +68,7 @@ module Cybertrain
         text.lines.each_with_index do |raw, n|
           if ended || in_doc > 0
             in_doc = 0 if in_doc > 0 && raw.start_with?("=end")
-            blank_line(raw)
+            blank_line(raw, true)
             next
           end
           if heredoc_reading && !@tags.empty?
@@ -78,20 +80,21 @@ module Cybertrain
               @tag_lines.shift
               @tag_texts.shift
             end
-            blank_line(raw)
+            blank_line(raw, false)
             next
           end
           if @kinds.empty? && raw.start_with?("=begin")
             in_doc = n + 1
-            blank_line(raw)
+            blank_line(raw, true)
             next
           end
           if @kinds.empty? && raw.chomp == "__END__"
             ended = true
-            blank_line(raw)
+            blank_line(raw, true)
             next
           end
           @code_start << @kinds.empty?
+          @commented << false
           @codes << read_line(raw, n + 1)
           heredoc_reading = !@tags.empty?
         end
@@ -113,8 +116,9 @@ module Cybertrain
         nil
       end
 
-      def blank_line(raw)
+      def blank_line(raw, commented)
         @code_start << false
+        @commented << commented
         @codes << CodeView.blank(raw)
         nil
       end

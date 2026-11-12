@@ -47,16 +47,47 @@ module Cybertrain
         raise ArgumentError, message
       end
 
-      # Runs before each test; an override calls `super` first.
+      # What `test`, and `setup` / `teardown` given a block, raise when
+      # reached inside a running test: a declaration gen's rewrite did not
+      # turn into a method would otherwise reach the top-level `test` and
+      # register a case the class form never runs.
+      DECLARED_INSIDE = "a test, setup or teardown declaration was reached inside a running test (gen did not convert it); " \
+                        "declare it directly in the class body"
+
+      # Runs before each test; an override calls `super` first. Given a
+      # block, it is a declaration that gen did not convert: refused.
       # @return [nil]
+      # @raise [ArgumentError] when given a block
       # @api public
-      def setup = nil
+      def setup
+        if block_given?
+          message = DECLARED_INSIDE
+          raise ArgumentError, message
+        end
+        nil
+      end
 
       # Runs after each test, whatever happened in it; an override calls
-      # `super` last.
+      # `super` last. Given a block, it is a declaration that gen did not
+      # convert: refused.
       # @return [nil]
+      # @raise [ArgumentError] when given a block
       # @api public
-      def teardown = nil
+      def teardown
+        if block_given?
+          message = DECLARED_INSIDE
+          raise ArgumentError, message
+        end
+        nil
+      end
+
+      # A `test "name" do` reached inside a running test: refused (gen
+      # converts every one it can place into a method).
+      # @raise [ArgumentError]
+      def test(name)
+        message = DECLARED_INSIDE
+        raise ArgumentError, message
+      end
     end
   end
 end

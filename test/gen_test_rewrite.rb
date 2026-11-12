@@ -434,7 +434,7 @@ UNPLACED = "gen could not place this line as a test of the class; write `test \"
 
 test "which raw lines look like test declarations" do
   ["test \"a\" do", "test 'a' do", "test(\"a\") do", "test (x) do", "setup do", "setup{ x }", "teardown { y }", "setup :sign_in", "teardown(:x)",
-   "  test \"n #{"\#{n}"}\" do"].each do |line|
+   "  test \"n #{"\#{n}"}\" do", "test\"x\" do", "test\t\"x\" do"].each do |line|
     assert Cybertrain::Gen::TestScan.dsl_line?(line), line
   end
   ["test_helper", "tested \"a\"", "setup_x do", "@setup = 1", "setup = 1", "def setup", "# test \"a\" do", "testing do", "teardown"].each do |line|
@@ -521,6 +521,37 @@ test "a heredoc terminator with trailing spaces does not end the heredoc" do
   lines = rewrite_lines(src)
   assert_equal src.lines[2, 4], lines[2, 4]
   assert_equal "  end; nil; end\n", lines[6]
+end
+
+test "a second declaration on a converted line is refused" do
+  assert_equal "test/x_test.rb:2: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do; assert true; end; test \"b\" do; raise \"never\"; end\nend\n")
+  assert_equal "test/x_test.rb:2: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  setup do; @x = 1; end; test \"b\" do; raise \"never\"; end\nend\n")
+  assert_equal "test/x_test.rb:3: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    x = 1; test \"b\" do\n    end\n  end\nend\n")
+  assert_equal "test/x_test.rb:3: #{UNPLACED}",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n  end; setup do\n  end\nend\n")
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    s = \"x; test 'b' do\"\n  end\nend\n")
+end
+
+test "a test with a tab or no space before its name is refused, not left at class level" do
+  assert_equal "test/x_test.rb:2: #{UNPLACED}", refusal("class XTest < ActiveSupport::TestCase\n  test\"x\" do\n  end\nend\n")
+  assert_equal "test/x_test.rb:2: #{UNPLACED}", refusal("class XTest < ActiveSupport::TestCase\n  test\t\"x\" do\n  end\nend\n")
+end
+
+test "declarations commented out by =begin or after __END__ are not refused" do
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n=begin\n  test \"old\" do\n  end\n=end\nend\n__END__\n  test \"older\" do\n")
+end
+
+test "Rails' compact reopening of a framework class is refused too" do
+  assert_equal "test/test_helper.rb:2: `setup do` #{REOPENED}",
+               refusal_at("module ActiveSupport; class TestCase\n  setup do\n  end\nend; end\n", "test/test_helper.rb")
+end
+
+test "a test class at the margin inside a module at the margin is refused" do
+  assert_equal "test/x_test.rb:2: UsersTest #{NESTED}",
+               refusal("module Admin\nclass UsersTest < ActiveSupport::TestCase\n  test \"a\" do\n  end\nend\nend\n")
 end
 
 Cybertrain::Test.run!
