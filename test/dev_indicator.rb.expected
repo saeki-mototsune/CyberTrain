@@ -7,7 +7,11 @@ ok   with nonce directives the script tag carries the request's nonce, without t
 ok   the state path answers the JSON for the asking page without calling the app
 ok   the JSON escapes quotes and backslashes in the text
 ok   a garbled generation reads as 0 and an unknown runtime as cruby
+ok   the state path without runtime and generation answers for a page of the state file's serving and generation
+ok   the state path while the supervisor holds answers for a page of the child's own runtime
+ok   the state path with one of runtime and generation reads the other as before
+ok   a 304 passes through with the header and no indicator
 ok   the script path answers the script
 ok   with a failed build the banner follows <body> and the indicator precedes </body>
 ok   the state follows the state file as it changes
-12 tests, 59 assertions, 0 failures
+16 tests, 73 assertions, 0 failures

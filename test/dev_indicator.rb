@@ -46,6 +46,10 @@ class IndicatorPage < Cybertrain::Middleware
       response.body = "<html><body>moved</body></html>"
     when "/empty"
       response.status = 200
+    when "/not_modified"
+      # What fresh_when / stale? answer (head :not_modified): the browser
+      # shows the body it cached, rendered by whichever child served it.
+      response.status = 304
     when "/fragment"
       response.body = "<p>no body tag</p>"
     else
@@ -188,6 +192,49 @@ test "a garbled generation reads as 0 and an unknown runtime as cruby" do
   newer = state_reader("garbled_newer", 1, "cruby", "building", "")
   body = run_request(indicator(IndicatorPage.new, newer, "cruby", 0, no_directives), "/__cybertrain/dev/state?generation=junk").response.body
   assert_includes body, "\"text\":\"Source changed — reload\""
+end
+
+test "the state path without runtime and generation answers for a page of the state file's serving and generation" do
+  ready = state_reader("current_ready", 5, "spinel", "ready", "")
+  body = run_request(indicator(IndicatorPage.new, ready, "cruby", 4, no_directives), "/__cybertrain/dev/state").response.body
+  assert_equal "{\"generation\":5,\"serving\":\"spinel\",\"build\":\"ready\",\"text\":\"Spinel\"}", body
+  building = state_reader("current_building", 6, "cruby", "building", "")
+  app = indicator(IndicatorPage.new, building, "cruby", 2, no_directives)
+  assert_equal "{\"generation\":6,\"serving\":\"cruby\",\"build\":\"building\",\"text\":\"CRuby preview · Spinel building…\"}",
+               run_request(app, "/__cybertrain/dev/state").response.body
+  # Empty values count as not given.
+  assert_includes run_request(app, "/__cybertrain/dev/state?runtime=&generation=").response.body,
+                  "\"text\":\"CRuby preview · Spinel building…\""
+  failed = state_reader("current_failed", 7, "cruby", "failed", "boom\n")
+  assert_includes run_request(indicator(IndicatorPage.new, failed, "cruby", 7, no_directives), "/__cybertrain/dev/state").response.body,
+                  "\"text\":\"CRuby preview · Spinel build failed\""
+end
+
+test "the state path while the supervisor holds answers for a page of the child's own runtime" do
+  holding = state_reader("current_holding", 3, "holding", "building", "")
+  cruby = run_request(indicator(IndicatorPage.new, holding, "cruby", 3, no_directives), "/__cybertrain/dev/state").response.body
+  assert_includes cruby, "\"serving\":\"holding\""
+  assert_includes cruby, "\"text\":\"CRuby preview · Spinel building…\""
+  spinel = run_request(indicator(IndicatorPage.new, holding, "spinel", 3, no_directives), "/__cybertrain/dev/state").response.body
+  assert_includes spinel, "\"text\":\"Spinel\""
+end
+
+test "the state path with one of runtime and generation reads the other as before" do
+  reader = state_reader("one_parameter", 5, "spinel", "ready", "")
+  app = indicator(IndicatorPage.new, reader, "spinel", 5, no_directives)
+  assert_includes run_request(app, "/__cybertrain/dev/state?runtime=cruby").response.body, "\"text\":\"Source changed — reload\""
+  assert_includes run_request(app, "/__cybertrain/dev/state?runtime=spinel").response.body, "\"text\":\"Source changed — reload\""
+  assert_includes run_request(app, "/__cybertrain/dev/state?generation=5").response.body, "\"text\":\"Spinel ready — reload\""
+end
+
+test "a 304 passes through with the header and no indicator" do
+  reader = state_reader("not_modified", 2, "cruby", "idle", "")
+  page = IndicatorPage.new
+  response = run_request(indicator(page, reader, "cruby", 2, no_directives), "/not_modified").response
+  assert_equal 1, page.calls
+  assert_equal 304, response.status
+  assert_equal "cruby", response.header("X-Cybertrain-Runtime")
+  assert_equal "", response.body
 end
 
 test "the script path answers the script" do

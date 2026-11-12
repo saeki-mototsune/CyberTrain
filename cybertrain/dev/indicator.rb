@@ -27,8 +27,9 @@ module Cybertrain
     #   STATE_PATH, the state file's generation, serving runtime and build
     #   with the text for the asking page, as JSON; SCRIPT_PATH, the script,
     #   which places the indicator through the CSSOM (no `style` attribute,
-    #   which a style-src policy would block) and asks STATE_PATH every
-    #   second for its text. The texts are this class's alone.
+    #   which a style-src policy would block), takes the page's runtime and
+    #   generation from STATE_PATH asked without them, and asks STATE_PATH
+    #   every second for its text. The texts are this class's alone.
     # @api private
     class Indicator < Middleware
       ID = "cybertrain-dev-indicator"
@@ -36,7 +37,11 @@ module Cybertrain
       STATE_PATH = "/__cybertrain/dev/state"
       SCRIPT_PATH = "/__cybertrain/dev/indicator.js"
 
-      # A failed fetch leaves the text as it was; the next poll tries again.
+      # The page's runtime and generation are first taken from the state
+      # path asked without them (a page replayed from the browser's cache,
+      # after a 304, shows the current child's content), falling back to
+      # the div's data- attributes; then the state path is asked every
+      # second for the text. A failed fetch leaves the text as it was.
       SCRIPT = "(function () {\n" \
                "  var el = document.getElementById(\"#{ID}\");\n" \
                "  if (!el) return;\n" \
@@ -44,16 +49,25 @@ module Cybertrain
                "  s.position = \"fixed\"; s.right = \"0.5rem\"; s.bottom = \"0.5rem\"; s.zIndex = \"2147483647\";\n" \
                "  s.padding = \"0.15rem 0.5rem\"; s.borderRadius = \"0.25rem\"; s.pointerEvents = \"none\";\n" \
                "  s.font = \"12px/1.4 system-ui, sans-serif\"; s.color = \"#fff\"; s.background = \"rgba(24, 24, 27, 0.8)\";\n" \
-               "  var url = \"#{STATE_PATH}?runtime=\" + encodeURIComponent(el.getAttribute(\"data-runtime\")) +\n" \
-               "    \"&generation=\" + encodeURIComponent(el.getAttribute(\"data-generation\"));\n" \
-               "  function poll() {\n" \
-               "    fetch(url, { cache: \"no-store\" })\n" \
+               "  var runtime = el.getAttribute(\"data-runtime\"), generation = el.getAttribute(\"data-generation\");\n" \
+               "  function ask(url) {\n" \
+               "    return fetch(url, { cache: \"no-store\" })\n" \
                "      .then(function (r) { return r.ok ? r.json() : null; })\n" \
-               "      .then(function (state) { if (state && typeof state.text === \"string\") el.textContent = state.text; })\n" \
+               "      .then(function (state) { if (state && typeof state.text === \"string\") el.textContent = state.text; return state; });\n" \
+               "  }\n" \
+               "  function poll() {\n" \
+               "    ask(\"#{STATE_PATH}?runtime=\" + encodeURIComponent(runtime) + \"&generation=\" + encodeURIComponent(generation))\n" \
                "      .catch(function () {})\n" \
                "      .then(function () { setTimeout(poll, 1000); });\n" \
                "  }\n" \
-               "  setTimeout(poll, 1000);\n" \
+               "  ask(\"#{STATE_PATH}\")\n" \
+               "    .then(function (state) {\n" \
+               "      if (!state || typeof state.generation !== \"number\") return;\n" \
+               "      generation = String(state.generation);\n" \
+               "      if (state.serving === \"cruby\" || state.serving === \"spinel\") runtime = state.serving;\n" \
+               "    })\n" \
+               "    .catch(function () {})\n" \
+               "    .then(function () { setTimeout(poll, 1000); });\n" \
                "})();\n"
 
       # The indicator's line for a page rendered by page_runtime ("cruby"
@@ -139,11 +153,21 @@ module Cybertrain
 
       private
 
-      # A garbled or missing generation reads as 0, a runtime other than
-      # "spinel" as "cruby".
+      # For the page that asks: a garbled or missing generation reads as 0,
+      # a runtime other than "spinel" as "cruby". Without either (absent or
+      # empty), for a page that has just loaded: the state file's serving
+      # runtime (this process's while the supervisor holds) and generation.
       def answer_state(response, request, snapshot)
-        runtime = Indicator.state_param(request, "runtime") == "spinel" ? "spinel" : "cruby"
-        generation = Supervision.supervision_number(Indicator.state_param(request, "generation"), 0)
+        asked_runtime = Indicator.state_param(request, "runtime")
+        asked_generation = Indicator.state_param(request, "generation")
+        if asked_runtime.empty? && asked_generation.empty?
+          serving = snapshot.serving
+          runtime = serving == "cruby" || serving == "spinel" ? serving : @runtime
+          generation = snapshot.generation
+        else
+          runtime = asked_runtime == "spinel" ? "spinel" : "cruby"
+          generation = Supervision.supervision_number(asked_generation, 0)
+        end
         response.content_type = "application/json"
         response.set_header("Cache-Control", "no-store")
         response.body = Indicator.state_json(snapshot, Indicator.text(runtime, generation, snapshot))
