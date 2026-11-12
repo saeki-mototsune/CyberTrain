@@ -267,13 +267,27 @@ test "request_stop (the TERM trap) starts the drain: stop! waits only what is le
   refute Job.running?
   # A job that becomes due after the stop is claimed by no thread (#184).
   late = enqueue_now("record", "late")
-  # The requests drain meanwhile (Application#serve's Server#wait).
-  sleep 0.6
+  # The drain clock starts when a thread of the pool sees the request (the
+  # trap reads no clock), not at stop!: the heartbeat thread sees it while
+  # the beat job's thread is still in its 2 s job. Waited for, not assumed
+  # to take at most WAIT_SLICE: a loaded runner can hold the heartbeat
+  # thread's wake-up for longer than that.
+  assert wait_until(1.0) { Cybertrain::Job::Worker.stop_seen_at > 0.0 }
+  seen = Cybertrain::Job::Worker.stop_seen_at
+  assert seen >= asked
+  assert_equal 1, Job.live_loops
+  # The requests drain meanwhile (Application#serve's Server#wait), for
+  # 0.6 s of the drain's 1 s.
+  while monotonic < seen + 0.6
+    sleep 0.02
+  end
   before_stop = monotonic
   Job.stop!
   done_at = monotonic
-  # job_drain_timeout is 1 s from the request, not from stop!.
-  assert done_at - before_stop < 0.7
+  # job_drain_timeout is 1 s from the request, not from stop!: stop!
+  # waits what is left of it (0.4 s), never a whole timeout of its own.
+  assert done_at - before_stop < 1.0
+  assert done_at - seen >= 0.99
   assert done_at - asked >= 0.9
   assert_equal "running", job_state(id)
   # The beat job's thread finishes on its own.
