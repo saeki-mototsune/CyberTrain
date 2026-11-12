@@ -1,0 +1,24 @@
+ok   start: gen, the CRuby child, the build
+ok   a machine that has not started has nothing
+ok   a change: cancel, gen, stop, CRuby child, build (P12)
+ok   build ok at the current generation hands the port to the binary
+ok   a stale build is discarded
+ok   a change while the binary serves goes back to CRuby
+ok   a failed build keeps CRuby and publishes the output
+ok   gen fails: stop, hold, no build; the next change leaves holding
+ok   gen fails at start: hold, nothing to stop, no build
+ok   the CRuby child dies: hold; a build that then succeeds takes the port
+ok   the binary dies, before or after ready: CRuby again, no retry
+ok   both dead: holding with what is known of each
+ok   locked by cybertrain build: nothing runs, then the pending change is handled once
+ok   a build that finishes while locked does not take the port until the lock is gone
+ok   events of another generation are ignored; stop ends everything
+ok   start while the build lock is held: hold, then start on the first tick after it (R4)
+ok   a change that arrives before the locked start has run joins the start
+ok   a binary handover does not start a stale binary after a blocking stop (P16)
+ok   the lock appears while gen runs: the round stops, the old child keeps serving (P17)
+ok   log lines
+ok   a ready child of the wrong kind is ignored
+ok   a state is written whenever one of its four values changes, and only then
+ok   stop from holding releases the hold once
+23 tests, 61 assertions, 0 failures
