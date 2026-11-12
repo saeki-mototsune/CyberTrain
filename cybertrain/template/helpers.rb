@@ -25,6 +25,7 @@ require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
 require "cybertrain/template/turbo_stream_builder"
 require "cybertrain/strftime"
+require "cybertrain/zoned_time"
 require "cybertrain/i18n"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/url_support"
@@ -40,7 +41,7 @@ module Cybertrain
       MINUTES_IN_THREE_QUARTERS_YEAR = 394_200
       # The keywords turbo_frame_tag and time_tag take.
       TURBO_FRAME_KEYWORDS = %w[src loading target class data]
-      TIME_TAG_KEYWORDS = %w[format class id title data]
+      TIME_TAG_KEYWORDS = %w[format zone class id title data]
       # The keywords of the asset tag helpers (spec 7.2).
       STYLESHEET_KEYWORDS = %w[media nonce]
       JAVASCRIPT_INCLUDE_KEYWORDS = %w[nonce]
@@ -1543,31 +1544,45 @@ module Cybertrain
       # Without `format:` it is the :default format (en
       # `Tue, 10 Nov 2026 12:00:00 +0000` for a Time, `2026-11-10` for a
       # Date). class:, id:, title: and data: are attributes.
+      #
+      # A Time is rendered in Time.zone (spec section 4): the datetime is
+      # ISO 8601 at the zone's offset (`2026-11-12T05:00:00+09:00`, `Z`
+      # only when the zone is UTC) and the text's fields, `%z` and `%Z` are
+      # the zone's. `zone: "America/New_York"` renders this one call in
+      # another zone. A Time that carries an offset of its own
+      # (`getlocal("+09:00")`) keeps it unless `zone:` is given. A Date is
+      # rendered as it is.
       def time_tag(args, kwargs, block, interp, env)
         helper_arity!("time_tag", args, 1, block.nil? ? 2 : 1)
         helper_keywords!("time_tag", kwargs, TIME_TAG_KEYWORDS, 0)
         value = args[0]
         format = kwargs["format"]
+        zone_option = kwargs["zone"]
+        given = !zone_option.nil?
+        zone = given ? ZonedTime.zone_from(zone_option) : Time.zone
         datetime = ""
         text = ""
         case value
         when Time
+          # zone: renders this call in that zone whatever offset the Time has.
+          instant = given ? value.getutc : value
+          shown = Strftime.zoned_time(instant, zone)
           # xmlschema: "Z" for UTC, else the offset with a colon ("+09:00"),
           # which strftime's %z does not write.
-          offset = value.utc_offset
-          stamp = value.strftime("%Y-%m-%dT%H:%M:%S")
-          datetime = offset == 0 ? "#{stamp}Z" : "#{stamp}#{Helpers.offset_text(offset, ":")}"
-          text = Helpers.time_tag_text(value, format) if args.size < 2 && block.nil?
+          offset = shown.utc_offset
+          stamp = shown.strftime("%Y-%m-%dT%H:%M:%S")
+          datetime = offset == 0 && Strftime.utc_zone?(zone) ? "#{stamp}Z" : "#{stamp}#{Helpers.offset_text(offset, ":")}"
+          text = Helpers.time_tag_text(instant, format, zone, given) if args.size < 2 && block.nil?
         when Date
           datetime = value.strftime("%Y-%m-%d")
-          text = Helpers.time_tag_text(value, format) if args.size < 2 && block.nil?
+          text = Helpers.time_tag_text(value, format, zone, given) if args.size < 2 && block.nil?
         else
           msg = "time_tag expects a Time or a Date, got #{FormBuilder.value_text(value)}"
           raise ArgumentError, msg
         end
         out = +"<time"
         out << FormBuilder.attr_html("datetime", datetime)
-        kwargs.each_key { |key| out << FormBuilder.attr_html(key, kwargs[key]) unless key == "format" }
+        kwargs.each_key { |key| out << FormBuilder.attr_html(key, kwargs[key]) unless key == "format" || key == "zone" }
         out << ">"
         if args.size > 1
           out << to_html(args[1])
@@ -1583,25 +1598,34 @@ module Cybertrain
       # strftime of a pattern that is not a literal: Cybertrain::Strftime.walk
       # (spikes/NOTES.md rule 96), which formats one directive at a time with
       # literal patterns; its refusals read "time_tag format: ...".
-      # I18n.l formats its dictionary patterns through the same walk.
+      # I18n.l formats its dictionary patterns through the same walk. A
+      # Time at offset 0 is rendered in zone: its fields, `%z` and `%Z`
+      # are the zone's (Strftime.walk); a Date as it is.
       # @param time [Time, Date]
       # @param pattern [String]
+      # @param zone [TimeZone]
       # @return [String]
-      def self.time_tag_strftime(time, pattern) = Strftime.walk(time, pattern, "time_tag format")
+      def self.time_tag_strftime(time, pattern, zone = Time.zone) = Strftime.walk(time, pattern, "time_tag format", zone)
 
-      # The text of time_tag's value in format: a format name (nil: the
-      # :default one) through I18n.l in the current locale, which raises
-      # I18n::MissingTranslationData for a name no dictionary holds; a
-      # pattern String through time_tag_strftime.
+      # The text of time_tag's value in format, in zone: a format name
+      # (nil: the :default one) through I18n.l in the current locale,
+      # which raises I18n::MissingTranslationData for a name no dictionary
+      # holds; a pattern String through time_tag_strftime. given says the
+      # call named the zone (`zone:`); I18n.l is then handed it, else it
+      # reads Time.zone itself.
       # @param value [Time, Date]
       # @param format [Symbol, String, SafeString, nil]
+      # @param zone [TimeZone]
+      # @param given [Boolean]
       # @return [String]
-      def self.time_tag_text(value, format)
+      def self.time_tag_text(value, format, zone, given)
         case format
-        when nil then return I18n.l(value, { format: :default })
-        when Symbol then return I18n.l(value, { format: format })
-        when SafeString then return Helpers.time_tag_strftime(value, "#{format.to_s}")
-        when String then return Helpers.time_tag_strftime(value, "#{format}")
+        when nil
+          return given ? I18n.l(value, { format: :default, zone: zone.zone_name }) : I18n.l(value, { format: :default })
+        when Symbol
+          return given ? I18n.l(value, { format: format, zone: zone.zone_name }) : I18n.l(value, { format: format })
+        when SafeString then return Helpers.time_tag_strftime(value, "#{format.to_s}", zone)
+        when String then return Helpers.time_tag_strftime(value, "#{format}", zone)
         end
         msg = "time_tag format: must be a format name (:short, :long, ...) or a strftime String, got #{FormBuilder.value_text(format)}"
         raise ArgumentError, msg

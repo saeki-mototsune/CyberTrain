@@ -1,5 +1,6 @@
 require "cybertrain/cast"
 require "cybertrain/clock"
+require "cybertrain/zoned_time"
 
 # Class methods added to Time from Ruby source (spikes/NOTES.md rule 87),
 # for the parts of Ruby's `time` library an application reaches for.
@@ -367,6 +368,21 @@ class Time
   # @return [Time]
   # @api public
   def tomorrow = advance(days: 1)
+
+  # This instant's wall fields in `zone` (spec section 4): a
+  # {Cybertrain::ZonedTime} with `year`, `month`, `day`, `hour`, `min`,
+  # `sec`, `wday`, `yday`, `utc_offset`, `zone` (the abbreviation),
+  # `to_time` and `to_date`. The Time itself stays a UTC instant.
+  # @example
+  #   Time.utc(2026, 11, 11, 20).in_time_zone("Asia/Tokyo").hour  # => 5
+  # @param zone [Cybertrain::TimeZone, String] `Time.zone` when not
+  #   given; a String is an IANA name ({Time.find_zone!})
+  # @return [Cybertrain::ZonedTime]
+  # @raise [ArgumentError] `unknown time zone "Mars/Base"`
+  # @api public
+  def in_time_zone(zone = Time.zone)
+    Cybertrain::ZonedTime.new(to_i, Cybertrain::ZonedTime.zone_from(zone), usec)
+  end
 end
 
 module Cybertrain

@@ -372,6 +372,47 @@ test "l refuses what it cannot format" do
   assert_equal "\"xx\" is not an available locale", msg
 end
 
+# Sets Cybertrain::Clock.zone (Time.zone) for the block and puts the zone
+# found before back when it ends, also when an assertion in it fails
+# (spikes/NOTES.md rule 103's save-yield-ensure in a module function).
+module ZoneSwap
+  def self.during(name)
+    saved = Cybertrain::Clock.zone
+    Cybertrain::Clock.zone = Cybertrain::TimeZone.find(name)
+    _value = yield
+    nil
+  ensure
+    Cybertrain::Clock.zone = saved
+  end
+end
+
+test "l renders a Time in Time.zone, or once in zone:; a Date as it is" do
+  reset_i18n
+  t = Time.utc(2026, 11, 11, 20)
+  ZoneSwap.during("Asia/Tokyo") do
+    assert_equal "05:00 JST", I18n.l(t, format: "%H:%M %Z")
+    assert_equal "15:00", I18n.l(t, format: "%H:%M", zone: "America/New_York")
+    assert_equal "2026-11-11", I18n.l(Date.new(2026, 11, 11))
+    assert_equal "2026-11-11", I18n.l(Date.new(2026, 11, 11), zone: "America/New_York")
+    # The day and month names and %p are the zone's wall clock's: Thursday
+    # morning in Tokyo, Wednesday afternoon in New York.
+    assert_equal "Thu, 12 Nov 2026 05:00:00 +0900", I18n.l(t)
+    assert_equal "Thursday AM +09:00 1794427200", I18n.l(t, format: "%A %p %:z %s")
+    assert_equal "2026年11月12日(木) 05時00分00秒 +0900", I18n.l(t, locale: :ja)
+    assert_equal "Wednesday PM -0500 EST", I18n.l(t, format: "%A %p %z %Z", zone: "America/New_York")
+    # A Time that carries an offset of its own keeps it, unless zone: is given.
+    k = t.getlocal("-05:30")
+    assert_equal "14:30 -0530", I18n.l(k, format: "%H:%M %z")
+    assert_equal "05:00 +0900 JST", I18n.l(k, format: "%H:%M %z %Z", zone: "Asia/Tokyo")
+  end
+  # Back in UTC every format is as before.
+  assert_equal "Wed, 11 Nov 2026 20:00:00 +0000", I18n.l(t)
+  assert_equal "20:00 UTC", I18n.l(t, format: "%H:%M %Z")
+  assert_equal "05:00 JST", I18n.l(t, format: "%H:%M %Z", zone: "Asia/Tokyo")
+  msg = assert_raises("ArgumentError") { I18n.l(t, zone: "Mars/Base") }
+  assert_equal "unknown time zone \"Mars/Base\"", msg
+end
+
 test "every bundled date and time format formats in every bundled locale" do
   reset_i18n
   seen = Array.new(0) { "" }

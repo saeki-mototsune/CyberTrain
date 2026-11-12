@@ -436,6 +436,46 @@ test "config: scheduler_tz is UTC, from CYBERTRAIN_SCHEDULER_TZ, and boot refuse
   ENV.delete("CYBERTRAIN_SCHEDULER_TZ")
 end
 
+test "config: scheduler_tz defaults to time_zone; CYBERTRAIN_SCHEDULER_TZ and an assignment win" do
+  ENV.delete("CYBERTRAIN_SCHEDULER_TZ")
+  ENV["CYBERTRAIN_TIME_ZONE"] = "Asia/Tokyo"
+  config = Cybertrain::Config.new
+  assert_equal "Asia/Tokyo", config.scheduler_tz
+  # It follows a later assignment of time_zone while it was never set.
+  config.time_zone = "Europe/London"
+  assert_equal "Europe/London", config.scheduler_tz
+  ENV["CYBERTRAIN_SCHEDULER_TZ"] = "UTC"
+  assert_equal "UTC", Cybertrain::Config.new.scheduler_tz
+  ENV.delete("CYBERTRAIN_SCHEDULER_TZ")
+  config.scheduler_tz = "America/New_York"
+  config.time_zone = "UTC"
+  assert_equal "America/New_York", config.scheduler_tz
+  ENV.delete("CYBERTRAIN_TIME_ZONE")
+  # An unknown time_zone is reported once, as time_zone, not again as
+  # scheduler_tz.
+  unknown = Cybertrain::Config.new
+  unknown.time_zone = "Mars/Base"
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", unknown.validation_error
+end
+
+test "a cron task without tz: runs in time_zone; a task's tz: still wins" do
+  fresh
+  saved = Cybertrain.config.time_zone
+  saved_tz = Cybertrain.config.scheduler_tz
+  Cybertrain.config.scheduler_tz = ""
+  Cybertrain.config.time_zone = "Asia/Tokyo"
+  S.cron("0 9 * * *", "zone morning") { RAN << "zone" }
+  S.cron("0 9 * * *", "utc morning", tz: "UTC") { RAN << "utc" }
+  S.schedule_all(utc(2026, 11, 10, 1, 0))
+  assert_equal "Asia/Tokyo", S::TASKS[0].task_zone.zone_name
+  assert_equal "UTC", S::TASKS[1].task_zone.zone_name
+  # 09:00 in Tokyo is 00:00 UTC.
+  assert_equal Time.utc(2026, 11, 11, 0).to_i, next_run_of("zone morning")
+  assert_equal Time.utc(2026, 11, 10, 9).to_i, next_run_of("utc morning")
+  Cybertrain.config.time_zone = saved
+  Cybertrain.config.scheduler_tz = saved_tz
+end
+
 # Last: the thread it starts keeps running until the program exits.
 test "start! prunes the rows of names no longer registered" do
   fresh

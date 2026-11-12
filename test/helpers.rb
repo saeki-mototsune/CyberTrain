@@ -456,6 +456,47 @@ test "time_tag format: a width replaces a number's padding; a width or flag strf
   end
 end
 
+# Sets Cybertrain::Clock.zone (Time.zone) for the block and puts the zone
+# found before back when it ends, also when an assertion in it fails
+# (spikes/NOTES.md rule 103's save-yield-ensure in a module function).
+module ZoneSwap
+  def self.during(name)
+    saved = Cybertrain::Clock.zone
+    Cybertrain::Clock.zone = Cybertrain::TimeZone.find(name)
+    _value = yield
+    nil
+  ensure
+    Cybertrain::Clock.zone = saved
+  end
+end
+
+test "time_tag renders in Time.zone, or once in zone:; a Date as it is" do
+  env = time_env
+  env["nov"] = Time.utc(2026, 11, 11, 20)
+  env["day"] = Date.new(2026, 11, 11)
+  env["k"] = Time.utc(2026, 11, 5, 9, 3, 7).getlocal("+09:00")
+  ZoneSwap.during("Asia/Tokyo") do
+    assert_equal "<time datetime=\"2026-11-12T05:00:00+09:00\">Thu, 12 Nov 2026 05:00:00 +0900</time>", render_inline("<%= time_tag nov %>", env)
+    assert_equal "<time datetime=\"2026-11-12T05:00:00+09:00\">05:00 JST +09:00</time>", render_inline("<%= time_tag nov, format: \"%H:%M %Z %:z\" %>", env)
+    assert_equal "<time datetime=\"2026-11-12T05:00:00+09:00\">November 12, 2026 05:00</time>", render_inline("<%= time_tag nov, format: :long %>", env)
+    assert_equal "<time datetime=\"2026-11-11T15:00:00-05:00\" class=\"at\">15:00 EST</time>",
+                 render_inline("<%= time_tag nov, format: \"%H:%M %Z\", zone: \"America/New_York\", class: \"at\" %>", env)
+    assert_equal "<time datetime=\"2026-11-11T15:00:00-05:00\">Wed, 11 Nov 2026 15:00:00 -0500</time>", render_inline("<%= time_tag nov, zone: \"America/New_York\" %>", env)
+    assert_equal "<time datetime=\"2026-11-11T20:00:00Z\">20:00</time>", render_inline("<%= time_tag nov, format: \"%H:%M\", zone: \"UTC\" %>", env)
+    # A zone at offset 0 that is not UTC writes the offset, not Z.
+    assert_equal "<time datetime=\"2026-11-11T20:00:00+00:00\">20:00 GMT</time>", render_inline("<%= time_tag nov, format: \"%H:%M %Z\", zone: \"Europe/London\" %>", env)
+    # A Date is rendered as it is, in Time.zone or zone:.
+    assert_equal "<time datetime=\"2026-11-11\">2026-11-11</time>", render_inline("<%= time_tag day %>", env)
+    assert_equal "<time datetime=\"2026-11-11\">2026-11-11</time>", render_inline("<%= time_tag day, zone: \"America/New_York\" %>", env)
+    assert_equal "05:00 JST", render_inline("<%= l nov, format: \"%H:%M %Z\" %>", env)
+    assert_equal "15:00", render_inline("<%= l nov, format: \"%H:%M\", zone: \"America/New_York\" %>", env)
+    # A Time with an offset of its own keeps it.
+    assert_equal "<time datetime=\"2026-11-05T18:03:07+09:00\">18:03 +0900</time>", render_inline("<%= time_tag k, format: \"%R %z\" %>", env)
+  end
+  msg = assert_raises("RuntimeError") { render_inline("<%= time_tag nov, zone: \"Mars/Base\" %>", env) }
+  assert_equal "posts/inline:1: unknown time zone \"Mars/Base\"", msg
+end
+
 def page_helpers(verb, target)
   ctx = Cybertrain::Context.new(Cybertrain::Request.new(verb, target, { "host" => "example.test" }, ""))
   Cybertrain::Template::Helpers.new(Cybertrain::Controller.new(ctx))

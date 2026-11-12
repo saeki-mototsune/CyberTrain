@@ -16,7 +16,7 @@ module Cybertrain
     # The first problem boot would refuse to start with, "" when the
     # configuration is usable. The areas in the order boot has always
     # reported them: the session cookie and CSRF, the request and upload
-    # limits, the background work, pagination, the proxies, the health
+    # limits, the time zone, the background work, pagination, the proxies, the health
     # check, the feeds, the stream endpoint, the locales, the
     # authentication limits, the security headers and the encryption keys. Reads only; safe to call from a test or a
     # `--check`-style command with no database and no writable disk.
@@ -33,6 +33,9 @@ module Cybertrain
       return problem unless problem.empty?
 
       problem = upload_limits_error
+      return problem unless problem.empty?
+
+      problem = time_zone_error
       return problem unless problem.empty?
 
       problem = scheduler_error
@@ -145,7 +148,21 @@ module Cybertrain
       if @scheduler_lease_ttl < 2 * @scheduler_interval
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
       end
-      return "scheduler_tz #{@scheduler_tz.inspect} is not a known time zone" unless TimeZone.find(@scheduler_tz).found?
+      zone_name = scheduler_tz
+      return "scheduler_tz #{zone_name.inspect} is not a known time zone" unless TimeZone.find(zone_name).found?
+
+      ""
+    end
+
+    # The error Application#boot reports when time_zone is not a zone
+    # TimeZone can load from the system zoneinfo; "" when it is. Asked
+    # before scheduler_error, so an unknown time_zone that scheduler_tz
+    # follows is reported once, under its own name.
+    # @return [String]
+    # @api public
+    def time_zone_error
+      zone_name = @time_zone
+      return "time_zone #{zone_name.inspect} is not a known time zone" unless TimeZone.find(zone_name).found?
 
       ""
     end

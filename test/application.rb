@@ -624,6 +624,24 @@ test "boot installs the locale settings" do
   assert_equal "translation missing: en.no.such_key", I18n.t("no.such_key")
 end
 
+test "boot installs the zone" do
+  c = Cybertrain.config
+  assert_equal "UTC", Time.zone.zone_name
+  c.time_zone = "Asia/Tokyo"
+  APP.boot
+  assert_equal "Asia/Tokyo", Time.zone.zone_name
+  assert_equal "Asia/Tokyo", Cybertrain::Clock.zone.zone_name
+  # Boundaries and Date.current follow it: midnight of 12 November in Tokyo.
+  assert_equal Time.utc(2026, 11, 11, 15), Time.utc(2026, 11, 11, 20).beginning_of_day
+  travel_to(Time.utc(2026, 11, 11, 20)) { assert_equal Date.new(2026, 11, 12), Date.current }
+  # A name the system zoneinfo does not have is what boot stops on.
+  c.time_zone = "Mars/Base"
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", c.validation_error
+  c.time_zone = "UTC"
+  APP.boot
+  assert_equal "UTC", Time.zone.zone_name
+end
+
 test "a GET renders a template inside the layout" do
   res = CLIENT.get("/")
   assert_response res, :ok

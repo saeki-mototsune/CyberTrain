@@ -479,13 +479,38 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :scheduler_lease_ttl
 
-    # The zone a `Scheduler.cron` task's expression is read in when it
-    # names none (`tz:`), `"UTC"`, from `CYBERTRAIN_SCHEDULER_TZ`: an IANA
-    # name such as `"Asia/Tokyo"` ({TimeZone.find}). Boot refuses a name
-    # the system zoneinfo does not have.
+    # The application's time zone, `"UTC"`, from `CYBERTRAIN_TIME_ZONE`:
+    # an IANA name such as `"Asia/Tokyo"` ({TimeZone.find}; Rails'
+    # `config.time_zone` takes Rails' own names, here IANA names only).
+    # Boot refuses a name the system zoneinfo does not have
+    # ({#time_zone_error}) and installs the zone as `Time.zone`
+    # ({Clock.zone}): the boundaries of `beginning_of_day` and the other
+    # calendar methods, `Date.current`, `l` and `time_tag` follow it, and
+    # {#scheduler_tz} defaults to it. Values stay UTC instants.
+    # @example config/app.rb
+    #   c.time_zone = "Asia/Tokyo"
     # @return [String]
     # @api public
-    attr_accessor :scheduler_tz
+    attr_accessor :time_zone
+
+    # The zone a `Scheduler.cron` task's expression is read in when it
+    # names none (`tz:`), from `CYBERTRAIN_SCHEDULER_TZ`: an IANA name such
+    # as `"Asia/Tokyo"` ({TimeZone.find}). While neither the variable nor
+    # an assignment set it, it is {#time_zone} (read each time, so a later
+    # `c.time_zone =` moves it too). Boot refuses a name the system
+    # zoneinfo does not have.
+    # @return [String]
+    # @api public
+    def scheduler_tz
+      own = @scheduler_tz
+      own.empty? ? @time_zone : own
+    end
+
+    # Sets {#scheduler_tz}; `""` makes it follow {#time_zone} again.
+    # @param value [String]
+    # @return [String]
+    # @api public
+    attr_writer :scheduler_tz
 
     # How many rows each list of the jobs page (`jobs_page` in
     # config/routes.rb, {JobsPage}) shows on one page, `50`, from
@@ -967,7 +992,9 @@ end
       @feed_restart_limit = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_LIMIT", 10)
       @feed_restart_window = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_WINDOW", 600)
       @scheduler_lease_ttl = 30
-      @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "UTC")
+      @time_zone = Config.env_or("CYBERTRAIN_TIME_ZONE", "UTC")
+      # "" (unset): scheduler_tz answers time_zone.
+      @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "")
       # ParameterFilter.names' list; Application#boot installs it there.
       @filter_parameters = Config.default_filter_parameters
       # The health check (HealthCheck). An empty variable turns it off,

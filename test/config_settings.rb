@@ -125,6 +125,30 @@ test "CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; 
   ENV.delete("CYBERTRAIN_HEALTH_FEED_STALE")
 end
 
+test "time_zone from the environment and its check" do
+  ENV.delete("CYBERTRAIN_TIME_ZONE")
+  assert_equal "UTC", Cybertrain::Config.new.time_zone
+  assert_equal "", Cybertrain::Config.new.time_zone_error
+  ENV["CYBERTRAIN_TIME_ZONE"] = "Asia/Tokyo"
+  tokyo = Cybertrain::Config.new
+  assert_equal "Asia/Tokyo", tokyo.time_zone
+  assert_equal "", tokyo.time_zone_error
+  assert_equal "", tokyo.validation_error
+  # An empty variable counts as unset.
+  ENV["CYBERTRAIN_TIME_ZONE"] = ""
+  assert_equal "UTC", Cybertrain::Config.new.time_zone
+  ENV["CYBERTRAIN_TIME_ZONE"] = "Mars/Base"
+  mars = Cybertrain::Config.new
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", mars.time_zone_error
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", mars.validation_error
+  ENV.delete("CYBERTRAIN_TIME_ZONE")
+  assigned = Cybertrain::Config.new
+  assigned.time_zone = "../zoneinfo/Asia/Tokyo"
+  assert_equal "time_zone \"../zoneinfo/Asia/Tokyo\" is not a known time zone", assigned.validation_error
+  assigned.time_zone = "America/New_York"
+  assert_equal "", assigned.validation_error
+end
+
 test "boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on" do
   c = Cybertrain::Config.new
   c.feed_status_interval = 300

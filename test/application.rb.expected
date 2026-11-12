@@ -32,6 +32,7 @@ ok   production refuses to boot without embedded views
 ok   production boots on the embedded table, development on app/views
 ok   boot connects the database, configures views and resolves the secret
 ok   boot installs the locale settings
+ok   boot installs the zone
 ok   a GET renders a template inside the layout
 ok   a POST without the CSRF token is forbidden
 ok   a POST with the token from the page passes
@@ -47,4 +48,4 @@ ok   reuse_port reaches the server outside development
 ok   development warns once and ignores reuse_port
 ok   every request starts at the default locale, also one no controller action answers
 ok   the server listens on the configured host and port
-44 tests, 215 assertions, 0 failures
+45 tests, 222 assertions, 0 failures
