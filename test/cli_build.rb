@@ -181,12 +181,14 @@ end
 
 # Stands in for the three spin commands: records each one with whether the
 # build lock (holding this process's PID) was held while it ran, and fails
-# the one named `failing`.
+# the one named `failing`. With `writes`, a gen step writes that file (a path
+# under root), as gen does when a route or the schema changed.
 class FakeRunner < Cybertrain::CLI::Build::Runner
   attr_reader :log
 
-  def initialize(failing)
+  def initialize(failing, writes = "")
     @failing = failing
+    @writes = writes
     @log = Array.new(0) { "" }
   end
 
@@ -197,6 +199,7 @@ class FakeRunner < Cybertrain::CLI::Build::Runner
       lock = File.read(path) == Process.pid.to_s ? "locked" : "locked by #{File.read(path).inspect}"
     end
     @log << "#{command} (#{lock})"
+    File.write("#{root}/#{@writes}", "# written by gen\n") if @writes != "" && command.include?(" run gen")
     command != @failing
   end
 end
@@ -315,9 +318,11 @@ def stale_app
   stale_cleanup
   Dir.mkdir(STALE_OUTSIDE)
   File.write("#{STALE_OUTSIDE}/linked.rb", "# linked\n")
-  ["", "/app", "/app/models", "/build", "/build/bin", "/tmp", "/dist", "/storage", "/public", "/.git", "/config"].each { |d| Dir.mkdir("#{STALE_APP}#{d}") }
-  ["app/models/post.rb", "config/routes.rb", "build/scratch.rb", "tmp/scratch.rb", "dist/scratch.rb", "storage/scratch.rb",
-   "public/scratch.rb", ".git/scratch.rb", "app/models/notes.txt"].each do |path|
+  ["", "/app", "/app/models", "/app/build", "/build", "/build/bin", "/tmp", "/dist", "/storage", "/public", "/.git", "/.bundle",
+   "/node_modules", "/config", "/gen"].each { |d| Dir.mkdir("#{STALE_APP}#{d}") }
+  ["app/models/post.rb", "config/routes.rb", "app/build/nested.rb", "build/scratch.rb", "tmp/scratch.rb", "dist/scratch.rb",
+   "storage/scratch.rb", "public/scratch.rb", ".git/scratch.rb", ".bundle/scratch.rb", "node_modules/scratch.rb",
+   "app/models/notes.txt"].each do |path|
     File.write("#{STALE_APP}/#{path}", "# #{path}\n")
     stale_touch(path, -100)
   end
@@ -328,22 +333,28 @@ def stale_app
   nil
 end
 
-test "binary_stale? is true without a binary or with a newer Ruby file outside build/, dist/, tmp/, storage/, public/ and .git/" do
+test "binary_stale? is true without a binary or with a Ruby file as new as it outside build/, dist/, tmp/, storage/, public/, node_modules/ and dot directories" do
   stale_app
   refute Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog")
   assert Cybertrain::CLI::Build.binary_stale?(STALE_APP, "other")
   # Not Ruby, not followed (a symlinked directory), or skipped at the top level.
   ["app/models/notes.txt", "app/linked/linked.rb", "build/scratch.rb", "tmp/scratch.rb", "dist/scratch.rb",
-   "storage/scratch.rb", "public/scratch.rb", ".git/scratch.rb"].each do |path|
+   "storage/scratch.rb", "public/scratch.rb", ".git/scratch.rb", ".bundle/scratch.rb", "node_modules/scratch.rb"].each do |path|
     stale_touch(path, 100)
     refute Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog"), path
     stale_touch(path, -100)
   end
-  ["app/models/post.rb", "config/routes.rb"].each do |path|
+  # app/build is not the top-level build/.
+  ["app/models/post.rb", "config/routes.rb", "app/build/nested.rb"].each do |path|
     stale_touch(path, 100)
     assert Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog"), path
     stale_touch(path, -100)
   end
+  # The same instant as the binary (a filesystem that keeps whole seconds):
+  # stale, the mistake that costs one build rather than a stale server.
+  stale_touch("app/models/post.rb", 0)
+  assert Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog")
+  stale_touch("app/models/post.rb", -100)
   File.delete("#{STALE_APP}/build/bin/blog")
   assert Cybertrain::CLI::Build.binary_stale?(STALE_APP, "blog")
   stale_cleanup
@@ -358,6 +369,16 @@ test "server builds incrementally only when the binary is stale, then runs it" d
   runner = FakeRunner.new("")
   assert_equal 0, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "4000", runner)
   assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin build blog -- --incremental (unlocked)", "spin run blog -- 4000 (unlocked)"], runner.log
+  stale_cleanup
+end
+
+# The check comes after the gen step: what gen writes is what makes the
+# binary stale when a route or the schema changed.
+test "server builds incrementally when the gen step wrote a Ruby file" do
+  stale_app
+  runner = FakeRunner.new("", "gen/routes.rb")
+  assert_equal 0, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
+  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin build blog -- --incremental (unlocked)", "spin run blog (unlocked)"], runner.log
   stale_cleanup
 end
 

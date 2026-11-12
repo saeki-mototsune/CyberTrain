@@ -32,12 +32,13 @@ ok   assemble copies the binary and public/ into dist/ and keeps storage/ and tm
 ok   assemble removes a symlink in dist/public without following it
 ok   assemble fails clearly when the binary is missing
 ok   the incremental build command quotes the name
-ok   binary_stale? is true without a binary or with a newer Ruby file outside build/, dist/, tmp/, storage/, public/ and .git/
+ok   binary_stale? is true without a binary or with a Ruby file as new as it outside build/, dist/, tmp/, storage/, public/, node_modules/ and dot directories
 ok   server builds incrementally only when the binary is stale, then runs it
+ok   server builds incrementally when the gen step wrote a Ruby file
 ok   server stops at a failing gen or incremental build
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-23 tests, 182 assertions, 0 failures
+24 tests, 188 assertions, 0 failures

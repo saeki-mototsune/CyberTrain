@@ -132,17 +132,24 @@ module Cybertrain
         "spin build #{quote_arg(name)} -- --incremental"
       end
 
-      # Top-level entries of an application binary_stale? does not look in:
-      # build output, data, and what spin does not compile.
-      STALE_SKIPPED = ["build", "dist", "tmp", "storage", "public", ".git"]
+      # Top-level entries of an application binary_stale? does not look in,
+      # besides those whose name starts with "." (.git, .bundle, .venv):
+      # build output, data, and trees that hold no source of the
+      # application and can be very large.
+      STALE_SKIPPED = ["build", "dist", "tmp", "storage", "public", "node_modules"]
 
       # True when root/build/bin/NAME is missing, or a *.rb file under root
-      # (not under STALE_SKIPPED, not through a symlinked directory) is newer
-      # than it: spin's own rule for rebuilding an executable, close enough.
+      # (not under STALE_SKIPPED or a top-level dot directory, not through a
+      # symlinked directory) is as new as it or newer: spin's own rule for
+      # rebuilding an executable, close enough. "As new" counts because some
+      # filesystems keep whole seconds, and an edit in the second of the
+      # build would otherwise read as built.
       # Wrong either way costs only time: a stale verdict by mistake is one
       # incremental build `spin run` would have skipped; a fresh one by
       # mistake (a path dependency changed) leaves the build to `spin run`.
-      # A tree that cannot be read counts as stale.
+      # A directory that cannot be listed is passed over (a volume owned by
+      # another user would otherwise make every start a build); a binary
+      # that cannot be read counts as stale.
       def self.binary_stale?(root, name)
         binary = "#{root}/build/bin/#{name}"
         return true unless File.file?(binary)
@@ -152,24 +159,31 @@ module Cybertrain
         true
       end
 
-      # True when a *.rb file under dir is newer than since (nanoseconds).
+      # True when a *.rb file under dir is no older than since (nanoseconds).
       def self.newer_ruby?(dir, since, top)
-        children = Dir.children(dir)
+        children = listing(dir)
         i = 0
         while i < children.size
           child = children[i]
           i += 1
-          next if top && STALE_SKIPPED.include?(child)
+          next if top && (STALE_SKIPPED.include?(child) || child.start_with?("."))
 
           path = "#{dir}/#{child}"
           if File.directory?(path)
             next if File.symlink?(path)
             return true if newer_ruby?(path, since, false)
           elsif child.end_with?(".rb") && File.file?(path)
-            return true if mtime_ns(path) > since
+            return true if mtime_ns(path) >= since
           end
         end
         false
+      end
+
+      # The entries of dir, or none when it cannot be listed.
+      def self.listing(dir)
+        Dir.children(dir)
+      rescue StandardError
+        Array.new(0) { "" }
       end
 
       def self.mtime_ns(path)

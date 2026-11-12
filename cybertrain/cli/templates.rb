@@ -6,6 +6,7 @@
 # Generated views stay inside the template language of docs/design.md
 # section 7: literals, @ivars, locals, helper calls, `if` and `each do`.
 require "cybertrain/ident"
+require "cybertrain/shell"
 require "cybertrain/version"
 
 module Cybertrain
@@ -627,7 +628,7 @@ module Cybertrain
                 # gen/ is committed and fresh (nothing is written).
                 # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in.
                 - name: gen/ is current
-                  run: SPIN_DEBUG=1 spin run gen -- --check
+                  run: #{Shell::TOOL_SPIN} run gen -- --check
 
                 # `spin test` fails when there is no test/*.rb; a new app has none.
                 - name: Tests

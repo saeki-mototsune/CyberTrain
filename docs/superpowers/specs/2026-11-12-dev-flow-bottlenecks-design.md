@@ -112,7 +112,9 @@ both load.
 **D-c (C4). `cybertrain server` builds the application with `--incremental`
 when its binary is stale.** After the gen step, the CLI looks for a Ruby
 file under the application (not under `build/`, `dist/`, `tmp/`, `storage/`,
-`public/`, `.git/`) newer than `build/bin/NAME`, or a missing binary; if it
+`public/`, `node_modules/` or a top-level dot directory, and not through a
+symlinked directory) as new as `build/bin/NAME` or newer, or a missing
+binary; if it
 finds one it runs `spin build NAME -- --incremental` before `spin run NAME`.
 - The check may be wrong in both directions without harm. Stale by mistake:
   one incremental build (48 s) that `spin run` would have skipped. Fresh by
