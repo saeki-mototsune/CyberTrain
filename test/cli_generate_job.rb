@@ -53,6 +53,27 @@ test "generate job send_digest writes a Job::Base subclass with an empty perform
   assert_includes test_source, "Cybertrain::Test.run!\n"
 end
 
+test "generate job adds require \"cybertrain/jobs\" to bin/shop.rb and bin/db.rb, once" do
+  bin = File.read("shop/bin/shop.rb")
+  assert_includes bin, "require \"cybertrain/core\"\nrequire \"cybertrain/jobs\"\nrequire_relative \"../gen/views\""
+  assert_includes File.read("shop/bin/db.rb"), "require \"cybertrain/core\"\nrequire \"cybertrain/jobs\"\nrequire_relative \"../config/app\""
+  # The same job again adds nothing.
+  assert_equal 0, generate(["send_digest"])
+  assert_equal bin, File.read("shop/bin/shop.rb")
+  assert_equal 1, File.read("shop/bin/db.rb").scan("require \"cybertrain/jobs\"").size
+end
+
+test "an app that requires \"cybertrain\" gets no line" do
+  Cybertrain::CLI::NewApp.create("mall", "{ path = \"../cybertrain\" }")
+  ["mall/bin/mall.rb", "mall/bin/db.rb"].each do |path|
+    File.write(path, File.read(path).sub("require \"cybertrain/core\"", "require \"cybertrain\""))
+  end
+  before = File.read("mall/bin/mall.rb")
+  assert_equal 0, Dir.chdir("mall") { Cybertrain::CLI.run(["generate", "job", "audit"]) }
+  assert_equal before, File.read("mall/bin/mall.rb")
+  assert_nil File.read("mall/bin/db.rb").index("require \"cybertrain/jobs\"")
+end
+
 test "a name given as the class name is not doubled: SendDigestJob is send_digest_job.rb" do
   assert_equal 0, generate(["SendDigestJob"])
   refute File.exist?("shop/app/jobs/send_digest_job_job.rb")

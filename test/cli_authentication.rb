@@ -179,9 +179,15 @@ test "the app's test boots the app and drives the sign-in flow" do
   assert_includes spec, "Cybertrain::Test.run!\n"
 end
 
+test "bin/shop.rb and bin/db.rb get require \"cybertrain/rate_limit\" after the core's line" do
+  assert_includes read("shop/bin/shop.rb"), "require \"cybertrain/core\"\nrequire \"cybertrain/rate_limit\"\nrequire_relative \"../gen/views\""
+  assert_includes read("shop/bin/db.rb"), "require \"cybertrain/core\"\nrequire \"cybertrain/rate_limit\"\nrequire_relative \"../config/app\""
+end
+
 test "running the generator again writes and edits nothing" do
   before = {}
-  (AUTH_FILES + ["config/routes.rb", "app/controllers/application_controller.rb", "app/views/layouts/application.html.erb"]).each do |f|
+  (AUTH_FILES + ["config/routes.rb", "app/controllers/application_controller.rb", "app/views/layouts/application.html.erb",
+                 "bin/shop.rb", "bin/db.rb"]).each do |f|
     before[f] = read("shop/#{f}")
   end
   status = Dir.chdir("shop") { Cybertrain::CLI.run(["generate", "authentication"]) }

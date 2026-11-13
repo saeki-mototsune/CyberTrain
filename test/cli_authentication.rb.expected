@@ -44,6 +44,8 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/shop.rb (require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/rate_limit")
 ok   generate authentication writes the migrations, models, controllers, views and tests
 ok   the users migration has the two NOT NULL columns and a unique index
 ok   the User model hashes with Cybertrain::Password and validates in before_validation
@@ -51,6 +53,7 @@ ok   ApplicationController gets the before_actions and the sign-in helpers after
 ok   the controllers open their sign-in actions and the views post to the routes
 ok   the routes and the layout's nav are inserted
 ok   the app's test boots the app and drives the sign-in flow
+ok   bin/shop.rb and bin/db.rb get require "cybertrain/rate_limit" after the core's line
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -65,6 +68,8 @@ identical test/authentication.rb
 identical app/controllers/application_controller.rb (authentication already added)
 identical route resource :session
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical bin/shop.rb (require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/rate_limit")
 
 next:
   cybertrain db migrate
@@ -126,6 +131,8 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /sign_up
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/store.rb (require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/rate_limit")
 ok   the generator runs after a scaffold, with migration versions that follow
 create spin.toml
 create .gitignore
@@ -174,6 +181,8 @@ create test/authentication.rb
 insert app/controllers/application_controller.rb (authentication)
 route resource :session, get/post /setup
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/club.rb (require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/rate_limit")
 insert bin/club.rb (./club user, the first-run warning)
 insert config/app.rb (CLUB_SETUP_OPEN)
 
@@ -200,6 +209,8 @@ identical test/authentication.rb
 identical app/controllers/application_controller.rb (authentication already added)
 identical route resource :session
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical bin/club.rb (require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/rate_limit")
 identical bin/club.rb (user command already required)
 identical config/app.rb (setup_open already declared)
 
@@ -282,4 +293,4 @@ create tmp/.keep
 create test/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-18 tests, 188 assertions, 0 failures
+19 tests, 192 assertions, 0 failures

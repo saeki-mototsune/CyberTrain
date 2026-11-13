@@ -68,9 +68,16 @@ test "config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jo
   assert_equal "Cybertrain::Schema.define(version: \"0\") do |s|\nend\n", read("blog/db/schema.rb")
 end
 
-test "bin/blog.rb is the app's one binary: server, migrate, db" do
+test "bin/blog.rb is the app's one binary: server, migrate, db; it requires the core alone" do
   assert_equal <<~RUBY, read("blog/bin/blog.rb")
-    require "cybertrain"
+    # The framework without its optional subsystems. Add the ones the
+    # application uses after it, here and in bin/db.rb: cybertrain/jobs,
+    # cybertrain/streams, cybertrain/feeds, cybertrain/mailer (and
+    # cybertrain/mailer/later), cybertrain/cache, cybertrain/rate_limit;
+    # or require "cybertrain" for all of them. `generate job` and
+    # `generate authentication` add theirs; `spin run gen` names the
+    # line a view's helper needs.
+    require "cybertrain/core"
     require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
     require_relative "../config/app"     # so it comes before the config
     require_relative "../gen/app"
@@ -104,7 +111,9 @@ end
 
 test "bin/db.rb runs migrations in development without the app's models" do
   assert_equal <<~RUBY, read("blog/bin/db.rb")
-    require "cybertrain"
+    # The same subsystem lines as bin/<app>.rb: config/app.rb may name
+    # them (a Scheduler.cron task needs cybertrain/jobs).
+    require "cybertrain/core"
     require_relative "../config/app"
     require_relative "../gen/migrations"
 
@@ -142,7 +151,9 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes controller, "rescue_from Cybertrain::RecordNotFound, with: :record_not_found"
   assert_includes read("blog/config/app.rb"), "Cybertrain.configure do |c|"
   assert_includes read("blog/config/app.rb"), 'c.allowed_hosts << "my-preview.example.com"'
-  # The commented cron example prunes the done jobs every app now leaves.
+  # The commented cron example prunes the done jobs every app now leaves;
+  # it says which require it needs.
+  assert_includes read("blog/config/app.rb"), "# the jobs command). It needs require \"cybertrain/jobs\" in\n"
   assert_includes read("blog/config/app.rb"),
                   "# Cybertrain::Scheduler.cron(\"0 4 * * *\", \"prune done jobs\") do\n" \
                   "#   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)\n# end\n"
@@ -160,6 +171,7 @@ test "README.md gives the cybertrain command sequence" do
   assert_includes readme, "cybertrain server"
   assert_includes readme, "cybertrain build"
   assert_includes readme, "bin/db.rb"
+  assert_includes readme, "`bin/blog.rb` and `bin/db.rb` require `cybertrain/core`"
   assert_nil readme.index("spin run db")
 end
 

@@ -18,7 +18,9 @@
 # Sign-in attempts are rate limited as in Rails' generator (`rate_limit to:
 # 10, within: 3 * 60, only: [:create]`, per client address, counted in
 # Cybertrain::Cache; docs/design.md D26), and AppTest.sign_in resets the
-# counts so a test suite never reaches the limit.
+# counts so a test suite never reaches the limit. So it adds `require
+# "cybertrain/rate_limit"` to bin/<app>.rb and bin/db.rb, unless that line
+# or `require "cybertrain"` is there (Templates.add_require).
 #
 # What it leaves out, and why: password reset (its e-mail needs the app's
 # SMTP settings for Cybertrain::Mailer, which the generator cannot know) and a `Current` object (templates read `@current_user` instead, an ivar
@@ -120,6 +122,8 @@ module Cybertrain
         add_routes(routes_path, invite_only)
         add_nav_to_layout(File.join(root, "app/views/layouts/application.html.erb"))
         add_sign_in_to_attachment_tests(root)
+        # SessionsController's rate_limit needs cybertrain/rate_limit.
+        Templates.add_require(root, "cybertrain/rate_limit")
         if invite_only
           add_command_to_bin(File.join(root, "bin/#{app}.rb"), app)
           add_setting_to_config(File.join(root, "config/app.rb"), app)

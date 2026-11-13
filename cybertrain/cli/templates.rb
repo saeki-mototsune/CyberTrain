@@ -8,6 +8,7 @@
 require "cybertrain/ident"
 require "cybertrain/shell"
 require "cybertrain/version"
+require "cybertrain/cli/build"
 
 module Cybertrain
   module CLI
@@ -41,6 +42,72 @@ module Cybertrain
           path << "/"
         end
         nil
+      end
+
+      # ---- the subsystem lines of bin/<app>.rb ----------------------------
+      #
+      # `cybertrain new` writes `require "cybertrain/core"`: the framework
+      # without its optional subsystems (docs/superpowers/specs/
+      # 2026-11-13-optional-subsystems-design.md). A generator whose files
+      # need one adds its line: `generate job` cybertrain/jobs,
+      # `generate authentication` cybertrain/rate_limit (for
+      # SessionsController's rate_limit).
+
+      # The line that loads every subsystem.
+      EVERYTHING_REQUIRE = "require \"cybertrain\""
+
+      # Adds `require "FEATURE"` to bin/<app>.rb and to bin/db.rb (which
+      # loads config/app.rb, so it requires the same subsystems: a
+      # Scheduler.cron there would not compile in a core-only db binary),
+      # after the file's last `require "cybertrain..."` line, unless the
+      # file has that line or `require "cybertrain"` already. Prints each
+      # file's status as the other edits do. A tree with no spin.toml name,
+      # or without the file, is left alone.
+      # @return [nil]
+      def self.add_require(root, feature)
+        app = Build.app_name(root)
+        return nil if app.empty?
+
+        wanted = "require \"#{feature}\""
+        ["bin/#{app}.rb", "bin/db.rb"].each do |rel|
+          path = File.join(root, rel)
+          next unless File.exist?(path)
+
+          source = File.read(path)
+          lines = source.split("\n", -1)
+          stripped = Array.new(0) { "" }
+          lines.each { |line| stripped << line.strip }
+          if stripped.include?(wanted)
+            puts "identical #{rel} (#{wanted})"
+          elsif stripped.include?(EVERYTHING_REQUIRE)
+            puts "identical #{rel} (#{EVERYTHING_REQUIRE} loads #{feature})"
+          else
+            File.write(path, insert_require(lines, wanted))
+            puts "insert #{rel} (#{wanted})"
+          end
+        end
+        nil
+      end
+
+      # The file's `lines` (split on newlines) with `line` after the last
+      # one that starts with `require "cybertrain`, or first when none does.
+      # @return [String]
+      def self.insert_require(lines, line)
+        last = -1
+        i = 0
+        while i < lines.size
+          last = i if lines[i].start_with?("require \"cybertrain")
+          i += 1
+        end
+        out = Array.new(0) { "" }
+        out << line if last < 0
+        i = 0
+        while i < lines.size
+          out << lines[i]
+          out << line if i == last
+          i += 1
+        end
+        out.join("\n")
       end
 
       # A lowercase Ruby-ish name: "post", "blog_post", "released_on". The
@@ -145,6 +212,15 @@ module Cybertrain
           `cybertrain db migrate` runs migrations through `bin/db.rb`; a
           deployed `dist/#{package}` runs them with `./#{package} migrate`.
 
+          `bin/#{package}.rb` and `bin/db.rb` require `cybertrain/core`, the
+          framework without its optional subsystems, plus a line for each
+          one the application uses: `cybertrain generate job` adds
+          `require "cybertrain/jobs"`, `generate authentication`
+          `require "cybertrain/rate_limit"`. Add `cybertrain/streams`,
+          `cybertrain/feeds`, `cybertrain/mailer` or `cybertrain/cache`
+          yourself, or `require "cybertrain"` for everything; `spin run gen`
+          names the line a view's helper needs.
+
           To deploy, copy `dist/` to a machine with the same OS and CPU, then
           `cd dist && ./#{package} migrate && ./#{package}` (production by default;
           set CYBERTRAIN_SECRET_KEY_BASE).
@@ -202,7 +278,8 @@ module Cybertrain
           # leads the schedule; the web and worker roles both run it. Finished
           # jobs stay in cybertrain_jobs until something deletes them: this one
           # deletes the done ones a week old (failed ones are kept for
-          # the jobs command).
+          # the jobs command). It needs require "cybertrain/jobs" in
+          # bin/<app>.rb and bin/db.rb (`cybertrain generate job` adds it).
           # Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
           #   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
           # end
@@ -321,7 +398,14 @@ module Cybertrain
 
       def self.bin_app(package)
         <<~RUBY
-          require "cybertrain"
+          # The framework without its optional subsystems. Add the ones the
+          # application uses after it, here and in bin/db.rb: cybertrain/jobs,
+          # cybertrain/streams, cybertrain/feeds, cybertrain/mailer (and
+          # cybertrain/mailer/later), cybertrain/cache, cybertrain/rate_limit;
+          # or require "cybertrain" for all of them. `generate job` and
+          # `generate authentication` add theirs; `spin run gen` names the
+          # line a view's helper needs.
+          require "cybertrain/core"
           require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
           require_relative "../config/app"     # so it comes before the config
           require_relative "../gen/app"
@@ -355,7 +439,9 @@ module Cybertrain
       # Development only, so migrations run before gen/models exist; production uses `./NAME migrate`.
       def self.bin_db
         <<~RUBY
-          require "cybertrain"
+          # The same subsystem lines as bin/<app>.rb: config/app.rb may name
+          # them (a Scheduler.cron task needs cybertrain/jobs).
+          require "cybertrain/core"
           require_relative "../config/app"
           require_relative "../gen/migrations"
 
@@ -625,7 +711,8 @@ module Cybertrain
                 - name: spin.lock is current
                   run: spin lock && git diff --exit-code spin.lock
 
-                # gen/ is committed and fresh (nothing is written).
+                # gen/ is committed and fresh (nothing is written), and no view
+                # calls a helper whose require line bin/<app>.rb lacks.
                 # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in.
                 - name: gen/ is current
                   run: #{Shell::TOOL_SPIN} run gen -- --check
