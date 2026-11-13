@@ -9,5 +9,7 @@ ok   two top-level tests of one name each report their own line
 ok   Cybertrain::Test.run! does nothing inside the bundle
 ok   boot refuses a database that is not the test one
 ok   CYBERTRAIN_TEST_DATABASE is honoured
+ok   CYBERTRAIN_TEST_DATABASE naming the development or production database is refused and kept
+ok   the shell's mail, SSL and host variables do not reach the tests; uploads go to an emptied tmp/test_uploads
 ok   every test starts in the configured time zone
-12 tests, 74 assertions, 0 failures
+14 tests, 95 assertions, 0 failures

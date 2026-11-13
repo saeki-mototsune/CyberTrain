@@ -188,9 +188,11 @@ test "a file: URI counts by its path, and odd forms are refused" do
   assert_equal "", Database.refusal("test", "file:///srv/app/storage/test.sqlite3")
   assert_equal "", Database.refusal("test", "file:storage/test.sqlite3")
   ["file:/app/storage/development.sqlite3#/storage/test.sqlite3", "file:/app/storage/development.sqlite3?x=/storage/test.sqlite3",
-   "file://otherhost/app/storage/test.sqlite3", "file:/app/storage/test%2Esqlite3", "file:/app/storage/development.sqlite3"].each do |uri|
+   "file://otherhost/app/storage/test.sqlite3", "file:/app/storage/test%2Esqlite3"].each do |uri|
     assert_equal "Test::Database refuses to empty #{uri}: not a test database (env test)", Database.refusal("test", uri)
   end
+  assert_equal "Test::Database refuses to empty file:/app/storage/development.sqlite3: it is the development database",
+               Database.refusal("test", "file:/app/storage/development.sqlite3")
 end
 
 test "a storage/test.sqlite3 symlinked to another file is refused" do
@@ -201,7 +203,7 @@ test "a storage/test.sqlite3 symlinked to another file is refused" do
   File.write("#{DIR}/elsewhere/test.sqlite3", "other")
   link = "#{DIR}/app/storage/test.sqlite3"
   File.symlink("#{DIR}/app/storage/development.sqlite3", link)
-  assert_equal "Test::Database refuses to empty #{link}: not a test database (env test)", Database.refusal("test", link)
+  assert_equal "Test::Database refuses to empty #{link}: it is the development database", Database.refusal("test", link)
   File.delete(link)
   File.symlink("#{DIR}/elsewhere/test.sqlite3", link)
   assert_equal "Test::Database refuses to empty #{link}: not a test database (env test)", Database.refusal("test", link)
@@ -219,12 +221,51 @@ test "only a test database is emptied" do
   assert_equal "", Database.refusal("test", DB_PATH)
   assert_equal "Test::Database refuses to empty storage/test.sqlite3: not a test database (env development)",
                Database.refusal("development", "storage/test.sqlite3")
-  assert_equal "Test::Database refuses to empty storage/development.sqlite3: not a test database (env test)",
+  assert_equal "Test::Database refuses to empty storage/development.sqlite3: it is the development database",
                Database.refusal("test", "storage/development.sqlite3")
-  assert_equal "Test::Database refuses to empty storage/production.sqlite3: not a test database (env production)",
+  assert_equal "Test::Database refuses to empty storage/production.sqlite3: it is the production database",
                Database.refusal("production", "storage/production.sqlite3")
   assert_equal "Test::Database refuses to empty /srv/app/storage/test.sqlite3.bak: not a test database (env test)",
                Database.refusal("test", "/srv/app/storage/test.sqlite3.bak")
+end
+
+test "CYBERTRAIN_TEST_DATABASE naming the development or production database is refused" do
+  saved = ENV["CYBERTRAIN_TEST_DATABASE"].to_s
+  # By the file's name, wherever it is.
+  ["#{DIR}/x/development.sqlite3", "development.sqlite3", "/srv/app/storage/production.sqlite3", "file:/srv/production.sqlite3"].each do |named|
+    ENV["CYBERTRAIN_TEST_DATABASE"] = named
+    env = named.include?("production") ? "production" : "development"
+    assert_equal "Test::Database refuses to empty #{named}: it is the #{env} database", Database.refusal("test", named)
+  end
+  # By the path the environment resolves to: storage/<env>.sqlite3 written
+  # another way.
+  absolute = File.expand_path("storage/production.sqlite3")
+  ENV["CYBERTRAIN_TEST_DATABASE"] = absolute
+  assert_equal "Test::Database refuses to empty #{absolute}: it is the production database", Database.refusal("test", absolute)
+  # By config/app.rb's c.database_path for that environment, also through
+  # a symlink; a block that raises for one environment records nothing.
+  Dir.mkdir("#{DIR}/live")
+  live = "#{DIR}/live/blog.sqlite3"
+  File.write(live, "production data")
+  Cybertrain.record_other_databases!
+  Cybertrain.configure do |c|
+    c.database_path = live if c.production?
+    raise ArgumentError, "only in production" if c.development?
+  end
+  ENV["CYBERTRAIN_TEST_DATABASE"] = live
+  assert_equal "Test::Database refuses to empty #{live}: it is the production database", Database.refusal("test", live)
+  link = "#{DIR}/plain.sqlite3"
+  File.symlink(live, link)
+  ENV["CYBERTRAIN_TEST_DATABASE"] = link
+  assert_equal "Test::Database refuses to empty #{link}: it is the production database", Database.refusal("test", link)
+  assert_equal ["production"], Cybertrain.other_database_envs
+  # Another file is still a test database.
+  ENV["CYBERTRAIN_TEST_DATABASE"] = "#{DIR}/other.sqlite3"
+  assert_equal "", Database.refusal("test", "#{DIR}/other.sqlite3")
+  ENV["CYBERTRAIN_TEST_DATABASE"] = saved
+  File.delete(link)
+  File.delete(live)
+  Dir.rmdir("#{DIR}/live")
 end
 
 test "the clear and the load refuse a connected database that is not a test one" do

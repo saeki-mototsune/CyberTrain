@@ -39,6 +39,25 @@ def build_app
     user = Cybertrain::Cookies.parse(c.request.cookie_header)["user"]
     c.response.body = user.nil? ? "nobody" : user
   end
+  # A session cookie that lasts a minute, one without a lifetime, and one
+  # with an Expires two minutes on (Cybertrain.config's clock: the test's).
+  router.get("/short_login") do |c|
+    c.response.add_cookie(Cybertrain::Cookies.serialize("user", "alice smith", max_age: 60))
+    c.response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark"))
+    # Written by hand: an `expires:` Time given to Cookies.serialize here
+    # beside the calls without one crashed the compiled program (the
+    # nil default read as a Time).
+    c.response.add_cookie("dated=1; Path=/; Expires=#{Cybertrain::Request.http_date(Cybertrain::Clock.now + 120)}")
+    c.response.body = "logged in"
+  end
+  router.get("/expire_dated") do |c|
+    c.response.add_cookie("dated=; Path=/; Expires=Sat, 01 Jan 2000 00:00:00 GMT")
+    c.response.body = "expired"
+  end
+  router.get("/cookie_header") { |c| c.response.body = c.request.cookie_header.to_s }
+  router.get("/to_fragment") { |c| c.response.redirect("/echo?a=1#part", 302) }
+  router.get("/to_absolute_fragment") { |c| c.response.redirect("http://www.example.com/echo#part", 302) }
+  router.get("/echo") { |c| c.response.body = "#{c.request.path} ?#{c.request.query_string}" }
   router.get("/echo_header") { |c| c.response.body = c.request.header("X-Token").to_s }
   router.get("/peer") { |c| c.response.body = "#{c.request.remote_addr} #{c.request.loopback?}" }
   router.post("/posts") do |c|
@@ -150,10 +169,77 @@ test "follow_redirect! strips the scheme and host of an absolute Location" do
   assert_equal "alice smith", client.follow_redirect!.body
 end
 
-test "follow_redirect! raises when the last response is not a redirect" do
+test "follow_redirect! fails, as an assertion, when the last response is not a redirect" do
   client = Cybertrain::Test::Client.new(build_app)
   client.get("/")
-  assert_raises("RuntimeError") { client.follow_redirect! }
+  assert_equal "follow_redirect!: the last response was 200, not a redirect (3xx with a Location)",
+               assert_raises("AssertionFailed") { client.follow_redirect! }
+end
+
+test "follow_redirect! never sends the Location's fragment" do
+  client = Cybertrain::Test::Client.new(build_app)
+  client.get("/to_fragment")
+  assert_equal "/echo ?a=1", client.follow_redirect!.body
+  client.get("/to_absolute_fragment")
+  assert_equal "/echo ?", client.follow_redirect!.body
+end
+
+test "local_path drops the fragment and keeps the query, with or without a path" do
+  assert_equal "/?x=1", Cybertrain::Test::Client.local_path("http://www.example.com?x=1")
+  assert_equal "/?x=1", Cybertrain::Test::Client.local_path("http://www.example.com?x=1#top")
+  assert_equal "/", Cybertrain::Test::Client.local_path("http://www.example.com#top")
+  assert_equal "/", Cybertrain::Test::Client.local_path("http://www.example.com")
+  assert_equal "/a?b=1", Cybertrain::Test::Client.local_path("https://www.example.com:3000/a?b=1#c")
+  assert_equal "/a?b=1", Cybertrain::Test::Client.local_path("/a?b=1#c")
+  assert_equal "/a", Cybertrain::Test::Client.local_path("/a")
+end
+
+test "the jar reads a cookie by a Symbol as by its name" do
+  client = Cybertrain::Test::Client.new(build_app)
+  client.get("/login")
+  assert_equal "alice+smith", client.cookies[:user]
+  assert client.cookies.key?(:theme)
+  assert client.cookies.key?("theme")
+  refute client.cookies.key?(:nope)
+  assert_nil client.cookies[:nope]
+  client.cookies[:theme] = "light"
+  assert_equal "light", client.cookies["theme"]
+  assert_equal ["user", "theme"], client.cookies.keys
+  assert_equal 2, client.cookies.size
+  assert_equal "light", client.cookies.delete(:theme)
+  assert_equal ["user"], client.cookies.keys
+end
+
+test "a cookie past its Max-Age or Expires under the clock is neither sent nor read" do
+  client = Cybertrain::Test::Client.new(build_app)
+  travel_to Time.utc(2030, 1, 1, 12, 0, 0) do
+    client.get("/short_login")
+    assert_equal "alice smith", client.get("/whoami").body
+    assert_equal "1", client.cookies["dated"]
+    travel 59
+    assert_equal "alice smith", client.get("/whoami").body
+    travel 2
+    # user had Max-Age=60, dated Expires 12:02.
+    assert_nil client.cookies[:user]
+    assert_equal "nobody", client.get("/whoami").body
+    assert_equal "1", client.cookies["dated"]
+    refute client.cookies.key?("user")
+    assert_equal ["theme", "dated"], client.cookies.keys
+    travel 60
+    assert_nil client.cookies["dated"]
+    assert_equal ["theme"], client.cookies.keys
+    assert_equal "theme=dark", client.get("/cookie_header").body
+  end
+end
+
+test "an Expires already past drops the cookie, as Max-Age=0 does" do
+  client = Cybertrain::Test::Client.new(build_app)
+  travel_to Time.utc(2030, 1, 1, 12, 0, 0) do
+    client.get("/short_login")
+    client.get("/expire_dated")
+    assert_nil client.cookies["dated"]
+    assert_equal ["user", "theme"], client.cookies.keys
+  end
 end
 
 test "assert_redirected_to fails on a non-redirect or another location" do

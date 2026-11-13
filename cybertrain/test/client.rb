@@ -124,6 +124,131 @@ module Cybertrain
       end
     end
 
+    # A {Client}'s cookie jar: each cookie's raw (still percent-encoded)
+    # value by name, as the Set-Cookie headers so far left it. A name may be
+    # given as a String or a Symbol (`cookies[:user]` is `cookies["user"]`,
+    # as in Rails' integration tests). A cookie whose `Max-Age` or
+    # `Expires` has passed under {Cybertrain::Clock} (so also after
+    # `travel_to` past it) is gone: not read, not listed, not sent, as a
+    # browser (and Rack::Test) would. A cookie a test writes with `[]=`
+    # has no lifetime.
+    # @example
+    #   client.get("/login")
+    #   client.cookies[:user]            # => "alice+smith"
+    #   client.cookies["theme"] = "dark"
+    # @api public
+    class ClientCookies
+      def initialize
+        @jar_values = { "" => "" }
+        @jar_values.delete("")
+        # Epoch second from which each cookie is expired, -1 for none.
+        @jar_expires = { "" => 0 }
+        @jar_expires.delete("")
+      end
+
+      # The cookie's raw value, nil when there is none (or it expired).
+      # @param name [String, Symbol]
+      # @return [String, nil]
+      # @api public
+      def [](name)
+        key = name.to_s
+        return nil unless jar_live?(key)
+
+        @jar_values[key]
+      end
+
+      # Sets a cookie for the next requests (raw: percent-encode it as a
+      # server would), with no lifetime.
+      # @param name [String, Symbol]
+      # @param value [String]
+      # @return [String]
+      # @api public
+      def []=(name, value)
+        jar_store(name.to_s, value.to_s, -1)
+      end
+
+      # Whether the cookie is there (and not expired).
+      # @param name [String, Symbol]
+      # @return [Boolean]
+      # @api public
+      def key?(name)
+        jar_live?(name.to_s)
+      end
+
+      # Removes the cookie; answers the value it had (nil when none).
+      # @param name [String, Symbol]
+      # @return [String, nil]
+      # @api public
+      def delete(name)
+        key = name.to_s
+        live = jar_live?(key)
+        @jar_expires.delete(key)
+        value = @jar_values.delete(key)
+        live ? value : nil
+      end
+
+      # The names of the cookies there, in the order they were first set.
+      # @return [Array<String>]
+      # @api public
+      def keys
+        names = Array.new(0) { "" }
+        @jar_values.each_key { |key| names << key if jar_live?(key) }
+        names
+      end
+
+      # How many cookies are there.
+      # @return [Integer]
+      # @api public
+      def size
+        keys.length
+      end
+
+      # Whether no cookie is there.
+      # @return [Boolean]
+      # @api public
+      def empty?
+        keys.empty?
+      end
+
+      # The cookies as a Hash, name to raw value.
+      # @return [Hash{String => String}]
+      # @api public
+      def to_h
+        out = { "" => "" }
+        out.delete("")
+        keys.each { |key| out[key] = @jar_values[key].to_s }
+        out
+      end
+
+      # The Cookie header a request carries: `a=1; b=2`.
+      # @return [String]
+      # @api private
+      def jar_header
+        keys.map { |key| "#{key}=#{@jar_values[key]}" }.join("; ")
+      end
+
+      # Keeps `value` under `name`, expired from `expires_at` (an epoch
+      # second; -1 for never).
+      # @return [String] value
+      # @api private
+      def jar_store(name, value, expires_at)
+        @jar_values[name] = value
+        @jar_expires[name] = expires_at
+        value
+      end
+
+      # Whether `name` is there and not past its expiry under the Clock.
+      # @api private
+      def jar_live?(name)
+        return false unless @jar_values.key?(name)
+
+        at = @jar_expires[name]
+        return true if at.nil? || at < 0
+
+        Cybertrain::Clock.now.to_i < at
+      end
+    end
+
     # Drives an App (or a bare Router) in-process, the way Rails integration
     # tests do: no socket, one Context per request, and a cookie jar that
     # carries Set-Cookie values into the next request's Cookie header.
@@ -155,8 +280,9 @@ module Cybertrain
       # @api public
       attr_reader :response
 
-      # The cookie jar: name to raw (still percent-encoded) value.
-      # @return [Hash{String => String}]
+      # The cookie jar: name (a String or a Symbol) to raw (still
+      # percent-encoded) value; expired cookies are gone ({ClientCookies}).
+      # @return [ClientCookies]
       # @api public
       attr_reader :cookies
 
@@ -176,7 +302,7 @@ module Cybertrain
       def initialize(app)
         @app = app
         @response = Response.new
-        @cookies = {}
+        @cookies = ClientCookies.new
         @boundary_counter = 0
         @peer_address = REMOTE_ADDR
       end
@@ -312,7 +438,10 @@ module Cybertrain
         headers.each { |k, v| head[k.downcase] = v }
         head["host"] = TEST_HOST unless head.key?("host")
         head["content-length"] = body.bytesize.to_s unless body.empty?
-        head["cookie"] = cookie_header unless @cookies.empty? || head.key?("cookie")
+        unless head.key?("cookie")
+          sent = @cookies.jar_header
+          head["cookie"] = sent unless sent.empty?
+        end
         ctx = Context.new(Request.new(method, path, head, body, @peer_address))
         @app.call(ctx)
         @response = ctx.response
@@ -321,26 +450,51 @@ module Cybertrain
       end
 
       # GETs the Location of the last response; an absolute URL is reduced
-      # to its path so it stays inside the app.
+      # to its path and query so it stays inside the app, and the fragment
+      # (`#comments`) is never sent, as a browser never sends one.
       # @return [Response]
-      # @raise [RuntimeError] when the last response was not a redirect
+      # @raise [AssertionFailed] when the last response was not a redirect
+      #   (a 3xx with a Location)
       # @api public
       def follow_redirect!
-        location = @response.header("Location")
-        if location.nil? || @response.status < 300 || @response.status > 399
-          raise "not a redirect: last response was #{@response.status}"
-        end
-
-        get(Client.local_path(location))
+        get(Client.local_path(Client.redirect_location(@response)))
       end
 
-      # "http://example.com/posts?x=1" -> "/posts?x=1"; a path is returned as is.
-      def self.local_path(location)
-        scheme = location.index("://")
-        return location if scheme.nil?
+      # The Location of a redirect response; fails the test (AssertionFailed)
+      # for any other response: what both forms of follow_redirect! check.
+      # @param response [Response]
+      # @return [String]
+      # @api private
+      def self.redirect_location(response)
+        location = response.header("Location")
+        status = response.status
+        if location.nil? || status < 300 || status > 399
+          message = "follow_redirect!: the last response was #{status}, not a redirect (3xx with a Location)"
+          raise AssertionFailed, message
+        end
+        location.to_s
+      end
 
-        slash = location.index("/", scheme + 3)
-        slash.nil? ? "/" : location[slash..-1].to_s
+      # The target a request sends for a path or a URL: its path and query,
+      # never its fragment. "http://example.com/posts?x=1#c" -> "/posts?x=1",
+      # "http://example.com?x=1" -> "/?x=1", "/a#c" -> "/a".
+      # @param location [String]
+      # @return [String]
+      # @api private
+      def self.local_path(location)
+        text = location.to_s
+        hash = text.index("#")
+        text = text[0, hash].to_s unless hash.nil?
+        scheme = text.index("://")
+        return text if scheme.nil?
+
+        from = scheme + 3
+        slash = text.index("/", from)
+        query = text.index("?", from)
+        return text[slash, text.length - slash].to_s if !slash.nil? && (query.nil? || slash < query)
+        return "/" if query.nil?
+
+        "/#{text[query, text.length - query]}"
       end
 
       # The local path of a request or redirect target this application
@@ -361,6 +515,37 @@ module Cybertrain
         return target unless host == TEST_HOST || host == url_host_of(Cybertrain.url_root)
 
         local_path(target)
+      end
+
+      # The epoch second from which a Set-Cookie's cookie is expired, -1
+      # for a session cookie: `Max-Age` (a number of seconds; 0 or less is
+      # already expired) from `now`, else `Expires` (an HTTP date; one
+      # that does not parse is ignored).
+      # @param parts [Array<String>] the Set-Cookie split at `;`
+      # @param now [Integer] epoch seconds
+      # @return [Integer]
+      # @api private
+      def self.cookie_expiry(parts, now)
+        expires = -1
+        i = 1
+        while i < parts.length
+          attr = parts[i].to_s.strip
+          eq = attr.index("=")
+          unless eq.nil?
+            key = attr[0, eq].to_s.strip.downcase
+            value = attr[eq + 1, attr.length - eq - 1].to_s.strip
+            if key == "max-age"
+              seconds = value.start_with?("-") ? 0 : value.to_i
+              return now + seconds
+            end
+            if key == "expires"
+              at = Request.parse_http_date(value)
+              expires = at if at >= 0
+            end
+          end
+          i += 1
+        end
+        expires
       end
 
       # "https://Example.com:3000/x?y" -> "example.com:3000"; "" without a scheme.
@@ -512,13 +697,13 @@ module Cybertrain
         true
       end
 
-      def cookie_header
-        @cookies.map { |name, value| "#{name}=#{value}" }.join("; ")
-      end
-
       # Keeps each Set-Cookie's raw name=value (still percent-encoded, as a
-      # browser would) and drops cookies expired with Max-Age=0.
+      # browser would) with its expiry: `Max-Age` seconds from the Clock's
+      # now (it wins over `Expires`, as RFC 6265 says), else the `Expires`
+      # date; a cookie already expired (`Max-Age=0`, a past date) is
+      # dropped.
       def store_cookies(response)
+        now = Cybertrain::Clock.now.to_i
         response.cookies.each do |set_cookie|
           parts = set_cookie.split(";")
           pair = parts[0].to_s.strip
@@ -526,11 +711,11 @@ module Cybertrain
           next if eq.nil? || eq == 0
 
           name = pair[0, eq]
-          expired = parts.any? { |attr| attr.strip.downcase == "max-age=0" }
-          if expired
+          expires_at = Client.cookie_expiry(parts, now)
+          if expires_at >= 0 && expires_at <= now
             @cookies.delete(name)
           else
-            @cookies[name] = pair[(eq + 1)..-1].to_s
+            @cookies.jar_store(name, pair[(eq + 1)..-1].to_s, expires_at)
           end
         end
       end

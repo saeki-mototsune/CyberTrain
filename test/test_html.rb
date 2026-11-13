@@ -79,10 +79,10 @@ test "more selector forms: compounds, chains, lists, the universal tag and spaci
   # [class="card"] compares the whole value; .card one word of it.
   assert_select "[class=\"card\"]", count: 0
   assert_select "[class=\"card big\"]", count: 1
-  # A value holding ], > and a comma, and an escaped quote.
+  # A value holding ], > and a comma, and one holding the other quote.
   Cybertrain::Test.last_html = %(<i data-v="a], b > c"></i><i data-v='say "hi"'></i>)
   assert_select "i[data-v=\"a], b > c\"]", count: 1
-  assert_select "i[data-v=\"say \\\"hi\\\"\"]", count: 1
+  assert_select "i[data-v='say \"hi\"']", count: 1
 end
 
 test "the answer is the matched elements, in document order, each once" do
@@ -184,7 +184,7 @@ end
 
 test "a wrong second argument is refused" do
   html!
-  assert_includes assert_raises(ArgumentError) { assert_select "li", 1.5 }, "must be a String, a Regexp, an Integer, true or false"
+  assert_includes assert_raises(ArgumentError) { assert_select "li", 1.5 }, "must be a String, a Regexp, an Integer, a Range, true or false"
   assert_includes assert_raises(ArgumentError) { assert_select "li", "a", text: "b" }, "give the text once"
 end
 
@@ -352,9 +352,51 @@ test "selector messages: CSS escapes, and a flag only where a flag stands" do
   html!
   assert_equal "assert_select: CSS escapes (\\) are not supported (selector: \".md\\\\:flex\")", assert_raises("AssertionFailed") { assert_select ".md\\:flex" }
   assert_equal "assert_select: CSS escapes (\\) are not supported (selector: \"[a\\\\:b]\")", assert_raises("AssertionFailed") { assert_select "[a\\:b]" }
+  # In a value too, quoted or not: `\41` is not read as "41" (nor as the
+  # letter A), nor `\"` as a quote.
+  Cybertrain::Test.last_html = %(<a title="41">x</a><a title='a"b'>y</a>)
+  assert_equal "assert_select: CSS escapes (\\) are not supported (selector: #{"a[title=\"\\41\"]".inspect})",
+               assert_raises("AssertionFailed") { assert_select "a[title=\"\\41\"]" }
+  assert_equal "assert_select: CSS escapes (\\) are not supported (selector: #{"a[title='a\\\"b']".inspect})",
+               assert_raises("AssertionFailed") { assert_select "a[title='a\\\"b']" }
+  assert_equal "assert_select: CSS escapes (\\) are not supported (selector: #{"a[title=\\41]".inspect})",
+               assert_raises("AssertionFailed") { assert_select "a[title=\\41]" }
+  html!
   assert_equal "assert_select: attribute flags are not supported (selector: \"a[class=btn s]\")", assert_raises("AssertionFailed") { assert_select "a[class=btn s]" }
   assert_equal "assert_select: invalid selector \"p[data-x=a b]\"", assert_raises("AssertionFailed") { assert_select "p[data-x=a b]" }
   assert_equal "assert_select: invalid selector \"p[data-x=\\\"a\\\" in]\"", assert_raises("AssertionFailed") { assert_select "p[data-x=\"a\" in]" }
+end
+
+test "a descendant chain that fails at its top is not exponential in the depth" do
+  # 200 nested divs and no section: without remembering which (compound,
+  # element) pairs failed, every div would try every ancestor chain.
+  Cybertrain::Test.last_html = ("<div>" * 200) + "x" + ("</div>" * 200)
+  started = Cybertrain::Clock.monotonic
+  assert_select "section div div div div div", 0
+  assert_equal 196, assert_select("div div div div div").length
+  elapsed = Cybertrain::Clock.monotonic - started
+  assert elapsed < 2.0, "assert_select took #{elapsed} s on 200 nested divs"
+end
+
+test "a binary (ASCII-8BIT) body with non-ASCII bytes and a reference is read as UTF-8" do
+  Cybertrain::Test.last_html = "<p title=\"&eacute;\xC3\xA9\">\xC3\xA9 &eacute; &amp;</p>".b
+  found = assert_select("p", count: 1)
+  assert_equal "é é &", found[0].node_text
+  assert_equal "éé", found[0].node_attr("title")
+  assert_select "p", text: "é é &"
+end
+
+test "a Range as the count: at least its first, at most its last" do
+  html!
+  assert_select "li", 2..3
+  assert_select "li", 1..2
+  assert_select "li", 0...3
+  excerpt = "\nHTML (first 500 characters):\n#{HTML[0, 500]}"
+  assert_equal "Expected between 3 and 4 elements matching \"li\", found 2.#{excerpt}", assert_raises("AssertionFailed") { assert_select "li", 3..4 }
+  assert_equal "Expected between 0 and 1 elements matching \"li\", found 2.#{excerpt}", assert_raises("AssertionFailed") { assert_select "li", 0...2 }
+  assert_equal "assert_select: give the count once, as the second argument (2..3) or as count:, minimum: and maximum:",
+               assert_raises(ArgumentError) { assert_select "li", 2..3, minimum: 1 }
+  assert_equal "assert_select: count: must be 0 or more, got -1", assert_raises(ArgumentError) { assert_select "li", -1..3 }
 end
 
 test "the trees that differ from a browser's, as documented" do

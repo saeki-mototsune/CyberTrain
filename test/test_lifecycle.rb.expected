@@ -7,6 +7,9 @@ ok   a raising teardown block does not stop the others; each failure is reported
 ok   a raising on_reset hook is an ERR in reset: setup and body skipped, teardown run
 ok   after_this_case callables run newest first, each on its own, after teardown
 ok   travel and receivers are undone after a raising teardown
+ok   NotImplementedError, ScriptError and SystemStackError in a body are ERR; teardown still runs
+ok   the same three in setup, teardown and an on_reset hook are ERR with the step named
+ok   a class-form test: the three are ERR in the body, setup and teardown; teardown runs
 ok   a case driven inside a case leaves the outer case's travel, hooks and in_case? alone
 ok   the outer case's after_this_case callable ran at its own end
-11 tests, 20 assertions, 0 failures
+14 tests, 32 assertions, 0 failures

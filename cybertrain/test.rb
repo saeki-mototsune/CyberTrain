@@ -31,10 +31,15 @@ module Cybertrain
   # into its own program and compares its output with `test/<name>.rb.expected`.
   # Top-level `setup do ... end` and `teardown do ... end` run before and
   # after every case of the file; after each case the clock is real again
-  # and every receiver the case started is stopped. Nothing else is reset
-  # between cases under `spin test`: clear what you need in `setup`
+  # and every receiver the case started is stopped; before each case
+  # nothing rendered or requested is left for `assert_select`, and the
+  # {Test.on_reset} hooks run (with `cybertrain/test_help`: the default
+  # locale, the rate-limit counters, `Mailer.deliveries` and the
+  # broadcasts' starting point). The database is not reset under
+  # `spin test`: clear what you need in `setup`
   # (e.g. `Article.all.delete_all`). In `cybertrain test` every table is
-  # emptied and the fixtures loaded before each case.
+  # emptied and the fixtures loaded before each case, and the configured
+  # time zone is restored.
   # @example test/article_title.rb
   #   require "test_helper"
   #
@@ -364,13 +369,22 @@ module Cybertrain
     rescue StandardError => e
       step_failed("in setup", "#{e.class.name}: #{e.message}")
       false
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      step_failed("in setup", "#{e.class.name}: #{e.message}")
+      false
     end
 
     # Step 5: runs the body and records `ok`, `FAIL` (a failed assertion,
     # its message) or `ERR` (another exception, `<Class>: <message>`).
-    # Only StandardError is caught, as Minitest's runner leaves Interrupt
-    # and the like alone: an exception outside it (`NotImplementedError`, a
-    # ScriptError) ends the program without teardown.
+    # A StandardError, NotImplementedError, any other ScriptError and
+    # SystemStackError are recorded and the run goes on (teardown, the next
+    # test, the totals), as Minitest records every exception but
+    # NoMemoryError, SignalException (Interrupt) and SystemExit; those three
+    # are left to end the program. The second arm is Job::Executor's
+    # (`rescue NotImplementedError, SystemStackError, ScriptError`): a
+    # `rescue Exception` would catch Interrupt and SystemExit too. Under
+    # Spinel a stack overflow is a SIGSEGV of the process, so only a
+    # SystemStackError raised by hand reaches the arm there.
     # @param t [Cybertrain::Test::Base, Cybertrain::Test::Case] the test
     #   instance, or the top-level case; not used
     # @yield the test method
@@ -385,6 +399,10 @@ module Cybertrain
         text = e.message
         @message = text
       rescue StandardError => e
+        @status = "ERR"
+        text = "#{e.class.name}: #{e.message}"
+        @message = text
+      rescue NotImplementedError, SystemStackError, ScriptError => e
         @status = "ERR"
         text = "#{e.class.name}: #{e.message}"
         @message = text
@@ -405,6 +423,9 @@ module Cybertrain
       step_failed("in teardown", e.message)
       nil
     rescue StandardError => e
+      step_failed("in teardown", "#{e.class.name}: #{e.message}")
+      nil
+    rescue NotImplementedError, SystemStackError, ScriptError => e
       step_failed("in teardown", "#{e.class.name}: #{e.message}")
       nil
     ensure
@@ -473,7 +494,8 @@ module Cybertrain
     end
 
     # Runs one hook or block; a failure is recorded under `step` (an
-    # assertion's message as it is, another exception with its class).
+    # assertion's message as it is, another exception with its class; the
+    # same exceptions as {run_body}'s are caught).
     def self.run_case_hook(callable, step)
       callable.call
       true
@@ -481,6 +503,9 @@ module Cybertrain
       step_failed(step, e.message)
       false
     rescue StandardError => e
+      step_failed(step, "#{e.class.name}: #{e.message}")
+      false
+    rescue NotImplementedError, SystemStackError, ScriptError => e
       step_failed(step, "#{e.class.name}: #{e.message}")
       false
     end

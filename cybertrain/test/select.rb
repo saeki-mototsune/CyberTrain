@@ -215,11 +215,9 @@ module Cybertrain
           i += 1
           run = i
           while i < n && s.getbyte(i) != q
-            if s.getbyte(i) == 92 # \ escapes the next byte
-              value << s.byteslice(run, i - run)
-              i += 1
-              run = i
-            end
+            # A CSS escape (`\41`, `\"`) is refused, not read: a value
+            # holding one quote is written in the other.
+            refuse_selector(s, "CSS escapes (\\) are") if s.getbyte(i) == 92
             i += 1
           end
           invalid_selector(s) if i >= n
@@ -227,7 +225,10 @@ module Cybertrain
           i += 1
         else
           j = i
-          j += 1 while j < n && !HtmlReader.html_space?(s.getbyte(j)) && s.getbyte(j) != 93
+          while j < n && !HtmlReader.html_space?(s.getbyte(j)) && s.getbyte(j) != 93
+            refuse_selector(s, "CSS escapes (\\) are") if s.getbyte(j) == 92
+            j += 1
+          end
           refuse_selector(s, "substitution values (?) are") if s.byteslice(i, j - i) == "?"
           invalid_selector(s) if j == i
           value << s.byteslice(i, j - i)
@@ -312,10 +313,20 @@ module Cybertrain
       # @api public
       def self.matching_nodes(nodes, chains)
         found = Array.new(0) { HtmlNode.new("", 0, -1, 0) }
+        # One memo per chain, kept across the elements: whether element
+        # `at` matches chain[0..k] depends on nothing else, so each
+        # (k, at) pair is worked out once (0 not yet, 1 yes, 2 no) and a
+        # descendant chain that fails near the root costs depth x length,
+        # not depth to the power of its length.
+        memos = Array.new(0) { Array.new(0) { 0 } }
+        chains.each { |chain| memos << Array.new(chain.length * nodes.length) { 0 } }
         nodes.each do |node|
           hit = false
-          chains.each do |chain|
-            hit = true if !hit && chain_match?(nodes, chain, chain.length - 1, node.node_index)
+          c = 0
+          while c < chains.length
+            chain = chains[c]
+            hit = true if !hit && chain_match?(nodes, chain, chain.length - 1, node.node_index, memos[c])
+            c += 1
           end
           found << node if hit
         end
@@ -323,9 +334,22 @@ module Cybertrain
       end
 
       # Whether node `at` matches chain[k] and its ancestors match the
-      # compounds before it.
+      # compounds before it; `memo` holds the answers already worked out
+      # ({matching_nodes}).
       # @api private
-      def self.chain_match?(nodes, chain, k, at)
+      def self.chain_match?(nodes, chain, k, at, memo)
+        slot = k * nodes.length + at
+        known = memo[slot]
+        return known == 1 if known > 0
+
+        result = chain_step?(nodes, chain, k, at, memo)
+        memo[slot] = result ? 1 : 2
+        result
+      end
+
+      # {chain_match?} without the memo lookup.
+      # @api private
+      def self.chain_step?(nodes, chain, k, at, memo)
         return false unless chain[k].sel_match?(nodes[at])
         return true if k == 0
 
@@ -333,10 +357,10 @@ module Cybertrain
         if chain[k].sel_combinator == ">"
           return false if parent < 0
 
-          return chain_match?(nodes, chain, k - 1, parent)
+          return chain_match?(nodes, chain, k - 1, parent, memo)
         end
         while parent >= 0
-          return true if chain_match?(nodes, chain, k - 1, parent)
+          return true if chain_match?(nodes, chain, k - 1, parent, memo)
 
           parent = nodes[parent].node_parent_index
         end
@@ -477,7 +501,8 @@ end
 # of an integration test) for elements matching `selector`, and answers
 # them. With no option at least one must match. The second argument may be
 # Rails' positional form: a String or Regexp (the text), an Integer (the
-# count), `true` (at least one) or `false` (none). `text:` is a String,
+# count), a Range (`2..3`: at least 2, at most 3), `true` (at least one) or
+# `false` (none). `text:` is a String,
 # compared with each element's text after collapsing whitespace and
 # stripping, or a Regexp matched against that text; only the elements
 # whose text matches are counted and answered.
@@ -490,7 +515,7 @@ end
 #   assert_select "h1", "Articles"
 #   assert_select "form[action=\"/articles\"] input[name=\"article[title]\"]"
 # @param selector [String] see cybertrain/test/select.rb for the subset
-# @param equality [String, Regexp, Integer, true, false, nil]
+# @param equality [String, Regexp, Integer, Range, true, false, nil]
 # @param count [Integer, nil] exactly this many
 # @param minimum [Integer, nil] at least
 # @param maximum [Integer, nil] at most
@@ -532,8 +557,23 @@ def assert_select(selector, equality = nil, count: nil, minimum: nil, maximum: n
     when true then want_min = 1
     else want_count = 0
     end
+  when Range
+    if counted
+      message = "assert_select: give the count once, as the second argument (#{equality.inspect}) or as count:, minimum: and maximum:"
+      raise ArgumentError, message
+    end
+    # Rails' `assert_select "li", 2..3`: at least the first, at most the
+    # last (one less for `...`).
+    want_min = Cybertrain::Test.select_bound("count", equality.first)
+    high = equality.last.to_i
+    high -= 1 if equality.exclude_end?
+    want_max = Cybertrain::Test.select_bound("count", high)
+    if want_min > want_max
+      message = "assert_select: minimum: #{want_min} is above maximum: #{want_max}"
+      raise ArgumentError, message
+    end
   else
-    message = "assert_select: the second argument must be a String, a Regexp, an Integer, true or false"
+    message = "assert_select: the second argument must be a String, a Regexp, an Integer, a Range, true or false"
     raise ArgumentError, message
   end
   # An unsupported selector is named before anything else.
