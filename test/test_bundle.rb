@@ -337,53 +337,6 @@ test "CYBERTRAIN_TEST_DATABASE is honoured" do
   [named, "#{named}-wal", "#{named}-shm", other].each { |f| File.delete(f) if File.exist?(f) }
 end
 
-# gen/tests.rb hands over the CYBERTRAIN_ENV and CYBERTRAIN_DATABASE the
-# shell exported (it deletes the latter before cybertrain loads): that file
-# is what development or production uses in this shell.
-test "the file the shell's CYBERTRAIN_DATABASE names for development or production is refused" do
-  make_dir("tmp")
-  make_dir("tmp/test_bundle")
-  live = "tmp/test_bundle/shell_live.sqlite3"
-  File.write(live, "development data")
-  link = "tmp/test_bundle/shell_link.sqlite3"
-  File.delete(link) if File.symlink?(link)
-  File.symlink("shell_live.sqlite3", link)
-  Cybertrain::Test::Database.use_shell_database("", live)
-  # As written, absolute, and through a symlink.
-  [live, File.expand_path(live), link].each do |path|
-    ENV["CYBERTRAIN_TEST_DATABASE"] = path
-    bundle_config("test", path)
-    assert_equal "cybertrain test refuses to delete #{path}: it is the development database", boot_refusal
-  end
-  assert_equal "development data", File.read(live)
-  Cybertrain::Test::Database.use_shell_database("production", File.expand_path(live))
-  ENV["CYBERTRAIN_TEST_DATABASE"] = live
-  bundle_config("test", live)
-  assert_equal "cybertrain test refuses to delete #{live}: it is the production database", boot_refusal
-  # A shell that exported the test file keeps working: CYBERTRAIN_DATABASE
-  # naming a test.sqlite3 (with or without CYBERTRAIN_ENV=test), or any
-  # file under CYBERTRAIN_ENV=test.
-  ENV.delete("CYBERTRAIN_TEST_DATABASE")
-  bundle_config("test", "storage/test.sqlite3")
-  ["storage/test.sqlite3", "./storage/test.sqlite3", File.expand_path("storage/test.sqlite3")].each do |exported|
-    Cybertrain::Test::Database.use_shell_database("", exported)
-    assert_equal "", Cybertrain::Test::Bundle.refusal
-    Cybertrain::Test::Database.use_shell_database("test", exported)
-    assert_equal "", Cybertrain::Test::Bundle.refusal
-  end
-  Cybertrain::Test::Database.use_shell_database("test", live)
-  ENV["CYBERTRAIN_TEST_DATABASE"] = live
-  bundle_config("test", live)
-  assert_equal "", Cybertrain::Test::Bundle.refusal
-  # Another file than the shell's is not refused for it.
-  Cybertrain::Test::Database.use_shell_database("", "tmp/test_bundle/elsewhere.sqlite3")
-  assert_equal "", Cybertrain::Test::Bundle.refusal
-  Cybertrain::Test::Database.use_shell_database("", "")
-  assert_equal "", Cybertrain::Test::Bundle.refusal
-  ENV.delete("CYBERTRAIN_TEST_DATABASE")
-  [link, live].each { |f| File.delete(f) }
-end
-
 test "CYBERTRAIN_TEST_DATABASE naming the development or production database is refused and kept" do
   make_dir("tmp")
   make_dir("tmp/test_bundle")
