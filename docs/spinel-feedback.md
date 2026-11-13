@@ -3453,7 +3453,7 @@ puts stamp
 puts stamp(expires: Time.at(0))
 ```
 
-CRuby prints `none` and `1970`; the compiled program prints nothing and
+CRuby prints `none` and `1970` (under `TZ=UTC`; `Time.at(0)` is local time); the compiled program prints nothing and
 dies with SIGSEGV (exit 139). The parameter is typed from its callers' values
 as a plain `sp_Time *`, `expires.nil?` compiles to the constant false, and
 the defaulted call passes NULL to `sp_time_year`. A positional default
