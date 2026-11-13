@@ -216,9 +216,10 @@ module Cybertrain
           # The host names the application answers to, comma-separated.
           # CYBERTRAIN_HOSTS=app.example.com
 
-          # Logs and error reports. Settings, except the DSN, which is kept out of the repository like a secret.
-          # The least important log line written: debug, info, warn, error or
-          # none (info).
+          # Logs and error reports: settings, except the DSN, which holds a
+          # key and is kept out of the repository like a secret.
+          # The least important log line written: debug, info, warn, error,
+          # fatal or none (info; none also turns the request log off).
           # CYBERTRAIN_LOG_LEVEL=info
           # How each line is written: text (the default) or json, one JSON
           # object per line, for a log collector.
@@ -368,7 +369,8 @@ module Cybertrain
             # c.i18n_raise_on_missing = true
 
             # Log lines as JSON objects (one per line) in production, for a
-            # log collector; text otherwise. CYBERTRAIN_LOG_FORMAT sets it too.
+            # log collector; text otherwise. CYBERTRAIN_LOG_FORMAT sets the
+            # format too, but an assignment here wins over the variable.
             # c.log_format = :json if c.production?
             # The request's tags on every log line it causes: :request_id (the
             # default) and :remote_ip (personal data, so off by default).
@@ -377,8 +379,12 @@ module Cybertrain
 
           # Error reports go to a Sentry DSN (CYBERTRAIN_SENTRY_DSN, with
           # require "cybertrain/error_reporter/sentry" in bin/<app>.rb) and to
-          # the subscribers added here: a subclass of Cybertrain::ErrorSubscriber
-          # whose report method receives a Cybertrain::ErrorEvent.
+          # the subscribers added here. A subscriber is a class you write: a
+          # subclass of Cybertrain::ErrorSubscriber that defines report(event),
+          # which receives each Cybertrain::ErrorEvent on the reporter's own
+          # thread. bin/<app>.rb loads this file before app/, so define the
+          # class in this file, above the line that subscribes it (or in a
+          # file this one requires): a class under app/ is not loaded yet here.
           # Cybertrain.error.subscribe(AuditSubscriber.new)
 
           # A scheduled task: a cron expression (read in c.scheduler_tz, which

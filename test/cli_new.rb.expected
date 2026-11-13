@@ -689,9 +689,10 @@ ok   CLI version, help and unknown commands
 # The host names the application answers to, comma-separated.
 # CYBERTRAIN_HOSTS=app.example.com
 
-# Logs and error reports. Settings, except the DSN, which is kept out of the repository like a secret.
-# The least important log line written: debug, info, warn, error or
-# none (info).
+# Logs and error reports: settings, except the DSN, which holds a
+# key and is kept out of the repository like a secret.
+# The least important log line written: debug, info, warn, error,
+# fatal or none (info; none also turns the request log off).
 # CYBERTRAIN_LOG_LEVEL=info
 # How each line is written: text (the default) or json, one JSON
 # object per line, for a log collector.
@@ -710,4 +711,4 @@ ok   new writes the logging and reporting variables, all commented
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-31 tests, 620 assertions, 0 failures
+31 tests, 664 assertions, 0 failures
