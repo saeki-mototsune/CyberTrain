@@ -472,8 +472,71 @@ test "build.pid names the build's group while it runs: gone at its end, its canc
     runner.cancel_build
     refute File.exist?(path), "removed when the build is cancelled"
     runner.start_build(3)
+    build = runner.build_pid
+    runner.close
+    assert File.exist?(path), "kept at close while the build runs"
+    # A build that has ended unseen: close reaps it and removes the file.
+    sleep 0.05 until gone?(build)
     runner.close
     refute File.exist?(path), "removed at close"
+  end
+end
+
+# A stop that raised half-way (here the signal, after the runner had let go
+# of the process) may leave the child or the build running: close keeps
+# their PID files then, so that the next `cybertrain server` can still find
+# and stop them; once they are gone the files go.
+test "close keeps child.pid and build.pid while the process they name still runs" do
+  with_runner({ cruby: READY, spin: "sleep 30\n" }) do |runner, _listener, root|
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    runner.start_child(:cruby, 1)
+    runner.start_build(1)
+    child = runner.child_pid
+    build = runner.build_pid
+    runner.define_singleton_method(:signal) { |_pid, _name| raise Errno::EIO }
+    assert_raises("Errno::EIO") { runner.stop_child }
+    original = DevServer.method(:stop_group)
+    DevServer.define_singleton_method(:stop_group) { |_pgid, _grace| raise Errno::EIO }
+    begin
+      assert_raises("Errno::EIO") { runner.cancel_build }
+    ensure
+      DevServer.define_singleton_method(:stop_group, original)
+    end
+    assert_nil runner.child_pid
+    assert_nil runner.build_pid
+    runner.close
+    assert_equal ["build.pid", "child.pid"], Dir.children(dev).sort
+    assert_includes runner.out.string, "pid #{child}"
+    assert_includes runner.out.string, "pid #{build}"
+    [child, -build].each { |pid| Process.kill(:KILL, pid) }
+    [child, build].each { |pid| Process.wait(pid) }
+    runner.close
+    assert_equal [], Dir.children(dev)
+  end
+end
+
+# The group's id stays pinned by its leader, a zombie, until the final KILL
+# has been sent: the leader is reaped only after it.
+test "cancel_build reaps the build's leader only after the group's KILL" do
+  with_runner({ spin: "trap(:TERM) { exit 1 }\nsleep 30\n" }) do |runner, _listener, root|
+    runner.start_build(1)
+    build = runner.build_pid
+    assert wait_for_file(File.join(root, "tmp", "cybertrain-dev", "build.pid"))
+    sleep 0.2 # the stand-in's trap is set
+    seen = nil
+    original = DevServer.method(:stop_group)
+    DevServer.define_singleton_method(:stop_group) do |pgid, grace, &ended|
+      original.call(pgid, grace, &ended)
+      # Still there (a zombie) once stop_group is done: not reaped in it.
+      seen = DevServer.alive?(pgid)
+    end
+    begin
+      runner.cancel_build
+    ensure
+      DevServer.define_singleton_method(:stop_group, original)
+    end
+    assert_equal true, seen
+    assert gone?(build)
   end
 end
 

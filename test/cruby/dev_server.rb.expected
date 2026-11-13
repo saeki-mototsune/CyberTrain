@@ -10,11 +10,15 @@ ok   a port argument overrides the application's port
 ok   a PORT that is not a number, or a word after it, is refused
 ok   an application that does not load under CRuby is refused, naming --spinel
 ok   a second supervisor for the same application is refused
+ok   a cybertrain server in another directory is not a refusal
+ok   without the process's directory a cybertrain server's command line is enough
 ok   a supervisor.pid naming a process that is not a cybertrain server is not a refusal
 ok   a leftover child of this application is stopped; another process is left alone
 ok   only this application's bin/app.rb or build/bin/app is taken for a leftover child
 ok   only this application's `spin build NAME` is taken for a leftover build
 ok   program finds a ruby interpreter's script after its options
+ok   without /proc a leftover child is known by the line the supervisor spawned, spaces included
+ok   without /proc a leftover child whose -I directory has a space is stopped
 ok   without the process's directory a relative path must be the one the supervisor spawns
 ok   a leftover child is recognised with COLUMNS=40 exported, through ps as well
 ok   a second supervisor is recognised with COLUMNS=40 exported
@@ -28,4 +32,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-30 tests, 162 assertions, 0 failures
+34 tests, 187 assertions, 0 failures

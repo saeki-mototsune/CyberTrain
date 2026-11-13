@@ -141,7 +141,7 @@ module Cybertrain
 
         load_framework(load_path)
         refuse_second_supervisor(root)
-        stop_leftover_child(root, name, $stdout)
+        stop_leftover_child(root, name, $stdout, load_path)
         stop_leftover_build(root, name, $stdout)
         host, port = address(root, name, load_path)
         port = Integer(port_argument, 10) unless port_argument == ""
@@ -242,7 +242,7 @@ module Cybertrain
       def self.refuse_second_supervisor(root)
         pid = read_pid(File.join(root, DEV_DIR, "supervisor.pid"))
         return if pid.nil? || pid == Process.pid || !alive?(pid)
-        return unless supervisor?(command_line(pid))
+        return unless supervisor?(command_line(pid)) && in_root?(pid, root)
 
         raise Failure, "a cybertrain server is already running here (pid #{pid})"
       end
@@ -254,12 +254,13 @@ module Cybertrain
       # @param root [String] the application's directory
       # @param name [String] the package name
       # @param out [IO] where the line about it goes
-      def self.stop_leftover_child(root, name, out)
+      # @param load_path [Array<String>] the -I directories of `spin flags`
+      def self.stop_leftover_child(root, name, out, load_path = [])
         path = File.join(root, DEV_DIR, "child.pid")
         pid = read_pid(path)
         return if pid.nil?
 
-        if alive?(pid) && application_child?(pid, root, name)
+        if alive?(pid) && application_child?(pid, root, name, load_path)
           out.puts "=> stopping a child left by an earlier cybertrain server (pid #{pid})"
           out.flush
           signal(pid, :TERM)
@@ -309,10 +310,12 @@ module Cybertrain
       # leader, so that spin sees its step fail and cleans up; once the
       # leader has ended (the block) or after BUILD_CLEANUP, TERM to the
       # group and, by the end of grace, KILL to whatever is left (a compiler
-      # the leader did not wait for).
+      # the leader did not wait for). The block must not reap the leader:
+      # until it is reaped, its zombie keeps the group's id from being given
+      # to another process, and the KILL goes to the group last.
       # @param pgid [Integer] the group, whose leader is the build's spin
       # @param grace [Numeric] the whole time before KILL
-      # @yieldreturn [Boolean] whether the leader has ended
+      # @yieldreturn [Boolean] whether the leader has ended (a zombie counts)
       def self.stop_group(pgid, grace)
         started = monotonic
         group_pids(pgid).each { |pid| signal(pid, :TERM) unless pid == pgid }
@@ -414,6 +417,11 @@ module Cybertrain
         ensure
           every_step(
             -> { machine&.stop },
+            # A stop that raised may have left the build or the child: each
+            # is stopped on its own (a no-op once the machine's stop did
+            # it), before close removes the PID files that name them.
+            -> { runner&.cancel_build },
+            -> { runner&.stop_child },
             lambda do
               if runner
                 runner.close
@@ -497,23 +505,39 @@ module Cybertrain
       # @param pid [Integer]
       # @return [Array<String>]
       def self.command_line(pid)
+        proc_args(pid) || ps_command_line(pid)
+      end
+
+      # The arguments in /proc/PID/cmdline, or nil where there is no /proc
+      # (or no such process). [] when it cannot be read.
+      # @return [Array<String>, nil]
+      def self.proc_args(pid)
         path = "/proc/#{pid}/cmdline"
-        return ps_command_line(pid) unless File.exist?(path)
+        return nil unless File.exist?(path)
 
         File.binread(path).force_encoding(Encoding.find("filesystem")).split("\0")
       rescue SystemCallError
         []
       end
 
-      # `ps -ww -o args=`, split at spaces (an argument with a space in it
-      # comes out as two). -ww, which procps and BSD ps both take, keeps ps
-      # from cutting the line at $COLUMNS or at the terminal's width.
+      # The `ps -ww -o args=` line split at spaces (an argument with a
+      # space in it comes out as two).
       # @param pid [Integer]
       # @return [Array<String>]
       def self.ps_command_line(pid)
-        IO.popen(["ps", "-ww", "-o", "args=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).split
+        ps_line(pid).split
+      end
+
+      # The process's arguments joined by spaces, as `ps -ww -o args=`
+      # prints them; "" when ps cannot tell. -ww, which procps and BSD ps
+      # both take, keeps ps from cutting the line at $COLUMNS or at the
+      # terminal's width.
+      # @param pid [Integer]
+      # @return [String]
+      def self.ps_line(pid)
+        IO.popen(["ps", "-ww", "-o", "args=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).strip
       rescue SystemCallError
-        []
+        ""
       end
 
       # The process's working directory, or nil where the system does not
@@ -524,8 +548,10 @@ module Cybertrain
         nil
       end
 
-      # Ruby's options that take the next argument as their value.
-      RUBY_VALUE_OPTIONS = ["-C", "-E", "-I", "-r", "--encoding"].freeze
+      # Ruby's options that take the next argument as their value (each
+      # also takes it in the same word: -Idir, --disable=gems).
+      RUBY_VALUE_OPTIONS = ["-C", "-E", "-I", "-r", "--encoding", "--external-encoding", "--internal-encoding",
+                            "--enable", "--disable", "--dump"].freeze
 
       # The program a command line runs and its arguments: the first word,
       # or for a ruby interpreter the script it is given (after its options;
@@ -570,16 +596,49 @@ module Cybertrain
       # P14's identity of a child: the program (a ruby interpreter's script,
       # or the executable itself) is this application's bin/NAME.rb or
       # build/bin/NAME, whole paths. An editor with the file open, another
-      # application's bin/NAME.rb, or build/bin/NAMEx is not.
+      # application's bin/NAME.rb, or build/bin/NAMEx is not. Without /proc
+      # the arguments come from ps, joined by spaces, which a directory may
+      # hold too: the line must then be the one the supervisor spawns
+      # (spawned_child_line?).
       # @param pid [Integer]
       # @param root [String] the application's directory, a real path
       # @param name [String]
+      # @param load_path [Array<String>] the -I directories of `spin flags`
       # @return [Boolean]
-      def self.application_child?(pid, root, name)
-        program, = program(command_line(pid))
+      def self.application_child?(pid, root, name, load_path = [])
+        args = proc_args(pid)
+        return spawned_child_line?(ps_line(pid), name, load_path) if args.nil?
+
+        program, = program(args)
         return false if program.nil?
 
         names?(pid, program, root, "bin/#{name}.rb") || names?(pid, program, root, "build/bin/#{name}")
+      end
+
+      # The CRuby child's arguments after the interpreter, but for the port
+      # (P9): Processes#child_command spawns `ruby` with these.
+      # @param load_path [Array<String>] the -I directories of `spin flags`
+      # @param name [String]
+      # @return [Array<String>]
+      def self.cruby_child_args(load_path, name)
+        ["-E", "UTF-8"] + load_path.map { |dir| "-I#{dir}" } + ["-r", "cybertrain/preview", "bin/#{name}.rb"]
+      end
+
+      # Whether line, a command line as ps prints it, is one the supervisor
+      # spawns from root: `build/bin/NAME PORT` whole, or a program
+      # followed by cruby_child_args and the port. The program is whatever
+      # came first (a version manager's shim runs ruby by its full path,
+      # spaces and all); the -I directories, this application's own among
+      # them, make it this application's.
+      # @param line [String]
+      # @param name [String]
+      # @param load_path [Array<String>]
+      # @return [Boolean]
+      def self.spawned_child_line?(line, name, load_path)
+        return true if line.match?(%r{\Abuild/bin/#{Regexp.escape(name)} [0-9]+\z})
+
+        tail = cruby_child_args(load_path, name).join(" ")
+        line.match?(/\A.+ #{Regexp.escape(tail)} [0-9]+\z/m)
       end
 
       # P14's identity of a build: the program is spin (the one on PATH,
@@ -592,14 +651,22 @@ module Cybertrain
         return false if program.nil? || File.basename(program) != "spin"
         return false unless [["build", name], ["build", name, "--", "--incremental"]].include?(rest)
 
-        cwd = process_cwd(pid)
-        cwd.nil? || cwd == root
+        in_root?(pid, root)
       end
 
       # A `cybertrain server` command line: a word named cybertrain...
       # (exe/cybertrain, or the gem's wrapper) followed by `server`.
       def self.supervisor?(args)
         args.each_cons(2).any? { |word, after| File.basename(word).start_with?("cybertrain") && after == "server" }
+      end
+
+      # Whether the process works in root, where the system shows it (only
+      # Linux's /proc is read; elsewhere this answers true). A PID reused by
+      # another application's `cybertrain server` or build is not this
+      # application's.
+      def self.in_root?(pid, root)
+        cwd = process_cwd(pid)
+        cwd.nil? || cwd == root
       end
 
       # Gone, or a zombie: a leftover is not this process's child, so its

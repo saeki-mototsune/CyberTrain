@@ -120,9 +120,18 @@ module Cybertrain
             nil
           end
 
-          # The sockets IO.select should wake the driver for.
+          # The sockets IO.select should wake the driver for: those it reads
+          # (a request head, or the client's close). A page still being
+          # written is not one: nothing reads its socket, so a client that
+          # pipelines or half-closes would keep it readable and the driver
+          # would spin until write_wait; the writes go on at every tick.
           def ios
-            (@waiting + @writing + @draining).map(&:socket)
+            (@waiting + @draining).map(&:socket)
+          end
+
+          # How many connections the desk holds, whatever their stage.
+          def connections
+            @waiting.size + @writing.size + @draining.size
           end
 
           def close

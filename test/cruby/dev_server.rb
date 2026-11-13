@@ -352,7 +352,7 @@ test "a second supervisor for the same application is refused" do
     File.write(File.join(root, "port"), taken.addr[1].to_s)
     Dir.mkdir(File.join(root, "fake"))
     File.write(File.join(root, "fake", "cybertrain"), "sleep 30\n")
-    other = Process.spawn(RbConfig.ruby, File.join(root, "fake", "cybertrain"), "server")
+    other = Process.spawn(RbConfig.ruby, File.join(root, "fake", "cybertrain"), "server", chdir: root)
     begin
       FileUtils.mkdir_p(File.join(root, "tmp", "cybertrain-dev"))
       File.write(File.join(root, "tmp", "cybertrain-dev", "supervisor.pid"), other.to_s)
@@ -368,6 +368,45 @@ test "a second supervisor for the same application is refused" do
   end
 ensure
   taken&.close
+end
+
+# A PID reused by another application's `cybertrain server`: its working
+# directory is not this application's, so it does not refuse this one.
+test "a cybertrain server in another directory is not a refusal" do
+  taken = TCPServer.new("127.0.0.1", 0)
+  with_app do |root|
+    File.write(File.join(root, "port"), taken.addr[1].to_s)
+    Dir.mktmpdir("dev-server-elsewhere") do |elsewhere|
+      File.write(File.join(elsewhere, "cybertrain"), "sleep 30\n")
+      other = Process.spawn(RbConfig.ruby, File.join(elsewhere, "cybertrain"), "server", chdir: elsewhere)
+      begin
+        FileUtils.mkdir_p(File.join(root, "tmp", "cybertrain-dev"))
+        File.write(File.join(root, "tmp", "cybertrain-dev", "supervisor.pid"), other.to_s)
+        wait_until { DevServer.command_line(other).include?("server") }
+        refute DevServer.in_root?(other, root)
+        code, out = run_server(root)
+        # Past the check: it stops at the port, which this test holds.
+        assert_equal 1, code
+        assert_includes out, Cybertrain::PortInUse::IN_USE
+        refute gone?(other), "the other application's server is left alone"
+      ensure
+        Process.kill(:KILL, other)
+        Process.wait(other)
+      end
+    end
+  end
+ensure
+  taken&.close
+end
+
+# Where the system does not show a process's directory, a `cybertrain
+# server` command line is enough, as before.
+test "without the process's directory a cybertrain server's command line is enough" do
+  original = DevServer.method(:process_cwd)
+  DevServer.define_singleton_method(:process_cwd) { |_pid| nil }
+  assert DevServer.in_root?(1, "/srv/app")
+ensure
+  DevServer.define_singleton_method(:process_cwd, original)
 end
 
 test "a supervisor.pid naming a process that is not a cybertrain server is not a refusal" do
@@ -531,6 +570,67 @@ test "program finds a ruby interpreter's script after its options" do
   assert_equal [nil, []], DevServer.program(["ruby", "-e", "sleep", "bin/app.rb"])
   assert_equal [nil, []], DevServer.program(["ruby", "-W0"])
   assert_equal [nil, []], DevServer.program([])
+  # The long options that take their value as the next word.
+  assert_equal ["bin/app.rb", ["4000"]], DevServer.program(["ruby", "--disable", "gems", "bin/app.rb", "4000"])
+  assert_equal ["bin/app.rb", ["4000"]], DevServer.program(["ruby", "--enable", "frozen-string-literal", "bin/app.rb", "4000"])
+  assert_equal ["bin/app.rb", ["4000"]],
+               DevServer.program(["ruby", "--external-encoding", "UTF-8", "--internal-encoding", "UTF-8", "bin/app.rb", "4000"])
+  assert_equal ["bin/app.rb", ["4000"]], DevServer.program(["ruby", "--dump", "insns", "bin/app.rb", "4000"])
+  assert_equal ["bin/app.rb", ["4000"]], DevServer.program(["ruby", "--disable=gems", "bin/app.rb", "4000"])
+end
+
+# Without /proc (macOS) ps prints the arguments joined by spaces, and an -I
+# directory may have one: the whole line is compared with what the
+# supervisor spawns, from its first option on (a version manager may have
+# replaced the program's name with its full path).
+test "without /proc a leftover child is known by the line the supervisor spawned, spaces included" do
+  dirs = ["/srv/my fw", "/srv/my app"]
+  line = "ruby -E UTF-8 -I/srv/my fw -I/srv/my app -r cybertrain/preview bin/app.rb 4000"
+  refute DevServer.program(line.split)[0] == "bin/app.rb", "split at spaces, the script is lost"
+  assert DevServer.spawned_child_line?(line, "app", dirs)
+  assert DevServer.spawned_child_line?(line.sub("ruby", "/opt/my rubies/3.3/bin/ruby").sub("4000", "39001"), "app", dirs)
+  assert DevServer.spawned_child_line?("build/bin/app 4000", "app", dirs)
+  refute DevServer.spawned_child_line?(line.sub("my app", "other app"), "app", dirs)
+  refute DevServer.spawned_child_line?(line.sub(" 4000", ""), "app", dirs)
+  refute DevServer.spawned_child_line?("#{line} extra", "app", dirs)
+  refute DevServer.spawned_child_line?(line.sub("bin/app.rb", "bin/appx.rb"), "app", dirs)
+  refute DevServer.spawned_child_line?("ruby -E UTF-8", "app", dirs)
+  refute DevServer.spawned_child_line?("build/bin/appx 4000", "app", dirs)
+  refute DevServer.spawned_child_line?("vim bin/app.rb", "app", dirs)
+  refute DevServer.spawned_child_line?("", "app", dirs)
+end
+
+# The same through a real process and the real ps, /proc set aside.
+test "without /proc a leftover child whose -I directory has a space is stopped" do
+  with_app do |root|
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    FileUtils.mkdir_p(dev)
+    spaced = File.join(root, "a framework dir")
+    FileUtils.mkdir_p(File.join(spaced, "cybertrain"))
+    File.write(File.join(spaced, "cybertrain", "preview.rb"), "")
+    dirs = [spaced, root]
+    command = ["ruby"] + DevServer.cruby_child_args(dirs, "app") + ["4000"]
+    original = DevServer.method(:proc_args)
+    DevServer.define_singleton_method(:proc_args) { |_pid| nil }
+    leftover = Process.spawn(*command, chdir: root)
+    begin
+      assert wait_until { File.exist?(File.join(root, "child-started")) }
+      File.write(File.join(dev, "child.pid"), leftover.to_s)
+      DevServer.stop_leftover_child(root, "app", StringIO.new, [root])
+      refute gone?(leftover), "another load path is another application's child"
+      File.write(File.join(dev, "child.pid"), leftover.to_s)
+      DevServer.stop_leftover_child(root, "app", StringIO.new, dirs)
+      assert gone?(leftover), "the leftover child is stopped"
+    ensure
+      DevServer.define_singleton_method(:proc_args, original)
+      begin
+        Process.kill(:KILL, leftover)
+      rescue Errno::ESRCH
+        nil
+      end
+      Process.wait(leftover)
+    end
+  end
 end
 
 # Where a process's directory cannot be read (no /proc), a relative path
@@ -586,7 +686,7 @@ test "a second supervisor is recognised with COLUMNS=40 exported" do
     File.write(fake, "sleep 30\n")
     saved = ENV["COLUMNS"]
     ENV["COLUMNS"] = "40"
-    other = Process.spawn(RbConfig.ruby, fake, "server")
+    other = Process.spawn(RbConfig.ruby, fake, "server", chdir: root)
     begin
       FileUtils.mkdir_p(File.join(root, "tmp", "cybertrain-dev"))
       File.write(File.join(root, "tmp", "cybertrain-dev", "supervisor.pid"), other.to_s)
@@ -963,7 +1063,10 @@ test "a child that dies of the Ctrl-C that stops the driver is not reported as a
   $stdout = saved
   assert_equal 130, code
   refute runner.calls.any? { |call| call[0] == :hold }, "the death put up no hold page: #{runner.calls.inspect}"
-  assert_equal [[:start_child, :cruby, 1], [:start_build, 1], [:cancel_build], [:stop_child], [:release_hold], [:close]],
+  # The machine's stop, then the build and the child again as steps of
+  # their own (no-ops here), then the files.
+  assert_equal [[:start_child, :cruby, 1], [:start_build, 1], [:cancel_build], [:stop_child], [:release_hold],
+                [:cancel_build], [:stop_child], [:close]],
                runner.calls
   assert listener.closed?, "the socket is closed"
 ensure
@@ -971,9 +1074,10 @@ ensure
   DevServer.define_singleton_method(:new_runner, original)
 end
 
-# A stop that raises (here the build's cancel) still has the runner remove
-# the files (its close), closes the socket and restores the signal handlers; the error comes out
-# after them.
+# A stop that raises (here the build's cancel) still has the runner cancel
+# the build and stop the child once more, each a step of its own, before
+# its close removes the files; it closes the socket and restores the signal
+# handlers; the error comes out after them.
 class RaisingRunner < ScriptedRunner
   def cancel_build
     super
@@ -1000,7 +1104,7 @@ test "every cleanup step runs when the machine's stop raises" do
   end
   $stdout = saved
   assert_equal "the cancel failed", raised
-  assert_equal [:close], runner.calls.last
+  assert_equal [[:cancel_build], [:cancel_build], [:stop_child], [:close]], runner.calls.last(4)
   assert listener.closed?, "the socket is closed"
   assert_equal before, trap(:INT, before)
 ensure

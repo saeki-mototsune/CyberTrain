@@ -129,13 +129,37 @@ test "a client that does not read the page does not block the desk, and is close
     server.join
     flunk "serve blocked on a client that does not read"
   end
-  refute desk.ios.empty?, "the page is still being written"
+  assert desk.connections == 1, "the page is still being written"
   deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
-  until desk.ios.empty? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+  until desk.connections.zero? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
     desk.drain
     sleep 0.02
   end
+  assert_equal 0, desk.connections
+ensure
+  client&.close
+  desk&.close
+  listener&.close
+end
+
+# Nothing reads a connection while its page is being written, so it is not
+# one to wake the driver for: a client that pipelines a second request, or
+# half-closes, would keep it readable, and the driver would spin until the
+# write wait instead of sleeping its tick.
+test "a connection whose page is still being written is not in the read set" do
+  listener = TCPServer.new("127.0.0.1", 0)
+  desk = Holding::Desk.new(0.5)
+  client = small_buffers(listener)
+  client.write("GET / HTTP/1.1\r\nHost: x\r\n\r\nGET /again HTTP/1.1\r\nHost: x\r\n\r\n")
+  client.close_write
+  sleep 0.05
+  desk.accept(listener)
+  desk.serve(Holding.page("t", BIG_TEXT, "y"))
+  assert desk.connections == 1, "the page is still being written"
   assert_equal [], desk.ios
+  waited = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  IO.select([listener] + desk.ios, nil, nil, 0.1)
+  assert Process.clock_gettime(Process::CLOCK_MONOTONIC) - waited >= 0.09, "the select slept its timeout"
 ensure
   client&.close
   desk&.close

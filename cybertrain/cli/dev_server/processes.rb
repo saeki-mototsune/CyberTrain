@@ -46,6 +46,8 @@ module Cybertrain
       # only, never compiled by Spinel.
       class Processes
         FILES = ["state", "ready", "failure", "child.pid", "build.pid", "supervisor.pid"].freeze
+        # The files of FILES that name a process this runner started.
+        PROCESS_FILES = ["child.pid", "build.pid"].freeze
 
         # The bounds (P11): a child must write its ready file within
         # READY_TIMEOUT seconds; a stopped child gets STOP_GRACE seconds after
@@ -141,7 +143,7 @@ module Cybertrain
         def child_command(kind)
           return ["build/bin/#{@name}", @port.to_s] if kind == :binary
 
-          ruby_prefix + ["-r", "cybertrain/preview", "bin/#{@name}.rb", @port.to_s]
+          ["ruby"] + DevServer.cruby_child_args(@load_path, @name) + [@port.to_s]
         end
 
         def gen_command
@@ -264,7 +266,9 @@ module Cybertrain
           return nil if build.nil?
 
           @build = nil
-          DevServer.stop_group(build.pid, CANCEL_GRACE) { reap(build.pid) }
+          # Reaped only once stop_group is done: its zombie keeps the
+          # group's id from going to another process until the last KILL.
+          DevServer.stop_group(build.pid, CANCEL_GRACE) { DevServer.ended?(build.pid) }
           wait_pid(build.pid)
           delete_file(dev_path("build.pid"))
           nil
@@ -359,6 +363,7 @@ module Cybertrain
             ios << @listener
             ios.concat(@desk.ios)
           end
+          # The pages still being written go on at the next tick (poll).
           ios.empty? ? sleep(timeout) : IO.select(ios, nil, nil, timeout)
           nil
         rescue IOError
@@ -390,18 +395,37 @@ module Cybertrain
 
         # Stops the file watch, closes held connections and removes the
         # files of P2 (the build and the child are the machine's to stop).
+        # child.pid and build.pid stay while the process they name still
+        # runs (a stop that failed half-way): the next `cybertrain server`
+        # stops it through them (DevServer.stop_leftover_child and
+        # stop_leftover_build).
         def close
           @watch&.close
           @desk.close
           FILES.each do |file|
-            delete_file(dev_path(file))
             # What write_file leaves when it fails between write and rename.
             delete_file(dev_path("#{file}.tmp"))
+            next if PROCESS_FILES.include?(file) && still_running?(file)
+
+            delete_file(dev_path(file))
           end
           nil
         end
 
         private
+
+        # Whether the process a PID file names, a child of this process, is
+        # still running (said in the log, since its file then stays). One
+        # that has ended is reaped here; a PID that is not this process's
+        # child (reaped already) leaves a stale file.
+        def still_running?(file)
+          pid = DevServer.read_pid(dev_path(file))
+          return false if pid.nil?
+
+          running = reap(pid).nil?
+          log("=> #{DEV_DIR}/#{file} stays: pid #{pid} is still running") if running
+          running
+        end
 
         def child_env
           env = {}
