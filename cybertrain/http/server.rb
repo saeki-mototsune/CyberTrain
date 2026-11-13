@@ -474,8 +474,9 @@ module Cybertrain
     # EMFILE may pass as connections close. Each failure is logged and
     # followed by SWEEP_RETRY's pause, within the same bound.
     def accept_queued(listener)
-      started = Time.now
-      while !listener.closed? && Time.now - started < ACCEPT_POLL && !listener.wait_readable(0).nil?
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      while !listener.closed? && Process.clock_gettime(Process::CLOCK_MONOTONIC) - started < ACCEPT_POLL &&
+            !listener.wait_readable(0).nil?
         accept_queued_client(listener)
       end
       nil
