@@ -41,6 +41,129 @@ module Cybertrain
     NO_TAGS = Array.new(0) { "" }
     HEX_DIGITS = %w[0 1 2 3 4 5 6 7 8 9 a b c d e f].freeze
 
+    # What the lines logged on one thread carry while a piece of work runs
+    # there (spec section 12.2, plan D5): the request's id, method, path
+    # and `where` (the controller action, written by the controller), the
+    # line's tags in order, the index of the request id among them (-1
+    # when it is not shown), and the context an error report adds. One
+    # Scope sits in the thread's Thread.current[{SCOPE_KEY}] slot
+    # ({swap_scope}, {current_scope}); {tagged} adds tags to a copy.
+    # @api public
+    class Scope
+      # @return [String]
+      attr_reader :scope_request_id, :scope_request_method, :scope_request_path, :scope_where
+      # @return [Array<String>]
+      attr_reader :scope_tags
+      # @return [Integer]
+      attr_reader :scope_id_tag
+      # @return [Hash{String => String}]
+      attr_reader :scope_context
+
+      # @param request_id [String]
+      # @param request_method [String]
+      # @param request_path [String]
+      # @param where [String]
+      # @param tags [Array<String>]
+      # @param id_tag [Integer]
+      # @param context [Hash{String => String}]
+      def initialize(request_id, request_method, request_path, where, tags, id_tag, context)
+        @scope_request_id = request_id
+        @scope_request_method = request_method
+        @scope_request_path = request_path
+        @scope_where = where
+        @scope_tags = tags
+        @scope_id_tag = id_tag
+        @scope_context = context
+      end
+
+      # Sets `where` on this thread's Scope. Does nothing on {NO_SCOPE},
+      # the one empty Scope every thread without a Scope of its own shares
+      # (told apart by identity).
+      # @param where [String]
+      # @return [nil]
+      def scope_where=(where)
+        @scope_where = where unless equal?(Logger::NO_SCOPE)
+        nil
+      end
+
+      # A copy with `more` appended to the tags, the request id's place
+      # kept; this Scope is not changed.
+      # @param more [Array<String>]
+      # @return [Scope]
+      def with_tags(more)
+        list = Array.new(0) { "" }
+        @scope_tags.each { |t| list << t }
+        more.each { |t| list << t.to_s }
+        Scope.new(@scope_request_id, @scope_request_method, @scope_request_path, @scope_where, list,
+                  @scope_id_tag, @scope_context)
+      end
+    end
+
+    # The Thread.current key of the thread's Scope (spikes/NOTES.md rule
+    # 102: beside I18n's locale and the db pool's Connection).
+    SCOPE_KEY = :cybertrain_log_scope
+
+    # The empty Scope, built with fresh locals (pre-flight ruling G1).
+    # @api private
+    def self.empty_scope
+      id = ""
+      verb = ""
+      path = ""
+      where = ""
+      context = { "" => "" }
+      context.delete("")
+      Scope.new(id, verb, path, where, Array.new(0) { "" }, -1, context)
+    end
+
+    # The Scope of a thread with none of its own: no request id, no tags.
+    # One object shared by every thread, so nothing writes to it.
+    NO_SCOPE = Logger.empty_scope
+
+    # This thread's Scope, {NO_SCOPE} when it has none.
+    # @return [Scope]
+    # @api public
+    def self.current_scope
+      value = Thread.current[SCOPE_KEY]
+      value.nil? ? NO_SCOPE : value
+    end
+
+    # Makes `scope` this thread's Scope (the slot holds nil for
+    # {NO_SCOPE}) and answers the one it replaces. Whoever runs work on a
+    # thread swaps its Scope in and the answered one back in an `ensure`.
+    # @param scope [Scope]
+    # @return [Scope]
+    # @api public
+    def self.swap_scope(scope)
+      previous = Logger.current_scope
+      Thread.current[SCOPE_KEY] = scope.equal?(NO_SCOPE) ? nil : scope
+      previous
+    end
+
+    # Empties this thread's slot: the thread is back to {NO_SCOPE}. The
+    # test harness calls it around every case (spec section 20).
+    # @return [nil]
+    # @api public
+    def self.reset_scope
+      Thread.current[SCOPE_KEY] = nil
+      nil
+    end
+
+    # Runs the block with `tags` appended to this thread's Scope and puts
+    # the Scope back after it, also when it raises; answers the block's
+    # value. {#tagged}'s body (spikes/NOTES.md rule 103's save-yield-ensure
+    # in a module function).
+    # @param tags [Array<String>]
+    # @return [Object] the block's value
+    # @api private
+    def self.tagged_during(tags)
+      saved = Logger.current_scope
+      Thread.current[SCOPE_KEY] = saved.with_tags(tags)
+      value = yield
+      value
+    ensure
+      Thread.current[SCOPE_KEY] = saved.equal?(NO_SCOPE) ? nil : saved
+    end
+
     # Module-level ivars, never @@ (spikes/NOTES.md rules 18 and 64).
     @json_lines = false
     @clock_micros = -1
@@ -304,6 +427,20 @@ module Cybertrain
       log(:fatal, msg)
     end
 
+    # Adds `tags` to every line logged on this thread while the block
+    # runs, after the request's own, and restores the previous tags when
+    # it ends, also when it raises (spec section 12.4). Every Logger on
+    # the thread sees them: they live in the thread's {Logger::Scope}.
+    # Answers the block's value. There is no block-less form.
+    # @example
+    #   Cybertrain.logger.tagged("billing") do
+    #     Cybertrain.logger.info("charged 300") # ... INFO [<request id>] [billing] charged 300
+    #   end
+    # @param tags [Array<String>]
+    # @return [Object] the block's value
+    # @api public
+    def tagged(*tags) = Logger.tagged_during(tags) { yield }
+
     # Writes one whole line (from {Logger.format_line}) with one `write`
     # under {LOCK}, and flushes STDOUT; the lock covers the write and the
     # flush only. No io parameter: it branches on `@io` (spikes/NOTES.md
@@ -339,8 +476,10 @@ module Cybertrain
     def log(severity, msg)
       return unless LEVELS[severity] >= LEVELS[@level]
 
-      # Built whole before the lock is taken (write_line).
-      line = Logger.format_line(LEVEL_NAMES[severity] || "INFO", NO_TAGS, -1, msg)
+      # Built whole before the lock is taken (write_line), with this
+      # thread's tags (the Scope).
+      scope = Logger.current_scope
+      line = Logger.format_line(LEVEL_NAMES[severity] || "INFO", scope.scope_tags, scope.scope_id_tag, msg)
       write_line(line)
     end
   end

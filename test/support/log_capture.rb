@@ -26,6 +26,15 @@ module LogCapture
     Cybertrain.logger = saved
   end
 
+  # {with_scope}'s save-yield-ensure, in a module function.
+  def self.scoped(scope)
+    saved = Cybertrain::Logger.swap_scope(scope)
+    _value = yield
+    nil
+  ensure
+    Cybertrain::Logger.swap_scope(saved)
+  end
+
   # Each line of `text` as `"<LEVEL> <message>"`: the time and the tags
   # dropped. A line without a time and a level (a continuation) is kept
   # as it is.
@@ -74,6 +83,13 @@ end
 # What Cybertrain.logger wrote (at :debug) while the block ran.
 def capture_log
   LogCapture.during { yield }
+end
+
+# Runs the block with `scope` (a Cybertrain::Logger::Scope) as this
+# thread's log scope; the scope found before is back when the block ends,
+# also when it raises (spikes/NOTES.md rule 103). Answers nil.
+def with_scope(scope)
+  LogCapture.scoped(scope) { yield }
 end
 
 # Passes when `log` has a line at `level` (`"INFO"`, `"WARN"`, ...) whose

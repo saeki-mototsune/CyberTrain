@@ -1,0 +1,11 @@
+ok   tagged adds tags for the block and restores them, also after a raise
+ok   tagged answers the block's value
+ok   Cybertrain.logger.tagged tags the default logger's lines
+ok   a Scope's request id and tags reach the line; tagged keeps the request id apart in JSON
+ok   a Scope set on one thread is not seen on another
+ok   swap_scope answers the previous Scope and stores nil for NO_SCOPE; reset_scope empties the slot
+ok   scope_where= writes the thread's own Scope
+ok   NO_SCOPE, shared by every thread, is never written: scope_where= on it does nothing
+ok   with_tags is a copy with the tags appended and the request id's place kept
+ok   tagged on concurrent threads: each sees its own tags, and a raising block restores its thread's
+10 tests, 36 assertions, 0 failures

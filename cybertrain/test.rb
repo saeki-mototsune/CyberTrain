@@ -32,7 +32,8 @@ module Cybertrain
   # Top-level `setup do ... end` and `teardown do ... end` run before and
   # after every case of the file; after each case the clock is real again
   # and every receiver the case started is stopped; before each case
-  # nothing rendered or requested is left for `assert_select`, and the
+  # nothing rendered or requested is left for `assert_select`, no log tags
+  # are left on the thread (`Cybertrain.logger.tagged`), and the
   # {Test.on_reset} hooks run (with `cybertrain/test_help`: the default
   # locale, the rate-limit counters, `Mailer.deliveries` and the
   # broadcasts' starting point). The database is not reset under
@@ -130,6 +131,9 @@ module Cybertrain
     # case it is nested in.
     @case_marks = Array.new(0) { 0 }
     @travel_marks = Array.new(0) { 0 }
+    # Per running case, innermost last: the log scope of the case it is
+    # nested in (Logger::NO_SCOPE for an outermost case).
+    @scope_marks = Array.new(0) { Cybertrain::Logger::NO_SCOPE }
     # The case just run: "ok", "FAIL" or "ERR", and its message.
     @status = ""
     @message = ""
@@ -475,6 +479,10 @@ module Cybertrain
       @message = ""
       @case_marks << @after_this_case.length
       @travel_marks << (@in_case && Cybertrain::Clock.travelling? ? Cybertrain::Clock.travelled_micros : -1)
+      # The log tags (spec section 20): each test starts with no log scope;
+      # a case driven inside a running one keeps the outer case's.
+      @scope_marks << (@in_case ? Cybertrain::Logger.current_scope : Cybertrain::Logger::NO_SCOPE)
+      Cybertrain::Logger.reset_scope unless @in_case
       # Each test starts with nothing rendered; a case driven by hand inside
       # a running one leaves the outer case's HTML alone.
       clear_last_html unless @in_case
@@ -511,13 +519,19 @@ module Cybertrain
     end
 
     # Step 7: a travel without a block lasts to the end of its case,
-    # whatever happened (spec section 2.1), so the clock is real again;
+    # whatever happened (spec section 2.1), so the clock is real again,
+    # and the log scope is the outer case's (none for an outermost case);
     # then each after_this_case callable the case registered, newest first
     # and each on its own (one that raises does not stop the others); then
     # they are forgotten. A case nested in another hands the outer one back
     # its travel and its own callables.
     def self.case_cleanup
       Cybertrain::Clock.travel_back
+      # A Scope the case swapped in and never swapped back is dropped; a
+      # nested case gives the outer case its own back.
+      Cybertrain::Logger.reset_scope
+      outer_scope = @scope_marks.empty? ? Cybertrain::Logger::NO_SCOPE : @scope_marks.pop
+      Cybertrain::Logger.swap_scope(outer_scope)
       from = @case_marks.empty? ? 0 : @case_marks.pop
       outer_micros = @travel_marks.empty? ? -1 : @travel_marks.pop
       list = @after_this_case
