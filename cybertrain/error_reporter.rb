@@ -152,6 +152,21 @@ module Cybertrain
       h
     end
 
+    # `<Class>: <message>` of a rescued exception, or the class name alone
+    # when its message cannot be read; never raises.
+    # @param error [Exception]
+    # @return [String]
+    # @api private
+    def self.failure_text(error)
+      name = error.class.name.to_s
+      text = error.message.to_s
+      "#{name}: #{text}"
+    rescue JSON::NestingError, JSON::ParserError, StandardError
+      error.class.name.to_s
+    rescue NotImplementedError, SystemStackError, ScriptError
+      error.class.name.to_s
+    end
+
     # The empty `Hash{String => String}`: what a caller with no context
     # passes to {#report_unhandled} and {#report_message}.
     NO_CONTEXT = ErrorReporter.empty_context
@@ -185,6 +200,9 @@ module Cybertrain
       # none has): {reset!} keeps those, the ones config/app.rb added.
       @boot_subscribers = -1
       @sender = Sender.new
+      # The sender in place when the first test began: {reset!} puts it
+      # back.
+      @boot_sender = @sender
       @queue = Queue.new
       # Events queued and not yet handed to every subscriber and the sender.
       @pending = 0
@@ -210,6 +228,9 @@ module Cybertrain
     #   end
     # @param error [Exception]
     # @param handled [Boolean]
+    # Never raises into its caller: a failure while building or queueing
+    # the event (a context value whose `to_s` raises) is logged at error,
+    # `error report failed: <Class>: <message>`, and it answers nil.
     # @param context [Hash] keys and values of any type, read with `to_s`
     # @return [nil]
     # @api public
@@ -221,6 +242,10 @@ module Cybertrain
       scope = Logger.current_scope
       where = scope.scope_where
       enqueue_error(error, where, handled, given)
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      report_failed(e)
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      report_failed(e)
     end
 
     # Runs the block and answers its value; an exception it raises
@@ -261,6 +286,7 @@ module Cybertrain
     # @param where [String]
     # @param context [Hash{String => String}] {NO_CONTEXT} for none
     # @return [nil]
+    # Never raises into its caller ({#report}'s rule).
     # @api private
     def report_unhandled(error, where, context)
       return nil unless listened?
@@ -270,6 +296,10 @@ module Cybertrain
       scope = Logger.current_scope
       at = where == "" ? scope.scope_where : where
       enqueue_error(error, at, false, given)
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      report_failed(e)
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      report_failed(e)
     end
 
     # The framework's report of a failure with no exception object (the
@@ -280,6 +310,7 @@ module Cybertrain
     # @param where [String]
     # @param context [Hash{String => String}] {NO_CONTEXT} for none
     # @return [nil]
+    # Never raises into its caller ({#report}'s rule).
     # @api private
     def report_message(error_class, message, where, context)
       return nil unless listened?
@@ -291,6 +322,10 @@ module Cybertrain
       name = error_class.to_s
       text = message.to_s
       enqueue(name, text, Array.new(0) { "" }, at, false, given)
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      report_failed(e)
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      report_failed(e)
     end
 
     # Waits up to `seconds` for every queued event to be delivered; true
@@ -326,14 +361,26 @@ module Cybertrain
       nil
     end
 
-    # The test harness's reset before every test: waits for the queue
-    # (up to 2 seconds), then empties the dedupe table and the drop count
-    # and drops the subscribers added since the first test began (those
-    # added at boot, by config/app.rb, stay).
+    # The test harness's reset before every test: waits for the queue (up
+    # to `seconds`), then empties the dedupe table and the drop count,
+    # drops the subscribers added since the first test began (those added
+    # at boot, by config/app.rb, stay) and puts back the sender that was in
+    # place then. The first call fixes that baseline: a subscriber added
+    # later (an application booted inside the first test) counts as a
+    # test's. It also runs for a case driven by hand inside a running case
+    # (Test.case_begin), which then loses the outer case's subscribers.
+    #
+    # When the wait runs out (a subscriber or a send still blocked), it
+    # logs `error reports undelivered at reset: <n> (<m> discarded)` at
+    # warn and discards the events still queued, so that they cannot reach
+    # the next test's subscribers; the event already in flight cannot be
+    # recalled, and reaches whoever its delivery is handing it to.
+    # @param seconds [Float] how long to wait for the queue
     # @return [nil]
     # @api private
-    def reset!
-      drain_reports(2.0)
+    def reset!(seconds = 2.0)
+      drained = drain_reports(seconds)
+      discard_undelivered unless drained
       @lock.synchronize { reset_locked }
       nil
     end
@@ -357,10 +404,44 @@ module Cybertrain
     # Whether an event would go anywhere: a subscriber, or a sender that
     # sends.
     def listened?
-      count = @lock.synchronize { @subscribers.size }
+      sender = @sender
+      count = 0
+      @lock.synchronize do
+        count = @subscribers.size
+        sender = @sender
+      end
       return true if count > 0
 
-      @sender.sends?
+      sender.sends?
+    end
+
+    # {#report}'s failure line, at error; never raises.
+    def report_failed(error)
+      text = ErrorReporter.failure_text(error)
+      line = "error report failed: #{text}"
+      Cybertrain.logger.error(line)
+      nil
+    end
+
+    # {reset!} after a drain that ran out: the queued events are taken off
+    # and counted out of the in-flight count; the warn line says how many
+    # were left.
+    def discard_undelivered
+      left = 0
+      discarded = 0
+      @lock.synchronize do
+        left = @pending
+        while @queue.size > 0
+          event = @queue.pop(timeout: 0)
+          break if event.nil?
+
+          discarded += 1
+        end
+        @pending -= discarded
+      end
+      line = "error reports undelivered at reset: #{left} (#{discarded} discarded)"
+      Cybertrain.logger.warn(line)
+      nil
     end
 
     def idle?
@@ -414,9 +495,11 @@ module Cybertrain
       @recent[key] = seconds
       @pending += 1
       @queue << event
+      # Started only once Thread.new returned: if it raises, the next
+      # report tries again, and the queued event waits for that thread.
       unless @started
-        @started = true
         spawn_delivery
+        @started = true
       end
       nil
     end
@@ -432,8 +515,10 @@ module Cybertrain
     def reset_locked
       if @boot_subscribers < 0
         @boot_subscribers = @subscribers.size
+        @boot_sender = @sender
       else
         @subscribers.pop while @subscribers.size > @boot_subscribers
+        @sender = @boot_sender
       end
       @recent.clear
       @dropped = 0
@@ -448,16 +533,43 @@ module Cybertrain
     end
 
     # The delivery thread: takes each event off the queue and hands it on;
-    # between events, logs the drop count when it is due.
+    # between events, logs the drop count when it is due. Each step rescues
+    # everything a thread must survive; should the thread end all the same,
+    # the flag goes down, so the next report starts another.
     def delivery_loop
       while true
-        event = @queue.pop(timeout: 1.0)
-        log_drops
-        next if event.nil?
-
-        deliver(event)
-        @lock.synchronize { @pending -= 1 }
+        delivery_step
       end
+      nil
+    ensure
+      @lock.synchronize { @started = false }
+    end
+
+    # One step of the loop, in a plain rescuing method.
+    def delivery_step
+      event = @queue.pop(timeout: 1.0)
+      log_drops
+      deliver_counted(event) unless event.nil?
+      nil
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      delivery_failed(e)
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      delivery_failed(e)
+    end
+
+    # Hands the event on; the in-flight count comes down whatever happens
+    # (save-work-ensure in a plain method).
+    def deliver_counted(event)
+      deliver(event)
+      nil
+    ensure
+      @lock.synchronize { @pending -= 1 }
+    end
+
+    def delivery_failed(error)
+      text = ErrorReporter.failure_text(error)
+      line = "error delivery failed: #{text}"
+      Cybertrain.logger.error(line)
       nil
     end
 
@@ -469,7 +581,7 @@ module Cybertrain
         sender = @sender
       end
       list.each { |s| deliver_to(s, event) }
-      send_to(sender, event) if sender.sends?
+      send_to(sender, event)
       nil
     end
 
@@ -478,18 +590,33 @@ module Cybertrain
       subscriber.report(event)
       nil
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      line = "error subscriber #{subscriber.class.name} failed: #{e.class.name}: #{e.message}"
+      subscriber_failed(subscriber, e)
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      subscriber_failed(subscriber, e)
+    end
+
+    def subscriber_failed(subscriber, error)
+      text = ErrorReporter.failure_text(error)
+      line = "error subscriber #{subscriber.class.name} failed: #{text}"
       Cybertrain.logger.error(line)
       nil
     end
 
-    # The sender, in a plain rescuing method: its failure is logged.
+    # The sender (`sends?` and the send), in a plain rescuing method: a
+    # raise is logged at warn, as a failed send is (spec section 13.4).
     def send_to(sender, event)
-      sender.deliver_event(event)
+      sender.deliver_event(event) if sender.sends?
       nil
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      line = "error sender #{sender.class.name} failed: #{e.class.name}: #{e.message}"
-      Cybertrain.logger.error(line)
+      sender_failed(sender, e)
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      sender_failed(sender, e)
+    end
+
+    def sender_failed(sender, error)
+      text = ErrorReporter.failure_text(error)
+      line = "error sender #{sender.class.name} failed: #{text}"
+      Cybertrain.logger.warn(line)
       nil
     end
 

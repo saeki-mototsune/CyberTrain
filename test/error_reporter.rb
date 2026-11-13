@@ -6,9 +6,10 @@ require_relative "support/log_capture"
 # Cybertrain.error (spec sections 13.1, 13.3 and 13.4's queue, dedupe and
 # shutdown; plan D9, D11, D12): report, handle and subscribe, the event of
 # Strings built on the caller's thread, and its delivery on the reporter's
-# own thread. Meant to be compiled (`spin test test/error_reporter.rb`),
-# where the delivery thread is real; it also runs under CRuby. Restores go
-# through plain helpers' `ensure` (pre-flight ruling G4).
+# own thread. Compiled only (`spin test test/error_reporter.rb`): its
+# `require "cybertrain"` links SQLite and zlib through Spinel's FFI, which
+# CRuby cannot load. Restores go through plain helpers' `ensure`
+# (pre-flight ruling G4).
 
 NOON = Time.utc(2026, 11, 11, 12)
 
@@ -48,6 +49,45 @@ class Blocking < Cybertrain::ErrorSubscriber
   end
 end
 
+# Subscribers that raise outside StandardError: the delivery thread must
+# survive them (a stub not yet written, a recursion too deep).
+class NotWritten < Cybertrain::ErrorSubscriber
+  def report(event)
+    raise NotImplementedError, "todo"
+  end
+end
+
+class TooDeep < Cybertrain::ErrorSubscriber
+  def report(event)
+    raise SystemStackError, "stack level too deep"
+  end
+end
+
+# A sender that sends and raises while sending.
+class RaisingSender < Cybertrain::ErrorReporter::Sender
+  def sends?
+    true
+  end
+
+  def deliver_event(event)
+    raise "send bug"
+  end
+end
+
+# A sender whose sends? itself raises.
+class UnsureSender < Cybertrain::ErrorReporter::Sender
+  def sends?
+    raise ArgumentError, "unsure"
+  end
+end
+
+# A context value whose to_s raises.
+class BadText
+  def to_s
+    raise "to_s bug"
+  end
+end
+
 class BootSubscriber < Cybertrain::ErrorSubscriber
   def report(event)
     BOOT_SEEN << event.error_message
@@ -82,6 +122,15 @@ end
 
 def raise_argument(message)
   raise ArgumentError, message
+end
+
+# Reports `e` with a context that cannot be read, then raises `e` again:
+# the caller's exception must come out, not the reporter's.
+def report_then_reraise
+  raise ArgumentError, "original"
+rescue ArgumentError => e
+  Cybertrain.error.report(e, context: { "k" => BadText.new })
+  raise e
 end
 
 # handle called through a forwarding block (ruling S5).
@@ -267,12 +316,33 @@ test "a full queue drops and counts, logged at most once a minute" do
   (1..104).each { |i| report_runtime("e#{i}") }
   assert_equal 4, Cybertrain.error.dropped_count
   log = capture_log do
-    105.times { RELEASE << "go" }
+    101.times { RELEASE << "go" }
     Cybertrain.error.drain_reports(5.0)
   end
   assert_equal 1, LogCapture.count(log, "WARN", "error reports dropped: 4\n")
   assert_equal 0, Cybertrain.error.dropped_count
   assert_equal 101, EVENTS.size
+  # A second burst within the minute is counted, not logged yet ...
+  STARTED.clear
+  RELEASE.clear
+  report_runtime("f0")
+  STARTED.pop(timeout: 5)
+  (1..102).each { |i| report_runtime("f#{i}") }
+  log = capture_log do
+    101.times { RELEASE << "go" }
+    Cybertrain.error.drain_reports(5.0)
+  end
+  assert_equal 0, LogCapture.count(log, "WARN", "error reports dropped:")
+  assert_equal 2, Cybertrain.error.dropped_count
+  # ... and logged once the minute has passed.
+  travel 61
+  log = capture_log do
+    RELEASE << "go"
+    report_runtime("g")
+    Cybertrain.error.drain_reports(5.0)
+  end
+  assert_equal 1, LogCapture.count(log, "WARN", "error reports dropped: 2\n")
+  assert_equal 203, EVENTS.size
 end
 
 test "drain_reports answers false while an event is still in flight" do
@@ -285,6 +355,24 @@ test "drain_reports answers false while an event is still in flight" do
   assert_equal ["slow"], EVENTS.map(&:error_message)
 end
 
+test "a reset whose drain runs out logs what was left and discards the queued events" do
+  Cybertrain.error.subscribe(Blocking.new)
+  report_runtime("stuck")
+  STARTED.pop(timeout: 5)
+  report_runtime("queued 1")
+  report_runtime("queued 2")
+  log = capture_log { Cybertrain.error.reset!(0.05) }
+  assert_logged log, "WARN", "error reports undelivered at reset: 3 (2 discarded)\n"
+  RELEASE << "go"
+  assert_equal true, Cybertrain.error.drain_reports(2.0)
+  Cybertrain.error.subscribe(Collect.new)
+  report_runtime("after the reset")
+  assert_equal true, Cybertrain.error.drain_reports(2.0)
+  assert_equal ["stuck", "after the reset"], EVENTS.map(&:error_message)
+  log = capture_log { Cybertrain.error.reset!(0.05) }
+  assert_equal 0, LogCapture.count(log, "WARN", "error reports undelivered")
+end
+
 test "with no subscriber and no sender nothing is queued and no thread starts" do
   reporter = Cybertrain::ErrorReporter.new
   assert_equal false, reporter.sender.sends?
@@ -295,7 +383,80 @@ test "with no subscriber and no sender nothing is queued and no thread starts" d
   end
   assert_equal false, reporter.delivery_started?
   assert reporter.drain_reports(0.1)
-  assert_equal true, Cybertrain.error.delivery_started?
+  listened = Cybertrain::ErrorReporter.new
+  listened.subscribe(Collect.new)
+  begin
+    raise "somebody listens"
+  rescue RuntimeError => e
+    listened.report(e)
+  end
+  assert_equal true, listened.delivery_started?
+  assert listened.drain_reports(2.0)
+  assert_equal ["somebody listens"], EVENTS.map(&:error_message)
+end
+
+test "a subscriber raising outside StandardError is logged and the thread goes on" do
+  Cybertrain.error.subscribe(NotWritten.new)
+  Cybertrain.error.subscribe(TooDeep.new)
+  Cybertrain.error.subscribe(Collect.new)
+  log = capture_log do
+    report_runtime("first")
+    assert_equal true, Cybertrain.error.drain_reports(2.0)
+    report_runtime("second")
+    assert_equal true, Cybertrain.error.drain_reports(2.0)
+  end
+  assert_equal ["first", "second"], EVENTS.map(&:error_message)
+  assert_equal 2, LogCapture.count(log, "ERROR", "error subscriber NotWritten failed: NotImplementedError: todo\n")
+  assert_equal 2, LogCapture.count(log, "ERROR", "error subscriber TooDeep failed: SystemStackError: stack level too deep\n")
+end
+
+test "a raising sender is logged at warn, the thread goes on, and reset! puts the boot sender back" do
+  Cybertrain.error.subscribe(Collect.new)
+  Cybertrain.error.sender = RaisingSender.new
+  log = capture_log do
+    report_runtime("sent")
+    assert_equal true, Cybertrain.error.drain_reports(2.0)
+  end
+  assert_logged log, "WARN", "error sender RaisingSender failed: RuntimeError: send bug\n"
+  Cybertrain.error.sender = UnsureSender.new
+  log = capture_log do
+    report_runtime("unsure")
+    assert_equal true, Cybertrain.error.drain_reports(2.0)
+  end
+  assert_logged log, "WARN", "error sender UnsureSender failed: ArgumentError: unsure\n"
+  assert_equal ["sent", "unsure"], EVENTS.map(&:error_message)
+  Cybertrain.error.reset!
+  assert_equal "Cybertrain::ErrorReporter::Sender", Cybertrain.error.sender.class.name
+end
+
+test "the sender a test installed is gone in the next" do
+  assert_equal "Cybertrain::ErrorReporter::Sender", Cybertrain.error.sender.class.name
+end
+
+test "report never raises into its caller: a failure is logged and it answers nil" do
+  Cybertrain.error.subscribe(Collect.new)
+  answered = "unset"
+  log = capture_log do
+    begin
+      raise "unreadable context"
+    rescue RuntimeError => e
+      answered = Cybertrain.error.report(e, context: { "k" => BadText.new }).inspect
+    end
+  end
+  assert_equal "nil", answered
+  assert_logged log, "ERROR", "error report failed: RuntimeError: to_s bug\n"
+  handled = "unset"
+  bad = ""
+  log = capture_log do
+    handled = Cybertrain.error.handle(context: { "k" => BadText.new }) { raise "in handle" }.inspect
+    bad = assert_raises("ArgumentError") { report_then_reraise }
+  end
+  assert_equal "nil", handled
+  assert_equal "original", bad
+  assert_equal 2, LogCapture.count(log, "ERROR", "error report failed: RuntimeError: to_s bug\n")
+  report_runtime("still works")
+  Cybertrain.error.drain_reports(2.0)
+  assert_equal ["still works"], EVENTS.map(&:error_message)
 end
 
 test "Cybertrain.error is one ErrorReporter" do

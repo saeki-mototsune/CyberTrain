@@ -10,6 +10,11 @@ ok   reports in one test are not deduplicated against the previous test's
 ok   a subscriber added in a test is gone in the next; the one added at boot stays
 ok   a full queue drops and counts, logged at most once a minute
 ok   drain_reports answers false while an event is still in flight
+ok   a reset whose drain runs out logs what was left and discards the queued events
 ok   with no subscriber and no sender nothing is queued and no thread starts
+ok   a subscriber raising outside StandardError is logged and the thread goes on
+ok   a raising sender is logged at warn, the thread goes on, and reset! puts the boot sender back
+ok   the sender a test installed is gone in the next
+ok   report never raises into its caller: a failure is logged and it answers nil
 ok   Cybertrain.error is one ErrorReporter
-14 tests, 56 assertions, 0 failures
+19 tests, 86 assertions, 0 failures
