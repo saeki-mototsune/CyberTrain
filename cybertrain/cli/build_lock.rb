@@ -4,288 +4,200 @@
 # Ruby: runs under CRuby (the gem) and compiles under Spinel (the CLI binary,
 # and an application's development loop).
 #
-# The file holds the PID of the process that took it, as text, nothing else.
-# Taking it is one exclusive create (O_CREAT | O_EXCL, spikes/NOTES.md rule
-# 75): of two processes that find the lock free at the same moment, exactly
-# one creates the file and the other gets EEXIST, where a check followed by
-# a write let both believe they held it.
+# The lock is the kernel's (spikes/NOTES.md rule 111): an exclusive flock(2)
+# on the file, held through the descriptor the holder keeps open for the
+# whole build. The kernel drops it when that descriptor closes, the holder's
+# death included, so a lock is never stale and nothing has to judge or
+# remove an abandoned one: whoever comes next gets it at once. flock is per
+# open file description, so two opens in one process conflict as two
+# processes do (Linux and macOS alike; file systems where flock is not
+# shared between machines, such as some NFS setups, are out of scope: tmp/
+# is local).
 #
-# Removing the lock is the other half. Whoever removes it (a taker
-# reclaiming a stale lock, the development server dropping one, the holder
-# releasing its own) first takes the breaker, <lock>.break, with the same
-# exclusive create, then reads the lock again and deletes it only if it is
-# still what justified the removal (stale, or naming the holder), then drops
-# the breaker. Without it, two takers that both judged one stale lock stale
-# could each delete it in turn, the second deleting the fresh lock the first
-# had just created, and a holder whose lock had gone stale could delete the
-# lock that replaced it. Creating the lock needs no breaker: O_EXCL already
-# lets only one creator win.
-#
-# A breaker older than BREAKER_STALE_AGE is broken (deleted and taken
-# again), so a process killed inside the few system calls it holds the
-# breaker for cannot wedge the lock. What remains: a breaker holder that
-# stalls inside that section for longer than BREAKER_STALE_AGE (stopped,
-# swapped out) can have its breaker broken and then act on a re-read that
-# has since gone out of date; and two processes that break the same
-# abandoned breaker at once can both enter. Both need a process to die or
-# stall for seconds inside a section that otherwise lasts microseconds.
+# The file also holds the holder's PID as text, for messages and for
+# readers that only look at it. It is informational: a PID left by a holder
+# that died does not hold anything. The holder deletes the file when it
+# releases, while still holding the flock, and only if the path still names
+# the file it locked. A taker that opened the file just before then locks a
+# file no longer at the path; it sees that the path names another file (or
+# none), and starts again on the path.
 module Cybertrain
   module CLI
     class BuildLock
       RELATIVE_PATH = "tmp/cybertrain-build.lock"
 
-      # A lock older than this is presumed abandoned (the build that held it
-      # was SIGKILLed, or the machine rebooted) rather than genuinely
-      # long-running: its PID may have been reused by an unrelated process
-      # that would otherwise read as the holder forever. Long enough that no
-      # real `cybertrain build` should ever hit it; a build touches its lock
-      # before each step (touch_lock), so only one step lasting this long
-      # would.
-      STALE_AGE = 30 * 60
+      # Starting again after the file was unlinked under a taker: once is
+      # enough unless holders come and go in a tight loop.
+      TAKE_TRIES = 3
 
-      # A breaker older than this was left by a process that died holding
-      # it: the section it guards is a read, a kill(0), a delete. Seconds
-      # are whole (mtime), so a breaker is broken after 9 to 10 seconds.
-      BREAKER_STALE_AGE = 10
-
-      # How often, and how far apart in seconds, a remover tries a breaker
-      # someone else holds before giving up for now.
-      BREAKER_TRIES = 5
-      BREAKER_WAIT = 0.1
+      # A reader (held?) holds a shared flock for an instant; a taker that
+      # meets it tries again shortly before reading the lock as held.
+      BUSY_TRIES = 3
+      BUSY_WAIT = 0.05
 
       attr_reader :lock_path, :owner_pid
 
-      # The lock of the application in root, taken on behalf of pid.
+      # The lock of the application in root, taken on behalf of pid (the PID
+      # written into the file; the flock belongs to this process).
       def initialize(root, pid = Process.pid)
         @lock_path = "#{root}/#{RELATIVE_PATH}"
         @owner_pid = pid.to_s
+        @file = nil
       end
 
-      def breaker_path
-        "#{@lock_path}.break"
-      end
-
-      # True when this process now holds the lock. A lock that exists and is
-      # stale is reclaimed (reclaim_stale) and the exclusive create is tried
-      # once more; failing again means another process took the lock in
-      # between, so it counts as held. The tmp/ directory must exist.
+      # True when this object now holds the lock; false when another holds
+      # it. The tmp/ directory must exist. Raises when the PID cannot be
+      # written, after removing the file it created and dropping the flock.
       def take
-        return true if create_lock
-        return false unless reclaim_stale
+        return true if holding?
 
-        create_lock
+        tries = 0
+        while tries < TAKE_TRIES
+          tries += 1
+          f = File.open(@lock_path, File::RDWR | File::CREAT, 0o644)
+          before_lock
+          unless lock_exclusive(f)
+            f.close
+            return false
+          end
+          if same_file?(f)
+            fill_lock(f)
+            @file = f
+            return true
+          end
+          # The file was unlinked by a holder releasing it: lock the path's.
+          f.close
+        end
+        false
       end
 
-      # True when the lock path is free for an exclusive create: a stale
-      # lock was removed, or the lock was already gone. The stale verdict is
-      # made again under the breaker, and only that one counts.
-      def reclaim_stale
-        return true unless File.exist?(@lock_path)
-        return false unless stale?
+      def holding?
+        !@file.nil?
+      end
 
-        before_breaker
-        return false unless take_breaker
+      # Deletes the file while the flock is still held, if the path still
+      # names it, then closes the descriptor, which drops the flock.
+      def release
+        f = @file
+        return nil if f.nil?
 
+        @file = nil
+        discard(f)
+        nil
+      end
+
+      # True while some process (or another BuildLock of this one) holds the
+      # lock: a shared flock cannot be had. Takes it, if it can, only for
+      # that instant, and never removes the file.
+      def held?
+        return true if holding?
+        return false unless File.exist?(@lock_path)
+
+        f = File.open(@lock_path, File::RDONLY)
         free = false
         begin
-          if !File.exist?(@lock_path)
-            free = true
-          elsif stale?
-            File.delete(@lock_path)
-            free = true
-          end
+          free = f.flock(File::LOCK_SH | File::LOCK_NB) != false
         ensure
-          drop_breaker
+          f.close
         end
-        free
-      end
-
-      # Removes the lock only while it still names this process, under the
-      # breaker: a lock another process took over (it judged this one stale)
-      # is theirs. When the breaker stays busy the lock is left; it names
-      # this process, so it reads as stale once the process has exited.
-      def release
-        return nil unless recorded_pid == @owner_pid
-        return nil unless take_breaker
-
-        begin
-          before_release_delete
-          File.delete(@lock_path) if recorded_pid == @owner_pid
-        ensure
-          drop_breaker
-        end
-        nil
+        !free
       rescue StandardError
-        nil
+        false
       end
 
-      # Moves the lock's mtime to now while it still names this process, so
-      # that a build longer than STALE_AGE in all is not read as abandoned.
-      # Touching a lock another process has just taken would only delay its
-      # own staleness.
-      def touch_lock
-        return nil unless recorded_pid == @owner_pid
-
-        now = Time.at(BuildLock.real_seconds)
-        File.utime(now, now, @lock_path)
-        nil
-      rescue StandardError
-        nil
-      end
-
-      # The PID the lock records, "" when there is no lock or no PID in it.
+      # The PID the lock file records, "" when there is no file or no PID in
+      # it. Only meaningful while held?.
       def recorded_pid
-        BuildLock.read_pid(@lock_path)
+        return "" unless File.exist?(@lock_path)
+
+        File.read(@lock_path).strip
+      rescue StandardError
+        ""
       end
 
-      # The stale-lock rule, the same for whoever takes the lock and for the
-      # development server that only reads it: a lock older than STALE_AGE
-      # is stale whatever it holds; otherwise one whose PID no longer runs
-      # is. A lock recording no PID (or something else) cannot be told
-      # stale before STALE_AGE, so it counts as held. A missing lock is not
-      # stale.
-      def stale?
-        return false unless File.exist?(@lock_path)
-        return true if BuildLock.age(@lock_path) >= STALE_AGE
+      def lock_exclusive(f)
+        tries = 0
+        while tries < BUSY_TRIES
+          return true if f.flock(File::LOCK_EX | File::LOCK_NB) != false
 
-        pid = recorded_pid
-        return false unless BuildLock.digits?(pid)
+          tries += 1
+          sleep BUSY_WAIT if tries < BUSY_TRIES
+        end
+        false
+      end
 
-        !BuildLock.process_alive?(pid.to_i)
+      # Whether the path still names the file f has open.
+      def same_file?(f)
+        there = File.stat(@lock_path)
+        descriptor_id(f) == "#{there.dev}:#{there.ino}"
       rescue StandardError
         false
       end
 
-      # The exclusive create; false when the file already exists. The PID is
-      # written after the create, so a reader can briefly see an empty lock,
-      # which reads as held (stale?).
-      def create_lock
-        f = File.open(@lock_path, File::WRONLY | File::CREAT | File::EXCL, 0o644)
-        fill_lock(f)
-        true
-      rescue Errno::EEXIST
-        false
+      # The device and inode of the file f has open, from fstat(2). Under
+      # Spinel File#stat stats the path instead, and IO.for_fd's handle is a
+      # dup of the descriptor that stats it but must be closed here, or it
+      # would keep the flock alive after f closes (rule 111). Under CRuby
+      # File#stat is fstat, and closing an IO.for_fd would close f's own
+      # descriptor.
+      def descriptor_id(f)
+        if RUBY_ENGINE == "ruby"
+          st = f.stat
+          return "#{st.dev}:#{st.ino}"
+        end
+
+        io = IO.for_fd(f.fileno, autoclose: false)
+        id = ""
+        begin
+          st = io.stat
+          id = "#{st.dev}:#{st.ino}"
+        ensure
+          io.close
+        end
+        id
       end
 
-      # Writes the PID into the lock just created and closes it. Should the
-      # write or the close fail (a full disk), the descriptor is closed all
-      # the same and the incomplete lock removed before the error goes on:
-      # an empty lock would refuse every build for STALE_AGE. No one else
-      # can have replaced it meanwhile, as an empty lock is not stale.
+      # Writes the PID into the locked file. Should that fail (a full disk),
+      # the file is removed while still locked and the descriptor closed
+      # before the error goes on: a half-written lock left behind would
+      # mislead every reader of the PID.
       def fill_lock(f)
         done = false
         begin
-          begin
-            write_owner(f)
-          ensure
-            f.close
-          end
+          write_owner(f)
           done = true
         ensure
-          File.delete(@lock_path) if !done && File.exist?(@lock_path)
+          discard(f) unless done
         end
         nil
       end
 
       def write_owner(f)
+        f.truncate(0)
         f.write(@owner_pid)
+        f.flush
         nil
       end
 
-      # True when this process now holds the breaker. One held by someone
-      # else is tried again a few times, and broken once it is older than
-      # BREAKER_STALE_AGE.
-      def take_breaker
-        tries = 0
-        while tries < BREAKER_TRIES
-          return true if create_breaker
-
-          tries += 1
-          if BuildLock.age(breaker_path) >= BREAKER_STALE_AGE
-            remove_breaker
-          elsif tries < BREAKER_TRIES
-            sleep BREAKER_WAIT
-          end
-        end
-        false
-      end
-
-      def remove_breaker
-        File.delete(breaker_path)
-        nil
-      rescue StandardError
-        nil
-      end
-
-      def create_breaker
-        f = File.open(breaker_path, File::WRONLY | File::CREAT | File::EXCL, 0o644)
+      def discard(f)
         begin
-          f.write(@owner_pid)
-        ensure
-          f.close
+          before_release_delete
+          File.delete(@lock_path) if same_file?(f)
+        rescue StandardError
+          nil
         end
-        true
-      rescue Errno::EEXIST
-        false
-      end
-
-      # Deletes the breaker this process holds. One that names another
-      # process was broken and taken while this one stalled; it is theirs.
-      def drop_breaker
-        File.delete(breaker_path) if BuildLock.read_pid(breaker_path) == @owner_pid
-        nil
-      rescue StandardError
+        f.close
         nil
       end
 
-      # Hooks between a step and the next, for the tests that play another
-      # process's move there.
-      def before_breaker
+      # Hooks for the tests that play another process's move between two
+      # steps: after the open and before the flock, and before the delete.
+      def before_lock
         nil
       end
 
       def before_release_delete
         nil
-      end
-
-      # Seconds since path was last modified; 0 when it cannot be read (a
-      # file that vanished is not old).
-      def self.age(path)
-        real_seconds - File.mtime(path).to_i
-      rescue StandardError
-        0
-      end
-
-      def self.read_pid(path)
-        return "" unless File.exist?(path)
-
-        File.read(path).strip
-      rescue StandardError
-        ""
-      end
-
-      # Signal 0 probes without delivering anything; EPERM means the process
-      # exists but belongs to someone else.
-      def self.process_alive?(pid)
-        Process.kill(0, pid)
-        true
-      rescue Errno::ESRCH
-        false
-      rescue Errno::EPERM
-        true
-      end
-
-      # Seconds since the epoch on the real clock, never through Time.now,
-      # which a test program may override (cybertrain/test/time_now.rb).
-      def self.real_seconds
-        Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond) / 1_000_000
-      end
-
-      # Non-empty and all ASCII digits.
-      def self.digits?(text)
-        return false if text.empty?
-
-        text.bytes.all? { |b| b >= 48 && b <= 57 }
       end
     end
   end

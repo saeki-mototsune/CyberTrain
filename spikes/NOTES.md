@@ -124,6 +124,7 @@ for the evidence needed to change a status.
 | 108 | Tool behaviour, checked 2026-11-12: spin's freshness check for `bin/gen` counts test files and gen's outputs as inputs. |
 | 109 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb). |
 | 110 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/case_nullable_temp.rb does not compile). |
+| 111 | Runtime behaviour, checked 2026-11-13 on this pin (spikes/phase5/flock_fstat.rb): `File#flock` matches CRuby; `File#stat` and `IO.for_fd` do not. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
@@ -1643,6 +1644,24 @@ explicitly retires a workaround.
      does not compile, `'_o1' undeclared`, where CRuby prints `amp` and
      `long`; with the methods in the other order it compiles; with both
      cases as return values it compiles; docs/spinel-feedback.md AO).
+
+111. `File#flock` and the stat of an open file (2026-11-13, Spinel
+     2026.11.04.7026; spikes/phase5/flock_fstat.rb prints both runtimes'
+     lines). `File::LOCK_EX`, `LOCK_SH`, `LOCK_NB` and `LOCK_UN` exist
+     (2, 1, 4, 8), and `flock` answers 0 on success and false, without
+     raising, when `LOCK_NB` cannot have the lock, as under CRuby; two
+     opens of a file in one process conflict (flock is per open file
+     description), and closing the descriptor, or the process dying,
+     drops the lock. Two differences from CRuby: `File#stat` on an open
+     File stats its path, not the descriptor (after the path is unlinked
+     and recreated it answers the new file's inode, or raises ENOENT), and
+     `IO.for_fd(fd, autoclose: false)` makes a dup of the descriptor whose
+     `stat` is the descriptor's fstat(2), but which stays open, keeping the
+     flock alive after the original closes, until it is closed itself.
+     `File.for_fd` does not exist. So the fstat of an open File is
+     `IO.for_fd(f.fileno, autoclose: false)`, its `stat`, then its `close`
+     under Spinel, and plain `f.stat` under CRuby, where closing the
+     for_fd IO would close f's descriptor (`CLI::BuildLock#descriptor_id`).
 
 <a id="numbers-worth-remembering"></a>
 

@@ -48,12 +48,6 @@ module Cybertrain
       GEN_BINARY = "build/bin/gen"
       GEN_STAMP = "build/gen-compiled.stamp"
 
-      # A lock older than this is presumed abandoned (the build that held it
-      # was SIGKILLed, or the machine rebooted) rather than genuinely
-      # long-running, so build_in_progress? stops honoring it. The rule
-      # lives in CLI::BuildLock, which `cybertrain build` takes the lock with.
-      STALE_LOCK_AGE = CLI::BuildLock::STALE_AGE
-
       def initialize(root, target = "server", log_path = "tmp/rebuild.log")
         # The target is only ever shelled out with here (and by the CLI, which
         # checks the same predicate in Build.app_name), so the check lives
@@ -194,20 +188,12 @@ module Cybertrain
         File.expand_path(CLI::BuildLock::RELATIVE_PATH, @root)
       end
 
-      # True while a `cybertrain build` holds the lock. A stale lock
-      # (CLI::BuildLock#stale?: its PID no longer runs, or it is older
-      # than STALE_LOCK_AGE) is deleted, under the lock's breaker
-      # (CLI::BuildLock#reclaim_stale), and ignored, so the loop does not
-      # stay stuck until someone removes it by hand. A lock recording no PID
-      # counts as held until it is that old: without the age bound, a PID a
-      # SIGKILLed build once held can be reused by an unrelated process and
-      # read as still alive, wedging rebuilds forever.
+      # True while a `cybertrain build` holds the lock (CLI::BuildLock#held?:
+      # the kernel's flock, which a killed build drops with its process).
+      # Only reads: a lock file nobody holds is left where it is, as its
+      # next taker reuses it.
       def build_in_progress?
-        path = lock_path
-        return false unless File.exist?(path)
-        return false if CLI::BuildLock.new(File.expand_path(@root)).reclaim_stale
-
-        File.exist?(path)
+        CLI::BuildLock.new(File.expand_path(@root)).held?
       end
 
       # The brace group sends a failing `cd` to the log as well. Every

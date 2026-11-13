@@ -239,34 +239,26 @@ module Cybertrain
         # Held while the steps run and dist/ is assembled: the development
         # server (Dev::Rebuilder) skips its rebuilds meanwhile, since both
         # write build/bin/<name>. A second `cybertrain build` that finds it
-        # held by a live process stops before running anything.
+        # held stops before running anything. The kernel drops it should
+        # this process die, so a killed build never blocks the next one.
         lock = BuildLock.new(root)
         unless lock.take
           holder = lock.recorded_pid
           holder = "unknown" if holder.empty?
           puts "error: another cybertrain build (pid #{holder}) holds #{BuildLock::RELATIVE_PATH}; " \
-               "remove it if no build is running"
+               "wait for it to finish"
           return 1
         end
         begin
           begin
-            # The lock is touched before each step, so that only a single
-            # step longer than BuildLock::STALE_AGE reads as abandoned.
-            lock.touch_lock
-            ok = runner.run_step(root, steps[0])
-            if ok
-              lock.touch_lock
-              ok = runner.run_step(root, steps[1])
-            end
+            ok = runner.run_step(root, steps[0]) && runner.run_step(root, steps[1])
           ensure
             # Always put gen/views.rb back to the empty table, even after a
             # failure or Ctrl-C.
-            lock.touch_lock
             restored = runner.run_step(root, steps[2])
             puts "warning: gen/views.rb still holds the embedded views; run spin run gen" unless restored
           end
           if ok && restored
-            lock.touch_lock
             assemble(root, name)
             code = 0
           end

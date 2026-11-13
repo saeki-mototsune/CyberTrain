@@ -5,6 +5,20 @@ require "cybertrain/cli"
 # cybertrain build without spin: the command list and the dist/ assembly
 # from a fake build/bin/<name>. CRuby-portable.
 
+# This program, run again as the holder that "a crashed holder's build lock
+# is taken at once" kills: with LOCK_CHILD set to an application root, it
+# takes that application's build lock and waits to be killed.
+LOCK_CHILD = "CYBERTRAIN_TEST_BUILD_LOCK_CHILD"
+SELF = File.expand_path($0)
+REPO = File.expand_path("..", __dir__)
+if ENV[LOCK_CHILD].to_s != ""
+  child_lock = Cybertrain::CLI::BuildLock.new(ENV[LOCK_CHILD].to_s)
+  child_lock.take
+  sleep 60
+  child_lock.release
+  exit(0)
+end
+
 ROOT = Dir.mktmpdir("cybertrain-cli-build")
 Dir.chdir(ROOT)
 
@@ -243,10 +257,11 @@ test "a failed restore exits 1, warns about gen/views.rb and releases the lock" 
   refute File.exist?("tmp/cybertrain-build.lock")
 end
 
-# The build lock is taken with one exclusive create (CLI::BuildLock). PID 1
-# stands for another live process: it always exists (EPERM for a non-root
-# test reads as alive, as for any process of another user); 2147483647 for
-# one that has gone.
+# The build lock is the kernel's flock on the file (CLI::BuildLock), which
+# also records the holder's PID. A BuildLock taken on behalf of PID 1 stands
+# for another process holding the lock: flock is per open file description,
+# so a second open in this process conflicts as another process's would.
+# 2147483647 is a PID that has gone.
 LOCK = "tmp/cybertrain-build.lock"
 OTHER_LIVE_PID = "1"
 DEAD_PID = "2147483647"
@@ -256,116 +271,41 @@ def clear_lock
   File.delete(LOCK) if File.exist?(LOCK)
 end
 
-# Another taker that wins between this one's look at the lock and its
-# create: the lock file appears, naming a live process, just before the
-# create runs.
+def other_holder
+  Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i)
+end
+
+# Another taker that wins between this one's open and its lock.
 class RacingLock < Cybertrain::CLI::BuildLock
-  def create_lock
-    File.write(lock_path, OTHER_LIVE_PID) unless File.exist?(lock_path)
-    super
+  attr_reader :other
+
+  def initialize(root)
+    super(root)
+    @other = Cybertrain::CLI::BuildLock.new(root, OTHER_LIVE_PID.to_i)
   end
-end
 
-# A build whose lock another process takes over while `spin build` runs
-# (it judged this one stale).
-class TakeoverRunner < FakeRunner
-  def run_step(root, command)
-    ok = super
-    File.write("#{root}/tmp/cybertrain-build.lock", OTHER_LIVE_PID) if command == "spin build blog"
-    ok
-  end
-end
-
-test "Build.lock_path names the lock BuildLock takes" do
-  assert_equal "/apps/blog/tmp/cybertrain-build.lock", Cybertrain::CLI::Build.lock_path("/apps/blog")
-  assert_equal Cybertrain::CLI::BuildLock.new("/apps/blog").lock_path, Cybertrain::CLI::Build.lock_path("/apps/blog")
-end
-
-test "the build lock is created holding this process's PID when it is free" do
-  clear_lock
-  lock = Cybertrain::CLI::BuildLock.new(".")
-  assert lock.take
-  assert_equal Process.pid.to_s, File.read(LOCK)
-  lock.release
-  refute File.exist?(LOCK)
-end
-
-test "a build lock held by a live process is refused, and cybertrain build stops before any step" do
-  clear_lock
-  File.write(LOCK, OTHER_LIVE_PID)
-  refute Cybertrain::CLI::BuildLock.new(".").take
-  assert_equal OTHER_LIVE_PID, File.read(LOCK)
-  runner = FakeRunner.new("")
-  assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
-  assert_equal 0, runner.log.size
-  assert_equal OTHER_LIVE_PID, File.read(LOCK)
-  refute File.exist?("dist")
-  # a lock recording no PID cannot be told stale, so it is held too
-  File.write(LOCK, "")
-  refute Cybertrain::CLI::BuildLock.new(".").take
-  assert_equal "", File.read(LOCK)
-  clear_lock
-end
-
-test "a stale build lock (dead PID, or older than 30 minutes) is taken over" do
-  clear_lock
-  File.write(LOCK, DEAD_PID)
-  lock = Cybertrain::CLI::BuildLock.new(".")
-  assert lock.take
-  assert_equal Process.pid.to_s, File.read(LOCK)
-  lock.release
-  File.write(LOCK, OTHER_LIVE_PID)
-  old = Time.now - 31 * 60
-  File.utime(old, old, LOCK)
-  assert lock.take
-  assert_equal Process.pid.to_s, File.read(LOCK)
-  lock.release
-  refute File.exist?(LOCK)
-end
-
-test "two takers racing for a free build lock leave exactly one holder" do
-  clear_lock
-  # the other process creates the lock after this one found it free
-  racer = RacingLock.new(".")
-  refute racer.take
-  assert_equal OTHER_LIVE_PID, File.read(LOCK)
-  clear_lock
-  # two takers in this process: the second finds the first's live lock
-  first = Cybertrain::CLI::BuildLock.new(".")
-  second = Cybertrain::CLI::BuildLock.new(".")
-  assert first.take
-  refute second.take
-  assert_equal Process.pid.to_s, File.read(LOCK)
-  first.release
-  refute File.exist?(LOCK)
-end
-
-test "releasing the build lock leaves a lock another process has taken over" do
-  clear_lock
-  lock = Cybertrain::CLI::BuildLock.new(".")
-  assert lock.take
-  File.write(LOCK, OTHER_LIVE_PID)
-  lock.release
-  assert_equal OTHER_LIVE_PID, File.read(LOCK)
-  clear_lock
-  runner = TakeoverRunner.new("")
-  assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
-  assert_equal OTHER_LIVE_PID, File.read(LOCK)
-  rm_tree("dist")
-  clear_lock
-end
-
-# Another taker that reclaims the same stale lock first: it runs, start to
-# finish, after this one judged the lock stale and before it acts on that.
-class SlowReclaimLock < Cybertrain::CLI::BuildLock
-  def before_breaker
-    Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i).take
+  def before_lock
+    @other.take unless @other.holding?
     nil
   end
 end
 
-# A holder paused between reading its own PID and deleting the lock, long
-# enough for the lock to go stale and another taker to try to reclaim it.
+# A taker that opens the file just before its holder releases it (and
+# unlinks it), then locks what it opened.
+class LateOpenLock < Cybertrain::CLI::BuildLock
+  def initialize(root, holder)
+    super(root)
+    @holder = holder
+  end
+
+  def before_lock
+    @holder.release
+    nil
+  end
+end
+
+# A holder paused before deleting its file, long enough for the lock to be
+# old and another taker to try for it.
 class OvertakenLock < Cybertrain::CLI::BuildLock
   attr_reader :overtaken
 
@@ -375,33 +315,57 @@ class OvertakenLock < Cybertrain::CLI::BuildLock
   end
 
   def before_release_delete
+    return nil if @overtaken
+
     old = Time.now - 31 * 60
-    File.utime(old, old, lock_path)
-    @overtaken = Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i).take
+    File.utime(old, old, lock_path) if File.exist?(lock_path)
+    other = Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i)
+    @overtaken = other.take
+    other.release
     nil
   end
 end
 
-# A disk that is full once the lock has been created.
+# A disk that is full once the lock has been opened.
 class FullDiskLock < Cybertrain::CLI::BuildLock
   def write_owner(f)
     raise IOError, "No space left on device"
   end
 end
 
-# A build whose lock ages past STALE_AGE during each step; records whether a
-# step ever started with the lock reading as stale.
-class AgingRunner < FakeRunner
-  attr_reader :stale_seen
+# A build during which another process deletes the lock file and takes a
+# new one (as a reader still on the old PID-and-age rule might delete it).
+class TakeoverRunner < FakeRunner
+  attr_reader :other
 
   def initialize(failing)
     super(failing)
-    @stale_seen = false
+    @other = Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i)
+  end
+
+  def run_step(root, command)
+    ok = super
+    if command == "spin build blog"
+      File.delete("#{root}/tmp/cybertrain-build.lock")
+      @other.take
+    end
+    ok
+  end
+end
+
+# A build whose lock file ages past the old 30-minute rule during each
+# step; records whether a step ever started with the lock not held.
+class AgingRunner < FakeRunner
+  attr_reader :free_seen
+
+  def initialize(failing)
+    super(failing)
+    @free_seen = false
   end
 
   def run_step(root, command)
     path = "#{root}/tmp/cybertrain-build.lock"
-    @stale_seen = true if Cybertrain::CLI::BuildLock.new(root).stale?
+    @free_seen = true unless Cybertrain::CLI::BuildLock.new(root).held?
     ok = super
     old = Time.now - 31 * 60
     File.utime(old, old, path) if File.exist?(path)
@@ -413,61 +377,184 @@ def open_descriptors
   File.directory?("/dev/fd") ? Dir.children("/dev/fd").size : 0
 end
 
-test "two takers reclaiming the same stale build lock leave exactly one holder" do
-  clear_lock
-  File.write(LOCK, DEAD_PID)
-  # the other reclaims and takes the lock after this one judged it stale
-  refute SlowReclaimLock.new(".").take
-  assert_equal OTHER_LIVE_PID, File.read(LOCK)
-  refute File.exist?("#{LOCK}.break")
-  clear_lock
+test "Build.lock_path names the lock BuildLock takes" do
+  assert_equal "/apps/blog/tmp/cybertrain-build.lock", Cybertrain::CLI::Build.lock_path("/apps/blog")
+  assert_equal Cybertrain::CLI::BuildLock.new("/apps/blog").lock_path, Cybertrain::CLI::Build.lock_path("/apps/blog")
 end
 
-test "a holder releasing a build lock that went stale never deletes a lock that replaced it" do
+test "the build lock is created holding this process's PID when it is free" do
+  clear_lock
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  refute lock.held?
+  assert lock.take
+  assert lock.held?
+  assert Cybertrain::CLI::BuildLock.new(".").held?
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  lock.release
+  refute File.exist?(LOCK)
+  refute Cybertrain::CLI::BuildLock.new(".").held?
+end
+
+test "taking and releasing the build lock leaves no descriptor open" do
+  clear_lock
+  warm = Cybertrain::CLI::BuildLock.new(".")
+  assert warm.take
+  warm.release
+  before = open_descriptors
+  3.times do
+    lock = Cybertrain::CLI::BuildLock.new(".")
+    assert lock.take
+    lock.release
+  end
+  assert_equal before, open_descriptors
+end
+
+test "a held build lock is refused, and cybertrain build stops before any step" do
+  clear_lock
+  other = other_holder
+  assert other.take
+  refute Cybertrain::CLI::BuildLock.new(".").take
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  runner = FakeRunner.new("")
+  assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal 0, runner.log.size
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  refute File.exist?("dist")
+  other.release
+  refute File.exist?(LOCK)
+end
+
+test "a lock file nobody holds is taken at once, whatever PID or age it records" do
+  [DEAD_PID, OTHER_LIVE_PID, ""].each do |left|
+    clear_lock
+    File.write(LOCK, left)
+    old = Time.now - 31 * 60
+    File.utime(old, old, LOCK)
+    refute Cybertrain::CLI::BuildLock.new(".").held?
+    assert_equal left, File.read(LOCK)
+    lock = Cybertrain::CLI::BuildLock.new(".")
+    assert lock.take
+    assert_equal Process.pid.to_s, File.read(LOCK)
+    lock.release
+    refute File.exist?(LOCK)
+  end
+end
+
+test "two takers racing for the build lock leave exactly one holder" do
+  clear_lock
+  File.write(LOCK, DEAD_PID)
+  # the other locks the file after this one opened it
+  racer = RacingLock.new(".")
+  refute racer.take
+  assert racer.other.holding?
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  racer.other.release
+  # two takers in this process: the second finds the first's lock
+  first = Cybertrain::CLI::BuildLock.new(".")
+  second = Cybertrain::CLI::BuildLock.new(".")
+  assert first.take
+  refute second.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  first.release
+  refute File.exist?(LOCK)
+end
+
+test "a taker that opened the file before its holder released it ends up on the path's file" do
+  clear_lock
+  holder = other_holder
+  assert holder.take
+  late = LateOpenLock.new(".", holder)
+  assert late.take
+  # the lock it holds is the one at the path: no third taker gets in
+  assert File.exist?(LOCK)
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  third = other_holder
+  refute third.take
+  late.release
+  refute File.exist?(LOCK)
+end
+
+test "a crashed holder's build lock is taken at once" do
+  clear_lock
+  ENV[LOCK_CHILD] = File.expand_path(".")
+  pid = 0
+  if RUBY_ENGINE == "ruby"
+    pid = Process.spawn("ruby", "-I", REPO, SELF)
+  else
+    pid = Process.spawn(SELF)
+  end
+  ENV.delete(LOCK_CHILD)
+  waited = 0
+  while waited < 200 && !(File.exist?(LOCK) && File.read(LOCK) == pid.to_s)
+    sleep 0.05
+    waited += 1
+  end
+  assert_equal pid.to_s, File.read(LOCK)
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert Cybertrain::CLI::BuildLock.new(".").held?
+  refute lock.take
+  Process.kill(9, pid)
+  Process.wait(pid)
+  # the file still names the dead child; the kernel dropped its lock
+  assert_equal pid.to_s, File.read(LOCK)
+  refute Cybertrain::CLI::BuildLock.new(".").held?
+  assert lock.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  lock.release
+  refute File.exist?(LOCK)
+end
+
+test "a holder releasing an old build lock never lets another taker in before it is done" do
   clear_lock
   lock = OvertakenLock.new(".")
   assert lock.take
   lock.release
-  # either the other taker got the lock and it is still there, or it was
-  # kept out and the holder removed its own
-  assert_equal lock.overtaken, File.exist?(LOCK)
-  assert_equal OTHER_LIVE_PID, File.read(LOCK) if lock.overtaken
-  refute File.exist?("#{LOCK}.break")
-  clear_lock
+  refute lock.overtaken
+  refute File.exist?(LOCK)
 end
 
-test "a busy breaker keeps a stale build lock in place; an abandoned one is broken" do
+test "releasing the build lock leaves a lock another taker holds at the path" do
   clear_lock
-  breaker = "#{LOCK}.break"
-  File.write(LOCK, DEAD_PID)
-  File.write(breaker, OTHER_LIVE_PID)
-  refute Cybertrain::CLI::BuildLock.new(".").take
-  assert_equal DEAD_PID, File.read(LOCK)
-  assert_equal OTHER_LIVE_PID, File.read(breaker)
-  old = Time.now - 60
-  File.utime(old, old, breaker)
   lock = Cybertrain::CLI::BuildLock.new(".")
   assert lock.take
-  assert_equal Process.pid.to_s, File.read(LOCK)
-  refute File.exist?(breaker)
+  File.delete(LOCK)
+  other = other_holder
+  assert other.take
   lock.release
-  refute File.exist?(LOCK)
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  assert other.held?
+  other.release
+  clear_lock
+  runner = TakeoverRunner.new("")
+  assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  runner.other.release
+  rm_tree("dist")
+  clear_lock
 end
 
 test "a build lock whose PID cannot be written is closed and removed, and the error goes on" do
   clear_lock
+  # a first take and release, so that anything the runtime opens once for
+  # them is open before the count
+  warm = Cybertrain::CLI::BuildLock.new(".")
+  assert warm.take
+  warm.release
   before = open_descriptors
   assert_raises("IOError") { FullDiskLock.new(".").take }
   refute File.exist?(LOCK)
   assert_equal before, open_descriptors
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  lock.release
 end
 
-test "cybertrain build touches its lock before each step, so a long build is not read as abandoned" do
+test "a long cybertrain build keeps its lock held however old the file gets" do
   clear_lock
   runner = AgingRunner.new("")
   assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
   assert_equal 3, runner.log.size
-  refute runner.stale_seen
+  refute runner.free_seen
   refute File.exist?(LOCK)
   rm_tree("dist")
 end
