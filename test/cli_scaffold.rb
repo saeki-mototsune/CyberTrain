@@ -43,15 +43,18 @@ end
 POST_FILES = [
   "db/migrate/20260925120000_create_posts.rb",
   "app/models/post.rb",
+  "test/models/post_test.rb",
+  "test/fixtures/posts.yml",
   "app/controllers/posts_controller.rb",
   "app/views/posts/index.html.erb",
   "app/views/posts/show.html.erb",
   "app/views/posts/new.html.erb",
   "app/views/posts/edit.html.erb",
-  "app/views/posts/_form.html.erb"
+  "app/views/posts/_form.html.erb",
+  "test/controllers/posts_controller_test.rb"
 ]
 
-test "scaffold writes the migration, model, controller and views" do
+test "scaffold writes the migration, model, controller and views, with fixtures and tests" do
   created = Cybertrain::CLI::Scaffold.generate("blog", "post", ["title:string", "body:text"])
   assert_equal POST_FILES, created
   POST_FILES.each { |f| assert(File.exist?("blog/#{f}"), "missing #{f}") }
@@ -69,6 +72,86 @@ test "the migration creates the table with its columns and timestamps" do
       end
     end
   RUBY
+end
+
+test "scaffold writes fixtures, a model test and a controller test" do
+  assert_equal <<~YAML, read("blog/test/fixtures/posts.yml")
+    # The rows every test starts with: `cybertrain test` loads every file of
+    # test/fixtures/ before each test, and posts(:one) answers the first.
+
+    one:
+      title: MyString
+      body: MyText
+
+    two:
+      title: MyString
+      body: MyText
+  YAML
+  assert_equal <<~RUBY, read("blog/test/models/post_test.rb")
+    require "test_helper"
+
+    class PostTest < ActiveSupport::TestCase
+      test "the fixture is valid" do
+        assert posts(:one).valid?
+      end
+    end
+  RUBY
+  # Rails' scaffold test: one request per action (index, new, create,
+  # show, edit, update, destroy) on the fixture row one.
+  assert_equal <<~RUBY, read("blog/test/controllers/posts_controller_test.rb")
+    require "test_helper"
+
+    class PostsControllerTest < ActionDispatch::IntegrationTest
+      setup do
+        @post = posts(:one)
+      end
+
+      test "should get index" do
+        get posts_url
+        assert_response :success
+      end
+
+      test "should get new" do
+        get new_post_url
+        assert_response :success
+      end
+
+      test "should create post" do
+        assert_difference(-> { Post.count }, 1) do
+          post posts_url, params: { post: { body: @post.body, title: @post.title } }
+        end
+
+        assert_redirected_to post_url(Post.last)
+      end
+
+      test "should show post" do
+        get post_url(@post)
+        assert_response :success
+      end
+
+      test "should get edit" do
+        get edit_post_url(@post)
+        assert_response :success
+      end
+
+      test "should update post" do
+        patch post_url(@post), params: { post: { body: @post.body, title: @post.title } }
+        assert_redirected_to post_url(@post)
+      end
+
+      test "should destroy post" do
+        assert_difference(-> { Post.count }, -1) do
+          delete post_url(@post)
+        end
+
+        assert_redirected_to posts_url
+      end
+    end
+  RUBY
+end
+
+test "no generator writes test/support/app_test.rb" do
+  refute File.exist?("blog/test/support/app_test.rb")
 end
 
 test "the model validates presence of the first string field" do
@@ -187,6 +270,12 @@ test "a references field becomes t.references, a post_id input and a permitted p
   assert_includes controller, "params.require(:comment).permit(:commenter, :body, :post_id)"
   assert_includes controller, "before_action :set_comment, only: [:show, :edit, :update, :destroy]"
   assert_includes read("blog/app/models/comment.rb"), "validates :commenter, presence: true"
+  # Rails' model generator: belongs_to for a references field, which the
+  # fixture's `post: one` (the parent's row one) needs.
+  assert_includes read("blog/app/models/comment.rb"), "class Comment\n  belongs_to :post\n  validates :commenter, presence: true\n"
+  assert_equal "  commenter: MyString\n  body: MyText\n  post: one\n", read("blog/test/fixtures/comments.yml").split("one:\n")[1].split("\ntwo:")[0]
+  assert_includes read("blog/test/controllers/comments_controller_test.rb"),
+                  "params: { comment: { body: @comment.body, commenter: @comment.commenter, post_id: @comment.post_id } }"
   assert_includes read("blog/app/views/comments/_form.html.erb"), "<%= f.text_field :post_id %>"
   assert_includes read("blog/app/views/comments/show.html.erb"), "<%= @comment.post_id %>"
 end
@@ -201,6 +290,9 @@ test "other field types map to their form inputs" do
   assert_includes form, "<%= f.text_field :released_on %>"
   assert_includes read("blog/db/migrate/20260925120002_create_products.rb"), "      t.boolean \"active\"\n"
   assert_includes read("blog/app/controllers/products_controller.rb"), "class ProductsController < ApplicationController"
+  # A typed sample per column, as Rails' scaffold writes them.
+  assert_includes read("blog/test/fixtures/products.yml"),
+                  "one:\n  name: MyString\n  price: 1.5\n  stock: 1\n  active: false\n  released_on: 2026-11-11\n"
 end
 
 test "routes are inserted once, even when the scaffold runs twice" do
@@ -354,6 +446,16 @@ test "a name that shadows an Object method is accepted with a note" do
   assert_equal ["note: 'display' shadows Object#display on a model that references displays (belongs_to reader); call it as record.display"], notes
   # No shadowing name, no note.
   assert_equal [], Cybertrain::CLI::Scaffold.shadow_notes(Cybertrain::CLI::Resource.new("post", [Cybertrain::CLI::Field.parse("title")]))
+end
+
+test "a datetime field's fixture value, and an attachment field has none" do
+  Cybertrain::CLI::Scaffold.generate("blog", "event", ["starts_at:datetime", "poster:attachment"])
+  fixtures = read("blog/test/fixtures/events.yml")
+  assert_includes fixtures, "one:\n  starts_at: 2026-11-11 12:00:00\n\ntwo:\n  starts_at: 2026-11-11 12:00:00\n"
+  refute fixtures.include?("poster"), fixtures
+  # The file is never a param: the create test sends the other columns.
+  assert_includes read("blog/test/controllers/events_controller_test.rb"), "params: { event: { starts_at: @event.starts_at } }"
+  assert File.exist?("blog/test/integration/event_poster_attachment_test.rb")
 end
 
 test "an attachment field expands to five columns and is not a column itself" do

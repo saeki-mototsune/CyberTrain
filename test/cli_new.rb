@@ -35,7 +35,8 @@ EXPECTED_FILES = [
   "public/404.html", "public/500.html", "public/up.html",
   "bin/blog.rb", "bin/gen.rb", "bin/db.rb",
   "Dockerfile", ".dockerignore", "config/deploy.yml", ".kamal/secrets", ".github/workflows/ci.yml",
-  "gen/.keep", "storage/.keep", "tmp/.keep", "test/.keep"
+  "gen/.keep", "storage/.keep", "tmp/.keep",
+  "test/test_helper.rb", "test/integration/health_test.rb", "test/fixtures/.keep", "test/support/.keep"
 ]
 
 def read(path)
@@ -163,6 +164,9 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes read("blog/config/app.rb"),
                   "# Cybertrain::Scheduler.cron(\"0 4 * * *\", \"prune done jobs\") do\n" \
                   "#   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)\n# end\n"
+  # The scheduler's zone follows c.time_zone unless set (Config#scheduler_tz).
+  assert_includes read("blog/config/app.rb"), "# A scheduled task: a cron expression (read in c.scheduler_tz, which\n# follows c.time_zone, UTC by default, unless set)"
+  assert_nil read("blog/config/app.rb").index("UTC by default), a unique name")
   assert_includes read("blog/.gitignore"), "/build/"
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
   assert_includes read("blog/.gitignore"), "/storage/uploads/\n"
@@ -178,6 +182,10 @@ test "README.md gives the cybertrain command sequence" do
   assert_includes readme, "cybertrain build"
   assert_includes readme, "bin/db.rb"
   assert_nil readme.index("spin run db")
+  # Where it tells how to run the tests, and what CI runs.
+  assert_includes readme, "`cybertrain test` runs the tests under `test/`"
+  assert_includes readme, "then runs `cybertrain test`.\n"
+  assert_nil readme.index("spin test")
 end
 
 test "the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000" do
@@ -228,8 +236,51 @@ test ".github/workflows/ci.yml sets up the toolchain and runs the app's checks" 
   assert_includes ci, "- uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v#{Cybertrain::VERSION}\n"
   assert_includes ci, "run: spin lock && git diff --exit-code spin.lock\n"
   assert_includes ci, "run: spin run gen -- --check\n"
-  assert_includes ci, "      spin test\n"
   assert ci.index("setup-cybertrain") < ci.index("spin lock"), "the toolchain comes first"
+end
+
+# A new app has a test (test/integration/health_test.rb), so the step runs
+# `cybertrain test` unconditionally, through the CLI of the framework commit
+# the action fetched (the action puts spin and spinel on PATH, not cybertrain).
+test "the CI step runs cybertrain test" do
+  ci = read("blog/.github/workflows/ci.yml")
+  assert_includes ci, "@v#{Cybertrain::VERSION}\n        id: cybertrain\n"
+  assert_includes ci, "      - name: Tests\n" \
+                      "        env:\n" \
+                      "          CYBERTRAIN_PATH: ${{ steps.cybertrain.outputs.framework-path }}\n" \
+                      "        run: ruby -I \"$CYBERTRAIN_PATH\" \"$CYBERTRAIN_PATH/exe/cybertrain\" test\n"
+  assert ci.end_with?("exe/cybertrain\" test\n"), "the tests are the last step"
+  assert_nil ci.index("spin test")
+  assert_nil ci.index("if ls test")
+end
+
+test "new writes test_helper and the health test and no test/.keep" do
+  assert_equal <<~RUBY, read("blog/test/test_helper.rb")
+    ENV["CYBERTRAIN_ENV"] ||= "test"
+    require_relative "../config/app"
+    require "cybertrain/test_help"
+
+    class ActiveSupport::TestCase
+      fixtures :all
+
+      # Helper methods used by all tests go here.
+    end
+  RUBY
+  assert_includes read("blog/test/test_helper.rb"), "\n#{Cybertrain::CLI::Templates::TEST_HELPER_MARKER}\n"
+  assert_equal <<~RUBY, read("blog/test/integration/health_test.rb")
+    require "test_helper"
+
+    class HealthTest < ActionDispatch::IntegrationTest
+      test "the health check answers" do
+        get "/up"
+        assert_response :success
+      end
+    end
+  RUBY
+  assert_equal "", read("blog/test/fixtures/.keep")
+  assert_equal "", read("blog/test/support/.keep")
+  refute File.exist?("blog/test/.keep")
+  refute File.exist?("blog/test/support/app_test.rb")
 end
 
 test "CLI new --path expands a relative DIR against the current directory" do
@@ -349,6 +400,10 @@ test ".env.example lists the secrets, commented, with how to make each" do
   text = read("blog/.env.example")
   assert_includes text, "# CYBERTRAIN_SECRET_KEY_BASE=\n"
   assert_includes text, "# CYBERTRAIN_ENCRYPTION_KEY=  # cybertrain secret --hex\n"
+  # The zone, and the scheduler's following it unless set (Config#scheduler_tz).
+  assert_includes text, "# CYBERTRAIN_TIME_ZONE=Asia/Tokyo\n"
+  assert_includes text, "# The IANA zone cron expressions are read in; the time zone above\n# when unset.\n# CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo\n"
+  assert_nil text.index("UTC when unset.\n# CYBERTRAIN_SCHEDULER_TZ")
   print text
 end
 

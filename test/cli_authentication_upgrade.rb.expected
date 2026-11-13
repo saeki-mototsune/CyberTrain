@@ -30,7 +30,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -271,7 +274,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb

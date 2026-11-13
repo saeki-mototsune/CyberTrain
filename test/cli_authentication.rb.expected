@@ -30,7 +30,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -100,7 +103,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 skip config/routes.rb (the jobs page): ApplicationController has no require_admin until it includes Authentication
 insert app/controllers/application_controller.rb (include Authentication)
 skip config/routes.rb (the jobs page): ApplicationController has no require_admin until it includes Authentication
@@ -138,7 +144,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 skip app/controllers/application_controller.rb (it defines require_authentication itself): replace that code with `include Authentication` (app/controllers/concerns/authentication.rb)
 skip config/routes.rb (the jobs page): ApplicationController has no require_admin until it includes Authentication
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
@@ -223,15 +232,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_products.rb
 create app/models/product.rb
+create test/models/product_test.rb
+create test/fixtures/products.yml
 create app/controllers/products_controller.rb
 create app/views/products/index.html.erb
 create app/views/products/show.html.erb
 create app/views/products/new.html.erb
 create app/views/products/edit.html.erb
 create app/views/products/_form.html.erb
+create test/controllers/products_controller_test.rb
 route resources :products
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -298,7 +313,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -377,7 +395,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 error: usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 error: usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 create db/migrate/20260925120000_create_users.rb
@@ -497,7 +518,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 error: ./bin/bare.rb has no line starting with `exit(Cybertrain::Main.run(`
 error: usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 error: ./bin/bare.rb has no line starting with `exit(Cybertrain::Main.run(`
@@ -539,7 +563,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -639,7 +666,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -801,7 +831,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -872,7 +905,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -1108,7 +1144,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 error: ./config/app.rb has no `Cybertrain.configure do |c|` line
 error: ./config/app.rb not found: run this inside a cybertrain app
 ok   both modes refuse an app without config/app.rb's configure line, before writing
@@ -1145,7 +1184,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -1248,7 +1290,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -1386,7 +1431,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 insert app/controllers/application_controller.rb (include Authentication)
 warn  app/controllers/application_controller.rb defines require_admin itself: it takes the place of the Authentication concern's in every controller (delete it to use the concern's)
 route jobs_page "/admin/jobs", before_action: :require_admin
@@ -1430,7 +1478,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
 46 tests, 1381 assertions, 0 failures

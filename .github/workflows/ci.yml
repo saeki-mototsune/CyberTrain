@@ -7,7 +7,7 @@ name: CI
 # see .yardopts), which the api-docs job below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
 # reads them except script/api-docs, script/test-shard, script/ci-changes and
-# script/auth-e2e and script/test-command-e2e, which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
+# script/auth-e2e, script/test-command-e2e and script/generators-e2e, which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
@@ -35,6 +35,7 @@ on:
       - "script/ci-changes"
       - "script/auth-e2e"
       - "script/test-command-e2e"
+      - "script/generators-e2e"
   pull_request:
     paths:
       - "**"
@@ -50,6 +51,7 @@ on:
       - "script/ci-changes"
       - "script/auth-e2e"
       - "script/test-command-e2e"
+      - "script/generators-e2e"
   # For a merge queue on main, which is not turned on (docs/design.md, D34,
   # the status of 2026-11-11, has what turning it on takes): the queue waits
   # for the required checks on a `merge_group` event, and a workflow without
@@ -325,10 +327,9 @@ jobs:
           cybertrain build
           cybertrain spin run gen -- --check
           test -x dist/album
-          # Its snapshot would come from the binary, like test/authentication.rb.
-          cybertrain spin test test/attachment_post_cover.rb || true
-          test -x build/test/attachment_post_cover
-          ./build/test/attachment_post_cover
+          # The app's tests, the scaffold's and the upload test
+          # (test/integration/post_cover_attachment_test.rb), in one program.
+          cybertrain test
           printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\xff' > /tmp/gem-e2e-upload/pixel.png
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./album migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3998 ./album > server.log 2>&1 &
@@ -353,6 +354,14 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3998/posts/2/cover)" = "404"
           test -n "$(find storage/uploads -type f)"
           kill %1
+
+      # The tests the generators write, run (script/generators-e2e): a new
+      # app with a scaffold (fixtures, model and controller tests), a
+      # component, a helper, a job and a scaffold with an attachment, then
+      # `cybertrain test` (every test passes) and gen --check. One app, one
+      # compile of its tests.
+      - name: Generated applications' tests pass
+        run: script/generators-e2e
 
       # `cybertrain test` (script/test-command-e2e): test/fixtures/test_app's
       # tests compiled once into one binary and run with the filters (a
@@ -503,9 +512,8 @@ jobs:
           spin --version | grep -F "$tag"
           spinel --version | grep -F "$tag"
 
-      # What the generated workflow runs after the action (the app has no
-      # test/*.rb yet, so no `spin test`): spin resolves the framework, and
-      # the gen program compiles against it and runs.
+      # What the generated workflow runs after the action: spin resolves the
+      # framework, and the gen program compiles against it and runs.
       - name: spin.lock is what spin writes, and gen/ builds
         env:
           ROUTE: ${{ matrix.route }}
@@ -515,3 +523,12 @@ jobs:
           if [ "$ROUTE" = git ]; then diff "$RUNNER_TEMP/spin.lock.given" spin.lock; fi
           spin run gen
           spin run gen -- --check
+
+      # The generated workflow's last step as it writes it: `cybertrain
+      # test` through the CLI of the framework the action fetched (the
+      # action puts spin and spinel on PATH, not cybertrain). A new app has
+      # one test, test/integration/health_test.rb.
+      - name: The generated test step runs the new app's test
+        env:
+          CYBERTRAIN_PATH: ${{ steps.setup.outputs.framework-path }}
+        run: ruby -I "$CYBERTRAIN_PATH" "$CYBERTRAIN_PATH/exe/cybertrain" test

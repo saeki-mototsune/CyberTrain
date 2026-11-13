@@ -181,6 +181,9 @@ build_and_test() {
   # test` compiles each one (and fails for want of a snapshot), then the
   # binary is run here and must pass.
   for test_file in test/*.rb; do
+    # `cybertrain new`'s test/test_helper.rb is not a program: the class-form
+    # tests' helper, which `cybertrain test` loads.
+    [ "$test_file" = test/test_helper.rb ] && continue
     name=$(basename "$test_file" .rb)
     step "test/$name.rb"
     cybertrain spin test "$test_file" > "test-$name.log" 2>&1 || true

@@ -83,10 +83,20 @@ module Cybertrain
         # test/ exists (a refused bundle is a program that only aborts with
         # the reason: gen itself still succeeds, pre-flight ruling B2).
         # With a loaded schema gen/test/data.rb is written too (below), and
-        # the bundle requires it and clears and loads before every test.
+        # the bundle requires it and clears and loads before every test. A
+        # fixture gen cannot load refuses the bundle the same way: a
+        # scaffold's test/fixtures/articles.yml comes before the migration
+        # that creates its table, and `cybertrain db migrate` runs gen first.
         tests_rb = "#{root}/#{TestsEmitter::PATH}"
+        fixture_problem = ""
         if File.directory?("#{root}/test")
-          outputs << [TestsEmitter::PATH, TestsEmitter.emit(root, TestScan.scan(root), !Cybertrain::Schema.current.nil?)]
+          fixture_problem = Runner.fixture_problem(root) unless Cybertrain::Schema.current.nil?
+          bundle = if fixture_problem.empty?
+                     TestsEmitter.emit(root, TestScan.scan(root), !Cybertrain::Schema.current.nil?)
+                   else
+                     TestsEmitter.refused_program(fixture_problem)
+                   end
+          outputs << [TestsEmitter::PATH, bundle]
         elsif File.exist?(tests_rb) && File.read(tests_rb).start_with?(TestsEmitter::HEADER)
           stale += remove_file(root, TestsEmitter::PATH, check)
         end
@@ -124,8 +134,8 @@ module Cybertrain
           infos = ModelScan.scan_dir("#{root}/app/models")
           validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
           if File.directory?("#{root}/test")
-            rows = FixtureScan.scan(root, schema, infos)
-            FixtureScan.refuse_accessor_clashes(rows, TestScan.scan(root))
+            # No rows while the fixtures are refused (gen/tests.rb aborts).
+            rows = fixture_problem.empty? ? FixtureScan.scan(root, schema, infos) : Array.new(0) { FixtureScan.empty_row }
             outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, rows)]
           end
           models = Array.new(0) { "" }
@@ -150,6 +160,21 @@ module Cybertrain
           stale += sync_file(root, "gen/app.rb", Manifest.emit_with_models(root, models), check)
         end
         stale > 0 ? 1 : 0
+      end
+
+      # Why test/fixtures/*.yml cannot be loaded, "<path>:<line>: ..." ("" when
+      # they can): FixtureScan's refusals and its accessor clashes. The schema
+      # is loaded (Schema.current).
+      # @return [String]
+      def self.fixture_problem(root)
+        problem = ""
+        begin
+          rows = FixtureScan.scan(root, Cybertrain::Schema.current, ModelScan.scan_dir("#{root}/app/models"))
+          FixtureScan.refuse_accessor_clashes(rows, TestScan.scan(root))
+        rescue ArgumentError => e
+          problem = e.message
+        end
+        problem
       end
 
       # gen/controllers.rb and gen/concerns.rb, each from its own scan of

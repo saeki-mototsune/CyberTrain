@@ -49,12 +49,21 @@ test "the template prints each attribute, then the content" do
   ERB
 end
 
-test "the test renders it through Cybertrain::Test.render_component" do
-  source = File.read("shop/test/card_component.rb")
-  assert_includes source, "require \"cybertrain/test/views\"\n"
-  assert_includes source, "  html = Cybertrain::Test.render_component(CardComponent.new(title: \"Title\", value: 1), content: \"<b>inside</b>\")\n"
-  assert_includes source, "  assert_includes html, \"<p>Title</p>\"\n"
-  assert_includes source, "  assert_includes html, \"<p>1</p>\"\n"
+test "the component test is in the class form: render_inline and assert_select" do
+  assert_equal <<~'RUBY', File.read("shop/test/components/card_component_test.rb")
+    require "test_helper"
+
+    class CardComponentTest < ViewComponent::TestCase
+      test "renders its attributes and content" do
+        render_inline(CardComponent.new(title: "Title", value: 1), content: "<b>inside</b>")
+        assert_select "div.card > p", text: "Title"
+        assert_select "div.card > p", text: "1"
+        assert_select "div.card > b", text: "inside"
+      end
+    end
+  RUBY
+  refute File.exist?("shop/test/card_component.rb")
+  refute File.exist?("shop/test/support/app_test.rb")
 end
 
 test "spin run gen's scan accepts the generated component" do
@@ -68,7 +77,10 @@ test "a namespaced component is nested in its module" do
   assert_equal 0, generate(["admin/user_row", "name"])
   assert_includes File.read("shop/app/components/admin/user_row_component.rb"), "module Admin\n  class UserRowComponent < Cybertrain::Component\n    def initialize(name:)\n"
   assert File.exist?("shop/app/components/admin/user_row_component.html.erb")
-  assert_includes File.read("shop/test/admin_user_row_component.rb"), "Admin::UserRowComponent.new(name: \"Name\")"
+  test_source = File.read("shop/test/components/admin/user_row_component_test.rb")
+  assert_includes test_source, "class Admin::UserRowComponentTest < ViewComponent::TestCase\n"
+  assert_includes test_source, "    render_inline(Admin::UserRowComponent.new(name: \"Name\"), content: \"<b>inside</b>\")\n"
+  assert_includes test_source, "    assert_select \"div.user-row > p\", text: \"Name\"\n"
 end
 
 test "an existing, different file is refused unless --force" do

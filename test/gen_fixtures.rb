@@ -233,13 +233,31 @@ test "an accessor that would replace a harness, Kernel or test-helper method is 
   Cybertrain::Gen::FixtureScan.refuse_accessor_clashes(rows, Array.new(0) { file })
   root = app_copy("posts.yml" => "one:\n  title: x\n")
   File.write("#{root}/test/test_helper.rb", "def posts = 1\n")
-  message = ""
-  begin
-    Cybertrain::Gen::Runner.run(root, [])
-  rescue ArgumentError => e
-    message = e.message
-  end
-  assert_includes message, "the fixture accessor posts(label) would replace the top-level def posts at test/test_helper.rb:1"
+  # gen succeeds; the bundle is refused with the reason (pre-flight ruling
+  # B2), so `cybertrain test` fails with it.
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  bundle = File.read("#{root}/gen/tests.rb")
+  assert_includes bundle, "abort(\"test/fixtures/posts.yml:1: the fixture accessor posts(label) would replace the top-level def posts at test/test_helper.rb:1"
+end
+
+# A scaffold writes test/fixtures/articles.yml before the migration that
+# creates the table, and `cybertrain db migrate` runs gen before migrating:
+# gen goes on (gen/test/data.rb with no rows), and only the bundle is
+# refused, with the file and line, until the table exists.
+test "a fixture gen cannot load refuses the bundle, not gen" do
+  root = app_copy("posts.yml" => "one:\n  title: x\n", "articles.yml" => "one:\n  title: x\n")
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  assert_equal "#{Cybertrain::Gen::TestsEmitter::HEADER}abort(\"test/fixtures/articles.yml:1: no table named \\\"articles\\\" in db/schema.rb\")\n",
+               File.read("#{root}/gen/tests.rb")
+  data = File.read("#{root}/gen/test/data.rb")
+  assert_not_includes data, "LABELS_posts"
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
+  # Once the file is loadable, the bundle and the rows are back.
+  File.delete("#{root}/test/fixtures/articles.yml")
+  assert_equal 1, Cybertrain::Gen::Runner.run(root, ["--check"])
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  assert_includes File.read("#{root}/gen/test/data.rb"), "LABELS_posts = [\"one\"]"
+  assert_includes File.read("#{root}/gen/tests.rb"), "require_relative \"test/data\"\n"
 end
 
 test "gen writes gen/test/data.rb and --check reports it stale" do

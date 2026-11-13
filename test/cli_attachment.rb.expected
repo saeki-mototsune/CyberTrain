@@ -30,15 +30,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_posts.rb
 create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
 create app/controllers/posts_controller.rb
 create app/views/posts/index.html.erb
 create app/views/posts/show.html.erb
 create app/views/posts/new.html.erb
 create app/views/posts/edit.html.erb
 create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
 route resources :posts
 create db/migrate/20260925120001_add_cover_to_posts.rb
 insert app/views/posts/_form.html.erb (cover file field, multipart: true)
@@ -50,8 +56,7 @@ insert app/controllers/posts_controller.rb (cover_file= in create)
 insert app/controllers/posts_controller.rb (cover_file= in update)
 route post_cover (GET /posts/:id/cover)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_post_cover.rb
+create test/integration/post_cover_attachment_test.rb
 ok   generate attachment writes the migration and the app test, and edits the rest
 ok   the migration adds the five NOT NULL columns with '' and 0 as not attached
 ok   the model block is inserted after the class line with prefixed names and callbacks
@@ -60,6 +65,7 @@ ok   the route is added before the resource
 ok   the form is multipart with a file input, and the show page shows the image
 ok   the .gitignore of a new app ignores the uploads
 ok   the generated test covers the security behaviour
+ok   no generator writes test/support/app_test.rb
 identical db/migrate/20260925120001_add_cover_to_posts.rb
 identical app/views/posts/_form.html.erb (file field already added)
 identical app/views/posts/show.html.erb (cover already shown)
@@ -69,14 +75,13 @@ identical app/controllers/posts_controller.rb (cover_file= in create)
 identical app/controllers/posts_controller.rb (cover_file= in update)
 identical route post_cover
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_post_cover.rb
+identical test/integration/post_cover_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary
+  cybertrain test        # test/integration/*_attachment_test.rb among the others
 ok   running the generator again writes and edits nothing
 ok   the views the generator edited parse with the template engine
 create db/migrate/20260925120002_add_avatar_to_posts.rb
@@ -89,8 +94,7 @@ insert app/controllers/posts_controller.rb (avatar_file= in create)
 insert app/controllers/posts_controller.rb (avatar_file= in update)
 route post_avatar (GET /posts/:id/avatar)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_post_avatar.rb
+create test/integration/post_avatar_attachment_test.rb
 ok   a second field, and an existing CamelCase or plural model name, work
 identical db/migrate/20260925120001_add_cover_to_posts.rb
 identical app/views/posts/_form.html.erb (file field already added)
@@ -101,14 +105,13 @@ identical app/controllers/posts_controller.rb (cover_file= in create)
 identical app/controllers/posts_controller.rb (cover_file= in update)
 identical route post_cover
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_post_cover.rb
+identical test/integration/post_cover_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary
+  cybertrain test        # test/integration/*_attachment_test.rb among the others
 identical db/migrate/20260925120002_add_avatar_to_posts.rb
 identical app/views/posts/_form.html.erb (file field already added)
 identical app/views/posts/show.html.erb (avatar already shown)
@@ -118,14 +121,13 @@ identical app/controllers/posts_controller.rb (avatar_file= in create)
 identical app/controllers/posts_controller.rb (avatar_file= in update)
 identical route post_avatar
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_post_avatar.rb
+identical test/integration/post_avatar_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary
+  cybertrain test        # test/integration/*_attachment_test.rb among the others
 ok   with two fields, running the generator for either again changes nothing
 create spin.toml
 create .gitignore
@@ -159,15 +161,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_posts.rb
 create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
 create app/controllers/posts_controller.rb
 create app/views/posts/index.html.erb
 create app/views/posts/show.html.erb
 create app/views/posts/new.html.erb
 create app/views/posts/edit.html.erb
 create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
 route resources :posts
 create db/migrate/20260925120001_add_cover_url_to_posts.rb
 insert app/views/posts/_form.html.erb (cover_url file field, multipart: true)
@@ -179,8 +187,7 @@ insert app/controllers/posts_controller.rb (cover_url_file= in create)
 insert app/controllers/posts_controller.rb (cover_url_file= in update)
 route post_cover_url (GET /posts/:id/cover_url)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_post_cover_url.rb
+create test/integration/post_cover_url_attachment_test.rb
 create db/migrate/20260925120002_add_cover_to_posts.rb
 insert app/views/posts/_form.html.erb (cover file field, multipart: true)
 insert app/views/posts/show.html.erb (cover)
@@ -191,8 +198,7 @@ insert app/controllers/posts_controller.rb (cover_file= in create)
 insert app/controllers/posts_controller.rb (cover_file= in update)
 route post_cover (GET /posts/:id/cover)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_post_cover.rb
+create test/integration/post_cover_attachment_test.rb
 ok   a field whose name starts another field's name still gets its file input
 identical db/migrate/20260925120002_add_cover_to_posts.rb
 identical app/views/posts/_form.html.erb (file field already added)
@@ -203,22 +209,24 @@ identical app/controllers/posts_controller.rb (cover_file= in create)
 identical app/controllers/posts_controller.rb (cover_file= in update)
 identical route post_cover
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_post_cover.rb
+identical test/integration/post_cover_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary
+  cybertrain test        # test/integration/*_attachment_test.rb among the others
 create db/migrate/20260925120003_create_tags.rb
 create app/models/tag.rb
+create test/models/tag_test.rb
+create test/fixtures/tags.yml
 create app/controllers/tags_controller.rb
 create app/views/tags/index.html.erb
 create app/views/tags/show.html.erb
 create app/views/tags/new.html.erb
 create app/views/tags/edit.html.erb
 create app/views/tags/_form.html.erb
+create test/controllers/tags_controller_test.rb
 route resources :tags
 create db/migrate/20260925120004_add_cover_to_tags.rb
 insert app/views/tags/_form.html.erb (cover file field, multipart: true)
@@ -230,8 +238,7 @@ insert app/controllers/tags_controller.rb (cover_file= in create)
 insert app/controllers/tags_controller.rb (cover_file= in update)
 route tag_cover (GET /tags/:id/cover)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_tag_cover.rb
+create test/integration/tag_cover_attachment_test.rb
 ok   the schema check looks at the owner's table, and a re-run after db migrate is identical
 create spin.toml
 create .gitignore
@@ -265,15 +272,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_reports.rb
 create app/models/report.rb
+create test/models/report_test.rb
+create test/fixtures/reports.yml
 create app/controllers/reports_controller.rb
 create app/views/reports/index.html.erb
 create app/views/reports/show.html.erb
 create app/views/reports/new.html.erb
 create app/views/reports/edit.html.erb
 create app/views/reports/_form.html.erb
+create test/controllers/reports_controller_test.rb
 route resources :reports
 create db/migrate/20260925120001_add_file_upload_to_reports.rb
 insert app/views/reports/_form.html.erb (file_upload file field, multipart: true)
@@ -285,14 +298,13 @@ insert app/controllers/reports_controller.rb (file_upload_file= in create)
 insert app/controllers/reports_controller.rb (file_upload_file= in update)
 route report_file_upload (GET /reports/:id/file_upload)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_report_file_upload.rb
+create test/integration/report_file_upload_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 
 next:
   cybertrain db migrate
   cybertrain server
-  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary
+  cybertrain test        # test/integration/*_attachment_test.rb among the others
 ok   --any allows any file: no accept, no type check, a link instead of an image
 create spin.toml
 create .gitignore
@@ -326,7 +338,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -361,12 +376,15 @@ insert bin/club.rb (./club user)
 insert config/app.rb (CLUB_BASE_URL)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
 create app/controllers/posts_controller.rb
 create app/views/posts/index.html.erb
 create app/views/posts/show.html.erb
 create app/views/posts/new.html.erb
 create app/views/posts/edit.html.erb
 create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
 route resources :posts
 create db/migrate/20260925120003_add_cover_to_posts.rb
 insert app/views/posts/_form.html.erb (cover file field, multipart: true)
@@ -378,9 +396,105 @@ insert app/controllers/posts_controller.rb (cover_file= in create)
 insert app/controllers/posts_controller.rb (cover_file= in update)
 route post_cover (GET /posts/:id/cover)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_post_cover.rb
+create test/integration/post_cover_attachment_test.rb
 ok   with authentication the generated test signs in first
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/guard.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/confirmations_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/mailers/confirmations_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/confirmations/new.html.erb
+create app/views/mail/_confirmation.html.erb
+create app/views/accounts/edit.html.erb
+create test/support/app_test.rb
+create test/support/authentication_helpers.rb
+create test/authentication.rb
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+create test/accounts.rb
+create test/confirmations.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert bin/guard.rb (./guard user)
+insert config/app.rb (GUARD_BASE_URL)
+create db/migrate/20260925120002_create_posts.rb
+create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
+route resources :posts
+create db/migrate/20260925120003_add_cover_to_posts.rb
+insert app/views/posts/_form.html.erb (cover file field, multipart: true)
+insert app/views/posts/show.html.erb (cover)
+insert app/models/post.rb (attachment cover)
+insert app/controllers/posts_controller.rb (def cover)
+insert app/controllers/posts_controller.rb (:cover in before_action :set_post)
+insert app/controllers/posts_controller.rb (cover_file= in create)
+insert app/controllers/posts_controller.rb (cover_file= in update)
+route post_cover (GET /posts/:id/cover)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/integration/post_cover_attachment_test.rb
+ok   with --confirmable authentication the signed-in user is confirmed
 create spin.toml
 create .gitignore
 create .env.example
@@ -413,15 +527,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_articles.rb
 create app/models/article.rb
+create test/models/article_test.rb
+create test/fixtures/articles.yml
 create app/controllers/articles_controller.rb
 create app/views/articles/index.html.erb
 create app/views/articles/show.html.erb
 create app/views/articles/new.html.erb
 create app/views/articles/edit.html.erb
 create app/views/articles/_form.html.erb
+create test/controllers/articles_controller_test.rb
 route resources :articles
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -466,8 +586,7 @@ insert app/controllers/articles_controller.rb (cover_file= in create)
 insert app/controllers/articles_controller.rb (cover_file= in update)
 route article_cover (GET /articles/:id/cover)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_article_cover.rb
+create test/integration/article_cover_attachment_test.rb
 identical db/migrate/20260925120003_add_cover_to_articles.rb
 identical app/views/articles/_form.html.erb (file field already added)
 identical app/views/articles/show.html.erb (cover already shown)
@@ -477,8 +596,7 @@ identical app/controllers/articles_controller.rb (cover_file= in create)
 identical app/controllers/articles_controller.rb (cover_file= in update)
 identical route article_cover
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_article_cover.rb
+identical test/integration/article_cover_attachment_test.rb
 ok   where show is public the download joins it, and the test's values meet the length rules
 create spin.toml
 create .gitignore
@@ -512,15 +630,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_memos.rb
 create app/models/memo.rb
+create test/models/memo_test.rb
+create test/fixtures/memos.yml
 create app/controllers/memos_controller.rb
 create app/views/memos/index.html.erb
 create app/views/memos/show.html.erb
 create app/views/memos/new.html.erb
 create app/views/memos/edit.html.erb
 create app/views/memos/_form.html.erb
+create test/controllers/memos_controller_test.rb
 route resources :memos
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -564,8 +688,7 @@ insert app/controllers/memos_controller.rb (scan_file= in create)
 insert app/controllers/memos_controller.rb (scan_file= in update)
 route memo_scan (GET /memos/:id/scan)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_memo_scan.rb
+create test/integration/memo_scan_attachment_test.rb
 ok   a download stays private where show is, and a maximum length cuts the value
 create spin.toml
 create .gitignore
@@ -599,15 +722,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -651,8 +780,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 create spin.toml
 create .gitignore
 create .env.example
@@ -685,15 +813,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -759,15 +893,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -833,15 +973,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -907,15 +1053,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -981,15 +1133,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -1056,15 +1214,21 @@ identical .github/workflows/ci.yml
 identical gen/.keep
 identical storage/.keep
 identical tmp/.keep
-identical test/.keep
+identical test/test_helper.rb
+identical test/integration/health_test.rb
+identical test/fixtures/.keep
+identical test/support/.keep
 identical db/migrate/20260925120000_create_plans.rb
 identical app/models/plan.rb
+identical test/models/plan_test.rb
+identical test/fixtures/plans.yml
 exist app/controllers/plans_controller.rb
 identical app/views/plans/index.html.erb
 identical app/views/plans/show.html.erb
 identical app/views/plans/new.html.erb
 identical app/views/plans/edit.html.erb
 identical app/views/plans/_form.html.erb
+identical test/controllers/plans_controller_test.rb
 identical route resources :plans
 identical db/migrate/20260925120001_create_users.rb
 identical db/migrate/20260925120002_create_sessions.rb
@@ -1110,8 +1274,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 identical db/migrate/20260925120003_add_photo_to_plans.rb
 identical app/views/plans/_form.html.erb (file field already added)
 identical app/views/plans/show.html.erb (photo already shown)
@@ -1122,8 +1285,7 @@ identical app/controllers/plans_controller.rb (photo_file= in create)
 identical app/controllers/plans_controller.rb (photo_file= in update)
 identical route plan_photo
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_plan_photo.rb
+identical test/integration/plan_photo_attachment_test.rb
 create spin.toml
 create .gitignore
 create .env.example
@@ -1156,15 +1318,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -1210,8 +1378,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 identical db/migrate/20260925120003_add_photo_to_plans.rb
 identical app/views/plans/_form.html.erb (file field already added)
 identical app/views/plans/show.html.erb (photo already shown)
@@ -1222,8 +1389,7 @@ identical app/controllers/plans_controller.rb (photo_file= in create)
 identical app/controllers/plans_controller.rb (photo_file= in update)
 identical route plan_photo
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_plan_photo.rb
+identical test/integration/plan_photo_attachment_test.rb
 create spin.toml
 create .gitignore
 create .env.example
@@ -1256,15 +1422,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -1310,8 +1482,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 identical db/migrate/20260925120003_add_photo_to_plans.rb
 identical app/views/plans/_form.html.erb (file field already added)
 identical app/views/plans/show.html.erb (photo already shown)
@@ -1322,8 +1493,7 @@ identical app/controllers/plans_controller.rb (photo_file= in create)
 identical app/controllers/plans_controller.rb (photo_file= in update)
 identical route plan_photo
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_plan_photo.rb
+identical test/integration/plan_photo_attachment_test.rb
 ok   a show with a body is accepted, warned about, and its download stays private
 create spin.toml
 create .gitignore
@@ -1357,15 +1527,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
@@ -1378,8 +1554,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 ok   a show with a body is accepted without authentication as well
 create spin.toml
 create .gitignore
@@ -1413,15 +1588,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -1465,8 +1646,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 ok   a show-only policy is refused for authenticated users too
 create spin.toml
 create .gitignore
@@ -1500,15 +1680,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -1553,8 +1739,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 ok   inherited show-only authorization cannot be bypassed by a public download
 create spin.toml
 create .gitignore
@@ -1588,15 +1773,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_plans.rb
 create app/models/plan.rb
+create test/models/plan_test.rb
+create test/fixtures/plans.yml
 create app/controllers/plans_controller.rb
 create app/views/plans/index.html.erb
 create app/views/plans/show.html.erb
 create app/views/plans/new.html.erb
 create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
+create test/controllers/plans_controller_test.rb
 route resources :plans
 create db/migrate/20260925120001_create_users.rb
 create db/migrate/20260925120002_create_sessions.rb
@@ -1641,8 +1832,7 @@ insert app/controllers/plans_controller.rb (photo_file= in create)
 insert app/controllers/plans_controller.rb (photo_file= in update)
 route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_plan_photo.rb
+create test/integration/plan_photo_attachment_test.rb
 ok   the Authentication concern's callbacks count as ApplicationController's
 create spin.toml
 create .gitignore
@@ -1676,7 +1866,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 ok   unknown inherited policies and asymmetric skips refuse attachment scaffolds before writing
 create spin.toml
 create .gitignore
@@ -1710,15 +1903,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_products.rb
 create app/models/product.rb
+create test/models/product_test.rb
+create test/fixtures/products.yml
 create app/controllers/products_controller.rb
 create app/views/products/index.html.erb
 create app/views/products/show.html.erb
 create app/views/products/new.html.erb
 create app/views/products/edit.html.erb
 create app/views/products/_form.html.erb
+create test/controllers/products_controller_test.rb
 route resources :products
 create db/migrate/20260925120001_add_photo_to_products.rb
 insert app/views/products/_form.html.erb (photo file field, multipart: true)
@@ -1730,8 +1929,7 @@ insert app/controllers/products_controller.rb (photo_file= in create)
 insert app/controllers/products_controller.rb (photo_file= in update)
 route product_photo (GET /products/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_product_photo.rb
+create test/integration/product_photo_attachment_test.rb
 create db/migrate/20260925120002_create_users.rb
 create db/migrate/20260925120003_create_sessions.rb
 create app/models/user.rb
@@ -1750,7 +1948,7 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
+create test/support/app_test.rb
 create test/support/authentication_helpers.rb
 create test/authentication.rb
 create test/admin.rb
@@ -1762,8 +1960,8 @@ insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
-skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
-insert test/attachment_product_photo.rb (sign in first)
+skip test/integration/notes_attachment_test.rb (no setup do): sign in there before each test
+insert test/integration/product_photo_attachment_test.rb (sign in first)
 insert bin/guild.rb (./guild user)
 insert config/app.rb (GUILD_BASE_URL)
 identical db/migrate/20260925120002_create_users.rb
@@ -1796,8 +1994,8 @@ identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
-skip test/attachment_notes.rb (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)
-identical test/attachment_product_photo.rb (signs in already)
+skip test/integration/notes_attachment_test.rb (no setup do): sign in there before each test
+identical test/integration/product_photo_attachment_test.rb (signs in already)
 identical bin/guild.rb (user command already required)
 identical config/app.rb (base_url already declared)
 ok   authentication generated after the attachment adds the sign-in to its test
@@ -1833,7 +2031,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 ok   a controller without a shared lookup cannot generate an unscoped download
 create db/migrate/20260925120000_add_face_to_cards.rb
 skip app/views/cards/_form.html.erb (not found): use form_with(model: card, multipart: true) and <%= f.file_field :face, accept: "image/png,image/jpeg,image/gif,image/webp" %>
@@ -1846,8 +2047,7 @@ insert app/controllers/cards_controller.rb (face_file= in update)
 insert app/controllers/cards_controller.rb (card_params reads params.nested(:card): the form may send only files)
 route card_face (GET /cards/:id/face)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_card_face.rb
+create test/integration/card_face_attachment_test.rb
 create db/migrate/20260925120001_add_icon_to_lists.rb
 skip app/views/lists/_form.html.erb (not found): use form_with(model: list, multipart: true) and <%= f.file_field :icon, accept: "image/png,image/jpeg,image/gif,image/webp" %>
 skip app/views/lists/show.html.erb (not found): show the file with <% if @list.icon_attached? %><p><img src="<%= @list.icon_url %>" alt="<%= @list.icon_filename %>"></p><% end %>
@@ -1858,8 +2058,7 @@ skip app/controllers/lists_controller.rb (no `@list = List.new(list_params)` lin
 skip app/controllers/lists_controller.rb (update does not load @list with `@list = List.find(params[:id])` nor through `before_action :set_list`): add `@list.icon_file = params.nested(:list).upload(:icon)` to update once @list is loaded
 route list_icon (GET /lists/:id/icon)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_list_icon.rb
+create test/integration/list_icon_attachment_test.rb
 create db/migrate/20260925120002_add_logo_to_trays.rb
 skip app/views/trays/_form.html.erb (not found): use form_with(model: tray, multipart: true) and <%= f.file_field :logo, accept: "image/png,image/jpeg,image/gif,image/webp" %>
 skip app/views/trays/show.html.erb (not found): show the file with <% if @tray.logo_attached? %><p><img src="<%= @tray.logo_url %>" alt="<%= @tray.logo_filename %>"></p><% end %>
@@ -1869,8 +2068,7 @@ skip app/controllers/trays_controller.rb (no `@tray = Tray.new(tray_params)` lin
 insert app/controllers/trays_controller.rb (logo_file= in update)
 route tray_logo (GET /trays/:id/logo)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_tray_logo.rb
+create test/integration/tray_logo_attachment_test.rb
 ok   update gets the assignment only where the record is loaded
 create spin.toml
 create .gitignore
@@ -1904,15 +2102,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_posts.rb
 create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
 create app/controllers/posts_controller.rb
 create app/views/posts/index.html.erb
 create app/views/posts/show.html.erb
 create app/views/posts/new.html.erb
 create app/views/posts/edit.html.erb
 create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
 route resources :posts
 ok   a bad field, model or tree is refused before anything is written
 error: usage: cybertrain generate attachment MODEL FIELD [--any]
@@ -1953,15 +2157,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_photos.rb
 create app/models/photo.rb
+create test/models/photo_test.rb
+create test/fixtures/photos.yml
 create app/controllers/photos_controller.rb
 create app/views/photos/index.html.erb
 create app/views/photos/show.html.erb
 create app/views/photos/new.html.erb
 create app/views/photos/edit.html.erb
 create app/views/photos/_form.html.erb
+create test/controllers/photos_controller_test.rb
 route resources :photos
 insert app/models/photo.rb (attachment image)
 insert app/controllers/photos_controller.rb (def image)
@@ -1970,8 +2180,7 @@ insert app/controllers/photos_controller.rb (image_file= in create)
 insert app/controllers/photos_controller.rb (image_file= in update)
 route photo_image (GET /photos/:id/image)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_photo_image.rb
+create test/integration/photo_image_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold type writes the columns in create_table and no second migration
 ok   the scaffold type edits the model, controller and routes the way the generator does
@@ -2008,15 +2217,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_secrets.rb
 create app/models/secret.rb
+create test/models/secret_test.rb
+create test/fixtures/secrets.yml
 create app/controllers/secrets_controller.rb
 create app/views/secrets/index.html.erb
 create app/views/secrets/show.html.erb
 create app/views/secrets/new.html.erb
 create app/views/secrets/edit.html.erb
 create app/views/secrets/_form.html.erb
+create test/controllers/secrets_controller_test.rb
 route resources :secrets
 insert app/models/secret.rb (attachment scan)
 insert app/controllers/secrets_controller.rb (def scan)
@@ -2025,17 +2240,19 @@ insert app/controllers/secrets_controller.rb (scan_file= in create)
 insert app/controllers/secrets_controller.rb (scan_file= in update)
 route secret_scan (GET /secrets/:id/scan)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_secret_scan.rb
+create test/integration/secret_scan_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 identical db/migrate/20260925120000_create_secrets.rb
 exist app/models/secret.rb
+identical test/models/secret_test.rb
+identical test/fixtures/secrets.yml
 exist app/controllers/secrets_controller.rb
 identical app/views/secrets/index.html.erb
 identical app/views/secrets/show.html.erb
 identical app/views/secrets/new.html.erb
 identical app/views/secrets/edit.html.erb
 identical app/views/secrets/_form.html.erb
+identical test/controllers/secrets_controller_test.rb
 identical route resources :secrets
 identical app/models/secret.rb (attachment scan already added)
 identical app/controllers/secrets_controller.rb (def scan already added)
@@ -2043,8 +2260,7 @@ identical app/controllers/secrets_controller.rb (scan_file= in create)
 identical app/controllers/secrets_controller.rb (scan_file= in update)
 identical route secret_scan
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_secret_scan.rb
+identical test/integration/secret_scan_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold with --any and with nothing but a file
 create spin.toml
@@ -2079,15 +2295,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_photos.rb
 create app/models/photo.rb
+create test/models/photo_test.rb
+create test/fixtures/photos.yml
 create app/controllers/photos_controller.rb
 create app/views/photos/index.html.erb
 create app/views/photos/show.html.erb
 create app/views/photos/new.html.erb
 create app/views/photos/edit.html.erb
 create app/views/photos/_form.html.erb
+create test/controllers/photos_controller_test.rb
 route resources :photos
 insert app/models/photo.rb (attachment image)
 insert app/controllers/photos_controller.rb (def image)
@@ -2096,8 +2318,7 @@ insert app/controllers/photos_controller.rb (image_file= in create)
 insert app/controllers/photos_controller.rb (image_file= in update)
 route photo_image (GET /photos/:id/image)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_photo_image.rb
+create test/integration/photo_image_attachment_test.rb
 insert app/models/photo.rb (attachment thumb)
 insert app/controllers/photos_controller.rb (def thumb)
 insert app/controllers/photos_controller.rb (:thumb in before_action :set_photo)
@@ -2105,17 +2326,19 @@ insert app/controllers/photos_controller.rb (thumb_file= in create)
 insert app/controllers/photos_controller.rb (thumb_file= in update)
 route photo_thumb (GET /photos/:id/thumb)
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-create test/attachment_photo_thumb.rb
+create test/integration/photo_thumb_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 identical db/migrate/20260925120000_create_photos.rb
 exist app/models/photo.rb
+identical test/models/photo_test.rb
+identical test/fixtures/photos.yml
 exist app/controllers/photos_controller.rb
 identical app/views/photos/index.html.erb
 identical app/views/photos/show.html.erb
 identical app/views/photos/new.html.erb
 identical app/views/photos/edit.html.erb
 identical app/views/photos/_form.html.erb
+identical test/controllers/photos_controller_test.rb
 identical route resources :photos
 identical app/models/photo.rb (attachment image already added)
 identical app/controllers/photos_controller.rb (def image already added)
@@ -2123,16 +2346,14 @@ identical app/controllers/photos_controller.rb (image_file= in create)
 identical app/controllers/photos_controller.rb (image_file= in update)
 identical route photo_image
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_photo_image.rb
+identical test/integration/photo_image_attachment_test.rb
 identical app/models/photo.rb (attachment thumb already added)
 identical app/controllers/photos_controller.rb (def thumb already added)
 identical app/controllers/photos_controller.rb (thumb_file= in create)
 identical app/controllers/photos_controller.rb (thumb_file= in update)
 identical route photo_thumb
 identical .gitignore (/storage/uploads/ already ignored)
-identical test/support/app_test.rb
-identical test/attachment_photo_thumb.rb
+identical test/integration/photo_thumb_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   a scaffold with two attachments run twice has each assignment once per action
 create spin.toml
@@ -2167,15 +2388,21 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_items.rb
 create app/models/item.rb
+create test/models/item_test.rb
+create test/fixtures/items.yml
 create app/controllers/items_controller.rb
 create app/views/items/index.html.erb
 create app/views/items/show.html.erb
 create app/views/items/new.html.erb
 create app/views/items/edit.html.erb
 create app/views/items/_form.html.erb
+create test/controllers/items_controller_test.rb
 route resources :items
 insert app/models/item.rb (attachment set_post)
 insert app/controllers/items_controller.rb (def set_post)
@@ -2184,8 +2411,7 @@ insert app/controllers/items_controller.rb (set_post_file= in create)
 insert app/controllers/items_controller.rb (set_post_file= in update)
 route item_set_post (GET /items/:id/set_post)
 identical .gitignore (/storage/uploads/ already ignored)
-create test/support/app_test.rb
-create test/attachment_item_set_post.rb
+create test/integration/item_set_post_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-36 tests, 364 assertions, 0 failures
+38 tests, 380 assertions, 0 failures

@@ -1,5 +1,6 @@
 # `cybertrain generate scaffold post title:string body:text`: writes the
-# migration, model, controller and views of a resource and adds
+# migration, model, controller and views of a resource, its fixtures
+# (test/fixtures/posts.yml), a model test and a controller test, and adds
 # `resources :posts` to config/routes.rb, the way Rails' scaffold does.
 #
 # A `cover:attachment` field is a stored file rather than a column: the
@@ -229,6 +230,8 @@ module Cybertrain
         migration = migration_path(root, res)
         record(created, root, migration, Templates.migration(res))
         record(created, root, "app/models/#{res.singular}.rb", Templates.model(res))
+        record(created, root, "test/models/#{res.singular}_test.rb", Templates.model_test(res))
+        record(created, root, "test/fixtures/#{res.plural}.yml", Templates.fixture_file(res))
         record(created, root, "app/controllers/#{res.plural}_controller.rb", Templates.controller(res))
         views = "app/views/#{res.plural}"
         record(created, root, "#{views}/index.html.erb", Templates.index_view(res))
@@ -236,6 +239,7 @@ module Cybertrain
         record(created, root, "#{views}/new.html.erb", Templates.new_view(res))
         record(created, root, "#{views}/edit.html.erb", Templates.edit_view(res))
         record(created, root, "#{views}/_form.html.erb", Templates.form_partial(res))
+        record(created, root, "test/controllers/#{res.plural}_controller_test.rb", Templates.controller_test(res))
         add_route(routes_path, res.plural)
         attachments = false
         res.fields.each do |f|

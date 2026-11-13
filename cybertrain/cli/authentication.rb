@@ -25,7 +25,8 @@
 # behind require_admin), the nav partial into the layout, the user command
 # into bin/<app>.rb, the base_url setting (<APP>_BASE_URL, where links in
 # mails start) into config/app.rb (plus a sign-in in any
-# test/attachment_*.rb written before it, which now needs one). Every file is written once
+# test/integration/*_attachment_test.rb written before it, which now needs
+# one). Every file is written once
 # and every edit is made once, so running the generator again is
 # harmless.
 #
@@ -137,15 +138,13 @@ module Cybertrain
       PENDING_EMAIL_ROUTE_MARK = "/account/pending_email"
       PENDING_EMAIL_ROUTE = "delete \"/account/pending_email\", to: \"accounts#cancel_email_change\", as: \"account_pending_email\""
       NAV_LINE = "<%= render \"sessions/nav\" %>"
-      # What an app test's new_client needs once the app has authentication:
-      # empty the two tables, then a user signed in through the form.
-      # `generate attachment` writes them into its test when app/models/user.rb
-      # exists; add_sign_in_to_attachment_tests adds them to a test written
-      # before this generator ran.
-      TEST_RESET_LINES = "  Session.all.delete_all\n  User.all.delete_all\n"
-      TEST_SIGN_IN_LINES = "  AppTest.user\n  AppTest.sign_in(client)\n"
-      NEW_CLIENT_LINE = "def new_client"
-      TEST_CLIENT_LINE = "  client = Cybertrain::Test::Client.new(APP)"
+      # The attachment test's (an ActionDispatch::IntegrationTest) setup
+      # line: `generate attachment` writes test_sign_in_lines after it when
+      # app/models/user.rb exists; add_sign_in_to_attachment_tests adds them
+      # to a test written before this generator ran.
+      TEST_SETUP_LINE = "  setup do"
+      # What the sign-in lines post; a test that has it signs in already.
+      TEST_SIGN_IN_POST = "post \"/session\", params: { email_address: \"ann@example.com\", password: \"s3cr3t-s3cr3t\" }"
       # The edits bin/<app>.rb and config/app.rb get: the user command's file
       # (and, with --invite-only, the boot warning) before this line, the
       # setting (--invite-only) after this one.
@@ -415,7 +414,7 @@ module Cybertrain
           enable_jobs_page(routes_path, controller_path)
         end
         add_nav_to_layout(File.join(root, "app/views/layouts/application.html.erb"))
-        add_sign_in_to_attachment_tests(root)
+        add_sign_in_to_attachment_tests(root, confirmable)
         add_command_to_bin(bin_path, app, invite_only)
         add_setting_to_config(config_path, app, invite_only)
         result
@@ -980,26 +979,39 @@ module Cybertrain
         true
       end
 
-      # A test/attachment_*.rb written by `generate attachment` before this
-      # generator ran drives the forms anonymously, which every action now
-      # redirects to the sign-in page. Its new_client gets the reset and
-      # sign-in lines, once (AppTest.sign_in marks a test that has them); a
-      # new_client rewritten past recognition is left alone with a note.
-      def self.add_sign_in_to_attachment_tests(root)
-        Dir.glob(File.join(root, "test/attachment_*.rb")).sort.each do |path|
-          name = "test/#{File.basename(path)}"
+      # The setup lines of the attachment test in an app with
+      # authentication: a user (confirmed with `confirmable`) signed in
+      # through the form, as a browser would, before each test.
+      def self.test_sign_in_lines(confirmable)
+        out = +""
+        out << "    # A user signed in through the form: the controller's actions need one.\n"
+        out << "    user = User.new(email_address: \"ann@example.com\")\n"
+        out << "    user.password = \"s3cr3t-s3cr3t\"\n"
+        out << "    user.confirmed_at = Time.current\n" if confirmable
+        out << "    user.save!\n"
+        out << "    #{TEST_SIGN_IN_POST}\n"
+        out
+      end
+
+      # A test/integration/*_attachment_test.rb written by `generate
+      # attachment` before this generator ran drives the forms anonymously,
+      # which every action now redirects to the sign-in page. Its setup gets
+      # the sign-in lines, once (TEST_SIGN_IN_POST marks a test that has
+      # them); a setup rewritten past recognition is left alone with a note.
+      def self.add_sign_in_to_attachment_tests(root, confirmable)
+        Dir.glob(File.join(root, "test/integration/*_attachment_test.rb")).sort.each do |path|
+          name = "test/integration/#{File.basename(path)}"
           source = File.read(path)
-          unless source.index("AppTest.sign_in(").nil?
+          unless source.index(TEST_SIGN_IN_POST).nil?
             puts "identical #{name} (signs in already)"
             next
           end
-          if source.index(NEW_CLIENT_LINE).nil? || source.index(TEST_CLIENT_LINE).nil?
-            puts "skip #{name} (no new_client): sign in there with AppTest.user and AppTest.sign_in(client)"
+          if source.index("\n#{TEST_SETUP_LINE}\n").nil?
+            puts "skip #{name} (no setup do): sign in there before each test"
             next
           end
 
-          source = insert_after_line(source, NEW_CLIENT_LINE, TEST_RESET_LINES)
-          File.write(path, insert_after_line(source, TEST_CLIENT_LINE, TEST_SIGN_IN_LINES))
+          File.write(path, insert_after_line(source, "#{TEST_SETUP_LINE}\n", test_sign_in_lines(confirmable)))
           puts "insert #{name} (sign in first)"
         end
         nil

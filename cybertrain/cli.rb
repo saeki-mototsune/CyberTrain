@@ -354,7 +354,7 @@ module Cybertrain
         puts "next:"
         puts "  cybertrain db migrate"
         puts "  cybertrain server"
-        puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/integration/*_attachment_test.rb among the others"
       when "authentication"
         args = without_flag(without_flag(without_flag(argv[2, argv.size - 2], "--invite-only"), "--confirmable"), "--force")
         raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]" unless args.empty?
@@ -401,7 +401,7 @@ module Cybertrain
         puts ""
         puts "next:"
         puts "  spin run gen           # includes the module into the app's helpers"
-        puts "  cybertrain spin test   # test/#{args[0].tr("/", "_").delete_suffix("_helper")}_helper.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/helpers/#{Inflector.underscore(args[0]).delete_suffix("_helper")}_helper_test.rb among the others"
       when "component"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate component NAME [attr[:type] ...] [--force]" if args.empty?
@@ -410,7 +410,7 @@ module Cybertrain
         puts ""
         puts "next:"
         puts "  spin run gen           # writes gen/components.rb"
-        puts "  cybertrain spin test   # test/#{args[0].tr("/", "_").delete_suffix("_component")}_component.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/components/#{Inflector.underscore(args[0]).delete_suffix("_component")}_component_test.rb among the others"
       when "job"
         rest = argv[2, argv.size - 2]
         args = Job.positional(rest)
@@ -420,7 +420,7 @@ module Cybertrain
         puts ""
         puts "next:"
         puts "  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)"
-        puts "  cybertrain spin test   # test/#{Inflector.underscore(args[0]).tr("/", "_").delete_suffix("_job")}_job.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/jobs/#{Inflector.underscore(args[0]).delete_suffix("_job")}_job_test.rb among the others"
       else
         raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported"
       end

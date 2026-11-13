@@ -1,6 +1,6 @@
 # `cybertrain generate helper prices`: writes app/helpers/prices_helper.rb
 # (an empty `module PricesHelper`, which `spin run gen` includes into the
-# app's ApplicationHelpers) and test/prices_helper.rb. A name may carry a
+# app's ApplicationHelpers) and test/helpers/prices_helper_test.rb. A name may carry a
 # namespace ("admin/users" -> Admin::UsersHelper in
 # app/helpers/admin/users_helper.rb).
 #
@@ -81,19 +81,6 @@ module Cybertrain
         end
         out
       end
-
-      # The test programs' common head: the app loaded as its binary loads it.
-      def self.test_head(extra_require)
-        out = +""
-        out << "ENV[\"CYBERTRAIN_ENV\"] = \"test\"\n"
-        out << "\n"
-        out << "require \"cybertrain\"\n"
-        out << "require \"cybertrain/test\"\n"
-        out << "require \"#{extra_require}\"\n" unless extra_require == ""
-        out << "require_relative \"../config/app\"\n"
-        out << "require_relative \"../gen/app\"\n"
-        out
-      end
     end
 
     module Helper
@@ -108,7 +95,7 @@ module Cybertrain
         rel = segments.join("/")
         files = [
           ["app/helpers/#{rel}.rb", module_source(modules)],
-          ["test/#{segments.join("_")}.rb", test_source(full, rel)]
+          ["test/helpers/#{rel}_test.rb", test_source(full, rel)]
         ]
         GeneratedFiles.write_all(root, files, force)
       end
@@ -126,22 +113,29 @@ module Cybertrain
         GeneratedFiles.nest(modules[0, modules.size - 1], body)
       end
 
+      # The class-form test. Its template-rendering helper is
+      # render_helper_template: render_inline is the framework's (component
+      # and partial tests).
       def self.test_source(full, rel)
-        out = GeneratedFiles.test_head("")
+        out = +""
+        out << "require \"test_helper\"\n"
         out << "\n"
         out << "# app/helpers/#{rel}.rb, through the app's ApplicationHelpers (gen/helpers.rb).\n"
-        out << "def render_helper_template(source)\n"
-        out << "  template = Cybertrain::Template::Template.parse(source, \"test/inline\")\n"
-        out << "  env = { \"__template_dir\" => \"test\" }\n"
-        out << "  Cybertrain::Template::Interpreter.new(Cybertrain::Views.helpers_builder.call(nil)).render(template, env)\n"
-        out << "end\n"
+        out << "class #{full}Test < ActiveSupport::TestCase\n"
+        out << "  test \"#{full} is in the application's helpers\" do\n"
+        out << "    assert_equal \"ApplicationHelpers\", Cybertrain::Views.helpers_builder.call(nil).class.name\n"
+        out << "    assert_equal \"&lt;b&gt;\", render_helper_template(\"<%= h '<b>' %>\")\n"
+        out << "  end\n"
         out << "\n"
-        out << "test \"#{full} is in the application's helpers\" do\n"
-        out << "  assert_equal \"ApplicationHelpers\", Cybertrain::Views.helpers_builder.call(nil).class.name\n"
-        out << "  assert_equal \"&lt;b&gt;\", render_helper_template(\"<%= h '<b>' %>\")\n"
-        out << "end\n"
+        out << "  private\n"
         out << "\n"
-        out << "Cybertrain::Test.run!\n"
+        out << "  # A template rendered with the application's helpers.\n"
+        out << "  def render_helper_template(source)\n"
+        out << "    template = Cybertrain::Template::Template.parse(source, \"test/inline\")\n"
+        out << "    env = { \"__template_dir\" => \"test\" }\n"
+        out << "    Cybertrain::Template::Interpreter.new(Cybertrain::Views.helpers_builder.call(nil)).render(template, env)\n"
+        out << "  end\n"
+        out << "end\n"
         out
       end
     end

@@ -1,7 +1,8 @@
 # `cybertrain generate job send_digest --retry Cybertrain::Mailer::TimeoutError:60:5`:
 # writes app/jobs/send_digest_job.rb (a Cybertrain::Job::Base subclass with
 # an empty `perform(args)` and a `retry_on` line per --retry) and
-# test/send_digest_job.rb, which runs it through `perform_now`. A name may
+# test/jobs/send_digest_job_test.rb, which queues it and performs it with
+# perform_enqueued_jobs. A name may
 # carry a namespace ("admin/report" -> Admin::ReportJob in
 # app/jobs/admin/report_job.rb). `spin run gen` then writes the class's
 # perform_later / perform_at / perform_in / perform_now into gen/jobs.rb.
@@ -68,7 +69,7 @@ module Cybertrain
         retries.each { |spec| lines << retry_line(spec) }
         files = [
           ["app/jobs/#{rel}.rb", class_source(modules, lines)],
-          ["test/#{segments.join("_")}.rb", test_source(full, rel)]
+          ["test/jobs/#{rel}_test.rb", test_source(full, rel)]
         ]
         GeneratedFiles.write_all(root, files, force)
       end
@@ -135,16 +136,22 @@ module Cybertrain
         GeneratedFiles.nest(modules[0, modules.size - 1], body)
       end
 
+      # The class-form test: the job queued, then performed on this thread
+      # by perform_enqueued_jobs.
       def self.test_source(full, rel)
-        out = GeneratedFiles.test_head("")
+        out = +""
+        out << "require \"test_helper\"\n"
         out << "\n"
-        out << "# app/jobs/#{rel}.rb, run on this thread (perform_now: no queue, no retry).\n"
-        out << "test \"#{full} runs\" do\n"
-        out << "  assert_equal \"#{full}\", #{full}.job_kind\n"
-        out << "  assert_nil #{full}.perform_now({ \"id\" => 1 })\n"
+        out << "# app/jobs/#{rel}.rb: perform_enqueued_jobs performs the jobs its block queues.\n"
+        out << "class #{full}Test < ActiveSupport::TestCase\n"
+        out << "  test \"#{full} runs\" do\n"
+        out << "    assert_equal \"#{full}\", #{full}.job_kind\n"
+        out << "    performed = perform_enqueued_jobs do\n"
+        out << "      #{full}.perform_later({ \"id\" => 1 })\n"
+        out << "    end\n"
+        out << "    assert_equal 1, performed\n"
+        out << "  end\n"
         out << "end\n"
-        out << "\n"
-        out << "Cybertrain::Test.run!\n"
         out
       end
     end
