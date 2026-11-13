@@ -29,9 +29,16 @@ module Cybertrain
     #   STATE_PATH, the state file's generation, serving runtime and build
     #   with the text for the asking page, as JSON; SCRIPT_PATH, the script,
     #   which places the indicator through the CSSOM (no `style` attribute,
-    #   which a style-src policy would block), takes the page's runtime and
-    #   generation from STATE_PATH asked without them, and asks STATE_PATH
-    #   every second for its text. The texts are this class's alone.
+    #   which a style-src policy would block) and asks STATE_PATH, with the
+    #   page's runtime and generation from its data- attributes, at once
+    #   and every second for its text. The texts are this class's alone;
+    # - makes a conditional GET validate against the runtime and generation
+    #   that rendered the client's copy: the application's ETag leaves with
+    #   a suffix naming this child, and If-None-Match reaches the
+    #   application without it only when every tag carries it, the header
+    #   being dropped otherwise, as is If-Modified-Since
+    #   (Indicator.validate_against_child). A 304 then means the page the
+    #   browser replays was rendered here, its data- attributes right.
     # @api private
     class Indicator < Middleware
       ID = "cybertrain-dev-indicator"
@@ -39,13 +46,13 @@ module Cybertrain
       STATE_PATH = "/__cybertrain/dev/state"
       SCRIPT_PATH = "/__cybertrain/dev/indicator.js"
 
-      # The page's runtime and generation are first taken from the state
-      # path asked without them (a page replayed from the browser's cache,
-      # after a 304, shows the current child's content), falling back to
-      # the div's data- attributes; then the state path is asked every
-      # second for the text. A file that says serving none was written
-      # before this child started, so its generation is not the page's and
-      # the data- attributes stay. A failed fetch leaves the text as it was.
+      # The page's runtime and generation are the div's data- attributes,
+      # written when the page was rendered: the state path is asked with
+      # them at once and then every second, for the text. A page the
+      # browser replays from its cache after a 304 was rendered by this
+      # same runtime and generation (the conditional GET validates against
+      # them: see #call), so its attributes are right too. A failed fetch
+      # leaves the text as it was.
       SCRIPT = "(function () {\n" \
                "  var el = document.getElementById(\"#{ID}\");\n" \
                "  if (!el) return;\n" \
@@ -53,26 +60,16 @@ module Cybertrain
                "  s.position = \"fixed\"; s.right = \"0.5rem\"; s.bottom = \"0.5rem\"; s.zIndex = \"2147483647\";\n" \
                "  s.padding = \"0.15rem 0.5rem\"; s.borderRadius = \"0.25rem\"; s.pointerEvents = \"none\";\n" \
                "  s.font = \"12px/1.4 system-ui, sans-serif\"; s.color = \"#fff\"; s.background = \"rgba(24, 24, 27, 0.8)\";\n" \
-               "  var runtime = el.getAttribute(\"data-runtime\"), generation = el.getAttribute(\"data-generation\");\n" \
-               "  function ask(url) {\n" \
-               "    return fetch(url, { cache: \"no-store\" })\n" \
-               "      .then(function (r) { return r.ok ? r.json() : null; })\n" \
-               "      .then(function (state) { if (state && typeof state.text === \"string\") el.textContent = state.text; return state; });\n" \
-               "  }\n" \
+               "  var url = \"#{STATE_PATH}?runtime=\" + encodeURIComponent(el.getAttribute(\"data-runtime\")) +\n" \
+               "    \"&generation=\" + encodeURIComponent(el.getAttribute(\"data-generation\"));\n" \
                "  function poll() {\n" \
-               "    ask(\"#{STATE_PATH}?runtime=\" + encodeURIComponent(runtime) + \"&generation=\" + encodeURIComponent(generation))\n" \
+               "    fetch(url, { cache: \"no-store\" })\n" \
+               "      .then(function (r) { return r.ok ? r.json() : null; })\n" \
+               "      .then(function (state) { if (state && typeof state.text === \"string\") el.textContent = state.text; })\n" \
                "      .catch(function () {})\n" \
                "      .then(function () { setTimeout(poll, 1000); });\n" \
                "  }\n" \
-               "  ask(\"#{STATE_PATH}\")\n" \
-               "    .then(function (state) {\n" \
-               "      if (!state || typeof state.generation !== \"number\") return;\n" \
-               "      if (state.serving === \"none\") return;\n" \
-               "      generation = String(state.generation);\n" \
-               "      if (state.serving === \"cruby\" || state.serving === \"spinel\") runtime = state.serving;\n" \
-               "    })\n" \
-               "    .catch(function () {})\n" \
-               "    .then(function () { setTimeout(poll, 1000); });\n" \
+               "  poll();\n" \
                "})();\n"
 
       # The indicator's line for a page rendered by page_runtime ("cruby"
@@ -114,6 +111,7 @@ module Cybertrain
         @runtime = runtime
         @generation = generation
         @nonce_directives = nonce_directives
+        @etag_suffix = "-dev-#{runtime}-#{generation}"
       end
 
       def call(ctx)
@@ -126,9 +124,12 @@ module Cybertrain
         elsif request.method == "GET" && path == SCRIPT_PATH
           answer_script(ctx.response)
         else
+          Indicator.validate_against_child(request, @etag_suffix)
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
           insert_indicator(ctx, snapshot)
+          tag = ctx.response.header("ETag").to_s # NOTES rule 62
+          ctx.response.set_header("ETag", Indicator.child_etag(tag, @etag_suffix)) unless tag.empty?
         end
         ctx.response.set_header(HEADER, @runtime)
         nil
@@ -197,6 +198,128 @@ module Cybertrain
         out
       end
 
+      # Makes a conditional request validate against the runtime and
+      # generation that rendered the client's copy as well as against the
+      # application's own validators, so that a 304 means the cached page,
+      # its data- attributes included, came from this child. Every ETag
+      # this child sends carries its suffix (#call, Indicator.child_etag).
+      # If-None-Match keeps its tags, the suffix removed, only when every
+      # tag in it carries this child's suffix; any other tag (another
+      # generation's or runtime's, or one sent before the preview), `*`
+      # (which names no runtime) or a list without a tag drops the header,
+      # and the application answers 200 with a page rendered here.
+      # If-Modified-Since is always dropped: a date cannot say which
+      # runtime rendered the page, so a page validated by Last-Modified
+      # alone is answered 200 under the preview.
+      # @param request [Request]
+      # @param suffix [String] this child's, "-dev-<runtime>-<generation>"
+      # @return [nil]
+      def self.validate_against_child(request, suffix)
+        headers = request.headers
+        Indicator.drop_request_header(headers, "If-Modified-Since")
+        listed = request.header("If-None-Match")
+        return nil if listed.nil?
+
+        kept = Indicator.child_none_match(listed.to_s, suffix) # NOTES rule 62
+        Indicator.drop_request_header(headers, "If-None-Match")
+        headers["if-none-match"] = kept unless kept.empty?
+        nil
+      end
+
+      # Removes every header of name, in any spelling, from a request's
+      # headers.
+      # @param headers [Hash{String => String}]
+      # @param name [String]
+      # @return [nil]
+      def self.drop_request_header(headers, name)
+        gone = Array.new(0) { "" }
+        headers.each_key { |key| gone << key if HeaderName.same?(key, name) }
+        gone.each { |key| headers.delete(key) }
+        nil
+      end
+
+      # The ETag tag with suffix before its closing quote (`W/"abc"` ->
+      # `W/"abc-dev-cruby-3"`); a value that is not a quoted entity-tag is
+      # returned as it is (a request that lists it lacks the suffix, so it
+      # is never answered 304 here).
+      # @param tag [String]
+      # @param suffix [String]
+      # @return [String]
+      def self.child_etag(tag, suffix)
+        text = tag.to_s # NOTES rule 62
+        n = text.bytesize
+        return text unless Indicator.quoted_tag?(text)
+
+        "#{text.byteslice(0, n - 1)}#{suffix}\""
+      end
+
+      # The If-None-Match list with suffix removed from each tag, "" when
+      # the header must be dropped (see .validate_against_child): an entry
+      # that is `*`, is not a quoted entity-tag or lacks suffix, or no
+      # entry at all. A comma inside a quoted tag is part of the tag, so
+      # the list is walked byte by byte; empty entries are skipped.
+      # @param list [String]
+      # @param suffix [String]
+      # @return [String]
+      def self.child_none_match(list, suffix)
+        text = list.to_s # NOTES rule 62
+        n = text.bytesize
+        out = +""
+        quoted = false
+        start = 0
+        i = 0
+        while i <= n
+          b = i < n ? text.getbyte(i).to_i : 44
+          if b == 34 # "
+            quoted = !quoted
+          elsif b == 44 && (!quoted || i == n) # , or the end
+            entry = text.byteslice(start, i - start).to_s.strip
+            unless entry.empty?
+              stripped = Indicator.unsuffixed_tag(entry, suffix)
+              return "" if stripped.empty?
+
+              out << ", " unless out.empty?
+              out << stripped
+            end
+            start = i + 1
+          end
+          i += 1
+        end
+        out
+      end
+
+      # entry without suffix before its closing quote, "" when entry is not
+      # a quoted entity-tag ending in suffix.
+      def self.unsuffixed_tag(entry, suffix)
+        text = entry.to_s # NOTES rule 62
+        return "" unless Indicator.quoted_tag?(text)
+
+        tail = "#{suffix}\""
+        return "" unless text.end_with?(tail)
+
+        body = text.byteslice(0, text.bytesize - tail.bytesize).to_s
+        return "" unless Indicator.quoted_tag?("#{body}\"")
+
+        "#{body}\""
+      end
+
+      # Whether text is an entity-tag: `"..."` or `W/"..."`, the opaque
+      # part free of quotes (RFC 9110 8.8.3).
+      def self.quoted_tag?(text)
+        s = text.to_s # NOTES rule 62
+        from = s.start_with?("W/") ? 2 : 0
+        n = s.bytesize
+        return false if n - from < 2
+        return false unless s.getbyte(from) == 34 && s.getbyte(n - 1) == 34
+
+        i = from + 1
+        while i < n - 1
+          return false if s.getbyte(i) == 34
+          i += 1
+        end
+        true
+      end
+
       # The decoded value of name in the request's query string
       # (Request#query_value), "" when there is none or the query is
       # malformed or too long (Query raises a client fault; the rescue sits
@@ -211,9 +334,10 @@ module Cybertrain
 
       # For the page that asks: a garbled or missing generation reads as 0,
       # a runtime other than "spinel" as "cruby". Without either (absent or
-      # empty), for a page that has just loaded: the state file's serving
-      # runtime (this process's while the supervisor holds or names none)
-      # and generation.
+      # empty), for a page of the state file's serving runtime (this
+      # process's while the supervisor holds or names none) and generation:
+      # what a client that has no page, such as script/preview-e2e, reads
+      # as the current state. The script always sends both.
       def answer_state(response, request, snapshot)
         asked_runtime = Indicator.state_param(request, "runtime")
         asked_generation = Indicator.state_param(request, "generation")

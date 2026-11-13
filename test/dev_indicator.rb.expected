@@ -15,8 +15,14 @@ ok   a 304 passes through with the header and no indicator
 ok   a response served as an attachment gets the header and no indicator
 ok   a response the application encoded gets the header and no indicator; identity is no encoding
 ok   the script path answers the script
+ok   the script asks for the text with the page's own runtime and generation and never adopts the server's
+ok   the application's ETag leaves with this child's runtime and generation
+ok   If-None-Match with this child's suffix reaches the application without it, and its 304 passes through
+ok   If-None-Match with another generation's or runtime's tag, none, or * is dropped: the page is rendered again
+ok   If-Modified-Since never reaches the application under supervision
+ok   without the Indicator the validators and the ETag are the application's own
 ok   with a failed build the banner follows <body> and the indicator precedes </body>
 ok   a page sent as bytes gets the indicator, in ASCII markup, byte for byte
 ok   ascii_html writes the characters past ASCII as numeric references
 ok   the state follows the state file as it changes
-21 tests, 117 assertions, 0 failures
+27 tests, 210 assertions, 0 failures

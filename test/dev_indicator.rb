@@ -25,11 +25,13 @@ end
 
 # The inner application; counts the requests that reach it.
 class IndicatorPage < Cybertrain::Middleware
-  attr_reader :calls
+  attr_reader :calls, :seen_none_match, :seen_modified_since
 
   def initialize
     super(nil)
     @calls = 0
+    @seen_none_match = ""
+    @seen_modified_since = ""
   end
 
   def call(ctx)
@@ -50,6 +52,23 @@ class IndicatorPage < Cybertrain::Middleware
       # What fresh_when / stale? answer (head :not_modified): the browser
       # shows the body it cached, rendered by whichever child served it.
       response.status = 304
+    when "/etag"
+      # What fresh_when answers: the ETag the test names (W/"abc" when it
+      # names none; "none" sets no ETag), and a 304 when the If-None-Match
+      # the application sees lists it. Records the validators it was sent.
+      request = ctx.request
+      listed = request.header("If-None-Match")
+      @seen_none_match = listed.nil? ? "(none)" : listed.to_s
+      since = request.header("If-Modified-Since")
+      @seen_modified_since = since.nil? ? "(none)" : since.to_s
+      tag = request.query_value("tag")
+      tag = "W/\"abc\"" if tag.empty?
+      response.set_header("ETag", tag) unless tag == "none"
+      if @seen_none_match.split(", ").include?(tag)
+        response.status = 304
+      else
+        response.body = "<!DOCTYPE html>\n<html><body><h1>Cached</h1></body></html>"
+      end
     when "/fragment"
       response.body = "<p>no body tag</p>"
     when "/download"
@@ -97,6 +116,12 @@ end
 
 def run_request(app, target)
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", target, {}, "", "127.0.0.1"))
+  app.call(ctx)
+  ctx
+end
+
+def run_conditional(app, target, headers)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", target, headers, "", "127.0.0.1"))
   app.call(ctx)
   ctx
 end
@@ -330,9 +355,104 @@ test "the script path answers the script" do
   assert_equal "cruby", response.header("X-Cybertrain-Runtime")
   assert_includes response.body, "/__cybertrain/dev/state?runtime="
   assert_includes response.body, "textContent"
-  # A file that names no child holds an older generation than the page's.
-  assert_includes response.body, "if (state.serving === \"none\") return;"
   assert response.body.index("setAttribute(\"style\"").nil?, "styled through the CSSOM"
+end
+
+# The div's data- attributes are the page's runtime and generation: the
+# script never takes the current server's state as the page's own (a page
+# rendered by CRuby whose load spans the handover to Spinel would claim
+# Spinel, and a newer generation would hide "Source changed — reload").
+test "the script asks for the text with the page's own runtime and generation and never adopts the server's" do
+  script = Cybertrain::Dev::Indicator::SCRIPT
+  assert_includes script, "el.getAttribute(\"data-runtime\")"
+  assert_includes script, "el.getAttribute(\"data-generation\")"
+  assert_includes script, "\"/__cybertrain/dev/state?runtime=\" + encodeURIComponent("
+  assert script.index("state.generation").nil?, "the answer's generation is not the page's"
+  assert script.index("state.serving").nil?, "the answer's serving runtime is not the page's"
+  assert script.index("\"/__cybertrain/dev/state\"").nil?, "the state path is never asked without the page's values"
+  assert_equal 1, count_of(script, "fetch(")
+end
+
+test "the application's ETag leaves with this child's runtime and generation" do
+  reader = state_reader("etag_out", 12, "cruby", "idle", "")
+  app = indicator(IndicatorPage.new, reader, "cruby", 12, no_directives)
+  assert_equal "W/\"abc-dev-cruby-12\"", run_request(app, "/etag").response.header("ETag")
+  assert_equal "\"strong-dev-cruby-12\"", run_request(app, "/etag?tag=%22strong%22").response.header("ETag")
+  # Not an entity-tag: left as it is (no request lists it with the suffix).
+  assert_equal "bare", run_request(app, "/etag?tag=bare").response.header("ETag")
+  assert run_request(app, "/etag?tag=none").response.header("ETag").nil?, "no ETag is made up"
+  assert run_request(app, "/json").response.header("ETag").nil?, "no ETag on a response without one"
+  spinel = indicator(IndicatorPage.new, reader, "spinel", 5, no_directives)
+  assert_equal "W/\"abc-dev-spinel-5\"", run_request(spinel, "/etag").response.header("ETag")
+end
+
+test "If-None-Match with this child's suffix reaches the application without it, and its 304 passes through" do
+  reader = state_reader("etag_match", 12, "cruby", "idle", "")
+  page = IndicatorPage.new
+  app = indicator(page, reader, "cruby", 12, no_directives)
+  ctx = run_conditional(app, "/etag", { "if-none-match" => "W/\"abc-dev-cruby-12\"" })
+  assert_equal "W/\"abc\"", page.seen_none_match
+  response = ctx.response
+  assert_equal 304, response.status
+  assert_equal "", response.body
+  assert_equal "W/\"abc-dev-cruby-12\"", response.header("ETag")
+  assert_equal "cruby", response.header("X-Cybertrain-Runtime")
+  # A list, a header name in any case, a comma inside a tag.
+  run_conditional(app, "/etag", { "If-None-Match" => "W/\"abc-dev-cruby-12\" ,\"x,y-dev-cruby-12\", ,W/\"z-dev-cruby-12\"" })
+  assert_equal "W/\"abc\", \"x,y\", W/\"z\"", page.seen_none_match
+  # The strong form of this child's weak tag still matches (weak comparison).
+  run_conditional(app, "/etag", { "if-none-match" => "\"abc-dev-cruby-12\"" })
+  assert_equal "\"abc\"", page.seen_none_match
+end
+
+test "If-None-Match with another generation's or runtime's tag, none, or * is dropped: the page is rendered again" do
+  reader = state_reader("etag_other", 12, "cruby", "idle", "")
+  page = IndicatorPage.new
+  app = indicator(page, reader, "cruby", 12, no_directives)
+  ["W/\"abc-dev-cruby-11\"", "W/\"abc-dev-spinel-12\"", "W/\"abc\"", "*", "W/\"abc-dev-cruby-12\", *",
+   "W/\"abc-dev-cruby-12\", W/\"abc-dev-cruby-11\"", "W/\"abc-dev-cruby-120\"", "", " , ", "abc-dev-cruby-12",
+   "W/\"abc-dev-cruby-12", "\"a\"b-dev-cruby-12\""].each do |listed|
+    ctx = run_conditional(app, "/etag", { "if-none-match" => listed })
+    assert_equal "(none)", page.seen_none_match
+    assert_equal 200, ctx.response.status
+    assert_equal "W/\"abc-dev-cruby-12\"", ctx.response.header("ETag")
+    assert_equal 1, count_of(ctx.response.body, INDICATOR_DIV)
+    assert_includes ctx.response.body, "data-runtime=\"cruby\" data-generation=\"12\""
+  end
+  # Spinel's child does not take CRuby's tag of the same generation.
+  spinel_page = IndicatorPage.new
+  spinel = indicator(spinel_page, reader, "spinel", 12, no_directives)
+  ctx = run_conditional(spinel, "/etag", { "IF-NONE-MATCH" => "W/\"abc-dev-cruby-12\"" })
+  assert_equal "(none)", spinel_page.seen_none_match
+  assert_includes ctx.response.body, "data-runtime=\"spinel\" data-generation=\"12\""
+end
+
+test "If-Modified-Since never reaches the application under supervision" do
+  reader = state_reader("modified_since", 3, "cruby", "idle", "")
+  page = IndicatorPage.new
+  app = indicator(page, reader, "cruby", 3, no_directives)
+  date = "Sat, 01 Jan 2000 00:00:00 GMT"
+  ["If-Modified-Since", "if-modified-since", "IF-MODIFIED-SINCE"].each do |name|
+    ctx = run_conditional(app, "/etag", { name => date })
+    assert_equal "(none)", page.seen_modified_since
+    assert_equal 200, ctx.response.status
+  end
+  run_conditional(app, "/etag", { "if-modified-since" => date, "if-none-match" => "W/\"abc-dev-cruby-3\"" })
+  assert_equal "(none)", page.seen_modified_since
+  assert_equal "W/\"abc\"", page.seen_none_match
+end
+
+# The Indicator is only in the supervised stack (Roles::ServerRunner#front_app):
+# without it the application sees its validators as sent and its ETag
+# leaves as it set it.
+test "without the Indicator the validators and the ETag are the application's own" do
+  page = IndicatorPage.new
+  date = "Sat, 01 Jan 2000 00:00:00 GMT"
+  ctx = run_conditional(page, "/etag", { "if-none-match" => "W/\"abc\"", "if-modified-since" => date })
+  assert_equal "W/\"abc\"", page.seen_none_match
+  assert_equal date, page.seen_modified_since
+  assert_equal 304, ctx.response.status
+  assert_equal "W/\"abc\"", ctx.response.header("ETag")
 end
 
 test "with a failed build the banner follows <body> and the indicator precedes </body>" do

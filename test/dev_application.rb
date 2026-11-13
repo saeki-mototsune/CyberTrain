@@ -43,6 +43,7 @@ end
 remove_tree(ROOT)
 write_file("#{ROOT}/views/layouts/site.html.erb", "<html><body class=\"site\">\n<%= yield %>\n</body></html>\n")
 write_file("#{ROOT}/views/pages/index.html.erb", "<h1>Home</h1>\n")
+write_file("#{ROOT}/views/pages/cached.html.erb", "<h1>Cached</h1>\n")
 write_file("#{ROOT}/views/pages/broken.html.erb", "<h1>Broken</h1>\n<p><%= no_such_helper(1) %></p>\n")
 write_file("#{ROOT}/public/robots.txt", "User-agent: *\n")
 at_exit { remove_tree(ROOT) }
@@ -61,6 +62,10 @@ class PagesController < Cybertrain::Controller
   def status
     render json: { "ok" => true }
   end
+
+  def cached
+    fresh_when etag: "pages/cached-1"
+  end
 end
 
 router = Cybertrain::Router.new
@@ -68,6 +73,7 @@ router.get("/", "root") { |ctx| PagesController.new(ctx).process(:index) { |c| c
 router.get("/broken", "broken") { |ctx| PagesController.new(ctx).process(:broken) { |c| c.broken } }
 router.get("/boom", "boom") { |ctx| PagesController.new(ctx).process(:boom) { |c| c.boom } }
 router.get("/status", "status") { |ctx| PagesController.new(ctx).process(:status) { |c| c.status } }
+router.get("/cached", "cached") { |ctx| PagesController.new(ctx).process(:cached) { |c| c.cached } }
 
 module DevRoutes
   def self.url_resolver = ->(name, args, options) { "/" }
@@ -175,6 +181,21 @@ test "a failed build puts its output on every HTML page but not on JSON" do
   assert CLIENT.get("/").body.index("Build failed").nil?, "the banner goes away after a good build"
 end
 
+# Without supervision there is no Dev::Indicator: the application's ETag
+# leaves as fresh_when set it and its validators reach it as sent.
+test "the development stack leaves conditional GET to the application" do
+  first = CLIENT.get("/cached")
+  assert_equal 200, first.status
+  tag = first.header("ETag").to_s
+  assert tag.start_with?("W/\"")
+  assert tag.index("-dev-").nil?, "no runtime suffix outside supervision"
+  again = CLIENT.get("/cached", { "if-none-match" => tag })
+  assert_equal 304, again.status
+  assert_equal tag, again.header("ETag")
+  since = CLIENT.get("/cached", { "if-modified-since" => "Sat, 01 Jan 2000 00:00:00 GMT" })
+  assert_equal 200, since.status
+end
+
 test "static files still pass through the development stack" do
   res = CLIENT.get("/robots.txt")
   assert_equal 200, res.status
@@ -203,11 +224,19 @@ end
 SUPERVISED_PAGES = Array.new(0) { "" }
 # Dev::Indicator's reserved paths, asked after the two pages.
 SUPERVISED_DEV_PATHS = Array.new(0) { "" }
+# A page validated by fresh_when, then asked again with its ETag as served,
+# with the application's own tag, and with another generation's.
+SUPERVISED_CACHED = Array.new(0) { "" }
 
 # A whole response read off a Connection: close request.
 def supervised_get(port, path)
+  supervised_get_with(port, path, "")
+end
+
+# The same with extra header lines ("Name: value\r\n" each).
+def supervised_get_with(port, path, lines)
   sock = TCPSocket.new("127.0.0.1", port)
-  sock.write("GET #{path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+  sock.write("GET #{path} HTTP/1.1\r\nHost: 127.0.0.1\r\n#{lines}Connection: close\r\n\r\n")
   response = read_until_closed(sock)
   sock.close
   response
@@ -221,6 +250,16 @@ rescue EOFError, Errno::ECONNRESET
   response
 end
 
+# The value of name in a raw response's head, "" without one.
+def response_header(response, name)
+  response.split("\r\n").each do |line|
+    break if line.empty?
+
+    return line.byteslice(name.size + 2, line.size - name.size - 2).to_s if line.start_with?("#{name}: ")
+  end
+  ""
+end
+
 def supervised_client(port, ready_path)
   tries = 0
   while !File.exist?(ready_path) && tries < 200
@@ -231,6 +270,13 @@ def supervised_client(port, ready_path)
   SUPERVISED_PAGES << supervised_get(port, "/status")
   SUPERVISED_DEV_PATHS << supervised_get(port, "/__cybertrain/dev/state?runtime=spinel&generation=7")
   SUPERVISED_DEV_PATHS << supervised_get(port, "/__cybertrain/dev/indicator.js")
+  cached = supervised_get(port, "/cached")
+  SUPERVISED_CACHED << cached
+  tag = response_header(cached, "ETag")
+  SUPERVISED_CACHED << supervised_get_with(port, "/cached", "If-None-Match: #{tag}\r\n")
+  plain = tag.sub("-dev-#{RUBY_ENGINE == "ruby" ? "cruby" : "spinel"}-7\"", "\"")
+  SUPERVISED_CACHED << supervised_get_with(port, "/cached", "If-None-Match: #{plain}\r\n")
+  SUPERVISED_CACHED << supervised_get_with(port, "/cached", "If-None-Match: #{tag.sub("-7\"", "-6\"")}\r\n")
   APP.server.stop
   nil
 end
@@ -283,6 +329,29 @@ test "supervised, every response names its runtime, HTML pages carry the indicat
   log = LOG_IO.string
   assert_includes log, "Started GET \"/status\""
   assert log.index("__cybertrain").nil?, "the development paths stay out of the request log"
+end
+
+# A 304 under supervision means the cached page was rendered by this child:
+# its ETag names the runtime and generation, and a tag without that suffix
+# (the application's own, or another generation's) gets the page again.
+test "supervised, conditional GET validates against the child's runtime and generation" do
+  runtime = RUBY_ENGINE == "ruby" ? "cruby" : "spinel"
+  assert_equal 4, SUPERVISED_CACHED.size
+  first = SUPERVISED_CACHED[0]
+  assert_includes first, "HTTP/1.1 200 OK"
+  tag = response_header(first, "ETag")
+  assert tag.start_with?("W/\"")
+  assert tag.end_with?("-dev-#{runtime}-7\""), "the ETag names the runtime and generation"
+  assert_includes first, "<h1>Cached</h1>"
+  matched = SUPERVISED_CACHED[1]
+  assert_includes matched, "HTTP/1.1 304"
+  assert_equal tag, response_header(matched, "ETag")
+  assert matched.index("<h1>Cached</h1>").nil?, "a 304 has no body"
+  [SUPERVISED_CACHED[2], SUPERVISED_CACHED[3]].each do |response|
+    assert_includes response, "HTTP/1.1 200 OK"
+    assert_includes response, "data-runtime=\"#{runtime}\" data-generation=\"7\""
+    assert_equal tag, response_header(response, "ETag")
+  end
 end
 
 # Outside development the supervision variables change nothing: a
