@@ -164,4 +164,20 @@ test "jobs list prints at most the newest 1000 rows and says how many there are"
   assert_equal "done", job_field(newest, "state")
 end
 
+test "jobs installs the configured time zone too" do
+  Cybertrain.config.time_zone = "Asia/Tokyo"
+  assert_equal 0, run(["jobs", "list"])
+  Cybertrain.config.time_zone = "UTC"
+  assert_equal "Asia/Tokyo", Time.zone.zone_name
+  Cybertrain::Clock.zone = Cybertrain::TimeZone::UTC
+end
+
+test "an unknown time zone is refused before jobs runs" do
+  Cybertrain.config.time_zone = "Mars/Olympus_Mons"
+  assert_equal 1, run(["jobs", "list"])
+  Cybertrain.config.time_zone = "UTC"
+  assert_equal "UTC", Time.zone.zone_name
+  refute Cybertrain::DB.connected?
+end
+
 Cybertrain::Test.run!

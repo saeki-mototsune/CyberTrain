@@ -1,5 +1,6 @@
 require "cybertrain/app_name"
 require "cybertrain/cast"
+require "cybertrain/clock"
 require "cybertrain/shell"
 
 module Cybertrain
@@ -205,7 +206,7 @@ module Cybertrain
         path = lock_path
         return false unless File.exist?(path)
 
-        if Time.now - File.mtime(path) >= STALE_LOCK_AGE
+        if Clock.real_now - File.mtime(path) >= STALE_LOCK_AGE
           File.delete(path) if File.exist?(path)
           return false
         end

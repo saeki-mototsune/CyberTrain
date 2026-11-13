@@ -1,5 +1,5 @@
 ---
-source_sha256: c774e333e465a73d468b1be7d94971b2bc59609c065c595dd2ab6a465c2e5fc1
+source_sha256: 1c841be578fe9abd45361ed92eac5251533f12d6df8f5b8dbbe5c28429edce66
 ---
 # Installer cybertrain
 
@@ -117,6 +117,10 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   `spin run NAME -- PORT`&nbsp;; port 3000 par défaut).
 - `cybertrain build` compile NAME avec `app/views/` intégré et assemble
   `dist/` (le binaire, `public/`, `storage/`, `tmp/`).
+- `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` génère, compile
+  tous les tests de `test/` en un seul programme (seulement quand quelque
+  chose a changé) et l’exécute, en gardant les tests que les arguments
+  désignent (voir [Tester une application](testing.md#running-the-tests)).
 - `cybertrain spin ARGS...` lance `spin` avec le Spinel épinglé, depuis
   n’importe quel répertoire (`cybertrain spin test`,
   `cybertrain spin run gen -- --check`).

@@ -108,6 +108,14 @@ Cybertrain::Main.command("embedded_broken", "render a partial that does not pars
   0
 end
 
+# The zone and the date a command sees (Time.zone and Date.current), as a
+# command that stamps "today's" report would.
+Cybertrain::Main.command("today", "record Time.zone and Date.current") do |argv|
+  d = Date.current
+  SEEN << "zone=#{Time.zone.zone_name} today=#{d.year}-#{d.month}-#{d.day}"
+  0
+end
+
 def refusal(word)
   Cybertrain::Main.command(word, "never registered") { |argv| 0 }
   "registered"
@@ -164,6 +172,30 @@ test "in production a command parses embedded templates only when it renders the
   assert_equal "Hello Bo, /home_path", SEEN[base]
   msg = assert_raises("SyntaxError") { run_embedded(["embedded_broken"], EMBEDDED) }
   assert_includes msg, "_broken.html.erb:1"
+  refute Cybertrain::DB.connected?
+end
+
+test "a registered command runs in the configured time zone" do
+  base = SEEN.size
+  Cybertrain.config.time_zone = "Asia/Tokyo"
+  # 23:30 UTC on 1 January is 08:30 on 2 January in Tokyo.
+  travel_to(Time.utc(2026, 1, 1, 23, 30)) { assert_equal 0, run(["today"]) }
+  Cybertrain.config.time_zone = "UTC"
+  assert_equal "zone=Asia/Tokyo today=2026-1-2", SEEN[base]
+  travel_to(Time.utc(2026, 1, 1, 23, 30)) { assert_equal 0, run(["today"]) }
+  assert_equal "zone=UTC today=2026-1-1", SEEN[base + 1]
+end
+
+# `jobs` applies the zone too: test/main_jobs.rb (it needs cybertrain/jobs,
+# which this program, on the core's Main, does not load).
+test "an unknown time zone is refused before a command or console runs" do
+  base = SEEN.size
+  Cybertrain.config.time_zone = "Mars/Olympus_Mons"
+  assert_equal 1, run(["user", "z@example.com"])
+  assert_equal 1, run(["console"])
+  Cybertrain.config.time_zone = "UTC"
+  assert_equal base, SEEN.size
+  assert_equal "UTC", Time.zone.zone_name
   refute Cybertrain::DB.connected?
 end
 

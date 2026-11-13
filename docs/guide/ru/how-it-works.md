@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, необязательные подсистемы, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: f0e8d8dde1c0d481e011b798ba30a08279bfe4d4bbeaa406bf4e9c1b33dfa49b
+source_sha256: 6c7e1b82f90ec965db86de8c2a1471f6d140478ae64670f6b832eca9de062934
 ---
 
 # Как это работает
@@ -36,7 +36,10 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 - `gen/locales.rb`: словари приложения в виде двух Hash, которые читает `I18n.t` ([Интернационализация](i18n.md#dictionaries));
 - `gen/migrations.rb`;
 - `gen/views.rb`: таблица встроенных представлений, пустая, если сборка не для развёртывания;
-- `gen/app.rb`: манифест `require_relative`.
+- `gen/app.rb`: манифест `require_relative`;
+- `gen/tests.rb` и `gen/test/**`: все тесты из `test/` в одной программе,
+  каждый тестовый класс переписан в методы, а `gen/test/data.rb` содержит
+  таблицы и фикстуры ([Тестирование приложения](testing.md#running-the-tests)).
 
 `gen/` коммитится, а не попадает в gitignore: у `spin build` и `spin test` нет
 хука, чтобы сначала выполнить генерацию, поэтому закоммиченный результат уже
@@ -116,6 +119,14 @@ prune"` ([Хранилище кэша](background-and-operations.md#the-cache-st
 сообщение gen, а задача, чей `retry_on` или `discard_on` называет ошибку
 `Cybertrain::Mailer`, заставляет сгенерированный `gen/app.rb` самому требовать
 `cybertrain/mailer`.
+
+Тесты этими строками не урезаются: программа, которую компилирует
+`cybertrain test` (`gen/tests.rb`), требует `cybertrain`, все подсистемы,
+что бы ни требовал `bin/<app>.rb`. Поэтому `perform_enqueued_jobs`,
+`assert_emails` и `assert_broadcasts` работают в любом приложении,
+приложение на `cybertrain/core` компилирует свои тесты со всеми
+подсистемами, а код, который называет подсистему без её строки, проходит
+тесты и останавливается на `spin build` ([Тестирование приложения](testing.md)).
 
 ## Представления интерпретируются
 
@@ -221,13 +232,13 @@ run NAME`) в `development`
 | `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` принимает только списки `column [ASC\|DESC]`; данные запроса проходят через список разрешённых значений, сырой SQL — через `order_sql` ([Порядок](models.md#ordering)). Некорректные или слишком глубоко вложенные параметры — 400 ([Строки запроса и тела](requests.md#query-strings-and-bodies)) |
 | Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
 | Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
-| minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
+| minitest / RSpec | Тестовые классы в духе Rails (`ActiveSupport::TestCase`, `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`) и фикстуры, которые `spin run gen` переписывает в одну программу, а `cybertrain test` компилирует и запускает; раннеры на основе рефлексии не могут работать при AOT-компиляции ([Тестирование приложения](testing.md)) |
 | `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру плюс страницу регистрации; пароли используют PBKDF2-HMAC-SHA256 (bcrypt потребовал бы библиотеку на C; `String#crypt` на macOS не поддерживает bcrypt); сброс пароля, подтверждение, блокировка и «оставаться в системе» тоже генерируются, как их добавил бы Devise ([Аутентификация](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` пишет пять столбцов `cover_*` и методы модели; файлы лежат на локальном диске в `storage/uploads/` и отдаются через `send_blob`; один файл на поле, без вариантов и прямых загрузок ([Добавление обложки](tutorial.md#attachments)) |
 | `skip_before_action :x` | То же самое для именованных before-колбэков (у колбэка-блока нет имени, которое можно пропустить); `skip_after_action` нет |
 | `resource :session` | Те же шесть маршрутов к `SessionsController`; вложение в него не поддерживается |
 | `get "/x"`, затем `post "/x"` | Оба допустимы: выведенное имя второго маршрута уже занято, поэтому он остаётся без имени, как в Rails; повторяющийся `as:` по-прежнему ошибка |
-| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, данные часовых поясов из ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` читает системные файлы TZif (`/usr/share/zoneinfo` или `TZDIR`) и преобразует целые секунды эпохи Unix (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `Time.zone` на запрос и `l(time, zone:)` пока нет ([Часовые пояса](configuration.md#time-zones)) |
+| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, данные часовых поясов из ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` читает системные файлы TZif (`/usr/share/zoneinfo` или `TZDIR`) и преобразует целые секунды эпохи Unix (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `c.time_zone` задаёт `Time.zone` для всего приложения, `in_time_zone` возвращает небольшое значение с полями местного времени, а Time остаётся моментом в UTC (без TimeWithZone, `time.hour` — в UTC) ([Часовые пояса](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` для вебхуков и API: каждое ожидание ограничено, непубличные адреса назначения по умолчанию отвергаются, редиректы только по просьбе, потоковые и gzip-ответы, парсер Server-Sent Events, без keep-alive (см. [Исходящий HTTP](external-services.md#outbound-http)); `Net::HTTP` из Spinel блокирует весь сервер на зависшем собеседнике |
 | Action Mailer (`deliver_later`, классы мейлеров, представления) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` отправляет по SMTP простой текст или `multipart/alternative` с HTML-частью, отрисованной из частичного шаблона (`Views.render_mail`) (STARTTLS, неявный TLS или открытым текстом на loopback; AUTH PLAIN; каждое ожидание ограничено); `Mailer.deliver_later` отправляет его из встроенной задачи; мейлер — это модуль в `app/mailers`, методы которого возвращают `Cybertrain::MailMessage` (`deliver_later`, `deliver_now`), как сгенерированный `PasswordsMailer`; без вложений (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
 | Active Job, `perform_later`, `solid_queue`, повторяющиеся задачи, Mission Control | Классы задач в `app/jobs` (`< Cybertrain::Job::Base`, `perform(args)` с Hash значений JSON, `perform_later`, `retry_on`, `discard_on`, `limits_concurrency` с ключом), `Job.handle(kind)` как короткая форма; `Scheduler.every` и `Scheduler.cron` с часовым поясом и расписанием, хранящимся в базе; страница задач (`jobs_page` в маршрутах) и `./<app> jobs`; `job_threads` потоков на процесс, на сервере или в процессах `./<app> worker`, доставка хотя бы один раз ([Фоновая работа](background-and-operations.md#background-work)) |

@@ -19,5 +19,7 @@ ok   the timetable never moves a row back; a new task's row never replaces one
 ok   a cron task without tz: takes config.scheduler_tz as it is when the scheduler starts
 ok   prune_schedules deletes the rows of names no longer registered
 ok   config: scheduler_tz is UTC, from CYBERTRAIN_SCHEDULER_TZ, and boot refuses an unknown zone
+ok   config: scheduler_tz defaults to time_zone; CYBERTRAIN_SCHEDULER_TZ and an assignment win
+ok   a cron task without tz: runs in time_zone; a task's tz: still wins
 ok   start! prunes the rows of names no longer registered
-22 tests, 150 assertions, 0 failures
+24 tests, 159 assertions, 0 failures

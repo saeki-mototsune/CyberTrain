@@ -125,6 +125,72 @@ test "CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; 
   ENV.delete("CYBERTRAIN_HEALTH_FEED_STALE")
 end
 
+test "time_zone from the environment and its check" do
+  ENV.delete("CYBERTRAIN_TIME_ZONE")
+  assert_equal "UTC", Cybertrain::Config.new.time_zone
+  assert_equal "", Cybertrain::Config.new.time_zone_error
+  ENV["CYBERTRAIN_TIME_ZONE"] = "Asia/Tokyo"
+  tokyo = Cybertrain::Config.new
+  assert_equal "Asia/Tokyo", tokyo.time_zone
+  assert_equal "", tokyo.time_zone_error
+  assert_equal "", tokyo.validation_error
+  # An empty variable counts as unset.
+  ENV["CYBERTRAIN_TIME_ZONE"] = ""
+  assert_equal "UTC", Cybertrain::Config.new.time_zone
+  ENV["CYBERTRAIN_TIME_ZONE"] = "Mars/Base"
+  mars = Cybertrain::Config.new
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", mars.time_zone_error
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", mars.validation_error
+  ENV.delete("CYBERTRAIN_TIME_ZONE")
+  assigned = Cybertrain::Config.new
+  assigned.time_zone = "../zoneinfo/Asia/Tokyo"
+  assert_equal "time_zone \"../zoneinfo/Asia/Tokyo\" is not a known time zone", assigned.validation_error
+  assigned.time_zone = "America/New_York"
+  assert_equal "", assigned.validation_error
+end
+
+test "mail_delivery_method from the environment and its check" do
+  saved_env = ENV["CYBERTRAIN_ENV"].to_s
+  ENV.delete("CYBERTRAIN_MAIL_DELIVERY_METHOD")
+  ENV.delete("CYBERTRAIN_ENV")
+  # :test in the test environment only; :smtp everywhere else.
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_ENV"] = "production"
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_ENV"] = "test"
+  in_test = Cybertrain::Config.new
+  assert_equal :test, in_test.mail_delivery_method
+  assert_equal "", in_test.mail_delivery_error
+  # The variable decides whatever the environment.
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "smtp"
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_ENV"] = "development"
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "test"
+  assert_equal :test, Cybertrain::Config.new.mail_delivery_method
+  # In any case, as CYBERTRAIN_SMTP_TLS.
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "SMTP"
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  # An empty variable counts as unset.
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = ""
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "letter_opener"
+  opener = Cybertrain::Config.new
+  assert_equal :letter_opener, opener.mail_delivery_method
+  assert_equal "mail_delivery_method must be :smtp or :test (got :letter_opener)", opener.mail_delivery_error
+  assert_equal "mail_delivery_method must be :smtp or :test (got :letter_opener)", opener.validation_error
+  ENV.delete("CYBERTRAIN_MAIL_DELIVERY_METHOD")
+  assigned = Cybertrain::Config.new
+  assigned.mail_delivery_method = :sendmail
+  assert_equal "mail_delivery_method must be :smtp or :test (got :sendmail)", assigned.validation_error
+  assigned.mail_delivery_method = :test
+  assert_equal "", assigned.validation_error
+  if saved_env.empty?
+    ENV.delete("CYBERTRAIN_ENV")
+  else
+    ENV["CYBERTRAIN_ENV"] = saved_env
+  end
+end
+
 test "boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on" do
   c = Cybertrain::Config.new
   c.feed_status_interval = 300

@@ -58,6 +58,7 @@ SUBSYSTEMS = {
     files: %w[
       cybertrain/streams.rb cybertrain/stream.rb cybertrain/stream/** cybertrain/turbo.rb
       cybertrain/turbo_stream_renderer.rb cybertrain/template/turbo_stream_builder.rb cybertrain/http/sse.rb
+      cybertrain/test/broadcasts.rb
     ],
     constants: %w[Stream Turbo TurboStreams TurboStreamBuilder StreamsFeature SSE SSEWriter WsReader WebSocketWriter StreamRequest],
     # Controller#turbo_stream (cybertrain/streams.rb) and the helpers
@@ -76,8 +77,9 @@ SUBSYSTEMS = {
     methods: %w[run_feeds run_feeds_status feed_status_line feed_read_warned? feed_stale? feed_rows]
   },
   "mailer" => {
-    files: %w[cybertrain/mailer.rb cybertrain/mailer/** cybertrain/net/**],
-    constants: %w[Mailer Net],
+    files: %w[cybertrain/mailer.rb cybertrain/mailer/** cybertrain/net/** cybertrain/mail_message.rb
+              cybertrain/test/mail.rb cybertrain/test/smtp_receiver.rb],
+    constants: %w[Mailer MailMessage Net],
     # Mailer.deliver_later (cybertrain/mailer/later.rb).
     methods: %w[deliver_later]
   },

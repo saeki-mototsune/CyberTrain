@@ -148,7 +148,7 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
   way.
 
 Letters are the items of this document (AA to AH are new, written up at
-the end; AI, phase 4b's, was merged in after the inventory); numbers
+the end; AI, phase 4b's, and AJ to AO, phase 5a's, were merged in after the inventory); numbers
 after "rule" are spikes/NOTES.md's.
 
 ### 1. What CyberTrain does today because of Spinel
@@ -183,6 +183,12 @@ after "rule" are spikes/NOTES.md's.
 | AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED`: fails (2026-11-13); a privileged port refused to a non-root user raised the same class | `Server#bind_listener` turns both into `PortInUse`, and `privileged_denied?` tells them apart by the port number and the user (http/server.rb) | Open; not reported |
 | AA | A method that holds a block allocates a heap cell for each captured local when it is entered | `while` loops in `Interpreter#eval_expr` and `Helpers#nested_url`, and `Response#respell_header` as a method of its own (template/interpreter.rb, template/helpers.rb, http/response.rb) | Open; not reduced, not reported |
 | AI (rule 101) | A large Hash literal constant is one long C function that cc takes some 13 s to build (a cost, not a wrong result) | gen/locales.rb and cybertrain/locales/bundled.rb fill their Hash through methods of at most 50 stores (generator/locales_emitter.rb, phase 4b) | Not reported |
+| AJ (rule 104) | `Class#superclass` on Ruby's own exception classes is NoMethodError: fails (2026-11-12) | `assert_raises(Class)` reads the chain above the first built-in class from `Test::BUILTIN_PARENTS` (test/assertions.rb, phase 5a) | Open; not reported |
+| AK | The C of a very large program (87.6 MB, 196 test programs bundled) needs more than 9.7 GB to compile at -O2 (a cost, not a wrong result) | The framework's suite stays one program per file; only applications bundle their tests (`cybertrain test`, D83) | Not reported |
+| AL (rule 108) | `spin run gen` rebuilds `bin/gen` when any `.rb` of the package is newer, test files included (spin, a cost) | Accepted: `cybertrain test` pays about 55 s on each edit of a test | Not reported |
+| AM (rule 107) | A release build's `e.backtrace` is empty; only `--debug` gives frames | A failing test is named by its `test` line; reports carry class, message and where | Open; not reported |
+| AN (rule 109) | A parameter defaulting to nil that a caller gives a plain Time is compiled as a non-nullable Time; the defaulted call crashes (SIGSEGV): fails (2026-11-13) | `Cookies.serialize`'s `expires:` defaults to the sentinel `Cookies::NO_EXPIRES`; framework callers pass `Cast.time_or_nil(...)` (http/cookies.rb, phase 5a) | Open; not reported |
+| AO (rule 110) | A statement `case` on a plain Integer, compiled after a statement `case` on a nullable Integer in another method, can take its temporary number and not compile (`'_oN' undeclared`): fails (2026-11-13) | `HtmlReader.parse` uses an `if` chain; shared framework code avoids statement `case` on a plain Integer (cybertrain/test/html_reader.rb) | Open; not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -463,6 +469,10 @@ again since the lock left it).
   it is ready to report as a request (a large constant literal's stores
   written into helper functions of bounded size), and nothing in
   CyberTrain waits on it.
+- **AJ to AO** (phase 5a, 2026-11-12 and 2026-11-13): AJ, AM, AN and AO
+  are defects with a program each, ready to report; AK and AL are costs (the C compiler's
+  memory on a very large program, spin's freshness check), and nothing in
+  CyberTrain waits on any of them.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
   (#10525, #10524), F, G, H (#10415) and I (#10735, #10786); their
   workarounds are dropped where there were any (see each).
@@ -525,6 +535,12 @@ run on master 1c0cc5e35:
 | AG | `privileged_denied?` in `Server#bind_listener` | **Ready to report**: the 9-line program in AG (CRuby `Errno::EADDRINUSE`, compiled `Errno::ECONNREFUSED`). Not reported; not run on master |
 | AH | none | The 2-line program in AH. A difference in form, not in value: to be mentioned with AF rather than reported alone |
 | AI | gen/locales.rb fills its Hash through methods of at most 50 stores (spikes/NOTES.md rule 101) | **Ready to report** as a compile-time cost, not a defect: spikes/phase4b/locale_hash.rb and its generator make_keys.rb, with the `--timing` figures (see AI). Not reported upstream yet |
+| AJ | `Test::BUILTIN_PARENTS` and the `Errno::` prefix in `assert_raises` (spikes/NOTES.md rule 104) | **Ready to report**: the 5-line program in AJ. Not reported; not run on master |
+| AK | the framework's suite kept one program per file (design D34, D83) | A measurement (spikes/phase5/bundle_suite.sh), to be mentioned as a cost, not reported alone. Not reported |
+| AL | none (the cost is paid) | A request to spin, not to Spinel. Not reported |
+| AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master |
+| AN | the sentinel default `Cookies::NO_EXPIRES` (spikes/NOTES.md rule 109) | **Ready to report**: spikes/phase5/nil_default_time.rb (SIGSEGV, exit 139; CRuby `none`, `1970`). Not reported; not run on master |
+| AO | an `if` chain in `HtmlReader.parse` instead of a statement `case` (spikes/NOTES.md rule 110) | **Ready to report**: spikes/phase5/case_nullable_temp.rb (the C compile fails, `'_o1' undeclared`; CRuby `amp`, `long`). Not reported; not run on master |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026 when this table
@@ -594,6 +610,12 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | AG. `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-13) |
 | AH. `JSON.generate` writes a Float in another form than CRuby's | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-11 and 2026-11-13) |
 | AI. A large Hash literal constant takes cc 13 s | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4b spike, 2026-11-11; rule 101) |
+| AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 104) |
+| AK. The C of a very large program needs more memory to compile than its front end | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12) |
+| AL. `spin run gen` rebuilds the generator when a test file changes | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12; rule 108) |
+| AM. A release build has no backtrace | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 107) |
+| AN. A parameter defaulting to nil, given a plain Time by a caller, is a non-nullable Time | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 109) |
+| AO. A statement `case` on a plain Integer takes an earlier nullable case's temporary number | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 110) |
 
 ## What CyberTrain still works around
 
@@ -3425,3 +3447,187 @@ shaped the code in four places:
 One finding was CRuby's, not Spinel's: under a C locale `File.read`
 answers US-ASCII text, which the authentication generator's diff
 compares with generated UTF-8 through `LineDiff.as_utf8`.
+
+## Found in phase 5a of the Rails-gap programme (2026-11-12)
+
+The tests part of the phase 5 design
+(docs/superpowers/specs/2026-11-11-phase5-tests-operations-design.md,
+section 16) ran six checks against 2026.11.04.7026 before the code
+(spikes/phase5/), and the eighteen tasks after them met the rest. Four
+items are new; spikes/NOTES.md has them as rules 104, 107 and 108, and the
+measurement behind AK.
+
+### AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError
+
+Rule 104; AE's failing half, on the core classes as well.
+
+```ruby
+begin
+  raise "boom"
+rescue RuntimeError => e
+  puts e.class.superclass.name
+end
+```
+
+CRuby prints `StandardError`; the compiled program raises `undefined
+method 'superclass' for module RuntimeError (NoMethodError)`. The
+namespaced built-ins (`Errno::ENOENT`, `JSON::ParserError`,
+`Math::DomainError`) answer their qualified `Class#name` but no
+`superclass` either. A class the program defines answers it up to its
+first built-in ancestor.
+
+- Today: `assert_raises(Class)` walks a raised exception's ancestry by
+  name and, at the first built-in class, reads the rest from a table of
+  parents checked against CRuby 3.3 (`Test::BUILTIN_PARENTS`, every
+  `Errno::` class by its prefix); a built-in class outside the table fails
+  the assertion by name.
+- Asked of Spinel: answer `superclass` for the built-in exception classes
+  as for the program's own.
+- Reproduced by spikes/phase5/assert_raises.rb; not reported upstream.
+
+### AK. The C of a very large program needs more memory to compile than its front end
+
+Spike item 6 bundled 196 of the framework's test programs (61,000 lines of
+Ruby) into one. Spinel's front end, every rule included, passed in about
+6.5 minutes at about 1.65 GB resident and wrote 87.6 MB of C (1.17 million
+lines). Compiling that C at the default -O2, split into units compiled in
+parallel, ran for about 21 minutes and was killed by the memory cgroup's
+OOM killer at a peak of 9.7 GB for the build's processes together (one
+cc1 at 4.6 GB), on a 16 GB machine shared with other builds (2026-11-12).
+An application's test program is far smaller (the blog's: about 527 s,
+a 10.2 MB binary).
+
+- Today: the framework's suite stays one program per file (design D34,
+  D83); only applications bundle their tests (`cybertrain test`).
+- A possible upstream change: smaller C units for a large program, or a
+  lower optimisation level for the largest functions.
+- Measured with spikes/phase5/bundle_suite.sh; not reported upstream.
+
+### AL. `spin run gen` rebuilds the generator when a test file changes
+
+Rule 108. spin's freshness check for an application's `build/bin/gen`
+counts every `.rb` file under the package, `test/**` and gen's own
+outputs (`gen/tests.rb`) included: identical inputs print "build gen (up
+to date)", and one rewritten `gen/tests.rb` costs a full rebuild of about
+55 s on the next run.
+
+- Today: accepted; `cybertrain test` pays it on every edit of a test,
+  before it compiles the test program.
+- A possible upstream change (to spin): a package's build inputs
+  declared, or followed through `require`, rather than every `.rb` in the
+  tree.
+
+### AM. A release build has no backtrace
+
+Rule 107. A release build's `e.backtrace` is an empty Array, `-g`'s one
+`<main>:1` frame; only `--debug` answers `file:line:in 'Mod.meth'` per Ruby
+method (with `<main>` always at line 1 and no frame for a builtin's raise),
+compiling faster (-O0) and serving about 45% of a release build's request
+rate.
+
+- Today: a failing test is named by the line of its `test` call, not of
+  the assertion; error reports carry the class, the message and where.
+- Asked of Spinel: frames (even without line numbers) in a release
+  build, at a cost a server can carry.
+- Reproduced by spikes/phase5/backtrace.rb; not reported upstream.
+
+### What the rest of phase 5a met (no new item)
+
+- A call of an undefined instance method is refused at build only while
+  no class defines the name; with `ZonedTime#month` in the program,
+  `1.month` builds and raises `NoMethodError` when reached, as under CRuby
+  (rule 105). Not a defect: rule 84's refusal by design has no
+  instance-method counterpart to rely on.
+- A Ruby-source `def self.now` on `Time` overrides the builtin at every
+  call site, framework files included (spike item 1), and methods named
+  like builtin Time methods on another class leave a boxed Time working
+  (rule 106).
+- `rescue Exception => e` in a yielding method catches ScriptError and
+  NotImplementedError as CRuby does; rule 47's `is_a?` half did not
+  reproduce for its own example (its status row).
+- One return type per name (rule 34) shaped `assert_raises` (it answers
+  the message String) and the block assertions (nil); no stored block
+  through a base class (rule 88) is why gen rewrites test classes into
+  methods.
+
+### AN. A parameter defaulting to nil that a caller gives a plain Time crashes the defaulted call
+
+Rule 109 (2026-11-13).
+
+```ruby
+def stamp(expires: nil)
+  return "none" if expires.nil?
+
+  expires.year.to_s
+end
+STDOUT.sync = true
+puts stamp
+puts stamp(expires: Time.at(0))
+```
+
+CRuby prints `none` and `1970`; the compiled program prints nothing and
+dies with SIGSEGV (exit 139). The parameter is typed from its callers' values
+as a plain `sp_Time *`, `expires.nil?` compiles to the constant false, and
+the defaulted call passes NULL to `sp_time_year`. A positional default
+crashes the same way; callers giving a String, or a value typed Time-or-nil,
+work.
+
+- Today: `Cookies.serialize`'s `expires:` defaults to the sentinel
+  `Cookies::NO_EXPIRES` (`Time.at(-1).utc`), tested for along with nil;
+  the framework's callers pass `Cast.time_or_nil(...)`.
+- Asked of Spinel: type a nil-defaulted parameter as nullable when a
+  caller leaves it out.
+- Reproduced by spikes/phase5/nil_default_time.rb (and the workaround,
+  nil_default_time_fixed.rb); not reported upstream.
+
+### AO. A statement `case` on a plain Integer takes an earlier nullable case's temporary and does not compile
+
+Rule 110 (2026-11-13).
+
+```ruby
+def esc(s)
+  out = +""
+  b = s.getbyte(0)
+  case b
+  when 38 then out << "amp"
+  else out << "other"
+  end
+  out
+end
+
+def kind_of(s)
+  return 1 if s.bytesize > 3
+
+  0
+end
+
+def parse(s)
+  out = +""
+  k = kind_of(s)
+  case k
+  when 1 then out << "long"
+  else out << "short"
+  end
+  out
+end
+
+puts esc("&x")
+puts parse("abcd")
+```
+
+CRuby prints `amp` and `long`; Spinel's C does not compile: `'_o1'
+undeclared`. `case b` (a nullable Integer) declares `sp_oint _o1` and
+`sp_int _t1` and switches on `_o1.nil ? 0LL : _t1`; `case k` (a plain
+Integer) declares only `sp_int _t1` but switches on the same expression.
+The "nullable subject" mark is kept by temporary number across methods.
+With the methods in the other order, or both cases as return values, it
+compiles. In the framework it showed as two test programs failing to
+build while a third, loading the same file, built.
+
+- Today: `HtmlReader.parse` uses an `if` chain; shared framework code
+  avoids a statement `case` on a plain Integer. `Html.escape`'s `case b`
+  still leaks its mark.
+- Asked of Spinel: keep the nullable-subject mark per case (or per
+  method), not per temporary number.
+- Reproduced by spikes/phase5/case_nullable_temp.rb; not reported
+  upstream.

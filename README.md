@@ -38,7 +38,12 @@ file-upload generator all work end to end. So do background jobs (job classes wi
 policies, cron schedules, a jobs page), a cache store, Turbo Streams over
 Server-Sent Events or WebSocket, and the outbound clients: HTTP (streamed,
 gzip and Server-Sent Events responses), SMTP (plain or HTML mail, sent now
-or from a job) and WebSocket feeds. [examples/blog](examples/blog) is the
+or from a job) and WebSocket feeds, and the tests: Rails' test classes
+(`ActiveSupport::TestCase`, `ActionDispatch::IntegrationTest`,
+`ViewComponent::TestCase`) with `setup` / `teardown`, fixtures,
+`travel_to`, `assert_select`, broadcast, mail and job assertions, all run
+by `cybertrain test` as one compiled program, and the time helpers
+(`5.minutes.ago`, `beginning_of_day`) in a configured time zone. [examples/blog](examples/blog) is the
 Rails "Getting Started" blog built on it, in English and Japanese, with an
 admin user guarding its `/admin` pages. Since 2026-11-05 porting an
 existing Rails application is a goal, in five phases
@@ -99,7 +104,7 @@ the same app in Rails 8.1, in about a tenth of the memory
 | [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check |
 | [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |
 | [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`) |
-| [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Writing tests for an app, outbound calls, jobs, CI |
+| [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Test classes, fixtures, `cybertrain test`, time travel, components and streams, mail, jobs, outbound calls, CI |
 | [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal |
 | [API reference](https://saeki-mototsune.github.io/CyberTrain/api/) | Every class and method an application uses; also [the template language](https://saeki-mototsune.github.io/CyberTrain/guide/template-language.html) |
 | [Design record](docs/design.md) · [benchmark](docs/benchmark.md) · [spikes](spikes/NOTES.md) | Why it is built this way, and the Spinel constraints behind it |

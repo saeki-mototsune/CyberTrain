@@ -52,7 +52,7 @@ module Cybertrain
 
         Job.install!
         @heartbeat_stale = config.job_heartbeat_stale
-        now = Time.now.to_i
+        now = Clock.now.to_i
         requeued = Job.recover!(now, config.job_heartbeat_stale)
         Cybertrain.logger.warn("Requeued #{requeued} job(s) whose process stopped sending heartbeats") if requeued > 0
         keyed = Job.backfill_keys(now)
@@ -181,7 +181,7 @@ module Cybertrain
       # whole job_drain_timeout for a thread that is gone.)
       def self.run_job_loop(index, generation)
         while pool_live?(generation)
-          idle_wait(@poll_interval, generation) unless claim_safely(Time.now.to_i, index, generation)
+          idle_wait(@poll_interval, generation) unless claim_safely(Clock.now.to_i, index, generation)
         end
         note_stop_seen(generation)
         nil
@@ -230,7 +230,7 @@ module Cybertrain
       def self.run_heartbeat(generation)
         while pool_live?(generation)
           idle_wait(@heartbeat_interval, generation)
-          beat_safely(Time.now.to_i) if pool_live?(generation)
+          beat_safely(Clock.now.to_i) if pool_live?(generation)
         end
         # The heartbeat thread is never busy with a job, so it is the one
         # that notices a request_stop within WAIT_SLICE.

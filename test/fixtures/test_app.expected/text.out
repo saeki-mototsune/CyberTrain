@@ -1,0 +1,7 @@
+test/controllers/article_streams_test.rb
+  ok   ArticleStreamsTest: a new article is broadcast
+  ok   ArticleStreamsTest: a new article answers with a Turbo Stream
+test/legacy.rb
+  ok   shows an article
+
+3 tests, 9 assertions, 0 failures

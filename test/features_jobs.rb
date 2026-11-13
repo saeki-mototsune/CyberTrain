@@ -38,10 +38,6 @@ at_exit { rm_tree(TMP) }
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
 
-# The cache's injected clock (a constant: NOTES rule 64).
-CLOCK = [1000]
-Cache.clock = -> { CLOCK[0] }
-
 Job.handle("report") { |payload| nil }
 
 DB.connect(PATH)
@@ -61,11 +57,11 @@ end
 test "with jobs, the scheduler owns the cache prune and a write does not prune" do
   assert Features.periodic_scheduler?
   assert S.task_index(Cache::PRUNE_TASK) >= 0
-  CLOCK[0] = 1000
+  travel_to(Time.at(1000))
   assert Cache.write("old", "o", expires_in: 1)
   assert Cache.write("keep", "k")
   # Far past Config#cache_prune_interval: still no prune from a write.
-  CLOCK[0] = 1000 + 10 * Cache.prune_interval
+  travel_to(Time.at(1000 + 10 * Cache.prune_interval))
   assert Cache.write("new", "n")
   assert_equal 1, Cache.increment("hits")
   assert_equal 4, cache_rows

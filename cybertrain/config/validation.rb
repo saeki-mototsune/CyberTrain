@@ -2,9 +2,9 @@
 # per area, and Config#validation_error, which asks them in boot's order
 # (docs/design.md D65).
 #
-# Every method here only reads the Config (and, for scheduler_tz, the
-# system's zone files): none connects the database, creates a file or a
-# directory, or resolves the secret. Those effects are
+# Every method here only reads the Config (and, for time_zone and
+# scheduler_tz, the system's zone files): none connects the database,
+# creates a file or a directory, or resolves the secret. Those effects are
 # cybertrain/config/files.rb's and Application#boot's, after the checks.
 #
 # The class is reopened here, not split into a validator object that takes
@@ -16,9 +16,10 @@ module Cybertrain
     # The first problem boot would refuse to start with, "" when the
     # configuration is usable. The areas in the order boot has always
     # reported them: the session cookie and CSRF, the request and upload
-    # limits, the background work, pagination, the proxies, the health
-    # check, the feeds, the stream endpoint, the locales, the
-    # authentication limits, the security headers and the encryption keys. Reads only; safe to call from a test or a
+    # limits, the time zone, the background work, pagination, the
+    # proxies, the health check, the feeds, the stream endpoint, the
+    # locales, the authentication limits, the mail delivery method, the
+    # security headers and the encryption keys. Reads only; safe to call from a test or a
     # `--check`-style command with no database and no writable disk.
     # @return [String]
     # @api public
@@ -33,6 +34,9 @@ module Cybertrain
       return problem unless problem.empty?
 
       problem = upload_limits_error
+      return problem unless problem.empty?
+
+      problem = time_zone_error
       return problem unless problem.empty?
 
       problem = scheduler_error
@@ -57,6 +61,9 @@ module Cybertrain
       return problem unless problem.empty?
 
       problem = auth_error
+      return problem unless problem.empty?
+
+      problem = mail_delivery_error
       return problem unless problem.empty?
 
       problem = security_error
@@ -145,7 +152,21 @@ module Cybertrain
       if @scheduler_lease_ttl < 2 * @scheduler_interval
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
       end
-      return "scheduler_tz #{@scheduler_tz.inspect} is not a known time zone" unless TimeZone.find(@scheduler_tz).found?
+      zone_name = scheduler_tz
+      return "scheduler_tz #{zone_name.inspect} is not a known time zone" unless TimeZone.find(zone_name).found?
+
+      ""
+    end
+
+    # The error Application#boot reports when time_zone is not a zone
+    # TimeZone can load from the system zoneinfo; "" when it is. Asked
+    # before scheduler_error, so an unknown time_zone that scheduler_tz
+    # follows is reported once, under its own name.
+    # @return [String]
+    # @api public
+    def time_zone_error
+      zone_name = @time_zone
+      return "time_zone #{zone_name.inspect} is not a known time zone" unless TimeZone.find(zone_name).found?
 
       ""
     end
@@ -173,6 +194,30 @@ module Cybertrain
       end
 
       ""
+    end
+
+    # The error Application#boot reports when mail_delivery_method is
+    # neither :smtp nor :test (from CYBERTRAIN_MAIL_DELIVERY_METHOD or an
+    # assignment); "" when it is one of them.
+    # @return [String]
+    # @api public
+    def mail_delivery_error
+      delivery = @mail_delivery_method
+      return "" if delivery == :smtp || delivery == :test
+
+      "mail_delivery_method must be :smtp or :test (got #{delivery.inspect})"
+    end
+
+    # The warning Application#boot logs (and boots on) when
+    # mail_delivery_method is :test outside the test environment: every
+    # mail is kept in memory and none is sent. "" otherwise.
+    # @return [String]
+    # @api public
+    def mail_delivery_warning
+      return "" unless @mail_delivery_method == :test && @env != "test"
+
+      "mail_delivery_method is :test outside the test environment (env #{@env}): " \
+        "mail is stored in memory (the mailer's deliveries) and not sent"
     end
 
     # The error Application#boot reports when an auth_* setting is out of

@@ -66,11 +66,11 @@ class RawStream
 
   # True once `needle` has arrived, false after `seconds` or at EOF.
   def wait_for(needle, seconds = 3.0)
-    deadline = Time.now.to_f + seconds
+    deadline = Cybertrain::Clock.monotonic + seconds
     while @buf.byteindex(needle).nil?
       return false if @eof
 
-      left = deadline - Time.now.to_f
+      left = deadline - Cybertrain::Clock.monotonic
       return false if left <= 0
       return false if @sock.wait_readable(left).nil?
 
@@ -81,9 +81,9 @@ class RawStream
 
   # Reads until the server closes (at most `seconds`).
   def read_to_end(seconds = 3.0)
-    deadline = Time.now.to_f + seconds
+    deadline = Cybertrain::Clock.monotonic + seconds
     until @eof
-      left = deadline - Time.now.to_f
+      left = deadline - Cybertrain::Clock.monotonic
       break if left <= 0
       break if @sock.wait_readable(left).nil?
 
@@ -150,9 +150,9 @@ end
 
 # Waits until the hub has `n` subscribers; true when it got there.
 def subscribers_reach(n, seconds = 3.0)
-  deadline = Time.now.to_f + seconds
+  deadline = Cybertrain::Clock.monotonic + seconds
   while Stream.hub.subscriber_count != n
-    return false if Time.now.to_f >= deadline
+    return false if Cybertrain::Clock.monotonic >= deadline
 
     sleep 0.02
   end

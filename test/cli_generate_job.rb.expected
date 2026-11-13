@@ -30,36 +30,40 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create app/jobs/send_digest_job.rb
-create test/send_digest_job.rb
+create test/jobs/send_digest_job_test.rb
 insert bin/shop.rb (require "cybertrain/jobs")
 insert bin/db.rb (require "cybertrain/jobs")
 insert config/deploy.yml (the worker role, uncommented)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
 ok   generate job send_digest writes a Job::Base subclass with an empty perform and a test
+ok   the job test is in the class form and performs the job with perform_enqueued_jobs
 identical app/jobs/send_digest_job.rb
-identical test/send_digest_job.rb
+identical test/jobs/send_digest_job_test.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
 identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
 ok   generate job adds require "cybertrain/jobs" to bin/shop.rb and bin/db.rb, once
 identical app/jobs/send_digest_job.rb
-identical test/send_digest_job.rb
+identical test/jobs/send_digest_job_test.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
 identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
 ok   generate job uncomments config/deploy.yml's worker role, once
 create spin.toml
 create .gitignore
@@ -93,56 +97,59 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create app/jobs/audit_job.rb
-create test/audit_job.rb
+create test/jobs/audit_job_test.rb
 identical bin/mall.rb (require "cybertrain" loads cybertrain/jobs)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs)
 insert config/deploy.yml (the worker role, uncommented)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/audit_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/audit_job_test.rb among the others
 ok   an app that requires "cybertrain" gets no line
 identical app/jobs/send_digest_job.rb
-identical test/send_digest_job.rb
+identical test/jobs/send_digest_job_test.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
 identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
 ok   a name given as the class name is not doubled: SendDigestJob is send_digest_job.rb
 create app/jobs/admin/report_job.rb
-create test/admin_report_job.rb
+create test/jobs/admin/report_job_test.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
 identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/admin_report_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/admin/report_job_test.rb among the others
 ok   --retry writes a retry_on line each, and spin run gen's scan reads them
 error: app/jobs/send_digest_job.rb already exists (pass --force to overwrite it)
 force app/jobs/send_digest_job.rb
-identical test/send_digest_job.rb
+identical test/jobs/send_digest_job_test.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
 identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
 identical app/jobs/send_digest_job.rb
-identical test/send_digest_job.rb
+identical test/jobs/send_digest_job_test.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
 identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
-  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
 ok   an existing, different file is refused unless --force
 error: bad job name '9lives'
 error: usage: cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
@@ -155,4 +162,4 @@ error: bad --retry 'TimeoutError:60:0': use Klass:wait:attempts (wait in seconds
 error: bad --retry 'timeout:60:3': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
 error: ./config/routes.rb not found: run this inside a cybertrain app
 ok   bad names, bad --retry values and usage are rejected
-8 tests, 46 assertions, 0 failures
+9 tests, 46 assertions, 0 failures

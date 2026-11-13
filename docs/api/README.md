@@ -65,23 +65,70 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 | --- | --- |
 | `assert(condition, message = ...)` | the condition is truthy |
 | `refute(condition, message = ...)` | it is false or nil |
-| `assert_equal(expected, actual)` | `expected == actual` |
+| `assert_equal(expected, actual)` | `expected == actual` (a failure prints `Expected:` and `  Actual:` on two lines, as Minitest) |
 | `assert_nil(actual)` | it is nil |
 | `assert_includes(haystack, needle)` | a String contains it, or an Array includes it |
-| `assert_raises("ClassName") { ... }` | the block raises a matching StandardError; returns its message |
+| `assert_raises(ArgumentError) { ... }` | the block raises that class or a subclass (or, given a String, a class whose name contains it); returns its message, a String (Rails answers the exception) |
+| `assert_not_equal(expected, actual)` | `expected != actual` |
+| `assert_not_nil(object)` | it is not nil |
+| `assert_not(object)` | it is false or nil (`refute`) |
+| `assert_not_includes(haystack, needle)` | the opposite of `assert_includes` |
+| `assert_empty(object)` / `assert_not_empty(object)` | a String, Array or Hash is (is not) empty |
+| `assert_in_delta(expected, actual, delta = 0.001)` | the two numbers are within `delta` |
+| `assert_match(matcher, string)` / `assert_no_match` | a Regexp matches (a String is found) in it (or not) |
+| `assert_nothing_raised { ... }` | the block raises nothing |
+| `assert_difference(-> { Article.count }, 1) { ... }` | the block changes the lambda's value by that much |
+| `assert_no_difference(-> { Article.count }) { ... }` | it leaves it unchanged |
+| `assert_changes(-> { article.reload.title }, from: "a", to: "b") { ... }` | it changes the value (from and to, when given) |
 | `flunk(message)` | never |
 | `assert_response(response, :ok)` | the status matches (an Integer, or `:success`, `:redirect`, `:not_found`, ...) |
 | `assert_redirected_to(response, "/path")` | it is a redirect to exactly that Location |
 
 `assert_response` and `assert_redirected_to` come with
 `require "cybertrain/test/client"`. Each is documented on the
-[Top Level Namespace](top-level-namespace.html) page.
+[Top Level Namespace](top-level-namespace.html) page. In an
+{ActionDispatch::IntegrationTest} both read the last response:
+`assert_response :success`, `assert_redirected_to "/articles/1"`.
+
+`assert_select(selector, equality = nil, count:, minimum:, maximum:, text:)`
+(`require "cybertrain/test/select"`, which `cybertrain/test_help` loads)
+checks the last rendered HTML, the last `render_inline` or the last
+response of an integration test, and answers the matching
+{Cybertrain::Test::HtmlNode}s: `assert_select "ul > li", count: 2`,
+`assert_select "h1", "Hello"`, `assert_select "table", false`. Selectors
+are a tag, `.class`, `#id`, `[attr]`, `[attr="v"]`, compounds, the ` ` and
+`>` combinators and lists; other forms fail with their name.
+`render_inline(component, content: "")` and `render_inline(partial:,
+locals: {})` (`require "cybertrain/test/views"`) render outside a request,
+answer the HTML and keep it for `assert_select`; a component test
+inherits `ViewComponent::TestCase`.
+
+`assert_broadcasts(stream, count) { }` (`require "cybertrain/test/broadcasts"`,
+which `cybertrain/test_help` loads) counts the rows written to
+`cybertrain_messages` for a stream name or a record ({Cybertrain::Stream.name_for})
+while the block runs, or since the test began without a block, and answers
+their payloads; `assert_no_broadcasts(stream)` expects none.
+`assert_turbo_stream action: "append", target: "comments"` (a DOM id or a
+record; `count:` 1 by default, as turbo-rails) checks the last response or
+render of the test for that `<turbo-stream>` element; a response must be
+`text/vnd.turbo-stream.html` (turbo-rails' status check is left to
+`assert_response`).
 
 The job helpers come with `require "cybertrain/test/jobs"`:
 `assert_enqueued_jobs(count, kind = "")`, `assert_no_enqueued_jobs(kind = "")`,
 `assert_enqueued_with(kind, args = {})` (args compared as strings, so
-`"user_id" => 1` matches a JSON 1), `perform_enqueued_jobs(now = Time.now)`
-(runs the due jobs, returns how many) and `clear_enqueued_jobs`.
+`"user_id" => 1` matches a JSON 1), `perform_enqueued_jobs(now = Time.current)`
+(runs the due jobs, returns how many; with a block, runs the block and then
+every job queued in it, and the jobs those queue, whatever their `run_at`)
+and `clear_enqueued_jobs`.
+
+In the test environment `Cybertrain.config.mail_delivery_method` is `:test`:
+a delivery is checked and stored in `Cybertrain::Mailer.deliveries` (emptied
+before every test) instead of connecting. `assert_emails(count) { ... }`
+counts the mail the block delivered, `deliver_later` included (its jobs are
+performed first), and `assert_no_emails { ... }` is `assert_emails(0)`; both
+come with `cybertrain/test_help` (`require "cybertrain/test/mail"`). A test
+that reads mail at an SMTP receiver sets `mail_delivery_method = :smtp`.
 
 Webhooks and e-mail the code under test sends are received in-process by
 {Cybertrain::Test::HttpReceiver} (`require "cybertrain/test/http_receiver"`)

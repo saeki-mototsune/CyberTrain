@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# The tests the generators write, run (spec section 11, acceptance 9): a new
+# application in a scratch directory, with this checkout as its framework,
+# gets
+#
+#   cybertrain new shop                     test/test_helper.rb, test/integration/health_test.rb
+#   generate scaffold article title:string body:text published:boolean views:integer
+#                     rating:float starts_on:date published_at:datetime
+#                                           test/fixtures/articles.yml, a model test and
+#                                           the scaffold's controller test (every
+#                                           column type a scaffold takes, so each is
+#                                           sent through params: and read back)
+#   generate scaffold comment body:text article:references
+#                                           a references field: belongs_to and
+#                                           `article: one` in the fixtures
+#   generate scaffold widget                no fields at all
+#   generate component card title:string    test/components/card_component_test.rb
+#   generate helper formatting              test/helpers/formatting_helper_test.rb
+#   generate job welcome                    test/jobs/welcome_job_test.rb
+#   generate scaffold post title:string cover:attachment
+#                                           a second scaffold, and
+#                                           test/integration/post_cover_attachment_test.rb
+#
+# then `cybertrain db migrate`, and `cybertrain test` must exit 0 with
+# exactly EXPECTED_TESTS tests and 0 failures, every test file reported;
+# `spin run gen -- --check` must find gen/ fresh after it.
+#
+# One edit by hand: comments.yml's rows name articles(:two), not :one. As
+# in Rails, the comment fixtures referencing articles(:one) would make the
+# articles scaffold's "should destroy article" hit the foreign key (the
+# parent of a fixture row cannot be destroyed); an application changes the
+# label or the test, and this script does the former.
+# One application, one compile of its test bundle. The first failure stops
+# the script and leaves the scratch directory in place to look at.
+#
+# usage: script/generators-e2e
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+
+if [ "$#" -ne 0 ]; then
+  echo "usage: script/generators-e2e" >&2
+  exit 2
+fi
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/generators-e2e.XXXXXX")
+APP="$WORK/shop"
+
+fail() {
+  echo "generators-e2e: FAIL: $*" >&2
+  echo "generators-e2e: the app is in $APP" >&2
+  exit 1
+}
+
+step() {
+  echo "generators-e2e: $*"
+}
+
+cybertrain() {
+  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
+}
+
+# `run_logged NAME CMD...`: CMD in the app, its output in $WORK/NAME.log,
+# shown (the end of it) when it fails.
+run_logged() {
+  local name=$1
+  shift
+  (cd "$APP" && "$@") > "$WORK/$name.log" 2>&1 || { tail -n 60 "$WORK/$name.log" >&2; fail "$name"; }
+}
+
+step "cybertrain new shop"
+(cd "$WORK" && cybertrain new shop --path "$ROOT") > "$WORK/new.log" 2>&1 || { tail -n 40 "$WORK/new.log" >&2; fail "cybertrain new"; }
+
+step "generate scaffold, component, helper, job and an attachment"
+run_logged scaffold-article cybertrain generate scaffold article title:string body:text published:boolean views:integer \
+  rating:float starts_on:date published_at:datetime
+run_logged scaffold-comment cybertrain generate scaffold comment body:text article:references
+run_logged scaffold-widget cybertrain generate scaffold widget
+grep -q '^  article: one$' "$APP/test/fixtures/comments.yml" || fail "comments.yml does not name articles(:one)"
+sed 's/^  article: one$/  article: two/' "$APP/test/fixtures/comments.yml" > "$WORK/comments.yml"
+cp "$WORK/comments.yml" "$APP/test/fixtures/comments.yml"
+run_logged component cybertrain generate component card title:string
+run_logged helper cybertrain generate helper formatting
+run_logged job cybertrain generate job welcome
+run_logged scaffold-post cybertrain generate scaffold post title:string cover:attachment
+
+for file in test/test_helper.rb test/integration/health_test.rb test/fixtures/articles.yml \
+            test/models/article_test.rb test/controllers/articles_controller_test.rb \
+            test/components/card_component_test.rb test/helpers/formatting_helper_test.rb \
+            test/jobs/welcome_job_test.rb test/fixtures/posts.yml \
+            test/integration/post_cover_attachment_test.rb; do
+  test -f "$APP/$file" || fail "no $file"
+done
+test ! -e "$APP/test/support/app_test.rb" || fail "test/support/app_test.rb was written"
+
+step "cybertrain db migrate"
+run_logged migrate cybertrain db migrate
+
+step "cybertrain test (gen, one compile, the run)"
+started=$(date +%s)
+status=0
+(cd "$APP" && cybertrain test) > "$WORK/test.out" 2> "$WORK/test.err" || status=$?
+echo "generators-e2e: cybertrain test took $(( $(date +%s) - started ))s"
+cat "$WORK/test.out"
+if [ "$status" -ne 0 ]; then
+  tail -n 40 "$WORK/test.err" >&2
+  fail "cybertrain test exited $status"
+fi
+# health 1, four scaffolds' models 4 and controllers 4 x 7,
+# component 1, helper 1, job 1, attachment 8.
+EXPECTED_TESTS=44
+grep -Eq "^$EXPECTED_TESTS tests, [0-9]+ assertions, 0 failures\$" "$WORK/test.out" ||
+  fail "cybertrain test: expected the line '$EXPECTED_TESTS tests, N assertions, 0 failures'"
+if grep -q '^  \(FAIL\|ERR\)' "$WORK/test.out"; then fail "a FAIL or ERR line"; fi
+for file in test/components/card_component_test.rb test/controllers/articles_controller_test.rb \
+            test/controllers/comments_controller_test.rb test/controllers/posts_controller_test.rb \
+            test/controllers/widgets_controller_test.rb test/helpers/formatting_helper_test.rb \
+            test/integration/health_test.rb test/integration/post_cover_attachment_test.rb \
+            test/jobs/welcome_job_test.rb test/models/article_test.rb test/models/comment_test.rb \
+            test/models/post_test.rb test/models/widget_test.rb; do
+  grep -qx "$file" "$WORK/test.out" || fail "no tests of $file ran"
+done
+
+step "SPIN_DEBUG=1 spin run gen -- --check"
+run_logged gen-check env SPIN_DEBUG=1 ruby -I"$ROOT" "$ROOT/exe/cybertrain" spin run gen -- --check
+
+rm -rf "$WORK"
+step "PASS"

@@ -175,7 +175,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
   boot stops.
 - **Time zones.** `tz:` names an IANA zone ([Time zones](configuration.md#time-zones));
   without it the task reads `scheduler_tz` (`CYBERTRAIN_SCHEDULER_TZ`,
-  `UTC`). A wall time that a daylight-saving jump skips does not run that
+  which follows the application's `time_zone` when unset). A wall time that a daylight-saving jump skips does not run that
   day. In the repeated hour of the autumn change, an expression whose hour
   field starts with `*` runs at both occurrences and one with a fixed hour
   runs once, as Vixie cron does.

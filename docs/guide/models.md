@@ -279,6 +279,49 @@ cannot read. `strptime` takes `%Y %m %d %H %M %S %L %z %Z %b %B %a %A %j %s
 %%` (`%Z` only `UTC`, `GMT` or `Z`). `Time.at(ms / 1000.0)` turns a
 millisecond epoch into a Time.
 
+### Times and the time zone
+
+A Time is always a UTC instant: what a column reads, `Time.current` and
+every method below answer a UTC `Time`, and there is no TimeWithZone. So
+`time.hour` is the UTC hour, where Rails answers the zone's. The zone
+(`c.time_zone`, [Time zones](configuration.md#time-zones)) decides the
+calendar: where a day, a week, a month or a year begins, `Date.current`,
+and what `l` and `time_tag` show.
+
+```ruby
+Time.current                         # => the clock's UTC Time (it follows travel_to in a test)
+5.minutes                            # => 300, Integer seconds
+2.weeks.ago                          # => a Time, 14 days before Time.current
+3.days.from_now                      # => a Time
+Time.current.months_ago(1)           # => one calendar month back (not 1.month.ago)
+Time.current.beginning_of_day        # => midnight in Time.zone, as a UTC Time
+Time.utc(2026, 1, 31).advance(months: 1)   # => 2026-02-28 00:00:00 UTC
+Date.current                         # => today in Time.zone
+Time.current.in_time_zone.hour       # => the hour in Time.zone
+```
+
+- Durations: `seconds`, `minutes`, `hours`, `days`, `weeks` and their
+  singulars are Integer seconds (`5.minutes == 300`, where Rails answers a
+  Duration); `ago` and `from_now` answer a Time on the clock. `1.month` and
+  `1.year` are not defined, since a month has no length in seconds: they
+  raise `NoMethodError` when they run.
+- On Time: `beginning_of_day` / `end_of_day`, `_week` (Monday), `_month`,
+  `_year`; `advance(years:, months:, weeks:, days:, hours:, minutes:,
+  seconds:)` with Integers (years to days move the wall date in the zone's
+  calendar, 31 January plus a month being the end of February; hours to
+  seconds then add elapsed time); `months_ago`, `months_since`,
+  `years_ago`, `years_since`, `yesterday`, `tomorrow`. A wall time a
+  daylight-saving jump skips moves forward; one that occurs twice takes
+  the earlier instant.
+- `Time.zone` is the configured `Cybertrain::TimeZone`; its name is
+  `Time.zone.zone_name`. `time.in_time_zone` (or `in_time_zone("Europe/London")`)
+  answers a `Cybertrain::ZonedTime`, a value with `year`, `month`, `day`,
+  `hour`, `min`, `sec`, `wday`, `yday`, `utc_offset`, `zone` (the
+  abbreviation), `to_time` and `to_date`; it has no arithmetic and is not
+  stored. `Time.find_zone!(name)` raises `ArgumentError` for an unknown
+  name.
+- Columns still hold UTC text, whatever the zone.
+
 ## Conditions and finders
 
 The query methods of the generated relation are class methods too (all but

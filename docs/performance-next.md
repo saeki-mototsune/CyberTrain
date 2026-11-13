@@ -326,7 +326,7 @@ An application now requires `cybertrain/core` and a line per subsystem it
 uses (jobs, streams, feeds, the mailer, the cache, rate limiting), and
 `cybertrain new` writes the core alone
 ([the spec](superpowers/specs/2026-11-13-optional-subsystems-design.md),
-docs/design.md D81). Measured on the same 4-core VM and Spinel at fabd28a:
+docs/design.md D85). Measured on the same 4-core VM and Spinel at fabd28a:
 one application made with `cybertrain new --path`, `generate scaffold
 article title:string body:text` and `db migrate`, copied, and the copy's
 `require "cybertrain/core"` replaced by `require "cybertrain"` in

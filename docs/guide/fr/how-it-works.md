@@ -1,5 +1,5 @@
 ---
-source_sha256: f0e8d8dde1c0d481e011b798ba30a08279bfe4d4bbeaa406bf4e9c1b33dfa49b
+source_sha256: 6c7e1b82f90ec965db86de8c2a1471f6d140478ae64670f6b832eca9de062934
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -20,7 +20,10 @@ Cette page explique comment une application CyberTrain est construite et exécut
 - `gen/locales.rb`&nbsp;: les dictionnaires de l’application en deux Hash, que lit `I18n.t` ([Internationalisation](i18n.md#dictionaries))&nbsp;;
 - `gen/migrations.rb`&nbsp;;
 - `gen/views.rb`&nbsp;: la table des vues intégrées, vide sauf lors d’une compilation pour le déploiement&nbsp;;
-- `gen/app.rb`&nbsp;: le manifeste des `require_relative`.
+- `gen/app.rb`&nbsp;: le manifeste des `require_relative`&nbsp;;
+- `gen/tests.rb` et `gen/test/**`&nbsp;: tous les tests de `test/` en un seul programme,
+  chaque classe de test réécrite en méthodes, et `gen/test/data.rb`, les
+  tables et les fixtures ([Tester une application](testing.md#running-the-tests)).
 
 `gen/` est versionné, pas ignoré par git&nbsp;: `spin build` et `spin test` n’ont pas de hook pour générer d’abord, donc la sortie versionnée doit déjà être ce qui compile. La CI relance `spin run gen` et échoue s’il y a un diff&nbsp;: du code généré périmé ne peut donc pas être fusionné.
 
@@ -57,6 +60,8 @@ gen lit `bin/<app>.rb` comme du texte et n’y voit que les lignes littérales `
 Sans les jobs, le cache purge lui-même ses lignes expirées&nbsp;: la première écriture d’un processus, puis la première après chaque `cache_prune_interval`, en supprime jusqu’à mille. Avec les jobs, c’est la tâche planifiée `"cybertrain cache prune"`, comme avant ([Le cache](background-and-operations.md#the-cache-store)).
 
 Deux cas ne sont pas détectés par gen&nbsp;: une ligne `jobs_page` dans `config/routes.rb` sans `cybertrain/jobs` est une erreur de compilation du contrôleur généré plutôt que le message de gen, et un job dont le `retry_on` ou le `discard_on` nomme une erreur de `Cybertrain::Mailer` fait requérir `cybertrain/mailer` par le `gen/app.rb` généré lui-même.
+
+Les tests ne sont pas réduits par ces lignes&nbsp;: le programme que compile `cybertrain test` (`gen/tests.rb`) requiert `cybertrain`, tous les sous-systèmes, quoi que requière `bin/<app>.rb`. Ainsi `perform_enqueued_jobs`, `assert_emails` et `assert_broadcasts` fonctionnent dans toute application, une application sur `cybertrain/core` compile ses tests avec tous les sous-systèmes, et du code qui nomme un sous-système sans sa ligne passe ses tests et s'arrête à `spin build` ([Tester une application](testing.md)).
 
 ## Les vues sont interprétées
 
@@ -124,13 +129,13 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` n’accepte que des listes `column [ASC\|DESC]`&nbsp;; les données de la requête passent par une liste blanche, le SQL brut par `order_sql` ([Tri](models.md#ordering)). Des paramètres mal formés ou trop imbriqués donnent une 400 ([Chaînes de requête et corps](requests.md#query-strings-and-bodies)) |
 | Backtrace complète lors d’une exception | Classe, message, ligne de requête, nom/ligne du template — Spinel n’expose pas de backtraces |
 | Rack, ses middlewares, et n’importe quelle gem d’un `Gemfile` | Pas de compatibilité Rack&nbsp;; un petit ensemble fixe de middlewares&nbsp;; le `spin-index` propre à Spinel, limité à ce qui compile avec son sous-ensemble de Ruby |
-| minitest / RSpec | `Cybertrain::Test` — les runners fondés sur la réflexion ne peuvent pas fonctionner avec une compilation AOT |
+| minitest / RSpec | Des classes de test à la Rails (`ActiveSupport::TestCase`, `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`) et des fixtures, que `spin run gen` réécrit en un seul programme que `cybertrain test` compile et exécute&nbsp;; les runners fondés sur la réflexion ne peuvent pas fonctionner avec une compilation AOT ([Tester une application](testing.md)) |
 | `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` écrit la même structure plus une page d’inscription&nbsp;; les mots de passe utilisent PBKDF2-HMAC-SHA256 (bcrypt demanderait une bibliothèque C&nbsp;; le `String#crypt` de macOS n’a pas bcrypt)&nbsp;; la réinitialisation du mot de passe, la confirmation, le verrouillage et «&nbsp;rester connecté&nbsp;» sont générés aussi, comme les ajouterait Devise ([Authentification](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` écrit cinq colonnes `cover_*` et les méthodes de modèle&nbsp;; les fichiers résident sur le disque local sous `storage/uploads/` et sont servis par `send_blob`&nbsp;; un fichier par champ, ni variantes ni envois directs ([Ajouter une image de couverture](tutorial.md#attachments)) |
 | `skip_before_action :x` | Pareil, pour les callbacks before nommés (un callback sous forme de bloc n’a pas de nom à sauter)&nbsp;; pas de `skip_after_action` |
 | `resource :session` | Les mêmes six routes vers `SessionsController`&nbsp;; pas d’imbrication en dessous |
 | `get "/x"` puis `post "/x"` | Les deux sont acceptés&nbsp;: le nom déduit de la seconde route est déjà pris, elle reste donc sans nom, comme dans Rails&nbsp;; un `as:` en double reste une erreur |
-| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, les données de fuseaux fournies avec ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` lit les fichiers TZif du système (`/usr/share/zoneinfo`, ou `TZDIR`) et convertit des secondes epoch Integer (`utc_offset_at`, `utc_to_local`, `local_to_utc`)&nbsp;; pas encore de `Time.zone` par requête ni de `l(time, zone:)` ([Fuseaux horaires](configuration.md#time-zones)) |
+| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, les données de fuseaux fournies avec ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` lit les fichiers TZif du système (`/usr/share/zoneinfo`, ou `TZDIR`) et convertit des secondes epoch Integer (`utc_offset_at`, `utc_to_local`, `local_to_utc`)&nbsp;; `c.time_zone` fixe `Time.zone` pour toute l’application, `in_time_zone` renvoie une petite valeur avec les champs muraux, et un Time reste un instant UTC (pas de TimeWithZone, `time.hour` est en UTC) ([Fuseaux horaires](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` pour les webhooks et les API&nbsp;: chaque attente est bornée, les destinations non publiques sont refusées par défaut, redirections seulement sur demande, réponses en flux et gzip, un parseur de Server-Sent Events, pas de keep-alive (voir [HTTP sortant](external-services.md#outbound-http))&nbsp;; le `Net::HTTP` de Spinel bloque tout le serveur quand un pair ne répond plus |
 | Action Mailer (`deliver_later`, classes de mailer, vues) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` envoie du texte brut, ou du `multipart/alternative` avec une partie HTML rendue depuis un partiel (`Views.render_mail`), en SMTP (STARTTLS, TLS implicite ou en clair vers le loopback&nbsp;; AUTH PLAIN&nbsp;; chaque attente bornée)&nbsp;; `Mailer.deliver_later` l’envoie depuis un job intégré&nbsp;; un mailer est un module de `app/mailers` dont les méthodes renvoient un `Cybertrain::MailMessage` (`deliver_later`, `deliver_now`), comme le `PasswordsMailer` généré&nbsp;; pas de pièces jointes (voir [Envoyer des e-mails](external-services.md#sending-e-mail)) |
 | Active Job, `perform_later`, `solid_queue`, tâches récurrentes, Mission Control | Des classes de job dans `app/jobs` (`< Cybertrain::Job::Base`, `perform(args)` avec un Hash de valeurs JSON, `perform_later`, `retry_on`, `discard_on`, `limits_concurrency` avec une clé), `Job.handle(kind)` comme forme courte&nbsp;; `Scheduler.every` et `Scheduler.cron` avec un fuseau horaire et un calendrier conservé dans la base&nbsp;; une page des jobs (`jobs_page` dans les routes) et `./<app> jobs`&nbsp;; `job_threads` threads par processus, dans le serveur ou dans des processus `./<app> worker`, livrés au moins une fois ([Tâches de fond](background-and-operations.md#background-work)) |

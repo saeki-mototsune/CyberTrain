@@ -6,7 +6,7 @@ module Cybertrain
     # cybertrain/feeds requires it. cybertrain/websocket requires
     # cybertrain/feeds (and so the core, with SQLite), so every program that
     # subscribes publishes; `require "cybertrain/websocket"` no longer loads
-    # under CRuby or without the database (docs/design.md D81). The
+    # under CRuby or without the database (docs/design.md D85). The
     # registry keeps the frame and client files free of the table. The same
     # pattern as Background::Service: a base-class registry, a subclass
     # instance added by the file that has the real one.

@@ -150,7 +150,7 @@ test "perform_later raises for a non-Hash, then enqueues the class's kind with t
     "  def self.perform_at(time, args = {})\n",
     "    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: time)\n",
     "  def self.perform_in(seconds, args = {})\n",
-    "    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: Time.now + seconds)\n",
+    "    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: Time.current + seconds)\n",
     "  def self.perform_now(args = {})\n",
     "    new.perform(Cybertrain::Cast.hash(args))\n    nil\n  end\n"
   ])

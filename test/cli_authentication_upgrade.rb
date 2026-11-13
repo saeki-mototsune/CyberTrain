@@ -83,9 +83,14 @@ CHANGED = [
   "app/controllers/registrations_controller.rb",
   "app/views/sessions/new.html.erb",
   "app/views/sessions/_nav.html.erb",
-  "app/views/registrations/new.html.erb",
-  "test/support/app_test.rb",
-  "test/authentication.rb"
+  "app/views/registrations/new.html.erb"
+]
+
+# 0.4's test files, which the class-form ones replace: named (D15), or
+# deleted with --force.
+REPLACED = [
+  "test/authentication.rb",
+  "test/support/app_test.rb"
 ]
 
 # What 0.4 did not write.
@@ -100,12 +105,17 @@ MISSING = [
   "app/views/passwords/edit.html.erb",
   "app/views/mail/_password_reset.html.erb",
   "app/views/accounts/edit.html.erb",
-  "test/support/authentication_helpers.rb",
-  "test/admin.rb",
-  "test/remember_me.rb",
-  "test/lockout.rb",
-  "test/passwords.rb",
-  "test/accounts.rb"
+  "test/fixtures/users.yml",
+  "test/support/session_test_helper.rb",
+  "test/models/user_test.rb",
+  "test/controllers/sessions_controller_test.rb",
+  "test/controllers/registrations_controller_test.rb",
+  "test/controllers/passwords_controller_test.rb",
+  "test/controllers/accounts_controller_test.rb",
+  "test/integration/remember_me_test.rb",
+  "test/integration/lockout_test.rb",
+  "test/integration/admin_test.rb",
+  "test/test_helper.rb"
 ]
 
 ADD_COLUMNS = <<~RUBY
@@ -185,7 +195,12 @@ test "it prints a diff for each changed file and leaves them alone" do
   headings = Array.new(0) { "" }
   output.each_line { |line| headings << line.split(":")[0].to_s.delete_prefix("manual  ") if line.start_with?("manual  ") && line.include?(": apply") }
   assert_equal CHANGED + ["app/controllers/application_controller.rb", "config/routes.rb"], headings
-  assert_equal headings, UPGRADE.manual.map { |entry| entry.lines[0].split(":")[0].to_s.delete_prefix("manual  ") }
+  assert_equal headings, UPGRADE.manual.select { |entry| entry.include?(": apply") }.map { |entry| entry.lines[0].split(":")[0].to_s.delete_prefix("manual  ") }
+  # 0.4's test files: named, with what replaces them, and left alone (D15).
+  assert_equal ["manual  test/authentication.rb: replaced by test/controllers/sessions_controller_test.rb; delete it\n",
+                "manual  test/support/app_test.rb: replaced by test/test_helper.rb; delete it\n"],
+               UPGRADE.manual.reject { |entry| entry.include?(": apply") }
+  REPLACED.each { |f| assert_equal read("#{FIXTURE}/#{f}"), read("printed/#{f}") }
   # The closing lines: what to do, and that the app may not build before
   # (D19 leaves the existing files as they are; review M1).
   assert output.end_with?("\nnext: apply the diffs above, or re-run with --force for files you never edited\n" \
@@ -195,6 +210,9 @@ test "it prints a diff for each changed file and leaves them alone" do
   assert patch_in("printed", output)
   (CHANGED + MISSING).each { |f| assert_equal read("fresh/shop/#{f}"), read("printed/#{f}") unless f.start_with?("db/") }
   ["app/controllers/application_controller.rb", "config/routes.rb"].each { |f| assert_equal read("fresh/shop/#{f}"), read("printed/#{f}") }
+  # patch deletes no file: 0.4's tests are still there until deleted by hand.
+  REPLACED.each { |f| assert File.exist?("printed/#{f}"), f }
+  REPLACED.each { |f| File.delete("printed/#{f}") }
   # Run again, nothing is left to change.
   again = Cybertrain::CLI::Authentication.generate_with_result("printed")
   assert_equal [], again.created
@@ -243,6 +261,8 @@ test "--force overwrites the generator's files and replaces an exact 0.4 block" 
   assert_equal MISSING, result.created
   assert_equal CHANGED + ["app/controllers/application_controller.rb"], result.forced
   assert_equal [], result.manual
+  assert_equal REPLACED, result.removed
+  REPLACED.each { |f| refute File.exist?("forced/#{f}"), f }
   (CHANGED + MISSING).each { |f| assert_equal read("fresh/shop/#{f}"), read("forced/#{f}") unless f.start_with?("db/") }
   # The include in place of the block, and the jobs page drawn behind it.
   assert_equal read("fresh/shop/app/controllers/application_controller.rb"), read("forced/app/controllers/application_controller.rb")
@@ -269,6 +289,7 @@ test "--force leaves an edited application_controller.rb and prints its diff" do
   assert_equal edited, read(path)
   assert_equal CHANGED, result.forced
   assert_equal 2, result.manual.size
+  assert_equal REPLACED, result.removed
   diff = manual_for(result, "app/controllers/application_controller.rb")
   assert diff.start_with?("manual  app/controllers/application_controller.rb: apply this diff by hand (0.4's authentication block was edited, so --force leaves it alone)\n--- a/")
   assert_includes diff, "-    redirect_to \"/sign_in\", status: :see_other\n"
@@ -318,7 +339,8 @@ test "--confirmable over a 0.4 application adds all seven columns and confirms t
   assert_includes manual_for(result, "app/controllers/sessions_controller.rb"), "user.confirmed?"
   assert_includes read("confirm04/config/routes.rb"), "resources :confirmations, param: :token, only: [:new, :create, :show]\n"
   assert_includes result.created, "app/controllers/confirmations_controller.rb"
-  assert_includes result.created, "test/confirmations.rb"
+  assert_includes result.created, "test/controllers/confirmations_controller_test.rb"
+  assert_includes read("confirm04/test/fixtures/users.yml"), "  confirmed_at: 2026-11-11 12:00:00\n"
 end
 
 test "the add-columns migration is decided per missing column (F19)" do
@@ -496,7 +518,7 @@ test "LineDiff.unified output applies with patch -p1" do
     ["x\n", "x"],
     ["1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n", "0\n1\n2\nthree\n4\n5\n6\n7\n8\n9\n10\n11\n12\nfourteen\n15\n16\n17\n"],
     ["same\nsame\nsame\nx\nsame\nsame\n", "same\nx\nsame\nsame\nsame\nsame\ny\n"],
-    [read("#{FIXTURE}/test/authentication.rb"), read("fresh/shop/test/authentication.rb")]
+    [read("#{FIXTURE}/app/controllers/sessions_controller.rb"), read("fresh/shop/app/controllers/sessions_controller.rb")]
   ]
   Dir.mkdir("#{TMP}/patched")
   cases.each_with_index do |pair, i|

@@ -269,11 +269,11 @@ module Cybertrain
     # connections that are waiting for a next request; one busy with a
     # request answers it with Connection: close (respond) and ends.
     def drain
-      started = Time.now
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       shut_idle_connections
       remaining = open_connections
       while remaining > 0
-        if Time.now - started >= @drain_timeout
+        if Process.clock_gettime(Process::CLOCK_MONOTONIC) - started >= @drain_timeout
           @logger.warn("shutting down with #{remaining} connection(s) still open after #{@drain_timeout}s")
           break
         end

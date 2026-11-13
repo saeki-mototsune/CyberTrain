@@ -1,5 +1,5 @@
 ---
-source_sha256: 62cfdaff2b084f3fed0f46dc16b6967071128d69c23036f7cfd531bae3cbab7c
+source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -132,7 +132,7 @@ end
 cybertrain generate scaffold article title:string body:text
 ```
 
-マイグレーション、モデル、コントローラー、5 つのビュー（`index`、`show`、`new`、`edit`、`_form`）を書き出し、`config/routes.rb` に `resources :articles` を挿入します。フィールドの型は `string`、`text`、`integer`、`float`、`boolean`、`date`、`datetime`、`references`、`attachment`（アップロードされたファイル。[ステップ 18](#attachments)）で、デフォルトは `string` です。クイックスタートの `cybertrain g scaffold` も同じコマンドです。
+マイグレーション、モデル、コントローラー、5 つのビュー（`index`、`show`、`new`、`edit`、`_form`）、フィクスチャのファイルとテスト（[ステップ 16](#test)）を書き出し、`config/routes.rb` に `resources :articles` を挿入します。フィールドの型は `string`、`text`、`integer`、`float`、`boolean`、`date`、`datetime`、`references`、`attachment`（アップロードされたファイル。[ステップ 18](#attachments)）で、デフォルトは `string` です。クイックスタートの `cybertrain g scaffold` も同じコマンドです。
 
 > [!NOTE]
 > 既存のファイルが上書きされることはありません：各ファイルは `create`、`identical`、`exist` のいずれかとして報告されます。
@@ -148,6 +148,7 @@ cybertrain generate scaffold article title:string body:text
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -315,6 +316,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -682,7 +684,7 @@ end
 - ジョブは `cybertrain_jobs` の行で、サーバーのプロセスの 3 本のジョブスレッドが実行します。`./blog worker` で起動した別のプロセスに実行させることもできます（[プロセスの役割](background-and-operations.md#process-roles)）。
 - `retry_on StandardError, wait: 30, attempts: 3` は、失敗した実行を 30 秒後にもう一度キューに入れ、試行は全部で 3 回です。それでも失敗した行は `failed` になり、残されます（[再試行と破棄](background-and-operations.md#retries-and-discards)）。
 - ジョブは 2 回以上実行されることがあります（実行の途中でプロセスが落ちると、そのジョブはもう一度実行されます）。`perform` は繰り返しても安全なように書いてください。
-- 失敗したジョブの一覧・再試行・破棄は、`./blog jobs` か、`config/routes.rb` にコメントアウトされている `jobs_page` の行がマウントするページで行います（[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
+- 失敗したジョブの一覧・再試行・破棄は、`./blog jobs` か、`config/routes.rb` にコメントアウトされている `jobs_page` の行を有効にするとマウントされるページ（ステップ 04 と 09 のルートはこの行を残しています）で行います（[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
 
 > [!RULE] Spinel のルール：ジョブのポリシーはテキストとして読まれる
 > ### ジョブのポリシーはテキストとして読まれる
@@ -700,7 +702,7 @@ end
 > end
 > ```
 >
-> cron 式は `CYBERTRAIN_SCHEDULER_TZ`（デフォルトは UTC）のタイムゾーンで読まれ、スケジュールを実行するのは一度に 1 つのプロセスだけです（[定期タスク](background-and-operations.md#scheduled-tasks)）。
+> cron 式は `CYBERTRAIN_SCHEDULER_TZ`（デフォルトはアプリケーションの `time_zone`、設定しなければ UTC）のタイムゾーンで読まれ、スケジュールを実行するのは一度に 1 つのプロセスだけです（[定期タスク](background-and-operations.md#scheduled-tasks)）。
 
 <!-- step 15 #json stage: 自分で書く · `app/controllers/` -->
 ## JSON で応答する
@@ -739,115 +741,118 @@ $ curl http://127.0.0.1:3000/articles.json
 
 `/articles/1.json` は記事 1 件で、`show` の同じブロックが返します。フォーマットのすべては[フォーマットと `respond_to`](requests.md#formats-and-respond_to) にあります。
 
-<!-- step 16 #test stage: ビルド時 · `cybertrain spin test` -->
+<!-- step 16 #test stage: ビルド時 · `cybertrain test` -->
 ## テストする
 
 > [!WHY]
-> minitest や RSpec はリフレクションでテストを見つけますが、AOT コンパイラではそれができません。そこで CyberTrain は `Cybertrain::Test` を同梱しています。
+> minitest や RSpec はリフレクションでテストを見つけますが、事前（AOT）コンパイラーにはそれができません。それでもテストは Rails のクラスです：`spin run gen` がそれらを 1 つのプログラムに書き換え、`cybertrain test` がコンパイルして実行します。
 
-### モデルのテスト
+### ジェネレーターが書いたもの
 
-```ruby test/articles.rb（スニペット）
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+ステップ 03 と 08 のスキャフォールドは Rails のスキャフォールドのテストを書き出しました：`test/fixtures/articles.yml` と `comments.yml`（各テストが最初に持つ `one` と `two` の行）、`test/models/article_test.rb` と `comment_test.rb`（「the fixture is valid」）、そして `test/controllers/articles_controller_test.rb` と `comments_controller_test.rb`（アクションごとに 1 つのリクエスト）。ステップ 12 は `test/components/comment_component_test.rb` と `test/helpers/comments_helper_test.rb` を、ステップ 14 は `test/jobs/notify_comment_job_test.rb` を書き出し、`cybertrain new` は各ファイルが読み込む `test/test_helper.rb` と、`/up` へのリクエストである `test/integration/health_test.rb` を書き出しました。そのうち 3 つは、その後に育ったブログに合わせる必要があります。
 
-test "title must be present" do
-  article = Article.new(body: "a body long enough to pass length")
-  refute article.save
-  assert_includes article.errors.full_messages, "Title can't be blank"
+### バリデーションを通るフィクスチャ
+
+スキャフォールドの見本の値（`MyString`、`MyText`）は[ステップ 05](#validations) の検査に落ちます：同じタイトルの記事が 2 つあり、本文は 10 文字に足りません。記事に本物の値を与えます：
+
+```yaml test/fixtures/articles.yml
+one:
+  title: Hello Rails
+  body: I am on Rails! This is my first article.
+
+two:
+  title: Second article
+  body: Another article, with no comments.
+```
+
+作成のテストはフィクスチャ自身のタイトルを送りますが、それはもう使われています。新しいタイトルを与えます：
+
+```ruby test/controllers/articles_controller_test.rb（抜粋）
+  test "should create article" do
+    assert_difference(-> { Article.count }, 1) do
+      post articles_url, params: { article: { body: @article.body, title: "A new title" } }
+    end
+
+    assert_redirected_to article_url(Article.last)
+  end
+```
+
+`comments.yml` の行は `article: one` に属します。Rails と同じく、記事を指すフィクスチャがあるとその記事は削除できません。そのため、`Article` が `has_many :comments, dependent: :destroy` を宣言していなければ（[ステップ 08](#scaffold-comment) の最後の囲み）、「should destroy article」は外部キーで失敗します。まだなら、examples/blog と同じく `app/models/article.rb` に加えてください：
+
+```ruby app/models/article.rb（抜粋）
+  has_many :comments, dependent: :destroy
+```
+
+### 記事の下のコメント
+
+スキャフォールドのコメントのテストは、[ステップ 09](#nested-routes) で記事の下に入れ子にしたルートをリクエストします。そのヘルパーはいまは `article_comments_path` と `article_comment_path` です。テストを置き換えます：
+
+```ruby test/controllers/comments_controller_test.rb
+require "test_helper"
+
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  test "a comment is added to its article" do
+    article = articles(:one)
+    assert_difference(-> { Comment.count }, 1) do
+      post article_comments_path(article), params: { comment: { commenter: "Dave", body: "First!" } }
+    end
+    assert_redirected_to article_path(article)
+  end
+
+  test "a comment queues its notification" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Dave", body: "First!" } }
+    assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
+    assert_equal 1, perform_enqueued_jobs
+  end
+
+  test "a form Turbo submits is answered with a Turbo Stream" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Dave", body: "First!" } },
+                                               headers: { "Accept" => "text/vnd.turbo-stream.html, text/html" }
+    assert_response :ok
+    assert_turbo_stream action: "append", target: "comments"
+  end
+
+  test "a destroyed comment leaves its article" do
+    comment = comments(:one)
+    assert_difference(-> { Comment.count }, -1) do
+      delete article_comment_path(comment.article_id, comment)
+    end
+    assert_redirected_to article_path(comment.article_id)
+  end
 end
 ```
 
-アサーション：`assert`、`refute`、`assert_equal`、`assert_nil`、`assert_includes`、`assert_raises("Class") { }`、`flunk`。クライアントを読み込むと `assert_response` と `assert_redirected_to` も加わります。
+テストはジョブのスレッドを動かさないので、キューに入ったジョブはテストが実行するまで待ちます（`perform_enqueued_jobs`）。リクエスト偽造対策は Rails と同じくテストでは無効なので、`post` にトークンは要りません。
 
-### HTTP の一連の流れ
+### コンポーネント
 
-```ruby test/articles.rb（スニペット）
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+ステップ 12 のテストは、テンプレートがいまはコメントを期待しているところに String を渡して `CommentComponent` をレンダリングします。代わりにフィクスチャのコメントをレンダリングします：
 
-test "POST /articles creates an article and redirects to it" do
-  client = Cybertrain::Test::Client.new(BLOG)
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, BlogTest.article_path(Article.last)
-  assert_response res, :see_other
+```ruby test/components/comment_component_test.rb
+require "test_helper"
+
+class CommentComponentTest < ViewComponent::TestCase
+  test "renders the comment with its author" do
+    render_inline(CommentComponent.new(comment: comments(:one)))
+    assert_select "div.comment strong.comment-author", text: "MyString"
+  end
 end
 ```
 
-`Cybertrain::Test::Client` は cookie jar を持ち、アプリをプロセス内で（ソケットなしで）動かすので、セッションと CSRF はブラウザ越しと同じように振る舞います。トークンのないリクエストには 403 が返ります。
-
-### ジョブ、Turbo Stream、コンポーネント
-
-テストクライアントはジョブスレッドを起動しないので、キューに入ったジョブは、テストが実行するまでキューに残ります。`post` の第 3 引数はリクエストヘッダーで、ここでは Turbo がフォームとともに送る `Accept` を指定します：
-
-```ruby test/comments.rb（スニペット）
-require_relative "support/blog_test"   # also loads cybertrain/test/jobs
-
-def post_comment(client, article, headers = {})
-  client.get(BlogTest.article_path(article))
-  client.post("#{BlogTest.article_path(article)}/comments",
-              { "authenticity_token" => BlogTest.form_token(client),
-                "comment[commenter]" => "Dave", "comment[body]" => "First!" }, headers)
-end
-
-test "a comment queues its notification" do
-  BlogTest.reset
-  post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article)
-  assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
-  assert_equal 1, perform_enqueued_jobs
-  assert_no_enqueued_jobs
-end
-
-test "a form Turbo submits is answered with a Turbo Stream" do
-  BlogTest.reset
-  res = post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article,
-                     { "accept" => "text/vnd.turbo-stream.html, text/html" })
-  assert_response res, :ok
-  assert_includes res.body, "<turbo-stream action=\"append\" target=\"comments\">"
-end
-```
-
-[ステップ 12](#component) は `test/comment_component.rb` を書き出しましたが、このテストはコンポーネントを String でレンダリングします。テンプレートはいまやコメントを期待しているので、中身を次のように置き換えてください：
-
-```ruby test/comment_component.rb
-require_relative "support/blog_test"
-require "cybertrain/test/views"   # Cybertrain::Test.render_component
-
-test "the comment component names its author" do
-  BlogTest.reset
-  comment = BlogTest.comment(BlogTest.article, "Alice", "Great post!")
-  html = Cybertrain::Test.render_component(CommentComponent.new(comment: comment))
-  assert_includes html, "<strong class=\"comment-author\">Alice</strong> wrote:"
-end
-
-Cybertrain::Test.run!
-```
-
-`render_component` は、ブロードキャストと同じように、リクエストなしでレンダリングします。そのほかのヘルパーと、テストでストリームを読む方法は、[ジョブのテスト](testing.md#testing-jobs)と[ストリームとコンポーネントのテスト](testing.md#testing-streams-and-components)にあります。
-
-> [!COMPILE] スニペットで省略しているもの
-> ### スニペットで省略しているもの
->
-> - `support/blog_test` は [`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb) のことです：これをアプリの `test/support/` にコピーしてください。このディレクトリのファイルは実行されず、require されるだけです。このファイルは新しい `storage/test.sqlite3` にマイグレーションを適用し、アプリを `BLOG` として起動し、`Cybertrain::Test`、そのクライアント、ジョブ用のヘルパーを読み込み、`BlogTest.form_token`（最後にレンダリングされたフォームの CSRF トークン）、`BlogTest.article_path`、`BlogTest.article` と `BlogTest.comment`（それぞれ保存済みのレコードを返します）、`BlogTest.reset`（テーブル、キャッシュ、ジョブのキューを空にします）を提供します。
-> - ファイルの最後に `Cybertrain::Test.run!` を書きます。これがテストを実行し、スナップショットで比較される行を出力します。
-> - 比較される出力にリクエストログが混ざらないよう、`c.log_level = :none if c.test?` を `config/app.rb` で設定します。
+`render_inline` はブロードキャストと同じく、リクエストなしでレンダリングし、`assert_select` はレンダリングされたものを読みます。ほかのアサーションは[アプリをテストする](testing.md#assertions)、[ジョブのテスト](testing.md#testing-jobs)、[ストリームとコンポーネントのテスト](testing.md#testing-streams-and-components)にあります。
 
 ### テストを実行する
 
-```shell ターミナル — blog/
-cybertrain spin test
+```shell terminal — blog/
+cybertrain test
+cybertrain test test/controllers/comments_controller_test.rb
+cybertrain test -n /comment/
 ```
 
-`cybertrain spin test` は固定された Spinel で `spin test` を実行します。ツールチェーンが `PATH` 上にあれば（[ステップ 00](#requirements)）、`spin test` でも同じです。各 `test/*.rb` をそれぞれ独立したプログラムにコンパイルし、その出力（stdout と stderr をまとめたもの）を、コミット済みのスナップショット `test/<name>.rb.expected` と比較します。`test/support/` 内のファイルは実行されず、require されるだけです。ステップ 12 と 14 でジェネレーターが書き出したテスト（`test/comments_helper.rb`、`test/notify_comment_job.rb`）も、ほかのテストと一緒に実行されます。スナップショットを書き出すには：
-
-```shell ターミナル — blog/
-cybertrain spin test --regen test/<name>.rb
-rm -f build/test/<name>; cybertrain spin test test/<name>.rb; [ -x build/test/<name> ] && ./build/test/<name> > test/<name>.rb.expected 2>&1
-```
+最初の実行はすべてのテストを 1 つのプログラムにコンパイルするので、数分かかります（examples/blog の 149 テストは 4 vCPU のクラウドマシンで約 9 分）。何も変えていなければ、次の実行でテストのプログラムはコンパイルし直されません。gen を 1 回ビルドし直すことはあり（`build gen`、数秒）、そのあとは 1 秒よりずっと短い時間で始まります。ファイルや `-n` はどのテストを実行するかを選ぶもので、何をコンパイルするかは変えません：どのテストを編集しても、プログラムはコンパイルし直されます。ファイルごとに見出し、テストごとに 1 行（`ok`、または `FAIL` と `ERR` にテストの行とメッセージ）、最後に合計が出ます。その間には、テスト対象のコードが自分で出力したもの（たとえばコマンドの出力行）も混じります。失敗したテストがあれば終了ステータスは 1 です。2026-11-13 に測ったところ、このステップのチュートリアルのブログは 17 テスト、25 アサーションです。
 
 > [!NOTE]
-> `--regen` は CRuby での出力からスナップショットを書き出します。FFI 経由で SQLite に触れるテストは CRuby では実行できないため、そのスナップショットはコンパイル済みバイナリから作ります（上の 2 行目）。スナップショットが古い間は `cybertrain spin test` が 0 以外で終了するため、後続は `;` でつなぎ、`&&` は使いません。`[ -x ]` のチェックにより、コンパイルに失敗したときは出力の取り込みをスキップするので、古いスナップショットが残ります。CRuby で実行できないテストは、このスナップショットがないと `cybertrain spin test` が通りません。スナップショットのないその他のテストは、CRuby での出力と比較されます。
+> 各テストの前にすべてのテーブルが空になり、フィクスチャが入れ直されるので、テストはお互いに依存しません。`gen/tests.rb` と `gen/test/` は生成されるもので、`gen/` のほかの部分と一緒にコミットします。
 
 <!-- step 17 #authentication stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## サインインを追加する
@@ -910,25 +915,28 @@ class ArticlesController < ApplicationController
 
 ### テストを更新する
 
-[ステップ 16](#test) のテストのうち、フォームを期待するもの、フォームを送信するもの、`index` と `show` 以外のアクションに到達するものは、代わりにサインイン画面に行き着きます。ジェネレーターが `test/support/app_test.rb` に書いたヘルパーで、先にクライアントをサインインさせます：
+[ステップ 16](#test) のテストのうち、フォームを開くもの、フォームを送信するもの、`index` と `show` 以外のアクションに届くものは、いまはサインインのページに行き当たります。ジェネレーターは `test/fixtures/users.yml`（`one` と `two`。パスワードは `"password"`）と `test/support/session_test_helper.rb` を書き出しており、`test/test_helper.rb` がその `sign_in_as` をいまはすべての統合テストに与えます。記事のテストの `setup` には、ジェネレーターがサインインをすでに加えています（`insert test/controllers/articles_controller_test.rb (sign_in_as users(:one))` と表示されます）。次のようになっているはずです：
 
-```ruby test/signed_in.rb
-require_relative "support/app_test"   # written by generate authentication: APP, AppTest
-
-test "a signed-in user creates an article" do
-  client = Cybertrain::Test::Client.new(APP)
-  AppTest.user("ann@example.com", "s3cr3t-s3cr3t")
-  AppTest.sign_in(client, "ann@example.com", "s3cr3t-s3cr3t")
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => AppTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, "/articles/#{Article.last.id}"
-end
+```ruby test/controllers/articles_controller_test.rb（抜粋）
+  setup do
+    sign_in_as users(:one)
+    @article = articles(:one)
+  end
 ```
 
+コメントのテストにはジェネレーターが書き足せる `setup` がありません。`CommentsController` のすべてのアクション（create と destroy）がいまはサインインしたユーザーを必要とするので、4 つのテストのどれもが同じです。`setup` を加えます：
+
+```ruby test/controllers/comments_controller_test.rb（抜粋）
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+これから生成するスキャフォールドは自分でサインインします。
+
 > [!NOTE]
-> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb`、ジェネレーターが書いたほかのテスト、そしてこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。サインインの試行は Rails のジェネレーターと同じくレート制限されます。クライアントのアドレスごとに 3 分間で 10 回までで、アプリのデータベースで数えるので、すべてのプロセスがまとめて数えます。リバースプロキシの背後では [信頼するプロキシ](requests.md#rate-limiting-and-the-client-address) を設定してください。`examples/blog` はこのステップを `--invite-only` で行い、`/admin` のページを管理者だけのものにしています。
+> ジェネレーター自身のテスト（`test/controllers/sessions_controller_test.rb`、`registrations_controller_test.rb`、`passwords_controller_test.rb`、`accounts_controller_test.rb`、`test/integration/remember_me_test.rb`、`lockout_test.rb`、`admin_test.rb`。[テスト](authentication.md#testing)）は `cybertrain test` でほかのテストと一緒に実行され、`travel_to` で時計を動かして 15 日目と 30 日目を確かめます。サインインの試行は Rails のジェネレーターと同じく、クライアントのアドレスごとに 3 分間に 10 回までに制限され、アプリのデータベースで数えるので、すべてのプロセスがまとめて数えます。リバースプロキシの後ろでは[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定してください。`examples/blog` はこのステップを `--invite-only` で行い、`/admin` のページを管理者だけのものにしています。
 
 <!-- step 18 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する
@@ -1017,10 +1025,10 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 - **配信。**ファイルはコントローラーの `send_blob` 経由で返し、`public/` からは返しません。4 種類の画像はそのまま表示され、それ以外はダウンロードになります（`application/octet-stream`）。すべてのレスポンスに `X-Content-Type-Options: nosniff` と `Content-Security-Policy: default-src 'none'; sandbox` が付きます。
 - **パラメーター。**`params.nested(:article).upload(:cover)` は `Cybertrain::UploadedFile` を返し、ファイルが選ばれていなければ nil です。`permit` はファイルを返さないので、ファイルはこの明示的な 1 行を通ってしか入ってきません。CSRF トークンは、通常のフォームと同じように multipart のボディからも読み取られます。壊れたボディやサイズ超過のボディは 400 になります。上限は `config/app.rb` の `max_upload_bytes` と `max_multipart_parts` で、保存先のディレクトリは `upload_root` で設定します。
 
-サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは `test/attachment_article_cover.rb` も書き出しています。このテストは一連の流れ全体を確かめ、アプリに `User` があるので最初にサインインします。ここでは `:cover` が公開されているので、訪問者がカバー画像をダウンロードできることを確かめます。本文には、[ステップ 05](#validations) の最小 10 文字に合わせて伸ばした `"A article."` を入れます。
+サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは `test/integration/article_cover_attachment_test.rb` と画像 `test/fixtures/files/cover.png` も書き出しています。このテストは一連の流れ全体を確かめ、アプリに `User` があるので最初にサインインします。ここでは `:cover` が公開されているので、訪問者がカバー画像をダウンロードできることを確かめます。本文には、[ステップ 05](#validations) の最小 10 文字に合わせて伸ばした `"A article."` を入れます。
 
 > [!NOTE]
-> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。このテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` にもこのステップが入っており、その JSON は `cover_*` のカラムを含みません（`Article#public_json`）。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
+> [ステップ 16](#test) と同じく `cybertrain test` で実行します（2026-11-13 に測ったところ、チュートリアルのブログはこの時点で 83 テスト、870 アサーションです）。`examples/blog` にもこのステップが入っており、その JSON は `cover_*` のカラムを含みません（`Article#public_json`）。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 実行時 · `dist/blog` -->
 ## デプロイ用にビルドする

@@ -1,5 +1,5 @@
 ---
-source_sha256: 62cfdaff2b084f3fed0f46dc16b6967071128d69c23036f7cfd531bae3cbab7c
+source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -132,7 +132,7 @@ end
 cybertrain generate scaffold article title:string body:text
 ```
 
-它会写出一个迁移、一个模型、一个控制器和五个视图（`index`、`show`、`new`、`edit`、`_form`），并把 `resources :articles` 插入 `config/routes.rb`。字段类型有 `string`、`text`、`integer`、`float`、`boolean`、`date`、`datetime`、`references` 和 `attachment`（上传的文件，见[第 18 步](#attachments)）；默认为 `string`。快速上手中的 `cybertrain g scaffold` 是同一条命令。
+它会写出一个迁移、一个模型、一个控制器、五个视图（`index`、`show`、`new`、`edit`、`_form`）、一个夹具文件和测试（[步骤 16](#test)），并把 `resources :articles` 插入 `config/routes.rb`。字段类型有 `string`、`text`、`integer`、`float`、`boolean`、`date`、`datetime`、`references` 和 `attachment`（上传的文件，见[第 18 步](#attachments)）；默认为 `string`。快速上手中的 `cybertrain g scaffold` 是同一条命令。
 
 > [!NOTE]
 > 已有文件永远不会被覆盖：每个文件都会报告为 `create`、`identical` 或 `exist`。
@@ -148,6 +148,7 @@ cybertrain generate scaffold article title:string body:text
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -315,6 +316,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -682,7 +684,7 @@ end
 - 作业是 `cybertrain_jobs` 中的行，由提供服务的进程的三个作业线程运行，或者由用 `./blog worker` 启动的单独进程的作业线程运行（[进程角色](background-and-operations.md#process-roles)）。
 - `retry_on StandardError, wait: 30, attempts: 3` 会在 30 秒后把失败的运行重新入队，总共尝试三次；此后这一行变为 `failed` 并保留下来（[重试与丢弃](background-and-operations.md#retries-and-discards)）。
 - 作业可能运行不止一次（进程在运行某个作业的中途死掉时，该作业会再运行一次），所以要把 `perform` 写成可以安全重复执行的。
-- 失败的作业用 `./blog jobs` 列出、重试和丢弃，也可以在 `config/routes.rb` 中被注释掉的 `jobs_page` 那一行所挂载的页面上操作（[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
+- 失败的作业用 `./blog jobs` 列出、重试和丢弃，也可以在 `config/routes.rb` 中被注释掉的 `jobs_page` 那一行在取消注释后挂载的页面（步骤 04 和 09 的路由保留了这一行）上操作（[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
 
 > [!RULE] Spinel 规则：作业策略作为文本读取
 > ### 作业策略作为文本读取
@@ -700,7 +702,7 @@ end
 > end
 > ```
 >
-> cron 表达式按 `CYBERTRAIN_SCHEDULER_TZ`（默认为 UTC）解读，并且同一时间只有一个进程运行这份时间表（[定时任务](background-and-operations.md#scheduled-tasks)）。
+> cron 表达式按 `CYBERTRAIN_SCHEDULER_TZ`（默认为应用的 `time_zone`，未设置时为 UTC）解读，并且同一时间只有一个进程运行这份时间表（[定时任务](background-and-operations.md#scheduled-tasks)）。
 
 <!-- step 15 #json stage: 你编写 · `app/controllers/` -->
 ## 返回 JSON
@@ -739,115 +741,118 @@ $ curl http://127.0.0.1:3000/articles.json
 
 `/articles/1.json` 是单篇文章，来自 `show` 中同样的块。关于格式的全部内容：[格式与 `respond_to`](requests.md#formats-and-respond_to)。
 
-<!-- step 16 #test stage: 构建时 · `cybertrain spin test` -->
+<!-- step 16 #test stage: 构建时 · `cybertrain test` -->
 ## 测试
 
 > [!WHY]
-> minitest 和 RSpec 通过反射查找测试，而 AOT 编译器做不到这一点，因此 CyberTrain 提供了 `Cybertrain::Test`。
+> minitest 和 RSpec 通过反射查找测试，提前（AOT）编译器做不到这一点。不过测试仍然是 Rails 的类：`spin run gen` 把它们改写成一个程序，由 `cybertrain test` 编译并运行。
 
-### 模型测试
+### 生成器写了什么
 
-```ruby test/articles.rb（片段）
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+步骤 03 和 08 的脚手架写出了 Rails 的脚手架测试：`test/fixtures/articles.yml` 和 `comments.yml`（每个测试开始时就有的 `one` 和 `two` 两行）、`test/models/article_test.rb` 和 `comment_test.rb`（“the fixture is valid”），以及 `test/controllers/articles_controller_test.rb` 和 `comments_controller_test.rb`（每个动作一个请求）。步骤 12 写出了 `test/components/comment_component_test.rb` 和 `test/helpers/comments_helper_test.rb`，步骤 14 写出了 `test/jobs/notify_comment_job_test.rb`，`cybertrain new` 写出了每个文件都会加载的 `test/test_helper.rb`，以及请求 `/up` 的 `test/integration/health_test.rb`。其中三个需要跟上博客此后的变化。
 
-test "title must be present" do
-  article = Article.new(body: "a body long enough to pass length")
-  refute article.save
-  assert_includes article.errors.full_messages, "Title can't be blank"
+### 通过验证的夹具
+
+脚手架的示例值（`MyString`、`MyText`）通不过[步骤 05](#validations) 的检查：两篇文章标题相同，正文也不到十个字符。给文章真正的值：
+
+```yaml test/fixtures/articles.yml
+one:
+  title: Hello Rails
+  body: I am on Rails! This is my first article.
+
+two:
+  title: Second article
+  body: Another article, with no comments.
+```
+
+创建测试提交的是夹具自己的标题，而它现在已被占用；给它一个新标题：
+
+```ruby test/controllers/articles_controller_test.rb（节选）
+  test "should create article" do
+    assert_difference(-> { Article.count }, 1) do
+      post articles_url, params: { article: { body: @article.body, title: "A new title" } }
+    end
+
+    assert_redirected_to article_url(Article.last)
+  end
+```
+
+`comments.yml` 的行属于 `article: one`。和 Rails 一样，指向某篇文章的夹具会让这篇文章无法删除，所以除非 `Article` 声明了 `has_many :comments, dependent: :destroy`（[步骤 08](#scaffold-comment) 末尾的方框），“should destroy article” 会因外键而失败。如果还没有，像 examples/blog 一样把它加到 `app/models/article.rb` 中：
+
+```ruby app/models/article.rb（节选）
+  has_many :comments, dependent: :destroy
+```
+
+### 文章下的评论
+
+脚手架的评论测试请求的是[步骤 09](#nested-routes) 嵌套到文章下的路由，它们的辅助方法现在是 `article_comments_path` 和 `article_comment_path`。把它替换掉：
+
+```ruby test/controllers/comments_controller_test.rb
+require "test_helper"
+
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  test "a comment is added to its article" do
+    article = articles(:one)
+    assert_difference(-> { Comment.count }, 1) do
+      post article_comments_path(article), params: { comment: { commenter: "Dave", body: "First!" } }
+    end
+    assert_redirected_to article_path(article)
+  end
+
+  test "a comment queues its notification" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Dave", body: "First!" } }
+    assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
+    assert_equal 1, perform_enqueued_jobs
+  end
+
+  test "a form Turbo submits is answered with a Turbo Stream" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Dave", body: "First!" } },
+                                               headers: { "Accept" => "text/vnd.turbo-stream.html, text/html" }
+    assert_response :ok
+    assert_turbo_stream action: "append", target: "comments"
+  end
+
+  test "a destroyed comment leaves its article" do
+    comment = comments(:one)
+    assert_difference(-> { Comment.count }, -1) do
+      delete article_comment_path(comment.article_id, comment)
+    end
+    assert_redirected_to article_path(comment.article_id)
+  end
 end
 ```
 
-断言：`assert`、`refute`、`assert_equal`、`assert_nil`、`assert_includes`、`assert_raises("Class") { }`、`flunk`。客户端还提供 `assert_response` 和 `assert_redirected_to`。
+测试不运行作业线程，所以排队的作业会一直等到测试运行它（`perform_enqueued_jobs`）。和 Rails 一样，测试中的防伪造保护是关闭的，所以 `post` 不需要令牌。
 
-### 完整的 HTTP 流程
+### 组件
 
-```ruby test/articles.rb（片段）
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+步骤 12 的测试在模板现在期望评论的地方传入一个 String 来渲染 `CommentComponent`。改为渲染夹具中的评论：
 
-test "POST /articles creates an article and redirects to it" do
-  client = Cybertrain::Test::Client.new(BLOG)
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, BlogTest.article_path(Article.last)
-  assert_response res, :see_other
+```ruby test/components/comment_component_test.rb
+require "test_helper"
+
+class CommentComponentTest < ViewComponent::TestCase
+  test "renders the comment with its author" do
+    render_inline(CommentComponent.new(comment: comments(:one)))
+    assert_select "div.comment strong.comment-author", text: "MyString"
+  end
 end
 ```
 
-`Cybertrain::Test::Client` 在进程内（不经过 socket）驱动应用，并带有 cookie jar，所以会话和 CSRF 的行为与在浏览器中一致。不带令牌的请求会得到 403。
-
-### 作业、Turbo Stream 和组件
-
-测试客户端不启动作业线程，所以入队的作业会一直留在队列中，直到测试运行它。`post` 的第三个参数设置请求头，这里是 Turbo 提交表单时发送的 `Accept`：
-
-```ruby test/comments.rb（片段）
-require_relative "support/blog_test"   # 同时加载 cybertrain/test/jobs
-
-def post_comment(client, article, headers = {})
-  client.get(BlogTest.article_path(article))
-  client.post("#{BlogTest.article_path(article)}/comments",
-              { "authenticity_token" => BlogTest.form_token(client),
-                "comment[commenter]" => "Dave", "comment[body]" => "First!" }, headers)
-end
-
-test "a comment queues its notification" do
-  BlogTest.reset
-  post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article)
-  assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
-  assert_equal 1, perform_enqueued_jobs
-  assert_no_enqueued_jobs
-end
-
-test "a form Turbo submits is answered with a Turbo Stream" do
-  BlogTest.reset
-  res = post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article,
-                     { "accept" => "text/vnd.turbo-stream.html, text/html" })
-  assert_response res, :ok
-  assert_includes res.body, "<turbo-stream action=\"append\" target=\"comments\">"
-end
-```
-
-[第 12 步](#component)写出了 `test/comment_component.rb`，它用一个 String 来渲染组件，而模板现在需要的是一条评论。替换它的内容：
-
-```ruby test/comment_component.rb
-require_relative "support/blog_test"
-require "cybertrain/test/views"   # Cybertrain::Test.render_component
-
-test "the comment component names its author" do
-  BlogTest.reset
-  comment = BlogTest.comment(BlogTest.article, "Alice", "Great post!")
-  html = Cybertrain::Test.render_component(CommentComponent.new(comment: comment))
-  assert_includes html, "<strong class=\"comment-author\">Alice</strong> wrote:"
-end
-
-Cybertrain::Test.run!
-```
-
-`render_component` 像广播那样渲染，不经过请求。其他辅助方法，以及如何在测试中读取流：[测试作业](testing.md#testing-jobs)和[测试流和组件](testing.md#testing-streams-and-components)。
-
-> [!COMPILE] 片段中省略的内容
-> ### 片段中省略的内容
->
-> - `support/blog_test` 就是 [`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb)：把它复制到你的应用的 `test/support/` 中，这里的文件会被 require，而不会被运行。它会迁移一个全新的 `storage/test.sqlite3`，以 `BLOG` 启动应用，加载 `Cybertrain::Test`、它的客户端和作业辅助方法，并提供 `BlogTest.form_token`（最近渲染的表单中的 CSRF 令牌）、`BlogTest.article_path`、`BlogTest.article` 和 `BlogTest.comment`（各返回一条已保存的记录）以及 `BlogTest.reset`（清空各表、缓存和作业队列）。
-> - 在文件末尾调用 `Cybertrain::Test.run!`，它会运行测试，并打印快照所比对的各行输出。
-> - 在 `config/app.rb` 中设置 `c.log_level = :none if c.test?`，让请求日志不进入被比对的输出。
+`render_inline` 像广播一样在没有请求的情况下渲染，`assert_select` 读取它渲染的结果。其他断言见[测试应用](testing.md#assertions)、[测试作业](testing.md#testing-jobs)和[测试流和组件](testing.md#testing-streams-and-components)。
 
 ### 运行测试
 
-```shell 终端 — blog/
-cybertrain spin test
+```shell terminal — blog/
+cybertrain test
+cybertrain test test/controllers/comments_controller_test.rb
+cybertrain test -n /comment/
 ```
 
-`cybertrain spin test` 用锁定版本的 Spinel 运行 `spin test`；如果工具链已在 `PATH` 上（[第 00 步](#requirements)），直接运行 `spin test` 效果相同。它会把每个 `test/*.rb` 编译成独立的程序，并将其输出（stdout 和 stderr 合在一起）与已提交的快照 `test/<name>.rb.expected` 进行比对。`test/support/` 中的文件会被 require，而不会被运行。生成器在第 12 步和第 14 步写出的测试（`test/comments_helper.rb`、`test/notify_comment_job.rb`）会和其余测试一起运行。要写入快照：
-
-```shell 终端 — blog/
-cybertrain spin test --regen test/<name>.rb
-rm -f build/test/<name>; cybertrain spin test test/<name>.rb; [ -x build/test/<name> ] && ./build/test/<name> > test/<name>.rb.expected 2>&1
-```
+第一次运行会把所有测试编译成一个程序，需要几分钟（examples/blog 的 149 个测试在一台 4 vCPU 的云机器上用了大约九分钟）；没有改动时再次运行不会重新编译测试程序：它可能会重新构建一次 gen（`build gen`，几秒钟），之后不到一秒就开始。文件或 `-n` 选择运行哪些测试，而不是编译什么：修改任何测试都会重新编译程序。每个文件输出一个标题，每个测试一行（`ok`，或带着测试的行号和消息的 `FAIL` 和 `ERR`），最后是合计，其间还夹着被测代码自己输出的内容（例如某个命令的输出行）；有测试失败时退出状态为 1。2026-11-13 测得，教程的博客在这一步有 17 个测试、25 个断言。
 
 > [!NOTE]
-> `--regen` 根据 CRuby 的输出写入快照。通过 FFI 访问 SQLite 的测试无法在 CRuby 下运行，所以它们的快照来自编译后的二进制文件（上面的第二行）。只要快照过时，`cybertrain spin test` 就会以非零状态退出，所以它后面跟的是 `;` 而不是 `&&`；`[ -x ]` 检查会在编译失败时跳过捕获，从而保留旧快照。无法在 CRuby 下运行的测试需要先有这个快照，`cybertrain spin test` 才能通过；其他没有快照的测试会与 CRuby 的输出进行比对。
+> 每个测试之前所有表都会被清空并重新插入夹具，所以测试之间互不依赖。`gen/tests.rb` 和 `gen/test/` 是生成的：和 `gen/` 的其余部分一起提交。
 
 <!-- step 17 #authentication stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加登录
@@ -910,25 +915,28 @@ class ArticlesController < ApplicationController
 
 ### 更新测试
 
-[步骤 16](#test) 中期望出现表单、提交表单，或访问 `index` 和 `show` 以外动作的测试，现在都会遇到登录页面。先用生成器写进 `test/support/app_test.rb` 的辅助方法让客户端登录：
+[步骤 16](#test) 中打开表单、提交表单或访问 `index` 和 `show` 以外动作的测试，现在会遇到登录页面。生成器写出了 `test/fixtures/users.yml`（`one` 和 `two`，密码是 `"password"`）和 `test/support/session_test_helper.rb`，`test/test_helper.rb` 现在把其中的 `sign_in_as` 给了每个集成测试，并且生成器已经在文章测试的 `setup` 中加上了登录（它会输出 `insert test/controllers/articles_controller_test.rb (sign_in_as users(:one))`），所以你会看到：
 
-```ruby test/signed_in.rb
-require_relative "support/app_test"   # written by generate authentication: APP, AppTest
-
-test "a signed-in user creates an article" do
-  client = Cybertrain::Test::Client.new(APP)
-  AppTest.user("ann@example.com", "s3cr3t-s3cr3t")
-  AppTest.sign_in(client, "ann@example.com", "s3cr3t-s3cr3t")
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => AppTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, "/articles/#{Article.last.id}"
-end
+```ruby test/controllers/articles_controller_test.rb（节选）
+  setup do
+    sign_in_as users(:one)
+    @article = articles(:one)
+  end
 ```
 
+评论测试没有可供生成器添加登录的 `setup`，而 `CommentsController` 的每个动作（create 和 destroy）现在都需要已登录的用户，所以它的四个测试也都需要；给它加上：
+
+```ruby test/controllers/comments_controller_test.rb（节选）
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+从现在起生成的脚手架会自己登录。
+
 > [!NOTE]
-> 像 [第 16 步](#test) 那样运行 `cybertrain spin test`；`test/authentication.rb`、生成器写出的其他测试以及这个测试都使用 SQLite，所以它们的快照来自编译后的二进制。登录尝试像 Rails 的生成器一样受到速率限制：每个客户端地址每三分钟十次，在应用的数据库中计数，所以每个进程共同计数；在反向代理之后，请配置 [可信代理](requests.md#rate-limiting-and-the-client-address)。`examples/blog` 用 `--invite-only` 完成这一步，并让它的 `/admin` 页面只对管理员开放。
+> 生成器自己的测试（`test/controllers/sessions_controller_test.rb`、`registrations_controller_test.rb`、`passwords_controller_test.rb`、`accounts_controller_test.rb`、`test/integration/remember_me_test.rb`、`lockout_test.rb`、`admin_test.rb`，见[测试](authentication.md#testing)）在 `cybertrain test` 中和其他测试一起运行，用 `travel_to` 拨动时钟来检查第 15 天和第 30 天。和 Rails 的生成器一样，登录尝试受到限流：每个客户端地址每三分钟十次，在应用的数据库中计数，所以所有进程一起计数；在反向代理之后，请配置[受信任的代理](requests.md#rate-limiting-and-the-client-address)。`examples/blog` 用 `--invite-only` 完成这一步，并让它的 `/admin` 页面只对管理员开放。
 
 <!-- step 18 #attachments stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加封面图片
@@ -1017,10 +1025,10 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 - **提供。** 文件通过控制器中的 `send_blob` 发出，绝不从 `public/` 提供。四种图片类型内联显示；其他类型一律作为下载（`application/octet-stream`）。每个响应都带有 `X-Content-Type-Options: nosniff` 和 `Content-Security-Policy: default-src 'none'; sandbox`。
 - **参数。** `params.nested(:article).upload(:cover)` 是一个 `Cybertrain::UploadedFile`，没有选择文件时为 nil。`permit` 从不返回文件，所以文件只能通过那一行显式的代码进入。CSRF 令牌和普通表单一样，从 multipart 请求体中读取。损坏或过大的请求体会得到 400；限制由 `config/app.rb` 中的 `max_upload_bytes` 和 `max_multipart_parts` 设置，存放目录由 `upload_root` 设置。
 
-启动服务器，编辑一篇文章并选择一张图片。生成器还写了 `test/attachment_article_cover.rb`，它测试整个流程，并且因为应用现在有了 `User`，会先登录。由于这里的 `:cover` 是公开的，它会检查访客能否下载封面；正文则填入 `"A article."`，长度补足到 [步骤 05](#validations) 要求的至少 10 个字符。
+启动服务器，编辑一篇文章并选择一张图片。生成器还写了 `test/integration/article_cover_attachment_test.rb` 和图片 `test/fixtures/files/cover.png`，它们测试整个流程，并且因为应用现在有了 `User`，会先登录。由于这里的 `:cover` 是公开的，它会检查访客能否下载封面；正文则填入 `"A article."`，长度补足到 [步骤 05](#validations) 要求的至少 10 个字符。
 
 > [!NOTE]
-> 和[步骤 16](#test) 一样用 `cybertrain spin test` 运行；这个测试会用到 SQLite，所以它的快照来自编译后的二进制。`examples/blog` 也包含这一步，并且它的 JSON 不包含 `cover_*` 列（`Article#public_json`）。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
+> 和[步骤 16](#test) 一样用 `cybertrain test` 运行（2026-11-13 测得，教程的博客此时有 83 个测试、870 个断言）。`examples/blog` 也包含这一步，并且它的 JSON 不包含 `cover_*` 列（`Article#public_json`）。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 运行时 · `dist/blog` -->
 ## 为部署而构建

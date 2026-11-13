@@ -30,69 +30,92 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_posts.rb
 create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
 create app/controllers/posts_controller.rb
 create app/views/posts/index.html.erb
 create app/views/posts/show.html.erb
 create app/views/posts/new.html.erb
 create app/views/posts/edit.html.erb
 create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
 route resources :posts
-ok   scaffold writes the migration, model, controller and views
+ok   scaffold writes the migration, model, controller and views, with fixtures and tests
 ok   the migration creates the table with its columns and timestamps
+ok   scaffold writes fixtures, a model test and a controller test
+ok   no generator writes test/support/app_test.rb
 ok   the model validates presence of the first string field
 ok   the controller follows the Rails scaffold shape
 ok   the views use the template subset and the form builder
 create db/migrate/20260925120001_create_comments.rb
 create app/models/comment.rb
+create test/models/comment_test.rb
+create test/fixtures/comments.yml
 create app/controllers/comments_controller.rb
 create app/views/comments/index.html.erb
 create app/views/comments/show.html.erb
 create app/views/comments/new.html.erb
 create app/views/comments/edit.html.erb
 create app/views/comments/_form.html.erb
+create test/controllers/comments_controller_test.rb
 route resources :comments
 ok   a references field becomes t.references, a post_id input and a permitted param
 create db/migrate/20260925120002_create_products.rb
 create app/models/product.rb
+create test/models/product_test.rb
+create test/fixtures/products.yml
 create app/controllers/products_controller.rb
 create app/views/products/index.html.erb
 create app/views/products/show.html.erb
 create app/views/products/new.html.erb
 create app/views/products/edit.html.erb
 create app/views/products/_form.html.erb
+create test/controllers/products_controller_test.rb
 route resources :products
 ok   other field types map to their form inputs
 identical db/migrate/20260925120000_create_posts.rb
 identical app/models/post.rb
+identical test/models/post_test.rb
+identical test/fixtures/posts.yml
 identical app/controllers/posts_controller.rb
 identical app/views/posts/index.html.erb
 identical app/views/posts/show.html.erb
 identical app/views/posts/new.html.erb
 identical app/views/posts/edit.html.erb
 identical app/views/posts/_form.html.erb
+identical test/controllers/posts_controller_test.rb
 identical route resources :posts
 ok   routes are inserted once, even when the scaffold runs twice
 exist db/migrate/20260925120000_create_posts.rb
 exist app/models/post.rb
+identical test/models/post_test.rb
+exist test/fixtures/posts.yml
 exist app/controllers/posts_controller.rb
 exist app/views/posts/index.html.erb
 exist app/views/posts/show.html.erb
 identical app/views/posts/new.html.erb
 identical app/views/posts/edit.html.erb
 exist app/views/posts/_form.html.erb
+exist test/controllers/posts_controller_test.rb
 identical route resources :posts
 ok   an existing file is never overwritten
 create db/migrate/20260925120003_create_counters.rb
 create app/models/counter.rb
+create test/models/counter_test.rb
+create test/fixtures/counters.yml
 create app/controllers/counters_controller.rb
 create app/views/counters/index.html.erb
 create app/views/counters/show.html.erb
 create app/views/counters/new.html.erb
 create app/views/counters/edit.html.erb
 create app/views/counters/_form.html.erb
+create test/controllers/counters_controller_test.rb
 route resources :counters
 ok   a model without string fields gets no validation
 ok   migration versions stay unique and increasing
@@ -155,42 +178,103 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 error: ./config/routes.rb has no `Cybertrain::Routes.draw do` line
 ok   a routes file without the draw line is rejected before anything is written
 create db/migrate/20260925120004_create_sheep.rb
 create app/models/sheep.rb
+create test/models/sheep_test.rb
+create test/fixtures/sheep.yml
 create app/controllers/sheep_controller.rb
 create app/views/sheep/index.html.erb
 create app/views/sheep/show.html.erb
 create app/views/sheep/new.html.erb
 create app/views/sheep/edit.html.erb
 create app/views/sheep/_form.html.erb
+create test/controllers/sheep_controller_test.rb
 route resources :sheep
 ok   a name that is its own plural links and redirects to <plural>_index_path
 ok   the scaffold refuses a keyword or reserved name with its own message
 create db/migrate/20260925120005_create_payments.rb
 create app/models/payment.rb
+create test/models/payment_test.rb
+create test/fixtures/payments.yml
 create app/controllers/payments_controller.rb
 create app/views/payments/index.html.erb
 create app/views/payments/show.html.erb
 create app/views/payments/new.html.erb
 create app/views/payments/edit.html.erb
 create app/views/payments/_form.html.erb
+create test/controllers/payments_controller_test.rb
 route resources :payments
 note: 'method' shadows Object#method on the generated model; call it as payment.method
 note: 'tap' shadows Object#tap on the generated model; call it as payment.tap
 create db/migrate/20260925120006_create_displays.rb
 create app/models/display.rb
+create test/models/display_test.rb
+create test/fixtures/displays.yml
 create app/controllers/displays_controller.rb
 create app/views/displays/index.html.erb
 create app/views/displays/show.html.erb
 create app/views/displays/new.html.erb
 create app/views/displays/edit.html.erb
 create app/views/displays/_form.html.erb
+create test/controllers/displays_controller_test.rb
 route resources :displays
 note: 'display' shadows Object#display on a model that references displays (belongs_to reader); call it as record.display
 ok   a name that shadows an Object method is accepted with a note
+create db/migrate/20260925120007_create_events.rb
+create app/models/event.rb
+create test/models/event_test.rb
+create test/fixtures/events.yml
+create app/controllers/events_controller.rb
+create app/views/events/index.html.erb
+create app/views/events/show.html.erb
+create app/views/events/new.html.erb
+create app/views/events/edit.html.erb
+create app/views/events/_form.html.erb
+create test/controllers/events_controller_test.rb
+route resources :events
+insert app/models/event.rb (attachment poster)
+insert app/controllers/events_controller.rb (def poster)
+insert app/controllers/events_controller.rb (:poster in before_action :set_event)
+insert app/controllers/events_controller.rb (poster_file= in create)
+insert app/controllers/events_controller.rb (poster_file= in update)
+route event_poster (GET /events/:id/poster)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/fixtures/files/poster.png
+create test/integration/event_poster_attachment_test.rb
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+ok   a datetime field's fixture value, and an attachment field has none
+create db/migrate/20260925120008_create_widgets.rb
+create app/models/widget.rb
+create test/models/widget_test.rb
+create test/fixtures/widgets.yml
+create app/controllers/widgets_controller.rb
+create app/views/widgets/index.html.erb
+create app/views/widgets/show.html.erb
+create app/views/widgets/new.html.erb
+create app/views/widgets/edit.html.erb
+create app/views/widgets/_form.html.erb
+create test/controllers/widgets_controller_test.rb
+route resources :widgets
+ok   a scaffold with no fields reads its params with nested, so its tests can create and update
+identical db/migrate/20260925120008_create_widgets.rb
+identical app/models/widget.rb
+identical test/models/widget_test.rb
+identical test/fixtures/widgets.yml
+identical app/controllers/widgets_controller.rb
+identical app/views/widgets/index.html.erb
+identical app/views/widgets/show.html.erb
+identical app/views/widgets/new.html.erb
+identical app/views/widgets/edit.html.erb
+identical app/views/widgets/_form.html.erb
+identical test/controllers/widgets_controller_test.rb
+identical route resources :widgets
+ok   a scaffold whose test class another test file defines is refused
 ok   an attachment field expands to five columns and is not a column itself
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-18 tests, 195 assertions, 0 failures
+23 tests, 220 assertions, 0 failures

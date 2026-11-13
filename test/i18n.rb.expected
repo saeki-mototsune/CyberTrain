@@ -11,5 +11,6 @@ ok   an application form beside a bundled plural mapping merges with the bundled
 ok   interpolation names are \w+; anything else stays literal
 ok   l with :default, :short, :long and a pattern in en and ja
 ok   l refuses what it cannot format
+ok   l renders a Time in Time.zone, or once in zone:; a Date as it is
 ok   every bundled date and time format formats in every bundled locale
-14 tests, 175 assertions, 0 failures
+15 tests, 190 assertions, 0 failures

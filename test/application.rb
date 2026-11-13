@@ -624,6 +624,41 @@ test "boot installs the locale settings" do
   assert_equal "translation missing: en.no.such_key", I18n.t("no.such_key")
 end
 
+# Boots APP with config.time_zone set to name for the block, then puts
+# the name back and boots again, also when an assertion in it fails
+# (spikes/NOTES.md rule 103's save-yield-ensure in a module function).
+module BootZone
+  def self.during(name)
+    c = Cybertrain.config
+    saved = c.time_zone
+    c.time_zone = name
+    APP.boot
+    _value = yield
+    nil
+  ensure
+    Cybertrain.config.time_zone = saved
+    APP.boot
+  end
+end
+
+test "boot installs the zone" do
+  c = Cybertrain.config
+  assert_equal "UTC", Time.zone.zone_name
+  BootZone.during("Asia/Tokyo") do
+    assert_equal "Asia/Tokyo", Time.zone.zone_name
+    assert_equal "Asia/Tokyo", Cybertrain::Clock.zone.zone_name
+    # Boundaries and Date.current follow it: midnight of 12 November in Tokyo.
+    assert_equal Time.utc(2026, 11, 11, 15), Time.utc(2026, 11, 11, 20).beginning_of_day
+    travel_to(Time.utc(2026, 11, 11, 20)) { assert_equal Date.new(2026, 11, 12), Date.current }
+  end
+  assert_equal "UTC", Time.zone.zone_name
+  # A name the system zoneinfo does not have is what boot stops on.
+  stopped = Cybertrain::Config.new
+  stopped.time_zone = "Mars/Base"
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", stopped.validation_error
+  assert_equal "UTC", c.time_zone
+end
+
 test "a GET renders a template inside the layout" do
   res = CLIENT.get("/")
   assert_response res, :ok

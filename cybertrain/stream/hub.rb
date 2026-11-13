@@ -105,7 +105,7 @@ module Cybertrain
       # @api public
       def stream_pop(timeout)
         wait = timeout.to_f
-        deadline = Time.now.to_f + wait
+        deadline = Clock.monotonic + wait
         while true
           return nil if @dropped
 
@@ -120,7 +120,7 @@ module Cybertrain
           end
           return message if message.message_id > @boundary
 
-          wait = deadline - Time.now.to_f
+          wait = deadline - Clock.monotonic
           wait = 0.0 if wait < 0.0
         end
         nil
@@ -301,7 +301,7 @@ module Cybertrain
         count = 0
         @lock.synchronize do
           count = hub_offer(message)
-          Poller.advance(id)
+          Poller.advance_to(id)
         end
         count
       end

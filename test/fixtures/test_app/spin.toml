@@ -1,0 +1,10 @@
+# The application script/test-command-e2e runs `cybertrain test` in. The
+# script copies it to a scratch directory and points this dependency at the
+# checkout; in place (`spin run gen` for its committed gen/) the path below
+# is the checkout too.
+[package]
+name = "test_app"
+version = "0.1.0"
+
+[dependencies]
+cybertrain = { path = "../../.." }

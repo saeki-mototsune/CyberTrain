@@ -58,9 +58,13 @@ module Cybertrain
   module Main
     # `./<name> jobs ...`: Job::CLI.run with the database connected as for
     # a registered command (a pool of one; no server, scheduler or job
-    # thread). Returns its exit status, or 1 when the database cannot be
-    # opened. The rescue sits in this plain method (NOTES rules 32/45).
+    # thread), in the configured zone. Returns its exit status, or 1 when
+    # the zone is unknown or the database cannot be opened. The rescue
+    # sits in this plain method (NOTES rules 32/45).
     def self.run_jobs(args)
+      zone_problem = Runtime.apply_zone(Cybertrain.config)
+      return zone_refused(zone_problem) unless zone_problem.empty?
+
       status = 0
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
@@ -161,9 +165,9 @@ module Cybertrain
 
     # The task's block captures only the Integer index (a parameter of this
     # method) and calls Features.run_periodic, which calls the hook on the
-    # Array element outside the block (NOTES rules 88 and 104).
+    # Array element outside the block (NOTES rules 88 and 111).
     def self.every_periodic(index, task_name, interval)
-      Scheduler.every(interval, task_name) { Features.run_periodic(index, Time.now.to_i) }
+      Scheduler.every(interval, task_name) { Features.run_periodic(index, Clock.now.to_i) }
       nil
     end
   end

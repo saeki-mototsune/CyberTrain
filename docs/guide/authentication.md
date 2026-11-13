@@ -25,7 +25,7 @@ It writes, in the application:
 | `app/mailers/passwords_mailer.rb`, `confirmations_mailer.rb` | the mails |
 | `app/commands/user_command.rb` | `./<app> user ...`, required from `bin/<app>.rb` |
 | `app/views/...` | the screens, every text through `t()`, and the `sessions/_nav` partial |
-| `test/*.rb`, `test/support/*.rb` | tests for each part ([Testing](#testing)) |
+| `test/fixtures/users.yml`, `test/support/session_test_helper.rb`, `test/models/`, `test/controllers/`, `test/integration/` | the fixture users, `sign_in_as`, and tests for each part ([Testing](#testing)) |
 
 and edits, once each: `include Authentication` in `ApplicationController`,
 the routes, the jobs page's line ([Admin users](#admin-users-and-the-jobs-page)),
@@ -360,22 +360,35 @@ value, as `User.find_by_password_reset_token` does.
 
 ## Testing
 
-The generator writes a test program per part: `test/authentication.rb`,
-`admin.rb`, `remember_me.rb`, `lockout.rb`, `passwords.rb`, `accounts.rb`,
-and with `--confirmable` `confirmations.rb`; they use SQLite, so run them
-with `cybertrain spin test` and take their snapshots from the binaries.
-Their support files are the application's to use:
+The generator writes Rails-shaped test classes, which `cybertrain test`
+runs ([Testing an app](testing.md)):
 
-<!-- list: points -->
-- `test/support/app_test.rb`: `AppTest.boot`, `AppTest.user(email,
-  password)`, `AppTest.sign_in(client, email, password)` (which also
-  resets the rate limit's counts) and `AppTest.form_token(client)`.
-- `test/support/authentication_helpers.rb`: `with_smtp_receiver {
-  |receiver| ... }` (the application's mail goes to a receiver in the test
-  process), `last_mail_link(receiver)`, `backdate_session(row, seconds)`,
-  and `with_config(env, hosts, base_url, log = nil) { ... }`, which sets the
-  environment, `CYBERTRAIN_HOSTS` and the base URL for a block and puts
-  them back.
+| File | What it tests |
+| --- | --- |
+| `test/fixtures/users.yml` | `one` (an admin) and `two`, whose password is `"password"` (with `--confirmable`, both confirmed) |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out`, `open_session` (a second browser) and `authenticity_token_in(body)` (the token of a page's first form, for requests inside `with_forgery_protection`), included into every integration test by `test/test_helper.rb` |
+| `test/models/user_test.rb` | the address format |
+| `test/controllers/sessions_controller_test.rb` | sign-in and sign-out |
+| `test/controllers/registrations_controller_test.rb` | sign-up (not with `--invite-only`) |
+| `test/integration/first_run_test.rb` | `/setup` and the user command (with `--invite-only`) |
+| `test/controllers/passwords_controller_test.rb` | the reset, its mail and its link |
+| `test/controllers/accounts_controller_test.rb` | the account page |
+| `test/controllers/confirmations_controller_test.rb` | confirmation (with `--confirmable`) |
+| `test/integration/remember_me_test.rb` | day 15 and day 30, the idle limit |
+| `test/integration/lockout_test.rb` | the lock and its hour |
+| `test/integration/admin_test.rb` | `require_admin`, `user admin` |
+
+Time moves with `travel_to` and `travel` (no row is moved back in time),
+and mail is read from `Cybertrain::Mailer.deliveries` with `assert_emails`
+and `perform_enqueued_jobs`. A scaffold generated after authentication
+signs `users(:one)` in at the top of its controller test; one generated
+before it does not, so add `sign_in_as users(:one)` to its `setup`. Run
+again over an application whose tests an earlier generator wrote
+(`test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`,
+`passwords.rb`, `accounts.rb`, `confirmations.rb`,
+`test/support/app_test.rb`, `test/support/authentication_helpers.rb`), the
+generator names each with the file that replaces it; `--force` deletes
+them.
 
 `script/auth-e2e signup invite confirmable upgrade04` in this repository
 builds applications with the generator and drives them from end to end.

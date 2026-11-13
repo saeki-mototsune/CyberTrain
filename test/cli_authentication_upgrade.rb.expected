@@ -30,7 +30,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -49,18 +52,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 insert bin/shop.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
@@ -85,18 +91,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-manual  test/support/app_test.rb (diff below)
-create test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+manual  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+manual  test/support/app_test.rb (replaced by test/test_helper.rb)
 manual  app/controllers/application_controller.rb (diff below)
 route resources :passwords, resource :account
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -122,18 +134,21 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/shop.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -160,18 +175,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-force  test/support/app_test.rb
-create test/support/authentication_helpers.rb
-force  test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+remove  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+remove  test/support/app_test.rb (replaced by test/test_helper.rb)
 force  app/controllers/application_controller.rb (0.4's authentication block replaced by include Authentication)
 route resources :passwords, resource :account
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -197,18 +218,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-force  test/support/app_test.rb
-create test/support/authentication_helpers.rb
-force  test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+remove  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+remove  test/support/app_test.rb (replaced by test/test_helper.rb)
 manual  app/controllers/application_controller.rb (diff below)
 route resources :passwords, resource :account
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -238,19 +265,25 @@ create app/views/mail/_password_reset.html.erb
 create app/views/confirmations/new.html.erb
 create app/views/mail/_confirmation.html.erb
 create app/views/accounts/edit.html.erb
-manual  test/support/app_test.rb (diff below)
-create test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
-create test/confirmations.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/controllers/confirmations_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+manual  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+manual  test/support/app_test.rb (replaced by test/test_helper.rb)
 manual  app/controllers/application_controller.rb (diff below)
 route resources :passwords, resource :account, resources :confirmations, delete /account/pending_email
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -289,7 +322,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_users.rb
 create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
@@ -308,18 +344,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/plain.rb (./plain user)
 insert config/app.rb (PLAIN_BASE_URL)
 insert bin/plain.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
@@ -348,19 +387,22 @@ identical app/views/mail/_password_reset.html.erb
 create app/views/confirmations/new.html.erb
 create app/views/mail/_confirmation.html.erb
 manual  app/views/accounts/edit.html.erb (diff below)
-manual  test/support/app_test.rb (diff below)
-identical test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-manual  test/accounts.rb (diff below)
-create test/confirmations.rb
+manual  test/fixtures/users.yml (diff below)
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+manual  test/controllers/registrations_controller_test.rb (diff below)
+identical test/controllers/passwords_controller_test.rb
+manual  test/controllers/accounts_controller_test.rb (diff below)
+create test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resources :confirmations, delete /account/pending_email
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/plain.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/plain.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
@@ -388,19 +430,22 @@ identical app/views/mail/_password_reset.html.erb
 identical app/views/confirmations/new.html.erb
 identical app/views/mail/_confirmation.html.erb
 manual  app/views/accounts/edit.html.erb (diff below)
-manual  test/support/app_test.rb (diff below)
-identical test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-manual  test/accounts.rb (diff below)
-identical test/confirmations.rb
+manual  test/fixtures/users.yml (diff below)
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+manual  test/controllers/registrations_controller_test.rb (diff below)
+identical test/controllers/passwords_controller_test.rb
+manual  test/controllers/accounts_controller_test.rb (diff below)
+identical test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resources :confirmations, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/plain.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/plain.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
@@ -425,18 +470,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-manual  test/support/app_test.rb (diff below)
-create test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+manual  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+manual  test/support/app_test.rb (replaced by test/test_helper.rb)
 manual  app/controllers/application_controller.rb (diff below)
 route resources :passwords, resource :account
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -463,18 +514,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-force  test/support/app_test.rb
-create test/support/authentication_helpers.rb
-force  test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+remove  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+remove  test/support/app_test.rb (replaced by test/test_helper.rb)
 skip app/controllers/application_controller.rb (0.4's authentication block is there more than once): replace each with one `include Authentication` (app/controllers/concerns/authentication.rb)
 route resources :passwords, resource :account
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -499,18 +556,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-force  test/support/app_test.rb
-create test/support/authentication_helpers.rb
-force  test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+remove  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+remove  test/support/app_test.rb (replaced by test/test_helper.rb)
 skip app/controllers/application_controller.rb (0.4's authentication block has no end line): replace that code with `include Authentication` (app/controllers/concerns/authentication.rb)
 route resources :passwords, resource :account
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -536,18 +599,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-manual  test/support/app_test.rb (diff below)
-create test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+manual  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+manual  test/support/app_test.rb (replaced by test/test_helper.rb)
 manual  app/controllers/application_controller.rb (diff below)
 route resources :passwords, resource :account
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
@@ -557,4 +626,4 @@ ok   the jobs page's line goes inside the draw block, or a skip line says why no
 ok   --confirmable's warnings come again at the end, with what the diffs are for (review M1, M6)
 ok   LineDiff.unified writes diff -u's hunks
 ok   LineDiff.unified output applies with patch -p1
-14 tests, 207 assertions, 0 failures
+14 tests, 226 assertions, 0 failures

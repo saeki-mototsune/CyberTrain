@@ -19,6 +19,9 @@ require "cybertrain/generator/jobs_emitter"
 require "cybertrain/generator/assets_emitter"
 require "cybertrain/generator/locale_scan"
 require "cybertrain/generator/locales_emitter"
+require "cybertrain/generator/test_scan"
+require "cybertrain/generator/tests_emitter"
+require "cybertrain/generator/test_data_emitter"
 
 module Cybertrain
   module Gen
@@ -38,6 +41,18 @@ module Cybertrain
     # with empty tables when the application has no dictionary. First of
     # all, a view calling a helper of a subsystem bin/NAME.rb does not
     # require stops it with exit 1 and nothing written (ViewRequires).
+    # gen/test/** holds the rewritten copy of each file of test/ that holds
+    # a class-form test class (TestScan.copies: the helper and support
+    # files included); a copy whose file is gone or no longer class form is
+    # removed, as are the directories that leaves empty. Only gen's own
+    # copies (their last line names the file they came from) are swept:
+    # gen/test/data.rb, the fixtures' file, and anything else are left.
+    # While the rewrite refuses a test file, gen/tests.rb is the refused
+    # program (path:line), no copy is written and none is swept; gen still
+    # succeeds.
+    # gen/test/data.rb itself (TestDataEmitter: the tables cleared before
+    # each test, test/fixtures/*.yml's rows and accessors) is written from
+    # the schema branch whenever test/ exists, and removed once it is gone.
     module Runner
       def self.run(root, argv)
         ControllerScan.use_root(root)
@@ -72,12 +87,49 @@ module Cybertrain
           outputs << [rel, source]
           concern_files << rel
         end
+        stale = 0
+        # gen/tests.rb, the program `cybertrain test` compiles, whenever
+        # test/ exists (a refused bundle is a program that only aborts with
+        # the reason: gen itself still succeeds, pre-flight ruling B2).
+        # With a loaded schema gen/test/data.rb is written too (below), and
+        # the bundle requires it and clears and loads before every test. A
+        # fixture gen cannot load refuses the bundle the same way: a
+        # scaffold's test/fixtures/articles.yml comes before the migration
+        # that creates its table, and `cybertrain db migrate` runs gen first.
+        # So does a test file the class-form rewrite refuses (ruling C-I1:
+        # a broken test must not stop the dev server, db migrate or a
+        # build): no copy is written then, and gen/test's copies are left
+        # as they are until the file is fixed.
+        tests_rb = "#{root}/#{TestsEmitter::PATH}"
+        fixture_problem = ""
+        test_problem = ""
+        test_copies = Array.new(0) { "" }
+        # The rows of test/fixtures/*.yml (none while they are refused) and
+        # the models, each scanned once here and used again below.
+        fixture_rows = Array.new(0) { FixtureScan.empty_row }
+        infos = ModelScan.scan_dir("#{root}/app/models")
+        if File.directory?("#{root}/test")
+          copy_sources = Array.new(0) { "" }
+          test_files = Array.new(0) { TestFile.new("", :top_level, [], [], [], "") }
+          test_problem = Runner.test_problem(root, test_copies, copy_sources, test_files)
+          test_copies.each_with_index { |rel, k| outputs << [rel, copy_sources[k]] }
+          fixture_problem = Runner.fixture_problem(root, infos, test_files, fixture_rows) unless Cybertrain::Schema.current.nil?
+          bundle = if !test_problem.empty?
+                     TestsEmitter.refused_program(test_problem)
+                   elsif fixture_problem.empty?
+                     TestsEmitter.emit(root, test_files, !Cybertrain::Schema.current.nil?)
+                   else
+                     TestsEmitter.refused_program(fixture_problem)
+                   end
+          outputs << [TestsEmitter::PATH, bundle]
+        elsif File.exist?(tests_rb) && File.read(tests_rb).start_with?(TestsEmitter::HEADER)
+          stale += remove_file(root, TestsEmitter::PATH, check)
+        end
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).
         outputs << ["gen/migrations.rb", MigrationsEmitter.emit(root)] if File.directory?("#{root}/db/migrate")
         # gen/models/<model>.rb per table once db/schema.rb has been loaded.
         schema = Cybertrain::Schema.current
-        stale = 0
         # A gen/concerns file whose concern is gone, and the directories
         # that leaves empty.
         Manifest.rb_files(root, "gen/concerns").each do |f|
@@ -86,6 +138,18 @@ module Cybertrain
           stale += remove_file(root, f + ".rb", check)
           remove_empty_dirs(root, File.dirname(f), "gen/concerns") unless check
         end
+        Manifest.rb_files(root, "gen/test").each do |f|
+          next unless test_problem.empty?
+          next if test_copies.include?(f + ".rb") || f + ".rb" == TestScan::DATA_FILE
+          next unless File.read("#{root}/#{f}.rb").include?("#{TestScan::FOOTER}test/")
+
+          stale += remove_file(root, f + ".rb", check)
+          remove_empty_dirs(root, File.dirname(f), "gen/test") unless check
+        end
+        if !File.directory?("#{root}/test") && File.exist?("#{root}/#{TestScan::DATA_FILE}")
+          stale += remove_file(root, TestScan::DATA_FILE, check)
+          remove_empty_dirs(root, "gen/test", "gen/test") unless check
+        end
         if schema.nil?
           outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
@@ -93,8 +157,11 @@ module Cybertrain
         else
           # Scan, then the semantic validation, then the emitter (D69): a
           # model that cannot be generated raises before anything is written.
-          infos = ModelScan.scan_dir("#{root}/app/models")
           validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
+          if File.directory?("#{root}/test")
+            # No rows while the fixtures are refused (gen/tests.rb aborts).
+            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, fixture_rows)]
+          end
           models = Array.new(0) { "" }
           ModelsEmitter.outputs_for(validated).each do |rel, source|
             outputs << [rel, source]
@@ -117,6 +184,46 @@ module Cybertrain
           stale += sync_file(root, "gen/app.rb", Manifest.emit_with_models(root, models), check)
         end
         stale > 0 ? 1 : 0
+      end
+
+      # Why the class-form rewrite refuses root's test/ ("<path>:<line>:
+      # ...", "" when it does not). The tree is read once (TestScan.prepare)
+      # for both: when it is not refused, the copies go into rels and
+      # sources ("gen/test/..." and its text, in scan order) and the
+      # scanned files into files; when it is, all three stay empty.
+      # @return [String]
+      def self.test_problem(root, rels, sources, files)
+        problem = ""
+        begin
+          tree = TestScan.prepare(root)
+          copies = TestScan.copies_of(tree)
+          found = TestScan.scan_tree(tree)
+          copies.each do |rel, source|
+            rels << rel
+            sources << source
+          end
+          found.each { |f| files << f }
+        rescue ArgumentError => e
+          problem = e.message
+        end
+        problem
+      end
+
+      # Why test/fixtures/*.yml cannot be loaded, "<path>:<line>: ..." ("" when
+      # they can): FixtureScan's refusals and its accessor clashes. The schema
+      # is loaded (Schema.current). When they can, their rows are appended to
+      # `rows` (one scan for the check and for gen/test/data.rb).
+      # @return [String]
+      def self.fixture_problem(root, infos, files, rows)
+        problem = ""
+        begin
+          found = FixtureScan.scan(root, Cybertrain::Schema.current, infos)
+          FixtureScan.refuse_accessor_clashes(found, files)
+          found.each { |r| rows << r }
+        rescue ArgumentError => e
+          problem = e.message
+        end
+        problem
       end
 
       # gen/controllers.rb and gen/concerns.rb, each from its own scan of

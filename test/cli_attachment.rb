@@ -2,13 +2,14 @@ require "tmpdir"
 require "cybertrain/cli"
 require "cybertrain/template"
 require "cybertrain/test"
+require "cybertrain/generator/crc32"
 
 # `cybertrain generate attachment MODEL FIELD` and the scaffold type
 # `FIELD:attachment` on fresh `cybertrain new` trees: the files they write, the
 # edits they make, that a second run changes nothing, and that every view
 # parses with the template engine. What the generated app does when compiled
-# (uploads through the full stack) is CI's end-to-end step: the app's own
-# test/attachment_post_cover.rb.
+# (uploads through the full stack) is script/generators-e2e: the app's own
+# test/integration/post_cover_attachment_test.rb, run by `cybertrain test`.
 TMP = Dir.mktmpdir("cybertrain-cli-attachment")
 Dir.chdir(TMP)
 
@@ -74,8 +75,8 @@ end
 
 ATTACH_FILES = [
   "db/migrate/20260925120001_add_cover_to_posts.rb",
-  "test/support/app_test.rb",
-  "test/attachment_post_cover.rb"
+  "test/fixtures/files/cover.png",
+  "test/integration/post_cover_attachment_test.rb"
 ]
 
 test "generate attachment writes the migration and the app test, and edits the rest" do
@@ -167,33 +168,95 @@ test "the .gitignore of a new app ignores the uploads" do
   assert_includes read("shop/.gitignore"), "/storage/uploads/\n"
 end
 
+# The chunk types of a PNG, in order, after checking the signature, each
+# chunk's length and its CRC-32 (over the type and data); [] when any of
+# them is wrong.
+def png_chunks(png)
+  types = Array.new(0) { "" }
+  signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+  i = 0
+  while i < 8
+    return Array.new(0) { "" } unless png.getbyte(i).to_i == signature[i]
+
+    i += 1
+  end
+  at = 8
+  while at + 12 <= png.bytesize
+    length = png_u32(png, at)
+    return Array.new(0) { "" } if at + 12 + length > png.bytesize
+
+    typed = png.byteslice(at + 4, 4 + length).to_s
+    return Array.new(0) { "" } unless Cybertrain::Gen::Crc32.crc32(typed) == png_u32(png, at + 8 + length)
+
+    types << typed.byteslice(0, 4).to_s
+    at += 12 + length
+  end
+  return Array.new(0) { "" } unless at == png.bytesize
+
+  types
+end
+
+# The big-endian 32-bit number at byte at.
+def png_u32(png, at)
+  (png.getbyte(at).to_i << 24) | (png.getbyte(at + 1).to_i << 16) | (png.getbyte(at + 2).to_i << 8) | png.getbyte(at + 3).to_i
+end
+
 test "the generated test covers the security behaviour" do
-  support = read("shop/test/support/app_test.rb")
-  assert_includes support, "module AppTest\n"
-  spec = read("shop/test/attachment_post_cover.rb")
-  assert_includes spec, "require_relative \"support/app_test\""
-  assert_includes spec, "Cybertrain::BlobStore.root = \"tmp/test_uploads\""
-  assert_includes spec, "Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47"
-  assert_includes spec, "fields[\"post[title]\"] = \"A post\""
-  assert_includes spec, "client.post_multipart(\"/posts\", post_fields(token), [upload])"
-  assert_includes spec, "client.patch_multipart(\"/posts/\#{record.id}\", post_fields(token), [upload])"
-  assert_includes spec, "assert_equal \"nosniff\", res.header(\"x-content-type-options\")"
+  spec = read("shop/test/integration/post_cover_attachment_test.rb")
+  assert spec.start_with?("require \"test_helper\"\n\n"), spec
+  assert_includes spec, "\nclass PostCoverAttachmentTest < ActionDispatch::IntegrationTest\n"
+  assert spec.end_with?("\n  end\nend\n"), "the class closes the file"
+  assert_includes spec, "  setup do\n    # Uploaded files land here, not in storage/uploads.\n    Cybertrain::BlobStore.root = \"tmp/test_uploads\"\n"
+  # T16-N2: the bytes are the fixture file's, read from it, not a copy.
+  assert_includes spec, "  PNG_BYTES = File.binread(\"test/fixtures/files/cover.png\")\n"
+  assert spec.index("Cybertrain::Test.binary").nil?
+  assert_includes spec, "  def post_params(file)\n    { title: \"A post\", cover: file }\n  end\n"
+  # Uploads are params: values of the integration test's own requests, in
+  # Rails' shape (multipart/form-data because a value is a file): no
+  # reaching into its client.
+  assert_includes spec, "  def create_post(file)\n    post \"/posts\", params: { post: post_params(file) }\n  end\n"
+  assert_includes spec, "  def update_post(record, file)\n    patch \"/posts/\#{record.id}\", params: { post: post_params(file) }\n  end\n"
+  assert_includes spec, "  def file_named(filename, type, data)\n    Cybertrain::Test::Upload.new(\"\", filename, type, data)\n  end\n"
+  refute spec.include?("integration_client"), "no private state of IntegrationTest"
+  # The fixture file the upload reads, where Rails keeps them: a real 1x1
+  # PNG (T16-N2), its chunks whole and their CRCs right.
+  png = File.binread("shop/test/fixtures/files/cover.png")
+  assert_equal Cybertrain::CLI::Attachment::TEST_PNG_FILE, png
+  assert_equal ["IHDR", "IDAT", "IEND"], png_chunks(png)
+  # 1x1, 8-bit RGBA; the pixel's bytes are zlib-compressed in IDAT.
+  assert_equal [1, 1, 8, 6], [png_u32(png, 16), png_u32(png, 20), png.getbyte(24).to_i, png.getbyte(25).to_i]
+  assert_equal 0x78, png.getbyte(41).to_i
+  assert_includes spec, "assert_equal \"nosniff\", response.header(\"x-content-type-options\")"
   assert_includes spec, "start_with?(\"inline\")"
-  assert_includes spec, "assert_equal \"default-src 'none'; sandbox\", res.header(\"content-security-policy\")"
-  assert_includes spec, "create_post(client, \"x.png\", \"image/png\", HTML_BYTES)"
-  assert_includes spec, "create_post(client, \"logo.png\", \"image/png\", SVG_BYTES)"
-  assert_includes spec, "create_post(client, \"../../evil.png\", \"image/png\", PNG_BYTES)"
+  assert_includes spec, "assert_equal \"default-src 'none'; sandbox\", response.header(\"content-security-policy\")"
+  assert_includes spec, "create_post(file_named(\"x.png\", \"image/png\", HTML_BYTES))"
+  assert_includes spec, "create_post(file_named(\"logo.png\", \"image/png\", SVG_BYTES))"
+  assert_includes spec, "create_post(file_named(\"../../evil.png\", \"image/png\", PNG_BYTES))"
   assert_includes spec, "assert_equal \"evil.png\", record.cover_filename"
   assert_includes spec, "refute Cybertrain::BlobStore.exist?(old_key)"
   assert_includes spec, "refute Cybertrain::BlobStore.exist?(new_key)"
-  assert_includes spec, "assert_response res, :forbidden"
-  assert_includes spec, "assert_includes res.body, \"/posts/\#{record.id}/cover?v=\""
-  assert_includes spec, "test \"an update without a file keeps the stored one\" do"
-  assert spec.end_with?("Cybertrain::Test.run!\n")
+  # Forgery protection is off in tests (as in Rails): the CSRF test turns it on.
+  assert_includes spec, "      with_forgery_protection do\n        create_post(fixture_file_upload(\"cover.png\", \"image/png\"))\n        assert_response :forbidden\n      end\n"
+  assert_includes spec, "    get \"/posts/\#{record.id}\"\n    assert_includes response.body, \"/posts/\#{record.id}/cover?v=\"\n  end\n"
+  assert_includes spec, "  test \"an update without a file keeps the stored one\" do"
+  # Fixtures may hold rows: counts are differences, the new record is last.
+  assert_includes spec, "    assert_difference(-> { Post.count }, 1) do\n      create_post(fixture_file_upload(\"cover.png\", \"image/png\"))\n    end\n"
+  assert_includes spec, "    assert_no_difference(-> { Post.count }) do\n"
+  assert_includes spec, "    record = Post.last\n"
+  assert_includes spec, "    assert_difference(-> { Post.count }, -1) do\n      delete \"/posts/\#{record.id}\"\n    end\n"
+  refute spec.include?("Post.first"), "fixture rows come first"
+  # The top-level form's pieces are gone: no new_client, AppTest, APP or run!.
+  ["new_client", "AppTest", "APP", "Cybertrain::Test.run!", "require_relative", "Cybertrain::Test::Client.new"].each do |piece|
+    refute spec.include?(piece), "still has #{piece}"
+  end
   # No authentication in this app: no sign-in.
-  refute spec.include?("AppTest.sign_in"), "no sign-in without authentication"
-  ["<<Model>>", "<<model>>", "<<plural>>", "<<field>>", "<<Field>>", "<<FIELD>>", "<<fields_lines>>",
-   "<<reset_auth>>", "<<sign_in>>", "<<show_check>>"].each { |holder| refute spec.include?(holder), "unfilled #{holder}" }
+  refute spec.include?("/session"), "no sign-in without authentication"
+  ["<<Model>>", "<<model>>", "<<plural>>", "<<field>>", "<<Field>>", "<<FIELD>>", "<<fields_hash>>",
+   "<<TestClass>>", "<<sign_in>>", "<<show_check>>"].each { |holder| refute spec.include?(holder), "unfilled #{holder}" }
+end
+
+test "no generator writes test/support/app_test.rb" do
+  refute File.exist?("shop/test/support/app_test.rb")
 end
 
 test "running the generator again writes and edits nothing" do
@@ -217,7 +280,11 @@ end
 test "a second field, and an existing CamelCase or plural model name, work" do
   created = Cybertrain::CLI::Attachment.generate("shop", "Posts", "avatar", false)
   assert_includes created, "db/migrate/20260925120002_add_avatar_to_posts.rb"
-  assert_includes created, "test/attachment_post_avatar.rb"
+  assert_includes created, "test/integration/post_avatar_attachment_test.rb"
+  assert_includes created, "test/fixtures/files/avatar.png"
+  # Each test class keeps its constants: two attachment tests define no
+  # top-level name twice (the bundle refuses that).
+  assert_includes read("shop/test/integration/post_avatar_attachment_test.rb"), "class PostAvatarAttachmentTest < ActionDispatch::IntegrationTest\n  # test/fixtures/files/avatar.png: a 1x1 PNG"
   model = read("shop/app/models/post.rb")
   assert_includes model, "# cybertrain:attachment avatar -- "
   assert_includes model, "  def avatar_file=(upload)\n"
@@ -262,7 +329,7 @@ test "a field whose name starts another field's name still gets its file input" 
   show = read("press/app/views/posts/show.html.erb")
   assert_equal 1, count_of(show, "@post.cover_url %>")
   assert_equal 1, count_of(show, "@post.cover_url_url %>")
-  assert_includes read("press/test/attachment_post_cover.rb"), "/posts/\#{record.id}/cover?v="
+  assert_includes read("press/test/integration/post_cover_attachment_test.rb"), "/posts/\#{record.id}/cover?v="
   assert_equal 1, count_of(form, ":cover,")
 end
 
@@ -277,7 +344,7 @@ test "the schema check looks at the owner's table, and a re-run after db migrate
   assert_equal model, read("press/app/models/post.rb")
   Cybertrain::CLI::Scaffold.generate("press", "tag", ["name:string"])
   created = Cybertrain::CLI::Attachment.generate("press", "tag", "cover", false)
-  assert_includes created, "test/attachment_tag_cover.rb"
+  assert_includes created, "test/integration/tag_cover_attachment_test.rb"
   assert_includes read("press/app/models/tag.rb"), "# cybertrain:attachment cover -- "
   # posts.cover_key with no attachment block in Post is someone else's column.
   File.write("press/app/models/post.rb", "class Post\nend\n")
@@ -298,9 +365,10 @@ test "--any allows any file: no accept, no type check, a link instead of an imag
   assert_includes form, "    <%= f.file_field :file_upload %>\n"
   show = read("docs/app/views/reports/show.html.erb")
   assert_includes show, "<h1>Report</h1>\n<% if @report.file_upload_attached? %><p><a href=\"<%= @report.file_upload_url %>\"><%= @report.file_upload_filename %></a></p><% end %>\n"
-  spec = read("docs/test/attachment_report_file_upload.rb")
+  spec = read("docs/test/integration/report_file_upload_attachment_test.rb")
+  assert_includes spec, "class ReportFileUploadAttachmentTest < ActionDispatch::IntegrationTest\n"
   assert_includes spec, "test \"any file is accepted, stored as a download and never served inline\" do"
-  assert_includes spec, "assert res.header(\"content-disposition\").to_s.start_with?(\"attachment\"), \"content-disposition\""
+  assert_includes spec, "assert response.header(\"content-disposition\").to_s.start_with?(\"attachment\"), \"content-disposition\""
   refute spec.include?("HTML and SVG bytes are refused"), "no refusal test with --any"
   assert_includes read("docs/db/migrate/20260925120001_add_file_upload_to_reports.rb"), "class AddFileUploadToReports < Cybertrain::Migration::Base"
 end
@@ -310,10 +378,28 @@ test "with authentication the generated test signs in first" do
   Cybertrain::CLI::Authentication.generate("club")
   Cybertrain::CLI::Scaffold.generate("club", "post", ["title:string"])
   Cybertrain::CLI::Attachment.generate("club", "post", "cover", false)
-  spec = read("club/test/attachment_post_cover.rb")
-  assert_includes spec, "  Session.all.delete_all\n  User.all.delete_all\n"
-  assert_includes spec, "  client = Cybertrain::Test::Client.new(APP)\n  AppTest.user\n  AppTest.sign_in(client)\n  client\n"
-  assert_includes spec, "assert_redirected_to res, \"/session/new\""
+  spec = read("club/test/integration/post_cover_attachment_test.rb")
+  # The fixture user `one` signed in through the form in setup
+  # (SessionTestHelper#sign_in_as), before the upload directory is emptied;
+  # the integration test's own client keeps the cookie.
+  assert_includes spec, "  setup do\n" \
+                        "    # A user signed in through the form: the controller's actions need one.\n" \
+                        "    sign_in_as users(:one)\n" \
+                        "    # Uploaded files land here, not in storage/uploads.\n"
+  refute spec.include?("confirmed_at"), "not --confirmable"
+  refute spec.include?("User.new"), "the fixture's user"
+  refute spec.include?("AppTest"), "no AppTest"
+  assert_includes spec, "    delete \"/session\"\n    get \"/posts/\#{record.id}/cover\"\n    assert_redirected_to \"/session/new\"\n"
+end
+
+test "with --confirmable authentication the signed-in user is the fixtures' confirmed one" do
+  Cybertrain::CLI::NewApp.create("guard", "{ path = \"../cybertrain\" }")
+  Cybertrain::CLI::Authentication.generate("guard", false, true)
+  Cybertrain::CLI::Scaffold.generate("guard", "post", ["title:string"])
+  Cybertrain::CLI::Attachment.generate("guard", "post", "cover", false)
+  spec = read("guard/test/integration/post_cover_attachment_test.rb")
+  assert_includes spec, "    sign_in_as users(:one)\n"
+  assert_includes read("guard/test/fixtures/users.yml"), "  confirmed_at: 2026-11-11 12:00:00\n"
 end
 
 # The tutorial's blog at step 14: step 05 gave the body a minimum length and
@@ -332,14 +418,13 @@ test "where show is public the download joins it, and the test's values meet the
   controller = read(controller_path)
   assert_includes controller, "  allow_unauthenticated_access only: [:index, :show, :cover]\n"
   assert_includes controller, "  before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]\n"
-  spec = read("blog/test/attachment_article_cover.rb")
-  assert_includes spec, "fields[\"article[title]\"] = \"A article\"\n"
-  assert_includes spec, "fields[\"article[body]\"] = \"A article.\"\n"
+  spec = read("blog/test/integration/article_cover_attachment_test.rb")
+  assert_includes spec, "  def article_params(file)\n    { title: \"A article\", body: \"A article.\", cover: file }\n  end\n"
   assert_includes spec, "test \"the download is public like show: a visitor gets the file\" do"
   refute spec.include?("/session/new"), "no sign-in redirect expected"
   Cybertrain::CLI::Attachment.generate("blog", "article", "cover", false)
   assert_equal controller, read(controller_path)
-  assert_equal spec, read("blog/test/attachment_article_cover.rb")
+  assert_equal spec, read("blog/test/integration/article_cover_attachment_test.rb")
 end
 
 test "a download stays private where show is, and a maximum length cuts the value" do
@@ -352,9 +437,9 @@ test "a download stays private where show is, and a maximum length cuts the valu
   File.write(controller_path, read(controller_path).sub("ApplicationController\n", "ApplicationController\n  allow_unauthenticated_access only: [:index]\n"))
   Cybertrain::CLI::Attachment.generate("desk", "memo", "scan", true)
   assert_includes read(controller_path), "  allow_unauthenticated_access only: [:index]\n"
-  spec = read("desk/test/attachment_memo_scan.rb")
-  assert_includes spec, "fields[\"memo[title]\"] = \"A m\"\n"
-  assert_includes spec, "assert_redirected_to res, \"/session/new\""
+  spec = read("desk/test/integration/memo_scan_attachment_test.rb")
+  assert_includes spec, "    { title: \"A m\", scan: file }\n"
+  assert_includes spec, "assert_redirected_to \"/session/new\""
 end
 
 # except: wins over only: (Callback#applies?), so this show needs a sign-in;
@@ -368,7 +453,7 @@ test "show restrictions are preserved or attachment generation is refused" do
   add_after_class(controller_path, closed_line)
   Cybertrain::CLI::Attachment.generate("yard", "plan", "photo", false)
   assert_includes read(controller_path), closed_line
-  assert_includes read("yard/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+  assert_includes read("yard/test/integration/plan_photo_attachment_test.rb"), "assert_redirected_to \"/session/new\""
 
   Cybertrain::CLI::NewApp.create("barn", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Scaffold.generate("barn", "plan", ["title:string"])
@@ -430,7 +515,7 @@ test "a show with a body is accepted, warned about, and its download stays priva
     assert_includes controller, show
     assert_includes controller, public_line
     assert_includes controller, "  before_action :set_plan, only: [:show, :edit, :update, :destroy, :photo]\n"
-    assert_includes read("#{app}/test/attachment_plan_photo.rb"), "assert_redirected_to res, \"/session/new\""
+    assert_includes read("#{app}/test/integration/plan_photo_attachment_test.rb"), "assert_redirected_to \"/session/new\""
 
     # A second run edits nothing and does not warn again about an action
     # it did not add.
@@ -550,16 +635,18 @@ test "authentication generated after the attachment adds the sign-in to its test
   Cybertrain::CLI::NewApp.create("guild", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Scaffold.generate("guild", "product", ["name:string"])
   Cybertrain::CLI::Attachment.generate("guild", "product", "photo", true)
-  refute read("guild/test/attachment_product_photo.rb").include?("AppTest.sign_in"), "no sign-in before authentication"
-  File.write("guild/test/attachment_notes.rb", "# written by hand\n")
+  path = "guild/test/integration/product_photo_attachment_test.rb"
+  refute read(path).include?("sign_in_as"), "no sign-in before authentication"
+  File.write("guild/test/integration/notes_attachment_test.rb", "# written by hand\n")
   Cybertrain::CLI::Authentication.generate("guild")
-  spec = read("guild/test/attachment_product_photo.rb")
-  assert_includes spec, "def new_client\n  Session.all.delete_all\n  User.all.delete_all\n  Product.all.delete_all\n"
-  assert_includes spec, "  client = Cybertrain::Test::Client.new(APP)\n  AppTest.user\n  AppTest.sign_in(client)\n  client\n"
-  assert_equal 1, count_of(spec, "AppTest.sign_in(client)")
-  assert_equal "# written by hand\n", read("guild/test/attachment_notes.rb")
+  spec = read(path)
+  assert_includes spec, "  setup do\n    # A user signed in through the form: the controller's actions need one.\n" \
+                        "    sign_in_as users(:one)\n" \
+                        "    # Uploaded files land here, not in storage/uploads.\n"
+  assert_equal 1, count_of(spec, "sign_in_as")
+  assert_equal "# written by hand\n", read("guild/test/integration/notes_attachment_test.rb")
   Cybertrain::CLI::Authentication.generate("guild")
-  assert_equal spec, read("guild/test/attachment_product_photo.rb")
+  assert_equal spec, read(path)
 end
 
 test "a controller without a shared lookup cannot generate an unscoped download" do
@@ -614,7 +701,7 @@ test "a bad field, model or tree is refused before anything is written" do
     message = assert_raises("InvalidArgument") { Cybertrain::CLI::Attachment.generate("strict", "post", field, false) }
     assert_includes message, "would redefine a method of PostsController"
   end
-  refute File.exist?("strict/test/attachment_post_params.rb")
+  refute File.exist?("strict/test/integration/post_params_attachment_test.rb")
   message = assert_raises("InvalidArgument") { Cybertrain::CLI::Attachment.generate("strict", "article", "cover", false) }
   assert_includes message, "app/models/article.rb not found"
   File.delete("strict/app/controllers/posts_controller.rb")
@@ -630,7 +717,7 @@ test "a bad field, model or tree is refused before anything is written" do
   message = assert_raises("InvalidArgument") { Cybertrain::CLI::Attachment.generate("strict", "post", "cover", false) }
   assert_includes message, "Cybertrain::Routes.draw do"
   assert_equal ["20260925120000_create_posts.rb"], Dir.children("strict/db/migrate").select { |f| f.end_with?(".rb") }
-  refute File.exist?("strict/test/attachment_post_cover.rb")
+  refute File.exist?("strict/test/integration/post_cover_attachment_test.rb")
   File.write("strict/db/schema.rb", "create_table \"posts\" do |t|\n  t.string \"cover_key\"\nend\n")
   File.write("strict/config/routes.rb", "Cybertrain::Routes.draw do\nend\n")
   File.write("strict/app/models/post.rb", "class Post\nend\n")
@@ -657,14 +744,17 @@ test "the scaffold type writes the columns in create_table and no second migrati
   assert_equal [
     "db/migrate/20260925120000_create_photos.rb",
     "app/models/photo.rb",
+    "test/models/photo_test.rb",
+    "test/fixtures/photos.yml",
     "app/controllers/photos_controller.rb",
     "app/views/photos/index.html.erb",
     "app/views/photos/show.html.erb",
     "app/views/photos/new.html.erb",
     "app/views/photos/edit.html.erb",
     "app/views/photos/_form.html.erb",
-    "test/support/app_test.rb",
-    "test/attachment_photo_image.rb"
+    "test/controllers/photos_controller_test.rb",
+    "test/fixtures/files/image.png",
+    "test/integration/photo_image_attachment_test.rb"
   ], created
   assert_equal <<~RUBY, read("gallery/db/migrate/20260925120000_create_photos.rb")
     class CreatePhotos < Cybertrain::Migration::Base
@@ -720,9 +810,12 @@ test "the scaffold type's views are multipart, show the file and parse" do
     template = Cybertrain::Template::Template.parse(read("gallery/app/views/#{name}.html.erb"), "#{name}.html.erb")
     assert template.nodes.size > 0, name
   end
-  spec = read("gallery/test/attachment_photo_image.rb")
-  assert_includes spec, "fields[\"photo[title]\"] = \"A photo\""
-  assert_includes spec, "create_photo(client, \"image.png\", \"image/png\", PNG_BYTES)"
+  spec = read("gallery/test/integration/photo_image_attachment_test.rb")
+  assert_includes spec, "    { title: \"A photo\", image: file }\n"
+  assert_includes spec, "create_photo(fixture_file_upload(\"image.png\", \"image/png\"))"
+  # The scaffold's fixtures load before each test: counts are differences.
+  assert_includes read("gallery/test/fixtures/photos.yml"), "one:\n  title: MyString\n"
+  assert_includes spec, "assert_difference(-> { Photo.count }, 1) do\n      create_photo("
 end
 
 test "the scaffold with --any and with nothing but a file" do
@@ -736,10 +829,13 @@ test "the scaffold with --any and with nothing but a file" do
   assert_includes read("vault/app/views/secrets/_form.html.erb"), "    <%= f.file_field :scan %>\n"
   assert_includes read("vault/app/views/secrets/show.html.erb"), "<a href=\"<%= @secret.scan_url %>\"><%= @secret.scan_filename %></a>"
   refute read("vault/app/models/secret.rb").include?("validates :scan"), "no presence validation on the file"
-  refute read("vault/test/attachment_secret_scan.rb").include?("fields[\"secret"), "no text fields to send"
-  keep = read("vault/test/attachment_secret_scan.rb")
+  keep = read("vault/test/integration/secret_scan_attachment_test.rb")
+  # No text fields to send: the file alone.
+  assert_includes keep, "  def secret_params(file)\n    { scan: file }\n  end\n"
   assert_includes keep, "test \"an update without a file keeps the stored one\" do"
-  assert_includes keep, "Cybertrain::Test::Upload.new(field, \"\", \"application/octet-stream\", \"\")"
+  assert_includes keep, "update_secret(record, file_named(\"\", \"application/octet-stream\", \"\"))"
+  # Nothing but a file: the scaffold's create test sends an empty Hash.
+  assert_includes read("vault/test/controllers/secrets_controller_test.rb"), "post secrets_url, params: { secret: {} }\n"
   # Run again: every file reports identical.
   status = Dir.chdir("vault") { Cybertrain::CLI.run(["generate", "scaffold", "secret", "scan:attachment", "--any"]) }
   assert_equal 0, status

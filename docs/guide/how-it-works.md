@@ -39,7 +39,10 @@ From that it writes plain, readable Ruby under `gen/`:
   `I18n.t` reads ([Internationalization](i18n.md#dictionaries));
 - `gen/migrations.rb`;
 - `gen/views.rb`: the embedded views table, empty unless building for deployment;
-- `gen/app.rb`: the `require_relative` manifest.
+- `gen/app.rb`: the `require_relative` manifest;
+- `gen/tests.rb` and `gen/test/**`: every test of `test/` in one program,
+  each test class rewritten into methods, and `gen/test/data.rb`, the
+  tables and the fixtures ([Testing an app](testing.md#running-the-tests)).
 
 `gen/` is committed, not gitignored: `spin build` and `spin test` have no hook
 to generate first, so the checked-in output has to already be what compiles.
@@ -118,6 +121,14 @@ without `cybertrain/jobs` is a compile error of the generated controller
 rather than gen's message, and a job whose `retry_on` or `discard_on`
 names a `Cybertrain::Mailer` error makes the generated `gen/app.rb`
 require `cybertrain/mailer` itself.
+
+Tests are not cut by these lines: the program `cybertrain test` compiles
+(`gen/tests.rb`) requires `cybertrain`, every subsystem, whatever
+`bin/<app>.rb` requires. So `perform_enqueued_jobs`, `assert_emails` and
+`assert_broadcasts` work in any application, an application on
+`cybertrain/core` compiles its tests with every subsystem, and code that
+names a subsystem without its line passes its tests and stops at
+`spin build` ([Testing an app](testing.md)).
 
 ## Views are interpreted
 
@@ -230,13 +241,13 @@ production.
 | `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` takes only `column [ASC\|DESC]` lists; request data goes through an allowlist, raw SQL through `order_sql` ([Ordering](models.md#ordering)). Malformed or deeply nested parameters are a 400 ([Query strings and bodies](requests.md#query-strings-and-bodies)) |
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
-| minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
+| minitest / RSpec | Rails-shaped test classes (`ActiveSupport::TestCase`, `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`) and fixtures, which `spin run gen` rewrites into one program that `cybertrain test` compiles and runs; reflection-based runners can't work ahead-of-time ([Testing an app](testing.md)) |
 | `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape plus a sign-up page; passwords use PBKDF2-HMAC-SHA256 (bcrypt needs a C library; macOS `String#crypt` has no bcrypt); password reset, confirmation, lockout and remember me are generated too, as Devise would add them ([Authentication](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` writes five `cover_*` columns and model methods; files stay on local disk under `storage/uploads/`, served by `send_blob`; one per field, no variants or direct uploads ([Add a cover image](tutorial.md#attachments)) |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
-| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); no per-request `Time.zone` and no `l(time, zone:)` yet ([Time zones](configuration.md#time-zones)) |
+| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `c.time_zone` sets `Time.zone` for the whole application, `in_time_zone` answers a small value with the wall fields, and a Time stays a UTC instant (no TimeWithZone, `time.hour` is UTC) ([Time zones](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, redirects only when asked for, streamed and gzip responses, a Server-Sent Events parser, no keep-alive (see [Outbound HTTP](external-services.md#outbound-http)); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
 | Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` sends plain text, or `multipart/alternative` with an HTML part rendered from a partial (`Views.render_mail`), over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); `Mailer.deliver_later` sends it from a built-in job; a mailer is a module in `app/mailers` whose methods return a `Cybertrain::MailMessage` (`deliver_later`, `deliver_now`), as the generated `PasswordsMailer` is; no attachments (see [Sending e-mail](external-services.md#sending-e-mail)) |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks, Mission Control | Job classes in `app/jobs` (`< Cybertrain::Job::Base`, `perform(args)` with a Hash of JSON values, `perform_later`, `retry_on`, `discard_on`, `limits_concurrency` with a key), `Job.handle(kind)` as the short form; `Scheduler.every` and `Scheduler.cron` with a time zone and a timetable kept in the database; a jobs page (`jobs_page` in the routes) and `./<app> jobs`; `job_threads` threads per process, in the server or in `./<app> worker` processes, delivered at least once ([Background work](background-and-operations.md#background-work)) |

@@ -1,5 +1,5 @@
 ---
-source_sha256: 62cfdaff2b084f3fed0f46dc16b6967071128d69c23036f7cfd531bae3cbab7c
+source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -208,8 +208,9 @@ end
 cybertrain generate scaffold article title:string body:text
 ```
 
-Elle écrit une migration, un modèle, un contrôleur et cinq vues (`index`,
-`show`, `new`, `edit`, `_form`), et insère `resources :articles` dans
+Elle écrit une migration, un modèle, un contrôleur, cinq vues (`index`,
+`show`, `new`, `edit`, `_form`), un fichier de fixtures et des tests
+([étape 16](#test)), et insère `resources :articles` dans
 `config/routes.rb`. Les types de champ sont `string`, `text`, `integer`,
 `float`, `boolean`, `date`, `datetime`, `references` et `attachment` (un
 fichier envoyé, [étape 18](#attachments))&nbsp;; le type par défaut est
@@ -230,6 +231,7 @@ fichier envoyé, [étape 18](#attachments))&nbsp;; le type par défaut est
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -450,6 +452,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -915,8 +918,9 @@ après la réponse&nbsp;:
   d’un job, celui-ci est exécuté de nouveau)&nbsp;: écrivez donc `perform` de
   sorte qu’il puisse être répété sans risque.
 - Les jobs en échec se listent, se réessaient et s’abandonnent avec
-  `./blog jobs`, ou sur la page que monte la ligne `jobs_page`, en
-  commentaire dans `config/routes.rb`
+  `./blog jobs`, ou sur la page que monte la ligne `jobs_page` de
+  `config/routes.rb` une fois décommentée (les routes des étapes 04 et 09
+  la gardent)
   ([La page des jobs](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
 
 > [!RULE] Règle Spinel&nbsp;: les politiques des jobs sont lues comme du texte
@@ -941,8 +945,8 @@ après la réponse&nbsp;:
 > end
 > ```
 >
-> L’expression cron est lue dans le fuseau `CYBERTRAIN_SCHEDULER_TZ` (UTC par
-> défaut), et un seul processus à la fois exécute la planification
+> L’expression cron est lue dans le fuseau `CYBERTRAIN_SCHEDULER_TZ` (par défaut le
+> `time_zone` de l’application, UTC s’il n’est pas réglé), et un seul processus à la fois exécute la planification
 > ([Les tâches planifiées](background-and-operations.md#scheduled-tasks)).
 
 <!-- step 15 #json stage: Vous écrivez · `app/controllers/` -->
@@ -990,154 +994,166 @@ $ curl http://127.0.0.1:3000/articles.json
 Tout sur les formats&nbsp;:
 [Formats et `respond_to`](requests.md#formats-and-respond_to).
 
-<!-- step 16 #test stage: Compilation · `cybertrain spin test` -->
+<!-- step 16 #test stage: Compilation · `cybertrain test` -->
 ## Tester
 
 > [!WHY]
-> minitest et RSpec trouvent les tests par réflexion, ce qu’un compilateur AOT
-> ne peut pas faire&nbsp;; CyberTrain fournit donc `Cybertrain::Test`.
+> minitest et RSpec trouvent les tests par réflexion, ce qu’un compilateur
+> anticipé ne peut pas faire. Les tests sont tout de même les classes de
+> Rails&nbsp;: `spin run gen` les réécrit en un seul programme, que
+> `cybertrain test` compile et exécute.
 
-### Un test de modèle
+### Ce que les générateurs ont écrit
 
-```ruby test/articles.rb (fragment)
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+Les scaffolds des étapes 03 et 08 ont écrit les tests de scaffold de
+Rails&nbsp;: `test/fixtures/articles.yml` et `comments.yml` (les lignes `one` et
+`two` par lesquelles commence chaque test), `test/models/article_test.rb`
+et `comment_test.rb` (« the fixture is valid »), et
+`test/controllers/articles_controller_test.rb` et
+`comments_controller_test.rb` (une requête par action). L’étape 12 a écrit
+`test/components/comment_component_test.rb` et
+`test/helpers/comments_helper_test.rb`, l’étape 14
+`test/jobs/notify_comment_job_test.rb`, et `cybertrain new` a écrit
+`test/test_helper.rb`, que chaque fichier charge, et
+`test/integration/health_test.rb`, une requête vers `/up`. Trois d’entre eux doivent
+suivre le blog tel qu’il a grandi depuis.
 
-test "title must be present" do
-  article = Article.new(body: "a body long enough to pass length")
-  refute article.save
-  assert_includes article.errors.full_messages, "Title can't be blank"
+### Des fixtures qui passent les validations
+
+Les valeurs d’exemple du scaffold (`MyString`, `MyText`) échouent aux
+vérifications de l’[étape 05](#validations)&nbsp;: deux articles avec un même
+titre, et des corps de moins de dix caractères. Donnez aux articles de
+vraies valeurs&nbsp;:
+
+```yaml test/fixtures/articles.yml
+one:
+  title: Hello Rails
+  body: I am on Rails! This is my first article.
+
+two:
+  title: Second article
+  body: Another article, with no comments.
+```
+
+Le test de création envoie le titre de la fixture elle-même, désormais
+pris&nbsp;; donnez-lui-en un nouveau&nbsp;:
+
+```ruby test/controllers/articles_controller_test.rb (extrait)
+  test "should create article" do
+    assert_difference(-> { Article.count }, 1) do
+      post articles_url, params: { article: { body: @article.body, title: "A new title" } }
+    end
+
+    assert_redirected_to article_url(Article.last)
+  end
+```
+
+Les lignes de `comments.yml` appartiennent à `article: one`. Comme dans
+Rails, une fixture qui pointe vers un article empêche de supprimer cet
+article&nbsp;: « should destroy article » échoue donc sur la clé étrangère sauf
+si `Article` déclare `has_many :comments, dependent: :destroy` (l’encadré
+à la fin de l’[étape 08](#scaffold-comment)). Ajoutez-le à
+`app/models/article.rb` si ce n’est pas fait, comme examples/blog&nbsp;:
+
+```ruby app/models/article.rb (extrait)
+  has_many :comments, dependent: :destroy
+```
+
+### Les commentaires sous leur article
+
+Le test des commentaires du scaffold demande les routes que
+l’[étape 09](#nested-routes) a imbriquées sous les articles, dont les
+helpers sont désormais `article_comments_path` et `article_comment_path`.
+Remplacez-le&nbsp;:
+
+```ruby test/controllers/comments_controller_test.rb
+require "test_helper"
+
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  test "a comment is added to its article" do
+    article = articles(:one)
+    assert_difference(-> { Comment.count }, 1) do
+      post article_comments_path(article), params: { comment: { commenter: "Dave", body: "First!" } }
+    end
+    assert_redirected_to article_path(article)
+  end
+
+  test "a comment queues its notification" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Dave", body: "First!" } }
+    assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
+    assert_equal 1, perform_enqueued_jobs
+  end
+
+  test "a form Turbo submits is answered with a Turbo Stream" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Dave", body: "First!" } },
+                                               headers: { "Accept" => "text/vnd.turbo-stream.html, text/html" }
+    assert_response :ok
+    assert_turbo_stream action: "append", target: "comments"
+  end
+
+  test "a destroyed comment leaves its article" do
+    comment = comments(:one)
+    assert_difference(-> { Comment.count }, -1) do
+      delete article_comment_path(comment.article_id, comment)
+    end
+    assert_redirected_to article_path(comment.article_id)
+  end
 end
 ```
 
-Assertions&nbsp;: `assert`, `refute`, `assert_equal`, `assert_nil`,
-`assert_includes`, `assert_raises("Class") { }`, `flunk`. Le client ajoute
-`assert_response` et `assert_redirected_to`.
+Un test ne lance aucun thread de jobs, donc un job en file attend que le
+test l’exécute (`perform_enqueued_jobs`). La protection contre la
+falsification de requêtes est désactivée dans les tests, comme dans Rails,
+si bien qu’un `post` n’a pas besoin de jeton.
 
-### Un parcours HTTP complet
+### Le composant
 
-```ruby test/articles.rb (fragment)
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+Le test de l’étape 12 rend `CommentComponent` avec une String là où le
+gabarit attend désormais un commentaire. Rendez plutôt le commentaire de
+fixture&nbsp;:
 
-test "POST /articles creates an article and redirects to it" do
-  client = Cybertrain::Test::Client.new(BLOG)
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, BlogTest.article_path(Article.last)
-  assert_response res, :see_other
+```ruby test/components/comment_component_test.rb
+require "test_helper"
+
+class CommentComponentTest < ViewComponent::TestCase
+  test "renders the comment with its author" do
+    render_inline(CommentComponent.new(comment: comments(:one)))
+    assert_select "div.comment strong.comment-author", text: "MyString"
+  end
 end
 ```
 
-`Cybertrain::Test::Client` pilote une application dans le même processus (sans
-socket) avec une cookie jar, de sorte que les sessions et le CSRF se
-comportent comme derrière un navigateur. Les requêtes sans le jeton reçoivent
-une 403.
-
-### Le job, le Turbo Stream et le composant
-
-Le client de test ne démarre aucun thread de jobs&nbsp;: un job mis en file le
-reste donc jusqu’à ce que le test l’exécute. Un troisième argument de `post`
-définit des en-têtes de requête, ici l’`Accept` que Turbo envoie avec un
-formulaire&nbsp;:
-
-```ruby test/comments.rb (fragment)
-require_relative "support/blog_test"   # charge aussi cybertrain/test/jobs
-
-def post_comment(client, article, headers = {})
-  client.get(BlogTest.article_path(article))
-  client.post("#{BlogTest.article_path(article)}/comments",
-              { "authenticity_token" => BlogTest.form_token(client),
-                "comment[commenter]" => "Dave", "comment[body]" => "First!" }, headers)
-end
-
-test "a comment queues its notification" do
-  BlogTest.reset
-  post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article)
-  assert_enqueued_with "NotifyCommentJob", { "comment_id" => Comment.last.id }
-  assert_equal 1, perform_enqueued_jobs
-  assert_no_enqueued_jobs
-end
-
-test "a form Turbo submits is answered with a Turbo Stream" do
-  BlogTest.reset
-  res = post_comment(Cybertrain::Test::Client.new(BLOG), BlogTest.article,
-                     { "accept" => "text/vnd.turbo-stream.html, text/html" })
-  assert_response res, :ok
-  assert_includes res.body, "<turbo-stream action=\"append\" target=\"comments\">"
-end
-```
-
-L’[étape 12](#component) a écrit `test/comment_component.rb`, qui rend le
-composant avec une String là où le template attend désormais un commentaire.
-Remplacez son contenu&nbsp;:
-
-```ruby test/comment_component.rb
-require_relative "support/blog_test"
-require "cybertrain/test/views"   # Cybertrain::Test.render_component
-
-test "the comment component names its author" do
-  BlogTest.reset
-  comment = BlogTest.comment(BlogTest.article, "Alice", "Great post!")
-  html = Cybertrain::Test.render_component(CommentComponent.new(comment: comment))
-  assert_includes html, "<strong class=\"comment-author\">Alice</strong> wrote:"
-end
-
-Cybertrain::Test.run!
-```
-
-`render_component` rend comme le fait une diffusion, sans requête. Les autres
-helpers, et la façon de lire un flux dans un test&nbsp;:
+`render_inline` rend comme le fait une diffusion, sans requête, et
+`assert_select` lit ce qu’il a rendu. Les autres assertions&nbsp;:
+[Tester une application](testing.md#assertions),
 [Tester les jobs](testing.md#testing-jobs) et
 [Tester les flux et les composants](testing.md#testing-streams-and-components).
-
-> [!COMPILE] Ce que les fragments omettent
-> ### Ce que les fragments omettent
->
-> - `support/blog_test` correspond à
->   [`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb)&nbsp;:
->   copiez-le dans le `test/support/` de votre application, où les fichiers sont
->   requis, pas exécutés. Il migre une base `storage/test.sqlite3` neuve,
->   démarre l’application sous le nom `BLOG`, charge `Cybertrain::Test`, son
->   client et les helpers de jobs, et vous fournit `BlogTest.form_token` (le
->   jeton CSRF du dernier formulaire rendu), `BlogTest.article_path`,
->   `BlogTest.article` et `BlogTest.comment` (un enregistrement sauvegardé
->   chacun) et `BlogTest.reset` (tables, cache et file de jobs vidés).
-> - Terminez le fichier par `Cybertrain::Test.run!`, qui lance les tests et
->   affiche les lignes que compare le snapshot.
-> - Définissez `c.log_level = :none if c.test?` dans `config/app.rb` pour garder
->   les logs de requêtes hors de la sortie comparée.
 
 ### Lancer les tests
 
 ```shell terminal — blog/
-cybertrain spin test
+cybertrain test
+cybertrain test test/controllers/comments_controller_test.rb
+cybertrain test -n /comment/
 ```
 
-`cybertrain spin test` lance `spin test` avec le Spinel épinglé&nbsp;; avec la
-chaîne d’outils dans le `PATH` ([étape 00](#requirements)), `spin test` fait
-la même chose. Il compile chaque `test/*.rb` en un programme distinct et
-compare (diff) sa sortie (stdout et stderr ensemble) à un snapshot
-`test/<name>.rb.expected` versionné. Les fichiers de `test/support/` sont
-requis, pas exécutés. Les tests que les générateurs ont écrits aux étapes 12
-et 14 (`test/comments_helper.rb`, `test/notify_comment_job.rb`) s’exécutent
-avec les autres. Pour écrire un snapshot&nbsp;:
-
-```shell terminal — blog/
-cybertrain spin test --regen test/<name>.rb
-rm -f build/test/<name>; cybertrain spin test test/<name>.rb; [ -x build/test/<name> ] && ./build/test/<name> > test/<name>.rb.expected 2>&1
-```
+La première exécution compile tous les tests en un seul programme, ce qui
+prend des minutes (les 149 tests d’examples/blog en ont pris environ neuf
+sur une machine cloud à 4 vCPU)&nbsp;; une exécution sans changement ne recompile pas le programme de
+test&nbsp;: elle peut reconstruire gen une fois (`build gen`, quelques
+secondes), puis démarre en bien moins d’une seconde. Un fichier ou `-n` choisit quels tests s’exécutent, pas ce qui est
+compilé&nbsp;: modifier n’importe quel test recompile le programme. Chaque
+fichier affiche un titre, chaque test une ligne (`ok`, ou `FAIL` et `ERR`
+avec la ligne du test et le message), puis les totaux, avec entre eux ce que le code testé affiche lui-même (la
+ligne de sortie d’une commande, par exemple)&nbsp;; le code de sortie vaut 1
+quand un test a échoué. Mesuré le 2026-11-13, le blog du tutoriel compte
+à cette étape 17 tests et 25 assertions.
 
 > [!NOTE]
-> `--regen` écrit le snapshot à partir de la sortie de CRuby. Les tests qui
-> accèdent à SQLite via FFI ne peuvent pas tourner sous CRuby&nbsp;: leur
-> snapshot vient donc du binaire compilé (la deuxième ligne ci-dessus).
-> `cybertrain spin test` sort avec un code non nul tant qu’un snapshot est
-> périmé, il est donc suivi de `;` et non de `&&`&nbsp;; la vérification
-> `[ -x ]` saute la capture si la compilation a échoué, ce qui conserve
-> l’ancien snapshot. Les tests qui ne peuvent pas tourner sous CRuby ont
-> besoin de ce snapshot avant que `cybertrain spin test` puisse réussir&nbsp;;
-> les autres tests sans snapshot sont comparés à la sortie de CRuby.
+> Avant chaque test, toutes les tables sont vidées et les fixtures
+> insérées de nouveau, si bien que les tests ne dépendent pas les uns des
+> autres. `gen/tests.rb` et `gen/test/` sont générés&nbsp;: validez-les avec le
+> reste de `gen/`.
 
 <!-- step 17 #authentication stage: Vous écrivez · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Ajouter la connexion
@@ -1220,28 +1236,50 @@ La page de connexion renvoie aussi vers une réinitialisation du mot de passe pa
 
 ### Mettre à jour les tests
 
-Tout test de l’[étape 16](#test) qui attend un formulaire, en soumet un ou
+Tout test de l’[étape 16](#test) qui ouvre un formulaire, en soumet un ou
 atteint une action autre que `index` et `show` tombe désormais sur la page de
-connexion. Connectez d’abord le client avec les helpers que le générateur a
-écrits dans `test/support/app_test.rb`&nbsp;:
+connexion. Le générateur a écrit `test/fixtures/users.yml` (`one` et `two`,
+dont le mot de passe est `"password"`) et
+`test/support/session_test_helper.rb`, dont `test/test_helper.rb` donne maintenant le `sign_in_as` à chaque test
+d’intégration, et il a ajouté la connexion au `setup` du test des articles
+(il affiche `insert test/controllers/articles_controller_test.rb (sign_in_as users(:one))`)&nbsp;;
+vous trouverez donc&nbsp;:
 
-```ruby test/signed_in.rb
-require_relative "support/app_test"   # written by generate authentication: APP, AppTest
-
-test "a signed-in user creates an article" do
-  client = Cybertrain::Test::Client.new(APP)
-  AppTest.user("ann@example.com", "s3cr3t-s3cr3t")
-  AppTest.sign_in(client, "ann@example.com", "s3cr3t-s3cr3t")
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => AppTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, "/articles/#{Article.last.id}"
-end
+```ruby test/controllers/articles_controller_test.rb (extrait)
+  setup do
+    sign_in_as users(:one)
+    @article = articles(:one)
+  end
 ```
 
+Le test des commentaires n’a pas de `setup` auquel le générateur puisse
+ajouter la connexion, et chaque action de `CommentsController` (create et
+destroy) demande maintenant un utilisateur connecté, donc chacun de ses
+quatre tests aussi&nbsp;; donnez-lui-en un&nbsp;:
+
+```ruby test/controllers/comments_controller_test.rb (extrait)
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+Un scaffold généré désormais se connecte de lui-même.
+
 > [!NOTE]
-> Lancez `cybertrain spin test` comme à l’[étape 16](#test)&nbsp;; `test/authentication.rb`, les autres tests qu’écrit le générateur et celui-ci utilisent SQLite, leurs instantanés viennent donc des binaires compilés. Les tentatives de connexion sont limitées comme dans le générateur de Rails&nbsp;: dix par adresse cliente toutes les trois minutes, comptées dans la base de données de l’application, si bien que tous les processus comptent ensemble&nbsp;; derrière un reverse proxy, configurez les [proxys de confiance](requests.md#rate-limiting-and-the-client-address). `examples/blog` fait cette étape avec `--invite-only` et réserve ses pages `/admin` aux administrateurs.
+> Les propres tests du générateur (`test/controllers/sessions_controller_test.rb`,
+> `registrations_controller_test.rb`, `passwords_controller_test.rb`,
+> `accounts_controller_test.rb`, `test/integration/remember_me_test.rb`,
+> `lockout_test.rb`, `admin_test.rb`, [Tests](authentication.md#testing))
+> s’exécutent avec les autres sous `cybertrain test`, en déplaçant
+> l’horloge avec `travel_to` pour vérifier le jour 15 et le jour 30. Les
+> tentatives de connexion sont limitées comme dans le générateur de
+> Rails&nbsp;: dix par adresse cliente toutes les trois minutes, comptées dans
+> la base de données de l’application, si bien que tous les processus
+> comptent ensemble&nbsp;; derrière un reverse proxy, configurez les
+> [proxys de confiance](requests.md#rate-limiting-and-the-client-address).
+> `examples/blog` fait cette étape avec `--invite-only` et réserve ses pages
+> `/admin` aux administrateurs.
 
 <!-- step 18 #attachments stage: Vous écrivez · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Ajouter une image de couverture
@@ -1382,15 +1420,16 @@ d’envoi, et l’image à la page d’affichage, juste après le `<h1>`&nbsp;:
   fixent les limites, et `upload_root` le répertoire.
 
 Lancez le serveur, modifiez un article et choisissez une image. Le générateur
-a aussi écrit `test/attachment_article_cover.rb`, qui teste tout le parcours
-et se connecte d’abord, puisque l’application a maintenant un `User`. Comme
+a aussi écrit `test/integration/article_cover_attachment_test.rb` et l’image
+`test/fixtures/files/cover.png`, qui testent tout le parcours et se
+connectent d’abord, puisque l’application a maintenant un `User`. Comme
 `:cover` est public ici, il vérifie qu’un visiteur peut télécharger l’image,
 et il remplit le corps avec `"A article."`, allongé jusqu’au minimum de
 10&nbsp;caractères de l’[étape 05](#validations).
 
 > [!NOTE]
-> Lancez `cybertrain spin test` comme à l’[étape 16](#test)&nbsp;; le test
-> utilise SQLite, donc son instantané vient du binaire compilé.
+> Lancez `cybertrain test` comme à l’[étape 16](#test) (mesuré le
+> 2026-11-13, le blog du tutoriel compte alors 83 tests et 870 assertions).
 > `examples/blog` comporte aussi cette étape, et son JSON n’inclut pas les
 > colonnes `cover_*` (`Article#public_json`). Pas encore pris en charge&nbsp;:
 > plusieurs fichiers par champ, S3 ou un autre stockage distant, les variantes

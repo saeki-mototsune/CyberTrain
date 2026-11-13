@@ -8,6 +8,7 @@
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
+#   cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
 #   cybertrain secret [--hex] | setup [--force] | doctor | version | help
 #
 # Every command that runs spin first puts a Spinel of the pinned release on
@@ -24,6 +25,7 @@ require "cybertrain/cli/component"
 require "cybertrain/cli/job"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
+require "cybertrain/cli/test_command"
 
 module Cybertrain
   module CLI
@@ -110,6 +112,14 @@ module Cybertrain
         cybertrain build
             Build NAME with app/views embedded and assemble dist/
             (the binary, public/, storage/, tmp/).
+        cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+            Run the application's tests (test/**/*_test.rb and test/*.rb)
+            as one program: SPIN_DEBUG=1 spin run gen, then gen/tests.rb compiled into
+            build/test/tests when a source is newer than it, then run.
+            FILE or DIR keeps the tests of those files; -n NAME the test
+            named NAME (or its method name, test_...); -n /TEXT/ the tests
+            whose name contains TEXT. A filter never recompiles. Exits 1
+            when a test failed, 2 for bad arguments.
         cybertrain spin ARGS...
             Run spin with the pinned Spinel, from any directory
             (cybertrain spin test; cybertrain spin run gen -- --check).
@@ -140,6 +150,7 @@ module Cybertrain
       when "db" then run_in_app { |_name| run_db(argv) }
       when "server" then run_in_app { |name| run_server(name, argv) }
       when "build" then run_in_app { |name| build_app(name) }
+      when "test" then run_in_app { |_name| TestCommand.run(".", argv[1, argv.size - 1]) }
       when "spin" then run_spin_passthrough(argv)
       when "secret"
         puts secret_text(argv[1, argv.size - 1])
@@ -349,7 +360,7 @@ module Cybertrain
         puts "next:"
         puts "  cybertrain db migrate"
         puts "  cybertrain server"
-        puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/integration/*_attachment_test.rb among the others"
       when "authentication"
         args = without_flag(without_flag(without_flag(argv[2, argv.size - 2], "--invite-only"), "--confirmable"), "--force")
         raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]" unless args.empty?
@@ -367,8 +378,7 @@ module Cybertrain
         else
           puts "  cybertrain server      # then open /sign_up"
         end
-        tests = confirmable ? "passwords.rb, accounts.rb and confirmations.rb" : "passwords.rb and accounts.rb"
-        puts "  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, #{tests}; snapshot them from the binaries"
+        puts "  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others"
         base_url_env = Authentication.base_url_env(Build.app_name("."))
         mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
         puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
@@ -396,7 +406,7 @@ module Cybertrain
         puts ""
         puts "next:"
         puts "  spin run gen           # includes the module into the app's helpers"
-        puts "  cybertrain spin test   # test/#{args[0].tr("/", "_").delete_suffix("_helper")}_helper.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/helpers/#{Inflector.underscore(args[0]).delete_suffix("_helper")}_helper_test.rb among the others"
       when "component"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate component NAME [attr[:type] ...] [--force]" if args.empty?
@@ -405,7 +415,7 @@ module Cybertrain
         puts ""
         puts "next:"
         puts "  spin run gen           # writes gen/components.rb"
-        puts "  cybertrain spin test   # test/#{args[0].tr("/", "_").delete_suffix("_component")}_component.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/components/#{Inflector.underscore(args[0]).delete_suffix("_component")}_component_test.rb among the others"
       when "job"
         rest = argv[2, argv.size - 2]
         args = Job.positional(rest)
@@ -415,7 +425,7 @@ module Cybertrain
         puts ""
         puts "next:"
         puts "  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)"
-        puts "  cybertrain spin test   # test/#{Inflector.underscore(args[0]).tr("/", "_").delete_suffix("_job")}_job.rb; snapshot it from the binary"
+        puts "  cybertrain test        # test/jobs/#{Inflector.underscore(args[0]).delete_suffix("_job")}_job_test.rb among the others"
       else
         raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported"
       end

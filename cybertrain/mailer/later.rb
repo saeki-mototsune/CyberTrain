@@ -14,7 +14,6 @@ require "json"
 require "cybertrain/cast"
 require "cybertrain/jobs"
 require "cybertrain/mailer"
-require "cybertrain/mail_message"
 
 module Cybertrain
   class Mailer
@@ -128,11 +127,9 @@ module Cybertrain
       nil
     end
   end
-end
 
-module Cybertrain
-  # The later half of a MailMessage (cybertrain/mail_message.rb), here so
-  # the class itself needs only cybertrain/mailer.
+  # {#deliver_later} here, beside the job it enqueues; the fields and
+  # {#deliver_now} are in cybertrain/mailer/mail_message.rb.
   class MailMessage
     # Enqueues the message for a job thread to send ({Mailer.deliver_later}:
     # the fields are checked now, so a refused one raises and nothing is

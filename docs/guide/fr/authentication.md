@@ -1,5 +1,5 @@
 ---
-source_sha256: dca8d9842df176198434f371477a9e888dc0e3503ed3ee3e45f613d92d21f860
+source_sha256: f91f3179b1b8012bb304301973b9de2d6e153abc889799c6d946d2c35f104605
 ---
 # Authentification
 
@@ -25,7 +25,7 @@ Il écrit, dans l’application&nbsp;:
 | `app/mailers/passwords_mailer.rb`, `confirmations_mailer.rb` | les courriels |
 | `app/commands/user_command.rb` | `./<app> user ...`, requis depuis `bin/<app>.rb` |
 | `app/views/...` | les écrans, chaque texte passant par `t()`, et le partial `sessions/_nav` |
-| `test/*.rb`, `test/support/*.rb` | des tests pour chaque partie ([Tests](#testing)) |
+| `test/fixtures/users.yml`, `test/support/session_test_helper.rb`, `test/models/`, `test/controllers/`, `test/integration/` | les utilisateurs de fixture, `sign_in_as`, et des tests pour chaque partie ([Tests](#testing)) |
 
 et des modifications, une fois chacune&nbsp;: `include Authentication` dans `ApplicationController`, les routes, la ligne de la page des jobs ([Administrateurs](#admin-users-and-the-jobs-page)), le partial de navigation dans le layout, la commande utilisateur dans `bin/<app>.rb`, le réglage `base_url` dans `config/app.rb` ([Liens dans les courriels](#links-in-mails)), et dans `bin/<app>.rb` et `bin/db.rb` les lignes des sous-systèmes que le code utilise, sauf si `require "cybertrain"` les charge déjà toutes&nbsp;: `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit` ([Sous-systèmes](how-it-works.md#subsystems)). Le relancer avec les mêmes options ne change rien&nbsp;: une modification déjà faite est retrouvée et sautée, et un fichier déjà tel qu’il l’écrirait est laissé. Un fichier qu’il écrirait autrement (que vous avez modifié, ou qu’un générateur plus ancien ou d’autres options ont écrit) n’est jamais écrasé sans `--force`&nbsp;: son diff est affiché à la place ([Mettre à jour depuis 0.4](#upgrading-from-04), [Activer la confirmation plus tard](#turning-on-confirmation-later)).
 
@@ -185,11 +185,36 @@ Une connexion écrite à la main utilise `Password` comme le fait le `User` gén
 
 ## Tests
 
-Le générateur écrit un programme de test par partie&nbsp;: `test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`, `passwords.rb`, `accounts.rb`, et avec `--confirmable` `confirmations.rb`&nbsp;; ils utilisent SQLite, lancez-les donc avec `cybertrain spin test` et prenez leurs instantanés depuis les binaires. Leurs fichiers de support sont à la disposition de l’application&nbsp;:
+Le générateur écrit des classes de test à la Rails, que `cybertrain test`
+exécute ([Tester une application](testing.md))&nbsp;:
 
-<!-- list: points -->
-- `test/support/app_test.rb`&nbsp;: `AppTest.boot`, `AppTest.user(email, password)`, `AppTest.sign_in(client, email, password)` (qui remet aussi à zéro les compteurs de la limite de débit) et `AppTest.form_token(client)`.
-- `test/support/authentication_helpers.rb`&nbsp;: `with_smtp_receiver { |receiver| ... }` (le courriel de l’application va à un récepteur dans le processus de test), `last_mail_link(receiver)`, `backdate_session(row, seconds)`, et `with_config(env, hosts, base_url, log = nil) { ... }`, qui fixe l’environnement, `CYBERTRAIN_HOSTS` et l’URL de base pour un bloc puis les remet.
+| Fichier | Ce qu’il teste |
+| --- | --- |
+| `test/fixtures/users.yml` | `one` (un administrateur) et `two`, dont le mot de passe est `"password"` (avec `--confirmable`, tous deux confirmés) |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out`, `open_session` (un second navigateur) et `authenticity_token_in(body)` (le jeton du premier formulaire d’une page, pour les requêtes dans `with_forgery_protection`), inclus dans chaque test d’intégration par `test/test_helper.rb` |
+| `test/models/user_test.rb` | le format de l’adresse |
+| `test/controllers/sessions_controller_test.rb` | la connexion et la déconnexion |
+| `test/controllers/registrations_controller_test.rb` | l’inscription (pas avec `--invite-only`) |
+| `test/integration/first_run_test.rb` | `/setup` et la commande user (avec `--invite-only`) |
+| `test/controllers/passwords_controller_test.rb` | la réinitialisation, son courriel et son lien |
+| `test/controllers/accounts_controller_test.rb` | la page du compte |
+| `test/controllers/confirmations_controller_test.rb` | la confirmation (avec `--confirmable`) |
+| `test/integration/remember_me_test.rb` | le jour 15 et le jour 30, la limite d’inactivité |
+| `test/integration/lockout_test.rb` | le verrouillage et son heure |
+| `test/integration/admin_test.rb` | `require_admin`, `user admin` |
+
+Le temps avance avec `travel_to` et `travel` (aucune ligne n’est reculée
+dans le temps), et les courriels se lisent dans
+`Cybertrain::Mailer.deliveries` avec `assert_emails` et
+`perform_enqueued_jobs`. Un scaffold généré après l’authentification
+connecte `users(:one)` en tête de son test de contrôleur&nbsp;; un scaffold
+généré avant ne le fait pas&nbsp;: ajoutez `sign_in_as users(:one)` à son
+`setup`. Relancé sur une application dont un générateur précédent a écrit
+les tests (`test/authentication.rb`, `admin.rb`, `remember_me.rb`,
+`lockout.rb`, `passwords.rb`, `accounts.rb`, `confirmations.rb`,
+`test/support/app_test.rb`, `test/support/authentication_helpers.rb`), le
+générateur nomme chacun avec le fichier qui le remplace&nbsp;; `--force` les
+supprime.
 
 `script/auth-e2e signup invite confirmable upgrade04` dans ce dépôt construit des applications avec le générateur et les pilote de bout en bout.
 

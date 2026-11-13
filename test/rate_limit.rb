@@ -18,10 +18,8 @@ require "cybertrain/test/client"
 
 Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
 
-# The cache's clock, in epoch seconds, set by each test (a constant: NOTES
-# rule 64).
-CLOCK = [1000]
-Cybertrain::Cache.clock = -> { CLOCK[0] }
+# Each test sets the clock with travel_to (both stores read
+# Cybertrain::Clock); the harness travels back after each test.
 Cybertrain::DB.connect(":memory:")
 
 class LoginsController < Cybertrain::Controller
@@ -218,8 +216,7 @@ APP = build_app
 
 def fresh_client(at)
   Cybertrain::RateLimit.reset_all!
-  Cybertrain::RateLimit.current_time = at
-  CLOCK[0] = at
+  travel_to(Time.at(at))
   Cybertrain::Request.trusted_proxy = false
   Cybertrain::Test::Client.new(APP)
 end
@@ -279,7 +276,7 @@ test "requests under the limit pass; the next is a 429 with Retry-After" do
   assert_equal "Too Many Requests", res.body
   assert_equal "60", res.header("Retry-After")
   assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
-  Cybertrain::RateLimit.current_time = 1030
+  travel_to(Time.at(1030))
   res = client.post("/login")
   assert_equal 429, res.status
   assert_equal "30", res.header("Retry-After")
@@ -298,10 +295,10 @@ test "the window closing resets the count" do
   client = fresh_client(3000)
   4.times { client.post("/login") }
   assert_equal 429, client.response.status
-  Cybertrain::RateLimit.current_time = 3059
+  travel_to(Time.at(3059))
   assert_equal 429, client.post("/login").status
   assert_equal "1", client.response.header("Retry-After")
-  Cybertrain::RateLimit.current_time = 3060
+  travel_to(Time.at(3060))
   assert_equal "signed in", client.post("/login").body
   assert_equal "signed in", client.post("/login").body
   assert_equal "signed in", client.post("/login").body
@@ -412,6 +409,29 @@ test "a window that reopens moves its key to the back of the table" do
   assert_equal 4, lim.tracked_keys
 end
 
+test "a window that starts after now (the clock went back) is over, not open" do
+  lim = Cybertrain::RateLimit.new(1, 10, false, "", "")
+  assert_equal 0, lim.hit("a", 1000)
+  assert_equal 10, lim.hit("a", 1000)
+  # Travelled back before the window's start: a new window, not a wait
+  # until 1010.
+  assert_equal 0, lim.hit("a", 500)
+  assert_equal 9, lim.hit("a", 501)
+end
+
+test "a full table drops the windows that start after now" do
+  lim = Cybertrain::RateLimit.new(5, 10, false, "", "")
+  lim.max_keys = 4
+  lim.hit("a", 100)
+  lim.hit("b", 101)
+  lim.hit("c", 102)
+  lim.hit("d", 103)
+  lim.hit("e", 50)
+  assert_equal 1, lim.tracked_keys
+  refute lim.tracked?("d")
+  assert lim.tracked?("e")
+end
+
 test "the table never holds more than max_keys keys" do
   lim = Cybertrain::RateLimit.new(5, 600, false, "", "")
   fill(lim, 10_050, 50)
@@ -441,12 +461,12 @@ test "rate_limit refuses a bad to:, within:, store: or name:" do
   assert_equal 12, Cybertrain::RateLimit.all.length
 end
 
-test "current_time follows the system clock once unfixed" do
-  Cybertrain::RateLimit.current_time = -1
+test "current_time follows the clock: real time, then a travel" do
   assert Cybertrain::RateLimit.current_time > 1_700_000_000
-  Cybertrain::RateLimit.current_time = 42
+  travel_to(Time.at(42))
   assert_equal 42, Cybertrain::RateLimit.current_time
-  Cybertrain::RateLimit.current_time = -1
+  travel_back
+  assert Cybertrain::RateLimit.current_time > 1_700_000_000
 end
 
 # --- the default store: counts in Cybertrain::Cache -------------------------
@@ -467,9 +487,9 @@ test "Retry-After is the rest of the aligned window" do
   assert_equal "Too Many Requests", res.body
   # 1000 is 40 seconds into the window [960, 1020).
   assert_equal "20", res.header("Retry-After")
-  CLOCK[0] = 1019
+  travel_to(Time.at(1019))
   assert_equal "1", client.post("/counted").header("Retry-After")
-  CLOCK[0] = 1020
+  travel_to(Time.at(1020))
   assert_equal "counted", client.post("/counted").body
 end
 
@@ -549,7 +569,7 @@ test "two limits with name: on one action count apart" do
   assert_equal 429, res.status
   assert_equal "10", res.header("Retry-After")
   # A new short window; the long one has counted two of its three.
-  CLOCK[0] = 1012
+  travel_to(Time.at(1012))
   assert_equal "burst", client.post("/burst").body
   res = client.post("/burst")
   assert_equal 429, res.status

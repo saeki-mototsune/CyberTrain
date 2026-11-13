@@ -28,6 +28,7 @@
 require "cybertrain/assets"
 require "cybertrain/i18n"
 require "cybertrain/blob_store"
+require "cybertrain/clock"
 require "cybertrain/logger"
 require "cybertrain/params"
 require "cybertrain/views"
@@ -84,8 +85,29 @@ module Cybertrain
       I18n.available_locales = config.i18n_available_locales
       I18n.raise_on_missing = config.i18n_raise_on_missing
       I18n.mark_missing = !config.production?
+      # Time.zone: the calendar methods, Date.current, l and time_tag read
+      # it. validation_error has refused an unknown name before this runs.
+      apply_zone(config)
       @applied += 1
       nil
+    end
+
+    # Installs `config.time_zone` as `Time.zone` ({Clock.zone}), the one
+    # setting a process that does not boot needs too: {.apply} calls it,
+    # and so do a registered command (`Main.command`), `jobs` and
+    # `console`, which run without Application#boot. An unknown name is
+    # refused as boot refuses it: the zone is left as it was and the answer
+    # is Config#time_zone_error's message, which the caller prints as
+    # boot does (`error: ...`) before exiting 1.
+    # @param config [Config]
+    # @return [String] "" once the zone is installed, else why not
+    # @api public
+    def self.apply_zone(config)
+      problem = config.time_zone_error
+      return problem unless problem.empty?
+
+      Clock.zone = TimeZone.find(config.time_zone)
+      ""
     end
 
     # Puts every setting {.apply} and Application.configure_views write back
@@ -112,6 +134,7 @@ module Cybertrain
       I18n.available_locales = [DEFAULT_LOCALE]
       I18n.raise_on_missing = false
       I18n.mark_missing = true
+      Clock.zone = TimeZone::UTC
       @role = ""
       nil
     end
@@ -139,7 +162,7 @@ module Cybertrain
         "trusted_proxy=#{Request.trusted_proxy} trusted_proxies=#{Request.trusted_proxies.join(",")} " \
         "filter_parameters=#{ParameterFilter.names.join(",")} " \
         "permissions_policy=#{Response.default_permissions_policy} " \
-        "log_level=#{Cybertrain.logger.level}"
+        "log_level=#{Cybertrain.logger.level} time_zone=#{Clock.zone.zone_name}"
     end
 
     # Claims the process for a role (`server`, `worker`, `feeds`): one role

@@ -1,5 +1,5 @@
 ---
-source_sha256: e2436964caf0a56d6dfb3add97f10095bc76a730531eb299c1c87acf84c73bcf
+source_sha256: 59a38ba829e8a8142914927b1b6e1d51aa9494f36f943063ea08ec3a17375ac5
 ---
 # Tâches de fond et exploitation
 
@@ -195,7 +195,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
   de `config/app.rb`, ce qui arrête le démarrage.
 - **Fuseaux horaires.** `tz:` nomme un fuseau IANA
   ([Fuseaux horaires](configuration.md#time-zones))&nbsp;; sans lui, la tâche
-  lit `scheduler_tz` (`CYBERTRAIN_SCHEDULER_TZ`, `UTC`). Une heure murale que
+  lit `scheduler_tz` (`CYBERTRAIN_SCHEDULER_TZ`, qui suit le `time_zone` de l’application quand il n’est pas réglé). Une heure murale que
   le passage à l’heure d’été saute ne s’exécute pas ce jour-là. Dans l’heure
   répétée du changement d’automne, une expression dont le champ des heures
   commence par `*` s’exécute aux deux occurrences et une expression à heure
