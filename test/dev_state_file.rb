@@ -23,6 +23,20 @@ test "an empty output and an output with an empty line survive" do
   assert_equal "a\n\nb", F.parse(F.format(1, "cruby", "failed", "a\n\nb")).output
 end
 
+# The supervisor writes serving none while no child runs: at the first
+# round's opening write, after a build that succeeded with a change
+# pending, and at the opening write of the round after that.
+test "every serving the supervisor writes parses, none included" do
+  ["cruby", "spinel", "holding", "none"].each do |serving|
+    assert_equal serving, F.parse(F.format(4, serving, "ready", "")).serving
+  end
+  s = F.parse(F.format(0, "none", "idle", ""))
+  assert_equal 0, s.generation
+  assert_equal "none", s.serving
+  assert_equal "idle", s.build
+  assert_equal 7, F.parse(F.format(7, "none", "ready", "")).generation
+end
+
 test "anything else is the default snapshot" do
   ["", "generation x\nserving cruby\nbuild ready\n\n", "serving cruby\n", "generation 3\nserving root\nbuild ready\n\n",
    "generation 3\nserving cruby\nbuild done\n\n"].each do |text|
@@ -55,6 +69,12 @@ test "build status fails for failed and binary_failed only" do
   assert status.failed
   assert_equal "signal 11", status.output
   status.update(F.parse(F.format(2, "cruby", "building", "")))
+  assert !status.failed
+  # What the supervisor writes with serving none: no failure, no output.
+  status.update(F.parse(F.format(2, "none", "ready", "")))
+  assert !status.failed
+  assert_equal "", status.output
+  status.update(F.parse(F.format(0, "none", "idle", "")))
   assert !status.failed
 end
 

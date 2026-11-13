@@ -9,9 +9,11 @@
 #
 #   app/models/article.rb:3: syntax error ...
 #
-# `serving` is cruby, spinel or holding; `build` is idle, building, ready,
-# failed or binary_failed; the text is the output of a failure, possibly
-# empty. The supervisor writes the file whole (StateFile.format) and renames
+# `serving` is cruby, spinel, holding or none (no child is running: the
+# first round before its child starts, a build that succeeded while a
+# change is pending, and the next round's start); `build` is idle,
+# building, ready, failed or binary_failed; the text is the output of a
+# failure, possibly empty. The supervisor writes the file whole (StateFile.format) and renames
 # it into place; the child reads it through a Reader. A missing or malformed
 # file reads as the default snapshot: generation 0, serving "", build
 # "idle", no output.
@@ -25,7 +27,7 @@ module Cybertrain
     class StateSnapshot
       # @return [Integer] the supervisor's generation (0 by default)
       attr_reader :generation
-      # @return [String] "cruby", "spinel", "holding" ("" by default)
+      # @return [String] "cruby", "spinel", "holding", "none" ("" by default)
       attr_reader :serving
       # @return [String] "idle", "building", "ready", "failed" or "binary_failed"
       attr_reader :build
@@ -42,7 +44,7 @@ module Cybertrain
 
     # @api private
     module StateFile
-      SERVING = ["cruby", "spinel", "holding"].freeze
+      SERVING = ["cruby", "spinel", "holding", "none"].freeze
       BUILDS = ["idle", "building", "ready", "failed", "binary_failed"].freeze
 
       # The file's text for these values (the supervisor's side).

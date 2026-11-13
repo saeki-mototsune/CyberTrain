@@ -232,6 +232,35 @@ test "the state path while the supervisor holds answers for a page of the child'
   assert_includes spinel, "\"text\":\"Spinel\""
 end
 
+# serving none is written only while no child runs, so the one reader is a
+# child that has just started and reads the file before the supervisor
+# rewrites it: the file's generation is older than the child's, and its
+# build (ready: a binary that will not be started, a change being
+# pending) is not one this page waits on. The page claims only what is
+# true of it: the runtime that rendered it.
+test "while the state file says serving none the page shows its own runtime and nothing more" do
+  none_ready = Cybertrain::Dev::StateFile.parse(Cybertrain::Dev::StateFile.format(4, "none", "ready", ""))
+  assert_equal "none", none_ready.serving
+  assert_equal "CRuby preview", Cybertrain::Dev::Indicator.text("cruby", 5, none_ready)
+  assert_equal "CRuby preview", Cybertrain::Dev::Indicator.text("cruby", 4, none_ready)
+  assert_equal "Spinel", Cybertrain::Dev::Indicator.text("spinel", 5, none_ready)
+  first = Cybertrain::Dev::StateFile.parse(Cybertrain::Dev::StateFile.format(0, "none", "idle", ""))
+  assert_equal "CRuby preview", Cybertrain::Dev::Indicator.text("cruby", 1, first)
+
+  reader = state_reader("none_ready", 4, "none", "ready", "")
+  app = indicator(IndicatorPage.new, reader, "cruby", 5, no_directives)
+  page = run_request(app, "/").response.body
+  assert_includes page, "data-runtime=\"cruby\" data-generation=\"5\">CRuby preview</div>"
+  assert page.index("cybertrain-build-failed").nil?, "no build failure banner"
+  # The JSON gives the file's facts; the text is for a page of this child.
+  assert_equal "{\"generation\":4,\"serving\":\"none\",\"build\":\"ready\",\"text\":\"CRuby preview\"}",
+               run_request(app, "/__cybertrain/dev/state").response.body
+  assert_includes run_request(app, "/__cybertrain/dev/state?runtime=cruby&generation=5").response.body,
+                  "\"text\":\"CRuby preview\""
+  spinel = run_request(indicator(IndicatorPage.new, reader, "spinel", 5, no_directives), "/__cybertrain/dev/state").response.body
+  assert_includes spinel, "\"text\":\"Spinel\""
+end
+
 test "the state path with one of runtime and generation reads the other as before" do
   reader = state_reader("one_parameter", 5, "spinel", "ready", "")
   app = indicator(IndicatorPage.new, reader, "spinel", 5, no_directives)
@@ -296,6 +325,8 @@ test "the script path answers the script" do
   assert_equal "cruby", response.header("X-Cybertrain-Runtime")
   assert_includes response.body, "/__cybertrain/dev/state?runtime="
   assert_includes response.body, "textContent"
+  # A file that names no child holds an older generation than the page's.
+  assert_includes response.body, "if (state.serving === \"none\") return;"
   assert response.body.index("setAttribute(\"style\"").nil?, "styled through the CSSOM"
 end
 

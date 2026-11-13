@@ -43,7 +43,9 @@ module Cybertrain
       # path asked without them (a page replayed from the browser's cache,
       # after a 304, shows the current child's content), falling back to
       # the div's data- attributes; then the state path is asked every
-      # second for the text. A failed fetch leaves the text as it was.
+      # second for the text. A file that says serving none was written
+      # before this child started, so its generation is not the page's and
+      # the data- attributes stay. A failed fetch leaves the text as it was.
       SCRIPT = "(function () {\n" \
                "  var el = document.getElementById(\"#{ID}\");\n" \
                "  if (!el) return;\n" \
@@ -65,6 +67,7 @@ module Cybertrain
                "  ask(\"#{STATE_PATH}\")\n" \
                "    .then(function (state) {\n" \
                "      if (!state || typeof state.generation !== \"number\") return;\n" \
+               "      if (state.serving === \"none\") return;\n" \
                "      generation = String(state.generation);\n" \
                "      if (state.serving === \"cruby\" || state.serving === \"spinel\") runtime = state.serving;\n" \
                "    })\n" \
@@ -74,7 +77,12 @@ module Cybertrain
 
       # The indicator's line for a page rendered by page_runtime ("cruby"
       # or "spinel") at page_generation, given the state file now: the
-      # first row that holds.
+      # first row that holds. The supervisor writes serving none only while
+      # no child runs, so a page that reads it comes from a child started
+      # after the write (or one being stopped): the build it names is not
+      # one this page waits on (ready there is a binary that will not be
+      # started, a change being pending), and the line names the runtime
+      # alone.
       # @param page_runtime [String]
       # @param page_generation [Integer]
       # @param snapshot [StateSnapshot]
@@ -82,6 +90,7 @@ module Cybertrain
       def self.text(page_runtime, page_generation, snapshot)
         return "Source changed — reload" if snapshot.generation > page_generation
         return "Spinel" if page_runtime == "spinel"
+        return "CRuby preview" if snapshot.serving == "none"
 
         build = snapshot.build
         return "CRuby preview · Spinel building…" if build == "building"
@@ -184,7 +193,8 @@ module Cybertrain
       # For the page that asks: a garbled or missing generation reads as 0,
       # a runtime other than "spinel" as "cruby". Without either (absent or
       # empty), for a page that has just loaded: the state file's serving
-      # runtime (this process's while the supervisor holds) and generation.
+      # runtime (this process's while the supervisor holds or names none)
+      # and generation.
       def answer_state(response, request, snapshot)
         asked_runtime = Indicator.state_param(request, "runtime")
         asked_generation = Indicator.state_param(request, "generation")

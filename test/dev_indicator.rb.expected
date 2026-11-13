@@ -9,6 +9,7 @@ ok   the JSON escapes quotes and backslashes in the text
 ok   a garbled generation reads as 0 and an unknown runtime as cruby
 ok   the state path without runtime and generation answers for a page of the state file's serving and generation
 ok   the state path while the supervisor holds answers for a page of the child's own runtime
+ok   while the state file says serving none the page shows its own runtime and nothing more
 ok   the state path with one of runtime and generation reads the other as before
 ok   a 304 passes through with the header and no indicator
 ok   a response served as an attachment gets the header and no indicator
@@ -16,4 +17,4 @@ ok   a response the application encoded gets the header and no indicator; identi
 ok   the script path answers the script
 ok   with a failed build the banner follows <body> and the indicator precedes </body>
 ok   the state follows the state file as it changes
-18 tests, 100 assertions, 0 failures
+19 tests, 111 assertions, 0 failures

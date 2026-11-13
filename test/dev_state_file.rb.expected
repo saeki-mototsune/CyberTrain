@@ -1,5 +1,6 @@
 ok   format and parse agree
 ok   an empty output and an output with an empty line survive
+ok   every serving the supervisor writes parses, none included
 ok   anything else is the default snapshot
 ok   the reader rereads a file that changed and survives its absence
 ok   build status fails for failed and binary_failed only
@@ -7,4 +8,4 @@ ok   a build status with a reader answers from the state file as it is now
 ok   two readers on one path are independent
 ok   a same-size rewrite renamed into place is noticed
 ok   a file that goes away reads as the default snapshot, and is read again when it comes back
-9 tests, 54 assertions, 0 failures
+10 tests, 65 assertions, 0 failures

@@ -284,7 +284,7 @@ not compiled or run by spin here: the CRuby gen has already written
 `gen/`. That removes gen's 3.3 s from the build as well.
 
 **State file** (`tmp/` in the application; written whole and renamed into
-place): generation, which runtime is serving, build state (`building`,
+place): generation, what is serving (`cruby`, `spinel`, `holding`, or `none` while no child runs), build state (`building`,
 `ready`, `failed`, `binary failed`), and the output that goes with a
 failure (the compiler's, or what is known about the dead binary). It is the only
 channel from the supervisor to a child.
