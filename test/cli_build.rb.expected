@@ -39,6 +39,15 @@ dist/blog       (production by default)
 dist/public/
 run:  cd dist && ./blog migrate && ./blog
 ok   releasing the build lock leaves a lock another process has taken over
+ok   two takers reclaiming the same stale build lock leave exactly one holder
+ok   a holder releasing a build lock that went stale never deletes a lock that replaced it
+ok   a busy breaker keeps a stale build lock in place; an abandoned one is broken
+ok   a build lock whose PID cannot be written is closed and removed, and the error goes on
+
+dist/blog       (production by default)
+dist/public/
+run:  cd dist && ./blog migrate && ./blog
+ok   cybertrain build touches its lock before each step, so a long build is not read as abandoned
 ok   assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/
 ok   assemble removes a symlink in dist/public without following it
 ok   assemble fails clearly when the binary is missing
@@ -52,4 +61,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-30 tests, 216 assertions, 0 failures
+35 tests, 236 assertions, 0 failures

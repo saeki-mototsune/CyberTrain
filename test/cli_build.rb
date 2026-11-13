@@ -355,6 +355,123 @@ test "releasing the build lock leaves a lock another process has taken over" do
   clear_lock
 end
 
+# Another taker that reclaims the same stale lock first: it runs, start to
+# finish, after this one judged the lock stale and before it acts on that.
+class SlowReclaimLock < Cybertrain::CLI::BuildLock
+  def before_breaker
+    Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i).take
+    nil
+  end
+end
+
+# A holder paused between reading its own PID and deleting the lock, long
+# enough for the lock to go stale and another taker to try to reclaim it.
+class OvertakenLock < Cybertrain::CLI::BuildLock
+  attr_reader :overtaken
+
+  def initialize(root)
+    super(root)
+    @overtaken = false
+  end
+
+  def before_release_delete
+    old = Time.now - 31 * 60
+    File.utime(old, old, lock_path)
+    @overtaken = Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i).take
+    nil
+  end
+end
+
+# A disk that is full once the lock has been created.
+class FullDiskLock < Cybertrain::CLI::BuildLock
+  def write_owner(f)
+    raise IOError, "No space left on device"
+  end
+end
+
+# A build whose lock ages past STALE_AGE during each step; records whether a
+# step ever started with the lock reading as stale.
+class AgingRunner < FakeRunner
+  attr_reader :stale_seen
+
+  def initialize(failing)
+    super(failing)
+    @stale_seen = false
+  end
+
+  def run_step(root, command)
+    path = "#{root}/tmp/cybertrain-build.lock"
+    @stale_seen = true if Cybertrain::CLI::BuildLock.new(root).stale?
+    ok = super
+    old = Time.now - 31 * 60
+    File.utime(old, old, path) if File.exist?(path)
+    ok
+  end
+end
+
+def open_descriptors
+  File.directory?("/dev/fd") ? Dir.children("/dev/fd").size : 0
+end
+
+test "two takers reclaiming the same stale build lock leave exactly one holder" do
+  clear_lock
+  File.write(LOCK, DEAD_PID)
+  # the other reclaims and takes the lock after this one judged it stale
+  refute SlowReclaimLock.new(".").take
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  refute File.exist?("#{LOCK}.break")
+  clear_lock
+end
+
+test "a holder releasing a build lock that went stale never deletes a lock that replaced it" do
+  clear_lock
+  lock = OvertakenLock.new(".")
+  assert lock.take
+  lock.release
+  # either the other taker got the lock and it is still there, or it was
+  # kept out and the holder removed its own
+  assert_equal lock.overtaken, File.exist?(LOCK)
+  assert_equal OTHER_LIVE_PID, File.read(LOCK) if lock.overtaken
+  refute File.exist?("#{LOCK}.break")
+  clear_lock
+end
+
+test "a busy breaker keeps a stale build lock in place; an abandoned one is broken" do
+  clear_lock
+  breaker = "#{LOCK}.break"
+  File.write(LOCK, DEAD_PID)
+  File.write(breaker, OTHER_LIVE_PID)
+  refute Cybertrain::CLI::BuildLock.new(".").take
+  assert_equal DEAD_PID, File.read(LOCK)
+  assert_equal OTHER_LIVE_PID, File.read(breaker)
+  old = Time.now - 60
+  File.utime(old, old, breaker)
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  refute File.exist?(breaker)
+  lock.release
+  refute File.exist?(LOCK)
+end
+
+test "a build lock whose PID cannot be written is closed and removed, and the error goes on" do
+  clear_lock
+  before = open_descriptors
+  assert_raises("IOError") { FullDiskLock.new(".").take }
+  refute File.exist?(LOCK)
+  assert_equal before, open_descriptors
+end
+
+test "cybertrain build touches its lock before each step, so a long build is not read as abandoned" do
+  clear_lock
+  runner = AgingRunner.new("")
+  assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal 3, runner.log.size
+  refute runner.stale_seen
+  refute File.exist?(LOCK)
+  rm_tree("dist")
+end
+
 test "assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/" do
   Dir.mkdir("dist")
   Dir.mkdir("dist/storage")

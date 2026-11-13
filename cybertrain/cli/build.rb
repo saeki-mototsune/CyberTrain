@@ -250,14 +250,23 @@ module Cybertrain
         end
         begin
           begin
-            ok = runner.run_step(root, steps[0]) && runner.run_step(root, steps[1])
+            # The lock is touched before each step, so that only a single
+            # step longer than BuildLock::STALE_AGE reads as abandoned.
+            lock.touch_lock
+            ok = runner.run_step(root, steps[0])
+            if ok
+              lock.touch_lock
+              ok = runner.run_step(root, steps[1])
+            end
           ensure
             # Always put gen/views.rb back to the empty table, even after a
             # failure or Ctrl-C.
+            lock.touch_lock
             restored = runner.run_step(root, steps[2])
             puts "warning: gen/views.rb still holds the embedded views; run spin run gen" unless restored
           end
           if ok && restored
+            lock.touch_lock
             assemble(root, name)
             code = 0
           end

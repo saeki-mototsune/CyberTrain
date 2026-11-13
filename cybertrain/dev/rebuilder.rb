@@ -195,8 +195,9 @@ module Cybertrain
       end
 
       # True while a `cybertrain build` holds the lock. A stale lock
-      # (CLI::BuildLock.stale_lock?: its PID no longer runs, or it is older
-      # than STALE_LOCK_AGE) is deleted and ignored, so the loop does not
+      # (CLI::BuildLock#stale?: its PID no longer runs, or it is older
+      # than STALE_LOCK_AGE) is deleted, under the lock's breaker
+      # (CLI::BuildLock#reclaim_stale), and ignored, so the loop does not
       # stay stuck until someone removes it by hand. A lock recording no PID
       # counts as held until it is that old: without the age bound, a PID a
       # SIGKILLed build once held can be reused by an unrelated process and
@@ -204,7 +205,7 @@ module Cybertrain
       def build_in_progress?
         path = lock_path
         return false unless File.exist?(path)
-        return false if CLI::BuildLock.remove_if_stale(path)
+        return false if CLI::BuildLock.new(File.expand_path(@root)).reclaim_stale
 
         File.exist?(path)
       end
