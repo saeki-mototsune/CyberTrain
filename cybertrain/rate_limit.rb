@@ -38,11 +38,13 @@ module Cybertrain
   # application's own {Cache} keys must not start with it.
   #
   # Each client opens one row per window, which expires at the window's
-  # end; nothing deletes it then but the scheduled `"cybertrain cache
-  # prune"` task ({Cache.prune}, every {Config#cache_prune_interval}
-  # seconds). Between two prunes the table grows by one row per client
-  # and window, so a flood of addresses costs disk until the next prune,
-  # never memory.
+  # end; nothing deletes it then but the cache's prune: with
+  # cybertrain/jobs the scheduled `"cybertrain cache prune"` task
+  # ({Cache.prune}, every {Config#cache_prune_interval} seconds), without
+  # it the counting writes themselves ({Cache.prune_if_due}: once per
+  # interval, at most 1000 expired rows per write). Between two prunes the
+  # table grows by one row per client and window, so a flood of addresses
+  # costs disk until the next prune, never memory.
   #
   # `store: :memory` keeps the counts in this object instead, per process
   # and lost on restart (several processes each count on their own), with

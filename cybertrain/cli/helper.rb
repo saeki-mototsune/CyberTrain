@@ -82,7 +82,10 @@ module Cybertrain
         out
       end
 
-      # The test programs' common head: the app loaded as its binary loads it.
+      # The test programs' common head: the app's config and generated code
+      # on `require "cybertrain"`, every subsystem, whatever bin/<app>.rb
+      # requires (a test program is not the application's binary, and a
+      # test may reach a subsystem the app has no line for).
       def self.test_head(extra_require)
         out = +""
         out << "ENV[\"CYBERTRAIN_ENV\"] = \"test\"\n"
