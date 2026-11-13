@@ -148,7 +148,9 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
   way.
 
 Letters are the items of this document (AA to AH are new, written up at
-the end; AI, phase 4b's, was merged in after the inventory); numbers
+the end; AI, phase 4b's, was merged in after the inventory, and AN and
+AO, met in phase 5a, after it; AJ to AM are recorded on the phase 5a
+branch (pull request 229) and arrive with it); numbers
 after "rule" are spikes/NOTES.md's.
 
 ### 1. What CyberTrain does today because of Spinel
@@ -183,6 +185,8 @@ after "rule" are spikes/NOTES.md's.
 | AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED`: fails (2026-11-13); a privileged port refused to a non-root user raised the same class | `Server#bind_listener` turns both into `PortInUse`, and `privileged_denied?` tells them apart by the port number and the user (http/server.rb) | Open; not reported |
 | AA | A method that holds a block allocates a heap cell for each captured local when it is entered | `while` loops in `Interpreter#eval_expr` and `Helpers#nested_url`, and `Response#respell_header` as a method of its own (template/interpreter.rb, template/helpers.rb, http/response.rb) | Open; not reduced, not reported |
 | AI (rule 101) | A large Hash literal constant is one long C function that cc takes some 13 s to build (a cost, not a wrong result) | gen/locales.rb and cybertrain/locales/bundled.rb fill their Hash through methods of at most 50 stores (generator/locales_emitter.rb, phase 4b) | Not reported |
+| AN (rule 109) | A parameter defaulting to nil that a caller gives a plain Time is compiled as a non-nullable Time; the defaulted call crashes (SIGSEGV): fails (2026-11-13) | On main, nothing yet: `Cookies.serialize` still defaults `expires:` to nil (cybertrain/http/cookies.rb:147); the framework's own callers pass a Time-or-nil value or leave it out, so only an application that calls it with a plain Time is exposed. The sentinel default `Cookies::NO_EXPIRES` lands with pull request 229 | Open; not reported |
+| AO (rule 110) | A statement `case` on a plain Integer, compiled after a statement `case` on a nullable Integer in another method, can take its temporary number and not compile (`'_oN' undeclared`): fails (2026-11-13) | On main, nothing to change: the failing site, `HtmlReader.parse`, and its `if` chain both come with pull request 229; `Html.escape`'s `case b` (cybertrain/html.rb:54) is the nullable case whose mark leaks | Open; not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -463,6 +467,8 @@ again since the lock left it).
   it is ready to report as a request (a large constant literal's stores
   written into helper functions of bounded size), and nothing in
   CyberTrain waits on it.
+- **AN and AO** (phase 5a, 2026-11-13) are defects with a reduced program
+  each, ready to report.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
   (#10525, #10524), F, G, H (#10415) and I (#10735, #10786); their
   workarounds are dropped where there were any (see each).
@@ -525,6 +531,8 @@ run on master 1c0cc5e35:
 | AG | `privileged_denied?` in `Server#bind_listener` | **Ready to report**: the 9-line program in AG (CRuby `Errno::EADDRINUSE`, compiled `Errno::ECONNREFUSED`). Not reported; not run on master |
 | AH | none | The 2-line program in AH. A difference in form, not in value: to be mentioned with AF rather than reported alone |
 | AI | gen/locales.rb fills its Hash through methods of at most 50 stores (spikes/NOTES.md rule 101) | **Ready to report** as a compile-time cost, not a defect: spikes/phase4b/locale_hash.rb and its generator make_keys.rb, with the `--timing` figures (see AI). Not reported upstream yet |
+| AN | none on main yet; the sentinel default `Cookies::NO_EXPIRES` comes with pull request 229 (spikes/NOTES.md rule 109, which arrives with the phase 5a branch) | **Ready to report**: spikes/phase5/nil_default_time.rb (SIGSEGV, exit 139; CRuby `none`, `1970`). Not reported; not run on master |
+| AO | none on main; with pull request 229, an `if` chain in `HtmlReader.parse` instead of a statement `case` (spikes/NOTES.md rule 110, which arrives with the phase 5a branch) | **Ready to report**: spikes/phase5/case_nullable_temp.rb (the C compile fails, `'_o1' undeclared`; CRuby `amp`, `long`). Not reported; not run on master |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026 when this table
@@ -594,6 +602,8 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | AG. `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-13) |
 | AH. `JSON.generate` writes a Float in another form than CRuby's | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-11 and 2026-11-13) |
 | AI. A large Hash literal constant takes cc 13 s | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4b spike, 2026-11-11; rule 101) |
+| AN. A parameter defaulting to nil, given a plain Time by a caller, is a non-nullable Time | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 109) |
+| AO. A statement `case` on a plain Integer takes an earlier nullable case's temporary number | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 110) |
 
 ## What CyberTrain still works around
 
@@ -3419,3 +3429,105 @@ shaped the code in four places:
 One finding was CRuby's, not Spinel's: under a C locale `File.read`
 answers US-ASCII text, which the authentication generator's diff
 compares with generated UTF-8 through `LineDiff.as_utf8`.
+
+## Found in phase 5a of the Rails-gap programme (2026-11-13)
+
+Two compiler bugs met while building phase 5a (tests), recorded here
+ahead of that branch; its other items, AJ to AM, arrive with it (pull
+request 229). Their reduced programs are in spikes/phase5/, with the
+Spinel 2026.11.04.7026 results measured on 2026-11-13 in each header.
+
+### AN. A parameter defaulting to nil that a caller gives a plain Time crashes the defaulted call
+
+spikes/NOTES.md rule 109, which arrives with the phase 5a branch (pull
+request 229); found on 2026-11-13.
+
+```ruby
+def stamp(expires: nil)
+  return "none" if expires.nil?
+
+  expires.year.to_s
+end
+STDOUT.sync = true
+puts stamp
+puts stamp(expires: Time.at(0))
+```
+
+CRuby prints `none` and `1970`; the compiled program prints nothing and
+dies with SIGSEGV (exit 139). The parameter is typed from its callers' values
+as a plain `sp_Time *`, `expires.nil?` compiles to the constant false, and
+the defaulted call passes NULL to `sp_time_year`. A positional default
+crashes the same way; callers giving a String, or a value typed Time-or-nil,
+work.
+
+- Today, on main: `Cookies.serialize(..., expires: nil)` still has the nil
+  default (cybertrain/http/cookies.rb:147, checked with `unless
+  expires.nil?` at :155). The framework's own callers are safe:
+  `SessionStore` (middleware/session_store.rb:122) and `CookieJar#delete`
+  leave `expires:` out, and `CookieJar#assign_cookie` (cookie_jar.rb:200)
+  passes `Cast.time_or_nil(...)`, typed Time or nil, which is why
+  examples/blog never crashed. An application that calls
+  `Cybertrain::Cookies.serialize(..., expires: Time.now + ...)` itself, in
+  a program that also has `SessionStore`, would crash at the session
+  cookie. Pull request 229 gives it the sentinel default
+  `Cookies::NO_EXPIRES` (`Time.at(-1).utc`), tested for along with nil.
+- Asked of Spinel: type a nil-defaulted parameter as nullable when a
+  caller leaves it out.
+- Reproduced by spikes/phase5/nil_default_time.rb (and the workaround,
+  nil_default_time_fixed.rb); not reported upstream.
+
+### AO. A statement `case` on a plain Integer takes an earlier nullable case's temporary and does not compile
+
+spikes/NOTES.md rule 110, which arrives with the phase 5a branch (pull
+request 229); found on 2026-11-13.
+
+```ruby
+def esc(s)
+  out = +""
+  b = s.getbyte(0)
+  case b
+  when 38 then out << "amp"
+  else out << "other"
+  end
+  out
+end
+
+def kind_of(s)
+  return 1 if s.bytesize > 3
+
+  0
+end
+
+def parse(s)
+  out = +""
+  k = kind_of(s)
+  case k
+  when 1 then out << "long"
+  else out << "short"
+  end
+  out
+end
+
+puts esc("&x")
+puts parse("abcd")
+```
+
+CRuby prints `amp` and `long`; Spinel's C does not compile: `'_o1'
+undeclared`. `case b` (a nullable Integer) declares `sp_oint _o1` and
+`sp_int _t1` and switches on `_o1.nil ? 0LL : _t1`; `case k` (a plain
+Integer) declares only `sp_int _t1` but switches on the same expression.
+The "nullable subject" mark is kept by temporary number across methods.
+With the methods in the other order, or both cases as return values, it
+compiles. On the phase 5a branch it showed as two test programs failing
+to build while a third, loading the same file, built.
+
+- Today, on main: nothing fails. The site that failed,
+  `Cybertrain::Test::HtmlReader.parse`, comes with pull request 229, which
+  writes it as an `if` chain. `Html.escape`'s `case b`
+  (cybertrain/html.rb:54) is the nullable case whose mark leaks, so any
+  later statement `case` on a plain Integer can fail the same way; CI
+  builds every program, so it would show as a build failure.
+- Asked of Spinel: keep the nullable-subject mark per case (or per
+  method), not per temporary number.
+- Reproduced by spikes/phase5/case_nullable_temp.rb; not reported
+  upstream.
