@@ -202,6 +202,32 @@ class StopOnAcceptServer < Cybertrain::Server
   end
 end
 
+# The first accept requests the stop and waits, as StopOnAcceptServer's
+# with $hold_accept, until the test has queued a second connection; then
+# the first accept of the sweep that follows fails with ECONNABORTED (a
+# queued client that reset before it was taken, as BSD and macOS report
+# it) without taking anything, and the second connection is still queued
+# behind it.
+$sweep_aborts = 0
+
+class AbortInSweepServer < Cybertrain::Server
+  private
+
+  def accept_client(listener)
+    if $accept_held && $sweep_aborts > 0
+      $sweep_aborts -= 1
+      raise Errno::ECONNABORTED, "Software caused connection abort"
+    end
+    sock = super
+    request_stop
+    unless $accept_held
+      $accept_held = true
+      sleep 0.01 until $second_queued
+    end
+    sock
+  end
+end
+
 $log = StringIO.new
 $server =Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 1,
                                  max_head_bytes: 1024, max_body_bytes: 64,
@@ -805,6 +831,41 @@ test "connections still in the accept queue at the stop are answered, not reset"
   second.close
   runner.join
   assert port_refused?(port)
+end
+
+# One failed accept in the sweep (AbortInSweepServer) is logged and the
+# sweep goes on: the connection queued behind it is answered, not reset
+# when the listener closes.
+test "a failed accept in the stop's sweep does not end it: what is queued behind is answered" do
+  $accept_held = false
+  $second_queued = false
+  $sweep_aborts = 1
+  begin
+    log = StringIO.new
+    server = AbortInSweepServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                      logger: Cybertrain::Logger.new(log, :info))
+    runner = Thread.new { server.run }
+    sleep 0.01 while server.port == 0
+    port = server.port
+    first = RawClient.new(port)
+    first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    sleep 0.01 until $accept_held
+    second = RawClient.new(port)
+    second.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    $second_queued = true
+    assert_equal "hi", first.read_response(false).body
+    res = second.read_response(false)
+    assert_equal "hi", res.body
+    assert_equal "close", res.header("connection")
+    first.close
+    second.close
+    runner.join
+    assert_equal 0, $sweep_aborts
+    assert_includes log.string, "[ERROR] accept failed: Errno::ECONNABORTED"
+    assert port_refused?(port)
+  ensure
+    $sweep_aborts = 0
+  end
 end
 
 # Under `cybertrain server` the listener is inherited and the supervisor

@@ -102,6 +102,10 @@ module Cybertrain
     # called. An idle keep-alive connection does not poll: it waits for its
     # next request for up to read_timeout, and the drain ends that wait.
     ACCEPT_POLL = 0.1
+    # The pause after a failed accept in the stop's sweep (accept_queued):
+    # one that keeps failing (EMFILE until descriptors are freed) is tried
+    # about ten times within the sweep's ACCEPT_POLL, not in a tight loop.
+    SWEEP_RETRY = 0.01
     # How long after its accept a connection that has sent nothing yet is
     # left open by a stop for its first request. A client sends its request
     # right after the connect, so this is ample; a socket opened ahead of
@@ -459,14 +463,30 @@ module Cybertrain
     # ACCEPT_POLL, so a steady stream of new clients cannot keep the stop
     # going. An inherited listener is not swept: the supervisor holds the
     # socket open, and the next child on it takes in what is queued.
+    #
+    # One failed accept does not end the sweep, or everything queued
+    # behind it would be reset: ECONNABORTED (a queued client that reset
+    # first, as BSD and macOS report it) concerns that client alone, and
+    # EMFILE may pass as connections close. Each failure is logged and
+    # followed by SWEEP_RETRY's pause, within the same bound.
     def accept_queued(listener)
       started = Time.now
       while !listener.closed? && Time.now - started < ACCEPT_POLL && !listener.wait_readable(0).nil?
-        spawn_connection(accept_client(listener))
+        accept_queued_client(listener)
       end
       nil
+    end
+
+    # One accept of the sweep. Its own method so the rescue covers a single
+    # accept (it takes no block: NOTES rule 32).
+    def accept_queued_client(listener)
+      spawn_connection(accept_client(listener))
+      nil
     rescue StandardError => e
-      @logger.error("accept failed: #{e.class.name}: #{e.message}") unless listener.closed?
+      unless listener.closed?
+        @logger.error("accept failed: #{e.class.name}: #{e.message}")
+        sleep SWEEP_RETRY
+      end
       nil
     end
 

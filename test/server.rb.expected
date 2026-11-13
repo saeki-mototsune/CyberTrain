@@ -43,6 +43,7 @@ ok   a connection accepted as the stop is requested gets its first request answe
 ok   a connection accepted as the stop is requested is answered when its request comes a moment later
 ok   a connection that sends nothing holds up the stop for the first-request grace at most
 ok   connections still in the accept queue at the stop are answered, not reset
+ok   a failed accept in the stop's sweep does not end it: what is queued behind is answered
 ok   with an inherited listener, connections queued at the stop are left for the next server
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
@@ -63,4 +64,4 @@ ok   listen_fd naming a read-write regular file raises PortInUse
 ok   listen_fd naming a connected socket that does not listen raises PortInUse
 ok   where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served
 ok   where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused
-65 tests, 246 assertions, 0 failures
+66 tests, 252 assertions, 0 failures
