@@ -1,5 +1,5 @@
 ---
-source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
+source_sha256: 3109902f66d644e274188001adeec4f8f23888013cc14b16568df63dee79679f
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -146,6 +146,7 @@ cybertrain generate scaffold article title:string body:text
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -313,6 +314,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -673,7 +675,7 @@ end
 - 作业是 `cybertrain_jobs` 中的行，由提供服务的进程的三个作业线程运行，或者由用 `./blog worker` 启动的单独进程的作业线程运行（[进程角色](background-and-operations.md#process-roles)）。
 - `retry_on StandardError, wait: 30, attempts: 3` 会在 30 秒后把失败的运行重新入队，总共尝试三次；此后这一行变为 `failed` 并保留下来（[重试与丢弃](background-and-operations.md#retries-and-discards)）。
 - 作业可能运行不止一次（进程在运行某个作业的中途死掉时，该作业会再运行一次），所以要把 `perform` 写成可以安全重复执行的。
-- 失败的作业用 `./blog jobs` 列出、重试和丢弃，也可以在 `config/routes.rb` 中被注释掉的 `jobs_page` 那一行所挂载的页面上操作（[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
+- 失败的作业用 `./blog jobs` 列出、重试和丢弃，也可以在 `config/routes.rb` 中被注释掉的 `jobs_page` 那一行在取消注释后挂载的页面（步骤 04 和 09 的路由保留了这一行）上操作（[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
 
 > [!RULE] Spinel 规则：作业策略作为文本读取
 > ### 作业策略作为文本读取
@@ -738,7 +740,7 @@ $ curl http://127.0.0.1:3000/articles.json
 
 ### 生成器写了什么
 
-步骤 03 和 08 的脚手架写出了 Rails 的脚手架测试：`test/fixtures/articles.yml` 和 `comments.yml`（每个测试开始时就有的 `one` 和 `two` 两行）、`test/models/article_test.rb` 和 `comment_test.rb`（“the fixture is valid”），以及 `test/controllers/articles_controller_test.rb` 和 `comments_controller_test.rb`（每个动作一个请求）。步骤 12 写出了 `test/components/comment_component_test.rb` 和 `test/helpers/comments_helper_test.rb`，步骤 14 写出了 `test/jobs/notify_comment_job_test.rb`，`cybertrain new` 写出了每个文件都会加载的 `test/test_helper.rb`。其中三个需要跟上博客此后的变化。
+步骤 03 和 08 的脚手架写出了 Rails 的脚手架测试：`test/fixtures/articles.yml` 和 `comments.yml`（每个测试开始时就有的 `one` 和 `two` 两行）、`test/models/article_test.rb` 和 `comment_test.rb`（“the fixture is valid”），以及 `test/controllers/articles_controller_test.rb` 和 `comments_controller_test.rb`（每个动作一个请求）。步骤 12 写出了 `test/components/comment_component_test.rb` 和 `test/helpers/comments_helper_test.rb`，步骤 14 写出了 `test/jobs/notify_comment_job_test.rb`，`cybertrain new` 写出了每个文件都会加载的 `test/test_helper.rb`，以及请求 `/up` 的 `test/integration/health_test.rb`。其中三个需要跟上博客此后的变化。
 
 ### 通过验证的夹具
 
@@ -838,7 +840,7 @@ cybertrain test test/controllers/comments_controller_test.rb
 cybertrain test -n /comment/
 ```
 
-第一次运行会把所有测试编译成一个程序，需要几分钟（examples/blog 的 149 个测试在一台 4 vCPU 的云机器上用了大约九分钟）；没有改动时再次运行会立即开始。文件或 `-n` 选择运行哪些测试，而不是编译什么：修改任何测试都会重新编译程序。每个文件输出一个标题，每个测试一行（`ok`，或带着测试的行号和消息的 `FAIL` 和 `ERR`），最后是合计；有测试失败时退出状态为 1。
+第一次运行会把所有测试编译成一个程序，需要几分钟（examples/blog 的 149 个测试在一台 4 vCPU 的云机器上用了大约九分钟）；没有改动时再次运行不会重新编译测试程序：它可能会重新构建一次 gen（`build gen`，几秒钟），之后不到一秒就开始。文件或 `-n` 选择运行哪些测试，而不是编译什么：修改任何测试都会重新编译程序。每个文件输出一个标题，每个测试一行（`ok`，或带着测试的行号和消息的 `FAIL` 和 `ERR`），最后是合计，其间还夹着被测代码自己输出的内容（例如某个命令的输出行）；有测试失败时退出状态为 1。2026-11-13 测得，教程的博客在这一步有 17 个测试、25 个断言。
 
 > [!NOTE]
 > 每个测试之前所有表都会被清空并重新插入夹具，所以测试之间互不依赖。`gen/tests.rb` 和 `gen/test/` 是生成的：和 `gen/` 的其余部分一起提交。
@@ -904,7 +906,7 @@ class ArticlesController < ApplicationController
 
 ### 更新测试
 
-[步骤 16](#test) 中打开表单、提交表单或访问 `index` 和 `show` 以外动作的测试，现在会遇到登录页面。生成器写出了 `test/fixtures/users.yml`（`one` 和 `two`，密码是 `"password"`）和 `test/support/session_test_helper.rb`，`test/test_helper.rb` 现在把其中的 `sign_in_as` 给了每个集成测试。先登录：
+[步骤 16](#test) 中打开表单、提交表单或访问 `index` 和 `show` 以外动作的测试，现在会遇到登录页面。生成器写出了 `test/fixtures/users.yml`（`one` 和 `two`，密码是 `"password"`）和 `test/support/session_test_helper.rb`，`test/test_helper.rb` 现在把其中的 `sign_in_as` 给了每个集成测试，并且生成器已经在文章测试的 `setup` 中加上了登录（它会输出 `insert test/controllers/articles_controller_test.rb (sign_in_as users(:one))`），所以你会看到：
 
 ```ruby test/controllers/articles_controller_test.rb（节选）
   setup do
@@ -913,7 +915,7 @@ class ArticlesController < ApplicationController
   end
 ```
 
-评论测试没有 `setup`，而它的四个测试现在都需要一个已登录的用户；给它加上：
+评论测试没有可供生成器添加登录的 `setup`，而 `CommentsController` 的每个动作（create 和 destroy）现在都需要已登录的用户，所以它的四个测试也都需要；给它加上：
 
 ```ruby test/controllers/comments_controller_test.rb（节选）
 class CommentsControllerTest < ActionDispatch::IntegrationTest
@@ -1017,7 +1019,7 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 启动服务器，编辑一篇文章并选择一张图片。生成器还写了 `test/integration/article_cover_attachment_test.rb` 和图片 `test/fixtures/files/cover.png`，它们测试整个流程，并且因为应用现在有了 `User`，会先登录。由于这里的 `:cover` 是公开的，它会检查访客能否下载封面；正文则填入 `"A article."`，长度补足到 [步骤 05](#validations) 要求的至少 10 个字符。
 
 > [!NOTE]
-> 和[步骤 16](#test) 一样用 `cybertrain test` 运行。`examples/blog` 也包含这一步，并且它的 JSON 不包含 `cover_*` 列（`Article#public_json`）。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
+> 和[步骤 16](#test) 一样用 `cybertrain test` 运行（2026-11-13 测得，教程的博客此时有 83 个测试、870 个断言）。`examples/blog` 也包含这一步，并且它的 JSON 不包含 `cover_*` 列（`Article#public_json`）。尚未实现：每个字段多个文件、S3 或其他远程存储、图片变体，以及把大请求体流式写入磁盘（整个请求体会读入内存，上限为 `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 运行时 · `dist/blog` -->
 ## 为部署而构建

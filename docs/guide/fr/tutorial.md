@@ -1,5 +1,5 @@
 ---
-source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
+source_sha256: 3109902f66d644e274188001adeec4f8f23888013cc14b16568df63dee79679f
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -225,6 +225,7 @@ fichier envoyé, [étape 18](#attachments))&nbsp;; le type par défaut est
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -445,6 +446,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -899,8 +901,9 @@ après la réponse&nbsp;:
   d’un job, celui-ci est exécuté de nouveau)&nbsp;: écrivez donc `perform` de
   sorte qu’il puisse être répété sans risque.
 - Les jobs en échec se listent, se réessaient et s’abandonnent avec
-  `./blog jobs`, ou sur la page que monte la ligne `jobs_page`, en
-  commentaire dans `config/routes.rb`
+  `./blog jobs`, ou sur la page que monte la ligne `jobs_page` de
+  `config/routes.rb` une fois décommentée (les routes des étapes 04 et 09
+  la gardent)
   ([La page des jobs](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
 
 > [!RULE] Règle Spinel&nbsp;: les politiques des jobs sont lues comme du texte
@@ -994,7 +997,8 @@ et `comment_test.rb` (« the fixture is valid »), et
 `test/components/comment_component_test.rb` et
 `test/helpers/comments_helper_test.rb`, l’étape 14
 `test/jobs/notify_comment_job_test.rb`, et `cybertrain new` a écrit
-`test/test_helper.rb`, que chaque fichier charge. Trois d’entre eux doivent
+`test/test_helper.rb`, que chaque fichier charge, et
+`test/integration/health_test.rb`, une requête vers `/up`. Trois d’entre eux doivent
 suivre le blog tel qu’il a grandi depuis.
 
 ### Des fixtures qui passent les validations
@@ -1118,12 +1122,15 @@ cybertrain test -n /comment/
 
 La première exécution compile tous les tests en un seul programme, ce qui
 prend des minutes (les 149 tests d’examples/blog en ont pris environ neuf
-sur une machine cloud à 4 vCPU)&nbsp;; une exécution sans changement démarre
-aussitôt. Un fichier ou `-n` choisit quels tests s’exécutent, pas ce qui est
+sur une machine cloud à 4 vCPU)&nbsp;; une exécution sans changement ne recompile pas le programme de
+test&nbsp;: elle peut reconstruire gen une fois (`build gen`, quelques
+secondes), puis démarre en bien moins d’une seconde. Un fichier ou `-n` choisit quels tests s’exécutent, pas ce qui est
 compilé&nbsp;: modifier n’importe quel test recompile le programme. Chaque
 fichier affiche un titre, chaque test une ligne (`ok`, ou `FAIL` et `ERR`
-avec la ligne du test et le message), puis les totaux&nbsp;; le code de sortie
-vaut 1 quand un test a échoué.
+avec la ligne du test et le message), puis les totaux, avec entre eux ce que le code testé affiche lui-même (la
+ligne de sortie d’une commande, par exemple)&nbsp;; le code de sortie vaut 1
+quand un test a échoué. Mesuré le 2026-11-13, le blog du tutoriel compte
+à cette étape 17 tests et 25 assertions.
 
 > [!NOTE]
 > Avant chaque test, toutes les tables sont vidées et les fixtures
@@ -1216,9 +1223,10 @@ Tout test de l’[étape 16](#test) qui ouvre un formulaire, en soumet un ou
 atteint une action autre que `index` et `show` tombe désormais sur la page de
 connexion. Le générateur a écrit `test/fixtures/users.yml` (`one` et `two`,
 dont le mot de passe est `"password"`) et
-`test/support/session_test_helper.rb`, dont `test/test_helper.rb` donne
-maintenant le `sign_in_as` à chaque test d’intégration. Connectez-vous
-d’abord&nbsp;:
+`test/support/session_test_helper.rb`, dont `test/test_helper.rb` donne maintenant le `sign_in_as` à chaque test
+d’intégration, et il a ajouté la connexion au `setup` du test des articles
+(il affiche `insert test/controllers/articles_controller_test.rb (sign_in_as users(:one))`)&nbsp;;
+vous trouverez donc&nbsp;:
 
 ```ruby test/controllers/articles_controller_test.rb (extrait)
   setup do
@@ -1227,8 +1235,10 @@ d’abord&nbsp;:
   end
 ```
 
-Le test des commentaires n’a pas de `setup`, et chacun de ses quatre
-tests a maintenant besoin d’un utilisateur connecté&nbsp;; donnez-lui-en un&nbsp;:
+Le test des commentaires n’a pas de `setup` auquel le générateur puisse
+ajouter la connexion, et chaque action de `CommentsController` (create et
+destroy) demande maintenant un utilisateur connecté, donc chacun de ses
+quatre tests aussi&nbsp;; donnez-lui-en un&nbsp;:
 
 ```ruby test/controllers/comments_controller_test.rb (extrait)
 class CommentsControllerTest < ActionDispatch::IntegrationTest
@@ -1401,7 +1411,8 @@ et il remplit le corps avec `"A article."`, allongé jusqu’au minimum de
 10&nbsp;caractères de l’[étape 05](#validations).
 
 > [!NOTE]
-> Lancez `cybertrain test` comme à l’[étape 16](#test).
+> Lancez `cybertrain test` comme à l’[étape 16](#test) (mesuré le
+> 2026-11-13, le blog du tutoriel compte alors 83 tests et 870 assertions).
 > `examples/blog` comporte aussi cette étape, et son JSON n’inclut pas les
 > colonnes `cover_*` (`Article#public_json`). Pas encore pris en charge&nbsp;:
 > plusieurs fichiers par champ, S3 ou un autre stockage distant, les variantes

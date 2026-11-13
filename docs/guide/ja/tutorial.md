@@ -1,5 +1,5 @@
 ---
-source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
+source_sha256: 3109902f66d644e274188001adeec4f8f23888013cc14b16568df63dee79679f
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -146,6 +146,7 @@ cybertrain generate scaffold article title:string body:text
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -313,6 +314,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -673,7 +675,7 @@ end
 - ジョブは `cybertrain_jobs` の行で、サーバーのプロセスの 3 本のジョブスレッドが実行します。`./blog worker` で起動した別のプロセスに実行させることもできます（[プロセスの役割](background-and-operations.md#process-roles)）。
 - `retry_on StandardError, wait: 30, attempts: 3` は、失敗した実行を 30 秒後にもう一度キューに入れ、試行は全部で 3 回です。それでも失敗した行は `failed` になり、残されます（[再試行と破棄](background-and-operations.md#retries-and-discards)）。
 - ジョブは 2 回以上実行されることがあります（実行の途中でプロセスが落ちると、そのジョブはもう一度実行されます）。`perform` は繰り返しても安全なように書いてください。
-- 失敗したジョブの一覧・再試行・破棄は、`./blog jobs` か、`config/routes.rb` にコメントアウトされている `jobs_page` の行がマウントするページで行います（[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
+- 失敗したジョブの一覧・再試行・破棄は、`./blog jobs` か、`config/routes.rb` にコメントアウトされている `jobs_page` の行を有効にするとマウントされるページ（ステップ 04 と 09 のルートはこの行を残しています）で行います（[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
 
 > [!RULE] Spinel のルール：ジョブのポリシーはテキストとして読まれる
 > ### ジョブのポリシーはテキストとして読まれる
@@ -738,7 +740,7 @@ $ curl http://127.0.0.1:3000/articles.json
 
 ### ジェネレーターが書いたもの
 
-ステップ 03 と 08 のスキャフォールドは Rails のスキャフォールドのテストを書き出しました：`test/fixtures/articles.yml` と `comments.yml`（各テストが最初に持つ `one` と `two` の行）、`test/models/article_test.rb` と `comment_test.rb`（「the fixture is valid」）、そして `test/controllers/articles_controller_test.rb` と `comments_controller_test.rb`（アクションごとに 1 つのリクエスト）。ステップ 12 は `test/components/comment_component_test.rb` と `test/helpers/comments_helper_test.rb` を、ステップ 14 は `test/jobs/notify_comment_job_test.rb` を書き出し、`cybertrain new` は各ファイルが読み込む `test/test_helper.rb` を書き出しました。そのうち 3 つは、その後に育ったブログに合わせる必要があります。
+ステップ 03 と 08 のスキャフォールドは Rails のスキャフォールドのテストを書き出しました：`test/fixtures/articles.yml` と `comments.yml`（各テストが最初に持つ `one` と `two` の行）、`test/models/article_test.rb` と `comment_test.rb`（「the fixture is valid」）、そして `test/controllers/articles_controller_test.rb` と `comments_controller_test.rb`（アクションごとに 1 つのリクエスト）。ステップ 12 は `test/components/comment_component_test.rb` と `test/helpers/comments_helper_test.rb` を、ステップ 14 は `test/jobs/notify_comment_job_test.rb` を書き出し、`cybertrain new` は各ファイルが読み込む `test/test_helper.rb` と、`/up` へのリクエストである `test/integration/health_test.rb` を書き出しました。そのうち 3 つは、その後に育ったブログに合わせる必要があります。
 
 ### バリデーションを通るフィクスチャ
 
@@ -838,7 +840,7 @@ cybertrain test test/controllers/comments_controller_test.rb
 cybertrain test -n /comment/
 ```
 
-最初の実行はすべてのテストを 1 つのプログラムにコンパイルするので、数分かかります（examples/blog の 149 テストは 4 vCPU のクラウドマシンで約 9 分）。何も変えていなければ、次の実行はすぐに始まります。ファイルや `-n` はどのテストを実行するかを選ぶもので、何をコンパイルするかは変えません：どのテストを編集しても、プログラムはコンパイルし直されます。ファイルごとに見出し、テストごとに 1 行（`ok`、または `FAIL` と `ERR` にテストの行とメッセージ）、最後に合計が出ます。失敗したテストがあれば終了ステータスは 1 です。
+最初の実行はすべてのテストを 1 つのプログラムにコンパイルするので、数分かかります（examples/blog の 149 テストは 4 vCPU のクラウドマシンで約 9 分）。何も変えていなければ、次の実行でテストのプログラムはコンパイルし直されません。gen を 1 回ビルドし直すことはあり（`build gen`、数秒）、そのあとは 1 秒よりずっと短い時間で始まります。ファイルや `-n` はどのテストを実行するかを選ぶもので、何をコンパイルするかは変えません：どのテストを編集しても、プログラムはコンパイルし直されます。ファイルごとに見出し、テストごとに 1 行（`ok`、または `FAIL` と `ERR` にテストの行とメッセージ）、最後に合計が出ます。その間には、テスト対象のコードが自分で出力したもの（たとえばコマンドの出力行）も混じります。失敗したテストがあれば終了ステータスは 1 です。2026-11-13 に測ったところ、このステップのチュートリアルのブログは 17 テスト、25 アサーションです。
 
 > [!NOTE]
 > 各テストの前にすべてのテーブルが空になり、フィクスチャが入れ直されるので、テストはお互いに依存しません。`gen/tests.rb` と `gen/test/` は生成されるもので、`gen/` のほかの部分と一緒にコミットします。
@@ -904,7 +906,7 @@ class ArticlesController < ApplicationController
 
 ### テストを更新する
 
-[ステップ 16](#test) のテストのうち、フォームを開くもの、フォームを送信するもの、`index` と `show` 以外のアクションに届くものは、いまはサインインのページに行き当たります。ジェネレーターは `test/fixtures/users.yml`（`one` と `two`。パスワードは `"password"`）と `test/support/session_test_helper.rb` を書き出しており、`test/test_helper.rb` がその `sign_in_as` をいまはすべての統合テストに与えます。先にサインインします：
+[ステップ 16](#test) のテストのうち、フォームを開くもの、フォームを送信するもの、`index` と `show` 以外のアクションに届くものは、いまはサインインのページに行き当たります。ジェネレーターは `test/fixtures/users.yml`（`one` と `two`。パスワードは `"password"`）と `test/support/session_test_helper.rb` を書き出しており、`test/test_helper.rb` がその `sign_in_as` をいまはすべての統合テストに与えます。記事のテストの `setup` には、ジェネレーターがサインインをすでに加えています（`insert test/controllers/articles_controller_test.rb (sign_in_as users(:one))` と表示されます）。次のようになっているはずです：
 
 ```ruby test/controllers/articles_controller_test.rb（抜粋）
   setup do
@@ -913,7 +915,7 @@ class ArticlesController < ApplicationController
   end
 ```
 
-コメントのテストには `setup` がなく、4 つのテストのどれもがいまはサインインしたユーザーを必要とします。`setup` を加えます：
+コメントのテストにはジェネレーターが書き足せる `setup` がありません。`CommentsController` のすべてのアクション（create と destroy）がいまはサインインしたユーザーを必要とするので、4 つのテストのどれもが同じです。`setup` を加えます：
 
 ```ruby test/controllers/comments_controller_test.rb（抜粋）
 class CommentsControllerTest < ActionDispatch::IntegrationTest
@@ -1017,7 +1019,7 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 サーバーを起動し、記事を編集して画像を選びます。ジェネレーターは `test/integration/article_cover_attachment_test.rb` と画像 `test/fixtures/files/cover.png` も書き出しています。このテストは一連の流れ全体を確かめ、アプリに `User` があるので最初にサインインします。ここでは `:cover` が公開されているので、訪問者がカバー画像をダウンロードできることを確かめます。本文には、[ステップ 05](#validations) の最小 10 文字に合わせて伸ばした `"A article."` を入れます。
 
 > [!NOTE]
-> [ステップ 16](#test) と同じく `cybertrain test` で実行します。`examples/blog` にもこのステップが入っており、その JSON は `cover_*` のカラムを含みません（`Article#public_json`）。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
+> [ステップ 16](#test) と同じく `cybertrain test` で実行します（2026-11-13 に測ったところ、チュートリアルのブログはこの時点で 83 テスト、870 アサーションです）。`examples/blog` にもこのステップが入っており、その JSON は `cover_*` のカラムを含みません（`Article#public_json`）。未対応のもの：1 つのフィールドに複数のファイル、S3 などのリモートストレージ、画像のバリアント、大きなボディをディスクへストリーミングすること（ボディ全体がメモリに読み込まれます。上限は `max_body_bytes`）。
 
 <!-- step 19 #ship stage: 実行時 · `dist/blog` -->
 ## デプロイ用にビルドする
