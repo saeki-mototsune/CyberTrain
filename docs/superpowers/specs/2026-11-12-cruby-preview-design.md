@@ -290,7 +290,11 @@ than every `*.rb` of the application and of the other `-I` directories
 (the framework), is plain `spin build NAME`: spin finds it up to date in a
 fraction of a second, or builds it in full when it sees another input
 (plan P23). Every later build is incremental: a save in the last instant
-of a build leaves a binary newer than the save it lacks (plan P24).
+of a build can be missing from the binary it writes (plan P24). A build
+that wrote the binary leaves it at the time the build was launched, never
+later, so that a save made during the build is newer than the binary and
+the next session's first build, or spin's own check, compiles it; a build
+that found the binary up to date leaves its time alone (plan P25).
 
 **State file** (`tmp/` in the application; written whole and renamed into
 place): generation, what is serving (`cruby`, `spinel`, `holding`, or `none` while no child runs), build state (`building`,

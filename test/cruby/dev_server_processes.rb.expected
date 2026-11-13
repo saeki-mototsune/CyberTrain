@@ -18,6 +18,12 @@ ok   every build after the runner's first is incremental, a fresh binary include
 ok   a build after a cancelled first build is incremental
 ok   a save in the last instant of a plain build is compiled by the next build, not found up to date
 ok   without --incremental, a save in the last instant of a build leaves the binary older than the save
+ok   a build that ends ok leaves the binary at its launch, older than a save made during it; the next session builds incrementally
+ok   after a build of a session that ends ok, an untouched application's next session gets the plain command
+ok   a build that ends ok without writing the binary keeps the binary's time exactly
+ok   a failed build leaves the binary's time as it is
+ok   a cancelled build that wrote the binary leaves it at its launch
+ok   a binary whose time cannot be set does not fail the build; one line says so
 ok   a Ruby file of another -I directory newer than the binary makes the build incremental
 ok   the framework's walk passes over an application inside it, its build/ and tmp/ included
 ok   a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag
@@ -41,4 +47,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-43 tests, 160 assertions, 0 failures
+49 tests, 180 assertions, 0 failures

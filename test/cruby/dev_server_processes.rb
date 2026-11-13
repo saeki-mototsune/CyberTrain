@@ -549,7 +549,8 @@ test "a save in the last instant of a plain build is compiled by the next build,
     drive(runner, machine, 5) { machine.serving != :cruby }
     assert_equal :none, machine.serving
     refute File.exist?(File.join(root, "binary-spawned")), "the binary without the save never took the port"
-    assert File.mtime(File.join(root, "build", "bin", "app")) > File.mtime(model), "the binary is newer than the save"
+    # R25: the build left the binary at its launch, before the save.
+    assert File.mtime(File.join(root, "build", "bin", "app")) < File.mtime(model), "the binary is older than the save"
     runner.watch.delivered
     drive(runner, machine, 5) { machine.serving == :spinel }
     assert_equal :spinel, machine.serving
@@ -558,10 +559,9 @@ test "a save in the last instant of a plain build is compiled by the next build,
 end
 
 # A toolchain that refuses --incremental leaves only the plain command, and
-# spin's own check, which reads the files' times, would find that binary up
-# to date. The runner sets the binary's time back to before the launch of
-# the build that wrote it, so that the save made during that build is newer
-# and spin compiles it.
+# spin's own check, which reads the files' times, decides. The binary is
+# left at the launch of the build that wrote it (R25), so that the save made
+# during that build is newer and spin compiles it.
 LATE_SAVE_OLD_SPIN = <<~RUBY
   first = !File.exist?("spin-calls.txt")
   File.open(File.join(Dir.pwd, "spin-calls.txt"), "a") { |f| f.puts ARGV.join(" ") }
@@ -591,12 +591,161 @@ test "without --incremental, a save in the last instant of a build leaves the bi
     runner.start_watching
     drive(runner, machine, 5) { machine.serving != :cruby }
     assert_equal :none, machine.serving
-    assert File.mtime(binary) > File.mtime(model), "the binary is newer than the save"
+    assert File.mtime(binary) < File.mtime(model), "spin finds the binary older than the save"
     runner.watch.delivered
     drive(runner, machine, 5) { machine.serving == :spinel }
     assert_equal :spinel, machine.serving
     assert_equal ["build app", "build app -- --incremental", "build app"], spin_calls(root)
-    assert File.mtime(binary) < File.mtime(model), "spin finds the binary older than the save"
+    assert File.mtime(binary) < File.mtime(model), "spin still finds the binary older than the save"
+  end
+end
+
+# R25: a build of the session that ends ok leaves build/bin/NAME at the
+# time read just before it was launched. The stand-in spin writes the binary
+# after a delay; a save is made during the delay. The compiler read the
+# sources at some moment after the launch, so the save is newer than the
+# binary, which may lack it; a later session's first build then sees the
+# binary stale and builds incrementally.
+DELAYED_SPIN = <<~RUBY
+  File.open(File.join(Dir.pwd, "spin-calls.txt"), "a") { |f| f.puts ARGV.join(" ") }
+  sleep 0.2
+  # "up to date": spin's own check found nothing to do.
+  File.write("build/bin/app", "binary") unless File.exist?("up-to-date")
+  puts "built"
+  exit(File.exist?("fail") ? 1 : 0)
+RUBY
+
+# A second session's runner on the same application (the same listener
+# will do: no child is started).
+def next_session(runner, listener, root)
+  other = StandIn.new(root: root, name: "app", port: listener.addr[1], load_path: [root],
+                      listener: listener, out: StringIO.new, err: StringIO.new)
+  other.scripts = runner.scripts
+  yield other
+ensure
+  other&.cancel_build
+  other&.close
+end
+
+test "a build that ends ok leaves the binary at its launch, older than a save made during it; the next session builds incrementally" do
+  with_runner({ spin: DELAYED_SPIN }, load_path: []) do |runner, listener, root|
+    write_fresh_binary(root)
+    binary = File.join(root, "build", "bin", "app")
+    model = File.join(root, "article.rb")
+    rec = Recorder.new
+    before = Time.now
+    runner.start_build(1)
+    after = Time.now
+    sleep 0.05
+    File.write(model, "# saved during the build\n")
+    poll_until(runner, rec) { rec.events.size == 1 }
+    assert_equal [[:build, 1, true, "built\n"]], rec.events
+    stamped = File.mtime(binary)
+    assert stamped >= before && stamped <= after, "the binary is at the launch (#{stamped.to_f} not in #{before.to_f}..#{after.to_f})"
+    assert stamped < File.mtime(model), "the binary is older than the save"
+    assert_equal ["build app"], spin_calls(root)
+    next_session(runner, listener, root) do |other|
+      other.start_build(1)
+      poll_until(other, rec) { rec.events.size == 2 }
+      assert_equal [:build, 1, true, "built\n"], rec.events[1]
+    end
+    assert_equal ["build app", "build app -- --incremental"], spin_calls(root)
+  end
+end
+
+test "after a build of a session that ends ok, an untouched application's next session gets the plain command" do
+  with_runner({ spin: DELAYED_SPIN }, load_path: []) do |runner, listener, root|
+    write_fresh_binary(root)
+    binary = File.join(root, "build", "bin", "app")
+    rec = Recorder.new
+    before = Time.now
+    runner.start_build(1)
+    after = Time.now
+    poll_until(runner, rec) { rec.events.size == 1 }
+    stamped = File.mtime(binary)
+    assert stamped >= before && stamped <= after, "the binary is at the launch (#{stamped.to_f} not in #{before.to_f}..#{after.to_f})"
+    File.write(File.join(root, "up-to-date"), "")
+    next_session(runner, listener, root) do |other|
+      other.start_build(1)
+      poll_until(other, rec) { rec.events.size == 2 }
+    end
+    assert_equal ["build app", "build app"], spin_calls(root)
+    assert File.mtime(binary) == stamped, "the second session's build kept the binary's time"
+  end
+end
+
+# The rule only ever moves the binary's time back: a build that left the
+# binary alone (spin's "up to date") keeps its time exactly, which an
+# up-to-date start (e2e step 16, the playground's image) depends on.
+test "a build that ends ok without writing the binary keeps the binary's time exactly" do
+  with_runner({ spin: DELAYED_SPIN }, load_path: []) do |runner, _listener, root|
+    write_fresh_binary(root)
+    binary = File.join(root, "build", "bin", "app")
+    earlier = Time.at(Time.now.to_i - 30, 123_456_789, :nsec)
+    File.utime(earlier, earlier, binary)
+    File.write(File.join(root, "up-to-date"), "")
+    rec = Recorder.new
+    runner.start_build(1)
+    poll_until(runner, rec) { rec.events.size == 1 }
+    assert_equal [[:build, 1, true, "built\n"]], rec.events
+    assert_equal ["build app"], spin_calls(root)
+    assert File.mtime(binary) == earlier, "the binary's time moved: #{File.mtime(binary).to_r} is not #{earlier.to_r}"
+  end
+end
+
+test "a failed build leaves the binary's time as it is" do
+  with_runner({ spin: DELAYED_SPIN }, load_path: []) do |runner, _listener, root|
+    write_fresh_binary(root)
+    File.write(File.join(root, "fail"), "")
+    binary = File.join(root, "build", "bin", "app")
+    rec = Recorder.new
+    after = Time.now
+    runner.start_build(1)
+    poll_until(runner, rec) { rec.events.size == 1 }
+    assert_equal [[:build, 1, false, "built\n"]], rec.events
+    assert File.mtime(binary) > after + 0.1, "the binary keeps the time spin wrote it at"
+  end
+end
+
+# A cancelled build may have written the binary before its cancel (a save
+# is what cancels it): the binary goes back to that build's launch too.
+test "a cancelled build that wrote the binary leaves it at its launch" do
+  spin = <<~RUBY
+    File.write("build/bin/app", "binary")
+    File.write("written", "")
+    sleep 30
+  RUBY
+  with_runner({ spin: spin }, load_path: []) do |runner, _listener, root|
+    write_fresh_binary(root)
+    binary = File.join(root, "build", "bin", "app")
+    before = Time.now
+    runner.start_build(1)
+    after = Time.now
+    assert wait_for_file(File.join(root, "written"))
+    assert File.mtime(binary) > after, "spin wrote the binary after the launch"
+    runner.cancel_build
+    stamped = File.mtime(binary)
+    assert stamped >= before && stamped <= after, "the binary is at the launch (#{stamped.to_f} not in #{before.to_f}..#{after.to_f})"
+  end
+end
+
+test "a binary whose time cannot be set does not fail the build; one line says so" do
+  with_runner({ spin: DELAYED_SPIN }, load_path: []) do |runner, _listener, root|
+    write_fresh_binary(root)
+    binary = File.join(root, "build", "bin", "app")
+    rec = Recorder.new
+    original = File.singleton_class.instance_method(:utime)
+    File.singleton_class.send(:define_method, :utime) { |*_args| raise Errno::EPERM, binary }
+    begin
+      runner.start_build(1)
+      poll_until(runner, rec) { rec.events.size == 1 }
+    ensure
+      File.singleton_class.send(:define_method, :utime, original)
+    end
+    assert_equal [[:build, 1, true, "built\n"]], rec.events
+    lines = runner.out.string.lines.grep(/build\/bin\/app/)
+    assert lines.size == 1, runner.out.string
+    assert lines[0].start_with?("=> could not set the time of build/bin/app to its build's start: Operation not permitted"), lines[0]
   end
 end
 
