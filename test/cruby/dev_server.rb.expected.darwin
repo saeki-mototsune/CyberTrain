@@ -28,6 +28,7 @@ ok   only this application's `spin build NAME` is taken for a leftover build
 ok   a build left by a killed supervisor that has since ended: the binary goes back to its launch, never forward
 ok   a child or build of a live supervisor whose command line is not recognised refuses the start and is left alone
 ok   stop_group sends no KILL to a group with no member left
+ok   stop_group's final KILL, where ps cannot list the group (busybox)
 ok   program finds a ruby interpreter's script after its options
 ok   without /proc a leftover child is known by the line the supervisor spawned, spaces included
 ok   without /proc a leftover child whose -I directory has a space is stopped
@@ -47,4 +48,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-49 tests, 268 assertions, 0 failures
+50 tests, 271 assertions, 0 failures

@@ -896,6 +896,38 @@ ensure
   originals&.each { |name, method| DevServer.define_singleton_method(name, method) }
 end
 
+# A ps that cannot list the groups (busybox's rejects -A and -o) is not a
+# group with no member: group_pids says nil, and the final KILL then asks
+# the group itself (signal 0), so a cancelled build still gets it, while a
+# group with no member left still gets none.
+test "stop_group's final KILL, where ps cannot list the group (busybox)" do
+  Dir.mktmpdir("dev-server-busybox") do |dir|
+    File.write(File.join(dir, "ps"), "#!/bin/sh\necho \"ps: invalid option -- 'A'\" >&2\nexit 1\n")
+    File.chmod(0o755, File.join(dir, "ps"))
+    saved = ENV["PATH"]
+    ENV["PATH"] = "#{dir}:#{saved}"
+    sent = []
+    original = DevServer.method(:signal)
+    DevServer.define_singleton_method(:signal) { |pid, name| sent << [pid, name] }
+    group = Process.spawn("sleep", "30", pgroup: true)
+    begin
+      # ps could not list: not the same as a group with no member.
+      assert_nil DevServer.group_pids(group)
+      DevServer.stop_group(group, 0.05) { true }
+      assert_equal [[-group, :KILL]], sent
+    ensure
+      Process.kill(:KILL, group)
+      Process.wait(group)
+    end
+    sent.clear
+    DevServer.stop_group(group, 0.05) { true }
+    assert_equal [], sent
+  ensure
+    ENV["PATH"] = saved if saved
+    DevServer.define_singleton_method(:signal, original) if original
+  end
+end
+
 test "program finds a ruby interpreter's script after its options" do
   assert_equal ["bin/app.rb", ["4000"]],
                DevServer.program(["/usr/bin/ruby", "-E", "UTF-8", "-I/a", "-I", "/b c", "-r", "cybertrain/preview", "bin/app.rb", "4000"])
