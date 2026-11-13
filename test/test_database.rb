@@ -31,6 +31,7 @@ CONFIG.env = "test"
 CONFIG.secret_key_base = "d" * 64
 CONFIG.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 
+NOT_CREATED = "not a database cybertrain test created; delete it yourself or name another file"
 DIR = Dir.mktmpdir("cybertrain-test-database")
 DB_PATH = "#{DIR}/test.sqlite3"
 at_exit do
@@ -40,6 +41,9 @@ end
 ENV["CYBERTRAIN_TEST_DATABASE"] = DB_PATH
 DB.connect(DB_PATH)
 DB.with do |c|
+  # Marked as the bundle marks the databases it creates: the clear empties
+  # only such a file (or storage/test.sqlite3 itself).
+  Database.mark!(c)
   Cybertrain::Schema.current.tables.each { |t| c.exec_script(Cybertrain::DB::SqliteDDL.create_table(t)) }
 end
 
@@ -206,7 +210,7 @@ test "a storage/test.sqlite3 symlinked to another file is refused" do
   assert_equal "Test::Database refuses to empty #{link}: it is the development database", Database.refusal("test", link)
   File.delete(link)
   File.symlink("#{DIR}/elsewhere/test.sqlite3", link)
-  assert_equal "Test::Database refuses to empty #{link}: not a test database (env test)", Database.refusal("test", link)
+  assert_equal "Test::Database refuses to empty #{link}: #{NOT_CREATED}", Database.refusal("test", link)
   File.delete(link)
   File.write(link, "test")
   assert_equal "", Database.refusal("test", link)
@@ -225,47 +229,43 @@ test "only a test database is emptied" do
                Database.refusal("test", "storage/development.sqlite3")
   assert_equal "Test::Database refuses to empty storage/production.sqlite3: it is the production database",
                Database.refusal("production", "storage/production.sqlite3")
-  assert_equal "Test::Database refuses to empty /srv/app/storage/test.sqlite3.bak: not a test database (env test)",
+  assert_equal "Test::Database refuses to empty /srv/app/storage/test.sqlite3.bak: #{NOT_CREATED}",
                Database.refusal("test", "/srv/app/storage/test.sqlite3.bak")
 end
 
-test "CYBERTRAIN_TEST_DATABASE naming the development or production database is refused" do
-  saved = ENV["CYBERTRAIN_TEST_DATABASE"].to_s
-  # By the file's name, wherever it is.
-  ["#{DIR}/x/development.sqlite3", "development.sqlite3", "/srv/app/storage/production.sqlite3", "file:/srv/production.sqlite3"].each do |named|
-    ENV["CYBERTRAIN_TEST_DATABASE"] = named
-    env = named.include?("production") ? "production" : "development"
-    assert_equal "Test::Database refuses to empty #{named}: it is the #{env} database", Database.refusal("test", named)
+test "the development or production database is refused by its name in any case, or through a symlink" do
+  ["#{DIR}/x/development.sqlite3", "development.sqlite3", "/srv/app/storage/production.sqlite3", "file:/srv/production.sqlite3",
+   "#{DIR}/Production.SQLite3"].each do |path|
+    env = path.downcase.include?("production") ? "production" : "development"
+    assert_equal "Test::Database refuses to empty #{path}: it is the #{env} database", Database.refusal("test", path)
   end
-  # By the path the environment resolves to: storage/<env>.sqlite3 written
-  # another way.
   absolute = File.expand_path("storage/production.sqlite3")
-  ENV["CYBERTRAIN_TEST_DATABASE"] = absolute
   assert_equal "Test::Database refuses to empty #{absolute}: it is the production database", Database.refusal("test", absolute)
-  # By config/app.rb's c.database_path for that environment, also through
-  # a symlink; a block that raises for one environment records nothing.
   Dir.mkdir("#{DIR}/live")
-  live = "#{DIR}/live/blog.sqlite3"
-  File.write(live, "production data")
-  Cybertrain.record_other_databases!
-  Cybertrain.configure do |c|
-    c.database_path = live if c.production?
-    raise ArgumentError, "only in production" if c.development?
-  end
-  ENV["CYBERTRAIN_TEST_DATABASE"] = live
-  assert_equal "Test::Database refuses to empty #{live}: it is the production database", Database.refusal("test", live)
+  File.write("#{DIR}/live/production.sqlite3", "production data")
   link = "#{DIR}/plain.sqlite3"
-  File.symlink(live, link)
-  ENV["CYBERTRAIN_TEST_DATABASE"] = link
+  File.symlink("#{DIR}/live/production.sqlite3", link)
   assert_equal "Test::Database refuses to empty #{link}: it is the production database", Database.refusal("test", link)
-  assert_equal ["production"], Cybertrain.other_database_envs
-  # Another file is still a test database.
-  ENV["CYBERTRAIN_TEST_DATABASE"] = "#{DIR}/other.sqlite3"
-  assert_equal "", Database.refusal("test", "#{DIR}/other.sqlite3")
-  ENV["CYBERTRAIN_TEST_DATABASE"] = saved
   File.delete(link)
-  File.delete(live)
+  File.delete("#{DIR}/live/production.sqlite3")
   Dir.rmdir("#{DIR}/live")
+end
+
+test "any other file is emptied only when it carries the bundle's mark" do
+  # Unmarked: a SQLite file the test did not create, a text file, a file
+  # that does not exist (yet).
+  plain = "#{DIR}/plain.sqlite3"
+  File.binwrite(plain, Cybertrain::Test.binary([83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51] + Array.new(85) { 0 }))
+  text = "#{DIR}/notes.sqlite3"
+  File.write(text, "keep me")
+  [plain, text, "#{DIR}/missing.sqlite3"].each do |path|
+    assert_equal "Test::Database refuses to empty #{path}: #{NOT_CREATED}", Database.refusal("test", path)
+    refute Database.marked?(path)
+  end
+  # Marked: the header says so (read without opening the file with SQLite).
+  assert Database.marked?(DB_PATH)
+  assert_equal "", Database.refusal("test", DB_PATH)
+  [plain, text].each { |f| File.delete(f) }
 end
 
 test "the clear and the load refuse a connected database that is not a test one" do
@@ -274,11 +274,15 @@ test "the clear and the load refuse a connected database that is not a test one"
   CONFIG.env = "test"
   assert_equal "Test::Database refuses to empty #{DB_PATH}: not a test database (env development)", message
   assert_equal 2, Post.count
-  ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  # The same file without its mark.
+  DB.with do |c|
+    c.execute("PRAGMA application_id = 0")
+    c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+  end
   message = assert_raises { Database.load_fixtures!(Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS) }
   combined = assert_raises { Database.clear_and_load!(Gen::TestData::TABLES, Gen::TestData::FIXTURE_SQL, Gen::TestData::FIXTURE_TIMESTAMPS) }
-  ENV["CYBERTRAIN_TEST_DATABASE"] = DB_PATH
-  assert_equal "Test::Database refuses to empty #{DB_PATH}: not a test database (env test)", message
+  DB.with { |c| Database.mark!(c) }
+  assert_equal "Test::Database refuses to empty #{DB_PATH}: #{NOT_CREATED}", message
   assert_equal message, combined
   assert_equal 2, Post.count
 end

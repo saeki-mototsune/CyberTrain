@@ -262,7 +262,12 @@ attr_accessor :trusted_proxies
     # @return [nil]
     # @api private
     def force_ssl_unless_given(value)
-      @force_ssl = value unless @force_ssl_given
+      unless @force_ssl_given
+        @force_ssl = value
+        # CYBERTRAIN_FORCE_SSL no longer counts, so a value boot would
+        # refuse (security_error) does not stop the tests either.
+        @force_ssl_text = ""
+      end
       nil
     end
 
@@ -273,10 +278,31 @@ attr_accessor :trusted_proxies
     # check on outside development ({#host_check?}): a request whose Host
     # is not in {#allowed_hosts} or this list answers 403. Exact names (an
     # IPv6 address in brackets); no scheme, path, port or wildcard (boot
-    # refuses one).
+    # refuses one). `cybertrain test` empties it for its tests unless
+    # config/app.rb assigns or changes it (an exported CYBERTRAIN_HOSTS
+    # would turn the host check on and answer the test host 403).
     # @return [Array<String>]
     # @api public
-    attr_accessor :hosts_from_env
+    attr_reader :hosts_from_env
+
+    # Sets {#hosts_from_env}, and records that it was given.
+    # @param value [Array<String>]
+    # @api public
+    def hosts_from_env=(value)
+      @hosts_from_env = value
+      @hosts_from_env_given = true
+    end
+
+    # Sets {#hosts_from_env} to `value` unless an assignment gave it or it
+    # was changed in place since CYBERTRAIN_HOSTS filled it, without
+    # counting as given: `cybertrain test`'s default (no host check).
+    # @param value [Array<String>]
+    # @return [nil]
+    # @api private
+    def hosts_from_env_unless_given(value)
+      @hosts_from_env = value unless @hosts_from_env_given || @hosts_from_env != @hosts_from_env_read
+      nil
+    end
 
     # The `Permissions-Policy` every response carries unless it sets its
     # own, `"camera=(), microphone=(), geolocation=()"`; `""` sends none.
@@ -1108,6 +1134,9 @@ end
         @hosts_from_env << env_host
         @allowed_hosts << env_host
       end
+      # What CYBERTRAIN_HOSTS gave, to tell an in-place change from it.
+      @hosts_from_env_read = @hosts_from_env.dup
+      @hosts_from_env_given = false
       @permissions_policy = "camera=(), microphone=(), geolocation=()"
       # Off until config/app.rb declares one (as in Rails).
       @content_security_policy = nil
@@ -1734,65 +1763,7 @@ end
   # @api public
   def self.configure(&block)
     block.call(config)
-    record_other_databases(block) if @recording_other_databases
     nil
-  end
-
-  # What the development and production environments' database_path
-  # would be after the configure blocks (a test database must not be
-  # either: `cybertrain test` deletes it). Recorded only once
-  # {record_other_databases!} was called, which the bundle of
-  # `cybertrain test` does before config/app.rb runs.
-  @recording_other_databases = false
-  @other_database_envs = Array.new(0) { "" }
-  @other_database_paths = Array.new(0) { "" }
-
-  # From now on each {configure} block is also run on a development and a
-  # production Config of its own (not the application's), and the
-  # database_path each ends with is recorded ({other_database_paths}).
-  # @return [nil]
-  # @api private
-  def self.record_other_databases!
-    @recording_other_databases = true
-    nil
-  end
-
-  # The environments of {other_database_paths}, entry for entry.
-  # @return [Array<String>]
-  # @api private
-  def self.other_database_envs = @other_database_envs
-
-  # The database_path a development or production Config had after a
-  # configure block ran on it (see {record_other_databases!}).
-  # @return [Array<String>]
-  # @api private
-  def self.other_database_paths = @other_database_paths
-
-  # Runs `block` on a development and a production Config and records
-  # their database_path; a block that raises for that environment records
-  # nothing for it.
-  def self.record_other_databases(block)
-    ["development", "production"].each do |env|
-      path = other_database_path(block, env)
-      next if path.empty?
-
-      @other_database_envs << env
-      @other_database_paths << path
-    end
-    nil
-  end
-
-  # The database_path `block` leaves on a fresh Config of `env` (starting
-  # from storage/<env>.sqlite3), "" when it raises. The rescue is in this
-  # plain method, which takes the block as a Proc (NOTES rules 32/45).
-  def self.other_database_path(block, env)
-    other = Config.new
-    other.env = env
-    other.database_path = "storage/#{env}.sqlite3"
-    block.call(other)
-    other.database_path.to_s
-  rescue StandardError
-    ""
   end
 
   # @return [String] `Cybertrain.config.env`

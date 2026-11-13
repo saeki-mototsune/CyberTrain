@@ -21,9 +21,10 @@
 # it brackets the BEGIN and the COMMIT).
 #
 # Both steps refuse a database that is not a test one, before touching
-# it: the configured environment must be "test" and the connected file
-# `storage/test.sqlite3`, the file CYBERTRAIN_TEST_DATABASE names, or a
-# private in-memory database. A development or production database is
+# it: the configured environment must be "test" and the connected
+# database `storage/test.sqlite3` itself, a file carrying the mark the
+# bundle writes into every database it creates (Database::TEST_MARKER), or
+# a private in-memory database. A development or production database is
 # never emptied, whatever a program connected to.
 #
 # Spinel rules followed: 58 (messages built into a local before raise), 33
@@ -116,85 +117,88 @@ module Cybertrain
         nil
       end
 
-      # "" when env and path name a test database, else the refusal.
+      # The `PRAGMA application_id` the bundle writes into every database it
+      # creates ("CyTr", 0x43795472): the positive proof that a file is one
+      # `cybertrain test` made and may delete or empty again.
+      TEST_MARKER = 0x43795472
+
+      # "" when env and path name a database the per-test clear may empty,
+      # else the refusal: never the development or production database
+      # ({other_environment}); only in the test environment; and only a
+      # private in-memory database, the default test file
+      # ({default_test_file?}) or a file carrying {TEST_MARKER}.
       # @return [String]
       def self.refusal(env, path)
-        other = Database.other_environment(path)
-        unless other.empty?
-          return "Test::Database refuses to empty #{path}: it is the #{other} database"
-        end
-        return "" if env == "test" && Database.test_path?(path)
+        return "" if env == "test" && DB::Connection.private_database?(path)
 
-        "Test::Database refuses to empty #{path}: not a test database (env #{env})"
+        file = Database.uri_file(path)
+        other = file.empty? ? "" : Database.other_environment(file)
+        return "Test::Database refuses to empty #{path}: it is the #{other} database" unless other.empty?
+        unless env == "test" && !file.empty?
+          return "Test::Database refuses to empty #{path}: not a test database (env #{env})"
+        end
+        return "" if Database.default_test_file?(file) || Database.marked?(file)
+
+        "Test::Database refuses to empty #{path}: #{NOT_CREATED}"
       end
 
-      # The environment ("development" or "production") whose database
-      # `path` is, "" when it is neither: a file named development.sqlite3
-      # or production.sqlite3 (by its name, or the name of the file a
-      # symlink leads to), or the file one of those environments resolves
-      # to: storage/<env>.sqlite3, or the `c.database_path` config/app.rb
-      # gives it (Cybertrain.other_database_paths, recorded in
-      # `cybertrain test`), compared as written, as an absolute path and by
-      # real path.
-      # @param path [String]
+      # Writes {TEST_MARKER} into the database `connection` is open on, and
+      # checkpoints, so the mark is in the file's own header (where
+      # {marked?} reads it) and not only in its write-ahead log. What the
+      # bundle does to every database it creates.
+      # @param connection [Cybertrain::DB::Connection]
+      # @return [nil]
+      # @api private
+      def self.mark!(connection)
+        connection.execute("PRAGMA application_id = #{TEST_MARKER}")
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        nil
+      end
+
+      # The end of the refusal of an existing file without {TEST_MARKER}.
+      NOT_CREATED = "not a database cybertrain test created; delete it yourself or name another file".freeze
+
+      # The environment ("development" or "production") whose database the
+      # plain file `file` is, "" when it is neither: named
+      # development.sqlite3 or production.sqlite3 in any letter case (or a
+      # symlink to such a file), or the same file as storage/<env>.sqlite3
+      # (File.identical? when both exist, so a case-insensitive file system
+      # or a link cannot hide it; else the absolute paths).
+      # @param file [String]
       # @return [String]
       # @api private
-      def self.other_environment(path)
-        return "" if DB::Connection.private_database?(path)
-
-        file = Database.uri_file(path)
-        return "" if file.empty?
-
+      def self.other_environment(file)
         real = Database.real_path(file)
-        envs = Array.new(0) { "" }
-        paths = Array.new(0) { "" }
+        found = ""
         ["development", "production"].each do |env|
+          next unless found.empty?
+
           name = "#{env}.sqlite3"
-          return env if File.basename(file) == name || (!real.empty? && File.basename(real) == name)
-
-          envs << env
-          paths << "storage/#{name}"
+          if File.basename(file).downcase == name || (!real.empty? && File.basename(real).downcase == name) ||
+             Database.same_file?(file, "storage/#{name}")
+            found = env
+          end
         end
-        Cybertrain.other_database_envs.each { |env| envs << env }
-        Cybertrain.other_database_paths.each { |other| paths << other }
-        i = 0
-        while i < paths.length
-          return envs[i] if Database.same_file?(file, real, Database.uri_file(paths[i]))
-
-          i += 1
-        end
-        ""
+        found
       end
 
-      # Whether `file` (whose real path is `real`, "" when it does not
-      # exist) and `other` name one file.
+      # Whether `file` and `other` name one file: File.identical? when both
+      # exist, else their absolute paths are equal.
       # @api private
-      def self.same_file?(file, real, other)
-        return false if other.empty?
-        return true if file == other || File.expand_path(file) == File.expand_path(other)
+      def self.same_file?(file, other)
+        return File.identical?(file, other) if File.exist?(file) && File.exist?(other)
 
-        !real.empty? && real == Database.real_path(other)
+        File.expand_path(file) == File.expand_path(other)
       end
 
-      # storage/test.sqlite3 (relative or under an application), the file
-      # CYBERTRAIN_TEST_DATABASE names, or a private in-memory database. A
-      # `file:` URI counts by its path only, and one with a query, a
-      # fragment or %-escapes is refused (only the in-memory forms are
-      # read). A file that exists is judged by its real path as well: a
+      # Whether `file` is storage/test.sqlite3 itself (relative or under an
+      # application): its real file is that name in that directory, so a
       # storage/test.sqlite3 that is a symlink to another file, or into
-      # another directory, is refused.
+      # another directory, is not.
+      # @param file [String]
       # @return [Boolean]
-      def self.test_path?(path)
-        return true if DB::Connection.private_database?(path)
-
-        file = Database.uri_file(path)
-        return false if file.empty?
-
-        named = ENV["CYBERTRAIN_TEST_DATABASE"].to_s
-        unless named.empty?
-          same = Database.real_path(file)
-          return true if file == named || (!same.empty? && same == Database.real_path(named))
-        end
+      # @api private
+      def self.default_test_file?(file)
         return false unless file == TEST_PATH || file.end_with?("/#{TEST_PATH}")
         return true unless File.exist?(file) || File.symlink?(file)
 
@@ -202,6 +206,41 @@ module Cybertrain
         return false if real.empty?
 
         File.basename(real) == File.basename(TEST_PATH) && File.dirname(real) == Database.real_path(File.dirname(file))
+      end
+
+      # Whether `file` is a SQLite database carrying {TEST_MARKER}: read from
+      # its header (the 4 bytes at 68, big-endian) without opening it with
+      # SQLite, so nothing is created or changed.
+      # @param file [String]
+      # @return [Boolean]
+      # @api private
+      def self.marked?(file)
+        return false unless File.file?(file)
+
+        head = File.binread(file, 100).to_s
+        return false unless head.bytesize == 100 && head.byteslice(0, 15) == "SQLite format 3" && head.getbyte(15) == 0
+
+        id = (head.getbyte(68) << 24) | (head.getbyte(69) << 16) | (head.getbyte(70) << 8) | head.getbyte(71)
+        id == TEST_MARKER
+      end
+
+      # Whether the bundle may delete `file` (and its -wal / -shm) before it
+      # creates a new test database there: there is nothing (a dangling
+      # symlink counts as nothing, and removing it leaves its target alone),
+      # it is the default test file, it carries {TEST_MARKER}, or it is
+      # empty with no write-ahead log holding data (an empty file is all a
+      # new SQLite database is until its first checkpoint, so a non-empty
+      # -wal beside it may be a database).
+      # @param file [String]
+      # @return [Boolean]
+      # @api private
+      def self.deletable?(file)
+        return true unless File.exist?(file)
+        return true if Database.default_test_file?(file) || Database.marked?(file)
+        return false unless File.file?(file) && File.size(file).zero?
+
+        wal = "#{file}-wal"
+        !File.exist?(wal) || File.size(wal).zero?
       end
 
       # The file a database path names: the path itself, or the path part
