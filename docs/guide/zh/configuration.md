@@ -1,5 +1,5 @@
 ---
-source_sha256: cf5a8c6dd814a8f7d284bf9bf02a6cca610f28753925229a7408b436c81f6011
+source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
 ---
 # 配置
 
@@ -54,6 +54,11 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`；属于机密，从不写入日志，也从不出现在启动横幅或错误消息中 |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：未给出 `from:` 时 `Mailer.deliver` 使用的发件人 |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；也可以是 `tls`（隐式 TLS）或 `none`（明文，凭据只发往环回地址）；两种 TLS 模式都需要 `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：每个请求开始时的语言区域，`ja` 或 `pt-BR` 这样的名字（见 [语言区域](#locales)）；其他值会使启动停止 |
+| `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`：账户被锁定前允许的错误密码次数；`0` 关闭锁定（见 [认证设置](#authentication-settings)） |
+| `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`：锁定持续的秒数；至少为 1 |
+| `CYBERTRAIN_AUTH_REMEMBER_FOR` | `auth_remember_for` | `2592000`（30 天）：“保持登录”的登录持续的秒数；至少为 1 |
+| `CYBERTRAIN_AUTH_IDLE_TIMEOUT` | `auth_idle_timeout` | `604800`（7 天）：没有请求多少秒后登录结束；`0` 关闭 |
 
 只有在应用显示于另一个网站的框架内时，才使用 `None`（配合 `CYBERTRAIN_SESSION_PARTITIONED=1`）；浏览器必须通过 HTTPS 访问应用。
 
@@ -92,6 +97,23 @@ Cybertrain.config.int_setting(:prune_interval)
 
 每个值只在启动时运行 `config/app.rb` 时读取一次。变量为空或未设置时取默认值。布尔值接受 `1`/`true` 或 `0`/`false`；整数接受 `min..max`（两者都可选）范围内的十进制数字（可带前导 `-`）。其他任何值都会退回默认值，并记录一行 `[WARN]` 加以说明。读取未声明的名称，或以其他类型声明的名称，会抛出 `ArgumentError`，重复声明同一名称也是如此。测试中可以用 `set_string_setting`、`set_int_setting` 和 `set_bool_setting` 修改值。`./NAME help` 会列出每个已声明的设置及其变量和默认值，启动横幅会打印当前值（`=> Settings: base_url="" worker=true ...`）；`secret: true` 的设置在这两处都只显示名称，值为 `[FILTERED]`。没有 `Cybertrain.config.base_url` 这样的访问器：Spinel 没有 `define_method`，所以读取方法是接收名称的带类型方法。
 
+### 语言区域
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.i18n_default_locale = :en               # 或 CYBERTRAIN_I18N_DEFAULT_LOCALE
+  c.i18n_available_locales = [:en, :ja]
+  c.i18n_raise_on_missing = true if c.test?
+end
+```
+
+`i18n_available_locales`（`[]`，只有默认语言区域）列出 `I18n.locale=` 和 `I18n.locale_available?` 接受的语言区域；启动时会拒绝不是语言区域名的条目，以及不在非空列表中的默认值。`i18n_raise_on_missing`（`false`）让缺失的翻译抛出 `I18n::MissingTranslationData`，而不是返回一个标记（开发和测试）或可读形式的键（生产）。词典和每个请求的语言区域见 [国际化](i18n.md)。
+
+### 认证设置
+
+`cybertrain generate authentication` 写出的代码读取四个设置（变量见上表）：用于 [锁定](authentication.md#lockout) 的 `auth_lockout_attempts`（10）和 `auth_lockout_period`（3600 秒），用于“保持登录”的 `auth_remember_for`（30 天），以及用于未被使用的登录的 `auth_idle_timeout`（7 天）（[保持登录](authentication.md#remember-me-and-session-limits)）；不勾选的登录持续 `session_absolute_max_age`（两周）。超出范围的值会使启动停止。生成器还声明应用设置 `base_url`，取自 `<APP>_BASE_URL`，邮件中的链接以它开头；在提供应用的每个地方都用 https 设置它（[邮件中的链接](authentication.md#links-in-mails)）。
+
 ## 时区
 
 Spinel 不带时区数据库，而通过设置 `ENV["TZ"]` 来转换时间会改变进程中每个线程的时区。`Cybertrain::TimeZone` 则读取系统的时区文件：`/usr/share/zoneinfo/<name>`，设置了 `TZDIR` 时为 `$TZDIR/<name>`（在精简的容器镜像中请安装 `tzdata` 包）。它解析 TZif 第 1 到第 4 版（RFC 8536），包括“精简”文件在最后一次转换之后所依赖的 POSIX TZ 规则，并在进程的整个生命期内缓存每个时区（写时复制，所以多个工作线程查找时无需加锁）。
@@ -111,4 +133,4 @@ run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1],
 run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2] + 1, 9, 0, 0)) if run <= now
 ```
 
-在夏令时转换时，`local_to_utc` 的结果是确定的：被向前跳变跳过的挂钟时间（美国开始夏令时那天的 02:30）按跳变之前的偏移量解读，所以它落在跳变之后（03:30 EDT）；被向后跳变重复的挂钟时间则得到较早的那个时刻。`find` 只接受由 `A-Za-z0-9_+-./` 组成、不含空段、`.` 段或 `..` 段的相对名称，所以从用户资料中取得的时区名无法访问时区目录之外的文件；未知或格式错误的时区不会被缓存，`"UTC"` 不需要文件。供模板使用的格式化辅助方法（`l(time, zone:)`）尚未提供。
+在夏令时转换时，`local_to_utc` 的结果是确定的：被向前跳变跳过的挂钟时间（美国开始夏令时那天的 02:30）按跳变之前的偏移量解读，所以它落在跳变之后（03:30 EDT）；被向后跳变重复的挂钟时间则得到较早的那个时刻。`find` 只接受由 `A-Za-z0-9_+-./` 组成、不含空段、`.` 段或 `..` 段的相对名称，所以从用户资料中取得的时区名无法访问时区目录之外的文件；未知或格式错误的时区不会被缓存，`"UTC"` 不需要文件。`l` 按请求的语言区域格式化时间（[日期和时间](i18n.md#dates-and-times)），但还不接受 `zone:`。

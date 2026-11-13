@@ -17,6 +17,7 @@ require "cybertrain/middleware/health_check"
 require "cybertrain/middleware/ssl_redirect"
 require "cybertrain/middleware/content_security_policy_header"
 require "cybertrain/context_handler"
+require "cybertrain/i18n"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/feature"
@@ -227,7 +228,11 @@ module Cybertrain
     end
 
     # Runs one request through the stack (what Test::Client calls).
+    # Starts at the default locale (I18n.locale is the thread's, and a
+    # keep-alive connection serves its requests on one thread), so a route
+    # miss or an error page never sees the previous request's locale.
     def call(ctx)
+      I18n.locale = nil
       stack.call(ctx)
       nil
     end

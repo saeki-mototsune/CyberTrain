@@ -578,7 +578,8 @@ test "Errors collects messages per attribute in insertion order" do
   assert_equal [:title, :post_id], errors.keys
   assert_equal ["can't be blank", "is too short (minimum is 3 characters)"], errors[:title]
   assert_equal [], errors[:body]
-  assert_equal ["Title can't be blank", "Title is too short (minimum is 3 characters)", "Post id is invalid"],
+  # Rails' humanize drops a trailing _id (phase 4b, plan decision D9).
+  assert_equal ["Title can't be blank", "Title is too short (minimum is 3 characters)", "Post is invalid"],
                errors.full_messages
   seen = []
   errors.each { |attr, message| seen << "#{attr}: #{message}" }

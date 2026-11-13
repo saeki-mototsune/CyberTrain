@@ -594,3 +594,21 @@ What changes for an application written for 0.4 (the full list is section
   bytes raises `Session::CookieOverflow`.
 - `public/style.css` keeps working; moving it to `app/assets/stylesheets/`
   is optional ([Assets](assets.md#moving-publicstylecss)).
+- Validation messages come from the bundled dictionary
+  ([Internationalization](i18n.md#models-and-validation-messages)), with
+  the same English text except three: a message on `:base` is no longer
+  prefixed "Base", an attribute ending in `_id` is named without "id"
+  ("Article can't be blank", not "Article id can't be blank"), and a
+  length limit of 1 reads "1 character". Tests that compare these
+  messages change.
+- `time_tag` without `format:`, or with a format name, formats through
+  `I18n.l` (the same English text as before in an English page).
+- gen writes `gen/locales.rb` (empty without `config/locales/`) and loads
+  `app/mailers/**/*.rb`; `cybertrain new` writes `config/locales/en.yml`,
+  which an older application can add.
+- `allow_unauthenticated_access` is a framework method now; the one 0.4's
+  generator wrote into `ApplicationController` keeps working and takes
+  precedence. Running `cybertrain generate authentication` again adds
+  password reset, lockout, remember me, the account page and admin users,
+  and prints diffs for the files 0.4 wrote
+  ([Upgrading from 0.4](authentication.md#upgrading-from-04)).

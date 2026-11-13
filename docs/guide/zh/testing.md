@@ -1,5 +1,5 @@
 ---
-source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
+source_sha256: 88339f5df631b196034ba40e434730ec3512bd68247eae54e5bcda13c1593d62
 ---
 # 测试应用
 
@@ -115,7 +115,7 @@ end
 
 ## 测试作业
 
-`require "cybertrain/test/jobs"` 为测试数据库的作业队列添加五个辅助方法。`cybertrain generate authentication` 写出的支持文件（`test/support/app_test.rb`）会 require 它；没有这个文件的应用，请像 examples/blog 那样把这一行加到自己的支持文件中。
+`require "cybertrain/test/jobs"` 为测试数据库的作业队列添加五个辅助方法。`cybertrain generate authentication` 写出的支持文件（`test/support/app_test.rb`，其他辅助方法见 [认证](authentication.md#testing)）会 require 它；没有这个文件的应用，请像 examples/blog 那样把这一行加到自己的支持文件中。
 
 ```ruby
 require_relative "support/blog_test"

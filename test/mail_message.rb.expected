@@ -1,0 +1,5 @@
+ok   a mail message keeps its fields, html and from empty by default
+ok   deliver_later queues the mail and the job sends it
+ok   deliver_later refuses what the mailer would refuse, before anything is queued
+ok   deliver_now sends at once and queues nothing
+4 tests, 26 assertions, 0 failures

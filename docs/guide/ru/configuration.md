@@ -1,5 +1,5 @@
 ---
-source_sha256: cf5a8c6dd814a8f7d284bf9bf02a6cca610f28753925229a7408b436c81f6011
+source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
 ---
 # Конфигурация
 
@@ -54,6 +54,11 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; секрет, никогда не пишется в лог, в стартовый баннер и в сообщения об ошибках |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: отправитель, которого использует `Mailer.deliver`, когда ему не передан `from:` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; также `tls` (неявный TLS) или `none` (открытый текст, учётные данные — только на loopback); обоим режимам TLS нужен `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: локаль, с которой начинается каждый запрос, имя вроде `ja` или `pt-BR` (см. [Локали](#locales)); всё остальное останавливает загрузку |
+| `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`: неверных паролей до блокировки учётной записи; `0` отключает блокировку (см. [Настройки аутентификации](#authentication-settings)) |
+| `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`: сколько секунд длится блокировка; не меньше 1 |
+| `CYBERTRAIN_AUTH_REMEMBER_FOR` | `auth_remember_for` | `2592000` (30 дней): сколько секунд длится вход с «оставаться в системе»; не меньше 1 |
+| `CYBERTRAIN_AUTH_IDLE_TIMEOUT` | `auth_idle_timeout` | `604800` (7 дней): через сколько секунд без запросов заканчивается вход; `0` отключает |
 
 Используйте `None` (вместе с `CYBERTRAIN_SESSION_PARTITIONED=1`) только для
 приложения, которое показывается во фрейме другого сайта; браузер должен
@@ -221,6 +226,23 @@ Cybertrain.config.int_setting(:prune_interval)
 `[FILTERED]`. Аксессора `Cybertrain.config.base_url` нет: в Spinel нет
 `define_method`, поэтому читатели — это типизированные методы, принимающие имя.
 
+### Локали
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.i18n_default_locale = :en               # или CYBERTRAIN_I18N_DEFAULT_LOCALE
+  c.i18n_available_locales = [:en, :ja]
+  c.i18n_raise_on_missing = true if c.test?
+end
+```
+
+`i18n_available_locales` (`[]`, только локаль по умолчанию) перечисляет локали, которые принимают `I18n.locale=` и `I18n.locale_available?`; при загрузке отвергаются элемент, не являющийся именем локали, и локаль по умолчанию, которой нет в непустом списке. `i18n_raise_on_missing` (`false`) заставляет отсутствующий перевод вызывать `I18n::MissingTranslationData` вместо метки (разработка и тесты) или ключа в читаемом виде (продакшен). Словари и локаль для каждого запроса описаны в разделе [Интернационализация](i18n.md).
+
+### Настройки аутентификации
+
+Код, который пишет `cybertrain generate authentication`, читает четыре настройки (переменные — в таблице выше): `auth_lockout_attempts` (10) и `auth_lockout_period` (3600 с) для [блокировки](authentication.md#lockout), `auth_remember_for` (30 дней) для входа с «оставаться в системе» и `auth_idle_timeout` (7 дней) для неиспользуемого входа ([Оставаться в системе](authentication.md#remember-me-and-session-limits)); вход без флажка длится `session_absolute_max_age` (две недели). Значение вне диапазона останавливает загрузку. Генератор также объявляет настройку приложения `base_url` из `<APP>_BASE_URL`, с которой начинаются ссылки в письмах; задайте её с https везде, где работает приложение ([Ссылки в письмах](authentication.md#links-in-mails)).
+
 ## Часовые пояса
 
 Spinel не поставляется с базой данных tz, а установка `ENV["TZ"]` для
@@ -260,4 +282,4 @@ run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1],
 без пустых сегментов и сегментов `.` или `..`, поэтому имя пояса, взятое из
 профиля пользователя, не может добраться до файла вне каталога поясов;
 неизвестный или некорректный пояс не кэшируется, а `"UTC"` не нужен файл.
-Хелперов форматирования для шаблонов (`l(time, zone:)`) пока нет.
+`l` форматирует время в локали запроса ([Даты и время](i18n.md#dates-and-times)), но `zone:` пока не принимает.

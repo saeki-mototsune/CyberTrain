@@ -14,7 +14,7 @@
 # feature_registry_ba.rb requires B, A, B, then the core. Only the
 # "order:" line differs between the two. feature_registry_rule88.rb is the
 # contrast (stored blocks calling the hook on a Feature-typed receiver),
-# rule88_order.rb its reduction. spikes/NOTES.md rule 101. A record, not
+# rule88_order.rb its reduction. spikes/NOTES.md rule 104. A record, not
 # a test.
 #
 # Run (Spinel 2026.11.04.7026, from spikes/phase6/; no package needed):

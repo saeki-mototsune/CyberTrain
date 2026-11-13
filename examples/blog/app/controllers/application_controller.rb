@@ -1,5 +1,15 @@
 class ApplicationController < Cybertrain::Controller
+  # The language comes first, so that the sign-in page a visitor is sent
+  # to (require_authentication) is in the language the link asked for.
+  before_action :set_locale
+
+  include Authentication
+
   rescue_from Cybertrain::RecordNotFound, with: :record_not_found
+
+  # The layout's <html lang> and language links, and the article page's
+  # admin link.
+  helper_method :admin?, :html_lang, :path_in_locale
 
   private
 
@@ -7,42 +17,53 @@ class ApplicationController < Cybertrain::Controller
     render plain: "Not Found", status: :not_found
   end
 
-  # The before_action of the admin namespace: the jobs page's
-  # (config/routes.rb) and AdminGate's (Admin::ArticlesController). The
-  # blog has no user accounts, so the gate is one shared secret,
-  # BLOG_ADMIN_TOKEN; anything but a visitor who proves it (#admin?) gets
-  # 404, as if the page did not exist.
-  def require_admin
-    render plain: "Not Found", status: :not_found unless admin?
+  # This request's language (I18n.locale, which the framework resets to
+  # the default before every action): `?locale=en` or `?locale=ja`,
+  # which is then kept in the `locale` cookie (a browser-session cookie:
+  # until the browser is closed), so that the plain links of the next
+  # pages stay in it; else the cookie's; else the best match of
+  # the browser's Accept-Language (English when nothing matches). A value
+  # that is not one of config.i18n_available_locales, in the parameter or
+  # in the cookie, is ignored, and never written to the cookie.
+  def set_locale
+    param = params[:locale]
+    if I18n.locale_available?(param)
+      I18n.locale = param
+      cookies[:locale] = param.to_s
+      return nil
+    end
+
+    stored = cookies[:locale]
+    if I18n.locale_available?(stored)
+      I18n.locale = stored
+      return nil
+    end
+
+    I18n.locale = request.preferred_locale(I18n.available_locales)
     nil
   end
 
-  # Whether this request proves BLOG_ADMIN_TOKEN: the variable is set to a
-  # non-empty value and the request carries either the admin session
-  # /admin/login signs a browser in with (AdminSessionsController) or an
-  # `x-admin-token` header with the token (curl). With the variable unset
-  # or empty, nothing does. A helper method of AdminGate's controllers and
-  # of ArticlesController (the article page's admin link).
+  # The layout's `<html lang="...">`: "en" or "ja".
+  def html_lang
+    I18n.locale.to_s
+  end
+
+  # This page's path in another language, for the layout's language
+  # links: `/articles/1?locale=ja`. The path's leading slashes become one:
+  # `//articles` (which routes as `/articles`) must not give a
+  # protocol-relative `//articles?...`, a link to another host.
+  def path_in_locale(locale)
+    path = request.path
+    start = 0
+    start += 1 while start < path.size && path[start] == "/"
+    "/#{path[start, path.size - start]}?locale=#{locale}"
+  end
+
+  # Whether a signed-in admin made this request (User#admin?, set with
+  # `./blog user admin EMAIL`): the article page shows its "Manage
+  # articles" link then. The pages themselves are guarded by the
+  # Authentication concern's require_admin.
   def admin?
-    token = admin_token
-    return false if token.empty?
-    return true if Cybertrain::Crypto.secure_compare(session["admin"].to_s, admin_session_value(token))
-
-    # Compared as HMACs, of one length, so the time taken does not give
-    # away the token's length.
-    header = request.header("x-admin-token").to_s
-    Cybertrain::Crypto.secure_compare(admin_session_value(header), admin_session_value(token))
-  end
-
-  # BLOG_ADMIN_TOKEN as it is now; "" when it is unset.
-  def admin_token
-    ENV["BLOG_ADMIN_TOKEN"].to_s
-  end
-
-  # What the admin session holds: derived from the current token, so a new
-  # token signs out every browser signed in with the old one, and the
-  # token itself is never in the cookie, even encrypted.
-  def admin_session_value(token)
-    Cybertrain::Crypto.hmac_hex(Cybertrain.config.secret_key_base, token)
+    authenticated? && @current_user.admin?
   end
 end

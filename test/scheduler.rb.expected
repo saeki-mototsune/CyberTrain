@@ -13,5 +13,6 @@ ok   config: each job and lease setting must be at least 1, and stale more than 
 ok   config: CYBERTRAIN_JOB_THREADS sets job_threads; a word is the default, 0 is kept for boot to refuse
 ok   every continues from last_run_at after schedule_all
 ok   a task that never ran takes its current schedule when that is earlier than the stored next run
+ok   a task that sets the locale does not leave it for the next task on the same thread
 ok   start! starts the thread once; stop! asks it to end
-16 tests, 111 assertions, 0 failures
+17 tests, 114 assertions, 0 failures

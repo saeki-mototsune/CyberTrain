@@ -9,8 +9,10 @@ module Cybertrain
   # Config#filter_parameters (`CYBERTRAIN_FILTER_PARAMETERS`) here, since
   # the HTTP layer cannot read the Config itself (the Params.max_page
   # shape). RequestLogger filters the query string of its `Started` line
-  # with {ParameterFilter.filter_query}; Dev::ErrorPage the request line
-  # and its parameter dump.
+  # with {ParameterFilter.filter_query} and its path with
+  # {ParameterFilter.filter_path} (signed tokens); Dev::ErrorPage the
+  # request line and its parameter dump; HostAuthorization the path of its
+  # `Blocked host` line.
   #
   # Every scan here works on bytes: a query string or a parameter name may
   # hold any bytes, invalid UTF-8 included, and is read through a `to_s`
@@ -110,6 +112,62 @@ module Cybertrain
         i = j + 1
       end
       out
+    end
+
+    # A path with each segment shaped like a {Cybertrain::Token} (1 to 18
+    # digits, `--`, 1 to 18 digits, `--`, 64 hex digits; a `.format`
+    # after it is kept) replaced by `[FILTERED]`:
+    # `/passwords/7--1900--<64 hex>/edit` becomes
+    # `/passwords/[FILTERED]/edit`. Log lines written before routing (no
+    # parameter names yet: RequestLogger's `Started`, HostAuthorization's
+    # `Blocked host`) use it, so a password reset or confirmation link's
+    # token never reaches the log, whatever {.names} holds. Every other
+    # byte is kept as sent.
+    # @param path [String]
+    # @return [String]
+    # @api public
+    def self.filter_path(path)
+      s = path.to_s # NOTES rule 62
+      n = s.bytesize
+      out = +""
+      i = 0
+      while i < n
+        if s.getbyte(i) == 47
+          out << "/"
+          i += 1
+          next
+        end
+        j = i
+        j += 1 while j < n && s.getbyte(j) != 47
+        stop = ParameterFilter.token_end(s, i, j)
+        if stop >= 0 && (stop == j || s.getbyte(stop) == 46)
+          out << FILTERED
+          out << s.byteslice(stop, j - stop).to_s
+        else
+          out << s.byteslice(i, j - i).to_s
+        end
+        i = j
+      end
+      out
+    end
+
+    # Where a token shape that starts at byte `from` of s ends (before
+    # `limit`), or -1 when there is none.
+    def self.token_end(s, from, limit)
+      i = from
+      part = 0
+      while part < 2
+        d = i
+        d += 1 while d < limit && s.getbyte(d) >= 48 && s.getbyte(d) <= 57
+        return -1 if d == i || d - i > 18
+        return -1 unless d + 1 < limit && s.getbyte(d) == 45 && s.getbyte(d + 1) == 45
+
+        i = d + 2
+        part += 1
+      end
+      h = i
+      h += 1 while h < limit && ParameterFilter.hex_value(s.getbyte(h)) >= 0
+      h - i == 64 ? h : -1
     end
 
     # Whether the percent-encoded name in bytes [from, stop) of s, decoded,

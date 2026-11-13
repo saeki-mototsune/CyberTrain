@@ -1,5 +1,5 @@
 ---
-source_sha256: f07cc847b2cbe37adcf2c0787d8d3bcd819c938ac8f621efc9628f5f4c446f27
+source_sha256: 768ecf4448f20d02706d0e7f7622ea1cf8e3a178c2b07ac585bb190e8b1bdf5d
 ---
 # リクエスト
 
@@ -278,3 +278,7 @@ Rack は gzip されたリクエストボディをそのままにします。こ
 - すべての ETag が一度変わります（リクエストのフォーマットとビルドのダイジェストを含むようになったため）。`Accept` で決まった応答は `Vary: Accept` を送り、html のフォールバックは `text/html` か `*/*` を挙げるどの `Accept` にも働きます。html にフォールバックしうるリクエスト（`application/json, text/html`）は、そのフォーマットだけを求めるリクエストとは別の ETag を持ちます。`Accept` の `text/html;q=0` には、`*/*` が並んでいても html のフォールバックは働きません（html しかないアクションでは 406）。`If-None-Match: *` は、`last_modified:` だけで検証した応答からも 304 を受け取ります。
 - `permit` と `expect` は、Array でないフィルターで `ArgumentError` を発生させます。存在しないレイアウトを指す `layout` は `MissingTemplate` を発生させます（既定の `application` レイアウトは省略可能なままです）。ジャーの Cookie が 4096 バイトを超えると `Session::CookieOverflow` を発生させます。
 - `public/style.css` はそのまま動きます。`app/assets/stylesheets/` への移動は任意です（[アセット](assets.md#moving-publicstylecss)）。
+- バリデーションメッセージは同梱の辞書から来ます（[国際化](i18n.md#models-and-validation-messages)）。英語の文面は同じですが、3 つだけ違います：`:base` のメッセージの頭に "Base" が付かなくなり、`_id` で終わる属性は "id" なしで呼ばれ（"Article id can't be blank" ではなく "Article can't be blank"）、長さの上限 1 は "1 character" になります。これらのメッセージを比べるテストは変わります。
+- `format:` なし、または書式名つきの `time_tag` は `I18n.l` で整形されます（英語のページでは以前と同じ英語の文面です）。
+- gen は `gen/locales.rb`（`config/locales/` がなければ空）を書き、`app/mailers/**/*.rb` を読み込みます。`cybertrain new` は `config/locales/en.yml` を書きます。古いアプリケーションも足せます。
+- `allow_unauthenticated_access` はフレームワークのメソッドになりました。0.4 のジェネレーターが `ApplicationController` に書いたものも動き続け、そちらが優先されます。`cybertrain generate authentication` をもう一度実行すると、パスワードリセット、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザーが加わり、0.4 が書いたファイルの差分が表示されます（[0.4 からのアップグレード](authentication.md#upgrading-from-04)）。

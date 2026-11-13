@@ -31,4 +31,15 @@ ok   time_tag for Time, Date, text and format:
 ok   time_tag format: Strings take flags, widths and composites; an unknown directive raises
 ok   time_tag format: a width replaces a number's padding; a width or flag strftime does not mean here raises
 ok   current_page? path only, with query, false on POST
-33 tests, 181 assertions, 0 failures
+ok   time_tag_strftime formats every directive the bundled formats use
+ok   t and l in a template: the bundled dictionary, lazy keys, the missing span
+ok   number helpers in ja
+ok   number helpers in en are unchanged
+ok   number helpers read every setting of an application's locale, then number.format, then the default locale
+ok   number helpers answer the English settings when neither the current nor the default locale has number keys
+ok   a precision: keyword is read as 0.4 read it, in all four helpers
+ok   time_ago_in_words and distance_of_time_in_words in en and ja
+ok   pluralize leaves a word alone outside English
+ok   paginate in ja, and an application's pager text escaped
+ok   time_tag's format names go through I18n.l: a ja page gets ja dates
+44 tests, 263 assertions, 0 failures

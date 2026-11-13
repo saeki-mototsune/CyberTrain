@@ -20,8 +20,9 @@ none at run time) of `app/controllers/**/*.rb` and `app/models/**/*.rb` for
 `@ivar =` assignments, `before_action`/`after_action`/`rescue_from ... with:`
 names, `helper_method`, `layout` and `rate_limit` lines, `include`s of
 concerns and zero-argument `def`s. It digests the files under `app/assets/`,
-`app/javascript/` and `vendor/javascript/` and reads `config/importmap.rb`
-as text.
+`app/javascript/` and `vendor/javascript/`, reads `config/importmap.rb`
+as text, and reads the dictionaries in `config/locales/` with a YAML reader
+of its own.
 
 From that it writes plain, readable Ruby under `gen/`:
 
@@ -34,6 +35,8 @@ From that it writes plain, readable Ruby under `gen/`:
   blocks blanked ([Concerns](requests.md#concerns-and-helper_method));
 - `gen/assets.rb`: the digested asset paths and the import map
   ([Assets](assets.md)), with the digested files in `public/assets/`;
+- `gen/locales.rb`: the application's dictionaries as two Hashes, which
+  `I18n.t` reads ([Internationalization](i18n.md#dictionaries));
 - `gen/migrations.rb`;
 - `gen/views.rb`: the embedded views table, empty unless building for deployment;
 - `gen/app.rb`: the `require_relative` manifest.
@@ -73,8 +76,10 @@ instead of 108 s, and an edit to a controller about 47 s instead of 65 s
 `cybertrain new` writes `require "cybertrain/core"` into `bin/<app>.rb` and
 `bin/db.rb` (which loads `config/app.rb`, so it needs the same lines).
 `cybertrain generate job` adds `require "cybertrain/jobs"` to both, and
-`generate authentication` adds `require "cybertrain/rate_limit"`; the other
-lines are yours to add. An application written before the split has
+`generate authentication` the four its code uses (`cybertrain/jobs`,
+`cybertrain/mailer`, `cybertrain/mailer/later` and `cybertrain/rate_limit`:
+the jobs page, mail sent with `deliver_later`, rate-limited sign-in); the
+other lines are yours to add. An application written before the split has
 `require "cybertrain"`, which still loads everything: it builds and behaves
 as before, and replacing that line with the core and the lines it uses is
 what makes it build faster.
@@ -219,14 +224,14 @@ production.
 | Full backtrace on an exception | Class, message, request line, template name/line — Spinel exposes no backtraces |
 | Rack, its middleware, and any gem in a `Gemfile` | No Rack compatibility; a small fixed middleware set; Spinel's own `spin-index`, limited to what compiles under its Ruby subset |
 | minitest / RSpec | `Cybertrain::Test` — reflection-based runners can't work ahead-of-time |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape plus a sign-up page; passwords use PBKDF2-HMAC-SHA256 (bcrypt needs a C library; macOS `String#crypt` has no bcrypt); no password reset ([Add sign-in](tutorial.md#authentication)) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape plus a sign-up page; passwords use PBKDF2-HMAC-SHA256 (bcrypt needs a C library; macOS `String#crypt` has no bcrypt); password reset, confirmation, lockout and remember me are generated too, as Devise would add them ([Authentication](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` writes five `cover_*` columns and model methods; files stay on local disk under `storage/uploads/`, served by `send_blob`; one per field, no variants or direct uploads ([Add a cover image](tutorial.md#attachments)) |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
 | `resource :session` | The same six routes to `SessionsController`; no nesting under it |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); no per-request `Time.zone` and no `l(time, zone:)` yet ([Time zones](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, redirects only when asked for, streamed and gzip responses, a Server-Sent Events parser, no keep-alive (see [Outbound HTTP](external-services.md#outbound-http)); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
-| Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` sends plain text, or `multipart/alternative` with an HTML part rendered from a partial (`Views.render_mail`), over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); `Mailer.deliver_later` sends it from a built-in job; no mailer classes or attachments (see [Sending e-mail](external-services.md#sending-e-mail)) |
+| Action Mailer (`deliver_later`, mailer classes, views) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` sends plain text, or `multipart/alternative` with an HTML part rendered from a partial (`Views.render_mail`), over SMTP (STARTTLS, implicit TLS or plain to loopback; AUTH PLAIN; every wait bounded); `Mailer.deliver_later` sends it from a built-in job; a mailer is a module in `app/mailers` whose methods return a `Cybertrain::MailMessage` (`deliver_later`, `deliver_now`), as the generated `PasswordsMailer` is; no attachments (see [Sending e-mail](external-services.md#sending-e-mail)) |
 | Active Job, `perform_later`, `solid_queue`, recurring tasks, Mission Control | Job classes in `app/jobs` (`< Cybertrain::Job::Base`, `perform(args)` with a Hash of JSON values, `perform_later`, `retry_on`, `discard_on`, `limits_concurrency` with a key), `Job.handle(kind)` as the short form; `Scheduler.every` and `Scheduler.cron` with a time zone and a timetable kept in the database; a jobs page (`jobs_page` in the routes) and `./<app> jobs`; `job_threads` threads per process, in the server or in `./<app> worker` processes, delivered at least once ([Background work](background-and-operations.md#background-work)) |
 | `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | `Cybertrain::Cache.fetch` in the application's SQLite database, the same options; values are Strings, with `fetch_hash`, `fetch_array` and `fetch_int` for the rest; no memory or Redis store ([The cache store](background-and-operations.md#the-cache-store)) |
 | ActionCable client, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` keeps a feed connected while the server runs (reconnects, pings, silence detection); `WebSocket::Client` for one synchronous connection; outbound only ([Consuming WebSocket feeds](external-services.md#consuming-websocket-feeds)) |
@@ -235,6 +240,6 @@ production.
 | `bin/rails db:...` tasks for backups (none built in) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, mode 0600, renamed into place) and `./<app> db vacuum` |
 | Action Cable, `turbo_stream_from`, `broadcast_append_to` | The same helper names over signed streams, delivered by Server-Sent Events or WebSocket from one SQLite table; no channel classes ([Realtime](realtime.md)) |
 | Propshaft, importmap-rails | The same layout (`app/assets`, `app/javascript`, `vendor/javascript`, `config/importmap.rb`), digested by `spin run gen` into `public/assets/`; no `bin/importmap pin`, no bundled Turbo ([Assets](assets.md)) |
-| i18n | Not built yet (phase 4b, `docs/design.md` D1) |
+| Rails i18n, rails-i18n's dictionaries, `I18n.t`, `t(".title")` | The same API and keys, English and Japanese bundled; `config/locales/*.yml` compiled in by `spin run gen` from a YAML subset (no anchors, aliases or tags), lists through `I18n.translate_list` ([Internationalization](i18n.md)) |
 
 <!-- table-foot: Not exhaustive: docs/design.md §8 ("What was deliberately left out") is the fuller record. -->

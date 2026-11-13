@@ -1,5 +1,5 @@
 ---
-source_sha256: 8bf1e8b4b6f49c71977f7962ba570bf0d29cc5af86a5dd089c93108a8e865203
+source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -462,13 +462,19 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   NUL (внедрение заголовков) или длиннее 998 байт, тело, которое не является
   допустимым UTF-8 или содержит NUL, больше 100 получателей. `to:` принимает
   один адрес или несколько, разделённых запятыми.
-- **Пока нет:** вложений и встроенных изображений, классов мейлеров
-  (`UserMailer.welcome(user).deliver_later`: письмо — это метод приложения,
-  который вызывает `deliver` или `deliver_later`), отображаемых имён,
+- **Мейлеры:** модуль в `app/mailers` (gen их загружает), метод которого
+  возвращает `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`,
+  читается как в Rails: `PasswordsMailer.reset(user, url).deliver_later`
+  ставит письмо в очередь, `deliver_now` отправляет сразу. `cybertrain/mailer`
+  загружает `MailMessage` с `deliver_now`; `deliver_later` приходит с
+  `cybertrain/mailer/later`. `cybertrain generate authentication` пишет два
+  таких ([Сброс пароля](authentication.md#password-reset)) и добавляет обе
+  строки.
+- **Пока нет:** вложений и встроенных изображений, классов мейлеров с
+  `default from:` и представлениями, найденными по имени, отображаемых имён,
   заголовков `Cc`/`Bcc` (вместо этого отправляйте нескольким получателям),
   AUTH LOGIN/CRAM-MD5, адресов SMTPUTF8, конвейеризации. `deliver`
   выполняется в вызывающем потоке — зелёном потоке, как запрос.
-  `cybertrain generate authentication` по-прежнему не пишет сброс пароля.
 
 ### HTML-письма
 

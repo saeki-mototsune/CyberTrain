@@ -1,5 +1,5 @@
 ---
-source_sha256: ad3169ddff720e3527105667bef185f816a9c1eeaf8f74207edb0ff4cf53d242
+source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
 ---
 # Modèles et base de données
 
@@ -340,6 +340,11 @@ Rails fonctionne telle quelle&nbsp;: `Article.where.not(body: nil)`,
   se lie à NULL dans une colonne numérique, booléenne, de date ou json (là
   où `save` stockerait 0 / false / `{}`), laisse `updated_at` tranquille et n’exécute aucun callback&nbsp;; `destroy_all`
   détruit chaque enregistrement, callbacks et `dependent:` compris.
+- `update_all_sql(sql, binds = [])` fixe des colonnes par une liste SQL
+  `SET`, pour une valeur calculée depuis la ligne (`User.where(id: id).update_all_sql("failed_attempts = failed_attempts + ?", [1])`)&nbsp;;
+  chaque expression lit la ligne telle qu’elle était, `?` prend les
+  valeurs liées dans l’ordre, et, comme `update_all`, elle ne charge aucun
+  modèle et n’exécute aucun callback.
 - `find_each` parcourt par id en lots et ignore l’ordre, la limite et
   l’offset de la relation, comme Rails.
 - `find_or_create_by` sur une relation restreinte crée l’enregistrement à
@@ -632,15 +637,21 @@ class Article
 end
 ```
 
-Les messages sont ceux de Rails en anglais&nbsp;: «&nbsp;can't be
-blank&nbsp;», «&nbsp;is too short (minimum is 3 characters)&nbsp;», «&nbsp;is
-the wrong length (should be 5 characters)&nbsp;», «&nbsp;is not included in
-the list&nbsp;», «&nbsp;is reserved&nbsp;», «&nbsp;is invalid&nbsp;»,
-«&nbsp;is not a number&nbsp;», «&nbsp;must be an integer&nbsp;», «&nbsp;must
-be greater than or equal to 0&nbsp;», «&nbsp;has already been
-taken&nbsp;». `message:` en remplace un, sur la ligne ou dans le Hash d’une
-règle. La forme au singulier de Rails («&nbsp;1 character&nbsp;») n’existe
-pas&nbsp;: une limite de 1 donne «&nbsp;1 characters&nbsp;».
+Les messages sont ceux de Rails, tirés du dictionnaire fourni dans la
+locale de la requête&nbsp;: en anglais «&nbsp;can't be blank&nbsp;»,
+«&nbsp;is too short (minimum is 3 characters)&nbsp;», «&nbsp;is the wrong
+length (should be 5 characters)&nbsp;», «&nbsp;is not included in the
+list&nbsp;», «&nbsp;is reserved&nbsp;», «&nbsp;is invalid&nbsp;», «&nbsp;is
+not a number&nbsp;», «&nbsp;must be an integer&nbsp;», «&nbsp;must be
+greater than or equal to 0&nbsp;», «&nbsp;has already been taken&nbsp;», en
+japonais «&nbsp;を入力してください&nbsp;», etc. Une limite de 1 donne
+«&nbsp;1 character&nbsp;». `message:` en remplace un, sur la ligne ou dans
+le Hash d’une règle&nbsp;; `config/locales/` peut les remplacer pour tous
+les modèles ou pour un seul
+([Modèles et messages de validation](i18n.md#models-and-validation-messages)).
+`errors.full_messages` nomme chaque attribut par
+`Post.human_attribute_name(:title)` («&nbsp;Title&nbsp;»&nbsp;; `author_id`
+donne «&nbsp;Author&nbsp;»), et écrit seul un message sur `:base`.
 
 - `length` accepte `minimum`, `maximum`, `is` et `in` (une Range d’Integer).
 - `inclusion` et `exclusion` acceptent un Array, ou une Range d’Integer

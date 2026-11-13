@@ -161,7 +161,7 @@ module Cybertrain
 
     # The task's block captures only the Integer index (a parameter of this
     # method) and calls Features.run_periodic, which calls the hook on the
-    # Array element outside the block (NOTES rules 88 and 101).
+    # Array element outside the block (NOTES rules 88 and 104).
     def self.every_periodic(index, task_name, interval)
       Scheduler.every(interval, task_name) { Features.run_periodic(index, Time.now.to_i) }
       nil

@@ -6,6 +6,7 @@ require "cybertrain/validator"
 require "cybertrain/relation"
 # A model concern (app/models/concerns) extends ActiveSupport::Concern.
 require "cybertrain/active_support"
+require "cybertrain/generator/inflector"
 
 module Cybertrain
   # Raised by `find` and {Model#reload} when no row has the id. Map it to a
@@ -510,7 +511,9 @@ module Cybertrain
       e = @errors
       return e unless e.nil?
 
-      e = Errors.new
+      # The dictionary key full_messages and the validators look names
+      # and messages up by ("post", "admin/post"; plan decision D9).
+      e = Errors.new(Inflector.underscore(model_name))
       @errors = e
       e
     end

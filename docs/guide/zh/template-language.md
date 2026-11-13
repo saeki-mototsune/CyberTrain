@@ -1,5 +1,5 @@
 ---
-source_sha256: 313dd71eafa349732eb608c4c2d8645cd2c64b746099702e52e4efec991a4e79
+source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
 ---
 # Cybertrain 模板语言参考
 
@@ -272,11 +272,14 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `select_tag` | `select_tag(name, option_tags = nil, include_blank:, prompt:, multiple:)` | `select_tag "order", options_for_select([["Newest", "new"], ["Oldest", "old"]], "old")` → `<select name="order" id="order">...</select>`；不是 `SafeString` 的 `option_tags` 会被转义；`multiple: true` 把名称变为 `order[]`；其他关键字作为属性 |
 | `options_for_select` | `options_for_select(choices, selected = nil)` | `f.select` 选项（见下文）的 `<option>` 行；`selected` 是一个值或值的 Array，按 String 比较 |
 | `options_from_collection_for_select` | `options_from_collection_for_select(records, :id, :name, selected = nil)` | 每条记录一个 `<option>`，其值和文本的读取方式与 `f.collection_select` 相同 |
+| `t`, `translate` | `t(key, default:, count:, locale:, name: value)` | 请求语言区域中 `key` 的文本，经过转义；`posts/index.html.erb` 中的 `t(".title")` 读取 `posts.index.title`，局部模板 `posts/_form.html.erb` 中读取 `posts.form.title`；以 `_html` 结尾的键输出其 HTML 并转义值（[国际化](i18n.md#looking-up-text)） |
+| `l`, `localize` | `l(time_or_date, format: :short, locale:)` | 语言区域的 `time.formats` / `date.formats`，或使用语言区域星期名和月份名的 strftime 模式（[日期和时间](i18n.md#dates-and-times)） |
 | `label_tag`, `text_field_tag`, `hidden_field_tag`, `submit_tag` | `label_tag(name, text = nil)`, `text_field_tag(name, value = nil)`, `hidden_field_tag(name, value = nil)`, `submit_tag(value = "Save changes")` | 不带模型的表单标签：`label_tag(:term)` → `<label for="term">Term</label>`；`hidden_field_tag` 写出 `autocomplete="off"`；`submit_tag` 的名称是 `commit`；其他关键字作为属性（`id:` 替换由名称得到的 id） |
+| `check_box_tag` | `check_box_tag(name, value = "1", checked = false)` | 没有模型也没有隐藏字段的复选框，不勾选时什么都不发送：`check_box_tag :remember_me` → `<input type="checkbox" name="remember_me" id="remember_me" value="1">`；其他关键字参数是属性 |
 | `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render partial: "comment", collection: @comments` / `render @comments` / `render component: "card", k: v` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials)、[集合](#collections)和[组件](#components) |
 | `h`、`escape` | `h(text)` | 进行转义；`SafeString` 不经转义直接通过 |
 | `raw` | `raw(text)` | 把文本包装为 `SafeString`（不转义输出） |
-| `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`；`pluralize(2, "mouse")` → `"2 mice"`（Rails 默认的英语词形变化规则，经由 `Cybertrain::Inflector`；不支持应用自定义的词形变化）；显式给出的第三个参数总是优先 |
+| `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`；`pluralize(2, "mouse")` → `"2 mice"`（Rails 默认的英语词形变化规则，经由 `Cybertrain::Inflector`，仅在英语页面中：其他语言区域中词保持不变；不支持应用自定义的词形变化）；显式给出的第三个参数总是优先 |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n, delimiter: ",", separator: ".")` | `1234567` → `"1,234,567"`； `-1000` → `"-1,000"`； `1234.5` → `"1,234.5"` |
 | `number_with_precision` | `number_with_precision(n, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)` | `111.2345` → `"111.235"`； `precision: 0` → `"111"` |
@@ -284,7 +287,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `number_to_percentage` | `number_to_percentage(n, precision: 3)` | `100` → `"100.000%"` |
 | `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`； 负数会在格式前写出 `-` |
 | `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (以 1024 为底)； `1` → `"1 Byte"` |
-| `time_ago_in_words` | `time_ago_in_words(time)` | Rails 风格的区间，不精确到秒：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
+| `time_ago_in_words` | `time_ago_in_words(time)` | Rails 风格的区间，不精确到秒：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"`，取自语言区域的 `datetime.distance_in_words`（日语为 `"2分"`） |
 | `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | 没有控制器会话时为空 / 不存在 |
 | `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / 只有 nonce，即本次请求的 [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) nonce；没有策略生效时为 `""` |
@@ -311,11 +314,11 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | 带令牌和 `mode=json`（或 `"raw"`）的流端点路径 |
 | `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`；记录会给出它的 `dom_id`；每个属性只在给出时写出 |
 | `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | 一个 `<turbo-stream action="...">` 元素，用于 `*.turbo_stream.erb` 模板；目标是 DOM id 或记录；块、`partial:`（带 `locals:`）和 `html:` 恰好其一 |
-| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`，或带块 | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`；Date 给出 `2026-11-10`；`format:` 为 `:short`、`:long` 或 strftime 的 String（未知的指令会抛出异常，strftime 会读成别的意思的宽度或标志也一样：`%6L`，请用 `%6N`；`:` 只能用在 `%:z` 中；`%F %T %D %R %r %c %x %X %v` 不能带填充标志；数字上的宽度会替换它的填充，`%5e` 得到 `"    5"`） |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`，或带块 | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`；Date 给出 `2026-11-10`；没有 `format:` 时文本是语言区域的 `:default` 格式；`format:` 是格式名（`:short`、`:long` 或词典中的任何其他格式，由 `l` 按请求的语言区域格式化），或 strftime 的 String（使用英语的星期名和月份名；未知的指令会抛出异常，strftime 会读成别的意思的宽度或标志也一样：`%6L`，请用 `%6N`；`:` 只能用在 `%:z` 中；`%F %T %D %R %r %c %x %X %v` 不能带填充标志；数字上的宽度会替换它的填充，`%5e` 得到 `"    5"`） |
 
 每个辅助方法的文本参数都遵循同一条规则：`SafeString` 不经转义直接通过，其他任何内容都会被转义——`link_to raw('<b>raw</b>'), post` 会原样输出加粗标签，而 `link_to post.title, post` 会转义它。
 
-六个数字辅助方法来自 `Cybertrain::NumberHelper`，Ruby 代码可以用相同的关键字把它们作为模块函数调用（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。它们接受 Integer、Float 或数字 String（decimal 列是 Float），并按其十进制文本的数字四舍五入，所以两种运行时的结果相同；其他任何值都会抛出 `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`），超出 0 到 100 的精度也一样。在模板中，`nil` 渲染为 `""`（可为空的 decimal 列显示为空，和 Rails 一样）；从 Ruby 调用的 `Cybertrain::NumberHelper` 对 `nil` 仍会抛出 `ArgumentError`（`"number_with_delimiter: nil is not a number"`）。格式是英文的。
+六个数字辅助方法来自 `Cybertrain::NumberHelper`，Ruby 代码可以用相同的关键字把它们作为模块函数调用（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。它们接受 Integer、Float 或数字 String（decimal 列是 Float），并按其十进制文本的数字四舍五入，所以两种运行时的结果相同；其他任何值都会抛出 `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`），超出 0 到 100 的精度也一样。在模板中，`nil` 渲染为 `""`（可为空的 decimal 列显示为空，和 Rails 一样）；从 Ruby 调用的 `Cybertrain::NumberHelper` 对 `nil` 仍会抛出 `ArgumentError`（`"number_with_delimiter: nil is not a number"`）。在模板中，默认值来自请求的语言区域（词典中的 `number.*`：日语的 `number_to_currency(1234)` 是 `"1,234円"`），给出的关键字参数优先；从 Ruby 调用时则是上面所示的英语默认值。
 
 ### tag 构建器
 
@@ -526,7 +529,7 @@ end
 | 嵌套的无括号调用由 Ruby 自己的解析器解析 | 只有表达式中最外层的调用可以使用无括号参数 |
 | 未声明/拼错的属性必定会抛出 `NoMethodError` | 生成的模型会抛出 `"undefined method 'x' for Post"`（`Template::RuntimeError`），而存在但为 `nil` 的属性渲染为空；没有覆盖 `attribute_or_method?` 的手写模型会把未知名称渲染为空 |
 | `1 / 0` 和 `1.0 / 0` 都会抛出 `ZeroDivisionError` | `Integer` 除以零或对零取模会抛出 `"divided by 0"`；`Float` 遵循 IEEE-754（`Infinity`/`NaN`），不报错 |
-| `distance_of_time_in_words`/复数化支持 i18n 语言区域 | 仅限英语，不支持语言区域 |
+| `distance_of_time_in_words`/复数化支持 i18n 语言区域 | `time_ago_in_words`、`distance_of_time_in_words`、数字辅助方法和 `time_tag` 读取语言区域的词典；`pluralize` 只做英语的词形变化（[国际化](i18n.md#helpers-that-follow-the-locale)） |
 | `app/helpers` 中的每个模块都会被混入；签名任意；辅助方法可以覆盖框架的辅助方法 | 模块在构建时被扫描为生成的 `case`：只能用具名参数，最多三个可选参数，不能使用框架辅助方法的名称，也不能以 `_path`/`_url` 结尾（[应用的辅助方法](#application-helpers)） |
 | ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、插槽 | 按名称 `render component: "card", title: "x"`，`content` 来自块，以唯一必需关键字命名的组件可用 `collection:`；没有插槽（[组件](#components)、[集合](#collections)） |
 | 后面的 `layout` 行替换前面的 | 第一个适用的 `layout` 声明胜出（[按控制器的布局](#per-controller-layouts)） |

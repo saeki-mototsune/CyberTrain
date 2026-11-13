@@ -9,7 +9,8 @@ module Cybertrain
   #   Started GET "/posts?page=2" for 127.0.0.1
   #   Completed 200 in 3ms
   # with each filtered parameter's value in the query string written as
-  # `[FILTERED]` (ParameterFilter, Config#filter_parameters).
+  # `[FILTERED]` (ParameterFilter, Config#filter_parameters), and each
+  # path segment shaped like a signed token (a password reset link's) too.
   class RequestLogger < Middleware
     # stream_path: the stream endpoint's path (Config#stream_path), whose
     # `s` parameters are signed stream tokens and are logged as
@@ -22,7 +23,9 @@ module Cybertrain
 
     def call(ctx)
       request = ctx.request
-      target = log_field(request.path)
+      # A signed token in the path (a password reset link) is masked: this
+      # line comes before routing, so by its shape (ParameterFilter.filter_path).
+      target = log_field(ParameterFilter.filter_path(request.path))
       # The values of filtered parameters (Config#filter_parameters) never
       # reach the log: replaced before the escaping, on the raw bytes.
       unless request.query_string.empty?

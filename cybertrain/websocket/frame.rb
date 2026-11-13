@@ -142,7 +142,7 @@ module Cybertrain
             @buffer = String.new
           end
           if @buffer.bytesize + payload.bytesize > @max_message
-            reset
+            clear_message
             raise TooLargeError, "message larger than #{@max_message} bytes"
           end
           @buffer << payload.b
@@ -168,16 +168,20 @@ module Cybertrain
           # bytes tagged binary. A local first (NOTES rule 58).
           data = @buffer.b
           msg = Message.new(sym, data)
-          reset
+          clear_message
           msg
         end
 
         private
 
-        def reset
+        # Forgets the message so far. Not `reset`: the generated
+        # PasswordsMailer.reset answers a MailMessage, and one name has one
+        # return type in a program (spikes/NOTES.md rule 34).
+        def clear_message
           @opcode = 0
           @buffer = String.new
           @active = false
+          nil
         end
       end
 

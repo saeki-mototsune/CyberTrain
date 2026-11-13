@@ -127,6 +127,11 @@ Job.register("long policy", max_attempts: 20) { |run| SEEN << run.run_payload }
 Job.register("short policy", max_attempts: 2) { |run| SEEN << run.run_payload }
 # One running at a time per "exchange".
 Job.register("keyed", concurrency: 1, concurrency_key: "exchange") { |run| SEEN << "keyed #{Cybertrain::Cast.str(run.run_args["exchange"])}" }
+# A job that sets the thread's locale, as one sending a notice in its
+# user's language does, and one that reports the locale it starts in.
+I18n.available_locales = [:en, :ja]
+Job.handle("in ja") { |payload| I18n.locale = :ja; SEEN << "set #{I18n.locale}" }
+Job.handle("locale") { |payload| SEEN << "starts #{I18n.locale}" }
 
 def fresh_db
   DB.connect(":memory:")
@@ -264,6 +269,21 @@ test "enqueue creates the table; a job runs when due, oldest first, and ends don
   assert_equal "first,second", SEEN.join(",")
   assert_equal 2, Job.state_count("done")
   assert_includes LOG.string, "[INFO] job #{early} (record) done"
+end
+
+test "a job that sets the locale does not leave it for the next job on the same thread" do
+  fresh_db
+  Job.enqueue("in ja", "", run_at: Time.at(1000))
+  Job.enqueue("locale", "", run_at: Time.at(1001))
+  assert Job.work_one(2000)
+  assert Job.work_one(2000)
+  assert_equal "set ja,starts en", SEEN.join(",")
+  # Set on the thread before a job runs (by an earlier caller): reset too.
+  I18n.locale = :ja
+  Job.enqueue("locale", "", run_at: Time.at(1002))
+  assert Job.work_one(2000)
+  assert_equal "set ja,starts en,starts en", SEEN.join(",")
+  I18n.locale = nil
 end
 
 test "a failing job is retried with the backoff, counting attempts, until it is failed" do

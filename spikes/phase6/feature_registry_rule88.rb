@@ -3,7 +3,7 @@
 # the periodic hook on a Feature-typed receiver (captured, or the block's
 # parameter, the block written at top level or in a feature subclass's
 # reopened body), then the design's run_periodic(i, now) and a direct call
-# in the same program. spikes/NOTES.md rule 101.
+# in the same program. spikes/NOTES.md rule 104.
 #
 # Run (Spinel 2026.11.04.7026, from spikes/phase6/):
 #   ruby feature_registry_rule88.rb

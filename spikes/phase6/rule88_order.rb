@@ -1,4 +1,4 @@
-# spikes/NOTES.md rule 88 reduced further (rule 101): the same stored
+# spikes/NOTES.md rule 88 reduced further (rule 104): the same stored
 # block, `{ |r| r.hook }` called with an Early and a Late (both overriding
 # Base#hook), written in three places. Only the block written in a
 # subclass's body before that subclass's `def hook` is wrong, and it is

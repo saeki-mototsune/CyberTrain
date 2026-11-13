@@ -1,0 +1,394 @@
+# The bundled English dictionary (plan decision D2): rails-i18n's
+# rails/locale/en.yml (https://github.com/svenfuchs/rails-i18n, commit
+# f5c999b88935d4c1389a1ffe8a00f29b43e10366, MIT License; the file as
+# fetched and its license are in test/fixtures/i18n/rails-i18n/), cut to
+# date, time, datetime.distance_in_words, number, errors,
+# activerecord.errors.messages, helpers.submit and support.array; plus
+# the framework's own keys under cybertrain (plan decision D12), and the
+# screens `cybertrain generate authentication` writes: their lazy keys
+# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*,
+# confirmations.*, the reset mail's mail.password_reset.* and
+# passwords_mailer.reset.subject, the confirmation mail's
+# mail.confirmation.* and confirmations_mailer.*) and the User
+# model's attribute names (activerecord.attributes.user).
+# Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
+# an application's config/locales overrides any key.
+---
+en:
+  accounts:
+    cancel_email_change:
+      cancelled: The change of address was cancelled; its link no longer works.
+    destroy:
+      deleted: Your account has been deleted.
+      not_deleted: Your account could not be deleted. Nothing has changed.
+      wrong_password: That is not your current password.
+    edit:
+      cancel_pending: Cancel this change
+      delete: Delete account
+      delete_intro: This deletes your account and signs you out everywhere. It cannot be undone.
+      delete_title: Delete your account
+      model: account
+      new_password: New password
+      password_hint: Leave it blank to keep your password.
+      pending: 'Waiting for confirmation: %{email_address}'
+      submit: Save changes
+      title: Account
+    update:
+      confirm: A link to confirm the new address was sent to it. The address changes once the link is opened.
+      rate_limited: Try again later.
+      updated: Your account has been updated.
+      wrong_password: That is not your current password.
+  activerecord:
+    attributes:
+      user:
+        current_password: Current password
+        email_address: Email address
+        password: Password
+        password_confirmation: Password confirmation
+    errors:
+      messages:
+        record_invalid: 'Validation failed: %{errors}'
+        restrict_dependent_destroy:
+          has_one: Cannot delete record because a dependent %{record} exists
+          has_many: Cannot delete record because dependent %{record} exist
+  confirmations:
+    create:
+      rate_limited: Try again later.
+      sent: If that address is registered and not confirmed yet, a link to confirm it was sent to it.
+    new:
+      intro: If the address is waiting for its confirmation, a new link is mailed to it.
+      sign_in: Sign in
+      submit: Send the link
+      title: Send the confirmation link again
+    show:
+      confirmed: Your email address has been confirmed.
+      invalid: That confirmation link is invalid or has expired.
+      taken: That email address belongs to another account now, so it was not changed.
+  confirmations_mailer:
+    confirmation_instructions:
+      subject: Confirm your email address
+  cybertrain:
+    helpers:
+      submit:
+        no_model: Save changes
+    jobs_page:
+      buttons:
+        delete: Delete
+        discard: Discard
+        discard_all: Discard all failed
+        retry: Retry
+        retry_all: Retry all failed
+      columns:
+        arguments: Arguments
+        attempts: Attempts
+        claimed_by: Claimed by
+        error: Error
+        heartbeat: Heartbeat
+        id: ID
+        jobs: Jobs
+        kind: Kind
+        run_at: Run at
+        state: State
+        updated: Updated
+      empty:
+        discarded: No discarded jobs.
+        failed: No failed jobs.
+        running: No running jobs.
+      heartbeat:
+        ago: "%{seconds} s ago"
+        none: none
+      notices:
+        deleted: Job %{id} was deleted.
+        discarded: Job %{id} was discarded.
+        discarded_all: "%{count} failed job(s) discarded."
+        not_deleted: "Job %{id} was not deleted: it is not failed or discarded."
+        not_discarded: "Job %{id} was not discarded: it is not failed or discarded."
+        not_retried: "Job %{id} was not retried: it is not failed or discarded."
+        retried: Job %{id} was queued again.
+        retried_all: "%{count} failed job(s) queued again."
+      queued:
+        next: "%{count} queued; the next is due at %{time}."
+        none: No queued jobs.
+      states:
+        discarded: discarded
+        done: done
+        failed: failed
+        queued: queued
+        running: running
+      tabs:
+        discarded: Discarded (%{count})
+        failed: Failed (%{count})
+        running: Running (%{count})
+      title: Jobs
+    pager:
+      newer: Newer
+      older: Older
+      page: Page %{page}
+  date:
+    abbr_day_names:
+    - Sun
+    - Mon
+    - Tue
+    - Wed
+    - Thu
+    - Fri
+    - Sat
+    abbr_month_names:
+    -
+    - Jan
+    - Feb
+    - Mar
+    - Apr
+    - May
+    - Jun
+    - Jul
+    - Aug
+    - Sep
+    - Oct
+    - Nov
+    - Dec
+    day_names:
+    - Sunday
+    - Monday
+    - Tuesday
+    - Wednesday
+    - Thursday
+    - Friday
+    - Saturday
+    formats:
+      default: "%Y-%m-%d"
+      long: "%B %d, %Y"
+      short: "%b %d"
+    month_names:
+    -
+    - January
+    - February
+    - March
+    - April
+    - May
+    - June
+    - July
+    - August
+    - September
+    - October
+    - November
+    - December
+    order:
+    - year
+    - month
+    - day
+  datetime:
+    distance_in_words:
+      about_x_hours:
+        one: about %{count} hour
+        other: about %{count} hours
+      about_x_months:
+        one: about %{count} month
+        other: about %{count} months
+      about_x_years:
+        one: about %{count} year
+        other: about %{count} years
+      almost_x_years:
+        one: almost %{count} year
+        other: almost %{count} years
+      half_a_minute: half a minute
+      less_than_x_seconds:
+        one: less than %{count} second
+        other: less than %{count} seconds
+      less_than_x_minutes:
+        one: less than a minute
+        other: less than %{count} minutes
+      over_x_years:
+        one: over %{count} year
+        other: over %{count} years
+      x_seconds:
+        one: "%{count} second"
+        other: "%{count} seconds"
+      x_minutes:
+        one: "%{count} minute"
+        other: "%{count} minutes"
+      x_days:
+        one: "%{count} day"
+        other: "%{count} days"
+      x_months:
+        one: "%{count} month"
+        other: "%{count} months"
+      x_years:
+        one: "%{count} year"
+        other: "%{count} years"
+  errors:
+    format: "%{attribute} %{message}"
+    messages:
+      accepted: must be accepted
+      blank: can't be blank
+      confirmation: doesn't match %{attribute}
+      empty: can't be empty
+      equal_to: must be equal to %{count}
+      even: must be even
+      exclusion: is reserved
+      greater_than: must be greater than %{count}
+      greater_than_or_equal_to: must be greater than or equal to %{count}
+      in: must be in %{count}
+      inclusion: is not included in the list
+      invalid: is invalid
+      less_than: must be less than %{count}
+      less_than_or_equal_to: must be less than or equal to %{count}
+      model_invalid: 'Validation failed: %{errors}'
+      not_a_number: is not a number
+      not_an_integer: must be an integer
+      odd: must be odd
+      other_than: must be other than %{count}
+      password_too_long: is too long
+      present: must be blank
+      required: must exist
+      taken: has already been taken
+      too_long:
+        one: is too long (maximum is %{count} character)
+        other: is too long (maximum is %{count} characters)
+      too_short:
+        one: is too short (minimum is %{count} character)
+        other: is too short (minimum is %{count} characters)
+      wrong_length:
+        one: is the wrong length (should be %{count} character)
+        other: is the wrong length (should be %{count} characters)
+    template:
+      body: 'There were problems with the following fields:'
+      header:
+        one: "%{count} error prohibited this %{model} from being saved"
+        other: "%{count} errors prohibited this %{model} from being saved"
+  helpers:
+    submit:
+      create: Create %{model}
+      submit: Save %{model}
+      update: Update %{model}
+  mail:
+    confirmation:
+      greeting: "Hello %{email_address},"
+      ignore: "If you did not ask for this, ignore this mail: nothing changes."
+      intro: "Open this link within the next 3 days to confirm your email address:"
+      link: Confirm my email address
+    password_reset:
+      greeting: "Hello %{email_address},"
+      ignore: "If you did not ask for this, ignore this mail: your password stays as it is."
+      intro: "You can choose a new password within the next 15 minutes at this address:"
+      link: Choose a new password
+  number:
+    currency:
+      format:
+        delimiter: ","
+        format: "%u%n"
+        negative_format: "-%u%n"
+        precision: 2
+        separator: "."
+        significant: false
+        strip_insignificant_zeros: false
+        unit: "$"
+    format:
+      delimiter: ","
+      precision: 3
+      round_mode: default
+      separator: "."
+      significant: false
+      strip_insignificant_zeros: false
+    human:
+      decimal_units:
+        format: "%n %u"
+        units:
+          billion: Billion
+          million: Million
+          quadrillion: Quadrillion
+          thousand: Thousand
+          trillion: Trillion
+          unit: ''
+      format:
+        delimiter: ''
+        precision: 3
+        significant: true
+        strip_insignificant_zeros: true
+      storage_units:
+        format: "%n %u"
+        units:
+          byte:
+            one: Byte
+            other: Bytes
+          eb: EB
+          gb: GB
+          kb: KB
+          mb: MB
+          pb: PB
+          tb: TB
+          zb: ZB
+    percentage:
+      format:
+        delimiter: ''
+        format: "%n%"
+    precision:
+      format:
+        delimiter: ''
+  passwords:
+    create:
+      rate_limited: Try again later.
+      sent: If that address is registered, a link to reset the password was sent to it.
+    edit:
+      invalid: That password reset link is invalid or has expired.
+      submit: Save
+      title: Choose a new password
+    new:
+      sign_in: Sign in
+      submit: Email me a link
+      title: Forgot your password?
+    update:
+      updated: Your password has been reset. Sign in with the new one.
+  passwords_mailer:
+    reset:
+      subject: Reset your password
+  registrations:
+    create:
+      confirm: Welcome! A link to confirm your email address was sent to it. Open it, then sign in.
+      rate_limited: Try again later.
+      welcome: Welcome! You have signed up.
+    new:
+      model: account
+      sign_in: Sign in
+      submit: Sign up
+      title: Sign up
+  sessions:
+    create:
+      invalid: Try another email address or password.
+      rate_limited: Try again later.
+      unconfirmed: 'Confirm your email address first: open the link in the mail we sent you.'
+    destroy:
+      signed_out: You have been signed out.
+    nav:
+      account: Account
+      sign_in: Sign in
+      sign_out: Sign out
+    new:
+      confirmation: Send the confirmation link again
+      email_address: Email address
+      forgot_password: Forgot your password?
+      password: Password
+      remember_me: Keep me signed in
+      sign_up: Sign up
+      submit: Sign in
+      title: Sign in
+  setup:
+    create:
+      welcome: Welcome! Your account has been created.
+    new:
+      intro: Create the first account. This page is only shown on this machine, with the link the server printed when it started, and only until an account exists.
+      model: account
+      submit: Create account
+      title: Set up
+  support:
+    array:
+      last_word_connector: ", and "
+      two_words_connector: " and "
+      words_connector: ", "
+  time:
+    am: am
+    formats:
+      default: "%a, %d %b %Y %H:%M:%S %z"
+      long: "%B %d, %Y %H:%M"
+      short: "%d %b %H:%M"
+    pm: pm

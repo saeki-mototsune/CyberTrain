@@ -1,5 +1,5 @@
 ---
-source_sha256: eb51299f158287ada95062d1a0686b57891ab114c7e0f384d51344ce2c5c437c
+source_sha256: 62cfdaff2b084f3fed0f46dc16b6967071128d69c23036f7cfd531bae3cbab7c
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -92,7 +92,7 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb  .env.example
+  spin.toml  config/app.rb  config/routes.rb  config/locales/en.yml  .env.example
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/  app/jobs/
   app/assets/stylesheets/application.css  app/assets/images/
@@ -374,7 +374,7 @@ class Comment
 end
 ```
 
-宣言した `belongs_to` は、記事のないコメントも、データベースが拒む前に無効にします（「Article id can't be blank」）。
+宣言した `belongs_to` は、記事のないコメントも、データベースが拒む前に無効にします（「Article can't be blank」）。
 
 > [!NOTE]
 > `Article#comments` はコメントのリレーションなので、Rails の `@article.comments.find(params[:id])` が `destroy` でそのまま使えます。別の記事に属するコメントを指定すると 404 が返ります。
@@ -860,18 +860,17 @@ cybertrain generate authentication
 cybertrain db migrate    # users と sessions のテーブルを作る
 ```
 
-`users`（`email_address`、`password_digest`、ユニークインデックス）と `sessions`（サインイン中のブラウザーごとに 1 行）のマイグレーション、`User` と `Session` のモデル、`SessionsController`（`/session/new`、`POST /session`、`DELETE /session`）と `RegistrationsController`（`/sign_up`）およびそのビュー、レイアウトの先頭に描画される `sessions/_nav` パーシャル、そして `test/authentication.rb` と `test/support/app_test.rb` を書き出します。さらに `bin/blog.rb` と `bin/db.rb` に `require "cybertrain/rate_limit"` を追加し（サインインの試行にはレート制限がかかります。後述）、ルートを挿入し、`ApplicationController` のクラス行の直後に次のブロックを挿入します：
+`users` と `sessions` のマイグレーションとモデル、`ApplicationController` にインクルードする `Authentication` コンサーン、サインイン・サインアップ・パスワードリセット・アカウントページのコントローラーとビュー、メーラー、`./blog user` コマンド、そしてテストを書き出します。さらにルート、レイアウトの先頭の `sessions/_nav` パーシャル、メール中のリンクの始まりになる `config/app.rb` の `base_url` 設定を加えます。最後に、そのコードが使うサブシステムの行を `bin/blog.rb` と `bin/db.rb` に加えます：`cybertrain/jobs`（ジョブページとメールを送るスレッド）、`cybertrain/mailer`、`cybertrain/mailer/later`（メールは `deliver_later` で送られます）、`cybertrain/rate_limit`（サインインの試行にはレート制限がかかります。後述）。すべてのファイルは [認証](authentication.md#generating-it) に一覧があります。
 
-```ruby app/controllers/application_controller.rb（抜粋）
-class ApplicationController < Cybertrain::Controller
-  before_action :resume_session          # sets @current_user and @current_session
-  before_action :require_authentication  # 303 to /session/new unless signed in
+```ruby app/controllers/concerns/authentication.rb（抜粋）
+module Authentication
+  extend ActiveSupport::Concern
 
-  def self.allow_unauthenticated_access(only: [], except: [])
-    skip_before_action(:require_authentication, only: only, except: except)
+  included do
+    before_action :resume_session          # sets @current_user and @current_session
+    before_action :require_authentication  # 303 to /session/new unless signed in
+    helper_method :authenticated?
   end
-  # authenticated?, start_new_session_for(user), terminate_session,
-  # after_authentication_url ...
 ```
 
 これ以降、すべてのアクションはサインイン済みのユーザーを必要とし、訪問者は `/session/new` にリダイレクトされます。Rails のガイドと同じように、誰でも読めるページを開放し直します：
@@ -900,58 +899,14 @@ class ArticlesController < ApplicationController
 
 コメントのコンポーネントの「Destroy comment」ボタンは、誰に対しても表示されたままです：ブロードキャストはコンポーネントを、すべての閲覧者に向けて一度だけ、リクエストなしで、つまり現在のユーザーなしでレンダリングするからです。訪問者がこのボタンを押すと、サインイン画面に送られます。`CommentsController` はどのアクションも開放していないためです。新しいコメントは訪問者のページにも届きます。ストリームはコントローラーのアクションではないからです。
 
-サーバーを起動して `http://127.0.0.1:3000/sign_up` を開き、最初のユーザーを作成します。Rails のジェネレーターにはサインアップ画面がなく、最初のユーザーはコンソールで作りますが、CyberTrain は `RegistrationsController` を書き出すので、最初のユーザーはブラウザーでサインアップします。招待制のアプリでは、これとそのルートを削除してください。
+サーバーを起動して `http://127.0.0.1:3000/sign_up` を開き、最初のユーザーを作成します。Rails のジェネレーターにはサインアップ画面がなく、最初のユーザーはコンソールで作りますが、CyberTrain は `RegistrationsController` を書き出すので、最初のユーザーはブラウザーでサインアップします。招待制のアプリでは、代わりに `--invite-only` 付きでジェネレーターを実行してください：サインアップ画面はなく、最初のユーザーは `./blog user EMAIL` か、サーバー自身のマシンからしか開けない `/setup` ページで作ります（[サインアップか、招待制か](authentication.md#sign-up-or-invite-only)）。
 
-<details><summary>招待制のアプリ：`--invite-only` — サインアップ画面はなく、最初のユーザーはコマンドラインか、サーバーのマシンからしか開けないページで作る</summary>
-
-サインアップ画面があると、サーバーにたどり着いた人は誰でも登録できます。これは社内ツールにとって誤った既定値です：管理者より先にたどり着いた人がアカウントを持ってしまいます。`--invite-only` は `RegistrationsController` もサインアップのリンクも書き出しません。最初のユーザーはコマンドラインから作るか、サーバー自身のマシンからしか開けないページで作ります。そのページへのリンクは、サーバーが起動時に表示します：
-
-```shell ターミナル — blog/
-cybertrain generate authentication --invite-only
-cybertrain db migrate
-cybertrain server        # 表示された http://127.0.0.1:3000/setup?token=... のリンクを同じマシンで開く
-```
-
-本番環境では、バイナリを実行するディレクトリで：
-
-```shell ターミナル — 本番ホスト
-./blog user ann@example.com                        # パスワードを標準入力から読む（1 行）
-printf '%s' "$PASSWORD" | ./blog user ann@example.com
-./blog user ann@example.com 's3cr3t-s3cr3t'        # または引数で渡す（ps で見える）
-```
-
-<!-- list: points -->
-- `app/commands/user_command.rb` は `Cybertrain::Main.command` で `user` コマンドを登録し（そのため `./blog help` に表示されます）、`bin/blog.rb` から require されます。`EMAIL [PASSWORD]` はユーザーを作成するか、そのアドレスを持つユーザーのパスワードを設定します（パスワードの変更はいつもそうですが、そのユーザーのブラウザーはサインアウトされます）。`created ADDRESS` または `updated ADDRESS` を表示して 0 で終了します。`PASSWORD` を省くと標準入力から 1 行を読み（端末からの場合はプロンプトを出します。入力した文字は表示されます）、末尾の改行を取り除くので、パスワードは `ps` にもシェルの履歴にも残りません。空のパスワード、バリデーションを通らないレコード（8 文字未満のパスワード）、誤った引数では、エラーまたは使い方の行を表示して 1 で終了します。
-- `SetupController`（`GET`/`POST /setup`、`app/views/setup/new.html.erb`）は最初のユーザーを作成し、サインインさせます。応答するのは、ユーザーがまだいない間だけ、ワンタイムトークン（下記）がある場合だけ、そしてソケットの接続相手がループバックアドレス（`request.loopback?`：`127.0.0.0/8` または `::1`）で、`X-Forwarded-For` ヘッダーを持たない接続に対してだけです（同じホスト上のプロキシを通すとどのリクエストもループバックからのものになりますが、プロキシはこのヘッダーを付けます）。ヘッダーはページを閉じることはあっても、開くことはありません。それ以外の相手と、トークンがない・誤っているリクエストには 404 を返します。
-- トークン：`SetupController::SETUP_TOKEN`。プログラムの起動時に作られる 32 文字のランダムな 16 進文字列（`Cybertrain::Crypto.random_token(16)`）で、終了するまで保持されるので、再起動すると新しくなります。`GET /setup` は `?token=` でこれを受け取り、フォームは hidden フィールドで送り返し、どちらも定数時間で比較します（`Cybertrain::Crypto.secure_compare`）。アドレスのチェックが役に立たないときにページを閉じておくのが、このトークンです：同じホスト上で `X-Forwarded-For` を付けないプロキシ（`proxy_set_header X-Forwarded-For ...` のない nginx）を通すと、どのクライアントもループバックに見えますが、トークンを知っているのはサーバーのログを読める人だけです。リクエストログがトークンを繰り返すことはありません：`token` はデフォルトの `filter_parameters` に含まれるので、その行は `Started GET "/setup?token=[FILTERED]"` となります（`config.filter_parameters` や `CYBERTRAIN_FILTER_PARAMETERS` で `token` を外した場合を除きます）。ユーザーができた後は、このトークンでは何も開きません。
-- 別のホストにあるプロキシの後ろで初めて起動するときは、`BLOG_SETUP_OPEN=1`（`config/app.rb` で `c.setting_bool :setup_open` として宣言）でアドレスのチェックを外せます。それでも、ユーザーがいない間だけ、トークンがある場合だけです。ユーザーができたら設定を外してください。
-- ユーザーがいない間、サーバーは起動前に `[WARN] no user exists yet: run ./blog user EMAIL, or open /setup?token=<token> from this machine` をログに出します（`UserCommand.warn_if_no_user`。`Cybertrain::Main.server?(ARGV)` のときに `bin/blog.rb` から呼ばれます。この確認のためだけにデータベースに接続し、users テーブルがまだマイグレーションされていなければ何も出しません）。トークンが表示されるのはこの行だけです。
-
-生成される `test/authentication.rb` は両方を確かめます：トークンあり・なし（`SetupController.setup_token`）・誤ったトークンでの `/setup`、別のアドレスから（`client.peer_address = "203.0.113.7"`）、プロキシ経由、ユーザーがいる状態、スイッチを入れた状態、そして `Cybertrain::Main.run` でプロセス内から実行する `user` コマンドです。これはすべてアプリケーションのコードで、自由に変えられます（docs/design.md D29）。フレームワークが提供するのは、`request.loopback?`、`Main.command`、`Main.server?`、`Crypto.random_token` / `Crypto.secure_compare` と、テストクライアントの `peer_address` だけです。
-
-</details>
+サインインページはメールによるパスワードリセットにも、nav はアカウントページにもリンクしています。[認証](authentication.md) のガイドが、ロックアウト、「ログインしたままにする」、`--confirmable`、管理者ユーザーとあわせて説明しています。リセットのメールには SMTP の設定と、本番では `BLOG_BASE_URL` が必要です（[メール中のリンク](authentication.md#links-in-mails)）。
 
 > [!RULE] Spinel のルール：has_secure_password
 > ### `has_secure_password` は書き下される
 >
 > Spinel は実行時にメソッドを定義できないため、`User` モデルには `has_secure_password` が定義するはずのもの、つまり `password=`、`authenticate`、`User.authenticate_by(email_address:, password:)` がそのまま書かれています。パスワードは `Cybertrain::Password` でハッシュ化されます。Ruby で書かれた PBKDF2-HMAC-SHA256 で、既定は 10 万回反復（コンパイル後で約 0.2 秒）です。bcrypt を使うと、バイナリが C ライブラリをリンクする必要があるためです。コストは `config/app.rb` に `Cybertrain::Password.iterations = 600_000` と書いて引き上げられ、`User#authenticate` が各ユーザーのサインイン時にハッシュを作り直します。
-
-<details><summary>認証：フレームワークが提供するもの — ジェネレーターを組み立てている部品で、ジェネレーターなしでも使える</summary>
-
-上のジェネレーターは一連の流れを書き出しますが、それを組み立てている部品はフレームワークの API で、ジェネレーターなしでも使えます（API トークン、管理者パスワード、自分で書くサインインなどに）：
-
-<!-- list: points -->
-- **`Cybertrain::Password`**：`hash(plain)` は、自身のパラメーターを記録した（`$pbkdf2-sha256$i=100000$salt$key`）ソルト付きの PBKDF2-HMAC-SHA256 ダイジェストを作ります。`verify?(plain, digest)` は定数時間で照合し、形式の壊れたダイジェストでも例外を出しません。`needs_rehash?(digest)` は、ダイジェストが現在の `Password.iterations` より古いかどうかを返します。サインインのアクション向けには：
-  - `verify_serialized(plain, digest)` は、プロセスごとに一度に 1 つずつ実行する（Mutex）`verify?` です。ハッシュ 1 回に約 0.2 秒の CPU を使うので、試行が一斉に押し寄せるとすべてのワーカーが塞がってしまいますが、このメソッドを通せば試行は順番待ちになり、ほかのワーカーはページの配信を続けます。
-  - `dummy_digest` はランダムなパスワードのダイジェストで、プロセスごとに一度、現在のコストで作られます。アドレスが見つからないときはこれと照合してください。そうすれば、どのアドレスにアカウントがあるかが応答時間から分かりません：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。
-  - `session_key(digest)` は、パスワードダイジェストの `secret_key_base` による HMAC です。サインイン時にセッションに保存し、リクエストごとに `session_key_matches?(session[:password_key], user.password_digest)` で確かめます。パスワードを変えるとダイジェストが新しくなるので、それ以前に始まったセッションはすべてサインアウトされます。
-  - `iterations` は、`Cybertrain.config.test?` のときは `Password::TEST_ITERATIONS`（1,000）なので、テストスイートはユーザーごとに本番のコストを払わずに済みます。ダイジェストは自身の回数を記録しているので、ほかには何も変わりません。
-- **セッション**（`session[:key]`、暗号化された cookie）：`clear` はサインアウト時にセッションを空にします（CSRF トークンも含めて）。`config.session_absolute_max_age`（2 週間。`0` で無効）は、どれだけ頻繁に使われても、セッションの寿命全体に上限を設けます：cookie は最初に書かれた時刻を記録し、それより古い cookie は空のセッションとして読み込まれるので、コピーした cookie をいつまでも再利用することはできません。`session.restart_lifetime!` は（サインイン時に）カウントをやり直します。
-- **`Controller#local_path?(text)` と `safe_redirect_path(text, fallback)`**：リクエストから来たパス（`return_to` パラメーター、記憶しておいたページ）にリダイレクトするのは、それが `/` で始まり、`//` や `/\` では始まらず、表示可能な ASCII 文字だけからなり、2,048 バイト以下の場合だけです：`redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`。
-- コントローラークラスの **`skip_before_action(name, only:, except:)`** は、継承した `before_action` を一部のアクションで外します。生成される `allow_unauthenticated_access` は、これを 1 行で包んだものです。
-- **`cybertrain generate authentication`** は、アプリが所有するコードとして次のものを書き出します：`users` と `sessions` のマイグレーションとモデル、`SessionsController`、`RegistrationsController`、それらのビューとナビゲーションのパーシャル、`ApplicationController` のブロック（`resume_session`、`require_authentication`、`start_new_session_for`、`terminate_session`、`after_authentication_url`）、そして `test/authentication.rb`。このコードは、このリストのすべてを使います：`User.authenticate_by` は `verify_serialized` とダミーのダイジェストで照合し、`start_new_session_for` はパスワードのキーを保存して寿命をやり直し、`resume_session` はキーが一致しなくなった Session の行や `session_absolute_max_age` より古い行を終了させ、`after_authentication_url` は `safe_redirect_path` です。パスワードを変えたブラウザーをサインインしたままにするには、保存した後に新しいキーを格納します：`session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`。設計：[docs/design.md](../design.md) D25。
-
-</details>
 
 ### テストを更新する
 
@@ -973,7 +928,7 @@ end
 ```
 
 > [!NOTE]
-> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb` とこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。`examples/blog` はこのステップの手前までです。サインインの試行は Rails のジェネレーターと同じくレート制限されます：`SessionsController` が `rate_limit to: 10, within: 3 * 60, only: [:create]` を宣言しており、クライアントのアドレスごとに 3 分間で 10 回まで、それを超えるとウィンドウが閉じるまで "Try again later." とともにフォームに戻されます。カウントはアプリのデータベース（`Cybertrain::Cache`）にあるので、アプリのすべてのプロセスがまとめて数えます。リバースプロキシの背後では、[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定しない限り、訪問者は全員がプロキシのアドレスとして数えられます。パスワードリセットは生成されません：そのメールにはアプリの SMTP 設定（`Cybertrain::Mailer`、[メールを送る](external-services.md#sending-e-mail)）が必要で、ジェネレーターはそれを知り得ません。
+> [ステップ 16](#test) と同じく `cybertrain spin test` で実行します。`test/authentication.rb`、ジェネレーターが書いたほかのテスト、そしてこのテストは SQLite を使うので、スナップショットはコンパイル済みバイナリから作ります。サインインの試行は Rails のジェネレーターと同じくレート制限されます。クライアントのアドレスごとに 3 分間で 10 回までで、アプリのデータベースで数えるので、すべてのプロセスがまとめて数えます。リバースプロキシの背後では [信頼するプロキシ](requests.md#rate-limiting-and-the-client-address) を設定してください。`examples/blog` はこのステップを `--invite-only` で行い、`/admin` のページを管理者だけのものにしています。
 
 <!-- step 18 #attachments stage: 自分で書く · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## カバー画像を追加する
@@ -1171,6 +1126,8 @@ kamal deploy   # 以降のデプロイ
 
 <!-- list: next-list -->
 - [**`examples/blog`**](../../examples/blog) — このチュートリアルを発展させたアプリとそのテスト。
+- [**認証**](authentication.md) — パスワードリセット、確認、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザー。
+- [**国際化**](i18n.md) — 辞書、`t` と `l`、リクエストごとのロケール。
 - [**ガイド**](index.md) — トピックごとに 1 ページ：モデル、リクエスト、テンプレート、リアルタイム、バックグラウンド処理、テスト。
 - [**GitHub の CyberTrain**](https://github.com/saeki-mototsune/CyberTrain) — ソースコード、README、リリース。
 - [**API リファレンス**](site:api/index.html) — アプリが使うすべてのクラスとメソッドを、例とともに。

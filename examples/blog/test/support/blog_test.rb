@@ -38,18 +38,59 @@ module BlogTest
     app.boot
   end
 
-  # Every test starts from empty tables, an empty cache, no jobs (every
-  # row, not only the queued ones clear_enqueued_jobs removes; install!
-  # creates the table the first time), no BLOG_ADMIN_TOKEN and a new
-  # browser (no cookies).
+  # Every test starts from empty tables (users and their sessions too),
+  # an empty cache (the sign-in rate limit's counts with it), no jobs
+  # (every row, not only the queued ones clear_enqueued_jobs removes;
+  # install! creates the table the first time) and a new browser (no
+  # cookies).
   def self.reset
     Comment.all.delete_all
     Article.all.delete_all
+    Session.all.delete_all
+    User.all.delete_all
     Cybertrain::Cache.clear
     Cybertrain::Job.install!
     Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_jobs") }
-    ENV.delete("BLOG_ADMIN_TOKEN")
     nil
+  end
+
+  ADMIN_EMAIL = "admin@example.com"
+  WRITER_EMAIL = "writer@example.com"
+  PASSWORD = "s3cr3t-s3cr3t"
+
+  # A user with this address and PASSWORD; an admin (User#admin?, what
+  # `./blog user admin EMAIL` sets) when admin is true.
+  def self.user(email_address, admin)
+    user = User.new(email_address: email_address)
+    user.password = PASSWORD
+    user.admin = admin
+    user.save!
+    user
+  end
+
+  # Signs client in through the sign-in form, as a browser would, and
+  # answers the response to the form's POST (a 303 to the page that asked
+  # for it, or to /). The rate limit's counts are forgotten first: every
+  # test client has the same address.
+  def self.sign_in(client, email_address)
+    Cybertrain::RateLimit.reset_all!
+    client.get("/session/new")
+    client.post("/session", { "authenticity_token" => form_token(client),
+                              "email_address" => email_address,
+                              "password" => PASSWORD })
+  end
+
+  # A new admin user, signed in on client through the form.
+  def self.sign_in_admin(client)
+    user(ADMIN_EMAIL, true)
+    sign_in(client, ADMIN_EMAIL)
+  end
+
+  # A new user who is not an admin, signed in on client through the form:
+  # they may write articles, but the admin pages are not theirs.
+  def self.sign_in_writer(client)
+    user(WRITER_EMAIL, false)
+    sign_in(client, WRITER_EMAIL)
   end
 
   def self.article(title = "Hello Rails", body = "I am on Rails! This is my first article.")

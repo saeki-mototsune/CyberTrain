@@ -17,7 +17,7 @@ the real change keeps each subsystem's behaviour and moves it behind a hook.
   (`Array.new(0) { "" }`); one return type per method name across the whole
   program, including every override of a hook (spikes/NOTES.md rules 10, 34,
   41); never store a block that calls a method through a base-class-typed
-  receiver (rule 88). Rule 101 (Task 1) narrowed the hazard: such a block is
+  receiver (rule 88). Rule 104 (Task 1; 101 before the merge of main) narrowed the hazard: such a block is
   wrong when it is written inside a subclass's body before that hook's `def`.
   So a feature file defines its subclass first and registers its instance at
   the end of the file, outside the class body.
@@ -121,7 +121,7 @@ print it. Tests: `test/cli_new.rb`, `test/cli_generate_job.rb`,
   table, what a missing line does), the configuration or install page's
   mention of `bin/NAME.rb`, the tutorial where it shows `bin/blog.rb` if it
   does; four translations each.
-- docs/design.md: a new decision D79 (this spec in short; D71 was taken).
+- docs/design.md: a new decision D79 (this spec in short; D71 was taken; D81 after the merge of main, whose phase 4b took D79 and D80).
 - Measure: a scaffolded application with `cybertrain/core` against the same
   with `cybertrain` (analysis, full build, one controller edit with the dev
   loop), recorded in docs/performance-next.md.

@@ -87,7 +87,7 @@ otherwise), and its counts go through `number_with_delimiter`
 cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen (gen and db in debug mode)
 cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000`, or PORT=4000, to change it)
 cybertrain build       # dist/blog (views embedded) + dist/public/
-cybertrain spin test   # test/articles.rb, test/comments.rb, test/attachment_article_cover.rb against storage/test.sqlite3
+cybertrain spin test   # test/*.rb (the blog's, the generated authentication tests and test/attachment_article_cover.rb) against storage/test.sqlite3
 ```
 
 Run `cybertrain spin run gen` after changing the schema, the routes or a
@@ -114,13 +114,20 @@ cybertrain db migrate
   the callbacks that store and delete the file), `ArticlesController#cover`
   with its route (`GET /articles/1/cover`), one line each in `create` and
   `update`, the file input of the form (now `multipart: true`), the image on
-  the article page, and `test/attachment_article_cover.rb` with
-  `test/support/app_test.rb`.
-- **Who may upload and download.** The blog has no accounts: whoever may
-  write an article may attach a cover, and whoever may read it may fetch the
-  cover. `show` has code of its own, so the generator printed its warning
-  that `cover` does not run it; that code builds a comment and picks a
-  format, and refuses nobody.
+  the article page, and `test/attachment_article_cover.rb` (its client
+  signs in first, as the generator writes it for an application with
+  authentication).
+- **Who may upload and download.** Whoever may write an article (a
+  signed-in user) may attach, replace or remove its cover with `create` and
+  `update`, and whoever may read it (anyone) may fetch the cover:
+  `ArticlesController` lists `:cover` in `allow_unauthenticated_access`
+  beside `:index` and `:show`, by hand. `show` has code of its own, so the
+  generator printed its warning that `cover` does not run it and left
+  `:cover` out of that list; that code builds a comment and picks a format,
+  and refuses nobody, so the download is opened as `show` is.
+- **Its messages.** The two validation messages are in the blog's
+  dictionaries (`activerecord.errors.models.article.attributes.cover`), in
+  English and Japanese, with the attribute's name (`Cover`, `カバー画像`).
 - **What is accepted and how it is served.** PNG, JPEG, GIF and WebP up to
   2 MB, the type detected from the bytes; anything else is a 422 with the
   form again. The file goes out through `send_blob`, with `nosniff` and its
@@ -159,57 +166,113 @@ cybertrain db migrate
   (`Admin::ArticlesController` in `app/controllers/admin/`, views in
   `app/views/admin/articles/`, `admin_articles_path` and
   `admin_article_path(article)`), and the jobs page at `/admin/jobs`
-  (`admin.jobs_page "/jobs", before_action: :require_admin`), which lists
-  the jobs by state and retries, discards or deletes failed ones.
+  (`admin.jobs_page "/jobs", before_action: :require_admin,
+  skip_before_action: :require_authentication`), which lists the jobs by
+  state and retries, discards or deletes failed ones. Both are for admin
+  users only (see [Users and the admin](#users-and-the-admin)).
   `Admin::ArticlesController` does `include AdminGate`, a concern in
   `app/controllers/concerns/admin_gate.rb` whose `included do` block
-  declares `before_action :require_admin` and `helper_method :admin?`
-  (`spin run gen` splices it into the controller, `gen/concerns.rb`). The
-  methods themselves are `ApplicationController`'s, so the jobs page's
-  controller, which inherits from it, has the same gate; the article page
-  shows a "Manage articles" link when `admin?` is true. The blog has no
-  user accounts, so the gate is one shared secret, the environment
-  variable `BLOG_ADMIN_TOKEN`:
-
-  ```sh
-  export BLOG_ADMIN_TOKEN="$(openssl rand -hex 32)"
-  cybertrain server
-  curl -H "x-admin-token: $BLOG_ADMIN_TOKEN" http://127.0.0.1:3000/admin/articles
-  curl -H "x-admin-token: $BLOG_ADMIN_TOKEN" http://127.0.0.1:3000/admin/jobs
-  ```
-
-  The header opens the pages for reading only: the delete, retry and
-  discard buttons are forms, which need the CSRF token of a browser session. A
-  browser signs in at `/admin/login` with the token; the session then holds
-  an HMAC of it (never the token itself), so setting a new token signs out
-  every browser signed in with the old one. A request with neither the
-  header nor that session gets 404, as if the pages did not exist, and so
-  does every request to them and to `/admin/login` while
-  `BLOG_ADMIN_TOKEN` is unset or empty, which is the default: the pages stay
-  closed until you choose a token. On Kamal, add the variable to the
-  secrets in `config/deploy.yml`:
-
-  ```yaml
-  env:
-    secret:
-      - CYBERTRAIN_SECRET_KEY_BASE
-      - BLOG_ADMIN_TOKEN
-  ```
-
-  and this line to `.kamal/secrets`, then export the value where you run
-  `kamal deploy`:
-
-  ```sh
-  BLOG_ADMIN_TOKEN=$BLOG_ADMIN_TOKEN
-  ```
+  declares `before_action :require_admin` (`spin run gen` splices it into
+  the controller, `gen/concerns.rb`).
 
 `test/comments.rb` checks the enqueue with `assert_enqueued_with` and runs
 the job with `perform_enqueued_jobs` (`require "cybertrain/test/jobs"` in
-`test/support/blog_test.rb`, which also empties the cache and the jobs
-table before each test); `test/articles.rb` covers the cached count, the
-formats, the assets, the import map and the CSP nonce, the admin
-namespace, the gate and the login. [Background work](../../docs/guide/background-and-operations.md)
-in the guide covers jobs and scheduled tasks in full.
+`test/support/blog_test.rb`, which also empties the cache, the jobs
+table and the users before each test); `test/articles.rb` covers the
+cached count, the formats, the assets, the import map and the CSP nonce,
+the admin namespace and who may see it, and the two languages.
+[Background work](../../docs/guide/background-and-operations.md) in the
+guide covers jobs and scheduled tasks in full.
+
+## Users and the admin
+
+The blog has a single author, so its accounts come from `cybertrain
+generate authentication --invite-only`: no sign-up page, a sign-in page at
+`/session/new` (a "Sign in" link in every page's header), a password reset
+by mail (`/passwords/new`) and an account page (`/account/edit`). The
+generator wrote the `Authentication` concern
+(`app/controllers/concerns/authentication.rb`, included by
+`ApplicationController`), the `User` and `Session` models, their
+controllers and views (`app/views/sessions/`, `passwords/`, `accounts/`,
+`setup/`), the user command (`app/commands/user_command.rb`) and the tests
+`test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`,
+`passwords.rb` and `accounts.rb`.
+
+- **Who may do what.** Anyone reads the articles and posts comments
+  (`allow_unauthenticated_access only: [:index, :show]` in
+  `ArticlesController`, `only: [:create]` in `CommentsController`); writing,
+  editing and deleting articles, and deleting comments, need a signed-in
+  user, and a visitor is sent to sign in first (then back to the page
+  they asked for). Any signed-in writer may edit or delete any article,
+  not only their own: the blog keeps no author per article. The admin pages need a user who is an admin
+  (`User#admin?`): the concern's `require_admin` answers anyone else 404,
+  as if the pages did not exist. The jobs page names `require_admin` alone,
+  so a visitor gets that 404 too; `/admin/articles` sends a visitor to sign
+  in first. The article page shows a "Manage articles" link to an admin
+  (`ApplicationController#admin?`, a helper method).
+- **The first user.** While no user exists, the server prints a warning at
+  boot with a one-time link, `/setup?token=...`: open it on the machine the
+  server runs on (it answers only to a loopback connection; set
+  `BLOG_SETUP_OPEN=1` for a first run behind a proxy on another host, and
+  unset it afterwards) to create the first account and be signed in. Or
+  create it from the command line: `./blog user EMAIL` (the password is read
+  from standard input; `./blog user EMAIL PASSWORD` also works, but leaves
+  it in the shell history). In development, run the command through spin:
+
+  ```sh
+  cybertrain spin run blog -- user ann@example.com
+  ```
+
+- **The admin.** Neither way makes the user an admin. Make them one with
+  `./blog user admin EMAIL` (`./blog user unadmin EMAIL` takes it back; a
+  signed-in browser sees the change on its next request):
+
+  ```sh
+  cybertrain spin run blog -- user admin ann@example.com
+  ```
+
+  On Kamal, run the commands in the web container:
+  `kamal app exec --reuse "./blog user admin ann@example.com"`. More
+  writers are made the same way, with `./blog user EMAIL`; only the ones you
+  make admins see `/admin`.
+- **Mail.** The password reset mails a link (`deliver_later`, so the
+  process that runs jobs sends it) through the `CYBERTRAIN_SMTP_*` settings.
+  Set `BLOG_BASE_URL` (as in `https://blog.example.com`, `config/app.rb`)
+  wherever the blog is served: links in mails start with it, and in
+  production no reset mail is sent without it (or `CYBERTRAIN_HOSTS`).
+  `config/deploy.yml` has both, commented out, to fill in before a Kamal
+  deploy.
+
+## English and Japanese
+
+Every page is in English or Japanese (`c.i18n_available_locales = [:en,
+:ja]` in `config/app.rb`). The blog's own texts are in
+`config/locales/en.yml` and `ja.yml`, which `spin run gen` compiles into
+`gen/locales.rb`: the views look them up relative to themselves
+(`<%= t(".title") %>` in `articles/index.html.erb` reads
+`articles.index.title`), the controllers' flash messages relative to the
+action (`t(".created")` in `ArticlesController#create`), and the models'
+and attributes' names come from `activerecord.models` and
+`activerecord.attributes`. The validation messages ("can't be blank",
+"を入力してください"), the dates and numbers, and the sign-in pages' texts
+come from the framework's own dictionaries.
+
+`ApplicationController#set_locale` (a `before_action`) picks the language
+of each request:
+
+1. `?locale=en` or `?locale=ja`, which is then kept in a `locale` cookie
+   until the browser is closed (a browser-session cookie), so that the
+   plain links of the next pages stay in that language;
+2. else the `locale` cookie;
+3. else the browser's `Accept-Language` (`request.preferred_locale`);
+4. else English.
+
+A value that is not `en` or `ja`, in the parameter or in the cookie, is
+ignored (and never written to the cookie). The header of every page links
+to the same page in each language (`/articles/1?locale=ja`), and `<html
+lang>` says which one it is in. The tests run with
+`c.i18n_raise_on_missing`, so a key missing from both dictionaries fails
+them instead of showing "translation missing" on a page.
 
 ## Deploying with Kamal
 

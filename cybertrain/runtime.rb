@@ -26,6 +26,7 @@
 # of the first leaks into the second), and only one role runs at once
 # (Runtime.enter_role).
 require "cybertrain/assets"
+require "cybertrain/i18n"
 require "cybertrain/blob_store"
 require "cybertrain/logger"
 require "cybertrain/params"
@@ -52,6 +53,7 @@ module Cybertrain
     DEFAULT_UPLOAD_ROOT = "storage/uploads"
     DEFAULT_MAX_PAGE = 10_000
     DEFAULT_PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
+    DEFAULT_LOCALE = :en
 
     # Installs every process-shared setting from `config`, in the order
     # Application#boot always used. Every setting is written on every call,
@@ -76,6 +78,12 @@ module Cybertrain
       ParameterFilter.names = config.filter_parameters
       Response.default_permissions_policy = config.permissions_policy
       Cybertrain.logger.level = config.log_level == :none ? :error : config.log_level
+      # I18n cannot read Config either: the locales and how a missing
+      # translation answers.
+      I18n.default_locale = config.i18n_default_locale
+      I18n.available_locales = config.i18n_available_locales
+      I18n.raise_on_missing = config.i18n_raise_on_missing
+      I18n.mark_missing = !config.production?
       @applied += 1
       nil
     end
@@ -100,6 +108,10 @@ module Cybertrain
       ParameterFilter.names = ParameterFilter::DEFAULT_NAMES
       Response.default_permissions_policy = DEFAULT_PERMISSIONS_POLICY
       Cybertrain.logger.level = :info
+      I18n.default_locale = DEFAULT_LOCALE
+      I18n.available_locales = [DEFAULT_LOCALE]
+      I18n.raise_on_missing = false
+      I18n.mark_missing = true
       @role = ""
       nil
     end
@@ -114,7 +126,8 @@ module Cybertrain
 
     # The settings as one line, for a test to compare two states (and for a
     # bug report): every value {.apply} and Application.configure_views
-    # write, in a fixed order.
+    # write, in a fixed order, except I18n's four, which I18n answers
+    # itself (I18n.default_locale, I18n.available_locales).
     # @return [String]
     # @api public
     def self.describe

@@ -1,5 +1,5 @@
 ---
-source_sha256: 81830614213a647312f38c864c43c884f88bd2e50841a5fc690109f00ad33375
+source_sha256: e2436964caf0a56d6dfb3add97f10095bc76a730531eb299c1c87acf84c73bcf
 ---
 # Фоновая работа и эксплуатация
 
@@ -229,7 +229,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 ```ruby
 # config/routes.rb
 Cybertrain::Routes.draw do
-  jobs_page "/admin/jobs", before_action: :require_admin
+  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 end
 ```
 
@@ -247,9 +247,16 @@ end
 - Сгенерированный контроллер наследует `ApplicationController`, так что
   действуют макет, хелперы и защита CSRF приложения, а `before_action:`
   называет один из его методов: чтобы отказать, метод должен отрисовать
-  ответ или перенаправить (проверка входа в приложении или проверка токена,
-  как `require_admin` в examples/blog). Без `before_action:` страница открыта
-  любому посетителю, и `spin run gen` печатает об этом предупреждение.
+  ответ или перенаправить. `cybertrain generate authentication` рисует
+  строку выше с `require_admin` своего concern (404, если не вошёл
+  администратор; [Администраторы](authentication.md#admin-users-and-the-jobs-page)).
+  Без `before_action:` страница открыта любому посетителю, и `spin run gen`
+  печатает об этом предупреждение.
+- `skip_before_action:` называет один унаследованный before-колбэк, который
+  страница не выполняет. С `:require_authentication` посетителю отвечает
+  только `require_admin` — 404 вместо перенаправления на вход. gen
+  отвергает его без `before_action:` и когда он называет сам
+  `before_action:`.
 - Её кнопки — формы с токеном CSRF. Не включайте путь страницы в
   `csrf_exempt_prefixes`: под исключённым префиксом эти формы принимались бы
   с любого сайта.

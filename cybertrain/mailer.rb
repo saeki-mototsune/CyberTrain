@@ -908,3 +908,4 @@ module Cybertrain
 end
 
 require "cybertrain/mailer/message"
+require "cybertrain/mail_message"

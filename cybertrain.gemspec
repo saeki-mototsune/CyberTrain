@@ -39,6 +39,7 @@ Gem::Specification.new do |spec|
     "cybertrain/cli/new_app.rb",
     "cybertrain/cli/scaffold.rb",
     "cybertrain/cli/authentication.rb",
+    "cybertrain/cli/line_diff.rb",
     "cybertrain/cli/attachment.rb",
     "cybertrain/cli/helper.rb",
     "cybertrain/cli/component.rb",

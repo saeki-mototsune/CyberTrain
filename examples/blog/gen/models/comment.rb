@@ -222,6 +222,7 @@ class Comment < Cybertrain::Model
   def self.table_name = "comments"
   def self.column_names = ["id", "commenter", "body", "article_id", "created_at", "updated_at"]
   def model_name = "Comment"
+  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("comment", attr)
 
   attr_accessor :commenter, :body, :article_id, :created_at, :updated_at
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: cf5a8c6dd814a8f7d284bf9bf02a6cca610f28753925229a7408b436c81f6011
+source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
 ---
 # Configuration
 
@@ -55,6 +55,11 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`&nbsp;; un secret, jamais journalisé, jamais dans la bannière de démarrage ni dans un message d’erreur |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`&nbsp;: l’expéditeur qu’utilise `Mailer.deliver` quand `from:` n’est pas fourni |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`&nbsp;: la locale dans laquelle commence chaque requête, un nom comme `ja` ou `pt-BR` (voir [Locales](#locales))&nbsp;; toute autre valeur arrête le démarrage |
+| `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`&nbsp;: mauvais mots de passe avant qu’un compte soit verrouillé&nbsp;; `0` désactive le verrouillage (voir [Réglages de l’authentification](#authentication-settings)) |
+| `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`&nbsp;: durée d’un verrouillage en secondes&nbsp;; au moins 1 |
+| `CYBERTRAIN_AUTH_REMEMBER_FOR` | `auth_remember_for` | `2592000` (30 jours)&nbsp;: durée en secondes d’une connexion «&nbsp;rester connecté&nbsp;»&nbsp;; au moins 1 |
+| `CYBERTRAIN_AUTH_IDLE_TIMEOUT` | `auth_idle_timeout` | `604800` (7 jours)&nbsp;: secondes sans requête après lesquelles une connexion prend fin&nbsp;; `0` le désactive |
 
 N’utilisez `None` (avec `CYBERTRAIN_SESSION_PARTITIONED=1`) que pour une
 application affichée dans un cadre d’un autre site&nbsp;; le navigateur doit
@@ -238,6 +243,23 @@ forme `[FILTERED]`. Il n’y a pas d’accesseur `Cybertrain.config.base_url`&nb
 Spinel n’a pas de `define_method`, les lecteurs sont donc des méthodes typées
 qui prennent le nom.
 
+### Locales
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.i18n_default_locale = :en               # ou CYBERTRAIN_I18N_DEFAULT_LOCALE
+  c.i18n_available_locales = [:en, :ja]
+  c.i18n_raise_on_missing = true if c.test?
+end
+```
+
+`i18n_available_locales` (`[]`, la seule locale par défaut) liste les locales qu’acceptent `I18n.locale=` et `I18n.locale_available?`&nbsp;; le démarrage refuse une entrée qui n’est pas un nom de locale, et une locale par défaut absente d’une liste non vide. `i18n_raise_on_missing` (`false`) fait lever `I18n::MissingTranslationData` à une traduction manquante au lieu de répondre un marqueur (développement et test) ou la clé rendue lisible (production). Les dictionnaires et la locale par requête sont dans [Internationalisation](i18n.md).
+
+### Réglages de l’authentification
+
+Le code qu’écrit `cybertrain generate authentication` lit quatre réglages (les variables sont dans le tableau ci-dessus)&nbsp;: `auth_lockout_attempts` (10) et `auth_lockout_period` (3600&nbsp;s) pour le [verrouillage](authentication.md#lockout), `auth_remember_for` (30 jours) pour une connexion «&nbsp;rester connecté&nbsp;», et `auth_idle_timeout` (7 jours) pour une connexion inutilisée ([Rester connecté](authentication.md#remember-me-and-session-limits))&nbsp;; une connexion non mémorisée dure `session_absolute_max_age` (deux semaines). Une valeur hors limites arrête le démarrage. Le générateur déclare aussi le réglage d’application `base_url`, issu de `<APP>_BASE_URL`, par lequel commencent les liens des courriels&nbsp;; définissez-le, en https, partout où l’application est servie ([Liens dans les courriels](authentication.md#links-in-mails)).
+
 ## Fuseaux horaires
 
 Spinel n’embarque pas de base de données tz, et définir `ENV["TZ"]` pour
@@ -277,5 +299,5 @@ plus tôt. `find` n’accepte qu’un nom relatif composé de `A-Za-z0-9_+-./` s
 segment vide, `.` ou `..`, de sorte qu’un nom de fuseau tiré du profil d’un
 utilisateur ne peut pas atteindre un fichier hors du répertoire des
 fuseaux&nbsp;; un fuseau inconnu ou mal formé n’est pas mis en cache, et `"UTC"`
-n’a besoin d’aucun fichier. Les helpers de formatage pour les templates
-(`l(time, zone:)`) n’existent pas encore.
+n’a besoin d’aucun fichier. `l` formate une heure dans la locale de la requête
+([Dates et heures](i18n.md#dates-and-times)) mais ne prend pas encore de `zone:`.

@@ -1,5 +1,5 @@
 ---
-source_sha256: ad3169ddff720e3527105667bef185f816a9c1eeaf8f74207edb0ff4cf53d242
+source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
 ---
 # モデルとデータベース
 
@@ -182,6 +182,7 @@ done
 - json か暗号化されたカラムへの `where` は `ArgumentError` を出します。
 - `distinct` にすると、カラムを読むメソッドは各値を一度だけ返し、集計は重複のない入力を読みます（`SUM(DISTINCT x)`）。`count` と `to_a` は変わりません。どの行にもそれぞれの id があるからです。
 - `update_all(hash)` は `save` が保存するのと同じく変換と丸めを行い（ただし数値、真偽値、日付、json のカラムでは `""` は NULL になります。`save` なら 0 / false / `{}` を保存します）、`updated_at` には触れず、コールバックも実行しません。`destroy_all` は各レコードを、コールバックと `dependent:` も含めて destroy します。
+- `update_all_sql(sql, binds = [])` は SQL の `SET` リストで列を設定します。行から計算する値に使います（`User.where(id: id).update_all_sql("failed_attempts = failed_attempts + ?", [1])`）。どの式も元の行を読み、`?` はバインドを順に取り、`update_all` と同じくモデルを読み込まず、コールバックも実行しません。
 - `find_each` は id の順に一括で読み進め、Rails と同じく、リレーションの並び順、limit、offset は使いません。
 - 絞り込んだリレーションの `find_or_create_by` は、渡された Hash だけからレコードを作ります。Rails はリレーションの等値条件も使います。新しいレコードに要る属性はすべて渡してください。
 - `update_columns` は値を代入してから、そのカラムだけの UPDATE を一回実行します：バリデーションもコールバックもなく、`updated_at` も変わりません。
@@ -338,7 +339,7 @@ class Article
 end
 ```
 
-メッセージは Rails の英語のデフォルトです：「can't be blank」、「is too short (minimum is 3 characters)」、「is the wrong length (should be 5 characters)」、「is not included in the list」、「is reserved」、「is invalid」、「is not a number」、「must be an integer」、「must be greater than or equal to 0」、「has already been taken」。`message:` は行の上でもルールの Hash の中でも、メッセージを置き換えます。Rails の単数形（「1 character」）はなく、上限 1 は「1 characters」になります。
+メッセージは Rails のデフォルトで、リクエストのロケールの同梱の辞書から来ます：英語では「can't be blank」、「is too short (minimum is 3 characters)」、「is the wrong length (should be 5 characters)」、「is not included in the list」、「is reserved」、「is invalid」、「is not a number」、「must be an integer」、「must be greater than or equal to 0」、「has already been taken」、日本語では「を入力してください」などです。上限 1 は「1 character」になります。`message:` は行の上でもルールの Hash の中でも、メッセージを置き換えます。`config/locales/` で、すべてのモデルについて、または 1 つのモデルについて置き換えることもできます（[モデルとバリデーションメッセージ](i18n.md#models-and-validation-messages)）。`errors.full_messages` は各属性を `Post.human_attribute_name(:title)`（「Title」。`author_id` は「Author」）で呼び、`:base` のメッセージは単独で書きます。
 
 - `length` は `minimum`、`maximum`、`is`、`in`（Integer の Range）を取ります。
 - `inclusion` と `exclusion` は Array か Integer の Range を取ります（Spinel はほかの Range を作れません）。Rails と同じく、`1...5` は float カラムの 4.5 を通します。

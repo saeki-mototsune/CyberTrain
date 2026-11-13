@@ -1,5 +1,5 @@
 ---
-source_sha256: f07cc847b2cbe37adcf2c0787d8d3bcd819c938ac8f621efc9628f5f4c446f27
+source_sha256: 768ecf4448f20d02706d0e7f7622ea1cf8e3a178c2b07ac585bb190e8b1bdf5d
 ---
 # Requêtes
 
@@ -333,3 +333,7 @@ Ce qui change pour une application écrite pour 0.4 (la liste complète est la s
 - Tous les ETag changent une fois (ils portent désormais le format de la requête et une empreinte du build), une réponse négociée par `Accept` envoie `Vary: Accept`, et le repli html couvre tout `Accept` qui liste `text/html` ou `*/*`. Une requête qui peut se replier sur html (`application/json, text/html`) a son propre ETag, distinct de celui d’une requête pour ce seul format&nbsp;; `text/html;q=0` dans `Accept` ne reçoit pas le repli html (406 quand l’action n’a que du html), même à côté de `*/*`&nbsp;; et `If-None-Match: *` reçoit une 304 d’une réponse validée par `last_modified:` seul.
 - `permit` et `expect` lèvent `ArgumentError` pour un filtre qui n’est pas un Array&nbsp;; un `layout` qui nomme un layout absent lève `MissingTemplate` (le layout `application` par défaut reste facultatif)&nbsp;; un cookie du jar de plus de 4096 octets lève `Session::CookieOverflow`.
 - `public/style.css` continue de fonctionner&nbsp;; le déplacer dans `app/assets/stylesheets/` est facultatif ([Assets](assets.md#moving-publicstylecss)).
+- Les messages de validation viennent du dictionnaire fourni ([Internationalisation](i18n.md#models-and-validation-messages)), avec le même texte anglais sauf en trois points&nbsp;: un message sur `:base` n’est plus préfixé par "Base", un attribut qui se termine par `_id` est nommé sans "id" ("Article can't be blank", et non "Article id can't be blank"), et une limite de longueur de 1 donne "1 character". Les tests qui comparent ces messages changent.
+- `time_tag` sans `format:`, ou avec un nom de format, formate par `I18n.l` (le même texte anglais qu’avant dans une page en anglais).
+- gen écrit `gen/locales.rb` (vide sans `config/locales/`) et charge `app/mailers/**/*.rb`&nbsp;; `cybertrain new` écrit `config/locales/en.yml`, qu’une application plus ancienne peut ajouter.
+- `allow_unauthenticated_access` est désormais une méthode du framework&nbsp;; celle que le générateur de 0.4 a écrite dans `ApplicationController` fonctionne toujours et l’emporte. Relancer `cybertrain generate authentication` ajoute la réinitialisation du mot de passe, le verrouillage, «&nbsp;rester connecté&nbsp;», la page de compte et les administrateurs, et affiche des diffs pour les fichiers que 0.4 a écrits ([Mettre à jour depuis 0.4](authentication.md#upgrading-from-04)).

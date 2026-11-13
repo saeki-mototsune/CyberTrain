@@ -1,0 +1,792 @@
+exist db/migrate/20260925120000_create_users.rb
+exist db/migrate/20260925120001_create_sessions.rb
+create db/migrate/20260925120002_add_authentication_columns.rb
+manual  app/models/user.rb (diff below)
+manual  app/models/session.rb (diff below)
+create app/controllers/concerns/authentication.rb
+manual  app/controllers/sessions_controller.rb (diff below)
+manual  app/controllers/registrations_controller.rb (diff below)
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+manual  app/views/sessions/new.html.erb (diff below)
+manual  app/views/sessions/_nav.html.erb (diff below)
+manual  app/views/registrations/new.html.erb (diff below)
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+manual  test/support/app_test.rb (diff below)
+create test/support/authentication_helpers.rb
+manual  test/authentication.rb (diff below)
+create test/admin.rb
+create test/remember_me.rb
+create test/lockout.rb
+create test/passwords.rb
+create test/accounts.rb
+manual  app/controllers/application_controller.rb (diff below)
+route resources :passwords, resource :account
+manual  config/routes.rb (diff below)
+identical app/views/layouts/application.html.erb (nav already rendered)
+insert bin/shop.rb (./shop user)
+insert config/app.rb (SHOP_BASE_URL)
+identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+manual  app/models/user.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/models/user.rb
++++ b/app/models/user.rb
+@@ -1,6 +1,7 @@
+-# Columns (email_address, password_digest), the Cybertrain::Model
+-# superclass and `sessions` (from the sessions table's foreign key) come
+-# from gen/models/user.rb, generated from db/schema.rb by `spin run gen`.
++# Columns (email_address, password_digest, admin, failed_attempts,
++# locked_until), the Cybertrain::Model superclass and `sessions` (from
++# the sessions table's foreign key) come from gen/models/user.rb,
++# generated from db/schema.rb by `spin run gen`.
+ #
+ # Written by `cybertrain generate authentication`; it is yours to change.
+ # The password is hashed by Cybertrain::Password (PBKDF2-HMAC-SHA256) into
+@@ -13,11 +14,13 @@
+ 
+   validates :email_address, presence: true
+ 
+-  # Normalizes the address, refuses a taken one, and checks the password
+-  # on a new record or whenever one was given. Errors added here make
+-  # the record invalid (Cybertrain::Model.before_validation).
++  # Normalizes the address, refuses one that is not a single address
++  # or is taken, and checks the password on a new record or whenever
++  # one was given. Errors added here make the record invalid
++  # (Cybertrain::Model.before_validation).
+   before_validation do |user|
+     user.email_address = User.normalize_email_address(user.email_address)
++    user.validate_email_address_format
+     user.validate_email_address_taken
+     user.validate_password
+   end
+@@ -28,18 +31,71 @@
+     value.to_s.strip.downcase
+   end
+ 
++  # Whether value is one address: exactly one @, with text before and
++  # after it, and no comma, whitespace, angle bracket or control
++  # character. Cybertrain::Mailer reads "a@x.example,b@y.example" as two
++  # recipients, so without this an account could hold two mailboxes and
++  # have its mails (a confirmation link among them) sent to both. It
++  # must also be an address the mailer sends to
++  # (Cybertrain::Mailer.address_problem: plain ASCII, none of
++  # ( ) [ ] ; : \ or ", within its length limits), so no account is
++  # saved that could never be mailed. Some addresses the mail
++  # standards allow (a quoted local part with a space or a comma in
++  # it) are refused too.
++  def self.email_address_format?(value)
++    s = value.to_s
++    n = s.bytesize
++    at = -1
++    i = 0
++    while i < n
++      b = s.getbyte(i)
++      return false if b <= 32 || b == 127 || b == 44 || b == 60 || b == 62
++      if b == 64
++        return false if at >= 0
++
++        at = i
++      end
++      i += 1
++    end
++    at > 0 && at < n - 1 && Cybertrain::Mailer.address_problem(s).empty?
++  end
++
+   # The user with this address and password, or nil. A missing address
+-  # costs a verification too (against Cybertrain::Password.dummy_digest),
+-  # so the response time does not say which of the two was wrong.
++  # and a locked account (locked?, while lockout is on) cost a password
++  # verification too, against Cybertrain::Password.dummy_digest, and
++  # answer nil whatever the password, as a wrong one does: the sign-in
++  # form shows them all the wrong-password message. A wrong password
++  # on an existing, unlocked account also writes its row once
++  # (count_failed_attempt!), as Devise's lockable does; that one write
++  # is the timing difference left between it and the other two, and it
++  # is accepted. The right password clears the count.
+   def self.authenticate_by(email_address:, password:)
+     user = User.find_by(email_address: User.normalize_email_address(email_address))
+-    if user.nil?
++    if user.nil? || (Cybertrain.config.auth_lockout_attempts > 0 && user.locked?)
+       Cybertrain::Password.verify_serialized(password.to_s, Cybertrain::Password.dummy_digest)
+       return nil
+     end
+-    user.authenticate(password) ? user : nil
++    unless user.authenticate(password)
++      user.count_failed_attempt!
++      return nil
++    end
++    user.clear_failed_attempts!
++    user
+   end
+ 
++  # The user a password_reset_token was made for, while it is valid against
++  # that user's password and address now (password_reset_binding); nil for
++  # any other token (a wrong, expired or spent one, or one made for another
++  # user).
++  def self.find_by_password_reset_token(token)
++    text = token.to_s
++    user = User.find_by(id: Cybertrain::Token.id_from(text))
++    return nil if user.nil?
++    return nil unless Cybertrain::Token.valid?(text, "password_reset", user.password_reset_binding)
++
++    user
++  end
++
+   # The plain-text password given to `password=` in this request ("" when
+   # none was), for the validations; never stored.
+   def password
+@@ -81,27 +137,98 @@
+     true
+   end
+ 
++  # Whether this user may see the admin pages (the Authentication
++  # concern's require_admin): `./shop user admin EMAIL` sets it.
++  def admin? = admin
++
++  # Whether wrong passwords have locked the account for now
++  # (count_failed_attempt!): authenticate_by refuses it until then,
++  # unless lockout is off (auth_lockout_attempts 0), which also stops
++  # enforcing a lock made before.
++  def locked? = !locked_until.nil? && locked_until > Time.now
++
++  # A wrong password: one more failed attempt, counted by the database
++  # in one UPDATE that reads the row as it is (so sign-ins at the same
++  # time all count). The attempt that reaches
++  # Cybertrain.config.auth_lockout_attempts (10; 0 never locks) locks
++  # the account for auth_lockout_period seconds (an hour) and starts
++  # the count again, in the same statement.
++  def count_failed_attempt!
++    limit = Cybertrain.config.auth_lockout_attempts
++    return nil if limit <= 0
++
++    count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
++    lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
++    ends = Time.now + Cybertrain.config.auth_lockout_period
++    User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
++    nil
++  end
++
++  # No failed attempts and no lock: a successful sign-in calls it, and
++  # so do `./shop user EMAIL PASSWORD` and a password reset
++  # (PasswordsController#update). Writes only when there is something
++  # to clear.
++  def clear_failed_attempts!
++    return nil if failed_attempts == 0 && locked_until.nil?
++
++    update_columns(failed_attempts: 0, locked_until: nil)
++    nil
++  end
++
++  # The token of a password reset link (PasswordsController): signed,
++  # valid for 15 minutes from now, and bound to password_reset_binding,
++  # so it stops working once the password or the address changes
++  # (Cybertrain::Token).
++  def password_reset_token(now = Time.now.to_i)
++    Cybertrain::Token.issue("password_reset", id, 15 * 60, password_reset_binding, now)
++  end
++
++  # What a password reset token is bound to: the password and the address,
++  # so a new password or a new address ends every link sent before (the
++  # old address's mailbox keeps no way into the account).
++  def password_reset_binding
++    digest = password_digest.to_s
++    address = email_address.to_s
++    "#{digest}:#{address}"
++  end
++
+   # Public so the before_validation block above (which receives the
+-  # record, not an implicit self) can call them.
++  # record, not an implicit self) can call them. Their messages come
++  # from the dictionary of the current locale, as a validator's do.
+ 
++  # An address saved before this check existed is left as it is, so
++  # that account can still be reset and signed in to; a new or changed
++  # one must be a single address (User.email_address_format?).
++  def validate_email_address_format
++    address = email_address.to_s
++    return nil if address.empty? || User.email_address_format?(address)
++    return nil if persisted? && User.where(id: id, email_address: address).exists?
++
++    errors.add(:email_address, I18n.error_message("user", :email_address, :invalid))
++    nil
++  end
++
+   def validate_email_address_taken
+     address = email_address
+     return nil if address.nil? || address.empty?
+ 
+     taken = User.where(email_address: address).where_sql("id != ?", [id]).exists?
+-    errors.add(:email_address, "has already been taken") if taken
++    errors.add(:email_address, I18n.error_message("user", :email_address, :taken)) if taken
+     nil
+   end
+ 
+   def validate_password
+     given = password
+     if password_digest.to_s.empty?
+-      errors.add(:password, "can't be blank")
++      errors.add(:password, I18n.error_message("user", :password, :blank))
+     elsif !given.empty? && given.size < MIN_PASSWORD_LENGTH
+-      errors.add(:password, "is too short (minimum is #{MIN_PASSWORD_LENGTH} characters)")
++      errors.add(:password, I18n.error_message("user", :password, :too_short, { count: MIN_PASSWORD_LENGTH }))
+     end
+     confirmation = @password_confirmation
+-    errors.add(:password_confirmation, "doesn't match Password") if !confirmation.nil? && confirmation != given
++    if !confirmation.nil? && confirmation != given
++      attribute = I18n.human_attribute_name("user", :password)
++      errors.add(:password_confirmation, I18n.error_message("user", :password_confirmation, :confirmation, { attribute: attribute }))
++    end
+     nil
+   end
+ end
+manual  app/models/session.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/models/session.rb
++++ b/app/models/session.rb
+@@ -4,7 +4,7 @@
+ # deleting their rows. Columns, the Cybertrain::Model superclass and
+ # `user` (from the user_id foreign key) come from gen/models/session.rb.
+ #
+-# Not to be confused with Cybertrain::Session, the signed cookie that
++# Not to be confused with Cybertrain::Session, the encrypted cookie that
+ # holds this row's id as `session[:session_id]`.
+ class Session
+ end
+manual  app/controllers/sessions_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/controllers/sessions_controller.rb
++++ b/app/controllers/sessions_controller.rb
+@@ -2,11 +2,10 @@
+ class SessionsController < ApplicationController
+   allow_unauthenticated_access only: [:new, :create]
+   # Ten sign-in attempts per client address every three minutes, then
+-  # back to the form until the window closes. Behind a reverse proxy on
+-  # this host, set CYBERTRAIN_TRUSTED_PROXY=1 so that each visitor is
+-  # counted rather than the proxy.
+-  rate_limit to: 10, within: 3 * 60, only: [:create],
+-             redirect_to: "/session/new", alert: "Try again later."
++  # back to the form (rate_limited) until the window closes. Behind a
++  # reverse proxy on this host, set CYBERTRAIN_TRUSTED_PROXY=1 so that
++  # each visitor is counted rather than the proxy.
++  rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
+ 
+   # GET /session/new
+   # (named new_action: a `new` method would shadow SessionsController.new)
+@@ -17,10 +16,10 @@
+   def create
+     user = User.authenticate_by(email_address: params[:email_address].to_s, password: params[:password].to_s)
+     if user.nil?
+-      flash[:alert] = "Try another email address or password."
++      flash[:alert] = t(".invalid")
+       redirect_to new_session_path, status: :see_other
+     else
+-      start_new_session_for(user)
++      start_new_session_for(user, remember: params[:remember_me] == "1")
+       redirect_to after_authentication_url, status: :see_other
+     end
+   end
+@@ -28,7 +27,18 @@
+   # DELETE /session
+   def destroy
+     terminate_session
+-    flash[:notice] = "You have been signed out."
++    flash[:notice] = t(".signed_out")
+     redirect_to new_session_path, status: :see_other
++  end
++
++  private
++
++  # What a client past the rate limit gets: the form again, with a
++  # message. Not an action, so its key is written in full (the
++  # action it answers for is create).
++  def rate_limited
++    flash[:alert] = t("sessions.create.rate_limited")
++    redirect_to new_session_path, status: :see_other
++    nil
+   end
+ end
+manual  app/controllers/registrations_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/controllers/registrations_controller.rb
++++ b/app/controllers/registrations_controller.rb
+@@ -4,6 +4,10 @@
+ # Delete it (and its routes) for an invitation-only application.
+ class RegistrationsController < ApplicationController
+   allow_unauthenticated_access only: [:new, :create]
++  # Ten sign-ups per client address every three minutes, as for signing
++  # in: each one hashes a password and may mail a link, and each
++  # "already been taken" says an address is registered.
++  rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
+ 
+   # GET /sign_up
+   def new_action
+@@ -18,10 +22,20 @@
+     @user.password_confirmation = fields[:password_confirmation].to_s
+     if @user.save
+       start_new_session_for(@user)
+-      flash[:notice] = "Welcome! You have signed up."
++      flash[:notice] = t(".welcome")
+       redirect_to after_authentication_url, status: :see_other
+     else
+       render :new, status: :unprocessable_entity
+     end
++  end
++
++  private
++
++  # What a client past the rate limit gets: the form again, with a
++  # message (the key is create's).
++  def rate_limited
++    flash[:alert] = t("registrations.create.rate_limited")
++    redirect_to sign_up_path, status: :see_other
++    nil
+   end
+ end
+manual  app/views/sessions/new.html.erb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/views/sessions/new.html.erb
++++ b/app/views/sessions/new.html.erb
+@@ -1,19 +1,25 @@
+-<h1>Sign in</h1>
++<h1><%= t(".title") %></h1>
+ 
+ <%= form_with(url: session_path) do |f| %>
+   <div class="field">
+-    <%= f.label :email_address %>
++    <%= f.label :email_address, t(".email_address") %>
+     <%= f.email_field :email_address, autocomplete: "username", autofocus: true %>
+   </div>
+ 
+   <div class="field">
+-    <%= f.label :password %>
++    <%= f.label :password, t(".password") %>
+     <%= f.password_field :password, autocomplete: "current-password" %>
+   </div>
+ 
++  <div class="field">
++    <%= check_box_tag :remember_me %>
++    <%= label_tag :remember_me, t(".remember_me") %>
++  </div>
++
+   <div class="actions">
+-    <%= f.submit "Sign in" %>
++    <%= f.submit t(".submit") %>
+   </div>
+ <% end %>
+ 
+-<p><%= link_to "Sign up", sign_up_path %></p>
++<p><%= link_to t(".forgot_password"), new_password_path %></p>
++<p><%= link_to t(".sign_up"), sign_up_path %></p>
+manual  app/views/sessions/_nav.html.erb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/views/sessions/_nav.html.erb
++++ b/app/views/sessions/_nav.html.erb
+@@ -2,8 +2,9 @@
+ <nav class="session">
+   <% if @current_user %>
+     <span><%= @current_user.email_address %></span>
+-    <%= button_to "Sign out", session_path, method: :delete %>
++    <%= link_to t(".account"), edit_account_path %>
++    <%= button_to t(".sign_out"), session_path, method: :delete %>
+   <% else %>
+-    <%= link_to "Sign in", new_session_path %>
++    <%= link_to t(".sign_in"), new_session_path %>
+   <% end %>
+ </nav>
+manual  app/views/registrations/new.html.erb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/views/registrations/new.html.erb
++++ b/app/views/registrations/new.html.erb
+@@ -1,9 +1,9 @@
+-<h1>Sign up</h1>
++<h1><%= t(".title") %></h1>
+ 
+ <%= form_with(model: @user, url: sign_up_path) do |f| %>
+   <% if @user.errors.any? %>
+     <div id="error_explanation">
+-      <h2><%= pluralize(@user.errors.count, "error") %> prohibited this account from being created:</h2>
++      <h2><%= t("errors.template.header", count: @user.errors.count, model: t(".model")) %></h2>
+       <ul>
+         <% @user.errors.full_messages.each do |message| %>
+           <li><%= message %></li>
+@@ -28,8 +28,8 @@
+   </div>
+ 
+   <div class="actions">
+-    <%= f.submit "Sign up" %>
++    <%= f.submit t(".submit") %>
+   </div>
+ <% end %>
+ 
+-<p><%= link_to "Sign in", new_session_path %></p>
++<p><%= link_to t(".sign_in"), new_session_path %></p>
+manual  test/support/app_test.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/test/support/app_test.rb
++++ b/test/support/app_test.rb
+@@ -5,6 +5,7 @@
+ 
+ require "cybertrain"
+ require "cybertrain/test/client"
++require "cybertrain/test/jobs"
+ require_relative "../../config/app"
+ require_relative "../../gen/app"
+ require_relative "../../gen/migrations"
+manual  test/authentication.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/test/authentication.rb
++++ b/test/authentication.rb
+@@ -67,6 +67,66 @@
+   assert_includes res.body, "<li>Password can&#39;t be blank</li>"
+ end
+ 
++# One address only: Cybertrain::Mailer reads a comma as a second
++# recipient, so the account would have two mailboxes. Nor any address
++# the mailer would refuse (Cybertrain::Mailer.address_problem: a
++# Unicode space or control character, ";", "(" and the like), which
++# could never be sent its mails.
++test "POST /sign_up refuses an address list or a malformed address" do
++  client = new_client
++  client.get("/sign_up")
++  ["ann@example.com,eve@evil.example", "ann@example.com eve@evil.example", "<ann@example.com>", "ann", "@example.com", "ann@", "a@b@example.com",
++   "ann@example.com\u00A0", "ann\u3000@example.com", "ann\u0085@example.com", "ann@exa\u2028mple.com", "ann;x@example.com", "ann(x)@example.com"].each do |address|
++    Cybertrain::RateLimit.reset_all!
++    res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
++                                    "user[email_address]" => address,
++                                    "user[password]" => "s3cr3t-s3cr3t",
++                                    "user[password_confirmation]" => "s3cr3t-s3cr3t" })
++    assert_response res, :unprocessable_entity
++    assert_includes res.body, "<li>Email address is invalid</li>"
++  end
++  assert_equal 0, User.count
++  assert_equal 0, Session.count
++  # A plus-address is one address the mailer sends to.
++  Cybertrain::RateLimit.reset_all!
++  client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
++                            "user[email_address]" => "ann+news@example.com",
++                            "user[password]" => "s3cr3t-s3cr3t",
++                            "user[password_confirmation]" => "s3cr3t-s3cr3t" })
++  assert_equal 1, User.count
++  assert_equal "ann+news@example.com", User.first.email_address
++end
++
++# RegistrationsController's rate_limit: ten sign-ups per client
++# address, then the form again until the window closes (the cache's
++# clock held still, as in POST /session's test). The ten send no
++# password, so none of them costs a hash.
++test "POST /sign_up past ten requests is refused for a while" do
++  client = new_client
++  Cybertrain::RateLimit.reset_all!
++  Cybertrain::Cache.clock = -> { 2_000_000_000 }
++  begin
++    client.get("/sign_up")
++    token = AppTest.form_token(client)
++    empty = { "authenticity_token" => token, "user[email_address]" => "nobody@example.com",
++              "user[password]" => "", "user[password_confirmation]" => "" }
++    right = { "authenticity_token" => token, "user[email_address]" => "ann@example.com",
++              "user[password]" => "s3cr3t-s3cr3t", "user[password_confirmation]" => "s3cr3t-s3cr3t" }
++    10.times { client.post("/sign_up", empty) }
++    res = client.post("/sign_up", right)
++    assert_redirected_to res, "/sign_up"
++    assert_equal 0, User.count
++    res = client.follow_redirect!
++    assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
++    Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
++    client.post("/sign_up", right)
++    assert_equal 1, User.count
++  ensure
++    # The system clock again, even when an assertion fails.
++    Cybertrain::Cache.clock = -> { Time.now.to_i }
++  end
++end
++
+ test "an email address can be registered once" do
+   client = new_client
+   AppTest.user("ann@example.com")
+@@ -80,6 +140,54 @@
+   assert_equal 1, User.count
+ end
+ 
++# User.email_address_format?: one address, whatever the mail
++# standards allow beyond that.
++test "an address is one address: one @, nothing around it that splits it" do
++  ["ann@example.com", "ann+news@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
++    assert User.email_address_format?(address), address
++  end
++  ["", "ann", "@example.com", "ann@", "a@b@example.com", "ann@example.com,eve@evil.example",
++   "ann@example.com eve@evil.example", "ann @example.com", "<ann@example.com>", "Ann <ann@example.com>",
++   "ann@example.com\n", "ann@exa\tmple.com", "\"ann lee\"@example.com",
++   "ann@example.com\u00A0", "ann\u3000@example.com", "ann\u0085@example.com", "ann@exa\u2028mple.com",
++   "ann;x@example.com", "ann(x)@example.com", "ann@[example].com", "ann:x@example.com"].each do |address|
++    refute User.email_address_format?(address), address
++  end
++end
++
++# An address saved before the check existed (an older release's) is not
++# checked again: its owner can still reset the password.
++test "an address saved before the format check still saves" do
++  new_client
++  ann = AppTest.user
++  ann.update_columns(email_address: "ann@example.com,old@example.com")
++  kept = User.find(ann.id)
++  kept.password = "an0ther-s3cr3t"
++  assert kept.save
++  kept.email_address = "ann@example.com,new@example.com"
++  refute kept.save
++  assert_includes kept.errors.full_messages, "Email address is invalid"
++end
++
++# Every form that signs in, out or resets carries the page's token
++# (Cybertrain's CSRF check): without it, a 403 and nothing done.
++test "POST /session, PUT /passwords/:token and DELETE /session without the form's token are refused" do
++  client = new_client
++  user = AppTest.user
++  res = client.post("/session", { "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" })
++  assert_response res, :forbidden
++  assert_equal 0, Session.count
++  token = user.password_reset_token
++  res = client.put("/passwords/#{token}", { "password" => "an0ther-s3cr3t", "password_confirmation" => "an0ther-s3cr3t" })
++  assert_response res, :forbidden
++  refute User.find_by_password_reset_token(token).nil?
++  AppTest.sign_in(client)
++  assert_equal 1, Session.count
++  res = client.post("/session", { "_method" => "delete" })
++  assert_response res, :forbidden
++  assert_equal 1, Session.count
++end
++
+ test "POST /session signs in with the right password" do
+   client = new_client
+   AppTest.user
+@@ -90,30 +198,38 @@
+   assert_equal "127.0.0.1", Session.first.ip_address
+ end
+ 
++# after_authentication_url is private (the Authentication concern's):
++# a controller made for these tests reads it.
++class ReturnPathProbeController < ApplicationController
++  def probe_after_authentication_url
++    after_authentication_url
++  end
++end
++
+ test "authentication returns to a local path once" do
+   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
+   ctx.session = Cybertrain::Session.new
+-  controller = ApplicationController.new(ctx)
+-  assert_equal "/", controller.after_authentication_url
++  controller = ReturnPathProbeController.new(ctx)
++  assert_equal "/", controller.probe_after_authentication_url
+   ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9"].each do |path|
+     controller.session[:return_to_after_authenticating] = path
+-    assert_equal path, controller.after_authentication_url
++    assert_equal path, controller.probe_after_authentication_url
+     refute controller.session.key?(:return_to_after_authenticating)
+-    assert_equal "/", controller.after_authentication_url
++    assert_equal "/", controller.probe_after_authentication_url
+   end
+ end
+ 
+ test "authentication rejects unsafe return destinations and consumes them" do
+   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
+   ctx.session = Cybertrain::Session.new
+-  controller = ApplicationController.new(ctx)
++  controller = ReturnPathProbeController.new(ctx)
+   unsafe = ["", "products", "https://evil.example/", "//evil.example/", "///evil.example/",
+             "/\\evil.example/", "/products\\evil", " //evil.example/", "/記事", "/" + "a" * 2048]
+   (0..32).each { |byte| unsafe << "/#{Cybertrain::Test.binary([byte])}/evil.example/" }
+   unsafe << "/#{Cybertrain::Test.binary([127])}/evil.example/"
+   unsafe.each do |path|
+     controller.session[:return_to_after_authenticating] = path
+-    assert_equal "/", controller.after_authentication_url
++    assert_equal "/", controller.probe_after_authentication_url
+     refute controller.session.key?(:return_to_after_authenticating)
+   end
+ end
+@@ -132,26 +248,37 @@
+ 
+ # SessionsController's rate_limit: ten attempts per address, then even
+ # the right password goes back to the form until the window closes.
++# The counts live in Cybertrain::Cache, in windows aligned to the
++# epoch: the cache's clock is held still, so the attempts share one
++# window, then moved a whole window on. The ten go to an address no
++# user has: the limit counts per client, whatever the address, and
++# there is no account for lockout (test/lockout.rb) to lock.
+ test "POST /session past ten attempts is refused for a while" do
+   client = new_client
+   AppTest.user
+   Cybertrain::RateLimit.reset_all!
+-  client.get("/session/new")
+-  wrong_password = { "authenticity_token" => AppTest.form_token(client),
+-                     "email_address" => "ann@example.com", "password" => "wrong-password" }
+-  right_password = { "authenticity_token" => AppTest.form_token(client),
+-                     "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
+-  10.times { client.post("/session", wrong_password) }
+-  res = client.post("/session", right_password)
+-  assert_redirected_to res, "/session/new"
+-  assert_equal 0, Session.count
+-  res = client.follow_redirect!
+-  assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
+-  Cybertrain::RateLimit.current_time = Time.now.to_i + 3 * 60
+-  res = client.post("/session", right_password)
+-  Cybertrain::RateLimit.current_time = -1
+-  assert_redirected_to res, "/"
+-  assert_equal 1, Session.count
++  Cybertrain::Cache.clock = -> { 2_000_000_000 }
++  begin
++    client.get("/session/new")
++    wrong_password = { "authenticity_token" => AppTest.form_token(client),
++                       "email_address" => "nobody@example.com", "password" => "wrong-password" }
++    right_password = { "authenticity_token" => AppTest.form_token(client),
++                       "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
++    10.times { client.post("/session", wrong_password) }
++    res = client.post("/session", right_password)
++    assert_redirected_to res, "/session/new"
++    assert_equal 0, Session.count
++    res = client.follow_redirect!
++    assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
++    Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
++    res = client.post("/session", right_password)
++    assert_redirected_to res, "/"
++    assert_equal 1, Session.count
++  ensure
++    # The system clock again, even when an assertion fails: the
++    # tests after this one must not run at a frozen time.
++    Cybertrain::Cache.clock = -> { Time.now.to_i }
++  end
+ end
+ 
+ test "DELETE /session signs out and drops the Session row" do
+@@ -206,7 +333,7 @@
+     assert_includes res.body, "<span>ann@example.com</span>"
+     token = AppTest.form_token(client)
+ 
+-    # Keep the signed cookie and its row, but move the creation time
++    # Keep the session cookie and its row, but move the creation time
+     # to the expiration boundary. Saving updates updated_at too;
+     # neither that nor a rewritten cookie extends authentication.
+     row = Session.first
+@@ -215,7 +342,7 @@
+     res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
+                                  { "cookie" => cookie })
+     assert_redirected_to res, "/session/new"
+-    assert_equal 1, Session.count
++    assert_equal 0, Session.count
+     res = client.get("/session/new")
+     refute res.body.include?("<span>ann@example.com</span>")
+     assert_includes res.body, "<a href=\"/session/new\">Sign in</a>"
+manual  app/controllers/application_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
+--- a/app/controllers/application_controller.rb
++++ b/app/controllers/application_controller.rb
+@@ -1,95 +1,5 @@
+ class ApplicationController < Cybertrain::Controller
+-  # ---- Authentication (cybertrain generate authentication) -------------
+-  # Every action needs a signed-in user unless its controller opens it:
+-  # `allow_unauthenticated_access only: [:new, :create]`. resume_session
+-  # sets @current_user (and @current_session), which templates can read.
+-  before_action :resume_session
+-  before_action :require_authentication
+-
+-  def self.allow_unauthenticated_access(only: [], except: [])
+-    skip_before_action(:require_authentication, only: only, except: except)
+-  end
+-
+-  # @return [Boolean] whether this request has a signed-in user
+-  def authenticated?
+-    !@current_user.nil?
+-  end
+-
+-  # Loads the Session row the cookie names (and its user); a stale or
+-  # expired id is dropped. Cookie Max-Age alone cannot stop replay:
+-  # authentication expires session_absolute_max_age seconds after
+-  # sign-in (SessionStore enforces the same on the cookie). A cookie
+-  # whose password key no longer matches (the password changed since
+-  # it signed in) ends its Session row.
+-  def resume_session
+-    @current_session = nil
+-    @current_user = nil
+-    id = session[:session_id]
+-    return nil if id.nil? || id.empty? || id.size > 18
+-
+-    found = Session.find_by(id: id.to_i)
+-    if found.nil?
+-      session.delete(:session_id)
+-      return nil
+-    end
+-    created_at = found.created_at
+-    lifetime = Cybertrain.config.session_absolute_max_age
+-    if created_at.nil? || (lifetime > 0 && created_at.to_i + lifetime <= Time.now.to_i)
+-      session.delete(:session_id)
+-      return nil
+-    end
+-    user = found.user
+-    if user.nil? || !Cybertrain::Password.session_key_matches?(session[:password_key], user.password_digest)
+-      found.destroy
+-      session.delete(:session_id)
+-      return nil
+-    end
+-    @current_session = found
+-    @current_user = user
+-    nil
+-  end
+-
+-  # Sends a visitor to the sign-in page, remembering a GET to come back to.
+-  def require_authentication
+-    return nil if authenticated?
+-
+-    session[:return_to_after_authenticating] = request.path if request.method == "GET"
+-    redirect_to new_session_path, status: :see_other
+-    nil
+-  end
+-
+-  # Also stores the password key resume_session compares, and restarts
+-  # the cookie's absolute lifetime. After a password change, call
+-  # `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`
+-  # to keep the browser that changed it signed in.
+-  def start_new_session_for(user)
+-    started = Session.create(user_id: user.id, ip_address: request.client_ip,
+-                             user_agent: request.header("user-agent").to_s)
+-    session.restart_lifetime!
+-    session[:session_id] = started.id
+-    session[:password_key] = Cybertrain::Password.session_key(user.password_digest)
+-    @current_session = started
+-    @current_user = user
+-    nil
+-  end
+-
+-  # Deletes the Session row and empties the cookie session (the CSRF
+-  # token with it, so forms rendered before no longer submit).
+-  def terminate_session
+-    current = @current_session
+-    current.destroy unless current.nil?
+-    session.clear
+-    @current_session = nil
+-    @current_user = nil
+-    nil
+-  end
+-
+-  # Where to go after signing in: the page that asked for it, if it is a
+-  # local path (Cybertrain::Controller#safe_redirect_path), or /.
+-  def after_authentication_url
+-    safe_redirect_path(session.delete(:return_to_after_authenticating), "/")
+-  end
+-  # ---- end of authentication ------------------------------------------
++  include Authentication
+ 
+   rescue_from Cybertrain::RecordNotFound, with: :record_not_found
+ 
+manual  config/routes.rb: apply this diff by hand with application_controller.rb's (require_admin comes with include Authentication)
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -4,4 +4,5 @@
+   resource :account, only: [:edit, :update, :destroy]
+   get "/sign_up", to: "registrations#new", as: "sign_up"
+   post "/sign_up", to: "registrations#create"
++  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+ end
+
+next:
+  cybertrain db migrate
+  cybertrain server      # then open /sign_up
+  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb and accounts.rb; snapshot them from the binaries
+  # password reset mails: set SHOP_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
+
+next: apply the diffs above, or re-run with --force for files you never edited
+  # the app may not build until these diffs are applied: the files written now need them

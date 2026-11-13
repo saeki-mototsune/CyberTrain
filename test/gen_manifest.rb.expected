@@ -1,7 +1,8 @@
-ok   manifest lists gen models and routes, helpers, components and console, then controllers, app models, jobs and controllers
+ok   manifest lists gen models and routes, helpers, components and console, then controllers, app models, jobs, mailers and controllers
 ok   manifest for the fixture app, whose Post encrypts a column and whose WelcomeJob names the mailer's TimeoutError
 wrote gen/routes.rb
 wrote gen/assets.rb
+wrote gen/locales.rb
 wrote gen/controllers.rb
 wrote gen/concerns.rb
 wrote gen/views.rb
@@ -14,10 +15,26 @@ wrote gen/concerns/models/concerns/sluggable.rb
 wrote gen/console.rb
 wrote gen/app.rb
 ok   runner writes the gen files
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/audited.rb
+identical gen/concerns/controllers/concerns/trackable.rb
+identical gen/concerns/models/concerns/sluggable.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   gen/app.rb requires locales after assets
 stale: gen/concerns/models/concerns/gone.rb
 removed gen/concerns/models/concerns/gone.rb
 identical gen/routes.rb
 identical gen/assets.rb
+identical gen/locales.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -36,6 +53,7 @@ removed gen/concerns/models/concerns/old/deeper/
 removed gen/concerns/models/concerns/old/
 identical gen/routes.rb
 identical gen/assets.rb
+identical gen/locales.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -54,6 +72,7 @@ removed gen/concerns/
 ok   removing a stale gen/concerns file removes the directories it leaves empty
 identical gen/routes.rb
 identical gen/assets.rb
+identical gen/locales.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -71,6 +90,7 @@ stale: gen/routes.rb
 stale: gen/app.rb
 wrote gen/routes.rb
 identical gen/assets.rb
+identical gen/locales.rb
 identical gen/controllers.rb
 identical gen/concerns.rb
 identical gen/views.rb
@@ -83,4 +103,4 @@ identical gen/concerns/models/concerns/sluggable.rb
 identical gen/console.rb
 wrote gen/app.rb
 ok   runner --check reports stale files and writes nothing
-8 tests, 31 assertions, 0 failures
+9 tests, 36 assertions, 0 failures

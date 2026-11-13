@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<html>
+<html lang="<%= html_lang %>">
   <head>
-    <title>Blog</title>
+    <title><%= t(".title") %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
@@ -14,8 +14,15 @@
     <%= javascript_importmap_tags %>
   </head>
   <body>
-    <header class="brand"><%= link_to "Blog", root_path %></header>
+    <header class="brand"><%= link_to t(".brand"), root_path %></header>
+    <%# This page in either language: ?locale= picks it, and
+        ApplicationController#set_locale keeps it in a cookie. %>
+    <nav class="locale">
+      <%= link_to t(".english"), path_in_locale("en") %> |
+      <%= link_to t(".japanese"), path_in_locale("ja") %>
+    </nav>
     <main>
+      <%= render "sessions/nav" %>
       <% if flash[:notice] %>
         <p class="notice"><%= flash[:notice] %></p>
       <% end %>

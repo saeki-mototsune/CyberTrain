@@ -94,6 +94,14 @@ SUBSYSTEMS = {
   }
 }.freeze
 
+# Files of text generated from data, whose string literals are words, not
+# code: script/bundle-locales writes cybertrain/locales/bundled.rb from
+# cybertrain/locales/*.yml, one `h["key"] = "text"` per line, and a
+# translation such as "Job %{id} was deleted." (the jobs page's, kept in
+# the core's dictionary with the rest) names no constant. Outside their
+# literals they are checked as any other file.
+TEXT_FILES = %w[cybertrain/locales/bundled.rb].freeze
+
 # References a later task removes, allowed until then: [file, constant or
 # method, why]. Each entry names the task that removes it; an entry that no longer
 # matches anything fails the check, so the list cannot go stale.
@@ -430,7 +438,12 @@ closure.each do |file|
       in_begin_block = false if line.start_with?("=end")
       next
     end
-    names_in(*lex(line.chomp)).each do |sub, used|
+    code, mask = lex(line.chomp)
+    if TEXT_FILES.include?(file)
+      # The literals blanked out (same length, so the mask still lines up).
+      code = code.chars.each_with_index.map { |ch, k| mask[k] ? " " : ch }.join
+    end
+    names_in(code, mask).each do |sub, used|
       allowance = ALLOWED.find { |f, c, _why| f == file && c == used }
       if allowance
         used_allowances << allowance

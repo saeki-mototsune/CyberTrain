@@ -600,7 +600,7 @@ module Cybertrain
       zone = load_file(key, path)
       return zone unless zone.found?
 
-      remember(path, zone)
+      remember_zone(path, zone)
     end
 
     # The directory zone names resolve under: `TZDIR`, or {DEFAULT_DIR}.
@@ -671,7 +671,7 @@ module Cybertrain
       unknown(name)
     end
 
-    def self.remember(path, zone)
+    def self.remember_zone(path, zone)
       kept = zone
       @zone_lock.synchronize do
         kept = store_zone(path, zone)

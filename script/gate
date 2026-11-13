@@ -24,6 +24,8 @@
 #     (that script builds the fork's latest release, so it pins no tag);
 #   * script/check-reserved-names, check-client-faults, check-http-layer and
 #     check-core-closure pass, and script/ci-changes --self-test;
+#   * script/bundle-locales --check passes (cybertrain/locales/bundled.rb is
+#     what cybertrain/locales/*.yml give);
 #   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
 #   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
 #   * the Playground image and Blog image workflows run for a pull request
@@ -58,6 +60,13 @@ Dir.chdir(ROOT)
 
 SKIP_PATH = %r{\A(site/assets/fonts/|site/api/|\.git/)}
 SKIP_EXT = %w[.expected .png .jpg .jpeg .gif .ico .woff .woff2 .ttf .otf .pdf .gz .zip .sqlite3 .gem].freeze
+# Third-party files kept byte for byte as fetched (their SOURCE file has
+# the checksums): exempt from the trailing-whitespace check only.
+# rails-i18n's ja.yml writes an empty sequence item as "- ".
+VENDORED_PATH = %r{\Atest/fixtures/i18n/rails-i18n/}
+# A unified diff's blank context line is a single space (` `), which patch
+# reads: checked fixtures of a command's diff output keep theirs.
+DIFF_FIXTURE_PATH = %r{\Atest/fixtures/[^/]+\.diff\z}
 RUBY_EXT = %w[.rb .gemspec .rake].freeze
 YAML_EXT = %w[.yml .yaml].freeze
 # Files the repository checks read; when none of them is in the set under
@@ -123,7 +132,7 @@ conflicts = []
 text_files.each do |f, data|
   data.each_line.with_index(1) do |line, n|
     body = line.chomp
-    whitespace << "#{f}:#{n}" if body.match?(/[ \t]+\z/)
+    whitespace << "#{f}:#{n}" if body.match?(/[ \t]+\z/) && !f.match?(VENDORED_PATH) && !f.match?(DIFF_FIXTURE_PATH)
     crlf << "#{f}:#{n}" if line.end_with?("\r\n")
     conflicts << "#{f}:#{n}" if body.match?(/\A(<{7} |={7}\z|>{7} )/)
   end
@@ -250,6 +259,9 @@ else
   # Which CI jobs a change needs (ci.yml's `changes` job): the rule's own cases.
   out, status = Open3.capture2e("sh", "script/ci-changes", "--self-test")
   status.success? ? ok("script/ci-changes --self-test") : fail!("script/ci-changes --self-test", out.lines.map(&:chomp))
+
+  out, status = Open3.capture2e("ruby", "script/bundle-locales", "--check")
+  status.success? ? ok("bundled dictionaries fresh", "script/bundle-locales --check") : fail!("script/bundle-locales --check", out.lines.map(&:chomp))
 
   spec_out, spec_status = Open3.capture2e("ruby", "-e", <<~'RB')
     spec = Gem::Specification.load("cybertrain.gemspec") or abort "cybertrain.gemspec does not load"

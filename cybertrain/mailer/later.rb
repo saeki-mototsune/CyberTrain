@@ -14,6 +14,7 @@ require "json"
 require "cybertrain/cast"
 require "cybertrain/jobs"
 require "cybertrain/mailer"
+require "cybertrain/mail_message"
 
 module Cybertrain
   class Mailer
@@ -125,6 +126,26 @@ module Cybertrain
         Cybertrain::Job.discard(run, e)
       end
       nil
+    end
+  end
+end
+
+module Cybertrain
+  # The later half of a MailMessage (cybertrain/mail_message.rb), here so
+  # the class itself needs only cybertrain/mailer.
+  class MailMessage
+    # Enqueues the message for a job thread to send ({Mailer.deliver_later}:
+    # the fields are checked now, so a refused one raises and nothing is
+    # queued).
+    # @example
+    #   PasswordsMailer.reset(user, url).deliver_later
+    # @return [Integer] the job's id
+    # @raise [ArgumentError] for an address, subject or body refused
+    # @raise [Cybertrain::DB::Error] when the database is not connected or
+    #   the insert fails
+    # @api public
+    def deliver_later
+      Mailer.deliver_later(to: @mail_to, subject: @mail_subject, body: @mail_body, html: @mail_html, from: @mail_from)
     end
   end
 end

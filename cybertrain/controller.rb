@@ -17,6 +17,7 @@ require "cybertrain/generator/inflector"
 require "cybertrain/active_support"
 require "cybertrain/http/cookies"
 require "cybertrain/cookie_jar"
+require "cybertrain/i18n"
 
 module Cybertrain
   class UnknownCallback < StandardError
@@ -332,8 +333,8 @@ module Cybertrain
     #       skip_before_action :require_authentication, only: [:new, :create]
     #
     # A skip declared in a class applies to it and its subclasses. Block
-    # callbacks have no name and cannot be skipped. `cybertrain generate
-    # authentication` wraps this as `allow_unauthenticated_access`.
+    # callbacks have no name and cannot be skipped. {.allow_unauthenticated_access}
+    # is this for `:require_authentication`.
     # @param name [Symbol] the callback's method name
     # @param only [Array<Symbol>] skip it for these actions only
     # @param except [Array<Symbol>] skip it for every action but these
@@ -342,6 +343,26 @@ module Cybertrain
     def self.skip_before_action(name, only: [], except: [])
       (SKIPS[self.name] ||= []) << Callback.new(:skip, name, nil, only, except, -1)
       nil
+    end
+
+    # Opens actions to visitors who are not signed in, as Rails 8's
+    # authentication concern does: `skip_before_action
+    # :require_authentication` for every action, or for `only:` / `except:`
+    # some. `cybertrain generate authentication` writes the
+    # `require_authentication` callback this skips.
+    #
+    #     class PasswordsController < ApplicationController
+    #       allow_unauthenticated_access only: [:new, :create]
+    #
+    # (An application whose ApplicationController defines its own
+    # `self.allow_unauthenticated_access`, as 0.4's generator wrote it,
+    # keeps using that one.)
+    # @param only [Array<Symbol>] open these actions only
+    # @param except [Array<Symbol>] open every action but these
+    # @return [nil]
+    # @api public
+    def self.allow_unauthenticated_access(only: [], except: [])
+      skip_before_action(:require_authentication, only: only, except: except)
     end
 
     # The skips that apply to klass: its own and its ancestors', up to
@@ -668,6 +689,33 @@ module Cybertrain
     def view_env(extra)
       Rendering.page_env(view_assigns, extra, flash, @params, controller_path)
     end
+
+    # I18n.t from an action: a key starting with "." is looked up under
+    # the controller path and the action, as Rails' controller `t` does
+    # (`t(".created")` in Admin::PostsController#create reads
+    # `admin.posts.create.created`). A key ending in `_html` or `.html`
+    # has its interpolated values escaped; the answer is a String all the
+    # same (wrap it in a SafeString to render it as HTML).
+    # @example
+    #   redirect_to posts_path, notice: t(".created", title: @post.title)
+    # @param key [String, Symbol]
+    # @param options [Hash{Symbol => Object}] as for I18n.t
+    # @return [String]
+    # @api public
+    def t(key, options = {})
+      k = key.to_s
+      k = "#{controller_path.tr("/", ".")}.#{@action_name}#{k}" if k.start_with?(".")
+      return I18n.t(k, Template::Helpers.escaped_interpolations(options)) if I18n.html_key?(k)
+
+      I18n.t(k, options)
+    end
+
+    # The same as {#t}.
+    # @param key [String, Symbol]
+    # @param options [Hash{Symbol => Object}]
+    # @return [String]
+    # @api public
+    def translate(key, options = {}) = t(key, options)
 
     # "posts" for PostsController: the directory under `app/views/` its
     # templates come from.
@@ -1219,6 +1267,13 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
+      # Every action starts at the default locale: a keep-alive connection
+      # serves its requests on one thread, and I18n.locale is that
+      # thread's (Thread.current), so a locale a before_action set for one
+      # request must not reach the next. nil means the default locale
+      # (Application#call and ContextHandler#call clear it per request too;
+      # this covers a controller run without them).
+      I18n.locale = nil
       Controller.assign_csp_policy(@ctx, self.class)
       # Built once per request and walked by both passes.
       chain = Controller.chain_for(self.class)

@@ -1,0 +1,17 @@
+<h1><%= t(".title") %></h1>
+
+<%= form_with(url: password_path(@token), method: :put) do |f| %>
+  <div class="field">
+    <%= f.label :password, t("activerecord.attributes.user.password") %>
+    <%= f.password_field :password, autocomplete: "new-password", autofocus: true %>
+  </div>
+
+  <div class="field">
+    <%= f.label :password_confirmation, t("activerecord.attributes.user.password_confirmation") %>
+    <%= f.password_field :password_confirmation, autocomplete: "new-password" %>
+  </div>
+
+  <div class="actions">
+    <%= f.submit t(".submit") %>
+  </div>
+<% end %>

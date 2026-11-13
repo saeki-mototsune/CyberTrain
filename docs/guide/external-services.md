@@ -444,13 +444,19 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   CR, LF or NUL (header injection) or over 998 bytes, a body that is not
   valid UTF-8 or holds a NUL, more than 100 recipients. `to:` takes one
   address or several separated by commas.
-- **Not yet:** attachments and inline images, mailer classes
-  (`UserMailer.welcome(user).deliver_later`: a mail is a method of the
-  application's that calls `deliver` or `deliver_later`), display names,
-  `Cc`/`Bcc` headers (send to several recipients instead), AUTH
-  LOGIN/CRAM-MD5, SMTPUTF8 addresses, pipelining. `deliver` runs on the
-  calling thread, a green thread like a request. `cybertrain generate
-  authentication` still writes no password reset.
+- **Mailers:** a module in `app/mailers` (gen loads them) whose method
+  returns a `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`
+  reads as Rails does: `PasswordsMailer.reset(user, url).deliver_later`
+  queues it, `deliver_now` sends it at once. `cybertrain/mailer` loads
+  `MailMessage` with `deliver_now`; `deliver_later` comes with
+  `cybertrain/mailer/later`. `cybertrain generate authentication` writes
+  two ([Password reset](authentication.md#password-reset)) and adds both
+  lines.
+- **Not yet:** attachments and inline images, mailer classes with
+  `default from:` and views found by name, display names, `Cc`/`Bcc`
+  headers (send to several recipients instead), AUTH LOGIN/CRAM-MD5,
+  SMTPUTF8 addresses, pipelining. `deliver` runs on the calling thread, a
+  green thread like a request.
 
 ### HTML mail
 

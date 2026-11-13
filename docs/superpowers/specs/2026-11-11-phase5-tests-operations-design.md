@@ -8,7 +8,7 @@ Date: 2026-11-11. Status: agreed with the maintainer (thirteen questions,
 The programme (docs/design.md D1, revised 2026-11-05) delivers the 120 items
 of the fin_dash survey in five phases. Phase 1 landed on 2026-11-05 (D36 to
 D41), phase 2 on 2026-11-07 (D42 to D50), phase 3 on 2026-11-10 (D51 to
-D57), phase 4a on 2026-11-11 (D58 to D63); phase 4b (D64, D65) is being
+D57), phase 4a on 2026-11-11 (D58 to D63); phase 4b (D79, D80) is being
 implemented on this branch. This document is **phase 5**, the last: the
 programme paragraph names "setup / teardown, frozen time, component tests,
 assertions, error reporting, log tags". The survey's chapters 15
@@ -50,7 +50,7 @@ and run through a base-class receiver (rule 88), one return type per method
 name across the program (rules 10, 34, 41). Phase 5 leans on two more
 records: class methods added to a core class from Ruby source compile and
 dispatch (rule 87: `Time.current`, `Date.current`), and a `Thread.current`
-slot works as a per-green-thread store (rule 100: the request id and the
+slot works as a per-green-thread store (rule 102: the request id and the
 log tags).
 
 ## 1. The decisions in one table
@@ -824,7 +824,7 @@ As Rails' `ActionDispatch::RequestId`:
 - **`request.request_id`** answers it (Rails also spells it `request.uuid`;
   only `request_id` is offered).
 - **Thread-local.** The id is put in a `Thread.current` slot for the
-  request's duration and cleared after it, like `I18n.locale` (rule 100;
+  request's duration and cleared after it, like `I18n.locale` (rule 102;
   a keep-alive connection's requests share a thread). Every line logged
   meanwhile carries it, the application's own `Cybertrain.logger.info`
   included.
@@ -856,7 +856,7 @@ end
   `:remote_ip` (`request.client_ip`; off by default, it is personal data).
   `[]` turns the request tag off. Rails also takes Procs; not here.
 - `Cybertrain.logger.tagged(*tags) { }` adds tags for the block on this
-  thread and restores the previous ones when it ends (rule 101's
+  thread and restores the previous ones when it ends (rule 103's
   save-yield-restore form). Rails' block-less `tagged` that answers a new
   logger is not offered.
 - `debug(msg)`, `info(msg)`, `warn(msg)`, `error(msg)`, `fatal(msg)` keep
@@ -1073,11 +1073,11 @@ Constraints applied above:
   `Time.zone`, `Date.current`;
 - a call to a method no class defines is refused at build (rule 84): the
   mechanism that makes `1.month` a build error;
-- per-thread state through `Thread.current` (rule 100): the request id and
+- per-thread state through `Thread.current` (rule 102): the request id and
   the log tags; module-level ivars, never `@@` (rules 18, 64), for the
   clock, the test registry, `Mailer.deliveries` and the reporter's queue;
 - yielding helpers yield into a local (rule 90); `travel_to { }`,
-  `tagged { }` and `I18n`-style restores use rule 101's save-yield-ensure
+  `tagged { }` and `I18n`-style restores use rule 103's save-yield-ensure
   form in a non-re-entrant module function (rules 50, 69); the runner's
   "teardown always runs" is a plain method's `ensure`, not a yielding one;
 - `rescue JSON::NestingError, JSON::ParserError, StandardError => e`
@@ -1141,7 +1141,7 @@ header. The results are recorded below the list by those tasks.
    number; it is recorded for a later decision (section 17).
 7. **5b, thread-local tags.** A String request id and an Array of String
    tags in `Thread.current` beside I18n's Symbol and the pool's
-   Connection, across green threads with `SPINEL_WORKERS=4` (rule 100's
+   Connection, across green threads with `SPINEL_WORKERS=4` (rule 102's
    program extended). Fallback: the request id lives on the `Context`;
    framework lines written with a `Context` at hand carry it, and an
    application's own lines carry it only inside

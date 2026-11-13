@@ -808,6 +808,53 @@ module Cybertrain
       end
     end
 
+    # Sets columns by SQL in every matching row with one
+    # `UPDATE ... SET <sql>`, for what {#update_all}'s Hash cannot say: a
+    # value computed from the row, or several columns decided together
+    # (every SET expression reads the row as it was before the statement).
+    # `?` placeholders take `binds` in order (a Time as its storage text,
+    # true/false as 1/0), then the relation's own. The SET list is SQL as
+    # written: quote names that need it, and leave encrypted columns alone.
+    # No model is loaded, no callback or validation runs, `updated_at` is
+    # left alone. A limit or offset picks the rows by an `id` subselect, as
+    # {#delete_all} does. (Rails' `update_all(["sql", binds])`.)
+    # @example
+    #   User.where(id: user.id).update_all_sql(
+    #     "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END", [10])
+    # @param sql [String] the SET list
+    # @param binds [Array] one value per `?` in `sql`
+    # @return [Integer] the number of rows updated
+    # @raise [ArgumentError] on an empty SET list or an Array bind
+    # @api public
+    def update_all_sql(sql, binds = [])
+      raise ArgumentError, "update_all_sql: no SET list" if sql.strip.empty?
+
+      all = [nil, 0, 0.0, "", DB::Blob.new("")]
+      all.clear
+      binds.each do |v|
+        case v
+        when Time then nil # before `when Array` (rule 8)
+        when Array
+          raise ArgumentError, "update_all_sql: an Array bind is not expanded"
+        end
+        all << Cast.to_sql(v)
+      end
+      return 0 if @none
+
+      table = Relation.quote_ident(@table)
+      text = +"UPDATE #{table} SET #{sql}"
+      text << write_scope_sql
+      i = 0
+      while i < @binds.size
+        all << @binds[i]
+        i += 1
+      end
+      Cybertrain::DB.with do |c|
+        c.execute(text, all)
+        c.changes
+      end
+    end
+
     # Sets each column to its value in every matching row with one
     # `UPDATE ... SET a = ?, b = ?`, each value cast by its column's type as
     # save stores it ({Relation.typed_bind}): a boolean as 1/0 (a form's

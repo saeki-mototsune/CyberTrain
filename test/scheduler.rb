@@ -40,6 +40,12 @@ S.every(999_999, "steal") do
   end
 end
 S.every(999_999, "after steal") { RUNS << "after steal" }
+# A task that sets the thread's locale and one that reports the locale it
+# starts in (never due in the ticks above; run through run_task).
+LOCALES = Array.new(0) { "" }
+I18n.available_locales = [:en, :ja]
+S.every(999_999, "in ja") { I18n.locale = :ja; LOCALES << "set #{I18n.locale}" }
+S.every(999_999, "locale") { LOCALES << "starts #{I18n.locale}" }
 
 Job.handle("noop") { |payload| RUNS << "job" }
 
@@ -313,6 +319,13 @@ test "a task that never ran takes its current schedule when that is earlier than
   Cybertrain::Scheduler::Timetable.prune(["tick ten", "boom", "steal", "after steal"])
 end
 
+test "a task that sets the locale does not leave it for the next task on the same thread" do
+  assert S.run_task(S::TASKS[S.task_index("in ja")])
+  assert S.run_task(S::TASKS[S.task_index("locale")])
+  assert_equal "set ja,starts en", LOCALES.join(",")
+  I18n.locale = nil
+end
+
 # Last: the thread it starts keeps running until the program exits. With
 # the timetable emptied, start! schedules every task an interval after the
 # real time, so the thread's first tick runs nothing.
@@ -326,7 +339,8 @@ test "start! starts the thread once; stop! asks it to end" do
   # The thread ticks at once (with the real time) when this one yields.
   sleep 0.3
   assert S.last_tick >= started
-  assert_includes LOG.string, "[INFO] Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s, steal every 999999s, after steal every 999999s"
+  assert_includes LOG.string, "[INFO] Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s, steal every 999999s, after steal every 999999s, " \
+                              "in ja every 999999s, locale every 999999s"
   assert S.leader?
   S.stop!
   refute S.running?

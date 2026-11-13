@@ -51,6 +51,11 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; a secret, never logged, never in the boot banner or an error message |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: the sender `Mailer.deliver` uses when it is not given `from:` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: the locale every request starts in, a name such as `ja` or `pt-BR` (see [Locales](#locales)); anything else stops the boot |
+| `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`: wrong passwords before an account is locked; `0` turns lockout off (see [Authentication settings](#authentication-settings)) |
+| `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`: seconds a lockout lasts; at least 1 |
+| `CYBERTRAIN_AUTH_REMEMBER_FOR` | `auth_remember_for` | `2592000` (30 days): seconds a "keep me signed in" sign-in lasts; at least 1 |
+| `CYBERTRAIN_AUTH_IDLE_TIMEOUT` | `auth_idle_timeout` | `604800` (7 days): seconds without a request after which a sign-in ends; `0` turns it off |
 
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
 inside another site's frame; the browser must reach the app over HTTPS.
@@ -209,6 +214,39 @@ up in both only by name, as `[FILTERED]`. There is no
 `Cybertrain.config.base_url` accessor: Spinel has no `define_method`, so the
 readers are typed methods that take the name.
 
+### Locales
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.i18n_default_locale = :en               # or CYBERTRAIN_I18N_DEFAULT_LOCALE
+  c.i18n_available_locales = [:en, :ja]
+  c.i18n_raise_on_missing = true if c.test?
+end
+```
+
+`i18n_available_locales` (`[]`, the default locale alone) lists the
+locales `I18n.locale=` and `I18n.locale_available?` accept; boot refuses an
+entry that is not a locale name, and a default that is not in a non-empty
+list. `i18n_raise_on_missing` (`false`) makes a missing translation raise
+`I18n::MissingTranslationData` instead of answering a marker (development
+and test) or the humanised key (production). The dictionaries and the
+locale per request are in [Internationalization](i18n.md).
+
+### Authentication settings
+
+The code `cybertrain generate authentication` writes reads four settings
+(the variables are in the table above): `auth_lockout_attempts` (10) and
+`auth_lockout_period` (3600 s) for [lockout](authentication.md#lockout),
+`auth_remember_for` (30 days) for a "keep me signed in" sign-in, and
+`auth_idle_timeout` (7 days) for an unused one
+([Remember me](authentication.md#remember-me-and-session-limits)); an
+unremembered sign-in lasts `session_absolute_max_age` (two weeks). A value
+out of range stops the boot. The generator also declares the application
+setting `base_url`, from `<APP>_BASE_URL`, where links in mails start; set
+it, with https, wherever the application is served
+([Links in mails](authentication.md#links-in-mails)).
+
 ## Time zones
 
 Spinel ships no tz database, and setting `ENV["TZ"]` to convert a time
@@ -245,4 +283,4 @@ backward jump repeats gives the earlier instant. `find` accepts only a
 relative name made of `A-Za-z0-9_+-./` with no empty, `.` or `..` segment, so
 a zone name taken from a user's profile cannot reach a file outside the zone
 directory; an unknown or malformed zone is not cached, and `"UTC"` needs no
-file. Formatting helpers for templates (`l(time, zone:)`) are not there yet.
+file. `l` formats a time in the request's locale ([Dates and times](i18n.md#dates-and-times)) but takes no `zone:` yet.

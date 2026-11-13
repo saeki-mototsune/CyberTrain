@@ -1,5 +1,5 @@
 ---
-source_sha256: 8bf1e8b4b6f49c71977f7962ba570bf0d29cc5af86a5dd089c93108a8e865203
+source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -488,14 +488,20 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   de plus de 998 octets, un corps qui n’est pas de l’UTF-8 valide ou contient un
   NUL, plus de 100 destinataires. `to:` prend une adresse ou plusieurs séparées
   par des virgules.
+- **Mailers&nbsp;:** un module dans `app/mailers` (gen les charge) dont la
+  méthode renvoie un `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`
+  se lit comme dans Rails&nbsp;: `PasswordsMailer.reset(user, url).deliver_later`
+  le met en file, `deliver_now` l’envoie aussitôt. `cybertrain/mailer`
+  charge `MailMessage` avec `deliver_now`&nbsp;; `deliver_later` vient avec
+  `cybertrain/mailer/later`. `cybertrain generate authentication` en écrit
+  deux ([Réinitialisation du mot de passe](authentication.md#password-reset))
+  et ajoute les deux lignes.
 - **Pas encore&nbsp;:** les pièces jointes et les images en ligne, les
-  classes de mailer (`UserMailer.welcome(user).deliver_later`&nbsp;: un mail
-  est une méthode de l’application qui appelle `deliver` ou
-  `deliver_later`), les noms affichés, les en-têtes `Cc`/`Bcc` (envoyez
-  plutôt à plusieurs destinataires), AUTH LOGIN/CRAM-MD5, les adresses
-  SMTPUTF8, le pipelining. `deliver` s’exécute sur le thread appelant, un
-  green thread comme une requête. `cybertrain generate authentication`
-  n’écrit toujours pas de réinitialisation du mot de passe.
+  classes de mailer avec `default from:` et des vues trouvées par leur nom,
+  les noms affichés, les en-têtes `Cc`/`Bcc` (envoyez plutôt à plusieurs
+  destinataires), AUTH LOGIN/CRAM-MD5, les adresses SMTPUTF8, le
+  pipelining. `deliver` s’exécute sur le thread appelant, un green thread
+  comme une requête.
 
 ### Mail HTML
 

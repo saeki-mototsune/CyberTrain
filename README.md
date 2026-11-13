@@ -30,18 +30,22 @@ components, application helpers, the number, form and Turbo helpers and
 per-controller layouts, digested assets with an import map, SQLite models
 (decimal, json, date and datetime columns; declared associations with
 `includes`; Rails' validators; model concerns; encrypted columns; bulk
-inserts and typed aggregates), migrations, and the authentication and file-upload generators
-all work end to end. So do background jobs (job classes with retry
+inserts and typed aggregates), migrations, i18n (Rails' `t` and `l`,
+dictionaries compiled in, English and Japanese bundled), and the
+authentication generator (sign-in, sign-up or invite-only, password reset,
+confirmation, lockout, remember me, an account page, admin users) and the
+file-upload generator all work end to end. So do background jobs (job classes with retry
 policies, cron schedules, a jobs page), a cache store, Turbo Streams over
 Server-Sent Events or WebSocket, and the outbound clients: HTTP (streamed,
 gzip and Server-Sent Events responses), SMTP (plain or HTML mail, sent now
 or from a job) and WebSocket feeds. [examples/blog](examples/blog) is the
-Rails "Getting Started" blog built on it. Since 2026-11-05 porting an
+Rails "Getting Started" blog built on it, in English and Japanese, with an
+admin user guarding its `/admin` pages. Since 2026-11-05 porting an
 existing Rails application is a goal, in five phases
 ([design record](docs/design.md), D1); a SQLite database that a Rails
-application created can be taken over as it is. Not built: i18n, mailer
-classes (a mail is a method that calls
-`Mailer.deliver` or `deliver_later`), mail attachments, HTTP/2
+application created can be taken over as it is. Not built: mailer
+classes (a mailer is a module whose methods return a `MailMessage` to
+`deliver_later`), mail attachments, HTTP/2
 ([what differs from Rails](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#differences-from-rails)).
 
 ## Quick start
@@ -88,7 +92,9 @@ the same app in Rails 8.1, in about a tenth of the memory
 | [How it works](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop, and a table of the differences from Rails |
 | [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database |
 | [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Routing, formats and `respond_to`, concerns, strong parameters, HTTP caching, cookies and the session, rate limiting, CSP, `force_ssl` and hosts, headers, query strings and request bodies |
+| [Authentication](https://saeki-mototsune.github.io/CyberTrain/guide/authentication.html) | `generate authentication`: sign-in, sign-up or invite-only, password reset, confirmation, lockout, remember me, the account page, admin users, upgrading from 0.4 |
 | [Assets](https://saeki-mototsune.github.io/CyberTrain/guide/assets.html) | Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving |
+| [Internationalization](https://saeki-mototsune.github.io/CyberTrain/guide/i18n.html) | Dictionaries in `config/locales`, `t` and `l`, lazy lookup, plural forms, the locale per request, translated validation messages |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
 | [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check |
 | [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |

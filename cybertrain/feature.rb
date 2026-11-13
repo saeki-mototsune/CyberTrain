@@ -14,7 +14,7 @@
 # a module constant Array and calls each hook on each element, in the
 # features' rank order (Feature#feature_rank), not the requires' order.
 #
-# The shape is the one spikes/NOTES.md rule 101 proved under the pinned
+# The shape is the one spikes/NOTES.md rule 104 proved under the pinned
 # Spinel (spikes/phase6/feature_registry/):
 #   * one return type per hook name, in the base and every override, and
 #     hook names no other class of the framework defines (rules 10, 34, 41):
@@ -22,7 +22,7 @@
 #     rather than `command`, `feature_middleware` rather than `call` (rule 40);
 #   * a feature file registers its instance at its end, outside the class
 #     body, and never writes a block that calls a hook inside its class
-#     body ahead of that hook's `def` (rule 101's narrowing of rule 88);
+#     body ahead of that hook's `def` (rule 104's narrowing of rule 88);
 #   * a stored block (a scheduler task) calls Features.run_periodic(i, now),
 #     which indexes the Array and calls the hook outside the block.
 module Cybertrain
@@ -514,7 +514,7 @@ module Cybertrain
 
     # What a stored scheduler block calls: the hook is called here, on the
     # Array element, not through a receiver the block captured (NOTES
-    # rules 88 and 101).
+    # rules 88 and 104).
     # @param index [Integer] the feature's place in Features
     # @param now [Integer] epoch seconds
     # @return [nil]

@@ -17,6 +17,8 @@ require "cybertrain/generator/components_emitter"
 require "cybertrain/generator/console_emitter"
 require "cybertrain/generator/jobs_emitter"
 require "cybertrain/generator/assets_emitter"
+require "cybertrain/generator/locale_scan"
+require "cybertrain/generator/locales_emitter"
 
 module Cybertrain
   module Gen
@@ -31,9 +33,11 @@ module Cybertrain
     # warning line first. gen/assets.rb holds the asset manifest and the
     # import map (AssetsEmitter); without --check the digested files are
     # also written to public/assets (AssetsEmitter.sync_public), which
-    # --check never reads: it compares gen/assets.rb only. First of all, a
-    # view calling a helper of a subsystem bin/NAME.rb does not require
-    # stops it with exit 1 and nothing written (ViewRequires).
+    # --check never reads: it compares gen/assets.rb only. gen/locales.rb
+    # holds config/locales/**/*.yml (LocaleScan, LocalesEmitter), written
+    # with empty tables when the application has no dictionary. First of
+    # all, a view calling a helper of a subsystem bin/NAME.rb does not
+    # require stops it with exit 1 and nothing written (ViewRequires).
     module Runner
       def self.run(root, argv)
         ControllerScan.use_root(root)
@@ -55,6 +59,7 @@ module Cybertrain
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
           # An embedded build's views go into its build digest (the ETags).
           ["gen/assets.rb", assets_output(root, check, embed ? views : "")],
+          ["gen/locales.rb", Runner.locales_source(root)],
           ["gen/controllers.rb", controllers_source(root, jobs_page)],
           ["gen/concerns.rb", concerns_source(root)],
           ["gen/views.rb", views],
@@ -138,6 +143,11 @@ module Cybertrain
         files = AssetScan.scan(root)
         AssetsEmitter.sync_public(root, files).each { |line| puts line } unless check
         AssetsEmitter.emit(files, importmap_pins(root, files), views)
+      end
+
+      # gen/locales.rb's source: root/config/locales merged.
+      def self.locales_source(root)
+        LocalesEmitter.emit(LocaleScan.scan(root), "Gen::Locales", true)
       end
 
       # gen/assets.rb's source, public/assets left alone.

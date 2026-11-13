@@ -86,6 +86,20 @@ class Article < Cybertrain::Model
   # @api public
   def self.column_names = ["id", "title", "body", "created_at", "updated_at"]
 
+  # An attribute's name for people, as Rails':
+  # `activerecord.attributes.article.<attr>` in the current locale, else the
+  # attribute humanized (`:author_id` → `"Author"`). The model's
+  # dictionary key is its class name underscored (`Admin::Post` →
+  # `"admin/post"`). See {I18n.human_attribute_name}.
+  # @example
+  #   # config/locales/ja.yml: ja: { activerecord: { attributes: { article: { title: "タイトル" } } } }
+  #   I18n.with_locale(:ja) { Article.human_attribute_name(:title) }  # => "タイトル"
+  # @param attr [Symbol, String]
+  # @param options [Hash] accepted for Rails' signature; unused
+  # @return [String]
+  # @api public
+  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name("article", attr)
+
   # A relation over the whole table; every query starts here or at one of
   # the shortcuts below. Nothing runs until rows are needed.
   # @example
@@ -945,7 +959,15 @@ end
 # controller, after the application's own. It inherits ApplicationController,
 # so the application's layout, CSRF protection and helpers apply; the
 # `before_action` line is there only when `jobs_page` names one (without it
-# the page is open, and `spin run gen` prints a warning). The actions hand
+# the page is open, and `spin run gen` prints a warning). The guard runs
+# after ApplicationController's own callbacks (with `generate
+# authentication`, a visitor is sent to sign in first), unless `jobs_page`
+# also gives `skip_before_action:`: then a `skip_before_action` line leaves
+# that one inherited callback out. `generate authentication` draws
+# `jobs_page "/admin/jobs", before_action: :require_admin,
+# skip_before_action: :require_authentication`, so require_admin alone
+# answers a visitor, with a 404 rather than a redirect that shows the page
+# exists. The actions hand
 # the work to {Cybertrain::JobsPage}; the POST ones redirect back to the page
 # (303) with a flash notice. `retry` is a Ruby keyword, so the routes call
 # `<action>_action` methods for the row and bulk actions:
@@ -1302,6 +1324,38 @@ module Gen
     #   {Cybertrain::Assets.install}
     # @api public
     def self.resolver = ->(name) { digest_path(name) }
+  end
+
+  # What `spin run gen` writes into `gen/locales.rb`
+  # (cybertrain/generator/locales_emitter.rb): every
+  # `config/locales/**/*.yml`, read in path order (a later file's key wins),
+  # compiled into the binary as two tables, texts and lists (day and month
+  # names). The file begins with `require "cybertrain/i18n"` and its last
+  # line hands {resolver} and {list_resolver} to
+  # `I18n.install_dictionary`. An application with no dictionary gets
+  # empty tables. The values below are for a `config/locales/ja.yml` with
+  # `ja: { posts: { index: { title: 投稿 } } }`.
+  # @api public
+  module Locales
+    # @param key [String] the full key, locale first (`"ja.posts.index.title"`)
+    # @return [String, nil] `"投稿"`; nil for a key that is absent, a list
+    #   or a mapping
+    # @api public
+    def self.lookup(key); end
+
+    # @param key [String] the full key (`"en.date.abbr_day_names"`)
+    # @return [Array<String>] `["Sun", "Mon", ...]`; empty for a key that
+    #   is absent or a text
+    # @api public
+    def self.lookup_list(key); end
+
+    # @return [Proc] `->(key) { Gen::Locales.lookup(key) }`
+    # @api public
+    def self.resolver = ->(key) { Gen::Locales.lookup(key) }
+
+    # @return [Proc] `->(key) { Gen::Locales.lookup_list(key) }`
+    # @api public
+    def self.list_resolver = ->(key) { Gen::Locales.lookup_list(key) }
   end
 end
 

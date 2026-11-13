@@ -1,5 +1,5 @@
 ---
-source_sha256: 8bf1e8b4b6f49c71977f7962ba570bf0d29cc5af86a5dd089c93108a8e865203
+source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
@@ -200,7 +200,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **メッセージ：** `Date`、`From`、`To`、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`（HTML のメッセージは下記）。ASCII 以外を含む件名は RFC 2047 でエンコードされます（`=?UTF-8?B?...?=`。文字の境界で分割されます）。本文の改行は CRLF になり、`.` で始まる行はドットスタッフィングされます。`Content-Transfer-Encoding` は、ASCII なら `7bit`、UTF-8 でサーバーが 8BITMIME を広告していれば `8bit`（`MAIL FROM
   ... BODY=8BITMIME` 付き）、それ以外や 998 バイトより長い行がある場合は `base64` です。`Message-ID` は追加しません（サブミッションサーバーが追加します）。
 - **拒否されるもの。** 接続する前に `ArgumentError` で：素の ASCII の `local@domain` でないアドレス（表示名、`<>`、空白、カンマ、引用符、CR、LF は不可。最大 254 バイト）、CR、LF、NUL を含む（ヘッダーインジェクション）または 998 バイトを超える件名、有効な UTF-8 でない、または NUL を含む本文、100 を超える受信者。`to:` は 1 つのアドレス、またはカンマで区切った複数のアドレスを受け取ります。
-- **まだないもの：** 添付ファイルとインライン画像、メーラークラス（`UserMailer.welcome(user).deliver_later`。メールは `deliver` か `deliver_later` を呼ぶアプリケーションのメソッドです）、表示名、`Cc`/`Bcc` ヘッダー（代わりに複数の受信者に送ってください）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 のアドレス、パイプライン。`deliver` は呼び出したスレッドで実行されます。これはリクエストと同じくグリーンスレッドです。`cybertrain generate authentication` は、いまもパスワードのリセットを書きません。
+- **メーラー：** `app/mailers` のモジュール（gen が読み込みます）で、メソッドが `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)` を返すものは、Rails と同じように書けます：`PasswordsMailer.reset(user, url).deliver_later` はキューに入れ、`deliver_now` はすぐに送ります。`cybertrain/mailer` が `MailMessage` を `deliver_now` とともに読み込み、`deliver_later` は `cybertrain/mailer/later` で加わります。`cybertrain generate authentication` は 2 つ書き出し（[パスワードリセット](authentication.md#password-reset)）、両方の行を追加します。
+- **まだないもの：** 添付ファイルとインライン画像、`default from:` と名前で見つかるビューを持つメーラークラス、表示名、`Cc`/`Bcc` ヘッダー（代わりに複数の受信者に送ってください）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 のアドレス、パイプライン。`deliver` は呼び出したスレッドで実行されます。これはリクエストと同じくグリーンスレッドです。
 
 ### HTML メール
 
