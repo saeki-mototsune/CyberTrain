@@ -203,10 +203,12 @@ way; the script or workflow step that checks it says so in its comment.
   rest of the framework, so it can be lifted out (`script/check-http-layer`).
 - **The core does not name an optional subsystem.** No file that
   `cybertrain/core.rb` requires, directly or not, may be a subsystem's file
-  or name its classes (`Job`, `Scheduler`, ...): Spinel compiles every
-  method a program requires, so one reference puts the subsystem back into
-  every application. The core reaches a subsystem through the hooks of
-  `Cybertrain::Feature` (`script/check-core-closure`).
+  or name its classes (`Job`, `Scheduler`, ...) or call a method a
+  subsystem adds to a core class (`run_worker`, `apply_rate_limit`, ...):
+  Spinel compiles every method a program requires, so one reference puts
+  the subsystem back into every application. The core reaches a subsystem
+  through the hooks of `Cybertrain::Feature` (`script/check-core-closure`,
+  whose `--self-test` checks its own lexing).
 - **The CLI runs under CRuby and lists its files by hand.** A file the CLI
   requires must be in `cybertrain.gemspec`'s `spec.files`; CI installs the
   built gem and runs it.

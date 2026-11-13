@@ -359,7 +359,7 @@ test "framework errors: those require \"cybertrain\" loads need no require line,
   assert_equal ["mailer"], Cybertrain::Gen::JobScan.framework_files(scan(FIXTURE))
 end
 
-test "FRAMEWORK_ERRORS names every Error class under cybertrain/, and the preloaded files are loaded by cybertrain.rb" do
+test "FRAMEWORK_ERRORS names every Error class under cybertrain/, and the preloaded files are loaded by cybertrain/core.rb" do
   found = []
   Dir.glob("cybertrain/**/*.rb").sort.each do |path|
     next if path.start_with?("cybertrain/generator/") || path.start_with?("cybertrain/cli/")
@@ -378,12 +378,14 @@ test "FRAMEWORK_ERRORS names every Error class under cybertrain/, and the preloa
     end
   end
   assert_equal found.sort, Cybertrain::Gen::JobScan::FRAMEWORK_ERRORS.sort
-  top = File.read("cybertrain.rb")
+  # The core: an application that requires only cybertrain/core loads them
+  # too (cybertrain.rb requires the core first).
+  top = File.read("cybertrain/core.rb")
   Cybertrain::Gen::JobScan::PRELOADED_FILES.each do |file|
     direct = top.include?("require \"cybertrain/#{file}\"\n")
     parent = file.split("/").first
     through = top.include?("require \"cybertrain/#{parent}\"\n") && File.read("cybertrain/#{parent}.rb").include?("require \"cybertrain/#{file}\"\n")
-    assert(direct || through, "#{file} is not loaded by cybertrain.rb")
+    assert(direct || through, "#{file} is not loaded by cybertrain/core.rb")
   end
 end
 

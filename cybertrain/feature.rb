@@ -11,8 +11,8 @@
 # Feature is a base class whose hooks do nothing and answer a fixed type;
 # a subsystem's entry file defines a subclass that overrides the hooks it
 # needs and registers one instance at require time. Features holds them in
-# a module constant Array and calls each hook on each element, in
-# registration order.
+# a module constant Array and calls each hook on each element, in the
+# features' rank order (Feature#feature_rank), not the requires' order.
 #
 # The shape is the one spikes/NOTES.md rule 101 proved under the pinned
 # Spinel (spikes/phase6/feature_registry/):
@@ -36,6 +36,17 @@ module Cybertrain
     # @return [String]
     def feature_name
       ""
+    end
+
+    # Where the feature comes among the registered ones: Features calls
+    # every hook in ascending rank (equal ranks in registration order), so
+    # the order of `help` lines, `/up` checks and the server role's starts
+    # and stops does not depend on the order of bin/NAME.rb's requires.
+    # jobs 10, feeds 20, streams 30, cache 40, rate_limit 50: the order
+    # `require "cybertrain"` registered them in before ranks existed.
+    # @return [Integer]
+    def feature_rank
+      100
     end
 
     # A reason the application must not boot (Application#validate_boot,
@@ -215,13 +226,21 @@ module Cybertrain
     end
   end
 
-  # The registered features, and each hook called on each of them in
-  # registration order.
+  # The registered features, and each hook called on each of them in rank
+  # order (Feature#feature_rank), whatever order bin/NAME.rb requires the
+  # entry files in: jobs, feeds, streams, cache, rate_limit. It is the order
+  # of the `help` lines, of `/up`'s checks and of the server role's starts
+  # and stops (test/features_jobs.rb and test/features_order.rb pin it).
   # @api private
   module Features
     # A constant, which Spinel roots for the collector (NOTES rule 64),
     # seeded with the element type and emptied (rule 9).
     ALL = Array.new(0) { Feature.new }
+
+    # The indexes into ALL in rank order (Feature#feature_rank), which every
+    # hook loop follows. ALL itself keeps registration order, so an index a
+    # scheduler task captured (Features.run_periodic) never moves.
+    ORDER = Array.new(0) { 0 }
 
     # Adds `feature` unless one of its class is registered (a second
     # require of a feature file registers nothing), then lets the features
@@ -237,8 +256,25 @@ module Cybertrain
         i += 1
       end
       ALL << feature
+      add_in_rank_order(ALL.size - 1)
       schedule_all_periodic
       true
+    end
+
+    # Puts ALL's `index` into ORDER after every feature of a lower or equal
+    # rank.
+    # @param index [Integer]
+    # @return [nil]
+    def self.add_in_rank_order(index)
+      rank = ALL[index].feature_rank
+      ORDER << index
+      k = ORDER.size - 1
+      while k > 0 && ALL[ORDER[k - 1]].feature_rank > rank
+        ORDER[k] = ORDER[k - 1]
+        k -= 1
+      end
+      ORDER[k] = index
+      nil
     end
 
     # @return [Integer]
@@ -246,13 +282,13 @@ module Cybertrain
       ALL.size
     end
 
-    # Each registered feature's name, in registration order.
+    # Each registered feature's name, in rank order.
     # @return [Array<String>]
     def self.feature_names
       out = Array.new(0) { "" }
       i = 0
       while i < ALL.size
-        out << ALL[i].feature_name
+        out << ALL[ORDER[i]].feature_name
         i += 1
       end
       out
@@ -264,7 +300,7 @@ module Cybertrain
     def self.feature_loaded?(name)
       i = 0
       while i < ALL.size
-        return true if ALL[i].feature_name == name
+        return true if ALL[ORDER[i]].feature_name == name
 
         i += 1
       end
@@ -277,7 +313,7 @@ module Cybertrain
     def self.boot_problem(config)
       i = 0
       while i < ALL.size
-        problem = ALL[i].boot_problem(config)
+        problem = ALL[ORDER[i]].boot_problem(config)
         return problem unless problem.empty?
 
         i += 1
@@ -290,7 +326,7 @@ module Cybertrain
     def self.start_features(config)
       i = 0
       while i < ALL.size
-        ALL[i].start_feature(config)
+        ALL[ORDER[i]].start_feature(config)
         i += 1
       end
       nil
@@ -300,7 +336,7 @@ module Cybertrain
     def self.stop_features
       i = 0
       while i < ALL.size
-        ALL[i].stop_feature
+        ALL[ORDER[i]].stop_feature
         i += 1
       end
       nil
@@ -311,7 +347,7 @@ module Cybertrain
     def self.request_stop_features
       i = 0
       while i < ALL.size
-        ALL[i].request_stop_feature
+        ALL[ORDER[i]].request_stop_feature
         i += 1
       end
       nil
@@ -321,7 +357,7 @@ module Cybertrain
     def self.any_failed?
       i = 0
       while i < ALL.size
-        return true if ALL[i].feature_failed?
+        return true if ALL[ORDER[i]].feature_failed?
 
         i += 1
       end
@@ -333,7 +369,7 @@ module Cybertrain
     def self.health_problem(now, worker_stale, feeds, feed_stale)
       i = 0
       while i < ALL.size
-        problem = ALL[i].health_problem(now, worker_stale, feeds, feed_stale)
+        problem = ALL[ORDER[i]].health_problem(now, worker_stale, feeds, feed_stale)
         return problem unless problem.empty?
 
         i += 1
@@ -347,7 +383,7 @@ module Cybertrain
     def self.server_problem(config)
       i = 0
       while i < ALL.size
-        problem = ALL[i].server_problem(config)
+        problem = ALL[ORDER[i]].server_problem(config)
         return problem unless problem.empty?
 
         i += 1
@@ -360,14 +396,14 @@ module Cybertrain
     def self.start_features_early(config)
       i = 0
       while i < ALL.size
-        ALL[i].start_feature_early(config)
+        ALL[ORDER[i]].start_feature_early(config)
         i += 1
       end
       nil
     end
 
-    # `app` wrapped in each feature's endpoint middleware, in registration
-    # order (the last registered outermost); `app` itself when none adds
+    # `app` wrapped in each feature's endpoint middleware, in rank
+    # order (the last outermost); `app` itself when none adds
     # one.
     # @param app [Object] a Middleware or the router
     # @param config [Config]
@@ -376,7 +412,7 @@ module Cybertrain
       out = app
       i = 0
       while i < ALL.size
-        wrapped = ALL[i].feature_middleware(out, config)
+        wrapped = ALL[ORDER[i]].feature_middleware(out, config)
         out = wrapped unless wrapped.nil?
         i += 1
       end
@@ -390,7 +426,7 @@ module Cybertrain
     def self.run_controller_limit(controller, limit_id)
       i = 0
       while i < ALL.size
-        ALL[i].run_controller_limit(controller, limit_id)
+        ALL[ORDER[i]].run_controller_limit(controller, limit_id)
         i += 1
       end
       nil
@@ -402,7 +438,7 @@ module Cybertrain
     def self.command_status(word, args, name, router, url_resolver, views)
       i = 0
       while i < ALL.size
-        code = ALL[i].run_feature_command(word, args, name, router, url_resolver, views)
+        code = ALL[ORDER[i]].run_feature_command(word, args, name, router, url_resolver, views)
         return code if code >= 0
 
         i += 1
@@ -410,26 +446,26 @@ module Cybertrain
       -1
     end
 
-    # Every feature's help lines for `slot`, in registration order.
+    # Every feature's help lines for `slot`, in rank order.
     # @return [String]
     def self.usage_text(name, slot)
       out = +""
       i = 0
       while i < ALL.size
-        out << ALL[i].feature_usage(name, slot)
+        out << ALL[ORDER[i]].feature_usage(name, slot)
         i += 1
       end
       out
     end
 
-    # The index of the feature that takes the template helper `name`, -1
-    # when none does (an Integer rather than a nullable Feature: NOTES
+    # The index in ALL of the first feature (in rank order) that takes the
+    # template helper `name`, -1 when none does (an Integer rather than a nullable Feature: NOTES
     # rules 11/56).
     # @return [Integer]
     def self.helper_index(name)
       i = 0
       while i < ALL.size
-        return i if ALL[i].feature_helper?(name)
+        return ORDER[i] if ALL[ORDER[i]].feature_helper?(name)
 
         i += 1
       end
@@ -439,7 +475,7 @@ module Cybertrain
     # The template helper `name` of the feature at `index`
     # (Features.helper_index), with the helper dispatch's arguments.
     # @return [Object]
-    def self.call_helper(index, helpers, name, args, kwargs, block, interp, env)
+    def self.feature_helper_call(index, helpers, name, args, kwargs, block, interp, env)
       ALL[index].feature_helper(helpers, name, args, kwargs, block, interp, env)
     end
 
@@ -448,7 +484,7 @@ module Cybertrain
     def self.periodic_scheduler?
       i = 0
       while i < ALL.size
-        return true if ALL[i].schedules_periodic?
+        return true if ALL[ORDER[i]].schedules_periodic?
 
         i += 1
       end

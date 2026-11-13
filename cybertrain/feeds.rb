@@ -145,6 +145,10 @@ module Cybertrain
       "feeds"
     end
 
+    def feature_rank
+      20
+    end
+
     # A service that would refuse to start (a WebSocket subscription
     # without on_message).
     def server_problem(config)

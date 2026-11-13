@@ -507,6 +507,10 @@ module Cybertrain
       "rate_limit"
     end
 
+    def feature_rank
+      50
+    end
+
     def run_controller_limit(controller, limit_id)
       controller.apply_rate_limit(RateLimit.all[limit_id])
       nil

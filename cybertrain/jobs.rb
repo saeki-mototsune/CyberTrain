@@ -87,6 +87,10 @@ module Cybertrain
       "jobs"
     end
 
+    def feature_rank
+      10
+    end
+
     # A cron task's job: kind no Job.handle registered.
     def boot_problem(config)
       Scheduler.job_kinds_error

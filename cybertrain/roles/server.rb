@@ -22,7 +22,7 @@ module Cybertrain
     #            Background services)
     #   waits    Server#wait (TERM stops the listener and asks the features
     #            to stop: the job claims)
-    #   stops    the features, in registration order (with `require
+    #   stops    the features, in rank order (with `require
     #            "cybertrain"`: Job, Scheduler, Background, Stream::Poller)
     #
     # In development it is also the whole of D12: the rebuilder, the

@@ -56,6 +56,10 @@ module Cybertrain
       "streams"
     end
 
+    def feature_rank
+      30
+    end
+
     # Its start position (MAX(id)) must come before any subscription, so
     # before the listener; only with the endpoint mounted.
     def start_feature_early(config)

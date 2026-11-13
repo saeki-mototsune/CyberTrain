@@ -8,9 +8,10 @@
 # and compiles less (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md).
 require "cybertrain/core"
 require "cybertrain/jobs"
-# After jobs and before streams: the server role starts and stops the
-# features in this order (Job, Scheduler, Background, Stream::Poller), as
-# it did before they were optional.
+# The order of these lines does not matter: the features run in their
+# rank order (Feature#feature_rank), so the server role starts and stops
+# Job, Scheduler, Background, Stream::Poller in this order, as it did
+# before they were optional.
 require "cybertrain/feeds"
 require "cybertrain/streams"
 require "cybertrain/mailer"

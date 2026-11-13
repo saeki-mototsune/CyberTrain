@@ -1520,6 +1520,14 @@ explicitly retires a workaround.
     file must still not write a block that calls a hook inside its class
     body ahead of the hook's `def` (registering at the end of the file,
     outside the class, as the spike does, is safe).
+    In the framework since (2026-11-13): one hook may answer several
+    classes when its base raises instead of returning: `feature_helper`
+    (base: `raise RuntimeError`) answers a SafeString, a String or a
+    Template::TurboStreamBuilder from StreamsFeature, and
+    test/features_streams.rb, stream_endpoint.rb, turbo_helpers.rb and
+    template_integration.rb pass compiled; and probe features subclassing
+    a Feature subclass (`ProbeA < ProbeFeature < Feature`, registered at
+    run time) dispatch to their overrides (test/features_order.rb).
 
 <a id="numbers-worth-remembering"></a>
 

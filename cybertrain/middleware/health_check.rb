@@ -60,7 +60,7 @@ module Cybertrain
 
     # "" when healthy, else the 503's text. The database first: a worker
     # that cannot reach it is stale for that reason. Then the loaded
-    # subsystems', in registration order (with `require "cybertrain"`:
+    # subsystems', in rank order (jobs before feeds:
     # "worker stale", then "feed stale").
     def self.problem(now, worker_stale, feeds, feed_stale)
       return "database unavailable" unless database_ok?

@@ -34,8 +34,9 @@ module Cybertrain
   # deleted every {Config#cache_prune_interval} seconds ({Cache.prune}):
   # with `require "cybertrain/jobs"`, by the scheduled task
   # `"cybertrain cache prune"` (requiring both registers it); without
-  # jobs, by the write ({Cache.write}, {Cache.increment}) that comes once
-  # that interval has passed since the last prune.
+  # jobs, by the writes ({Cache.write}, {Cache.increment}): the first of
+  # the process and the first once that interval has passed, at most
+  # 1000 rows per write ({Cache.prune_if_due}).
   # @api public
   module Cache
     TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_cache (" \
@@ -94,8 +95,9 @@ module Cybertrain
     # Job's and Lease's).
     @installed_generation = -1
 
-    # Without jobs: the Cache.now of the last prune a write ran, or of the
-    # first write; -1 before it (a typed initial value: NOTES rule 7).
+    # Without jobs: the Cache.now of the last prune a write ran that
+    # deleted less than a full batch; -1 before it (a typed initial value:
+    # NOTES rule 7), which makes the first write prune.
     @last_self_prune = -1
 
     # The clock Cache.now reads: the system's until a test injects one.
@@ -393,24 +395,44 @@ module Cybertrain
       total = 0
       batch = PRUNE_BATCH
       while batch == PRUNE_BATCH
-        batch = 0
-        DB.with do |c|
-          c.execute(PRUNE_SQL, [now])
-          batch = c.changes
-        end
+        batch = prune_batch(now)
         total += batch
       end
       total
     end
 
+    # One statement of {Cache.prune}: deletes at most PRUNE_BATCH of the
+    # rows expired at `now`.
+    # @param now [Integer] epoch seconds
+    # @return [Integer] how many rows were deleted
+    # @api private
+    def self.prune_batch(now)
+      deleted = 0
+      DB.with do |c|
+        c.execute(PRUNE_SQL, [now])
+        deleted = c.changes
+      end
+      deleted
+    end
+
     # Without jobs (no loaded feature runs periodic work:
-    # Features.periodic_scheduler?), the prune the scheduled task would run: once
-    # {Config#cache_prune_interval} seconds have passed since the last one
-    # (counted from the first write of the process), the writing caller
-    # runs {Cache.prune}, the same statements as the task. With jobs it
-    # does nothing: the scheduler prunes, or, with CYBERTRAIN_WORKER=0,
-    # the process that runs it does. Two writers may both prune at the
-    # edge; the second deletes nothing.
+    # Features.periodic_scheduler?), the prune the scheduled task would
+    # run, one batch at a time: the writing caller deletes at most
+    # PRUNE_BATCH expired rows when a prune is due, so a large backlog
+    # drains over several writes rather than in one request. A prune is due
+    # on the first write of the process (a console, a one-shot command or
+    # the dev loop's re-exec prunes too), once {Config#cache_prune_interval}
+    # seconds have passed since the last one, when the clock went
+    # backwards, and after a full batch (more rows may be waiting: the
+    # clock is not advanced, so the next write continues). With jobs it
+    # does nothing: the scheduler prunes, or, with CYBERTRAIN_WORKER=0, the
+    # process that runs it does. Two writers may both prune at the edge;
+    # the second deletes what the first left.
+    #
+    # A DB::Error of the prune is logged and the caller's write goes on
+    # (the next due write retries, an interval later). Inside a caller's
+    # transaction the prune commits or rolls back with it: a rolled-back
+    # prune is retried by the next due write, which is acceptable.
     # @param now [Integer] epoch seconds ({Cache.now})
     # @return [nil]
     # @api private
@@ -418,14 +440,15 @@ module Cybertrain
       return nil if Features.periodic_scheduler?
 
       last = @last_self_prune
-      if last < 0
-        @last_self_prune = now
-        return nil
-      end
-      return nil if now - last < prune_interval
+      return nil if last >= 0 && now >= last && now - last < prune_interval
 
-      @last_self_prune = now
-      prune(now)
+      begin
+        deleted = prune_batch(now)
+        @last_self_prune = now if deleted < PRUNE_BATCH
+      rescue DB::Error => e
+        @last_self_prune = now
+        Cybertrain.logger.warn("cache: pruning the expired rows failed, the write goes on: #{e.message}")
+      end
       nil
     end
 
@@ -470,6 +493,10 @@ module Cybertrain
   class CacheFeature < Feature
     def feature_name
       "cache"
+    end
+
+    def feature_rank
+      40
     end
 
     def periodic_name

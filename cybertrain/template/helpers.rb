@@ -168,9 +168,12 @@ module Cybertrain
           # A loaded subsystem's helpers (Feature#feature_helper: with
           # cybertrain/streams, turbo_stream_from, turbo_stream,
           # signed_stream_name and stream_source_path), before anything the
-          # application defines, as the arms above.
+          # application defines, as the arms above. Not cached: the lookup
+          # asks each loaded feature (five at most, most with the base's
+          # `false`) one `case` on the name, about what a Hash lookup by
+          # name would cost.
           feature = Features.helper_index(name)
-          return Features.call_helper(feature, self, name, args, kwargs, block, interp, env) if feature >= 0
+          return Features.feature_helper_call(feature, self, name, args, kwargs, block, interp, env) if feature >= 0
 
           # Inside a component's template its view methods come first (the
           # component is the template's self, as in ViewComponent).

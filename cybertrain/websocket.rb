@@ -35,8 +35,8 @@
 # A feed's thread that ends anyway (an exception that is not a
 # StandardError, or the runtime killing it) is started again by the
 # supervisor (cybertrain/background/supervisor.rb), which also writes each
-# feed's status into `cybertrain_feeds` (WebSocket::FeedTable, which the
-# framework entry point requires) every
+# feed's status into `cybertrain_feeds` (WebSocket::FeedTable, which
+# cybertrain/feeds requires, and so this file) every
 # Config#feed_status_interval seconds; a `feeds` process whose feed keeps
 # dying exits with status 1.
 #
