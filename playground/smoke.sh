@@ -80,7 +80,7 @@ what_C1="with CODESPACES=true the session cookie keeps the default, SameSite=Lax
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
 what_C3="with CODESPACES=true and PATH=/usr/bin:/bin, interactive and login bash shells find spin in /opt/cybertrain/bin"
 what_C4="with VS Code's code command on PATH, playground-server opens PLAYGROUND.md and, once the server listens, the forwarded URL (code --openExternal)"
-what_F1="CYBERTRAIN_SESSION_SAME_SITE=lax stops the server at boot and names the valid values"
+what_F1="CYBERTRAIN_SESSION_SAME_SITE=lax stops the app at boot: the server logs the valid values and answers 503 naming them instead of serving the app"
 what_E1="a cp -a copy of the blog started by playground-server compiles nothing"
 what_B1="with no network, git ls-remote of the repository URL lists refs/tags/v$version (the mirror)"
 what_B2="with no network, cybertrain new works in /workspace (next to the blog) and locks the blog's commit"
@@ -379,12 +379,14 @@ if [ "$main_up" = yes ]; then
     fail A3 "$what_A3" "image: ${image_mtime:-unknown}, running: ${running_mtime:-unknown}, startup build ended: $startup_built" "$main"
   fi
 
-  compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | grep -v ' --version$' | sort -u)
+  # One word per program that ran (its pgrep -a line, but for a --version
+  # probe): the whole command lines run to pages.
+  compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | grep -v ' --version$' | awk '{ n = split($2, p, "/"); print p[n] }' | sort -u | tr '\n' ' ' | sed 's/ $//')
   running_ffi=$(docker exec "$main" sh -c "$ffi_list" sh /workspace/blog 2> /dev/null)
   if [ "$startup_built" = yes ] && [ -z "$compilers" ] && [ -n "$image_ffi" ] && [ "$running_ffi" = "$image_ffi" ]; then
     pass A11 "$what_A11"
   else
-    fail A11 "$what_A11" "startup build ended: $startup_built, compilers: $(printf '%s' "${compilers:-none}" | tr '\n' ';'), ffi in the image: $(printf '%s' "${image_ffi:-none}" | tr '\n' ';'), running: $(printf '%s' "${running_ffi:-none}" | tr '\n' ';')" "$main"
+    fail A11 "$what_A11" "startup build ended: $startup_built, compilers: ${compilers:-none}, ffi in the image: $(printf '%s' "${image_ffi:-none}" | tr '\n' ';'), running: $(printf '%s' "${running_ffi:-none}" | tr '\n' ';')" "$main"
   fi
 
   code=$(curl -s -o "$work/a4.html" -w '%{http_code}' --max-time 5 "$base/")
@@ -692,16 +694,37 @@ fi
 
 # ---- F: the boot check -----------------------------------------------------
 
-run_once 60 F1 -e CYBERTRAIN_SESSION_SAME_SITE=lax "$image"
-case "$out" in
-  *'must be Lax, Strict or None (got "lax")'*) named=yes ;;
-  *) named=no ;;
-esac
-# The container must end by itself: 124 means run_once removed it at 60 s.
-if [ "$rc" != 0 ] && [ "$rc" != 124 ] && [ "$named" = yes ]; then
-  pass F1 "$what_F1"
+# The app's boot check stops the child that serves it, CRuby first and the
+# compiled binary after its build. The supervisor outlives its child (it
+# holds the port and waits for a change), so the server does not exit: its
+# page says why the app is not served.
+boot="$prefix-boot"
+if start boot -e CYBERTRAIN_SESSION_SAME_SITE=lax "$image"; then
+  logged=no
+  answer=""
+  began=$SECONDS
+  while [ $((SECONDS - began)) -lt 30 ]; do
+    case "$(docker logs "$boot" 2>&1)" in
+      *'must be Lax, Strict or None (got "lax")'*) logged=yes ;;
+    esac
+    answer=$(docker exec "$boot" curl -s -o /tmp/f1.html -w '%{http_code}' --max-time 2 http://127.0.0.1:3000/articles 2> /dev/null)
+    if [ "$logged" = yes ] && [ "$answer" = 503 ] &&
+      docker exec "$boot" grep -qF 'must be Lax, Strict or None (got &quot;lax&quot;)' /tmp/f1.html 2> /dev/null; then
+      break
+    fi
+    if ! running "$boot"; then
+      break
+    fi
+    sleep 0.5
+  done
+  if [ "$logged" = yes ] && [ "$answer" = 503 ] &&
+    docker exec "$boot" grep -qF 'must be Lax, Strict or None (got &quot;lax&quot;)' /tmp/f1.html 2> /dev/null; then
+    pass F1 "$what_F1"
+  else
+    fail F1 "$what_F1" "logged: $logged, GET /articles: ${answer:-no answer}" "$boot"
+  fi
 else
-  fail F1 "$what_F1" "exit $rc" out:F1
+  fail F1 "$what_F1" "docker run failed: $(first_line "$(cat "$work/boot.start")")"
 fi
 
 # ---- E: a cp -a copy of the blog -------------------------------------------
