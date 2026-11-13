@@ -1,0 +1,194 @@
+#!/usr/bin/env ruby
+# The core must not name an optional subsystem (docs/superpowers/specs/
+# 2026-11-13-optional-subsystems-design.md, section 4): Spinel compiles
+# every method of every file a program requires, so one `require
+# "cybertrain/scheduler"` or one `Scheduler.running?` in a core file puts
+# jobs back into every application that requires only `cybertrain/core`.
+# This reads the source, lexically (no Spinel, CRuby's standard library
+# only): it follows `require "cybertrain/..."` and `require_relative` lines
+# from cybertrain/core.rb to the files under cybertrain/ they name, and
+# fails, listing each, when
+#   (a) a file of a subsystem in SUBSYSTEMS is in that closure (with the
+#       chain of requires that brings it in), or
+#   (b) a core file of the closure names one of a subsystem's constants
+#       (word boundary, case-sensitive, outside comments; inside strings
+#       too, since a string is code to this check), unless ALLOWED lists
+#       that file and constant.
+# A require of `cybertrain` itself from the core is (a) too: it is every
+# subsystem. Run by script/gate.
+#
+# usage: script/check-core-closure            check
+#        script/check-core-closure --list     also print the closure
+ROOT = File.expand_path("..", __dir__)
+ENTRY = "cybertrain/core.rb"
+
+# The subsystems the core must not reach: file patterns (File.fnmatch,
+# relative to the repository root) and the constants that name them. Each
+# task of docs/superpowers/plans/2026-11-13-optional-subsystems-plan.md
+# that makes a subsystem optional adds its row: streams (Task 3), then
+# feeds, mailer, cache and rate_limit (Task 4).
+SUBSYSTEMS = {
+  "jobs" => {
+    files: %w[
+      cybertrain/jobs.rb cybertrain/job.rb cybertrain/job/** cybertrain/jobs_page.rb
+      cybertrain/scheduler.rb cybertrain/scheduler/** cybertrain/lease.rb cybertrain/cron.rb
+      cybertrain/roles/worker.rb cybertrain/test/jobs.rb
+    ],
+    constants: %w[Job Scheduler Lease Cron JobsPage JobsFeature WorkerRunner]
+  }
+}.freeze
+
+# References a later task removes, allowed until then: [file, constant,
+# why]. Each entry names the task that removes it; an entry that no longer
+# matches anything fails the check, so the list cannot go stale.
+ALLOWED = [].freeze
+
+def source_path(spec, from)
+  path = File.join(ROOT, "#{spec}.rb")
+  return path if spec.start_with?("cybertrain/") || spec == "cybertrain"
+
+  # require_relative: relative to the requiring file.
+  File.expand_path("#{spec}.rb", File.dirname(from))
+end
+
+# The requires of a file: [spec, absolute path, line number], for the
+# framework's own files only (a stdlib require is not followed).
+def requires_of(path)
+  out = []
+  File.foreach(path, encoding: "UTF-8").with_index(1) do |line, n|
+    if (m = line.match(/\A\s*require\s*\(?\s*"(cybertrain(?:\/[^"]+)?)"/))
+      out << [m[1], source_path(m[1], path), n]
+    elsif (m = line.match(/\A\s*require_relative\s*\(?\s*"([^"]+)"/))
+      out << [m[1], source_path(m[1], path), n]
+    end
+  end
+  out
+end
+
+def relative(path)
+  path.delete_prefix("#{ROOT}/")
+end
+
+# The line without its comment: a `#` outside a string literal starts one
+# (`#{` only occurs inside strings, so a string-state scan is enough for
+# the framework's sources; heredoc bodies are scanned as code).
+def code_part(line)
+  quote = nil
+  i = 0
+  while i < line.size
+    ch = line[i]
+    if quote
+      if ch == "\\"
+        i += 1
+      elsif ch == quote
+        quote = nil
+      end
+    elsif ch == '"' || ch == "'"
+      quote = ch
+    elsif ch == "#"
+      return line[0, i]
+    end
+    i += 1
+  end
+  line
+end
+
+entry = File.join(ROOT, ENTRY)
+abort "check-core-closure: #{ENTRY} is missing" unless File.file?(entry)
+
+# Breadth first, remembering who required each file (for the chain).
+parent = { entry => nil }
+queue = [entry]
+missing = []
+until queue.empty?
+  file = queue.shift
+  requires_of(file).each do |spec, path, n|
+    unless File.file?(path)
+      missing << "#{relative(file)}:#{n}: requires #{spec.inspect}, which is not a file under the repository"
+      next
+    end
+    next if parent.key?(path)
+
+    parent[path] = file
+    queue << path
+  end
+end
+closure = parent.keys.map { |p| relative(p) }.sort
+
+def chain(parent, path)
+  links = []
+  node = path
+  until node.nil?
+    links.unshift(relative(node))
+    node = parent[node]
+  end
+  links.join(" -> ")
+end
+
+# Whether file (relative) matches one of the patterns ("dir/**" is every
+# file under dir, at any depth).
+def matches?(patterns, file)
+  patterns.any? do |pattern|
+    File.fnmatch(pattern, file, File::FNM_PATHNAME) ||
+      (pattern.end_with?("/**") && file.start_with?(pattern.delete_suffix("**")))
+  end
+end
+
+failures = missing.dup
+
+SUBSYSTEMS.each do |name, row|
+  closure.each do |file|
+    next unless file == "cybertrain.rb" || matches?(row[:files], file)
+
+    failures << "#{file} is a #{name} file in the core's closure: #{chain(parent, File.join(ROOT, file))}"
+  end
+end
+
+used_allowances = []
+closure.each do |file|
+  next if file == "cybertrain.rb" || SUBSYSTEMS.values.any? { |row| matches?(row[:files], file) } # reported above
+
+  in_begin_block = false
+  File.foreach(File.join(ROOT, file), encoding: "UTF-8").with_index(1) do |line, n|
+    if line.start_with?("=begin")
+      in_begin_block = true
+      next
+    end
+    if in_begin_block
+      in_begin_block = false if line.start_with?("=end")
+      next
+    end
+    code = code_part(line.chomp)
+    SUBSYSTEMS.each do |name, row|
+      row[:constants].each do |constant|
+        next unless code.match?(/(?<![A-Za-z0-9_])#{constant}(?![A-Za-z0-9_])/)
+
+        allowance = ALLOWED.find { |f, c, _why| f == file && c == constant }
+        if allowance
+          used_allowances << allowance
+        else
+          failures << "#{file}:#{n}: names #{constant} (#{name}): #{line.strip}"
+        end
+      end
+    end
+  end
+end
+
+(ALLOWED - used_allowances).each do |f, c, why|
+  failures << "ALLOWED lists #{f} naming #{c} (#{why}), which no longer happens: remove the entry"
+end
+
+if ARGV.include?("--list")
+  puts "the closure of #{ENTRY} (#{closure.size} files):"
+  closure.each { |f| puts "  #{f}" }
+end
+
+if failures.empty?
+  allowed = used_allowances.uniq.size
+  note = allowed.zero? ? "" : ", #{allowed} reference#{allowed == 1 ? "" : "s"} allowed until a later task"
+  puts "check-core-closure: #{closure.size} files from #{ENTRY}; no file or constant of #{SUBSYSTEMS.keys.join(", ")}#{note}"
+else
+  puts "check-core-closure: the core reaches an optional subsystem (#{failures.size}):"
+  failures.each { |f| puts "  #{f}" }
+  exit 1
+end
