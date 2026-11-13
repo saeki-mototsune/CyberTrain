@@ -14,6 +14,7 @@ ok   follow_redirect! never sends the Location's fragment
 ok   local_path drops the fragment and keeps the query, with or without a path
 ok   the jar reads a cookie by a Symbol as by its name
 ok   a cookie past its Max-Age or Expires under the clock is neither sent nor read
+ok   a Max-Age that is not a number is ignored, as RFC 6265 says; a negative one expires the cookie
 ok   an Expires already past drops the cookie, as Max-Age=0 does
 ok   assert_redirected_to fails on a non-redirect or another location
 ok   MethodOverride turns a POST with _method=delete into DELETE
@@ -38,4 +39,4 @@ file f f.txt text/plain 2 8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59
 ok   patch_multipart sends a POST with _method=patch, which MethodOverride turns into the PATCH route
 ok   status symbols cover payload_too_large and unsupported_media_type
 ok   every Controller::STATUS_SYMBOLS name is an exact match for its code
-28 tests, 204 assertions, 0 failures
+29 tests, 208 assertions, 0 failures

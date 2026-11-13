@@ -24,4 +24,4 @@ ok   a descendant chain that fails at its top is not exponential in the depth
 ok   a binary (ASCII-8BIT) body with non-ASCII bytes and a reference is read as UTF-8
 ok   a Range as the count: at least its first, at most its last
 ok   the trees that differ from a browser's, as documented
-26 tests, 334 assertions, 0 failures
+26 tests, 338 assertions, 0 failures
