@@ -216,4 +216,65 @@ test "tagged on concurrent threads: each sees its own tags, and a raising block 
   assert no_scope?
 end
 
+# Tags and messages of other encodings (Task 2's review, I2): a text line
+# is built from the bytes, so a UTF-8 tag beside a binary or ISO-8859-1
+# message never raises into the caller (Encoding::CompatibilityError under
+# CRuby); the bytes are written as they are.
+def latin1(text)
+  text.dup.force_encoding("ISO-8859-1")
+end
+
+test "a non-ASCII tag beside a binary or ISO-8859-1 message is written byte for byte" do
+  line = Cybertrain::Logger.format_line("INFO", ["é"], -1, "\xFF".b)
+  assert_equal "INFO [é] \xFF\n".b, line.b.byteslice(25, line.bytesize - 25)
+  sink = StringIO.new
+  logger = Cybertrain::Logger.new(sink)
+  with_scope(scope_for("日本")) do
+    logger.tagged("é") do
+      logger.info("\xFF\xFE".b)
+      logger.info(latin1("caf\xE9"))
+      logger.info("plain")
+    end
+  end
+  lines = sink.string.b.split("\n".b)
+  assert_equal 3, lines.size
+  assert_equal "INFO [日本] [é] \xFF\xFE".b, lines[0].byteslice(25, lines[0].bytesize - 25)
+  assert_equal "INFO [日本] [é] caf\xE9".b, lines[1].byteslice(25, lines[1].bytesize - 25)
+  assert_equal "INFO [日本] [é] plain".b, lines[2].byteslice(25, lines[2].bytesize - 25)
+end
+
+test "JSON lines with a non-ASCII tag and a binary or ISO-8859-1 message stay valid" do
+  sink = StringIO.new
+  logger = Cybertrain::Logger.new(sink)
+  json_during do
+    travel_to(NOON) do
+      logger.tagged("é") do
+        logger.info("\xFF".b)
+        logger.info(latin1("caf\xE9"))
+      end
+    end
+  end
+  assert_equal %({"time":"2026-11-11T12:00:00.000Z","level":"INFO","tags":["é"],"message":"\\ufffd"}\n) +
+               %({"time":"2026-11-11T12:00:00.000Z","level":"INFO","tags":["é"],"message":"caf\\ufffd"}\n),
+               sink.string
+end
+
+# A write that fails (Task 2's review, M3: a closed io, a dead pipe) is
+# dropped: logging never raises into its caller, and the lock is free.
+test "a logger whose io is closed drops the line and does not raise; the next logger still writes" do
+  closed = StringIO.new
+  closed.close
+  assert_nil Cybertrain::Logger.new(closed).info("lost")
+  sink = StringIO.new
+  Cybertrain::Logger.new(sink).info("kept")
+  assert sink.string.end_with?(" INFO kept\n")
+end
+
+# LogCapture.entries reads a line's time by its shape (Task 2's review, M8),
+# so a continuation line whose first word ends in "Z" stays as it is.
+test "LogCapture.entries drops only a real time and the tags" do
+  text = "fooZ ERROR x\n2026-11-11T12:00:00.000Z ERROR [r1] [billing] y\n2026-11-11T12:00:00.000 ERROR z"
+  assert_equal ["fooZ ERROR x", "ERROR y", "2026-11-11T12:00:00.000 ERROR z"], LogCapture.entries(text)
+end
+
 Cybertrain::Test.run!

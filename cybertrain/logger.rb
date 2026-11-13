@@ -241,11 +241,19 @@ module Cybertrain
       time = Logger.timestamp
       return Logger.json_line(time, level_name, tags, id_tag, text) if @json_lines
 
-      out = +"#{time} #{level_name}"
-      tags.each { |tag| out << " [#{tag}]" }
+      # Built from the bytes (Task 2's review, I2): a UTF-8 tag beside a
+      # binary or ISO-8859-1 message would raise Encoding::CompatibilityError
+      # under CRuby. The bytes are written as they are.
+      out = "#{time} #{level_name}".b
+      tags.each do |tag|
+        out << " ["
+        out << tag.to_s.b
+        out << "]"
+      end
       out << " "
-      out << text
+      out << text.b
       out << "\n" unless text.end_with?("\n")
+      out.force_encoding("UTF-8")
       out
     end
 
@@ -443,32 +451,43 @@ module Cybertrain
 
     # Writes one whole line (from {Logger.format_line}) with one `write`
     # under {LOCK}, and flushes STDOUT; the lock covers the write and the
-    # flush only. No io parameter: it branches on `@io` (spikes/NOTES.md
-    # rule 78).
+    # flush only. No io parameter: {write_now} branches on `@io`
+    # (spikes/NOTES.md rule 78).
     # @param line [String]
     # @return [nil]
     # @api private
     def write_line(line)
+      LOCK.synchronize do
+        write_now(line)
+      end
+      nil
+    end
+
+    # {write_line}'s write (and flush), inside the lock. A write that fails
+    # (a closed io, a pipe whose reader died) drops the line: logging never
+    # raises into its caller, and nothing is logged about it from inside
+    # the lock. A plain method with one rescue clause (spikes/NOTES.md
+    # rules 32 and 45).
+    # @param line [String]
+    # @return [nil]
+    # @api private
+    def write_now(line)
       if @io
         # #write, not #puts (spikes/NOTES.md rule 78): in a program whose
         # loggers never get an io, @io is nil-only, and Spinel
         # 2026.10.26.7019 sends `@io.puts(line)` through a dispatch whose
         # fallback fails C compilation once the TLS layer is in the program
         # (test/logger_tls.rb).
-        LOCK.synchronize do
-          @io.write(line)
-          nil
-        end
+        @io.write(line)
       else
         # Flushed per line: a server's stdout is usually a pipe or a file,
         # where it is block-buffered (test/logger_flush.rb).
-        LOCK.synchronize do
-          STDOUT.write(line)
-          STDOUT.flush
-          nil
-        end
+        STDOUT.write(line)
+        STDOUT.flush
       end
       nil # not the flush's value: Spinel types it as a File but emits void
+    rescue IOError, SystemCallError
+      nil
     end
 
     private

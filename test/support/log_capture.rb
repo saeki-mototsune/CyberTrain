@@ -8,8 +8,8 @@ require "cybertrain/logger"
 # A log line is `<time> <LEVEL> [<tag>]... <message>` (spec section 12.1).
 # Tests compare the level and the message, not the time and the tags, so
 # that a tag added around a line (a request id, a job's kind and id) does
-# not change what they assert: {LogCapture.entries} drops the time and the
-# tags, leaving `"<LEVEL> <message>"`. A message that itself starts with
+# not change what they assert: {LogCapture.entries} drops the time (read
+# by its shape) and the tags, leaving `"<LEVEL> <message>"`. A message that itself starts with
 # `[` would lose that bracket group too; none of the framework's does.
 # Byte-level reading, no regexp (pre-flight ruling G5).
 module LogCapture
@@ -49,10 +49,9 @@ module LogCapture
   # One line as `"<LEVEL> <message>"` (see {entries}).
   def self.entry(line)
     s = line.to_s
-    space = s.index(" ")
-    return s if space.nil? || space == 0 || s.getbyte(space - 1) != 90 # "Z": the time's end
+    return s unless LogCapture.time_shape?(s)
 
-    rest = s[(space + 1)..].to_s
+    rest = s.byteslice(25, s.bytesize - 25).to_s
     level_end = rest.index(" ")
     return rest if level_end.nil?
 
@@ -65,6 +64,27 @@ module LogCapture
       message = message[(close + 2)..].to_s
     end
     "#{level} #{message}"
+  end
+
+  # Whether `line` starts with a log line's time and a space,
+  # `YYYY-MM-DDTHH:MM:SS.mmmZ `, read byte by byte (no regexp).
+  def self.time_shape?(line)
+    s = line.to_s
+    return false if s.bytesize < 25
+
+    shape = "dddd-dd-ddTdd:dd:dd.dddZ "
+    i = 0
+    while i < 25
+      want = shape.getbyte(i).to_i
+      got = s.getbyte(i).to_i
+      if want == 100 # "d": a digit
+        return false if got < 48 || got > 57
+      elsif want != got
+        return false
+      end
+      i += 1
+    end
+    true
   end
 
   # How many lines of `text` are at `level` with a message starting with

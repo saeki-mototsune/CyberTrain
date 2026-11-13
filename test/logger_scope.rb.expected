@@ -8,4 +8,8 @@ ok   scope_where= writes the thread's own Scope
 ok   NO_SCOPE, shared by every thread, is never written: scope_where= on it does nothing
 ok   with_tags is a copy with the tags appended and the request id's place kept
 ok   tagged on concurrent threads: each sees its own tags, and a raising block restores its thread's
-10 tests, 36 assertions, 0 failures
+ok   a non-ASCII tag beside a binary or ISO-8859-1 message is written byte for byte
+ok   JSON lines with a non-ASCII tag and a binary or ISO-8859-1 message stay valid
+ok   a logger whose io is closed drops the line and does not raise; the next logger still writes
+ok   LogCapture.entries drops only a real time and the tags
+14 tests, 45 assertions, 0 failures
