@@ -48,7 +48,13 @@ module Cybertrain
   # #stop closes the listener; requests already being processed get their
   # response (with Connection: close), idle keep-alive connections are
   # closed, and #run returns once every connection is gone or drain_timeout
-  # seconds have passed.
+  # seconds have passed. A connection the server has taken in but not yet
+  # read a request from is not idle: its first request is answered too
+  # (waited for FIRST_REQUEST_GRACE at most), since closing it unread is a
+  # reset for a client that has already sent it. On its own listener the
+  # server also takes in what is still in the listener's queue before it
+  # closes it (accept_queued); an inherited one's queue is left for the
+  # next process on the socket.
   #
   # reuse_port: true binds with SO_REUSEPORT, so several processes can listen
   # on one port and, on Linux, the kernel splits connections between them
@@ -61,13 +67,19 @@ module Cybertrain
     # misses is caught on its next pass, and one it reads late is harmless
     # because the drain shuts only the read side.
     class Connection
-      attr_reader :sock
-      attr_accessor :id, :idle, :streaming
+      attr_reader :sock, :first_request_grace_end
+      attr_accessor :id, :idle, :streaming, :awaiting_first_request
 
       def initialize(sock)
         @id = 0
         @sock = sock
         @idle = false
+        # Until its first request has been read: a stop does not close it
+        # unread, and the drain leaves it its first request until
+        # first_request_grace_end (Server::FIRST_REQUEST_GRACE after the
+        # accept).
+        @awaiting_first_request = true
+        @first_request_grace_end = Process.clock_gettime(Process::CLOCK_MONOTONIC) + Server::FIRST_REQUEST_GRACE
         # Set while a BodyWriter runs on it: the drain shuts its read side
         # so the writer sees the end (Sink#closed?) and returns.
         @streaming = false
@@ -90,6 +102,11 @@ module Cybertrain
     # called. An idle keep-alive connection does not poll: it waits for its
     # next request for up to read_timeout, and the drain ends that wait.
     ACCEPT_POLL = 0.1
+    # How long after its accept a connection that has sent nothing yet is
+    # left open by a stop for its first request. A client sends its request
+    # right after the connect, so this is ample; a socket opened ahead of
+    # need (a browser's preconnect) holds the stop up no longer than this.
+    FIRST_REQUEST_GRACE = 0.5
 
     # port is the bound port once #start has run (the ephemeral one with port: 0;
     # the configured one with listen_fd).
@@ -340,7 +357,8 @@ module Cybertrain
 
     # Ends the wait of every connection whose thread is waiting for its next
     # request and has nothing to read yet, by shutting the socket's read
-    # side: the parked wait_readable wakes at once (CRuby and Spinel alike),
+    # side (a connection still awaiting its first request only once its
+    # FIRST_REQUEST_GRACE is over): the parked wait_readable wakes at once (CRuby and Spinel alike),
     # the read that follows sees EOF, and serve ends quietly and closes the
     # socket itself. Only the read side, because the snapshot can be stale:
     # a connection that left its wait after the snapshot and has already
@@ -350,8 +368,11 @@ module Cybertrain
     # step tolerates the connection's own thread closing the socket first.
     def shut_idle_connections
       idle = []
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @lock.synchronize do
-        @connections.each_value { |c| idle << c if c.idle || c.streaming }
+        @connections.each_value do |c|
+          idle << c if c.streaming || (c.idle && (!c.awaiting_first_request || now >= c.first_request_grace_end))
+        end
       end
       i = 0
       while i < idle.size
@@ -393,8 +414,28 @@ module Cybertrain
           end
         end
       end
+      accept_queued(listener) if @listen_fd < 0
     ensure
       listener.close unless listener.closed?
+    end
+
+    # Takes in the connections still in the queue of the server's own
+    # listener once it stops: the kernel completed their handshake, the
+    # clients may have sent their requests, and closing a listening socket
+    # resets everything in its queue. Each is served like any other (its
+    # first request answered with Connection: close). Bounded by
+    # ACCEPT_POLL, so a steady stream of new clients cannot keep the stop
+    # going. An inherited listener is not swept: the supervisor holds the
+    # socket open, and the next child on it takes in what is queued.
+    def accept_queued(listener)
+      started = Time.now
+      while !listener.closed? && Time.now - started < ACCEPT_POLL && !listener.wait_readable(0).nil?
+        spawn_connection(accept_client(listener))
+      end
+      nil
+    rescue StandardError => e
+      @logger.error("accept failed: #{e.class.name}: #{e.message}") unless listener.closed?
+      nil
     end
 
     def accept_client(listener)
@@ -435,7 +476,8 @@ module Cybertrain
     # wait means the client has been silent for read_timeout seconds.
     # Once the server is stopping, a connection idle between requests closes
     # (head_readable?) and a response ends the loop (respond answers
-    # Connection: close).
+    # Connection: close); one that has not had its first request yet waits
+    # for it, so that request is answered (the drain bounds the wait).
     #
     # `while true` rather than `loop do`: inside a `loop` block Spinel drops
     # the ivars of a raised exception (Rejected#status reads 0) and skips
@@ -483,6 +525,7 @@ module Cybertrain
         buf = rest.byteslice(length, rest.bytesize - length)
 
         request = Request.new(head.method, head.target, head.headers, body, remote_addr, head.http_version)
+        conn.awaiting_first_request = false
         break unless respond(sock, request, conn)
       end
     rescue Rejected => e
@@ -505,13 +548,19 @@ module Cybertrain
     # server stops (shut_idle_connections). It used to wait in ACCEPT_POLL slices
     # to notice the stop itself, which cost a timer and a scheduler turn per
     # idle connection ten times a second (spinel-feedback.md, 4).
+    #
+    # A connection still awaiting its first request waits for it even when
+    # the server is stopping: it was taken in (accepted, perhaps after the
+    # TERM, within ACCEPT_POLL) and its client may already have sent the
+    # request, so closing it unread would reset the client. The drain ends
+    # its wait once its FIRST_REQUEST_GRACE is over.
     def head_readable?(sock, idle, conn)
       return !sock.wait_readable(@read_timeout).nil? unless idle
 
       # marked first, then the flag read: a stop requested before the mark
       # is seen here, and one requested after it finds the mark
       conn.idle = true
-      ready = @running && !sock.wait_readable(@read_timeout).nil?
+      ready = (@running || conn.awaiting_first_request) && !sock.wait_readable(@read_timeout).nil?
       conn.idle = false
       ready
     end

@@ -177,8 +177,33 @@ class FlakyAcceptServer < Cybertrain::Server
   end
 end
 
+# The TERM trap landing between the accept loop's check of the stop flag
+# and its accept: the connection accepted is one the stopping server took
+# in, so its first request must be answered, not the socket closed unread
+# (a reset for the client). With $hold_accept the first accept also waits
+# until the test has queued a second connection behind it, which is then
+# in the listener's queue when the loop sees the stop.
+$hold_accept = false
+$accept_held = false
+$second_queued = false
+
+class StopOnAcceptServer < Cybertrain::Server
+  private
+
+  def accept_client(listener)
+    sock = super
+    request_stop
+    if $hold_accept
+      $hold_accept = false
+      $accept_held = true
+      sleep 0.01 until $second_queued
+    end
+    sock
+  end
+end
+
 $log = StringIO.new
-$server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 1,
+$server =Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 1,
                                  max_head_bytes: 1024, max_body_bytes: 64,
                                  logger: Cybertrain::Logger.new($log, :info))
 $server.start
@@ -681,6 +706,140 @@ test "drain_timeout bounds the wait for a request that takes too long" do
   # response does not outlive the test
   assert_equal "slow done", c.read_response(false).body
   c.close
+end
+
+# A stop requested just as a connection is accepted (StopOnAcceptServer).
+# Its first request is answered with Connection: close, and a request
+# pipelined behind it is not started: the stopping server finishes the
+# response in flight only.
+test "a connection accepted as the stop is requested gets its first request answered" do
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  c.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\nGET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  res = c.read_response(false)
+  assert_equal "HTTP/1.1 200 OK", res.status_line
+  assert_equal "hi", res.body
+  assert_equal "close", res.header("connection")
+  assert c.closed_by_server?
+  c.close
+  runner.join
+  assert_equal 0, server.open_connections
+end
+
+# The client's request arrives a little after the accept: the connection is
+# still waited on (FIRST_REQUEST_GRACE) rather than closed by the drain.
+test "a connection accepted as the stop is requested is answered when its request comes a moment later" do
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  sleep 0.2
+  c.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  res = c.read_response(false)
+  assert_equal "hi", res.body
+  assert_equal "close", res.header("connection")
+  c.close
+  runner.join
+end
+
+# A connection that never sends (a browser's spare, preconnected socket)
+# holds the stop up for FIRST_REQUEST_GRACE at most, not drain_timeout;
+# one accepted longer ago than that is closed at once, as an idle
+# keep-alive connection is.
+test "a connection that sends nothing holds up the stop for the first-request grace at most" do
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 30, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  started = Time.now
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  runner.join
+  elapsed = Time.now - started
+  assert elapsed < Cybertrain::Server::FIRST_REQUEST_GRACE + 0.5, "run took #{elapsed}s with a silent fresh connection"
+  assert c.closed_by_server?
+  c.close
+
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 30, drain_timeout: 5.0,
+                                                                                     logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  sleep 0.01 while server.open_connections == 0
+  sleep Cybertrain::Server::FIRST_REQUEST_GRACE + 0.1
+  started = Time.now
+  server.request_stop
+  runner.join
+  elapsed = Time.now - started
+  assert elapsed < 0.5, "run took #{elapsed}s with a connection silent since before the stop"
+  assert c.closed_by_server?
+  c.close
+end
+
+# The server's own listener: closing it would reset what is in its queue,
+# so the connections the kernel has queued when the loop sees the stop are
+# taken in and answered first.
+test "connections still in the accept queue at the stop are answered, not reset" do
+  $hold_accept = true
+  $accept_held = false
+  $second_queued = false
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  port = server.port
+  first = RawClient.new(port)
+  first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  sleep 0.01 until $accept_held
+  second = RawClient.new(port)
+  second.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  $second_queued = true
+  assert_equal "hi", first.read_response(false).body
+  res = second.read_response(false)
+  assert_equal "hi", res.body
+  assert_equal "close", res.header("connection")
+  first.close
+  second.close
+  runner.join
+  assert port_refused?(port)
+end
+
+# Under `cybertrain server` the listener is inherited and the supervisor
+# keeps its own copy (here `supervisor`, a dup): what is queued at the
+# stop stays queued, and the next server on the same socket answers it.
+# The two servers answer differently, so the body says which one did.
+test "with an inherited listener, connections queued at the stop are left for the next server" do
+  $hold_accept = true
+  $accept_held = false
+  $second_queued = false
+  held = TCPServer.new("127.0.0.1", 0)
+  held.autoclose = false
+  port = held.addr[1]
+  supervisor = held.dup
+  supervisor.autoclose = false
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
+                                                                                    read_timeout: 5, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  # already listening: a client may connect before the server starts
+  runner = Thread.new { server.run }
+  first = RawClient.new(port)
+  first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  sleep 0.01 until $accept_held
+  second = RawClient.new(port)
+  second.send_raw("GET /next HTTP/1.1\r\nHost: t\r\n\r\n")
+  $second_queued = true
+  assert_equal "hi", first.read_response(false).body
+  first.close
+  runner.join
+  following = Cybertrain::Server.new(BareHandler.new, port: port, listen_fd: supervisor.fileno, logger: Cybertrain::Logger.new($log, :info))
+  following.start
+  assert_equal "bare /next", second.read_response(false).body
+  second.close
+  following.stop
+  assert port_refused?(port)
 end
 
 test "start raises Cybertrain::PortInUse when the port is already bound" do
