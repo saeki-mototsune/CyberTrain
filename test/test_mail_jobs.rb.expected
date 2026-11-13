@@ -1,0 +1,9 @@
+ok   in the test environment deliver stores the message
+ok   deliveries are cleared before every test
+ok   assert_emails counts deliver_later in the block
+ok   assert_no_emails
+ok   the :smtp opt-out reaches the SmtpReceiver
+ok   perform_enqueued_jobs with a block runs jobs queued in it, the jobs they queue and a future run_at, not earlier jobs
+ok   the block-less form still runs due jobs at a given time
+ok   Job.work_one_after claims above the floor whatever the run_at, of a kind when given
+8 tests, 57 assertions, 0 failures

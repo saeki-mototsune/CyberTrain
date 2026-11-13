@@ -149,6 +149,45 @@ test "time_zone from the environment and its check" do
   assert_equal "", assigned.validation_error
 end
 
+test "mail_delivery_method from the environment and its check" do
+  saved_env = ENV["CYBERTRAIN_ENV"].to_s
+  ENV.delete("CYBERTRAIN_MAIL_DELIVERY_METHOD")
+  ENV.delete("CYBERTRAIN_ENV")
+  # :test in the test environment only; :smtp everywhere else.
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_ENV"] = "production"
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_ENV"] = "test"
+  in_test = Cybertrain::Config.new
+  assert_equal :test, in_test.mail_delivery_method
+  assert_equal "", in_test.mail_delivery_error
+  # The variable decides whatever the environment.
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "smtp"
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_ENV"] = "development"
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "test"
+  assert_equal :test, Cybertrain::Config.new.mail_delivery_method
+  # An empty variable counts as unset.
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = ""
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "letter_opener"
+  opener = Cybertrain::Config.new
+  assert_equal :letter_opener, opener.mail_delivery_method
+  assert_equal "mail_delivery_method must be :smtp or :test (got :letter_opener)", opener.mail_delivery_error
+  assert_equal "mail_delivery_method must be :smtp or :test (got :letter_opener)", opener.validation_error
+  ENV.delete("CYBERTRAIN_MAIL_DELIVERY_METHOD")
+  assigned = Cybertrain::Config.new
+  assigned.mail_delivery_method = :sendmail
+  assert_equal "mail_delivery_method must be :smtp or :test (got :sendmail)", assigned.validation_error
+  assigned.mail_delivery_method = :test
+  assert_equal "", assigned.validation_error
+  if saved_env.empty?
+    ENV.delete("CYBERTRAIN_ENV")
+  else
+    ENV["CYBERTRAIN_ENV"] = saved_env
+  end
+end
+
 test "boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on" do
   c = Cybertrain::Config.new
   c.feed_status_interval = 300

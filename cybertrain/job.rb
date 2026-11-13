@@ -602,6 +602,23 @@ module Cybertrain
       Executor.work_one(now)
     end
 
+    # Claims and runs the queued job with the lowest id above `floor`,
+    # whatever its run_at, and records the outcome as {.work_one} does:
+    # what `perform_enqueued_jobs { }` and `assert_emails { }` call to run
+    # the jobs queued during their block (ids above the largest one before
+    # it), and the jobs those queue, on the test's thread. The attempt is
+    # timed at the clock's now ({Clock.now}, so a frozen test clock).
+    # @example
+    #   floor = id_before_the_block
+    #   nil while Cybertrain::Job.work_one_after(floor)
+    # @param floor [Integer] only rows whose id is greater
+    # @param kind [String] only rows of this kind; "" for any
+    # @return [Boolean] true when a job was claimed
+    # @api public
+    def self.work_one_after(floor, kind = "")
+      Executor.work_one_after(floor, kind, Clock.now.to_i)
+    end
+
     # Works through due jobs, at most `limit` of them, one after another on
     # the calling thread (a {Main.command} that drains the queue, or a
     # test). Returns how many it claimed.

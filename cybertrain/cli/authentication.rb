@@ -4151,10 +4151,12 @@ module Cybertrain
           require_relative "app_test"
 
           # Runs the block with the app's mail going to a receiver on 127.0.0.1
-          # (Config#smtp_*: plain text, from noreply@example.com), then stops the
-          # receiver and puts the settings back, also when the block fails (an
-          # assertion raises). A mail sent with deliver_later goes out when the
-          # test runs the jobs (perform_enqueued_jobs).
+          # (Config#smtp_*: plain text, from noreply@example.com, and
+          # mail_delivery_method :smtp, where the test environment would store the
+          # mail in Mailer.deliveries), then stops the receiver and puts the
+          # settings back, also when the block fails (an assertion raises). A mail
+          # sent with deliver_later goes out when the test runs the jobs
+          # (perform_enqueued_jobs).
           def with_smtp_receiver
             receiver = Cybertrain::Test::SmtpReceiver.new
             port = receiver.start
@@ -4163,7 +4165,9 @@ module Cybertrain
             given_port = c.smtp_port
             tls = c.smtp_tls
             from = c.smtp_from
+            delivery = c.mail_delivery_method
             begin
+              c.mail_delivery_method = :smtp
               c.smtp_host = "127.0.0.1"
               c.smtp_port = port
               c.smtp_tls = "none"
@@ -4175,6 +4179,7 @@ module Cybertrain
               c.smtp_port = given_port
               c.smtp_tls = tls
               c.smtp_from = from
+              c.mail_delivery_method = delivery
             end
             nil
           end

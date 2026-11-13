@@ -44,6 +44,33 @@ module Cybertrain
       # The most jobs {perform_enqueued_jobs} runs in one call.
       PERFORM_LIMIT = 10_000
 
+      # The largest id in cybertrain_jobs, 0 when it is empty: what a block
+      # helper reads before its block, so that the jobs queued during the
+      # block are the ones above it.
+      # @return [Integer]
+      def self.max_id
+        Job.ensure_installed
+        rows = DB.with { |c| c.execute("SELECT COALESCE(MAX(id), 0) AS n FROM cybertrain_jobs") }
+        Cast.int(rows[0]["n"])
+      end
+
+      # Runs every queued job above `floor` (of `kind` unless ""), whatever
+      # its run_at, and the jobs those queue, until none is left
+      # ({Job.work_one_after}), and answers how many ran; fails the test
+      # after PERFORM_LIMIT, naming `helper`.
+      # @return [Integer]
+      def self.perform_after(floor, kind, helper)
+        count = 0
+        while Job.work_one_after(floor, kind)
+          count += 1
+          if count >= PERFORM_LIMIT
+            text = "#{helper} ran #{PERFORM_LIMIT} jobs; a job re-enqueues itself"
+            Cybertrain::Test.fail_with(text)
+          end
+        end
+        count
+      end
+
       # `{"user_id" => 1}` as the failure message shows the wanted args.
       def self.describe_args(args)
         parts = Array.new(0) { "" }
@@ -110,19 +137,34 @@ def assert_enqueued_with(kind, args = Cybertrain::Cast.empty_hash)
   flunk("expected an enqueued #{kind.inspect} job#{wanted}; #{queued}")
 end
 
-# Runs every job due at `now` on the calling thread, until none is due
-# (`Job.work_one`), and returns how many it ran. A retry the job scheduled
-# for later is left queued; pass a later `now` to run it. It fails the test
-# after 10,000 jobs: a job that enqueues itself due at once would otherwise
-# never let the test end.
+# Without a block: runs every job due at `now` on the calling thread,
+# until none is due (`Job.work_one`), and returns how many it ran. A retry
+# the job scheduled for later is left queued; pass a later `now` to run it.
+#
+# With a block (Rails' inline form): runs the block, then performs on the
+# calling thread every job queued during it, and the jobs those queue,
+# whatever their run_at (`Job.work_one_after`), and returns how many it
+# ran; `now` is not used. Jobs queued before the block stay queued. A retry
+# is performed again at once, until the job's attempts run out.
+#
+# Either form fails the test after 10,000 jobs: a job that enqueues itself
+# would otherwise never let the test end.
 # @example
 #   post "/signup", ...
 #   assert_equal 1, perform_enqueued_jobs
+# @example the block form
+#   performed = perform_enqueued_jobs { ReminderJob.perform_in(3600, { "id" => 1 }) }
 # @param now [Time]
 # @return [Integer]
 # @raise [Cybertrain::Test::AssertionFailed] after 10,000 jobs in one call
 # @api public
 def perform_enqueued_jobs(now = Time.current)
+  if block_given?
+    floor = Cybertrain::Test::Jobs.max_id
+    yield
+    return Cybertrain::Test::Jobs.perform_after(floor, "", "perform_enqueued_jobs")
+  end
+
   count = 0
   at = now.to_i
   while Cybertrain::Job.work_one(at)

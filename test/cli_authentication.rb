@@ -1485,8 +1485,11 @@ test "password reset: the generated tests and their helpers" do
   assert_includes helpers, "def with_smtp_receiver\n"
   # The settings come back even when the block fails.
   assert_includes helpers, "    yield receiver\n  ensure\n    receiver.stop\n    c.smtp_host = host\n    c.smtp_port = given_port\n" \
-                           "    c.smtp_tls = tls\n    c.smtp_from = from\n  end\n"
-  assert_includes helpers, "    c.smtp_host = \"127.0.0.1\"\n    c.smtp_port = port\n    c.smtp_tls = \"none\"\n    c.smtp_from = \"noreply@example.com\"\n"
+                           "    c.smtp_tls = tls\n    c.smtp_from = from\n    c.mail_delivery_method = delivery\n  end\n"
+  # The receiver gets the mail: the SMTP path, where the test environment
+  # would store it in Mailer.deliveries.
+  assert_includes helpers, "  delivery = c.mail_delivery_method\n  begin\n    c.mail_delivery_method = :smtp\n" \
+                           "    c.smtp_host = \"127.0.0.1\"\n    c.smtp_port = port\n    c.smtp_tls = \"none\"\n    c.smtp_from = \"noreply@example.com\"\n"
   assert_includes helpers, "def last_mail_link(receiver)\n"
   assert_includes helpers, "def backdate_session(row, seconds)\n  at = Time.at(Time.current.to_i - seconds).utc\n  row.update_columns(created_at: at, last_active_at: at)\n  nil\nend\n"
   spec = read("shop/test/passwords.rb")

@@ -436,6 +436,29 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :smtp_tls
 
+    # How {Mailer} delivers, from `CYBERTRAIN_MAIL_DELIVERY_METHOD`
+    # (`smtp` or `test`): `:smtp` sends through the server above; `:test`
+    # (Rails' `delivery_method = :test`) checks each message and appends
+    # it to {Mailer.deliveries} instead of connecting. The default is
+    # `:test` in the test environment (CYBERTRAIN_ENV=test, which
+    # `cybertrain test` sets) and `:smtp` in every other. A test that
+    # reads mail at a `Test::SmtpReceiver` sets `:smtp` first. Boot refuses
+    # anything else ({#mail_delivery_error}).
+    # @example a test of the SMTP path
+    #   Cybertrain.config.mail_delivery_method = :smtp
+    # @return [Symbol]
+    # @api public
+    attr_accessor :mail_delivery_method
+
+    # CYBERTRAIN_MAIL_DELIVERY_METHOD as a Symbol, or, when it is unset or
+    # empty, :test for the test environment and :smtp for any other.
+    def self.default_mail_delivery_method(env)
+      given = env_or("CYBERTRAIN_MAIL_DELIVERY_METHOD", "")
+      return given.to_sym unless given.empty?
+
+      env == "test" ? :test : :smtp
+    end
+
     # CYBERTRAIN_SMTP_PORT: 0 (the mode's port) unless it is 1..65535.
     def self.default_smtp_port
       n = Params.parse_int(env_or("CYBERTRAIN_SMTP_PORT", ""), 0)
@@ -1023,6 +1046,7 @@ end
       @smtp_password = Config.env_or("CYBERTRAIN_SMTP_PASSWORD", "")
       @smtp_from = Config.env_or("CYBERTRAIN_SMTP_FROM", "")
       @smtp_tls = Config.env_or("CYBERTRAIN_SMTP_TLS", "starttls").downcase
+      @mail_delivery_method = Config.default_mail_delivery_method(@env)
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
       # Application-defined settings (setting_string / setting_int /
       # setting_bool): one typed Hash per type, keyed by the setting's name

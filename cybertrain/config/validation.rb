@@ -18,8 +18,8 @@ module Cybertrain
     # reported them: the session cookie and CSRF, the request and upload
     # limits, the time zone, the background work, pagination, the
     # proxies, the health check, the feeds, the stream endpoint, the
-    # locales, the authentication limits, the security headers and the
-    # encryption keys. Reads only; safe to call from a test or a
+    # locales, the authentication limits, the mail delivery method, the
+    # security headers and the encryption keys. Reads only; safe to call from a test or a
     # `--check`-style command with no database and no writable disk.
     # @return [String]
     # @api public
@@ -61,6 +61,9 @@ module Cybertrain
       return problem unless problem.empty?
 
       problem = auth_error
+      return problem unless problem.empty?
+
+      problem = mail_delivery_error
       return problem unless problem.empty?
 
       problem = security_error
@@ -191,6 +194,18 @@ module Cybertrain
       end
 
       ""
+    end
+
+    # The error Application#boot reports when mail_delivery_method is
+    # neither :smtp nor :test (from CYBERTRAIN_MAIL_DELIVERY_METHOD or an
+    # assignment); "" when it is one of them.
+    # @return [String]
+    # @api public
+    def mail_delivery_error
+      delivery = @mail_delivery_method
+      return "" if delivery == :smtp || delivery == :test
+
+      "mail_delivery_method must be :smtp or :test (got #{delivery.inspect})"
     end
 
     # The error Application#boot reports when an auth_* setting is out of

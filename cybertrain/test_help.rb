@@ -42,3 +42,19 @@ Cybertrain::Test.on_reset(Cybertrain::Test::Help.rate_limit_reset)
 Cybertrain::Test.on_reset(Cybertrain::Test::Help.locale_reset)
 require "cybertrain/test/database"
 require "cybertrain/test/select"
+require "cybertrain/test/mail"
+
+module Cybertrain
+  module Test
+    module Help
+      # The mail stored by the delivery method :test (Mailer.deliveries).
+      def self.deliveries_reset
+        -> {
+          Cybertrain::Mailer.deliveries.clear
+          nil
+        }
+      end
+    end
+  end
+end
+Cybertrain::Test.on_reset(Cybertrain::Test::Help.deliveries_reset)

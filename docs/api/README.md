@@ -106,8 +106,18 @@ inherits `ViewComponent::TestCase`.
 The job helpers come with `require "cybertrain/test/jobs"`:
 `assert_enqueued_jobs(count, kind = "")`, `assert_no_enqueued_jobs(kind = "")`,
 `assert_enqueued_with(kind, args = {})` (args compared as strings, so
-`"user_id" => 1` matches a JSON 1), `perform_enqueued_jobs(now = Time.now)`
-(runs the due jobs, returns how many) and `clear_enqueued_jobs`.
+`"user_id" => 1` matches a JSON 1), `perform_enqueued_jobs(now = Time.current)`
+(runs the due jobs, returns how many; with a block, runs the block and then
+every job queued in it, and the jobs those queue, whatever their `run_at`)
+and `clear_enqueued_jobs`.
+
+In the test environment `Cybertrain.config.mail_delivery_method` is `:test`:
+a delivery is checked and stored in `Cybertrain::Mailer.deliveries` (emptied
+before every test) instead of connecting. `assert_emails(count) { ... }`
+counts the mail the block delivered, `deliver_later` included (its jobs are
+performed first), and `assert_no_emails { ... }` is `assert_emails(0)`; both
+come with `cybertrain/test_help` (`require "cybertrain/test/mail"`). A test
+that reads mail at an SMTP receiver sets `mail_delivery_method = :smtp`.
 
 Webhooks and e-mail the code under test sends are received in-process by
 {Cybertrain::Test::HttpReceiver} (`require "cybertrain/test/http_receiver"`)
