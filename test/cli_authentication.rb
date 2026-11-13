@@ -1069,7 +1069,10 @@ test "remember_me_test checks day 15 and day 30 with travel_to" do
   assert_includes remember, "    sign_in_as users(:one), remember: true\n"
   assert_includes remember, "    assert session_cookie_of(response).end_with?(\"; Max-Age=2678400\"), session_cookie_of(response)\n"
   assert_includes remember, "    assert cookie.end_with?(\"; Max-Age=2592000\"), cookie\n"
-  assert_includes remember, "      assert_equal 1_209_600, stamped.lifetime_limit\n      assert stamped.browser_session?\n"
+  assert_includes remember, "      Cybertrain.config.session_max_age = 13.days\n      stamped = stamped_session(user, false)\n" \
+                            "      assert_equal 1_123_200, stamped.lifetime_limit\n      assert stamped.browser_session?\n"
+  # Its fallback, the two-week constant, once session_max_age is not positive.
+  assert_includes remember, "      Cybertrain.config.session_max_age = 0\n      assert_equal 1_209_600, stamped_session(user, false).lifetime_limit\n"
   # The reset mail: assert_emails, and its link's 15 minutes by travel.
   passwords = read("shop/test/controllers/passwords_controller_test.rb")
   assert_includes passwords, "  test \"a reset mail is sent once and its link expires after 15 minutes\" do\n" \

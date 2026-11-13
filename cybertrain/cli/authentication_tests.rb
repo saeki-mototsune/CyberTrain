@@ -1185,9 +1185,11 @@ module Cybertrain
                   # The row is still there: the cookie alone ended it.
                   refute Session.find_by(id: started.id).nil?
                 end
-                # The stamp itself.
+                # The stamp itself: session_max_age as it is (13 days), not the
+                # two-week constant.
+                Cybertrain.config.session_max_age = 13.days
                 stamped = stamped_session(user, false)
-                assert_equal 1_209_600, stamped.lifetime_limit
+                assert_equal 1_123_200, stamped.lifetime_limit
                 assert stamped.browser_session?
                 # session_max_age not positive either: two weeks all the same.
                 Cybertrain.config.session_max_age = 0
