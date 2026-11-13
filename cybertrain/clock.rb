@@ -19,14 +19,21 @@ module Cybertrain
   # override of `Time.now` (cybertrain/test/time_now.rb) cannot recurse.
   #
   # Threads: the state is process-wide, so a job or server thread sees a
-  # test's travel. Two ivars cannot change at once, and nothing locks them;
-  # the order of the writes is the whole guarantee that a reader never pairs
-  # `@travelling == true` with an instant that was not travelled to (such
-  # as 0, 1970). `@micros` is only ever written with a travelled instant,
-  # and before `@travelling` becomes true; going back to real time clears
-  # `@travelling` alone and leaves `@micros` as it was; {now} reads the
-  # flag before the instant. So a reader that saw the flag set reads the
-  # instant of this travel or of the one being restored, never 0.
+  # test's travel. Two ivars cannot change at once, and nothing locks them.
+  # The order of the writes is a best-effort guard, with no barrier: within
+  # one thread `@micros` is only ever written with a travelled instant and
+  # before `@travelling` becomes true, going back to real time clears
+  # `@travelling` alone and leaves `@micros` as it was, and {now} reads the
+  # flag before the instant; but neither CRuby's nor Spinel's compiled code
+  # promises that another thread observes the two writes in that order (a
+  # plain ivar load is not a publication barrier on Spinel; compare the
+  # Mutex of TimeZone's cache). So a thread that reads the clock while a
+  # test travels may, rarely, see the old instant beside the new flag
+  # (1970 before the first travel). Travel is a test-only operation, made
+  # from the test's own thread; threads still running beside it (a server,
+  # a worker) see each travel eventually, not at a defined point. Reads are
+  # not locked because {now} is on every request's path and a test needs
+  # no more than this.
   # @api public
   module Clock
     @travelling = false
@@ -37,7 +44,7 @@ module Cybertrain
     # @return [Time]
     # @api public
     def self.now
-      # The flag first, then the instant (the module's comment).
+      # The flag first, then the instant (best effort: the module's comment).
       us = @travelling ? @micros : Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond)
       Time.at(us / 1_000_000, us % 1_000_000).utc
     end

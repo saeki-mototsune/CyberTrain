@@ -2,6 +2,7 @@ require "cybertrain/test"
 require "cybertrain/controller"
 require "cybertrain/session"
 require "cybertrain/flash"
+require_relative "support/zone_swap"
 
 # cybertrain/model links SQLite through FFI, so this program cannot run under
 # CRuby: its snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
@@ -453,20 +454,6 @@ test "time_tag format: a width replaces a number's padding; a width or flag strf
    ["%-T", "%T takes no flag but ^"]].each do |directive, why|
     msg = assert_raises("RuntimeError") { render_inline("<%= time_tag e, format: \"%Y #{directive}\" %>", env) }
     assert_equal "posts/inline:1: time_tag format: #{directive} in \"%Y #{directive}\": #{why}", msg
-  end
-end
-
-# Sets Cybertrain::Clock.zone (Time.zone) for the block and puts the zone
-# found before back when it ends, also when an assertion in it fails
-# (spikes/NOTES.md rule 103's save-yield-ensure in a module function).
-module ZoneSwap
-  def self.during(name)
-    saved = Cybertrain::Clock.zone
-    Cybertrain::Clock.zone = Cybertrain::TimeZone.find(name)
-    _value = yield
-    nil
-  ensure
-    Cybertrain::Clock.zone = saved
   end
 end
 

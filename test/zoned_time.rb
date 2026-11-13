@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/time_ext"
+require_relative "support/zone_swap"
 
 # Time#in_time_zone and Cybertrain::ZonedTime (spec section 4, "Reading wall
 # fields"; acceptance 2): the wall fields of a UTC instant in Time.zone, in
@@ -8,20 +9,6 @@ require "cybertrain/time_ext"
 # the refusal of a name the system zoneinfo does not have. Plain Ruby, no
 # FFI: the snapshot comes from CRuby or the compiled binary alike. Needs the
 # system's /usr/share/zoneinfo.
-
-# Sets Cybertrain::Clock.zone for the block and puts the zone found before
-# back when it ends, also when an assertion in it fails (spikes/NOTES.md
-# rule 103's save-yield-ensure in a module function).
-module ZoneSwap
-  def self.during(name)
-    saved = Cybertrain::Clock.zone
-    Cybertrain::Clock.zone = Cybertrain::TimeZone.find(name)
-    _value = yield
-    nil
-  ensure
-    Cybertrain::Clock.zone = saved
-  end
-end
 
 def wall_fields(z)
   [z.year, z.month, z.day, z.hour, z.min, z.sec]

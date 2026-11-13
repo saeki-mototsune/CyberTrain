@@ -20,9 +20,28 @@ test "Time.now is real time outside a travel" do
   assert before - 0.001 <= now && now <= after + 0.001, "Time.now #{now} outside #{before}..#{after}"
 end
 
-test "a framework time read through Time.now follows the travel" do
+# Code that reads Time.now itself (an application's or a library's, as in a
+# Rails application) rather than Time.current; the framework reads the
+# clock directly (test/clock.rb's scan).
+def stamped_now = Cybertrain::Cast.sql_datetime(Time.now)
+
+test "code that reads Time.now follows the travel" do
   travel_to(Time.utc(2001, 9, 9, 1, 46, 40)) do
-    assert_equal "2001-09-09 01:46:40.000000", Cybertrain::Model.now_string
+    assert_equal "2001-09-09 01:46:40.000000", stamped_now
+  end
+end
+
+test "Time.now answers local time, as the builtin does" do
+  # The builtin's local offset at the same instants, read without the
+  # override (Time.at and Time.new are not overridden).
+  now = Time.now
+  refute now.utc?
+  assert_equal Time.at(now.to_i).utc_offset, now.utc_offset
+  travel_to(Time.utc(2001, 9, 9)) do
+    travelled = Time.now
+    refute travelled.utc?
+    assert_equal Time.at(999_993_600).utc_offset, travelled.utc_offset
+    assert_equal 999_993_600, travelled.to_i
   end
 end
 

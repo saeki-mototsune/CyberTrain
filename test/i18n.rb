@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/i18n"
 require "cybertrain/generator/locale_yaml"
+require_relative "support/zone_swap"
 
 # I18n (plan decisions D2 and D5-D7, Task 4): t with interpolation,
 # defaults, count: plurals and the fallback to the default locale, the
@@ -370,20 +371,6 @@ test "l refuses what it cannot format" do
   assert_equal "l: format: must be a Symbol or a String (got Integer)", msg
   msg = assert_raises("I18n::InvalidLocale") { I18n.l(L_DAY, locale: :xx) }
   assert_equal "\"xx\" is not an available locale", msg
-end
-
-# Sets Cybertrain::Clock.zone (Time.zone) for the block and puts the zone
-# found before back when it ends, also when an assertion in it fails
-# (spikes/NOTES.md rule 103's save-yield-ensure in a module function).
-module ZoneSwap
-  def self.during(name)
-    saved = Cybertrain::Clock.zone
-    Cybertrain::Clock.zone = Cybertrain::TimeZone.find(name)
-    _value = yield
-    nil
-  ensure
-    Cybertrain::Clock.zone = saved
-  end
 end
 
 test "l renders a Time in Time.zone, or once in zone:; a Date as it is" do

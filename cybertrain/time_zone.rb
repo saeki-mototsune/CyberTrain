@@ -701,7 +701,6 @@ module Cybertrain
     # @api public
     def self.parse_tzif(name, bytes)
       s = bytes.to_s
-      n = s.bytesize
       return unknown(name) unless tzif_magic?(s, 0)
 
       version = s.getbyte(4)

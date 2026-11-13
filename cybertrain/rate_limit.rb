@@ -194,7 +194,10 @@ module Cybertrain
     def count_hit(key, now)
       if @starts.key?(key)
         start = @starts[key]
-        if now - start < @period_seconds
+        # A window that starts after now (a test travelled back) is over,
+        # as one whose period has run out: counting into it would answer a
+        # Retry-After up to the distance travelled.
+        if now >= start && now - start < @period_seconds
           seen = @counts[key] + 1
           @counts[key] = seen
           return 0 if seen <= @limit_count
@@ -214,8 +217,9 @@ module Cybertrain
     end
 
     # Under the lock, with the table full: drops the expired windows at the
-    # front, then the oldest open ones until a tenth of the table (at least
-    # one key) is free. keys is a copy of every key, made only when the
+    # front (a window that starts after now counts as expired, as in
+    # count_hit), then the oldest open ones until a tenth of the table (at
+    # least one key) is free. keys is a copy of every key, made only when the
     # table is full and then for a tenth of its size in inserts.
     def make_room(now)
       target = @max_keys - (@max_keys / 10 < 1 ? 1 : @max_keys / 10)
@@ -223,7 +227,8 @@ module Cybertrain
       i = 0
       while i < keys.length
         k = keys[i]
-        expired = now - @starts[k] >= @period_seconds
+        start = @starts[k]
+        expired = now < start || now - start >= @period_seconds
         break unless expired || @starts.length > target
 
         @starts.delete(k)

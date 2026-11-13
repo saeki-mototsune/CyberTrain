@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/durations"
 require "cybertrain/time_ext"
+require_relative "support/zone_swap"
 
 # Durations on Integer and the calendar methods on Time (spec section 3,
 # acceptance 2): Integer seconds, `ago` / `from_now` on the Clock,
@@ -8,20 +9,6 @@ require "cybertrain/time_ext"
 # `Date.current` in `Time.zone`, Asia/Tokyo and a DST transition in
 # America/New_York. Plain Ruby, no FFI: the snapshot comes from CRuby or the
 # compiled binary alike. Needs the system's /usr/share/zoneinfo.
-
-# Sets Cybertrain::Clock.zone for the block and puts the zone found before
-# back when it ends, also when an assertion in it fails (pre-flight N17;
-# spikes/NOTES.md rule 103's save-yield-ensure in a module function).
-module ZoneSwap
-  def self.during(name)
-    saved = Cybertrain::Clock.zone
-    Cybertrain::Clock.zone = Cybertrain::TimeZone.find(name)
-    _value = yield
-    nil
-  ensure
-    Cybertrain::Clock.zone = saved
-  end
-end
 
 test "durations are Integer seconds" do
   assert_equal [300, 86_400, 1_209_600, 1, 3_600], [5.minutes, 1.day, 2.weeks, 1.second, 1.hour]
@@ -105,6 +92,51 @@ test "a DST transition in America/New_York" do
     assert_equal Time.utc(2026, 3, 9, 3, 59, 59).to_i, Time.utc(2026, 3, 8, 15).end_of_day.to_i
   end
   assert_equal "UTC", Time.zone.zone_name
+end
+
+test "month 13 and day 0 roll over into the next and the previous year" do
+  # December's end is the instant before 1 "13" 2026, that is 1 January 2027.
+  assert_equal [Time.utc(2026, 12, 31, 23, 59, 59).to_i, 999_999], [Time.utc(2026, 12, 15).end_of_month.to_i, Time.utc(2026, 12, 15).end_of_month.usec]
+  # Thursday 1 January: its Monday is day -2 of January, 29 December.
+  assert_equal Time.utc(2025, 12, 29), Time.utc(2026, 1, 1, 12).beginning_of_week
+  assert_equal Time.utc(2025, 12, 31), Time.utc(2026, 1, 1).yesterday
+  assert_equal Time.utc(2026, 2, 28), Time.utc(2026, 3, 1).advance(days: -1)
+  assert_equal Time.utc(2027, 1, 1), Time.utc(2026, 12, 31).tomorrow
+end
+
+test "the 25-hour day in America/New_York" do
+  ZoneSwap.during("America/New_York") do
+    t = Time.utc(2026, 11, 1, 15)
+    assert_equal Time.utc(2026, 11, 1, 4), t.beginning_of_day # EDT midnight
+    assert_equal Time.utc(2026, 11, 2, 4, 59, 59).to_i, t.end_of_day.to_i # before EST midnight
+    assert_equal 25 * 3600, t.end_of_day.to_i + 1 - t.beginning_of_day.to_i
+  end
+end
+
+test "the DST days in Europe/London" do
+  ZoneSwap.during("Europe/London") do
+    spring = Time.utc(2026, 3, 29, 12)
+    assert_equal Time.utc(2026, 3, 29), spring.beginning_of_day # GMT midnight
+    assert_equal Time.utc(2026, 3, 29, 22, 59, 59).to_i, spring.end_of_day.to_i # before BST midnight
+    assert_equal 23 * 3600, spring.end_of_day.to_i + 1 - spring.beginning_of_day.to_i
+    # 01:30 GMT plus a day is 01:30 on the 29th, which the change skips:
+    # 02:30 BST, as for New York.
+    assert_equal Time.utc(2026, 3, 29, 1, 30), Time.utc(2026, 3, 28, 1, 30).advance(days: 1)
+    autumn = Time.utc(2026, 10, 25, 12)
+    assert_equal Time.utc(2026, 10, 24, 23), autumn.beginning_of_day # BST midnight
+    assert_equal Time.utc(2026, 10, 25, 23, 59, 59).to_i, autumn.end_of_day.to_i # before GMT midnight
+  end
+end
+
+test "a mixed advance across a DST change: the calendar part first, then elapsed time" do
+  ZoneSwap.during("America/New_York") do
+    # 12:00 EST plus a day is 12:00 EDT (16:00 UTC); two hours later is 18:00
+    # UTC, not the 19:00 of 26 elapsed hours.
+    assert_equal Time.utc(2026, 3, 8, 18), Time.utc(2026, 3, 7, 17).advance(days: 1, hours: 2)
+    assert_equal Time.utc(2026, 3, 8, 17), Time.utc(2026, 2, 8, 17).advance(months: 1, hours: 1)
+    # 12:00 EDT plus a day is 12:00 EST (17:00 UTC).
+    assert_equal Time.utc(2026, 11, 1, 17, 30), Time.utc(2026, 10, 31, 16).advance(days: 1, minutes: 30)
+  end
 end
 
 test "the zone comes back after a failing assertion" do

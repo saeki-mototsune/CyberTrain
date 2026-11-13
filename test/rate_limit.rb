@@ -408,6 +408,29 @@ test "a window that reopens moves its key to the back of the table" do
   assert_equal 4, lim.tracked_keys
 end
 
+test "a window that starts after now (the clock went back) is over, not open" do
+  lim = Cybertrain::RateLimit.new(1, 10, false, "", "")
+  assert_equal 0, lim.hit("a", 1000)
+  assert_equal 10, lim.hit("a", 1000)
+  # Travelled back before the window's start: a new window, not a wait
+  # until 1010.
+  assert_equal 0, lim.hit("a", 500)
+  assert_equal 9, lim.hit("a", 501)
+end
+
+test "a full table drops the windows that start after now" do
+  lim = Cybertrain::RateLimit.new(5, 10, false, "", "")
+  lim.max_keys = 4
+  lim.hit("a", 100)
+  lim.hit("b", 101)
+  lim.hit("c", 102)
+  lim.hit("d", 103)
+  lim.hit("e", 50)
+  assert_equal 1, lim.tracked_keys
+  refute lim.tracked?("d")
+  assert lim.tracked?("e")
+end
+
 test "the table never holds more than max_keys keys" do
   lim = Cybertrain::RateLimit.new(5, 600, false, "", "")
   fill(lim, 10_050, 50)

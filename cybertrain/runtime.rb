@@ -87,9 +87,27 @@ module Cybertrain
       I18n.mark_missing = !config.production?
       # Time.zone: the calendar methods, Date.current, l and time_tag read
       # it. validation_error has refused an unknown name before this runs.
-      Clock.zone = TimeZone.find(config.time_zone)
+      apply_zone(config)
       @applied += 1
       nil
+    end
+
+    # Installs `config.time_zone` as `Time.zone` ({Clock.zone}), the one
+    # setting a process that does not boot needs too: {.apply} calls it,
+    # and so do a registered command (`Main.command`), `jobs` and
+    # `console`, which run without Application#boot. An unknown name is
+    # refused as boot refuses it: the zone is left as it was and the answer
+    # is Config#time_zone_error's message, which the caller prints as
+    # boot does (`error: ...`) before exiting 1.
+    # @param config [Config]
+    # @return [String] "" once the zone is installed, else why not
+    # @api public
+    def self.apply_zone(config)
+      problem = config.time_zone_error
+      return problem unless problem.empty?
+
+      Clock.zone = TimeZone.find(config.time_zone)
+      ""
     end
 
     # Puts every setting {.apply} and Application.configure_views write back
