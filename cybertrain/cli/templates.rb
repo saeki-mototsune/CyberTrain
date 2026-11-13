@@ -143,10 +143,11 @@ module Cybertrain
           answers a Ruby edit at once from a CRuby preview and hands the port
           to the compiled binary when its background build finishes (`--spinel`
           serves only the compiled binary). In development views under
-          `app/views/` are read at run time: edit them without rebuilding. `cybertrain db status` and
-          `cybertrain db rollback 1` reach the other database commands.
-          `cybertrain db migrate` runs migrations through `bin/db.rb`; a
-          deployed `dist/#{package}` runs them with `./#{package} migrate`.
+          `app/views/` are read at run time: edit them without rebuilding.
+          `cybertrain db status` and `cybertrain db rollback 1` reach the
+          other database commands. `cybertrain db migrate` runs migrations
+          through `bin/db.rb`; a deployed `dist/#{package}` runs them with
+          `./#{package} migrate`.
 
           To deploy, copy `dist/` to a machine with the same OS and CPU, then
           `cd dist && ./#{package} migrate && ./#{package}` (production by default;

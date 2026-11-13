@@ -27,18 +27,19 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   find a new one. Its section "Workarounds that shape the design" says which
   shapes are permanent, which are tied to the pinned build and which test
   covers each, and what a Spinel update re-checks.
-- **A CRuby pass is not acceptance for a structural change.** The commit
-  gate, `ruby -I. test/<name>.rb`, `script/preview-parity` and the
-  development server's CRuby preview run under CRuby, where none of Spinel's
-  constraints exist: a page that works in the preview, or a test that
-  matches its snapshot there, says nothing about whether the code compiles.
-  The tests known to differ between the runtimes are listed, each with its
-  cause, in [test/cruby/parity-gaps.txt](test/cruby/parity-gaps.txt). A change that moves code between methods, classes or
-  files, changes what a block or a Proc crosses, adds a shared helper or a
-  base class, or changes what the generator emits must pass the affected
-  tests compiled (`spin test`), and a generator change must leave
-  `examples/blog` regenerating clean and passing. Say in the pull request
-  which compiled tests you ran.
+- **A CRuby pass, a test run under CRuby or a page seen in the preview, is
+  not acceptance.** The commit gate, `ruby -I. test/<name>.rb`,
+  `script/preview-parity` and the development server's CRuby preview run
+  under CRuby, where none of Spinel's constraints exist: a page that works
+  in the preview, or a test that matches its snapshot there, says nothing
+  about whether the code compiles. The tests known to differ between the
+  runtimes are listed, each with its cause, in
+  [test/cruby/parity-gaps.txt](test/cruby/parity-gaps.txt). A change that
+  moves code between methods, classes or files, changes what a block or a
+  Proc crosses, adds a shared helper or a base class, or changes what the
+  generator emits must pass the affected tests compiled (`spin test`), and
+  a generator change must leave `examples/blog` regenerating clean and
+  passing. Say in the pull request which compiled tests you ran.
 - **Every design decision is written down.** [docs/design.md](docs/design.md)
   records what was decided, what was rejected and why. Read the
   relevant section before changing a behaviour, and update it when a

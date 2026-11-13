@@ -400,9 +400,13 @@ if [ "$main_up" = yes ]; then
   # only the name, as `[cc]` (with ` <defunct>` once it has exited but not
   # been reaped), when the process's command line cannot be read, which is
   # the case in the instant a process exits; a probe caught there has lost
-  # its `--version`. Not counting such a line is sound because every real
-  # compile or link runs cc1, or collect2 and ld, and those count whatever
-  # their line looks like, as does a cc or gcc line with any other arguments.
+  # its `--version`. A real compile or link runs cc1, or collect2 and ld,
+  # and those count whatever their line looks like, as does a cc or gcc line
+  # with any other arguments. Not every process is seen, though: the poller
+  # samples every 0.05 s or so, and a very short compiler process can fall
+  # between two polls. The backstop is the mtimes: those of build/bin/gen
+  # and the shim's libraries in this check, and the binary's in A3. An
+  # unreadable cc line not counted here is the exiting `--version` probe.
   compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | awk '
     { name = $2; unreadable = 0 }
     name ~ /^\[.*\]$/ { name = substr(name, 2, length(name) - 2); unreadable = 1 }
