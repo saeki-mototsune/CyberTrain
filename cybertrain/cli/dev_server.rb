@@ -33,8 +33,9 @@
 # (no_preview_reason): the framework has no cybertrain/preview.rb (a
 # release older than the preview); it has no cybertrain/dev/supervision.rb
 # (the children's contract); the `ruby` on PATH, which runs the children,
-# cannot load fiddle (the preview's FFI shim needs it). The framework is
-# checked first: a newer framework is the fix there, whatever the Ruby.
+# is missing, does not answer within RUBY_PROBE_TIMEOUT, or cannot load
+# fiddle (the preview's FFI shim needs it). The framework is checked first:
+# a newer framework is the fix there, whatever the Ruby.
 #
 # The loop is one thread: wait (on the child's STDERR, and on the listener
 # while holding) for at most a tick, then Processes#poll, then the machine's
@@ -72,8 +73,17 @@ module Cybertrain
       PREVIEW = "cybertrain/preview.rb"
       SUPERVISION = "cybertrain/dev/supervision.rb"
 
-      # The reason given when the children's Ruby cannot load fiddle.
+      # The reasons given when the children's Ruby cannot run the preview
+      # (child_ruby): it cannot load fiddle, or there is no `ruby` on PATH.
       NO_FIDDLE = "Ruby cannot load fiddle (cybertrain doctor has the details)"
+      NO_RUBY = "no ruby on PATH"
+
+      # How long the probe of the children's Ruby (child_ruby) may take. A
+      # Ruby starts and loads fiddle in about 0.1 s, a version manager's
+      # shim adds a fraction of a second; one still running after this (a
+      # shim stuck on a prompt or a lock) is killed, and the server runs
+      # the compiled loop, which needs no ruby.
+      RUBY_PROBE_TIMEOUT = 10
 
       # What the banner says when the children's Ruby does not answer.
       UNKNOWN_VERSION = "(unknown version)"
@@ -132,10 +142,10 @@ module Cybertrain
         return 1 unless ensure_toolchain
 
         load_path = load_path(spin_flags(root))
-        ruby_version, fiddle = nil
+        ruby_version = nil
         reason = no_preview_reason(load_path) do
-          ruby_version, fiddle = child_ruby
-          fiddle
+          ruby_version, problem = child_ruby
+          problem
         end
         return fall_back(argv, reason) unless reason.nil?
 
@@ -166,11 +176,12 @@ module Cybertrain
       # Why this application cannot have the CRuby preview, or nil: the
       # first of the header comment's reasons that holds. Each sends
       # `cybertrain server` to the compiled loop rather than refusing it
-      # (fall_back). The block answers whether the children's Ruby loads
-      # fiddle; it runs only once the framework has passed, since it starts
-      # a process.
+      # (fall_back). The block answers what keeps the children's Ruby from
+      # running the preview (child_ruby's second value), nil when nothing
+      # does; it runs only once the framework has passed, since it starts a
+      # process.
       # @param load_path [Array<String>] the -I directories of `spin flags`
-      # @yieldreturn [Boolean]
+      # @yieldreturn [String, nil]
       # @return [String, nil]
       def self.no_preview_reason(load_path)
         [PREVIEW, SUPERVISION].each do |path|
@@ -178,9 +189,7 @@ module Cybertrain
 
           return "this application's cybertrain (#{framework_dir(load_path)}) has no #{path}"
         end
-        return NO_FIDDLE unless yield
-
-        nil
+        yield
       end
 
       # Whether one of the framework's directories holds path (the children
@@ -455,18 +464,79 @@ module Cybertrain
       # What the children's Ruby is, asked once at start in one run of the
       # `ruby` on PATH (P9): under a version manager it can be another CRuby
       # than the one running this supervisor. Its version (for the banner)
-      # and whether it loads fiddle (no_preview_reason). A Ruby that cannot
-      # be run, or does not answer, gives [UNKNOWN_VERSION, false].
-      # @return [Array(String, Boolean)]
-      def self.child_ruby
+      # and what keeps it from running the preview (no_preview_reason): nil
+      # when it loads fiddle; NO_RUBY when there is no `ruby` on PATH; a
+      # line naming the bound when it has not answered within timeout
+      # seconds (it is killed, with whatever it started); NO_FIDDLE when it
+      # does not load fiddle, or fails. The version is UNKNOWN_VERSION
+      # unless the Ruby answered.
+      # @param timeout [Numeric] RUBY_PROBE_TIMEOUT (a test shortens it)
+      # @return [Array(String, String|nil)]
+      def self.child_ruby(timeout = RUBY_PROBE_TIMEOUT)
         script = "print RUBY_VERSION; print(begin; require 'fiddle'; ' fiddle'; rescue LoadError, StandardError; ''; end)"
-        out, status = Open3.capture2("ruby", "-e", script, stdin_data: "", err: File::NULL)
-        version, fiddle = out.split
-        return [UNKNOWN_VERSION, false] unless status.success? && version
+        out, status = bounded_run(["ruby", "-e", script], timeout)
+        return [UNKNOWN_VERSION, NO_RUBY] if status == :missing
+        return [UNKNOWN_VERSION, "the ruby on PATH did not answer within #{timeout} s"] if status == :timeout
 
-        [version, fiddle == "fiddle"]
+        version, fiddle = out.split
+        return [UNKNOWN_VERSION, NO_FIDDLE] unless status.is_a?(Process::Status) && status.success? && version
+
+        [version, fiddle == "fiddle" ? nil : NO_FIDDLE]
+      end
+
+      # Runs command (STDIN empty, STDERR dropped) in a process group of
+      # its own, for timeout seconds at most: [its STDOUT, its status];
+      # ["", :missing] when there is no such program; ["", :failed] when it
+      # cannot be started otherwise; [what it printed, :timeout] once its
+      # group has been killed for taking longer. The group is killed too
+      # when this ends any other way (a Ctrl-C, which the group, apart from
+      # the terminal's, does not get).
+      # @param command [Array<String>]
+      # @param timeout [Numeric]
+      # @return [Array(String, Process::Status|Symbol)]
+      def self.bounded_run(command, timeout)
+        reader, writer = IO.pipe
+        begin
+          pid = Process.spawn(*command, in: File::NULL, out: writer, err: File::NULL, pgroup: true)
+        rescue Errno::ENOENT
+          return ["", :missing]
+        rescue SystemCallError
+          return ["", :failed]
+        ensure
+          writer.close
+        end
+        out = +""
+        deadline = monotonic + timeout
+        loop do
+          left = deadline - monotonic
+          break if left <= 0
+          next if IO.select([reader], nil, nil, left).nil?
+
+          chunk = reader.read_nonblock(65_536, exception: false)
+          break if chunk.nil?
+
+          out << chunk if chunk.is_a?(String)
+        end
+        status = nil
+        loop do
+          _, status = Process.waitpid2(pid, Process::WNOHANG)
+          break if status || monotonic >= deadline
+
+          sleep 0.01
+        end
+        [out, status || :timeout]
+      ensure
+        reader.close
+        if pid && status.nil?
+          signal(-pid, :KILL)
+          wait_quietly(pid)
+        end
+      end
+
+      def self.wait_quietly(pid)
+        Process.waitpid(pid)
       rescue SystemCallError
-        [UNKNOWN_VERSION, false]
+        nil
       end
 
       # [PORT] after "server": "" or a valid port string. --spinel never
@@ -669,15 +739,39 @@ module Cybertrain
         cwd.nil? || cwd == root
       end
 
-      # Gone, or a zombie: a leftover is not this process's child, so its
-      # parent (or init) reaps it.
+      # Gone, or a zombie, without reaping it (a leftover is not this
+      # process's child, and the build's leader must stay unreaped until
+      # stop_group is done). The state comes from /proc/PID/stat where it
+      # exists, else from ps. When neither tells (no ps, or a busybox ps that
+      # rejects -p and prints nothing) a process that kill(0) still finds
+      # is not known to have ended: answering "ended" would skip the
+      # cleanup wait and the TERM, and KILL a build at once.
       def self.ended?(pid)
         return true unless alive?(pid)
 
-        stat = IO.popen(["ps", "-o", "stat=", "-p", pid.to_s], err: File::NULL, &:read).strip
-        stat.empty? || stat.start_with?("Z")
+        state = proc_state(pid)
+        state = ps_state(pid) if state.nil?
+        state.start_with?("Z") || state.start_with?("X")
+      end
+
+      # The state letter of /proc/PID/stat (after the parenthesised command
+      # name, which may hold spaces and parentheses itself; Z a zombie, X
+      # dead), "X" for a process that has gone since, nil where there is
+      # no /proc.
+      def self.proc_state(pid)
+        return nil unless File.directory?("/proc/self")
+
+        stat = File.read("/proc/#{pid}/stat")
+        stat[(stat.rindex(")") + 1)..].to_s.strip[0].to_s
       rescue SystemCallError
-        true
+        "X"
+      end
+
+      # The `ps -o stat=` letters; "" when ps cannot tell.
+      def self.ps_state(pid)
+        IO.popen(["ps", "-o", "stat=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).strip
+      rescue SystemCallError
+        ""
       end
 
       def self.signal(pid, name)

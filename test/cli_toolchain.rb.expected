@@ -13,6 +13,7 @@ ok   install refuses to start without the build tools, before touching anything
 ok   with the toolchain of this machine, nothing an app build needs is missing (sqlite3 and zlib probes pass)
 ok   missing OpenSSL headers or library are a missing requirement, like sqlite3 and zlib
 ok   doctor's fiddle line: the ruby on PATH loads fiddle, and the exit code does not depend on it
+ok   doctor's fiddle line says when there is no ruby on PATH at all
 error: cannot create /proc/cybertrain-test/spinel; set CYBERTRAIN_HOME to a writable directory
 ok   install refuses a home it cannot write, without hanging
 ok   the build lock is a directory holding the builder's pid, taken atomically
@@ -21,4 +22,4 @@ error: cannot build Spinel 2026.11.04.7026: missing a directory to keep Spinel i
 error: odd:dir cannot go on PATH: its name contains ':'
 ok   setup needs a home for the managed copy, and a directory PATH can hold
 ok   tail, jobs, quoting and hints
-16 tests, 146 assertions, 0 failures
+17 tests, 150 assertions, 0 failures

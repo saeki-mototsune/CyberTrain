@@ -124,9 +124,16 @@ module Cybertrain
           # (a request head, or the client's close). A page still being
           # written is not one: nothing reads its socket, so a client that
           # pipelines or half-closes would keep it readable and the driver
-          # would spin until write_wait; the writes go on at every tick.
+          # would spin until write_wait; its socket is in write_ios.
           def ios
             (@waiting + @draining).map(&:socket)
+          end
+
+          # The sockets whose page is still being written: IO.select's write
+          # set, so that the driver wakes as soon as a client can take more
+          # of a page larger than the socket's buffers, not at its next tick.
+          def write_ios
+            @writing.map(&:socket)
           end
 
           # How many connections the desk holds, whatever their stage.

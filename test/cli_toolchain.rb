@@ -250,9 +250,21 @@ test "missing OpenSSL headers or library are a missing requirement, like sqlite3
   ENV["CC"] = ""
 end
 
+# A stand-in `ruby` first on PATH that exits with status: what fiddle_ok?
+# sees of a ruby that loads fiddle (0) or fails to (1). The test machine's
+# own Ruby is not judged.
+def stand_in_ruby(dir, status)
+  mkdir_p(dir)
+  File.write("#{dir}/ruby", "#!/bin/sh\nexit #{status}\n")
+  File.chmod(0o755, "#{dir}/ruby")
+  ENV["PATH"] = "#{here(dir)}:#{ORIGINAL_PATH}"
+end
+
 test "doctor's fiddle line: the ruby on PATH loads fiddle, and the exit code does not depend on it" do
   reset_env
+  stand_in_ruby("withfiddle", 0)
   assert Toolchain.fiddle_ok?
+  ENV["PATH"] = ORIGINAL_PATH
   assert_equal "the fiddle library loads (the CRuby preview needs it)", Toolchain.fiddle_detail(true)
   assert_equal "ruby cannot load fiddle: cybertrain server runs the compiled loop only", Toolchain.fiddle_detail(false)
   # A ruby first on PATH that fails, as one without fiddle fails its require.
@@ -263,6 +275,18 @@ test "doctor's fiddle line: the ruby on PATH loads fiddle, and the exit code doe
   refute Toolchain.fiddle_ok?
   refute Toolchain.doctor_problems(true).any? { |problem| problem.include?("fiddle") }
   refute Toolchain.doctor_problems(false).any? { |problem| problem.include?("fiddle") }
+  ENV["PATH"] = ORIGINAL_PATH
+end
+
+test "doctor's fiddle line says when there is no ruby on PATH at all" do
+  reset_env
+  mkdir_p("noruby")
+  ENV["PATH"] = here("noruby")
+  refute Toolchain.fiddle_ok?
+  assert_equal "no ruby on PATH: cybertrain server runs the compiled loop only", Toolchain.fiddle_detail(false)
+  stand_in_ruby("nofiddle2", 1)
+  refute Toolchain.fiddle_ok?
+  assert_equal "ruby cannot load fiddle: cybertrain server runs the compiled loop only", Toolchain.fiddle_detail(false)
   ENV["PATH"] = ORIGINAL_PATH
 end
 

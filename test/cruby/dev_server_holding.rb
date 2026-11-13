@@ -157,6 +157,7 @@ test "a connection whose page is still being written is not in the read set" do
   desk.serve(Holding.page("t", BIG_TEXT, "y"))
   assert desk.connections == 1, "the page is still being written"
   assert_equal [], desk.ios
+  assert desk.write_ios.size == 1, "it is in the write set instead"
   waited = Process.clock_gettime(Process::CLOCK_MONOTONIC)
   IO.select([listener] + desk.ios, nil, nil, 0.1)
   assert Process.clock_gettime(Process::CLOCK_MONOTONIC) - waited >= 0.09, "the select slept its timeout"

@@ -356,6 +356,41 @@ test "while holding the supervisor answers 503; after release_hold a child answe
   end
 end
 
+# A page larger than the socket's buffers goes out as the client takes it:
+# the sockets still being written are IO.select's write set, so the driver
+# wakes as soon as one can take more, not once per tick (here a tick of a
+# second, which would make the page take many seconds).
+test "a held page larger than the socket's buffers wakes the driver as the client reads it" do
+  with_runner({}) do |runner, listener, _root|
+    rec = Recorder.new
+    runner.hold("t", "x" * 400_000)
+    listener.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDBUF, 4096)
+    client = Socket.new(:INET, :STREAM)
+    client.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVBUF, 4096)
+    client.connect(Socket.sockaddr_in(listener.addr[1], "127.0.0.1"))
+    client.write("GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    took = nil
+    reader = Thread.new do
+      text = client.read
+      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      text
+    end
+    # The last wait sleeps its whole second: the page is out by then.
+    while reader.alive? && Process.clock_gettime(Process::CLOCK_MONOTONIC) - started < 3
+      runner.wait_for_activity(1.0)
+      runner.poll(rec)
+    end
+    client.close_write if reader.alive?
+    page = reader.value
+    assert page.start_with?("HTTP/1.1 503"), page[0, 40]
+    assert page.bytesize > 400_000, "the whole page arrived (#{page.bytesize} bytes)"
+    assert took < 1.0, "the page took #{took} s"
+  ensure
+    client&.close
+  end
+end
+
 # --- the build ----------------------------------------------------------------
 
 SPIN = <<~RUBY
@@ -625,6 +660,60 @@ test "cancel_build reaps the build's leader only after the group's KILL" do
     end
     assert_equal true, seen
     assert gone?(build)
+  end
+end
+
+# Without /proc, and with a ps that answers nothing (busybox's rejects -p),
+# nobody can tell whether the build's leader has ended: it is not taken for
+# ended, so it still gets the cleanup wait and the group's TERM before the
+# KILL, as with a ps that answers.
+test "without /proc and a ps that fails, cancel_build still sends TERM before KILL" do
+  spin = <<~RUBY
+    trap(:TERM) { File.write(File.join(Dir.pwd, "got-term"), ""); exit 1 }
+    File.write(File.join(Dir.pwd, "trapped"), "")
+    sleep 30
+  RUBY
+  with_runner({ spin: spin }) do |runner, _listener, root|
+    bin = File.join(root, "failing-ps")
+    Dir.mkdir(bin)
+    File.write(File.join(bin, "ps"), "#!/bin/sh\necho 'ps: unrecognized option: p' >&2\nexit 1\n")
+    File.chmod(0o755, File.join(bin, "ps"))
+    runner.start_build(1)
+    build = runner.build_pid
+    assert wait_for_file(File.join(root, "trapped"))
+    saved = ENV["PATH"]
+    original = DevServer.method(:proc_state)
+    took = nil
+    begin
+      ENV["PATH"] = "#{bin}:#{saved}"
+      DevServer.define_singleton_method(:proc_state) { |_pid| nil }
+      refute DevServer.ended?(build), "a running leader is not taken for ended"
+      took = elapsed { runner.cancel_build }
+    ensure
+      ENV["PATH"] = saved
+      DevServer.define_singleton_method(:proc_state, original)
+    end
+    assert File.exist?(File.join(root, "got-term")), "the leader got TERM before the KILL"
+    assert took >= DevServer::BUILD_CLEANUP, "the cleanup wait was kept (#{took} s)"
+    assert took < Processes::CANCEL_GRACE + 0.5, "cancel_build took #{took} s"
+    assert gone?(build)
+  end
+end
+
+test "ended? reads /proc: a running process is not ended, a zombie is, a reaped one is" do
+  pid = Process.spawn(RbConfig.ruby, "-e", "sleep 30")
+  refute DevServer.ended?(pid)
+  Process.kill(:KILL, pid)
+  sleep 0.01 until DevServer.proc_state(pid) == "Z"
+  assert DevServer.ended?(pid)
+  Process.wait(pid)
+  assert DevServer.ended?(pid)
+ensure
+  begin
+    Process.kill(:KILL, pid)
+    Process.wait(pid)
+  rescue SystemCallError
+    nil
   end
 end
 

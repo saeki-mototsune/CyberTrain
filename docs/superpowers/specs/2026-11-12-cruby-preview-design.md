@@ -303,7 +303,10 @@ PID files (`tmp/cybertrain-dev/supervisor.pid`, `child.pid`, and
 process it names still runs, as after a stop that failed half-way). A
 supervisor killed outright leaves them behind; the next one stops the
 child and the build they name
-when they are this application's, before it binds the socket.
+when they are this application's, before it binds the socket. Only a
+supervisor that goes on to the preview does that: a start that falls back
+to the compiled loop, or one run with `--spinel`, leaves such files (and a
+process they name, which may still hold the port) to the next one.
 
 **Where the code lives**: the supervisor is CRuby-only (descriptor
 inheritance in `spawn`, `Process.wait`, signals). `cybertrain/cli.rb` is
@@ -431,10 +434,14 @@ generator so both agree, not papered over in the preview.
      `<dir>` is the framework's directory from `spin flags`);
   2. `preview unavailable: this application's cybertrain (<dir>) has no
      cybertrain/dev/supervision.rb; running the compiled loop`;
-  3. `preview unavailable: Ruby cannot load fiddle (cybertrain doctor has
-     the details); running the compiled loop`, for the `ruby` on PATH
-     (the children's), asked in the same run that gives the banner its
-     version.
+  3. for the `ruby` on PATH (the children's), asked in the same run that
+     gives the banner its version, which may take 10 s at most (a probe
+     still running then is killed): `preview unavailable: no ruby on PATH;
+     running the compiled loop`, `preview unavailable: the ruby on PATH did
+     not answer within 10 s; running the compiled loop`, or `preview
+     unavailable: Ruby cannot load fiddle (cybertrain doctor has the
+     details); running the compiled loop`. `doctor`'s fiddle line also
+     says when there is no `ruby` on PATH.
   The framework comes first: a newer framework is the fix there, whatever
   the Ruby.
 - `--spinel` always runs today's loop.

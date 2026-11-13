@@ -361,7 +361,9 @@ module Cybertrain
         end
 
         # Blocks until the child writes to STDERR, a connection arrives while
-        # holding, or timeout seconds pass.
+        # holding, a held page can be written further (also once holding has
+        # ended: release_hold leaves pages to finish), or timeout seconds
+        # pass.
         def wait_for_activity(timeout)
           ios = []
           ios << @child.stderr if @child&.stderr && !@child.stderr.closed?
@@ -369,8 +371,8 @@ module Cybertrain
             ios << @listener
             ios.concat(@desk.ios)
           end
-          # The pages still being written go on at the next tick (poll).
-          ios.empty? ? sleep(timeout) : IO.select(ios, nil, nil, timeout)
+          writes = @desk.write_ios
+          ios.empty? && writes.empty? ? sleep(timeout) : IO.select(ios, writes, nil, timeout)
           nil
         rescue IOError
           nil

@@ -679,8 +679,13 @@ module Cybertrain
         system("ruby -e 'require \"fiddle\"' > /dev/null 2>&1")
       end
 
+      # A ruby that cannot be found is said as such: the fix is another,
+      # not a fiddle for this one.
       def self.fiddle_detail(ok)
-        ok ? "the fiddle library loads (the CRuby preview needs it)" : "ruby cannot load fiddle: cybertrain server runs the compiled loop only"
+        return "the fiddle library loads (the CRuby preview needs it)" if ok
+        return "no ruby on PATH: cybertrain server runs the compiled loop only" unless have_command?("ruby")
+
+        "ruby cannot load fiddle: cybertrain server runs the compiled loop only"
       end
 
       # What building an application needs even once Spinel is installed.

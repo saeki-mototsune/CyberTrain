@@ -10,6 +10,7 @@ ok   a child command that cannot be started is reported as the child's exit on t
 ok   a child that cannot be recorded in child.pid is stopped, then reported
 ok   the STDERR tail keeps the last characters of each line; the copy is whole
 ok   while holding the supervisor answers 503; after release_hold a child answers
+ok   a held page larger than the socket's buffers wakes the driver as the client reads it
 ok   a toolchain that refuses --incremental is built again without it, and from then on
 ok   a binary newer than every Ruby file is built with the plain command, so that spin can find it up to date
 ok   a missing binary, or one older than a Ruby file, is built incrementally
@@ -22,6 +23,8 @@ ok   cancel_build kills the build's whole process group
 ok   build.pid names the build's group while it runs: gone at its end, its cancel and close
 ok   close keeps child.pid and build.pid while the process they name still runs
 ok   cancel_build reaps the build's leader only after the group's KILL
+ok   without /proc and a ps that fails, cancel_build still sends TERM before KILL
+ok   ended? reads /proc: a running process is not ended, a zombie is, a reaped one is
 ok   close removes the files' leftover .tmp copies too
 ok   the file watch survives a poll that raises, says so once, and notices later saves
 ok   log loses its line, without raising, once the terminal is gone
@@ -32,4 +35,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-34 tests, 119 assertions, 0 failures
+37 tests, 131 assertions, 0 failures

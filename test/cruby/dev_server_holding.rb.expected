@@ -7,4 +7,4 @@ ok   flush answers every waiting connection at once, head or not
 ok   a client that does not read the page does not block the desk, and is closed after the write wait
 ok   a connection whose page is still being written is not in the read set
 ok   a page larger than the socket's buffers reaches a client that reads it
-9 tests, 27 assertions, 0 failures
+9 tests, 28 assertions, 0 failures

@@ -287,12 +287,53 @@ test "child_ruby asks the ruby on PATH for its version and whether it loads fidd
     saved = ENV["PATH"]
     ENV["PATH"] = path
     begin
-      assert_equal [RUBY_VERSION_ON_PATH, false], DevServer.child_ruby
+      assert_equal [RUBY_VERSION_ON_PATH, DevServer::NO_FIDDLE], DevServer.child_ruby
     ensure
       ENV["PATH"] = saved
     end
   end
-  assert_equal [RUBY_VERSION_ON_PATH, true], DevServer.child_ruby
+  assert_equal [RUBY_VERSION_ON_PATH, nil], DevServer.child_ruby
+end
+
+# No ruby on PATH is its own cause, not a Ruby without fiddle (the
+# supervisor itself runs on a ruby given by its full path).
+test "no ruby on PATH runs the compiled loop, after one line that says so" do
+  with_installed_gem do |dir, gem_dir, framework|
+    with_app do |root|
+      empty = File.join(dir, "empty-bin")
+      Dir.mkdir(empty)
+      out = probe(dir, gem_dir, framework, root, "4000", extra_env: { "PATH" => empty })
+      assert_equal ["preview unavailable: no ruby on PATH; running the compiled loop",
+                    "compiled loop server 4000 --spinel", "exit 7"], said(out)
+      refute File.exist?(File.join(root, "tmp", "cybertrain-dev")), "the supervisor wrote nothing"
+    end
+  end
+end
+
+# A ruby that hangs (a version manager's shim stuck on a prompt) does not
+# hang `cybertrain server`: the probe is killed, with what it started, after
+# its bound, and the reason names the bound.
+test "child_ruby gives up on a ruby that does not answer, and kills it with what it started" do
+  Dir.mktmpdir("dev-server-ruby") do |dir|
+    pids = File.join(dir, "pids")
+    File.write(File.join(dir, "ruby"), "#!/bin/sh\nsleep 30 &\necho \"$$ $!\" > '#{pids}'\nwait\n")
+    File.chmod(0o755, File.join(dir, "ruby"))
+    saved = ENV["PATH"]
+    ENV["PATH"] = "#{dir}:#{saved}"
+    begin
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      assert_equal ["(unknown version)", "the ruby on PATH did not answer within 0.3 s"], DevServer.child_ruby(0.3)
+      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      assert took < 1.5, "child_ruby took #{took} s"
+      File.read(pids).split.map(&:to_i).each do |pid|
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+        sleep 0.02 until DevServer.ended?(pid) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        assert DevServer.ended?(pid), "pid #{pid} of the probe is still running"
+      end
+    ensure
+      ENV["PATH"] = saved
+    end
+  end
 end
 
 test "a port that is in use is refused with today's wording, before any child" do
@@ -1122,15 +1163,15 @@ test "the banner's CRuby version is the one the children run" do
     saved = ENV["PATH"]
     ENV["PATH"] = "#{dir}:#{saved}"
     begin
-      assert_equal ["9.8.7", true], DevServer.child_ruby
+      assert_equal ["9.8.7", nil], DevServer.child_ruby
       File.write(File.join(dir, "ruby"), "#!/bin/sh\nprintf '9.8.7'\n")
-      assert_equal ["9.8.7", false], DevServer.child_ruby
+      assert_equal ["9.8.7", DevServer::NO_FIDDLE], DevServer.child_ruby
       File.write(File.join(dir, "ruby"), "#!/bin/sh\nprintf '9.8.7 fiddle'\nexit 1\n")
-      assert_equal ["(unknown version)", false], DevServer.child_ruby
+      assert_equal ["(unknown version)", DevServer::NO_FIDDLE], DevServer.child_ruby
       File.write(File.join(dir, "ruby"), "#!/bin/sh\nexit 1\n")
-      assert_equal ["(unknown version)", false], DevServer.child_ruby
+      assert_equal ["(unknown version)", DevServer::NO_FIDDLE], DevServer.child_ruby
       ENV["PATH"] = File.join(dir, "nothing-here")
-      assert_equal ["(unknown version)", false], DevServer.child_ruby
+      assert_equal ["(unknown version)", DevServer::NO_RUBY], DevServer.child_ruby
     ensure
       ENV["PATH"] = saved
     end

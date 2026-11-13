@@ -5,6 +5,8 @@ ok   a framework without cybertrain/dev/supervision.rb runs the compiled loop, a
 ok   a framework without cybertrain/preview.rb runs the compiled loop, after one line
 ok   a ruby on PATH that cannot load fiddle runs the compiled loop, after one line; the framework is checked first
 ok   child_ruby asks the ruby on PATH for its version and whether it loads fiddle, in one run
+ok   no ruby on PATH runs the compiled loop, after one line that says so
+ok   child_ruby gives up on a ruby that does not answer, and kills it with what it started
 ok   a port that is in use is refused with today's wording, before any child
 ok   a port argument overrides the application's port
 ok   a PORT that is not a number, or a word after it, is refused
@@ -32,4 +34,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-34 tests, 187 assertions, 0 failures
+36 tests, 193 assertions, 0 failures
