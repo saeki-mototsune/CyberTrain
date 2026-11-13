@@ -1,5 +1,5 @@
 ---
-source_sha256: 30c5bfaf605978fa39236a6aa2328624515c5f4aeeee8990b493f831881f3020
+source_sha256: e0f7dae3450486201886a4688b71a1c63ca141e8116bfa1cb85f665869af0353
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -120,7 +120,8 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 зафиксированного релиза Spinel в `~/.cybertrain`: несколько минут, один раз; см.
 [шаг 00](#requirements)), и запускает `spin lock` (spin загружает фреймворк в
 свой кэш `~/.cache/spin/packages/` и фиксирует коммит в `spin.lock`) и
-`spin run gen` — примерно так же, как `rails new` запускает `bundle install`,
+`SPIN_DEBUG=1 spin run gen` (gen собирается в отладочном режиме spin) —
+примерно так же, как `rails new` запускает `bundle install`,
 — так что `cybertrain server` сразу работает. В конце она выводит следующие
 шаги. Ничего из фреймворка в приложение не копируется; закоммитьте `spin.toml`
 и `spin.lock`.
@@ -129,7 +130,7 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 > Если не удаётся установить Spinel или выполнить один из двух шагов `spin`,
 > файлы остаются, `new` завершается с кодом 1 и выводит, что запустить после
 > устранения причины (для Spinel: `cybertrain setup`, затем
-> `cybertrain spin lock && cybertrain spin run gen` в новом каталоге).
+> `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen` в новом каталоге).
 > `--skip-spin` только записывает файлы; `--path DIR` вместо этого делает
 > зависимостью локальную копию репозитория, `--git URL [--ref R]` — фреймворк
 > по адресу URL (на ветке или теге R), а `--version V` — версию из индекса,
@@ -319,7 +320,7 @@ end
 > сервер.
 
 ```shell терминал — blog/
-cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen (gen и db в отладочном режиме)
 cybertrain server        # http://127.0.0.1:3000; пересборка при правках Ruby, представления перезагружаются без пересборки
 ```
 
@@ -1366,7 +1367,8 @@ cybertrain build
 
 Она записывает `dist/`: бинарный файл приложения со всеми встроенными
 представлениями и рядом с ним файлы, которые он использует. Она запускает
-`spin run gen -- --embed-views`, `spin build blog` и `spin run gen` (который
+`SPIN_DEBUG=1 spin run gen -- --embed-views`, `spin build blog` и
+`SPIN_DEBUG=1 spin run gen` (который
 возвращает закоммиченный пустой `gen/views.rb`, даже после сбоя или Ctrl-C), а
 затем собирает:
 

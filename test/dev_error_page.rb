@@ -250,7 +250,7 @@ test "the rebuild command runs gen then an incremental build in the app root, lo
   assert_equal "/apps/my blog/tmp/rebuild.log", r.log_file
   assert_equal "/apps/my blog/build/bin/server", r.binary_path
   assert r.incremental
-  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server' -- --incremental; } " \
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && SPIN_DEBUG=1 spin run gen && spin build 'server' -- --incremental; } " \
                "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command
   refute r.last_failed
   assert_equal "", r.last_output
@@ -258,7 +258,7 @@ end
 
 test "without --incremental the rebuild command is the plain spin build" do
   r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
-  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && spin run gen && spin build 'server'; } " \
+  assert_equal "mkdir -p '/apps/my blog/tmp' && { cd '/apps/my blog' && SPIN_DEBUG=1 spin run gen && spin build 'server'; } " \
                "> '/apps/my blog/tmp/rebuild.log' 2>&1", r.command(false)
 end
 
@@ -338,7 +338,7 @@ def adopt_gen_binary(rebuilder)
 end
 
 # An app whose `spin` and `spinel` are scripts first on PATH. spin logs every
-# call but `flags`, which fails while flags-fails exists: `run gen` compiles
+# call but `flags` (with SPIN_DEBUG=1 in front when it is set), which fails while flags-fails exists: `run gen` compiles
 # (leaves a build/bin/gen that logs when run, and exits as the file gen-status
 # says), unless spin-reuses exists and there is a binary already; `build` fails while build-fails exists, refuses --incremental while
 # no-incremental exists, and edits config/routes.rb while edit-during-build
@@ -356,7 +356,7 @@ def fake_spin_app
                                          "  [ -e '#{GEN_ROOT}/flags-fails' ] && exit 1\n" \
                                          "  echo '-I .'; exit 0\n" \
                                          "fi\n" \
-                                         "echo \"spin $*\" >> '#{GEN_CALLS}'\n" \
+                                         "echo \"${SPIN_DEBUG:+SPIN_DEBUG=$SPIN_DEBUG }spin $*\" >> '#{GEN_CALLS}'\n" \
                                          "if [ \"$1\" = run ]; then\n" \
                                          "  [ -e '#{GEN_ROOT}/spin-reuses' ] && [ -e '#{GEN_BINARY}' ] && exit 0\n" \
                                          "  cp '#{GEN_ROOT}/compiled-gen' '#{GEN_BINARY}'; chmod 755 '#{GEN_BINARY}'; exit 0\n" \
@@ -375,6 +375,9 @@ def fake_spin_app
   File.chmod(0o755, "#{GEN_ROOT}/fakebin/spinel")
   path = ENV["PATH"] || ""
   ENV["PATH"] = "#{GEN_ROOT}/fakebin:#{path}"
+  # The fake spin records SPIN_DEBUG when it is set: only the gen step may
+  # set it, whatever this test process was started with.
+  ENV["SPIN_DEBUG"] = ""
   path
 end
 
@@ -394,8 +397,16 @@ def finish_fake_spin_app(path)
   remove_tree(GEN_ROOT)
 end
 
-COMPILE_GEN = "spin run gen\nspin build server -- --incremental\n"
+COMPILE_GEN = "SPIN_DEBUG=1 spin run gen\nspin build server -- --incremental\n"
 SKIP_GEN = "gen-binary\nspin build server -- --incremental\n"
+
+# gen is built in the mode the CLI builds it in (cybertrain/shell.rb), so the
+# server's gen step and the rebuild's share one binary; the app is a release
+# build.
+test "the rebuild command builds gen in spin's debug mode, as the CLI does" do
+  assert_equal "SPIN_DEBUG=1 spin run gen", Cybertrain::Dev::Rebuilder::GEN_COMMAND
+  assert_equal "#{Cybertrain::Shell::TOOL_SPIN} run gen", Cybertrain::Dev::Rebuilder::GEN_COMMAND
+end
 
 test "the rebuild command takes the gen step it is given" do
   r = Cybertrain::Dev::Rebuilder.new("/apps/my blog")
@@ -679,7 +690,7 @@ test "a toolchain that starts refusing --incremental still gets the plain build,
   gen_calls
   File.write("#{GEN_ROOT}/no-incremental", "")
   assert r.rebuild
-  assert_equal "#{SKIP_GEN}#{COMPILE_GEN}spin run gen\nspin build server\n", gen_calls
+  assert_equal "#{SKIP_GEN}#{COMPILE_GEN}SPIN_DEBUG=1 spin run gen\nspin build server\n", gen_calls
   refute r.incremental
   assert r.rebuild
   assert_equal "gen-binary\nspin build server\n", gen_calls

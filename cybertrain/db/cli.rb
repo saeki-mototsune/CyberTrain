@@ -227,14 +227,20 @@ module Cybertrain
       # The dump belongs next to the app's source, so it is written only
       # where a db/ directory already exists; a deployed dist/ that has
       # none gets a note instead of a stray dist/db/schema.rb. True when
-      # the dump was written.
+      # db/schema.rb holds the dump afterwards. A file that already holds
+      # it is left alone: spin rebuilds every executable of the package
+      # when one of its Ruby files is newer than the binary, so rewriting
+      # an unchanged dump made each `db migrate` with nothing pending
+      # compile gen and db again (and the application, at the next start).
       def self.write_schema(root, connection)
         dir = "#{root}/db"
         unless File.directory?(dir)
           puts "schema dump skipped (no db/ directory here)"
           return false
         end
-        File.write("#{dir}/schema.rb", SchemaDumper.dump_to_ruby(connection))
+        path = "#{dir}/schema.rb"
+        dump = SchemaDumper.dump_to_ruby(connection)
+        File.write(path, dump) unless File.file?(path) && File.read(path) == dump
         true
       end
 

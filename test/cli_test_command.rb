@@ -127,7 +127,7 @@ end
 test "gen, the compile when stale, then the run with the arguments and its status" do
   runner = StubRunner.new(true, 1)
   assert_equal 1, Cybertrain::CLI::TestCommand.run(APP, ["test/models", "-n", "/title/"], runner)
-  assert_equal ["ready", "spin run gen", "stale?", "spinel gen/tests.rb $(spin flags) -I gen/test -I test -o build/test/tests",
+  assert_equal ["ready", "SPIN_DEBUG=1 spin run gen", "stale?", "spinel gen/tests.rb $(spin flags) -I gen/test -I test -o build/test/tests",
                 "run test/models -n /title/"], runner.steps
   assert File.directory?("#{APP}/build/test")
   assert_equal [], runner.said
@@ -162,7 +162,7 @@ test "from the application's directory, absolute and ./ file arguments" do
   ["#{APP}/test/models/article_test.rb", "./test/models/article_test.rb", "#{APP}/test/models/"].each do |arg|
     runner = StubRunner.new(false, 0)
     assert_equal 0, Cybertrain::CLI::TestCommand.run(".", [arg], runner)
-    assert_equal ["ready", "spin run gen", "stale?", "run #{arg}"], runner.steps
+    assert_equal ["ready", "SPIN_DEBUG=1 spin run gen", "stale?", "run #{arg}"], runner.steps
     assert_equal [], runner.said
   end
   Dir.chdir(ROOT)
@@ -171,7 +171,7 @@ end
 test "no compile when nothing is newer than the binary" do
   runner = StubRunner.new(false, 0)
   assert_equal 0, Cybertrain::CLI::TestCommand.run(APP, ["-n", "test_a"], runner)
-  assert_equal ["ready", "spin run gen", "stale?", "run -n test_a"], runner.steps
+  assert_equal ["ready", "SPIN_DEBUG=1 spin run gen", "stale?", "run -n test_a"], runner.steps
 end
 
 test "gen's refusal is printed and exits 1 without a compile or a run" do
@@ -180,7 +180,7 @@ test "gen's refusal is printed and exits 1 without a compile or a run" do
   assert_equal reason, Cybertrain::CLI::TestCommand.refusal(APP)
   runner = StubRunner.new(true, 0)
   assert_equal 1, Cybertrain::CLI::TestCommand.run(APP, Array.new(0) { "" }, runner)
-  assert_equal ["ready", "spin run gen"], runner.steps
+  assert_equal ["ready", "SPIN_DEBUG=1 spin run gen"], runner.steps
   assert_equal [reason], runner.said
 
   write("#{APP}/gen/tests.rb", '# header' + "\n" + 'abort("a:1: \"x\" \\\\ \#{y}\nz")' + "\n")

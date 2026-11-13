@@ -1,7 +1,7 @@
 # `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` (spec section 8): every
 # test of the application in one program. The arguments are checked first
 # (Test::Args, the same parser the compiled bundle filters with), then
-# `spin run gen` writes gen/tests.rb and gen/test/**, gen/tests.rb is
+# `SPIN_DEBUG=1 spin run gen` writes gen/tests.rb and gen/test/**, gen/tests.rb is
 # compiled into build/test/tests only when an input changed since that
 # binary, and the binary runs with the arguments: a filter never
 # recompiles. gen's and the compiler's output go to stderr, so stdout is
@@ -17,7 +17,9 @@ module Cybertrain
   module CLI
     module TestCommand
       BINARY = "build/test/tests".freeze
-      GEN = "spin run gen".freeze
+      # gen in spin's debug mode, as every other command builds it
+      # (Shell::TOOL_SPIN): one gen binary, never rebuilt for a mode switch.
+      GEN = "#{Shell::TOOL_SPIN} run gen".freeze
       # The application's top-level directories whose files are no input of
       # the bundle: build output, the release, scratch files, data.
       SKIPPED = ["build", "dist", "tmp", "storage"].freeze

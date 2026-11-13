@@ -73,12 +73,12 @@ module Cybertrain
       # Returns false when a step failed.
       def self.bootstrap(dir)
         unless Toolchain.ensure!
-          puts "skip spin lock / spin run gen: Spinel #{Cybertrain::SPINEL_TAG} is not available"
+          puts "skip spin lock / #{Shell::TOOL_SPIN} run gen: Spinel #{Cybertrain::SPINEL_TAG} is not available"
           puts "  fix the problem above (`cybertrain doctor` lists the checks), then: cybertrain setup && #{recovery_command(dir)}"
           return false
         end
 
-        puts "run    spin lock && spin run gen"
+        puts "run    spin lock && #{Shell::TOOL_SPIN} run gen"
         return true if system(bootstrap_command(dir))
 
         puts "error: bootstrapping #{dir} failed; fix the cause, then run: #{recovery_command(dir)}"
@@ -86,15 +86,16 @@ module Cybertrain
       end
 
       # Run by bootstrap once Toolchain.ensure! has put spin on this
-      # process's PATH.
+      # process's PATH. gen in debug mode, as every CLI command builds it
+      # (Shell::TOOL_SPIN).
       def self.bootstrap_command(dir)
-        "cd #{Shell.quote(dir)} && spin lock && spin run gen"
+        "cd #{Shell.quote(dir)} && spin lock && #{Shell::TOOL_SPIN} run gen"
       end
 
       # The same steps for the user to run by hand: through `cybertrain
       # spin`, since the Spinel cybertrain installed is not on their PATH.
       def self.recovery_command(dir)
-        "cd #{Shell.quote(dir)} && cybertrain spin lock && cybertrain spin run gen"
+        "cd #{Shell.quote(dir)} && cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen"
       end
     end
   end

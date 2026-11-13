@@ -33,6 +33,8 @@ Status  Migration ID    Migration Name
     up  20260101000000  CreatePosts
     up  20260101000100  CreateComments
 ok   status lists each migration as up
+ok   migrate with nothing pending and schema:dump leave an unchanged db/schema.rb untouched
+ok   a db/schema.rb that differs from the dump is written again
 == 20260101000100 CreateComments: reverting
 done
 Status  Migration ID    Migration Name
@@ -78,4 +80,4 @@ done
 skipped stamps.at: without rowid
 done
 ok   normalize exits 1 while a skipped table still holds cells to normalize
-22 tests, 64 assertions, 0 failures
+24 tests, 70 assertions, 0 failures

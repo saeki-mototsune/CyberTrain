@@ -1,5 +1,5 @@
 ---
-source_sha256: 9c254c3260efd44f46a0c94f25d007bcf1fdc798e5fedf29f7d4d5067f420ced
+source_sha256: 907a29b5d36fca8f9097a09feff8fcb3dc26ef78cc447274941169820026b584
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -31,7 +31,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 ソースの出どころはモードによって異なります：
 
 - 開発環境（とテスト環境）ではエンジンが `app/views/` をディスクから読み、開発環境ではテンプレートが変更されると再パースするので、ビューの編集に再ビルドは不要です。
-- `cybertrain build` は `spin run gen -- --embed-views` を実行し、すべてのテンプレートのソースを文字列テーブルとして `gen/views.rb` に書き込んでその 1 回の `spin build` を行い、その後もう一度 `spin run gen` を実行して、コミットされる空のテーブルに戻します。
+- `cybertrain build` は `SPIN_DEBUG=1 spin run gen -- --embed-views` を実行し、すべてのテンプレートのソースを文字列テーブルとして `gen/views.rb` に書き込んでその 1 回の `spin build` を行い、その後もう一度 `SPIN_DEBUG=1 spin run gen` を実行して、コミットされる空のテーブルに戻します。
 - 本番用のバイナリはそのテーブルだけをレンダリングし（各テンプレートを一度だけパースします）、テーブルが空なら起動を拒否します（`error: views are not embedded in this binary`）。
 
 ## HTTP サーバー
@@ -55,9 +55,9 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 
 ## 開発ループ
 
-`development`（`cybertrain build` で作ったバイナリ以外での `CYBERTRAIN_ENV` のデフォルト）で `cybertrain server`（`spin run gen`、次に `spin run NAME`）を実行すると、`app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` とアセットのルート（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）も 0.5 秒ごとに確認します。ビューは除外され（エンジンが自分で再読み込みするためです）、開発環境では空の `gen/views.rb` も同様です。
+`development`（`cybertrain build` で作ったバイナリ以外での `CYBERTRAIN_ENV` のデフォルト）で `cybertrain server`（`SPIN_DEBUG=1 spin run gen`、`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`、次に `spin run NAME`）を実行すると、`app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` とアセットのルート（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）も 0.5 秒ごとに確認します。ビューは除外され（エンジンが自分で再読み込みするためです）、開発環境では空の `gen/views.rb` も同様です。
 
-変更があるとバックグラウンドで `spin run gen && spin build NAME -- --incremental` を実行します：Spinel のインクリメンタルビルドで、編集によって変わった C のユニットだけを再コンパイルします。`--incremental` のない Spinel のリリースはこのフラグを拒否し、その場合ループはフラグなしでビルドします。
+変更があるとバックグラウンドで `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` を実行します：Spinel のインクリメンタルビルドで、編集によって変わった C のユニットだけを再コンパイルします。`--incremental` のない Spinel のリリースはこのフラグを拒否し、その場合ループはフラグなしでビルドします。CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin のデバッグモード（`SPIN_DEBUG=1`、`-O0`）でビルドします：どちらも数ミリ秒しか動かず、gen は `-O2` のときのごく一部の時間でコンパイルできるためです。アプリケーションは常にリリースビルドです。
 
 成功すると再起動を要求します（外部からの `kill -HUP` が立てるのと同じフラグです）：モニタースレッドがリスナーを止めて処理中のリクエストを捌き切り、その後メインスレッドが同じポートと PID のまま新しいバイナリを `execv` するので、セッションの途中のクライアントからは見えません。ビルドに失敗した場合は古いバイナリで配信を続け、すべての HTML レスポンスにコンパイラの出力をバナーとして表示します。`cybertrain build` が `tmp/cybertrain-build.lock` を保持している間は、再ビルドを行いません。本番環境ではこれらは一切読み込まれません。
 

@@ -467,6 +467,17 @@ again since the lock left it).
   (#10525, #10524), F, G, H (#10415) and I (#10735, #10786); their
   workarounds are dropped where there were any (see each).
 
+### 5. Build time (added 2026-11-12)
+
+Not a bug: the time an application developer waits. One edit of a
+controller is 53 s on a 4-core Linux VM, 44 s of it the analysis, and the
+analysis grew 4.2 times while the framework grew 2.3 times. Four things
+are asked, in "Build time, measured on 2026-11-12" at the end: an
+analysis whose cost follows what changed, a staleness check per
+executable in spin, a way to give an executable its build flags (or a
+split of a unit well under 4 MB), and `spin test` on several files at
+once.
+
 ## What can go upstream
 
 Looked at on 2026-11-05, against 2026.11.04.7026 and the fork's master
@@ -2906,6 +2917,153 @@ about the whole-framework case. It belongs with R (an arm matched by
 name instead of by class), and the framework spells a rescued class from
 the top either way.
 
+## Build time, measured on 2026-11-12
+
+Measured for the development flow of an application
+([the spec](superpowers/specs/2026-11-12-dev-flow-bottlenecks-design.md)):
+CyberTrain 34c9b7e, Spinel 2026.11.04.7026, a 4-core x86-64 Linux VM
+(Ubuntu 24.04, gcc 13.3). Nothing here is a wrong result. It is the time a
+developer waits after each edit, and most of it is not CyberTrain's to
+remove.
+
+### The analysis grows faster than the program
+
+`spinel bin/blog.rb -c --timing` for examples/blog's application, at
+commits of one week (four compiles at a time on the four cores, so the
+absolute figures are about a third above a compile alone; a compile alone
+at 34c9b7e, for a scaffolded application of 2,690 methods, is 44.2 s of
+analysis):
+
+| CyberTrain | Framework lines | Methods compiled | `phase=analysis` | `analysis_fixpoint` | per method |
+| --- | --: | --: | --: | --: | --: |
+| 3ec9cc0 (2026-11-05) | 34,246 | 1,272 | 14.6 s | 8.2 s, 16 rounds | 11 ms |
+| 27335c5 (2026-11-06) | 42,667 | 1,701 | 21.5 s | 12.4 s, 14 rounds | 13 ms |
+| bfd0d3a (2026-11-07) | 49,302 | 2,034 | 36.1 s | 20.5 s, 14 rounds | 18 ms |
+| 414f594 (2026-11-10) | 56,284 | 2,330 | 41.4 s | 23.1 s, 14 rounds | 18 ms |
+| 72104d7 (2026-11-11) | 65,185 | 2,840 | 59.7 s | 33.7 s, 16 rounds | 21 ms |
+| 34c9b7e (2026-11-12) | 66,880 | 2,902 | 61.4 s | 35.7 s, 16 rounds | 21 ms |
+
+2.3 times the methods, 4.2 times the analysis: an exponent of about 1.7.
+The round count did not move, so each round's cost per method did.
+
+Where the 44.2 s of the compile alone go (`--timing`):
+`analysis_fixpoint` 24.8 s in 16 rounds, `an_cls_facts` 5.5 s,
+`an_storage` 3.2 s, `analysis_renarrow` 2.9 s, `an_desugar_register`
+2.2 s, `an_method_backstops` 1.6 s, `an_nullable_returns` 1.4 s,
+`an_class_structure` 1.3 s. Inside the fixpoint: `infer_write_types`
+4.1 s (33 calls, 28 with a change), `infer_return_types` 3.4 s (22, 13),
+`narrow_object_arrays` 3.0 s (22, 4), `infer_param_types_settle` 2.1 s
+(22, 13), `infer_block_params` 1.9 s (29, 13), `infer_ivar_types` 1.0 s
+(29, 16); the other 151 passes are under 0.6 s each and 8.9 s together.
+163 stack samples of three compiles (gdb, one every quarter second) say
+the same and name no single function: 90 in `an_phase_infer_fixpoint`
+(74 of them with `infer_type` on the stack, 41 with `infer_call`), 18 in
+`cf_solve`, 12 in `an_phase_storage`; the commonest leaf, `nt_str`, has
+17.
+
+What it costs: the edit loop's rebuild is `spin build NAME --
+--incremental`, and of its 53 s the analysis is 44.2 s, the C generation
+3.6 s, compiling 2 of 81 units and linking 3.1 s. Every test file of an
+application is the same program again, 52 to 56 s. On 2026-11-05 the
+same edit was 3.9 s of analysis on a Mac (docs/performance-next.md).
+
+What would fix it, for Spinel to judge:
+
+- **A round that visits what changed.** `narrow_object_arrays` walks the
+  program 22 times and changes something 4 times; the 150 small passes
+  run in every round, a third of the fixpoint between them. A worklist of the scopes whose inputs changed in
+  the last round would make rounds 3 to 16 cheap.
+- **Analysis kept between builds.** An edit to one controller's method
+  leaves the framework's 2,600 methods as they were. `--incremental`
+  reuses the objects of unchanged C; nothing reuses the types that
+  produced it.
+- **Pruning before the fixpoint.** A program that requires the framework
+  and calls a corner of it pays for all of it: `bin/db.rb` (migrations
+  only) analyses for 48 s with `require "cybertrain"` and for 8 s with
+  the two files it needs, which it cannot require because the
+  application's config file may name anything.
+
+What CyberTrain does today: nothing reduces it. The framework keeps
+growing through phase 5 of the Rails-gap programme.
+
+### spin: every executable is stale when any Ruby file is newer
+
+`spin build`, `run` and `test` reuse a binary only when no `*.rb` of the
+package (and of a path dependency) is newer than it. Touched in a new
+application, then `spin build` on each of its three executables:
+
+| Touched | `gen` | `db` | the application |
+| --- | --- | --- | --- |
+| `app/controllers/articles_controller.rb` | rebuilt | rebuilt | rebuilt |
+| `app/models/article.rb`, `config/app.rb`, `config/routes.rb` | rebuilt | rebuilt | rebuilt |
+| `db/schema.rb`, a file of `db/migrate/`, `gen/routes.rb`, `bin/db.rb` | rebuilt | rebuilt | rebuilt |
+| a view, `README.md`, the SQLite file, `test/.keep` | up to date | up to date | up to date |
+
+`bin/gen.rb` requires the routes and the schema; a controller cannot
+reach its binary. So an edit to a controller costs the next `spin run
+gen` 38 s (18 s when its C is split, below) and the next `spin run db`
+72 s for binaries identical to the ones on disk, and a program that writes a Ruby file (the migrator writes
+`db/schema.rb`, the generator writes `gen/`) makes itself stale.
+
+- What would fix it: the compiler knows the files a program was compiled
+  from. A list of them beside the binary (a depfile, as `spin flags
+  --deps` already gives for the toolchain) would let spin compare those
+  and no others.
+- What CyberTrain does today: `Dev::Rebuilder` compiles `bin/gen.rb` to C
+  and compares it with the C of the binary on disk before it lets spin
+  rebuild gen (docs/design.md, section 6); `DB::CLI` no longer rewrites a
+  `db/schema.rb` that has not changed; the CLI builds gen and db with
+  `SPIN_DEBUG=1`, which makes the needless compile cheaper, not rarer.
+
+### spin: no build flags per executable, and a unit just under 4 MiB is one compile
+
+`bin/gen.rb` compiles to 4.15 MB of C (2.39 MB with `--no-line-map`) when
+the framework is checked out at `/home/user/CyberTrain`: 44 KB under the
+4 MiB at which spinel splits a unit, so one C compiler process runs over
+it at `-O2`. The 23,816 `#line` directives each carry a path, so the
+same program with the framework at a path of 88 characters is 5.6 MB,
+is split in four, and builds in less than half the time:
+
+| `spinel bin/gen.rb` | Total | Analysis | C compiler |
+| --- | --: | --: | --: |
+| as `spin run gen` builds it, 4.15 MB of C | 38.1 s | 4.5 s | 32.9 s |
+| as `spin run gen` builds it, 5.6 MB of C (four parts) | 17.9 s | 4.4 s | 12.9 s |
+| the 4.15 MB with `--jobs=4` | 16.9 s | 4.1 s | 12.2 s |
+| the 4.15 MB with `-O 1` | 25.0 s | 4.9 s | 19.5 s |
+| the 4.15 MB with `-O 0` | 11.5 s | 4.8 s | 6.1 s |
+
+So the directory a framework is installed in decides whether a tool
+takes 38 s or 18 s to build.
+
+gen runs for 6 ms, so its optimisation level buys nothing. `spin run`
+passes nothing to spinel, `spin build gen -- -O 0` is never up to date,
+and spin.toml has no place for an executable's flags; `SPIN_DEBUG=1` is
+the one switch spin remembers (`build/bin/.gen.mode`), and it is an
+environment variable every caller must set.
+
+- What would fix it: flags per executable in spin.toml (`[bin.gen]
+  opt = 0`), and a split threshold that follows the cores and counts the
+  C without its `#line` directives (a unit of 1 MB or more when `--jobs`
+  would use more than one).
+- What CyberTrain does today: `SPIN_DEBUG=1 spin run gen` and `... run
+  db` wherever the CLI and the rebuilder run them
+  (`Cybertrain::Shell::TOOL_SPIN`).
+
+### spin: two `spin test` at once in one package
+
+`spin test test/articles.rb` and `spin test test/comments.rb` started
+together in a copy of examples/blog: one ends "FAIL articles.rb (build
+failed)", the other passes, in 99 s; one after the other they pass in
+112 s. `spin test` with both files builds them one after the other
+(`user` 4 min 51 s of 1 min 52 s: the C compiler is parallel, the
+analysis is not).
+
+- What would fix it: `spin test --jobs N`, building N test programs at a
+  time, or build paths that two spin processes do not share.
+- What CyberTrain does today: nothing; phase 5a's `cybertrain test` puts
+  an application's tests in one program, which is one analysis instead
+  of one per file.
+
 ## Written up on 2026-11-13
 
 What the inventory at the top added: eight items that had only been a
@@ -2992,8 +3150,9 @@ runtime's, which is why the C above sleeps again on `EINTR`.)
   lib/sp_sched.h: the call is bracketed by `sp_native_enter` and
   `sp_native_leave`, so that "a collection raised while the call runs
   does not wait for it". The worker leaves the collector's world; its
-  other green threads stay where they are. (cybertrain/db/sqlite_ffi.rb
-  still says the option is "accepted and ignored", which was 2026.09.12.)
+  other green threads stay where they are. (On 2026.09.12 the option
+  was accepted and ignored, which is what cybertrain/db/sqlite_ffi.rb
+  said until 2026-11-13.)
 - What it costs: a SQLite call that waits (a lock, a long query, a
   `VACUUM`) stalls every request of a one-worker server for as long. A
   writer waiting in SQLite's busy handler for a transaction whose green
