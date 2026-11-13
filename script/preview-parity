@@ -78,9 +78,22 @@ case "$PWD" in
 esac
 
 work=$(mktemp -d) || exit 2
-trap 'rm -rf "$work"' EXIT
+# The shim compiles each test's FFI libraries into tmp/cybertrain-dev/ffi/ of
+# the current directory, the checkout (tests run from it, for their relative
+# paths): what this run adds there is removed at its end, what was there
+# before is kept.
+ffi=tmp/cybertrain-dev/ffi
+ls "$ffi" > "$work/ffi-before" 2> /dev/null
+cleanup() {
+  for lib in "$ffi"/*; do
+    [ -e "$lib" ] || continue
+    grep -qxF "$(basename "$lib")" "$work/ffi-before" || rm -f "$lib"
+  done
+  rmdir "$ffi" tmp/cybertrain-dev 2> /dev/null
+  rm -rf "$work"
+}
+trap cleanup EXIT
 export RUBYOPT="-E UTF-8 -I$PWD -rcybertrain/preview"
-export CYBERTRAIN_PREVIEW_CACHE="$work/ffi-cache"
 
 limit=${PREVIEW_PARITY_TIMEOUT:-60}
 match=0

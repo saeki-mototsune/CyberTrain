@@ -65,6 +65,77 @@ test "the compiled library is cached by content" do
   assert first != Cybertrain::Preview::FFILibrary.build("int one(void){return 2;}", [], dir)
 end
 
+# A fake compiler: writes a damaged library where its -o says, and records
+# each run.
+def fake_cc(dir)
+  path = File.join(dir, "fake-cc")
+  File.write(path, <<~SH)
+    #!/bin/sh
+    echo run >> '#{dir}/runs'
+    out=''
+    while [ $# -gt 0 ]; do if [ "$1" = -o ]; then out=$2; fi; shift; done
+    cat > /dev/null
+    printf 'not a shared library' > "$out"
+  SH
+  File.chmod(0o755, path)
+  path
+end
+
+def with_cc(cc)
+  saved = ENV["CC"]
+  ENV["CC"] = cc
+  yield
+ensure
+  ENV["CC"] = saved
+end
+
+def runs(dir)
+  File.exist?(File.join(dir, "runs")) ? File.read(File.join(dir, "runs")).lines.size : 0
+end
+
+test "a cached library that cannot be loaded is built once more" do
+  Dir.mktmpdir("preview-ffi") do |dir|
+    source = "int cached_one(void){return 11;}"
+    path = Cybertrain::Preview::FFILibrary.build(source, [], dir)
+    File.write(path, "damaged")
+    handle = Cybertrain::Preview::FFILibrary.open_library(source, [], dir)
+    assert_equal 11, Fiddle::Function.new(handle.sym("cached_one"), [], Fiddle::TYPE_INT).call
+  end
+end
+
+test "a library that still does not load after one more build is reported" do
+  Dir.mktmpdir("preview-ffi") do |dir|
+    with_cc(fake_cc(dir)) do
+      assert_raises("Fiddle::DLError") { Cybertrain::Preview::FFILibrary.open_library("int two(void){return 2;}", [], dir) }
+      assert_equal 2, runs(dir)
+    end
+  end
+end
+
+test "the cache key covers the machine's architecture and the flags" do
+  library = Cybertrain::Preview::FFILibrary
+  here = library.send(:key, "int x;", [], "cc 1")
+  assert_equal here, library.send(:key, "int x;", [], "cc 1", RbConfig::CONFIG["arch"])
+  assert here != library.send(:key, "int x;", [], "cc 1", "aarch64-other")
+  assert_equal ["-shared", "-fPIC", "-O2"], library::FLAGS
+end
+
+# A cache directory removed while the compiler ran: the rename fails, and
+# that is not "the C compiler could not be run".
+test "a failing rename is reported as itself" do
+  Dir.mktmpdir("preview-ffi") do |dir|
+    cache = File.join(dir, "cache")
+    Dir.mkdir(cache)
+    cc = File.join(dir, "remove-cc")
+    File.write(cc, "#!/bin/sh\ncat > /dev/null\nrm -rf '#{cache}'\n")
+    File.chmod(0o755, cc)
+    with_cc(cc) do
+      message = assert_raises("Errno::ENOENT") { Cybertrain::Preview::FFILibrary.build("int three(void){return 3;}", [], cache) }
+      assert message.index("could not be run").nil?, message
+    end
+  end
+end
+
 test "a C error carries the compiler's output" do
   message = assert_raises("Cybertrain::Preview::CompileError") do
     Cybertrain::Preview::FFILibrary.build("int broken( {", [], Dir.mktmpdir("preview-ffi"))

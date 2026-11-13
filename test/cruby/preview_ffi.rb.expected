@@ -3,6 +3,10 @@ ok   constants, malloc, read_ptr and free
 ok   :str and :binstr results
 ok   an unknown type is refused by name
 ok   the compiled library is cached by content
+ok   a cached library that cannot be loaded is built once more
+ok   a library that still does not load after one more build is reported
+ok   the cache key covers the machine's architecture and the flags
+ok   a failing rename is reported as itself
 ok   a C error carries the compiler's output
 ok   no file under cybertrain/preview/ declares an Error class by a `class` line (test/gen_jobs.rb scans for them)
-7 tests, 20 assertions, 0 failures
+11 tests, 28 assertions, 0 failures

@@ -65,6 +65,11 @@ class IndicatorPage < Cybertrain::Middleware
       response.content_type = "text/html; charset=utf-8"
       response.set_header(ctx.request.query_value("name"), ctx.request.query_value("value"))
       response.body = "<!DOCTYPE html>\n<html><body><h1>Encoded</h1></body></html>"
+    when "/bytes"
+      # A page sent as bytes (send_data of a file read in binary, a blob
+      # column): a binary String with a byte past 0x7F (é in Latin-1).
+      response.content_type = "text/html"
+      response.body = "<html><body>caf\xE9</body></html>".b
     else
       response.body = "<!DOCTYPE html>\n<html><body class=\"app\"><h1>Posts</h1></body></html>"
     end
@@ -127,7 +132,7 @@ test "an HTML page gets the header and one indicator before </body>, also throug
   response = run_request(app, "/").response
   assert_equal "cruby", response.header("X-Cybertrain-Runtime")
   expected = "<h1>Posts</h1><div id=\"cybertrain-dev-indicator\" data-runtime=\"cruby\" data-generation=\"12\">" \
-             "CRuby preview · Spinel building…</div><script src=\"/__cybertrain/dev/indicator.js\"></script></body></html>"
+             "CRuby preview &#183; Spinel building&#8230;</div><script src=\"/__cybertrain/dev/indicator.js\"></script></body></html>"
   assert_includes response.body, expected
   assert_equal 1, count_of(response.body, INDICATOR_DIV)
   assert_equal 1, count_of(response.body, "indicator.js")
@@ -339,8 +344,29 @@ test "with a failed build the banner follows <body> and the indicator precedes <
   assert_includes body, "<body class=\"app\"><div id=\"cybertrain-build-failed\""
   assert_includes body, "app/models/post.rb:4: syntax error"
   assert_includes body, "<h1>Posts</h1><div id=\"cybertrain-dev-indicator\" data-runtime=\"cruby\" data-generation=\"4\">" \
-                        "CRuby preview · Spinel build failed</div>"
+                        "CRuby preview &#183; Spinel build failed</div>"
   assert body.index("cybertrain-build-failed").to_i < body.index("cybertrain-dev-indicator").to_i
+end
+
+# The markup is ASCII (the texts' characters past ASCII as numeric
+# references, which the browser shows as the same text), so that it joins a
+# body in any encoding: under CRuby a binary body with a byte past 0x7F and
+# UTF-8 markup raised Encoding::CompatibilityError, a bare 500 in the
+# preview only.
+test "a page sent as bytes gets the indicator, in ASCII markup, byte for byte" do
+  reader = state_reader("bytes", 3, "cruby", "building", "")
+  response = run_request(indicator(IndicatorPage.new, reader, "cruby", 3, no_directives), "/bytes").response
+  expected = ("<html><body>caf\xE9<div id=\"cybertrain-dev-indicator\" data-runtime=\"cruby\" data-generation=\"3\">CRuby preview &#183; " \
+              "Spinel building&#8230;</div><script src=\"/__cybertrain/dev/indicator.js\"></script></body></html>").b
+  assert_equal expected, response.body.b
+end
+
+test "ascii_html writes the characters past ASCII as numeric references" do
+  assert_equal "Spinel ready &#8212; reload", Cybertrain::Dev::Indicator.ascii_html("Spinel ready — reload")
+  assert_equal "&#183;a&#8230;", Cybertrain::Dev::Indicator.ascii_html("·a…")
+  assert_equal "caf&#233; &#128512;", Cybertrain::Dev::Indicator.ascii_html("café 😀")
+  assert_equal "CRuby preview", Cybertrain::Dev::Indicator.ascii_html("CRuby preview")
+  assert_equal "", Cybertrain::Dev::Indicator.ascii_html("")
 end
 
 test "the state follows the state file as it changes" do

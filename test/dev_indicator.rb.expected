@@ -16,5 +16,7 @@ ok   a response served as an attachment gets the header and no indicator
 ok   a response the application encoded gets the header and no indicator; identity is no encoding
 ok   the script path answers the script
 ok   with a failed build the banner follows <body> and the indicator precedes </body>
+ok   a page sent as bytes gets the indicator, in ASCII markup, byte for byte
+ok   ascii_html writes the characters past ASCII as numeric references
 ok   the state follows the state file as it changes
-19 tests, 111 assertions, 0 failures
+21 tests, 117 assertions, 0 failures

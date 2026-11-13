@@ -72,7 +72,12 @@ module Cybertrain
       def build
         return nil if @sources.empty?
 
-        FFILibrary.build(PRELUDE + @sources.join("\n"), @libs, Preview.cache_dir)
+        FFILibrary.build(source, @libs, Preview.cache_dir)
+      end
+
+      # The module's whole C unit.
+      def source
+        PRELUDE + @sources.join("\n")
       end
 
       def call(name, arg_types, return_type, values)
@@ -136,8 +141,7 @@ module Cybertrain
       def handles
         @handles ||= begin
           list = []
-          path = build
-          list << Fiddle.dlopen(path) if path
+          list << FFILibrary.open_library(source, @libs, Preview.cache_dir) unless @sources.empty?
           @libs.each { |name| list << open_lib(name) }
           list << Fiddle::Handle::DEFAULT
         end

@@ -526,6 +526,8 @@ def main
       check(first_page, "step 1 got no page from cruby")
       shown = first_page.body[%r{<div id="cybertrain-dev-indicator"[^>]*>([^<]*)</div>}, 1]
       check(shown, "step 1's page has no indicator")
+      # The markup is ASCII: characters past it are numeric references.
+      shown = shown.gsub(/&#([0-9]+);/) { [Regexp.last_match(1).to_i].pack("U") }
       check(shown == BUILDING_TEXT, "step 1's indicator says #{shown.inspect}, not #{BUILDING_TEXT.inspect}")
       "step 1's page (cruby) carries `#{BUILDING_TEXT}`"
     end

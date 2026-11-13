@@ -19,9 +19,9 @@ module Cybertrain
     # - sets X-Cybertrain-Runtime ("cruby" or "spinel") on every response;
     # - writes the indicator, one line naming the runtime and what the
     #   background build is doing (Indicator.text), before `</body>` of an
-    #   HTML response that ErrorPage would give a banner (its rules), that
-    #   is not served as a download (attachment_disposition?) and whose
-    #   body the application has not encoded (encoded_body?), with
+    #   HTML response that ErrorPage would give a banner (its rules: also
+    #   not served as a download, ErrorPage.attachment_disposition?, and a
+    #   body the application has not encoded, ErrorPage.encoded_body?), with
     #   the runtime and generation the page was rendered with, and a script
     #   tag (with the request's CSP nonce when the application uses nonce
     #   directives);
@@ -152,30 +152,49 @@ module Cybertrain
         s.gsub("\\", "\\\\\\\\").gsub("\"", "\\\\\"")
       end
 
-      # Whether the response is served for saving (Content-Disposition:
-      # attachment, the type case-insensitive as RFC 6266 has it; the header
-      # name is matched case-insensitively by Response#header). The file is
-      # the application's: the indicator must not end up in what the
-      # developer saves.
-      # @return [Boolean]
-      def self.attachment_disposition?(response)
-        value = response.header("Content-Disposition")
-        return false if value.nil?
+      # text with every character past ASCII written as a numeric
+      # character reference (&#183;), the browser showing the same text. The
+      # markup is then ASCII, and joins a body in any ASCII-compatible
+      # encoding: under CRuby, UTF-8 text beside a binary body with a byte
+      # past 0x7F (send_data of a file read as bytes) raises
+      # Encoding::CompatibilityError. Reads UTF-8 by its bytes.
+      # @param text [String]
+      # @return [String]
+      def self.ascii_html(text)
+        s = text.to_s # NOTES rule 62
+        n = s.bytesize
+        out = +""
+        start = 0
+        i = 0
+        while i < n
+          b = s.getbyte(i)
+          if b < 128
+            i += 1
+          else
+            out << s.byteslice(start, i - start) if i > start
+            size = 2
+            code = b & 31
+            if b >= 240
+              size = 4
+              code = b & 7
+            elsif b >= 224
+              size = 3
+              code = b & 15
+            end
+            j = 1
+            while j < size && i + j < n
+              code = code * 64 + (s.getbyte(i + j) & 63)
+              j += 1
+            end
+            out << "&#" << code.to_s << ";"
+            i += size
+            start = i
+          end
+        end
+        return s if start == 0
 
-        value.to_s.lstrip.downcase.start_with?("attachment") # NOTES rule 62
-      end
-
-      # Whether the application encoded the body (Content-Encoding present
-      # and, stripped and lowercased, other than "identity", which names no
-      # coding; the header name is matched case-insensitively by
-      # Response#header). Markup written into gzip or br bytes would leave
-      # a body the browser cannot decode.
-      # @return [Boolean]
-      def self.encoded_body?(response)
-        value = response.header("Content-Encoding")
-        return false if value.nil?
-
-        value.to_s.strip.downcase != "identity" # NOTES rule 62
+        out << s.byteslice(start, n - start) if n > start
+        out
       end
 
       # The decoded value of name in the request's query string
@@ -226,8 +245,8 @@ module Cybertrain
         body = response.body.to_s # NOTES rule 62
         return nil if body.empty?
         return nil unless ErrorPage.html_response?(response)
-        return nil if Indicator.attachment_disposition?(response)
-        return nil if Indicator.encoded_body?(response)
+        return nil if ErrorPage.attachment_disposition?(response)
+        return nil if ErrorPage.encoded_body?(response)
         return nil unless body.index(ID).nil?
 
         at = body.rindex("</body>")
@@ -239,7 +258,7 @@ module Cybertrain
       def markup(ctx, snapshot)
         html = +"<div id=\"#{ID}\" data-runtime=\"" << Html.escape(@runtime)
         html << "\" data-generation=\"" << @generation.to_s << "\">"
-        html << Html.escape(Indicator.text(@runtime, @generation, snapshot)) << "</div>"
+        html << Indicator.ascii_html(Html.escape(Indicator.text(@runtime, @generation, snapshot))) << "</div>"
         html << "<script src=\"#{SCRIPT_PATH}\""
         html << " nonce=\"" << ctx.csp_nonce << "\"" unless @nonce_directives.empty?
         html << "></script>"

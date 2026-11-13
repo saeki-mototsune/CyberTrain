@@ -18,9 +18,10 @@ module Cybertrain
     # Router built, and a JSON body), with the values of filtered names
     # (Config#filter_parameters) shown as "[FILTERED]". While the last
     # rebuild failed, every HTML response also carries a banner with the
-    # compiler output. The answer comes from the Rebuilder in the loop the
-    # binary runs itself, or from a BuildStatus (the supervisor's state
-    # file) under `cybertrain server`; either slot may be nil.
+    # compiler output (not a download, not an encoded body). The answer
+    # comes from the Rebuilder in the loop the binary runs itself, or from a
+    # BuildStatus (the supervisor's state file) under `cybertrain server`;
+    # either slot may be nil.
     class ErrorPage < Middleware
       BANNER_ID = "cybertrain-build-failed"
 
@@ -88,6 +89,32 @@ module Cybertrain
       def self.html_response?(response)
         type = response.header("Content-Type")
         type.nil? || type.downcase.start_with?("text/html")
+      end
+
+      # Whether the response is served for saving (Content-Disposition:
+      # attachment, the type case-insensitive as RFC 6266 has it; the header
+      # name is matched case-insensitively by Response#header). The file is
+      # the application's: neither the banner nor Dev::Indicator's markup
+      # may end up in what the developer saves.
+      # @return [Boolean]
+      def self.attachment_disposition?(response)
+        value = response.header("Content-Disposition")
+        return false if value.nil?
+
+        value.to_s.lstrip.downcase.start_with?("attachment") # NOTES rule 62
+      end
+
+      # Whether the application encoded the body (Content-Encoding present
+      # and, stripped and lowercased, other than "identity", which names no
+      # coding; the header name is matched case-insensitively by
+      # Response#header). Markup written into gzip or br bytes would leave
+      # a body the browser cannot decode.
+      # @return [Boolean]
+      def self.encoded_body?(response)
+        value = response.header("Content-Encoding")
+        return false if value.nil?
+
+        value.to_s.strip.downcase != "identity" # NOTES rule 62
       end
 
       private
@@ -193,16 +220,20 @@ module Cybertrain
         return nil unless ErrorPage.banner_status?(response.status)
         return nil if response.body.empty? # `head :ok` and friends stay bodyless
         return nil unless ErrorPage.html_response?(response)
+        return nil if ErrorPage.attachment_disposition?(response)
+        return nil if ErrorPage.encoded_body?(response)
 
         output = ""
+        supervised = false
         if !rebuilder.nil? && rebuilder.last_failed
           output = rebuilder.last_output
         elsif !status.nil?
           output = status.output
+          supervised = true
         end
         body = response.body
         at = banner_offset(body)
-        response.body = "#{body[0, at]}#{banner(output)}#{body[at, body.size - at]}"
+        response.body = "#{body[0, at]}#{banner(output, supervised)}#{body[at, body.size - at]}"
         nil
       end
 
@@ -215,9 +246,20 @@ module Cybertrain
         close.nil? ? 0 : close + 1
       end
 
-      def banner(output)
+      # What a failed build means differs by loop. The binary's own loop
+      # (a Rebuilder) keeps running the previous build. Under `cybertrain
+      # server` (a BuildStatus) the page comes from the CRuby preview of the
+      # current source, and the compiled binary of that source either did
+      # not build or did not start: it serves nothing until a build
+      # succeeds.
+      def banner(output, supervised)
         html = +"<div id=\"#{BANNER_ID}\" style=\"background: #b91c1c; color: #fff; padding: 1rem; font-family: monospace;\">"
-        html << "<strong>Build failed</strong>: the server keeps running the previous build until the next successful one."
+        if supervised
+          html << "<strong>Build failed</strong>: the compiled binary of the current source could not be built or did not start; " \
+                  "until a build succeeds, pages come from the CRuby preview."
+        else
+          html << "<strong>Build failed</strong>: the server keeps running the previous build until the next successful one."
+        end
         html << "<pre style=\"white-space: pre-wrap; margin: 0.5rem 0 0;\">" << Html.escape(output) << "</pre></div>\n"
         html
       end
