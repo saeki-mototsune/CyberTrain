@@ -105,7 +105,7 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, perform_enqueued_jobs
     link = last_mail_link
     assert link.start_with?("https://shop.example/passwords/"), link
-    # Production with neither: no mail, an [ERROR] line, the same answer.
+    # Production with neither: no mail, an ERROR line, the same answer.
     log = StringIO.new
     with_config("production", NO_HOSTS, "", log) do
       refute Cybertrain.config.host_check?
@@ -115,7 +115,8 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
       assert_includes response.body, SENT
     end
     assert_no_enqueued_jobs "cybertrain mail"
-    assert_includes log.string, "[ERROR] password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
+    assert_includes log.string, " ERROR "
+    assert_includes log.string, "password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
   end; nil; end
 
   def test_any_other_environment_without_base_url_sends_no_mail_and_answers_the_same; begin
@@ -139,7 +140,8 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
       assert_includes response.body, SENT
     end
     assert_no_enqueued_jobs "cybertrain mail"
-    assert_includes log.string, "[ERROR] password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
+    assert_includes log.string, " ERROR "
+    assert_includes log.string, "password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
     assert log.string.index("evil.example").nil?
   end; nil; end
 
@@ -161,7 +163,8 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
       assert_equal refused.body, response.body
     end
     assert_no_enqueued_jobs "cybertrain mail"
-    assert_includes log.string, "[ERROR] password reset mail not sent: the to address contains a space, a control character or a non-ASCII byte\n"
+    assert_includes log.string, " ERROR "
+    assert_includes log.string, "password reset mail not sent: the to address contains a space, a control character or a non-ASCII byte\n"
   end; nil; end
 
   def test_the_token_expires_after_15_minutes; begin

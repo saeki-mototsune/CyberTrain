@@ -111,7 +111,10 @@ end
 # on the developer's clock, except cli/authentication.rb, whose text is
 # application code; its one exception is 0.4's ApplicationController block,
 # which the upgrade must match as 0.4 wrote it. clock.rb and
-# test/time_now.rb are the clock itself. Comment lines are not counted.
+# test/time_now.rb are the clock itself. logger.rb reads the realtime
+# clock in one place, Logger.timestamp, when the Clock has pushed no
+# travelled instant (plan D2: the HTTP layer cannot name the Clock); the
+# test counts that one read. Comment lines are not counted.
 # Run from the repository root: from anywhere else the globs find nothing
 # and the test fails instead of passing on no files.
 LEGACY_START = "LEGACY_APPLICATION_CONTROLLER_BLOCKS = ["
@@ -123,7 +126,7 @@ def clock_scanned?(path)
   return false if path.start_with?("cybertrain/cli/")
   return false if path.start_with?("cybertrain/generator/") && !path.end_with?("_emitter.rb")
 
-  path != "cybertrain/test/time_now.rb" && path != "cybertrain/clock.rb"
+  path != "cybertrain/test/time_now.rb" && path != "cybertrain/clock.rb" && path != "cybertrain/logger.rb"
 end
 
 # Whether `line` reads the time some other way than through the Clock.
@@ -173,12 +176,26 @@ def seam_scanned?(path)
   !path.include?("/build/") && !path.include?("/tmp/")
 end
 
+test "the log line's time follows each write of the clock (plan D2)" do
+  Cybertrain::Clock.travel_to(Time.utc(2026, 11, 11, 12, 0, 5))
+  assert_equal "2026-11-11T12:00:05.000Z", Cybertrain::Logger.timestamp
+  Cybertrain::Clock.travel_during(Time.utc(2030, 1, 1)) do
+    assert_equal "2030-01-01T00:00:00.000Z", Cybertrain::Logger.timestamp
+  end
+  assert_equal "2026-11-11T12:00:05.000Z", Cybertrain::Logger.timestamp
+  Cybertrain::Clock.travel_back
+  Cybertrain::Clock.travel_during(Time.utc(2030, 1, 1)) { nil }
+  refute Cybertrain::Logger.timestamp.start_with?("2026-11-11T12:00:05"), Cybertrain::Logger.timestamp
+  refute Cybertrain::Logger.timestamp.start_with?("2030-01-01T00:00:00"), Cybertrain::Logger.timestamp
+end
+
 test "no runtime or emitted code reads Time.now, and no removed seam is left" do
   framework = Dir.glob("cybertrain/**/*.rb").sort
   assert framework.size > 100, "run from the repository root: found #{framework.size} framework files"
   hits = []
   framework.each { |path| hits.concat(clock_hits(path)) if clock_scanned?(path) }
   assert_equal [], hits
+  assert_equal 1, clock_hits("cybertrain/logger.rb").size
   # The legacy block is skipped, not absent: 0.4's text still reads Time.now.
   assert File.read("cybertrain/cli/authentication.rb").include?("created_at.to_i + lifetime <= Time.now.to_i")
 

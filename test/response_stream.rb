@@ -7,6 +7,7 @@ require "socket"
 require "stringio"
 require "cybertrain/http/server"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Three chunks, one of them multibyte, one holding a NUL byte.
 class ThreeChunks < Cybertrain::BodyWriter
@@ -160,7 +161,7 @@ end
 test "a writer that raises ends the connection and is logged" do
   raw = exchange(SERVER.port, "GET /raise HTTP/1.1\r\nHost: t\r\n\r\n")
   assert_equal "5\r\nfirst\r\n", body_of(raw)
-  assert_includes LOG.string, "[ERROR] stream error: RuntimeError: writer boom"
+  assert_logged LOG.string, "ERROR", "stream error: RuntimeError: writer boom"
   again = exchange(SERVER.port, "GET /plain HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n")
   assert_equal "plain", body_of(again)
 end

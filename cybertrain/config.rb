@@ -117,11 +117,13 @@ module Cybertrain
     # @api public
     attr_accessor :layout
 
-    # `:info` (the default), `:debug`, `:warn`, `:error`, or `:none`, which
-    # also turns off the request log but still prints errors. Lines go to
-    # standard output as `[INFO] ...`. `cybertrain test` sets `:none` for
+    # `:info` (the default), `:debug`, `:warn`, `:error`, `:fatal`, or
+    # `:none`, which also turns off the request log but still prints
+    # errors; from `CYBERTRAIN_LOG_LEVEL` (`debug` ... `none`). Anything
+    # else stops the boot ({#log_error}). `cybertrain test` sets `:none` for
     # its tests unless config/app.rb assigns it (the request log would
-    # print between the test lines).
+    # print between the test lines); the variable does not count as an
+    # assignment there.
     # @return [Symbol]
     # @api public
     attr_reader :log_level
@@ -150,6 +152,14 @@ module Cybertrain
       @log_level = value unless @log_level_given
       nil
     end
+
+    # How log lines are written: `:text` (the default,
+    # `2026-11-11T12:00:00.123Z INFO Completed 200 in 12ms`) or `:json`,
+    # one JSON object per line for log collectors; from
+    # `CYBERTRAIN_LOG_FORMAT`. Anything else stops the boot ({#log_error}).
+    # @return [Symbol]
+    # @api public
+    attr_accessor :log_format
 
     # The session cookie's name, `"_cybertrain_session"`.
     # @return [String]
@@ -743,7 +753,7 @@ attr_accessor :trusted_proxies
 
     # How many times the supervisor may restart one feed's thread within
     # {#feed_restart_window}: a feed that dies again after that many
-    # restarts makes a `feeds` process exit with status 1 (`[FATAL] feed
+    # restarts makes a `feeds` process exit with status 1 (at `FATAL`, `feed
     # NAME restarted N times in W s; exiting`), `10`, from
     # `CYBERTRAIN_FEED_RESTART_LIMIT`. A `server` process that runs feeds
     # keeps restarting them. At least 1.
@@ -1017,6 +1027,41 @@ attr_accessor :trusted_proxies
       ENV["CYBERTRAIN_ENV"] || "development"
     end
 
+    # CYBERTRAIN_LOG_LEVEL as a Symbol (any case), :info when it is unset
+    # or empty; text that is not a level becomes its own Symbol, which
+    # {#log_error} refuses at boot.
+    def self.default_log_level
+      text = env_or("CYBERTRAIN_LOG_LEVEL", "info").downcase
+      if text == "debug"
+        :debug
+      elsif text == "info"
+        :info
+      elsif text == "warn"
+        :warn
+      elsif text == "error"
+        :error
+      elsif text == "fatal"
+        :fatal
+      elsif text == "none"
+        :none
+      else
+        text.to_sym
+      end
+    end
+
+    # CYBERTRAIN_LOG_FORMAT as a Symbol (any case), :text when it is unset
+    # or empty; other text becomes its own Symbol, refused at boot.
+    def self.default_log_format
+      text = env_or("CYBERTRAIN_LOG_FORMAT", "text").downcase
+      if text == "text"
+        :text
+      elsif text == "json"
+        :json
+      else
+        text.to_sym
+      end
+    end
+
     # CYBERTRAIN_HOST, or "127.0.0.1" when it is unset or empty. Not
     # validated: the server gets it as it is ("0.0.0.0" listens on every
     # interface, which a container needs).
@@ -1090,8 +1135,11 @@ attr_accessor :trusted_proxies
       @max_render_depth = Template::MAX_RENDER_DEPTH
       @public_root = "public"
       @layout = "layouts/application"
-      @log_level = :info
+      # From the variable, not counted as given (plan D14): an exported
+      # level does not unsilence `cybertrain test`; config/app.rb does.
+      @log_level = Config.default_log_level
       @log_level_given = false
+      @log_format = Config.default_log_format
       @session_cookie_name = "_cybertrain_session"
       @session_max_age = 1209600
       # Absolute session lifetime, enforced by SessionStore: the two weeks
@@ -1423,7 +1471,7 @@ end
     # environment variable `env`: decimal digits with an optional leading
     # `-`, within `min..max`. An empty or unset variable means `default`;
     # anything else that does not parse, or a number out of bounds, also
-    # gives `default`, with a `[WARN]` line through {Cybertrain.logger}.
+    # gives `default`, with a `WARN` line through {Cybertrain.logger}.
     # Read it with {#int_setting}.
     # @example config/app.rb
     #   c.setting_int :prune_interval, env: "MYAPP_PRUNE_INTERVAL", default: 3600, min: 1, max: 9_999_999
@@ -1452,7 +1500,7 @@ end
     # Declares an application setting holding true or false, read once from
     # the environment variable `env`: `1` or `true` is true, `0` or `false`
     # is false, an empty or unset variable means `default`, and any other
-    # value gives `default` with a `[WARN]` line through {Cybertrain.logger}.
+    # value gives `default` with a `WARN` line through {Cybertrain.logger}.
     # Read it with {#bool_setting}.
     # @example config/app.rb
     #   c.setting_bool :worker, env: "MYAPP_WORKER", default: true

@@ -6,14 +6,14 @@
 #
 # 1. asks each service for its feeds whose thread has ended
 #    ({Service#service_dead_feeds}: the loop raised past its rescues, or
-#    the runtime killed it), logs a `[WARN]` line and starts the feed
+#    the runtime killed it), logs a `WARN` line and starts the feed
 #    again ({Service#service_restart_feed}) `min(30, 2 ** restarts)`
 #    seconds later ({Background.restart_backoff});
 # 2. counts each feed's restarts within {Config#feed_restart_window}; in a
 #    `feeds` process ({Background.exit_on_feed_death=}, set by
 #    Application#run_feeds) a feed that dies again after
-#    {Config#feed_restart_limit} restarts inside the window logs `[FATAL]
-#    feed NAME restarted N times in W s; exiting` (N its restarts in the
+#    {Config#feed_restart_limit} restarts inside the window logs, at `FATAL`,
+#    `feed NAME restarted N times in W s; exiting` (N its restarts in the
 #    window) and ends supervision with {Background.feeds_failed?} set: the
 #    role's main thread then stops the feeds and the process exits with
 #    status 1, so the container's restart policy starts a fresh one. A

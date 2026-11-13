@@ -36,6 +36,7 @@ def config_a
   c.filter_parameters = ["pin"]
   c.permissions_policy = "camera=()"
   c.log_level = :warn
+  c.log_format = :json
   c.time_zone = "Asia/Tokyo"
   c
 end
@@ -56,7 +57,7 @@ test "before any boot the settings are the modules' own defaults" do
                "max_upload_bytes=5242880 max_parts=128 upload_root=storage/uploads max_page=10000 " \
                "trusted_proxy=false trusted_proxies= " \
                "filter_parameters=password,password_confirmation,token,secret,secret_key_base,session_key,api_key,authorization " \
-               "permissions_policy=camera=(), microphone=(), geolocation=() log_level=info time_zone=UTC", PRISTINE
+               "permissions_policy=camera=(), microphone=(), geolocation=() log_level=info log_format=text time_zone=UTC", PRISTINE
 end
 
 test "a boot installs every setting of its config" do
@@ -68,8 +69,20 @@ test "a boot installs every setting of its config" do
   assert_equal "views=configured layout=layouts/a assets_raise=true assets_kept=0 " \
                "max_upload_bytes=1000 max_parts=7 upload_root=tmp/runtime_test/a/uploads max_page=50 " \
                "trusted_proxy=true trusted_proxies=10.0.0.0/8 filter_parameters=pin " \
-               "permissions_policy=camera=() log_level=warn time_zone=Asia/Tokyo", Cybertrain::Runtime.describe
+               "permissions_policy=camera=() log_level=warn log_format=json time_zone=Asia/Tokyo", Cybertrain::Runtime.describe
   app.shutdown
+end
+
+test "Runtime.apply installs the log format and reset! puts it back" do
+  app_for(config_a).boot.shutdown
+  assert Cybertrain::Logger.json_lines
+  assert Cybertrain::Runtime.describe.end_with?("log_level=warn log_format=json time_zone=Asia/Tokyo")
+  Cybertrain::Runtime.reset!
+  refute Cybertrain::Logger.json_lines
+  assert Cybertrain::Runtime.describe.end_with?("log_level=info log_format=text time_zone=UTC")
+  app_for(config_b).boot.shutdown
+  refute Cybertrain::Logger.json_lines
+  Cybertrain::Runtime.reset!
 end
 
 test "Runtime.reset! restores every default" do

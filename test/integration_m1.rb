@@ -14,7 +14,7 @@ test "the entry point exposes every M1 feature" do
   assert_equal({ "a" => "1" }, Cybertrain::Cookies.parse(req.cookie_header))
   ctx.response.body = Cybertrain::Html.escape("<b>")
   assert_includes ctx.response.to_http, "&lt;b&gt;"
-  Cybertrain.logger.info("m1 ok")
+  travel_to(Time.utc(2026, 11, 11, 12)) { Cybertrain.logger.info("m1 ok") }
   assert_equal "0.4.1", Cybertrain::VERSION
 end
 

@@ -7,4 +7,4 @@ ok   the health check and the stream endpoint at their boundaries
 ok   the encryption keys: unset is fine until a model declares encrypts
 ok   resolve_secret! is the step that writes: the key file, once, for its owner only
 ok   a set secret is returned as it is, and production refuses to invent one
-9 tests, 46 assertions, 0 failures
+9 tests, 48 assertions, 0 failures

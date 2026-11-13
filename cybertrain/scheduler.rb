@@ -30,7 +30,7 @@ module Cybertrain
   # (spikes/NOTES.md rule 22), and only in a process that serves or runs
   # as `./<app> worker`: `./<app> migrate`, `db ...`, `jobs ...` and
   # {Main.command} commands never start it. Each run
-  # is wrapped in a rescue that logs `[ERROR]`, so a failing task does not
+  # is wrapped in a rescue that logs an `ERROR` line, so a failing task does not
   # end the loop. Jobs do not run here: {Job.start!} runs them on threads of
   # their own, so a long job never delays a task (a long task still delays
   # the other tasks: a task with real work to do should {Job.enqueue} it).

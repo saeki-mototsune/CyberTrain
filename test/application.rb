@@ -15,6 +15,7 @@ require "cybertrain"
 require "cybertrain/application"
 require "cybertrain/test"
 require "cybertrain/test/client"
+require_relative "support/log_capture"
 
 # ---- a scratch app root: views, public files, the secret key -------------
 
@@ -452,6 +453,8 @@ test "the stack's session cookie follows session_same_site and session_partition
 end
 
 test "development rejects hostile hosts before pages, static files, sessions and writes" do
+  # A fixed time for the Blocked host lines this prints (the snapshot).
+  travel_to(Time.utc(2026, 11, 11, 12))
   c = Cybertrain::Config.new
   c.env = "development"
   c.host = "0.0.0.0"
@@ -828,7 +831,7 @@ test "development warns once and ignores reuse_port" do
   app.server
   Cybertrain.logger = saved
   refute first.reuse_port
-  assert_includes sink.string, "[WARN] reuse_port is ignored in development"
+  assert_logged sink.string, "WARN", "reuse_port is ignored in development"
   assert_equal 1, sink.string.split("reuse_port is ignored").size - 1
 end
 

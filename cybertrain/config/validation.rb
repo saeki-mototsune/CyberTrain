@@ -15,8 +15,8 @@ module Cybertrain
   class Config
     # The first problem boot would refuse to start with, "" when the
     # configuration is usable. The areas in the order boot has always
-    # reported them: the session cookie and CSRF, the request and upload
-    # limits, the time zone, the background work, pagination, the
+    # reported them, after the log settings: the session cookie and CSRF,
+    # the request and upload limits, the time zone, the background work, pagination, the
     # proxies, the health check, the feeds, the stream endpoint, the
     # locales, the authentication limits, the mail delivery method, the
     # security headers and the encryption keys. Reads only; safe to call from a test or a
@@ -24,6 +24,9 @@ module Cybertrain
     # @return [String]
     # @api public
     def validation_error
+      problem = log_error
+      return problem unless problem.empty?
+
       problem = session_same_site_error
       return problem unless problem.empty?
 
@@ -70,6 +73,23 @@ module Cybertrain
       return problem unless problem.empty?
 
       encryption_error
+    end
+
+    # The error Application#boot reports for an unknown log_level
+    # (CYBERTRAIN_LOG_LEVEL) or log_format (CYBERTRAIN_LOG_FORMAT); "" when
+    # both are fine.
+    # @return [String]
+    # @api public
+    def log_error
+      level = @log_level
+      unless level == :debug || level == :info || level == :warn || level == :error || level == :fatal || level == :none
+        return "log_level must be :debug, :info, :warn, :error, :fatal or :none (got #{level.inspect})"
+      end
+
+      format = @log_format
+      return "" if format == :text || format == :json
+
+      "log_format must be :text or :json (got #{format.inspect})"
     end
 
     # The error Application#boot reports for CYBERTRAIN_FORCE_SSL,

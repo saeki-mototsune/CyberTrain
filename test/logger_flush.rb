@@ -54,7 +54,8 @@ test "the default logger's lines reach a redirected stdout while the process run
   text = logged_while_running(log_path)
   Process.kill("KILL", pid)
   Process.waitpid2(pid)
-  assert_equal "[INFO] Started GET \"/\" for 127.0.0.1\n", text
+  assert_equal 1, text.count("\n")
+  assert text.end_with?("Z INFO Started GET \"/\" for 127.0.0.1\n"), text
 end
 
 Cybertrain::Test.run!

@@ -1,5 +1,6 @@
 require "date"
 require "cybertrain/time_zone"
+require "cybertrain/logger"
 
 module Cybertrain
   # The one clock of the framework (spec section 2.2): real time, or the
@@ -34,6 +35,10 @@ module Cybertrain
   # a worker) see each travel eventually, not at a defined point. Reads are
   # not locked because {now} is on every request's path and a test needs
   # no more than this.
+  #
+  # Each write of the state is followed by {Logger.follow_clock} (plan D2):
+  # the log line's time follows a travel, while cybertrain/logger.rb, in
+  # the HTTP layer, never names the Clock.
   # @api public
   module Clock
     @travelling = false
@@ -76,6 +81,7 @@ module Cybertrain
       # The instant first, then the flag (the module's comment).
       @micros = time.to_i * 1_000_000
       @travelling = true
+      Logger.follow_clock(@micros)
       nil
     end
 
@@ -96,11 +102,13 @@ module Cybertrain
       saved_travelling = @travelling
       @micros = time.to_i * 1_000_000
       @travelling = true
+      Logger.follow_clock(@micros)
       _value = yield
       nil
     ensure
       @micros = saved_micros if saved_travelling
       @travelling = saved_travelling
+      Logger.follow_clock(saved_travelling ? saved_micros : -1)
     end
 
     # Back to real time. Clears the flag only: `@micros` keeps the last
@@ -110,6 +118,7 @@ module Cybertrain
     # @api public
     def self.travel_back
       @travelling = false
+      Logger.follow_clock(-1)
       nil
     end
 

@@ -79,6 +79,10 @@ test "the first problem in boot's order is the one reported" do
   assert_includes c.validation_error, "csrf_exempt_prefixes entry \"/api\""
   c.session_same_site = "lax"
   assert_includes c.validation_error, "session_same_site must be Lax, Strict or None"
+  c.log_format = :xml
+  assert_equal "log_format must be :text or :json (got :xml)", c.validation_error
+  c.log_level = :verbose
+  assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", c.validation_error
 end
 
 # One accepted and one refused value at each area's edge, all through the

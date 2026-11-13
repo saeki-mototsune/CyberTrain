@@ -79,6 +79,7 @@ module Cybertrain
       ParameterFilter.names = config.filter_parameters
       Response.default_permissions_policy = config.permissions_policy
       Cybertrain.logger.level = config.log_level == :none ? :error : config.log_level
+      Logger.json_lines = config.log_format == :json
       # I18n cannot read Config either: the locales and how a missing
       # translation answers.
       I18n.default_locale = config.i18n_default_locale
@@ -130,6 +131,7 @@ module Cybertrain
       ParameterFilter.names = ParameterFilter::DEFAULT_NAMES
       Response.default_permissions_policy = DEFAULT_PERMISSIONS_POLICY
       Cybertrain.logger.level = :info
+      Logger.json_lines = false
       I18n.default_locale = DEFAULT_LOCALE
       I18n.available_locales = [DEFAULT_LOCALE]
       I18n.raise_on_missing = false
@@ -162,7 +164,7 @@ module Cybertrain
         "trusted_proxy=#{Request.trusted_proxy} trusted_proxies=#{Request.trusted_proxies.join(",")} " \
         "filter_parameters=#{ParameterFilter.names.join(",")} " \
         "permissions_policy=#{Response.default_permissions_policy} " \
-        "log_level=#{Cybertrain.logger.level} time_zone=#{Clock.zone.zone_name}"
+        "log_level=#{Cybertrain.logger.level} log_format=#{Logger.json_lines ? "json" : "text"} time_zone=#{Clock.zone.zone_name}"
     end
 
     # Claims the process for a role (`server`, `worker`, `feeds`): one role

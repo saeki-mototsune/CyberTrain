@@ -346,7 +346,7 @@ test "writes the Authentication concern and includes it" do
       # safe: the Host is checked (development, or CYBERTRAIN_HOSTS lists
       # the hosts the app answers to, so any other Host is refused before
       # an action runs), or the app runs its tests. In any other
-      # environment (production, staging, ...) "" and an [ERROR] line: the
+      # environment (production, staging, ...) "" and an ERROR line: the
       # mail named `mail` is not sent, as a link built from a Host header
       # anyone can forge would carry its token to their site.
       def mail_link_base(mail)
@@ -1308,7 +1308,7 @@ test "--invite-only requires the command in bin/<app>.rb and declares setup_open
     #   end
 
     # `./club user EMAIL [PASSWORD]`, `./club user admin EMAIL` and
-    # `./club user unadmin EMAIL`, and a [WARN] at boot while no user exists
+    # `./club user unadmin EMAIL`, and a WARN line at boot while no user exists
     # (cybertrain generate authentication --invite-only).
     require_relative "../app/commands/user_command"
     UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)
@@ -1683,7 +1683,7 @@ test "password reset: the token in the model, the base URL in the concern" do
       # safe: the Host is checked (development, or CYBERTRAIN_HOSTS lists
       # the hosts the app answers to, so any other Host is refused before
       # an action runs), or the app runs its tests. In any other
-      # environment (production, staging, ...) "" and an [ERROR] line: the
+      # environment (production, staging, ...) "" and an ERROR line: the
       # mail named `mail` is not sent, as a link built from a Host header
       # anyone can forge would carry its token to their site.
       def mail_link_base(mail)
@@ -1752,7 +1752,7 @@ test "password reset: the generated tests and their helpers" do
   assert_includes spec, "      assert_equal known.body, unknown.body\n"
   assert_includes spec, "    assert link.start_with?(\"https://shop.example/passwords/\"), link\n"
   # Every branch of the base URL, with the app's own variable in the log line.
-  assert_includes spec, "    assert_includes log.string, \"[ERROR] password reset mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)\\n\"\n"
+  assert_includes spec, "    assert_includes log.string, \" ERROR \"\n    assert_includes log.string, \"password reset mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)\\n\"\n"
   assert_includes read("club/test/controllers/passwords_controller_test.rb"), "set CLUB_BASE_URL (or CYBERTRAIN_HOSTS)"
   # 15 minutes: 16 minutes ago is too old, 14 is not; and by the clock.
   assert_includes spec, "    stale = user.password_reset_token(now - 16 * 60)\n    fresh = user.password_reset_token(now - 14 * 60)\n"
@@ -2026,7 +2026,7 @@ test "account pages: the generated test" do
   # M1: ten addresses, one user; M3: a table that refers to users.
   assert_includes spec, "      browser.peer_address = \"203.0.113.\#{count + 1}\"\n"
   assert_includes spec, "      c.execute(\"CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))\")\n"
-  assert_includes spec, "      assert_includes log.string, \"[ERROR] account not deleted: FOREIGN KEY constraint failed\"\n"
+  assert_includes spec, "      assert_includes log.string, \" ERROR \"\n      assert_includes log.string, \"account not deleted: FOREIGN KEY constraint failed\"\n"
   assert_includes spec, "      Cybertrain::Password.iterations = Cybertrain::Password::TEST_ITERATIONS + 1\n"
   # M5: a reset link sent to the old address dies with the change.
   assert_includes spec, "    assert_nil User.find_by_password_reset_token(reset_token)\n"
@@ -2556,7 +2556,7 @@ test "--confirmable: the generated test" do
   # The same answer for a registered, an unknown and a confirmed address.
   assert_includes spec, "    assert_equal known.body, unknown.body\n"
   assert_includes spec, "    assert_equal known.body, confirmed.body\n"
-  assert_includes spec, "    assert_includes log.string, \"[ERROR] confirmation mail not sent: set CONF_BASE_URL (or CYBERTRAIN_HOSTS)\\n\"\n"
+  assert_includes spec, "    assert_includes log.string, \" ERROR \"\n    assert_includes log.string, \"confirmation mail not sent: set CONF_BASE_URL (or CYBERTRAIN_HOSTS)\\n\"\n"
   # The mail is read where the test environment keeps it.
   # T17-N3: an address no code and no default uses, so a mailer with a
   # sender of its own cannot pass.

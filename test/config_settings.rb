@@ -1,6 +1,7 @@
 require "stringio"
 require "cybertrain/test"
 require "cybertrain/main"
+require_relative "support/log_capture"
 
 # Application-defined settings (Config#setting_string / setting_int /
 # setting_bool): typed values read once from the environment, the
@@ -83,6 +84,8 @@ test "an unparsable or out-of-range value falls back to the default with a warni
   ENV["CT_TEST_MINUS"] = "-"
   ENV["CT_TEST_BAD_BOOL"] = "yes"
   bad = Cybertrain::Config.new
+  # A fixed time, so the printed lines (the snapshot) do not change.
+  travel_to(Time.utc(2026, 11, 11, 12))
   logged = captured_log do
     bad.setting_int :bad_int, env: "CT_TEST_BAD_INT", default: 3600, min: 1, max: 9_999_999
     bad.setting_int :huge, env: "CT_TEST_HUGE", default: 3600
@@ -98,9 +101,9 @@ test "an unparsable or out-of-range value falls back to the default with a warni
   assert_equal 3600, bad.int_setting(:minus)
   assert bad.bool_setting(:bad_bool)
   print logged
-  assert_includes logged, "[WARN] CT_TEST_BAD_INT=\"12abc\" is not an integer; using the default 3600"
-  assert_includes logged, "[WARN] CT_TEST_ZERO=0 is out of range (1..9999999); using the default 3600"
-  assert_includes logged, "[WARN] CT_TEST_BAD_BOOL=\"yes\" is not a boolean (1/true or 0/false); using the default true"
+  assert_logged logged, "WARN", "CT_TEST_BAD_INT=\"12abc\" is not an integer; using the default 3600"
+  assert_logged logged, "WARN", "CT_TEST_ZERO=0 is out of range (1..9999999); using the default 3600"
+  assert_logged logged, "WARN", "CT_TEST_BAD_BOOL=\"yes\" is not a boolean (1/true or 0/false); using the default true"
 end
 
 test "a usable value logs nothing" do
@@ -189,6 +192,57 @@ test "mail_delivery_method from the environment and its check" do
   else
     ENV["CYBERTRAIN_ENV"] = saved_env
   end
+end
+
+test "log_level from CYBERTRAIN_LOG_LEVEL" do
+  ENV.delete("CYBERTRAIN_LOG_LEVEL")
+  assert_equal :info, Cybertrain::Config.new.log_level
+  ENV["CYBERTRAIN_LOG_LEVEL"] = "debug"
+  debug = Cybertrain::Config.new
+  assert_equal :debug, debug.log_level
+  refute debug.log_level_given?
+  assert_equal "", debug.log_error
+  ENV["CYBERTRAIN_LOG_LEVEL"] = "none"
+  assert_equal :none, Cybertrain::Config.new.log_level
+  ENV["CYBERTRAIN_LOG_LEVEL"] = "FATAL"
+  assert_equal :fatal, Cybertrain::Config.new.log_level
+  ENV["CYBERTRAIN_LOG_LEVEL"] = ""
+  assert_equal :info, Cybertrain::Config.new.log_level
+  # Not counted as given (plan D14): cybertrain test still silences.
+  ENV["CYBERTRAIN_LOG_LEVEL"] = "warn"
+  silenced = Cybertrain::Config.new
+  silenced.log_level_unless_given(:none)
+  assert_equal :none, silenced.log_level
+  ENV["CYBERTRAIN_LOG_LEVEL"] = "verbose"
+  verbose = Cybertrain::Config.new
+  assert_equal :verbose, verbose.log_level
+  refute verbose.log_level_given?
+  assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", verbose.log_error
+  assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", verbose.validation_error
+  ENV.delete("CYBERTRAIN_LOG_LEVEL")
+  assigned = Cybertrain::Config.new
+  assigned.log_level = :loud
+  assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :loud)", assigned.validation_error
+  assigned.log_level = :none
+  assert_equal "", assigned.validation_error
+end
+
+test "log_format from CYBERTRAIN_LOG_FORMAT" do
+  ENV.delete("CYBERTRAIN_LOG_FORMAT")
+  assert_equal :text, Cybertrain::Config.new.log_format
+  ENV["CYBERTRAIN_LOG_FORMAT"] = "json"
+  assert_equal :json, Cybertrain::Config.new.log_format
+  ENV["CYBERTRAIN_LOG_FORMAT"] = "xml"
+  xml = Cybertrain::Config.new
+  assert_equal :xml, xml.log_format
+  assert_equal "log_format must be :text or :json (got :xml)", xml.log_error
+  assert_equal "log_format must be :text or :json (got :xml)", xml.validation_error
+  ENV.delete("CYBERTRAIN_LOG_FORMAT")
+  assigned = Cybertrain::Config.new
+  assigned.log_format = :json
+  assert_equal "", assigned.validation_error
+  assigned.log_format = :yaml
+  assert_equal "log_format must be :text or :json (got :yaml)", assigned.validation_error
 end
 
 test "boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on" do

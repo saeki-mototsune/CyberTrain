@@ -1,4 +1,4 @@
-[INFO] hello
-[WARN] careful
+2026-11-11T12:00:00.000Z INFO hello
+2026-11-11T12:00:00.000Z WARN careful
 ok   the default logger has no io and logs at :info
 1 tests, 1 assertions, 0 failures

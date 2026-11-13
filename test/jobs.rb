@@ -1,6 +1,7 @@
 require "stringio"
 require "cybertrain"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Cybertrain::Job, compiled with the whole framework (NOTES rule 41): the
 # cybertrain_jobs table created on demand, enqueue / claim / run / done,
@@ -268,7 +269,7 @@ test "enqueue creates the table; a job runs when due, oldest first, and ends don
   refute Job.work_one(2000)
   assert_equal "first,second", SEEN.join(",")
   assert_equal 2, Job.state_count("done")
-  assert_includes LOG.string, "[INFO] job #{early} (record) done"
+  assert_logged LOG.string, "INFO", "job #{early} (record) done"
 end
 
 test "a job that sets the locale does not leave it for the next job on the same thread" do
@@ -295,7 +296,7 @@ test "a failing job is retried with the backoff, counting attempts, until it is 
   assert_equal 1, job_attempts(id)
   assert_equal 1060, job_run_at(id)
   assert_equal "RuntimeError: boom x", job_error(id)
-  assert_includes LOG.string, "[ERROR] job #{id} (boom) attempt 1 of 3 failed: RuntimeError: boom x; retrying in 60 s"
+  assert_logged LOG.string, "ERROR", "job #{id} (boom) attempt 1 of 3 failed: RuntimeError: boom x; retrying in 60 s"
   refute Job.work_one(1059)
   assert Job.work_one(1060)
   assert_equal 2, job_attempts(id)
@@ -304,7 +305,7 @@ test "a failing job is retried with the backoff, counting attempts, until it is 
   assert_equal "failed", job_state(id)
   assert_equal 3, job_attempts(id)
   assert_equal "RuntimeError: boom x", job_error(id)
-  assert_includes LOG.string, "[ERROR] job #{id} (boom) failed after 3 attempts: RuntimeError: boom x"
+  assert_logged LOG.string, "ERROR", "job #{id} (boom) failed after 3 attempts: RuntimeError: boom x"
   refute Job.work_one(999_999)
   assert_equal 1, Job.state_count("failed")
   Cybertrain.config.job_max_attempts = 5
@@ -323,7 +324,7 @@ test "NotImplementedError and SystemStackError from a job take the default retry
   assert_equal "NotImplementedError: notify is not written yet", job_error(id)
   assert_equal "queued", job_state(deep)
   assert_equal "SystemStackError: stack level too deep", job_error(deep)
-  assert_includes LOG.string, "[ERROR] job #{id} (unwritten) attempt 1 of 3 failed: NotImplementedError: notify is not written yet"
+  assert_logged LOG.string, "ERROR", "job #{id} (unwritten) attempt 1 of 3 failed: NotImplementedError: notify is not written yet"
   Cybertrain.config.job_max_attempts = 5
 end
 
@@ -390,7 +391,7 @@ test "recover! fails a stale row that used its last attempt instead of requeuein
   assert_equal "failed", job_state(last)
   assert_equal "process stopped (heartbeat stale) during attempt #{max} of #{max}", job_error(last)
   assert_equal "queued", job_state(spare)
-  assert_includes LOG.string, "[ERROR] job #{last} (record) failed: process stopped (heartbeat stale) during attempt #{max} of #{max}"
+  assert_logged LOG.string, "ERROR", "job #{last} (record) failed: process stopped (heartbeat stale) during attempt #{max} of #{max}"
   assert_equal 0, Job.recover!(1301)
 end
 
@@ -433,7 +434,7 @@ test "an outcome write that keeps failing leaves the row to staleness recovery" 
   assert_equal "lost", SEEN.join(",")
   assert_equal "running", job_state(id)
   assert_includes LOG.string, "outcome write 3 of 3 failed: Cybertrain::DB::Error: outcome write failed on purpose"
-  assert_includes LOG.string, "[ERROR] job #{id} (record) finished but its outcome could not be written; left running for heartbeat recovery"
+  assert_logged LOG.string, "ERROR", "job #{id} (record) finished but its outcome could not be written; left running for heartbeat recovery"
   # It is no longer in flight: the heartbeat does not keep it alive ...
   assert_equal 0, Job.heartbeat!(1200)
   assert_equal 1000, job_heartbeat(id)
@@ -451,7 +452,7 @@ test "an outcome write that fails once is retried and written" do
   Job.fail_outcome_writes(1)
   assert Job.work_one(1000)
   assert_equal "done", job_state(id)
-  assert_includes LOG.string, "[ERROR] job #{id}: outcome write 1 of 3 failed"
+  assert_logged LOG.string, "ERROR", "job #{id}: outcome write 1 of 3 failed"
 end
 
 test "the outcome and the heartbeat are fenced by the attempt: a later claim by this same process wins" do
@@ -467,7 +468,7 @@ test "the outcome and the heartbeat are fenced by the attempt: a later claim by 
   assert_equal "running", job_state(id)
   assert_equal 2, job_attempts(id)
   assert_equal Job.process_label, job_claimed_by(id)
-  assert_includes LOG.string, "[WARN] job #{id} (again) finished after it was reclaimed; outcome discarded"
+  assert_logged LOG.string, "WARN", "job #{id} (again) finished after it was reclaimed; outcome discarded"
 end
 
 test "two processes recovering: only the stale row is requeued, and only once" do
@@ -549,7 +550,7 @@ test "an outcome written after the row was reclaimed is discarded" do
     assert_equal "host-b:2:1", job_claimed_by(id)
     assert_equal 2, job_attempts(id)
     assert_equal "", job_error(id)
-    assert_includes LOG.string, "[WARN] job #{id} (reclaim) finished after it was reclaimed; outcome discarded"
+    assert_logged LOG.string, "WARN", "job #{id} (reclaim) finished after it was reclaimed; outcome discarded"
     Job.override_process_label("")
   end
 end
@@ -637,7 +638,7 @@ test "retry_later requeues with the wait, fails at the limit, and answers the ou
   assert_equal "queued", job_state(id)
   assert_equal 1060, job_run_at(id)
   assert_equal "ArgumentError: try 1", job_error(id)
-  assert_includes LOG.string, "[ERROR] job #{id} (retrying) attempt 1 of 3 failed: ArgumentError: try 1; retrying in 60 s"
+  assert_logged LOG.string, "ERROR", "job #{id} (retrying) attempt 1 of 3 failed: ArgumentError: try 1; retrying in 60 s"
   refute Job.work_one(1059)
   assert Job.work_one(1060)
   assert_equal 1120, job_run_at(id)
@@ -646,7 +647,7 @@ test "retry_later requeues with the wait, fails at the limit, and answers the ou
   assert_equal "failed", job_state(id)
   assert_equal 3, job_attempts(id)
   assert_equal "ArgumentError: try 3", job_error(id)
-  assert_includes LOG.string, "[ERROR] job #{id} (retrying) failed after 3 attempts: ArgumentError: try 3"
+  assert_logged LOG.string, "ERROR", "job #{id} (retrying) failed after 3 attempts: ArgumentError: try 3"
   # Polynomially longer: attempts ** 4 + 2 seconds.
   poly = Job.enqueue("retrying", "poly", run_at: Time.at(2000))
   assert Job.work_one(2000)
@@ -667,7 +668,7 @@ test "retry_later and discard answer OUTCOME_STALE when the row was reclaimed" d
     assert_equal "thief:1:1:abcdef", job_claimed_by(id)
     assert_equal "", job_error(id)
     assert_equal 1000, job_run_at(id)
-    assert_includes LOG.string, "[WARN] job #{id} (stolen) finished after it was reclaimed; outcome discarded"
+    assert_logged LOG.string, "WARN", "job #{id} (stolen) finished after it was reclaimed; outcome discarded"
   end
 end
 
@@ -679,7 +680,7 @@ test "discard writes discarded and prune_finished removes it with failed rows; p
   assert_equal "discarded", job_state(id)
   assert_equal 1, job_attempts(id)
   assert_equal "ArgumentError: unusable x", job_error(id)
-  assert_includes LOG.string, "[ERROR] job #{id} (discarding) discarded: ArgumentError: unusable x"
+  assert_logged LOG.string, "ERROR", "job #{id} (discarding) discarded: ArgumentError: unusable x"
   refute Job.work_one(999_999)
   assert_equal 1, Job.state_count("discarded")
   insert_raw("record", "done")
@@ -704,7 +705,7 @@ test "a handler that writes its own outcome is not written again by finish" do
   assert Job.work_one(1000)
   assert_equal "discarded", job_state(raised)
   assert_equal "ArgumentError: unusable raise", job_error(raised)
-  assert_includes LOG.string, "[ERROR] job #{raised} (discarding) raised after its outcome was written: RuntimeError: after the discard"
+  assert_logged LOG.string, "ERROR", "job #{raised} (discarding) raised after its outcome was written: RuntimeError: after the discard"
 end
 
 test "fail_exhausted uses the larger of the default and the kind's max_attempts" do
@@ -822,8 +823,8 @@ test "backfill_keys keys queued rows of a keyed kind and lists the unkeyable one
   assert_equal "", job_key(running)
   rows = DB.with { |c| c.execute("SELECT COUNT(*) AS n FROM cybertrain_jobs WHERE concurrency_key IN ('n0', 'n1', 'n2')") }
   assert_equal 1000, Cybertrain::Cast.int(rows[0]["n"])
-  assert_includes LOG.string, "[WARN] 2 queued job(s) of keyed have no \"exchange\" field to key them by; " \
-                              "left in the \"\" bucket: ids #{unkeyable}, #{missing}"
+  assert_logged LOG.string, "WARN", "2 queued job(s) of keyed have no \"exchange\" field to key them by; " \
+                                   "left in the \"\" bucket: ids #{unkeyable}, #{missing}"
   assert_equal 0, Job.backfill_keys(2000)
 end
 
@@ -834,8 +835,8 @@ test "the unkeyable-row warnings list at most 20 ids and count the rest" do
   25.times { ids << insert_payload("keyed", "queued", "not json", 1000) }
   assert_equal 0, Job.backfill_keys(2000)
   listed = ids[0, 20].join(", ")
-  assert_includes LOG.string, "[WARN] 25 queued job(s) of keyed have no \"exchange\" field to key them by; " \
-                              "left in the \"\" bucket: ids #{listed} ... and 5 more\n"
+  assert_logged LOG.string, "WARN", "25 queued job(s) of keyed have no \"exchange\" field to key them by; " \
+                                   "left in the \"\" bucket: ids #{listed} ... and 5 more\n"
   fresh_db
   Job.install!
   running = Array.new(0) { 0 }
@@ -843,8 +844,8 @@ test "the unkeyable-row warnings list at most 20 ids and count the rest" do
   assert_equal 21, Job.recover!(1301)
   shown = Array.new(0) { "" }
   running[0, 20].each { |id| shown << "#{id} (keyed)" }
-  assert_includes LOG.string, "[WARN] 21 requeued job(s) have no concurrency key field to key them by; " \
-                              "left in the \"\" bucket: ids #{shown.join(", ")} ... and 1 more\n"
+  assert_logged LOG.string, "WARN", "21 requeued job(s) have no concurrency key field to key them by; " \
+                                   "left in the \"\" bucket: ids #{shown.join(", ")} ... and 1 more\n"
 end
 
 test "recovery requeues a stale running row with its key in the same statement" do
@@ -866,8 +867,8 @@ test "recovery requeues a stale running row with its key in the same statement" 
   assert_equal "", job_key(plain)
   assert_equal "queued", job_state(unkeyable)
   assert_equal "", job_key(unkeyable)
-  assert_includes LOG.string, "[WARN] 1 requeued job(s) have no concurrency key field to key them by; " \
-                              "left in the \"\" bucket: ids #{unkeyable} (keyed)"
+  assert_logged LOG.string, "WARN", "1 requeued job(s) have no concurrency key field to key them by; " \
+                                   "left in the \"\" bucket: ids #{unkeyable} (keyed)"
   assert_equal 0, Job.recover!(1301)
 end
 

@@ -3,6 +3,7 @@ require "stringio"
 require "cybertrain/test"
 require "cybertrain"
 require "cybertrain/websocket"
+require_relative "support/log_capture"
 
 # Requiring the framework must not create Cybertrain.config: one made then
 # keeps the environment of that moment (development), before the lines
@@ -126,8 +127,8 @@ test "worker runs a due job on its job threads and stops them" do
   assert_equal "done", job_state(id)
   refute Cybertrain::Job.running?
   refute Cybertrain::Scheduler.running?
-  assert_includes LOG.string, "[INFO] Job threads started: 3"
-  assert_includes LOG.string, "[INFO] Scheduler started: cybertrain cache prune every 300s, hourly every 3600s"
+  assert_logged LOG.string, "INFO", "Job threads started: 3"
+  assert_logged LOG.string, "INFO", "Scheduler started: cybertrain cache prune every 300s, hourly every 3600s"
 end
 
 test "feeds runs only the named subscription and stops it" do
@@ -140,7 +141,7 @@ test "feeds runs only the named subscription and stops it" do
   spawn_stopper(0.3)
   assert_equal 0, run(["feeds", "trades"])
   refute Cybertrain::WebSocket.running?
-  assert_includes LOG.string, "[INFO] WebSocket started: trades"
+  assert_logged LOG.string, "INFO", "WebSocket started: trades"
   refute LOG.string.include?("WebSocket started: quotes")
 end
 

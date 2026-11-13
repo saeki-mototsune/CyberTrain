@@ -1,17 +1,19 @@
 ok   a string setting reads its variable, an empty one means the default
 ok   a boolean setting takes 1/true and 0/false
 ok   an integer setting parses digits and an optional minus within its bounds
-[WARN] CT_TEST_BAD_INT="12abc" is not an integer; using the default 3600
-[WARN] CT_TEST_HUGE="123456789012345678901234567890" is not an integer; using the default 3600
-[WARN] CT_TEST_ZERO=0 is out of range (1..9999999); using the default 3600
-[WARN] CT_TEST_ABOVE=10000000 is out of range (1..9999999); using the default 3600
-[WARN] CT_TEST_MINUS="-" is not an integer; using the default 3600
-[WARN] CT_TEST_BAD_BOOL="yes" is not a boolean (1/true or 0/false); using the default true
+2026-11-11T12:00:00.000Z WARN CT_TEST_BAD_INT="12abc" is not an integer; using the default 3600
+2026-11-11T12:00:00.000Z WARN CT_TEST_HUGE="123456789012345678901234567890" is not an integer; using the default 3600
+2026-11-11T12:00:00.000Z WARN CT_TEST_ZERO=0 is out of range (1..9999999); using the default 3600
+2026-11-11T12:00:00.000Z WARN CT_TEST_ABOVE=10000000 is out of range (1..9999999); using the default 3600
+2026-11-11T12:00:00.000Z WARN CT_TEST_MINUS="-" is not an integer; using the default 3600
+2026-11-11T12:00:00.000Z WARN CT_TEST_BAD_BOOL="yes" is not a boolean (1/true or 0/false); using the default true
 ok   an unparsable or out-of-range value falls back to the default with a warning
 ok   a usable value logs nothing
 ok   CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; below 1 is refused
 ok   time_zone from the environment and its check
 ok   mail_delivery_method from the environment and its check
+ok   log_level from CYBERTRAIN_LOG_LEVEL
+ok   log_format from CYBERTRAIN_LOG_FORMAT
 ok   boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on
 ok   a bad declaration is an ArgumentError
 ok   reading an undeclared or differently typed setting is an ArgumentError
@@ -52,4 +54,4 @@ ok   a nonce directive that is not a directive, or a CR in permissions_policy, s
 ok   content_security_policy builds the policy once and yields it
 ok   i18n settings from the environment and their checks
 ok   auth settings and their checks
-24 tests, 182 assertions, 0 failures
+26 tests, 203 assertions, 0 failures

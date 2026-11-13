@@ -8,6 +8,7 @@ require "cybertrain/http/query"
 require "cybertrain/router"
 require "cybertrain/logger"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 PAGES = "test/fixtures/error_pages"
 LOG = StringIO.new
@@ -94,7 +95,7 @@ test "an exception is logged and becomes public/500.html without the action's he
   assert_equal "<h1>500 page</h1>\n", res.body
   assert_nil res.header("Location")
   assert res.cookies.empty?
-  assert_includes LOG.string, "[ERROR] ArgumentError: kaboom"
+  assert_logged LOG.string, "ERROR", "ArgumentError: kaboom"
 end
 
 test "parameters past Query's limits are a 400 logged at info, not a 500" do
@@ -103,7 +104,7 @@ test "parameters past Query's limits are a 400 logged at info, not a 500" do
   assert_equal "Bad Request", res.body
   assert_equal "text/plain; charset=utf-8", res.header("Content-Type")
   assert_nil res.header("Location")
-  assert_includes LOG.string, "[INFO] rejected request (400 Bad Request): parameter nesting too deep (limit 32)"
+  assert_logged LOG.string, "INFO", "rejected request (400 Bad Request): parameter nesting too deep (limit 32)"
   refute LOG.string.include?("QueryTooDeep"), "a rejected request is not an error-level log line"
 end
 

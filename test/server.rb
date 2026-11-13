@@ -6,6 +6,7 @@ require "stringio"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Dispatches on the path by hand so this test does not depend on the Router
 # (a deviation from the plan's "tiny Router": Task 4 ships in the same wave,
@@ -464,7 +465,7 @@ test "an exception in the app gets 500 and the connection stays usable" do
   res = c.get("/boom")
   assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
   assert_equal "Internal Server Error", res.body
-  assert_includes $log.string, "[ERROR] RuntimeError: kaboom"
+  assert_logged $log.string, "ERROR", "RuntimeError: kaboom"
   assert_equal "hi", c.get("/hello").body
   c.close
 end
@@ -517,7 +518,7 @@ test "a failed accept is logged and the server keeps accepting" do
   c = RawClient.new(server.port)
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
   c.close
-  assert_includes $log.string, "[ERROR] accept failed: Errno::EMFILE"
+  assert_logged $log.string, "ERROR", "accept failed: Errno::EMFILE"
   assert_equal 0, $accept_failures
   c = RawClient.new(server.port)
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
@@ -676,7 +677,7 @@ test "drain_timeout bounds the wait for a request that takes too long" do
   runner.join
   elapsed = Time.now - started
   assert elapsed < 0.9, "run took #{elapsed}s with drain_timeout 0.3"
-  assert_includes log.string, "[WARN] shutting down with 1 connection(s) still open"
+  assert_logged log.string, "WARN", "shutting down with 1 connection(s) still open"
   # the request still completes on its own thread; wait for it so its
   # response does not outlive the test
   assert_equal "slow done", c.read_response(false).body

@@ -1,5 +1,6 @@
 ok   before any boot the settings are the modules' own defaults
 ok   a boot installs every setting of its config
+ok   Runtime.apply installs the log format and reset! puts it back
 ok   Runtime.reset! restores every default
 ok   the settings after a boot do not depend on what booted before
 ok   booting the same Application twice keeps its connection and its settings
@@ -11,4 +12,4 @@ error: the feeds role is already running in this process (one Application runs o
 ok   a role refused because another runs changes nothing shared
 ok   shutdown ends the server's lifecycle too: the next one is built anew
 ok   one role runs at a time
-11 tests, 46 assertions, 0 failures
+12 tests, 51 assertions, 0 failures

@@ -385,7 +385,8 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
       assert_equal 2, Session.where(user_id: ann.id).count
       assert signed_in?("ann@example.com")
       assert browser_signed_in?(phone, "ann@example.com")
-      assert_includes log.string, "[ERROR] account not deleted: FOREIGN KEY constraint failed"
+      assert_includes log.string, " ERROR "
+      assert_includes log.string, "account not deleted: FOREIGN KEY constraint failed"
     ensure
       drop_notes
     end

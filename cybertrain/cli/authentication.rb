@@ -1712,7 +1712,7 @@ module Cybertrain
             # safe: the Host is checked (development, or CYBERTRAIN_HOSTS lists
             # the hosts the app answers to, so any other Host is refused before
             # an action runs), or the app runs its tests. In any other
-            # environment (production, staging, ...) "" and an [ERROR] line: the
+            # environment (production, staging, ...) "" and an ERROR line: the
             # mail named `mail` is not sent, as a link built from a Host header
             # anyone can forge would carry its token to their site.
             def mail_link_base(mail)
@@ -2680,7 +2680,7 @@ module Cybertrain
             # program starts and the same until it exits (a restart makes a new
             # one). The address check alone is not enough: a proxy on this host
             # that adds no X-Forwarded-For makes every client a loopback one.
-            # Printed only by the boot [WARN] (UserCommand.warn_if_no_user) and
+            # Printed only by the boot WARN line (UserCommand.warn_if_no_user) and
             # rendered only into the form's hidden field. A constant, which
             # Spinel keeps alive (a class variable it would not).
             SETUP_TOKEN = Cybertrain::Crypto.random_token(16)
@@ -2920,7 +2920,7 @@ module Cybertrain
       def self.user_command_warning(app)
         text = <<~RUBY
 
-          # Called by bin/#{app}.rb before the server boots: a [WARN] while no
+          # Called by bin/#{app}.rb before the server boots: a WARN line while no
           # user exists, which is while /setup is open, with the page's
           # one-time token (SetupController.setup_token, this process's own).
           # Says nothing when the users table is not there yet (`./#{app}
@@ -2952,7 +2952,7 @@ module Cybertrain
         if invite_only
           return <<~RUBY
             # `./#{app} user EMAIL [PASSWORD]`, `./#{app} user admin EMAIL` and
-            # `./#{app} user unadmin EMAIL`, and a [WARN] at boot while no user exists
+            # `./#{app} user unadmin EMAIL`, and a WARN line at boot while no user exists
             # (cybertrain generate authentication --invite-only).
             #{COMMAND_REQUIRE}
             UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)

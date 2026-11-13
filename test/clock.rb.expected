@@ -8,6 +8,7 @@ ok   travel_back inside a block lasts to the end of that block
 ok   freeze_time with a block holds the clock and restores what it found
 ok   a raise out of a travel without a block leaves the next test on real time
 ok   the clock is real after the case that raised mid-travel
+ok   the log line's time follows each write of the clock (plan D2)
 ok   no runtime or emitted code reads Time.now, and no removed seam is left
 ok   the scan's patterns catch each way of reading the time
-12 tests, 43 assertions, 0 failures
+13 tests, 49 assertions, 0 failures
