@@ -16,6 +16,12 @@ module Cybertrain
         # page it was sent.
         HEAD_WAIT = 1.0
         DRAIN_WAIT = 1.0
+        # How long a client gets to take in the page. It is written without
+        # blocking, as much as the socket takes on each tick: a client that
+        # does not read would otherwise hold the driver's one thread (and so
+        # every child and build) on a full socket buffer. One that has not
+        # taken the whole page by then is closed.
+        WRITE_WAIT = 2.0
         # A request head longer than this is answered without waiting for
         # its end: the page is the same whatever was asked.
         HEAD_LIMIT = 65_536
@@ -67,13 +73,17 @@ module Cybertrain
         # The connections the supervisor accepted while holding. Nothing here
         # blocks: the driver calls #accept and #serve on every tick, and a
         # connection is answered once its request head has arrived (or after
-        # HEAD_WAIT, or at #flush), then read until the client closes (or
+        # HEAD_WAIT, or at #flush), written to as the client takes the page
+        # (for up to write_wait), then read until the client closes (or
         # DRAIN_WAIT) and closed.
         class Desk
-          Held = Struct.new(:socket, :since, :head)
+          Held = Struct.new(:socket, :since, :head, :unsent)
 
-          def initialize
+          # @param write_wait [Numeric] WRITE_WAIT (a test shortens it)
+          def initialize(write_wait = WRITE_WAIT)
+            @write_wait = write_wait
             @waiting = []
+            @writing = []
             @draining = []
           end
 
@@ -112,20 +122,23 @@ module Cybertrain
 
           # The sockets IO.select should wake the driver for.
           def ios
-            (@waiting + @draining).map(&:socket)
+            (@waiting + @writing + @draining).map(&:socket)
           end
 
           def close
-            (@waiting + @draining).each { |held| held.socket.close unless held.socket.closed? }
+            (@waiting + @writing + @draining).each { |held| held.socket.close unless held.socket.closed? }
             @waiting.clear
+            @writing.clear
             @draining.clear
             nil
           end
 
           # Closes the answered connections whose client has closed, or that
           # have been read for DRAIN_WAIT. Called on every tick, holding or
-          # not, so that a page given at release_hold is not left open.
+          # not, so that a page given at release_hold is not left open. The
+          # pages still being written go on first.
           def drain
+            @writing.dup.each { |held| write_rest(held) }
             @draining.dup.each do |held|
               done = now - held.since >= DRAIN_WAIT
               begin
@@ -163,15 +176,34 @@ module Cybertrain
 
           def answer(held, page)
             @waiting.delete(held)
-            begin
-              held.socket.write(page)
-              held.socket.close_write
-            rescue SystemCallError, IOError
-              held.socket.close unless held.socket.closed?
-              return
-            end
+            held.unsent = page.b
             held.since = now
-            @draining << held
+            @writing << held
+            write_rest(held)
+          end
+
+          # As much of the page as the socket takes now; once all of it is
+          # sent the connection goes to drain, and one still short of it
+          # after write_wait is closed.
+          def write_rest(held)
+            until held.unsent.empty?
+              sent = held.socket.write_nonblock(held.unsent, exception: false)
+              break if sent == :wait_writable
+
+              held.unsent = held.unsent.byteslice(sent..)
+            end
+            if held.unsent.empty?
+              held.socket.close_write
+              @writing.delete(held)
+              held.since = now
+              @draining << held
+            elsif now - held.since >= @write_wait
+              @writing.delete(held)
+              held.socket.close
+            end
+          rescue SystemCallError, IOError
+            @writing.delete(held)
+            held.socket.close unless held.socket.closed?
           end
 
         end

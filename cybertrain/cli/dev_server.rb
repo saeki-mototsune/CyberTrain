@@ -353,7 +353,7 @@ module Cybertrain
           previous[:HUP] = trap(:HUP) { stop ||= :HUP }
           port = listener.addr[1]
           puts "=> Booting cybertrain #{Cybertrain::VERSION}"
-          puts "=> preview: CRuby #{RUBY_VERSION}"
+          puts "=> preview: CRuby #{child_ruby_version}"
           puts "* Listening on http://#{host}:#{port}"
           $stdout.flush
           runner = new_runner(root: root, name: name, port: port, load_path: load_path,
@@ -373,16 +373,48 @@ module Cybertrain
             machine.on_tick
           end
         ensure
-          machine&.stop
-          if runner
-            runner.close
-          else
-            File.delete(File.join(root, DEV_DIR, "supervisor.pid")) rescue nil
-          end
-          listener.close
-          previous.each { |signal, handler| trap(signal, handler || "DEFAULT") }
+          every_step(
+            -> { machine&.stop },
+            lambda do
+              if runner
+                runner.close
+              else
+                File.delete(File.join(root, DEV_DIR, "supervisor.pid")) rescue nil
+              end
+            end,
+            -> { listener.close },
+            -> { previous.each { |signal, handler| trap(signal, handler || "DEFAULT") } }
+          )
         end
         stop == :INT ? 130 : 0
+      end
+
+      # Runs every step, even after one raises (a stop that fails must
+      # still remove the files and close the socket), then raises the first
+      # error.
+      # @param steps [Array<Proc>]
+      def self.every_step(*steps)
+        error = nil
+        steps.each do |step|
+          step.call
+        rescue Exception => e # Interrupt included: re-raised below, after the rest
+          error ||= e
+        end
+        raise error unless error.nil?
+
+        nil
+      end
+
+      # The version of the `ruby` on PATH, which runs the children (P9),
+      # asked once at start: under a version manager it can differ from the
+      # CRuby that runs this supervisor.
+      # @return [String]
+      def self.child_ruby_version
+        out, status = Open3.capture2("ruby", "-e", "print RUBY_VERSION", stdin_data: "")
+        version = out.strip
+        status.success? && !version.empty? ? version : "(unknown version)"
+      rescue SystemCallError
+        "(unknown version)"
       end
 
       # [PORT] after "server": "" or a valid port string. --spinel never

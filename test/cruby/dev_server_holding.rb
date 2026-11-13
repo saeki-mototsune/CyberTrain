@@ -103,4 +103,67 @@ test "flush answers every waiting connection at once, head or not" do
   end
 end
 
+# A page far larger than the socket's buffers: written as the client takes
+# it, over several ticks, never blocking the desk.
+BIG_TEXT = "x" * 4_000_000
+
+def small_buffers(listener)
+  listener.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDBUF, 4096)
+  client = Socket.new(:INET, :STREAM)
+  client.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVBUF, 4096)
+  client.connect(Socket.sockaddr_in(listener.addr[1], "127.0.0.1"))
+  client
+end
+
+test "a client that does not read the page does not block the desk, and is closed after the write wait" do
+  listener = TCPServer.new("127.0.0.1", 0)
+  desk = Holding::Desk.new(0.3)
+  client = small_buffers(listener)
+  client.write("GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+  sleep 0.05
+  page = Holding.page("t", BIG_TEXT, "y")
+  desk.accept(listener)
+  server = Thread.new { desk.serve(page) }
+  unless server.join(2)
+    client.close
+    server.join
+    flunk "serve blocked on a client that does not read"
+  end
+  refute desk.ios.empty?, "the page is still being written"
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+  until desk.ios.empty? || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+    desk.drain
+    sleep 0.02
+  end
+  assert_equal [], desk.ios
+ensure
+  client&.close
+  desk&.close
+  listener&.close
+end
+
+test "a page larger than the socket's buffers reaches a client that reads it" do
+  listener = TCPServer.new("127.0.0.1", 0)
+  desk = Holding::Desk.new
+  client = small_buffers(listener)
+  client.write("GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+  sleep 0.05
+  # Many times the buffers, small enough to pass within the write wait.
+  page = Holding.page("t", "x" * 400_000, "y")
+  reader = Thread.new { client.read }
+  desk.accept(listener)
+  desk.serve(page)
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+  while reader.alive? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+    desk.drain
+    sleep 0.005
+  end
+  client.close_write unless reader.join(0)
+  assert_equal page.bytesize, reader.value.bytesize
+ensure
+  client&.close
+  desk&.close
+  listener&.close
+end
+
 Cybertrain::Test.run!

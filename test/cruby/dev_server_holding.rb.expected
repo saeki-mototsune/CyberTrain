@@ -4,4 +4,6 @@ ok   the text, the title and the wait are escaped
 ok   Content-Length counts bytes, not characters
 ok   the desk answers a connection once its request head is in, then closes it
 ok   flush answers every waiting connection at once, head or not
-6 tests, 21 assertions, 0 failures
+ok   a client that does not read the page does not block the desk, and is closed after the write wait
+ok   a page larger than the socket's buffers reaches a client that reads it
+8 tests, 24 assertions, 0 failures

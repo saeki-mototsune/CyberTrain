@@ -228,15 +228,26 @@ end
 
 test "the child inherits the listener and its environment" do
   script = <<~RUBY
+    require "socket"
     keys = %w[CYBERTRAIN_DEV_LISTEN_FD CYBERTRAIN_DEV_READY_FILE CYBERTRAIN_DEV_STATE_FILE
               CYBERTRAIN_DEV_FAILURE_FILE CYBERTRAIN_DEV_GENERATION CYBERTRAIN_ENV]
     File.write(File.join(Dir.pwd, "env.txt"), keys.map { |k| "\#{k}=\#{ENV[k]}" }.join("\\n"))
-    #{READY}
+    server = TCPServer.for_fd(Integer(ENV.fetch("CYBERTRAIN_DEV_LISTEN_FD")))
+    #{READY.lines.first}
+    client = server.accept
+    client.write("accepted by \#{Process.pid}")
+    client.close
+    sleep 30
   RUBY
   with_runner({ cruby: script }) do |runner, listener, root|
     rec = Recorder.new
     runner.start_child(:cruby, 6)
     poll_until(runner, rec) { !rec.events.empty? }
+    # The descriptor is open in the child and is the listener: it accepts.
+    client = TCPSocket.new("127.0.0.1", listener.addr[1])
+    assert IO.select([client], nil, nil, 5), "the child answers"
+    assert_equal "accepted by #{runner.child_pid}", client.read
+    client.close
     dev = File.join(root, "tmp", "cybertrain-dev")
     env = File.read(File.join(root, "env.txt")).lines.map(&:chomp)
     assert_equal ["CYBERTRAIN_DEV_LISTEN_FD=#{listener.fileno}", "CYBERTRAIN_DEV_READY_FILE=#{dev}/ready",
@@ -259,6 +270,42 @@ test "a child command that cannot be started is reported as the child's exit on 
     assert rec.events[0][3].start_with?("could not start #{missing}: "), rec.events[0][3]
     poll_for(runner, rec, 0.1)
     assert_equal 1, rec.events.size
+  end
+end
+
+test "a child that cannot be recorded in child.pid is stopped, then reported" do
+  with_runner({ cruby: READY }) do |runner, _listener, _root|
+    spawned = []
+    runner.define_singleton_method(:write_file) do |path, text|
+      if path.end_with?("child.pid")
+        spawned << text.to_i
+        raise Errno::ENOSPC, path
+      end
+      super(path, text)
+    end
+    rec = Recorder.new
+    runner.start_child(:cruby, 2)
+    assert_nil runner.child_pid
+    assert_equal 1, spawned.size
+    assert gone?(spawned[0]), "the spawned child is stopped"
+    runner.poll(rec)
+    assert_equal [:exit, :cruby, 2], rec.events[0][0, 3]
+    assert_includes rec.events[0][3], "No space left on device"
+  end
+end
+
+test "the STDERR tail keeps the last characters of each line; the copy is whole" do
+  script = <<~RUBY
+    $stderr.write("a" * 10_000 + "\\n" + "y" * 1_000_000 + "zzz")
+    exit 3
+  RUBY
+  with_runner({ cruby: script }) do |runner, _listener, _root|
+    rec = Recorder.new
+    runner.start_child(:cruby, 1)
+    poll_until(runner, rec) { !rec.events.empty? }
+    lines = rec.events[0][3].split("\n")
+    assert_equal ["a" * Processes::TAIL_LINE_CHARS, "y" * (Processes::TAIL_LINE_CHARS - 3) + "zzz", "exit status 3"], lines
+    assert_equal 10_000 + 1 + 1_000_000 + 3, runner.err.string.size
   end
 end
 
@@ -344,6 +391,46 @@ test "a failed build reports its log" do
   end
 end
 
+test "a spin that cannot be started is a failed build with the reason" do
+  with_runner({}) do |runner, _listener, root|
+    missing = File.join(root, "no-such-dir", "spin")
+    runner.define_singleton_method(:build_command) { |_incremental| [missing, "build", "app"] }
+    rec = Recorder.new
+    runner.start_build(5)
+    assert_nil runner.build_pid
+    poll_until(runner, rec) { !rec.events.empty? }
+    assert_equal 1, rec.events.size
+    assert_equal [:build, 5, false], rec.events[0][0, 3]
+    assert rec.events[0][3].start_with?("could not start #{missing}: No such file or directory"), rec.events[0][3]
+    assert_equal rec.events[0][3], File.read(File.join(root, "tmp", "rebuild.log"))
+    poll_for(runner, rec, 0.1)
+    assert_equal 1, rec.events.size
+  end
+end
+
+# spin removes its compiler's stderr file when the step it waits for fails;
+# KILL to the whole group gave it no chance. The stand-in waits for its
+# compiler (a grandchild), then cleans up, as spin does.
+test "cancel_build lets the build's leader clean up after its children are stopped" do
+  spin = <<~RUBY
+    compiler = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "sleep 30")
+    File.write(File.join(Dir.pwd, "pids.txt"), "\#{Process.pid} \#{compiler}")
+    Process.wait(compiler)
+    File.write(File.join(Dir.pwd, "cleaned"), "")
+    exit 1
+  RUBY
+  with_runner({ spin: spin }) do |runner, _listener, root|
+    runner.start_build(1)
+    assert wait_for_file(File.join(root, "pids.txt"))
+    sleep 0.05 while File.read(File.join(root, "pids.txt")).split.size < 2
+    pids = File.read(File.join(root, "pids.txt")).split.map(&:to_i)
+    took = elapsed { runner.cancel_build }
+    assert File.exist?(File.join(root, "cleaned")), "the leader cleaned up"
+    assert took < DevServer::BUILD_CLEANUP, "cancel_build took #{took} s"
+    assert pids.all? { |pid| gone?(pid) }, "the build and its grandchild are gone"
+  end
+end
+
 test "cancel_build kills the build's whole process group" do
   spin = <<~RUBY
     grandchild = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "sleep 30")
@@ -388,6 +475,55 @@ test "build.pid names the build's group while it runs: gone at its end, its canc
 end
 
 # --- gen, the state file, the lock --------------------------------------------
+
+test "close removes the files' leftover .tmp copies too" do
+  with_runner({}) do |runner, _listener, root|
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    FileUtils.mkdir_p(dev)
+    files = Processes::FILES.flat_map { |file| [file, "#{file}.tmp"] }
+    files.each { |file| File.write(File.join(dev, file), "1") }
+    Dir.mkdir(File.join(dev, "ffi"))
+    runner.close
+    assert_equal ["ffi"], Dir.children(dev)
+  end
+end
+
+# A poll that raises would end the watch's thread, and every later save
+# would go unnoticed: it is logged once, and the watch goes on.
+test "the file watch survives a poll that raises, says so once, and notices later saves" do
+  Dir.mktmpdir("dev-server-watch") do |root|
+    Dir.mkdir(File.join(root, "app"))
+    model = File.join(root, "app", "article.rb")
+    File.write(model, "class Article\nend\n")
+    lines = Queue.new
+    watch = DevServer::Watch.new(root, 0.02) { |line| lines << line }
+    failing = true
+    original = watch.method(:snapshot)
+    watch.define_singleton_method(:snapshot) do
+      raise Errno::EACCES, "app" if failing
+
+      original.call
+    end
+    watch.start_watching
+    begin
+      sleep 0.2
+      assert_equal 1, lines.size
+      assert_equal "=> the file watch failed (Errno::EACCES: Permission denied - app); trying again", lines.pop
+      refute watch.pending?, "no fresh look: what the watcher has seen decides"
+      failing = false
+      sleep 0.1
+      assert_equal "=> the file watch works again", lines.pop
+      save(model, "class Article\n  # saved\nend\n")
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+      paths = nil
+      paths = watch.take until paths || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      assert_equal ["app/article.rb"], paths
+      watch.delivered
+    ensure
+      watch.close
+    end
+  end
+end
 
 test "log loses its line, without raising, once the terminal is gone" do
   with_runner({}) do |runner, listener, root|

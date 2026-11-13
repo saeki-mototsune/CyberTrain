@@ -95,6 +95,7 @@ def run_server(root, argv = ["server"])
   out = StringIO.new
   saved = $stdout
   $stdout = out
+  originals = %i[ensure_toolchain spin_flags].to_h { |name| [name, DevServer.method(name)] }
   DevServer.define_singleton_method(:ensure_toolchain) { true }
   DevServer.define_singleton_method(:spin_flags) { |_dir| "--strict-require -I #{REPO} -I #{root}\n" }
   # A regression that goes on to serve would block here: it fails instead.
@@ -102,6 +103,7 @@ def run_server(root, argv = ["server"])
   [code, out.string]
 ensure
   $stdout = saved
+  originals&.each { |name, method| DevServer.define_singleton_method(name, method) }
 end
 
 # --- the framework's dev files ------------------------------------------------
@@ -567,7 +569,13 @@ SPIN = <<~RUBY
       File.rename("build-pids.tmp", "build-pids")
       sleep 60
     end
-    sleep 0.3
+    # Not before the driver has seen the CRuby child ready: a binary that
+    # came first would take the port from a child never reported ready.
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 10
+    until (File.read("log").include?("=> preview: CRuby (") rescue false) ||
+          Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      sleep 0.01
+    end
     require "fileutils"
     FileUtils.mkdir_p("build/bin")
     File.write("build/bin/app.tmp", "#!#{RbConfig.ruby}\\n" + File.read("bin/app.rb"))
@@ -682,7 +690,7 @@ test "the driver starts the CRuby child, hands the port to the binary, and stops
     assert port, "the banner names the port"
     out = log_of(root)
     assert_includes out, "=> Booting cybertrain #{Cybertrain::VERSION}"
-    assert_includes out, "=> preview: CRuby #{RUBY_VERSION}"
+    assert_includes out, "=> preview: CRuby #{IO.popen(["ruby", "-e", "print RUBY_VERSION"], &:read)}"
     assert_equal 1, out.scan("=> Booting").size
     assert_equal pid.to_s, File.read(File.join(root, "tmp", "cybertrain-dev", "supervisor.pid"))
     assert wait_until(10) { log_of(root).include?("=> spinel: ready") }, "the binary took the port:\n#{log_of(root)}"
@@ -877,6 +885,66 @@ test "a child that dies of the Ctrl-C that stops the driver is not reported as a
 ensure
   $stdout = saved
   DevServer.define_singleton_method(:new_runner, original)
+end
+
+# A stop that raises (here the build's cancel) still has the runner remove
+# the files (its close), closes the socket and restores the signal handlers; the error comes out
+# after them.
+class RaisingRunner < ScriptedRunner
+  def cancel_build
+    super
+    raise "the cancel failed"
+  end
+end
+
+test "every cleanup step runs when the machine's stop raises" do
+  runner = RaisingRunner.new
+  original = DevServer.method(:new_runner)
+  DevServer.define_singleton_method(:new_runner) { |**_options| runner }
+  listener = TCPServer.new("127.0.0.1", 0)
+  saved = $stdout
+  $stdout = StringIO.new
+  before = trap(:INT, "DEFAULT")
+  trap(:INT, before)
+  raised = nil
+  Dir.mktmpdir("dev-server-cleanup") do |root|
+    begin
+      Timeout.timeout(20) { DevServer.serve(root, "app", [], "127.0.0.1", listener) }
+    rescue RuntimeError => e
+      raised = e.message
+    end
+  end
+  $stdout = saved
+  assert_equal "the cancel failed", raised
+  assert_equal [:close], runner.calls.last
+  assert listener.closed?, "the socket is closed"
+  assert_equal before, trap(:INT, before)
+ensure
+  $stdout = saved
+  DevServer.define_singleton_method(:new_runner, original)
+end
+
+# The children run the `ruby` on PATH, which a version manager can make
+# another CRuby than the supervisor's: the banner names theirs.
+test "the banner's CRuby version is the one the children run" do
+  Dir.mktmpdir("dev-server-ruby") do |dir|
+    File.write(File.join(dir, "ruby"), "#!/bin/sh\nprintf '9.8.7'\n")
+    File.chmod(0o755, File.join(dir, "ruby"))
+    saved = ENV["PATH"]
+    ENV["PATH"] = "#{dir}:#{saved}"
+    begin
+      assert_equal "9.8.7", DevServer.child_ruby_version
+    ensure
+      ENV["PATH"] = saved
+    end
+    File.write(File.join(dir, "ruby"), "#!/bin/sh\nexit 1\n")
+    ENV["PATH"] = "#{dir}:#{saved}"
+    begin
+      assert_equal "(unknown version)", DevServer.child_ruby_version
+    ensure
+      ENV["PATH"] = saved
+    end
+  end
 end
 
 # The rule the driver applies to the runner's events once a stop was asked:

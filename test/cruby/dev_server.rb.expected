@@ -22,5 +22,7 @@ ok   TERM while the build runs: the build's group is stopped too
 ok   a build left by a killed supervisor is stopped, grandchild included
 ok   a leftover child holding the port is stopped, and the new supervisor serves on it
 ok   a child that dies of the Ctrl-C that stops the driver is not reported as a death
+ok   every cleanup step runs when the machine's stop raises
+ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-25 tests, 143 assertions, 0 failures
+27 tests, 149 assertions, 0 failures

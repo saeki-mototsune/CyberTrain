@@ -79,6 +79,20 @@ module Cybertrain
 
         BUILD_LOG = "tmp/rebuild.log"
 
+        # A cancelled build is KILLed after this long at most. spin ends
+        # about 25 ms after its children's TERM (DevServer::BUILD_CLEANUP),
+        # and a cancel sits in the round that follows a save, before the
+        # CRuby child starts: the bound keeps a stuck build from delaying
+        # that round by more than a second.
+        CANCEL_GRACE = 1.0
+
+        # How much of each line of a child's STDERR the tail keeps (its last
+        # characters; the copy to the supervisor's STDERR is whole). A
+        # backtrace line or an error message fits many times over; a child
+        # that writes megabytes without a newline (a progress bar, a dump)
+        # cannot make the tail grow past STDERR_LINES of this.
+        TAIL_LINE_CHARS = 4096
+
         # The process this runner owns: what it is, the STDERR pipe it reads
         # (nil when not piped), and the last lines that came through it.
         Child = Struct.new(:pid, :kind, :generation, :started, :stderr, :partial, :tail, :ready)
@@ -108,6 +122,7 @@ module Cybertrain
           @child = nil
           @spawn_failure = nil
           @build = nil
+          @build_failure = nil
           @incremental = true
           @hold = nil
           @desk = Holding::Desk.new
@@ -198,9 +213,11 @@ module Cybertrain
           nil
         rescue SystemCallError => e
           # A command that cannot be started at all dies at once, as far as
-          # the machine can tell: the next #poll reports it.
+          # the machine can tell: the next #poll reports it. A child that was
+          # spawned but could not be recorded in child.pid is stopped first:
+          # left running, it would keep the listener with nobody owning it.
+          stop_child unless @child.nil?
           [reader, writer].each { |io| io.close if io && !io.closed? }
-          @child = nil
           @spawn_failure = [kind, generation, "could not start #{child_command(kind).first}: #{e.message}"]
           nil
         end
@@ -233,18 +250,21 @@ module Cybertrain
 
         def start_build(generation)
           cancel_build
-          @build = Job.new(spawn_build, generation, @incremental)
-          nil
+          launch_build(generation)
         end
 
-        # The whole process group: spin, spinel and the C compiler. The build
-        # is forgotten, so its end is never reported.
+        # The whole process group: spin, spinel and the C compiler
+        # (DevServer.stop_group: spin's children get TERM first, so that spin
+        # removes its compiler's stderr file and exits; KILL after
+        # CANCEL_GRACE at most). The build is forgotten, so its end is never
+        # reported.
         def cancel_build
+          @build_failure = nil
           build = @build
           return nil if build.nil?
 
           @build = nil
-          signal(-build.pid, :KILL)
+          DevServer.stop_group(build.pid, CANCEL_GRACE) { reap(build.pid) }
           wait_pid(build.pid)
           delete_file(dev_path("build.pid"))
           nil
@@ -322,7 +342,7 @@ module Cybertrain
         # The file watch, created (and its baseline taken) on first use;
         # #start_watching starts its polling.
         def watch
-          @watch ||= Watch.new(@root, @watch_interval)
+          @watch ||= Watch.new(@root, @watch_interval) { |line| log(line) }
         end
 
         def start_watching
@@ -373,8 +393,11 @@ module Cybertrain
         def close
           @watch&.close
           @desk.close
-          FILES.each { |file| delete_file(dev_path(file)) }
-          delete_file(dev_path("state.tmp"))
+          FILES.each do |file|
+            delete_file(dev_path(file))
+            # What write_file leaves when it fails between write and rename.
+            delete_file(dev_path("#{file}.tmp"))
+          end
           nil
         end
 
@@ -455,7 +478,31 @@ module Cybertrain
           end
         end
 
+        # Spawns the build; a spin that cannot be started at all is a failed
+        # build, reported by the next #poll with the reason (also written to
+        # the build log, which the failure's log line points at).
+        def launch_build(generation)
+          @build = Job.new(spawn_build, generation, @incremental)
+          nil
+        rescue SystemCallError => e
+          @build = nil
+          text = "could not start #{build_command(@incremental).first}: #{e.message}\n"
+          begin
+            File.write(File.join(@root, BUILD_LOG), text)
+          rescue SystemCallError
+            nil
+          end
+          @build_failure = [generation, text]
+          nil
+        end
+
         def poll_build(machine)
+          failure = @build_failure
+          unless failure.nil?
+            @build_failure = nil
+            machine.on_build_done(failure[0], false, failure[1])
+            return
+          end
           build = @build
           return if build.nil?
 
@@ -468,7 +515,7 @@ module Cybertrain
             # The toolchain predates --incremental: build again without it,
             # and keep to that for the rest of the process.
             @incremental = false
-            @build = Job.new(spawn_build, build.generation, false)
+            launch_build(build.generation)
             return
           end
           @build = nil
@@ -520,9 +567,13 @@ module Cybertrain
         def keep_tail(child, chunk)
           text = child.partial + chunk.dup.force_encoding(Encoding::UTF_8).scrub
           lines = text.split("\n", -1)
-          child.partial = lines.pop.to_s
-          child.tail.concat(lines)
+          child.partial = last_chars(lines.pop.to_s)
+          child.tail.concat(lines.map { |line| last_chars(line) })
           child.tail.shift(child.tail.size - STDERR_LINES) if child.tail.size > STDERR_LINES
+        end
+
+        def last_chars(line)
+          line.size > TAIL_LINE_CHARS ? line[-TAIL_LINE_CHARS..] : line
         end
 
         # The child is gone: the rest of its STDERR, then its pipe and its

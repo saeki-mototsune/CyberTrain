@@ -24,11 +24,29 @@ module Cybertrain
       # One lock guards the baseline and the queue; one condition variable
       # wakes the polling thread for #delivered and #close, so that #close
       # returns at once whatever the interval.
+      #
+      # A poll that raises (Dir.glob or a stat in a directory being renamed
+      # or removed) does not end the polling thread, which would leave every
+      # later save unnoticed without a word: the error goes to the log once
+      # (again only when it changes), the next poll tries again, and a poll
+      # that works after a failure says so. Stopping the supervisor instead
+      # would end the developer's session over what is usually a passing
+      # race.
+      #
+      # It overrides Dev::Watcher's snapshot, changed_paths, poll and
+      # absorb_generated and reads its @globs, @ignored, @interval and
+      # @previous: Dev::Watcher globs in the current directory and sleeps
+      # between polls, and offers no hook for a root or a wake-up.
       class Watch < Dev::Watcher
         GENERATED = "gen/"
 
-        def initialize(root, interval)
+        # @param root [String] the application's directory
+        # @param interval [Numeric] seconds between polls
+        # @yieldparam line [String] a line for the log (a failing poll)
+        def initialize(root, interval, &log)
           @root = root
+          @log = log
+          @failure = nil
           @lock = Mutex.new
           @signal = ConditionVariable.new
           @queue = []
@@ -102,6 +120,10 @@ module Cybertrain
 
             source_stamps(snapshot) != source_stamps(@previous)
           end
+        rescue StandardError
+          # No fresh look is possible: what the watcher has seen decides,
+          # and the polling thread reports the error.
+          false
         end
 
         # The generated files as they are now become the baseline: gen ran
@@ -130,13 +152,33 @@ module Cybertrain
             @lock.synchronize { @signal.wait(@lock, @interval) unless @closing }
             break if closing?
 
-            paths = changed_paths
-            next if paths.empty?
-
-            block.call(paths)
-            absorb_generated
+            begin
+              paths = changed_paths
+              unless paths.empty?
+                block.call(paths)
+                absorb_generated
+              end
+              recovered
+            rescue StandardError => e
+              failed(e)
+            end
           end
           nil
+        end
+
+        def failed(error)
+          text = "#{error.class}: #{error.message}"
+          return if text == @failure
+
+          @failure = text
+          @log&.call("=> the file watch failed (#{text}); trying again")
+        end
+
+        def recovered
+          return if @failure.nil?
+
+          @failure = nil
+          @log&.call("=> the file watch works again")
         end
 
         def closing?
