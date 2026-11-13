@@ -1,5 +1,5 @@
 ---
-source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
+source_sha256: 3109902f66d644e274188001adeec4f8f23888013cc14b16568df63dee79679f
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -218,6 +218,7 @@ cybertrain generate scaffold article title:string body:text
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -435,6 +436,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -882,8 +884,9 @@ end
   задачи, она запускается снова), поэтому пишите `perform` так, чтобы его
   можно было безопасно повторить.
 - Неудавшиеся задачи просматривают, повторяют и отбрасывают командой
-  `./blog jobs` или на странице, которую подключает закомментированная строка
-  `jobs_page` в `config/routes.rb`
+  `./blog jobs` или на странице, которую подключает строка
+  `jobs_page` в `config/routes.rb`, если её раскомментировать (маршруты шагов
+  04 и 09 её сохраняют)
   ([Страница задач](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
 
 > [!RULE] Правило Spinel: политики задач читаются как текст
@@ -975,7 +978,8 @@ $ curl http://127.0.0.1:3000/articles.json
 `test/components/comment_component_test.rb` и
 `test/helpers/comments_helper_test.rb`, шаг 14 —
 `test/jobs/notify_comment_job_test.rb`, а `cybertrain new` —
-`test/test_helper.rb`, который подключает каждый файл. Трём из них нужно
+`test/test_helper.rb`, который подключает каждый файл, и
+`test/integration/health_test.rb`, запрос к `/up`. Трём из них нужно
 догнать блог, каким он стал с тех пор.
 
 ### Фикстуры, проходящие валидации
@@ -1095,11 +1099,15 @@ cybertrain test -n /comment/
 
 Первый запуск компилирует все тесты в одну программу, что занимает
 минуты (149 тестов examples/blog — около девяти на облачной машине с
-4 vCPU); запуск без изменений начинается сразу. Файл или `-n` выбирают,
+4 vCPU); запуск без изменений не компилирует тестовую программу заново: он
+может один раз пересобрать gen (`build gen`, несколько секунд), а затем
+начинается меньше чем за секунду. Файл или `-n` выбирают,
 какие тесты запускать, а не что компилировать: правка любого теста
 компилирует программу заново. Каждый файл выводит заголовок, каждый тест —
-строку (`ok`, или `FAIL` и `ERR` со строкой теста и сообщением), затем
-итоги; код выхода — 1, если что-то упало.
+строку (`ok`, или `FAIL` и `ERR` со строкой теста и сообщением), затем итоги, а между ними — то, что печатает сам тестируемый код
+(например, строка вывода команды); код выхода — 1, если что-то упало.
+По измерению 2026-11-13 блог из руководства на этом шаге выполняет 17
+тестов и 25 проверок.
 
 > [!NOTE]
 > Перед каждым тестом все таблицы очищаются, а фикстуры вставляются
@@ -1189,9 +1197,10 @@ class ArticlesController < ApplicationController
 Тесты из [шага 16](#test), которые открывают форму, отправляют её или
 обращаются к действию помимо `index` и `show`, теперь упираются в страницу
 входа. Генератор записал `test/fixtures/users.yml` (`one` и `two`, пароль
-`"password"`) и `test/support/session_test_helper.rb`, чей `sign_in_as`
-`test/test_helper.rb` теперь даёт каждому интеграционному тесту. Сначала
-выполните вход:
+`"password"`) и `test/support/session_test_helper.rb`, чей `sign_in_as` `test/test_helper.rb` теперь даёт каждому
+интеграционному тесту, а в `setup` теста статей он уже добавил вход
+(печатает `insert test/controllers/articles_controller_test.rb (sign_in_as users(:one))`),
+так что вы увидите:
 
 ```ruby test/controllers/articles_controller_test.rb (отрывок)
   setup do
@@ -1200,8 +1209,10 @@ class ArticlesController < ApplicationController
   end
 ```
 
-У теста комментариев нет `setup`, а каждому из четырёх его тестов теперь
-нужен вошедший пользователь; дайте его:
+У теста комментариев нет `setup`, в который генератор мог бы добавить
+вход, а каждое действие `CommentsController` (create и destroy) теперь
+требует вошедшего пользователя, поэтому и каждый из четырёх его тестов;
+дайте его:
 
 ```ruby test/controllers/comments_controller_test.rb (отрывок)
 class CommentsControllerTest < ActionDispatch::IntegrationTest
@@ -1369,7 +1380,8 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 минимума в 10 символов из [шага 05](#validations).
 
 > [!NOTE]
-> Запускайте `cybertrain test`, как в [шаге 16](#test).
+> Запускайте `cybertrain test`, как в [шаге 16](#test) (по измерению
+> 2026-11-13 блог из руководства тогда выполняет 83 теста и 870 проверок).
 > В `examples/blog` этот шаг тоже есть, а его JSON не включает столбцы
 > `cover_*` (`Article#public_json`). Пока не сделано: несколько
 > файлов на поле, S3 и другое удалённое хранилище, варианты изображений и

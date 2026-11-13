@@ -208,6 +208,7 @@ file, [step 18](#attachments)); the default is `string`. The quick start's
 Cybertrain::Routes.draw do
   root "articles#index"
   resources :articles
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -421,6 +422,7 @@ Cybertrain::Routes.draw do
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
+  # jobs_page "/admin/jobs", before_action: :require_admin
 end
 ```
 
@@ -858,7 +860,8 @@ response:
 - A job can run more than once (a process that dies in the middle of one has
   it run again), so write `perform` to be safe to repeat.
 - Failed jobs are listed, retried and discarded with `./blog jobs`, or on the
-  page the commented `jobs_page` line in `config/routes.rb` mounts
+  page the commented `jobs_page` line in `config/routes.rb` mounts once
+  uncommented (the routes of steps 04 and 09 keep it)
   ([The jobs page](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
 
 > [!RULE] Spinel rule: job policies are read as text
@@ -947,7 +950,8 @@ every test starts with), `test/models/article_test.rb` and
 `test/components/comment_component_test.rb` and
 `test/helpers/comments_helper_test.rb`, step 14
 `test/jobs/notify_comment_job_test.rb`, and `cybertrain new` wrote
-`test/test_helper.rb`, which each file requires. Three of them need the
+`test/test_helper.rb`, which each file requires, and
+`test/integration/health_test.rb`, a request to `/up`. Three of them need the
 blog as it has grown since.
 
 ### Fixtures that pass the validations
@@ -1066,12 +1070,16 @@ cybertrain test -n /comment/
 ```
 
 The first run compiles every test into one program, which takes minutes
-(examples/blog's 149 tests took about nine on a 4-vCPU cloud machine); a
-run with nothing changed starts at once. A file or `-n` picks which tests
-run, not what is compiled: editing any test compiles the program again.
-Each file prints a heading, each test a line (`ok`, or `FAIL` and `ERR`
-with the test's line and the message), then the totals; the exit status is
-1 when one failed.
+(examples/blog's 149 tests took about nine on a 4-vCPU cloud machine). A
+run with nothing changed does not compile the test program again: it may
+rebuild gen once (`build gen`, some seconds), and then starts in well
+under a second. A file or `-n` picks which tests run, not what is
+compiled: editing any test compiles the program again. Each file prints a
+heading, each test a line (`ok`, or `FAIL` and `ERR` with the test's line
+and the message), then the totals, with whatever the code under test
+prints itself (a command's output line, say) between them; the exit
+status is 1 when one failed. Measured on 2026-11-13, the tutorial's blog
+at this step runs 17 tests and 25 assertions.
 
 > [!NOTE]
 > Before each test every table is emptied and the fixtures inserted
@@ -1175,8 +1183,10 @@ Any [step 16](#test) test that opens a form, submits one, or reaches an
 action other than `index` and `show` now meets the sign-in page instead. The
 generator wrote `test/fixtures/users.yml` (`one` and `two`, whose password
 is `"password"`) and `test/support/session_test_helper.rb`, whose
-`sign_in_as` `test/test_helper.rb` now gives every integration test. Sign
-in first:
+`sign_in_as` `test/test_helper.rb` now gives every integration test, and
+the generator added the sign-in to the articles test's `setup` (it prints `insert
+test/controllers/articles_controller_test.rb (sign_in_as users(:one))`), so
+you will find:
 
 ```ruby test/controllers/articles_controller_test.rb (excerpt)
   setup do
@@ -1185,8 +1195,9 @@ in first:
   end
 ```
 
-The comments test has no `setup`, and each of its four tests now needs a
-signed-in user; give it one:
+The comments test has no `setup` for the generator to add to, and every
+action of `CommentsController` (create and destroy) now needs a signed-in
+user, so each of its four tests does too; give it one:
 
 ```ruby test/controllers/comments_controller_test.rb (excerpt)
 class CommentsControllerTest < ActionDispatch::IntegrationTest
@@ -1351,7 +1362,8 @@ checks that a visitor can download the cover, and it fills the body with
 [step 05](#validations).
 
 > [!NOTE]
-> Run `cybertrain test` as in [step 16](#test). `examples/blog` has this
+> Run `cybertrain test` as in [step 16](#test) (measured on 2026-11-13,
+> the tutorial's blog then runs 83 tests and 870 assertions). `examples/blog` has this
 > step too, and keeps the `cover_*` columns out of its JSON
 > (`Article#public_json`). Not built yet: several files per field, S3 or other remote
 > storage, image variants, and streaming large bodies to disk (the whole body

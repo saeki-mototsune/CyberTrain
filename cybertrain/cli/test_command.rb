@@ -130,9 +130,12 @@ module Cybertrain
       # What a bundle is built from besides its sources' contents: the
       # compile command, the `spin flags` output (which framework checkout
       # and which load path), each framework root's cybertrain/version.rb,
-      # and spin.toml and spin.lock as they are. A different record
-      # (another framework version or checkout, a repointed dependency)
-      # means a compile, whatever the mtimes say.
+      # spin.toml and spin.lock as they are, and the paths of test/**/*.rb.
+      # A different record (another framework version or checkout, a
+      # repointed dependency, a file under test/ added or deleted, which
+      # no mtime shows: a test's `require_relative` of a deleted file must
+      # fail the compile, not reuse the binary) means a compile, whatever
+      # the mtimes say.
       # @param root [String]
       # @param flags [String] the `spin flags` output
       # @return [String]
@@ -143,6 +146,10 @@ module Cybertrain
         end
         out << "spin.toml:\n" << file_text("#{root}/spin.toml")
         out << "spin.lock:\n" << file_text("#{root}/spin.lock")
+        out << "test files:\n"
+        paths = Array.new(0) { "" }
+        TestFiles.walk(root, "test", paths)
+        paths.sort.each { |path| out << path << "\n" }
         out
       end
 

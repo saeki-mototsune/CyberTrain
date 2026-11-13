@@ -44,6 +44,9 @@ module Cybertrain
     # removed, as are the directories that leaves empty. Only gen's own
     # copies (their last line names the file they came from) are swept:
     # gen/test/data.rb, the fixtures' file, and anything else are left.
+    # While the rewrite refuses a test file, gen/tests.rb is the refused
+    # program (path:line), no copy is written and none is swept; gen still
+    # succeeds.
     # gen/test/data.rb itself (TestDataEmitter: the tables cleared before
     # each test, test/fixtures/*.yml's rows and accessors) is written from
     # the schema branch whenever test/ exists, and removed once it is gone.
@@ -74,11 +77,6 @@ module Cybertrain
           concern_files << rel
         end
         stale = 0
-        test_copies = Array.new(0) { "" }
-        TestScan.copies(root).each do |rel, source|
-          outputs << [rel, source]
-          test_copies << rel
-        end
         # gen/tests.rb, the program `cybertrain test` compiles, whenever
         # test/ exists (a refused bundle is a program that only aborts with
         # the reason: gen itself still succeeds, pre-flight ruling B2).
@@ -87,16 +85,27 @@ module Cybertrain
         # fixture gen cannot load refuses the bundle the same way: a
         # scaffold's test/fixtures/articles.yml comes before the migration
         # that creates its table, and `cybertrain db migrate` runs gen first.
+        # So does a test file the class-form rewrite refuses (ruling C-I1:
+        # a broken test must not stop the dev server, db migrate or a
+        # build): no copy is written then, and gen/test's copies are left
+        # as they are until the file is fixed.
         tests_rb = "#{root}/#{TestsEmitter::PATH}"
         fixture_problem = ""
+        test_problem = ""
+        test_copies = Array.new(0) { "" }
         # The rows of test/fixtures/*.yml (none while they are refused) and
         # the models, each scanned once here and used again below.
         fixture_rows = Array.new(0) { FixtureScan.empty_row }
         infos = ModelScan.scan_dir("#{root}/app/models")
         if File.directory?("#{root}/test")
-          test_files = TestScan.scan(root)
+          copy_sources = Array.new(0) { "" }
+          test_files = Array.new(0) { TestFile.new("", :top_level, [], [], [], "") }
+          test_problem = Runner.test_problem(root, test_copies, copy_sources, test_files)
+          test_copies.each_with_index { |rel, k| outputs << [rel, copy_sources[k]] }
           fixture_problem = Runner.fixture_problem(root, infos, test_files, fixture_rows) unless Cybertrain::Schema.current.nil?
-          bundle = if fixture_problem.empty?
+          bundle = if !test_problem.empty?
+                     TestsEmitter.refused_program(test_problem)
+                   elsif fixture_problem.empty?
                      TestsEmitter.emit(root, test_files, !Cybertrain::Schema.current.nil?)
                    else
                      TestsEmitter.refused_program(fixture_problem)
@@ -119,6 +128,7 @@ module Cybertrain
           remove_empty_dirs(root, File.dirname(f), "gen/concerns") unless check
         end
         Manifest.rb_files(root, "gen/test").each do |f|
+          next unless test_problem.empty?
           next if test_copies.include?(f + ".rb") || f + ".rb" == TestScan::DATA_FILE
           next unless File.read("#{root}/#{f}.rb").include?("#{TestScan::FOOTER}test/")
 
@@ -163,6 +173,29 @@ module Cybertrain
           stale += sync_file(root, "gen/app.rb", Manifest.emit_with_models(root, models), check)
         end
         stale > 0 ? 1 : 0
+      end
+
+      # Why the class-form rewrite refuses root's test/ ("<path>:<line>:
+      # ...", "" when it does not). The tree is read once (TestScan.prepare)
+      # for both: when it is not refused, the copies go into rels and
+      # sources ("gen/test/..." and its text, in scan order) and the
+      # scanned files into files; when it is, all three stay empty.
+      # @return [String]
+      def self.test_problem(root, rels, sources, files)
+        problem = ""
+        begin
+          tree = TestScan.prepare(root)
+          copies = TestScan.copies_of(tree)
+          found = TestScan.scan_tree(tree)
+          copies.each do |rel, source|
+            rels << rel
+            sources << source
+          end
+          found.each { |f| files << f }
+        rescue ArgumentError => e
+          problem = e.message
+        end
+        problem
       end
 
       # Why test/fixtures/*.yml cannot be loaded, "<path>:<line>: ..." ("" when

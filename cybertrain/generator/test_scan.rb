@@ -1,4 +1,5 @@
 require "cybertrain/test_files"
+require "cybertrain/test/args"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/code_view"
@@ -137,7 +138,12 @@ module Cybertrain
       # then test/support/**/*.rb, then TestFiles.list(root). Raises
       # ArgumentError ("<path>:<line>: ...") on what the rewrite refuses.
       def self.scan(root)
-        tree = prepare(root)
+        scan_tree(prepare(root))
+      end
+
+      # {scan} of a tree {prepare} read (gen reads the tree once for this
+      # and {copies_of}).
+      def self.scan_tree(tree)
         files = Array.new(0) { TestFile.new("", :top_level, [], [], [], "") }
         tree.paths.each_with_index { |path, k| files << scan_source(path, tree.sources[k], tree.views[k], tree.forms, tree.copied) }
         files
@@ -147,7 +153,11 @@ module Cybertrain
       # scanned file that holds a class-form class (the helper and support
       # files included), in scan order.
       def self.copies(root)
-        tree = prepare(root)
+        copies_of(prepare(root))
+      end
+
+      # {copies} of a tree {prepare} read.
+      def self.copies_of(tree)
         out = { "" => "" }
         out.delete("")
         tree.paths.each_with_index do |path, k|
@@ -165,14 +175,13 @@ module Cybertrain
         out
       end
 
-      # test_ plus the name with every character outside [A-Za-z0-9_]
-      # turned into "_" (spec 5.2: "shows an article" ->
-      # test_shows_an_article, "日本語" -> test____).
+      # test_ plus the name with every ASCII character outside
+      # [A-Za-z0-9_] turned into "_" and every other character into
+      # `_u<hex>` (spec 5.2: "shows an article" -> test_shows_an_article,
+      # "日本" -> test__u65e5_u672c): Test::Args.method_for, the rule
+      # `cybertrain test -n` matches with.
       def self.method_name(name)
-        s = name.to_s
-        out = +"test_"
-        s.each_char { |ch| out << (word_char?(ch) ? ch : "_") }
-        out
+        Cybertrain::Test::Args.method_for(name)
       end
 
       # The class-form copy of one file standing alone: its classes are
@@ -194,6 +203,10 @@ module Cybertrain
 
       # ---- the tree ----
 
+      # root's scanned files (test/test_helper.rb, test/support/**/*.rb,
+      # then TestFiles.list) read once, with the class-form class names and
+      # the files gen copies; raises ArgumentError ("<path>:<line>: ...")
+      # on a test class the rewrite cannot place.
       def self.prepare(root)
         paths = Array.new(0) { "" }
         paths << TestFiles::HELPER if File.exist?("#{root}/#{TestFiles::HELPER}")
@@ -609,6 +622,10 @@ module Cybertrain
         teardown_do = 0
         def_setup = 0
         def_teardown = 0
+        superclass = class_head(codes[start].strip)[1]
+        # The `private` / `protected` line the body is under (0: public).
+        hidden = ""
+        hidden_line = 0
         level = body_level(codes, starts, start, last, path)
         j = start + 1
         while j < last
@@ -656,12 +673,30 @@ module Cybertrain
             refuse_other_form(s, path, j + 1)
           elsif override?(s, "setup")
             def_setup = j + 1
+            refuse_missing_super(codes, j, level, last, path, name, superclass, "setup")
             j = convert_override(lines, codes, out, j, level, "setup", last, path)
           elsif override?(s, "teardown")
             def_teardown = j + 1
+            refuse_missing_super(codes, j, level, last, path, name, superclass, "teardown")
             j = convert_override(lines, codes, out, j, level, "teardown", last, path)
-          elsif s.start_with?("#{DEF}test_") && override?(s, def_name(s))
+          elsif s == "private" || s == "protected"
+            hidden = s
+            hidden_line = j + 1
+            j += 1
+          elsif s == "public"
+            hidden_line = 0
+            j += 1
+          elsif s.start_with?("private #{DEF}test_") || s.start_with?("protected #{DEF}test_")
+            word = s.start_with?("private") ? "private" : "protected"
+            refuse_hidden_test(path, j + 1, def_name(s[word.size + 1, s.size - word.size - 1].to_s), word, j + 1)
+          elsif s.start_with?("#{DEF}test_")
             meth = def_name(s)
+            unless override?(s, meth)
+              msg = "#{path}:#{j + 1}: `def #{meth}` takes parameters, and a test method is called with none; " \
+                    "drop them, or name the helper without the `test_` prefix"
+              raise ArgumentError, msg
+            end
+            refuse_hidden_test(path, j + 1, meth, hidden, hidden_line) if hidden_line.positive?
             refuse_collision(path, j + 1, "def #{meth}", meth, cases, seen)
             cases << TestCaseInfo.new(meth, meth, j + 1)
             seen << "def #{meth}"
@@ -732,6 +767,57 @@ module Cybertrain
 
         msg = "#{path}:#{def_line}: #{name} has both `#{word} do` (line #{block_line}) and `def #{word}`; use one"
         raise ArgumentError, msg
+      end
+
+      # A `def test_x` under `private` / `protected` (`word`, written at
+      # line `at`): Minitest runs only public test methods, so Rails would
+      # leave it out; the bundle would run it.
+      def self.refuse_hidden_test(path, number, meth, word, at)
+        where = at == number ? "" : " (line #{at})"
+        msg = "#{path}:#{number}: `def #{meth}` is #{word}#{where}, and Minitest runs only public test methods; " \
+              "move it above `#{word}`, or name the helper without the `test_` prefix"
+        raise ArgumentError, msg
+      end
+
+      # A class's own `def setup` / `def teardown` (`word`, line j) that
+      # does not call `super`, in a class whose superclass is no framework
+      # class (BASES): the base's setup (its `setup do` blocks, rewritten
+      # into its own `def setup`) would not run. A class directly under a
+      # framework class needs none (theirs do nothing).
+      def self.refuse_missing_super(codes, j, ind, last, path, name, superclass, word)
+        return nil if BASES.include?(superclass)
+
+        s = codes[j].strip
+        k = DEF.size + word.size
+        k += 2 if s[k, 2] == "()"
+        after = s[k, s.size - k].to_s
+        found = calls_super?(after)
+        if !found && after.empty?
+          e = closing_line(codes, j, ind, last, path, "def #{word}")
+          m = j + 1
+          while m < e
+            found = true if calls_super?(codes[m])
+            m += 1
+          end
+        end
+        return nil if found
+
+        msg = "#{path}:#{j + 1}: `def #{word}` in #{name} does not call `super`, so the #{word} of #{superclass} " \
+              "(its `#{word} do` blocks included) would not run; call `super` in it"
+        raise ArgumentError, msg
+      end
+
+      # Whether code (strings and comments blank) calls `super`.
+      def self.calls_super?(code)
+        k = code.index("super")
+        until k.nil?
+          before = k.zero? ? "" : code[k - 1].to_s
+          after = code[k + 5].to_s
+          return true if !word_char?(before) && before != "." && before != ":" && !word_char?(after) && after != "?" && after != "!"
+
+          k = code.index("super", k + 5)
+        end
+        false
       end
 
       # The class line with the combined setup / teardown after a `;`
@@ -856,8 +942,10 @@ module Cybertrain
       end
 
       # `next`, `break` or `redo` heading a statement at the block body's
-      # own indentation (lines from...stop): it left the block, it would
-      # not leave the method the block becomes.
+      # own indentation (lines from...stop), or deeper with only `if`,
+      # `unless`, `case` or `begin` around it (no inner block or loop): it
+      # left the block, and in the method the block becomes it is a
+      # SyntaxError.
       def self.refuse_block_jumps(codes, from, stop, path)
         level = -1
         j = from
@@ -865,12 +953,72 @@ module Cybertrain
           code = codes[j]
           s = code.strip
           unless s.empty?
-            level = ControllerScan.indent_of(code) if level < 0
-            refuse_block_jump(s, path, j + 1) if ControllerScan.indent_of(code) == level
+            ind = ControllerScan.indent_of(code)
+            level = ind if level < 0
+            refuse_block_jump(s, path, j + 1) if ind == level || (ind > level && jump_word?(s) && !inside_loop?(codes, from, j))
           end
           j += 1
         end
         nil
+      end
+
+      # s starts with `next`, `break` or `redo` (not a `next:` key of an
+      # argument list or a hash).
+      def self.jump_word?(s)
+        ["next", "break", "redo"].any? do |word|
+          after = s[word.size].to_s
+          s.start_with?(word) && !word_char?(after) && after != ":" && after != "?" && after != "!"
+        end
+      end
+
+      # Whether line j sits in a block or loop opened inside the body
+      # (lines from...j): the lines around it, found by indentation, up to
+      # the body; branch lines (`else`, `when`, `rescue`) lead to the line
+      # that opened them.
+      def self.inside_loop?(codes, from, j)
+        limit = ControllerScan.indent_of(codes[j])
+        k = j - 1
+        while k >= from
+          code = codes[k]
+          s = code.strip
+          ind = ControllerScan.indent_of(code)
+          if !s.empty? && ind < limit
+            if branch_line?(s)
+              limit = ind + 1
+            else
+              return true if opens_loop?(s)
+
+              limit = ind
+            end
+          end
+          k -= 1
+        end
+        false
+      end
+
+      def self.branch_line?(s)
+        return true if s == "else" || s == "ensure" || s == "rescue" || s == "then"
+
+        ["else ", "else;", "elsif ", "when ", "in ", "rescue ", "rescue=", "ensure;"].any? { |w| s.start_with?(w) }
+      end
+
+      # s (code form) opens a block (`do`, `do |x|`, `{`, `{ |x|`) or a
+      # loop (`while`, `until`, `for`).
+      def self.opens_loop?(s)
+        return true if s.start_with?("while ") || s.start_with?("until ") || s.start_with?("for ")
+
+        t = s
+        if t.end_with?("|")
+          k = t.size - 2
+          k -= 1 while k >= 0 && t[k].to_s != "|"
+          return false if k < 0
+
+          t = t[0, k].to_s.rstrip
+        end
+        return true if t.end_with?("{")
+        return false unless t.end_with?("do")
+
+        t.size == 2 || !word_char?(t[t.size - 3].to_s)
       end
 
       def self.refuse_block_jump(s, path, number)
@@ -971,15 +1119,23 @@ module Cybertrain
       end
 
       # The index of the name's opening quote in `test "x" do` / `test("x")
-      # do`, -1 when s is no `test` call with a name after it.
+      # do` (spaces or tabs before the name, or none: `test"x"` is the same
+      # call to Ruby), -1 when s is no `test` call with a name after it.
       def self.test_start(s)
-        return -1 unless s.start_with?("test ") || s.start_with?("test(")
+        return -1 unless s.start_with?("test")
+
+        first = s[4].to_s
+        return -1 unless first == " " || first == "\t" || first == "(" || quote?(first)
 
         k = 4
-        k += 1 while k < s.size && s[k] == " "
+        k += 1 while k < s.size && space_or_tab?(s[k].to_s)
         k += 1 if k < s.size && s[k] == "("
-        k += 1 while k < s.size && s[k] == " "
+        k += 1 while k < s.size && space_or_tab?(s[k].to_s)
         k
+      end
+
+      def self.space_or_tab?(ch)
+        ch == " " || ch == "\t"
       end
 
       def self.quote?(ch)

@@ -242,7 +242,7 @@ jobs:
           cybertrain db migrate
           cybertrain db status
           cybertrain build
-          cybertrain spin run gen -- --check
+          SPIN_DEBUG=1 cybertrain spin run gen -- --check
           test -x dist/shop
           # The generated app's own tests (the scaffold's, which sign in with
           # sign_in_as, and the authentication generator's), in one program.
@@ -322,7 +322,7 @@ jobs:
           cybertrain generate scaffold post title:string cover:attachment
           cybertrain db migrate
           cybertrain build
-          cybertrain spin run gen -- --check
+          SPIN_DEBUG=1 cybertrain spin run gen -- --check
           test -x dist/album
           # The app's tests, the scaffold's and the upload test
           # (test/integration/post_cover_attachment_test.rb), in one program.
@@ -384,7 +384,7 @@ jobs:
           test -f spin.lock
           cybertrain generate scaffold item name:string
           cybertrain db migrate
-          cybertrain spin run gen -- --check
+          SPIN_DEBUG=1 cybertrain spin run gen -- --check
 
       # `git status`, not `git diff`: a file the generator writes that was
       # never committed is untracked, and `git diff` does not see it.
@@ -392,7 +392,9 @@ jobs:
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
-          spin run gen
+          # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in, so the
+          # step below reuses this gen binary.
+          SPIN_DEBUG=1 spin run gen
           changed=$(git status --porcelain --untracked-files=all -- gen/)
           if [ -n "$changed" ]; then
             echo "examples/blog/gen/ is not what \`spin run gen\` writes (M changed, D gone, ?? never committed):"
@@ -402,14 +404,17 @@ jobs:
           fi
 
       # Every test of the blog (test/**/*_test.rb: Rails-shaped classes on
-      # test/fixtures) in one program, then gen --check: the run leaves
-      # gen/ (gen/tests.rb and gen/test/** included) as committed.
+      # test/fixtures) in one program, then gen --check. `cybertrain test`
+      # has just run gen, so the check cannot prove gen/ is as committed
+      # (the "Generated code is fresh" step above is that guard); it proves
+      # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
+      # mode `cybertrain test` builds gen in, so gen is not built again.
       - name: Example app tests
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
           cybertrain test
-          spin run gen -- --check
+          SPIN_DEBUG=1 spin run gen -- --check
 
   # The action applications use (.github/actions/setup-cybertrain, which the
   # workflow `cybertrain new` writes calls at a release tag), run from this

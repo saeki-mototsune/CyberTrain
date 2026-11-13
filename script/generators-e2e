@@ -121,8 +121,8 @@ for file in test/components/card_component_test.rb test/controllers/articles_con
   grep -qx "$file" "$WORK/test.out" || fail "no tests of $file ran"
 done
 
-step "spin run gen -- --check"
-run_logged gen-check cybertrain spin run gen -- --check
+step "SPIN_DEBUG=1 spin run gen -- --check"
+run_logged gen-check env SPIN_DEBUG=1 ruby -I"$ROOT" "$ROOT/exe/cybertrain" spin run gen -- --check
 
 rm -rf "$WORK"
 step "PASS"

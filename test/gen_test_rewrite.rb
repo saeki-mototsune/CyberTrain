@@ -176,8 +176,12 @@ end
 
 test "names that collide after the method-name rule, non-ASCII and quoted names" do
   assert_equal "test/x_test.rb:5: test \"a-b\" has the same method name test_a_b as test \"a b\" (line 2)", refusal(two_tests("a b", "a-b"))
-  assert_equal "test/x_test.rb:5: test \"ロシア\" has the same method name test____ as test \"日本語\" (line 2)", refusal(two_tests("日本語", "ロシア"))
-  assert_equal "test________", Cybertrain::Gen::TestScan.method_name("日本語のテスト")
+  # Each non-ASCII character is _u<hex>: names in another script do not
+  # collide (ruling C-M2).
+  assert_equal "", refusal(two_tests("日本語", "ロシア"))
+  assert_equal "", refusal(two_tests("ログインできる", "ログアウトする"))
+  assert_equal "test__u65e5_u672c_u8a9e_u306e_u30c6_u30b9_u30c8", Cybertrain::Gen::TestScan.method_name("日本語のテスト")
+  assert_equal "  def test__u30ed_u30b0_u30a2_u30a6_u30c8_u3059_u308b; begin\n", rewrite_lines(two_tests("ログインできる", "ログアウトする"))[4]
   assert_equal "test_it_s_here", Cybertrain::Gen::TestScan.method_name("it's here")
   assert_equal "", refusal(two_tests("it's here", "say \"hi\""))
   out = Cybertrain::Gen::TestScan.rewrite(two_tests("it's here", "say \"hi\""), "test/x_test.rb")
@@ -305,7 +309,7 @@ test "rewritten methods answer nil through rescue, ensure, a bare return and a h
   own = ProbeOwnTest.new
   assert_nil own.setup
   assert_nil own.teardown
-  assert_equal ["base setup", "own setup", "own ensure", "own teardown"], PROBE_LOG
+  assert_equal ["base setup", "own setup", "own ensure", "base teardown", "own teardown"], PROBE_LOG
 end
 
 RETURN_REFUSED = "`return <value>` in a test, setup or teardown method is not supported (each answers nil, and gen cannot tell a return in a lambda or block from the method's own); use a bare `return`"
@@ -378,9 +382,56 @@ test "a hand-written test method beside a test block of the same name is refused
 end
 
 test "a hand-written test method is a case" do
-  root = temp_app("test/x_test.rb" => "class XTest < ActiveSupport::TestCase\n  def test_written\n    assert true\n  end\n\n  def test_helper_arg(x) = x\nend\n")
+  root = temp_app("test/x_test.rb" => "class XTest < ActiveSupport::TestCase\n  def test_written\n    assert true\n  end\n\n  def helper_arg(x) = x\nend\n")
   cases = Cybertrain::Gen::TestScan.scan(root).last.test_classes[0].cases
   assert_equal [["test_written", "test_written", 2]], cases.map { |c| [c.case_name, c.case_method, c.case_line] }
+end
+
+test "a hand-written test method with parameters, or under private or protected, is refused" do
+  assert_equal "test/x_test.rb:2: `def test_with_arg` takes parameters, and a test method is called with none; " \
+               "drop them, or name the helper without the `test_` prefix",
+               refusal("class XTest < ActiveSupport::TestCase\n  def test_with_arg(x = 1)\n  end\nend\n")
+  assert_equal "test/x_test.rb:2: `def test_two` takes parameters, and a test method is called with none; " \
+               "drop them, or name the helper without the `test_` prefix",
+               refusal("class XTest < ActiveSupport::TestCase\n  def test_two a, b\n  end\nend\n")
+  assert_equal "test/x_test.rb:5: `def test_hidden` is private (line 4), and Minitest runs only public test methods; " \
+               "move it above `private`, or name the helper without the `test_` prefix",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n  end\n  private # helpers\n  def test_hidden\n  end\nend\n")
+  assert_equal "test/x_test.rb:3: `def test_kept` is protected, and Minitest runs only public test methods; " \
+               "move it above `protected`, or name the helper without the `test_` prefix",
+               refusal("class XTest < ActiveSupport::TestCase\n  def a = 1\n  protected def test_kept\n  end\nend\n")
+  # `public` ends it; a helper under private is fine.
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  private\n  def helper = 1\n  public\n  def test_open\n  end\nend\n")
+end
+
+test "def setup or teardown without super under an application base class is refused" do
+  base = "class ApplicationTest < ActiveSupport::TestCase\n  setup do\n    @x = 1\n  end\nend\n"
+  assert_equal "test/x_test.rb:7: `def setup` in UsersTest does not call `super`, so the setup of ApplicationTest " \
+               "(its `setup do` blocks included) would not run; call `super` in it",
+               refusal("#{base}class UsersTest < ApplicationTest\n  def setup\n    @y = 2\n  end\nend\n")
+  assert_equal "test/x_test.rb:7: `def teardown` in UsersTest does not call `super`, so the teardown of ApplicationTest " \
+               "(its `teardown do` blocks included) would not run; call `super` in it",
+               refusal("#{base}class UsersTest < ApplicationTest\n  def teardown = @y = nil\nend\n")
+  assert_equal "test/x_test.rb:7: `def setup` in UsersTest does not call `super`, so the setup of ApplicationTest " \
+               "(its `setup do` blocks included) would not run; call `super` in it",
+               refusal("#{base}class UsersTest < ApplicationTest\n  def setup; @super_user = 1; end\nend\n")
+  # With super (any spelling), or directly under a framework class.
+  assert_equal "", refusal("#{base}class UsersTest < ApplicationTest\n  def setup\n    super\n    @y = 2\n  end\n\n  def teardown = super\nend\n")
+  assert_equal "", refusal("#{base}class UsersTest < ApplicationTest\n  def setup()\n    @y = super()\n  end\nend\n")
+  assert_equal "", refusal("class UsersTest < ActiveSupport::TestCase\n  def setup\n    @y = 2\n  end\n\n  def teardown\n  end\nend\n")
+  assert_equal "", refusal("class UsersTest < ActionDispatch::IntegrationTest\n  def setup = @y = 2\nend\n")
+end
+
+test "next inside an if or case of a test body is refused, inside an inner block or loop it is not" do
+  jump = "`next` in a test, setup or teardown body is not supported (the block is now a method); use `return`"
+  assert_equal "test/x_test.rb:4: #{jump}",
+               refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    if skip_it?\n      next\n    end\n    flunk\n  end\nend\n")
+  assert_equal "test/x_test.rb:7: #{jump.sub("`next`", "`break`")}",
+               refusal("class XTest < ActiveSupport::TestCase\n  setup do\n    case x\n    when 1\n      a\n    else\n      break\n    end\n  end\nend\n")
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    [1].each do |x|\n      if x\n        next\n      end\n    end\n  end\nend\n")
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    [1].map { |x|\n      unless x\n        next 2\n      end\n    }\n  end\nend\n")
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    while go?\n      if x\n        break\n      end\n    end\n  end\nend\n")
+  assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    post path, params: {\n      next: 1\n    }\n    call(\n      next: 2)\n  end\nend\n")
 end
 
 test "setup in a reopened framework class, brace and symbol forms are refused" do
@@ -539,9 +590,10 @@ test "a second declaration on a converted line is refused" do
   assert_equal "", refusal("class XTest < ActiveSupport::TestCase\n  test \"a\" do\n    s = \"x; test 'b' do\"\n  end\nend\n")
 end
 
-test "a test with a tab or no space before its name is refused, not left at class level" do
-  assert_equal "test/x_test.rb:2: #{UNPLACED}", refusal("class XTest < ActiveSupport::TestCase\n  test\"x\" do\n  end\nend\n")
-  assert_equal "test/x_test.rb:2: #{UNPLACED}", refusal("class XTest < ActiveSupport::TestCase\n  test\t\"x\" do\n  end\nend\n")
+test "a test with a tab or no space before its name is a test, as it is to Ruby" do
+  assert_equal "  def test_x; begin\n", rewrite_lines("class XTest < ActiveSupport::TestCase\n  test\"x\" do\n  end\nend\n")[1]
+  assert_equal "  def test_x; begin\n", rewrite_lines("class XTest < ActiveSupport::TestCase\n  test\t\"x\" do\n  end\nend\n")[1]
+  assert_equal "  def test_y; begin\n", rewrite_lines("class XTest < ActiveSupport::TestCase\n  test(\t'y') do\n  end\nend\n")[1]
 end
 
 test "declarations commented out by =begin or after __END__ are not refused" do
