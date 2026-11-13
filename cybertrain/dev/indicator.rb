@@ -19,8 +19,9 @@ module Cybertrain
     # - sets X-Cybertrain-Runtime ("cruby" or "spinel") on every response;
     # - writes the indicator, one line naming the runtime and what the
     #   background build is doing (Indicator.text), before `</body>` of an
-    #   HTML response that ErrorPage would give a banner (its rules) and
-    #   that is not served as a download (attachment_disposition?), with
+    #   HTML response that ErrorPage would give a banner (its rules), that
+    #   is not served as a download (attachment_disposition?) and whose
+    #   body the application has not encoded (encoded_body?), with
     #   the runtime and generation the page was rendered with, and a script
     #   tag (with the request's CSP nonce when the application uses nonce
     #   directives);
@@ -155,6 +156,19 @@ module Cybertrain
         value.to_s.lstrip.downcase.start_with?("attachment") # NOTES rule 62
       end
 
+      # Whether the application encoded the body (Content-Encoding present
+      # and, stripped and lowercased, other than "identity", which names no
+      # coding; the header name is matched case-insensitively by
+      # Response#header). Markup written into gzip or br bytes would leave
+      # a body the browser cannot decode.
+      # @return [Boolean]
+      def self.encoded_body?(response)
+        value = response.header("Content-Encoding")
+        return false if value.nil?
+
+        value.to_s.strip.downcase != "identity" # NOTES rule 62
+      end
+
       # The decoded value of name in the request's query string
       # (Request#query_value), "" when there is none or the query is
       # malformed or too long (Query raises a client fault; the rescue sits
@@ -203,6 +217,7 @@ module Cybertrain
         return nil if body.empty?
         return nil unless ErrorPage.html_response?(response)
         return nil if Indicator.attachment_disposition?(response)
+        return nil if Indicator.encoded_body?(response)
         return nil unless body.index(ID).nil?
 
         at = body.rindex("</body>")

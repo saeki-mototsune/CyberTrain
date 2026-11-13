@@ -12,7 +12,8 @@ ok   the state path while the supervisor holds answers for a page of the child's
 ok   the state path with one of runtime and generation reads the other as before
 ok   a 304 passes through with the header and no indicator
 ok   a response served as an attachment gets the header and no indicator
+ok   a response the application encoded gets the header and no indicator; identity is no encoding
 ok   the script path answers the script
 ok   with a failed build the banner follows <body> and the indicator precedes </body>
 ok   the state follows the state file as it changes
-17 tests, 82 assertions, 0 failures
+18 tests, 100 assertions, 0 failures

@@ -58,6 +58,13 @@ class IndicatorPage < Cybertrain::Middleware
       response.content_type = "text/html; charset=utf-8"
       response.set_header("content-disposition", ctx.request.query_value("disposition"))
       response.body = "<!DOCTYPE html>\n<html><body><h1>Export</h1></body></html>"
+    when "/encoded"
+      # A body the application says it has encoded, the header's name and
+      # value spelled as the test asks (the body itself is left plain, so
+      # the test can see whether anything was written into it).
+      response.content_type = "text/html; charset=utf-8"
+      response.set_header(ctx.request.query_value("name"), ctx.request.query_value("value"))
+      response.body = "<!DOCTYPE html>\n<html><body><h1>Encoded</h1></body></html>"
     else
       response.body = "<!DOCTYPE html>\n<html><body class=\"app\"><h1>Posts</h1></body></html>"
     end
@@ -256,6 +263,27 @@ test "a response served as an attachment gets the header and no indicator" do
   end
   inline = run_request(app, "/download?disposition=inline").response.body
   assert_equal 1, count_of(inline, INDICATOR_DIV)
+end
+
+# A body the application compressed is bytes the indicator's markup would
+# corrupt: it is left alone whatever the coding, the header's name and
+# value matched case-insensitively. identity is no coding at all.
+test "a response the application encoded gets the header and no indicator; identity is no encoding" do
+  reader = state_reader("encoded", 3, "cruby", "idle", "")
+  app = indicator(IndicatorPage.new, reader, "cruby", 3, no_directives)
+  plain = "<!DOCTYPE html>\n<html><body><h1>Encoded</h1></body></html>"
+  ["name=Content-Encoding&value=gzip", "name=content-encoding&value=br", "name=CONTENT-ENCODING&value=GZip",
+   "name=Content-Encoding&value=%20gzip%20", "name=Content-Encoding&value=gzip,%20identity"].each do |query|
+    response = run_request(app, "/encoded?#{query}").response
+    assert_equal "cruby", response.header("X-Cybertrain-Runtime")
+    assert_equal plain, response.body
+  end
+  ["name=Content-Encoding&value=identity", "name=content-encoding&value=IDENTITY",
+   "name=Content-Encoding&value=%20Identity%20", "name=X-Other&value=gzip"].each do |query|
+    response = run_request(app, "/encoded?#{query}").response
+    assert_equal "cruby", response.header("X-Cybertrain-Runtime")
+    assert_equal 1, count_of(response.body, INDICATOR_DIV)
+  end
 end
 
 test "the script path answers the script" do
