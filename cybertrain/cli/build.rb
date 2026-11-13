@@ -220,6 +220,13 @@ module Cybertrain
         end
       end
 
+      # Where the build lock (BuildLock) lives for the application in root.
+      # Kept for code that only reads the lock, such as the CRuby
+      # development-server supervisor (cybertrain/cli/dev_server/processes.rb).
+      def self.lock_path(root)
+        BuildLock.new(root).lock_path
+      end
+
       # Runs the build in root and assembles dist/. Returns the exit code.
       # name must already have passed require_dist_name!: CLI.build_app checks
       # it once, before the toolchain is fetched.

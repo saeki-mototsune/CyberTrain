@@ -276,6 +276,11 @@ class TakeoverRunner < FakeRunner
   end
 end
 
+test "Build.lock_path names the lock BuildLock takes" do
+  assert_equal "/apps/blog/tmp/cybertrain-build.lock", Cybertrain::CLI::Build.lock_path("/apps/blog")
+  assert_equal Cybertrain::CLI::BuildLock.new("/apps/blog").lock_path, Cybertrain::CLI::Build.lock_path("/apps/blog")
+end
+
 test "the build lock is created holding this process's PID when it is free" do
   clear_lock
   lock = Cybertrain::CLI::BuildLock.new(".")
