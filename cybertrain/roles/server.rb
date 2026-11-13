@@ -6,8 +6,6 @@ require "cybertrain/middleware/host_authorization"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/feature"
-require "cybertrain/background"
-require "cybertrain/stream/endpoint"
 require "cybertrain/dev"
 
 module Cybertrain
@@ -16,13 +14,16 @@ module Cybertrain
     # process runs by default. The Application has booted before #run is
     # called.
     #
-    #   starts   Stream::Poller (when the endpoint is mounted), the
-    #            listener, the features (Features.start_features: with
-    #            cybertrain/jobs, Scheduler and Job when Config#worker), the
-    #            Background services
+    #   starts   the features' early starts (Features.start_features_early:
+    #            with cybertrain/streams, Stream::Poller when the endpoint
+    #            is mounted), the listener, the features
+    #            (Features.start_features: with cybertrain/jobs, Scheduler
+    #            and Job when Config#worker; with cybertrain/feeds, the
+    #            Background services)
     #   waits    Server#wait (TERM stops the listener and asks the features
     #            to stop: the job claims)
-    #   stops    the features (Job, Scheduler), Background, Stream::Poller
+    #   stops    the features, in registration order (with `require
+    #            "cybertrain"`: Job, Scheduler, Background, Stream::Poller)
     #
     # In development it is also the whole of D12: the rebuilder, the
     # watcher, the HUP trap, the restart monitor and the execv of the new
@@ -86,28 +87,28 @@ module Cybertrain
           Roles.fail_boot(problem) unless problem.empty?
           @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name)
         end
-        # A service that would refuse to start (a WebSocket subscription
-        # without on_message) fails the boot here, before the port is
-        # bound, not with an exception after the banner.
-        service_problem = Background.boot_problem(config)
+        # A service that would refuse to start (with cybertrain/feeds, a
+        # WebSocket subscription without on_message) fails the boot here,
+        # before the port is bound, not with an exception after the banner.
+        service_problem = Features.server_problem(config)
         Roles.fail_boot(service_problem) unless service_problem.empty?
         busy = Runtime.enter_role("server")
         Roles.fail_boot(busy) unless busy.empty?
         srv = http_server
         begin
-          # The stream poller before the listener: its start position
-          # (MAX(id)) must come before any subscription. Only with the
-          # endpoint mounted.
-          Stream::Poller.start!(config) unless config.stream_path.empty?
+          # Before the listener (with cybertrain/streams, the stream
+          # poller: its start position, MAX(id), must come before any
+          # subscription; only with the endpoint mounted).
+          Features.start_features_early(config)
           srv.start # bind first: a PortInUse error must not come after the banner
           print_boot_banner
           # After boot connected the database and SPINEL_WORKERS is set;
           # only here, so `migrate`, `db` and Main.command never start
           # them: the loaded subsystems' threads (with cybertrain/jobs, the
-          # Scheduler and, when Config#worker, the job threads).
+          # Scheduler and, when Config#worker, the job threads; with
+          # cybertrain/feeds, the services files like cybertrain/websocket
+          # registered when required).
           Features.start_features(config)
-          # Services files like cybertrain/websocket registered when required.
-          Background.start_all(config)
           if config.development?
             serve_development(srv)
           else
@@ -124,8 +125,6 @@ module Cybertrain
           # Also when a start above raised (D66): each stop is a no-op for
           # what never started, so nothing this role began outlives it.
           Features.stop_features
-          Background.stop_all
-          Stream::Poller.stop!
           Runtime.leave_role
         end
         nil

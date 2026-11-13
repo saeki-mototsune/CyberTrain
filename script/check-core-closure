@@ -23,10 +23,11 @@ ROOT = File.expand_path("..", __dir__)
 ENTRY = "cybertrain/core.rb"
 
 # The subsystems the core must not reach: file patterns (File.fnmatch,
-# relative to the repository root) and the constants that name them. Each
-# task of docs/superpowers/plans/2026-11-13-optional-subsystems-plan.md
-# that makes a subsystem optional adds its row: streams (Task 3), then
-# feeds, mailer, cache and rate_limit (Task 4).
+# relative to the repository root) and the constants that name them, one
+# row per require line of the spec's section 3 (cybertrain/mailer/later is
+# the mailer's). A file may match two rows (cybertrain/websocket/frame.rb is
+# feeds' and serves the stream endpoint too): what matters is that neither
+# is in the core's closure.
 SUBSYSTEMS = {
   "jobs" => {
     files: %w[
@@ -35,6 +36,32 @@ SUBSYSTEMS = {
       cybertrain/roles/worker.rb cybertrain/test/jobs.rb
     ],
     constants: %w[Job Scheduler Lease Cron JobsPage JobsFeature WorkerRunner]
+  },
+  "streams" => {
+    files: %w[
+      cybertrain/streams.rb cybertrain/stream.rb cybertrain/stream/** cybertrain/turbo.rb
+      cybertrain/turbo_stream_renderer.rb cybertrain/template/turbo_stream_builder.rb cybertrain/http/sse.rb
+    ],
+    constants: %w[Stream Turbo TurboStreams TurboStreamBuilder StreamsFeature SSE SSEWriter WsReader WebSocketWriter StreamRequest]
+  },
+  "feeds" => {
+    files: %w[
+      cybertrain/feeds.rb cybertrain/background.rb cybertrain/background/** cybertrain/roles/feeds.rb
+      cybertrain/websocket.rb cybertrain/websocket/**
+    ],
+    constants: %w[Background FeedsFeature FeedsRunner WebSocket FeedTable FeedTableWriter StatusWriter FeedWatch]
+  },
+  "mailer" => {
+    files: %w[cybertrain/mailer.rb cybertrain/mailer/** cybertrain/net/**],
+    constants: %w[Mailer Net]
+  },
+  "cache" => {
+    files: %w[cybertrain/cache.rb],
+    constants: %w[Cache CacheFeature]
+  },
+  "rate_limit" => {
+    files: %w[cybertrain/rate_limit.rb],
+    constants: %w[RateLimit RateLimitFeature]
   }
 }.freeze
 
@@ -161,7 +188,9 @@ closure.each do |file|
     code = code_part(line.chomp)
     SUBSYSTEMS.each do |name, row|
       row[:constants].each do |constant|
-        next unless code.match?(/(?<![A-Za-z0-9_])#{constant}(?![A-Za-z0-9_])/)
+        # A following "-" is a header name in a string ("Cache-Control"),
+        # never a constant.
+        next unless code.match?(/(?<![A-Za-z0-9_])#{constant}(?![A-Za-z0-9_-])/)
 
         allowance = ALLOWED.find { |f, c, _why| f == file && c == constant }
         if allowance

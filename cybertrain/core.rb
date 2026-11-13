@@ -8,6 +8,11 @@
 #
 #   require "cybertrain/core"
 #   require "cybertrain/jobs"        # Job, Scheduler, the worker role, the jobs page and command
+#   require "cybertrain/streams"     # Stream, the stream endpoint, turbo_stream_from, Controller#turbo_stream
+#   require "cybertrain/feeds"       # Background, the feeds role, the feed health check
+#   require "cybertrain/mailer"      # Mailer.deliver ("cybertrain/mailer/later": deliver_later, with jobs)
+#   require "cybertrain/cache"       # Cache
+#   require "cybertrain/rate_limit"  # Controller.rate_limit (with the cache)
 #
 # `require "cybertrain"` is the core and every subsystem. No file this one
 # requires may name a subsystem (script/check-core-closure).

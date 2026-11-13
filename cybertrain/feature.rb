@@ -19,7 +19,7 @@
 #   * one return type per hook name, in the base and every override, and
 #     hook names no other class of the framework defines (rules 10, 34, 41):
 #     hence `start_feature` rather than `start`, `run_feature_command`
-#     rather than `command`, `feature_endpoint` rather than `call` (rule 40);
+#     rather than `command`, `feature_middleware` rather than `call` (rule 40);
 #   * a feature file registers its instance at its end, outside the class
 #     body, and never writes a block that calls a hook inside its class
 #     body ahead of that hook's `def` (rule 101's narrowing of rule 88);
@@ -44,6 +44,26 @@ module Cybertrain
     # @return [String]
     def boot_problem(config)
       ""
+    end
+
+    # A reason the server role must not start (Roles::ServerRunner#run_server,
+    # before the port is bound; the worker and feeds roles do not ask):
+    # with cybertrain/feeds, a WebSocket subscription without on_message.
+    # "" when there is none.
+    # @param config [Config]
+    # @return [String]
+    def server_problem(config)
+      ""
+    end
+
+    # Starts what must run before the server role binds its listener
+    # (Roles::ServerRunner#run_server, before Server#start): with
+    # cybertrain/streams, the stream poller, whose start position must come
+    # before any subscription. #stop_feature stops it.
+    # @param config [Config]
+    # @return [nil]
+    def start_feature_early(config)
+      nil
     end
 
     # Starts the subsystem's threads in the server role, after the listener
@@ -88,13 +108,25 @@ module Cybertrain
       ""
     end
 
-    # Answers a request at the middleware position of the subsystem's
-    # endpoint, writing ctx.response; true when it did, false to pass the
-    # request on.
-    # @param ctx [Context]
-    # @return [Boolean]
-    def feature_endpoint(ctx)
-      false
+    # The middleware of the subsystem's endpoint, wrapped around `app` at
+    # its place in Application#build_stack (after HealthCheck, before the
+    # session: with cybertrain/streams, Stream::Endpoint at
+    # Config#stream_path); nil to add none.
+    # @param app [Object] the stack so far (a Middleware or the router)
+    # @param config [Config]
+    # @return [Middleware, nil]
+    def feature_middleware(app, config)
+      nil
+    end
+
+    # Answers a controller's rate_limit callback (Controller#run_one, for
+    # a callback whose limit_id is not -1): with cybertrain/rate_limit,
+    # counts the request and answers for the action past the limit.
+    # @param controller [Controller]
+    # @param limit_id [Integer] the limit's index in RateLimit.all
+    # @return [nil]
+    def run_controller_limit(controller, limit_id)
+      nil
     end
 
     # Runs a command word of the binary (Main.run, after the built-in
@@ -130,12 +162,16 @@ module Cybertrain
     end
 
     # A template helper of the subsystem, called with the template helper
-    # dispatch's arguments when #feature_helper? answered true. Its value
-    # is what a helper arm answers (not wired yet: the streams feature
-    # pins its type).
-    # @return [Object, nil]
+    # dispatch's arguments (Template::Helpers#helper_call, after its own
+    # arms) when #feature_helper? answered true. Its value is what a helper
+    # arm answers: with cybertrain/streams a SafeString
+    # (turbo_stream_from), a String (signed_stream_name,
+    # stream_source_path) or a Template::TurboStreamBuilder (turbo_stream).
+    # The base raises as an undefined helper does
+    # (Helpers#app_helper_call), so it adds no type of its own.
+    # @return [Object]
     def feature_helper(helpers, name, args, kwargs, block, interp, env)
-      nil
+      raise RuntimeError, "undefined helper '#{name}'"
     end
 
     # The scheduler task name of the subsystem's periodic work; "" for none.
@@ -305,17 +341,59 @@ module Cybertrain
       ""
     end
 
-    # Whether a feature answered the request.
-    # @param ctx [Context]
-    # @return [Boolean]
-    def self.endpoint_answered?(ctx)
+    # The first feature's server problem; "" when none has one.
+    # @param config [Config]
+    # @return [String]
+    def self.server_problem(config)
       i = 0
       while i < ALL.size
-        return true if ALL[i].feature_endpoint(ctx)
+        problem = ALL[i].server_problem(config)
+        return problem unless problem.empty?
 
         i += 1
       end
-      false
+      ""
+    end
+
+    # @param config [Config]
+    # @return [nil]
+    def self.start_features_early(config)
+      i = 0
+      while i < ALL.size
+        ALL[i].start_feature_early(config)
+        i += 1
+      end
+      nil
+    end
+
+    # `app` wrapped in each feature's endpoint middleware, in registration
+    # order (the last registered outermost); `app` itself when none adds
+    # one.
+    # @param app [Object] a Middleware or the router
+    # @param config [Config]
+    # @return [Object]
+    def self.wrap_endpoints(app, config)
+      out = app
+      i = 0
+      while i < ALL.size
+        wrapped = ALL[i].feature_middleware(out, config)
+        out = wrapped unless wrapped.nil?
+        i += 1
+      end
+      out
+    end
+
+    # A rate_limit callback of `controller` (Controller#run_one).
+    # @param controller [Controller]
+    # @param limit_id [Integer]
+    # @return [nil]
+    def self.run_controller_limit(controller, limit_id)
+      i = 0
+      while i < ALL.size
+        ALL[i].run_controller_limit(controller, limit_id)
+        i += 1
+      end
+      nil
     end
 
     # The exit status of the first feature that takes the command word;
@@ -356,6 +434,13 @@ module Cybertrain
         i += 1
       end
       -1
+    end
+
+    # The template helper `name` of the feature at `index`
+    # (Features.helper_index), with the helper dispatch's arguments.
+    # @return [Object]
+    def self.call_helper(index, helpers, name, args, kwargs, block, interp, env)
+      ALL[index].feature_helper(helpers, name, args, kwargs, block, interp, env)
     end
 
     # Whether a loaded feature runs the periodic work of features.

@@ -6,11 +6,13 @@ require "cybertrain/test/client"
 
 # The core alone (`require "cybertrain/core"`, the optional-subsystems
 # design, docs/superpowers/specs/2026-11-13-optional-subsystems-design.md):
-# it compiles without jobs, the scheduler, the lease, cron, the jobs page
-# or the worker role; an application built on it boots in-process and
-# serves a page and `/up` (no worker staleness to report); `worker` and
-# `jobs` say which require they need instead of "Unknown command", and
-# `help` lists neither. No registered feature is jobs. Runs from a fresh
+# it compiles without jobs, the scheduler, the lease, cron, the jobs page,
+# the worker role, Turbo Streams, the feeds, the mailer, the cache or rate
+# limiting; an application built on it boots in-process and serves a page
+# and `/up` (no worker or feed staleness to report, no stream endpoint);
+# `worker`, `jobs` and `feeds` say which require they need instead of
+# "Unknown command", and `help` lists none of them; a stream helper in a
+# template is an undefined helper. No feature is registered. Runs from a fresh
 # temp directory (boot may write tmp/secret_key there). It links SQLite
 # through FFI, so its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
@@ -69,9 +71,11 @@ def run(argv)
   Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: no_views)
 end
 
-test "no registered feature is jobs, and none runs periodic work" do
+test "no feature is registered, and none runs periodic work" do
   refute Cybertrain::Features.feature_loaded?("jobs")
-  assert_nil Cybertrain::Features.feature_names.join(",").index("jobs")
+  refute Cybertrain::Features.feature_loaded?("streams")
+  refute Cybertrain::Features.feature_loaded?("feeds")
+  assert_equal 0, Cybertrain::Features.feature_count
   refute Cybertrain::Features.periodic_scheduler?
 end
 
@@ -87,6 +91,30 @@ test "/up answers ok: with no jobs there is no worker to be stale" do
   assert_equal "ok", res.body
 end
 
+test "the stack has no stream endpoint: its path goes to the router" do
+  names = Array.new(0) { "" }
+  node = APP.stack
+  until node.nil?
+    names << node.class.name
+    node = node.app
+  end
+  assert_nil names.join(",").index("Stream")
+  assert_equal 404, CLIENT.get("/cybertrain/stream?s=x").status
+end
+
+test "a stream helper in a template is an undefined helper" do
+  template = Cybertrain::Template::Template.parse("<%= turbo_stream_from \"alerts\" %>", "pages/inline")
+  env = { "__template_dir" => [nil, 0, 0.0, "", true][3] }
+  env["__template_dir"] = "pages"
+  msg = ""
+  begin
+    Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil)).render(template, env)
+  rescue StandardError => e
+    msg = e.message
+  end
+  assert_equal "pages/inline:1: undefined helper 'turbo_stream_from'", msg
+end
+
 test "worker says which require it needs and exits 1" do
   assert_equal 1, run(["worker"])
 end
@@ -95,11 +123,17 @@ test "jobs says which require it needs and exits 1" do
   assert_equal 1, run(["jobs", "list"])
 end
 
-test "help lists neither worker nor jobs" do
+test "feeds says which require it needs and exits 1" do
+  assert_equal 1, run(["feeds"])
+  assert_equal 1, run(["feeds", "status"])
+end
+
+test "help lists neither worker, jobs nor feeds" do
   assert_equal 0, run(["help"])
   usage = Cybertrain::Main.usage("blog")
   assert_nil usage.index("./blog worker")
   assert_nil usage.index("./blog jobs")
+  assert_nil usage.index("./blog feeds")
   assert_includes usage, "./blog migrate"
 end
 

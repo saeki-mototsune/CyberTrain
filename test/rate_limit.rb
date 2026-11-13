@@ -1,6 +1,7 @@
 require "stringio"
 require "cybertrain/test"
 require "cybertrain/controller"
+require "cybertrain/rate_limit"
 require "cybertrain/router"
 require "cybertrain/middleware/session_store"
 require "cybertrain/test/client"

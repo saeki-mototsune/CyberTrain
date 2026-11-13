@@ -2,15 +2,17 @@
 # built-in job kind "cybertrain mail", registered when this file is
 # required. cybertrain.rb requires it, so an application has it without
 # doing anything; it is apart from cybertrain/mailer.rb because the queue
-# is cybertrain/job (SQLite through Spinel FFI), and a program that only
-# sends mail should neither link SQLite nor stop loading under CRuby.
+# is cybertrain/jobs (SQLite through Spinel FFI, and the core), and a
+# program that only sends mail should neither link SQLite nor stop loading
+# under CRuby. It requires cybertrain/jobs, not only cybertrain/job, so the
+# server role starts the job threads that send it (JobsFeature).
 #
 # Registering the kind means a process that runs jobs (`./<app> server`
 # unless Config#worker is off, and `./<app> worker`) starts its job threads
 # even when the application defines no job of its own.
 require "json"
 require "cybertrain/cast"
-require "cybertrain/job"
+require "cybertrain/jobs"
 require "cybertrain/mailer"
 
 module Cybertrain

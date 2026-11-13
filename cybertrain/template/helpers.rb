@@ -20,10 +20,10 @@ require "cybertrain/pagination"
 require "cybertrain/params"
 require "cybertrain/views"
 require "cybertrain/component"
-require "cybertrain/stream"
+require "cybertrain/feature"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
-require "cybertrain/template/turbo_stream_builder"
+require "cybertrain/template/helper_object"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/url_support"
 
@@ -161,22 +161,17 @@ module Cybertrain
         when "dom_id"
           no_kwargs(kwargs, name)
           dom_id(args)
-        when "turbo_stream_from" then turbo_stream_from(args, kwargs)
         when "turbo_frame_tag" then turbo_frame_tag(args, kwargs, block, interp, env)
-        when "turbo_stream"
-          # The template's builder (`turbo_stream.replace ...`). No method
-          # named turbo_stream here: Controller#turbo_stream returns
-          # TurboStreams (NAME_HOMES in script/check-reserved-names).
-          helper_arity!(name, args, 0, 0)
-          helper_no_keywords!(name, kwargs)
-          raise CallSyntaxError, "turbo_stream takes no block (turbo_stream.replace \"id\" do ... end does)" unless block.nil?
-
-          TurboStreamBuilder.new(self, interp, env)
         when "time_tag" then time_tag(args, kwargs, block, interp, env)
         when "current_page?" then current_page?(args, kwargs)
-        when "signed_stream_name" then signed_stream_name(args)
-        when "stream_source_path" then stream_source_path(args, kwargs)
         else
+          # A loaded subsystem's helpers (Feature#feature_helper: with
+          # cybertrain/streams, turbo_stream_from, turbo_stream,
+          # signed_stream_name and stream_source_path), before anything the
+          # application defines, as the arms above.
+          feature = Features.helper_index(name)
+          return Features.call_helper(feature, self, name, args, kwargs, block, interp, env) if feature >= 0
+
           # Inside a component's template its view methods come first (the
           # component is the template's self, as in ViewComponent).
           depth = @components.size
@@ -301,13 +296,14 @@ module Cybertrain
 
           page_method(recv, name_sym, name_str)
         when Html::TagBuilder then tag_builder_call(name_str, args, kwargs, block, interp, env)
-        when TurboStreamBuilder
-          # The block renders at once, here: the builder never holds it
-          # (spikes/NOTES.md rule 88).
-          return recv.call_method(name_sym, args, kwargs) if block.nil?
+        when HelperObject
+          # A loaded subsystem's helper object (with cybertrain/streams,
+          # the template's turbo_stream builder). The block renders at
+          # once, here: the object never holds it (spikes/NOTES.md rule 88).
+          return recv.helper_object_call(name_sym, args, kwargs) if block.nil?
 
           content = interp.capture(block, env)
-          recv.call_method_with_block(name_sym, args, kwargs, content)
+          recv.helper_object_call_with_block(name_sym, args, kwargs, content)
         else super(recv, name_sym, name_str, args, kwargs, block, interp, env)
         end
       end
@@ -1231,28 +1227,6 @@ module Cybertrain
         FormBuilder.html_text(v)
       end
 
-      # --- streams (turbo-rails' names) ----------------------------------------
-
-      # turbo_stream_from "alerts", @article: a <turbo-stream-source> whose
-      # src is the stream endpoint with one signed token for all the names
-      # (a String as it is, a record as Stream.name_for gives it). Turbo
-      # opens it as an EventSource; `ws: true` gives a ws:// (wss:// behind
-      # an https proxy) URL instead, built from the request, which Turbo
-      # opens as a WebSocket.
-      # The token is in the URL, so a proxy's access log sees it (the
-      # framework's own request log writes it as [FILTERED]); anyone holding
-      # it can read those streams.
-      def turbo_stream_from(args, kwargs)
-        token = signed_stream_name(args)
-        src = +""
-        src << stream_ws_base if kwargs["ws"] == true
-        src << Helpers.stream_endpoint_path
-        src << "?s="
-        src << token
-        escaped = Html.escape(src)
-        SafeString.of("<turbo-stream-source src=\"#{escaped}\"></turbo-stream-source>")
-      end
-
       # turbo_frame_tag @article, src: article_path(@article), loading: "lazy",
       # target: "_top" do ... end: `<turbo-frame id="article_3" src="..."
       # loading="lazy" target="_top">...</turbo-frame>`. The id is a String
@@ -1575,60 +1549,6 @@ module Cybertrain
         x = a.size > 1 && a.end_with?("/") ? a[0, a.size - 1].to_s : a
         y = b.size > 1 && b.end_with?("/") ? b[0, b.size - 1].to_s : b
         x == y
-      end
-
-      # The signed token naming the streams, for hand-written JavaScript.
-      def signed_stream_name(args)
-        raise ArgumentError, "signed_stream_name needs at least one stream" if args.empty?
-
-        names = Array.new(0) { "" }
-        i = 0
-        while i < args.size
-          value = args[i]
-          case value
-          when Cybertrain::Model then names << Stream.name_for(value)
-          else names << FormBuilder.value_text(value)
-          end
-          i += 1
-        end
-        Stream.sign(names)
-      end
-
-      # The endpoint URL with the token and `mode=json` (or mode: "raw"),
-      # for an EventSource or WebSocket written by hand.
-      def stream_source_path(args, kwargs)
-        mode = kwargs["mode"].nil? ? "json" : lower_text(kwargs["mode"])
-        raise ArgumentError, "stream_source_path mode: must be \"json\" or \"raw\", got #{mode.inspect}" unless mode == "json" || mode == "raw"
-
-        token = signed_stream_name(args)
-        out = +""
-        out << Helpers.stream_endpoint_path
-        out << "?s="
-        out << token
-        out << "&mode="
-        out << mode
-        out
-      end
-
-      def self.stream_endpoint_path
-        path = Cybertrain.config.stream_path
-        raise ArgumentError, "the stream endpoint is off (Config#stream_path is \"\")" if path.empty?
-
-        path
-      end
-
-      # "ws://host" from the request's base URL ("wss://" for https).
-      def stream_ws_base
-        # Raises OutsideRequest when rendering outside a request (B's rule);
-        # the nil check below is the fallback for a bare Helpers.new(nil).
-        request_bound!("turbo_stream_from")
-        controller = @controller
-        raise Views::OutsideRequest, "turbo_stream_from ws: true needs a request" if controller.nil?
-
-        base = controller.request.base_url
-        return "wss://#{base.byteslice(8, base.bytesize - 8)}" if base.start_with?("https://")
-
-        "ws://#{base.byteslice(7, base.bytesize - 7)}"
       end
 
       # --- request state ------------------------------------------------------

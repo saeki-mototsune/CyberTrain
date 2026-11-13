@@ -8,12 +8,12 @@
 # and compiles less (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md).
 require "cybertrain/core"
 require "cybertrain/jobs"
-# Turbo Streams (the core still loads them today; cybertrain/streams later).
-require "cybertrain/stream"
-# WebSocket feeds (cybertrain/feeds later).
-require "cybertrain/websocket/feed_table"
+# After jobs and before streams: the server role starts and stops the
+# features in this order (Job, Scheduler, Background, Stream::Poller), as
+# it did before they were optional.
+require "cybertrain/feeds"
+require "cybertrain/streams"
 require "cybertrain/mailer"
 require "cybertrain/mailer/later"
-# The default store of Controller.rate_limit counts.
 require "cybertrain/cache"
 require "cybertrain/rate_limit"

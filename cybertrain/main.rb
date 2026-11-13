@@ -124,8 +124,6 @@ module Cybertrain
       return serve(name, argv, router, url_resolver, views) if server?(argv)
 
       case argv[0]
-      when "feeds"
-        role_app(name, router, url_resolver, views).run_feeds(argv[1, argv.size - 1])
       when "migrate"
         DB::CLI.run(["migrate"], ".", name)
       when "db"
@@ -170,6 +168,7 @@ module Cybertrain
       case word
       when "worker" then "the worker role needs require \"cybertrain/jobs\" in bin/#{name}.rb"
       when "jobs" then "the jobs command needs require \"cybertrain/jobs\" in bin/#{name}.rb"
+      when "feeds" then "the feeds role needs require \"cybertrain/feeds\" in bin/#{name}.rb"
       else ""
       end
     end
@@ -318,10 +317,9 @@ module Cybertrain
     def self.usage(name)
       text = +"Usage:\n"
       text << "  ./#{name} [server [PORT]]   start the server\n"
-      # A loaded subsystem's roles (cybertrain/jobs: worker).
+      # A loaded subsystem's roles (cybertrain/jobs: worker; cybertrain/feeds:
+      # feeds).
       text << Features.usage_text(name, "roles")
-      text << "  ./#{name} feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)\n"
-      text << "  ./#{name} feeds status      print each feed's health from the status rows\n"
       text << "  ./#{name} migrate           apply pending migrations\n"
       text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create\n"
       # The continuation lines up under "migrate" whatever the name.

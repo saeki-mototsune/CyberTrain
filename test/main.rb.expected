@@ -2,8 +2,6 @@ ok   server_args keeps only a port
 ok   server? recognises the bare, named and port forms
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
@@ -12,8 +10,6 @@ Usage:
   ./blog help
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
@@ -22,8 +18,6 @@ Usage:
   ./blog help
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
@@ -34,8 +28,6 @@ ok   help prints the usage for this app and exits 0
 Unknown command 'frobnicate'
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize

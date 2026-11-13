@@ -1,26 +1,27 @@
-ok   no registered feature is jobs, and none runs periodic work
+ok   no feature is registered, and none runs periodic work
 ok   an application on the core boots and serves a page
 ok   /up answers ok: with no jobs there is no worker to be stale
+ok   the stack has no stream endpoint: its path goes to the router
+ok   a stream helper in a template is an undefined helper
 the worker role needs require "cybertrain/jobs" in bin/blog.rb
 ok   worker says which require it needs and exits 1
 the jobs command needs require "cybertrain/jobs" in bin/blog.rb
 ok   jobs says which require it needs and exits 1
+the feeds role needs require "cybertrain/feeds" in bin/blog.rb
+the feeds role needs require "cybertrain/feeds" in bin/blog.rb
+ok   feeds says which require it needs and exits 1
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
-ok   help lists neither worker nor jobs
+ok   help lists neither worker, jobs nor feeds
 Unknown command 'nosuch'
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
@@ -28,4 +29,4 @@ Usage:
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
 ok   an unknown word is still unknown
-7 tests, 14 assertions, 0 failures
+10 tests, 22 assertions, 0 failures

@@ -16,12 +16,10 @@ require "cybertrain/middleware/host_authorization"
 require "cybertrain/middleware/health_check"
 require "cybertrain/middleware/ssl_redirect"
 require "cybertrain/middleware/content_security_policy_header"
-require "cybertrain/stream/endpoint"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/feature"
-require "cybertrain/background"
 require "cybertrain/views"
 require "cybertrain/runtime"
 require "cybertrain/dev"
@@ -271,58 +269,6 @@ module Cybertrain
       server_runner.run_server(argv)
     end
 
-    # `./<app> feeds [NAME...]` (Main.run): boots and runs
-    # Roles::FeedsRunner: checks the names against the registered feeds (an
-    # unknown one is an error that lists them), starts the WebSocket
-    # subscriptions (all of them, or the named ones) and runs until SIGTERM
-    # or SIGINT, then stops them. No port, no jobs, no scheduler. With no
-    # subscription registered it says so and returns 0.
-    # @param names [Array<String>] the feeds to run; empty for all
-    # @return [Integer] the exit status: 0, or 1 for a refused start or
-    #   after a feed died too often
-    # @api public
-    def run_feeds(names)
-      return run_feeds_status if !names.empty? && names[0] == "status"
-
-      busy = Runtime.role_problem
-      return Roles.refuse(busy) unless busy.empty?
-
-      Roles.reset_stop
-      @config.worker = true
-      boot
-      Roles::FeedsRunner.new(@config).run_feeds(names)
-    end
-
-    # `./<app> feeds status`: boots (the database), prints one line per
-    # feed status row (WebSocket::FeedTable) and returns 0; it starts no
-    # feed. The line:
-    #
-    #   NAME  connected|disconnected  process  last activity Ns ago  restarts N  updated Ns ago
-    #
-    # "last activity never" until the feed's first message. Times are
-    # relative to now, so a stale row stands out. A row whose name no
-    # registered subscription has (a feed renamed or removed since; `/up`
-    # does not count it) ends with "  (not registered)". With no rows it
-    # says so.
-    # @return [Integer] 0
-    # @api public
-    def run_feeds_status
-      @config.worker = true
-      boot
-      Roles::FeedsRunner.new(@config).feeds_status
-    end
-
-    # One `feeds status` line for a FeedTable row.
-    def self.feed_status_line(row, now)
-      active = row["last_activity_at"]
-      activity = active.nil? ? "never" : "#{now - Cast.int(active)}s ago"
-      state = Cast.int(row["connected"]) == 1 ? "connected" : "disconnected"
-      name = Cast.str(row["name"])
-      note = Background.feed_names.include?(name) ? "" : "  (not registered)"
-      "#{name}  #{state}  #{Cast.str(row["process"])}  last activity #{activity}  " \
-        "restarts #{Cast.int(row["restarts"])}  updated #{now - Cast.int(row["updated_at"])}s ago#{note}"
-    end
-
     # Ends a run_worker or run_feeds: sets a flag the waiting main thread
     # sees within 0.1 s (and nothing else, so the TERM trap can call it:
     # see serve_development). Also callable from another thread, as tests
@@ -358,8 +304,8 @@ module Cybertrain
       Roles.reset_stop
     end
 
-    # Waits for a stop, or for a feeds process's supervisor giving up on a
-    # feed (Background.feeds_failed?).
+    # Waits for a stop, or for a loaded subsystem failing for good
+    # (Roles.wait_stop).
     def self.wait_roles_stop
       Roles.wait_stop
     end
@@ -465,9 +411,11 @@ module Cybertrain
       # Before Static and the session: no public/ file shadows it, and it
       # sets no cookie. Inside RequestLogger, so polls are logged as usual.
       app = HealthCheck.new(app, c.health_path, c.health_worker_stale, c.health_feeds, c.health_feed_stale) unless c.health_path.empty?
-      # The realtime endpoint (Stream::Endpoint), also before the session:
-      # its authorisation is the signed token, and it sets no cookie.
-      app = Stream::Endpoint.new(app, c) unless c.stream_path.empty?
+      # A loaded subsystem's endpoint (Features.wrap_endpoints: with
+      # cybertrain/streams, the realtime endpoint Stream::Endpoint unless
+      # Config#stream_path is ""), also before the session: its
+      # authorisation is the signed token, and it sets no cookie.
+      app = Features.wrap_endpoints(app, c)
       # Only when a policy exists: an application without one keeps its
       # stack (and sends no CSP header, as in Rails).
       policy = c.content_security_policy_value

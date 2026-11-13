@@ -56,6 +56,9 @@ require "json"
 require "cybertrain/logger"
 require "cybertrain/config"
 require "cybertrain/background"
+# The feeds subsystem: the server role starts the services, `./<app> feeds`
+# runs them, `/up` checks them (FeedsFeature).
+require "cybertrain/feeds"
 require "cybertrain/http_client"
 require "cybertrain/websocket/frame"
 require "cybertrain/websocket/client"

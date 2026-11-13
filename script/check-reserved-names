@@ -111,7 +111,8 @@ actions_missing = action_names - Cybertrain::CLI::Templates::ATTACHMENT_RESERVED
 # (interpreter.rb), public or private, and every name helper_call answers
 # itself (its `when "..."` arms, which reach no app helper).
 require "cybertrain/generator/helper_scan"
-helpers_source = File.read(File.expand_path("../cybertrain/template/helpers.rb", __dir__))
+# template/stream_helpers.rb reopens Helpers for cybertrain/streams.
+helpers_source = %w[helpers.rb stream_helpers.rb].map { |f| File.read(File.expand_path("../cybertrain/template/#{f}", __dir__)) }.join("\n")
 interpreter_source = File.read(File.expand_path("../cybertrain/template/interpreter.rb", __dir__))
 helper_names = helpers_source.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten
 base = interpreter_source[/class HelperBase\b.*?\n    end\n/m].to_s
@@ -184,7 +185,7 @@ NAME_HOMES = {
   "before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "after_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "skip_before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
-  "rate_limit" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  "rate_limit" => %w[cybertrain/rate_limit.rb cybertrain/active_support.rb],
   # Controller#rate_limit_key raises; gen/controllers.rb's answers the by: method's String.
   "rate_limit_key" => %w[cybertrain/controller.rb cybertrain/generator/controllers_emitter.rb],
   "rescue_from" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
@@ -209,7 +210,7 @@ NAME_HOMES = {
   "html" => %w[cybertrain/format_collector.rb],
   # schema/table.rb's are the `t.json` and `t.text` column types.
   "json" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb],
-  "turbo_stream" => %w[cybertrain/format_collector.rb cybertrain/controller.rb],
+  "turbo_stream" => %w[cybertrain/format_collector.rb cybertrain/streams.rb],
   "csv" => %w[cybertrain/format_collector.rb],
   "xml" => %w[cybertrain/format_collector.rb],
   # template/ast.rb's TextNode#text and template/lexer.rb's Token#text are
