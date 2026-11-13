@@ -30,12 +30,15 @@
 # STDERR, `preview unavailable: <reason>; running the compiled loop`, then
 # the compiled loop runs, as `cybertrain server --spinel` would. The
 # reasons, checked in this order, the first that holds being the one named
-# (no_preview_reason): the framework has no cybertrain/preview.rb (a
-# release older than the preview); it has no cybertrain/dev/supervision.rb
-# (the children's contract); the `ruby` on PATH, which runs the children,
-# is missing, cannot be started, does not answer within
-# RUBY_PROBE_TIMEOUT, or cannot load fiddle (the preview's FFI shim needs it). The framework is checked first:
-# a newer framework is the fix there, whatever the Ruby.
+# (no_preview_reason): CYBERTRAIN_ENV is set to something other than
+# development (a child outside development is not supervised and would
+# bind the port the supervisor holds); the framework has no
+# cybertrain/preview.rb (a release older than the preview); it has no
+# cybertrain/dev/supervision.rb (the children's contract); the `ruby` on
+# PATH, which runs the children, is missing, cannot be started, does not
+# answer within RUBY_PROBE_TIMEOUT, or cannot load fiddle (the preview's
+# FFI shim needs it). The framework is checked before the Ruby: a newer
+# framework is the fix there, whatever the Ruby.
 #
 # The loop is one thread: wait (on the child's STDERR, and on the listener
 # while holding) for at most a tick, then Processes#poll, then the machine's
@@ -184,6 +187,9 @@ module Cybertrain
       # @yieldreturn [String, nil]
       # @return [String, nil]
       def self.no_preview_reason(load_path)
+        env = ENV["CYBERTRAIN_ENV"].to_s
+        return "CYBERTRAIN_ENV is #{env}, and the preview serves development only" unless env.empty? || env == "development"
+
         [PREVIEW, SUPERVISION].each do |path|
           next if framework_file?(load_path, path)
 
@@ -259,7 +265,10 @@ module Cybertrain
       # P14: a child a killed supervisor left still holds the listener (and
       # may run jobs): when child.pid names a live process that is this
       # application's child (application_child?), TERM, then KILL after
-      # LEFTOVER_GRACE. Any other process is left alone.
+      # LEFTOVER_GRACE. Any other process is left alone. A child of the live
+      # supervisor named by supervisor.pid is not a leftover: that
+      # supervisor is running (started by a command line supervisor? does
+      # not know), and this start is refused (refuse_if_supervised).
       # @param root [String] the application's directory
       # @param name [String] the package name
       # @param out [IO] where the line about it goes
@@ -270,6 +279,7 @@ module Cybertrain
         return if pid.nil?
 
         if alive?(pid) && application_child?(pid, root, name, load_path)
+          refuse_if_supervised(pid, root)
           out.puts "=> stopping a child left by an earlier cybertrain server (pid #{pid})"
           out.flush
           signal(pid, :TERM)
@@ -285,26 +295,80 @@ module Cybertrain
       end
 
       # A build a killed supervisor left (its process group, in build.pid)
-      # is still writing build/: when the group's leader is this
+      # may still be writing build/: when the group's leader is this
       # application's build (application_build?), the group is stopped
       # (stop_group) before this supervisor starts one of its own. Any other
-      # process is left alone.
+      # process is left alone, and a build of the live supervisor named by
+      # supervisor.pid refuses this start (refuse_if_supervised).
+      #
+      # Running or ended, that build was never stamped (Processes'
+      # stamp_binary): build/bin/NAME goes back to its launch, which is
+      # build.pid's own time (written at the launch), when it is newer. A
+      # save made while it ran is then newer than the binary, and the first
+      # build of this session compiles it.
       # @param root [String] the application's directory
       # @param name [String] the package name
       # @param out [IO] where the line about it goes
       def self.stop_leftover_build(root, name, out)
         path = File.join(root, DEV_DIR, "build.pid")
-        pgid = read_pid(path)
-        return if pgid.nil?
+        return unless File.exist?(path)
 
-        if alive?(pgid) && !ended?(pgid) && application_build?(pgid, root, name)
+        pgid = read_pid(path)
+        if pgid && alive?(pgid) && !ended?(pgid) && application_build?(pgid, root, name)
+          refuse_if_supervised(pgid, root)
           out.puts "=> stopping a build left by an earlier cybertrain server (pid #{pgid})"
           out.flush
           stop_group(pgid, LEFTOVER_GRACE) { ended?(pgid) }
           deadline = monotonic + 1
           sleep 0.05 until group_pids(pgid).empty? || monotonic >= deadline
         end
+        stamp_leftover_binary(root, name, path)
         File.delete(path) if File.exist?(path)
+        nil
+      end
+
+      # build/bin/NAME set back to build.pid's time when it is newer: the
+      # rule of Processes#stamp_binary, for a build no runner saw end.
+      def self.stamp_leftover_binary(root, name, pid_file)
+        launched = File.mtime(pid_file)
+        binary = File.join(root, "build", "bin", name)
+        File.utime(launched, launched, binary) if File.file?(binary) && File.mtime(binary) > launched
+        nil
+      rescue SystemCallError
+        nil
+      end
+
+      # A process a live `cybertrain server` of this application started
+      # (its parent is the PID in supervisor.pid) is that server's, not a
+      # leftover: refused like a second supervisor (refuse_second_supervisor
+      # knows a supervisor by its command line, which a version selector
+      # such as `cybertrain _0.4.0_ server` or a wrapper script hides).
+      # @raise [Failure]
+      def self.refuse_if_supervised(pid, root)
+        supervisor = read_pid(File.join(root, DEV_DIR, "supervisor.pid"))
+        return if supervisor.nil? || supervisor == Process.pid || !alive?(supervisor)
+        return unless parent_pid(pid) == supervisor
+
+        raise Failure, "a cybertrain server is already running here (pid #{supervisor})"
+      end
+
+      # The parent's PID, from /proc/PID/stat where it exists, else from
+      # `ps -o ppid=`; nil when neither tells.
+      # @return [Integer, nil]
+      def self.parent_pid(pid)
+        stat = proc_stat(pid)
+        # After the parenthesised command name: the state, then the parent.
+        text = stat.nil? || stat.rindex(")").nil? ? nil : stat[(stat.rindex(")") + 1)..].split[1]
+        text = IO.popen(["ps", "-o", "ppid=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).strip if text.nil?
+        text.match?(/\A[0-9]+\z/) ? text.to_i : nil
+      rescue SystemCallError
+        nil
+      end
+
+      # /proc/PID/stat's text, nil where it cannot be read.
+      def self.proc_stat(pid)
+        File.read("/proc/#{pid}/stat")
+      rescue SystemCallError
         nil
       end
 
@@ -333,7 +397,10 @@ module Cybertrain
           signal(-pgid, :TERM)
           sleep 0.01 until yield || monotonic - started >= grace
         end
-        signal(-pgid, :KILL)
+        # Not to a group with no member left: a leftover's leader is not
+        # this process's child, so nothing keeps its id from going to
+        # another group once it is reaped.
+        signal(-pgid, :KILL) unless group_pids(pgid).empty?
         nil
       end
 
@@ -351,22 +418,58 @@ module Cybertrain
       end
 
       # P10: host and port as the application's config gives them, from
-      # `bin/NAME.rb dev-address` under CRuby. An application that cannot
-      # be loaded here cannot be previewed: --spinel still runs it compiled.
+      # `bin/NAME.rb dev-address` under CRuby. bin/NAME.rb requires gen/,
+      # which may be stale here (a model renamed while no server ran, gen/
+      # not committed): when the first answer fails and `cybertrain build`
+      # does not hold its lock, gen runs once and the application is asked
+      # again. An application that still cannot be loaded here cannot be
+      # previewed: --spinel still runs it compiled.
       def self.address(root, name, load_path)
-        env = {}
-        env["CYBERTRAIN_ENV"] = "development" if ENV["CYBERTRAIN_ENV"].to_s.empty?
-        command = ["ruby", "-E", "UTF-8"] + load_path.map { |dir| "-I#{dir}" } +
-                  ["-r", "cybertrain/preview", "bin/#{name}.rb", "dev-address"]
-        out, err, status = Open3.capture3(env, *command, chdir: root, stdin_data: "")
-        match = out.lines.map(&:strip).reject(&:empty?).last.to_s.match(/\A(\S+) (\d+)\z/)
-        return [match[1], match[2].to_i] if status.success? && match
+        found, text = ask_address(root, name, load_path)
+        return found unless found.nil?
 
-        text = [err, out].map(&:strip).reject(&:empty?).join("\n")
+        unless Processes.build_locked?(root)
+          gen_out, gen_status = Open3.capture2e(child_env, *ruby_prefix(load_path), "bin/gen.rb", chdir: root, stdin_data: "")
+          if gen_status.success?
+            found, text = ask_address(root, name, load_path)
+            return found unless found.nil?
+          else
+            text = "#{text}\nbin/gen.rb failed too:\n#{gen_out.strip}"
+          end
+        end
         raise Failure, "bin/#{name}.rb does not load under CRuby, so it cannot be previewed:\n#{text}\n" \
                        "`cybertrain server --spinel` runs it compiled, without the CRuby preview."
       rescue SystemCallError => e
         raise Failure, "could not run ruby for the CRuby preview: #{e.message}"
+      end
+
+      # One `dev-address`: [[host, port], ""], or [nil, what it printed].
+      def self.ask_address(root, name, load_path)
+        command = ["ruby"] + cruby_child_args(load_path, name) + ["dev-address"]
+        out, err, status = Open3.capture3(child_env, *command, chdir: root, stdin_data: "")
+        match = out.lines.map(&:strip).reject(&:empty?).last.to_s.match(/\A(\S+) (\d+)\z/)
+        return [[match[1], match[2].to_i], ""] if status.success? && match
+
+        [nil, [err, out].map(&:strip).reject(&:empty?).join("\n")]
+      end
+
+      # What every child, gen and dev-address add to the environment (P9):
+      # development unless CYBERTRAIN_ENV is set (no_preview_reason sends
+      # any other value to the compiled loop).
+      # @return [Hash{String => String}]
+      def self.child_env
+        env = {}
+        env["CYBERTRAIN_ENV"] = "development" if ENV["CYBERTRAIN_ENV"].to_s.empty?
+        env
+      end
+
+      # `ruby -E UTF-8 -I<dir>...` (P9, P19): `-E UTF-8` whatever the
+      # locale, since the application's sources and templates are UTF-8, as
+      # the compiled binary takes them.
+      # @param load_path [Array<String>] the -I directories of `spin flags`
+      # @return [Array<String>]
+      def self.ruby_prefix(load_path)
+        ["ruby", "-E", "UTF-8"] + load_path.map { |dir| "-I#{dir}" }
       end
 
       # The supervisor's socket, held for its whole life.

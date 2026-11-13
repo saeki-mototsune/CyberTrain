@@ -24,6 +24,12 @@ RUBY_VERSION_ON_PATH = IO.popen(["ruby", "-e", "print RUBY_VERSION"], &:read)
 
 def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+# Whether the system shows a process's directory and whole arguments (Linux's
+# /proc). Where it does not (macOS), in_root? answers true and a child is
+# known by the exact line the supervisor spawns: the assertions that need a
+# directory or a relative path run only with /proc.
+PROC = File.directory?("/proc/self")
+
 def wait_until(seconds = 5)
   deadline = now + seconds
   loop do
@@ -280,6 +286,26 @@ test "a ruby on PATH that cannot load fiddle runs the compiled loop, after one l
   end
 end
 
+# A child outside development is not supervised and binds the port itself,
+# which the supervisor holds: such an environment gets the compiled loop, as
+# before the preview. Checked first, before the framework and the Ruby.
+test "CYBERTRAIN_ENV other than development runs the compiled loop, after one line; checked first" do
+  with_installed_gem do |dir, gem_dir, framework|
+    with_app do |root|
+      FileUtils.rm(File.join(framework, "cybertrain", "preview.rb"))
+      out = probe(dir, gem_dir, framework, root, "4000", extra_env: { "CYBERTRAIN_ENV" => "production" })
+      assert_equal ["preview unavailable: CYBERTRAIN_ENV is production, and the preview serves development only; " \
+                    "running the compiled loop",
+                    "compiled loop server 4000 --spinel", "exit 7"], said(out)
+      refute File.exist?(File.join(root, "tmp", "cybertrain-dev")), "the supervisor wrote nothing"
+      refute File.exist?(File.join(root, "child-started")), "no child was started"
+      out = probe(dir, gem_dir, framework, root, extra_env: { "CYBERTRAIN_ENV" => "development" })
+      assert_equal ["preview unavailable: this application's cybertrain (#{framework}) has no cybertrain/preview.rb; running the compiled loop",
+                    "compiled loop server --spinel", "exit 7"], said(out)
+    end
+  end
+end
+
 # The supervisor's own Ruby loads fiddle (the probe above runs it); only
 # the children's is judged.
 test "child_ruby asks the ruby on PATH for its version and whether it loads fiddle, in one run" do
@@ -490,6 +516,45 @@ test "an application that does not load under CRuby is refused, naming --spinel"
   end
 end
 
+# bin/app.rb requires gen/, which only gen writes: a gen/ that is missing
+# or stale when the server starts is regenerated before the application is
+# refused.
+test "an application that loads only after gen is not refused: gen runs once and the address is asked again" do
+  taken = TCPServer.new("127.0.0.1", 0)
+  with_app do |root|
+    File.write(File.join(root, "port"), taken.addr[1].to_s)
+    File.write(File.join(root, "bin", "app.rb"), "require_relative '../gen/app'\n" + File.read(File.join(root, "bin", "app.rb")))
+    File.write(File.join(root, "bin", "gen.rb"),
+               "Dir.mkdir('gen') unless Dir.exist?('gen')\nFile.write('gen/app.rb', '# generated')\nFile.write('gen-ran', '')\n")
+    code, out = run_server(root)
+    # Past the address: it stops at the port, which this test holds.
+    assert_equal 1, code
+    assert_includes out, "error: port #{taken.addr[1]} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+    assert File.exist?(File.join(root, "gen-ran")), "gen ran"
+  end
+ensure
+  taken&.close
+end
+
+test "under the build lock, or when gen fails too, the application that does not load is refused" do
+  with_app do |root|
+    File.write(File.join(root, "bin", "app.rb"), "require_relative '../gen/app'\n")
+    File.write(File.join(root, "bin", "gen.rb"), "File.write('gen-ran', '')\nwarn 'gen: no such model'\nexit 1\n")
+    code, out = run_server(root)
+    assert_equal 1, code
+    assert_includes out, "does not load under CRuby"
+    assert_includes out, "bin/gen.rb failed too:\ngen: no such model"
+    assert File.exist?(File.join(root, "gen-ran")), "gen ran"
+    File.delete(File.join(root, "gen-ran"))
+    FileUtils.mkdir_p(File.join(root, "tmp"))
+    File.write(Cybertrain::CLI::Build.lock_path(root), Process.pid.to_s)
+    code, out = run_server(root)
+    assert_equal 1, code
+    assert_includes out, "does not load under CRuby"
+    refute File.exist?(File.join(root, "gen-ran")), "gen does not run under the lock"
+  end
+end
+
 test "a second supervisor for the same application is refused" do
   # The port is held too, so that a supervisor that went past the check
   # stops at the port instead of serving.
@@ -529,12 +594,16 @@ test "a cybertrain server in another directory is not a refusal" do
         FileUtils.mkdir_p(File.join(root, "tmp", "cybertrain-dev"))
         File.write(File.join(root, "tmp", "cybertrain-dev", "supervisor.pid"), other.to_s)
         wait_until { DevServer.command_line(other).include?("server") }
-        refute DevServer.in_root?(other, root)
-        code, out = run_server(root)
-        # Past the check: it stops at the port, which this test holds.
-        assert_equal 1, code
-        assert_includes out, Cybertrain::PortInUse::IN_USE
-        refute gone?(other), "the other application's server is left alone"
+        if PROC
+          refute DevServer.in_root?(other, root)
+          code, out = run_server(root)
+          # Past the check: it stops at the port, which this test holds.
+          assert_equal 1, code
+          assert_includes out, Cybertrain::PortInUse::IN_USE
+          refute gone?(other), "the other application's server is left alone"
+        else
+          assert DevServer.in_root?(other, root), "without /proc the directory is not known"
+        end
       ensure
         Process.kill(:KILL, other)
         Process.wait(other)
@@ -637,6 +706,11 @@ test "only this application's bin/app.rb or build/bin/app is taken for a leftove
         [[RbConfig.ruby, "bin/app.rb", "4000"], other, false],
         [["build/bin/appx", "4000"], root, false]
       ]
+      # Without /proc the directory a relative path is read against is not
+      # known, and a child is recognised by the exact line the supervisor
+      # spawns (the tests "without /proc ..." cover that): these cases need
+      # /proc.
+      cases = [] unless PROC
       cases.each do |command, dir, stopped|
         pid = Process.spawn(*command, chdir: dir, out: File::NULL)
         begin
@@ -680,6 +754,9 @@ test "only this application's `spin build NAME` is taken for a leftover build" d
         [[spin, "run", "app"], root, false],
         [[RbConfig.ruby, "-e", "sleep 30", "spin", "build", "app"], root, false]
       ]
+      # Without /proc a process's directory is not known (in_root? answers
+      # true): the case in another directory needs /proc.
+      cases.reject! { |_command, dir, _stopped| dir != root } unless PROC
       cases.each do |command, dir, stopped|
         pid = Process.spawn(*command, chdir: dir, pgroup: true)
         begin
@@ -706,6 +783,111 @@ test "only this application's `spin build NAME` is taken for a leftover build" d
       end
     end
   end
+end
+
+# A build left by a killed supervisor that has ended before the next start
+# wrote its binary with nobody to stamp it (P25): build.pid's own time is
+# its launch, and the binary goes back to it, so that a save made while it
+# ran is newer than the binary and the first build compiles it.
+test "a build left by a killed supervisor that has since ended: the binary goes back to its launch, never forward" do
+  with_app do |root|
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    FileUtils.mkdir_p(dev)
+    FileUtils.mkdir_p(File.join(root, "build", "bin"))
+    ended = Process.spawn(RbConfig.ruby, "-e", "exit 0")
+    Process.wait(ended)
+    pid_file = File.join(dev, "build.pid")
+    binary = File.join(root, "build", "bin", "app")
+    launch = Time.at(Time.now.to_i - 60, 250_000_000, :nsec)
+    File.write(pid_file, ended.to_s)
+    File.utime(launch, launch, pid_file)
+    File.write(binary, "binary")
+    log = StringIO.new
+    DevServer.stop_leftover_build(root, "app", log)
+    assert File.mtime(binary) == launch, "set back to the launch: #{File.mtime(binary).to_r} is not #{launch.to_r}"
+    refute File.exist?(pid_file)
+    assert_equal "", log.string
+    older = launch - 30
+    File.utime(older, older, binary)
+    File.write(pid_file, ended.to_s)
+    File.utime(launch, launch, pid_file)
+    DevServer.stop_leftover_build(root, "app", StringIO.new)
+    assert File.mtime(binary) == older, "an older binary keeps its time"
+    refute File.exist?(pid_file)
+  end
+end
+
+# A live supervisor that the command-line check does not know (RubyGems'
+# version selector `cybertrain _0.4.0_ server`, a wrapper script): its child
+# and its build are not leftovers, and the second start is refused before
+# it touches them.
+FAKE_SUPERVISOR = <<~'RUBY'
+  dev = File.join("tmp", "cybertrain-dev")
+  pid = if ARGV.last == "child"
+          Process.spawn(RbConfig.ruby, "bin/app.rb", "4000")
+        else
+          Process.spawn(File.join(Dir.pwd, "fake", "spin"), "build", "app", pgroup: true)
+        end
+  File.write(File.join(dev, ARGV.last == "child" ? "child.pid" : "build.pid"), pid.to_s)
+  File.write("fake-ready", pid.to_s)
+  sleep 30
+RUBY
+
+test "a child or build of a live supervisor whose command line is not recognised refuses the start and is left alone" do
+  taken = TCPServer.new("127.0.0.1", 0)
+  with_app do |root|
+    File.write(File.join(root, "port"), taken.addr[1].to_s)
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    FileUtils.mkdir_p(dev)
+    FileUtils.mkdir_p(File.join(root, "fake"))
+    File.write(File.join(root, "fake", "cybertrain"), FAKE_SUPERVISOR)
+    File.write(File.join(root, "fake", "spin"), "#!#{RbConfig.ruby}\nsleep 30\n")
+    File.chmod(0o755, File.join(root, "fake", "spin"))
+    ["child", "build"].each do |what|
+      File.delete(File.join(root, "fake-ready")) if File.exist?(File.join(root, "fake-ready"))
+      fake = Process.spawn(RbConfig.ruby, File.join(root, "fake", "cybertrain"), "_0.4.0_", "server", what, chdir: root)
+      started = nil
+      begin
+        File.write(File.join(dev, "supervisor.pid"), fake.to_s)
+        assert wait_until { File.exist?(File.join(root, "fake-ready")) }, "the fake supervisor started its #{what}"
+        started = File.read(File.join(root, "fake-ready")).to_i
+        mine = DevServer.command_line(Process.pid)
+        wait_until { DevServer.command_line(started) != mine && DevServer.command_line(started) != DevServer.command_line(fake) }
+        refute DevServer.supervisor?(DevServer.command_line(fake)), "not known by its command line"
+        code, out = run_server(root)
+        assert_equal 1, code
+        assert_includes out, "error: a cybertrain server is already running here (pid #{fake})"
+        refute gone?(started), "the live supervisor's #{what} is left alone"
+        assert File.exist?(File.join(dev, what == "child" ? "child.pid" : "build.pid")), "its PID file stays"
+      ensure
+        [started, fake].compact.each do |pid|
+          Process.kill(:KILL, what == "build" && pid == started ? -pid : pid)
+        rescue Errno::ESRCH
+          nil
+        end
+        Process.wait(fake)
+      end
+    end
+  end
+ensure
+  taken&.close
+end
+
+# The final KILL goes to the group only while it has a member: a leftover's
+# leader is not this process's child, so once it is gone the group's id may
+# be another group's.
+test "stop_group sends no KILL to a group with no member left" do
+  sent = []
+  originals = %i[signal group_pids].to_h { |name| [name, DevServer.method(name)] }
+  DevServer.define_singleton_method(:signal) { |pid, name| sent << [pid, name] }
+  DevServer.define_singleton_method(:group_pids) { |_pgid| [] }
+  DevServer.stop_group(4321, 0.05) { true }
+  assert_equal [], sent
+  DevServer.define_singleton_method(:group_pids) { |_pgid| [4321, 4322] }
+  DevServer.stop_group(4321, 0.05) { true }
+  assert_equal [[4322, :TERM], [-4321, :KILL]], sent
+ensure
+  originals&.each { |name, method| DevServer.define_singleton_method(name, method) }
 end
 
 test "program finds a ruby interpreter's script after its options" do
@@ -1121,14 +1303,21 @@ test "a build left by a killed supervisor is stopped, grandchild included" do
     assert wait_until(10) { log_of(root).include?("=> preview: CRuby (") }, "the CRuby child became ready:\n#{log_of(root)}"
     build = build_pids(root)
     assert_equal build[0].to_s, File.read(File.join(root, "tmp", "cybertrain-dev", "build.pid"))
+    launch = File.mtime(File.join(root, "tmp", "cybertrain-dev", "build.pid"))
     Process.kill(:KILL, first)
     Process.wait(first)
     File.delete(File.join(root, "build-pids"))
+    # What the orphan build wrote before it was stopped: newer than its
+    # launch, and no runner is left to set it back.
+    FileUtils.mkdir_p(File.join(root, "build", "bin"))
+    binary = File.join(root, "build", "bin", "app")
+    File.write(binary, "binary")
     second = start.call
     assert wait_until(10) { log_of(root).include?("=> preview: CRuby (") && File.exist?(File.join(root, "build-pids")) },
            "the second supervisor serves and builds:\n#{log_of(root)}"
     assert_includes log_of(root), "=> stopping a build left by an earlier cybertrain server (pid #{build[0]})"
     assert_gone_within(build, 0.5)
+    assert File.mtime(binary) == launch, "the binary is at the orphan build's launch (#{File.mtime(binary).to_r} is not #{launch.to_r})"
     rebuilt = build_pids(root)
     assert_equal rebuilt[0].to_s, File.read(File.join(root, "tmp", "cybertrain-dev", "build.pid"))
     Process.kill(:TERM, second)

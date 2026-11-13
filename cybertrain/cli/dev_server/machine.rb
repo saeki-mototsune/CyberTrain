@@ -27,7 +27,8 @@ module Cybertrain
       #                                            after gen and after stop_child, and a round
       #                                            that finds it held holds and stays pending
       #                   any state, lock held  -> the "Changed" line, the lock line once, pending,
-      #                                            no calls
+      #                                            no calls; when nothing serves (none), the lock's
+      #                                            hold, so that the port is not left unanswered
       #                   gen fails             -> stop_child (not on the first round), hold
       #                                            "gen failed"; no child, no build; the
       #                                            generation moves
@@ -38,6 +39,10 @@ module Cybertrain
       #                   recover :rebuild, lock free -> release_hold, CRuby child, build (no gen)
       #                   rebuild, lock free    -> start_build (no gen, no restart; the serving
       #                                            child, if any, keeps serving)
+      #                   serving none, build ready, no change pending
+      #                                         -> hand over again (a handover that gave way to a
+      #                                            change that never came, e.g. a file that was
+      #                                            gone by the next poll)
       #                   anything waiting, lock held -> nothing (the lock line is logged once)
       #                   otherwise             -> nothing
       # on_build_done ok  other generation, build not building, or pending -> ignored
@@ -45,7 +50,9 @@ module Cybertrain
       #                                            starts on the tick after the lock (build/bin/NAME
       #                                            is shared with `cybertrain build`)
       #                   current, lock free    -> hand over: stop_child, then
-      #                                              a change is waiting -> nothing more
+      #                                              a change is waiting -> nothing more (serving
+      #                                                none; the change's round, or the tick
+      #                                                above, follows)
       #                                              the lock appeared   -> hold, recover :rebuild
       #                                              else                -> start the binary
       # on_build_done bad other generation, build not building, or pending -> ignored
@@ -194,6 +201,10 @@ module Cybertrain
               end
               sync
             end
+          elsif @serving == :none && @build == :ready && !@runner.change_pending?
+            # hand_over reads the lock again after its stop.
+            hand_over
+            sync
           end
         end
 
@@ -213,6 +224,11 @@ module Cybertrain
         def run_pending
           if @runner.build_locked?
             log_lock_once
+            if @serving == :none
+              @runner.hold("cybertrain build in progress", "the server starts when it finishes")
+              @serving = :holding
+              sync
+            end
           else
             @lock_logged = false
             run_round

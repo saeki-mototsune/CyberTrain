@@ -91,6 +91,26 @@ def poll_for(runner, machine, seconds)
   poll_until(runner, machine, seconds) { false }
 end
 
+# Waits until the block is true or seconds have passed; its last answer.
+def wait_for(seconds = 5)
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
+  loop do
+    done = yield
+    return done if done || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+    sleep 0.02
+  end
+end
+
+# The filesystem's clock now, the one a file's time comes from (the
+# kernel's coarse clock can lag the wall clock by a tick): a marker file's
+# modification time.
+def fs_now(root)
+  marker = File.join(root, "clock-marker")
+  File.write(marker, "")
+  File.mtime(marker)
+end
+
 def wait_for_file(path, seconds = 5)
   deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
   sleep 0.01 until File.exist?(path) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
@@ -254,6 +274,46 @@ test "the child inherits the listener and its environment" do
                   "CYBERTRAIN_DEV_STATE_FILE=#{dev}/state", "CYBERTRAIN_DEV_FAILURE_FILE=#{dev}/failure",
                   "CYBERTRAIN_DEV_GENERATION=6", "CYBERTRAIN_ENV=#{ENV["CYBERTRAIN_ENV"] || "development"}"], env
     assert_equal runner.child_pid.to_s, File.read(File.join(dev, "child.pid"))
+  end
+end
+
+# A descriptor the supervisor inherited without close-on-exec (the lock of
+# playground/playground-server, fd 9) does not reach its children or its
+# build: after a supervisor killed outright, a leftover would hold it. The
+# listener still does.
+def descriptor_open_script(name, fd)
+  <<~RUBY
+    def open?(fd)
+      IO.for_fd(fd, autoclose: false)
+      true
+    rescue Errno::EBADF
+      false
+    end
+    listen = ENV["CYBERTRAIN_DEV_LISTEN_FD"].to_s
+    File.write(File.join(Dir.pwd, "#{name}.tmp"), "inherited=\#{open?(#{fd})} listener=\#{listen.empty? ? "none" : open?(Integer(listen))}")
+    File.rename(File.join(Dir.pwd, "#{name}.tmp"), File.join(Dir.pwd, "#{name}"))
+    sleep 30 if "#{name}" == "child-fds"
+  RUBY
+end
+
+test "the child and the build get the listener but no other descriptor the supervisor inherited" do
+  Dir.mktmpdir("dev-server-fds") do |dir|
+    inherited = File.open(File.join(dir, "lock"), "w")
+    inherited.close_on_exec = false
+    fd = inherited.fileno
+    begin
+      scripts = { cruby: descriptor_open_script("child-fds", fd), spin: descriptor_open_script("build-fds", fd) }
+      with_runner(scripts) do |runner, _listener, root|
+        runner.start_child(:cruby, 1)
+        runner.start_build(1)
+        assert wait_for_file(File.join(root, "child-fds")), "the child ran"
+        assert wait_for_file(File.join(root, "build-fds")), "the build ran"
+        assert_equal "inherited=false listener=true", File.read(File.join(root, "child-fds"))
+        assert_equal "inherited=false listener=none", File.read(File.join(root, "build-fds"))
+      end
+    ensure
+      inherited.close
+    end
   end
 end
 
@@ -633,15 +693,17 @@ test "a build that ends ok leaves the binary at its launch, older than a save ma
     binary = File.join(root, "build", "bin", "app")
     model = File.join(root, "article.rb")
     rec = Recorder.new
-    before = Time.now
+    before = fs_now(root)
     runner.start_build(1)
-    after = Time.now
+    after = fs_now(root)
+    launch = File.mtime(File.join(root, "tmp", "cybertrain-dev", "build.pid"))
     sleep 0.05
     File.write(model, "# saved during the build\n")
     poll_until(runner, rec) { rec.events.size == 1 }
     assert_equal [[:build, 1, true, "built\n"]], rec.events
     stamped = File.mtime(binary)
     assert stamped >= before && stamped <= after, "the binary is at the launch (#{stamped.to_f} not in #{before.to_f}..#{after.to_f})"
+    assert stamped == launch, "the launch is build.pid's time (#{stamped.to_r} is not #{launch.to_r})"
     assert stamped < File.mtime(model), "the binary is older than the save"
     assert_equal ["build app"], spin_calls(root)
     next_session(runner, listener, root) do |other|
@@ -658,9 +720,9 @@ test "after a build of a session that ends ok, an untouched application's next s
     write_fresh_binary(root)
     binary = File.join(root, "build", "bin", "app")
     rec = Recorder.new
-    before = Time.now
+    before = fs_now(root)
     runner.start_build(1)
-    after = Time.now
+    after = fs_now(root)
     poll_until(runner, rec) { rec.events.size == 1 }
     stamped = File.mtime(binary)
     assert stamped >= before && stamped <= after, "the binary is at the launch (#{stamped.to_f} not in #{before.to_f}..#{after.to_f})"
@@ -693,17 +755,21 @@ test "a build that ends ok without writing the binary keeps the binary's time ex
   end
 end
 
-test "a failed build leaves the binary's time as it is" do
+# A build that wrote the binary and then failed (a later step, a signal)
+# is stamped too: the binary may lack a save made while it ran.
+test "a failed build that wrote the binary leaves it at its launch too" do
   with_runner({ spin: DELAYED_SPIN }, load_path: []) do |runner, _listener, root|
     write_fresh_binary(root)
     File.write(File.join(root, "fail"), "")
     binary = File.join(root, "build", "bin", "app")
     rec = Recorder.new
-    after = Time.now
+    before = fs_now(root)
     runner.start_build(1)
+    after = fs_now(root)
     poll_until(runner, rec) { rec.events.size == 1 }
     assert_equal [[:build, 1, false, "built\n"]], rec.events
-    assert File.mtime(binary) > after + 0.1, "the binary keeps the time spin wrote it at"
+    stamped = File.mtime(binary)
+    assert stamped >= before && stamped <= after, "the binary is at the launch (#{stamped.to_f} not in #{before.to_f}..#{after.to_f})"
   end
 end
 
@@ -718,9 +784,9 @@ test "a cancelled build that wrote the binary leaves it at its launch" do
   with_runner({ spin: spin }, load_path: []) do |runner, _listener, root|
     write_fresh_binary(root)
     binary = File.join(root, "build", "bin", "app")
-    before = Time.now
+    before = fs_now(root)
     runner.start_build(1)
-    after = Time.now
+    after = fs_now(root)
     assert wait_for_file(File.join(root, "written"))
     assert File.mtime(binary) > after, "spin wrote the binary after the launch"
     runner.cancel_build
@@ -862,7 +928,7 @@ test "cancel_build lets the build's leader clean up after its children are stopp
   with_runner({ spin: spin }) do |runner, _listener, root|
     runner.start_build(1)
     assert wait_for_file(File.join(root, "pids.txt"))
-    sleep 0.05 while File.read(File.join(root, "pids.txt")).split.size < 2
+    assert wait_for { File.read(File.join(root, "pids.txt")).split.size == 2 }, "the build wrote both PIDs"
     pids = File.read(File.join(root, "pids.txt")).split.map(&:to_i)
     assert wait_for_file(File.join(root, "compiler-up"))
     took = elapsed { runner.cancel_build }
@@ -882,7 +948,7 @@ test "cancel_build kills the build's whole process group" do
     rec = Recorder.new
     runner.start_build(1)
     assert wait_for_file(File.join(root, "pids.txt"))
-    sleep 0.05 while File.read(File.join(root, "pids.txt")).split.size < 2
+    assert wait_for { File.read(File.join(root, "pids.txt")).split.size == 2 }, "the build wrote both PIDs"
     pids = File.read(File.join(root, "pids.txt")).split.map(&:to_i)
     runner.cancel_build
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
@@ -914,7 +980,7 @@ test "build.pid names the build's group while it runs: gone at its end, its canc
     runner.close
     assert File.exist?(path), "kept at close while the build runs"
     # A build that has ended unseen: close reaps it and removes the file.
-    sleep 0.05 until gone?(build)
+    assert wait_for { gone?(build) }, "the build ended"
     runner.close
     refute File.exist?(path), "removed at close"
   end

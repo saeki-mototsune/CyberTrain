@@ -516,6 +516,61 @@ test "the first round never stops a child, so the lock cannot appear between its
   assert_equal [[:run_gen], [:start_child, :cruby, 1], [:start_build, 1]], calls_after(r)
 end
 
+# A handover that gave way to a change (P16) leaves nothing serving; the
+# change's round normally follows. A change that never comes (a temporary
+# file under a watched glob, gone by the watcher's next poll) must not leave
+# the port unanswered: the next tick hands over again.
+test "nothing serving and a ready build with no change pending: the tick hands over again" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.pending = true
+  m.on_build_done(1, true, "")
+  assert_equal [[:stop_child]], calls_after(r)
+  assert_equal [1, :none, :ready], [m.generation, m.serving, m.build]
+  m.on_tick
+  assert_equal [], calls_after(r)
+  r.pending = false
+  m.on_tick
+  assert_equal [[:stop_child], [:start_child, :binary, 1]], calls_after(r)
+  assert_equal [1, :spinel, :ready], [m.generation, m.serving, m.build]
+  assert_equal [1, "spinel", "ready", ""], r.states.last
+  m.on_tick
+  assert_equal [], calls_after(r)
+end
+
+test "the same tick under the build lock holds, then CRuby and a fresh build after it" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.pending = true
+  m.on_build_done(1, true, "")
+  calls_after(r)
+  r.pending = false
+  r.locked = true
+  m.on_tick
+  assert_equal [[:stop_child], LOCK_HOLD], calls_after(r)
+  assert_equal [1, :holding, :idle], [m.generation, m.serving, m.build]
+  r.locked = false
+  m.on_tick
+  assert_equal [[:release_hold], [:start_child, :cruby, 1], [:start_build, 1]], calls_after(r)
+end
+
+test "a change under the build lock while nothing serves puts up the lock's hold" do
+  r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
+  r.pending = true
+  m.on_build_done(1, true, "")
+  calls_after(r)
+  r.pending = false
+  r.locked = true
+  m.on_change(["a.rb"])
+  assert_equal [LOCK_HOLD], calls_after(r)
+  assert_equal [1, :holding], [m.generation, m.serving]
+  assert_equal 1, r.lines.count(LOCK_LINE)
+  m.on_tick
+  assert_equal [], calls_after(r)
+  r.locked = false
+  m.on_tick
+  assert_equal ROUND_FROM_HOLDING, calls_after(r)
+  assert_equal [2, :cruby, :building], [m.generation, m.serving, m.build]
+end
+
 test "no child was ever started while the build lock was held, in any test of this file" do
   assert_equal [], STARTED_UNDER_LOCK
 end

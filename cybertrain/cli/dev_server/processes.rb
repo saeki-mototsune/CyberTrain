@@ -57,19 +57,14 @@ module Cybertrain
         WATCH_INTERVAL = 0.1
 
         # How much of a child's STDERR is kept for the page about its death.
+        # Every child's STDERR goes through a pipe the supervisor copies as it
+        # arrives: the pipe does not delay it (measured 2026-11-13 on
+        # examples/blog, a line written to $stderr while a request is
+        # handled, 20 requests each: the line reached the supervisor's STDERR
+        # before the response had been read, at worst 1.1 ms before it from
+        # the CRuby child and 0.6 ms before it from the compiled binary, whose
+        # runtime leaves C's stderr unbuffered).
         STDERR_LINES = 40
-
-        # Which children's STDERR goes through a pipe the supervisor copies
-        # (and keeps the tail of). A kind left out writes straight to the
-        # supervisor's STDERR, and its death is known from the failure file
-        # and the exit status alone. Both kinds are piped because the pipe
-        # does not delay either (measured 2026-11-13 on examples/blog, a line
-        # written to $stderr while a request is handled, 20 requests each):
-        # the line reached the supervisor's STDERR before the response had
-        # been read, at worst 1.1 ms before it from the CRuby child and
-        # 0.6 ms before it from the compiled binary, whose runtime leaves C's
-        # stderr unbuffered.
-        PIPED_STDERR = [:cruby, :binary].freeze
 
         # Dev::Rebuilder's rule, restated (that file pulls in framework files
         # the gem does not ship): a lock older than this is abandoned.
@@ -95,12 +90,12 @@ module Cybertrain
         # cannot make the tail grow past STDERR_LINES of this.
         TAIL_LINE_CHARS = 4096
 
-        # The process this runner owns: what it is, the STDERR pipe it reads
-        # (nil when not piped), and the last lines that came through it.
+        # The process this runner owns: what it is, the STDERR pipe it reads,
+        # and the last lines that came through it.
         Child = Struct.new(:pid, :kind, :generation, :started, :stderr, :partial, :tail, :ready)
         # A build: its group's leader, the generation it is for, whether it
-        # is the incremental command, and the wall-clock time read just
-        # before it was spawned (stamp_binary).
+        # is the incremental command, and its launch time (spawn_build, for
+        # stamp_binary).
         Job = Struct.new(:pid, :generation, :incremental, :launched)
 
         attr_accessor :ready_timeout, :stop_grace, :watch_interval
@@ -139,10 +134,8 @@ module Cybertrain
 
         # --- the commands ----------------------------------------------------
 
-        # `-E UTF-8` whatever the locale: the application's sources and
-        # templates are UTF-8, as the compiled binary takes them.
         def ruby_prefix
-          ["ruby", "-E", "UTF-8"] + @load_path.map { |dir| "-I#{dir}" }
+          DevServer.ruby_prefix(@load_path)
         end
 
         # The CRuby child or the compiled binary; the port is the only argument.
@@ -166,11 +159,6 @@ module Cybertrain
         def build_command(incremental)
           command = ["spin", "build", @name]
           incremental ? command + ["--", "--incremental"] : command
-        end
-
-        # Whether this kind of child's STDERR goes through the copied pipe.
-        def pipe_stderr?(kind)
-          PIPED_STDERR.include?(kind)
         end
 
         # --- files ---------------------------------------------------------------
@@ -211,15 +199,19 @@ module Cybertrain
           stop_child
           FileUtils.mkdir_p(dev_dir)
           ["ready", "failure"].each { |file| delete_file(dev_path(file)) }
-          reader, writer = IO.pipe if pipe_stderr?(kind)
+          reader, writer = IO.pipe
           # The listener and the pipe are shared with the child as open file
           # descriptions: CRuby makes both non-blocking (accept_nonblock
           # while holding does it to the listener), and a compiled child
           # would then see EAGAIN from accept and write.
           @listener.nonblock = false
-          writer.nonblock = false if writer
-          options = { chdir: @root, in: :in, out: child_out, err: writer || unpiped_err,
-                      @listener.fileno => @listener.fileno }
+          writer.nonblock = false
+          # close_others: the child gets STDIN, STDOUT, the pipe and the
+          # listener, and no other descriptor the supervisor inherited (a
+          # lock such as playground-server's would outlive a killed
+          # supervisor in its leftover child).
+          options = { chdir: @root, in: :in, out: child_out, err: writer,
+                      @listener.fileno => @listener.fileno, close_others: true }
           pid = Process.spawn(supervised_env(generation), *child_command(kind), options)
           writer&.close
           @child = Child.new(pid, kind, generation, now, reader, +"", [], false)
@@ -319,16 +311,21 @@ module Cybertrain
           nil
         end
 
+        def build_locked?
+          Processes.build_locked?(@root)
+        end
+
         # Dev::Rebuilder#build_in_progress?, restated: a lock older than
         # STALE_LOCK_AGE is stale; a lock without a PID (or with something
         # else than digits) counts; a lock whose PID is gone is stale. A
         # stale lock is removed.
-        def build_locked?
-          path = Build.lock_path(@root)
+        # @param root [String] the application's directory
+        def self.build_locked?(root)
+          path = Build.lock_path(root)
           return false unless File.exist?(path)
 
           if Time.now - File.mtime(path) >= STALE_LOCK_AGE
-            delete_file(path)
+            File.delete(path)
             return false
           end
 
@@ -336,7 +333,7 @@ module Cybertrain
           return true if pid.empty? || !pid.match?(/\A[0-9]+\z/)
           return true if DevServer.alive?(pid.to_i)
 
-          delete_file(path)
+          File.delete(path)
           false
         rescue SystemCallError
           # The lock vanished between the checks: the build has finished.
@@ -373,7 +370,7 @@ module Cybertrain
         # pass.
         def wait_for_activity(timeout)
           ios = []
-          ios << @child.stderr if @child&.stderr && !@child.stderr.closed?
+          ios << @child.stderr if @child && !@child.stderr.closed?
           if holding?
             ios << @listener
             ios.concat(@desk.ios)
@@ -443,9 +440,7 @@ module Cybertrain
         end
 
         def child_env
-          env = {}
-          env["CYBERTRAIN_ENV"] = "development" if ENV["CYBERTRAIN_ENV"].to_s.empty?
-          env
+          DevServer.child_env
         end
 
         # The five variables of Dev::Supervision (P9).
@@ -465,56 +460,41 @@ module Cybertrain
           @out.is_a?(IO) ? @out : File::NULL
         end
 
-        def unpiped_err
-          @err.is_a?(IO) ? @err : File::NULL
-        end
-
         # The build in a process group of its own, whose id (its PID) goes
         # to build.pid: a supervisor killed outright leaves the build
         # running, and the next one stops it (DevServer.stop_leftover_build).
+        # [its PID, its launch time]: build.pid's modification time, so that
+        # the launch and the binary it is compared with (stamp_binary) are
+        # read from one clock, the filesystem's, and a later supervisor reads
+        # the same launch from the same file. The wall clock read before the
+        # spawn when build.pid cannot be written.
         def spawn_build(incremental)
           FileUtils.mkdir_p(File.join(@root, "tmp"))
+          launched = Time.now
           pid = Process.spawn(child_env, *build_command(incremental),
                               chdir: @root, in: File::NULL, [:out, :err] => [File.join(@root, BUILD_LOG), "w"],
-                              pgroup: true)
+                              pgroup: true, close_others: true)
           begin
             FileUtils.mkdir_p(dev_dir)
             write_file(dev_path("build.pid"), pid.to_s)
+            launched = File.mtime(dev_path("build.pid"))
           rescue SystemCallError
             # The build is still owned and stopped by this runner; only a
             # later supervisor's cleanup after a crash is lost.
             nil
           end
-          pid
+          [pid, launched]
         end
 
-        # Whether this build is the incremental one. Never once the
-        # toolchain has refused the flag. Always after the runner's first
-        # build (R24): a later build follows a change round, and a save that
-        # lands in the last instant of the build before it (after spinel
-        # read the sources, before the binary was written and before the
-        # watcher saw the save) may leave a binary that lacks the save,
-        # while an incremental build compiles whatever the files' times.
-        # The first build (whatever came before it: a round whose gen
-        # failed, the build lock held at start) is incremental when
-        # build/bin/NAME is missing or not newer than every Ruby file of the
-        # application (Build.binary_stale?, the rule the compiled loop's
-        # run_server applies, read as there after gen, which rewrites only
-        # the generated files whose text changed), or not newer than every
-        # Ruby file of the other -I directories (the framework, a path
-        # dependency: spin rebuilds after a change to any of its Ruby
-        # files, measured 2026-11-13 with a test file of this repository).
-        # These rules trust the binary's time, and that time is truthful
-        # for a binary an earlier session built: every build of a session
-        # leaves it at that build's launch (stamp_binary, R25), so a save
-        # made while the build ran, even one the binary lacks, is newer
-        # than it. A binary that is newer gets the plain `spin build NAME`:
-        # spin's own check decides, and answers "up to date" in a fraction
-        # of a second, or builds when it finds an input these rules do not
-        # look at (spin.toml, the toolchain): a full build, slower than an
-        # incremental one (2 min against 75 s for examples/blog here) but
-        # correct. A view needs no new binary: the development binary reads
-        # app/views/ from disk.
+        # Whether this build is the incremental one (P23, P24). Never once
+        # the toolchain has refused the flag. Always after the runner's first
+        # build: a save in the last instant of a build can be missing from
+        # the binary it writes, and only an incremental build ignores the
+        # files' times. The first build is incremental when build/bin/NAME is
+        # missing or not newer than every Ruby file of the application
+        # (Build.binary_stale?) or of the other -I directories
+        # (dependency_newer?); otherwise plain `spin build NAME`, whose own
+        # check answers "up to date" at once for an untouched application.
         def incremental_build?
           return false unless @incremental
           return true if @launched
@@ -522,26 +502,15 @@ module Cybertrain
           Build.binary_stale?(@root, @name) || dependency_newer?
         end
 
-        # R25: build/bin/NAME is set back to the launch of the build that
-        # ended (ok, or cancelled: spin may have written it before the
-        # cancel), when it is newer than that launch, i.e. when that build
-        # wrote it. The time only ever moves back, never forward: a build
-        # that left the binary alone (spin's "up to date") keeps its time
-        # exactly, which an up-to-date start and the playground's image,
-        # checked by their binary's time, depend on. The compiler read the
-        # sources at some moment after the launch, so a save made while the
-        # build ran is then newer than the binary, whether or not the binary
-        # has it: the next session's first build finds the binary stale and
-        # builds incrementally, and a spin that refuses --incremental (every
-        # build plain) finds its inputs newer and compiles. Within a session
-        # it changes nothing, later builds being incremental anyway. gen
-        # runs before the launch, so the files it writes stay older than the
-        # binary, and an untouched application still starts on spin's "up
-        # to date". The binary only ever looks older for it, so `cybertrain
-        # build`, the --spinel loop and spin itself can at worst build once
-        # more than needed. Done before the machine hears of the build, so
-        # before the binary is started. A binary that cannot be set (its
-        # file gone, not ours) is said in one line and left as it is.
+        # P25: when a build has ended (ok, failed or cancelled) and
+        # build/bin/NAME is newer than its launch, i.e. that build wrote it,
+        # the binary is set back to the launch. The compiler read the sources
+        # after the launch, so a save made while the build ran is then newer
+        # than the binary, and the next session's first build compiles it
+        # (incremental_build?). The time only moves back: a binary the build
+        # left alone (spin's "up to date") keeps its time exactly. Done
+        # before the machine hears of the build. A time that cannot be set
+        # is said in one line.
         def stamp_binary(launched)
           binary = File.join(@root, "build", "bin", @name)
           return unless File.file?(binary) && File.mtime(binary) > launched
@@ -625,8 +594,8 @@ module Cybertrain
           # A launch that fails to spawn counts too: the next build is
           # incremental whatever happened.
           @launched = true
-          launched = Time.now
-          @build = Job.new(spawn_build(incremental), generation, incremental, launched)
+          pid, launched = spawn_build(incremental)
+          @build = Job.new(pid, generation, incremental, launched)
           nil
         rescue SystemCallError => e
           @build = nil
@@ -664,7 +633,7 @@ module Cybertrain
           end
           @build = nil
           delete_file(dev_path("build.pid"))
-          stamp_binary(build.launched) if ok
+          stamp_binary(build.launched)
           machine.on_build_done(build.generation, ok, output)
         end
 
@@ -677,7 +646,7 @@ module Cybertrain
         # Waits up to seconds for the child's STDERR, copying what comes.
         def pause(child, seconds)
           io = child.stderr
-          if io.nil? || io.closed?
+          if io.closed?
             sleep seconds
           else
             IO.select([io], nil, nil, seconds)
@@ -691,7 +660,7 @@ module Cybertrain
         # last STDERR_LINES lines.
         def copy_stderr(child)
           io = child.stderr
-          return if io.nil? || io.closed?
+          return if io.closed?
 
           loop do
             chunk = io.read_nonblock(65_536, exception: false)
@@ -725,7 +694,7 @@ module Cybertrain
         # PID file.
         def finish(child)
           copy_stderr(child)
-          child.stderr.close if child.stderr && !child.stderr.closed?
+          child.stderr.close unless child.stderr.closed?
           delete_file(dev_path("child.pid"))
         end
 

@@ -6,6 +6,7 @@ ok   a child that does not become ready in time is stopped and reported
 ok   stop_child sends TERM, then KILL after the grace
 ok   a child the runner stopped itself is never reported, nor its replacement's predecessor
 ok   the child inherits the listener and its environment
+ok   the child and the build get the listener but no other descriptor the supervisor inherited
 ok   a child command that cannot be started is reported as the child's exit on the next poll
 ok   a child that cannot be recorded in child.pid is stopped, then reported
 ok   the STDERR tail keeps the last characters of each line; the copy is whole
@@ -21,7 +22,7 @@ ok   without --incremental, a save in the last instant of a build leaves the bin
 ok   a build that ends ok leaves the binary at its launch, older than a save made during it; the next session builds incrementally
 ok   after a build of a session that ends ok, an untouched application's next session gets the plain command
 ok   a build that ends ok without writing the binary keeps the binary's time exactly
-ok   a failed build leaves the binary's time as it is
+ok   a failed build that wrote the binary leaves it at its launch too
 ok   a cancelled build that wrote the binary leaves it at its launch
 ok   a binary whose time cannot be set does not fail the build; one line says so
 ok   a Ruby file of another -I directory newer than the binary makes the build incremental
@@ -47,4 +48,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-49 tests, 180 assertions, 0 failures
+50 tests, 188 assertions, 0 failures

@@ -39,5 +39,8 @@ ok   the lock appears in a change round's stop_child: hold, the round runs again
 ok   the same when the round began from the binary serving
 ok   a change round that started from holding and meets the lock in stop_child holds again
 ok   the first round never stops a child, so the lock cannot appear between its check and its start
+ok   nothing serving and a ready build with no change pending: the tick hands over again
+ok   the same tick under the build lock holds, then CRuby and a fresh build after it
+ok   a change under the build lock while nothing serves puts up the lock's hold
 ok   no child was ever started while the build lock was held, in any test of this file
-42 tests, 126 assertions, 0 failures
+45 tests, 142 assertions, 0 failures
