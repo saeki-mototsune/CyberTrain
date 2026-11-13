@@ -13,8 +13,10 @@
 # back. The port is free and below the ephemeral range, derived from this
 # process's PID, so two runs (or a client's own port) do not collide.
 #
-# One line per step, `ok N ...` or `FAIL N ...: <reason>`, in order 1 to 12,
-# then the exit status: 1 when any step failed. A step that fails does not
+# One line per step, `ok N ...` or `FAIL N ...: <reason>`: 1, 2, then 13 to
+# 15 (checks of the runtime indicator, made as soon as what they look at
+# exists, before step 3's save changes it), then 3 to 12; then the exit
+# status: 1 when any step failed. A step that fails does not
 # stop the run; the steps after it check their own preconditions. On a FAIL
 # the tail of the supervisor's output and of tmp/rebuild.log go to stderr,
 # since the copy itself is removed.
@@ -58,6 +60,17 @@
 #     request is refused, reset, timed out, or answered with anything but
 #     200 (the holding page's 503 included). A failure names its time,
 #     counted from the loop's start, to set against the handovers.
+# 13  (the indicator, while the first build runs) Step 1's page carries
+#     `CRuby preview · Spinel building…`.
+# 14  (the indicator's state, once the binary serves) After step 2,
+#     GET /__cybertrain/dev/state?runtime=cruby&generation=1 answers JSON
+#     with `"text":"Spinel ready — reload"` (what a page CRuby rendered at
+#     generation 1 shows now).
+# 15  (a content security policy with nonces) The blog sets
+#     c.content_security_policy and nonce directives: step 1's page loads
+#     the indicator's script with a tag that carries the nonce of that
+#     response's Content-Security-Policy, and the script answers 200 as
+#     text/javascript.
 #
 # Ruby rather than sh: the timing steps need a monotonic clock, requests
 # with their own timeouts, a request loop running beside the steps, and a
@@ -106,6 +119,9 @@ READY_LINE = "=> spinel: ready"
 FAILED_LINE = "=> spinel: build failed"
 BANNER = 'id="cybertrain-build-failed"'
 UNDEFINED = "e2e_class_method_nobody_defines"
+BUILDING_TEXT = "CRuby preview · Spinel building…"
+READY_TEXT = "Spinel ready — reload"
+INDICATOR_SCRIPT = "/__cybertrain/dev/indicator.js"
 
 StepFailed = Class.new(StandardError)
 
@@ -468,6 +484,7 @@ def main
     up = nil
     article = "/articles/1"
     started = nil
+    first_page = nil
 
     step(1, run) do
       started = now
@@ -478,6 +495,7 @@ def main
       end
       check(res, "no 200 from cruby within #{FIRST_CRUBY} s (last: #{describe(visitor.get('/articles', read_timeout: 2))})")
       check(took <= FIRST_CRUBY, "200 from cruby only #{secs(took)} after the start (bound #{FIRST_CRUBY} s)")
+      first_page = res
       up = UpLoop.new(port)
       visitor.sign_in
       "GET /articles answered 200 from cruby #{secs(took)} after the start (port #{port})"
@@ -496,6 +514,38 @@ def main
       logged, = until_true(LOG_LAG) { run.output.include?(READY_LINE) }
       check(logged, "the output has no `#{READY_LINE}`")
       "spinel answered #{secs(took)} after the start; the output has `#{READY_LINE}`"
+    end
+
+    step(13, run) do
+      check(first_page, "step 1 got no page from cruby")
+      shown = first_page.body[%r{<div id="cybertrain-dev-indicator"[^>]*>([^<]*)</div>}, 1]
+      check(shown, "step 1's page has no indicator")
+      check(shown == BUILDING_TEXT, "step 1's indicator says #{shown.inspect}, not #{BUILDING_TEXT.inspect}")
+      "step 1's page (cruby) carries `#{BUILDING_TEXT}`"
+    end
+
+    step(14, run) do
+      res = request(port, :get, "/__cybertrain/dev/state?runtime=cruby&generation=1", read_timeout: 15)
+      check(res && res.status == 200, "GET /__cybertrain/dev/state?runtime=cruby&generation=1 answered #{describe(res)}")
+      check(res.body.include?("\"text\":\"#{READY_TEXT}\""), "the state has no `\"text\":\"#{READY_TEXT}\"`: #{res.body[0, 200]}")
+      "the state for a cruby page of generation 1 says `#{READY_TEXT}`: #{res.body}"
+    end
+
+    step(15, run) do
+      config = File.read(run.path("config/app.rb"))
+      check(config.include?("c.content_security_policy do") && config.include?("c.content_security_policy_nonce_directives = %w[script-src"),
+            "config/app.rb no longer sets a content security policy with a script-src nonce")
+      check(first_page, "step 1 got no page from cruby")
+      policy = first_page.headers["content-security-policy"].to_s
+      nonce = policy[/script-src [^;]*'nonce-([^']+)'/, 1]
+      check(nonce, "step 1's response has no script-src nonce in its Content-Security-Policy: #{policy.inspect}")
+      tag = first_page.body[%r{<script src="#{Regexp.escape(INDICATOR_SCRIPT)}"[^>]*>}]
+      check(tag, "step 1's page has no #{INDICATOR_SCRIPT} script tag")
+      check(tag.include?(" nonce=\"#{nonce}\""), "the indicator's script tag #{tag} does not carry the response's nonce #{nonce}")
+      script = request(port, :get, INDICATOR_SCRIPT, read_timeout: 15)
+      check(script && script.status == 200 && script.headers["content-type"].to_s.start_with?("text/javascript"),
+            "GET #{INDICATOR_SCRIPT} answered #{describe(script)} (#{script && script.headers['content-type']})")
+      "step 1's page loads #{INDICATOR_SCRIPT} with the response's script-src nonce; the script answers 200 text/javascript"
     end
 
     step(3, run) do
