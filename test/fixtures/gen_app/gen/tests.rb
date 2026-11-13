@@ -12,6 +12,9 @@ require_relative "app"
 require_relative "migrations"
 require_relative "test/data"
 Cybertrain::Test.bundled!
+class ActionDispatch::IntegrationTest
+  include ::Gen::UrlHelpers
+end
 
 module Gen
   module Tests
