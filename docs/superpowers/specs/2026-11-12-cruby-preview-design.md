@@ -285,10 +285,12 @@ flag exactly as `Dev::Rebuilder` does, output to `tmp/rebuild.log`. Gen is
 not compiled or run by spin here: the CRuby gen has already written
 `gen/`. That removes gen's 3.3 s from the build as well. Given that flag,
 spin skips its own up-to-date check and compiles every time (60 to 100 s
-for the blog), so a build whose binary is newer than every `*.rb` of the
-application and of the other `-I` directories (the framework) is plain
-`spin build NAME`: spin finds it up to date in a fraction of a second, or
-builds it in full when it sees another input (plan P23).
+for the blog), so the supervisor's first build, when its binary is newer
+than every `*.rb` of the application and of the other `-I` directories
+(the framework), is plain `spin build NAME`: spin finds it up to date in a
+fraction of a second, or builds it in full when it sees another input
+(plan P23). Every later build is incremental: a save in the last instant
+of a build leaves a binary newer than the save it lacks (plan P24).
 
 **State file** (`tmp/` in the application; written whole and renamed into
 place): generation, what is serving (`cruby`, `spinel`, `holding`, or `none` while no child runs), build state (`building`,

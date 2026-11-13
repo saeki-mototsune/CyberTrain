@@ -438,10 +438,13 @@ end
 
 # spin's own up-to-date check is skipped when it is given spinel flags:
 # `spin build NAME -- --incremental` recompiles a binary that is up to date.
-# A binary newer than every Ruby file (Build.binary_stale?, the rule of the
-# compiled loop) gets the plain command, which spin answers "up to date".
+# The runner's first build, given a binary newer than every Ruby file
+# (Build.binary_stale?, the rule of the compiled loop), gets the plain
+# command, which spin answers "up to date". Every test of the command passes
+# no -I directory but the application's, so that only the files it writes
+# decide (none of the repository's, whatever their times).
 test "a binary newer than every Ruby file is built with the plain command, so that spin can find it up to date" do
-  with_runner({ spin: RECORDING_SPIN }) do |runner, _listener, root|
+  with_runner({ spin: RECORDING_SPIN }, load_path: []) do |runner, _listener, root|
     write_fresh_binary(root)
     rec = Recorder.new
     runner.start_build(1)
@@ -452,19 +455,148 @@ test "a binary newer than every Ruby file is built with the plain command, so th
 end
 
 test "a missing binary, or one older than a Ruby file, is built incrementally" do
-  with_runner({ spin: RECORDING_SPIN }) do |runner, _listener, root|
+  with_runner({ spin: RECORDING_SPIN }, load_path: []) do |runner, _listener, root|
+    rec = Recorder.new
+    runner.start_build(1)
+    poll_until(runner, rec) { rec.events.size == 1 }
+    assert_equal [[:build, 1, true, "built\n"]], rec.events
+    assert_equal ["build app -- --incremental"], spin_calls(root)
+  end
+  with_runner({ spin: RECORDING_SPIN }, load_path: []) do |runner, _listener, root|
+    write_fresh_binary(root)
+    File.write(File.join(root, "app.rb"), "# saved after the build\n")
+    rec = Recorder.new
+    runner.start_build(1)
+    poll_until(runner, rec) { rec.events.size == 1 }
+    assert_equal ["build app -- --incremental"], spin_calls(root)
+  end
+end
+
+# R24: only the runner's first build may be plain. A later build follows a
+# change round, and a save that landed in the last instant of the build
+# before it (after spinel had read the sources, before the binary was
+# written) leaves a binary newer than the saved file: by the files' times it
+# is up to date, and a plain build would hand the port to it without the
+# save.
+test "every build after the runner's first is incremental, a fresh binary included" do
+  with_runner({ spin: RECORDING_SPIN }, load_path: []) do |runner, _listener, root|
+    write_fresh_binary(root)
     rec = Recorder.new
     runner.start_build(1)
     poll_until(runner, rec) { rec.events.size == 1 }
     write_fresh_binary(root)
-    File.write(File.join(root, "app.rb"), "# saved after the build\n")
     runner.start_build(2)
     poll_until(runner, rec) { rec.events.size == 2 }
+    assert_equal [[:build, 1, true, "built\n"], [:build, 2, true, "built\n"]], rec.events
+    assert_equal ["build app", "build app -- --incremental"], spin_calls(root)
+  end
+end
+
+# A first build that was cancelled (a save during it) counts as the first:
+# the one after it is incremental whatever the files' times.
+test "a build after a cancelled first build is incremental" do
+  spin = <<~RUBY
+    first = !File.exist?("spin-calls.txt")
+    File.open(File.join(Dir.pwd, "spin-calls.txt"), "a") { |f| f.puts ARGV.join(" ") }
+    sleep 30 if first
+    puts "built"
+  RUBY
+  with_runner({ spin: spin }, load_path: []) do |runner, _listener, root|
     write_fresh_binary(root)
-    runner.start_build(3)
-    poll_until(runner, rec) { rec.events.size == 3 }
-    assert_equal [[:build, 1, true, "built\n"], [:build, 2, true, "built\n"], [:build, 3, true, "built\n"]], rec.events
-    assert_equal ["build app -- --incremental", "build app -- --incremental", "build app"], spin_calls(root)
+    rec = Recorder.new
+    runner.start_build(1)
+    assert wait_for_file(File.join(root, "spin-calls.txt"))
+    runner.cancel_build
+    write_fresh_binary(root)
+    runner.start_build(2)
+    poll_until(runner, rec) { rec.events.size == 1 }
+    assert_equal [[:build, 2, true, "built\n"]], rec.events
+    assert_equal ["build app", "build app -- --incremental"], spin_calls(root)
+  end
+end
+
+# I-1 with the machine: the first build is plain (the binary is fresh), and a
+# save lands while it runs, after the sources were read and before the
+# binary is written. The handover sees the change and gives way to its
+# round; that round's build must recompile, although the binary is newer
+# than the saved file. The stand-in spin makes the save itself, so that the
+# watcher (a minute between polls) cannot see it before the build ends;
+# then the watcher is woken for its next poll (Watch#delivered wakes its
+# thread; with nothing taken it marks nothing done), which hands the change
+# to the machine as it would after its interval.
+LATE_SAVE_SPIN = <<~RUBY
+  first = !File.exist?("spin-calls.txt")
+  File.open(File.join(Dir.pwd, "spin-calls.txt"), "a") { |f| f.puts ARGV.join(" ") }
+  if first
+    File.write("app/article.rb", "class Article\n  # saved during the build\nend\n")
+    sleep 0.05
+    File.write("build/bin/app", "binary built from the sources before the save")
+  end
+  puts "built"
+RUBY
+
+test "a save in the last instant of a plain build is compiled by the next build, not found up to date" do
+  scripts = { gen: "", cruby: READY, binary: BINARY_CHILD, spin: LATE_SAVE_SPIN }
+  with_runner(scripts, watch_interval: 60, load_path: []) do |runner, _listener, root|
+    Dir.mkdir(File.join(root, "app"))
+    model = File.join(root, "app", "article.rb")
+    File.write(model, "class Article\nend\n")
+    write_fresh_binary(root)
+    machine = Machine.new(runner)
+    runner.watch
+    machine.start
+    runner.start_watching
+    drive(runner, machine, 5) { machine.serving != :cruby }
+    assert_equal :none, machine.serving
+    refute File.exist?(File.join(root, "binary-spawned")), "the binary without the save never took the port"
+    assert File.mtime(File.join(root, "build", "bin", "app")) > File.mtime(model), "the binary is newer than the save"
+    runner.watch.delivered
+    drive(runner, machine, 5) { machine.serving == :spinel }
+    assert_equal :spinel, machine.serving
+    assert_equal ["build app", "build app -- --incremental"], spin_calls(root)
+  end
+end
+
+# A toolchain that refuses --incremental leaves only the plain command, and
+# spin's own check, which reads the files' times, would find that binary up
+# to date. The runner sets the binary's time back to before the launch of
+# the build that wrote it, so that the save made during that build is newer
+# and spin compiles it.
+LATE_SAVE_OLD_SPIN = <<~RUBY
+  first = !File.exist?("spin-calls.txt")
+  File.open(File.join(Dir.pwd, "spin-calls.txt"), "a") { |f| f.puts ARGV.join(" ") }
+  if ARGV.include?("--incremental")
+    puts "spinel: unknown option '--incremental'"
+    exit 1
+  end
+  if first
+    File.write("app/article.rb", "class Article\n  # saved during the build\nend\n")
+    sleep 0.05
+    File.write("build/bin/app", "binary built from the sources before the save")
+  end
+  puts "built"
+RUBY
+
+test "without --incremental, a save in the last instant of a build leaves the binary older than the save" do
+  scripts = { gen: "", cruby: READY, binary: BINARY_CHILD, spin: LATE_SAVE_OLD_SPIN }
+  with_runner(scripts, watch_interval: 60, load_path: []) do |runner, _listener, root|
+    Dir.mkdir(File.join(root, "app"))
+    model = File.join(root, "app", "article.rb")
+    File.write(model, "class Article\nend\n")
+    write_fresh_binary(root)
+    binary = File.join(root, "build", "bin", "app")
+    machine = Machine.new(runner)
+    runner.watch
+    machine.start
+    runner.start_watching
+    drive(runner, machine, 5) { machine.serving != :cruby }
+    assert_equal :none, machine.serving
+    assert File.mtime(binary) > File.mtime(model), "the binary is newer than the save"
+    runner.watch.delivered
+    drive(runner, machine, 5) { machine.serving == :spinel }
+    assert_equal :spinel, machine.serving
+    assert_equal ["build app", "build app -- --incremental", "build app"], spin_calls(root)
+    assert File.mtime(binary) < File.mtime(model), "spin finds the binary older than the save"
   end
 end
 
@@ -473,24 +605,30 @@ end
 test "a Ruby file of another -I directory newer than the binary makes the build incremental" do
   Dir.mktmpdir("dev-server-framework") do |framework|
     FileUtils.mkdir_p(File.join(framework, "cybertrain"))
-    File.write(File.join(framework, "cybertrain", "base.rb"), "# the framework\n")
+    base = File.join(framework, "cybertrain", "base.rb")
+    File.write(base, "# the framework\n")
+    past = Time.now - 120
+    File.utime(past, past, base)
     with_runner({ spin: RECORDING_SPIN }, load_path: [framework]) do |runner, _listener, root|
-      past = Time.now - 120
-      File.utime(past, past, File.join(framework, "cybertrain", "base.rb"))
       write_fresh_binary(root)
       rec = Recorder.new
       runner.start_build(1)
       poll_until(runner, rec) { rec.events.size == 1 }
-      File.write(File.join(framework, "cybertrain", "base.rb"), "# edited after the build\n")
-      runner.start_build(2)
-      poll_until(runner, rec) { rec.events.size == 2 }
-      assert_equal ["build app", "build app -- --incremental"], spin_calls(root)
+      assert_equal ["build app"], spin_calls(root)
+    end
+    with_runner({ spin: RECORDING_SPIN }, load_path: [framework]) do |runner, _listener, root|
+      write_fresh_binary(root)
+      File.write(base, "# edited after the build\n")
+      rec = Recorder.new
+      runner.start_build(1)
+      poll_until(runner, rec) { rec.events.size == 1 }
+      assert_equal ["build app -- --incremental"], spin_calls(root)
     end
   end
 end
 
 test "a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag" do
-  with_runner({ spin: SPIN }) do |runner, _listener, root|
+  with_runner({ spin: SPIN }, load_path: []) do |runner, _listener, root|
     write_fresh_binary(root)
     rec = Recorder.new
     runner.start_build(1)

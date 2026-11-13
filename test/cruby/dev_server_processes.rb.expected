@@ -14,6 +14,10 @@ ok   a held page larger than the socket's buffers wakes the driver as the client
 ok   a toolchain that refuses --incremental is built again without it, and from then on
 ok   a binary newer than every Ruby file is built with the plain command, so that spin can find it up to date
 ok   a missing binary, or one older than a Ruby file, is built incrementally
+ok   every build after the runner's first is incremental, a fresh binary included
+ok   a build after a cancelled first build is incremental
+ok   a save in the last instant of a plain build is compiled by the next build, not found up to date
+ok   without --incremental, a save in the last instant of a build leaves the binary older than the save
 ok   a Ruby file of another -I directory newer than the binary makes the build incremental
 ok   a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag
 ok   a failed build reports its log
@@ -35,4 +39,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-37 tests, 131 assertions, 0 failures
+41 tests, 148 assertions, 0 failures

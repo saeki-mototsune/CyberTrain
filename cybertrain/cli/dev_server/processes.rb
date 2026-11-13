@@ -126,6 +126,9 @@ module Cybertrain
           @build = nil
           @build_failure = nil
           @incremental = true
+          # The wall-clock times this runner launched its builds at (R24:
+          # only the first may be plain; backdate_binary).
+          @launches = []
           @hold = nil
           @desk = Holding::Desk.new
           @watch = nil
@@ -155,8 +158,8 @@ module Cybertrain
         # (measured 2026-11-13 on examples/blog: `spin build blog` answers
         # "build blog (up to date)" at once, `spin build blog --
         # --incremental` takes 60 to 100 s and replaces the binary), so the
-        # incremental build is for a binary that is out of date
-        # (incremental_build?).
+        # plain build is for the first build of a binary that is up to date,
+        # and every other build is incremental (incremental_build?).
         def build_command(incremental)
           command = ["spin", "build", @name]
           incremental ? command + ["--", "--incremental"] : command
@@ -481,23 +484,61 @@ module Cybertrain
           pid
         end
 
-        # Whether this build is the incremental one: unless the toolchain
-        # refused the flag, when build/bin/NAME is missing or not newer than
-        # every Ruby file of the application (Build.binary_stale?, the rule
-        # the compiled loop's run_server applies, read as there after gen,
-        # which rewrites only the generated files whose text changed), or
-        # not newer than every Ruby file of the other -I directories (the
-        # framework, a path dependency: spin rebuilds after a change to any
-        # of its Ruby files, measured 2026-11-13 with a test file of this
-        # repository). A binary that is newer gets the plain `spin build
-        # NAME`: spin's own check decides, and answers "up to date" in a
-        # fraction of a second, or builds when it finds an input these
-        # rules do not look at (spin.toml, the toolchain): a full build,
-        # slower than an incremental one (2 min against 75 s for
-        # examples/blog here) but correct. A view needs no new binary: the
-        # development binary reads app/views/ from disk.
+        # Whether this build is the incremental one. Never once the
+        # toolchain has refused the flag. Always after the runner's first
+        # build (R24): a later build follows a change round, and a save that
+        # lands in the last instant of the build before it (after spinel
+        # read the sources, before the binary was written and before the
+        # watcher saw the save) leaves a binary newer than the saved file,
+        # which spin's own check, by the files' times, would find up to date:
+        # the binary without the save would take the port. The first build
+        # (whatever came before it: a round whose gen failed, the build
+        # lock held at start) is incremental when build/bin/NAME is missing
+        # or not newer than every Ruby file of the application
+        # (Build.binary_stale?, the rule the compiled loop's run_server
+        # applies, read as there after gen, which rewrites only the
+        # generated files whose text changed), or not newer than every Ruby
+        # file of the other -I directories (the framework, a path
+        # dependency: spin rebuilds after a change to any of its Ruby
+        # files, measured 2026-11-13 with a test file of this repository).
+        # Nothing of this runner wrote that binary, so its time is the time
+        # of the sources it was built from or later. A binary that is newer
+        # gets the plain `spin build NAME`: spin's own check decides, and
+        # answers "up to date" in a fraction of a second, or builds when it
+        # finds an input these rules do not look at (spin.toml, the
+        # toolchain): a full build, slower than an incremental one (2 min
+        # against 75 s for examples/blog here) but correct. A view needs no
+        # new binary: the development binary reads app/views/ from disk.
         def incremental_build?
-          @incremental && (Build.binary_stale?(@root, @name) || dependency_newer?)
+          return false unless @incremental
+          return true unless @launches.empty?
+
+          Build.binary_stale?(@root, @name) || dependency_newer?
+        end
+
+        # How far a file's time may lag the clock read at a launch (a
+        # filesystem that keeps whole seconds, a coarse kernel clock).
+        MTIME_SLACK = 1.0
+
+        # With a toolchain that refused --incremental every build is the
+        # plain one, and spin's check alone decides: the binary written by
+        # one of this runner's builds is set back to just before that build
+        # was launched (MTIME_SLACK), so that a file saved while it ran,
+        # which the binary may lack, is newer and gets compiled. A binary
+        # that predates the session, or that nothing of the session wrote,
+        # keeps its time. Costs a build only when a watched file changed
+        # with no Ruby file changing after the launch (gen rewriting
+        # nothing): spin then still finds it up to date.
+        def backdate_binary
+          binary = File.join(@root, "build", "bin", @name)
+          mtime = File.mtime(binary)
+          writer = @launches.select { |launched| launched <= mtime + MTIME_SLACK }.max
+          return if writer.nil?
+
+          back = writer - MTIME_SLACK
+          File.utime(File.atime(binary), back, binary) if mtime > back
+        rescue SystemCallError
+          nil
         end
 
         # A Ruby file in one of the -I directories other than the
@@ -544,6 +585,8 @@ module Cybertrain
         # the build log, which the failure's log line points at).
         def launch_build(generation)
           incremental = incremental_build?
+          backdate_binary unless incremental || @launches.empty?
+          @launches << Time.now
           @build = Job.new(spawn_build(incremental), generation, incremental)
           nil
         rescue SystemCallError => e
