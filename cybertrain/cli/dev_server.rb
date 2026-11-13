@@ -469,19 +469,19 @@ module Cybertrain
         Processes::STOP_GRACE
       end
 
-      # Runs command in root, STDIN empty, in a process group of its own,
-      # and waits for it in slices of TICK, reading its STDOUT and STDERR as
-      # they come (a full pipe never blocks it): [STDOUT, STDERR, status]
-      # once it has exited, with merge its STDERR in its STDOUT, in order,
-      # and STDERR "". The run is owned, so that a stop reaches it: when
-      # stopping answers true between two slices, or when this method is
-      # left by an exception (INT, TERM or HUP, which CRuby raises here
-      # until `serve` traps them; the process then ends by that signal, as
-      # it does in bounded_run), the whole group gets TERM, the leader
-      # grace seconds to end, KILL to whatever of the group is left, and
-      # the leader is reaped; status is then :stopped. What the command
-      # left running in its group after its own exit is KILLed too. A
-      # command that cannot be started raises SystemCallError.
+      # Runs command in root, STDIN empty, in a process group of its own, and
+      # waits for it in slices of TICK, reading its STDOUT and STDERR as they
+      # come (a full pipe never blocks it): [STDOUT, STDERR, status] once it has
+      # exited, with merge its STDERR in its STDOUT, in order, and STDERR ""
+      # (each UTF-8, the last OWNED_OUTPUT bytes). The run is owned, so that a
+      # stop reaches it: when stopping answers true between two slices, or when
+      # this method is left by an exception (INT, TERM or HUP, which CRuby
+      # raises here until `serve` traps them; the process then ends by that
+      # signal, as it does in bounded_run), the whole group gets TERM, the
+      # leader grace seconds to end, KILL to whatever of the group is left, and
+      # the leader is reaped; status is then :stopped. What the command left
+      # running in its group is KILLed as soon as its exit is seen. A command
+      # that cannot be started raises SystemCallError.
       # @param env [Hash{String => String}]
       # @param command [Array<String>]
       # @param root [String] the directory it runs in
@@ -509,9 +509,11 @@ module Cybertrain
         loop do
           _, status = Process.waitpid2(pid, Process::WNOHANG)
           unless status.nil?
-            # What it wrote is in the pipes by now; a process it left in
-            # the background may hold them open, so their end is not
+            # What it left running in its group goes first, so that
+            # nothing writes on while the pipes are read. What it wrote
+            # is in the pipes by now and stays readable; their end is not
             # waited for.
+            signal(-pid, :KILL)
             readers.each { |io, sink| nil while owned_read(io, sink).is_a?(String) }
             break
           end
@@ -525,7 +527,7 @@ module Cybertrain
           ready, = IO.select(open, nil, nil, TICK)
           ready&.each { |io| owned_read(io, readers[io]) }
         end
-        [out, err, status]
+        [owned_text(out), owned_text(err), status]
       ensure
         readers&.each_key { |io| io.close unless io.closed? }
         if pid
@@ -548,8 +550,25 @@ module Cybertrain
           io.close
         elsif chunk.is_a?(String)
           sink << chunk
+          # Trimmed now and then rather than on every read.
+          sink.replace(sink.byteslice(-OWNED_OUTPUT, OWNED_OUTPUT)) if sink.bytesize > 2 * OWNED_OUTPUT
         end
         chunk
+      end
+
+      # How much of an owned run's STDOUT, and of its STDERR, is kept: the
+      # last 256 KiB, the end being where a failure says what went wrong.
+      # gen's output goes whole to the log and to the holding page; a
+      # runaway writer cannot fill the supervisor's memory (the STDERR tail
+      # kept of a child is of the same order, STDERR_LINES lines of
+      # TAIL_LINE_CHARS).
+      OWNED_OUTPUT = 256 * 1024
+
+      # sink's last OWNED_OUTPUT bytes as UTF-8 text (the pipes give bytes;
+      # a character cut by the bound or not UTF-8 is replaced).
+      def self.owned_text(sink)
+        text = sink.bytesize > OWNED_OUTPUT ? sink.byteslice(-OWNED_OUTPUT, OWNED_OUTPUT) : sink
+        text.dup.force_encoding(Encoding::UTF_8).scrub
       end
 
       # Stops the process group of an owned run whose leader pid has not
@@ -558,13 +577,20 @@ module Cybertrain
       # id is not given to another group), KILL to the group, then the
       # leader is reaped. Unlike stop_group (a build), there is no step
       # for a leader that cleans up after its children: gen and
-      # dev-address are one Ruby each.
+      # dev-address are one Ruby each. The KILL and the reap run however
+      # the wait ends: before `serve` traps the signals, a second Ctrl-C
+      # raises out of it, and the group, which the terminal's signals do
+      # not reach, would outlive the supervisor (Thread.handle_interrupt
+      # does not hold back CRuby's signal exceptions).
       def self.stop_owned(pid, grace)
         signal(-pid, :TERM)
         deadline = monotonic + grace
-        sleep 0.01 until ended?(pid) || monotonic >= deadline
-        signal(-pid, :KILL)
-        wait_quietly(pid)
+        begin
+          sleep 0.01 until ended?(pid) || monotonic >= deadline
+        ensure
+          signal(-pid, :KILL)
+          wait_quietly(pid)
+        end
         nil
       end
 

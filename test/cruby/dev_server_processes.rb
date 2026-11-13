@@ -1292,6 +1292,55 @@ test "run_gen reads gen's output as it comes and stops what gen left in its grou
   end
 end
 
+# What gen left running is KILLed as soon as gen's exit is seen, before its
+# pipe is drained, and what is kept of the output is bounded
+# (DevServer::OWNED_OUTPUT, its last part) and read as UTF-8, as the
+# holding page and the log take it.
+test "run_gen keeps a bounded UTF-8 output however much gen's leftover writes" do
+  gen = <<~RUBY
+    $stdout.sync = true
+    puts "gen: caf\u00e9"
+    grandchild = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "$stdout.sync = true; loop { $stdout.write('y' * 65_536) }")
+    File.write("left.tmp", grandchild.to_s)
+    File.rename("left.tmp", "left")
+    sleep 0.5
+    puts "gen: last line"
+    exit 1
+  RUBY
+  with_runner({ gen: gen }) do |runner, _listener, root|
+    ok, output = runner.run_gen
+    refute ok
+    assert output.bytesize <= DevServer::OWNED_OUTPUT, "kept #{output.bytesize} bytes"
+    assert_equal Encoding::UTF_8, output.encoding
+    assert output.valid_encoding?
+    left = File.read(File.join(root, "left")).to_i
+    assert wait_for(2) { gone?(left) }, "gen's leftover #{left} is still running"
+  end
+end
+
+# gen's own output past the bound keeps its end, where the error is.
+test "run_gen keeps the last part of a long output" do
+  gen = "$stdout.write('x' * 400_000)\n$stderr.puts\n$stderr.puts 'gen: caf\u00e9 failed'\nexit 1\n"
+  with_runner({ gen: gen }) do |runner, _listener, _root|
+    ok, output = runner.run_gen
+    refute ok
+    assert_equal DevServer::OWNED_OUTPUT, output.bytesize
+    assert output.end_with?("\ngen: caf\u00e9 failed\n")
+    assert_includes runner.err.string, "gen: caf\u00e9 failed"
+  end
+end
+
+test "owned_run reads its output as UTF-8, characters past ASCII included" do
+  Dir.mktmpdir("owned-run") do |dir|
+    out, err, status = DevServer.owned_run({}, [RbConfig.ruby, "-e", "print \"caf\\u00e9\"; warn \"na\\u00efve\""],
+                                           dir, 1, false, DevServer::NEVER)
+    assert status.success?
+    assert_equal "caf\u00e9", out
+    assert_equal "na\u00efve\n", err
+    assert_equal Encoding::UTF_8, out.encoding
+  end
+end
+
 test "write_state renames a whole file into place" do
   with_runner({}) do |runner, _listener, root|
     path = File.join(root, "tmp", "cybertrain-dev", "state")

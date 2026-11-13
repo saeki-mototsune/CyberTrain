@@ -121,7 +121,11 @@ def run_request(app, target)
 end
 
 def run_conditional(app, target, headers)
-  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", target, headers, "", "127.0.0.1"))
+  run_method(app, "GET", target, headers)
+end
+
+def run_method(app, method, target, headers)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new(method, target, headers, "", "127.0.0.1"))
   app.call(ctx)
   ctx
 end
@@ -440,6 +444,25 @@ test "If-Modified-Since never reaches the application under supervision" do
   run_conditional(app, "/etag", { "if-modified-since" => date, "if-none-match" => "W/\"abc-dev-cruby-3\"" })
   assert_equal "(none)", page.seen_modified_since
   assert_equal "W/\"abc\"", page.seen_none_match
+end
+
+# Only GET and HEAD are validated by the framework (HttpCache), so only they
+# are rewritten; an application's own precondition on another method (a
+# create-only PUT with If-None-Match: *) sees its headers as sent. HEAD is
+# rewritten like GET.
+test "the validators of a request other than GET or HEAD reach the application unchanged" do
+  reader = state_reader("other_methods", 3, "cruby", "idle", "")
+  page = IndicatorPage.new
+  app = indicator(page, reader, "cruby", 3, no_directives)
+  date = "Sat, 01 Jan 2000 00:00:00 GMT"
+  ["POST", "PUT", "PATCH", "DELETE"].each do |method|
+    run_method(app, method, "/etag", { "if-none-match" => "*", "if-modified-since" => date })
+    assert_equal "*", page.seen_none_match
+    assert_equal date, page.seen_modified_since
+  end
+  run_method(app, "HEAD", "/etag", { "if-none-match" => "W/\"abc-dev-cruby-3\"", "if-modified-since" => date })
+  assert_equal "W/\"abc\"", page.seen_none_match
+  assert_equal "(none)", page.seen_modified_since
 end
 
 # The Indicator is only in the supervised stack (Roles::ServerRunner#front_app):

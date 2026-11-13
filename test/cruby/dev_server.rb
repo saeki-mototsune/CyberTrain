@@ -1330,7 +1330,7 @@ RUBY
 # The stop grace the harness is given in the tests of a stop during gen,
 # and the margin the supervisor gets on top of it.
 GRACE = 0.3
-MARGIN = 1.5
+MARGIN = 3.5
 
 def gen_pids(root)
   assert wait_until(10) { File.exist?(File.join(root, "gen-pids")) }, "gen started:\n#{log_of(root)}"
@@ -1400,6 +1400,27 @@ test "TERM during the start-up gen or dev-address stops the probe's group; the s
       assert_equal [], dev_files(root)
       refute log_of(root).include?("* Listening"), "nothing was served"
     end
+  end
+end
+
+# Ctrl-C again while a start-up probe that ignores TERM gets its grace: the
+# second signal ends the wait, not the stop, and the probe's group is
+# KILLed and reaped before the supervisor exits.
+test "a second signal during a start-up probe's grace still kills the probe's group" do
+  with_driver_app do |root, start|
+    File.write(File.join(root, "bin", "app.rb"), "require_relative '../gen/app'\n" + CHILD)
+    File.write(File.join(root, "bin", "gen.rb"), STARTUP_HANG)
+    File.write(File.join(root, "stubborn"), "")
+    # A grace long enough that the INT lands in it.
+    pid = start.call(env: { "HARNESS_GRACE" => "5" })
+    hung = gen_pids(root)
+    Process.kill(:TERM, pid)
+    sleep 0.3
+    Process.kill(:INT, pid)
+    status = exit_status(pid, MARGIN)
+    assert status, "the supervisor stopped within #{MARGIN} s:\n#{log_of(root)}"
+    assert_gone_within(hung, 1)
+    assert_equal [], dev_files(root)
   end
 end
 

@@ -44,10 +44,13 @@ ok   log loses its line, without raising, once the terminal is gone
 ok   run_gen answers gen's status and its output
 ok   a stop asked while gen runs stops gen's process group within the grace
 ok   run_gen reads gen's output as it comes and stops what gen left in its group
+ok   run_gen keeps a bounded UTF-8 output however much gen's leftover writes
+ok   run_gen keeps the last part of a long output
+ok   owned_run reads its output as UTF-8, characters past ASCII included
 ok   write_state renames a whole file into place
 ok   build_locked? follows the rebuilder's rule for a stale lock
 ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-52 tests, 205 assertions, 0 failures
+55 tests, 218 assertions, 0 failures

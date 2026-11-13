@@ -36,7 +36,7 @@ module Cybertrain
     #   that rendered the client's copy: the application's ETag leaves with
     #   a suffix naming this child, and If-None-Match reaches the
     #   application without it only when every tag carries it, the header
-    #   being dropped otherwise, as is If-Modified-Since
+    #   being dropped otherwise, as is If-Modified-Since, on GET and HEAD
     #   (Indicator.validate_against_child). A 304 then means the page the
     #   browser replays was rendered here, its data- attributes right.
     # @api private
@@ -124,7 +124,9 @@ module Cybertrain
         elsif request.method == "GET" && path == SCRIPT_PATH
           answer_script(ctx.response)
         else
-          Indicator.validate_against_child(request, @etag_suffix)
+          # GET and HEAD only, the requests HttpCache answers 304: another
+          # method's preconditions are the application's, as sent.
+          Indicator.validate_against_child(request, @etag_suffix) if request.method == "GET" || request.method == "HEAD"
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
           insert_indicator(ctx, snapshot)
