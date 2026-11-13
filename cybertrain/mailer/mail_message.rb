@@ -5,8 +5,9 @@
 # cybertrain/mailer/later.rb (the job queue, SQLite through FFI), so a
 # program that only sends mail still links no SQLite.
 #
-# Applications require cybertrain/mail_message (or cybertrain), which
-# loads both halves.
+# Applications have this half with require "cybertrain/mailer" and the
+# other with require "cybertrain/mailer/later" (cybertrain and
+# cybertrain/mail_message load both).
 
 module Cybertrain
   # One mail, built now and sent later or at once: what a generated mailer

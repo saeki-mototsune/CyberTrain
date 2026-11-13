@@ -153,6 +153,11 @@ first migration has generated `gen/models/`). `gen/` already holds what
 `spin run gen` wrote, `views.rb` among it: the committed, empty table of
 embedded views.
 
+Both `bin/blog.rb` and `bin/db.rb` start with `require "cybertrain/core"`:
+the framework without its optional subsystems (jobs, Turbo Streams, the
+mailer, the cache and the rest), which keeps every build shorter. The steps
+below that use one add its line ([Subsystems](how-it-works.md#subsystems)).
+
 The layout links `app/assets/stylesheets/application.css` with
 `stylesheet_link_tag` and loads `app/javascript/application.js` through the
 import map of `config/importmap.rb` with `javascript_importmap_tags`; `spin
@@ -715,6 +720,15 @@ The layout's `javascript_importmap_tags` writes the import map and
 `import "application"`, so every page now runs Turbo
 ([The import map](assets.md#the-import-map)).
 
+The server side of Turbo Streams is a subsystem: add its line under the
+core's in `bin/blog.rb`, and the same line in `bin/db.rb`. Without it,
+`spin run gen` stops at the `turbo_stream_from` below and names the line.
+
+```ruby bin/blog.rb (excerpt)
+require "cybertrain/core"
+require "cybertrain/streams"
+```
+
 ### Subscribe the page
 
 Give the list and the form an id each, and subscribe the page to the
@@ -824,7 +838,8 @@ cybertrain generate job notify_comment --retry StandardError:30:3
 ```
 
 It writes `app/jobs/notify_comment_job.rb`, with the `retry_on` line the
-option asked for and an empty `perform`, and a test. Fill `perform` in; this
+option asked for and an empty `perform`, and a test, and adds
+`require "cybertrain/jobs"` to `bin/blog.rb` and `bin/db.rb`. Fill `perform` in; this
 one only logs, where a real application would send a mail:
 
 ```ruby app/jobs/notify_comment_job.rb
@@ -1117,8 +1132,13 @@ It writes the `users` and `sessions` migrations and models, the
 controllers and views for signing in, signing up, resetting a password and
 the account page, a mailer, the `./blog user` command, and tests. It also
 adds the routes, a `sessions/_nav` partial at the top of the layout, and a
-`base_url` setting in `config/app.rb`, where links in mails start. Every
-file is listed in [Authentication](authentication.md#generating-it).
+`base_url` setting in `config/app.rb`, where links in mails start, and the
+lines of the subsystems its code uses to `bin/blog.rb` and `bin/db.rb`:
+`cybertrain/jobs` (the jobs page and the thread that sends mail),
+`cybertrain/mailer`, `cybertrain/mailer/later` (mails go out with
+`deliver_later`) and `cybertrain/rate_limit` (sign-in attempts are rate
+limited, below). Every file is listed in
+[Authentication](authentication.md#generating-it).
 
 ```ruby app/controllers/concerns/authentication.rb (excerpt)
 module Authentication

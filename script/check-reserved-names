@@ -94,6 +94,15 @@ $LOAD_PATH.unshift(File.expand_path("..", __dir__))
 require "cybertrain/cli/templates"
 require "cybertrain/cli/authentication"
 controller_source = File.read(File.expand_path("../cybertrain/controller.rb", __dir__))
+# The subsystems that reopen Controller (cybertrain/streams: #turbo_stream;
+# cybertrain/rate_limit: .rate_limit, #apply_rate_limit): the methods of
+# their `class Controller` body only, not of the files' other classes.
+%w[streams.rb rate_limit.rb].each do |f|
+  text = File.read(File.expand_path("../cybertrain/#{f}", __dir__))
+  body = text[/^  class Controller\b.*?\n  end\n/m]
+  abort "check-reserved-names: cybertrain/#{f} no longer reopens Controller; update this script" if body.nil?
+  controller_source += "\n#{body}"
+end
 # The concern as --confirmable writes it, which has every method the
 # other modes' has and send_confirmation_mail.
 app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.authentication_concern("app", true)
@@ -111,14 +120,18 @@ actions_missing = action_names - Cybertrain::CLI::Templates::ATTACHMENT_RESERVED
 # Template::Helpers, so Gen::HelperScan::RESERVED_HELPER_NAMES must name
 # every method of cybertrain/template/helpers.rb and of HelperBase
 # (interpreter.rb), public or private, and every name helper_call answers
-# itself (its `when "..."` arms, which reach no app helper).
+# itself (its `when "..."` arms, and streams_helper's, which reach no app
+# helper).
 require "cybertrain/generator/helper_scan"
-helpers_source = File.read(File.expand_path("../cybertrain/template/helpers.rb", __dir__))
+# template/stream_helpers.rb reopens Helpers for cybertrain/streams.
+helpers_source = %w[helpers.rb stream_helpers.rb].map { |f| File.read(File.expand_path("../cybertrain/template/#{f}", __dir__)) }.join("\n")
 interpreter_source = File.read(File.expand_path("../cybertrain/template/interpreter.rb", __dir__))
 helper_names = helpers_source.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten
 base = interpreter_source[/class HelperBase\b.*?\n    end\n/m].to_s
 helper_names.concat(base.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten)
-dispatch = helpers_source[/def helper_call\(.*?\n      end\n/m].to_s
+# helper_call's arms and those of streams_helper (stream_helpers.rb: the
+# dispatch StreamsFeature hands the stream helpers to).
+dispatch = helpers_source[/def helper_call\(.*?\n      end\n/m].to_s + helpers_source[/def streams_helper\(.*?\n      end\n/m].to_s
 dispatch.scan(/^\s*when ((?:"[^"]+"(?:,\s*)?)+)/) { |(list)| helper_names.concat(list.scan(/"([^"]+)"/).flatten) }
 helper_names = helper_names.uniq.sort
 helpers_missing = helper_names - Cybertrain::Gen::HelperScan::RESERVED_HELPER_NAMES
@@ -214,7 +227,7 @@ NAME_HOMES = {
   "before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "after_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "skip_before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
-  "rate_limit" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
+  "rate_limit" => %w[cybertrain/rate_limit.rb cybertrain/active_support.rb],
   # Controller#rate_limit_key raises; gen/controllers.rb's answers the by: method's String.
   "rate_limit_key" => %w[cybertrain/controller.rb cybertrain/generator/controllers_emitter.rb],
   "rescue_from" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
@@ -241,7 +254,7 @@ NAME_HOMES = {
   "html" => %w[cybertrain/format_collector.rb],
   # schema/table.rb's are the `t.json` and `t.text` column types.
   "json" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb],
-  "turbo_stream" => %w[cybertrain/format_collector.rb cybertrain/controller.rb],
+  "turbo_stream" => %w[cybertrain/format_collector.rb cybertrain/streams.rb],
   "csv" => %w[cybertrain/format_collector.rb],
   "xml" => %w[cybertrain/format_collector.rb],
   # template/ast.rb's TextNode#text and template/lexer.rb's Token#text are
@@ -353,6 +366,9 @@ NAME_HOMES = {
   "before" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "after" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "remove" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
+  # Interpreter#call_helper answers a template value; the feature registry's
+  # dispatch to a subsystem's helper is Features.feature_helper_call.
+  "call_helper" => %w[cybertrain/template/interpreter.rb],
   # Phase 5a (plan Task 1; spike results in spec section 16, programs in
   # spikes/phase5/): the clock, durations, the zoned time and the test
   # classes. Each name below was compiled beside its existing namesakes in

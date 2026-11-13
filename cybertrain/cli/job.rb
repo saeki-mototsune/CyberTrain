@@ -6,6 +6,9 @@
 # carry a namespace ("admin/report" -> Admin::ReportJob in
 # app/jobs/admin/report_job.rb). `spin run gen` then writes the class's
 # perform_later / perform_at / perform_in / perform_now into gen/jobs.rb.
+# It adds `require "cybertrain/jobs"` to bin/<app>.rb and bin/db.rb when
+# neither that line nor `require "cybertrain"` is there, and uncomments
+# config/deploy.yml's worker role (Templates.enable_worker_role).
 require "cybertrain/generator/inflector"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/scaffold"
@@ -71,7 +74,13 @@ module Cybertrain
           ["app/jobs/#{rel}.rb", class_source(modules, lines)],
           ["test/jobs/#{rel}_test.rb", test_source(full, rel)]
         ]
-        GeneratedFiles.write_all(root, files, force)
+        written = GeneratedFiles.write_all(root, files, force)
+        # A job class needs cybertrain/jobs in bin/<app>.rb and bin/db.rb.
+        Templates.add_require(root, "cybertrain/jobs")
+        # and config/deploy.yml's worker role, which `cybertrain new` wrote
+        # commented, can run now.
+        Templates.enable_worker_role(root)
+        written
       end
 
       # "Cybertrain::Mailer::TimeoutError:60:5" -> the retry_on line; the

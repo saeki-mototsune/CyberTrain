@@ -1,5 +1,5 @@
 ---
-source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
+source_sha256: e9f54a9f55d52674351fe3c7cbf908b9cea71747715df0fbfc08f2bb15e41506
 ---
 # 请求
 
@@ -171,7 +171,7 @@ cookies.delete(:theme)
 
 ## 限流与客户端地址
 
-控制器中的 `rate_limit` 限制一个客户端调用某些动作的频率，在动作运行之前计数：
+控制器中的 `rate_limit` 限制一个客户端调用某些动作的频率，在动作运行之前计数。它需要在 `bin/<app>.rb` 和 `bin/db.rb` 中写 `require "cybertrain/rate_limit"`（它会同时加载缓存）；`cybertrain generate authentication` 会添加它：
 
 ```ruby
 class SessionsController < ApplicationController

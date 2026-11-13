@@ -1,0 +1,9 @@
+ok   feeds is the one registered feature
+ok   help lists the feeds role, not the worker
+=> test environment
+=> feeds: no WebSocket subscription is registered; nothing to run
+ok   feeds is a known command: with no subscription there is nothing to run
+ok   /up with health_feeds: no status row is not stale
+ok   /up with health_feeds: a stale row of a subscribed feed is 503 feed stale
+ok   /up with health_feeds: an unreadable status table is not stale, with one WARN
+6 tests, 13 assertions, 0 failures

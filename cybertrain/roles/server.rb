@@ -5,10 +5,7 @@ require "cybertrain/middleware"
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
-require "cybertrain/job"
-require "cybertrain/scheduler"
-require "cybertrain/background"
-require "cybertrain/stream/endpoint"
+require "cybertrain/feature"
 require "cybertrain/dev"
 
 module Cybertrain
@@ -17,11 +14,16 @@ module Cybertrain
     # process runs by default. The Application has booted before #run is
     # called.
     #
-    #   starts   Stream::Poller (when the endpoint is mounted), the
-    #            listener, Scheduler, Job (when Config#worker), the
-    #            Background services
-    #   waits    Server#wait (TERM stops the listener and the job claims)
-    #   stops    Job, Scheduler, Background, Stream::Poller
+    #   starts   the features' early starts (Features.start_features_early:
+    #            with cybertrain/streams, Stream::Poller when the endpoint
+    #            is mounted), the listener, the features
+    #            (Features.start_features: with cybertrain/jobs, Scheduler
+    #            and Job when Config#worker; with cybertrain/feeds, the
+    #            Background services)
+    #   waits    Server#wait (TERM stops the listener and asks the features
+    #            to stop: the job claims)
+    #   stops    the features, in rank order (with `require
+    #            "cybertrain"`: Job, Scheduler, Background, Stream::Poller)
     #
     # In development it is also the whole of D12: the rebuilder, the
     # watcher, the HUP trap, the restart monitor and the execv of the new
@@ -110,30 +112,31 @@ module Cybertrain
         if supervised && Dev::Supervision.listen_fd < 0
           Roles.fail_boot("#{Dev::Supervision::LISTEN_FD} is not a descriptor number")
         end
-        # A service that would refuse to start (a WebSocket subscription
-        # without on_message) fails the boot here, before the port is
-        # bound, not with an exception after the banner.
-        service_problem = Background.boot_problem(config)
+        # A service that would refuse to start (with cybertrain/feeds, a
+        # WebSocket subscription without on_message) fails the boot here,
+        # before the port is bound, not with an exception after the banner.
+        service_problem = Features.server_problem(config)
         Roles.fail_boot(service_problem) unless service_problem.empty?
         busy = Runtime.enter_role("server")
         Roles.fail_boot(busy) unless busy.empty?
         srv = http_server
         begin
-          # The stream poller before the listener: its start position
-          # (MAX(id)) must come before any subscription. Only with the
-          # endpoint mounted.
-          Stream::Poller.start!(config) unless config.stream_path.empty?
+          # Before the listener (with cybertrain/streams, the stream
+          # poller: its start position, MAX(id), must come before any
+          # subscription; only with the endpoint mounted).
+          Features.start_features_early(config)
           srv.start # bind first: a PortInUse error must not come after the banner
           # The supervisor waits for this file before it sends traffic here.
           Dev::Supervision.mark_ready if supervised
           # The supervisor prints one banner for the whole session.
           print_boot_banner unless supervised
           # After boot connected the database and SPINEL_WORKERS is set;
-          # only here, so `migrate`, `db` and Main.command never start it.
-          Scheduler.start!(config)
-          Job.start!(config) if config.worker
-          # Services files like cybertrain/websocket registered when required.
-          Background.start_all(config)
+          # only here, so `migrate`, `db` and Main.command never start
+          # them: the loaded subsystems' threads (with cybertrain/jobs, the
+          # Scheduler and, when Config#worker, the job threads; with
+          # cybertrain/feeds, the services files like cybertrain/websocket
+          # registered when required).
+          Features.start_features(config)
           if supervised
             serve_supervised(srv)
           elsif config.development?
@@ -144,17 +147,14 @@ module Cybertrain
             # left of its job_drain_timeout, inside systemd's TimeoutStopSec.
             previous_term = trap("TERM") do
               srv.request_stop
-              Job.request_stop
+              Features.request_stop_features
             end
             wait_for_stop(srv, previous_term)
           end
         ensure
           # Also when a start above raised (D66): each stop is a no-op for
           # what never started, so nothing this role began outlives it.
-          Job.stop!
-          Scheduler.stop!
-          Background.stop_all
-          Stream::Poller.stop!
+          Features.stop_features
           Runtime.leave_role
         end
         nil
@@ -185,7 +185,7 @@ module Cybertrain
         rebuilder = @rebuilder
         previous_term = trap("TERM") do
           srv.request_stop
-          Job.request_stop
+          Features.request_stop_features
         end
         previous_hup = trap("HUP") { request_restart }
         watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
@@ -199,7 +199,7 @@ module Cybertrain
       def serve_supervised(srv)
         previous_term = trap("TERM") do
           srv.request_stop
-          Job.request_stop
+          Features.request_stop_features
         end
         wait_for_stop(srv, previous_term)
       end

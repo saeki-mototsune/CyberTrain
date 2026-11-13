@@ -6,8 +6,9 @@
 # program died with SIGSEGV in sp_time_utc (gdb). Reduced to this program.
 #
 # Run (Spinel 2026.11.04.7026, from the repository root):
-#   spinel spikes/phase5/nil_default_time.rb -o $TMPDIR/nil_default_time && $TMPDIR/nil_default_time
-# Output: nothing, then "Segmentation fault" (exit 139). CRuby prints
+#   spinel spikes/phase5/nil_default_time.rb -o "${TMPDIR:-/tmp}/nil_default_time" && "${TMPDIR:-/tmp}/nil_default_time"
+# Output: nothing, then "Segmentation fault" (exit 139). CRuby prints, under
+# TZ=UTC (Time.at(0) is local time: 1969 west of UTC),
 #   none
 #   1970
 #

@@ -1,5 +1,5 @@
 ---
-source_sha256: 3746092c625dd7310582429d7fe08d53cca20a086690f3046c41f1684ebc20db
+source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
@@ -96,7 +96,7 @@ parser.finish { |event| Answer.append(event.event_data) }   # 流没有以空行
 
 ## 订阅 WebSocket 数据流
 
-在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。与 HTTP 客户端一样，它不在 `require "cybertrain"` 之中；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层：
+在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。与 HTTP 客户端一样，它不在 `require "cybertrain"` 之中；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层。它会加载 feed 子系统（`feeds` 角色、feed 健康检查），所以使用 `cybertrain/core` 的应用不需要别的行：
 
 ```ruby
 # config/app.rb（或 bin/<app>.rb 在 Cybertrain::Main.run 之前 require 的某个文件）
@@ -163,7 +163,7 @@ client.close
 
 ## 发送电子邮件
 
-`Cybertrain::Mailer` 通过 SMTP 服务器（你的邮件服务商的提交服务器，或本地中继）发送纯文本或带 HTML 部分的电子邮件，可以立即发送（`deliver`），也可以从作业中发送（`deliver_later`，见下文）。`require "cybertrain"` 会加载它；不使用框架的程序 require `cybertrain/mailer`（它不需要数据库：`deliver_later` 在 `cybertrain/mailer/later` 中）。TLS 需要单独 require：
+`Cybertrain::Mailer` 通过 SMTP 服务器（你的邮件服务商的提交服务器，或本地中继）发送纯文本或带 HTML 部分的电子邮件，可以立即发送（`deliver`），也可以从作业中发送（`deliver_later`，见下文）。`require "cybertrain"` 会加载它；使用 `cybertrain/core` 的应用或不使用框架的程序 require `cybertrain/mailer`（它不需要数据库：`deliver_later` 在 `cybertrain/mailer/later` 中，后者还会加载作业）。TLS 需要单独 require：
 
 ```ruby
 require "cybertrain/mailer"
@@ -200,7 +200,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **邮件内容**：`Date`、`From`、`To`、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`（HTML 邮件见下文）。非 ASCII 的主题按 RFC 2047 编码（`=?UTF-8?B?...?=`，在字符之间拆分）。正文的行尾会变成 CRLF，以 `.` 开头的行会进行点填充。其 `Content-Transfer-Encoding` 对 ASCII 为 `7bit`，对 UTF-8 在服务器声明支持 8BITMIME 时为 `8bit`（配合 `MAIL FROM
   ... BODY=8BITMIME`），其他情况或某一行长于 998 字节时为 `base64`。不会添加 `Message-ID`（提交服务器会添加）。
 - **会被拒绝的内容**，在连接之前以 `ArgumentError` 拒绝：不是纯 ASCII `local@domain` 的地址（不能有显示名称，不能有 `<>`、空格、逗号、引号、CR 或 LF；最多 254 字节），含有 CR、LF 或 NUL（请求头注入）或超过 998 字节的主题，不是有效 UTF-8 或含有 NUL 的正文，超过 100 个收件人。`to:` 接收一个地址，或用逗号分隔的多个地址。
-- **邮件程序**：`app/mailers` 中的模块（gen 会加载它们），其方法返回 `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`，写法与 Rails 相同：`PasswordsMailer.reset(user, url).deliver_later` 把它放入队列，`deliver_now` 立即发送。`cybertrain generate authentication` 会写出两个（[密码重置](authentication.md#password-reset)）。
+- **邮件程序**：`app/mailers` 中的模块（gen 会加载它们），其方法返回 `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`，写法与 Rails 相同：`PasswordsMailer.reset(user, url).deliver_later` 把它放入队列，`deliver_now` 立即发送。`cybertrain/mailer` 加载带 `deliver_now` 的 `MailMessage`；`deliver_later` 随 `cybertrain/mailer/later` 而来。`cybertrain generate authentication` 会写出两个（[密码重置](authentication.md#password-reset)），并添加这两行。
 - **尚未支持**：附件和内嵌图片、带 `default from:` 和按名称查找视图的邮件程序类、显示名称、`Cc`/`Bcc` 头（请改为发送给多个收件人）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 地址、流水线。`deliver` 在调用它的线程上运行，那是一个绿色线程，与请求一样。
 
 ### HTML 邮件
@@ -219,7 +219,7 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` 接收与 `deliver` 相同的参数，并立即检查它们（被拒绝的地址或主题会在这里抛出异常，什么也不会入队），然后把内置作业 `"cybertrain mail"` 连同完成的邮件一起入队；一个作业线程（[后台任务](background-and-operations.md#background-work)）会用那时生效的 SMTP 设置发送它。请在调用之前渲染好正文：作业没有视图上下文。它返回作业的 id。
+`deliver_later` 需要在 `bin/<app>.rb` 和 `bin/db.rb` 中写 `require "cybertrain/mailer/later"`（或 `require "cybertrain"`）。它接收与 `deliver` 相同的参数，并立即检查它们（被拒绝的地址或主题会在这里抛出异常，什么也不会入队），然后把内置作业 `"cybertrain mail"` 连同完成的邮件一起入队；一个作业线程（[后台任务](background-and-operations.md#background-work)）会用那时生效的 SMTP 设置发送它。请在调用之前渲染好正文：作业没有视图上下文。它返回作业的 id。
 
 - **重试。** 超时、被拒绝的连接或 `4xx` 应答（灰名单、`421`、`452`）会在 60 秒后重试，最多 5 次尝试，然后这一行变为 `failed`。`5xx` 应答（不存在的地址、被拒绝的登录）会立即丢弃这一行：重试不会改变答复。
 - **错误也会被丢弃。** 作业运行时的 `ArgumentError` 会被丢弃，什么也不发送：这既包括配置错误（没有 `CYBERTRAIN_SMTP_HOST`、没有发件人），也包括在数据库中被修改过的负载。这样的邮件会一直丢失，直到有人查看作业页面或 `./<app> jobs list discarded`；修正配置之后，`./<app> jobs retry ID` 会把它重新入队（被丢弃的 `535` 登录失败也一样）。

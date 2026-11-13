@@ -39,7 +39,7 @@ ok   spin.toml names the package and references the framework
 ok   config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)
 ok   config/locales/en.yml is a dictionary gen's reader accepts, with hello
 ok   config/app.rb documents the i18n settings, commented
-ok   bin/blog.rb is the app's one binary: server, migrate, db
+ok   bin/blog.rb is the app's one binary: server, migrate, db; it requires the core alone
 ok   bin/gen.rb drives the generator
 ok   bin/db.rb runs migrations in development without the app's models
 ok   the layout renders csrf_meta_tags, the flash and yield
@@ -713,4 +713,4 @@ ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-30 tests, 354 assertions, 0 failures
+30 tests, 358 assertions, 0 failures

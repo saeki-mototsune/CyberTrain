@@ -1,11 +1,11 @@
 ---
-description: How a CyberTrain app is built and run (build-time code generation, interpreted views, the HTTP server, SQLite via FFI, the development loop) and the differences from Rails.
+description: How a CyberTrain app is built and run (build-time code generation, optional subsystems, interpreted views, the HTTP server, SQLite via FFI, the development loop) and the differences from Rails.
 ---
 
 # How it works
 
 This page explains how a CyberTrain app is built and run: code generated at
-build time, views interpreted at request time, the HTTP server, SQLite
+build time, the subsystems an app requires, views interpreted at request time, the HTTP server, SQLite
 through FFI and the development loop, then a table of the differences from Rails.
 The home page's [performance section](site:index.html#performance) compares
 the result with the same blog written in Rails 8.1. The method, every number
@@ -48,6 +48,87 @@ From that it writes plain, readable Ruby under `gen/`:
 to generate first, so the checked-in output has to already be what compiles.
 CI re-runs `spin run gen` and fails on a diff, so stale generated code can't
 merge.
+
+## Subsystems
+
+Spinel compiles every method of every file a program requires, called or
+not, and its analysis of the whole program is most of every build. So the
+parts of the framework an application may not use are separate, and
+`bin/<app>.rb` names the ones it does, as Rails' `config/application.rb`
+lists railties:
+
+| Line | Loads |
+| --- | --- |
+| `require "cybertrain/core"` | HTTP, routing, controllers, models, views and helpers (`turbo_frame_tag`, `dom_id`, `render turbo_stream:` and `format.turbo_stream` among them), assets, sessions, CSRF, CSP, the console, `db` and `migrate` |
+| `require "cybertrain/jobs"` | `Job` and job classes, `Scheduler` (`every`, `cron`), the `worker` role, the `jobs` command and the jobs page |
+| `require "cybertrain/streams"` | `Stream.broadcast_*`, the stream endpoint (SSE and WebSocket), `Controller#turbo_stream`, the helpers `turbo_stream_from`, `turbo_stream`, `signed_stream_name` and `stream_source_path` |
+| `require "cybertrain/feeds"` | `Background`, the `feeds` role and its health check; `require "cybertrain/websocket"` (`WebSocket.subscribe`) loads it |
+| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; loads the mailer and jobs |
+| `require "cybertrain/cache"` | `Cache` |
+| `require "cybertrain/rate_limit"` | `rate_limit` in controllers; loads the cache |
+| `require "cybertrain"` | all of the above |
+
+Each line goes after `require "cybertrain/core"` (`cybertrain/jobs` and
+`cybertrain/feeds` load the core themselves, the others do not), and their
+order does not matter: the framework
+starts and stops the subsystems in a fixed order of its own. On a
+scaffolded application, the core alone compiles 2,205 methods instead of
+2,767 and analyses in 38 s instead of 52 s; a full build takes 83 s
+instead of 108 s, and an edit to a controller about 47 s instead of 65 s
+([docs/performance-next.md](../performance-next.md)).
+
+`cybertrain new` writes `require "cybertrain/core"` into `bin/<app>.rb` and
+`bin/db.rb` (which loads `config/app.rb`, so it needs the same lines).
+`cybertrain generate job` adds `require "cybertrain/jobs"` to both, and
+`generate authentication` the four its code uses (`cybertrain/jobs`,
+`cybertrain/mailer`, `cybertrain/mailer/later` and `cybertrain/rate_limit`:
+the jobs page, mail sent with `deliver_later`, rate-limited sign-in); the
+other lines are yours to add. An application written before the split has
+`require "cybertrain"`, which still loads everything: it builds and behaves
+as before, and replacing that line with the core and the lines it uses is
+what makes it build faster.
+
+A missing line is caught before the application runs:
+
+<!-- list: points -->
+- Ruby code that names a missing subsystem (`ReportJob.perform_later`,
+  `Cybertrain::Stream.broadcast_append_to`, `Cybertrain::Mailer.deliver`,
+  `rate_limit to:`) does not compile; the error names the constant or the
+  method, and the table above names its line.
+- A view calling a subsystem's helper stops `spin run gen` (and `spin run
+  gen -- --check`) with exit status 1:
+  `app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`.
+  A template rendered anyway raises `undefined helper 'turbo_stream_from'`.
+- `./<app> worker`, `./<app> jobs` and `./<app> feeds` print, for example,
+  `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` and
+  exit with 1.
+- `/up` reports only on what is loaded: no worker staleness without jobs,
+  no feed staleness without feeds.
+
+gen reads `bin/<app>.rb` as text and sees only the literal
+`require "cybertrain"` and `require "cybertrain/..."` lines in it: move
+them into a file that `bin/<app>.rb` loads with `require_relative`, and gen
+refuses a helper that would have worked. Keep them in `bin/<app>.rb`.
+
+Without jobs the cache prunes its expired rows itself: the first write of
+a process, and the first after each `cache_prune_interval`, deletes up to a
+thousand of them. With jobs it is the scheduled task `"cybertrain cache
+prune"`, as before ([The cache store](background-and-operations.md#the-cache-store)).
+
+Two cases are not caught by gen: a `jobs_page` line in `config/routes.rb`
+without `cybertrain/jobs` is a compile error of the generated controller
+rather than gen's message, and a job whose `retry_on` or `discard_on`
+names a `Cybertrain::Mailer` error makes the generated `gen/app.rb`
+require `cybertrain/mailer` itself.
+
+Tests are not cut by these lines: the program `cybertrain test` compiles
+(`gen/tests.rb`) requires `cybertrain`, every subsystem, whatever
+`bin/<app>.rb` requires. So `perform_enqueued_jobs`, `assert_emails` and
+`assert_broadcasts` work in any application, an application on
+`cybertrain/core` compiles its tests with every subsystem, and code that
+names a subsystem without its line passes its tests and stops at
+`spin build` ([Testing an app](testing.md)).
 
 ## Views are interpreted
 
@@ -214,6 +295,7 @@ of this loads in production.
 | Rails | CyberTrain |
 | --- | --- |
 | `rails console`, `rails dbconsole` | `./<app> console` evaluates the template expression language over the models (Spinel has no `eval`, so not Ruby); `./<app> dbconsole` opens `sqlite3` ([The console](background-and-operations.md#the-console)) |
+| `config/application.rb` requires the railties the app uses | `bin/<app>.rb` and `bin/db.rb` require `cybertrain/core` and the [subsystems](#subsystems) the app uses; `require "cybertrain"` is all of them |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` in `bin/<app>.rb`: `./<app> name ARGS` runs it with the database connected |
 | Edit code, the running app picks it up | Ruby changes show at once from a CRuby preview; the compiled binary takes the port when its build finishes (`cybertrain server`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |

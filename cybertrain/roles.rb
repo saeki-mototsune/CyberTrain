@@ -6,7 +6,9 @@
 #
 #   Roles::ServerRunner   ./<app> server [PORT]   cybertrain/roles/server.rb
 #   Roles::WorkerRunner   ./<app> worker          cybertrain/roles/worker.rb
+#                         (loaded by cybertrain/jobs, not by the core)
 #   Roles::FeedsRunner    ./<app> feeds [NAME...] cybertrain/roles/feeds.rb
+#                         (loaded by cybertrain/feeds, not by the core)
 #
 # This module holds only what the three really share: the stop flag of the
 # roles without a port, their banner, and the `error:` line. There is no
@@ -14,7 +16,7 @@
 # that calls subclass hooks is what NOTES rules 3 and 88 warn about.
 require "cybertrain/config"
 require "cybertrain/runtime"
-require "cybertrain/background"
+require "cybertrain/feature"
 # Only this file of cybertrain/dev: fail_boot leaves its message for a
 # supervisor, and production never loads the rest.
 require "cybertrain/dev/supervision"
@@ -47,11 +49,12 @@ module Cybertrain
       @stop_requested
     end
 
-    # Waits for a stop, or for a feeds process's supervisor giving up on a
-    # feed (Background.feeds_failed?).
+    # Waits for a stop, or for a loaded subsystem failing for good
+    # (Features.any_failed?: with cybertrain/feeds, a feeds process's
+    # supervisor giving up on a feed).
     # @return [nil]
     def self.wait_stop
-      sleep 0.1 until @stop_requested || Background.feeds_failed?
+      sleep 0.1 until @stop_requested || Features.any_failed?
       nil
     end
 
@@ -100,5 +103,3 @@ module Cybertrain
 end
 
 require "cybertrain/roles/server"
-require "cybertrain/roles/worker"
-require "cybertrain/roles/feeds"
