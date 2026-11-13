@@ -63,6 +63,15 @@ class ArticlesController < Cybertrain::Controller
     redirect_to "https://elsewhere.example/x"
   end
 
+  # Redirects whose Location carries a fragment (never sent).
+  def go_fragment
+    redirect_to "/articles/1#comments", status: :see_other
+  end
+
+  def go_absolute_fragment
+    redirect_to "http://www.example.com/remember?n=5#top"
+  end
+
   def accept
     render plain: "#{request.header("Accept")} #{request.header("X-Token")}"
   end
@@ -109,6 +118,10 @@ def build_router
   router.add("GET", "/remember", "remember") { |ctx| ArticlesController.new(ctx).process(:remember) { |c| c.remember } }
   router.add("GET", "/go_here", "go_here") { |ctx| ArticlesController.new(ctx).process(:go_here) { |c| c.go_here } }
   router.add("GET", "/go_away", "go_away") { |ctx| ArticlesController.new(ctx).process(:go_away) { |c| c.go_away } }
+  router.add("GET", "/go_fragment", "go_fragment") { |ctx| ArticlesController.new(ctx).process(:go_fragment) { |c| c.go_fragment } }
+  router.add("GET", "/go_absolute_fragment", "go_absolute_fragment") do |ctx|
+    ArticlesController.new(ctx).process(:go_absolute_fragment) { |c| c.go_absolute_fragment }
+  end
   router.add("GET", "/accept", "accept") { |ctx| ArticlesController.new(ctx).process(:accept) { |c| c.accept } }
   router.add("POST", "/casts", "casts") { |ctx| ArticlesController.new(ctx).process(:casts) { |c| c.casts } }
   router.add("PATCH", "/casts/:id", "cast") { |ctx| ArticlesController.new(ctx).process(:casts) { |c| c.casts } }
@@ -205,8 +218,8 @@ class ArticlesTest < ActionDispatch::IntegrationTest
       assert_equal "expected response 200, got 404", message
       message = assert_raises("AssertionFailed") { assert_redirected_to "/articles" }
       assert_equal "expected a redirect to \"/articles\", got 404", message
-      message = assert_raises(RuntimeError) { follow_redirect! }
-      assert_equal "not a redirect: last response was 404", message
+      message = assert_raises("AssertionFailed") { follow_redirect! }
+      assert_equal "follow_redirect!: the last response was 404, not a redirect (3xx with a Location)", message
     end
     nil
   end
@@ -242,6 +255,45 @@ class UrlTest < ActionDispatch::IntegrationTest
       assert_equal "remembered 3", response.body
       get "/accept", headers: { "HTTP_ACCEPT" => "application/json", "HTTP_X_TOKEN" => "t" }
       assert_equal "application/json t", response.body
+    end
+    nil
+  end
+
+  def test_fragment_redirects
+    begin
+      post "/articles", params: { article: { title: "New", body: "b" } }
+      get "/go_fragment"
+      follow_redirect!
+      assert_response :success
+      assert_equal "New: b", response.body
+      get "/go_absolute_fragment"
+      follow_redirect!
+      assert_equal "remembered 5", response.body
+    end
+    nil
+  end
+
+  # What a test set before the block (the generated attachment test's
+  # upload directory, a zone) is what the block and the rest of the test
+  # see: the block boots nothing.
+  def test_forgery_protection_keeps_settings
+    begin
+      Cybertrain::BlobStore.root = "tmp/test_integration/uploads"
+      Cybertrain::Clock.zone = Cybertrain::TimeZone.find("Asia/Tokyo")
+      with_forgery_protection do
+        assert_equal "tmp/test_integration/uploads", Cybertrain::BlobStore.root
+        assert_equal "Asia/Tokyo", Cybertrain::Clock.zone.zone_name
+        post "/articles", params: { article: { title: "Refused" } }
+        assert_response :forbidden
+      end
+      assert_equal "tmp/test_integration/uploads", Cybertrain::BlobStore.root
+      assert_equal "Asia/Tokyo", Cybertrain::Clock.zone.zone_name
+      message = assert_raises("AssertionFailed") do
+        with_forgery_protection { flunk "inside" }
+      end
+      assert_equal "inside", message
+      assert_equal "tmp/test_integration/uploads", Cybertrain::BlobStore.root
+      assert_equal "Asia/Tokyo", Cybertrain::Clock.zone.zone_name
     end
     nil
   end
@@ -444,6 +496,21 @@ test "with_forgery_protection turns it on for its block only" do
   assert_equal APP, Cybertrain::Test.app
   refute CONFIG.csrf
   refute CONFIG.csrf_given?
+end
+
+test "with_forgery_protection leaves the upload directory and the zone the test set, also when the block fails" do
+  root = Cybertrain::BlobStore.root
+  zone = Cybertrain::Clock.zone
+  begin
+    UrlTest.new.test_forgery_protection_keeps_settings
+  ensure
+    Cybertrain::BlobStore.root = root
+    Cybertrain::Clock.zone = zone
+  end
+end
+
+test "follow_redirect! never sends the Location's fragment" do
+  UrlTest.new.test_fragment_redirects
 end
 
 test "an assertion failing inside with_forgery_protection puts everything back" do

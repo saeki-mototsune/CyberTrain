@@ -163,12 +163,20 @@ module Cybertrain
     end
 
     # Runs the block with forgery protection on: `config.csrf` true and a
-    # second Application booted on Test.app's router (its middleware is
-    # chosen at boot) made Test.app and the client's application; both,
-    # and `config.csrf`, are put back in `ensure` when the block ends,
-    # also when it raises, and once more after the test as a backstop
-    # (Test.after_this_case). Rule 103's save-yield-ensure shape. What
+    # second Application on Test.app's router and config made Test.app and
+    # the client's application; both, and `config.csrf`, are put back in
+    # `ensure` when the block ends, also when it raises, and once more after
+    # the test as a backstop (Test.after_this_case). Rule 103's
+    # save-yield-ensure shape. What
     # IntegrationTest#with_forgery_protection calls.
+    #
+    # The second Application is not booted: its middleware stack is built
+    # on its first request, from the config as it is then (so with
+    # CsrfProtection), and Application#call does not ask whether it was
+    # booted. A boot would apply the configuration to the process again
+    # (Runtime.apply: BlobStore.root, the time zone, the default locale,
+    # the logger's level, ...) and so undo what the test set before the
+    # block.
     # @param client [Client] the test's client
     # @yield the requests that must carry the token
     # @return [nil]
@@ -180,8 +188,7 @@ module Cybertrain
       saved_given = c.csrf_given?
       after_this_case(forgery_restore(saved_app, saved_csrf, saved_given)) if in_case?
       c.csrf = true
-      strict = Cybertrain::Application.new(router: saved_app.router, url_resolver: saved_app.url_resolver)
-      strict.boot
+      strict = Cybertrain::Application.new(router: saved_app.router, url_resolver: saved_app.url_resolver, config: saved_app.config)
       self.app = strict
       client.client_app = strict
       _value = yield
@@ -308,15 +315,17 @@ module ActionDispatch
     end
 
     # GETs the last response's Location (a URL on the application's host
-    # by its path).
+    # by its path and query), without its fragment (`#comments`), which a
+    # browser never sends.
     # @return [Cybertrain::Response]
-    # @raise [RuntimeError] when the last response was not a redirect
+    # @raise [Cybertrain::Test::AssertionFailed] when the last response was
+    #   not a redirect (`follow_redirect!: the last response was 200, not a
+    #   redirect (3xx with a Location)`)
     # @raise [ArgumentError] when the Location is on another host
     # @api public
     def follow_redirect!
-      location = @integration_client.response.header("Location")
-      integration_target(location) unless location.nil?
-      integration_response(@integration_client.follow_redirect!)
+      location = Cybertrain::Test::Client.redirect_location(@integration_client.response)
+      integration_response(@integration_client.get(integration_target(location), {}))
     end
 
     # Runs the block with forgery protection on, as Rails'
@@ -344,9 +353,11 @@ module ActionDispatch
       @integration_client.response
     end
 
-    # This test's cookie jar: name to raw (still percent-encoded) value,
-    # from every Set-Cookie so far in this test.
-    # @return [Hash{String => String}]
+    # This test's cookie jar: name (a String or a Symbol: `cookies[:user]`)
+    # to raw (still percent-encoded) value, from every Set-Cookie so far in
+    # this test; a cookie past its Max-Age or Expires under the clock (after
+    # `travel_to`) is gone, as in Rails.
+    # @return [Cybertrain::Test::ClientCookies]
     # @api public
     def cookies
       @integration_client.cookies
