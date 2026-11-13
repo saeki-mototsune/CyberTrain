@@ -11,6 +11,7 @@ require "cybertrain/generator/model_validation"
 require "cybertrain/generator/models_emitter"
 require "cybertrain/generator/migrations_emitter"
 require "cybertrain/generator/views_emitter"
+require "cybertrain/generator/view_requires"
 require "cybertrain/generator/helpers_emitter"
 require "cybertrain/generator/components_emitter"
 require "cybertrain/generator/console_emitter"
@@ -30,10 +31,20 @@ module Cybertrain
     # warning line first. gen/assets.rb holds the asset manifest and the
     # import map (AssetsEmitter); without --check the digested files are
     # also written to public/assets (AssetsEmitter.sync_public), which
-    # --check never reads: it compares gen/assets.rb only.
+    # --check never reads: it compares gen/assets.rb only. First of all, a
+    # view calling a helper of a subsystem bin/NAME.rb does not require
+    # stops it with exit 1 and nothing written (ViewRequires).
     module Runner
       def self.run(root, argv)
         ControllerScan.use_root(root)
+        # A view calling a helper of a subsystem bin/NAME.rb does not
+        # require: refused before anything is read further or written, with
+        # or without --check.
+        refusals = ViewRequires.problems(root)
+        unless refusals.empty?
+          refusals.each { |line| puts line }
+          return 1
+        end
         check = argv.include?("--check")
         embed = argv.include?("--embed-views")
         jobs_page = Cybertrain::Routes.jobs_page_spec

@@ -2,6 +2,7 @@ require "cybertrain/application"
 require "cybertrain/db/cli"
 require "cybertrain/console"
 require "cybertrain/feature"
+require "cybertrain/feature_catalog"
 
 module Cybertrain
   # Cybertrain::Main -- what bin/<name>.rb runs, the one binary an app
@@ -160,17 +161,13 @@ module Cybertrain
     end
 
     # What `./NAME WORD` prints when WORD belongs to a subsystem bin/NAME.rb
-    # did not require: which line it needs. "" for any other word.
+    # did not require: which line it needs (FeatureCatalog, the table gen's
+    # view check reads too). "" for any other word.
     # @param word [String]
     # @param name [String] the binary's name
     # @return [String]
     def self.missing_subsystem(word, name)
-      case word
-      when "worker" then "the worker role needs require \"cybertrain/jobs\" in bin/#{name}.rb"
-      when "jobs" then "the jobs command needs require \"cybertrain/jobs\" in bin/#{name}.rb"
-      when "feeds" then "the feeds role needs require \"cybertrain/feeds\" in bin/#{name}.rb"
-      else ""
-      end
+      FeatureCatalog.missing_command_message(word, name)
     end
 
     # A registered command with a pool of one: a one-shot process needs no

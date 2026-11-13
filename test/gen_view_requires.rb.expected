@@ -1,0 +1,11 @@
+ok   a stream helper without cybertrain/streams is refused, with file and line
+app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/shop.rb
+app/components/feed_component.html.erb:2: turbo_stream needs require "cybertrain/streams" in bin/shop.rb
+app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/shop.rb
+app/components/feed_component.html.erb:2: turbo_stream needs require "cybertrain/streams" in bin/shop.rb
+ok   gen refuses before writing anything, and so does --check
+ok   require "cybertrain/streams" accepts the views
+ok   require "cybertrain" accepts the views
+ok   a commented-out line does not count
+ok   with no bin/NAME.rb nothing is refused
+6 tests, 8 assertions, 0 failures
