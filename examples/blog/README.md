@@ -84,7 +84,7 @@ otherwise), and its counts go through `number_with_delimiter`
 (`1,234 articles`); the article page dates the article with `time_tag`.
 
 ```sh
-cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen
+cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen (gen and db in debug mode)
 cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000`, or PORT=4000, to change it)
 cybertrain build       # dist/blog (views embedded) + dist/public/
 cybertrain spin test   # test/*.rb (the blog's, the generated authentication tests and test/attachment_article_cover.rb) against storage/test.sqlite3

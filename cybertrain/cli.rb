@@ -31,7 +31,8 @@ module Cybertrain
       Usage:
         cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
             Create an application in NAME, then run `spin lock` and
-            `spin run gen` in it (skipped with --skip-spin). Its spin.toml
+            `SPIN_DEBUG=1 spin run gen` in it (skipped with --skip-spin;
+            gen and db are built in spin's debug mode). Its spin.toml
             depends on this cybertrain's release by default:
               git tag v#{Cybertrain::VERSION} of #{Cybertrain::REPOSITORY}
             --path DIR: the framework checkout at DIR (relative to the
@@ -94,15 +95,18 @@ module Cybertrain
             `spin run gen` has written gen/jobs.rb.
         cybertrain db migrate
             Generate, apply pending migrations, generate again
-            (spin run gen; spin run db -- migrate; spin run gen).
+            (SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
+            SPIN_DEBUG=1 spin run gen).
         cybertrain db COMMAND...
-            Any other database command, after `spin run gen`: status,
-            rollback [N] (generates again afterwards), schema, schema:dump,
-            create.
+            Any other database command, after `SPIN_DEBUG=1 spin run gen`:
+            status, rollback [N] (generates again afterwards), schema,
+            schema:dump, create.
             `cybertrain migration` is the same as `cybertrain db migrate`.
         cybertrain server [PORT]
             Generate, then start the development server
-            (spin run gen; spin run NAME [-- PORT]; default port 3000).
+            (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
+            when a Ruby file is newer than build/bin/NAME; spin run NAME
+            [-- PORT]; default port 3000).
         cybertrain build
             Build NAME with app/views embedded and assemble dist/
             (the binary, public/, storage/, tmp/).
@@ -302,7 +306,7 @@ module Cybertrain
       run_spin(Build.db_commands(args))
     end
 
-    # `cybertrain server [PORT]`.
+    # `cybertrain server [PORT]`: Build.run_server's steps.
     def self.run_server(name, argv)
       port = argv.size > 1 ? argv[1] : ""
       unless port == "" || Build.port?(port)
@@ -313,7 +317,9 @@ module Cybertrain
         puts "error: unexpected argument '#{argv[2]}'"
         return 1
       end
-      run_spin(Build.server_commands(name, port))
+      return 1 unless Toolchain.ensure!
+
+      Build.run_server(".", name, port)
     end
 
     # `args` without the (every) `flag` option.

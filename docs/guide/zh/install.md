@@ -1,5 +1,5 @@
 ---
-source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
+source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
 ---
 # 安装
 
@@ -42,14 +42,14 @@ cybertrain doctor
 `cybertrain help` 会打印这些命令：
 
 - `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]]
-  [--skip-spin]` 在 NAME 中创建应用，然后在其中运行 `spin lock` 和 `spin run gen`，需要时会先安装 Spinel。
+  [--skip-spin]` 在 NAME 中创建应用，然后在其中运行 `spin lock` 和 `SPIN_DEBUG=1 spin run gen`，需要时会先安装 Spinel（CLI 以 spin 的调试模式构建 gen 和 `bin/db.rb`）。
 - `cybertrain generate scaffold NAME field:type ...`（别名 `g scaffold`）为当前目录中的应用添加一个资源。
 - `cybertrain generate authentication` 为其添加用邮箱和密码登录的功能：users 和 sessions 表、`User` 和 `Session` 模型、登录和注册的控制器与视图、路由、`ApplicationController` 中的一个 `before_action`，以及一个测试（参见[添加登录](tutorial.md#authentication)）。使用 `--invite-only` 时没有注册页面：用户通过 `./NAME user EMAIL` 创建；在还没有任何用户时，第一个用户也可以在 `/setup` 页面创建，该页面只响应服务器所在的机器，并需要服务器启动警告中打印的一次性令牌。
 - `cybertrain generate attachment MODEL FIELD [--any]` 为已生成脚手架的模型添加文件上传功能：五个元数据列、模型方法和回调、一个下载动作、路由、表单字段和一个测试（参见[添加封面图片](tutorial.md#attachments)）。脚手架字段 `cover:attachment` 的作用相同。
-- `cybertrain db migrate` 先生成代码，再执行待处理的迁移，然后再次生成（`spin run gen; spin run db -- migrate; spin run gen`）；`cybertrain migration` 作为别名保留。
-- `cybertrain db COMMAND...` 在 `spin
+- `cybertrain db migrate` 先生成代码，再执行待处理的迁移，然后再次生成（`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate; SPIN_DEBUG=1 spin run gen`）；`cybertrain migration` 作为别名保留。
+- `cybertrain db COMMAND...` 在 `SPIN_DEBUG=1 spin
   run gen` 之后运行其他任意数据库命令：`status`、`rollback [N]`（之后会再次生成）、`schema:dump`、`create`。
-- `cybertrain server [PORT]` 先生成代码，然后启动开发服务器（`spin run gen; spin run NAME`，或 `spin run NAME -- PORT`；默认端口 3000）。
+- `cybertrain server [PORT]` 先生成代码，然后启动开发服务器（`SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则 `spin build NAME -- --incremental`；`spin run NAME`，或 `spin run NAME -- PORT`；默认端口 3000）。
 - `cybertrain build` 构建嵌入了 `app/views/` 的 NAME，并组装 `dist/`（二进制文件、`public/`、`storage/`、`tmp/`）。
 - `cybertrain spin ARGS...` 在任意目录下用锁定版本的 Spinel 运行 `spin`（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
 - `cybertrain setup [--force]` 把锁定版本的 Spinel 安装到 `~/.cybertrain` 中，除非 `PATH` 上已有该版本的 `spinel`；`--force` 会重新构建 `~/.cybertrain` 下的副本。
@@ -88,9 +88,9 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 ### `cybertrain new` 写出什么
 
 `cybertrain new` 会写出应用，其 `spin.toml` 指向与 CLI 相匹配的版本（`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`，X.Y.Z 即 `cybertrain version` 打印的版本），确保 Spinel 已安装，然后运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，最后打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
+"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`，X.Y.Z 即 `cybertrain version` 打印的版本），确保 Spinel 已安装，然后运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `SPIN_DEBUG=1 spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，最后打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
 
-如果 Spinel 或两个 `spin` 步骤之一失败，已写出的文件会保留，`new` 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 `cybertrain setup`，再在新目录中运行 `cybertrain spin lock && cybertrain spin run gen`）。
+如果 Spinel 或两个 `spin` 步骤之一失败，已写出的文件会保留，`new` 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 `cybertrain setup`，再在新目录中运行 `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen`）。
 
 有四个选项会改变它写出和运行的内容：
 
