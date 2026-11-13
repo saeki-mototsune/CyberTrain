@@ -483,7 +483,7 @@ test "config/app.rb's configure blocks run exactly once under cybertrain test" d
   assert_equal 1, CONFIGURE_RUNS[0]
 end
 
-test "the shell's mail, SSL and host variables do not reach the tests; uploads go to an emptied tmp/test_uploads" do
+test "the shell's mail, SSL, host, log format and Sentry variables do not reach the tests; uploads go to an emptied tmp/test_uploads" do
   make_dir("tmp")
   make_dir("tmp/test_bundle")
   named = "tmp/test_bundle/env.sqlite3"
@@ -494,17 +494,28 @@ test "the shell's mail, SSL and host variables do not reach the tests; uploads g
   ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "smtp"
   ENV["CYBERTRAIN_FORCE_SSL"] = "1"
   ENV["CYBERTRAIN_HOSTS"] = "blog.example.com"
+  ENV["CYBERTRAIN_LOG_FORMAT"] = "json"
+  ENV["CYBERTRAIN_SENTRY_DSN"] = "https://k@sentry.example/1"
   c = bundle_config("test", named)
   ENV.delete("CYBERTRAIN_MAIL_DELIVERY_METHOD")
   ENV.delete("CYBERTRAIN_FORCE_SSL")
   ENV.delete("CYBERTRAIN_HOSTS")
+  ENV.delete("CYBERTRAIN_LOG_FORMAT")
+  ENV.delete("CYBERTRAIN_SENTRY_DSN")
   assert_equal :smtp, c.mail_delivery_method
   assert c.force_ssl
   assert c.host_check?
+  assert_equal :json, c.log_format
+  assert_equal "https://k@sentry.example/1", c.sentry_dsn
   app = bundle_boot
   assert_equal :test, c.mail_delivery_method
   refute c.force_ssl
   refute c.host_check?
+  # Text lines (the generated tests read captured log text) and no report
+  # sent to a real Sentry.
+  assert_equal :text, c.log_format
+  refute Cybertrain::Logger.json_lines
+  assert_equal "", c.sentry_dsn
   assert_equal [], c.hosts_from_env
   assert_includes c.checked_hosts, "www.example.com"
   # Answered by the (empty) router: neither 403 from the host check nor a
@@ -516,14 +527,23 @@ test "the shell's mail, SSL and host variables do not reach the tests; uploads g
   assert_equal [], Dir.children("tmp/test_uploads")
   app.shutdown
   Cybertrain::Runtime.reset!
-  # A CYBERTRAIN_FORCE_SSL that boot would refuse does not stop the tests.
+  # A CYBERTRAIN_FORCE_SSL, CYBERTRAIN_LOG_FORMAT or CYBERTRAIN_SENTRY_DSN
+  # that boot would refuse does not stop the tests.
   ENV["CYBERTRAIN_FORCE_SSL"] = "yes"
+  ENV["CYBERTRAIN_LOG_FORMAT"] = "xml"
+  ENV["CYBERTRAIN_SENTRY_DSN"] = "not a dsn"
   c = bundle_config("test", named)
   ENV.delete("CYBERTRAIN_FORCE_SSL")
+  ENV.delete("CYBERTRAIN_LOG_FORMAT")
+  ENV.delete("CYBERTRAIN_SENTRY_DSN")
   refute c.security_error.empty?
+  refute c.log_error.empty?
+  refute c.reporting_error.empty?
   app = bundle_boot
   assert app.booted?
   assert_equal "", c.security_error
+  assert_equal "", c.log_error
+  assert_equal "", c.reporting_error
   app.shutdown
   Cybertrain::Runtime.reset!
   # config/app.rb's own choices stay.
@@ -534,10 +554,15 @@ test "the shell's mail, SSL and host variables do not reach the tests; uploads g
   c.force_ssl = true
   c.upload_root = "tmp/test_bundle/uploads"
   c.hosts_from_env = ["blog.example.com"]
+  c.log_format = :json
+  c.sentry_dsn = "http://k@127.0.0.1:9/7"
   app = bundle_boot
   assert_equal :smtp, c.mail_delivery_method
   assert c.force_ssl
   assert c.host_check?
+  assert_equal :json, c.log_format
+  assert Cybertrain::Logger.json_lines
+  assert_equal "http://k@127.0.0.1:9/7", c.sentry_dsn
   assert_equal "tmp/test_bundle/uploads", Cybertrain::BlobStore.root
   assert_equal "mine", File.read("tmp/test_bundle/uploads/kept")
   app.shutdown

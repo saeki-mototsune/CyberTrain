@@ -5,6 +5,7 @@ require "cybertrain/http/ip_address"
 require "cybertrain/template/limits"
 require "cybertrain/time_zone"
 require "cybertrain/content_security_policy"
+require "cybertrain/sentry_dsn"
 require "cybertrain/config/files"
 
 module Cybertrain
@@ -157,9 +158,47 @@ module Cybertrain
     # `2026-11-11T12:00:00.123Z INFO Completed 200 in 12ms`) or `:json`,
     # one JSON object per line for log collectors; from
     # `CYBERTRAIN_LOG_FORMAT`. Anything else stops the boot ({#log_error}).
+    # `cybertrain test` keeps text lines for its tests unless config/app.rb
+    # assigns it (tests read captured log text); the variable does not
+    # count as an assignment there.
     # @return [Symbol]
     # @api public
-    attr_accessor :log_format
+    attr_reader :log_format
+
+    # Sets {#log_format}, and records that it was given ({#log_format_given?}).
+    # @param value [Symbol]
+    # @api public
+    def log_format=(value)
+      @log_format = value
+      @log_format_given = true
+    end
+
+    # Whether {#log_format} was assigned (by config/app.rb or later), rather
+    # than read from CYBERTRAIN_LOG_FORMAT.
+    # @return [Boolean]
+    # @api private
+    def log_format_given? = @log_format_given
+
+    # Sets {#log_format} to `value` unless it was given, without counting as
+    # given: `cybertrain test`'s default (`:text`).
+    # @param value [Symbol]
+    # @return [nil]
+    # @api private
+    def log_format_unless_given(value)
+      @log_format = value unless @log_format_given
+      nil
+    end
+
+    # The request's tags on every log line it causes, in order, `[:request_id]`:
+    # `:request_id` (the request id) and `:remote_ip` ({Request#client_ip};
+    # off by default, it is personal data). `[]` turns the request tag off.
+    # Anything else stops the boot ({#log_error}); Rails also takes Procs,
+    # which this does not.
+    # @example config/app.rb
+    #   c.log_tags = [:request_id, :remote_ip]
+    # @return [Array<Symbol>]
+    # @api public
+    attr_accessor :log_tags
 
     # The session cookie's name, `"_cybertrain_session"`.
     # @return [String]
@@ -592,6 +631,91 @@ attr_accessor :trusted_proxies
     end
 
     # ---- end of the Mailer settings ----------------------------------------
+
+    # The Sentry (or GlitchTip) DSN error reports are sent to, from
+    # `CYBERTRAIN_SENTRY_DSN`, `""` (nothing is sent):
+    # `https://<public key>@<host>[:<port>][/<path>]/<project id>` ({SentryDsn}).
+    # One that does not parse stops the boot ({#reporting_error}), which
+    # names the reason and never the key. `cybertrain test` empties it for
+    # its tests unless config/app.rb assigns it (an exported DSN must not
+    # make a test send reports); a test points it at a receiver by
+    # assignment.
+    # @return [String]
+    # @api public
+    attr_reader :sentry_dsn
+
+    # Sets {#sentry_dsn}, and records that it was given.
+    # @param value [String]
+    # @api public
+    def sentry_dsn=(value)
+      @sentry_dsn = value
+      @sentry_dsn_given = true
+    end
+
+    # Whether {#sentry_dsn} was assigned (by config/app.rb or later), rather
+    # than read from CYBERTRAIN_SENTRY_DSN.
+    # @return [Boolean]
+    # @api private
+    def sentry_dsn_given? = @sentry_dsn_given
+
+    # Sets {#sentry_dsn} to `value` unless an assignment gave it, without
+    # counting as given: `cybertrain test`'s default (`""`, nothing sent).
+    # @param value [String]
+    # @return [nil]
+    # @api private
+    def sentry_dsn_unless_given(value)
+      @sentry_dsn = value unless @sentry_dsn_given
+      nil
+    end
+
+    # The share of error reports the Sentry sender sends, as Sentry's
+    # `sample_rate`, `1.0` (all), from `CYBERTRAIN_ERROR_SAMPLE_RATE`
+    # (digits with an optional fraction: `0.25`); subscribers see every
+    # report. Outside 0.0 to 1.0, or a variable that is not such a number,
+    # stops the boot ({#reporting_error}).
+    # @return [Float]
+    # @api public
+    attr_reader :error_sample_rate
+
+    # Sets {#error_sample_rate}; CYBERTRAIN_ERROR_SAMPLE_RATE no longer counts.
+    # @param value [Float]
+    # @api public
+    def error_sample_rate=(value)
+      @error_sample_rate = value
+      @error_sample_rate_text = ""
+    end
+
+    # The release sent with each error report (a version or a commit), `""`,
+    # from `CYBERTRAIN_RELEASE`.
+    # @return [String]
+    # @api public
+    attr_accessor :release
+
+    # CYBERTRAIN_ERROR_SAMPLE_RATE as a Float when `text` is digits with an
+    # optional "." and digits (0.25, 1, 0); 1.0 otherwise (empty, or text
+    # {#reporting_error} refuses).
+    def self.default_error_sample_rate(text)
+      return 1.0 unless Config.rate_text?(text)
+
+      text.to_f
+    end
+
+    # True when `text` is one or more digits, optionally followed by "."
+    # and one or more digits. A byte scan (NOTES rule 62).
+    def self.rate_text?(text)
+      s = text.to_s
+      n = s.bytesize
+      i = 0
+      i += 1 while i < n && s.getbyte(i) >= 48 && s.getbyte(i) <= 57
+      return false if i == 0
+      return true if i == n
+      return false unless s.getbyte(i) == 46
+
+      i += 1
+      digits_from = i
+      i += 1 while i < n && s.getbyte(i) >= 48 && s.getbyte(i) <= 57
+      i == n && i > digits_from
+    end
 
     # Spinel worker threads that serve requests, `1`, from `SPINEL_WORKERS`:
     # the core count on a server with more than one. Above 1 the server
@@ -1140,6 +1264,9 @@ attr_accessor :trusted_proxies
       @log_level = Config.default_log_level
       @log_level_given = false
       @log_format = Config.default_log_format
+      @log_format_given = false
+      # Typed (rule 9) and assigned here (rule 73).
+      @log_tags = [:request_id]
       @session_cookie_name = "_cybertrain_session"
       @session_max_age = 1209600
       # Absolute session lifetime, enforced by SessionStore: the two weeks
@@ -1218,6 +1345,14 @@ end
       @smtp_tls = Config.env_or("CYBERTRAIN_SMTP_TLS", "starttls").downcase
       @mail_delivery_method = Config.default_mail_delivery_method(@env)
       @mail_delivery_method_given = false
+      # Error reporting. The DSN is stripped like the encryption key (a
+      # .env line's newline), not counted as given (plan D14); the rate's
+      # text is kept for reporting_error's message.
+      @sentry_dsn = Config.env_or("CYBERTRAIN_SENTRY_DSN", "").strip
+      @sentry_dsn_given = false
+      @error_sample_rate_text = Config.env_or("CYBERTRAIN_ERROR_SAMPLE_RATE", "")
+      @error_sample_rate = Config.default_error_sample_rate(@error_sample_rate_text)
+      @release = Config.env_or("CYBERTRAIN_RELEASE", "")
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
       # Application-defined settings (setting_string / setting_int /
       # setting_bool): one typed Hash per type, keyed by the setting's name

@@ -14,6 +14,12 @@ ok   time_zone from the environment and its check
 ok   mail_delivery_method from the environment and its check
 ok   log_level from CYBERTRAIN_LOG_LEVEL
 ok   log_format from CYBERTRAIN_LOG_FORMAT
+ok   the reporting settings' defaults
+ok   log_tags may hold :request_id and :remote_ip
+ok   sentry_dsn from CYBERTRAIN_SENTRY_DSN and its check
+ok   cybertrain test's default empties an exported DSN, not an assigned one
+ok   error_sample_rate from CYBERTRAIN_ERROR_SAMPLE_RATE and its check
+ok   release from CYBERTRAIN_RELEASE
 ok   boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on
 ok   a bad declaration is an ArgumentError
 ok   reading an undeclared or differently typed setting is an ArgumentError
@@ -54,4 +60,4 @@ ok   a nonce directive that is not a directive, or a CR in permissions_policy, s
 ok   content_security_policy builds the policy once and yields it
 ok   i18n settings from the environment and their checks
 ok   auth settings and their checks
-26 tests, 203 assertions, 0 failures
+32 tests, 251 assertions, 0 failures

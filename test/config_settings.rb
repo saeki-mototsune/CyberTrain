@@ -232,6 +232,11 @@ test "log_format from CYBERTRAIN_LOG_FORMAT" do
   assert_equal :text, Cybertrain::Config.new.log_format
   ENV["CYBERTRAIN_LOG_FORMAT"] = "json"
   assert_equal :json, Cybertrain::Config.new.log_format
+  # Not counted as given: cybertrain test keeps its text lines.
+  exported = Cybertrain::Config.new
+  refute exported.log_format_given?
+  exported.log_format_unless_given(:text)
+  assert_equal :text, exported.log_format
   ENV["CYBERTRAIN_LOG_FORMAT"] = "xml"
   xml = Cybertrain::Config.new
   assert_equal :xml, xml.log_format
@@ -240,9 +245,144 @@ test "log_format from CYBERTRAIN_LOG_FORMAT" do
   ENV.delete("CYBERTRAIN_LOG_FORMAT")
   assigned = Cybertrain::Config.new
   assigned.log_format = :json
+  assert assigned.log_format_given?
+  assigned.log_format_unless_given(:text)
+  assert_equal :json, assigned.log_format
   assert_equal "", assigned.validation_error
   assigned.log_format = :yaml
   assert_equal "log_format must be :text or :json (got :yaml)", assigned.validation_error
+end
+
+# Empties the reporting variables (they would leak into later tests).
+def clear_reporting_env
+  ENV.delete("CYBERTRAIN_SENTRY_DSN")
+  ENV.delete("CYBERTRAIN_ERROR_SAMPLE_RATE")
+  ENV.delete("CYBERTRAIN_RELEASE")
+  nil
+end
+
+test "the reporting settings' defaults" do
+  clear_reporting_env
+  defaults = Cybertrain::Config.new
+  assert_equal [:request_id], defaults.log_tags
+  assert_equal "", defaults.sentry_dsn
+  assert_equal 1.0, defaults.error_sample_rate
+  assert_equal "", defaults.release
+  assert_equal "", defaults.reporting_error
+  assert_equal "", defaults.validation_error
+end
+
+test "log_tags may hold :request_id and :remote_ip" do
+  tags = Cybertrain::Config.new
+  tags.log_tags = [:request_id, :remote_ip]
+  assert_equal "", tags.log_error
+  assert_equal "", tags.validation_error
+  tags.log_tags = [:remote_ip]
+  assert_equal "", tags.validation_error
+  tags.log_tags = Array.new(0) { :request_id }
+  assert_equal "", tags.validation_error
+  tags.log_tags = [:request_id, :user_agent]
+  assert_equal "log_tags may hold :request_id and :remote_ip (got :user_agent)", tags.log_error
+  assert_equal "log_tags may hold :request_id and :remote_ip (got :user_agent)", tags.validation_error
+end
+
+test "sentry_dsn from CYBERTRAIN_SENTRY_DSN and its check" do
+  clear_reporting_env
+  ENV["CYBERTRAIN_SENTRY_DSN"] = "https://abc@o1.ingest.sentry.io/42"
+  good = Cybertrain::Config.new
+  assert_equal "https://abc@o1.ingest.sentry.io/42", good.sentry_dsn
+  assert_equal "", good.reporting_error
+  # A .env line's newline is not part of it.
+  ENV["CYBERTRAIN_SENTRY_DSN"] = " https://abc@h/1\n"
+  assert_equal "https://abc@h/1", Cybertrain::Config.new.sentry_dsn
+  ENV["CYBERTRAIN_SENTRY_DSN"] = "https://h/1"
+  bad = Cybertrain::Config.new
+  why = "sentry_dsn must look like https://<public key>@<host>/<project id>: no public key before the @"
+  assert_equal why, bad.reporting_error
+  assert_equal why, bad.validation_error
+  # The message never shows the key.
+  ENV["CYBERTRAIN_SENTRY_DSN"] = "https://keepthisquiet@h/x"
+  quiet = Cybertrain::Config.new.reporting_error
+  assert_equal "sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits", quiet
+  refute quiet.include?("keepthisquiet")
+  clear_reporting_env
+  assigned = Cybertrain::Config.new
+  assigned.sentry_dsn = "ftp://k@h/1"
+  assert_equal "sentry_dsn must look like https://<public key>@<host>/<project id>: the scheme must be https or http",
+               assigned.validation_error
+  assigned.sentry_dsn = ""
+  assert_equal "", assigned.validation_error
+end
+
+test "cybertrain test's default empties an exported DSN, not an assigned one" do
+  clear_reporting_env
+  ENV["CYBERTRAIN_SENTRY_DSN"] = "https://k@sentry.example/1"
+  exported = Cybertrain::Config.new
+  refute exported.sentry_dsn_given?
+  exported.sentry_dsn_unless_given("")
+  assert_equal "", exported.sentry_dsn
+  # Emptied, a DSN boot would refuse does not stop the tests either.
+  ENV["CYBERTRAIN_SENTRY_DSN"] = "not a dsn"
+  refused = Cybertrain::Config.new
+  refute refused.reporting_error.empty?
+  refused.sentry_dsn_unless_given("")
+  assert_equal "", refused.reporting_error
+  assigned = Cybertrain::Config.new
+  assigned.sentry_dsn = "http://k@127.0.0.1:9000/7"
+  assert assigned.sentry_dsn_given?
+  assigned.sentry_dsn_unless_given("")
+  assert_equal "http://k@127.0.0.1:9000/7", assigned.sentry_dsn
+  clear_reporting_env
+end
+
+test "error_sample_rate from CYBERTRAIN_ERROR_SAMPLE_RATE and its check" do
+  clear_reporting_env
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "0.25"
+  quarter = Cybertrain::Config.new
+  assert_equal 0.25, quarter.error_sample_rate
+  assert_equal "", quarter.reporting_error
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "0"
+  assert_equal 0.0, Cybertrain::Config.new.error_sample_rate
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "1"
+  assert_equal 1.0, Cybertrain::Config.new.error_sample_rate
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = ""
+  assert_equal 1.0, Cybertrain::Config.new.error_sample_rate
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "x"
+  x = Cybertrain::Config.new
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \"x\")", x.reporting_error
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \"x\")", x.validation_error
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "1.5"
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \"1.5\")", Cybertrain::Config.new.reporting_error
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "-0.5"
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \"-0.5\")", Cybertrain::Config.new.reporting_error
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = ".5"
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \".5\")", Cybertrain::Config.new.reporting_error
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "1e-1"
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \"1e-1\")", Cybertrain::Config.new.reporting_error
+  clear_reporting_env
+  assigned = Cybertrain::Config.new
+  assigned.error_sample_rate = 1.5
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got 1.5)", assigned.reporting_error
+  assigned.error_sample_rate = -0.1
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got -0.1)", assigned.validation_error
+  assigned.error_sample_rate = 0.0
+  assert_equal "", assigned.validation_error
+  # An assignment replaces a refused variable.
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "x"
+  replaced = Cybertrain::Config.new
+  replaced.error_sample_rate = 0.5
+  assert_equal "", replaced.reporting_error
+  clear_reporting_env
+end
+
+test "release from CYBERTRAIN_RELEASE" do
+  clear_reporting_env
+  ENV["CYBERTRAIN_RELEASE"] = "abc123"
+  assert_equal "abc123", Cybertrain::Config.new.release
+  clear_reporting_env
+  assigned = Cybertrain::Config.new
+  assigned.release = "v1.2"
+  assert_equal "v1.2", assigned.release
 end
 
 test "boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on" do
