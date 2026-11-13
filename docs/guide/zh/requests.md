@@ -1,5 +1,5 @@
 ---
-source_sha256: babb4f8565d2940bf66de19fae2f08077ee3b7190bbb218c8b497b6093ff0ed2
+source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
 ---
 # 请求
 
@@ -165,7 +165,7 @@ cookies.signed[:user_id]           # => "5"，被改过则为 nil
 cookies.delete(:theme)
 ```
 
-写入接受一个 String，或一个带 `value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:` 和 `same_site:` 的 Hash。cookie 写入时带 `Path=/`、`HttpOnly` 和 `SameSite=Lax`，会话 cookie 带 `Secure` 时（生产环境中，或开启 `force_ssl` 时）也带 `Secure`，除非写入时另有指定。`permanent` 写入 20 年的 `Max-Age`。签名的值是用从 `secret_key_base` 派生的密钥计算的 HMAC-SHA256；加密的值是用另一个密钥的 AES-256-GCM；两者都绑定到各自 cookie 的名称，因此换一个名称既无法验证也无法解密，被改过的值读出来是 nil。同一请求中写入后再读取，得到的是写入的值。
+写入接受一个 String，或一个带 `value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:` 和 `same_site:` 的 Hash。cookie 写入时带 `Path=/`、`HttpOnly` 和 `SameSite=Lax`，会话 cookie 带 `Secure` 时（生产环境中，或开启 `force_ssl` 时）也带 `Secure`，除非写入时另有指定。`permanent` 写入 20 年的 `Max-Age`。签名的值是用从 `secret_key_base` 派生的密钥计算的 HMAC-SHA256；加密的值是用另一个密钥的 AES-256-GCM；两者都绑定到各自 cookie 的名称，因此换一个名称既无法验证也无法解密，被改过的值读出来是 nil。同一请求中写入后再读取，得到的是写入的值。在 jar 之下，`Cybertrain::Cookies.serialize(name, value, expires: time)` 构造一个 `Set-Cookie` 值；省略 `expires:`（它的默认值是 `Cybertrain::Cookies::NO_EXPIRES` 而不是 nil，这是出于 Spinel 的原因：见 spikes/NOTES.md 第 109 条规则）或传入 nil 都不会写出 `Expires`。
 
 会话 cookie 与 Rails 的 cookie store 一样，用 AES-256-GCM 加密并认证，使用从 `secret_key_base` 派生的专用密钥：客户端既不能读取也不能修改它。无法解密的 cookie（被改过的、来自别处的或旧的签名 cookie）会作为空会话加载，超过 4096 字节的 cookie 也是如此；cookie 会超过 4096 字节的会话，或 `name=value` 超过 4096 字节的 jar cookie，在写入时抛出 `Session::CookieOverflow`。值仍然是 String。和以前一样，更换 `secret_key_base` 会让所有人退出登录。
 

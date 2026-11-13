@@ -122,6 +122,7 @@ for the evidence needed to change a status.
 | 106 | Works on this build: a record of a form that compiles (phase 5a, 2026-11-12), not of a defect. |
 | 107 | Build-mode behaviour recorded on this build (phase 5a, 2026-11-12); the empty release backtrace is still there. |
 | 108 | Tool behaviour, checked 2026-11-12: spin's freshness check for `bin/gen` counts test files and gen's outputs as inputs. |
+| 109 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb). |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
@@ -195,8 +196,8 @@ The rules are numbered in the order they were found. By topic:
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87, 105, 106
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
-  37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97
-- Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100
+  37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97, 109
+- Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100, 109
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93,
   101
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
@@ -1591,6 +1592,29 @@ explicitly retires a workaround.
      test/fixtures/test_app). So in an application every edit of a test
      rebuilds the generator before `cybertrain test` compiles the bundle
      (docs/spinel-feedback.md AL; design D83).
+
+109. A parameter, keyword or positional, that defaults to nil and that
+     some caller gives a plain Time is compiled by Spinel 2026.11.04.7026 as
+     a non-nullable Time: its `nil?` is the constant false (`if
+     (((void)(lv_expires), 0))` in the C), so the call that relies on the
+     default passes NULL on and dies with SIGSEGV (`sp_time_year(NULL)`,
+     `sp_time_utc` in the framework). `def stamp(expires: nil)` with
+     `return "none" if expires.nil?` crashes once one caller passes
+     `Time.at(0)`; a positional `def stamp(expires = nil)` crashes too;
+     callers passing a String work (a String pointer is nullable), and so
+     do callers that pass a value typed Time-or-nil
+     (`given = cond ? Time.at(0) : nil`, `Cast.time_or_nil(...)`). So do
+     not write `def f(t: nil)` with a `t.nil?` check when any caller passes
+     a Time: give it a non-nil sentinel default and test for both nil and
+     the sentinel (`Cookies::NO_EXPIRES`, `Time.at(-1).utc`), or make every
+     caller pass a Time-or-nil value. Found when test/client.rb passed
+     `expires: Clock.now + 120` to `Cookies.serialize` beside calls without
+     it (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb crashes,
+     exit 139, where CRuby prints `none` and `1970`;
+     spikes/phase5/nil_default_time_fixed.rb, the sentinel, passes; the
+     regression program is test/client.rb; docs/spinel-feedback.md AN).
+     examples/blog never crashed: `CookieJar#assign_cookie` passes
+     `Cast.time_or_nil(...)`, and remember me uses `max_age:`.
 
 <a id="numbers-worth-remembering"></a>
 

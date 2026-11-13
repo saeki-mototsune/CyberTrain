@@ -1,5 +1,5 @@
 ---
-source_sha256: 311993e56b6623a89ee8433358d1cfbd9d5307a9d9aaf69287de3c81ef9378b1
+source_sha256: 3edf5b7a57bd95529290737c87303ea72cbc6d4113b29e414f8bd07e84667542
 ---
 # Конфигурация
 
@@ -56,7 +56,7 @@ end
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: отправитель, которого использует `Mailer.deliver`, когда ему не передан `from:` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; также `tls` (неявный TLS) или `none` (открытый текст, учётные данные — только на loopback); обоим режимам TLS нужен `require "cybertrain/net/tls"` |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` в тестовом окружении, `:smtp` во всех остальных: `:test` сохраняет каждое письмо в `Cybertrain::Mailer.deliveries` вместо отправки ([Тестирование почты](testing.md#testing-mail)); вне тестового окружения загрузка идёт с предупреждением, и ничего не отправляется; любое другое значение останавливает загрузку; `cybertrain test` использует `:test`, если `config/app.rb` не задаёт его, что бы ни говорила переменная |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`: файл, который `cybertrain test` удаляет, мигрирует и на котором запускает тесты вместо `storage/test.sqlite3`; файл, который является базой разработки или продакшена (с именем `development.sqlite3` или `production.sqlite3` или тот, на который указывают эти окружения), отклоняется с кодом выхода 2, и ничего не удаляется ([Запуск тестов](testing.md#running-the-tests)) |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`: файл, который `cybertrain test` удаляет, мигрирует и на котором запускает тесты вместо `storage/test.sqlite3`; путь к файлу (не `:memory:` и не URI `file:`). Существующий файл удаляется, только если его создал `cybertrain test` (он помечает свои базы), если это сам `storage/test.sqlite3` или если он пуст; любой другой, как и база разработки или продакшена, отклоняется с кодом выхода 2, и ничего не удаляется ([Запуск тестов](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: локаль, с которой начинается каждый запрос, имя вроде `ja` или `pt-BR` (см. [Локали](#locales)); всё остальное останавливает загрузку |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`: неверных паролей до блокировки учётной записи; `0` отключает блокировку (см. [Настройки аутентификации](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`: сколько секунд длится блокировка; не меньше 1 |

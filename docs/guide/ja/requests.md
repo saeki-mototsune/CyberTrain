@@ -1,5 +1,5 @@
 ---
-source_sha256: babb4f8565d2940bf66de19fae2f08077ee3b7190bbb218c8b497b6093ff0ed2
+source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
 ---
 # リクエスト
 
@@ -165,7 +165,7 @@ cookies.signed[:user_id]           # => "5"、書き換えられていれば nil
 cookies.delete(:theme)
 ```
 
-書き込みには String か、`value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:`、`same_site:` を持つ Hash を渡します。Cookie は `Path=/`、`HttpOnly`、`SameSite=Lax` で書かれ、セッション Cookie が `Secure` のとき（本番、または `force_ssl` のとき）は `Secure` も付きます。書き込みで別の指定をすればそちらが使われます。`permanent` は 20 年の `Max-Age` を書きます。署名付きの値は `secret_key_base` から導いた鍵での HMAC-SHA256、暗号化した値は別の鍵での AES-256-GCM です。どちらもその Cookie の名前に結び付いているので、別の名前では検証も復号もできず、書き換えられた値は nil として読まれます。同じリクエストの中で書いた後に読むと、書いた値が返ります。
+書き込みには String か、`value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:`、`same_site:` を持つ Hash を渡します。Cookie は `Path=/`、`HttpOnly`、`SameSite=Lax` で書かれ、セッション Cookie が `Secure` のとき（本番、または `force_ssl` のとき）は `Secure` も付きます。書き込みで別の指定をすればそちらが使われます。`permanent` は 20 年の `Max-Age` を書きます。署名付きの値は `secret_key_base` から導いた鍵での HMAC-SHA256、暗号化した値は別の鍵での AES-256-GCM です。どちらもその Cookie の名前に結び付いているので、別の名前では検証も復号もできず、書き換えられた値は nil として読まれます。同じリクエストの中で書いた後に読むと、書いた値が返ります。jar の下では、`Cybertrain::Cookies.serialize(name, value, expires: time)` が `Set-Cookie` の値を 1 つ作ります。`expires:` を省く（既定値は nil ではなく `Cybertrain::Cookies::NO_EXPIRES` で、Spinel の事情によります：spikes/NOTES.md のルール 109 を参照）か nil を渡すと、`Expires` は書かれません。
 
 セッション Cookie は、Rails の cookie store と同じく AES-256-GCM で暗号化・認証され、`secret_key_base` から導いた専用の鍵を使います：クライアントは読むことも書き換えることもできません。復号できない Cookie（書き換えられたもの、別のアプリのもの、以前の署名付きのもの）は空のセッションとして読み込まれ、4096 バイトを超えるものも同じです。Cookie が 4096 バイトを超えるセッション、または `name=value` が 4096 バイトを超えるジャーの Cookie は、書き込むときに `Session::CookieOverflow` を発生させます。値は String のままです。`secret_key_base` を変えると、これまでどおり全員がサインアウトします。
 

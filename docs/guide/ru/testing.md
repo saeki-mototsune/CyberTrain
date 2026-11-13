@@ -1,5 +1,5 @@
 ---
-source_sha256: fa24ad25d47e813a8c1ca7c12ad7824ac930732eef3be4ec7cbc279633235411
+source_sha256: c39fb5af16ddcefad03783e11241e4ee155261821393a5f812e3fee3bc524faf
 ---
 # Тестирование приложения
 
@@ -119,20 +119,28 @@ cybertrain test -n /article/                            # тесты, в име�
 `storage/test.sqlite3`, мигрирует новую базу и загружает на ней приложение
 (без потоков задач, планировщика и фидов: задачи тест выполняет сам).
 `CYBERTRAIN_TEST_DATABASE` указывает вместо неё другой файл. Поскольку
-программа удаляет файл, на котором тестирует, она отклоняет с кодом выхода
-2, ничего не удаляя, файл, который является базой разработки или
-продакшена: файл с именем `development.sqlite3` или `production.sqlite3`
-или тот, на который указывают эти окружения (включая `c.database_path` из
-`config/app.rb`, в том числе через символическую ссылку). Она выводит
-`cybertrain test refuses to delete <path>: it is the <env> database`.
+программа удаляет файл, на котором тестирует, она помечает каждую
+созданную ею базу (`PRAGMA application_id`, собственное значение) и удаляет
+или очищает существующий файл, только если на нём есть эта метка, если это
+сам `storage/test.sqlite3` или если файл пуст. Всё остальное отклоняется с
+кодом выхода 2, ничего не удаляя: `cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`. Файл с именем
+`development.sqlite3` или `production.sqlite3` (в любом регистре) или тот
+же файл, что `storage/development.sqlite3` или `storage/production.sqlite3`,
+отклоняется как `cybertrain test refuses to delete <path>: it is the development database` (или `production`). Имя должно быть путём к
+файлу: `:memory:` и URI `file:` отклоняются (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`). После обновления
+файл, который вы раньше указывали в `CYBERTRAIN_TEST_DATABASE`, не имеет
+метки и отклоняется один раз: удалите его (вместе с `-wal` и `-shm`), и
+`cybertrain test` создаст помеченный; стандартному `storage/test.sqlite3`
+ничего не нужно.
 
 Программа готовит тестовое окружение, как в Rails, если только
 `config/app.rb` не задаёт то же самое сам: защита от подделки запросов
 выключена, журнал запросов молчит, письма хранятся в `Mailer.deliveries`
 (`:test`) и `force_ssl` выключен (переменные
-`CYBERTRAIN_MAIL_DELIVERY_METHOD` и `CYBERTRAIN_FORCE_SSL` для тестов не
-читаются), а загрузки пишутся в `tmp/test_uploads/`, который очищается при
-каждом запуске. `www.example.com`, хост хелперов `*_url`, всегда входит в
+`CYBERTRAIN_MAIL_DELIVERY_METHOD` и `CYBERTRAIN_FORCE_SSL` для тестов не читаются, даже если
+некорректны), загрузки пишутся в `tmp/test_uploads/`, который очищается при
+каждом запуске, а проверки хоста нет (экспортированная `CYBERTRAIN_HOSTS` её
+не включает). `www.example.com`, хост хелперов `*_url`, всегда входит в
 разрешённые хосты.
 
 ```text вывод — cybertrain test
@@ -280,6 +288,10 @@ two:
   и `to_h`. Cookie, у которого `Max-Age` или `Expires` прошёл по часам, в
   том числе после `travel_to` за этот момент, исчезает (`Max-Age` важнее
   `Expires`); cookie, записанный тестом через `[]=`, не истекает никогда.
+  Нечитаемый `Max-Age` (`Max-Age=abc`) игнорируется, а отрицательный делает
+  cookie истёкшим. В отличие от Rails, у него нет `each`, `length`,
+  `include?`, `fetch` и `==`: перенесённый тест читает для этого
+  `cookies.to_h`.
 - `follow_redirect!` запрашивает `Location` последнего ответа (без его
   `#fragment`); после ответа, который не является перенаправлением, он
   валит тест: `follow_redirect!: the last response was 200, not a redirect
@@ -445,8 +457,8 @@ text:)` проверяет последний `render_inline` или ответ 
   текст (String или Regexp), количество (Integer) или `true` / `false`;
   количество может
   быть и Range вроде `2..3`; количество, заданное там и ещё в `count:`,
-  `minimum:` или `maximum:`, отклоняется, как и отрицательный или
-  перевёрнутый Range.
+  `minimum:` или `maximum:`, отклоняется, как и отрицательный,
+  перевёрнутый или не имеющий обоих концов Range (`assert_select: a Range count needs both ends (got 2..)`).
 - HTML читается так, как написан, без исправлений, которые сделал бы
   браузер (и Nokogiri за `assert_select` в Rails): `table > tr` совпадает
   с таблицей, написанной без `<tbody>`, `p > div` совпадает с `<p><div>`, а
@@ -669,7 +681,8 @@ end
 
 gen переписывает тестовый класс в методы: `test "shows it" do` становится
 `def test_shows_it` (символ ASCII вне `[A-Za-z0-9_]` превращается в `_`, любой другой — в
-`_u<hex>`, так что `"ログ"` даёт `test__u30ed_u30b0`; `-n` принимает и имя
+`_u<hex>_` (код символа строчными, закрытый `_`), так что `"ログ"` даёт
+`test__u30ed__u30b0_`, а `"café x"` — `test_caf_ue9__x`; `-n` принимает и имя
 метода, и написанное имя), а блоки `setup do` и `teardown do`
 становятся методами `setup` и `teardown`, которые вызывают `super`. То, что переписывание не может перенести в
 точности, приводит к отказу от файла — никогда молча неверная копия или
@@ -709,8 +722,14 @@ gen переписывает тестовый класс в методы: `test 
 завершается с кодом 1. Исправьте названную строку. `test "name" do` можно
 писать и как `test"name"` или с табуляцией. `test "x" do`, написанный после
 `private`, не отклоняется, но становится приватным методом копии и падает
-при выполнении, тогда как Rails его выполняет: держите тесты выше
-`private`.
+при выполнении, тогда как Rails его выполняет: держите тесты выше `private`. Другие известные
+ограничения: имя, содержащее текст `_u3042_`, получает то же имя метода,
+что и имя с `"あ"` на его месте (в одном классе gen отклоняет такую пару);
+`def setup` в модуле не проверяется на `super`; класс на два уровня ниже
+базового класса приложения обязан вызывать `super`, даже если этот базовый
+класс не определяет `setup`; а пока тестовый файл отклонён,
+`spin run gen -- --check` не сравнивает устаревшие копии в `gen/test/` (CI
+тогда падает на `cybertrain test`).
 
 `cybertrain test` так же отклоняет `test`, `setup` или `teardown` верхнего уровня в
 `test/test_helper.rb` или `test/support/` (они никогда не выполнились бы),

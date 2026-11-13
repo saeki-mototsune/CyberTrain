@@ -1,5 +1,5 @@
 ---
-source_sha256: babb4f8565d2940bf66de19fae2f08077ee3b7190bbb218c8b497b6093ff0ed2
+source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
 ---
 # Запросы
 
@@ -165,7 +165,7 @@ cookies.signed[:user_id]           # => "5" или nil, если его изме
 cookies.delete(:theme)
 ```
 
-Запись принимает String или Hash с `value:`, `expires:` (Time), `max_age:`, `path:`, `httponly:`, `secure:` и `same_site:`. Cookies записываются с `Path=/`, `HttpOnly` и `SameSite=Lax`, а также `Secure`, когда он есть у cookie сессии (в production или с `force_ssl`), если запись не указывает иного. `permanent` пишет `Max-Age` на 20 лет. Подписанное значение — это HMAC-SHA256 под ключом, выведенным из `secret_key_base`; зашифрованное — AES-256-GCM под другим ключом; каждое привязано к имени своей cookie, поэтому под другим именем оно не проверяется и не расшифровывается, а изменённое значение читается как nil. Значение, прочитанное после записи в том же запросе, — записанное.
+Запись принимает String или Hash с `value:`, `expires:` (Time), `max_age:`, `path:`, `httponly:`, `secure:` и `same_site:`. Cookies записываются с `Path=/`, `HttpOnly` и `SameSite=Lax`, а также `Secure`, когда он есть у cookie сессии (в production или с `force_ssl`), если запись не указывает иного. `permanent` пишет `Max-Age` на 20 лет. Подписанное значение — это HMAC-SHA256 под ключом, выведенным из `secret_key_base`; зашифрованное — AES-256-GCM под другим ключом; каждое привязано к имени своей cookie, поэтому под другим именем оно не проверяется и не расшифровывается, а изменённое значение читается как nil. Значение, прочитанное после записи в том же запросе, — записанное. Ниже jar `Cybertrain::Cookies.serialize(name, value, expires: time)` строит одно значение `Set-Cookie`; если опустить `expires:` (его значение по умолчанию — `Cybertrain::Cookies::NO_EXPIRES`, а не nil, по причине, связанной со Spinel: см. правило 109 в spikes/NOTES.md) или передать nil, `Expires` не пишется.
 
 Cookie сессии шифруется и аутентифицируется AES-256-GCM, как cookie store в Rails, под собственным ключом, выведенным из `secret_key_base`: клиент не может ни прочитать, ни изменить её. Cookie, которая не расшифровывается (изменённая, чужая или старая подписанная), загружается как пустая сессия, как и cookie больше 4096 байт; сессия, cookie которой превысила бы 4096 байт, или cookie из jar, у которой `name=value` их превышает, при записи вызывает `Session::CookieOverflow`. Значения остаются String. Смена `secret_key_base`, как и раньше, разлогинивает всех.
 

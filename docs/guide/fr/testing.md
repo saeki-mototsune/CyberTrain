@@ -1,5 +1,5 @@
 ---
-source_sha256: fa24ad25d47e813a8c1ca7c12ad7824ac930732eef3be4ec7cbc279633235411
+source_sha256: c39fb5af16ddcefad03783e11241e4ee155261821393a5f812e3fee3bc524faf
 ---
 # Tester une application
 
@@ -122,22 +122,28 @@ chaque autre `test/*.rb` sauf `test/test_helper.rb` en font partie&nbsp;;
 pas de tests. Le programme supprime `storage/test.sqlite3`, en migre une
 nouvelle et y démarre l’application avant le premier test (sans threads de
 jobs, de planificateur ni de flux&nbsp;: un test exécute lui-même les jobs).
-`CYBERTRAIN_TEST_DATABASE` désigne un autre fichier à la place. Comme le
-programme supprime le fichier sur lequel il teste, il refuse, avec le code
-de sortie 2 et sans rien supprimer, un fichier qui est la base de
-développement ou de production&nbsp;: un fichier nommé `development.sqlite3`
-ou `production.sqlite3`, ou celui que ces environnements désignent (le
-`c.database_path` de `config/app.rb` compris, même via un lien
-symbolique). Il affiche `cybertrain test refuses to delete <path>: it is
-the <env> database`.
+`CYBERTRAIN_TEST_DATABASE` désigne un autre fichier à la place. Comme le programme supprime le fichier sur lequel il teste, il marque
+chaque base qu’il crée (`PRAGMA application_id`, une valeur à lui) et ne
+supprime ou ne vide un fichier existant que s’il porte cette marque, s’il
+est `storage/test.sqlite3` lui-même ou s’il est vide. Tout autre fichier est
+refusé avec le code de sortie 2, sans rien supprimer&nbsp;: `cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`. Un
+fichier nommé `development.sqlite3` ou `production.sqlite3` (quelle que soit
+la casse), ou le même fichier que `storage/development.sqlite3` ou
+`storage/production.sqlite3`, est refusé par `cybertrain test refuses to delete <path>: it is the development database` (ou `production`). Le
+nom doit être un chemin de fichier&nbsp;: `:memory:` et les URI `file:` sont
+refusés (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`). Après une mise à niveau, un fichier que vous aviez
+désigné dans `CYBERTRAIN_TEST_DATABASE` ne porte pas de marque et est
+refusé une fois&nbsp;: supprimez-le (avec ses `-wal` et `-shm`), et
+`cybertrain test` en crée un marqué&nbsp;; le `storage/test.sqlite3` par
+défaut n’a besoin de rien.
 
 Le programme prépare l’environnement de test comme celui de Rails, sauf si
 `config/app.rb` règle lui-même la même chose&nbsp;: protection contre la
 falsification désactivée, journal des requêtes muet, courriels gardés dans
 `Mailer.deliveries` (`:test`) et `force_ssl` désactivé (les variables
-`CYBERTRAIN_MAIL_DELIVERY_METHOD` et `CYBERTRAIN_FORCE_SSL` ne sont pas lues
-pour les tests), et fichiers envoyés écrits dans `tmp/test_uploads/`, vidé
-à chaque exécution. `www.example.com`, l’hôte des helpers `*_url`, est
+`CYBERTRAIN_MAIL_DELIVERY_METHOD` et `CYBERTRAIN_FORCE_SSL` ne sont pas lues pour les tests, même invalides),
+fichiers envoyés écrits dans `tmp/test_uploads/`, vidé à chaque exécution,
+et pas de contrôle d’hôte (un `CYBERTRAIN_HOSTS` exporté ne l’active pas). `www.example.com`, l’hôte des helpers `*_url`, est
 toujours un hôte autorisé.
 
 ```text sortie — cybertrain test
@@ -293,7 +299,10 @@ pour chaque test&nbsp;:
   `to_h`. Un cookie dont le `Max-Age` ou l’`Expires` est passé sur
   l’horloge, donc aussi après un `travel_to` au-delà, a disparu (`Max-Age`
   l’emporte sur `Expires`)&nbsp;; un cookie qu’un test écrit avec `[]=`
-  n’expire jamais.
+  n’expire jamais. Un `Max-Age` illisible (`Max-Age=abc`) est ignoré et un
+  négatif fait expirer le cookie. Contrairement à celle de Rails, elle n’a
+  ni `each`, ni `length`, ni `include?`, ni `fetch`, ni `==`&nbsp;: un test porté
+  lit `cookies.to_h` pour cela.
 - `follow_redirect!` demande le `Location` de la dernière réponse (sans
   son `#fragment`)&nbsp;; après une réponse qui n’est pas une redirection,
   il fait échouer le test&nbsp;: `follow_redirect!: the last response was 200,
@@ -471,7 +480,7 @@ les éléments trouvés&nbsp;:
   `false`&nbsp;; un nombre peut
   aussi être un Range comme `2..3`&nbsp;; un nombre donné là et aussi dans
   `count:`, `minimum:` ou `maximum:` est refusé, de même qu’un Range
-  négatif ou inversé.
+  négatif, inversé ou sans ses deux bornes (`assert_select: a Range count needs both ends (got 2..)`).
 - Le HTML est lu tel qu’il est écrit, sans la réparation qu’un navigateur
   (et Nokogiri, derrière l’`assert_select` de Rails) ferait&nbsp;: `table > tr`
   correspond à une table écrite sans `<tbody>`, `p > div` correspond à
@@ -696,7 +705,8 @@ complet.
 
 gen réécrit une classe de test en méthodes&nbsp;: `test "shows it" do` devient
 `def test_shows_it` (un caractère ASCII hors de `[A-Za-z0-9_]` devenant `_`, tout autre
-`_u<hex>`, si bien que `"ログ"` donne `test__u30ed_u30b0`&nbsp;; `-n` prend le
+`_u<hex>_` (son point de code en minuscules, fermé par `_`), si bien que
+`"ログ"` donne `test__u30ed__u30b0_` et `"café x"` `test_caf_ue9__x`&nbsp;; `-n` prend le
 nom de méthode ou le nom écrit), et les blocs `setup do` et
 `teardown do` deviennent des méthodes `setup` et `teardown` qui appellent
 `super`. Ce que la réécriture ne peut pas reporter exactement fait refuser le
@@ -738,7 +748,14 @@ termine avec le code 1, sans compilation. Corrigez la ligne indiquée.
 `test "name" do` peut aussi s’écrire `test"name"` ou avec une tabulation.
 Un `test "x" do` écrit après `private` n’est pas refusé, mais il devient
 une méthode privée de la copie et échoue quand il s’exécute, là où Rails
-l’exécute&nbsp;: gardez les tests au-dessus de `private`.
+l’exécute&nbsp;: gardez les tests au-dessus de `private`. Autres limites
+connues&nbsp;: un nom qui contient le texte `_u3042_` a le nom de méthode d’un
+nom avec `"あ"` à sa place (gen refuse la paire dans une même classe)&nbsp;; un
+`def setup` dans un module n’est pas vérifié pour `super`&nbsp;; une classe à
+deux niveaux sous une classe de base d’application doit appeler `super`
+même quand cette base ne définit pas de `setup`&nbsp;; et tant qu’un fichier
+de test est refusé, `spin run gen -- --check` ne compare pas les copies
+périmées de `gen/test/` (la CI échoue alors à `cybertrain test`).
 
 `cybertrain test` refuse aussi, de la même façon, un
 `test`, `setup` ou `teardown` de premier niveau dans `test/test_helper.rb`

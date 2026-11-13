@@ -1,5 +1,5 @@
 ---
-source_sha256: babb4f8565d2940bf66de19fae2f08077ee3b7190bbb218c8b497b6093ff0ed2
+source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
 ---
 # Requêtes
 
@@ -165,7 +165,7 @@ cookies.signed[:user_id]           # => "5", ou nil s’il a été modifié
 cookies.delete(:theme)
 ```
 
-Une écriture prend une String, ou un Hash avec `value:`, `expires:` (un Time), `max_age:`, `path:`, `httponly:`, `secure:` et `same_site:`. Les cookies sont écrits `Path=/`, `HttpOnly` et `SameSite=Lax`, et `Secure` quand le cookie de session l’est (en production, ou avec `force_ssl`), sauf si l’écriture dit autre chose. `permanent` écrit un `Max-Age` de 20 ans. Une valeur signée est un HMAC-SHA256 sous une clé dérivée de `secret_key_base`&nbsp;; une valeur chiffrée est de l’AES-256-GCM sous une autre&nbsp;; chacune est liée au nom de son cookie, si bien qu’elle ne se vérifie ni ne s’ouvre sous un autre nom, et une valeur modifiée se lit nil. Une valeur lue après une écriture dans la même requête est celle écrite.
+Une écriture prend une String, ou un Hash avec `value:`, `expires:` (un Time), `max_age:`, `path:`, `httponly:`, `secure:` et `same_site:`. Les cookies sont écrits `Path=/`, `HttpOnly` et `SameSite=Lax`, et `Secure` quand le cookie de session l’est (en production, ou avec `force_ssl`), sauf si l’écriture dit autre chose. `permanent` écrit un `Max-Age` de 20 ans. Une valeur signée est un HMAC-SHA256 sous une clé dérivée de `secret_key_base`&nbsp;; une valeur chiffrée est de l’AES-256-GCM sous une autre&nbsp;; chacune est liée au nom de son cookie, si bien qu’elle ne se vérifie ni ne s’ouvre sous un autre nom, et une valeur modifiée se lit nil. Une valeur lue après une écriture dans la même requête est celle écrite. Sous la jar, `Cybertrain::Cookies.serialize(name, value, expires: time)` construit une valeur `Set-Cookie`&nbsp;; omettre `expires:` (sa valeur par défaut est `Cybertrain::Cookies::NO_EXPIRES`, pas nil, pour une raison propre à Spinel&nbsp;: voir la règle 109 de spikes/NOTES.md) ou passer nil n’écrit pas d’`Expires`.
 
 Le cookie de session est chiffré et authentifié en AES-256-GCM, comme le cookie store de Rails, sous sa propre clé dérivée de `secret_key_base`&nbsp;: le client ne peut ni le lire ni le modifier. Un cookie qui ne se déchiffre pas (modifié, étranger ou un ancien cookie signé) se charge comme une session vide, de même qu’un cookie de plus de 4096 octets&nbsp;; une session dont le cookie dépasserait 4096 octets, ou un cookie du jar dont le `name=value` les dépasse, lève `Session::CookieOverflow` à l’écriture. Les valeurs restent des Strings. Changer `secret_key_base` déconnecte tout le monde, comme avant.
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: fa24ad25d47e813a8c1ca7c12ad7824ac930732eef3be4ec7cbc279633235411
+source_sha256: c39fb5af16ddcefad03783e11241e4ee155261821393a5f812e3fee3bc524faf
 ---
 # 测试应用
 
@@ -81,9 +81,9 @@ cybertrain test -n test_creates_an_article              # 或按方法名
 cybertrain test -n /article/                            # 名称包含 "article" 的测试
 ```
 
-`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。由于程序会删除它测试所用的文件，它会以退出状态 2 拒绝开发或生产数据库的文件，什么都不删除：名为 `development.sqlite3` 或 `production.sqlite3` 的文件，或者这些环境解析到的文件（包括 `config/app.rb` 的 `c.database_path`，经由符号链接也一样）。它会输出 `cybertrain test refuses to delete <path>: it is the <env> database`。
+`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。由于程序会删除它测试所用的文件，它会给自己创建的每个数据库加上标记（`PRAGMA application_id`，一个专用的值），只有当已有文件带着这个标记、就是 `storage/test.sqlite3` 本身或是空文件时，才会删除或清空它。其他文件都会以退出状态 2 被拒绝，什么都不删除：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。名为 `development.sqlite3` 或 `production.sqlite3` 的文件（不区分大小写），或与 `storage/development.sqlite3`、`storage/production.sqlite3` 是同一个文件的，会以 `cybertrain test refuses to delete <path>: it is the development database`（或 `production`）被拒绝。名称必须是文件路径：`:memory:` 和 `file:` URI 会被拒绝（`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`）。升级之后，你以前在 `CYBERTRAIN_TEST_DATABASE` 中指定的文件没有标记，会被拒绝一次：删除它（连同 `-wal` 和 `-shm`），`cybertrain test` 就会创建一个带标记的；默认的 `storage/test.sqlite3` 什么都不需要做。
 
-除非 `config/app.rb` 自己设置了同样的东西，程序会像 Rails 那样准备测试环境：关闭防伪造保护，请求日志不输出，邮件保存在 `Mailer.deliveries` 中（`:test`），关闭 `force_ssl`（测试时不读取变量 `CYBERTRAIN_MAIL_DELIVERY_METHOD` 和 `CYBERTRAIN_FORCE_SSL`），上传的文件写入 `tmp/test_uploads/`，每次运行时清空。`*_url` 辅助方法的主机 `www.example.com` 始终是允许的主机。
+除非 `config/app.rb` 自己设置了同样的东西，程序会像 Rails 那样准备测试环境：关闭防伪造保护，请求日志不输出，邮件保存在 `Mailer.deliveries` 中（`:test`），关闭 `force_ssl`（测试时不读取变量 `CYBERTRAIN_MAIL_DELIVERY_METHOD` 和 `CYBERTRAIN_FORCE_SSL`，即使它们的值无效），上传的文件写入 `tmp/test_uploads/`，每次运行时清空，并且不做主机检查（导出的 `CYBERTRAIN_HOSTS` 不会打开它）。`*_url` 辅助方法的主机 `www.example.com` 始终是允许的主机。
 
 ```text 输出 — cybertrain test
 test/controllers/articles_controller_test.rb
@@ -144,7 +144,7 @@ two:
 - 在 `post`、`patch` 或 `put` 的 `params:` 中放入 `fixture_file_upload("cover.png", "image/png")` 会以 multipart 发送请求；文件从 `test/fixtures/files/` 读取。
 - `headers:` 接受头的名称，或 Rails 的 `HTTP_ACCEPT` 形式。
 - `config/routes.rb` 的路径辅助方法和在控制器中一样可用。`*_url` 辅助方法写出 `http://www.example.com/...`；这个主机上的 URL 按其路径请求，`assert_redirected_to` 可以比较任一种形式。其他主机上的 URL 会被拒绝。
-- `cookies` 是测试的 cookie 存储，一个 `Cybertrain::Test::ClientCookies`：`cookies[:user]` 或 `cookies["user"]`（原始的、仍是百分号编码的值）、`[]=`、`key?`、`delete`、`keys`、`size`、`empty?` 和 `to_h`。`Max-Age` 或 `Expires` 在时钟上已过的 cookie 会消失，`travel_to` 越过它之后也是如此（`Max-Age` 优先于 `Expires`）；测试用 `[]=` 写入的 cookie 永不过期。
+- `cookies` 是测试的 cookie 存储，一个 `Cybertrain::Test::ClientCookies`：`cookies[:user]` 或 `cookies["user"]`（原始的、仍是百分号编码的值）、`[]=`、`key?`、`delete`、`keys`、`size`、`empty?` 和 `to_h`。`Max-Age` 或 `Expires` 在时钟上已过的 cookie 会消失，`travel_to` 越过它之后也是如此（`Max-Age` 优先于 `Expires`）；测试用 `[]=` 写入的 cookie 永不过期。无法读取的 `Max-Age`（`Max-Age=abc`）会被忽略，负数会让 cookie 过期。与 Rails 的不同，它没有 `each`、`length`、`include?`、`fetch` 或 `==`：移植过来的测试请改为读取 `cookies.to_h`。
 - `follow_redirect!` 请求上一个响应的 `Location`（不带 `#fragment`）；如果上一个响应不是重定向，它会让测试失败：`follow_redirect!: the last response was 200, not a redirect (3xx with a Location)`。
 - `assert_response(:success)`（或任何状态符号，或一个数字；`:error` 恰好表示 500，而 Rails 接受任何 5xx）、`assert_redirected_to(path)`、`assert_select`、`assert_turbo_stream`。
 - 没有：`session`、`flash`、`assigns`、`request`、`host!` 和 `as:`。请改为检查页面（`assert_select`、`response.body`）。
@@ -230,7 +230,7 @@ end
 `assert_select(selector, equality = nil, count:, minimum:, maximum:, text:)` 检查本测试中最后一次 `render_inline` 或最后一个响应（两者都没有时失败：“No response yet”），并返回匹配的元素：
 
 - 选择器：标签、`.class`、`#id`、`[attr]`、`[attr="v"]`、它们的组合（`a.btn[href="/x"]`）、后代和子代（`>`）组合符，以及列表（`h1, h2`）。伪类、`+` 和 `~`、其他属性运算符、反斜杠（`assert_select: CSS escapes (\) are not supported`）以及嵌套块形式会以 `assert_select: <feature> is not supported` 失败。
-- `text:` 是与每个元素的文本比较的 String，或对该文本进行匹配的 Regexp。文本中连续的空白会合并为一个空格，两端会被去掉（Rails 只去掉两端）。第二个参数可以是 Rails 的位置参数形式：文本（String 或 Regexp）、数量（Integer）或 `true` / `false`；数量也可以是 `2..3` 这样的 Range；在这里给出数量的同时又给出 `count:`、`minimum:` 或 `maximum:` 会被拒绝，负的或反向的 Range 也会被拒绝。
+- `text:` 是与每个元素的文本比较的 String，或对该文本进行匹配的 Regexp。文本中连续的空白会合并为一个空格，两端会被去掉（Rails 只去掉两端）。第二个参数可以是 Rails 的位置参数形式：文本（String 或 Regexp）、数量（Integer）或 `true` / `false`；数量也可以是 `2..3` 这样的 Range；在这里给出数量的同时又给出 `count:`、`minimum:` 或 `maximum:` 会被拒绝，负的、反向的或缺少两端的 Range 也会被拒绝（`assert_select: a Range count needs both ends (got 2..)`）。
 - HTML 按书写的样子读取，不会像浏览器（以及 Rails 的 `assert_select` 背后的 Nokogiri）那样修复：`table > tr` 能匹配不写 `<tbody>` 的表格，`p > div` 能匹配 `<p><div>`，而省略的结束标签（`<li>a<li>b`、`<p>a<p>b`）或自闭合的 `<div/>` 会让断言失败并给出位置。框架自身的模板都能读取。
 
 广播是 `cybertrain_messages` 中的一行，所以流的断言直接读取这张表，不需要轮询器或套接字：
@@ -377,7 +377,7 @@ end
 
 ## gen 在测试类中拒绝的写法
 
-gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it`（`[A-Za-z0-9_]` 之外的 ASCII 字符变成 `_`，其他字符变成 `_u<hex>`，所以 `"ログ"` 是 `test__u30ed_u30b0`；`-n` 接受方法名，也接受写出的名称），`setup do` 和 `teardown do` 块变成调用 `super` 的 `setup` 和 `teardown` 方法。凡是改写不能原样搬过去的内容，都会让这个文件被拒绝，绝不会悄悄生成错误的副本或丢掉测试：
+gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it`（`[A-Za-z0-9_]` 之外的 ASCII 字符变成 `_`，其他字符变成 `_u<hex>_`（小写的码点，以 `_` 结尾），所以 `"ログ"` 是 `test__u30ed__u30b0_`，`"café x"` 是 `test_caf_ue9__x`；`-n` 接受方法名，也接受写出的名称），`setup do` 和 `teardown do` 块变成调用 `super` 的 `setup` 和 `teardown` 方法。凡是改写不能原样搬过去的内容，都会让这个文件被拒绝，绝不会悄悄生成错误的副本或丢掉测试：
 
 - 不是纯字符串字面量的测试名（插值），或带有 gen 不读取的转义的测试名（`\u`、`\x`、`\c`、`\C`、`\M` 或八进制：请直接写出字符本身；`\n`、`\t` 和 `\"` 会被读取）；
 - 同一个类中方法名重合的两个测试，包括 `def test_x`；
@@ -389,7 +389,7 @@ gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it
 - gen 无法放进类体的 `test`、`setup` 或 `teardown` 行（在条件、循环、字符串或 heredoc 中）、不以 `end` 结尾的单行形式、后面还有代码的 `end`，以及混用制表符和空格的缩进；
 - 参数不是字符串字面量的 `require_relative`。
 
-被拒绝的文件不会让 `spin run gen` 停止，所以开发服务器、`cybertrain db migrate` 和 `cybertrain build` 照常工作：gen 写出一个只输出原因的 `gen/tests.rb`，`cybertrain test` 不编译，输出 `<path>:<line>: <reason>` 并以 1 退出。请修正它指出的那一行。`test "name" do` 也可以写成 `test"name"` 或中间用制表符。写在 `private` 之后的 `test "x" do` 不会被拒绝，但它在副本中会成为私有方法，运行时失败（Rails 会运行它）：请把测试写在 `private` 之上。
+被拒绝的文件不会让 `spin run gen` 停止，所以开发服务器、`cybertrain db migrate` 和 `cybertrain build` 照常工作：gen 写出一个只输出原因的 `gen/tests.rb`，`cybertrain test` 不编译，输出 `<path>:<line>: <reason>` 并以 1 退出。请修正它指出的那一行。`test "name" do` 也可以写成 `test"name"` 或中间用制表符。写在 `private` 之后的 `test "x" do` 不会被拒绝，但它在副本中会成为私有方法，运行时失败（Rails 会运行它）：请把测试写在 `private` 之上。其他已知限制：包含文本 `_u3042_` 的名称与把它换成 `"あ"` 的名称方法名相同（同一个类中 gen 会拒绝这一对）；模块中的 `def setup` 不检查 `super`；应用基类之下两层的类，即使那个基类没有定义 `setup`，也会被要求调用 `super`；测试文件被拒绝期间，`spin run gen -- --check` 不比较 `gen/test/` 中过时的副本（CI 会在 `cybertrain test` 处失败）。
 
 `cybertrain test` 还会以同样的方式拒绝：`test/test_helper.rb` 或 `test/support/` 中的顶层 `test`、`setup` 或 `teardown`（它们永远不会运行）、顶层的 `def render_inline`（它会替换框架的那个）、`assert_select ... do` 和 `render_inline ... do`，以及[运行测试](#running-the-tests)中所说的重复的顶层辅助方法。类形式的文件只能通过 `cybertrain test` 运行：在 `spin test` 下，它的类体会抛出 “class-form tests run with `cybertrain test FILE`”。
 

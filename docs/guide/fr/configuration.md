@@ -1,5 +1,5 @@
 ---
-source_sha256: 311993e56b6623a89ee8433358d1cfbd9d5307a9d9aaf69287de3c81ef9378b1
+source_sha256: 3edf5b7a57bd95529290737c87303ea72cbc6d4113b29e414f8bd07e84667542
 ---
 # Configuration
 
@@ -57,7 +57,7 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`&nbsp;: l’expéditeur qu’utilise `Mailer.deliver` quand `from:` n’est pas fourni |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"` |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` dans l’environnement de test, `:smtp` dans tous les autres&nbsp;: `:test` garde chaque courriel dans `Cybertrain::Mailer.deliveries` au lieu de l’envoyer ([Tester les courriels](testing.md#testing-mail))&nbsp;; hors de l’environnement de test il démarre avec un avertissement et n’envoie rien&nbsp;; toute autre valeur arrête le démarrage&nbsp;; `cybertrain test` utilise `:test` sauf si `config/app.rb` le règle, quoi que dise la variable. |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`&nbsp;: le fichier que `cybertrain test` supprime, migre et sur lequel il exécute les tests, à la place de `storage/test.sqlite3`&nbsp;; un fichier qui est la base de développement ou de production (nommé `development.sqlite3` ou `production.sqlite3`, ou celui que ces environnements désignent) est refusé avec le code de sortie 2 et rien n’est supprimé ([Exécuter les tests](testing.md#running-the-tests)) |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`&nbsp;: le fichier que `cybertrain test` supprime, migre et sur lequel il exécute les tests, à la place de `storage/test.sqlite3`&nbsp;; un chemin de fichier (pas `:memory:` ni une URI `file:`). Un fichier existant n’est supprimé que si `cybertrain test` l’a créé (il marque ses bases), s’il est `storage/test.sqlite3` lui-même ou s’il est vide&nbsp;; tout autre, et la base de développement ou de production, est refusé avec le code de sortie 2 sans rien supprimer ([Exécuter les tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`&nbsp;: la locale dans laquelle commence chaque requête, un nom comme `ja` ou `pt-BR` (voir [Locales](#locales))&nbsp;; toute autre valeur arrête le démarrage |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`&nbsp;: mauvais mots de passe avant qu’un compte soit verrouillé&nbsp;; `0` désactive le verrouillage (voir [Réglages de l’authentification](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`&nbsp;: durée d’un verrouillage en secondes&nbsp;; au moins 1 |

@@ -148,7 +148,7 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
   way.
 
 Letters are the items of this document (AA to AH are new, written up at
-the end; AI, phase 4b's, and AJ to AM, phase 5a's, were merged in after the inventory); numbers
+the end; AI, phase 4b's, and AJ to AN, phase 5a's, were merged in after the inventory); numbers
 after "rule" are spikes/NOTES.md's.
 
 ### 1. What CyberTrain does today because of Spinel
@@ -187,6 +187,7 @@ after "rule" are spikes/NOTES.md's.
 | AK | The C of a very large program (87.6 MB, 196 test programs bundled) needs more than 9.7 GB to compile at -O2 (a cost, not a wrong result) | The framework's suite stays one program per file; only applications bundle their tests (`cybertrain test`, D83) | Not reported |
 | AL (rule 108) | `spin run gen` rebuilds `bin/gen` when any `.rb` of the package is newer, test files included (spin, a cost) | Accepted: `cybertrain test` pays about 55 s on each edit of a test | Not reported |
 | AM (rule 107) | A release build's `e.backtrace` is empty; only `--debug` gives frames | A failing test is named by its `test` line; reports carry class, message and where | Open; not reported |
+| AN (rule 109) | A parameter defaulting to nil that a caller gives a plain Time is compiled as a non-nullable Time; the defaulted call crashes (SIGSEGV): fails (2026-11-13) | `Cookies.serialize`'s `expires:` defaults to the sentinel `Cookies::NO_EXPIRES`; framework callers pass `Cast.time_or_nil(...)` (http/cookies.rb, phase 5a) | Open; not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -467,8 +468,8 @@ again since the lock left it).
   it is ready to report as a request (a large constant literal's stores
   written into helper functions of bounded size), and nothing in
   CyberTrain waits on it.
-- **AJ to AM** (phase 5a, 2026-11-12): AJ and AM are defects with a
-  program each, ready to report; AK and AL are costs (the C compiler's
+- **AJ to AN** (phase 5a, 2026-11-12 and 2026-11-13): AJ, AM and AN are
+  defects with a program each, ready to report; AK and AL are costs (the C compiler's
   memory on a very large program, spin's freshness check), and nothing in
   CyberTrain waits on any of them.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
@@ -537,6 +538,7 @@ run on master 1c0cc5e35:
 | AK | the framework's suite kept one program per file (design D34, D83) | A measurement (spikes/phase5/bundle_suite.sh), to be mentioned as a cost, not reported alone. Not reported |
 | AL | none (the cost is paid) | A request to spin, not to Spinel. Not reported |
 | AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master |
+| AN | the sentinel default `Cookies::NO_EXPIRES` (spikes/NOTES.md rule 109) | **Ready to report**: spikes/phase5/nil_default_time.rb (SIGSEGV, exit 139; CRuby `none`, `1970`). Not reported; not run on master |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026 when this table
@@ -610,6 +612,7 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | AK. The C of a very large program needs more memory to compile than its front end | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12) |
 | AL. `spin run gen` rebuilds the generator when a test file changes | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12; rule 108) |
 | AM. A release build has no backtrace | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 107) |
+| AN. A parameter defaulting to nil, given a plain Time by a caller, is a non-nullable Time | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 109) |
 
 ## What CyberTrain still works around
 
@@ -3537,3 +3540,33 @@ rate.
   the message String) and the block assertions (nil); no stored block
   through a base class (rule 88) is why gen rewrites test classes into
   methods.
+
+### AN. A parameter defaulting to nil that a caller gives a plain Time crashes the defaulted call
+
+Rule 109 (2026-11-13).
+
+```ruby
+def stamp(expires: nil)
+  return "none" if expires.nil?
+
+  expires.year.to_s
+end
+STDOUT.sync = true
+puts stamp
+puts stamp(expires: Time.at(0))
+```
+
+CRuby prints `none` and `1970`; the compiled program prints nothing and
+dies with SIGSEGV (exit 139). The parameter is typed from its callers' values
+as a plain `sp_Time *`, `expires.nil?` compiles to the constant false, and
+the defaulted call passes NULL to `sp_time_year`. A positional default
+crashes the same way; callers giving a String, or a value typed Time-or-nil,
+work.
+
+- Today: `Cookies.serialize`'s `expires:` defaults to the sentinel
+  `Cookies::NO_EXPIRES` (`Time.at(-1).utc`), tested for along with nil;
+  the framework's callers pass `Cast.time_or_nil(...)`.
+- Asked of Spinel: type a nil-defaulted parameter as nullable when a
+  caller leaves it out.
+- Reproduced by spikes/phase5/nil_default_time.rb (and the workaround,
+  nil_default_time_fixed.rb); not reported upstream.

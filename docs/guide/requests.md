@@ -331,6 +331,10 @@ HMAC-SHA256 under a key derived from `secret_key_base`; an encrypted one is
 AES-256-GCM under another; each is bound to its cookie's name, so it does
 not verify or open under another name, and one that was changed reads nil.
 A value read after a write in the same request is the written one.
+Below the jar, `Cybertrain::Cookies.serialize(name, value, expires: time)`
+builds one `Set-Cookie` value; leaving `expires:` out (its default is
+`Cybertrain::Cookies::NO_EXPIRES`, not nil, for a Spinel reason: see
+spikes/NOTES.md rule 109) or passing nil writes no `Expires`.
 
 The session cookie is encrypted and authenticated with AES-256-GCM, as
 Rails' cookie store, under its own key derived from `secret_key_base`: the

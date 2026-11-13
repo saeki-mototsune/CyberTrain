@@ -110,21 +110,32 @@ Every `test/**/*_test.rb` and every other `test/*.rb` but
 and `test/fixtures/` hold no tests. The program deletes
 `storage/test.sqlite3`, migrates a new one and boots the application on it
 before the first test (no job, scheduler or feed threads: a test runs jobs
-itself). `CYBERTRAIN_TEST_DATABASE` names another file instead. Since the program
-deletes the file it tests on, it refuses, with exit status 2 and nothing
-deleted, a file that is the development or production database: one named
-`development.sqlite3` or `production.sqlite3`, or the file those
-environments resolve to (`config/app.rb`'s `c.database_path` included, also
-through a symlink). It prints `cybertrain test refuses to delete <path>: it
-is the <env> database`.
+itself). `CYBERTRAIN_TEST_DATABASE` names another file instead. Since the program deletes the file it tests on, it marks every database it
+creates (`PRAGMA application_id`, a value of its own) and deletes or
+empties an existing file only when it carries that mark, when it is
+`storage/test.sqlite3` itself, or when it is an empty file. Anything else
+is refused with exit status 2 and nothing deleted: `cybertrain test
+refuses to delete <path>: not a database cybertrain test created; delete
+it yourself or name another file`. A file named `development.sqlite3` or
+`production.sqlite3` (in any letter case), or the same file as
+`storage/development.sqlite3` or `storage/production.sqlite3`, is refused
+as `cybertrain test refuses to delete <path>: it is the development
+database` (or `production`). The name must be a file path: `:memory:` and
+`file:` URIs are refused (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE
+":memory:": name the test database by its file path (not :memory: or a
+file: URI)`). After an upgrade, a file you named in
+`CYBERTRAIN_TEST_DATABASE` before carries no mark and is refused once:
+delete it (with its `-wal` and `-shm`), and `cybertrain test` creates a
+marked one; the default `storage/test.sqlite3` needs nothing.
 
 The program sets up the test environment as Rails' does, unless
 `config/app.rb` sets the same thing itself: forgery protection off, the
 request log silent, mail kept in `Mailer.deliveries` (`:test`) and
 `force_ssl` off (the variables `CYBERTRAIN_MAIL_DELIVERY_METHOD` and
-`CYBERTRAIN_FORCE_SSL` are not read for the tests), and uploads written to
-`tmp/test_uploads/`, emptied at every run. `www.example.com`, the host of
-the `*_url` helpers, is always an allowed host.
+`CYBERTRAIN_FORCE_SSL` are not read for the tests, even when invalid),
+uploads written to `tmp/test_uploads/`, emptied at every run, and no host
+check (an exported `CYBERTRAIN_HOSTS` does not turn it on). `www.example.com`,
+the host of the `*_url` helpers, is always an allowed host.
 
 ```text output — cybertrain test
 test/controllers/articles_controller_test.rb
@@ -260,7 +271,10 @@ process, with no socket and a new cookie jar for each test:
   value), `[]=`, `key?`, `delete`, `keys`, `size`, `empty?` and `to_h`. A
   cookie whose `Max-Age` or `Expires` has passed on the clock, so also
   after `travel_to` past it, is gone (`Max-Age` wins over `Expires`); one a
-  test writes with `[]=` never expires.
+  test writes with `[]=` never expires. An unreadable `Max-Age` (`Max-Age=abc`)
+  is ignored and a negative one expires the cookie. Unlike Rails' jar, it
+  has no `each`, `length`, `include?`, `fetch` or `==`: a ported test reads
+  `cookies.to_h` for those.
 - `follow_redirect!` requests the last response's `Location` (without its
   `#fragment`); after a response that is not a redirect it fails the test:
   `follow_redirect!: the last response was 200, not a redirect (3xx with a
@@ -422,7 +436,8 @@ neither it fails: "No response yet") and answers the matching elements:
   and its ends stripped (Rails strips the ends only). The second argument may be Rails' positional text (a String or a Regexp),
   count (an Integer, or a Range such as `2..3`) or `true` / `false`; a count
   given there and in `count:`, `minimum:` or `maximum:` too is refused, and
-  so are a negative or crossed Range.
+  so are a negative or crossed Range and one without both ends
+  (`assert_select: a Range count needs both ends (got 2..)`).
 - The HTML is read as written, not repaired as a browser (and Nokogiri,
   behind Rails' `assert_select`) would: `table > tr` matches a table
   written without `<tbody>`, `p > div` matches `<p><div>`, and an omitted
@@ -632,8 +647,8 @@ end
 ## What gen refuses in a test class
 
 gen rewrites a test class into methods: `test "shows it" do` becomes `def
-test_shows_it` (an ASCII character outside `[A-Za-z0-9_]` turned into `_`, any
-other into `_u<hex>`, so `"ログ"` is `test__u30ed_u30b0`; `-n` takes the
+test_shows_it` (an ASCII character outside `[A-Za-z0-9_]` turned into `_`, any other into `_u<hex>_` (its lowercase code point, closed by `_`), so
+`"ログ"` is `test__u30ed__u30b0_` and `"café x"` is `test_caf_ue9__x`; `-n` takes the
 method name or the written one), and the `setup do` and `teardown do` blocks
 become `setup` and `teardown` methods calling `super`. Whatever the rewrite cannot carry over
 exactly refuses that file, never a silently wrong copy or a lost test:
@@ -669,7 +684,14 @@ prints `<path>:<line>: <reason>` and exits 1, with
 no compile. Fix the line it names. `test "name" do` may also be written
 `test"name"` or with a tab. A `test "x" do` written after `private` is not
 refused, but it becomes a private method of the copy and fails when it
-runs, where Rails runs it: keep tests above `private`.
+runs, where Rails runs it: keep tests above `private`. Other known limits:
+a name that contains the text `_u3042_` has the method name of one with
+`"あ"` in its place (gen refuses the pair within one class); a `def setup`
+in a module is not checked for `super`; a class two levels under an
+application base class is asked for `super` even when that base defines
+no `setup`; and while a test file is refused, `spin run gen -- --check`
+does not compare the stale copies in `gen/test/` (CI fails at
+`cybertrain test` instead).
 
 `cybertrain test` also refuses, the same way, a top-level
 `test`, `setup` or `teardown` in `test/test_helper.rb` or `test/support/`

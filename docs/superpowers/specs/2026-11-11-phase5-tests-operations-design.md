@@ -379,8 +379,10 @@ end
 
 - `test "name" do ... end` becomes `def test_<name>` with every character
   outside `[A-Za-z0-9_]` turned into `_`, and each character that is not
-  ASCII into `_u<lowercase hex code point>` (`"ログ"` is
-  `test__u30ed_u30b0`, so names in another script do not collide)
+  ASCII into `_u<lowercase hex code point>_`, closed by `_` (`"ログ"` is
+  `test__u30ed__u30b0_`, `"café x"` is `test_caf_ue9__x`, so names in
+  another script do not collide; a name containing the text `_u3042_`
+  equals the encoded `"あ"`, and gen refuses the pair within one class)
   (amended 2026-11-13: Rails turns only whitespace into `_`, so a name
   with punctuation has another method name than in Rails;
   `-n test_shows_an_article` names a plain one the same, and `-n` takes
@@ -1034,7 +1036,7 @@ report carries the class, the message and `where`.
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"` | IANA zone for boundaries, `Date.current`, `l` and `time_tag` (5a) |
 | `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` (was `"UTC"`) | 5a |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in test, else `:smtp` | 5a; `:test` outside the test environment boots with a warning |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""` | the file `cybertrain test` deletes, migrates and tests on instead of `storage/test.sqlite3` (5a, pre-flight ruling R10); amended 2026-11-13: one that is the development or production database (named `development.sqlite3` or `production.sqlite3`, or the file those environments resolve to, `config/app.rb`'s `c.database_path` included) is refused, exit status 2 |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""` | the file `cybertrain test` deletes, migrates and tests on instead of `storage/test.sqlite3` (5a, pre-flight ruling R10); amended 2026-11-13: a plain file path (`:memory:` and `file:` URIs refused); an existing file is deleted only when it carries the mark `cybertrain test` gives its databases (`PRAGMA application_id`), is `storage/test.sqlite3` itself or is empty, and the development and production databases are refused by name; a refusal is exit status 2 |
 | `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info` | `debug`, `info`, `warn`, `error`, `fatal`, `none` (5b) |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text` | or `:json` (5b) |
 | — | `log_tags` | `[:request_id]` | `:request_id`, `:remote_ip` (5b) |
@@ -1521,8 +1523,8 @@ phase 4b D79 and D80, so 5a's decisions are design.md D81 (the clock,
 durations, the time helpers and the zone), D82 (test classes and
 isolation), D83 (fixtures and `cybertrain test`) and D84 (the helpers,
 assertions and receivers); 5b takes D85 and D86 (pre-flight ruling B3;
-section 15 is amended). The spikes/NOTES.md rules found here are 104 to 108,
-and docs/spinel-feedback.md items AJ to AM.
+section 15 is amended). The spikes/NOTES.md rules found here are 104 to 109,
+and docs/spinel-feedback.md items AJ to AN.
 
 **The spike (section 16).** Items 1 to 5 passed without their fallbacks:
 the `Time.now` override, Rails' names on Integer and Time (two
@@ -1641,10 +1643,24 @@ wave. What it changed, with the controller's ruling where one was made:
   UTC. A travel back before a memory rate-limit window opens a new window.
   A travel is published to other threads best effort; a test that travels
   while live scheduler or worker threads run is not supported.
-- The test database guard: `CYBERTRAIN_TEST_DATABASE` may not name the
-  development or production database (ruling: the bundle deletes the
-  file, so one wrong export would destroy production data; this reverses
-  the earlier "may name any file").
+- The test database guard (ruling: the bundle deletes the file it tests
+  on, so one wrong export would destroy production data). A first version
+  refused the development and production databases, finding them by
+  running `config/app.rb`'s configure blocks on a development and a
+  production Config; the scoped re-review found that this ran
+  production-only branches inside the tests, and that a `file:` URI with a
+  query passed the deny list. So a positive mark replaces it:
+  `cybertrain test` marks the databases it creates (`PRAGMA
+  application_id`), deletes or empties an existing file only when it
+  carries the mark, is `storage/test.sqlite3` itself or is empty, and
+  otherwise refuses with exit status 2 (`cybertrain test refuses to delete
+  <path>: not a database cybertrain test created; delete it yourself or
+  name another file`); the development and production databases are still
+  refused by name; `:memory:` and `file:` URIs are refused. A custom
+  `CYBERTRAIN_TEST_DATABASE` file made before carries no mark and is
+  refused once (delete it). This reverses the earlier "may name any
+  file". In tests an exported `CYBERTRAIN_HOSTS` no longer turns the host
+  check on, and `CYBERTRAIN_FORCE_SSL` is ignored even when invalid.
 - A class-form rewrite refusal refuses the bundle (exit 1 at `cybertrain
   test`) instead of failing gen (ruling C-I1: a broken test file must not
   stop the development server, `db migrate` or a production build).
@@ -1653,7 +1669,7 @@ wave. What it changed, with the controller's ruling where one was made:
   the block chain), as are a `def test_x` with parameters or after
   `private` / `protected`, and `next` / `break` / `redo` nested in a
   body's conditionals; `test"name"` is accepted.
-- Non-ASCII characters in a test name become `_u<hex>` (ruling C-M2:
+- Non-ASCII characters in a test name become `_u<hex>_`, closed by `_` (ruling C-M2:
   Japanese test names must not collide; section 5.2).
 - `-n /TEXT/` is a plain substring, regexp characters refused (ruling:
   `.`, `?` and `()` stay literal, test names contain them); `FILE:LINE`
@@ -1674,7 +1690,21 @@ wave. What it changed, with the controller's ruling where one was made:
   tests pin an address no code uses; `--confirmable` writes one more test.
   `generate attachment` writes a real 70-byte PNG.
 
-Known limits for the maintainer, stated in the guides: a `test "x" do`
+Also found in that re-review and fixed: an endless Range count
+(`assert_select: a Range count needs both ends (got 2..)`), an unreadable
+`Max-Age` (ignored), and a crash in `Cookies.serialize` when one caller
+gave `expires:` a Time and another left it out: spikes/NOTES.md rule 109
+(a parameter defaulting to nil that a caller gives a plain Time is
+compiled as a non-nullable Time), docs/spinel-feedback.md AN; the default
+is now `Cookies::NO_EXPIRES`. spikes/NOTES.md's phase 5a rules are 104 to
+109.
+
+Known limits for the maintainer, stated in the guides: a `def setup` in a
+module is not checked for `super`; a class two levels under an application
+base whose base defines no `setup` is still asked for `super`; while a
+test tree is refused, `gen --check` does not compare the stale copies in
+`gen/test/`; the cookie jar has no `each`, `length`, `include?`, `fetch`
+or `==`; a `test "x" do`
 after `private` becomes a private method and fails when it runs (Rails
 runs it); a real stack overflow under Spinel kills the process; there is
 no `Time.zone.local`; `travel_to` takes no Date; IntegrationTest has no
