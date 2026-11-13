@@ -1,0 +1,5 @@
+# Read after ja.yml (sorted by path): its key wins.
+ja:
+  posts:
+    index:
+      title: 投稿

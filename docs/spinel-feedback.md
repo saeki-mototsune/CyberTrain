@@ -148,7 +148,8 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
   way.
 
 Letters are the items of this document (AA to AH are new, written up at
-the end); numbers after "rule" are spikes/NOTES.md's.
+the end; AI, phase 4b's, was merged in after the inventory); numbers
+after "rule" are spikes/NOTES.md's.
 
 ### 1. What CyberTrain does today because of Spinel
 
@@ -181,6 +182,7 @@ the end); numbers after "rule" are spikes/NOTES.md's.
 | AF (rule 100) | `Float#round(n)` on a Float narrowed by a `case` rounds the binary product: fails (2026-11-13) | `Cast.round_digits` rounds on the digits of `Float#to_s`, and `NumberHelper` never calls `Float#round` (cast.rb, number_helper.rb; D73) | Open; not reported |
 | AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED`: fails (2026-11-13); a privileged port refused to a non-root user raised the same class | `Server#bind_listener` turns both into `PortInUse`, and `privileged_denied?` tells them apart by the port number and the user (http/server.rb) | Open; not reported |
 | AA | A method that holds a block allocates a heap cell for each captured local when it is entered | `while` loops in `Interpreter#eval_expr` and `Helpers#nested_url`, and `Response#respell_header` as a method of its own (template/interpreter.rb, template/helpers.rb, http/response.rb) | Open; not reduced, not reported |
+| AI (rule 101) | A large Hash literal constant is one long C function that cc takes some 13 s to build (a cost, not a wrong result) | gen/locales.rb and cybertrain/locales/bundled.rb fill their Hash through methods of at most 50 stores (generator/locales_emitter.rb, phase 4b) | Not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -457,6 +459,10 @@ again since the lock left it).
 - The two refusals by design ("A refusal of a never-reached class-method
   call", "A refusal inside a block that never runs") stay as questions,
   not requests.
+- **AI** (phase 4b, 2026-11-11) is a compile-time cost, not a defect:
+  it is ready to report as a request (a large constant literal's stores
+  written into helper functions of bounded size), and nothing in
+  CyberTrain waits on it.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
   (#10525, #10524), F, G, H (#10415) and I (#10735, #10786); their
   workarounds are dropped where there were any (see each).
@@ -518,6 +524,7 @@ run on master 1c0cc5e35:
 | AF | `Cast.round_digits` in place of `Float#round(scale)` (spikes/NOTES.md rule 100); kept either way, since it is what makes a stored decimal the same under both runtimes | **Ready to report**: the 12-line program in AF (CRuby `1.01`, compiled `1.0` for the same Float). Not reported; not run on master |
 | AG | `privileged_denied?` in `Server#bind_listener` | **Ready to report**: the 9-line program in AG (CRuby `Errno::EADDRINUSE`, compiled `Errno::ECONNREFUSED`). Not reported; not run on master |
 | AH | none | The 2-line program in AH. A difference in form, not in value: to be mentioned with AF rather than reported alone |
+| AI | gen/locales.rb fills its Hash through methods of at most 50 stores (spikes/NOTES.md rule 101) | **Ready to report** as a compile-time cost, not a defect: spikes/phase4b/locale_hash.rb and its generator make_keys.rb, with the `--timing` figures (see AI). Not reported upstream yet |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026 when this table
@@ -586,6 +593,7 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | AF. `Float#round(n)` on a Float narrowed by a `case` rounds the binary product | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (rule 100, found 2026-11-11; its program re-run 2026-11-13) |
 | AG. `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-13) |
 | AH. `JSON.generate` writes a Float in another form than CRuby's | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-11 and 2026-11-13) |
+| AI. A large Hash literal constant takes cc 13 s | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4b spike, 2026-11-11; rule 101) |
 
 ## What CyberTrain still works around
 
@@ -3354,3 +3362,60 @@ stack (rule 46) returned normally when compiled, the C compiler having
 turned it into a loop; and rule 2's `instance_exec(&stored)` is refused
 as before ("unsupported call: ... (CallNode `instance_exec`)"), which is
 by design.
+
+## Found in phase 4b of the Rails-gap programme (2026-11-11)
+
+The i18n and authentication part of the web-layer design
+(docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md, section 12,
+item 6) ran four checks against 2026.11.04.7026 before any code was
+written (spikes/phase4b/); all four passed, and this was found while
+measuring the second.
+
+### AI. A large Hash literal constant takes cc 13 s
+
+A module with a frozen Hash literal constant of 1,980 String pairs
+(`TEXTS = { "en.section_00.key_00" => "Value 0 plain", ... }.freeze`)
+takes 12.5 to 15.2 s to build on a 4-vCPU cloud machine. `spinel
+--timing` puts 13.2 s in cc_total and under 0.1 s in the analysis and C
+generation: the literal is written into the program's main body as 1,980
+inlined `sp_StrStrHash_set` calls, a single function that cc at -O2 is
+slow to optimise. A `case` over the same keys builds in 4.5 to 4.7 s, and
+the same Hash filled by 40 methods of 50 `h["k"] = "v"` stores in 4.7 to
+5.4 s. Lookups in the two Hash forms are equally fast (34 to 53 ns).
+
+- What CyberTrain does with it (phase 4b): gen/locales.rb and
+  cybertrain/locales/bundled.rb fill their Hash through `fill_NN(h)`
+  methods of at most 50 keys (spikes/NOTES.md rule 101).
+- A possible upstream change: emit a large constant literal's stores into
+  helper functions of bounded size, or from a static table in a loop.
+- Reproduced by spikes/phase4b/locale_hash.rb (written by make_keys.rb);
+  not reported upstream.
+
+### What the rest of phase 4b met (no new item)
+
+The eighteen tasks after the spike (2026-11-11 to 2026-11-12: the YAML
+reader, `I18n`, translated helpers and validation messages, tokens, mail,
+the authentication generator's additions and examples/blog in two
+languages) found no new defect on 2026.11.04.7026. Every new program
+compiled as written once the known rules were followed, and those rules
+shaped the code in four places:
+
+- One return type per method name (spikes/NOTES.md rule 34): WebSocket's
+  private `Frame#reset`, which answered a Boolean, became `clear_message`
+  beside the generated `PasswordsMailer.reset`, which answers a
+  `MailMessage`; the confirmation mailer's method is
+  `confirmation_instructions` because `User#confirm` answers a Boolean;
+  `MailMessage`'s readers are `mail_to`, `mail_subject` and the like.
+- A concern's `class_methods` are defined by gen after the controllers
+  that call them (rules 92 and 93), so `allow_unauthenticated_access`,
+  which a controller's class body calls, became a framework method of
+  `Cybertrain::Controller` rather than the concern's.
+- No stored block through a base-class receiver (rule 88): the generated
+  `rate_limit` lines name their `with:` and `by:` methods.
+- Byte scanners read through a fresh local (rule 62): the YAML reader,
+  the plural rules, `Accept-Language`, the locale-name check, token
+  parsing and `ParameterFilter.filter_path`.
+
+One finding was CRuby's, not Spinel's: under a C locale `File.read`
+answers US-ASCII text, which the authentication generator's diff
+compares with generated UTF-8 through `LineDiff.as_utf8`.

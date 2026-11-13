@@ -166,9 +166,16 @@ module Cybertrain
           else
             seen << parent
             inherited = File.read(path)
+            # The authentication generator's include (the line
+            # Authentication.include_line? recognises, as that generator
+            # does): its callbacks are read from the concern itself.
+            if Authentication.included?(inherited)
+              safe = !authentication_concern_checks_more?(root, spec)
+              inherited = without_authentication_include(inherited)
+            end
             head = "class #{parent} < "
             at = line_start(inherited, head, "start")
-            safe = at >= 0 && !callback_checks_more?(inherited, spec)
+            safe = safe && at >= 0 && !callback_checks_more?(inherited, spec)
             parent = inherited[at, line_end(inherited, at) - at].to_s.strip.delete_prefix(head) if safe
           end
         end
@@ -386,6 +393,24 @@ module Cybertrain
         File.write(full, add_to_only_list_at(source, public_access_line(source), spec.field))
         puts "insert #{path} (:#{spec.field} in allow_unauthenticated_access, since :show is public)"
         true
+      end
+
+      # source without its `include Authentication` lines.
+      def self.without_authentication_include(source)
+        kept = +""
+        source.each_line { |line| kept << line unless Authentication.include_line?(line) }
+        kept
+      end
+
+      # Whether app/controllers/concerns/authentication.rb, which
+      # `include Authentication` brings in, checks more for show than for the
+      # download (callback_checks_more?, its `extend ActiveSupport::Concern`
+      # aside); true when the file is not there to read.
+      def self.authentication_concern_checks_more?(root, spec)
+        path = File.join(root, "app/controllers/concerns/authentication.rb")
+        return true unless File.file?(path)
+
+        callback_checks_more?(File.read(path).sub("\n  extend ActiveSupport::Concern\n", "\n"), spec)
       end
 
       # Unshared callbacks, skips or mixins cannot establish a shared policy.

@@ -3,8 +3,29 @@
 # CYBERTRAIN_SECRET_KEY_BASE, CYBERTRAIN_HOST, CYBERTRAIN_SESSION_SAME_SITE,
 # CYBERTRAIN_SESSION_PARTITIONED) are read before this block runs.
 Cybertrain.configure do |c|
+  # /setup (the first user's page) answers only to this machine, with the
+  # token the boot warning prints, while no user exists; BLOG_SETUP_OPEN=1
+  # opens it to any address (the token is still needed), for a first
+  # run behind a proxy on another host. Unset it once the user exists.
+  c.setting_bool :setup_open, env: "BLOG_SETUP_OPEN", default: false
+
+  # Links in mails (the password reset's) start with this, as in
+  # BLOG_BASE_URL=https://blog.example.com: set it, with https, wherever the
+  # app is served. Unset, they take the address the request came to,
+  # which is trusted only in development, in tests, or when
+  # CYBERTRAIN_HOSTS lists the app's hosts; anywhere else a reset mail
+  # is not sent and the log says why.
+  c.setting_string :base_url, env: "BLOG_BASE_URL", default: ""
+
   # c.port = 3000
   # c.workers = 1
+
+  # English and Japanese (config/locales/en.yml, ja.yml), English by
+  # default; ApplicationController#set_locale picks one per request. The
+  # tests raise on a key missing from both dictionaries rather than
+  # print a marker into the page.
+  c.i18n_available_locales = [:en, :ja]
+  c.i18n_raise_on_missing = true if c.test?
 
   # Keep request logs out of the test programs' output (their stdout is
   # compared with test/*.rb.expected).

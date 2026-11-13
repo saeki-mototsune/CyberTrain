@@ -9,6 +9,7 @@ ok   ignored paths never count as a change
 ok   changed_paths lists what was added, modified and removed
 ok   start yields the changed paths from its polling thread until stop
 ok   an asset change triggers a rebuild
+ok   a locale file change triggers a rebuild
 ok   an edit saved while the block runs is reported next time; generated files are absorbed
 ok   without generated prefixes every change made by the block is reported next time
-13 tests, 24 assertions, 0 failures
+14 tests, 28 assertions, 0 failures

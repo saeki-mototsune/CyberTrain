@@ -1,0 +1,6 @@
+[package]
+name = "phase4b-spike"
+version = "0.0.0"
+
+[dependencies]
+cybertrain = { path = "../.." }

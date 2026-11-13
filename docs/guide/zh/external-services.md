@@ -1,5 +1,5 @@
 ---
-source_sha256: cbd431aac3ca2ef8bf0e14cfaf9a22c24f968b66143a02d4efc5b482d085184b
+source_sha256: 3746092c625dd7310582429d7fe08d53cca20a086690f3046c41f1684ebc20db
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
@@ -200,7 +200,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **邮件内容**：`Date`、`From`、`To`、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`（HTML 邮件见下文）。非 ASCII 的主题按 RFC 2047 编码（`=?UTF-8?B?...?=`，在字符之间拆分）。正文的行尾会变成 CRLF，以 `.` 开头的行会进行点填充。其 `Content-Transfer-Encoding` 对 ASCII 为 `7bit`，对 UTF-8 在服务器声明支持 8BITMIME 时为 `8bit`（配合 `MAIL FROM
   ... BODY=8BITMIME`），其他情况或某一行长于 998 字节时为 `base64`。不会添加 `Message-ID`（提交服务器会添加）。
 - **会被拒绝的内容**，在连接之前以 `ArgumentError` 拒绝：不是纯 ASCII `local@domain` 的地址（不能有显示名称，不能有 `<>`、空格、逗号、引号、CR 或 LF；最多 254 字节），含有 CR、LF 或 NUL（请求头注入）或超过 998 字节的主题，不是有效 UTF-8 或含有 NUL 的正文，超过 100 个收件人。`to:` 接收一个地址，或用逗号分隔的多个地址。
-- **尚未支持**：附件和内嵌图片、邮件程序类（`UserMailer.welcome(user).deliver_later`：一封邮件就是应用中调用 `deliver` 或 `deliver_later` 的一个方法）、显示名称、`Cc`/`Bcc` 头（请改为发送给多个收件人）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 地址、流水线。`deliver` 在调用它的线程上运行，那是一个绿色线程，与请求一样。`cybertrain generate authentication` 仍然不会写出密码重置功能。
+- **邮件程序**：`app/mailers` 中的模块（gen 会加载它们），其方法返回 `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`，写法与 Rails 相同：`PasswordsMailer.reset(user, url).deliver_later` 把它放入队列，`deliver_now` 立即发送。`cybertrain generate authentication` 会写出两个（[密码重置](authentication.md#password-reset)）。
+- **尚未支持**：附件和内嵌图片、带 `default from:` 和按名称查找视图的邮件程序类、显示名称、`Cc`/`Bcc` 头（请改为发送给多个收件人）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 地址、流水线。`deliver` 在调用它的线程上运行，那是一个绿色线程，与请求一样。
 
 ### HTML 邮件
 

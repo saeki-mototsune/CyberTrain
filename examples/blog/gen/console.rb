@@ -3,13 +3,15 @@ require "cybertrain/console"
 
 module Gen
   module Console
-    MODEL_NAMES = ["Article", "Comment"]
+    MODEL_NAMES = ["Article", "Comment", "Session", "User"]
 
     # Article -> Article.all, as a Cybertrain::Relation.
     def self.scope(name)
       case name
       when "Article" then Article.all
       when "Comment" then Comment.all
+      when "Session" then Session.all
+      when "User" then User.all
       else Cybertrain::Console.unknown_model(name)
       end
     end
@@ -20,6 +22,8 @@ module Gen
       case relation
       when ArticleRelation then relation.to_a.each { |r| out << r }
       when CommentRelation then relation.to_a.each { |r| out << r }
+      when SessionRelation then relation.to_a.each { |r| out << r }
+      when UserRelation then relation.to_a.each { |r| out << r }
       end
       out
     end
@@ -29,6 +33,8 @@ module Gen
       case name
       when "Article" then Article.create(attrs)
       when "Comment" then Comment.create(attrs)
+      when "Session" then Session.create(attrs)
+      when "User" then User.create(attrs)
       else Cybertrain::Console.unknown_record(name)
       end
     end

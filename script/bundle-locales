@@ -1,0 +1,36 @@
+#!/usr/bin/env ruby
+# Compiles the bundled dictionaries, cybertrain/locales/*.yml, into the
+# checked-in cybertrain/locales/bundled.rb (Cybertrain::BundledLocales.lookup
+# and .lookup_list; plan decision D2), with gen's own reader and emitter:
+# Gen::LocaleYaml reads each file, Gen::LocaleScan merges them sorted by
+# path, Gen::LocalesEmitter writes the module (no I18n.install_dictionary
+# line: cybertrain/i18n installs the bundled pair itself). Runs under CRuby.
+#
+# With --check nothing is written: a bundled.rb that differs from what the
+# YAML files give prints "stale: cybertrain/locales/bundled.rb" and exits 1
+# (script/gate runs it). ROOT, the repository root by default, lets a test
+# run it on a copy.
+#
+# usage: script/bundle-locales [--check] [ROOT]
+$LOAD_PATH.unshift(File.expand_path("..", __dir__))
+require "cybertrain/generator/locale_scan"
+require "cybertrain/generator/locales_emitter"
+
+check = ARGV.include?("--check")
+args = ARGV.reject { |a| a == "--check" }
+root = args.empty? ? File.expand_path("..", __dir__) : args[0]
+dir = "cybertrain/locales"
+target = "#{dir}/bundled.rb"
+files = Dir.children("#{root}/#{dir}").select { |f| f.end_with?(".yml") }.sort.map { |f| "#{dir}/#{f}" }
+source = Cybertrain::Gen::LocalesEmitter.emit(Cybertrain::Gen::LocaleScan.merge_files(root, files), "Cybertrain::BundledLocales", false)
+path = "#{root}/#{target}"
+current = File.exist?(path) ? File.read(path, encoding: "UTF-8") : ""
+if current == source
+  puts "identical #{target}" unless check
+elsif check
+  puts "stale: #{target}"
+  exit 1
+else
+  File.write(path, source)
+  puts "wrote #{target}"
+end

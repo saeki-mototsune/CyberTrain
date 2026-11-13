@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/cli"
 require "cybertrain/test"
+require "cybertrain/generator/locale_yaml"
 
 # Every path below is relative to a fresh temp dir so the output (and the
 # `create <path>` lines the generator prints) is the same on every machine.
@@ -25,7 +26,7 @@ end
 
 EXPECTED_FILES = [
   "spin.toml", ".gitignore", ".env.example", "README.md",
-  "config/app.rb", "config/routes.rb",
+  "config/app.rb", "config/routes.rb", "config/locales/en.yml",
   "db/schema.rb", "db/migrate/.keep",
   "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep", "app/jobs/.keep",
   "app/assets/stylesheets/application.css", "app/assets/images/.keep", "app/javascript/application.js",
@@ -66,6 +67,22 @@ end
 test "config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)" do
   assert_equal "Cybertrain::Routes.draw do\n  # jobs_page \"/admin/jobs\", before_action: :require_admin\nend\n", read("blog/config/routes.rb")
   assert_equal "Cybertrain::Schema.define(version: \"0\") do |s|\nend\n", read("blog/db/schema.rb")
+end
+
+test "config/locales/en.yml is a dictionary gen's reader accepts, with hello" do
+  text = read("blog/config/locales/en.yml")
+  entries = Cybertrain::Gen::LocaleYaml.parse(text, "config/locales/en.yml")
+  assert_equal 1, entries.size
+  assert_equal "en.hello", entries[0].entry_key
+  assert_equal "Hello world", entries[0].entry_text
+  assert(text.include?("docs/guide/i18n.md"))
+end
+
+test "config/app.rb documents the i18n settings, commented" do
+  text = read("blog/config/app.rb")
+  assert(text.include?("  # c.i18n_default_locale = :en\n"))
+  assert(text.include?("  # c.i18n_available_locales = [:en, :ja]\n"))
+  assert(text.include?("docs/guide/i18n.md"))
 end
 
 test "bin/blog.rb is the app's one binary: server, migrate, db" do

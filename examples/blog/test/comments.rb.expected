@@ -2,11 +2,19 @@
 done
 == 20260925174943 CreateComments: migrating
 done
+== 20261112102827 CreateUsers: migrating
+done
+== 20261112102828 CreateSessions: migrating
+done
 == 20261112174320 AddCoverToArticles: migrating
 done
 ok   the article page lists its comments and has a comment form
 ok   POST /articles/:article_id/comments adds a comment and redirects back to the article
+ok   a commenter's name with markup is shown as text
 ok   a comment without a commenter is not saved and the article page says why
+ok   a visitor comments without signing in, but is sent to sign in to delete a comment
+ok   a comment that does not save says why in Japanese
+ok   a saved comment is shown and noticed in Japanese
 ok   a comment posted without the CSRF token is rejected
 ok   DELETE /articles/:article_id/comments/:id (POST with _method) removes the comment
 ok   a comment is only reachable through its own article
@@ -21,4 +29,4 @@ ok   a comment that is not saved enqueues no job
 ok   a comment posted by Turbo answers create.turbo_stream.erb: the comment appended and the form reset
 ok   a comment posted without the Turbo Stream Accept header still redirects with 303
 ok   an invalid comment posted by Turbo redirects back with the alert
-17 tests, 89 assertions, 0 failures
+21 tests, 109 assertions, 0 failures

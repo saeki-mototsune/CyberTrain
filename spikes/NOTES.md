@@ -115,6 +115,8 @@ for the evidence needed to change a status.
 | 98 | Tool behaviour, checked 2026-11-11: generated C inside a package is refused as input and can invalidate builds. Keep probe outputs outside the package. |
 | 99 | **Not a Spinel defect** (corrected 2026-11-13; recorded on 2026-11-11 as "still there", issue #188): `dup` on a user-defined class is a shallow copy that shares Array ivars, and CRuby's `dup` is shallow in the same way. A probe prints `2 2 0 5` under CRuby 3.3.6 and compiled by this build alike, and a class's `initialize_copy` is called on both (docs/spinel-feedback.md, "Written up on 2026-11-13"). The generated `<Model>Relation#dup` (D72) is what a branching relation needs under either runtime; test/relation_dup.rb fails without it. |
 | 100 | **Still there**: found on this build (2026-11-11, issue #189): `Float#round(n)` on a Float narrowed by a `case` in a method whose scale is a parameter rounds the binary product (1.005 at scale 2 is 1.0; CRuby and a Float local answer 1.01). `Cast.round_digits` (D73) rounds on the decimal digits instead; spikes/decimal/float_round.rb prints both, and test/decimal_contract.rb fails without it. |
+| 101 | **Still there**: found on this build (phase 4b spike, 2026-11-11; spikes/phase4b/locale_hash.rb). |
+| 102, 103 | Work on this build: records of forms that compile (phase 4b spike, 2026-11-11), not of defects. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
@@ -184,21 +186,22 @@ synchronization or repeat side effects just to work around inference.
 The rules are numbered in the order they were found. By topic:
 
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
-  90, 92, 93, 95, 97
+  90, 92, 93, 95, 97, 103
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100
-- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93
+- Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93,
+  101
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79, 81, 89
+  79, 81, 89, 103
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
 - Memory and GC roots: 58, 64, 65; and 99, a shallow built-in `dup`, which
   is ordinary Ruby
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
-  91
+  91, 102
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98
 
@@ -254,9 +257,10 @@ follows the rule even where a probe passes.
 | The generator's scans stay separate passes whose results do not meet in one method (`Gen::Runner`) | 94 | generator/runner.rb | test/gen_runner_models.rb; `cd examples/blog && spin run gen` | still there |
 | Sockets: `wait_readable` before every `readpartial`; a socket reaches its thread through a method parameter; `connect_nonblock` instead of `connect_timeout:` | 20, 21, 72 | http/server.rb, http/body_writer.rb, net/socket.rb, websocket.rb | test/server.rb, test/response_stream.rb, test/main_roles.rb, test/http_client.rb | 20, 21 not re-checked; 72 required (spinel-feedback O) |
 | `SPINEL_WORKERS` is set to `workers + 1` before the first thread; development serves on one worker; no lock on the request path | 22, 57 | application.rb (`spinel_workers_for`), template/engine.rb, http/server.rb | test/dev_application.rb, test/template_embedded.rb, test/db_busy_wait.rb; bench/run's two-core run | required (spinel-feedback L); 57 not re-checked |
+| A large generated table (an application's dictionary, the bundled ones) is a Hash filled at load by methods of at most 50 stores, never one literal | 101 | generator/locales_emitter.rb, locales/bundled.rb | build time only: test/gen_locales.rb compiles it; one literal of 2,000 keys takes some 13 s of cc | still there (spinel-feedback AI) |
 | `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, application.rb | test/feeds_exit.rb | still there |
 | `Logger#log` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_tls.rb, test/logger_flush.rb, test/main_console.rb | still there (spinel-feedback K, M) |
-| Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | still there |
+| Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` (and `I18n.l`) walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb, strftime.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | still there |
 | A program that requires a middleware exercises it | 36 | every test that requires `cybertrain/application` | test/application.rb, test/db_integration.rb, test/health.rb | not re-checked |
 
 ### When the pinned Spinel changes
@@ -1387,7 +1391,10 @@ explicitly retires a workaround.
     buffer. The literal-pattern form works. So `time_tag`'s `format:`
     (`Template::Helpers.time_tag_strftime`) walks the pattern itself and
     calls `strftime` with a literal for each directive it supports,
-    raising for an unknown one (phase 4a Task 17, 2026-11-11).
+    raising for an unknown one (phase 4a Task 17, 2026-11-11). Since
+    phase 4b the walk is `Cybertrain::Strftime.walk(time, pattern, label)`
+    (cybertrain/strftime.rb), which `time_tag_strftime` and `I18n.l`'s
+    dictionary formats both call, so it loads without the template layer.
 
 97. A String held in an instance variable, passed as an argument to a
     stored lambda that may append to its argument (`a proc.call`), is
@@ -1458,6 +1465,53 @@ explicitly retires a workaround.
     only text is `0.125e2`), no `bigdecimal/util` (`to_d`), no
     construction from a Float, no NaN or Infinity.
 
+101. A large Hash literal constant compiles slowly: Spinel 2026.11.04.7026
+     writes the literal as one C function (the program's main body) with
+     one inlined store per entry, and cc at -O2 is slow on so long a
+     function. 1,980 String pairs took 12.5 to 15.2 s to build, nearly all
+     of it cc (`spinel --timing`: cc_total 13.2 s; analysis and C
+     generation under 0.1 s), against 4.5 to 4.7 s for a `case` over the
+     same keys; the same Hash filled at load by 40 methods of 50 stores
+     each (`def self.fill_00(h) h["k"] = "v" ... h end`, then `TEXTS =
+     Gen::Locales.texts.freeze`) builds in 4.7 to 5.4 s and answers lookups
+     as fast (34 to 52 ns). So generated code writes a large table as
+     small fill methods, never as one literal (gen/locales.rb; phase 4b
+     spike, 2026-11-11, spikes/phase4b/locale_hash.rb and
+     locale_hash_split.rb; docs/spinel-feedback.md AI). The shipped emitter
+     (cybertrain/generator/locales_emitter.rb) names them
+     `fill_texts_NN` / `fill_lists_NN` and the builders `text_table` /
+     `list_table`, one name per return type; cybertrain/locales/bundled.rb
+     has the same shape (cross-checked 2026-11-12, test/gen_locales.rb).
+
+102. A thread-local Symbol beside a Connection: on Spinel 2026.11.04.7026,
+     `Thread.current[:cybertrain_i18n_locale] = :ja` in a program where
+     the db pool stores a Connection under another key
+     (`Thread.current[TRANSACTION_KEY]`) compiles, and each green thread
+     reads back its own Symbol after `sleep 0` while another thread set a
+     different one (also with `SPINEL_WORKERS=4`); a key never set reads
+     nil. A record of a form that works, not of a defect: `I18n.locale`
+     is kept this way (phase 4b spike, 2026-11-11,
+     spikes/phase4b/thread_locale.rb).
+
+103. Stored lambdas answering String or nil, and a yield with `ensure`:
+     on Spinel 2026.11.04.7026 a lambda returned by a method
+     (`def self.resolver = ->(key) { Gen::Locales.lookup(key) }`, the
+     `case` answering a String or nil) and passed positionally to a
+     setter (rules 42 and 82) keeps nil when called with a local key, in
+     a program where another module's `resolver` returns a lambda
+     answering a String (gen/assets.rb's); and a module function that
+     saves a value, yields into a local (rule 90), restores in `ensure`
+     and returns the local compiles and restores for blocks answering a
+     String or an Integer, a block that raises and one whose only
+     statement is `raise` (rule 79's block, which fails only when the
+     yielding method itself rescues). A record of forms that work:
+     `I18n.install_dictionary` and `I18n.with_locale` (phase 4b spike,
+     2026-11-11, spikes/phase4b/dictionary_lambda.rb, which also nests
+     `with_locale` three deep). The shipped gen/locales.rb answers from a
+     Hash (`TEXTS[key]`, rule 101) rather than the spike's `case`, through
+     the same lambdas; test/gen_locales.rb and test/i18n.rb compile it
+     (cross-checked 2026-11-12).
+
 <a id="numbers-worth-remembering"></a>
 
 ## Historical measurements (not performance budgets)
@@ -1476,3 +1530,4 @@ application benchmarks. Do not use old timings alone to set security costs.
 - Historical crypto choice: HMAC-SHA256 via `OpenSSL::HMAC.hexdigest("SHA256", key, data)`; `Digest::SHA256.digest` is vendored in the runtime (no OpenSSL link needed), so the framework implements HMAC in Ruby on top of it. This does not mean the full framework avoids OpenSSL today: encrypted sessions load the encryptor (design D61).
 - PBKDF2-HMAC-SHA256 in Ruby over that digest (`Cybertrain::Password`, two `Digest::SHA256.digest` calls and two concatenations per iteration; the runtime has no incremental digest API): 100,000 iterations 197 ms compiled, 660 ms under CRuby 3.3; 600,000 iterations 1.09 s compiled (2026-10-22, one cloud vCPU). `String#crypt` exists but is libc crypt(3), so bcrypt only where libxcrypt is (not macOS). The `while` loop's back-edges are safepoints, so a hash in progress is preempted like any other thread (Spinel's docs/thread.md, "The execution model").
 - Asset digests (phase 4a spike, 2026-11-10, one cloud vCPU): `File.binread` of 1 MB 1.4 ms, `Digest::SHA256.digest` of it 0.8 ms compiled (CRuby 3.3.6: 5.0 ms for both); a generated 200-arm `case` of String literals compiles in 1.3 s, adds 44 KB to the binary and answers in 293 ns a lookup (arms tried in order; CRuby hashes them, 183 ns).
+- Locale dictionaries (phase 4b spike, 2026-11-11, a 4-vCPU cloud machine): the hand-written YAML subset reader, compiled, reads rails-i18n's en.yml or ja.yml (about 120 keys) in 0.4 to 0.5 ms and a 2,000-key file in 5 to 6 ms (CRuby 3.3.6: 4 to 6 ms and 33 to 52 ms). A 1,980-arm `case` of String literals answers in 15 ns for its first arm and 19 us for its last arm or an absent key (about 10 ns an arm); a Hash over the same keys in 34 to 53 ns, 6 ns for an absent key.

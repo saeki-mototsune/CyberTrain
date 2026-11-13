@@ -1,0 +1,360 @@
+# The bundled Japanese dictionary (plan decision D2): rails-i18n's
+# rails/locale/ja.yml (https://github.com/svenfuchs/rails-i18n, commit
+# f5c999b88935d4c1389a1ffe8a00f29b43e10366, MIT License; the file as
+# fetched and its license are in test/fixtures/i18n/rails-i18n/), cut to
+# date, time, datetime.distance_in_words, number, errors,
+# activerecord.errors.messages, helpers.submit and support.array; plus
+# the framework's own keys under cybertrain (plan decision D12), and the
+# screens `cybertrain generate authentication` writes: their lazy keys
+# (sessions.*, registrations.*, setup.*, passwords.*, accounts.*,
+# confirmations.*, the reset mail's mail.password_reset.* and
+# passwords_mailer.reset.subject, the confirmation mail's
+# mail.confirmation.* and confirmations_mailer.*) and the User
+# model's attribute names (activerecord.attributes.user).
+# Compiled into cybertrain/locales/bundled.rb by script/bundle-locales;
+# an application's config/locales overrides any key.
+---
+ja:
+  accounts:
+    cancel_email_change:
+      cancelled: メールアドレスの変更を取り消しました。リンクはもう使えません。
+    destroy:
+      deleted: アカウントを削除しました。
+      not_deleted: アカウントを削除できませんでした。何も変更していません。
+      wrong_password: 現在のパスワードが違います。
+    edit:
+      cancel_pending: この変更を取り消す
+      delete: アカウントを削除する
+      delete_intro: アカウントを削除し、すべての端末からログアウトします。元に戻すことはできません。
+      delete_title: アカウントの削除
+      model: アカウント
+      new_password: 新しいパスワード
+      password_hint: 変更しない場合は空欄のままにしてください。
+      pending: '確認待ち: %{email_address}'
+      submit: 変更を保存
+      title: アカウント
+    update:
+      confirm: 新しいメールアドレスに確認用のリンクを送りました。リンクを開くと、メールアドレスが変わります。
+      rate_limited: しばらくしてからもう一度お試しください。
+      updated: アカウントを更新しました。
+      wrong_password: 現在のパスワードが違います。
+  activerecord:
+    attributes:
+      user:
+        current_password: 現在のパスワード
+        email_address: メールアドレス
+        password: パスワード
+        password_confirmation: パスワード（確認用）
+    errors:
+      messages:
+        record_invalid: 'バリデーションに失敗しました: %{errors}'
+        restrict_dependent_destroy:
+          has_one: "%{record}が存在しているので削除できません"
+          has_many: "%{record}が存在しているので削除できません"
+  confirmations:
+    create:
+      rate_limited: しばらくしてからもう一度お試しください。
+      sent: そのメールアドレスが登録されていて未確認であれば、確認用のリンクを送りました。
+    new:
+      intro: 確認を待っているメールアドレスであれば、新しいリンクをメールで送ります。
+      sign_in: ログイン
+      submit: リンクを送る
+      title: 確認用リンクの再送信
+    show:
+      confirmed: メールアドレスを確認しました。
+      invalid: 確認用のリンクが無効か、期限が切れています。
+      taken: そのメールアドレスは別のアカウントが使っているため、変更しませんでした。
+  confirmations_mailer:
+    confirmation_instructions:
+      subject: メールアドレスの確認
+  cybertrain:
+    helpers:
+      submit:
+        no_model: 変更を保存
+    jobs_page:
+      buttons:
+        delete: 削除
+        discard: 破棄
+        discard_all: 失敗したジョブをすべて破棄
+        retry: 再実行
+        retry_all: 失敗したジョブをすべて再実行
+      columns:
+        arguments: 引数
+        attempts: 試行回数
+        claimed_by: 実行ワーカー
+        error: エラー
+        heartbeat: 最終応答
+        id: ID
+        jobs: 件数
+        kind: 種類
+        run_at: 実行予定
+        state: 状態
+        updated: 更新日時
+      empty:
+        discarded: 破棄済みのジョブはありません。
+        failed: 失敗したジョブはありません。
+        running: 実行中のジョブはありません。
+      heartbeat:
+        ago: "%{seconds}秒前"
+        none: なし
+      notices:
+        deleted: ジョブ %{id} を削除しました。
+        discarded: ジョブ %{id} を破棄しました。
+        discarded_all: 失敗したジョブ %{count}件を破棄しました。
+        not_deleted: ジョブ %{id} は削除できません。失敗または破棄済みの状態ではありません。
+        not_discarded: ジョブ %{id} は破棄できません。失敗または破棄済みの状態ではありません。
+        not_retried: ジョブ %{id} は再実行できません。失敗または破棄済みの状態ではありません。
+        retried: ジョブ %{id} を再びキューに入れました。
+        retried_all: 失敗したジョブ %{count}件を再びキューに入れました。
+      queued:
+        next: 待機中 %{count}件。次の実行予定は %{time} です。
+        none: 待機中のジョブはありません。
+      states:
+        discarded: 破棄済み
+        done: 完了
+        failed: 失敗
+        queued: 待機中
+        running: 実行中
+      tabs:
+        discarded: 破棄済み (%{count})
+        failed: 失敗 (%{count})
+        running: 実行中 (%{count})
+      title: ジョブ
+    pager:
+      newer: 前へ
+      older: 次へ
+      page: "%{page}ページ"
+  date:
+    abbr_day_names:
+    - 日
+    - 月
+    - 火
+    - 水
+    - 木
+    - 金
+    - 土
+    abbr_month_names:
+    -
+    - 1月
+    - 2月
+    - 3月
+    - 4月
+    - 5月
+    - 6月
+    - 7月
+    - 8月
+    - 9月
+    - 10月
+    - 11月
+    - 12月
+    day_names:
+    - 日曜日
+    - 月曜日
+    - 火曜日
+    - 水曜日
+    - 木曜日
+    - 金曜日
+    - 土曜日
+    formats:
+      default: "%Y/%m/%d"
+      long: "%Y年%m月%d日(%a)"
+      short: "%m/%d"
+    month_names:
+    -
+    - 1月
+    - 2月
+    - 3月
+    - 4月
+    - 5月
+    - 6月
+    - 7月
+    - 8月
+    - 9月
+    - 10月
+    - 11月
+    - 12月
+    order:
+    - :year
+    - :month
+    - :day
+  datetime:
+    distance_in_words:
+      about_x_hours: 約%{count}時間
+      about_x_months: 約%{count}ヶ月
+      about_x_years: 約%{count}年
+      almost_x_years: "%{count}年弱"
+      half_a_minute: 30秒前後
+      less_than_x_seconds: "%{count}秒未満"
+      less_than_x_minutes: "%{count}分未満"
+      over_x_years: "%{count}年以上"
+      x_seconds: "%{count}秒"
+      x_minutes: "%{count}分"
+      x_days: "%{count}日"
+      x_months: "%{count}ヶ月"
+      x_years: "%{count}年"
+  errors:
+    format: "%{attribute}%{message}"
+    messages:
+      accepted: を受諾してください
+      blank: を入力してください
+      confirmation: と%{attribute}の入力が一致しません
+      empty: を入力してください
+      equal_to: は%{count}にしてください
+      even: は偶数にしてください
+      exclusion: は予約されています
+      greater_than: は%{count}より大きい値にしてください
+      greater_than_or_equal_to: は%{count}以上の値にしてください
+      in: は%{count}の範囲に含めてください
+      inclusion: は一覧にありません
+      invalid: は不正な値です
+      less_than: は%{count}より小さい値にしてください
+      less_than_or_equal_to: は%{count}以下の値にしてください
+      model_invalid: 'バリデーションに失敗しました: %{errors}'
+      not_a_number: は数値で入力してください
+      not_an_integer: は整数で入力してください
+      odd: は奇数にしてください
+      other_than: は%{count}以外の値にしてください
+      password_too_long: が長すぎます
+      present: は入力しないでください
+      required: を入力してください
+      taken: はすでに存在します
+      too_long: は%{count}文字以内で入力してください
+      too_short: は%{count}文字以上で入力してください
+      wrong_length: は%{count}文字で入力してください
+    template:
+      body: 次の項目を確認してください
+      header: "%{model}に%{count}個のエラーが発生しました"
+  helpers:
+    submit:
+      create: 登録する
+      submit: 保存する
+      update: 更新する
+  mail:
+    confirmation:
+      greeting: "%{email_address} 様"
+      ignore: 心当たりがない場合は、このメールを無視してください。何も変わりません。
+      intro: 次のリンクを3日以内に開いて、メールアドレスを確認してください。
+      link: メールアドレスを確認する
+    password_reset:
+      greeting: "%{email_address} 様"
+      ignore: 心当たりがない場合は、このメールを無視してください。パスワードは変わりません。
+      intro: 次のアドレスで、15分以内に新しいパスワードを設定できます。
+      link: 新しいパスワードを設定する
+  number:
+    currency:
+      format:
+        delimiter: ","
+        format: "%n%u"
+        negative_format: "-%n%u"
+        precision: 0
+        separator: "."
+        significant: false
+        strip_insignificant_zeros: false
+        unit: 円
+    format:
+      delimiter: ","
+      precision: 3
+      round_mode: default
+      separator: "."
+      significant: false
+      strip_insignificant_zeros: false
+    human:
+      decimal_units:
+        format: "%n %u"
+        units:
+          billion: 十億
+          million: 百万
+          quadrillion: 千兆
+          thousand: 千
+          trillion: 兆
+          unit: ''
+      format:
+        delimiter: ''
+        precision: 3
+        significant: true
+        strip_insignificant_zeros: true
+      storage_units:
+        format: "%n%u"
+        units:
+          byte: バイト
+          eb: EB
+          gb: GB
+          kb: KB
+          mb: MB
+          pb: PB
+          tb: TB
+          zb: ZB
+    percentage:
+      format:
+        delimiter: ''
+        format: "%n%"
+    precision:
+      format:
+        delimiter: ''
+  passwords:
+    create:
+      rate_limited: しばらくしてからもう一度お試しください。
+      sent: そのメールアドレスが登録されていれば、パスワードを再設定するリンクを送りました。
+    edit:
+      invalid: パスワード再設定のリンクが無効か、期限が切れています。
+      submit: 保存する
+      title: 新しいパスワードの設定
+    new:
+      sign_in: ログイン
+      submit: リンクをメールで送る
+      title: パスワードをお忘れですか？
+    update:
+      updated: パスワードを再設定しました。新しいパスワードでログインしてください。
+  passwords_mailer:
+    reset:
+      subject: パスワードの再設定
+  registrations:
+    create:
+      confirm: ようこそ。メールアドレスを確認するリンクを送りました。リンクを開いてから、ログインしてください。
+      rate_limited: しばらくしてからもう一度お試しください。
+      welcome: ようこそ。アカウントを登録しました。
+    new:
+      model: アカウント
+      sign_in: ログイン
+      submit: 登録する
+      title: アカウント登録
+  sessions:
+    create:
+      invalid: メールアドレスかパスワードが違います。
+      rate_limited: しばらくしてからもう一度お試しください。
+      unconfirmed: 先にメールアドレスを確認してください。お送りしたメールのリンクを開いてください。
+    destroy:
+      signed_out: ログアウトしました。
+    nav:
+      account: アカウント
+      sign_in: ログイン
+      sign_out: ログアウト
+    new:
+      confirmation: 確認用リンクを再送信する
+      email_address: メールアドレス
+      forgot_password: パスワードをお忘れですか？
+      password: パスワード
+      remember_me: ログインしたままにする
+      sign_up: アカウント登録
+      submit: ログイン
+      title: ログイン
+  setup:
+    create:
+      welcome: ようこそ。アカウントを作成しました。
+    new:
+      intro: 最初のアカウントを作成します。このページは、サーバーが起動時に表示したリンクを開いたこのマシンにだけ、アカウントができるまで表示されます。
+      model: アカウント
+      submit: アカウントを作成
+      title: 初期設定
+  support:
+    array:
+      last_word_connector: "、"
+      two_words_connector: "、"
+      words_connector: "、"
+  time:
+    am: 午前
+    formats:
+      default: "%Y年%m月%d日(%a) %H時%M分%S秒 %z"
+      long: "%Y/%m/%d %H:%M"
+      short: "%m/%d %H:%M"
+    pm: 午後

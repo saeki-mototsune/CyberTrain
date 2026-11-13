@@ -1,0 +1,8 @@
+ok   a token verifies for its purpose, id and binding until it expires
+ok   a token is id--expires--hmac of purpose:id:expires:bound_to under the derived key
+ok   a changed id, expiry or MAC does not verify, though id_from still reads the id
+ok   a token stops verifying when secret_key_base changes
+ok   malformed tokens are refused without raising
+ok   issue refuses what it could not read back
+ok   without a secret_key_base, issue and valid? raise rather than sign with an empty key
+7 tests, 77 assertions, 0 failures

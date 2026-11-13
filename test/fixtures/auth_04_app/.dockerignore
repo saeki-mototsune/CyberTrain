@@ -1,0 +1,10 @@
+# What the image build does not need (see Dockerfile).
+/.git/
+/.kamal/
+/build/
+/dist/
+/log/
+/storage/*
+!/storage/.keep
+/tmp/*
+!/tmp/.keep

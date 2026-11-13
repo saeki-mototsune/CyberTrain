@@ -87,19 +87,20 @@ module Cybertrain
         number_to_human_size number_to_percentage number_with_delimiter
         number_with_precision
         outside_request! page_method pager_href pager_html paginate params
-        partial_file plural_words pluralize raw render
+        partial_file pluralize raw render
         render_component_helper render_helper request_bound! request_path
         request_query_string route route_key_of safe_join session_csrf_token
         signed_stream_name stream_source_path string_keys_of string_url tag text_arg
         time_ago_in_words time_arg to_html truncate turbo_stream_from
         url_for yield
         select_tag options_for_select options_from_collection_for_select label_tag
-        text_field_tag hidden_field_tag submit_tag
+        text_field_tag hidden_field_tag check_box_tag submit_tag
         csp_meta_tag javascript_tag content_security_policy_nonce form_record_url
         turbo_frame_tag turbo_stream time_tag current_page?
         partial_html render_collection render_records record_expected! record_partial
         record_partial_local render_items render_item render_partial_scope
         asset_path stylesheet_link_tag javascript_include_tag image_tag javascript_importmap_tags asset_source nonce_attr
+        t translate l localize translate_helper localize_helper
       ]
 
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/

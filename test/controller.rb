@@ -1,6 +1,9 @@
 require "stringio"
 require "cybertrain/test"
 require "cybertrain/controller"
+require "cybertrain/router"
+require "cybertrain/app"
+require "cybertrain/test/client"
 
 # cybertrain/controller pulls in cybertrain/model and the SQLite FFI bindings
 # (through the template helpers), so this program no longer runs under CRuby:
@@ -250,6 +253,95 @@ def secure(klass, action)
       when "sessions" then SessionsController.new(ctx)
       when "guest" then GuestSessionsController.new(ctx)
       else SecureController.new(ctx)
+      end
+  case action
+  when :new then c.process(:new) { |x| x.new_action }
+  when :create then c.process(:create) { |x| x.create }
+  when :destroy then c.process(:destroy) { |x| x.destroy }
+  else raise ArgumentError, "no route for #{action}"
+  end
+  c
+end
+
+# allow_unauthenticated_access (plan D14): the Controller class method the
+# generated controllers call in their class bodies. It is
+# skip_before_action(:require_authentication, only:, except:), so a base
+# class requiring sign-in keeps it for every action the call does not open.
+class AuthBaseController < Cybertrain::Controller
+  before_action :require_authentication
+
+  def require_authentication
+    SKIPPED << "require_authentication"
+    head :forbidden
+  end
+
+  def run_callback(name)
+    case name
+    when :require_authentication then require_authentication
+    else super
+    end
+  end
+end
+
+class PasswordsController < AuthBaseController
+  allow_unauthenticated_access only: [:new, :create]
+
+  def new_action
+    render plain: "forgot"
+  end
+
+  def create
+    render plain: "sent"
+  end
+
+  def destroy
+    render plain: "gone"
+  end
+end
+
+class SignupsController < AuthBaseController
+  allow_unauthenticated_access
+
+  def new_action
+    render plain: "sign up"
+  end
+
+  def create
+    render plain: "signed up"
+  end
+
+  def destroy
+    render plain: "cancelled"
+  end
+end
+
+class AccountsController < AuthBaseController
+  allow_unauthenticated_access except: [:destroy]
+
+  def new_action
+    render plain: "account"
+  end
+
+  def create
+    render plain: "created"
+  end
+
+  def destroy
+    render plain: "closed"
+  end
+end
+
+# A class whose only skip a test adds, to read the call's return value.
+class LaterOpenedController < AuthBaseController
+end
+
+def open_auth(klass, action)
+  SKIPPED.clear
+  ctx = build_ctx(false)
+  c = case klass
+      when "passwords" then PasswordsController.new(ctx)
+      when "signups" then SignupsController.new(ctx)
+      else AccountsController.new(ctx)
       end
   case action
   when :new then c.process(:new) { |x| x.new_action }
@@ -540,6 +632,57 @@ test "skipped? matches by name and action, never a block callback" do
   assert_equal 0, Cybertrain::Controller::NO_SKIPS.size
 end
 
+test "allow_unauthenticated_access skips require_authentication for the listed actions" do
+  c = open_auth("passwords", :new)
+  assert_equal 200, c.response.status
+  assert_equal "forgot", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("passwords", :create)
+  assert_equal 200, c.response.status
+  assert_equal "sent", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("passwords", :destroy)
+  assert_equal 403, c.response.status
+  assert_equal "", c.response.body
+  assert_equal ["require_authentication"], SKIPPED
+  skips = Cybertrain::Controller.skips_for(PasswordsController)
+  assert_equal 1, skips.size
+  assert_equal "require_authentication", skips[0].name.to_s
+  assert skips[0].applies?(:new)
+  assert skips[0].applies?(:create)
+  refute skips[0].applies?(:destroy)
+  assert_equal 0, Cybertrain::Controller.skips_for(AuthBaseController).size
+end
+
+test "allow_unauthenticated_access with no actions opens all of them; except: keeps the listed ones" do
+  [:new, :create, :destroy].each do |action|
+    c = open_auth("signups", action)
+    assert_equal 200, c.response.status
+    assert_equal [], SKIPPED
+  end
+  assert_equal "cancelled", open_auth("signups", :destroy).response.body
+  c = open_auth("accounts", :new)
+  assert_equal "account", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("accounts", :create)
+  assert_equal "created", c.response.body
+  assert_equal [], SKIPPED
+  c = open_auth("accounts", :destroy)
+  assert_equal 403, c.response.status
+  assert_equal ["require_authentication"], SKIPPED
+end
+
+test "allow_unauthenticated_access answers nil and records one skip on the calling class" do
+  assert_equal 0, Cybertrain::Controller.skips_for(LaterOpenedController).size
+  assert_nil LaterOpenedController.allow_unauthenticated_access(only: [:show])
+  skips = Cybertrain::Controller.skips_for(LaterOpenedController)
+  assert_equal 1, skips.size
+  assert_equal "require_authentication", skips[0].name.to_s
+  assert skips[0].applies?(:show)
+  refute skips[0].applies?(:index)
+  assert_equal 0, Cybertrain::Controller.skips_for(AuthBaseController).size
+end
+
 test "status_code maps symbols and passes integers through" do
   assert_equal 404, Cybertrain::Controller.status_code(:not_found)
   assert_equal 422, Cybertrain::Controller.status_code(:unprocessable_entity)
@@ -634,6 +777,153 @@ test "local_path? and safe_redirect_path accept only an ordinary local path" do
   end
   refute controller.local_path?(nil)
   assert_equal "/home", controller.safe_redirect_path(nil, "/home")
+end
+
+# The per-request locale (plan R4, Task 4): a before_action or an action
+# sets I18n.locale on the connection's thread; the next request on that
+# thread (a keep-alive connection) starts at the default locale again.
+class LocaleController < Cybertrain::Controller
+  before_action(only: [:switch]) { |c| I18n.locale = c.params["to"].to_s }
+
+  def switch
+    render plain: "#{I18n.locale} #{I18n.t("errors.messages.blank")}"
+  end
+
+  def set_in_action
+    I18n.locale = :ja
+    raise "after setting ja"
+  end
+
+  def show
+    render plain: "#{I18n.locale} #{I18n.t("errors.messages.blank")}"
+  end
+end
+
+def locale_app
+  router = Cybertrain::Router.new
+  router.get("/switch") { |c| LocaleController.new(c).process(:switch) { |x| x.switch } }
+  router.get("/raise") { |c| LocaleController.new(c).process(:set_in_action) { |x| x.set_in_action } }
+  router.get("/show") { |c| LocaleController.new(c).process(:show) { |x| x.show } }
+  Cybertrain::App.new(router, public_root: "test/no_such_public_dir", logging: false)
+end
+
+test "the locale is reset per action: a keep-alive pair, the first sets ja" do
+  I18n.available_locales = [:en, :ja]
+  client = Cybertrain::Test::Client.new(locale_app)
+  assert_equal "ja を入力してください", client.get("/switch?to=ja").body
+  # The in-process client serves every request on this one thread, as a
+  # keep-alive connection does: the locale is still :ja after the request,
+  # and the next request starts at :en.
+  assert_equal :ja, I18n.locale
+  assert_equal "en can't be blank", client.get("/show").body
+  assert_equal :en, I18n.locale
+  # A locale set in an action that then raises (no ErrorPages here, so the
+  # exception reaches the client) does not leak either.
+  assert_equal "after setting ja", assert_raises("RuntimeError") { client.get("/raise") }
+  assert_equal :ja, I18n.locale
+  assert_equal "en can't be blank", client.get("/show").body
+  # An unavailable locale from the request is refused before the action.
+  message = assert_raises("I18n::InvalidLocale") { client.get("/switch?to=xx") }
+  assert_equal "\"xx\" is not an available locale", message
+  assert_equal :en, I18n.locale
+  assert_equal "en can't be blank", client.get("/show").body
+end
+
+# The jobs page's controller as ControllersEmitter writes it for three
+# jobs_page forms (test/gen_controllers.rb pins those lines), under an
+# ApplicationController shaped like `generate authentication`'s:
+# resume_session then require_authentication (303 to sign in), and
+# require_admin (404 unless the user is an admin). The x-user header plays
+# the session: "" a visitor, "ann" a user, "admin" an admin.
+JOBS_CHAIN = []
+
+class JobsAppController < Cybertrain::Controller
+  before_action :resume_session
+  before_action :require_authentication
+
+  def resume_session
+    JOBS_CHAIN << "resume_session"
+    @user = request.header("x-user").to_s
+    nil
+  end
+
+  def require_authentication
+    JOBS_CHAIN << "require_authentication"
+    redirect_to "/session/new", status: :see_other if @user.empty?
+    nil
+  end
+
+  def require_admin
+    JOBS_CHAIN << "require_admin"
+    render plain: "Not Found", status: :not_found unless @user == "admin"
+    nil
+  end
+
+  # A guard that only restricts a user who exists (N2's shape).
+  def check_staff
+    JOBS_CHAIN << "check_staff"
+    head :forbidden if @user == "ann"
+    nil
+  end
+
+  def run_callback(name)
+    case name
+    when :resume_session then resume_session
+    when :require_authentication then require_authentication
+    when :require_admin then require_admin
+    when :check_staff then check_staff
+    else super
+    end
+  end
+
+  def index
+    render plain: "JOBS"
+  end
+end
+
+# jobs_page "/admin/jobs", before_action: :require_authentication
+class JobsByAuthenticationController < JobsAppController
+  before_action :require_authentication
+end
+
+# jobs_page "/admin/jobs", before_action: :check_staff
+class JobsByStaffController < JobsAppController
+  before_action :check_staff
+end
+
+# jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+class JobsByAdminController < JobsAppController
+  skip_before_action :require_authentication
+  before_action :require_admin
+end
+
+def jobs_get(klass, user)
+  JOBS_CHAIN.clear
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/admin/jobs", { "host" => "example.test", "x-user" => user }, ""))
+  c = case klass
+      when "authentication" then JobsByAuthenticationController.new(ctx)
+      when "staff" then JobsByStaffController.new(ctx)
+      else JobsByAdminController.new(ctx)
+      end
+  c.process(:index) { |x| x.index }
+  "#{c.response.status} #{c.response.body} #{JOBS_CHAIN.join(",")}"
+end
+
+test "a jobs page guarded by require_authentication alone does not let a visitor in" do
+  assert_equal "303  resume_session,require_authentication", jobs_get("authentication", "")
+  assert_equal "200 JOBS resume_session,require_authentication,require_authentication", jobs_get("authentication", "ann")
+end
+
+test "a jobs page guarded by another method keeps authentication in front of it" do
+  assert_equal "303  resume_session,require_authentication", jobs_get("staff", "")
+  assert_equal "403  resume_session,require_authentication,check_staff", jobs_get("staff", "ann")
+  assert_equal "200 JOBS resume_session,require_authentication,check_staff", jobs_get("staff", "admin")
+end
+
+test "with skip_before_action: :require_authentication, require_admin alone answers: 404 to a visitor" do
+  assert_equal "404 Not Found resume_session,require_admin", jobs_get("admin", "")
+  assert_equal "404 Not Found resume_session,require_admin", jobs_get("admin", "ann")
+  assert_equal "200 JOBS resume_session,require_admin", jobs_get("admin", "admin")
 end
 
 Cybertrain::Test.run!

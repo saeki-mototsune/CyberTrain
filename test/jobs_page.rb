@@ -252,6 +252,102 @@ test "each list shows jobs_page_per_page rows, with page links" do
   Cybertrain.config.jobs_page_per_page = config_per_page
 end
 
+# Two failed rows and a discarded one (fixed times), nothing queued or
+# running: at one row a page, the page's whole HTML is fixed but for the
+# ids, and it has an Older link.
+def fixed_jobs
+  clear_jobs
+  job_in("failed", 6, "older")
+  failed = job_in("failed", 7, "boom <x>")
+  discarded = job_in("discarded", 8, "gone")
+  [failed, discarded]
+end
+
+test "the jobs page in English is unchanged" do
+  I18n.locale = nil
+  ids = fixed_jobs
+  f = ids[0]
+  d = ids[1]
+  html = JobsPage.index_html(1, 1, "/admin/jobs", Cybertrain::Template::Helpers.new(nil))
+  expected = "<section class=\"cybertrain-jobs\"><h1>Jobs</h1>\n" \
+             "<table class=\"jobs-counts\"><thead><tr><th>State</th><th>Jobs</th></tr></thead><tbody><tr><td>queued</td><td>0</td></tr><tr><td>running</td><td>0</td></tr><tr><td>done</td><td>0</td></tr><tr><td>failed</td><td>2</td></tr><tr><td>discarded</td><td>1</td></tr></tbody></table>\n" \
+             "<p class=\"jobs-queued\">No queued jobs.</p>\n" \
+             "<h2>Failed (2)</h2>\n" \
+             "<div class=\"jobs-bulk\"><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/retry_all\"><button type=\"submit\">Retry all failed</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/discard_all\"><button type=\"submit\">Discard all failed</button></form></div>\n" \
+             "<table class=\"jobs-failed\"><thead><tr><th>ID</th><th>Kind</th><th>Arguments</th><th>Error</th><th>Attempts</th><th>Run at</th><th>Updated</th><th></th></tr></thead><tbody><tr><td>#{f}</td><td>WelcomeJob</td><td>{&quot;user_id&quot;:7,&quot;mode&quot;:&quot;ok&quot;}</td><td>boom &lt;x&gt;</td><td>5</td><td>1970-01-01 00:16:40 UTC</td><td>1970-01-01 00:33:20 UTC</td><td><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{f}/retry\"><button type=\"submit\">Retry</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{f}/discard\"><button type=\"submit\">Discard</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{f}/delete\"><button type=\"submit\">Delete</button></form></td></tr></tbody></table>\n" \
+             "<h2>Discarded (1)</h2>\n" \
+             "<table class=\"jobs-discarded\"><thead><tr><th>ID</th><th>Kind</th><th>Arguments</th><th>Error</th><th>Attempts</th><th>Run at</th><th>Updated</th><th></th></tr></thead><tbody><tr><td>#{d}</td><td>WelcomeJob</td><td>{&quot;user_id&quot;:8,&quot;mode&quot;:&quot;ok&quot;}</td><td>gone</td><td>5</td><td>1970-01-01 00:16:40 UTC</td><td>1970-01-01 00:33:20 UTC</td><td><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{d}/retry\"><button type=\"submit\">Retry</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{d}/delete\"><button type=\"submit\">Delete</button></form></td></tr></tbody></table>\n" \
+             "<h2>Running (0)</h2>\n" \
+             "<p class=\"jobs-empty\">No running jobs.</p>\n" \
+             "<nav class=\"pagination\"><a href=\"/admin/jobs?page=2\">Older</a></nav></section>"
+  assert_equal expected, html
+  # The notices of a row that is not there (nothing changes).
+  assert_equal "Job 0 was not retried: it is not failed or discarded.", JobsPage.retry_notice("x")
+  assert_equal "Job 0 was not discarded: it is not failed or discarded.", JobsPage.discard_notice(nil)
+  assert_equal "Job 0 was not deleted: it is not failed or discarded.", JobsPage.delete_notice("0")
+end
+
+test "the jobs page in Japanese" do
+  I18n.available_locales = [:en, :ja]
+  ids = fixed_jobs
+  f = ids[0]
+  d = ids[1]
+  html = I18n.with_locale(:ja) { JobsPage.index_html(1, 1, "/admin/jobs", Cybertrain::Template::Helpers.new(nil)) }
+  assert_includes html, "ジョブ"
+  ["<h1>Jobs</h1>", "Failed (", "Discarded (", "Running (", "No running jobs.", ">Retry<", ">Older<"].each do |english|
+    refute html.include?(english), "no English: #{english}"
+  end
+  expected = "<section class=\"cybertrain-jobs\"><h1>ジョブ</h1>\n" \
+             "<table class=\"jobs-counts\"><thead><tr><th>状態</th><th>件数</th></tr></thead><tbody><tr><td>待機中</td><td>0</td></tr><tr><td>実行中</td><td>0</td></tr><tr><td>完了</td><td>0</td></tr><tr><td>失敗</td><td>2</td></tr><tr><td>破棄済み</td><td>1</td></tr></tbody></table>\n" \
+             "<p class=\"jobs-queued\">待機中のジョブはありません。</p>\n" \
+             "<h2>失敗 (2)</h2>\n" \
+             "<div class=\"jobs-bulk\"><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/retry_all\"><button type=\"submit\">失敗したジョブをすべて再実行</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/discard_all\"><button type=\"submit\">失敗したジョブをすべて破棄</button></form></div>\n" \
+             "<table class=\"jobs-failed\"><thead><tr><th>ID</th><th>種類</th><th>引数</th><th>エラー</th><th>試行回数</th><th>実行予定</th><th>更新日時</th><th></th></tr></thead><tbody><tr><td>#{f}</td><td>WelcomeJob</td><td>{&quot;user_id&quot;:7,&quot;mode&quot;:&quot;ok&quot;}</td><td>boom &lt;x&gt;</td><td>5</td><td>1970-01-01 00:16:40 UTC</td><td>1970-01-01 00:33:20 UTC</td><td><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{f}/retry\"><button type=\"submit\">再実行</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{f}/discard\"><button type=\"submit\">破棄</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{f}/delete\"><button type=\"submit\">削除</button></form></td></tr></tbody></table>\n" \
+             "<h2>破棄済み (1)</h2>\n" \
+             "<table class=\"jobs-discarded\"><thead><tr><th>ID</th><th>種類</th><th>引数</th><th>エラー</th><th>試行回数</th><th>実行予定</th><th>更新日時</th><th></th></tr></thead><tbody><tr><td>#{d}</td><td>WelcomeJob</td><td>{&quot;user_id&quot;:8,&quot;mode&quot;:&quot;ok&quot;}</td><td>gone</td><td>5</td><td>1970-01-01 00:16:40 UTC</td><td>1970-01-01 00:33:20 UTC</td><td><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{d}/retry\"><button type=\"submit\">再実行</button></form><form class=\"button_to\" method=\"post\" action=\"/admin/jobs/#{d}/delete\"><button type=\"submit\">削除</button></form></td></tr></tbody></table>\n" \
+             "<h2>実行中 (0)</h2>\n" \
+             "<p class=\"jobs-empty\">実行中のジョブはありません。</p>\n" \
+             "<nav class=\"pagination\"><a href=\"/admin/jobs?page=2\">次へ</a></nav></section>"
+  assert_equal expected, html
+  # Page 2 has a Newer link and an empty discarded list.
+  second = I18n.with_locale(:ja) { JobsPage.index_html(2, 1, "/admin/jobs", Cybertrain::Template::Helpers.new(nil)) }
+  assert_includes second, "<nav class=\"pagination\"><a href=\"/admin/jobs?page=1\">前へ</a></nav>"
+  assert_includes second, "<p class=\"jobs-empty\">破棄済みのジョブはありません。</p>"
+  clear_jobs
+  html = I18n.with_locale(:ja) { JobsPage.index_html(1, 50, "/admin/jobs", Cybertrain::Template::Helpers.new(nil)) }
+  assert_includes html, "<p class=\"jobs-empty\">失敗したジョブはありません。</p>"
+  # A running row (no heartbeat, then one 5 s ago) and the queued line.
+  running = job_in("running", 1, "")
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET claimed_by = 'w1', heartbeat_at = NULL WHERE id = ?", [running]) }
+  queued = job_in("queued", 2, "")
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET run_at = 4102444800 WHERE id = ?", [queued]) }
+  html = I18n.with_locale(:ja) { JobsPage.index_html(1, 50, "/admin/jobs", Cybertrain::Template::Helpers.new(nil)) }
+  assert_includes html, "<thead><tr><th>ID</th><th>種類</th><th>実行ワーカー</th><th>最終応答</th></tr></thead>"
+  assert_includes html, "<td>#{running}</td><td>WelcomeJob</td><td>w1</td><td>なし</td>"
+  assert_includes html, "<p class=\"jobs-queued\">待機中 1件。次の実行予定は 2100-01-01 00:00:00 UTC です。</p>"
+  DB.with { |c| c.execute("UPDATE cybertrain_jobs SET heartbeat_at = ? WHERE id = ?", Cybertrain::Cast.binds(Time.now.to_i - 5, running)) }
+  html = I18n.with_locale(:ja) { JobsPage.index_html(1, 50, "/admin/jobs", Cybertrain::Template::Helpers.new(nil)) }
+  assert html.include?("<td>w1</td><td>5秒前</td>") || html.include?("<td>w1</td><td>6秒前</td>"), "the heartbeat age in ja"
+  # The notices, done and not done.
+  failed = job_in("failed", 3, "x")
+  gone = job_in("failed", 6, "x")
+  notices = I18n.with_locale(:ja) do
+    [JobsPage.discard_notice(failed.to_s), JobsPage.retry_notice(failed.to_s), JobsPage.retry_notice(failed.to_s),
+     JobsPage.discard_notice(failed.to_s), JobsPage.delete_notice(failed.to_s), JobsPage.delete_notice(gone.to_s)].join("|")
+  end
+  assert_equal "ジョブ #{failed} を破棄しました。|ジョブ #{failed} を再びキューに入れました。|" \
+               "ジョブ #{failed} は再実行できません。失敗または破棄済みの状態ではありません。|" \
+               "ジョブ #{failed} は破棄できません。失敗または破棄済みの状態ではありません。|" \
+               "ジョブ #{failed} は削除できません。失敗または破棄済みの状態ではありません。|" \
+               "ジョブ #{gone} を削除しました。", notices
+  job_in("failed", 4, "x")
+  assert_equal "失敗したジョブ 1件を再びキューに入れました。", I18n.with_locale(:ja) { JobsPage.retry_all_notice }
+  job_in("failed", 5, "x")
+  assert_equal "失敗したジョブ 1件を破棄しました。", I18n.with_locale(:ja) { JobsPage.discard_all_failed_notice }
+  # English again outside the block.
+  assert_equal "Job 0 was not deleted: it is not failed or discarded.", JobsPage.delete_notice("0")
+end
+
 test "jobs_page_per_page: 50, CYBERTRAIN_JOBS_PAGE_PER_PAGE, at least 1" do
   assert_equal 50, Cybertrain::Config.new.jobs_page_per_page
   ENV["CYBERTRAIN_JOBS_PAGE_PER_PAGE"] = "20"

@@ -5,6 +5,7 @@ require "cybertrain/logger"
 require "cybertrain/cast"
 require "cybertrain/config"
 require "cybertrain/db"
+require "cybertrain/i18n"
 # The parts Job delegates to (each opens Cybertrain::Job and reads the
 # registry below only from inside its methods).
 require "cybertrain/job/retry_policy"

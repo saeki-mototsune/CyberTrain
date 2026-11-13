@@ -2,70 +2,22 @@
 
 class ApplicationController < Cybertrain::Controller
   def view_assigns
-    {}
+    { "current_session" => @current_session, "current_user" => @current_user }
   end
 
   def run_callback(name)
     case name
+    when :set_locale then set_locale
     when :record_not_found then record_not_found
-    else super
-    end
-  end
-end
-
-module Admin
-  class ArticlesController < ::ApplicationController
-    def view_assigns
-      { "articles" => @articles, "article_count" => @article_count }
-    end
-
-    def run_callback(name)
-      case name
-      when :require_admin then require_admin
-      else super
-      end
-    end
-
-    def helper_method?(name)
-      case name
-      when "admin?" then true
-      else super
-      end
-    end
-
-    def call_helper_method(name, args, kwargs)
-      case name
-      when "admin?"
-        Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
-        Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
-        admin?
-      else super
-      end
-    end
-  end
-end
-
-class AdminSessionsController < ApplicationController
-  def view_assigns
-    {}
-  end
-end
-
-class ArticlesController < ApplicationController
-  def view_assigns
-    { "from" => @from, "to" => @to, "order" => @order, "articles" => @articles, "article_count" => @article_count, "comment" => @comment, "article" => @article }
-  end
-
-  def run_callback(name)
-    case name
-    when :set_article then set_article
+    when :resume_session then resume_session
+    when :require_authentication then require_authentication
     else super
     end
   end
 
   def helper_method?(name)
     case name
-    when "admin?" then true
+    when "admin?", "html_lang", "path_in_locale", "authenticated?" then true
     else super
     end
   end
@@ -76,6 +28,67 @@ class ArticlesController < ApplicationController
       Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
       Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
       admin?
+    when "html_lang"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      html_lang
+    when "path_in_locale"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 1, 1)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      path_in_locale(args[0])
+    when "authenticated?"
+      Cybertrain::Template::Helpers.helper_arity!(name, args, 0, 0)
+      Cybertrain::Template::Helpers.helper_no_keywords!(name, kwargs)
+      authenticated?
+    else super
+    end
+  end
+end
+
+class AccountsController < ApplicationController
+  def view_assigns
+    { "current_session" => @current_session, "current_user" => @current_user, "user" => @user }
+  end
+
+  def run_callback(name)
+    case name
+    when :rate_limited then rate_limited
+    when :set_user then set_user
+    else super
+    end
+  end
+
+  def rate_limit_key(name)
+    case name
+    when :account_key then account_key.to_s
+    else super
+    end
+  end
+end
+
+module Admin
+  class ArticlesController < ::ApplicationController
+    def view_assigns
+      { "current_session" => @current_session, "current_user" => @current_user, "articles" => @articles, "article_count" => @article_count }
+    end
+
+    def run_callback(name)
+      case name
+      when :require_admin then require_admin
+      else super
+      end
+    end
+  end
+end
+
+class ArticlesController < ApplicationController
+  def view_assigns
+    { "current_session" => @current_session, "current_user" => @current_user, "from" => @from, "to" => @to, "order" => @order, "articles" => @articles, "article_count" => @article_count, "comment" => @comment, "article" => @article }
+  end
+
+  def run_callback(name)
+    case name
+    when :set_article then set_article
     else super
     end
   end
@@ -83,12 +96,52 @@ end
 
 class CommentsController < ApplicationController
   def view_assigns
-    { "comment" => @comment, "new_comment" => @new_comment, "article" => @article }
+    { "current_session" => @current_session, "current_user" => @current_user, "comment" => @comment, "new_comment" => @new_comment, "article" => @article }
   end
 
   def run_callback(name)
     case name
     when :set_article then set_article
+    else super
+    end
+  end
+end
+
+class PasswordsController < ApplicationController
+  def view_assigns
+    { "current_session" => @current_session, "current_user" => @current_user, "token" => @token }
+  end
+
+  def run_callback(name)
+    case name
+    when :rate_limited then rate_limited
+    when :no_referrer then no_referrer
+    else super
+    end
+  end
+end
+
+class SessionsController < ApplicationController
+  def view_assigns
+    { "current_session" => @current_session, "current_user" => @current_user }
+  end
+
+  def run_callback(name)
+    case name
+    when :rate_limited then rate_limited
+    else super
+    end
+  end
+end
+
+class SetupController < ApplicationController
+  def view_assigns
+    { "current_session" => @current_session, "current_user" => @current_user, "user" => @user, "setup_token" => @setup_token }
+  end
+
+  def run_callback(name)
+    case name
+    when :require_first_run then require_first_run
     else super
     end
   end
@@ -100,6 +153,9 @@ require "cybertrain/jobs_page"
 # rows in Cybertrain::JobsPage, in the application's layout, behind its
 # before_action and CSRF protection.
 class CybertrainJobsController < ApplicationController
+  # jobs_page's skip_before_action: (config/routes.rb): require_authentication
+  # does not run here, so :require_admin alone decides who sees the page.
+  skip_before_action :require_authentication
   before_action :require_admin
 
   def run_callback(name)

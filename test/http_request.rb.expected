@@ -47,4 +47,8 @@ ok   header_params skips junk, keeps bare names as empty values and trims blanks
 ok   header_scheme reads Bearer; the credential is a bare parameter
 ok   header_params is empty for a missing header and one over 8 KiB
 ok   header_params tolerates any bytes in values
-49 tests, 269 assertions, 0 failures
+ok   preferred_locale with q-values, regions, wildcards and junk
+ok   preferred_locale reads at most 4 KB and 32 entries and survives a huge header
+ok   preferred_locale never raises on a header that is not valid UTF-8
+ok   a ?locale= value from the query only passes when it names an available locale
+53 tests, 332 assertions, 0 failures

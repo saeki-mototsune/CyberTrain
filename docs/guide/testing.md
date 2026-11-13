@@ -162,8 +162,10 @@ end
 
 `require "cybertrain/test/jobs"` adds five helpers over the job queue of
 the test database. The support file `cybertrain generate authentication`
-writes (`test/support/app_test.rb`) requires it; an application without one
-adds the line to its own support file, as examples/blog's does.
+writes (`test/support/app_test.rb`, with its other helpers in
+[Authentication](authentication.md#testing)) requires it; an application
+without one adds the line to its own support file, as examples/blog's
+does.
 
 ```ruby
 require_relative "support/blog_test"

@@ -39,8 +39,10 @@ class Article
     pending = cover_pending_upload
     return nil if pending.empty?
 
-    errors.add(:cover, "is too large (maximum is 2 MB)") if pending.byte_size > COVER_MAX_BYTES
-    errors.add(:cover, "must be a PNG, JPEG, GIF or WebP image") unless COVER_TYPES.empty? || COVER_TYPES.include?(pending.detected_content_type)
+    # The messages are the blog's dictionary's
+    # (activerecord.errors.models.article.attributes.cover.*, config/locales).
+    errors.add(:cover, I18n.error_message("article", :cover, :too_large)) if pending.byte_size > COVER_MAX_BYTES
+    errors.add(:cover, I18n.error_message("article", :cover, :content_type)) unless COVER_TYPES.empty? || COVER_TYPES.include?(pending.detected_content_type)
     nil
   end
 

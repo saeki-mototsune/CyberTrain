@@ -127,6 +127,12 @@ module Cybertrain
         result
       end
 
+      # The name of the template rendering now ("posts/_form.html.erb",
+      # "__components/card_component.html.erb"; "" outside a render): the
+      # template `t` helper's lazy lookup scope (plan decision D8).
+      # @return [String]
+      def current_template_name = @name
+
       # Renders a helper block's body, binding its first block parameter
       # (`|f|`) to arg; the environment is restored afterwards.
       def capture(block, env, arg = nil)

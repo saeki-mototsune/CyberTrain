@@ -9,4 +9,4 @@ ok   request_stop (the TERM trap) starts the drain: stop! waits only what is lef
 ok   a claim waiting for the write lock when the stop comes takes nothing
 ok   stop! waits at most job_drain_timeout and leaves an unfinished job running for recovery
 ok   a thread of the pool before a restart does not start the new pool's drain clock
-11 tests, 84 assertions, 0 failures
+11 tests, 88 assertions, 0 failures

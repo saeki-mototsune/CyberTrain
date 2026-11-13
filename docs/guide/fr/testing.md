@@ -1,5 +1,5 @@
 ---
-source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
+source_sha256: 88339f5df631b196034ba40e434730ec3512bd68247eae54e5bcda13c1593d62
 ---
 # Tester une application
 
@@ -170,7 +170,7 @@ complet.
 
 `require "cybertrain/test/jobs"` ajoute cinq helpers sur la file de jobs
 de la base de test. Le fichier de support qu’écrit `cybertrain generate
-authentication` (`test/support/app_test.rb`) le requiert&nbsp;; une
+authentication` (`test/support/app_test.rb`, ses autres helpers étant dans [Authentification](authentication.md#testing)) le requiert&nbsp;; une
 application qui n’en a pas ajoute la ligne à son propre fichier de support,
 comme le fait celui d’examples/blog.
 

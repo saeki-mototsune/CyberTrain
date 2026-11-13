@@ -407,6 +407,37 @@ test "increment refuses a name that is not a column" do
   assert_raises("ArgumentError") { Stat.all.increment("calls = 0; --") }
 end
 
+# ---- Relation#update_all_sql ----------------------------------------------
+
+test "update_all_sql sets columns by SQL over the relation's rows in one statement" do
+  seed_stats
+  # Every SET expression reads the row as it was: a count and what it
+  # decides change together.
+  sql = "calls = CASE WHEN calls + 1 >= ? THEN 0 ELSE calls + 1 END, seen_at = CASE WHEN calls + 1 >= ? THEN ? ELSE seen_at END"
+  at = Time.utc(2026, 11, 1, 12, 0, 0)
+  assert_equal 2, Stat.where(project_id: 1).update_all_sql(sql, [5, 5, at])
+  assert_equal 4, stat_calls(1, "GET /")
+  assert_equal Time.utc(2026, 10, 25, 9, 10, 0).to_i, Stat.find_by(project_id: 1, key: "GET /").seen_at.to_i
+  assert_equal 0, stat_calls(1, "GET /a_b")
+  assert_equal at.to_i, Stat.find_by(project_id: 1, key: "GET /a_b").seen_at.to_i
+  assert_equal 5, stat_calls(2, "POST /50%")
+  # No binds; the relation's own binds follow the SET list's.
+  assert_equal 1, Stat.where(project_id: 2).where_sql("calls > ?", [5]).update_all_sql("calls = calls * 2")
+  assert_equal 5, stat_calls(2, "POST /50%")
+  assert_equal 0, Stat.where(project_id: 99).update_all_sql("calls = ?", [1])
+  # A limit picks the rows by id, as increment's does.
+  assert_equal 1, Stat.all.limit(1).update_all_sql("calls = ?", [100])
+  assert_equal 100, stat_calls(1, "GET /")
+  assert_equal 0, stat_calls(1, "GET /a_b")
+end
+
+test "update_all_sql refuses an empty SET list and an Array bind" do
+  msg = assert_raises("ArgumentError") { Stat.all.update_all_sql("  ") }
+  assert_equal "update_all_sql: no SET list", msg
+  msg = assert_raises("ArgumentError") { Stat.all.update_all_sql("calls = ?", [[1, 2]]) }
+  assert_equal "update_all_sql: an Array bind is not expanded", msg
+end
+
 # ---- where_like -----------------------------------------------------------
 
 test "where_like is a substring match with the text's wildcards escaped" do

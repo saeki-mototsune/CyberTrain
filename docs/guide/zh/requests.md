@@ -1,5 +1,5 @@
 ---
-source_sha256: c3fdfe6dfa20ecfa65983a2d32a087f3ded3169cea41670686a8b55891174b0f
+source_sha256: fe2c05ecaf069531464f4c4acba55c5839ea809973a39f81eec7caf7f761d280
 ---
 # 请求
 
@@ -278,3 +278,7 @@ Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: g
 - 所有 ETag 变化一次（现在包含请求的格式和构建摘要），由 `Accept` 决定的响应会发送 `Vary: Accept`，html 回退适用于任何列出 `text/html` 或 `*/*` 的 `Accept`。可能回退到 html 的请求（`application/json, text/html`）有自己的 ETag，与只请求该格式的请求不同；`Accept` 中的 `text/html;q=0` 不会得到 html 回退（只有 html 的动作响应 406），旁边有 `*/*` 时也一样；`If-None-Match: *` 对只用 `last_modified:` 验证的响应也会得到 304。
 - `permit` 和 `expect` 对不是 Array 的过滤器抛出 `ArgumentError`；`layout` 指向不存在的布局会抛出 `MissingTemplate`（默认的 `application` 布局仍是可选的）；jar cookie 超过 4096 字节会抛出 `Session::CookieOverflow`。
 - `public/style.css` 继续可用；把它移到 `app/assets/stylesheets/` 是可选的（[资源](assets.md#moving-publicstylecss)）。
+- 验证消息来自捆绑的词典（[国际化](i18n.md#models-and-validation-messages)），英语文本相同，只有三处不同：`:base` 上的消息不再以 "Base" 开头，以 `_id` 结尾的属性名不带 "id"（"Article can't be blank"，而不是 "Article id can't be blank"），长度上限为 1 时显示 "1 character"。比较这些消息的测试会改变。
+- 不带 `format:` 或带格式名的 `time_tag` 通过 `I18n.l` 格式化（在英语页面中与以前的英语文本相同）。
+- gen 写出 `gen/locales.rb`（没有 `config/locales/` 时为空）并加载 `app/mailers/**/*.rb`；`cybertrain new` 写出 `config/locales/en.yml`，较早的应用也可以添加它。
+- `allow_unauthenticated_access` 现在是框架的方法；0.4 的生成器写进 `ApplicationController` 的那个仍然有效并优先。再次运行 `cybertrain generate authentication` 会加入密码重置、锁定、保持登录、账户页面和管理员用户，并为 0.4 写的文件打印差异（[从 0.4 升级](authentication.md#upgrading-from-04)）。

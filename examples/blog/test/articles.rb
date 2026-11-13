@@ -31,6 +31,7 @@ end
 
 test "GET /articles/new renders the form with a CSRF token" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   res = client.get("/articles/new")
   assert_response res, :ok
   assert_includes res.body, "<form action=\"/articles\" method=\"post\" enctype=\"multipart/form-data\">"
@@ -43,6 +44,7 @@ end
 
 test "POST /articles creates an article and redirects to it with a notice" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   client.get("/articles/new")
   res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
                                    "article[title]" => "Hello Rails",
@@ -65,6 +67,7 @@ end
 
 test "POST /articles without the CSRF token is rejected" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   client.get("/articles/new")
   res = client.post("/articles", { "article[title]" => "Sneaky", "article[body]" => "Posted from another site." })
   assert_response res, :forbidden
@@ -73,6 +76,7 @@ end
 
 test "POST /articles with a blank title re-renders the form with errors" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   client.get("/articles/new")
   res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
                                    "article[title]" => "",
@@ -87,6 +91,7 @@ end
 
 test "POST /articles with a short body reports the length error" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   client.get("/articles/new")
   res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
                                    "article[title]" => "Short",
@@ -116,6 +121,7 @@ end
 
 test "GET /articles/:id/edit renders the form with the article's values" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   article = BlogTest.article("Hello Rails")
   res = client.get("#{BlogTest.article_path(article)}/edit")
   assert_response res, :ok
@@ -127,6 +133,7 @@ end
 
 test "PATCH /articles/:id (POST with _method) updates and redirects with a notice" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   article = BlogTest.article("Hello Rails")
   client.get("#{BlogTest.article_path(article)}/edit")
   res = client.post(BlogTest.article_path(article), { "_method" => "patch",
@@ -142,6 +149,7 @@ end
 
 test "PATCH /articles/:id with invalid values re-renders the edit form" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   article = BlogTest.article("Hello Rails")
   client.get("#{BlogTest.article_path(article)}/edit")
   res = client.patch(BlogTest.article_path(article), { "authenticity_token" => BlogTest.form_token(client),
@@ -155,6 +163,7 @@ end
 
 test "DELETE /articles/:id (POST with _method) destroys and redirects to the index" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   article = BlogTest.article("Doomed article")
   BlogTest.comment(article)
   client.get(BlogTest.article_path(article))
@@ -172,9 +181,45 @@ end
 
 test "a missing article is 404" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   assert_response client.get("/articles/999"), :not_found
   assert_response client.get("/articles/999/edit"), :not_found
   assert_response client.get("/nowhere"), :not_found
+end
+
+test "a visitor reads articles but is sent to sign in to write, edit or delete one" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  assert_response client.get("/articles"), :ok
+  res = client.get(BlogTest.article_path(article))
+  assert_response res, :ok
+  csrf = BlogTest.form_token(client)
+  ["/articles/new", "#{BlogTest.article_path(article)}/edit"].each do |path|
+    res = client.get(path)
+    assert_redirected_to res, "/session/new"
+    assert_response res, :see_other
+  end
+  res = client.post("/articles", { "authenticity_token" => csrf,
+                                   "article[title]" => "By a visitor",
+                                   "article[body]" => "Nobody signed in wrote this." })
+  assert_redirected_to res, "/session/new"
+  res = client.patch(BlogTest.article_path(article), { "authenticity_token" => csrf,
+                                                       "article[title]" => "Defaced",
+                                                       "article[body]" => "Nobody signed in wrote this." })
+  assert_redirected_to res, "/session/new"
+  res = client.delete(BlogTest.article_path(article), { "authenticity_token" => csrf })
+  assert_redirected_to res, "/session/new"
+  assert_equal 1, Article.count
+  assert_equal "Hello Rails", Article.find(article.id).title
+
+  # Signed in, the form the visitor asked for is where the browser goes back to.
+  client.get("/articles/new")
+  res = BlogTest.sign_in_writer(client)
+  assert_redirected_to res, "/articles/new"
+  res = client.follow_redirect!
+  assert_response res, :ok
+  assert_includes res.body, "<h1>New article</h1>"
+  assert_includes res.body, "<span>#{BlogTest::WRITER_EMAIL}</span>"
 end
 
 # Every statement run so far, over the pool's connections (requests and
@@ -230,6 +275,7 @@ end
 
 test "a duplicate title is refused with has already been taken" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   BlogTest.article("Hello Rails")
   client.get("/articles/new")
   res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
@@ -303,31 +349,26 @@ test "the index shows the article count, cached for a minute" do
 end
 
 # The jobs page (config/routes.rb: jobs_page "/admin/jobs", before_action:
-# :require_admin) and the login that opens it. BLOG_ADMIN_TOKEN is unset at
-# the start of every test (BlogTest.reset).
-ADMIN_TOKEN = "blog-admin-s3cret"
-
-def admin_header(token)
-  { "x-admin-token" => token }
+# :require_admin, skip_before_action: :require_authentication): the
+# Authentication concern's require_admin alone decides, so anyone but a
+# signed-in admin gets its 404 ("Not Found"), a visitor included.
+def assert_not_found(res)
+  assert_response res, :not_found
+  assert_equal "Not Found", res.body
 end
 
-# Posts `token` to /admin/login with the session's CSRF token, taken from
-# the new-article form (the login form is 404 while BLOG_ADMIN_TOKEN is
-# unset or empty).
-def admin_login(client, token)
-  client.get("/articles/new")
-  client.post("/admin/login", { "authenticity_token" => BlogTest.form_token(client), "token" => token })
-end
-
-test "the jobs page is 404 without the token and renders with the x-admin-token header" do
+test "the jobs page is 404 to a visitor and to a user who is not an admin, and renders for an admin" do
   client = new_client
-  assert_response client.get("/admin/jobs"), :not_found
-  assert_response client.get("/admin/jobs", admin_header(ADMIN_TOKEN)), :not_found
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
-  assert_response client.get("/admin/jobs"), :not_found
-  assert_response client.get("/admin/jobs", admin_header("wrong")), :not_found
+  assert_not_found client.get("/admin/jobs")
+  # The token gate's header opens nothing any more.
+  assert_not_found client.get("/admin/jobs", { "x-admin-token" => "blog-admin-s3cret" })
+  BlogTest.sign_in_writer(client)
+  assert_not_found client.get("/admin/jobs")
+
+  admin = new_client
   failed = BlogTest.failed_job
-  res = client.get("/admin/jobs", admin_header(ADMIN_TOKEN))
+  BlogTest.sign_in_admin(admin)
+  res = admin.get("/admin/jobs")
   assert_response res, :ok
   assert_includes res.body, "<title>Blog</title>"
   assert_includes res.body, "<h1>Jobs</h1>"
@@ -335,41 +376,38 @@ test "the jobs page is 404 without the token and renders with the x-admin-token 
   assert_includes res.body, "action=\"/admin/jobs/#{failed}/retry\""
 end
 
-test "retry, discard and delete are 404 without a token and without the session" do
+test "retry, discard and delete are 404 to a visitor and to a user who is not an admin" do
   client = new_client
   failed = BlogTest.failed_job
+  client.get("/articles")
+  client.get("/session/new")
+  csrf = BlogTest.form_token(client)
+  ["retry", "discard", "delete"].each do |action|
+    assert_not_found client.post("/admin/jobs/#{failed}/#{action}", { "authenticity_token" => csrf })
+    assert_equal "failed", BlogTest.job_state(failed)
+  end
+  BlogTest.sign_in_writer(client)
   client.get("/articles/new")
   csrf = BlogTest.form_token(client)
   ["retry", "discard", "delete"].each do |action|
-    res = client.post("/admin/jobs/#{failed}/#{action}", { "authenticity_token" => csrf }, admin_header(""))
-    assert_response res, :not_found
-  end
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
-  ["retry", "discard", "delete"].each do |action|
-    res = client.post("/admin/jobs/#{failed}/#{action}", { "authenticity_token" => csrf })
-    assert_response res, :not_found
+    assert_not_found client.post("/admin/jobs/#{failed}/#{action}", { "authenticity_token" => csrf })
     assert_equal "failed", BlogTest.job_state(failed)
   end
-  assert_response client.post("/admin/jobs/retry_all", { "authenticity_token" => csrf }), :not_found
-  assert_response client.post("/admin/jobs/discard_all", { "authenticity_token" => csrf }), :not_found
+  assert_not_found client.post("/admin/jobs/retry_all", { "authenticity_token" => csrf })
+  assert_not_found client.post("/admin/jobs/discard_all", { "authenticity_token" => csrf })
   assert_equal "failed", BlogTest.job_state(failed)
 end
 
-test "a browser signs in at /admin/login and retries a job through its session" do
+test "an admin signs in through the sign-in form and retries a job through the session" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
   failed = BlogTest.failed_job
-  assert_response client.get("/admin/jobs"), :not_found
+  assert_not_found client.get("/admin/jobs")
 
-  res = client.get("/admin/login")
-  assert_response res, :ok
-  assert_includes res.body, "<form action=\"/admin/login\" method=\"post\">"
-  assert_includes res.body, "<input type=\"password\" name=\"token\" id=\"token\">"
-  res = client.post("/admin/login", { "authenticity_token" => BlogTest.form_token(client), "token" => ADMIN_TOKEN })
-  assert_redirected_to res, "/admin/jobs"
+  res = BlogTest.sign_in_admin(client)
+  assert_redirected_to res, "/"
   assert_response res, :see_other
-  session = BlogTest.session_of(client)
-  assert_equal Cybertrain::Crypto.hmac_hex(Cybertrain.config.secret_key_base, ADMIN_TOKEN), session["admin"].to_s
+  refute BlogTest.session_of(client)["session_id"].to_s.empty?, "the cookie names a Session row"
+  assert_equal 1, Session.count
 
   res = client.get("/admin/jobs")
   assert_response res, :ok
@@ -392,47 +430,50 @@ test "a browser signs in at /admin/login and retries a job through its session" 
   assert_equal "(gone)", BlogTest.job_state(again)
 end
 
-test "a wrong token at /admin/login is 404 and signs nobody in" do
+test "a wrong password signs nobody in and the jobs page stays 404" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
-  res = admin_login(client, "not-the-token")
-  assert_response res, :not_found
-  refute BlogTest.session_of(client).key?("admin"), "no admin session"
-  assert_response client.get("/admin/jobs"), :not_found
-  res = admin_login(client, "")
-  assert_response res, :not_found
-  refute BlogTest.session_of(client).key?("admin"), "no admin session"
+  BlogTest.user(BlogTest::ADMIN_EMAIL, true)
+  client.get("/session/new")
+  res = client.post("/session", { "authenticity_token" => BlogTest.form_token(client),
+                                  "email_address" => BlogTest::ADMIN_EMAIL,
+                                  "password" => "not-the-password" })
+  assert_redirected_to res, "/session/new"
+  assert_nil BlogTest.session_of(client)["session_id"]
+  assert_equal 0, Session.count
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"alert\">Try another email address or password.</p>"
+  assert_not_found client.get("/admin/jobs")
 end
 
-test "with BLOG_ADMIN_TOKEN unset or empty nothing opens the jobs page" do
+test "the token gate's /admin/login is gone" do
   client = new_client
-  assert_response client.get("/admin/login"), :not_found
-  assert_response client.get("/admin/jobs", admin_header("")), :not_found
-  res = admin_login(client, "")
-  assert_response res, :not_found
-  refute BlogTest.session_of(client).key?("admin"), "no admin session"
-
-  ENV["BLOG_ADMIN_TOKEN"] = ""
-  assert_response client.get("/admin/login"), :not_found
-  assert_response client.get("/admin/jobs", admin_header("")), :not_found
-  assert_response client.get("/admin/jobs"), :not_found
-  res = admin_login(client, "")
-  assert_response res, :not_found
-  refute BlogTest.session_of(client).key?("admin"), "no admin session"
-  assert_response client.get("/admin/jobs"), :not_found
+  assert_not_found client.get("/admin/login")
+  client.get("/session/new")
+  res = client.post("/admin/login", { "authenticity_token" => BlogTest.form_token(client), "token" => "blog-admin-s3cret" })
+  assert_not_found res
+  assert_nil BlogTest.session_of(client)["admin"]
+  assert_not_found client.get("/admin/jobs")
 end
 
-test "an admin session is 404 once BLOG_ADMIN_TOKEN changes" do
+test "an admin made an ordinary user again, or signed out, gets 404" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
-  assert_redirected_to admin_login(client, ADMIN_TOKEN), "/admin/jobs"
+  BlogTest.sign_in_admin(client)
   assert_response client.get("/admin/jobs"), :ok
-  ENV["BLOG_ADMIN_TOKEN"] = "a-rotated-token"
-  assert_response client.get("/admin/jobs"), :not_found
-  ENV["BLOG_ADMIN_TOKEN"] = ""
-  assert_response client.get("/admin/jobs"), :not_found
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  assert_response client.get("/admin/articles"), :ok
+  admin = User.find_by(email_address: BlogTest::ADMIN_EMAIL)
+  admin.admin = false
+  admin.save!
+  assert_not_found client.get("/admin/jobs")
+  assert_not_found client.get("/admin/articles")
+  admin.admin = true
+  admin.save!
   assert_response client.get("/admin/jobs"), :ok
+
+  res = client.delete("/session", { "authenticity_token" => BlogTest.form_token(client) })
+  assert_redirected_to res, "/session/new"
+  assert_equal 0, Session.count
+  assert_not_found client.get("/admin/jobs")
+  assert_redirected_to client.get("/admin/articles"), "/session/new"
 end
 
 # A NotifyCommentJob row that has run (`done`), last updated `days_ago`
@@ -601,19 +642,26 @@ test "counts go through number_with_delimiter and dates through time_tag" do
 end
 
 # /admin/articles: Admin::ArticlesController, behind the AdminGate concern
-# (ApplicationController#require_admin, as the jobs page).
-test "/admin/articles is 404 without the token and lists the articles with it" do
+# (its before_action is the Authentication concern's require_admin, as the
+# jobs page's): require_authentication runs first and sends a visitor to
+# sign in; a signed-in user who is not an admin gets 404.
+test "/admin/articles sends a visitor to sign in, is 404 to a user who is not an admin, and lists the articles to an admin" do
   client = new_client
   first = dated_article("First article")
   BlogTest.article("Second article")
-  assert_response client.get("/admin/articles"), :not_found
-  assert_response client.get("/admin/articles", admin_header(ADMIN_TOKEN)), :not_found
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
-  assert_response client.get("/admin/articles"), :not_found
-  assert_response client.get("/admin/articles", admin_header("wrong")), :not_found
-  assert_response client.get("/admin/articles", admin_header("")), :not_found
+  res = client.get("/admin/articles")
+  assert_redirected_to res, "/session/new"
+  assert_response res, :see_other
+  res = client.get("/admin/articles", { "x-admin-token" => "blog-admin-s3cret" })
+  assert_redirected_to res, "/session/new"
+  BlogTest.sign_in_writer(client)
+  assert_not_found client.get("/admin/articles")
 
-  res = client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  client = new_client
+  first = dated_article("First article")
+  BlogTest.article("Second article")
+  BlogTest.sign_in_admin(client)
+  res = client.get("/admin/articles")
   assert_response res, :ok
   assert_includes res.body, "<title>Blog</title>"
   assert_includes res.body, "<h1>Admin: articles</h1>"
@@ -624,16 +672,16 @@ test "/admin/articles is 404 without the token and lists the articles with it" d
   assert_includes res.body, "<form class=\"button_to\" method=\"post\" action=\"/admin/articles/#{first.id}\">"
   assert_includes res.body, "<a href=\"/admin/jobs\">Jobs</a>"
 
-  # The jobs page, now drawn inside the namespace, keeps its gate.
-  assert_response client.get("/admin/jobs"), :not_found
-  assert_response client.get("/admin/jobs", admin_header(ADMIN_TOKEN)), :ok
+  # The jobs page, drawn inside the namespace, keeps its gate.
+  assert_response client.get("/admin/jobs"), :ok
+  assert_not_found new_client.get("/admin/jobs")
   # Only index and destroy are drawn.
-  assert_response client.get("/admin/articles/#{first.id}", admin_header(ADMIN_TOKEN)), :not_found
+  assert_response client.get("/admin/articles/#{first.id}"), :not_found
 end
 
 test "the admin list shows at most per_page (20) articles, newest first" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  BlogTest.sign_in_admin(client)
   i = 1
   while i <= 21
     article = BlogTest.article("Numbered article #{i}")
@@ -641,7 +689,7 @@ test "the admin list shows at most per_page (20) articles, newest first" do
     i += 1
   end
   assert_equal 20, Admin::ArticlesController.per_page
-  res = client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  res = client.get("/admin/articles")
   assert_includes res.body, "<p class=\"admin-count\">21 articles</p>"
   assert_includes res.body, "Numbered article 21"
   assert_includes res.body, "Numbered article 2<"
@@ -649,57 +697,338 @@ test "the admin list shows at most per_page (20) articles, newest first" do
   assert res.body.index("Numbered article 21").to_i < res.body.index("Numbered article 20").to_i, "newest first"
 end
 
-test "DELETE /admin/articles/:id with the token deletes the article; without it, 404" do
+test "DELETE /admin/articles/:id by an admin deletes the article; by anyone else, nothing" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
   doomed = BlogTest.article("Doomed article")
   BlogTest.comment(doomed)
   kept = BlogTest.article("Kept article")
-  client.get("/admin/articles", admin_header(ADMIN_TOKEN))
+  client.get(BlogTest.article_path(kept))
   csrf = BlogTest.form_token(client)
-
-  res = client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf })
-  assert_response res, :not_found
-  res = client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf }, admin_header("wrong"))
-  assert_response res, :not_found
+  # A visitor is sent to sign in; a user who is not an admin gets 404.
+  assert_redirected_to client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf }), "/session/new"
+  BlogTest.sign_in_writer(client)
+  client.get(BlogTest.article_path(kept))
+  csrf = BlogTest.form_token(client)
+  assert_not_found client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf })
   assert_equal 2, Article.count
 
-  res = client.post("/admin/articles/#{doomed.id}", { "_method" => "delete", "authenticity_token" => csrf },
-                    admin_header(ADMIN_TOKEN))
+  client = new_client
+  doomed = BlogTest.article("Doomed article")
+  BlogTest.comment(doomed)
+  kept = BlogTest.article("Kept article")
+  BlogTest.sign_in_admin(client)
+  client.get("/admin/articles")
+  csrf = BlogTest.form_token(client)
+  res = client.post("/admin/articles/#{doomed.id}", { "_method" => "delete", "authenticity_token" => csrf })
   assert_redirected_to res, "/admin/articles"
   assert_response res, :see_other
   assert_equal 1, Article.count
   assert_equal kept.id, Article.first.id
   assert_equal 0, Comment.count
-  assert_response client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf }, admin_header(ADMIN_TOKEN)),
-                  :not_found
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"notice\">Article was successfully deleted.</p>"
+  assert_response client.delete("/admin/articles/#{doomed.id}", { "authenticity_token" => csrf }), :not_found
 end
 
-test "DELETE /admin/articles/:id with the admin token but no authenticity_token is 403" do
+test "DELETE /admin/articles/:id by an admin but without the authenticity_token is 403" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
+  BlogTest.sign_in_admin(client)
   doomed = BlogTest.article("Protected article")
-  client.get("/admin/articles", admin_header(ADMIN_TOKEN))
-  res = client.delete("/admin/articles/#{doomed.id}", {}, admin_header(ADMIN_TOKEN))
+  client.get("/admin/articles")
+  res = client.delete("/admin/articles/#{doomed.id}", {})
   assert_response res, :forbidden
   assert_equal 1, Article.count
 end
 
-test "a signed-in browser reaches /admin/articles, and the article page links to it" do
+test "a signed-in admin reaches /admin/articles, and the article page links to it" do
   client = new_client
-  ENV["BLOG_ADMIN_TOKEN"] = ADMIN_TOKEN
   article = BlogTest.article("Hello Rails")
   res = client.get(BlogTest.article_path(article))
   assert_nil res.body.index("/admin/articles")
-  admin_login(client, ADMIN_TOKEN)
+  BlogTest.sign_in_admin(client)
   res = client.get("/admin/articles")
   assert_response res, :ok
   assert_includes res.body, "Hello Rails"
   res = client.get(BlogTest.article_path(article))
   assert_includes res.body, "<a href=\"/admin/articles\">Manage articles</a>"
-  ENV["BLOG_ADMIN_TOKEN"] = "a-rotated-token"
-  assert_response client.get("/admin/articles"), :not_found
+  admin = User.find_by(email_address: BlogTest::ADMIN_EMAIL)
+  admin.admin = false
+  admin.save!
+  assert_not_found client.get("/admin/articles")
   assert_nil client.get(BlogTest.article_path(article)).body.index("/admin/articles")
+end
+
+test "a signed-in user who is not an admin gets the concern's 404 on every admin page" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  failed = BlogTest.failed_job
+  BlogTest.sign_in_writer(client)
+  res = client.get(BlogTest.article_path(article))
+  assert_response res, :ok
+  assert_nil res.body.index("Manage articles")
+  csrf = BlogTest.form_token(client)
+  assert_not_found client.get("/admin/articles")
+  assert_not_found client.delete("/admin/articles/#{article.id}", { "authenticity_token" => csrf })
+  assert_not_found client.get("/admin/jobs")
+  assert_not_found client.post("/admin/jobs/#{failed}/retry", { "authenticity_token" => csrf })
+  assert_equal 1, Article.count
+  assert_equal "failed", BlogTest.job_state(failed)
+  # The same answer as a page that does not exist.
+  missing = client.get("/admin/no-such-page")
+  assert_equal missing.status, client.get("/admin/articles").status
+  assert_equal missing.body, client.get("/admin/articles").body
+end
+
+# English and Japanese (config/locales/en.yml, ja.yml), picked by
+# ApplicationController#set_locale: ?locale=, kept in the `locale` cookie;
+# else that cookie; else Accept-Language; else English.
+def locale_cookie(client)
+  client.cookies["locale"]
+end
+
+# Whether res set the locale cookie (a Set-Cookie for `locale`).
+def sets_locale_cookie?(res)
+  res.cookies.any? { |c| c.start_with?("locale=") }
+end
+
+test "?locale=ja renders Japanese" do
+  client = new_client
+  BlogTest.article("Hello Rails")
+  res = client.get("/articles?locale=ja")
+  assert_response res, :ok
+  assert_includes res.body, "<html lang=\"ja\">"
+  assert_includes res.body, "<title>ブログ</title>"
+  assert_includes res.body, "<h1>記事</h1>"
+  assert_includes res.body, "<p class=\"article-count\">1件の記事</p>"
+  assert_includes res.body, "<label for=\"from\">開始日</label>"
+  assert_includes res.body, "<option selected=\"selected\" value=\"new\">新しい順</option>"
+  assert_includes res.body, "<th>タイトル</th>"
+  assert_includes res.body, "<a href=\"/articles/new\">記事を書く</a>"
+  # The generated nav partial, from the framework's dictionary.
+  assert_includes res.body, "<a href=\"/session/new\">ログイン</a>"
+  assert_nil res.body.index("<h1>Articles</h1>")
+  assert_nil res.body.index("New article")
+  assert_equal "ja", locale_cookie(client)
+
+  # And English, with ?locale=en, on another browser.
+  other = new_client
+  BlogTest.article("Hello Rails")
+  res = other.get("/articles?locale=en")
+  assert_response res, :ok
+  assert_includes res.body, "<html lang=\"en\">"
+  assert_includes res.body, "<title>Blog</title>"
+  assert_includes res.body, "<h1>Articles</h1>"
+  assert_includes res.body, "<p class=\"article-count\">1 article</p>"
+  assert_includes res.body, "<a href=\"/articles/new\">New article</a>"
+  assert_includes res.body, "<a href=\"/session/new\">Sign in</a>"
+  assert_nil res.body.index("記事を書く")
+  assert_equal "en", locale_cookie(other)
+end
+
+test "after ?locale=ja, a plain link stays Japanese (cookie)" do
+  client = new_client
+  article = dated_article("Hello Rails")
+  client.get("/?locale=ja")
+  assert_equal "ja", locale_cookie(client)
+  res = client.get(BlogTest.article_path(article))
+  assert_response res, :ok
+  assert_includes res.body, "<html lang=\"ja\">"
+  assert_includes res.body, "<p class=\"dates\">投稿日時 <time datetime=\"2024-03-10T09:00:00Z\">2024/03/10 09:00</time></p>"
+  assert_includes res.body, "<h2>コメントを書く</h2>"
+  assert_includes res.body, "<button type=\"submit\">この記事を削除</button>"
+  assert_includes res.body, "<label for=\"comment_commenter\">名前</label>"
+  assert_includes res.body, "value=\"登録する\""
+  refute sets_locale_cookie?(res), "a plain link leaves the cookie as it is"
+
+  # A fresh browser, with no cookie, gets the same page in English.
+  fresh = Cybertrain::Test::Client.new(BLOG)
+  res = fresh.get(BlogTest.article_path(article))
+  assert_includes res.body, "<html lang=\"en\">"
+  assert_includes res.body, "<p class=\"dates\">Written <time datetime=\"2024-03-10T09:00:00Z\">March 10, 2024 09:00</time></p>"
+  assert_includes res.body, "<h2>Add a comment:</h2>"
+  assert_includes res.body, "value=\"Create Comment\""
+  assert_nil res.body.index("コメントを書く")
+  assert_nil locale_cookie(fresh)
+
+  # ?locale=en switches the first browser back, for its next links too.
+  client.get("#{BlogTest.article_path(article)}?locale=en")
+  assert_equal "en", locale_cookie(client)
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<html lang=\"en\">"
+  assert_includes res.body, "<h2>Add a comment:</h2>"
+end
+
+test "the language links keep the current path" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<a href=\"#{BlogTest.article_path(article)}?locale=en\">English</a>"
+  assert_includes res.body, "<a href=\"#{BlogTest.article_path(article)}?locale=ja\">日本語</a>"
+  res = client.get("/articles?order=old&locale=ja")
+  assert_includes res.body, "<a href=\"/articles?locale=en\">English</a>"
+  assert_includes res.body, "<a href=\"/articles?locale=ja\">日本語</a>"
+  res = client.get("/")
+  assert_includes res.body, "<a href=\"/?locale=en\">English</a>"
+  # A path with doubled slashes routes as the plain one; its links stay on
+  # this site (no protocol-relative //articles, which names another host).
+  res = client.get("//articles")
+  assert_response res, :ok
+  assert_includes res.body, "<a href=\"/articles?locale=en\">English</a>"
+  assert_includes res.body, "<a href=\"/articles?locale=ja\">日本語</a>"
+  assert_nil res.body.index("href=\"//")
+end
+
+test "Accept-Language: ja renders Japanese" do
+  client = new_client
+  BlogTest.article("Hello Rails")
+  res = client.get("/articles", { "Accept-Language" => "ja-JP,ja;q=0.9,en;q=0.8" })
+  assert_includes res.body, "<html lang=\"ja\">"
+  assert_includes res.body, "<h1>記事</h1>"
+  # The header is asked every time; it writes no cookie.
+  refute sets_locale_cookie?(res), "Accept-Language writes no cookie"
+  assert_nil locale_cookie(client)
+
+  res = client.get("/articles", { "Accept-Language" => "en-US,en;q=0.9" })
+  assert_includes res.body, "<html lang=\"en\">"
+  assert_includes res.body, "<h1>Articles</h1>"
+  res = client.get("/articles", { "Accept-Language" => "fr-FR, de;q=0.8" })
+  assert_includes res.body, "<h1>Articles</h1>"
+  res = client.get("/articles", { "Accept-Language" => "en;q=0.5, ja;q=0.8" })
+  assert_includes res.body, "<h1>記事</h1>"
+
+  # ?locale= wins over the header, and its cookie does too afterwards.
+  res = client.get("/articles?locale=en", { "Accept-Language" => "ja" })
+  assert_includes res.body, "<h1>Articles</h1>"
+  res = client.get("/articles", { "Accept-Language" => "ja" })
+  assert_includes res.body, "<h1>Articles</h1>"
+end
+
+test "an invalid locale param falls back to English" do
+  client = new_client
+  hostile = "x" * 5000
+  ["fr", "", "JA", "ja-JP", "ja%00", "..%2F..%2Fetc", "../../etc", "%3Cscript%3E", hostile].each do |value|
+    res = client.get("/articles?locale=#{value}")
+    assert_response res, :ok
+    assert_includes res.body, "<html lang=\"en\">"
+    assert_includes res.body, "<h1>Articles</h1>"
+    refute sets_locale_cookie?(res), "?locale=#{value[0, 20]} is not written to the cookie"
+    assert_nil locale_cookie(client)
+    # Nor is it written into the page: the language links name the path
+    # and a supported locale only (a link ends at its closing quote).
+    assert_includes res.body, "<a href=\"/articles?locale=en\">English</a>"
+    assert_nil res.body.index("locale=#{value}\"")
+  end
+  assert_nil client.get("/articles?locale=#{hostile}").body.index("x" * 100)
+  assert_nil client.get("/articles?locale=../../etc").body.index("../../etc")
+  res = client.get("/articles?locale[]=ja")
+  assert_includes res.body, "<h1>Articles</h1>"
+  assert_nil locale_cookie(client)
+
+  # It falls back to the rest of the chain: the browser's language...
+  res = client.get("/articles?locale=xx", { "Accept-Language" => "ja" })
+  assert_includes res.body, "<h1>記事</h1>"
+  assert_nil locale_cookie(client)
+  # ...and a choice made before, which it does not overwrite.
+  client.get("/articles?locale=ja")
+  res = client.get("/articles?locale=../../etc")
+  assert_includes res.body, "<h1>記事</h1>"
+  assert_equal "ja", locale_cookie(client)
+end
+
+test "a tampered locale cookie is ignored" do
+  client = new_client
+  ["xx", "", "JA", "..%2F..%2Fetc", "x" * 3000].each do |value|
+    client.cookies["locale"] = value
+    res = client.get("/articles")
+    assert_response res, :ok
+    assert_includes res.body, "<html lang=\"en\">"
+    assert_includes res.body, "<h1>Articles</h1>"
+    refute sets_locale_cookie?(res), "the cookie is left as it is"
+  end
+  client.cookies["locale"] = "xx"
+  res = client.get("/articles", { "Accept-Language" => "ja" })
+  assert_includes res.body, "<h1>記事</h1>"
+  # A valid cookie still counts.
+  client.cookies["locale"] = "ja"
+  assert_includes client.get("/articles").body, "<h1>記事</h1>"
+end
+
+test "the sign-in page and its messages are in the chosen language" do
+  client = new_client
+  res = client.get("/articles/new?locale=ja")
+  assert_redirected_to res, "/session/new"
+  res = client.follow_redirect!
+  assert_includes res.body, "<html lang=\"ja\">"
+  assert_includes res.body, "<title>ブログ</title>"
+  assert_includes res.body, "<h1>ログイン</h1>"
+  assert_includes res.body, "<label for=\"email_address\">メールアドレス</label>"
+  assert_includes res.body, "<a href=\"/session/new?locale=en\">English</a>"
+  BlogTest.user(BlogTest::WRITER_EMAIL, false)
+  res = client.post("/session", { "authenticity_token" => BlogTest.form_token(client),
+                                  "email_address" => BlogTest::WRITER_EMAIL,
+                                  "password" => "wrong-password" })
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"alert\">メールアドレスかパスワードが違います。</p>"
+  res = client.get("/session/new?locale=en")
+  assert_includes res.body, "<html lang=\"en\">"
+  assert_includes res.body, "<h1>Sign in</h1>"
+  assert_includes res.body, "<label for=\"email_address\">Email address</label>"
+
+  # Signed in, the notices of the blog's own actions too.
+  BlogTest.sign_in(client, BlogTest::WRITER_EMAIL)
+  client.get("/articles/new?locale=ja")
+  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+                                   "article[title]" => "こんにちは",
+                                   "article[body]" => "日本語で書いた最初の記事です。" })
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"notice\">記事を作成しました。</p>"
+  assert_includes res.body, "<h1>こんにちは</h1>"
+  assert_includes res.body, "<span>#{BlogTest::WRITER_EMAIL}</span>"
+  assert_includes res.body, "<button type=\"submit\">ログアウト</button>"
+end
+
+test "validation errors in Japanese" do
+  client = new_client
+  BlogTest.sign_in_writer(client)
+  client.get("/articles/new?locale=ja")
+  res = client.get("/articles/new")
+  assert_includes res.body, "<h1>新しい記事</h1>"
+  assert_includes res.body, "<label for=\"article_title\">タイトル</label>"
+  assert_includes res.body, "<label for=\"article_body\">本文</label>"
+  assert_includes res.body, "value=\"登録する\""
+  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+                                   "article[title]" => "",
+                                   "article[body]" => "短い" })
+  assert_response res, :unprocessable_entity
+  assert_includes res.body, "<h2>2件のエラーがあるため、記事を保存できませんでした:</h2>"
+  assert_includes res.body, "<li>タイトルを入力してください</li>"
+  assert_includes res.body, "<li>本文は10文字以上で入力してください</li>"
+  assert_nil res.body.index("can&#39;t be blank")
+  assert_equal 0, Article.count
+
+  # The same form in English.
+  client.get("/articles/new?locale=en")
+  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+                                   "article[title]" => "",
+                                   "article[body]" => "Too short" })
+  assert_response res, :unprocessable_entity
+  assert_includes res.body, "<h2>2 errors prohibited this article from being saved:</h2>"
+  assert_includes res.body, "<li>Title can&#39;t be blank</li>"
+  assert_includes res.body, "<li>Body is too short (minimum is 10 characters)</li>"
+  assert_nil res.body.index("を入力してください")
+
+  # The edit form, and a duplicate title, in Japanese.
+  article = BlogTest.article("Hello Rails")
+  BlogTest.article("Taken title")
+  client.get("#{BlogTest.article_path(article)}/edit?locale=ja")
+  res = client.patch(BlogTest.article_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                                       "article[title]" => "Taken title",
+                                                       "article[body]" => "A body that is long enough." })
+  assert_response res, :unprocessable_entity
+  assert_includes res.body, "<h1>記事の編集</h1>"
+  assert_includes res.body, "<h2>1件のエラーがあるため、記事を保存できませんでした:</h2>"
+  assert_includes res.body, "<li>タイトルはすでに存在します</li>"
+  assert_includes res.body, "value=\"更新する\""
 end
 
 # The JSON of an article names where its cover is served from and keeps the
@@ -707,6 +1036,8 @@ end
 test "an article's JSON has the cover's URL and none of the cover_* columns" do
   client = new_client
   Cybertrain::BlobStore.root = "tmp/test_uploads"
+  # Writing an article (and so attaching its cover) needs a signed-in user.
+  BlogTest.sign_in_writer(client)
   client.get("/articles/new")
   png = Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01])
   upload = Cybertrain::Test::Upload.new("article[cover]", "cover.png", "image/png", png)
@@ -725,6 +1056,9 @@ test "an article's JSON has the cover's URL and none of the cover_* columns" do
 
   res = client.get(BlogTest.article_path(article))
   assert_includes res.body, "<img src=\"/articles/#{article.id}/cover?v="
+  # Whoever may read the article may fetch its cover: a visitor too.
+  visitor = Cybertrain::Test::Client.new(BLOG)
+  assert_response visitor.get(article.cover_url), :ok
   article.destroy
 end
 

@@ -5,6 +5,7 @@ require "cybertrain/job"
 require "cybertrain/lease"
 require "cybertrain/time_zone"
 require "cybertrain/cron"
+require "cybertrain/i18n"
 require "cybertrain/scheduler/timetable"
 
 module Cybertrain
@@ -532,8 +533,10 @@ module Cybertrain
     # Runs one task -- calls its block, or enqueues its `job:` -- with its
     # rescue in a plain method that reads the Proc from the Task rather
     # than yielding (NOTES rules 32/45/69); naming JSON::NestingError first
-    # (rule 61). False when it raised.
+    # (rule 61). False when it raised. Each run starts at the default
+    # locale, so a locale one task set does not stay for the next.
     def self.run_task(task)
+      I18n.locale = nil
       kind = task.task_job_kind
       if kind.empty?
         task.task_block.call

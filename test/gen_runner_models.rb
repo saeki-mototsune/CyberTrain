@@ -33,7 +33,7 @@ APP_FILES = [
   "app/jobs/digest_job.rb",
   "app/jobs/admin/report_job.rb"
 ]
-GEN_FILES = ["gen/routes.rb", "gen/assets.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb",
+GEN_FILES = ["gen/routes.rb", "gen/assets.rb", "gen/locales.rb", "gen/controllers.rb", "gen/views.rb", "gen/helpers.rb", "gen/components.rb", "gen/jobs.rb", "gen/console.rb", "gen/concerns.rb",
              "gen/concerns/controllers/concerns/admin_gate.rb", "gen/concerns/controllers/concerns/auditing.rb",
              "gen/concerns/controllers/concerns/stamped.rb", "gen/concerns/models/concerns/visible.rb",
              "gen/models/comment.rb", "gen/models/post.rb", "gen/app.rb"]

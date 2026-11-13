@@ -156,4 +156,14 @@ test "a blocked host is logged with its path, escaped" do
   assert_equal "[WARN] Blocked host: \"typo.example\\e[31m\" for \"/\"\n", logged
 end
 
+test "a blocked host's line writes a signed token in the path as [FILTERED]" do
+  token = "7--1900--#{"0123456789abcdef" * 4}"
+  before = LOG.string.size
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/passwords/#{token}/edit", { "host" => "evil.example" }, ""))
+  Cybertrain::HostAuthorization.new(ProtectedApp.new, ["localhost"]).call(ctx)
+  assert_equal 403, ctx.response.status
+  logged = LOG.string[before, LOG.string.size - before].to_s
+  assert_equal "[WARN] Blocked host: \"evil.example\" for \"/passwords/[FILTERED]/edit\"\n", logged
+end
+
 Cybertrain::Test.run!

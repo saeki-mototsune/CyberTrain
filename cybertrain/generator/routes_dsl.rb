@@ -83,11 +83,14 @@ module Cybertrain
     # path ("" when none was drawn) and the before_action method guarding
     # it ("" for none). The accessors have distinctive names (NOTES rule 10).
     class JobsPageSpec
-      attr_reader :jobs_path, :jobs_before_action
+      attr_reader :jobs_path, :jobs_before_action, :jobs_skip_before_action
 
-      def initialize(jobs_path, jobs_before_action)
+      # jobs_skip_before_action: the inherited callback jobs_page's
+      # `skip_before_action:` names ("" for none).
+      def initialize(jobs_path, jobs_before_action, jobs_skip_before_action = "")
         @jobs_path = jobs_path
         @jobs_before_action = jobs_before_action
+        @jobs_skip_before_action = jobs_skip_before_action
       end
     end
 
@@ -346,18 +349,30 @@ module Cybertrain
       # scope, whose path prefix it takes (`admin.jobs_page "/jobs"` is
       # `/admin/jobs`; the controller stays CybertrainJobsController).
       # Without `before_action:` the page is open to anyone who can reach
-      # it, and `spin run gen` prints a warning saying so.
+      # it, and `spin run gen` prints a warning saying so. The guard runs
+      # after the callbacks ApplicationController declares (Rails' order),
+      # so with `generate authentication` a visitor is sent to sign in
+      # first; `skip_before_action: :require_authentication` leaves that
+      # one out, so the guard alone decides (require_admin answers a
+      # visitor 404, as if there were no page). Only the callback named is
+      # skipped, and only when this option says so.
       # @example
       #   jobs_page "/admin/jobs", before_action: :require_admin
+      #   jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
       # @param path [String] literal segments (`"/admin/jobs"`)
       # @param before_action [Symbol, String] a method of ApplicationController
       #   that renders or redirects to refuse the visitor (`:require_admin`)
+      # @param skip_before_action [Symbol, String] an inherited before
+      #   callback the page does not run (`:require_authentication`); needs
+      #   a `before_action:` other than itself
       # @return [nil]
       # @raise [ArgumentError] for a second jobs page, one inside
-      #   `resources`, a path with dynamic or empty segments, or a
-      #   before_action that is not a method name
+      #   `resources`, a path with dynamic or empty segments, a
+      #   before_action or skip_before_action that is not a method name, a
+      #   skip_before_action without a before_action or naming the same
+      #   method (either would open the page to everyone)
       # @api public
-      def jobs_page(path, before_action: "")
+      def jobs_page(path, before_action: "", skip_before_action: "")
         raise ArgumentError, "jobs_page must be used at the top of the routes, not inside resources" unless @mode == "top"
 
         guard = "#{before_action}"
@@ -372,7 +387,25 @@ module Cybertrain
           message = "jobs_page #{path.inspect}: before_action: #{guard.inspect} is not a method name"
           raise ArgumentError, message
         end
-        Cybertrain::Routes.record_jobs_page(full, guard)
+        skip = "#{skip_before_action}"
+        unless skip.empty?
+          at = jobs_page_location(path)
+          unless skip.match?(ACTION_PATTERN)
+            message = "#{at}jobs_page #{path.inspect}: skip_before_action: #{skip.inspect} is not a method name"
+            raise ArgumentError, message
+          end
+          if guard.empty?
+            message = "#{at}jobs_page #{path.inspect}: skip_before_action: :#{skip} needs a before_action: that decides " \
+                      "who sees the page; without one it would open the page to everyone"
+            raise ArgumentError, message
+          end
+          if guard == skip
+            message = "#{at}jobs_page #{path.inspect}: skip_before_action: :#{skip} is the page's own before_action:; " \
+                      "skipping it would open the page to everyone"
+            raise ArgumentError, message
+          end
+        end
+        Cybertrain::Routes.record_jobs_page(full, guard, skip)
         controller = "cybertrain_jobs"
         add_jobs_route("GET", full, controller, "index", "index")
         add_jobs_route("POST", "#{full}/retry_all", controller, "retry_all", "retry_all_action")
@@ -834,6 +867,25 @@ module Cybertrain
         names.join(",")
       end
 
+      # "config/routes.rb:N: " for the first uncommented jobs_page line of
+      # path in config/routes.rb (gen runs in the app's directory), or ""
+      # when there is no such file or line: the DSL has no call locations.
+      def jobs_page_location(path)
+        file = "config/routes.rb"
+        return "" unless File.file?(file)
+
+        quoted = path.inspect
+        n = 0
+        File.read(file).each_line do |line|
+          n += 1
+          code = line.strip
+          next unless code.start_with?("jobs_page ") || code.include?(".jobs_page ")
+
+          return "#{file}:#{n}: " if code.include?(quoted)
+        end
+        ""
+      end
+
       # The last literal segment of a path ("" for none).
       def last_literal(path)
         last = ""
@@ -970,13 +1022,13 @@ module Cybertrain
     end
 
     # Called by {Gen::Mapper#jobs_page}: one jobs page per application.
-    def self.record_jobs_page(path, before_action)
+    def self.record_jobs_page(path, before_action, skip_before_action = "")
       first = @jobs_page.jobs_path
       unless first.empty?
         message = "jobs_page #{path.inspect}: the jobs page is already drawn at #{first.inspect} (one per application)"
         raise ArgumentError, message
       end
-      @jobs_page = Gen::JobsPageSpec.new(path, before_action)
+      @jobs_page = Gen::JobsPageSpec.new(path, before_action, skip_before_action)
       nil
     end
 

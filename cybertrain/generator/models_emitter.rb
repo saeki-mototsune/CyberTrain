@@ -540,6 +540,9 @@ module Cybertrain
         src << "  def self.table_name = \"#{table.name}\"\n"
         src << "  def self.column_names = [\"id\", #{quoted}]\n"
         src << "  def model_name = \"#{model}\"\n"
+        # Rails' Post.human_attribute_name(:title), through the model's
+        # dictionary key (plan decision D9).
+        src << "  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name(\"#{Inflector.underscore(model)}\", attr)\n"
         src << "\n"
         # Plain attr_accessor, on purpose: not typed `def x=(v)` writers.
         # Under Spinel a `def x=` on one class breaks the run-time dispatch

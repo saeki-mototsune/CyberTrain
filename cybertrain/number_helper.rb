@@ -51,9 +51,11 @@ module Cybertrain
 
     # 1234 -> "1.23 Thousand": `precision` significant digits, insignificant
     # zeros stripped; units: { unit:, thousand:, million:, billion:,
-    # trillion:, quadrillion: } replaces the names.
+    # trillion:, quadrillion: } replaces the names; `format:` places the
+    # number (%n) and the unit (%u), the result stripped as Rails strips
+    # it ("123" for a number below a thousand).
     # @api public
-    def self.number_to_human(number, precision: 3, units: {})
+    def self.number_to_human(number, precision: 3, units: {}, format: "%n %u", delimiter: "", separator: ".")
       names = UNIT_NAMES.dup
       i = 0
       while i < UNIT_KEYS.length
@@ -61,12 +63,12 @@ module Cybertrain
         names[i] = custom.to_s unless custom.nil?
         i += 1
       end
-      NumberHelper.human_text(number, precision, names)
+      NumberHelper.human_text(number, precision, names, format, delimiter, separator)
     end
 
     # number_to_human over the six unit names (unit, thousand .. quadrillion);
-    # the template helper builds them from its own Hash.
-    def self.human_text(number, precision, names)
+    # the template helper builds them from its own Hash and the locale.
+    def self.human_text(number, precision, names, format, delimiter, separator)
       d = NumberHelper.parse_number(number, "number_to_human")
       NumberHelper.check_precision(precision)
       sig = precision < 1 ? 1 : precision
@@ -78,30 +80,30 @@ module Cybertrain
       shifted = Decimal.new(r.negative, r.digits, r.point - 3 * idx, 0)
       frac = r.digits.length - shifted.point
       frac = 0 if frac < 0
-      text = NumberHelper.render_fixed(shifted, frac, "", ".", false)
-      name = names[idx]
-      name.empty? ? text : "#{text} #{name}"
+      text = NumberHelper.render_fixed(shifted, frac, delimiter, separator, false)
+      filled = NumberHelper.fill_currency(format, names[idx], text)
+      filled.strip
     end
 
-    # 100 -> "100.000%"
+    # 100 -> "100.000%"; `format:` places the number (%n).
     # @api public
-    def self.number_to_percentage(number, precision: 3)
+    def self.number_to_percentage(number, precision: 3, format: "%n%", delimiter: "", separator: ".")
       d = NumberHelper.parse_number(number, "number_to_percentage")
       NumberHelper.check_precision(precision)
       places = precision
       r = NumberHelper.round_places(d, places)
-      "#{NumberHelper.render_fixed(r, places, "", ".", false)}%"
+      NumberHelper.fill_currency(format, "", NumberHelper.render_fixed(r, places, delimiter, separator, false))
     end
 
     # 1234.5 -> "$1,234.50"; a negative number takes "-" before the format.
     # @api public
-    def self.number_to_currency(number, unit: "$", precision: 2, format: "%u%n")
+    def self.number_to_currency(number, unit: "$", precision: 2, format: "%u%n", delimiter: ",", separator: ".")
       d = NumberHelper.parse_number(number, "number_to_currency")
       NumberHelper.check_precision(precision)
       places = precision
       r = NumberHelper.round_places(d, places)
       shown = Decimal.new(false, r.digits, r.point, 0)
-      amount = NumberHelper.render_fixed(shown, places, ",", ".", false)
+      amount = NumberHelper.render_fixed(shown, places, delimiter, separator, false)
       pattern = r.negative ? "-#{format}" : format
       NumberHelper.fill_currency(pattern, unit, amount)
     end
@@ -109,14 +111,44 @@ module Cybertrain
     # 1234 -> "1.21 KB" (base 1024, 3 significant digits).
     # @api public
     def self.number_to_human_size(number)
+      names = SIZE_UNITS.dup
+      names[0] = NumberHelper.byte_count(number) == 1 ? "Byte" : "Bytes"
+      NumberHelper.human_size_text(number, 3, names, "%n %u", ".")
+    end
+
+    # The whole number of bytes number_to_human_size shows for a size
+    # under 1024 (its absolute value, rounded half up), which picks the
+    # byte name's plural form; 0 for a larger size.
+    def self.byte_count(number)
       d = NumberHelper.parse_number(number, "number_to_human_size")
+      value = NumberHelper.float_of(number)
+      value = -value if value < 0.0
+      return 0 if value >= 1024.0
+
+      whole = NumberHelper.round_places(Decimal.new(false, d.digits, d.point, 0), 0)
+      digits = whole.digits
+      n = 0
+      j = 0
+      while j < whole.point
+        n = n * 10 + (j < digits.length ? digits[j].ord - 48 : 0)
+        j += 1
+      end
+      n
+    end
+
+    # number_to_human_size with `precision` significant digits, the seven
+    # unit names (the byte name first, then KB .. EB), the format placing
+    # the number (%n) and the unit (%u), and the decimal separator.
+    def self.human_size_text(number, precision, names, format, separator)
+      d = NumberHelper.parse_number(number, "number_to_human_size")
+      NumberHelper.check_precision(precision)
       sign = d.negative ? "-" : ""
       value = NumberHelper.float_of(number)
       value = -value if value < 0.0
       if value < 1024.0
         whole = NumberHelper.round_places(Decimal.new(false, d.digits, d.point, 0), 0)
         text = NumberHelper.render_fixed(whole, 0, "", ".", false)
-        return "#{sign}#{text} #{text == "1" ? "Byte" : "Bytes"}"
+        return NumberHelper.fill_currency(format, names[0], "#{sign}#{text}")
       end
       idx = 0
       while value >= 1024.0 && idx < 6
@@ -124,11 +156,12 @@ module Cybertrain
         idx += 1
       end
       scaled = NumberHelper.parse_number(value, "number_to_human_size")
-      r = NumberHelper.round_to_k(scaled, 3)
+      sig = precision < 1 ? 1 : precision
+      r = NumberHelper.round_to_k(scaled, sig)
       frac = r.digits.length - r.point
       frac = 0 if frac < 0
-      text = NumberHelper.render_fixed(r, frac, "", ".", false)
-      "#{sign}#{text} #{SIZE_UNITS[idx]}"
+      text = NumberHelper.render_fixed(r, frac, "", separator, false)
+      NumberHelper.fill_currency(format, names[idx], "#{sign}#{text}")
     end
 
     # --- internals ---------------------------------------------------------
@@ -340,7 +373,9 @@ module Cybertrain
       out
     end
 
-    # "%u%n" -> unit and amount substituted; any other text as it is.
+    # "%u%n" -> unit and amount substituted; any other text as it is
+    # (also the format of number_to_human, number_to_human_size and
+    # number_to_percentage).
     def self.fill_currency(pattern, unit, amount)
       out = +""
       i = 0

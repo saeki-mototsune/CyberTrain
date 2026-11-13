@@ -53,6 +53,20 @@ test "POST /articles/:article_id/comments adds a comment and redirects back to t
   assert_includes res.body, "First!"
 end
 
+test "a commenter's name with markup is shown as text" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get(BlogTest.article_path(article))
+  client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                        "comment[commenter]" => "<b>Eve</b><script>alert(1)</script>",
+                                        "comment[body]" => "Hi" })
+  assert_equal "<b>Eve</b><script>alert(1)</script>", Comment.last.commenter
+  res = client.get(BlogTest.article_path(article))
+  assert_includes res.body, "<strong class=\"comment-author\">&lt;b&gt;Eve&lt;/b&gt;&lt;script&gt;alert(1)&lt;/script&gt;</strong> wrote:"
+  assert_nil res.body.index("<b>Eve</b>")
+  assert_nil res.body.index("<script>alert(1)")
+end
+
 test "a comment without a commenter is not saved and the article page says why" do
   client = new_client
   article = BlogTest.article("Hello Rails")
@@ -66,6 +80,63 @@ test "a comment without a commenter is not saved and the article page says why" 
   assert_includes res.body, "<p class=\"alert\">Comment could not be saved: Commenter can&#39;t be blank</p>"
 end
 
+test "a visitor comments without signing in, but is sent to sign in to delete a comment" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  kept = BlogTest.comment(article, "Alice", "Keep me")
+  client.get(BlogTest.article_path(article))
+  res = client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                              "comment[commenter]" => "Visitor",
+                                              "comment[body]" => "No account needed" })
+  assert_redirected_to res, BlogTest.article_path(article)
+  assert_equal 2, Comment.count
+  assert_equal 0, Session.count
+  client.get(BlogTest.article_path(article))
+  res = client.post("#{comments_path(article)}/#{kept.id}", { "_method" => "delete",
+                                                              "authenticity_token" => BlogTest.form_token(client) })
+  assert_redirected_to res, "/session/new"
+  assert_response res, :see_other
+  assert_equal 2, Comment.count
+end
+
+test "a comment that does not save says why in Japanese" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  res = client.get("#{BlogTest.article_path(article)}?locale=ja")
+  assert_includes res.body, "<h2>コメントを書く</h2>"
+  res = client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                              "comment[commenter]" => "",
+                                              "comment[body]" => "" })
+  assert_redirected_to res, BlogTest.article_path(article)
+  assert_equal 0, Comment.count
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"alert\">コメントを保存できませんでした: 名前を入力してください、本文を入力してください</p>"
+
+  # In English, the same post.
+  client.get("#{BlogTest.article_path(article)}?locale=en")
+  client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                        "comment[commenter]" => "",
+                                        "comment[body]" => "" })
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"alert\">Comment could not be saved: Commenter can&#39;t be blank, Body can&#39;t be blank</p>"
+end
+
+test "a saved comment is shown and noticed in Japanese" do
+  client = new_client
+  article = BlogTest.article("Hello Rails")
+  client.get("#{BlogTest.article_path(article)}?locale=ja")
+  res = client.post(comments_path(article), { "authenticity_token" => BlogTest.form_token(client),
+                                              "comment[commenter]" => "花子",
+                                              "comment[body]" => "素敵な記事です" })
+  res = client.follow_redirect!
+  assert_includes res.body, "<p class=\"notice\">コメントを投稿しました。</p>"
+  assert_includes res.body, "<p><strong class=\"comment-author\">花子</strong>さんのコメント:</p>"
+  assert_includes res.body, "<button type=\"submit\">コメントを削除</button>"
+  res = client.get("#{BlogTest.article_path(article)}?locale=en")
+  assert_includes res.body, "<p><strong class=\"comment-author\">花子</strong> wrote:</p>"
+  assert_includes res.body, "<button type=\"submit\">Destroy comment</button>"
+end
+
 test "a comment posted without the CSRF token is rejected" do
   client = new_client
   article = BlogTest.article("Hello Rails")
@@ -77,6 +148,7 @@ end
 
 test "DELETE /articles/:article_id/comments/:id (POST with _method) removes the comment" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   article = BlogTest.article("Hello Rails")
   keep = BlogTest.comment(article, "Alice", "Keep me")
   doomed = BlogTest.comment(article, "Bob", "Delete me")
@@ -97,6 +169,7 @@ end
 
 test "a comment is only reachable through its own article" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   article = BlogTest.article("Hello Rails")
   other = BlogTest.article("Another article")
   comment = BlogTest.comment(other, "Carol", "Not yours")
@@ -191,6 +264,7 @@ end
 
 test "a destroyed comment is broadcast as a Turbo Stream remove of its element" do
   client = new_client
+  BlogTest.sign_in_writer(client)
   article = BlogTest.article("Hello Rails")
   doomed = BlogTest.comment(article, "Bob", "Delete me")
   client.get(BlogTest.article_path(article))

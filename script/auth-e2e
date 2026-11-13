@@ -1,0 +1,629 @@
+#!/usr/bin/env bash
+# Drives an application made by `cybertrain generate authentication` from
+# end to end, once per VARIANT: a new app (this checkout as its framework)
+# with a scaffold, the generator, `db migrate`, `build`, `spin run gen --
+# --check`, every test/*.rb the app has compiled and run from build/test/,
+# then the built binary served on a free port and probed with curl and
+# the user command, and a password reset whose mail the server's job thread
+# sends to an SMTP receiver (cybertrain/test/smtp_receiver.rb, run by
+# CRuby) on another free port, then the account page (a new address and
+# password, which signs a second browser out, then the account deleted
+# with the password). The first failure stops it with a non-zero
+# status and leaves the app's directory in place to look at.
+#
+#   signup       generate authentication (the sign-up page)
+#   invite       generate authentication --invite-only (/setup, the boot warning)
+#   confirmable  generate authentication --confirmable: a sign-up whose mailed
+#                link confirms the address (the sign-in refused until then),
+#                and a new address that takes effect once its own link is
+#                opened
+#   upgrade04    test/fixtures/auth_04_app (a sign-up app v0.4.1 generated)
+#                with today's generator run over it: its printed diffs
+#                applied with patch -p1, then db migrate, build and every
+#                test/*.rb (0.4's test/authentication.rb, patched, and the
+#                new ones); then a fresh copy with --force, the same; then a
+#                copy migrated by 0.4's migrations with a user in it, run
+#                with --confirmable: the add-columns migration keeps the
+#                user and counts it as confirmed; with every diff applied
+#                but the sessions controller's, the app builds and the
+#                concern still signs no unconfirmed account in; with that
+#                one applied too, every test passes
+#
+# Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
+# it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
+# to end"). Each variant builds the app and its tests: minutes, not seconds.
+#
+# usage: script/auth-e2e VARIANT...
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+SECRET=auth-e2e-secret-auth-e2e-secret-auth-e2e
+
+if [ $# -eq 0 ]; then
+  echo "usage: script/auth-e2e VARIANT... (signup, invite, confirmable, upgrade04)" >&2
+  exit 2
+fi
+for variant in "$@"; do
+  case "$variant" in
+    signup | invite | confirmable | upgrade04) ;;
+    *)
+      echo "auth-e2e: unknown variant $variant (signup, invite, confirmable, upgrade04)" >&2
+      exit 2
+      ;;
+  esac
+done
+
+cybertrain() {
+  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
+}
+
+fail() {
+  echo "auth-e2e [$VARIANT]: FAIL: $*" >&2
+  if [ -n "${SERVER_LOG:-}" ] && [ -f "$SERVER_LOG" ]; then
+    echo "--- server log" >&2
+    tail -n 40 "$SERVER_LOG" >&2
+  fi
+  echo "auth-e2e [$VARIANT]: the app is in $WORK" >&2
+  exit 1
+}
+
+step() {
+  echo "auth-e2e [$VARIANT]: $*"
+}
+
+# `expect_equal WHAT EXPECTED ACTUAL`
+expect_equal() {
+  [ "$2" = "$3" ] || fail "$1: expected '$2', got '$3'"
+}
+
+# `expect_contains WHAT NEEDLE HAYSTACK`
+expect_contains() {
+  case "$3" in
+    *"$2"*) ;;
+    *) fail "$1: no '$2' in: $(printf '%s' "$3" | head -c 400)" ;;
+  esac
+}
+
+SERVER_PID=""
+SMTP_PID=""
+stop_server() {
+  if [ -n "$SERVER_PID" ]; then
+    kill "$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+    SERVER_PID=""
+  fi
+  if [ -n "$SMTP_PID" ]; then
+    kill "$SMTP_PID" 2>/dev/null || true
+    wait "$SMTP_PID" 2>/dev/null || true
+    SMTP_PID=""
+  fi
+}
+trap stop_server EXIT
+
+# `start_smtp_receiver DIR COUNT`: the framework's test SMTP receiver, in the
+# background, for COUNT messages; its port lands in DIR/smtp.port, each
+# message (Subject, To, a blank line, the text part) in DIR/mail-N.txt as it
+# arrives (await_mail N waits for it).
+start_smtp_receiver() {
+  cat > "$1/smtp_receiver.rb" <<'RUBY'
+require "cybertrain/test/smtp_receiver"
+count = ARGV[2].to_i
+receiver = Cybertrain::Test::SmtpReceiver.new(accept_window: 120, max: count)
+port = receiver.start
+File.write("#{ARGV[0]}.tmp", port.to_s)
+File.rename("#{ARGV[0]}.tmp", ARGV[0])
+got = 0
+while got < count
+  messages = receiver.received_messages(got + 1, 120)
+  break if messages.size <= got
+
+  mail = messages[got]
+  got += 1
+  text = mail.message_parts["text"]
+  path = "#{ARGV[1]}-#{got}.txt"
+  File.write("#{path}.tmp", "Subject: #{mail.message_header("Subject")}\nTo: #{mail.envelope_recipients.join(",")}\n\n#{text}")
+  File.rename("#{path}.tmp", path)
+end
+receiver.stop
+exit(got == count ? 0 : 1)
+RUBY
+  ruby -I"$ROOT" "$1/smtp_receiver.rb" "$1/smtp.port" "$1/mail" "$2" > "$1/smtp.log" 2>&1 &
+  SMTP_PID=$!
+  for _ in $(seq 1 40); do
+    [ -f "$1/smtp.port" ] && return 0
+    sleep 0.25
+  done
+  fail "the SMTP receiver did not start"
+}
+
+# `await_mail N`: waits (at most two minutes) for the receiver's Nth message,
+# DIR/mail-N.txt in the current directory.
+await_mail() {
+  for _ in $(seq 1 240); do
+    [ -f "mail-$1.txt" ] && return 0
+    sleep 0.5
+  done
+  cat smtp.log >&2
+  fail "mail $1 did not reach the SMTP receiver"
+}
+
+# `post_status JAR URL FIELD...`: POSTs the url-encoded fields with the
+# cookie jar, and prints the status and the redirect.
+post_status() {
+  local jar=$1 url=$2
+  shift 2
+  local args=()
+  for field in "$@"; do
+    args+=(--data-urlencode "$field")
+  done
+  curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$jar" -b "$jar" "${args[@]}" "$url"
+}
+
+free_port() {
+  ruby -rsocket -e 'server = TCPServer.new("127.0.0.1", 0); puts server.addr[1]; server.close'
+}
+
+# The authenticity_token of the first form in a page.
+form_token() {
+  printf '%s' "$1" | sed -n 's/.*name="authenticity_token" value="\([^"]*\)".*/\1/p' | head -n 1
+}
+
+# In the app's directory: db migrate, build, gen --check, then every
+# test/*.rb the app has compiled and run.
+build_and_test() {
+  step "db migrate, build, gen --check"
+  cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate"; }
+  cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build"; }
+  test -x dist/shop || fail "no dist/shop"
+  cybertrain spin run gen -- --check > gen-check.log 2>&1 || { cat gen-check.log >&2; fail "spin run gen -- --check"; }
+
+  # The app's own tests link SQLite, so they have no CRuby snapshot: `spin
+  # test` compiles each one (and fails for want of a snapshot), then the
+  # binary is run here and must pass.
+  for test_file in test/*.rb; do
+    name=$(basename "$test_file" .rb)
+    step "test/$name.rb"
+    cybertrain spin test "$test_file" > "test-$name.log" 2>&1 || true
+    test -x "build/test/$name" || { tail -n 40 "test-$name.log" >&2; fail "test/$name.rb did not compile"; }
+    out=$("./build/test/$name" 2>&1) || { printf '%s\n' "$out" | grep -v '^ok ' >&2; fail "test/$name.rb"; }
+    expect_contains "test/$name.rb" " 0 failures" "$out"
+  done
+}
+
+# `copy_04_app NAME`: test/fixtures/auth_04_app copied to $WORK/NAME, its
+# framework this checkout; the current directory becomes the copy.
+copy_04_app() {
+  cp -R "$ROOT/test/fixtures/auth_04_app" "$WORK/$1"
+  cd "$WORK/$1"
+  mkdir -p tmp
+  sed -i.bak "s#path = \"../../..\"#path = \"$ROOT\"#" spin.toml spin.lock
+  rm -f spin.toml.bak spin.lock.bak
+  grep -qF "path = \"$ROOT\"" spin.toml || fail "spin.toml of $1 does not name $ROOT"
+}
+
+# The generated tests every upgraded copy must have, and pass.
+UPGRADE_TESTS="authentication admin remember_me lockout passwords accounts"
+
+expect_upgrade_tests() {
+  for name in $UPGRADE_TESTS; do
+    test -f "test/$name.rb" || fail "no test/$name.rb"
+  done
+}
+
+run_upgrade04() {
+  WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
+  SERVER_LOG=""
+  local fixture="$ROOT/test/fixtures/auth_04_app"
+  step "the 0.4 app in $WORK, run over and patched"
+  copy_04_app patched
+  cybertrain generate authentication > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication"; }
+  # Left alone until patched: the files 0.4 wrote that today's generator
+  # writes otherwise, and the 0.4 block in ApplicationController.
+  for f in app/controllers/application_controller.rb app/controllers/sessions_controller.rb app/models/user.rb \
+           app/views/sessions/new.html.erb test/authentication.rb; do
+    cmp -s "$f" "$fixture/$f" || fail "$f changed before the diffs were applied"
+  done
+  grep -q '^manual  app/controllers/application_controller.rb: ' generate.out || fail "no diff for application_controller.rb"
+  grep -q '^next: apply the diffs above, or re-run with --force for files you never edited$' generate.out || fail "no closing next: line"
+  ls db/migrate/*_add_authentication_columns.rb > /dev/null 2>&1 || fail "no add-columns migration"
+  patch -p1 < generate.out > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < the generator's output"; }
+  grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "patched ApplicationController does not include Authentication"
+  if grep -q 'def require_authentication' app/controllers/application_controller.rb; then
+    fail "patched ApplicationController still has 0.4's block"
+  fi
+  grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication$' config/routes.rb || fail "the jobs page is not drawn after patching"
+  expect_upgrade_tests
+  build_and_test
+
+  step "a fresh copy, run over with --force"
+  copy_04_app forced
+  cybertrain generate authentication --force > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication --force"; }
+  if grep -q '^manual  ' generate.out; then
+    fail "--force left diffs to apply: $(grep '^manual  ' generate.out)"
+  fi
+  grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "--force did not include Authentication"
+  expect_upgrade_tests
+  build_and_test
+
+  step "a copy with a 0.4 user in its database, run over with --confirmable"
+  copy_04_app populated
+  cybertrain db migrate > migrate-04.log 2>&1 || { cat migrate-04.log >&2; fail "db migrate (0.4's migrations)"; }
+  local db=storage/development.sqlite3
+  test -f "$db" || fail "no $db after 0.4's migrations"
+  sqlite3 "$db" "INSERT INTO users (email_address, password_digest, created_at, updated_at) VALUES ('old@example.com', 'x', '2026-09-25 12:00:00.000000', '2026-09-25 12:00:00.000000')" \
+    || fail "insert a 0.4 user"
+  cybertrain generate authentication --confirmable > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication --confirmable"; }
+  grep -q "confirmed_at = COALESCE(created_at" db/migrate/*_add_authentication_columns.rb || fail "the add-columns migration does not confirm the users there"
+  grep -q '^IMPORTANT: app/controllers/sessions_controller.rb: ' generate.out || fail "no closing IMPORTANT line for sessions_controller.rb"
+  # Every diff but the sessions controller's: what a user whose patch
+  # rejected that hunk (an edited file) is left with.
+  awk '/^manual  [^ ]*: / { skip = ($2 == "app/controllers/sessions_controller.rb:") } !skip' generate.out > others.diff
+  awk '/^manual  [^ ]*: / { keep = ($2 == "app/controllers/sessions_controller.rb:") } keep' generate.out > sessions.diff
+  grep -q '^+++ b/app/controllers/sessions_controller.rb$' sessions.diff || fail "no sessions controller diff to hold back"
+  if grep -q '^+++ b/app/controllers/sessions_controller.rb$' others.diff; then
+    fail "the sessions controller diff was not held back"
+  fi
+  patch -p1 < others.diff > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < every diff but the sessions controller's"; }
+  cmp -s app/controllers/sessions_controller.rb "$fixture/app/controllers/sessions_controller.rb" || fail "the sessions controller changed"
+  cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate (the add-columns migration)"; }
+  expect_equal "the 0.4 user after the migration" "old@example.com|0|0|2026-09-25 12:00:00.000000|" \
+    "$(sqlite3 "$db" "SELECT email_address, admin, failed_attempts, confirmed_at, unconfirmed_email FROM users")"
+  # 0.4's SessionsController#create calls start_new_session_for for any
+  # right password: the concern's own check must refuse the account.
+  cat > test/unconfirmed_backstop.rb <<'RUBY'
+require_relative "support/app_test"
+
+test "an unconfirmed account gets no session, whichever sessions controller asks" do
+  Session.all.delete_all
+  User.all.delete_all
+  client = Cybertrain::Test::Client.new(APP)
+  user = User.new(email_address: "new@example.com")
+  user.password = "s3cr3t-s3cr3t"
+  user.save!
+  assert_equal false, user.confirmed?
+  AppTest.sign_in(client, "new@example.com")
+  assert_equal 0, Session.count
+  refute client.get("/session/new").body.include?("<span>new@example.com</span>")
+  user.update_columns(confirmed_at: Time.now)
+  AppTest.sign_in(client, "new@example.com")
+  assert_equal 1, Session.count
+  assert_includes client.get("/session/new").body, "<span>new@example.com</span>"
+end
+
+Cybertrain::Test.run!
+RUBY
+  cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build, every diff but the sessions controller's applied"; }
+  cybertrain spin test test/unconfirmed_backstop.rb > test-unconfirmed_backstop.log 2>&1 || true
+  test -x build/test/unconfirmed_backstop || { tail -n 40 test-unconfirmed_backstop.log >&2; fail "test/unconfirmed_backstop.rb did not compile"; }
+  out=$(./build/test/unconfirmed_backstop 2>&1) || { printf '%s\n' "$out" >&2; fail "an unconfirmed account signed in through 0.4's sessions controller"; }
+  expect_contains "test/unconfirmed_backstop.rb" " 0 failures" "$out"
+
+  step "the sessions controller's diff applied too: every test"
+  patch -p1 < sessions.diff > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < the sessions controller's diff"; }
+  expect_upgrade_tests
+  test -f test/confirmations.rb || fail "no test/confirmations.rb"
+  build_and_test
+
+  cd "$ROOT"
+  rm -rf "$WORK"
+  step "PASS"
+}
+
+run_variant() {
+  if [ "$VARIANT" = "upgrade04" ]; then
+    run_upgrade04
+    return
+  fi
+  WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
+  SERVER_LOG=""
+  local flag=""
+  [ "$VARIANT" = "invite" ] && flag="--invite-only"
+  [ "$VARIANT" = "confirmable" ] && flag="--confirmable"
+
+  step "app in $WORK"
+  cd "$WORK"
+  cybertrain new shop --path "$ROOT" > new.log 2>&1 || { cat new.log >&2; fail "cybertrain new"; }
+  cd shop
+  cybertrain generate scaffold product name:string > /dev/null || fail "generate scaffold"
+  # shellcheck disable=SC2086
+  cybertrain generate authentication $flag > generate.log || { cat generate.log >&2; fail "generate authentication $flag"; }
+  test -f app/controllers/concerns/authentication.rb || fail "no Authentication concern"
+  test -f app/mailers/passwords_mailer.rb || fail "no PasswordsMailer"
+  grep -q '^  resources :passwords, param: :token, only: \[:new, :create, :edit, :update\]$' config/routes.rb || fail "no password reset routes"
+  test -f app/controllers/accounts_controller.rb || fail "no AccountsController"
+  grep -q '^  resource :account, only: \[:edit, :update, :destroy\]$' config/routes.rb || fail "no account route"
+  grep -q '^  c.setting_string :base_url, env: "SHOP_BASE_URL", default: ""$' config/app.rb || fail "no base_url setting"
+  grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "ApplicationController does not include Authentication"
+  grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication$' config/routes.rb || fail "the jobs page is not drawn"
+  if [ "$VARIANT" = "invite" ]; then
+    test ! -e app/controllers/registrations_controller.rb || fail "--invite-only wrote a sign-up page"
+  fi
+  if [ "$VARIANT" = "confirmable" ]; then
+    test -f app/controllers/confirmations_controller.rb || fail "no ConfirmationsController"
+    test -f app/mailers/confirmations_mailer.rb || fail "no ConfirmationsMailer"
+    test -f test/confirmations.rb || fail "no test/confirmations.rb"
+    grep -q '^  resources :confirmations, param: :token, only: \[:new, :create, :show\]$' config/routes.rb || fail "no confirmation routes"
+    grep -q 't.datetime "confirmed_at"' db/migrate/*_create_users.rb || fail "no users.confirmed_at"
+    grep -q 't.string "unconfirmed_email"' db/migrate/*_create_users.rb || fail "no users.unconfirmed_email"
+  else
+    test ! -e app/controllers/confirmations_controller.rb || fail "$VARIANT wrote a ConfirmationsController"
+  fi
+
+  build_and_test
+
+  step "serve dist/shop"
+  cd dist
+  export CYBERTRAIN_SECRET_KEY_BASE="$SECRET"
+  ./shop migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "./shop migrate"; }
+  local port
+  port=$(free_port)
+  local base="http://127.0.0.1:$port"
+  # The mails go to the receiver; their links start with SHOP_BASE_URL. The
+  # reset's is the one mail of signup and invite; confirmable has the
+  # sign-up's before it and the new address's after it.
+  local mails=1 reset_mail=1
+  if [ "$VARIANT" = "confirmable" ]; then
+    mails=3
+    reset_mail=2
+  fi
+  start_smtp_receiver "$PWD" "$mails"
+  SERVER_LOG="$PWD/server.log"
+  PORT=$port SHOP_BASE_URL="$base" CYBERTRAIN_SMTP_HOST=127.0.0.1 CYBERTRAIN_SMTP_PORT="$(cat smtp.port)" \
+    CYBERTRAIN_SMTP_TLS=none CYBERTRAIN_SMTP_FROM=noreply@example.com ./shop > "$SERVER_LOG" 2>&1 &
+  SERVER_PID=$!
+  local up=""
+  for _ in $(seq 1 60); do
+    if curl -fsS -o /dev/null "$base/up.html" 2>/dev/null; then
+      up=yes
+      break
+    fi
+    sleep 0.5
+  done
+  [ -n "$up" ] || fail "the server did not answer on port $port"
+
+  local status page
+  status=$(curl -sS -o page.html -w '%{http_code}' "$base/session/new")
+  page=$(cat page.html)
+  expect_equal "GET /session/new" "200" "$status"
+  expect_contains "GET /session/new" "<h1>Sign in</h1>" "$page"
+  expect_contains "GET /session/new" '<form action="/session" method="post">' "$page"
+  expect_contains "GET /session/new" 'type="password" name="password"' "$page"
+  expect_equal "GET /products, signed out" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$base/products")"
+  # The jobs page runs require_admin alone: a visitor gets the same 404 as
+  # a path no route has, not a redirect that shows the page exists.
+  # (In production both bodies are public/404.html.)
+  status=$(curl -sS -o page.html -w '%{http_code}' "$base/admin/jobs")
+  expect_equal "GET /admin/jobs, signed out" "404" "$status"
+  status=$(curl -sS -o missing.html -w '%{http_code}' "$base/admin/no-such-page")
+  expect_equal "GET /admin/no-such-page" "404" "$status"
+  cmp -s page.html missing.html || fail "GET /admin/jobs, signed out: the body differs from a missing page's"
+  if [ "$VARIANT" = "invite" ]; then
+    expect_equal "GET /sign_up" "404" "$(curl -sS -o /dev/null -w '%{http_code}' "$base/sign_up")"
+    grep -q '\[WARN\] no user exists yet' "$SERVER_LOG" || fail "no first-run warning in the server log"
+  else
+    expect_contains "GET /sign_up" "<h1>Sign up</h1>" "$(curl -fsS "$base/sign_up")"
+  fi
+
+  if [ "$VARIANT" = "confirmable" ]; then
+    step "sign up, refused until the mailed link is opened, then sign in"
+    local signup_jar="$PWD/signup-cookies.txt"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/sign_up")
+    token=$(form_token "$page")
+    [ -n "$token" ] || fail "no authenticity_token on /sign_up"
+    expect_equal "POST /sign_up" "303 $base/session/new" \
+      "$(post_status "$signup_jar" "$base/sign_up" "authenticity_token=$token" "user[email_address]=dee@example.com" \
+         "user[password]=dee-pw-dee-pw" "user[password_confirmation]=dee-pw-dee-pw")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "the sign-in page after signing up" "A link to confirm your email address was sent to it." "$page"
+    case "$page" in *"<span>dee@example.com</span>"*) fail "signing up signed the new user in" ;; esac
+    # A wrong password gets the usual message; the right one, the
+    # confirmation's, with the link to the form that mails it again.
+    token=$(form_token "$page")
+    expect_equal "POST /session, unconfirmed, wrong password" "303 $base/session/new" \
+      "$(post_status "$signup_jar" "$base/session" "authenticity_token=$token" "email_address=dee@example.com" "password=wrong-password")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "POST /session, unconfirmed, wrong password" "Try another email address or password." "$page"
+    case "$page" in *"Confirm your email address first"*) fail "a wrong password got the confirmation message" ;; esac
+    token=$(form_token "$page")
+    expect_equal "POST /session, unconfirmed" "303 $base/session/new" \
+      "$(post_status "$signup_jar" "$base/session" "authenticity_token=$token" "email_address=dee@example.com" "password=dee-pw-dee-pw")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "POST /session, unconfirmed" "Confirm your email address first: open the link in the mail we sent you." "$page"
+    expect_contains "POST /session, unconfirmed" '<a href="/confirmations/new">Send the confirmation link again</a>' "$page"
+    await_mail 1
+    mail=$(cat mail-1.txt)
+    expect_contains "the confirmation mail" "Subject: Confirm your email address" "$mail"
+    expect_contains "the confirmation mail" "To: dee@example.com" "$mail"
+    link=$(printf '%s' "$mail" | tr -d '\r' | grep -o "$base/confirmations/[^ ]*" | head -n 1)
+    [ -n "$link" ] || fail "the confirmation mail has no link starting with $base/confirmations/: $mail"
+    # Opened, the link confirms and signs nobody in; once used, it is spent.
+    expect_equal "GET the confirmation link" "303 $base/session/new" \
+      "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$signup_jar" -b "$signup_jar" "$link")"
+    page=$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")
+    expect_contains "GET the confirmation link" "Your email address has been confirmed." "$page"
+    case "$page" in *"<span>dee@example.com</span>"*) fail "the confirmation link signed the user in" ;; esac
+    expect_equal "GET the confirmation link again" "303 $base/confirmations/new" \
+      "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$signup_jar" "$link")"
+    local confirm_token=${link#*/confirmations/}
+    if grep -qF "$confirm_token" "$SERVER_LOG"; then
+      fail "the confirmation token is in the server log"
+    fi
+    grep -qF 'Started GET "/confirmations/[FILTERED]"' "$SERVER_LOG" || fail "no filtered confirmation request line in the server log"
+    token=$(form_token "$page")
+    expect_equal "POST /session, confirmed" "303 $base/" \
+      "$(post_status "$signup_jar" "$base/session" "authenticity_token=$token" "email_address=dee@example.com" "password=dee-pw-dee-pw")"
+    expect_contains "signed in after confirming" "<span>dee@example.com</span>" \
+      "$(curl -fsS -c "$signup_jar" -b "$signup_jar" "$base/session/new")"
+  fi
+
+  step "./shop user"
+  expect_equal "./shop user ann@example.com pw-pw-pw-pw" "created ann@example.com" \
+    "$(./shop user ann@example.com pw-pw-pw-pw)"
+  expect_equal "./shop user admin ann@example.com" "admin ann@example.com" \
+    "$(./shop user admin ann@example.com)"
+  local missing=0
+  out=$(./shop user admin bob@example.com) || missing=$?
+  expect_equal "./shop user admin bob@example.com" "error: no user bob@example.com" "$out"
+  expect_equal "./shop user admin bob@example.com (status)" "1" "$missing"
+
+  step "sign in, the jobs page as an admin"
+  local jar="$PWD/cookies.txt"
+  page=$(curl -fsS -c "$jar" -b "$jar" "$base/session/new")
+  local token
+  token=$(form_token "$page")
+  [ -n "$token" ] || fail "no authenticity_token on /session/new"
+  expect_equal "POST /session" "303 $base/" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$jar" -b "$jar" \
+       --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=ann@example.com" \
+       --data-urlencode "password=pw-pw-pw-pw" "$base/session")"
+  status=$(curl -sS -o page.html -w '%{http_code}' -b "$jar" "$base/admin/jobs")
+  expect_equal "GET /admin/jobs as an admin" "200" "$status"
+  expect_contains "GET /admin/jobs as an admin" "<h1>Jobs</h1>" "$(cat page.html)"
+  expect_equal "./shop user unadmin ann@example.com" "unadmin ann@example.com" \
+    "$(./shop user unadmin ann@example.com)"
+  expect_equal "GET /admin/jobs, no longer an admin" "404" \
+    "$(curl -sS -o /dev/null -w '%{http_code}' -b "$jar" "$base/admin/jobs")"
+
+  step "password reset by mail"
+  # The address form is sent with a forged Host (evil.example): the answer
+  # is the same for an address no user has, and the link takes
+  # SHOP_BASE_URL, never the Host. Production's session cookie is Secure,
+  # which curl keeps over http only for 127.0.0.1, so it is passed by hand
+  # next to the forged Host.
+  local reset_jar="$PWD/reset-cookies.txt"
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/passwords/new")
+  expect_contains "GET /passwords/new" "<h1>Forgot your password?</h1>" "$page"
+  token=$(form_token "$page")
+  [ -n "$token" ] || fail "no authenticity_token on /passwords/new"
+  local cookie
+  cookie=$(awk -F '\t' 'NF >= 7 { print $6 "=" $7 }' "$reset_jar" | paste -sd ';' -)
+  [ -n "$cookie" ] || fail "no session cookie from /passwords/new"
+  local known unknown
+  known=$(curl -sS -o known.html -w '%{http_code} %{redirect_url}' -H "Host: evil.example" -H "Cookie: $cookie" \
+    --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=Ann@Example.com" "$base/passwords")
+  unknown=$(curl -sS -o unknown.html -w '%{http_code} %{redirect_url}' -H "Host: evil.example" -H "Cookie: $cookie" \
+    --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=nobody@example.com" "$base/passwords")
+  expect_equal "POST /passwords (registered)" "303 $base/session/new" "$known"
+  expect_equal "POST /passwords (unknown)" "$known" "$unknown"
+  cmp -s known.html unknown.html || fail "POST /passwords: the bodies differ between a registered and an unknown address"
+  await_mail "$reset_mail"
+  local mail link
+  mail=$(cat "mail-$reset_mail.txt")
+  expect_contains "the reset mail" "Subject: Reset your password" "$mail"
+  expect_contains "the reset mail" "To: ann@example.com" "$mail"
+  link=$(printf '%s' "$mail" | tr -d '\r' | grep -o "$base/passwords/[^ ]*/edit" | head -n 1)
+  [ -n "$link" ] || fail "the reset mail has no link starting with $base/passwords/: $mail"
+  case "$link" in *evil.example*) fail "the reset link took the forged Host: $link" ;; esac
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$link")
+  expect_contains "GET the mail's link" "<h1>Choose a new password</h1>" "$page"
+  token=$(form_token "$page")
+  local action=${link%/edit}
+  expect_equal "PUT the new password" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" \
+       --data-urlencode "_method=put" --data-urlencode "authenticity_token=$token" \
+       --data-urlencode "password=n3w-pw-n3w-pw" --data-urlencode "password_confirmation=n3w-pw-n3w-pw" "$action")"
+  # Spent: the link answers with the address form now.
+  expect_equal "GET the mail's link again" "303 $base/passwords/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$reset_jar" "$link")"
+  # The token never reaches the log: the request lines write it [FILTERED].
+  local reset_token=${link#*/passwords/}
+  reset_token=${reset_token%/edit}
+  [ -n "$reset_token" ] || fail "no token in the reset link: $link"
+  if grep -qF "$reset_token" "$SERVER_LOG"; then
+    fail "the reset token is in the server log"
+  fi
+  grep -qF 'Started GET "/passwords/[FILTERED]/edit"' "$SERVER_LOG" || fail "no filtered reset request line in the server log"
+  grep -qE 'Started (POST|PUT) "/passwords/\[FILTERED\]"' "$SERVER_LOG" || fail "no filtered PUT line in the server log"
+  # The reset ended the session signed in before it.
+  expect_equal "GET /products with the session from before the reset" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$jar" "$base/products")"
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/session/new")
+  token=$(form_token "$page")
+  expect_equal "POST /session with the new password" "303 $base/" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" \
+       --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=ann@example.com" \
+       --data-urlencode "password=n3w-pw-n3w-pw" "$base/session")"
+
+  step "the account page: a new address and password, then the account deleted"
+  # A second browser signed in as ann, which the new password ends.
+  local other_jar="$PWD/other-cookies.txt"
+  page=$(curl -fsS -c "$other_jar" -b "$other_jar" "$base/session/new")
+  token=$(form_token "$page")
+  expect_equal "POST /session (a second browser)" "303 $base/" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$other_jar" -b "$other_jar" \
+       --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=ann@example.com" \
+       --data-urlencode "password=n3w-pw-n3w-pw" "$base/session")"
+  status=$(curl -sS -o page.html -w '%{http_code}' -c "$reset_jar" -b "$reset_jar" "$base/account/edit")
+  page=$(cat page.html)
+  expect_equal "GET /account/edit" "200" "$status"
+  expect_contains "GET /account/edit" "<h1>Account</h1>" "$page"
+  expect_contains "GET /account/edit" '<a href="/account/edit">Account</a>' "$page"
+  token=$(form_token "$page")
+  [ -n "$token" ] || fail "no authenticity_token on /account/edit"
+  # A wrong current password changes nothing.
+  status=$(curl -sS -o page.html -w '%{http_code}' -c "$reset_jar" -b "$reset_jar" \
+    --data-urlencode "_method=patch" --data-urlencode "authenticity_token=$token" \
+    --data-urlencode "user[current_password]=wrong-password" --data-urlencode "user[email_address]=ann@new.example" \
+    "$base/account")
+  expect_equal "PATCH /account with a wrong current password" "422" "$status"
+  expect_contains "PATCH /account with a wrong current password" "That is not your current password." "$(cat page.html)"
+  # The right one: a new address and a new password.
+  expect_equal "PATCH /account" "303 $base/account/edit" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" \
+       --data-urlencode "_method=patch" --data-urlencode "authenticity_token=$token" \
+       --data-urlencode "user[current_password]=n3w-pw-n3w-pw" --data-urlencode "user[email_address]=ann@new.example" \
+       --data-urlencode "user[password]=th1rd-pw-th1rd" --data-urlencode "user[password_confirmation]=th1rd-pw-th1rd" \
+       "$base/account")"
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/account/edit")
+  if [ "$VARIANT" = "confirmable" ]; then
+    # The new address waits for the link mailed to it; the old one is in use.
+    expect_contains "GET /account/edit after the change" "A link to confirm the new address was sent to it." "$page"
+    expect_contains "GET /account/edit after the change" "<span>ann@example.com</span>" "$page"
+    expect_contains "GET /account/edit after the change" "Waiting for confirmation: ann@new.example" "$page"
+    await_mail 3
+    mail=$(cat mail-3.txt)
+    expect_contains "the new address's mail" "Subject: Confirm your email address" "$mail"
+    expect_contains "the new address's mail" "To: ann@new.example" "$mail"
+    link=$(printf '%s' "$mail" | tr -d '\r' | grep -o "$base/confirmations/[^ ]*" | head -n 1)
+    [ -n "$link" ] || fail "the new address's mail has no link starting with $base/confirmations/: $mail"
+    expect_equal "GET the new address's link (signed in)" "303 $base/account/edit" \
+      "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" "$link")"
+    page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/account/edit")
+    expect_contains "GET /account/edit after the confirmation" "Your email address has been confirmed." "$page"
+  else
+    expect_contains "GET /account/edit after the change" "Your account has been updated." "$page"
+  fi
+  expect_contains "GET /account/edit after the change" "<span>ann@new.example</span>" "$page"
+  # The other browser is signed out; this one stays signed in.
+  expect_equal "GET /products from the other browser" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$other_jar" "$base/products")"
+  expect_equal "GET /products from this browser" "200" \
+    "$(curl -sS -o /dev/null -w '%{http_code}' -b "$reset_jar" "$base/products")"
+  # Deleted with the password: this browser is signed out, and the address
+  # signs in no more.
+  token=$(form_token "$page")
+  expect_equal "DELETE /account" "303 $base/" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" \
+       --data-urlencode "_method=delete" --data-urlencode "authenticity_token=$token" \
+       --data-urlencode "password=th1rd-pw-th1rd" "$base/account")"
+  expect_equal "GET /account/edit after the deletion" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" "$base/account/edit")"
+  page=$(curl -fsS -c "$reset_jar" -b "$reset_jar" "$base/session/new")
+  token=$(form_token "$page")
+  expect_equal "POST /session after the deletion" "303 $base/session/new" \
+    "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$reset_jar" -b "$reset_jar" \
+       --data-urlencode "authenticity_token=$token" --data-urlencode "email_address=ann@new.example" \
+       --data-urlencode "password=th1rd-pw-th1rd" "$base/session")"
+
+  stop_server
+  unset CYBERTRAIN_SECRET_KEY_BASE
+  cd "$ROOT"
+  rm -rf "$WORK"
+  step "PASS"
+}
+
+for VARIANT in "$@"; do
+  run_variant
+done
+echo "auth-e2e: PASS ($*)"

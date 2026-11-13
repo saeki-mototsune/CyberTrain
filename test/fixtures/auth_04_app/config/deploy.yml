@@ -1,0 +1,72 @@
+# Kamal 2 (https://kamal-deploy.org): `kamal setup` the first time,
+# `kamal deploy` after that. Replace every value marked CHANGE ME.
+
+# Name of the application; names its containers.
+service: shop
+
+# The image to build and push. CHANGE ME: your registry user.
+image: your-user/shop
+
+# The servers to deploy to. CHANGE ME: the server's address. One
+# server: the database is a SQLite file on that server's volume.
+servers:
+  web:
+    - 192.168.0.1
+
+# kamal-proxy terminates TLS (a Let's Encrypt certificate for host)
+# and forwards to the app on port 3000. Keep ssl on: in production the
+# session cookie is Secure, so forms only work over HTTPS. CHANGE ME:
+# host, with a DNS record pointing at the server.
+proxy:
+  ssl: true
+  host: shop.example.com
+  app_port: 3000
+  healthcheck:
+    # public/up.html, served by the app itself.
+    path: /up.html
+
+# How long kamal-proxy polls /up.html on a new container before giving
+# up (Kamal's default, written out). If the new container does not
+# answer 200 in time, the deploy fails and traffic stays on the old one.
+deploy_timeout: 30
+
+# Credentials for the registry the image is pushed to. CHANGE ME:
+# the user; the password comes from .kamal/secrets.
+registry:
+  # server: ghcr.io
+  username: your-user
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# The app's settings (cybertrain/config.rb). Secrets come from
+# .kamal/secrets.
+env:
+  clear:
+    # kamal-proxy runs in its own container and connects from its address
+    # on the Docker network (Docker hands those out of 172.16.0.0/12 by
+    # default): trust the X-Forwarded-For it sets, so that
+    # request.client_ip, what rate_limit counts, is each visitor rather
+    # than the proxy. Change it if your Docker networks use another range.
+    CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12
+    # SPINEL_WORKERS: 2
+  secret:
+    - CYBERTRAIN_SECRET_KEY_BASE
+
+# The SQLite database lives in storage/: keep it on the server across
+# deploys. Back it up from there (docs/deploy.md).
+volumes:
+  - "shop_storage:/app/storage"
+
+# `kamal db_status` (pending migrations) and `kamal shell`.
+aliases:
+  db_status: app exec --reuse "./shop db status"
+  shell: app exec --interactive --reuse "bash"
+
+# The image compiles the app (and Spinel, once) inside Docker. Build for
+# the server's CPU; building another architecture under emulation is
+# slow, so on an arm64 Mac either build on the server
+# (remote: ssh://root@192.168.0.1) or set arch to arm64 for an arm64
+# server.
+builder:
+  arch: amd64
+  # remote: ssh://root@192.168.0.1

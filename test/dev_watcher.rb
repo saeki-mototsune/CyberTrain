@@ -154,6 +154,24 @@ test "an asset change triggers a rebuild" do
   assert_equal [], w.changed_paths
 end
 
+test "a locale file change triggers a rebuild" do
+  reset_root
+  ["config", "config/locales", "config/locales/posts"].each { |d| Dir.mkdir("#{ROOT}/#{d}") }
+  sources = ["config/locales/en.yml", "config/locales/posts/ja.yml"]
+  sources.each { |f| File.write("#{ROOT}/#{f}", "en:\n  a: v1\n") }
+  w = Cybertrain::Dev::Watcher.new(Cybertrain::Dev::WATCHED.map { |p| "#{ROOT}/#{p}" }, 0.05)
+  sources.each do |f|
+    pause
+    File.write("#{ROOT}/#{f}", "en:\n  a: v2\n")
+    assert_equal ["#{ROOT}/#{f}"], w.changed_paths
+  end
+  File.write("#{ROOT}/config/locales/fr.yml", "fr:\n  a: v1\n")
+  assert_equal ["#{ROOT}/config/locales/fr.yml"], w.changed_paths
+  # Other files there are not dictionaries: no rebuild.
+  ["README.md", "en.yml~", "en.yml.swp"].each { |name| File.write("#{ROOT}/config/locales/#{name}", "scratch\n") }
+  assert_equal [], w.changed_paths
+end
+
 def wait_for_calls(calls, count)
   waited = 0
   while calls.size < count && waited < 150

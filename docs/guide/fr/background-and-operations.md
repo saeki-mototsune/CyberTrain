@@ -1,5 +1,5 @@
 ---
-source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
+source_sha256: ef8c5bc57b3af6efc730c5a1f8f518d1f37931f4349c672de3518febebd3b834
 ---
 # Tâches de fond et exploitation
 
@@ -235,7 +235,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 ```ruby
 # config/routes.rb
 Cybertrain::Routes.draw do
-  jobs_page "/admin/jobs", before_action: :require_admin
+  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 end
 ```
 
@@ -254,10 +254,17 @@ laissée tranquille.
 - Le contrôleur généré hérite d’`ApplicationController`, si bien que le
   layout, les helpers et la protection CSRF de l’application s’appliquent,
   et `before_action:` nomme l’une de ses méthodes&nbsp;: elle doit rendre une
-  réponse ou rediriger pour refuser (la vérification de connexion de
-  l’application, ou une vérification de jeton comme le `require_admin`
-  d’examples/blog). Sans `before_action:`, la page est ouverte à tous les
-  visiteurs, et `spin run gen` affiche un avertissement qui le dit.
+  réponse ou rediriger pour refuser. `cybertrain generate authentication`
+  dessine la ligne ci-dessus, avec le `require_admin` de son concern (404
+  sauf si un administrateur est connecté&nbsp;;
+  [Administrateurs](authentication.md#admin-users-and-the-jobs-page)). Sans
+  `before_action:`, la page est ouverte à tous les visiteurs, et `spin run
+  gen` affiche un avertissement qui le dit.
+- `skip_before_action:` nomme un before callback hérité que la page
+  n’exécute pas. Avec `:require_authentication`, `require_admin` répond
+  seul à un visiteur, par un 404 plutôt qu’une redirection vers la
+  connexion. gen le refuse sans `before_action:`, et quand il nomme le
+  `before_action:` lui-même.
 - Ses boutons sont des formulaires avec le jeton CSRF. Gardez le chemin de
   la page hors de `csrf_exempt_prefixes`&nbsp;: sous un préfixe exempté, ces
   formulaires seraient acceptés depuis n’importe quel site.

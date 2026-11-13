@@ -2,6 +2,10 @@
 done
 == 20260925174943 CreateComments: migrating
 done
+== 20261112102827 CreateUsers: migrating
+done
+== 20261112102828 CreateSessions: migrating
+done
 == 20261112174320 AddCoverToArticles: migrating
 done
 ok   a PNG upload is stored on disk and served back with safe headers
