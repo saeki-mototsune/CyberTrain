@@ -2,11 +2,15 @@ require "fileutils"
 require "open3"
 require "socket"
 require "io/nonblock"
-require "cybertrain/cli/build"
+# The supervisor's own files, relative to this one; the framework's dev
+# files by name, from the application's framework, which DevServer.run has
+# put ahead of the gem on $LOAD_PATH (dev_server.rb's header comment).
+require_relative "../build"
+require_relative "../dev_server"
+require_relative "holding"
+require_relative "watch"
 require "cybertrain/dev/supervision"
 require "cybertrain/dev/state_file"
-require "cybertrain/cli/dev_server/holding"
-require "cybertrain/cli/dev_server/watch"
 
 module Cybertrain
   module CLI
@@ -40,7 +44,6 @@ module Cybertrain
       # #build_command, which a test overrides with stand-in scripts. CRuby
       # only, never compiled by Spinel.
       class Processes
-        DEV_DIR = "tmp/cybertrain-dev"
         FILES = ["state", "ready", "failure", "child.pid", "supervisor.pid"].freeze
 
         # The bounds (P11): a child must write its ready file within
@@ -82,19 +85,6 @@ module Cybertrain
 
         attr_accessor :ready_timeout, :stop_grace, :watch_interval
         attr_reader :root, :name, :port, :out, :err
-
-        # Whether pid names a running process. Signal 0 probes without
-        # delivering anything; EPERM means it exists but is someone else's.
-        # @param pid [Integer]
-        # @return [Boolean]
-        def self.alive?(pid)
-          Process.kill(0, pid)
-          true
-        rescue Errno::ESRCH
-          false
-        rescue Errno::EPERM
-          true
-        end
 
         # @param root [String] the application's directory, absolute
         # @param name [String] the spin.toml package name (bin/NAME.rb)
@@ -301,7 +291,7 @@ module Cybertrain
 
           pid = File.read(path).strip
           return true if pid.empty? || !pid.match?(/\A[0-9]+\z/)
-          return true if Processes.alive?(pid.to_i)
+          return true if DevServer.alive?(pid.to_i)
 
           delete_file(path)
           false

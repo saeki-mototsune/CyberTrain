@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/cli/dev_server"
 require "cybertrain/http/server"
+require "open3"
 require "rbconfig"
 require "socket"
 require "stringio"
@@ -101,6 +102,111 @@ def run_server(root, argv = ["server"])
   [code, out.string]
 ensure
   $stdout = saved
+end
+
+# --- the framework's dev files ------------------------------------------------
+
+# The installed gem, simulated: a directory with exactly the files
+# cybertrain.gemspec lists, and a stand-in framework with the four dev files
+# (copied from the checkout) and a cybertrain/preview.rb that does nothing.
+# The probe runs `cybertrain server` from those alone (no RubyGems, no
+# RUBYLIB, the checkout nowhere on the load path), with the toolchain check
+# and `spin flags` stood in for, and prints where each cybertrain file came
+# from, before the run, when spin flags is asked, and after it.
+DEV_FILES = %w[supervision state_file watcher watched].freeze
+
+PROBE = <<~'RUBY'
+  gem_dir, framework = ARGV
+  require "cybertrain/cli/dev_server"
+  dev_server = Cybertrain::CLI::DevServer
+  show = lambda do |label|
+    $LOADED_FEATURES.grep(%r{/cybertrain/}).sort.each do |path|
+      puts "#{label} #{path.sub(gem_dir, "GEM").sub(framework, "FRAMEWORK")}"
+    end
+  end
+  show.call("required")
+  dev_server.define_singleton_method(:ensure_toolchain) { true }
+  dev_server.define_singleton_method(:spin_flags) do |root|
+    show.call("flags")
+    "--strict-require -I #{framework} -I #{root}\n"
+  end
+  Cybertrain::CLI.define_singleton_method(:run) do |argv|
+    puts "compiled loop #{argv.join(" ")}"
+    7
+  end
+  code = dev_server.run(["server", *ARGV[2..]])
+  show.call("ran")
+  puts "exit #{code}"
+RUBY
+
+def with_installed_gem
+  Dir.mktmpdir("dev-server-gem") do |dir|
+    dir = File.realpath(dir)
+    gem_dir = File.join(dir, "gem")
+    Gem::Specification.load(File.join(REPO, "cybertrain.gemspec")).files.each do |file|
+      FileUtils.mkdir_p(File.dirname(File.join(gem_dir, file)))
+      FileUtils.cp(File.join(REPO, file), File.join(gem_dir, file))
+    end
+    framework = File.join(dir, "framework")
+    FileUtils.mkdir_p(File.join(framework, "cybertrain", "dev"))
+    DEV_FILES.each do |file|
+      FileUtils.cp(File.join(REPO, "cybertrain", "dev", "#{file}.rb"), File.join(framework, "cybertrain", "dev"))
+    end
+    File.write(File.join(framework, "cybertrain", "preview.rb"), "")
+    File.write(File.join(dir, "probe.rb"), PROBE)
+    yield dir, gem_dir, framework
+  end
+end
+
+# Runs the probe in root; returns its output (stdout and stderr together).
+def probe(dir, gem_dir, framework, root, *args)
+  env = { "RUBYLIB" => nil, "RUBYOPT" => nil }
+  command = [RbConfig.ruby, "--disable-gems", "-E", "UTF-8", "-I", gem_dir, File.join(dir, "probe.rb"), gem_dir, framework, *args]
+  out, = Open3.capture2e(env, *command, chdir: root)
+  out
+end
+
+test "the gem's files alone load the supervisor; the dev files come from the application's framework, after spin flags" do
+  taken = TCPServer.new("127.0.0.1", 0)
+  with_installed_gem do |dir, gem_dir, framework|
+    with_app do |root|
+      File.write(File.join(root, "port"), taken.addr[1].to_s)
+      out = probe(dir, gem_dir, framework, root)
+      refute out.include?("LoadError"), out
+      # Stopped at the port, which this test holds: past the loading.
+      assert_includes out, "error: port #{taken.addr[1]} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+      assert_includes out, "exit 1"
+      lines = out.lines.map(&:chomp)
+      required = lines.grep(/\Arequired /)
+      refute required.empty?, out
+      # Only the gem's files at require.
+      assert_equal [], required.reject { |line| line.start_with?("required GEM/") }
+      # No dev file before spin flags names the framework.
+      assert_equal [], lines.grep(%r{\Aflags .*/cybertrain/dev/})
+      ran = lines.grep(/\Aran /)
+      DEV_FILES.each do |file|
+        assert_includes ran, "ran FRAMEWORK/cybertrain/dev/#{file}.rb"
+      end
+      assert_equal [], ran.grep(%r{cybertrain/dev/}).reject { |line| line.start_with?("ran FRAMEWORK/") }
+      # The supervisor's own files stay the gem's.
+      assert_equal [], ran.grep(%r{cybertrain/cli/}).reject { |line| line.start_with?("ran GEM/") }
+    end
+  end
+ensure
+  taken&.close
+end
+
+test "a framework without the CRuby preview runs the compiled loop, after one line" do
+  with_installed_gem do |dir, gem_dir, framework|
+    FileUtils.rm(File.join(framework, "cybertrain", "dev", "supervision.rb"))
+    with_app do |root|
+      out = probe(dir, gem_dir, framework, root, "4000")
+      assert_equal ["cybertrain: this application's framework has no CRuby preview; running the compiled loop (--spinel)",
+                    "compiled loop server 4000 --spinel", "exit 7"], out.lines.map(&:chomp).grep_v(/\A(required|flags|ran) /)
+      refute File.exist?(File.join(root, "tmp", "cybertrain-dev")), "the supervisor wrote nothing"
+      refute File.exist?(File.join(root, "child-started")), "no child was started"
+    end
+  end
 end
 
 test "a port that is in use is refused with today's wording, before any child" do

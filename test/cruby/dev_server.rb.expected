@@ -1,5 +1,7 @@
 ok   load_path takes the -I directories of spin flags, in order
 ok   load_path keeps directories whose names have spaces, as spin prints them
+ok   the gem's files alone load the supervisor; the dev files come from the application's framework, after spin flags
+ok   a framework without the CRuby preview runs the compiled loop, after one line
 ok   a port that is in use is refused with today's wording, before any child
 ok   a port argument overrides the application's port
 ok   a PORT that is not a number, or a word after it, is refused
@@ -13,4 +15,4 @@ ok   TERM while the build runs: the build's group is stopped too
 ok   a leftover child holding the port is stopped, and the new supervisor serves on it
 ok   a child that dies of the Ctrl-C that stops the driver is not reported as a death
 ok   the gate passes events to the machine until a stop is asked
-15 tests, 69 assertions, 0 failures
+17 tests, 84 assertions, 0 failures

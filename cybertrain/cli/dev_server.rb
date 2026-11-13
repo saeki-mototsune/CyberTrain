@@ -8,12 +8,25 @@
 # the machine its events, and the stop.
 #
 # Startup: the application's name, the pinned Spinel (Toolchain.ensure!),
-# the load path (the -I directories of `spin flags`), the leftovers of a
-# supervisor that was killed (tmp/cybertrain-dev/supervisor.pid and
-# child.pid), the address (`bin/NAME.rb dev-address` under CRuby; a port
-# argument overrides the port), the socket, the banner, then the first
-# round. Each refusal prints `error: ...` and returns 1 before a child is
-# started.
+# the load path (the -I directories of `spin flags`), the framework's dev
+# files (below), the leftovers of a supervisor that was killed
+# (tmp/cybertrain-dev/supervisor.pid and child.pid), the address
+# (`bin/NAME.rb dev-address` under CRuby; a port argument overrides the
+# port), the socket, the banner, then the first round. Each refusal prints
+# `error: ...` and returns 1 before a child is started.
+#
+# The framework's dev files (cybertrain/dev/supervision.rb, state_file.rb,
+# watcher.rb, watched.rb) come from the application's framework, never from
+# the gem, which ships none of them: once `spin flags` has named the
+# framework, its -I directories go on $LOAD_PATH ahead of the gem's own, and
+# only then are those files (and processes.rb and watch.rb, which build on
+# them) required. The supervisor and its children then share one
+# definition of the state file's format and of the environment a child
+# reads: the child's framework is the authority. The supervisor's own files
+# are required relative to this one, so a framework that carries copies of
+# them never replaces them. A framework without a CRuby preview (an older
+# one) is not refused: one line on STDERR names the reason and the compiled
+# loop runs, as `cybertrain server --spinel` would (no_preview_reason).
 #
 # The loop is one thread: wait (on the child's STDERR, and on the listener
 # while holding) for at most a tick, then Processes#poll, then the machine's
@@ -33,14 +46,20 @@ require "open3"
 require "socket"
 require "cybertrain/version"
 require "cybertrain/cli"
-require "cybertrain/cli/dev_server/machine"
-require "cybertrain/cli/dev_server/processes"
+require_relative "dev_server/machine"
 
 module Cybertrain
   module CLI
     module DevServer
       # A refusal at startup: its message follows `error: `.
       Failure = Class.new(StandardError)
+
+      # The supervisor's files in the application (P2).
+      DEV_DIR = "tmp/cybertrain-dev"
+
+      # The framework file whose absence means the framework predates the
+      # CRuby preview (its supervised children read this contract).
+      SUPERVISION = "cybertrain/dev/supervision.rb"
 
       # The driver's tick (P11): the longest the loop waits before it polls
       # the processes and gives the machine its on_tick.
@@ -96,6 +115,10 @@ module Cybertrain
         return 1 unless ensure_toolchain
 
         load_path = load_path(spin_flags(root))
+        reason = no_preview_reason(load_path)
+        return fall_back(argv, reason) unless reason.nil?
+
+        load_framework(load_path)
         refuse_second_supervisor(root)
         stop_leftover_child(root, name, $stdout)
         host, port = address(root, name, load_path)
@@ -118,6 +141,45 @@ module Cybertrain
         flags.select { |flag| flag.start_with?("-I") }.map { |flag| flag.delete_prefix("-I").strip }.reject(&:empty?)
       end
 
+      # Why this application cannot have the CRuby preview, or nil. Each
+      # reason here sends `cybertrain server` to the compiled loop rather
+      # than refusing it (fall_back).
+      # @param load_path [Array<String>] the -I directories of `spin flags`
+      # @return [String, nil]
+      def self.no_preview_reason(load_path)
+        return "this application's framework has no CRuby preview" unless framework_file?(load_path, SUPERVISION)
+
+        nil
+      end
+
+      # Whether one of the framework's directories holds path.
+      def self.framework_file?(load_path, path)
+        load_path.any? { |dir| File.file?(File.join(dir, path)) }
+      end
+
+      # One line on STDERR, then what `cybertrain server --spinel` runs;
+      # its exit code.
+      def self.fall_back(argv, reason)
+        $stderr.puts "cybertrain: #{reason}; running the compiled loop (--spinel)"
+        $stderr.flush
+        compiled_loop(argv)
+      end
+
+      # exe/cybertrain hands `server ... --spinel` to CLI.run (P8).
+      def self.compiled_loop(argv)
+        CLI.run(argv + ["--spinel"])
+      end
+
+      # The application's framework ahead of the gem on $LOAD_PATH, then
+      # the files that need its dev files (see the header comment).
+      # @param load_path [Array<String>] the -I directories of `spin flags`
+      def self.load_framework(load_path)
+        $LOAD_PATH.unshift(*load_path)
+        $LOAD_PATH.uniq!
+        require_relative "dev_server/processes"
+        nil
+      end
+
       # The pinned Spinel on PATH (a test stands in for it).
       def self.ensure_toolchain
         Toolchain.ensure!
@@ -138,8 +200,8 @@ module Cybertrain
       # already serves this application. A PID that is gone, or that now
       # names another program, is a leftover of a killed supervisor.
       def self.refuse_second_supervisor(root)
-        pid = read_pid(File.join(root, Processes::DEV_DIR, "supervisor.pid"))
-        return if pid.nil? || pid == Process.pid || !Processes.alive?(pid)
+        pid = read_pid(File.join(root, DEV_DIR, "supervisor.pid"))
+        return if pid.nil? || pid == Process.pid || !alive?(pid)
         return unless command_line(pid).match?(/cybertrain\S*\s+server(\s|\z)/)
 
         raise Failure, "a cybertrain server is already running here (pid #{pid})"
@@ -153,11 +215,11 @@ module Cybertrain
       # @param name [String] the package name
       # @param out [IO] where the line about it goes
       def self.stop_leftover_child(root, name, out)
-        path = File.join(root, Processes::DEV_DIR, "child.pid")
+        path = File.join(root, DEV_DIR, "child.pid")
         pid = read_pid(path)
         return if pid.nil?
 
-        command = Processes.alive?(pid) ? command_line(pid) : ""
+        command = alive?(pid) ? command_line(pid) : ""
         if command.include?("bin/#{name}.rb") || command.include?("build/bin/#{name}")
           out.puts "=> stopping a child left by an earlier cybertrain server (pid #{pid})"
           out.flush
@@ -216,7 +278,7 @@ module Cybertrain
         machine = nil
         runner = nil
         begin
-          dev = File.join(root, Processes::DEV_DIR)
+          dev = File.join(root, DEV_DIR)
           FileUtils.mkdir_p(dev)
           File.write(File.join(dev, "supervisor.pid"), Process.pid.to_s)
           previous[:INT] = trap(:INT) { stop ||= :INT }
@@ -247,7 +309,7 @@ module Cybertrain
           if runner
             runner.close
           else
-            File.delete(File.join(root, Processes::DEV_DIR, "supervisor.pid")) rescue nil
+            File.delete(File.join(root, DEV_DIR, "supervisor.pid")) rescue nil
           end
           listener.close
           previous.each { |signal, handler| trap(signal, handler || "DEFAULT") }
@@ -263,6 +325,19 @@ module Cybertrain
         raise Failure, "unexpected argument '#{argv[2]}'" if argv.size > 2
 
         port
+      end
+
+      # Whether pid names a running process. Signal 0 probes without
+      # delivering anything; EPERM means it exists but is someone else's.
+      # @param pid [Integer]
+      # @return [Boolean]
+      def self.alive?(pid)
+        Process.kill(0, pid)
+        true
+      rescue Errno::ESRCH
+        false
+      rescue Errno::EPERM
+        true
       end
 
       def self.read_pid(path)
@@ -283,7 +358,7 @@ module Cybertrain
       # Gone, or a zombie: a leftover is not this process's child, so its
       # parent (or init) reaps it.
       def self.ended?(pid)
-        return true unless Processes.alive?(pid)
+        return true unless alive?(pid)
 
         stat = IO.popen(["ps", "-o", "stat=", "-p", pid.to_s], err: File::NULL, &:read).strip
         stat.empty? || stat.start_with?("Z")
