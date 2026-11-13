@@ -666,7 +666,10 @@ module Cybertrain
       # Spinel's build runs tools/gen_respond_to_tables.rb, which requires
       # the prism gem: bundled with Ruby 3.3 and newer, a `gem install` (with
       # Ruby's development headers, for its extension) on 3.2. Only building
-      # Spinel needs it; applications never run on CRuby.
+      # Spinel needs it. Applications never run on CRuby in production;
+      # in development `cybertrain server` runs them under CRuby until the
+      # compiled binary is built (the CRuby preview, design record D79),
+      # which needs fiddle (fiddle_ok?), not prism.
       def self.prism_ok?
         system("ruby -e 'require \"prism\"' > /dev/null 2>&1")
       end

@@ -459,7 +459,9 @@ generator so both agree, not papered over in the preview.
 
 Stated in the guide and on the holding page, not hidden:
 
-- Whether the code compiles. The background build says so within seconds.
+- Whether the code compiles. The background build says so when it reaches
+  the error, not at the save: measured 54 s after the save on
+  examples/blog, for a call Spinel refuses in a model (e2e step 10).
 - Runtime differences recorded in spikes/NOTES.md (exception ancestry,
   String encodings on sockets, `Float#round` on a narrowed Float, and the
   rest). They appear once the binary serves.

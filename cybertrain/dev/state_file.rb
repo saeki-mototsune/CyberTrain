@@ -18,8 +18,10 @@
 # file reads as the default snapshot: generation 0, serving "", build
 # "idle", no output.
 #
-# It requires nothing outside Ruby's standard library: the CLI gem ships it
-# alone for the supervisor's side.
+# It requires nothing outside Ruby's standard library: the supervisor (the
+# CLI gem, under CRuby) loads it from the application's framework, put
+# ahead of the gem on its load path, and the gem ships none of
+# cybertrain/dev/*.rb (plan P21).
 module Cybertrain
   module Dev
     # One reading of the state file.

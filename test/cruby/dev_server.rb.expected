@@ -7,6 +7,7 @@ ok   a ruby on PATH that cannot load fiddle runs the compiled loop, after one li
 ok   child_ruby asks the ruby on PATH for its version and whether it loads fiddle, in one run
 ok   no ruby on PATH runs the compiled loop, after one line that says so
 ok   child_ruby gives up on a ruby that does not answer, and kills it with what it started
+ok   child_ruby returns once its ruby has exited, and kills what that ruby left holding its output
 ok   child_ruby names a ruby on PATH that cannot be started, and why
 ok   bounded_run answers a pipe it cannot make as a failure, and keeps a bounded part of the output
 ok   a TERM or HUP during the probe of the children's ruby stops the probe's process group too
@@ -37,4 +38,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-39 tests, 207 assertions, 0 failures
+40 tests, 210 assertions, 0 failures

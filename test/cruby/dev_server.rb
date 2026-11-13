@@ -336,6 +336,32 @@ test "child_ruby gives up on a ruby that does not answer, and kills it with what
   end
 end
 
+# A ruby that answers and exits, leaving something it started in the
+# background with its STDOUT (a version manager's shim that forks a
+# helper): the probe does not wait for that STDOUT to close, answers at
+# once with what the ruby printed, and kills what it left.
+test "child_ruby returns once its ruby has exited, and kills what that ruby left holding its output" do
+  Dir.mktmpdir("dev-server-ruby") do |dir|
+    pids = File.join(dir, "pids")
+    File.write(File.join(dir, "ruby"), "#!/bin/sh\nsleep 30 &\necho \"$!\" > '#{pids}'\nprintf '3.9.9 fiddle'\nexit 0\n")
+    File.chmod(0o755, File.join(dir, "ruby"))
+    saved = ENV["PATH"]
+    ENV["PATH"] = "#{dir}:#{saved}"
+    begin
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      assert_equal ["3.9.9", nil], DevServer.child_ruby(5)
+      took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+      assert took < 1.5, "child_ruby took #{took} s"
+      sleeper = File.read(pids).to_i
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+      sleep 0.02 until DevServer.ended?(sleeper) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+      assert DevServer.ended?(sleeper), "the probe's background sleeper #{sleeper} is still running"
+    ensure
+      ENV["PATH"] = saved
+    end
+  end
+end
+
 # A `ruby` on PATH that is there but cannot be started is neither "no ruby"
 # nor "cannot load fiddle": the line says what is wrong with it.
 test "child_ruby names a ruby on PATH that cannot be started, and why" do

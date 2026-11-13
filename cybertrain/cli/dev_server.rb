@@ -493,14 +493,17 @@ module Cybertrain
 
       # Runs command (STDIN empty, STDERR dropped) in a process group of
       # its own, for timeout seconds at most: [its STDOUT (the first
-      # BOUNDED_OUTPUT bytes), its status]; ["", :missing] when there is no
-      # such program; [why, :failed] when it cannot be started otherwise
-      # (spawn_failure), or no pipe can be made; [what it printed,
-      # :timeout] once its group has been killed for taking longer. The
-      # group is killed too when this ends any other way: a Ctrl-C, which
-      # the group, apart from the terminal's, does not get, or a TERM or
-      # HUP, which CRuby raises as a SignalException here until `serve`
-      # traps them (the process then still ends by that signal).
+      # BOUNDED_OUTPUT bytes), its status] as soon as it has exited, what
+      # it wrote being in the pipe by then (a process it left in the
+      # background may hold the pipe open: its end is not waited for);
+      # ["", :missing] when there is no such program; [why, :failed] when
+      # it cannot be started otherwise (spawn_failure), or no pipe can be
+      # made; [what it printed, :timeout] when it takes longer. Its group
+      # is killed whenever this ends: after its exit (what it left
+      # running), at the bound, and on a Ctrl-C, which the group, apart
+      # from the terminal's, does not get, or a TERM or HUP, which CRuby
+      # raises as a SignalException here until `serve` traps them (the
+      # process then still ends by that signal).
       # @param command [Array<String>]
       # @param timeout [Numeric]
       # @return [Array(String, Process::Status|Symbol)]
@@ -522,16 +525,25 @@ module Cybertrain
         out = +""
         deadline = monotonic + timeout
         loop do
+          # Once the program has exited, what it wrote is in the pipe:
+          # that is read without waiting for the pipe's end, which
+          # something it left running in the background can hold open
+          # until the deadline.
+          _, status = Process.waitpid2(pid, Process::WNOHANG) if status.nil?
+          unless status.nil?
+            nil while bounded_read(reader, out).is_a?(String) && monotonic < deadline
+            break
+          end
           left = deadline - monotonic
           break if left <= 0
-          next if IO.select([reader], nil, nil, left).nil?
-
-          chunk = reader.read_nonblock(65_536, exception: false)
-          break if chunk.nil?
-
-          out << chunk.byteslice(0, BOUNDED_OUTPUT - out.bytesize) if chunk.is_a?(String) && out.bytesize < BOUNDED_OUTPUT
+          # Short waits, so that the program's exit is seen while the pipe
+          # stays open.
+          next if IO.select([reader], nil, nil, [left, BOUNDED_POLL].min).nil?
+          break if bounded_read(reader, out).nil?
         end
         loop do
+          break if status
+
           _, status = Process.waitpid2(pid, Process::WNOHANG)
           break if status || monotonic >= deadline
 
@@ -540,10 +552,25 @@ module Cybertrain
         [out, status || :timeout]
       ensure
         reader&.close
-        if pid && status.nil?
-          signal(-pid, :KILL)
-          wait_quietly(pid)
-        end
+        # The whole group, also after the program itself ended: what it
+        # started in the background must not outlive the probe. The
+        # group's id is not given to another group while one of its
+        # members runs, and a group with none left answers ESRCH.
+        signal(-pid, :KILL) if pid
+        wait_quietly(pid) if pid && status.nil?
+      end
+
+      # How often bounded_run looks for its program's exit while the pipe
+      # is open.
+      BOUNDED_POLL = 0.05
+
+      # One read from bounded_run's pipe, without blocking, kept within
+      # BOUNDED_OUTPUT: nil at the pipe's end, :wait_readable when nothing
+      # is there yet, otherwise what was read.
+      def self.bounded_read(reader, out)
+        chunk = reader.read_nonblock(65_536, exception: false)
+        out << chunk.byteslice(0, BOUNDED_OUTPUT - out.bytesize) if chunk.is_a?(String) && out.bytesize < BOUNDED_OUTPUT
+        chunk
       end
 
       # bounded_run's answer when program could not be started: :missing
