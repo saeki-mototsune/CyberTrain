@@ -1,5 +1,5 @@
 ---
-source_sha256: 213c14714700a8d77cf55d41583442abd46b6e5ffe0d85f613e8e95e3e80b7b0
+source_sha256: f0e8d8dde1c0d481e011b798ba30a08279bfe4d4bbeaa406bf4e9c1b33dfa49b
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -51,6 +51,8 @@ Une ligne manquante est détectée avant que l’application ne tourne&nbsp;:
 - Une vue qui appelle un helper d’un sous-système arrête `spin run gen` (et `spin run gen -- --check`) avec le code de sortie 1&nbsp;: `app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`. Un template rendu malgré tout lève `undefined helper 'turbo_stream_from'`.
 - `./<app> worker`, `./<app> jobs` et `./<app> feeds` affichent par exemple `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` et sortent avec 1.
 - `/up` ne rend compte que de ce qui est chargé&nbsp;: pas de worker figé sans les jobs, pas de flux figé sans les feeds.
+
+gen lit `bin/<app>.rb` comme du texte et n’y voit que les lignes littérales `require "cybertrain"` et `require "cybertrain/..."`&nbsp;: déplacez-les dans un fichier que `bin/<app>.rb` charge par `require_relative`, et gen refuse un helper qui aurait fonctionné. Gardez-les dans `bin/<app>.rb`.
 
 Sans les jobs, le cache purge lui-même ses lignes expirées&nbsp;: la première écriture d’un processus, puis la première après chaque `cache_prune_interval`, en supprime jusqu’à mille. Avec les jobs, c’est la tâche planifiée `"cybertrain cache prune"`, comme avant ([Le cache](background-and-operations.md#the-cache-store)).
 

@@ -103,6 +103,11 @@ A missing line is caught before the application runs:
 - `/up` reports only on what is loaded: no worker staleness without jobs,
   no feed staleness without feeds.
 
+gen reads `bin/<app>.rb` as text and sees only the literal
+`require "cybertrain"` and `require "cybertrain/..."` lines in it: move
+them into a file that `bin/<app>.rb` loads with `require_relative`, and gen
+refuses a helper that would have worked. Keep them in `bin/<app>.rb`.
+
 Without jobs the cache prunes its expired rows itself: the first write of
 a process, and the first after each `cache_prune_interval`, deletes up to a
 thousand of them. With jobs it is the scheduled task `"cybertrain cache

@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 213c14714700a8d77cf55d41583442abd46b6e5ffe0d85f613e8e95e3e80b7b0
+source_sha256: f0e8d8dde1c0d481e011b798ba30a08279bfe4d4bbeaa406bf4e9c1b33dfa49b
 ---
 # 工作原理
 
@@ -51,6 +51,8 @@ Spinel 会编译程序 require 的每个文件里的每个方法，无论是否�
 - 调用子系统辅助方法的视图会让 `spin run gen`（以及 `spin run gen -- --check`）以退出状态 1 停止：`app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`。如果模板仍被渲染，会抛出 `undefined helper 'turbo_stream_from'`。
 - `./<app> worker`、`./<app> jobs` 和 `./<app> feeds` 会打印例如 `the worker role needs require "cybertrain/jobs" in bin/<app>.rb`，并以 1 退出。
 - `/up` 只报告已加载的部分：没有作业就不检查 worker 是否停滞，没有 feed 就不检查 feed 是否停滞。
+
+gen 把 `bin/<app>.rb` 当作文本读取，只看其中字面写出的 `require "cybertrain"` 和 `require "cybertrain/..."` 行：把它们移到 `bin/<app>.rb` 用 `require_relative` 加载的文件里，gen 就会拒绝本来能用的辅助方法。请把它们留在 `bin/<app>.rb` 中。
 
 没有作业时，缓存自己清除过期的行：进程的第一次写入，以及每过 `cache_prune_interval` 后的第一次写入，最多删除一千行。有作业时，仍由计划任务 `"cybertrain cache prune"` 完成（[缓存存储](background-and-operations.md#the-cache-store)）。
 

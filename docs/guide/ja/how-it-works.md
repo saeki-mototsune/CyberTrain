@@ -1,5 +1,5 @@
 ---
-source_sha256: 213c14714700a8d77cf55d41583442abd46b6e5ffe0d85f613e8e95e3e80b7b0
+source_sha256: f0e8d8dde1c0d481e011b798ba30a08279bfe4d4bbeaa406bf4e9c1b33dfa49b
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -51,6 +51,8 @@ Spinel は、プログラムが require したすべてのファイルのすべ�
 - サブシステムのヘルパーを呼ぶビューは、`spin run gen`（と `spin run gen -- --check`）を終了ステータス 1 で止めます：`app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`。それでもレンダリングされたテンプレートは `undefined helper 'turbo_stream_from'` を発生させます。
 - `./<app> worker`、`./<app> jobs`、`./<app> feeds` は、たとえば `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` と表示して 1 で終了します。
 - `/up` は読み込まれたものについてだけ報告します：ジョブがなければワーカーの停滞を、フィードがなければフィードの停滞を見ません。
+
+gen は `bin/<app>.rb` をテキストとして読み、そこに書かれた `require "cybertrain"` と `require "cybertrain/..."` の行しか見ません。これらを `bin/<app>.rb` が `require_relative` で読み込む別のファイルに移すと、gen は動くはずのヘルパーを拒否します。`bin/<app>.rb` に置いたままにしてください。
 
 ジョブがない場合、キャッシュは期限切れの行を自分で削除します：プロセスの最初の書き込みと、`cache_prune_interval` ごとの最初の書き込みが、最大 1000 行を削除します。ジョブがあれば、これまでどおりスケジュールされたタスク `"cybertrain cache prune"` が行います（[キャッシュストア](background-and-operations.md#the-cache-store)）。
 
