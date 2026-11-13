@@ -2520,4 +2520,4 @@ create test/fixtures/files/set_post.png
 create test/integration/item_set_post_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
-38 tests, 389 assertions, 0 failures
+38 tests, 391 assertions, 0 failures

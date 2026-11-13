@@ -284,7 +284,7 @@ test "a second field, and an existing CamelCase or plural model name, work" do
   assert_includes created, "test/fixtures/files/avatar.png"
   # Each test class keeps its constants: two attachment tests define no
   # top-level name twice (the bundle refuses that).
-  assert_includes read("shop/test/integration/post_avatar_attachment_test.rb"), "class PostAvatarAttachmentTest < ActionDispatch::IntegrationTest\n  # test/fixtures/files/avatar.png: a PNG"
+  assert_includes read("shop/test/integration/post_avatar_attachment_test.rb"), "class PostAvatarAttachmentTest < ActionDispatch::IntegrationTest\n  # test/fixtures/files/avatar.png: a 1x1 PNG"
   model = read("shop/app/models/post.rb")
   assert_includes model, "# cybertrain:attachment avatar -- "
   assert_includes model, "  def avatar_file=(upload)\n"

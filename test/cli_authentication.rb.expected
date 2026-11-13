@@ -1526,6 +1526,351 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/up.html
+create bin/del.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/del.rb (./del user)
+insert config/app.rb (DEL_BASE_URL)
+create db/migrate/20260925120002_create_posts.rb
+create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
+route resources :posts
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/deli.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/setup_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/setup/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/integration/first_run_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /setup
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/deli.rb (./deli user, the first-run warning)
+insert config/app.rb (DELI_BASE_URL)
+insert config/app.rb (DELI_SETUP_OPEN)
+create db/migrate/20260925120002_create_posts.rb
+create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
+route resources :posts
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/delc.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/confirmations_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/mailers/confirmations_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/confirmations/new.html.erb
+create app/views/mail/_confirmation.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/controllers/confirmations_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/delc.rb (./delc user)
+insert config/app.rb (DELC_BASE_URL)
+create db/migrate/20260925120002_create_posts.rb
+create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
+route resources :posts
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/delic.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/setup_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/confirmations_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/mailers/confirmations_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/setup/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/confirmations/new.html.erb
+create app/views/mail/_confirmation.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/integration/first_run_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/controllers/confirmations_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /setup
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/delic.rb (./delic user, the first-run warning)
+insert config/app.rb (DELIC_BASE_URL)
+insert config/app.rb (DELIC_SETUP_OPEN)
+create db/migrate/20260925120002_create_posts.rb
+create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
+route resources :posts
+ok   the account-deletion tests delete a user they create, not a fixture row, in every mode
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
 create bin/prior.rb
 create bin/gen.rb
 create bin/db.rb
@@ -2400,4 +2745,4 @@ create test/fixtures/.keep
 create test/support/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-55 tests, 1490 assertions, 0 failures
+56 tests, 1651 assertions, 0 failures
