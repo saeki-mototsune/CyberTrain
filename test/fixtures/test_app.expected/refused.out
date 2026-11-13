@@ -1,0 +1,1 @@
+test/refused_test.rb:7: `def test_with_argument` takes parameters, and a test method is called with none; drop them, or name the helper without the `test_` prefix
