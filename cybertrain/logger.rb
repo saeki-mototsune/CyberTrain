@@ -157,7 +157,8 @@ module Cybertrain
     # escaping (JSON.generate raises on invalid UTF-8 under CRuby): `"` and
     # `\` as `\"` and `\\`, newline, carriage return and tab as `\n`, `\r`
     # and `\t`, other bytes below 0x20 and 0x7F as `\u00XX`; and, when the
-    # bytes are not valid UTF-8, every byte from 0x80 up as `�`.
+    # bytes are not valid UTF-8, every byte from 0x80 up as `\ufffd`
+    # (U+FFFD, the replacement character).
     # Validity is read from the bytes, whatever the String's encoding.
     # @param text [String]
     # @return [String]
