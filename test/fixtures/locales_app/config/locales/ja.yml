@@ -1,0 +1,9 @@
+ja:
+  posts:
+    index:
+      title: 記事
+      empty: 投稿はありません
+  date:
+    abbr_day_names:
+    - 日
+    - 月

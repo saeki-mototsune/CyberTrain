@@ -1,0 +1,8 @@
+ok   lazy lookup in a template, a partial, a layout, a component and a mail partial
+ok   the lazy scope of a template name
+ok   render :new from create looks up posts.new
+ok   the missing-key span in development, humanised in production
+ok   an _html key escapes its arguments
+ok   l and localize in templates
+ok   Controller#t resolves .key to controller.action
+7 tests, 30 assertions, 0 failures

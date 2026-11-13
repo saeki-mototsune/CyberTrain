@@ -9,4 +9,5 @@ ok   number_to_human below 1 and just under a unit
 ok   NaN and Infinity are not numbers
 ok   a non-number raises ArgumentError
 ok   an oversized exponent or precision is rejected
-11 tests, 78 assertions, 0 failures
+ok   the new keywords; Ruby keeps its English defaults in any locale
+12 tests, 84 assertions, 0 failures

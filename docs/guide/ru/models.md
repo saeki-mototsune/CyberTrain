@@ -1,5 +1,5 @@
 ---
-source_sha256: ad3169ddff720e3527105667bef185f816a9c1eeaf8f74207edb0ff4cf53d242
+source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
 ---
 # Модели и база данных
 
@@ -335,6 +335,11 @@ nil. Столбец даты NOT NULL получает сгенерирован�
   привязывается как NULL (`save` сохранил бы 0 / false / `{}`), не
   трогает `updated_at` и не запускает колбэки; `destroy_all` уничтожает
   каждую запись вместе с колбэками и `dependent:`.
+- `update_all_sql(sql, binds = [])` задаёт столбцы SQL-списком `SET` — для
+  значения, вычисляемого из строки (`User.where(id: id).update_all_sql("failed_attempts = failed_attempts + ?", [1])`);
+  каждое выражение читает строку такой, какой она была, `?` берёт привязки
+  по порядку, и, как `update_all`, он не загружает модель и не вызывает
+  колбэков.
 - `find_each` обходит записи по id пачками и, как Rails, игнорирует порядок,
   limit и offset relation.
 - `find_or_create_by` на суженном relation создаёт запись только из
@@ -610,13 +615,18 @@ class Article
 end
 ```
 
-Сообщения — английские умолчания Rails: «can't be blank», «is too short
-(minimum is 3 characters)», «is the wrong length (should be 5 characters)»,
-«is not included in the list», «is reserved», «is invalid», «is not a
-number», «must be an integer», «must be greater than or equal to 0», «has
-already been taken». `message:` заменяет сообщение, на строке или внутри
-Hash правила. Формы единственного числа из Rails («1 character») нет: предел
-1 даёт «1 characters».
+Сообщения — умолчания Rails из встроенного словаря в локали запроса:
+по-английски «can't be blank», «is too short (minimum is 3 characters)»,
+«is the wrong length (should be 5 characters)», «is not included in the
+list», «is reserved», «is invalid», «is not a number», «must be an
+integer», «must be greater than or equal to 0», «has already been taken»,
+по-японски «を入力してください» и т. д. Предел 1 даёт «1 character».
+`message:` заменяет сообщение, на строке или внутри Hash правила;
+`config/locales/` может заменить их для всех моделей или для одной
+([Модели и сообщения валидации](i18n.md#models-and-validation-messages)).
+`errors.full_messages` называет каждый атрибут через
+`Post.human_attribute_name(:title)` («Title»; `author_id` — «Author»), а
+сообщение на `:base` пишет отдельно.
 
 - `length` принимает `minimum`, `maximum`, `is` и `in` (Range из Integer).
 - `inclusion` и `exclusion` принимают Array или Range из Integer (других

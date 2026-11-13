@@ -37,6 +37,12 @@ Cybertrain::Main.command("touch", "enqueue a touch job for an article ID (run by
   0
 end
 
+# `./blog user EMAIL [PASSWORD]`, `./blog user admin EMAIL` and
+# `./blog user unadmin EMAIL`, and a [WARN] at boot while no user exists
+# (cybertrain generate authentication --invite-only).
+require_relative "../app/commands/user_command"
+UserCommand.warn_if_no_user if Cybertrain::Main.server?(ARGV)
+
 exit(Cybertrain::Main.run("blog", ARGV,
                           router: Gen::Routes.build(Cybertrain::Router.new),
                           url_resolver: Gen::Routes.url_resolver,

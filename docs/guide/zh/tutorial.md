@@ -1,5 +1,5 @@
 ---
-source_sha256: c2f96f8f50f04cab47730f6250861c9e5972ee4062f847857965f41bda0a2e85
+source_sha256: 2799fccb65d5602ca6cddc5c6a2d1df2178f54c8791f883fca238ea1755bb9ec
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -92,7 +92,7 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb  .env.example
+  spin.toml  config/app.rb  config/routes.rb  config/locales/en.yml  .env.example
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/  app/jobs/
   app/assets/stylesheets/application.css  app/assets/images/
@@ -374,7 +374,7 @@ class Comment
 end
 ```
 
-声明的 `belongs_to` 还会让没有文章的评论在数据库拒绝之前就无效（“Article id can't be blank”）。
+声明的 `belongs_to` 还会让没有文章的评论在数据库拒绝之前就无效（“Article can't be blank”）。
 
 > [!NOTE]
 > `Article#comments` 是评论的 relation，所以 Rails 的 `@article.comments.find(params[:id])` 在 `destroy` 中可以原样使用，不属于该文章的评论会返回 404。
@@ -853,18 +853,17 @@ cybertrain generate authentication
 cybertrain db migrate    # 创建 users 和 sessions 表
 ```
 
-它会写出 `users`（`email_address`、`password_digest`、唯一索引）和 `sessions`（每个已登录的浏览器一行）的迁移，`User` 和 `Session` 模型，`SessionsController`（`/session/new`、`POST /session`、`DELETE /session`）和 `RegistrationsController`（`/sign_up`）及其视图，在布局顶部渲染的 `sessions/_nav` 局部模板，以及 `test/authentication.rb` 和 `test/support/app_test.rb`。它还会插入路由，并在 `ApplicationController` 的类定义行之后插入下面这段代码：
+它写出 `users` 和 `sessions` 的迁移与模型、被它包含进 `ApplicationController` 的 `Authentication` 关注点、用于登录、注册、重置密码和账户页面的控制器与视图、一个邮件程序、`./blog user` 命令，以及测试。它还会添加路由、布局顶部的 `sessions/_nav` 局部模板，以及 `config/app.rb` 中的 `base_url` 设置，邮件中的链接以它开头。每个文件都列在 [认证](authentication.md#generating-it) 中。
 
-```ruby app/controllers/application_controller.rb（节选）
-class ApplicationController < Cybertrain::Controller
-  before_action :resume_session          # sets @current_user and @current_session
-  before_action :require_authentication  # 303 to /session/new unless signed in
+```ruby app/controllers/concerns/authentication.rb（节选）
+module Authentication
+  extend ActiveSupport::Concern
 
-  def self.allow_unauthenticated_access(only: [], except: [])
-    skip_before_action(:require_authentication, only: only, except: except)
+  included do
+    before_action :resume_session          # sets @current_user and @current_session
+    before_action :require_authentication  # 303 to /session/new unless signed in
+    helper_method :authenticated?
   end
-  # authenticated?, start_new_session_for(user), terminate_session,
-  # after_authentication_url ...
 ```
 
 从现在起，每个动作都需要已登录的用户，访客会被重定向到 `/session/new`。像 Rails 指南那样，把任何人都能阅读的页面重新开放：
@@ -893,58 +892,14 @@ class ArticlesController < ApplicationController
 
 评论组件对所有人都保留 “Destroy comment” 按钮：广播只为所有观看者渲染一次，没有请求，也就没有当前用户。点击它的访客会被带到登录页面，因为 `CommentsController` 没有开放任何动作；新评论仍然会到达访客的页面，因为流不是控制器的动作。
 
-启动服务器并打开 `http://127.0.0.1:3000/sign_up`，创建第一个用户。Rails 的生成器没有注册页面，第一个用户要在控制台里创建；CyberTrain 会写出 `RegistrationsController`，让第一个用户在浏览器中注册。如果应用只接受邀请，请删除它及其路由。
+启动服务器并打开 `http://127.0.0.1:3000/sign_up` 创建第一个用户。Rails 的生成器没有注册页面，第一个用户要在控制台中创建；CyberTrain 写出了 `RegistrationsController`，所以第一个用户在浏览器中注册。对于仅限邀请的应用，请改用 `--invite-only` 运行生成器：没有注册页面，第一个用户来自 `./blog user EMAIL`，或来自只有服务器本机才能打开的 `/setup` 页面（[开放注册，或仅限邀请](authentication.md#sign-up-or-invite-only)）。
 
-<details><summary>只接受邀请的应用：`--invite-only` — 没有注册页面；第一个用户来自命令行，或来自只有服务器所在机器才能打开的页面</summary>
-
-注册页面让任何能访问到服务器的人都能注册，这对内部工具来说是错误的默认设置：谁比管理员先到，谁就有了账号。`--invite-only` 不会写出 `RegistrationsController`，也没有注册链接；第一个用户来自命令行，或来自只有服务器自己的机器才能打开的页面，页面的链接由服务器在启动时打印出来：
-
-```shell 终端 — blog/
-cybertrain generate authentication --invite-only
-cybertrain db migrate
-cybertrain server        # 然后在同一台机器上打开它打印的 http://127.0.0.1:3000/setup?token=... 链接
-```
-
-在生产环境中，在二进制运行的目录里：
-
-```shell 终端 — 生产主机
-./blog user ann@example.com                        # 从标准输入读取密码（一行）
-printf '%s' "$PASSWORD" | ./blog user ann@example.com
-./blog user ann@example.com 's3cr3t-s3cr3t'        # 或者作为参数传入（在 ps 中可见）
-```
-
-<!-- list: points -->
-- `app/commands/user_command.rb` 用 `Cybertrain::Main.command` 注册 `user` 命令（所以 `./blog help` 会列出它），并由 `bin/blog.rb` require。`EMAIL [PASSWORD]` 会创建用户，或者为使用该地址的用户设置密码（和任何密码修改一样，这会让该用户的浏览器退出登录）；它会打印 `created ADDRESS` 或 `updated ADDRESS` 并以 0 退出。不带 `PASSWORD` 时，它从标准输入读取一行（标准输入是终端时会给出提示；输入的内容会回显），并去掉末尾的换行符，这样密码就不会出现在 `ps` 和 shell 历史中。空密码、无法通过验证的记录（不足 8 个字符的密码）或错误的参数，会打印错误或用法说明并以 1 退出。
-- `SetupController`（`GET`/`POST /setup`、`app/views/setup/new.html.erb`）创建第一个用户并让其登录。它只在还没有任何用户时、只在带有一次性令牌（见下文）时、并且只对套接字对端是环回地址（`request.loopback?`：`127.0.0.0/8` 或 `::1`）且不带 `X-Forwarded-For` 请求头的连接作出响应（同一主机上的代理会让每个请求都成为来自环回地址的请求，而代理会加上这个请求头）。请求头只能关闭这个页面，永远不能打开它。其他所有人，以及缺少令牌或令牌错误的请求，都会得到 404。
-- 令牌：`SetupController::SETUP_TOKEN`，32 个随机十六进制字符（`Cybertrain::Crypto.random_token(16)`），在程序启动时生成并一直保留到程序退出，所以重启后会换成新的。`GET /setup` 通过 `?token=` 接收它，表单在隐藏字段里把它带回来，两者都以恒定时间比较（`Cybertrain::Crypto.secure_compare`）。地址检查失效时，正是它让页面保持关闭：同一主机上不添加 `X-Forwarded-For` 的代理（没有 `proxy_set_header X-Forwarded-For ...` 的 nginx）会让每个客户端看起来都来自环回地址，而只有能读取服务器日志的人才拿得到令牌。请求日志不会重复它：`token` 属于默认的 `filter_parameters`，所以这一行写作 `Started GET "/setup?token=[FILTERED]"`（除非 `config.filter_parameters` 或 `CYBERTRAIN_FILTER_PARAMETERS` 去掉了 `token`）。一旦用户已存在，令牌就打不开任何东西。
-- 如果首次运行时位于另一台主机上的代理之后，`BLOG_SETUP_OPEN=1`（在 `config/app.rb` 中用 `c.setting_bool :setup_open` 声明）会取消地址检查，但仍然只在还没有用户时、仍然只在带有令牌时有效。用户创建之后请取消这个设置。
-- 还没有任何用户时，服务器会在启动前记录 `[WARN] no user exists yet: run ./blog user EMAIL, or open /setup?token=<token> from this machine`（`UserCommand.warn_if_no_user`，在 `Cybertrain::Main.server?(ARGV)` 时由 `bin/blog.rb` 调用；它只为这一次查询连接数据库，users 表尚未迁移时什么也不输出）。这一行是唯一打印令牌的地方。
-
-生成的 `test/authentication.rb` 对这两者都做了测试：带令牌、不带令牌（`SetupController.setup_token`）或带错误令牌访问 `/setup`，从另一个地址（`client.peer_address = "203.0.113.7"`）、经过代理、在用户已存在时以及打开开关时访问，以及通过 `Cybertrain::Main.run` 在进程内运行 `user` 命令。这些全部是应用代码，可以随意修改（docs/design.md D29）；框架只提供 `request.loopback?`、`Main.command`、`Main.server?`、`Crypto.random_token` / `Crypto.secure_compare` 以及测试客户端的 `peer_address`。
-
-</details>
+登录页面还链接到通过邮件重置密码，nav 链接到账户页面；[认证](authentication.md) 指南介绍了它们，以及锁定、“保持登录”、`--confirmable` 和管理员用户。重置邮件需要 SMTP 设置，在生产环境中还需要 `BLOG_BASE_URL`（[邮件中的链接](authentication.md#links-in-mails)）。
 
 > [!RULE] Spinel 规则：has_secure_password
 > ### `has_secure_password` 被逐一写出
 >
 > Spinel 无法在运行时定义方法，所以 `User` 模型直接写出了 `has_secure_password` 本该定义的方法：`password=`、`authenticate` 和 `User.authenticate_by(email_address:, password:)`。密码由 `Cybertrain::Password` 做哈希：它是用 Ruby 实现的 PBKDF2-HMAC-SHA256，默认迭代 10 万次（编译后约 0.2 秒）；bcrypt 则需要让二进制链接一个 C 库。可以在 `config/app.rb` 里用 `Cybertrain::Password.iterations = 600_000` 提高成本，`User#authenticate` 会在每个用户登录时重新计算哈希。
-
-<details><summary>认证：框架提供了什么 — 生成器所用的各个部件，不用生成器也能使用</summary>
-
-上面的生成器写出了整个流程；它所用的部件是框架 API，不用生成器也能使用（用于 API 令牌、管理员密码、手写的登录）：
-
-<!-- list: points -->
-- **`Cybertrain::Password`**：`hash(plain)` 生成加盐的 PBKDF2-HMAC-SHA256 摘要，摘要中记录了自身的参数（`$pbkdf2-sha256$i=100000$salt$key`）；`verify?(plain, digest)` 以恒定时间校验，遇到格式错误的摘要也不会抛出异常；`needs_rehash?(digest)` 判断摘要是否落后于当前的 `Password.iterations`。用于登录动作的有：
-  - `verify_serialized(plain, digest)` 是每个进程一次只执行一个的 `verify?`（一个 Mutex）。一次哈希大约耗费 0.2 秒 CPU；一批同时到来的尝试会占住所有 worker，而通过这个方法它们会排队，其他 worker 继续提供页面。
-  - `dummy_digest` 是一个随机密码的摘要，每个进程按当前成本生成一次。地址不存在时就用它来校验，这样响应时间就不会暴露哪些地址有账号：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`。
-  - `session_key(digest)` 是密码摘要在 `secret_key_base` 下的 HMAC；登录时把它存进会话，并在每个请求中用 `session_key_matches?(session[:password_key], user.password_digest)` 检查。修改密码会生成新的摘要，所以在此之前开始的所有会话都会退出登录。
-  - 当 `Cybertrain.config.test?` 时，`iterations` 为 `Password::TEST_ITERATIONS`（1,000），这样测试套件不必为每个用户付出生产环境的成本；摘要记录了各自的迭代次数，所以其他一切都不变。
-- **会话**（`session[:key]`，一个加密 cookie）：`clear` 在退出登录时清空会话（包括 CSRF 令牌）；`config.session_absolute_max_age`（两周；`0` 表示关闭）限制会话的整个生命期，无论使用得多频繁：cookie 记录了它首次写入的时间，比这更旧的 cookie 会被加载为空会话，因此复制来的 cookie 无法被永远重放。`session.restart_lifetime!` 会重新开始计时（在登录时）。
-- **`Controller#local_path?(text)` 和 `safe_redirect_path(text, fallback)`**：来自请求的路径（`return_to` 参数、记住的页面）只有在以 `/` 开头但不以 `//` 或 `/\` 开头、只包含可打印的 ASCII 字符且不超过 2,048 字节时，才会被重定向过去：`redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`。
-- 控制器类上的 **`skip_before_action(name, only:, except:)`** 会为部分动作去掉继承来的 `before_action`；生成的 `allow_unauthenticated_access` 就是对它的一行封装。
-- **`cybertrain generate authentication`** 以归应用所有的代码写出：`users` 和 `sessions` 的迁移与模型、`SessionsController`、`RegistrationsController`、它们的视图和导航局部模板、`ApplicationController` 中的代码块（`resume_session`、`require_authentication`、`start_new_session_for`、`terminate_session`、`after_authentication_url`）以及 `test/authentication.rb`。这些代码用到了本列表中的全部内容：`User.authenticate_by` 用 `verify_serialized` 和虚拟摘要来校验，`start_new_session_for` 存储密码密钥并重新开始生命期，`resume_session` 会结束密钥不再匹配或比 `session_absolute_max_age` 更旧的 Session 行，`after_authentication_url` 就是 `safe_redirect_path`。若要让修改了密码的那个浏览器保持登录，在保存之后存入新的密钥：`session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`。设计说明：[docs/design.md](../design.md) D25。
-
-</details>
 
 ### 更新测试
 
@@ -966,7 +921,7 @@ end
 ```
 
 > [!NOTE]
-> 和[步骤 16](#test) 一样用 `cybertrain spin test` 运行。`test/authentication.rb` 和这个测试会用到 SQLite，所以它们的快照来自编译后的二进制。`examples/blog` 止步于这一步之前。登录尝试会像 Rails 的生成器那样受到速率限制：`SessionsController` 声明了 `rate_limit to: 10, within: 3 * 60, only: [:create]`，每个客户端地址每三分钟最多 10 次，超过后会带着 "Try again later." 回到表单，直到时间窗口结束。计数保存在应用的数据库中（`Cybertrain::Cache`），所以应用的所有进程一起计数。在反向代理后面，除非配置了[受信任的代理](requests.md#rate-limiting-and-the-client-address)，否则每位访客都按代理的地址计数。不会生成的部分：密码重置，它的邮件需要应用自己的 SMTP 设置（`Cybertrain::Mailer`，[发送电子邮件](external-services.md#sending-e-mail)），而生成器无从得知这些设置。
+> 像 [第 16 步](#test) 那样运行 `cybertrain spin test`；`test/authentication.rb`、生成器写出的其他测试以及这个测试都使用 SQLite，所以它们的快照来自编译后的二进制。登录尝试像 Rails 的生成器一样受到速率限制：每个客户端地址每三分钟十次，在应用的数据库中计数，所以每个进程共同计数；在反向代理之后，请配置 [可信代理](requests.md#rate-limiting-and-the-client-address)。`examples/blog` 用 `--invite-only` 完成这一步，并让它的 `/admin` 页面只对管理员开放。
 
 <!-- step 18 #attachments stage: 你编写 · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## 添加封面图片
@@ -1164,6 +1119,8 @@ kamal deploy   # 之后的每次部署
 
 <!-- list: next-list -->
 - [**`examples/blog`**](../../examples/blog) — 本教程最终发展成的应用及其测试。
+- [**认证**](authentication.md) — 密码重置、确认、锁定、保持登录、账户页面和管理员用户。
+- [**国际化**](i18n.md) — 词典、`t` 和 `l`，以及每个请求的语言区域。
 - [**指南**](index.md) — 每个主题一页：模型、请求、模板、实时、后台任务、测试。
 - [**GitHub 上的 CyberTrain**](https://github.com/saeki-mototsune/CyberTrain) — 源代码、README 和发布版本。
 - [**API 参考**](site:api/index.html) — 应用用到的每个类和方法，附带示例。

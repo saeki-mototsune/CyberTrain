@@ -8,6 +8,7 @@ require "cybertrain/config"
 require "cybertrain/db"
 require "cybertrain/job"
 require "cybertrain/views"
+require "cybertrain/i18n"
 require "cybertrain/template/helpers"
 
 module Cybertrain
@@ -47,10 +48,12 @@ module Cybertrain
       SafeString.of(engine.render(frame, env, helpers))
     end
 
-    # The page's HTML: the count per state, the queued count and when the
-    # next queued job is due, then the `failed`, `discarded` and `running`
-    # lists, `per_page` rows each (newest first), and Newer / Older links
-    # when a list has more. Failed and discarded rows (kind, arguments,
+    # The page's HTML, its texts the current locale's
+    # `cybertrain.jobs_page.*` (`Jobs`, `Failed (%{count})`, ...): the
+    # count per state, the queued count and when the next queued job is
+    # due, then the `failed`, `discarded` and `running` lists, `per_page`
+    # rows each (newest first), and Newer / Older links when a list has
+    # more. Failed and discarded rows (kind, arguments,
     # error, attempts, run at, updated) carry retry / discard / delete
     # buttons; running rows show who claimed them and how long ago their
     # process last said so.
@@ -68,15 +71,15 @@ module Cybertrain
       counts = Array.new(0) { 0 }
       STATES.each { |state| counts << Job.state_count(state) }
       parts = Array.new(0) { SafeString.of("") }
-      parts << Html.tag("h1", {}, "Jobs")
+      parts << Html.tag("h1", {}, jobs_text("title"))
       parts << counts_table(counts)
       parts << queued_line(counts[0])
-      parts << Html.tag("h2", {}, "Failed (#{counts[3]})")
+      parts << Html.tag("h2", {}, jobs_counted("tabs.failed", counts[3]))
       parts << bulk_buttons(path, helpers) if counts[3] > 0
       parts << finished_list("failed", number, per, path, helpers)
-      parts << Html.tag("h2", {}, "Discarded (#{counts[4]})")
+      parts << Html.tag("h2", {}, jobs_counted("tabs.discarded", counts[4]))
       parts << finished_list("discarded", number, per, path, helpers)
-      parts << Html.tag("h2", {}, "Running (#{counts[1]})")
+      parts << Html.tag("h2", {}, jobs_counted("tabs.running", counts[1]))
       parts << running_list(number, per, now)
       most = counts[1]
       most = counts[3] if counts[3] > most
@@ -189,42 +192,61 @@ module Cybertrain
     end
 
     # The flash notice of CybertrainJobsController's retry: {.retry_job}
-    # on the id the route carried.
+    # on the id the route carried, in the current locale
+    # (`cybertrain.jobs_page.notices.retried` / `not_retried`).
     # @param id_text [String, nil] `params[:id]`
     # @return [String]
     def self.retry_notice(id_text)
       id = job_id(id_text)
-      return "Job #{id} was queued again." if retry_job(id)
+      return jobs_notice("retried", id) if retry_job(id)
 
-      "Job #{id} was not retried: it is not failed or discarded."
+      jobs_notice("not_retried", id)
     end
 
     # @param id_text [String, nil] `params[:id]`
     # @return [String]
     def self.discard_notice(id_text)
       id = job_id(id_text)
-      return "Job #{id} was discarded." if discard_job(id)
+      return jobs_notice("discarded", id) if discard_job(id)
 
-      "Job #{id} was not discarded: it is not failed or discarded."
+      jobs_notice("not_discarded", id)
     end
 
     # @param id_text [String, nil] `params[:id]`
     # @return [String]
     def self.delete_notice(id_text)
       id = job_id(id_text)
-      return "Job #{id} was deleted." if delete_job(id)
+      return jobs_notice("deleted", id) if delete_job(id)
 
-      "Job #{id} was not deleted: it is not failed or discarded."
+      jobs_notice("not_deleted", id)
     end
 
     # @return [String]
     def self.retry_all_notice
-      "#{retry_all} failed job(s) queued again."
+      jobs_counted("notices.retried_all", retry_all)
     end
 
     # @return [String]
     def self.discard_all_failed_notice
-      "#{discard_all_failed} failed job(s) discarded."
+      jobs_counted("notices.discarded_all", discard_all_failed)
+    end
+
+    # `cybertrain.jobs_page.<key>` in the current locale.
+    # @api private
+    def self.jobs_text(key)
+      I18n.t("cybertrain.jobs_page.#{key}")
+    end
+
+    # `cybertrain.jobs_page.<key>` with count: n (`%{count}`).
+    # @api private
+    def self.jobs_counted(key, n)
+      I18n.t("cybertrain.jobs_page.#{key}", { count: n })
+    end
+
+    # `cybertrain.jobs_page.notices.<key>` with the job's `%{id}`.
+    # @api private
+    def self.jobs_notice(key, id)
+      I18n.t("cybertrain.jobs_page.notices.#{key}", { id: id.to_s })
     end
 
     # The id a route carried; 0 (no row) for anything but digits.
@@ -252,42 +274,44 @@ module Cybertrain
       rows = Array.new(0) { SafeString.of("") }
       i = 0
       while i < STATES.size
-        cells = Html.safe_join([Html.tag("td", {}, STATES[i]), Html.tag("td", {}, counts[i].to_s)])
+        cells = Html.safe_join([Html.tag("td", {}, jobs_text("states.#{STATES[i]}")), Html.tag("td", {}, counts[i].to_s)])
         rows << Html.tag("tr", {}, cells)
         i += 1
       end
-      head = Html.tag("thead", {}, Html.tag("tr", {}, Html.safe_join([Html.tag("th", {}, "State"), Html.tag("th", {}, "Jobs")])))
+      head = Html.tag("thead", {}, Html.tag("tr", {}, Html.safe_join([Html.tag("th", {}, jobs_text("columns.state")), Html.tag("th", {}, jobs_text("columns.jobs"))])))
       Html.tag("table", { "class" => "jobs-counts" }, Html.safe_join([head, Html.tag("tbody", {}, Html.safe_join(rows))]))
     end
 
     def self.queued_line(queued)
-      text = "No queued jobs."
+      line = jobs_text("queued.none")
       if queued > 0
         rows = DB.with { |c| c.execute("SELECT MIN(run_at) AS due FROM cybertrain_jobs WHERE state = 'queued'") }
-        text = "#{queued} queued; the next is due at #{time_text(Cast.int(rows[0]["due"]))}."
+        due = time_text(Cast.int(rows[0]["due"]))
+        line = I18n.t("cybertrain.jobs_page.queued.next", { count: queued, time: due })
       end
-      Html.tag("p", { "class" => "jobs-queued" }, text)
+      Html.tag("p", { "class" => "jobs-queued" }, line)
     end
 
     def self.bulk_buttons(path, helpers)
       Html.tag("div", { "class" => "jobs-bulk" },
-               Html.safe_join([helpers.button_to_path("Retry all failed", "#{path}/retry_all"),
-                               helpers.button_to_path("Discard all failed", "#{path}/discard_all")]))
+               Html.safe_join([helpers.button_to_path(jobs_text("buttons.retry_all"), "#{path}/retry_all"),
+                               helpers.button_to_path(jobs_text("buttons.discard_all"), "#{path}/discard_all")]))
     end
 
     # The failed or discarded list, or a line saying it is empty.
     def self.finished_list(state, page, per, path, helpers)
       rows = jobs_rows(state, page, per)
-      return Html.tag("p", { "class" => "jobs-empty" }, "No #{state} jobs.") if rows.empty?
+      return Html.tag("p", { "class" => "jobs-empty" }, jobs_text("empty.#{state}")) if rows.empty?
 
-      head = header_row(["ID", "Kind", "Arguments", "Error", "Attempts", "Run at", "Updated", ""])
+      head = header_row([jobs_text("columns.id"), jobs_text("columns.kind"), jobs_text("columns.arguments"), jobs_text("columns.error"),
+                         jobs_text("columns.attempts"), jobs_text("columns.run_at"), jobs_text("columns.updated"), ""])
       lines = Array.new(0) { SafeString.of("") }
       rows.each do |row|
         id = Cast.int(row["id"])
         buttons = Array.new(0) { SafeString.of("") }
-        buttons << helpers.button_to_path("Retry", "#{path}/#{id}/retry")
-        buttons << helpers.button_to_path("Discard", "#{path}/#{id}/discard") if state == "failed"
-        buttons << helpers.button_to_path("Delete", "#{path}/#{id}/delete")
+        buttons << helpers.button_to_path(jobs_text("buttons.retry"), "#{path}/#{id}/retry")
+        buttons << helpers.button_to_path(jobs_text("buttons.discard"), "#{path}/#{id}/discard") if state == "failed"
+        buttons << helpers.button_to_path(jobs_text("buttons.delete"), "#{path}/#{id}/delete")
         cells = Array.new(0) { SafeString.of("") }
         cells << Html.tag("td", {}, id.to_s)
         cells << Html.tag("td", {}, Cast.str(row["kind"]))
@@ -304,13 +328,14 @@ module Cybertrain
 
     def self.running_list(page, per, now)
       rows = jobs_rows("running", page, per)
-      return Html.tag("p", { "class" => "jobs-empty" }, "No running jobs.") if rows.empty?
+      return Html.tag("p", { "class" => "jobs-empty" }, jobs_text("empty.running")) if rows.empty?
 
-      head = header_row(["ID", "Kind", "Claimed by", "Heartbeat"])
+      head = header_row([jobs_text("columns.id"), jobs_text("columns.kind"), jobs_text("columns.claimed_by"), jobs_text("columns.heartbeat")])
       lines = Array.new(0) { SafeString.of("") }
       rows.each do |row|
         beat = row["heartbeat_at"]
-        age = beat.nil? ? "none" : "#{now - Cast.int(beat)} s ago"
+        age = jobs_text("heartbeat.none")
+        age = I18n.t("cybertrain.jobs_page.heartbeat.ago", { seconds: (now - Cast.int(beat)).to_s }) unless beat.nil?
         cells = Array.new(0) { SafeString.of("") }
         cells << Html.tag("td", {}, Cast.int(row["id"]).to_s)
         cells << Html.tag("td", {}, Cast.str(row["kind"]))
@@ -327,12 +352,13 @@ module Cybertrain
       Html.tag("thead", {}, Html.tag("tr", {}, Html.safe_join(cells)))
     end
 
-    # Newer / Older links when the longest list has rows before or after
-    # this page; nothing otherwise.
+    # Newer / Older links (the pager's `cybertrain.pager.newer` / `older`)
+    # when the longest list has rows before or after this page; nothing
+    # otherwise.
     def self.pagination(page, per, most, path)
       links = Array.new(0) { SafeString.of("") }
-      links << Html.tag("a", { "href" => "#{path}?page=#{page - 1}" }, "Newer") if page > 1
-      links << Html.tag("a", { "href" => "#{path}?page=#{page + 1}" }, "Older") if page * per < most
+      links << Html.tag("a", { "href" => "#{path}?page=#{page - 1}" }, I18n.t("cybertrain.pager.newer")) if page > 1
+      links << Html.tag("a", { "href" => "#{path}?page=#{page + 1}" }, I18n.t("cybertrain.pager.older")) if page * per < most
       return SafeString.of("") if links.empty?
 
       Html.tag("nav", { "class" => "pagination" }, Html.safe_join(links, " "))

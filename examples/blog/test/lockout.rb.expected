@@ -1,0 +1,19 @@
+== 20260925174942 CreateArticles: migrating
+done
+== 20260925174943 CreateComments: migrating
+done
+== 20261112102827 CreateUsers: migrating
+done
+== 20261112102828 CreateSessions: migrating
+done
+== 20261112174320 AddCoverToArticles: migrating
+done
+ok   10 failures lock the account for an hour with the wrong-password message
+ok   a locked account refuses the right password until locked_until passes
+ok   a successful sign-in clears the count
+updated ann@example.com
+updated ann@example.com
+ok   ./APP user EMAIL PASSWORD clears a lock
+ok   with auth_lockout_attempts 0 an existing lock is not enforced
+ok   auth_lockout_attempts 0 never locks
+6 tests, 158 assertions, 0 failures

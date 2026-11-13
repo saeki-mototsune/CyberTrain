@@ -17,8 +17,8 @@ module Cybertrain
     # configuration is usable. The areas in the order boot has always
     # reported them: the session cookie and CSRF, the request and upload
     # limits, the background work, pagination, the proxies, the health
-    # check, the feeds, the stream endpoint, the security headers and the
-    # encryption keys. Reads only; safe to call from a test or a
+    # check, the feeds, the stream endpoint, the locales, the
+    # authentication limits, the security headers and the encryption keys. Reads only; safe to call from a test or a
     # `--check`-style command with no database and no writable disk.
     # @return [String]
     # @api public
@@ -51,6 +51,12 @@ module Cybertrain
       return problem unless problem.empty?
 
       problem = stream_error
+      return problem unless problem.empty?
+
+      problem = i18n_error
+      return problem unless problem.empty?
+
+      problem = auth_error
       return problem unless problem.empty?
 
       problem = security_error
@@ -140,6 +146,46 @@ module Cybertrain
         return "scheduler_lease_ttl (#{@scheduler_lease_ttl}) must be at least twice scheduler_interval (#{@scheduler_interval})"
       end
       return "scheduler_tz #{@scheduler_tz.inspect} is not a known time zone" unless TimeZone.find(@scheduler_tz).found?
+
+      ""
+    end
+
+    # The error Application#boot reports when i18n_default_locale or an
+    # entry of i18n_available_locales is not a locale name (`en`, `pt-BR`),
+    # or the default is not in a non-empty i18n_available_locales; "" when
+    # all are fine.
+    def i18n_error
+      default_name = @i18n_default_locale.to_s
+      unless Config.locale_name?(default_name)
+        return "i18n_default_locale (or CYBERTRAIN_I18N_DEFAULT_LOCALE) must be a locale name such as en or pt-BR (got #{default_name.inspect})"
+      end
+      list = @i18n_available_locales
+      i = 0
+      while i < list.size
+        entry = list[i].to_s
+        unless Config.locale_name?(entry)
+          return "i18n_available_locales entries must be locale names such as en or pt-BR (got #{entry.inspect})"
+        end
+        i += 1
+      end
+      if !list.empty? && !list.include?(@i18n_default_locale)
+        return "i18n_default_locale #{@i18n_default_locale.inspect} is not in i18n_available_locales #{list.inspect}"
+      end
+
+      ""
+    end
+
+    # The error Application#boot reports when an auth_* setting is out of
+    # range: auth_lockout_attempts and auth_idle_timeout below 0 (0 is
+    # off), auth_lockout_period and auth_remember_for below 1; "" when all
+    # are fine.
+    def auth_error
+      if @auth_lockout_attempts < 0
+        return "auth_lockout_attempts must be 0 (off) or more (got #{@auth_lockout_attempts})"
+      end
+      return "auth_lockout_period must be at least 1 second (got #{@auth_lockout_period})" if @auth_lockout_period < 1
+      return "auth_remember_for must be at least 1 second (got #{@auth_remember_for})" if @auth_remember_for < 1
+      return "auth_idle_timeout must be 0 (off) or more (got #{@auth_idle_timeout})" if @auth_idle_timeout < 0
 
       ""
     end

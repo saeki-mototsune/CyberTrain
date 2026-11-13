@@ -32,6 +32,21 @@ end
 Views = Cybertrain::Views
 Views.configure("test/fixtures/views", cache: true)
 
+# The application dictionary of the "number helpers read ..." test: a Hash
+# it fills, installed as gen/locales.rb installs Gen::Locales. Empty, every
+# other test reads the bundled en and ja dictionaries.
+module HelperLocales
+  TEXTS = { "" => "" }
+  TEXTS.delete("")
+
+  def self.lookup(key) = TEXTS[key]
+  def self.lookup_list(key) = key == "\u0000" ? [""] : []
+  def self.resolver = ->(key) { HelperLocales.lookup(key) }
+  def self.list_resolver = ->(key) { HelperLocales.lookup_list(key) }
+end
+
+I18n.install_dictionary(HelperLocales.resolver, HelperLocales.list_resolver)
+
 ROUTE_CALLS = []
 
 def route_param(v)
@@ -388,8 +403,15 @@ test "time_tag for Time, Date, text and format:" do
   assert_equal "<time datetime=\"2026-11-10\">November 10, 2026</time>", render_inline("<%= time_tag d, format: :long %>", time_env)
   # A block is the text; other keywords are attributes.
   assert_equal "<time datetime=\"2026-11-10\" class=\"when\"><i>x</i></time>", render_inline("<%= time_tag d, class: \"when\" do %><i>x</i><% end %>", time_env)
+  # A format name is a time.formats / date.formats key (I18n.l): one no
+  # dictionary holds is refused, as is a format that is neither a name
+  # nor a pattern.
   msg = assert_raises("RuntimeError") { render_inline("<%= time_tag t, format: :iso %>", time_env) }
-  assert_equal "posts/inline:1: time_tag format: must be :short, :long or a strftime String, got iso", msg
+  assert_equal "posts/inline:1: translation missing: en.time.formats.iso", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= time_tag d, format: :iso %>", time_env) }
+  assert_equal "posts/inline:1: translation missing: en.date.formats.iso", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= time_tag t, format: 3 %>", time_env) }
+  assert_equal "posts/inline:1: time_tag format: must be a format name (:short, :long, ...) or a strftime String, got 3", msg
   msg = assert_raises("RuntimeError") { render_inline("<%= time_tag \"x\" %>", time_env) }
   assert_equal "posts/inline:1: time_tag expects a Time or a Date, got x", msg
 end
@@ -454,6 +476,220 @@ test "current_page? path only, with query, false on POST" do
   assert_equal "true", render_with(page_helpers("GET", "/posts/7"), "<%= current_page?(post) %>")
   # Without a controller there is no current page.
   assert_equal "false", render_inline("<%= current_page?(\"/posts\") %>")
+end
+
+test "time_tag_strftime formats every directive the bundled formats use" do
+  # The bundled en and ja date.formats / time.formats use %Y %m %d %b %B
+  # %a %H %M %S %z; %y %e %-d %-m are the other directives rails-i18n's
+  # locales use.
+  jan = Time.utc(2026, 1, 5, 3, 4, 9)
+  assert_equal "26| 5|+0000|5|1|2026/01/05 03:04:09|Mon Jan January",
+               Cybertrain::Template::Helpers.time_tag_strftime(jan, "%y|%e|%z|%-d|%-m|%Y/%m/%d %H:%M:%S|%a %b %B")
+  assert_equal "26| 5|5|1|2026-01-05",
+               Cybertrain::Template::Helpers.time_tag_strftime(Date.new(2026, 1, 5), "%y|%e|%-d|%-m|%Y-%m-%d")
+end
+
+test "t and l in a template: the bundled dictionary, lazy keys, the missing span" do
+  I18n.locale = nil
+  I18n.mark_missing = true
+  I18n.available_locales = [:en, :ja]
+  # An absolute key, escaped by the template ("can't" has an apostrophe).
+  assert_equal "can&#39;t be blank", render_inline("<%= t(\"errors.messages.blank\") %>")
+  assert_equal "can&#39;t be blank", render_inline("<%= translate(\"errors.messages.blank\") %>")
+  assert_equal "を入力してください", render_inline("<%= t(\"errors.messages.blank\", locale: :ja) %>")
+  # count: picks the plural form.
+  assert_equal "3 errors prohibited this post from being saved",
+               render_inline("<%= t(\"errors.template.header\", count: 3, model: \"post\") %>")
+  # A lazy key under the template's name, posts/inline.
+  assert_equal "<span class=\"translation_missing\" title=\"translation missing: en.posts.inline.page_title\">Page Title</span>",
+               render_inline("<%= t(\".page_title\") %>")
+  assert_equal "Fallback &amp; more", render_inline("<%= t(\".page_title\", default: \"Fallback & more\") %>")
+  # l, with the template's local t (a Time) as its argument: a local of
+  # that name is still the local.
+  assert_equal "2026-11-10|10 Nov 12:00|2026/11/10|PM", render_inline("<%= l(d) %>|<%= l(t, format: :short) %>|<%= localize(d, locale: :ja) %>|<%= l(t, format: raw(\"%p\")) %>", time_env)
+  # The wrong number of arguments, a value l cannot format, and a lazy key
+  # with no template name.
+  msg = assert_raises("RuntimeError") { render_inline("<%= t(\"a\", \"b\") %>") }
+  assert_equal "posts/inline:1: wrong number of arguments for 't' (given 2, expected 1)", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= l(\"2026-11-10\") %>") }
+  assert_equal "posts/inline:1: l: expected a Time or a Date (got String)", msg
+  nameless = Cybertrain::Template::Template.parse("<%= t(\".x\") %>", "")
+  msg = assert_raises("RuntimeError") { Cybertrain::Template::Interpreter.new(Cybertrain::Template::Helpers.new(nil)).render(nameless, new_env) }
+  assert_equal ":1: t: the lazy key \".x\" needs a template name", msg
+end
+
+# src rendered with the thread's locale set to loc.
+def render_in(loc, src, env = new_env)
+  I18n.with_locale(loc) { render_inline(src, env) }
+end
+
+test "number helpers in ja" do
+  I18n.locale = nil
+  I18n.available_locales = [:en, :ja]
+  # rails-i18n's ja: currency "%n%u", unit 円, precision 0; decimal_units
+  # "%n %u" (the vendored fixture has the space); storage_units "%n%u".
+  assert_equal "1,234円|-1,235円|$1,234", render_in(:ja, "<%= number_to_currency(1234) %>|<%= number_to_currency(-1234.5) %>|<%= number_to_currency(1234, unit: '$', format: '%u%n') %>")
+  assert_equal "1.23 百万|1.23 千|123|1.23 十億", render_in(:ja, "<%= number_to_human(1234567) %>|<%= number_to_human(1234) %>|<%= number_to_human(123) %>|<%= number_to_human(1234567890) %>")
+  assert_equal "1バイト|123バイト|1.21KB|1.18MB", render_in(:ja, "<%= number_to_human_size(1) %>|<%= number_to_human_size(123) %>|<%= number_to_human_size(1234) %>|<%= number_to_human_size(1234567) %>")
+  assert_equal "1,234,567.5|111.235|100.000%", render_in(:ja, "<%= number_with_delimiter(1234567.5) %>|<%= number_with_precision(111.2345) %>|<%= number_to_percentage(100) %>")
+  # nil still renders "".
+  assert_equal "|", render_in(:ja, "<%= number_to_currency(nil) %>|<%= number_to_human_size(nil) %>")
+end
+
+test "number helpers in en are unchanged" do
+  I18n.locale = nil
+  I18n.available_locales = [:en, :ja]
+  # 4a's Rails examples, read from the en dictionary now.
+  assert_equal "1,234,567|1,234.5", render_in(:en, "<%= number_with_delimiter(1234567) %>|<%= number_with_delimiter(1234.5) %>")
+  assert_equal "111.235|111.23|13|1.111,23", render_in(:en, "<%= number_with_precision(111.2345) %>|<%= number_with_precision(111.2345, precision: 2) %>|<%= number_with_precision(13, precision: 5, strip_insignificant_zeros: true) %>|<%= number_with_precision(1111.2345, precision: 2, separator: ',', delimiter: '.') %>")
+  assert_equal "123|1.23 Thousand|1.23 Million|1230 Quadrillion|490 Thousand|500 lt|0", render_in(:en, "<%= number_to_human(123) %>|<%= number_to_human(1234) %>|<%= number_to_human(1234567) %>|<%= number_to_human(1234567890123456789) %>|<%= number_to_human(489939, precision: 2) %>|<%= number_to_human(500000, units: { unit: 'ml', thousand: 'lt' }) %>|<%= number_to_human(0) %>")
+  assert_equal "100.000%|100%|302.24399%", render_in(:en, "<%= number_to_percentage(100) %>|<%= number_to_percentage(100, precision: 0) %>|<%= number_to_percentage(302.24398923423, precision: 5) %>")
+  assert_equal "$1,234,567,890.50|$1,234,567,890.51|$1,234,567,890.506|-$1,234,567,890.50|1,234,567,890.50 €", render_in(:en, "<%= number_to_currency(1234567890.50) %>|<%= number_to_currency(1234567890.506) %>|<%= number_to_currency(1234567890.506, precision: 3) %>|<%= number_to_currency(-1234567890.50) %>|<%= number_to_currency(1234567890.50, unit: '€', format: '%n %u') %>")
+  assert_equal "1 Byte|123 Bytes|0 Bytes|-1 Byte|1.21 KB|12.1 KB|1.18 MB|1.15 GB|1.12 TB|1.1 PB|1.07 EB", render_in(:en, "<%= number_to_human_size(1) %>|<%= number_to_human_size(123) %>|<%= number_to_human_size(0) %>|<%= number_to_human_size(-1) %>|<%= number_to_human_size(1234) %>|<%= number_to_human_size(12345) %>|<%= number_to_human_size(1234567) %>|<%= number_to_human_size(1234567890) %>|<%= number_to_human_size(1234567890123) %>|<%= number_to_human_size(1234567890123456) %>|<%= number_to_human_size(1234567890123456789) %>")
+end
+
+test "number helpers read every setting of an application's locale, then number.format, then the default locale" do
+  I18n.locale = nil
+  I18n.available_locales = [:en, :ja, :de]
+  t = HelperLocales::TEXTS
+  t["de.number.format.delimiter"] = "."
+  t["de.number.format.separator"] = ","
+  t["de.number.format.precision"] = "2"
+  t["de.number.currency.format.unit"] = "€"
+  t["de.number.currency.format.format"] = "%n %u"
+  t["de.number.percentage.format.format"] = "%n %"
+  t["de.number.human.decimal_units.format"] = "%n%u"
+  t["de.number.human.decimal_units.units.thousand"] = "Tsd."
+  t["de.number.human.storage_units.format"] = "%u %n"
+  t["de.number.human.storage_units.units.byte.one"] = "Byte"
+  t["de.number.human.storage_units.units.byte.other"] = "Bytes"
+  t["de.number.human.storage_units.units.kb"] = "kB"
+  # The namespace's own setting, else de's number.format (delimiter ".",
+  # separator ",", precision 2); what de lacks altogether is en's
+  # (number.human.decimal_units.units.million, storage_units.units.mb).
+  assert_equal "1.234.567,5|1.111,23", render_in(:de, "<%= number_with_delimiter(1234567.5) %>|<%= number_with_precision(1111.2345) %>")
+  assert_equal "1.234,50 €|-1.234,50 €", render_in(:de, "<%= number_to_currency(1234.5) %>|<%= number_to_currency(-1234.5) %>")
+  assert_equal "1.234,50 %", render_in(:de, "<%= number_to_percentage(1234.5) %>")
+  assert_equal "1,2Tsd.|1,2Million|12", render_in(:de, "<%= number_to_human(1234) %>|<%= number_to_human(1234567) %>|<%= number_to_human(12) %>")
+  assert_equal "Byte 1|Bytes 2|kB 1,2|MB 1,2", render_in(:de, "<%= number_to_human_size(1) %>|<%= number_to_human_size(2) %>|<%= number_to_human_size(1234) %>|<%= number_to_human_size(1234567) %>")
+  # An application key overrides the bundled one in a bundled locale.
+  t["en.number.currency.format.unit"] = "US$"
+  assert_equal "US$1.50", render_in(:en, "<%= number_to_currency(1.5) %>")
+  t.clear
+  assert_equal "$1.50", render_in(:en, "<%= number_to_currency(1.5) %>")
+  I18n.available_locales = [:en, :ja]
+end
+
+# The English settings of each helper, as Rails' NumberHelper DEFAULTS.
+NUMBER_SRC = "<%= number_with_delimiter(1234.5) %>|<%= number_with_precision(1.2345, precision: 2) %>|" \
+             "<%= number_to_currency(12.5) %>|<%= number_to_percentage(12.5) %>|<%= number_to_human(1234567) %>|" \
+             "<%= number_to_human_size(1) %>|<%= number_to_human_size(1234) %>"
+NUMBER_EN = "1,234.5|1.23|$12.50|12.500%|1.23 Million|1 Byte|1.21 KB"
+
+test "number helpers answer the English settings when neither the current nor the default locale has number keys" do
+  I18n.locale = nil
+  I18n.mark_missing = true
+  t = HelperLocales::TEXTS
+  t["fr.greeting"] = "Bonjour"
+  t["de.greeting"] = "Hallo"
+  # fr is the default and the current locale, and holds none of them.
+  I18n.default_locale = :fr
+  I18n.available_locales = [:fr, :de]
+  assert_equal NUMBER_EN, render_in(:fr, NUMBER_SRC)
+  # de is current, fr the default: neither has them.
+  assert_equal NUMBER_EN, render_in(:de, NUMBER_SRC)
+  # A setting one of them has still wins, the rest stay English.
+  t["fr.number.format.separator"] = ","
+  assert_equal "1,234,5|1,23|$12,50|12,500%|1,23 Million|1 Byte|1,21 KB", render_in(:de, NUMBER_SRC)
+  t.clear
+  I18n.default_locale = :en
+  I18n.available_locales = [:en, :ja]
+end
+
+test "a precision: keyword is read as 0.4 read it, in all four helpers" do
+  I18n.locale = nil
+  I18n.default_locale = :en
+  I18n.available_locales = [:en, :ja]
+  # A Float precision is its whole part; a text that is no number is 0.
+  assert_equal "1.23|1.23|1.23 Thousand|12.50%|$1.23", render_in(:en, "<%= number_with_precision(1.2345, precision: 2.0) %>|" \
+    "<%= number_with_precision(1.2345, precision: '2') %>|<%= number_to_human(1234, precision: 3.0) %>|" \
+    "<%= number_to_percentage(12.5, precision: 2.0) %>|<%= number_to_currency(1.234, precision: 2.0) %>")
+  assert_equal "1|1%|$1", render_in(:en, "<%= number_with_precision(1.2345, precision: 'abc') %>|" \
+    "<%= number_to_percentage(1.2, precision: 'abc') %>|<%= number_to_currency(1.234, precision: 'abc') %>")
+end
+
+test "time_ago_in_words and distance_of_time_in_words in en and ja" do
+  I18n.locale = nil
+  I18n.available_locales = [:en, :ja]
+  h = Cybertrain::Template::Helpers.new(nil)
+  now = Time.at(1_700_000_000)
+  seconds = [0, 29, 45, 150, 44 * 60, 50 * 60, 5 * 3600, 30 * 3600, 3 * 86_400,
+             35 * 86_400, 100 * 86_400, 400 * 86_400, 500 * 86_400, 700 * 86_400, 3 * 365 * 86_400]
+  words = ["1分未満", "1分未満", "1分", "3分", "44分", "約1時間", "約5時間", "1日", "3日",
+           "約1ヶ月", "3ヶ月", "約1年", "1年以上", "2年弱", "約3年"]
+  seconds.each_with_index do |s, i|
+    assert_equal words[i], I18n.with_locale(:ja) { h.distance_of_time_in_words(now - s, now) }
+  end
+  env = new_env
+  env["a"] = Time.utc(2026, 11, 10, 12, 0, 0)
+  env["b"] = Time.utc(2026, 11, 10, 12, 1, 30)
+  env["c"] = Time.utc(2025, 1, 1, 0, 0, 0)
+  env["e"] = Time.utc(2026, 5, 1, 0, 0, 0)
+  # 90 s, and 1 year 4 months (either order).
+  assert_equal "2 minutes|over 1 year|over 1 year", render_in(:en, "<%= distance_of_time_in_words(a, b) %>|<%= distance_of_time_in_words(c, e) %>|<%= distance_of_time_in_words(e, c) %>", env)
+  assert_equal "2分|1年以上|1年以上", render_in(:ja, "<%= distance_of_time_in_words(a, b) %>|<%= distance_of_time_in_words(c, e) %>|<%= distance_of_time_in_words(e, c) %>", env)
+  env["t"] = Time.now - 90
+  assert_equal "2 minutes", render_in(:en, "<%= time_ago_in_words(t) %>", env)
+  assert_equal "2分", render_in(:ja, "<%= time_ago_in_words(t) %>", env)
+  env["t"] = Time.now - 485 * 86_400
+  assert_equal "over 1 year", render_in(:en, "<%= time_ago_in_words(t) %>", env)
+  assert_equal "1年以上", render_in(:ja, "<%= time_ago_in_words(t) %>", env)
+  msg = assert_raises("RuntimeError") { render_inline("<%= distance_of_time_in_words(a) %>", env) }
+  assert_equal "posts/inline:1: wrong number of arguments for 'distance_of_time_in_words' (given 1, expected 2)", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= distance_of_time_in_words(a, 'now') %>", env) }
+  assert_equal "posts/inline:1: 'distance_of_time_in_words' expects a Time", msg
+  msg = assert_raises("RuntimeError") { render_inline("<%= distance_of_time_in_words(a, b, scope: 'x') %>", env) }
+  assert_equal "posts/inline:1: 'distance_of_time_in_words' takes no keyword arguments (given scope)", msg
+end
+
+test "pluralize leaves a word alone outside English" do
+  I18n.locale = nil
+  I18n.available_locales = [:en, :ja]
+  assert_equal "2 記事|1 記事|0 記事|2 post|2 記事たち", render_in(:ja, "<%= pluralize(2, '記事') %>|<%= pluralize(1, '記事') %>|<%= pluralize(0, '記事') %>|<%= pluralize(2, 'post') %>|<%= pluralize(2, '記事', '記事たち') %>")
+  assert_equal "2 posts|1 post|3 people|2 mice", render_in(:en, "<%= pluralize(2, 'post') %>|<%= pluralize(1, 'post') %>|<%= pluralize(3, 'person') %>|<%= pluralize(2, 'mouse', 'mice') %>")
+end
+
+test "paginate in ja, and an application's pager text escaped" do
+  I18n.locale = nil
+  I18n.available_locales = [:en, :ja]
+  helpers = Cybertrain::Template::Helpers.new(controller_for_query("page=2"))
+  html = I18n.with_locale(:ja) { render_with(helpers, "<%= paginate page, '/posts' %>", pager_env(2, true)) }
+  assert_equal "<nav class=\"pager\"><a href=\"/posts\" rel=\"prev\">前へ</a> <span class=\"pager-current\">2ページ</span> <a href=\"/posts?page=3\" rel=\"next\">次へ</a></nav>", html
+  HelperLocales::TEXTS["en.cybertrain.pager.newer"] = "<Newer>"
+  HelperLocales::TEXTS["en.cybertrain.pager.page"] = "%{page} of many & more"
+  html = render_with(helpers, "<%= paginate page, '/posts' %>", pager_env(2, false))
+  assert_equal "<nav class=\"pager\"><a href=\"/posts\" rel=\"prev\">&lt;Newer&gt;</a> <span class=\"pager-current\">2 of many &amp; more</span></nav>", html
+  HelperLocales::TEXTS.clear
+end
+
+test "time_tag's format names go through I18n.l: a ja page gets ja dates" do
+  I18n.locale = nil
+  I18n.available_locales = [:en, :ja]
+  assert_equal "<time datetime=\"2026-11-10\">2026年11月10日(火)</time>", render_in(:ja, "<%= time_tag d, format: :long %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10\">11/10</time>", render_in(:ja, "<%= time_tag d, format: :short %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10\">2026/11/10</time>", render_in(:ja, "<%= time_tag d %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">2026/11/10 12:00</time>", render_in(:ja, "<%= time_tag t, format: :long %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">11/10 12:00</time>", render_in(:ja, "<%= time_tag t, format: :short %>", time_env)
+  assert_equal "<time datetime=\"2026-11-10T12:00:00Z\">2026年11月10日(火) 12時00分00秒 +0000</time>", render_in(:ja, "<%= time_tag t %>", time_env)
+  # A pattern String stays a strftime pattern, as before (strftime's
+  # English names; only a format name is looked up).
+  assert_equal "<time datetime=\"2026-11-10\">Tue 10</time>", render_in(:ja, "<%= time_tag d, format: '%a %-d' %>", time_env)
+  # An application's format name.
+  HelperLocales::TEXTS["ja.date.formats.month"] = "%Y年%-m月"
+  assert_equal "<time datetime=\"2026-11-10\">2026年11月</time>", render_in(:ja, "<%= time_tag d, format: :month %>", time_env)
+  HelperLocales::TEXTS.clear
+  # en is byte for byte what the fixed patterns gave.
+  assert_equal "<time datetime=\"2026-11-10\">November 10, 2026</time>", render_in(:en, "<%= time_tag d, format: :long %>", time_env)
 end
 
 Cybertrain::Test.run!

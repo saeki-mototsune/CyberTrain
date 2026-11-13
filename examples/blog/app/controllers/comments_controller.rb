@@ -1,4 +1,6 @@
 class CommentsController < ApplicationController
+  # Visitors comment; deleting a comment needs a signed-in user.
+  allow_unauthenticated_access only: [:create]
   before_action :set_article
 
   # POST /articles/1/comments
@@ -10,7 +12,8 @@ class CommentsController < ApplicationController
     @comment = Comment.new(comment_params)
     @comment.article_id = @article.id
     unless @comment.save
-      flash[:alert] = "Comment could not be saved: #{@comment.errors.full_messages.join(", ")}"
+      reasons = @comment.errors.full_messages.join(t("support.array.words_connector"))
+      flash[:alert] = t(".not_saved", errors: reasons)
       redirect_to article_path(@article), status: :see_other
       return
     end
@@ -26,7 +29,7 @@ class CommentsController < ApplicationController
     respond_to do |format|
       format.turbo_stream
       format.html do
-        flash[:notice] = "Comment was successfully created."
+        flash[:notice] = t(".created")
         redirect_to article_path(@article), status: :see_other
       end
     end
@@ -41,7 +44,7 @@ class CommentsController < ApplicationController
     target = Cybertrain::Html.dom_id(@comment)
     @comment.destroy
     Cybertrain::Stream.broadcast_remove_to(@article, target: target)
-    flash[:notice] = "Comment was successfully destroyed."
+    flash[:notice] = t(".destroyed")
     redirect_to article_path(@article), status: :see_other
   end
 

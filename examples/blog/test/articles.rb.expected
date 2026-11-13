@@ -2,6 +2,10 @@
 done
 == 20260925174943 CreateComments: migrating
 done
+== 20261112102827 CreateUsers: migrating
+done
+== 20261112102828 CreateSessions: migrating
+done
 == 20261112174320 AddCoverToArticles: migrating
 done
 ok   GET / renders the articles index
@@ -17,28 +21,38 @@ ok   PATCH /articles/:id (POST with _method) updates and redirects with a notice
 ok   PATCH /articles/:id with invalid values re-renders the edit form
 ok   DELETE /articles/:id (POST with _method) destroys and redirects to the index
 ok   a missing article is 404
+ok   a visitor reads articles but is sent to sign in to write, edit or delete one
 ok   the index shows each article's comment count from one preload
 ok   destroying an article destroys its comments
 ok   a duplicate title is refused with has already been taken
 ok   the date filter leaves out articles created outside the range
 ok   Article.recent puts the newest first
 ok   the index shows the article count, cached for a minute
-ok   the jobs page is 404 without the token and renders with the x-admin-token header
-ok   retry, discard and delete are 404 without a token and without the session
-ok   a browser signs in at /admin/login and retries a job through its session
-ok   a wrong token at /admin/login is 404 and signs nobody in
-ok   with BLOG_ADMIN_TOKEN unset or empty nothing opens the jobs page
-ok   an admin session is 404 once BLOG_ADMIN_TOKEN changes
+ok   the jobs page is 404 to a visitor and to a user who is not an admin, and renders for an admin
+ok   retry, discard and delete are 404 to a visitor and to a user who is not an admin
+ok   an admin signs in through the sign-in form and retries a job through the session
+ok   a wrong password signs nobody in and the jobs page stays 404
+ok   the token gate's /admin/login is gone
+ok   an admin made an ordinary user again, or signed out, gets 404
 ok   config/app.rb schedules the prune of done jobs, which keeps the last 7 days
 ok   /articles.json and /articles/:id.json answer JSON through respond_to; /articles.xml is 406
 ok   the layout links the digested stylesheet, which is served immutable with its url() digested
 ok   the import map pins Turbo and the application entry point, with the CSP nonce
 ok   the order select puts the oldest first with ?order=old
 ok   counts go through number_with_delimiter and dates through time_tag
-ok   /admin/articles is 404 without the token and lists the articles with it
+ok   /admin/articles sends a visitor to sign in, is 404 to a user who is not an admin, and lists the articles to an admin
 ok   the admin list shows at most per_page (20) articles, newest first
-ok   DELETE /admin/articles/:id with the token deletes the article; without it, 404
-ok   DELETE /admin/articles/:id with the admin token but no authenticity_token is 403
-ok   a signed-in browser reaches /admin/articles, and the article page links to it
+ok   DELETE /admin/articles/:id by an admin deletes the article; by anyone else, nothing
+ok   DELETE /admin/articles/:id by an admin but without the authenticity_token is 403
+ok   a signed-in admin reaches /admin/articles, and the article page links to it
+ok   a signed-in user who is not an admin gets the concern's 404 on every admin page
+ok   ?locale=ja renders Japanese
+ok   after ?locale=ja, a plain link stays Japanese (cookie)
+ok   the language links keep the current path
+ok   Accept-Language: ja renders Japanese
+ok   an invalid locale param falls back to English
+ok   a tampered locale cookie is ignored
+ok   the sign-in page and its messages are in the chosen language
+ok   validation errors in Japanese
 ok   an article's JSON has the cover's URL and none of the cover_* columns
-37 tests, 251 assertions, 0 failures
+47 tests, 488 assertions, 0 failures

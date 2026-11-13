@@ -25,8 +25,12 @@ end
 
 def new_client
   Article.all.delete_all
+  Session.all.delete_all
+  User.all.delete_all
   Dir.glob("tmp/test_uploads/*/*").each { |path| File.delete(path) }
   client = Cybertrain::Test::Client.new(APP)
+  AppTest.user
+  AppTest.sign_in(client)
   client
 end
 

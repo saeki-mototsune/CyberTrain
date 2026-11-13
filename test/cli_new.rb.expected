@@ -4,6 +4,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -33,6 +34,8 @@ create test/.keep
 ok   new writes the app skeleton and returns the created paths
 ok   spin.toml names the package and references the framework
 ok   config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)
+ok   config/locales/en.yml is a dictionary gen's reader accepts, with hello
+ok   config/app.rb documents the i18n settings, commented
 ok   bin/blog.rb is the app's one binary: server, migrate, db
 ok   bin/gen.rb drives the generator
 ok   bin/db.rb runs migrations in development without the app's models
@@ -48,6 +51,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -81,6 +85,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -120,6 +125,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -153,6 +159,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -185,6 +192,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -222,6 +230,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -256,6 +265,7 @@ create .env.example
 create README.md
 create config/app.rb
 create config/routes.rb
+create config/locales/en.yml
 create db/schema.rb
 create db/migrate/.keep
 create app/controllers/application_controller.rb
@@ -318,16 +328,30 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only]
+  cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
-      SessionsController and RegistrationsController with their views,
-      the routes, a before_action in ApplicationController and a test.
-      --invite-only: no sign-up page. Users are created with
-      `./NAME user EMAIL` (password from stdin), and the first one
-      also at /setup, which answers only to this machine, only with the
-      one-time token the server's boot warning prints, and only while
-      no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+      the Authentication concern (included into ApplicationController),
+      SessionsController and RegistrationsController with their views
+      (their texts in the bundled en and ja dictionaries), the routes,
+      the jobs page behind require_admin, and tests. `./NAME user
+      EMAIL` creates a user (password from stdin), `./NAME user admin
+      EMAIL` makes one an admin, `user unadmin EMAIL` takes it back.
+      --invite-only: no sign-up page. The first user is created with
+      the user command, or at /setup, which answers only to this
+      machine, only with the one-time token the server's boot warning
+      prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
+      the address check).
+      --confirmable: a new account confirms its address by mail
+      before it can sign in (a form sends the link again), and a new
+      address on the account page takes effect once its own link is
+      opened. Users the user command or /setup creates are confirmed.
+      Run again over an application generated before (by 0.4, or
+      without --confirmable), it writes the missing files and a
+      migration with the missing columns, and prints a diff for each
+      file it would change, to apply by hand (patch -p1 applies them).
+      --force: overwrite those files instead (and replace 0.4's
+      authentication block in ApplicationController, unless edited).
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
@@ -412,16 +436,30 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only]
+  cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
-      SessionsController and RegistrationsController with their views,
-      the routes, a before_action in ApplicationController and a test.
-      --invite-only: no sign-up page. Users are created with
-      `./NAME user EMAIL` (password from stdin), and the first one
-      also at /setup, which answers only to this machine, only with the
-      one-time token the server's boot warning prints, and only while
-      no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+      the Authentication concern (included into ApplicationController),
+      SessionsController and RegistrationsController with their views
+      (their texts in the bundled en and ja dictionaries), the routes,
+      the jobs page behind require_admin, and tests. `./NAME user
+      EMAIL` creates a user (password from stdin), `./NAME user admin
+      EMAIL` makes one an admin, `user unadmin EMAIL` takes it back.
+      --invite-only: no sign-up page. The first user is created with
+      the user command, or at /setup, which answers only to this
+      machine, only with the one-time token the server's boot warning
+      prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
+      the address check).
+      --confirmable: a new account confirms its address by mail
+      before it can sign in (a form sends the link again), and a new
+      address on the account page takes effect once its own link is
+      opened. Users the user command or /setup creates are confirmed.
+      Run again over an application generated before (by 0.4, or
+      without --confirmable), it writes the missing files and a
+      migration with the missing columns, and prints a diff for each
+      file it would change, to apply by hand (patch -p1 applies them).
+      --force: overwrite those files instead (and replace 0.4's
+      authentication block in ApplicationController, unless edited).
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
@@ -505,16 +543,30 @@ Usage:
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
       the one detected from the bytes.
-  cybertrain generate authentication [--invite-only]
+  cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
-      SessionsController and RegistrationsController with their views,
-      the routes, a before_action in ApplicationController and a test.
-      --invite-only: no sign-up page. Users are created with
-      `./NAME user EMAIL` (password from stdin), and the first one
-      also at /setup, which answers only to this machine, only with the
-      one-time token the server's boot warning prints, and only while
-      no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+      the Authentication concern (included into ApplicationController),
+      SessionsController and RegistrationsController with their views
+      (their texts in the bundled en and ja dictionaries), the routes,
+      the jobs page behind require_admin, and tests. `./NAME user
+      EMAIL` creates a user (password from stdin), `./NAME user admin
+      EMAIL` makes one an admin, `user unadmin EMAIL` takes it back.
+      --invite-only: no sign-up page. The first user is created with
+      the user command, or at /setup, which answers only to this
+      machine, only with the one-time token the server's boot warning
+      prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
+      the address check).
+      --confirmable: a new account confirms its address by mail
+      before it can sign in (a form sends the link again), and a new
+      address on the account page takes effect once its own link is
+      opened. Users the user command or /setup creates are confirmed.
+      Run again over an application generated before (by 0.4, or
+      without --confirmable), it writes the missing files and a
+      migration with the missing columns, and prints a diff for each
+      file it would change, to apply by hand (patch -p1 applies them).
+      --force: overwrite those files instead (and replace 0.4's
+      authentication block in ApplicationController, unless edited).
   cybertrain generate helper NAME [--force]
       Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
       `spin run gen` makes callable from every template) and a test.
@@ -607,4 +659,4 @@ ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-26 tests, 324 assertions, 0 failures
+28 tests, 332 assertions, 0 failures

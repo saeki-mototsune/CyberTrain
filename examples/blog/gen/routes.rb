@@ -5,6 +5,20 @@ module Gen
   module Routes
     def self.build(router)
       router.add("GET", "/articles/:id/cover", "article_cover") { |ctx| ArticlesController.new(ctx).process(:cover) { |c| c.cover } }
+      router.add("POST", "/session", "session") { |ctx| SessionsController.new(ctx).process(:create) { |c| c.create } }
+      router.add("GET", "/session/new", "new_session") { |ctx| SessionsController.new(ctx).process(:new) { |c| c.new_action } }
+      router.add("DELETE", "/session", "") { |ctx| SessionsController.new(ctx).process(:destroy) { |c| c.destroy } }
+      router.add("POST", "/passwords", "passwords") { |ctx| PasswordsController.new(ctx).process(:create) { |c| c.create } }
+      router.add("GET", "/passwords/new", "new_password") { |ctx| PasswordsController.new(ctx).process(:new) { |c| c.new_action } }
+      router.add("GET", "/passwords/:token/edit", "edit_password") { |ctx| PasswordsController.new(ctx).process(:edit) { |c| c.edit } }
+      router.add("PATCH", "/passwords/:token", "password") { |ctx| PasswordsController.new(ctx).process(:update) { |c| c.update } }
+      router.add("PUT", "/passwords/:token", "") { |ctx| PasswordsController.new(ctx).process(:update) { |c| c.update } }
+      router.add("GET", "/account/edit", "edit_account") { |ctx| AccountsController.new(ctx).process(:edit) { |c| c.edit } }
+      router.add("PATCH", "/account", "account") { |ctx| AccountsController.new(ctx).process(:update) { |c| c.update } }
+      router.add("PUT", "/account", "") { |ctx| AccountsController.new(ctx).process(:update) { |c| c.update } }
+      router.add("DELETE", "/account", "") { |ctx| AccountsController.new(ctx).process(:destroy) { |c| c.destroy } }
+      router.add("GET", "/setup", "setup") { |ctx| SetupController.new(ctx).process(:new) { |c| c.new_action } }
+      router.add("POST", "/setup", "") { |ctx| SetupController.new(ctx).process(:create) { |c| c.create } }
       router.add("GET", "/", "root") { |ctx| ArticlesController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/articles/:article_id/comments", "article_comments") { |ctx| CommentsController.new(ctx).process(:create) { |c| c.create } }
       router.add("DELETE", "/articles/:article_id/comments/:id", "article_comment") { |ctx| CommentsController.new(ctx).process(:destroy) { |c| c.destroy } }
@@ -24,16 +38,32 @@ module Gen
       router.add("POST", "/admin/jobs/:id/retry", "") { |ctx| CybertrainJobsController.new(ctx).process(:retry) { |c| c.retry_action } }
       router.add("POST", "/admin/jobs/:id/discard", "") { |ctx| CybertrainJobsController.new(ctx).process(:discard) { |c| c.discard_action } }
       router.add("POST", "/admin/jobs/:id/delete", "") { |ctx| CybertrainJobsController.new(ctx).process(:delete) { |c| c.delete_action } }
-      router.add("GET", "/admin/login", "admin_login") { |ctx| AdminSessionsController.new(ctx).process(:new) { |c| c.new_action } }
-      router.add("POST", "/admin/login", "") { |ctx| AdminSessionsController.new(ctx).process(:create) { |c| c.create } }
       router
     end
 
-    # The helper named by a String, for templates: path_for("admin_login_path", [], { "page" => 2 }).
+    # The helper named by a String, for templates: path_for("admin_article_path", [article], { "page" => 2 }).
     def self.path_for(name, args, options = {})
       case name
       when "article_cover_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/cover", options)
       when "article_cover_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/cover", options)
+      when "session_path" then Cybertrain::Gen.with_options("/session", options)
+      when "session_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/session", options)
+      when "new_session_path" then Cybertrain::Gen.with_options("/session/new", options)
+      when "new_session_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/session/new", options)
+      when "passwords_path" then Cybertrain::Gen.with_options("/passwords", options)
+      when "passwords_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/passwords", options)
+      when "new_password_path" then Cybertrain::Gen.with_options("/passwords/new", options)
+      when "new_password_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/passwords/new", options)
+      when "edit_password_path" then Cybertrain::Gen.with_options("/passwords/#{Cybertrain::Gen.segment(args[0])}/edit", options)
+      when "edit_password_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/passwords/#{Cybertrain::Gen.segment(args[0])}/edit", options)
+      when "password_path" then Cybertrain::Gen.with_options("/passwords/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "password_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/passwords/#{Cybertrain::Gen.segment(args[0])}", options)
+      when "edit_account_path" then Cybertrain::Gen.with_options("/account/edit", options)
+      when "edit_account_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/account/edit", options)
+      when "account_path" then Cybertrain::Gen.with_options("/account", options)
+      when "account_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/account", options)
+      when "setup_path" then Cybertrain::Gen.with_options("/setup", options)
+      when "setup_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/setup", options)
       when "root_path" then Cybertrain::Gen.with_options("/", options)
       when "root_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/", options)
       when "article_comments_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}/comments", options)
@@ -52,8 +82,6 @@ module Gen
       when "admin_articles_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/articles", options)
       when "admin_article_path" then Cybertrain::Gen.with_options("/admin/articles/#{Cybertrain::Gen.segment(args[0])}", options)
       when "admin_article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/articles/#{Cybertrain::Gen.segment(args[0])}", options)
-      when "admin_login_path" then Cybertrain::Gen.with_options("/admin/login", options)
-      when "admin_login_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/admin/login", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
       end
     end
@@ -71,6 +99,78 @@ module Gen
 
     def article_cover_url(article, options = {})
       Cybertrain.url_root + article_cover_path(article, options)
+    end
+
+    def session_path(options = {})
+      Cybertrain::Gen.with_options("/session", options)
+    end
+
+    def session_url(options = {})
+      Cybertrain.url_root + session_path(options)
+    end
+
+    def new_session_path(options = {})
+      Cybertrain::Gen.with_options("/session/new", options)
+    end
+
+    def new_session_url(options = {})
+      Cybertrain.url_root + new_session_path(options)
+    end
+
+    def passwords_path(options = {})
+      Cybertrain::Gen.with_options("/passwords", options)
+    end
+
+    def passwords_url(options = {})
+      Cybertrain.url_root + passwords_path(options)
+    end
+
+    def new_password_path(options = {})
+      Cybertrain::Gen.with_options("/passwords/new", options)
+    end
+
+    def new_password_url(options = {})
+      Cybertrain.url_root + new_password_path(options)
+    end
+
+    def edit_password_path(password, options = {})
+      Cybertrain::Gen.with_options("/passwords/#{Cybertrain::Gen.segment(password)}/edit", options)
+    end
+
+    def edit_password_url(password, options = {})
+      Cybertrain.url_root + edit_password_path(password, options)
+    end
+
+    def password_path(password, options = {})
+      Cybertrain::Gen.with_options("/passwords/#{Cybertrain::Gen.segment(password)}", options)
+    end
+
+    def password_url(password, options = {})
+      Cybertrain.url_root + password_path(password, options)
+    end
+
+    def edit_account_path(options = {})
+      Cybertrain::Gen.with_options("/account/edit", options)
+    end
+
+    def edit_account_url(options = {})
+      Cybertrain.url_root + edit_account_path(options)
+    end
+
+    def account_path(options = {})
+      Cybertrain::Gen.with_options("/account", options)
+    end
+
+    def account_url(options = {})
+      Cybertrain.url_root + account_path(options)
+    end
+
+    def setup_path(options = {})
+      Cybertrain::Gen.with_options("/setup", options)
+    end
+
+    def setup_url(options = {})
+      Cybertrain.url_root + setup_path(options)
     end
 
     def root_path(options = {})
@@ -143,14 +243,6 @@ module Gen
 
     def admin_article_url(article, options = {})
       Cybertrain.url_root + admin_article_path(article, options)
-    end
-
-    def admin_login_path(options = {})
-      Cybertrain::Gen.with_options("/admin/login", options)
-    end
-
-    def admin_login_url(options = {})
-      Cybertrain.url_root + admin_login_path(options)
     end
   end
 end

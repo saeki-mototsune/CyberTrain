@@ -521,7 +521,7 @@ module Cybertrain
       # The ColumnNames is bound to a local before it is stored: an unnamed
       # temporary can be collected while the push that receives it still
       # grows the Array (the cause of a crash seen under load, see the
-      # warning in FormBuilder.humanize).
+      # warning in I18n.humanize_attribute).
       def remember_columns(sql, names, datetimes)
         entry = ColumnNames.new(names, datetimes)
         i = @name_index[sql]

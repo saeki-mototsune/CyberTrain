@@ -1,5 +1,5 @@
 ---
-source_sha256: 313dd71eafa349732eb608c4c2d8645cd2c64b746099702e52e4efec991a4e79
+source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -272,11 +272,14 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `select_tag` | `select_tag(name, option_tags = nil, include_blank:, prompt:, multiple:)` | `select_tag "order", options_for_select([["Newest", "new"], ["Oldest", "old"]], "old")` → `<select name="order" id="order">...</select>`。`SafeString` でない `option_tags` はエスケープされる。`multiple: true` で名前は `order[]` になる。ほかのキーワードは属性になる |
 | `options_for_select` | `options_for_select(choices, selected = nil)` | `f.select` の選択肢（下記）の `<option>` の行。`selected` は値か値の Array で、String として比べる |
 | `options_from_collection_for_select` | `options_from_collection_for_select(records, :id, :name, selected = nil)` | レコードごとに 1 つの `<option>`。値とテキストは `f.collection_select` と同じように読む |
+| `t`, `translate` | `t(key, default:, count:, locale:, name: value)` | リクエストのロケールでの `key` のテキストを、エスケープして返す。`posts/index.html.erb` の `t(".title")` は `posts.index.title` を、パーシャル `posts/_form.html.erb` では `posts.form.title` を読む。`_html` で終わるキーは HTML を出力し、値をエスケープする（[国際化](i18n.md#looking-up-text)） |
+| `l`, `localize` | `l(time_or_date, format: :short, locale:)` | ロケールの `time.formats` / `date.formats`、またはロケールの曜日名・月名を使う strftime のパターン（[日付と時刻](i18n.md#dates-and-times)） |
 | `label_tag`, `text_field_tag`, `hidden_field_tag`, `submit_tag` | `label_tag(name, text = nil)`, `text_field_tag(name, value = nil)`, `hidden_field_tag(name, value = nil)`, `submit_tag(value = "Save changes")` | モデルなしのフォームのタグ：`label_tag(:term)` → `<label for="term">Term</label>`。`hidden_field_tag` は `autocomplete="off"` を書く。`submit_tag` の名前は `commit`。ほかのキーワードは属性になる（`id:` は名前から作った id を置き換える） |
+| `check_box_tag` | `check_box_tag(name, value = "1", checked = false)` | モデルも hidden フィールドもないチェックボックスで、チェックしないと何も送らない：`check_box_tag :remember_me` → `<input type="checkbox" name="remember_me" id="remember_me" value="1">`。ほかのキーワードは属性 |
 | `render` | `render "name"` / `render "name", k: v` / `render partial: "name", locals: { k: v }` / `render partial: "comment", collection: @comments` / `render @comments` / `render component: "card", k: v` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)、[コレクション](#collections)、[コンポーネント](#components)を参照 |
 | `h`、`escape` | `h(text)` | エスケープする。`SafeString` はエスケープされずにそのまま通る |
 | `raw` | `raw(text)` | テキストを `SafeString` で包む（エスケープせずに出力される） |
-| `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`、`pluralize(2, "mouse")` → `"2 mice"`（`Cybertrain::Inflector` による Rails のデフォルトの英語の語形変化。アプリが定義する語形変化はサポートされない）。明示的な 3 つ目の引数が常に優先される |
+| `pluralize` | `pluralize(count, singular, plural = nil)` | `pluralize(1, "comment")` → `"1 comment"`、`pluralize(2, "mouse")` → `"2 mice"`（`Cybertrain::Inflector` による Rails のデフォルトの英語の語形変化。英語のページだけで、ほかのロケールでは語はそのまま。アプリが定義する語形変化はサポートされない）。明示的な 3 つ目の引数が常に優先される |
 | `truncate` | `truncate(text, length: 30, omission: "...")` | `truncate("Hello world", length: 8)` → `"Hello..."` |
 | `number_with_delimiter` | `number_with_delimiter(n, delimiter: ",", separator: ".")` | `1234567` → `"1,234,567"`、 `-1000` → `"-1,000"`、 `1234.5` → `"1,234.5"` |
 | `number_with_precision` | `number_with_precision(n, precision: 3, delimiter: "", separator: ".", strip_insignificant_zeros: false)` | `111.2345` → `"111.235"`、 `precision: 0` → `"111"` |
@@ -284,7 +287,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `number_to_percentage` | `number_to_percentage(n, precision: 3)` | `100` → `"100.000%"` |
 | `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`、 負の数は書式の前に `-` を書く |
 | `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (1024 進)、 `1` → `"1 Byte"` |
-| `time_ago_in_words` | `time_ago_in_words(time)` | Rails 風の区分で、秒単位の精度はない：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"` |
+| `time_ago_in_words` | `time_ago_in_words(time)` | Rails 風の区分で、秒単位の精度はない：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"`。ロケールの `datetime.distance_in_words` から（日本語なら `"2分"`） |
 | `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照 |
 | `csrf_meta_tags` / `csrf_token` | | コントローラーのセッションがなければ空 / なし |
 | `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / nonce だけ。このリクエストの [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) の nonce。ポリシーがなければ `""` |
@@ -311,11 +314,11 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `stream_source_path` | `stream_source_path(*streams, mode: "json")` | トークンと `mode=json`（または `"raw"`）付きのストリームのエンドポイントのパス |
 | `turbo_frame_tag` | `turbo_frame_tag(id_or_record, src:, loading:, target:, class:, data:) do ... end` | `<turbo-frame id="article_3" src="...">...</turbo-frame>`。レコードならその `dom_id`。属性は渡したときだけ書く |
 | `turbo_stream` | `turbo_stream.replace(target, partial:, locals:)`, `.update(target, html:)`, `.append(target) do ... end`, `.prepend`, `.before`, `.after`, `.remove(target)` | `*.turbo_stream.erb` のテンプレート用の `<turbo-stream action="...">` 要素 1 つ。ターゲットは DOM の id かレコード。ブロック、`partial:`（`locals:` 付き）、`html:` のちょうど 1 つ |
-| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`、またはブロック付き | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`。Date なら `2026-11-10`。`format:` は `:short`、`:long`、strftime の String（知らない指示子は例外になり、strftime が別の意味に読む幅やフラグも同じ：`%6L` は `%6N` を使う。`:` は `%:z` の中だけ。`%F %T %D %R %r %c %x %X %v` にはパディングのフラグを付けられない。数値の幅はパディングを置き換え、`%5e` は `"    5"` になる） |
+| `time_tag` | `time_tag(time, text = nil, format:, class:, id:, title:, data:)`、またはブロック付き | `<time datetime="2026-11-10T12:00:00Z">Tue, 10 Nov 2026 12:00:00 +0000</time>`。Date なら `2026-11-10`。`format:` がなければテキストはロケールの `:default` の書式。`format:` は書式名（`:short`、`:long`、そのほか辞書にあるもの。リクエストのロケールで `l` が整形する）か、strftime の String（英語の曜日名と月名。知らない指示子は例外になり、strftime が別の意味に読む幅やフラグも同じ：`%6L` は `%6N` を使う。`:` は `%:z` の中だけ。`%F %T %D %R %r %c %x %X %v` にはパディングのフラグを付けられない。数値の幅はパディングを置き換え、`%5e` は `"    5"` になる） |
 
 ヘルパーのテキスト引数はすべて 1 つの規則に従います：`SafeString` はエスケープされずにそのまま通り、それ以外はエスケープされます — `link_to raw('<b>raw</b>'), post` は太字のタグを文字どおりに出力しますが、`link_to post.title, post` はエスケープします。
 
-六つの数値ヘルパーは `Cybertrain::NumberHelper` のもので、Ruby のコードからは同じキーワードのモジュール関数として呼べます（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。Integer、Float、数値の String（decimal のカラムは Float です）を受け取り、10 進のテキストの桁で四捨五入するので、どちらのランタイムでも結果は同じです。それ以外の値は `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`）になり、0 から 100 の範囲外の精度も同じです。テンプレートでは `nil` は `""` になります（null を許す decimal のカラムは Rails と同じく空で表示されます）。Ruby から呼んだ `Cybertrain::NumberHelper` は、`nil` に対して今も `ArgumentError`（`"number_with_delimiter: nil is not a number"`）を発生させます。書式は英語です。
+六つの数値ヘルパーは `Cybertrain::NumberHelper` のもので、Ruby のコードからは同じキーワードのモジュール関数として呼べます（`Cybertrain::NumberHelper.number_to_currency(price, unit: "€")`）。Integer、Float、数値の String（decimal のカラムは Float です）を受け取り、10 進のテキストの桁で四捨五入するので、どちらのランタイムでも結果は同じです。それ以外の値は `ArgumentError`（`"number_with_delimiter: \"abc\" is not a number"`）になり、0 から 100 の範囲外の精度も同じです。テンプレートでは `nil` は `""` になります（null を許す decimal のカラムは Rails と同じく空で表示されます）。Ruby から呼んだ `Cybertrain::NumberHelper` は、`nil` に対して今も `ArgumentError`（`"number_with_delimiter: nil is not a number"`）を発生させます。テンプレートでは既定値がリクエストのロケール（辞書の `number.*`。日本語の `number_to_currency(1234)` は `"1,234円"`）から来て、渡したキーワードが優先されます。Ruby からでは上に示した英語の既定値です。
 
 ### tag ビルダー
 
@@ -526,7 +529,7 @@ end
 | ネストした括弧なしの呼び出しは Ruby 自身のパーサーが解決する | 括弧なしの引数を取れるのは、式の中の最も外側の呼び出しだけ |
 | 宣言されていない・綴りを間違えた属性は確実に `NoMethodError` を出す | 生成されたモデルは `"undefined method 'x' for Post"`（`Template::RuntimeError`）を出し、存在する `nil` の属性は空としてレンダリングする。`attribute_or_method?` をオーバーライドしていない手書きのモデルは、未知の名前を空としてレンダリングする |
 | `1 / 0` と `1.0 / 0` はどちらも `ZeroDivisionError` を出す | `Integer` のゼロによる除算・剰余は `"divided by 0"` を出す。`Float` は IEEE-754 に従い（`Infinity`/`NaN`）、エラーにならない |
-| `distance_of_time_in_words` や複数形化は i18n のロケールをサポートする | 英語のみで、ロケールのサポートはない |
+| `distance_of_time_in_words` や複数形化は i18n のロケールをサポートする | `time_ago_in_words`、`distance_of_time_in_words`、数値ヘルパー、`time_tag` はロケールの辞書を読む。`pluralize` の語形変化は英語だけ（[国際化](i18n.md#helpers-that-follow-the-locale)） |
 | `app/helpers` のモジュールはすべて混ぜ込まれる。シグネチャは自由で、ヘルパーがフレームワークのものを上書きできる | モジュールはビルド時に走査され、生成された `case` になる：名前付きのパラメーターだけ、省略可能なものは 3 つまで、フレームワークのヘルパー名と `_path`/`_url` で終わる名前は不可（[アプリケーションのヘルパー](#application-helpers)） |
 | ViewComponent：`render CardComponent.new(title: "x")`、`with_collection`、スロット | 名前による `render component: "card", title: "x"`、ブロックからの `content`、ただ一つの必須キーワードと同じ名前のコンポーネントには `collection:`。スロットはない（[コンポーネント](#components)、[コレクション](#collections)） |
 | 後の `layout` の行が前のものを置き換える | 最初に当てはまった `layout` の宣言が勝つ（[コントローラーごとのレイアウト](#per-controller-layouts)） |

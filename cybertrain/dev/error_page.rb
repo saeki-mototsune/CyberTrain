@@ -131,7 +131,8 @@ module Cybertrain
 
       def error_html(ctx, class_name, message)
         request = ctx.request
-        target = request.query_string.empty? ? request.path : "#{request.path}?#{ParameterFilter.filter_query(request.query_string)}"
+        path = ParameterFilter.filter_path(request.path)
+        target = request.query_string.empty? ? path : "#{path}?#{ParameterFilter.filter_query(request.query_string)}"
         html = +"<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n"
         html << "<title>" << Html.escape(class_name) << "</title>\n"
         html << "<style>body { font-family: sans-serif; margin: 0; } main { padding: 1rem 2rem; } " \

@@ -1,14 +1,19 @@
 require "cybertrain/cache"
 
 class ArticlesController < ApplicationController
-  before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
-  # The article page links to /admin/articles for an admin
+  # Anyone may read an article and fetch its cover; writing, editing and
+  # deleting (a cover is attached by create and update) need a signed-in
+  # user (the Authentication concern's require_authentication). The
+  # article page links to /admin/articles for an admin
   # (ApplicationController#admin?).
-  helper_method :admin?
+  allow_unauthenticated_access only: [:index, :show, :cover]
+  before_action :set_article, only: [:show, :edit, :update, :destroy, :cover]
 
   # GET /articles/1/cover -- @article comes from before_action :set_article, so
-  # the download is scoped exactly like show: the blog has no accounts, so
-  # whoever may read the article may fetch its cover.
+  # the download is scoped exactly like show: whoever may read the article
+  # (anyone, signed in or not) may fetch its cover, so :cover is in
+  # allow_unauthenticated_access beside :show. show's own body (a blank
+  # comment for the form) decides nothing about who may read.
   # send_blob is the one way to serve uploads: it sets the type from what the
   # server detected, nosniff, a locked-down CSP and Content-Disposition
   # (inline for images only, a download otherwise).
@@ -73,7 +78,7 @@ class ArticlesController < ApplicationController
     @article = Article.new(article_params)
     @article.cover_file = params.nested(:article).upload(:cover)
     if @article.save
-      flash[:notice] = "Article was successfully created."
+      flash[:notice] = t(".created")
       redirect_to article_path(@article), status: :see_other
     else
       render :new, status: :unprocessable_entity
@@ -84,7 +89,7 @@ class ArticlesController < ApplicationController
   def update
     @article.cover_file = params.nested(:article).upload(:cover)
     if @article.update(article_params)
-      flash[:notice] = "Article was successfully updated."
+      flash[:notice] = t(".updated")
       redirect_to article_path(@article), status: :see_other
     else
       render :edit, status: :unprocessable_entity
@@ -94,7 +99,7 @@ class ArticlesController < ApplicationController
   # DELETE /articles/1
   def destroy
     @article.destroy
-    flash[:notice] = "Article was successfully destroyed."
+    flash[:notice] = t(".destroyed")
     redirect_to articles_path, status: :see_other
   end
 

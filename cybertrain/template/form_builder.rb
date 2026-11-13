@@ -26,6 +26,7 @@
 require "cybertrain/html"
 require "cybertrain/model"
 require "cybertrain/generator/inflector"
+require "cybertrain/i18n"
 
 module Cybertrain
   class FormBuilder
@@ -67,16 +68,6 @@ module Cybertrain
       when SafeString then v.to_s
       else Html.escape(FormBuilder.value_text(v))
       end
-    end
-
-    # "published_at" -> "Published at", "author_id" -> "Author".
-    # Intermediate results are bound to locals, never chained: in threaded
-    # programs an unnamed temporary can be collected while the next call in
-    # the chain still reads it (see Inflector.underscore).
-    def self.humanize(name)
-      base = name.end_with?("_id") ? name[0, name.length - 3] : name
-      spaced = base.tr("_", " ")
-      spaced.capitalize
     end
 
     # ` name="value"`, escaped. Tag builders append what this returns: a
@@ -465,7 +456,7 @@ module Cybertrain
     # Explicit text is escaped unless it is a SafeString (`raw('<i>T</i>')`).
     def label(args, kwargs)
       attr = attribute_name(args, "label", "")
-      text = args.size > 1 ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(attr))
+      text = args.size > 1 ? FormBuilder.html_text(args[1]) : Html.escape(label_text(attr))
       SafeString.of("<label for=\"#{Html.escape(field_id(attr))}\"#{option_attrs(kwargs, NO_KEYS, errors_on?(attribute_sym(args, attr)))}>#{text}</label>")
     end
 
@@ -578,14 +569,28 @@ module Cybertrain
       SafeString.of("<input type=\"submit\" name=\"commit\" value=\"#{Html.escape(text)}\"#{option_attrs(kwargs, NO_KEYS, false)}>")
     end
 
-    # "Create Post" / "Update Post", or "Save changes" without a model. A
-    # scope: does not rename the model.
+    # Rails' label text: `helpers.label.<object name>.<attr>` (the object
+    # name is the scope, the model's key unless scope: gives one), else the
+    # model's human_attribute_name, else (no model) the attribute humanized.
+    def label_text(attr)
+      scope = @scope
+      unless scope.empty?
+        found = I18n.find_translation("helpers.label.#{scope}.#{attr}")
+        return found unless found.nil?
+      end
+      key = @model_key
+      key.empty? ? I18n.humanize_attribute(attr) : I18n.human_attribute_name(key, attr)
+    end
+
+    # helpers.submit.create / update ("Create Post" / "Update Post") with
+    # %{model} the model's human name, or cybertrain.helpers.submit.no_model
+    # ("Save changes") without a model. A scope: does not rename the model.
     def default_submit_text
       model = @model
-      return "Save changes" if model.nil?
+      return I18n.t("cybertrain.helpers.submit.no_model") if model.nil?
 
-      human = FormBuilder.humanize(@model_key)
-      model.persisted? ? "Update #{human}" : "Create #{human}"
+      key = model.persisted? ? "helpers.submit.update" : "helpers.submit.create"
+      I18n.t(key, { model: I18n.human_model_name(@model_key) })
     end
 
     # The method name for the error is method + suffix ("text" + "_field"),

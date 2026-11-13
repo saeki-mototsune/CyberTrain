@@ -8,13 +8,13 @@ docs/superpowers/plans/2026-11-12-cruby-preview-plan.md.
 
 **As built.** The design changed while it was built. This document was
 amended only where a ruling replaced a passage (those passages cite the
-plan's decisions) and is not maintained: the record is docs/design.md D79,
+plan's decisions) and is not maintained: the record is docs/design.md D81,
 and the as-built choices are the plan's Decisions P1 to P25. Statements
 below that no longer hold:
 
 - The edit's cost of about 8 s (section 0) and the sample log's
   `=> spinel: ready in 8.1s` (section 5): the incremental build behind a
-  handover takes about a minute (54 to 68 s in `script/preview-e2e`, D79);
+  handover takes about a minute (54 to 68 s in `script/preview-e2e`, D81);
   only the CRuby answer is under a second.
 - `X-Cybertrain-Runtime` on every response under the supervisor (sections 5
   and 8): it is on the application's responses, not on the supervisor's
@@ -57,7 +57,7 @@ runs stay on Spinel.
 ## 1. What this reverses
 
 Three records said no to this. All three are withdrawn by a new design
-record (D79, or the next free number when this merges):
+record (D81; drafted as D79, renumbered when phase 4b took D79 and D80):
 
 - docs/performance-next.md, "What was tried and rejected": "An interpreted
   development mode on CRuby: it hides the Spinel differences a developer

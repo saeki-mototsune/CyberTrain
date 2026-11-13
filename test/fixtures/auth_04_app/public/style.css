@@ -1,0 +1,13 @@
+body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0; color: #222; }
+main { max-width: 48rem; margin: 0 auto; padding: 1rem; }
+a { color: #0b5cad; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #ddd; }
+.notice { color: #166534; background: #dcfce7; padding: 0.5rem; }
+.alert { color: #991b1b; background: #fee2e2; padding: 0.5rem; }
+.field { margin-bottom: 0.75rem; }
+.field label { display: block; font-weight: 600; }
+.field input[type=text], .field input[type=number], .field textarea { width: 100%; padding: 0.25rem; }
+.field_with_errors input, .field_with_errors textarea { border: 1px solid #b91c1c; }
+#error_explanation { color: #991b1b; border: 1px solid #fca5a5; padding: 0.5rem 1rem; margin-bottom: 1rem; }
+form.button_to { display: inline; }

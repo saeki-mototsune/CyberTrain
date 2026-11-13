@@ -1,5 +1,5 @@
 ---
-source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
+source_sha256: 88339f5df631b196034ba40e434730ec3512bd68247eae54e5bcda13c1593d62
 ---
 # アプリをテストする
 
@@ -115,7 +115,7 @@ end
 
 ## ジョブのテスト
 
-`require "cybertrain/test/jobs"` は、テスト用データベースのジョブキューについての 5 つのヘルパーを足します。`cybertrain generate authentication` が書くサポートファイル（`test/support/app_test.rb`）はこれを require します。それがないアプリケーションは、examples/blog のサポートファイルのように、自分のサポートファイルにこの行を足してください。
+`require "cybertrain/test/jobs"` は、テスト用データベースのジョブキューについての 5 つのヘルパーを足します。`cybertrain generate authentication` が書くサポートファイル（`test/support/app_test.rb`。ほかのヘルパーは [認証](authentication.md#testing) にあります）はこれを require します。それがないアプリケーションは、examples/blog のサポートファイルのように、自分のサポートファイルにこの行を足してください。
 
 ```ruby
 require_relative "support/blog_test"

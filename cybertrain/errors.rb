@@ -1,3 +1,5 @@
+require "cybertrain/i18n"
+
 module Cybertrain
   # Validation messages of one record, keyed by attribute (ActiveModel::Errors).
   # Every model has one, {Model#errors}, cleared and refilled by
@@ -8,7 +10,11 @@ module Cybertrain
   # `article.errors.full_messages`, `article.errors[:title]`.
   # @api public
   class Errors
-    def initialize
+    # @param model_key [String] the model's dictionary key
+    #   (`Inflector.underscore(model_name)`: `"post"`), which
+    #   {#full_messages} names attributes by; {Model#errors} passes it
+    def initialize(model_key = "")
+      @model_key = model_key
       # Seeded with its element types, then emptied (spikes/NOTES.md rule 9).
       @messages = { base: Array.new(0) { "" } }
       @messages.delete(:base)
@@ -82,18 +88,26 @@ module Cybertrain
       @messages.keys
     end
 
-    # "Title can't be blank": the attribute humanized, then the message.
-    # Humanizing replaces `_` with a space and capitalizes, so `:article_id`
-    # gives `"Article id ..."` and `:base` gives `"Base ..."`.
+    # The model's dictionary key (`"post"`), `""` for an Errors made
+    # without one.
+    # @return [String]
+    # @api public
+    def model_key = @model_key
+
+    # "Title can't be blank": each message through `errors.format` with the
+    # attribute's human name ({I18n.full_message}), in the current locale:
+    # `activerecord.attributes.<model>.<attr>`, else the attribute
+    # humanized (`:article_id` gives `"Article ..."`). A `:base` message
+    # stands alone, as in Rails.
     # @example
     #   @article.errors.full_messages.join(", ")
     # @return [Array<String>]
     # @api public
     def full_messages
       out = Array.new(0) { "" }
+      key = @model_key
       @messages.each do |attr, list|
-        label = attr.to_s.tr("_", " ").capitalize
-        list.each { |message| out << "#{label} #{message}" }
+        list.each { |message| out << I18n.full_message(key, attr, message) }
       end
       out
     end

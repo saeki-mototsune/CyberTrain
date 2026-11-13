@@ -1,0 +1,35 @@
+rails-i18n's English and Japanese dictionaries, vendored unchanged as test
+fixtures (phase 4b, plan decision R3; spec section 12 item 6).
+
+Repository: svenfuchs/rails-i18n (https://github.com/svenfuchs/rails-i18n)
+Commit:     f5c999b88935d4c1389a1ffe8a00f29b43e10366 (the head of master
+            on the fetch date, read with `git ls-remote`)
+Paths:      rails/locale/en.yml -> en.yml
+            rails/locale/ja.yml -> ja.yml
+            MIT-LICENSE.txt     -> MIT-LICENSE (the repository's license
+                                   file; saved without its .txt suffix)
+Fetched:    2026-11-11, from
+            https://raw.githubusercontent.com/svenfuchs/rails-i18n/<commit>/<path>
+License:    MIT (MIT-LICENSE, beside this file)
+
+SHA-256 of the files as fetched:
+  1b104dd027250a63bf3107c8c945f3c5886ae3f2ce4238ef4755b48ce54a89f5  en.yml
+  feb3663e56909e559d91f57529d603e1d5e01bd99cf9d9d2192bc200c9ae6e71  ja.yml
+  6e56cf49656c95126238d4955f7491f21149ead01f6b4a3533b2149772c90cf8  MIT-LICENSE
+
+YAML features found (grep for `&`, `*`, `!` at the start of a value and
+for `---`):
+- No anchor (`&`), alias (`*`) or tag (`!`) starts a value in either file.
+- Both files begin with a `---` document marker on line 1 (a single
+  document; there is no second `---`). The locale reader must accept one
+  leading `---`.
+- Block sequences are written at their parent key's indentation
+  (`abbr_day_names:` then `    - Sun` at the same column as the key).
+- A sequence item can be empty: `-` alone in en.yml, `- ` (with a
+  trailing space) in ja.yml (month_names[0] and abbr_month_names[0]).
+- ja.yml's `date.order` items are `:year`, `:month`, `:day`, which
+  CRuby's YAML.safe_load refuses (Psych::DisallowedClass: Symbol); the
+  locale reader keeps them as the text ":year".
+- Unquoted YAML 1.1 scalars that Psych would type: `precision: 3`,
+  `significant: false` (kept as the text "3", "false"; plan decision D4).
+- No block scalar (`|`, `>`), no flow collection, no `\u` escape.

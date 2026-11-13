@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: 134e365af33243570487b224c5ca78c814111fb69338f6b095c3a868ea85e4cf
+source_sha256: 3ea19a9855a39e6897647e65b9fee7a88f7353c122cf4574336a3c2fdade4d4e
 ---
 
 # Как это работает
@@ -22,7 +22,8 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 `@ivar =`, имён `before_action`/`after_action`/`rescue_from ... with:`, строк
 `helper_method`, `layout` и `rate_limit`, `include` concerns и `def` без
 аргументов. Он ставит дайджест на файлы в `app/assets/`, `app/javascript/` и
-`vendor/javascript/` и читает `config/importmap.rb` как текст.
+`vendor/javascript/`, читает `config/importmap.rb` как текст и читает словари
+в `config/locales/` собственным читателем YAML.
 
 По этим данным он пишет в `gen/` простой, читаемый Ruby:
 
@@ -31,6 +32,7 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 - `gen/controllers.rb`: `view_assigns`, `run_callback`, таблица `helper_method` и `controller_layout` для каждого контроллера;
 - `gen/concerns.rb` и `gen/concerns/**`: блоки `included` concerns, вставленные в каждый включающий класс, и модули concerns с опустошёнными блоками ([Concerns](requests.md#concerns-and-helper_method));
 - `gen/assets.rb`: пути ассетов с дайджестом и import map ([Ассеты](assets.md)), а файлы с дайджестом — в `public/assets/`;
+- `gen/locales.rb`: словари приложения в виде двух Hash, которые читает `I18n.t` ([Интернационализация](i18n.md#dictionaries));
 - `gen/migrations.rb`;
 - `gen/views.rb`: таблица встроенных представлений, пустая, если сборка не для развёртывания;
 - `gen/app.rb`: манифест `require_relative`.
@@ -230,14 +232,14 @@ unavailable:`, и запускает скомпилированный цикл. 
 | Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
 | Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
 | minitest / RSpec | `Cybertrain::Test` — раннеры на основе рефлексии не могут работать при AOT-компиляции |
-| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру плюс страницу регистрации; пароли используют PBKDF2-HMAC-SHA256 (bcrypt потребовал бы библиотеку на C; `String#crypt` на macOS не поддерживает bcrypt); сброса пароля нет ([Добавление входа](tutorial.md#authentication)) |
+| `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру плюс страницу регистрации; пароли используют PBKDF2-HMAC-SHA256 (bcrypt потребовал бы библиотеку на C; `String#crypt` на macOS не поддерживает bcrypt); сброс пароля, подтверждение, блокировка и «оставаться в системе» тоже генерируются, как их добавил бы Devise ([Аутентификация](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` пишет пять столбцов `cover_*` и методы модели; файлы лежат на локальном диске в `storage/uploads/` и отдаются через `send_blob`; один файл на поле, без вариантов и прямых загрузок ([Добавление обложки](tutorial.md#attachments)) |
 | `skip_before_action :x` | То же самое для именованных before-колбэков (у колбэка-блока нет имени, которое можно пропустить); `skip_after_action` нет |
 | `resource :session` | Те же шесть маршрутов к `SessionsController`; вложение в него не поддерживается |
 | `get "/x"`, затем `post "/x"` | Оба допустимы: выведенное имя второго маршрута уже занято, поэтому он остаётся без имени, как в Rails; повторяющийся `as:` по-прежнему ошибка |
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, данные часовых поясов из ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` читает системные файлы TZif (`/usr/share/zoneinfo` или `TZDIR`) и преобразует целые секунды эпохи Unix (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `Time.zone` на запрос и `l(time, zone:)` пока нет ([Часовые пояса](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` для вебхуков и API: каждое ожидание ограничено, непубличные адреса назначения по умолчанию отвергаются, редиректы только по просьбе, потоковые и gzip-ответы, парсер Server-Sent Events, без keep-alive (см. [Исходящий HTTP](external-services.md#outbound-http)); `Net::HTTP` из Spinel блокирует весь сервер на зависшем собеседнике |
-| Action Mailer (`deliver_later`, классы мейлеров, представления) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` отправляет по SMTP простой текст или `multipart/alternative` с HTML-частью, отрисованной из частичного шаблона (`Views.render_mail`) (STARTTLS, неявный TLS или открытым текстом на loopback; AUTH PLAIN; каждое ожидание ограничено); `Mailer.deliver_later` отправляет его из встроенной задачи; без классов мейлеров и вложений (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
+| Action Mailer (`deliver_later`, классы мейлеров, представления) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` отправляет по SMTP простой текст или `multipart/alternative` с HTML-частью, отрисованной из частичного шаблона (`Views.render_mail`) (STARTTLS, неявный TLS или открытым текстом на loopback; AUTH PLAIN; каждое ожидание ограничено); `Mailer.deliver_later` отправляет его из встроенной задачи; мейлер — это модуль в `app/mailers`, методы которого возвращают `Cybertrain::MailMessage` (`deliver_later`, `deliver_now`), как сгенерированный `PasswordsMailer`; без вложений (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
 | Active Job, `perform_later`, `solid_queue`, повторяющиеся задачи, Mission Control | Классы задач в `app/jobs` (`< Cybertrain::Job::Base`, `perform(args)` с Hash значений JSON, `perform_later`, `retry_on`, `discard_on`, `limits_concurrency` с ключом), `Job.handle(kind)` как короткая форма; `Scheduler.every` и `Scheduler.cron` с часовым поясом и расписанием, хранящимся в базе; страница задач (`jobs_page` в маршрутах) и `./<app> jobs`; `job_threads` потоков на процесс, на сервере или в процессах `./<app> worker`, доставка хотя бы один раз ([Фоновая работа](background-and-operations.md#background-work)) |
 | `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | `Cybertrain::Cache.fetch` в базе SQLite приложения, с теми же параметрами; значения — String, для остального `fetch_hash`, `fetch_array` и `fetch_int`; без хранилища в памяти или Redis ([Хранилище кэша](background-and-operations.md#the-cache-store)) |
 | Клиент ActionCable, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` держит поток подключённым, пока работает сервер (переподключения, пинги, обнаружение тишины); `WebSocket::Client` — для одного синхронного соединения; только исходящие ([Потребление потоков WebSocket](external-services.md#consuming-websocket-feeds)) |
@@ -246,6 +248,6 @@ unavailable:`, и запускает скомпилированный цикл. 
 | Задачи `bin/rails db:...` для резервных копий (встроенных нет) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, режим 0600, переименование на место) и `./<app> db vacuum` |
 | Action Cable, `turbo_stream_from`, `broadcast_append_to` | Те же имена хелперов поверх подписанных потоков, доставляемых через Server-Sent Events или WebSocket из одной таблицы SQLite; без классов каналов ([Реальное время](realtime.md)) |
 | Propshaft, importmap-rails | Та же раскладка (`app/assets`, `app/javascript`, `vendor/javascript`, `config/importmap.rb`), `spin run gen` ставит дайджест и пишет в `public/assets/`; без `bin/importmap pin`, Turbo в комплект не входит ([Ассеты](assets.md)) |
-| i18n | Пока не сделано (фаза 4b, `docs/design.md` D1) |
+| i18n в Rails, словари rails-i18n, `I18n.t`, `t(".title")` | Тот же API и ключи, английский и японский встроены; `config/locales/*.yml` компилируются `spin run gen` из подмножества YAML (без якорей, псевдонимов и тегов), списки — через `I18n.translate_list` ([Интернационализация](i18n.md)) |
 
 <!-- table-foot: Список не исчерпывающий: более полная запись в `docs/design.md` §8 («What was deliberately left out»). -->

@@ -3,20 +3,20 @@
 
 <p><%= @article.body %></p>
 
-<p class="dates">Written <%= time_tag @article.created_at, format: :long %></p>
+<p class="dates"><%= t(".written") %> <%= time_tag @article.created_at, format: :long %></p>
 
 <p>
-  <%= link_to "Edit", edit_article_path(@article) %> |
-  <%= link_to "Back to articles", articles_path %>
+  <%= link_to t(".edit"), edit_article_path(@article) %> |
+  <%= link_to t(".back"), articles_path %>
 </p>
 
-<%= button_to "Destroy this article", article_path(@article), method: :delete %>
+<%= button_to t(".destroy"), article_path(@article), method: :delete %>
 
 <% if admin? %>
-  <p><%= link_to "Manage articles", admin_articles_path %></p>
+  <p><%= link_to t(".manage"), admin_articles_path %></p>
 <% end %>
 
-<h2>Comments</h2>
+<h2><%= t(".comments") %></h2>
 
 <%# New comments arrive over SSE: CommentsController#create appends to #comments. %>
 <%= turbo_stream_from @article %>
@@ -27,7 +27,7 @@
   <% end %>
 </div>
 
-<h2>Add a comment:</h2>
+<h2><%= t(".add_comment") %></h2>
 
 <%# create.turbo_stream.erb puts an empty form back in here. %>
 <div id="comment_form">

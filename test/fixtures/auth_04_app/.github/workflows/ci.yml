@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # SQLite, zlib and OpenSSL headers, Ruby, and Spinel (cached),
+      # installed by the cybertrain CLI of the framework commit in
+      # spin.lock: that commit is read from spin.lock, so the
+      # spin.toml dependency must be a git one (the default). With a
+      # path dependency, check the framework out yourself and pass
+      # `with: { framework-path: ... }`.
+      - uses: saeki-mototsune/cybertrain/.github/actions/setup-cybertrain@v0.4.1
+
+      # spin.lock is committed and matches spin.toml.
+      - name: spin.lock is current
+        run: spin lock && git diff --exit-code spin.lock
+
+      # gen/ is committed and fresh (nothing is written).
+      - name: gen/ is current
+        run: spin run gen -- --check
+
+      # `spin test` fails when there is no test/*.rb; a new app has none.
+      - name: Tests
+        run: |
+          if ls test/*.rb > /dev/null 2>&1; then
+            spin test
+          else
+            echo "no test/*.rb yet"
+          fi

@@ -52,12 +52,12 @@ module Cybertrain
 
       def add_lib(name)
         @libs << name.to_s
-        reset
+        clear_handles
       end
 
       def add_source(text)
         @sources << text
-        reset
+        clear_handles
       end
 
       def check_types(name, arg_types, return_type)
@@ -98,7 +98,7 @@ module Cybertrain
 
       private
 
-      def reset
+      def clear_handles
         @handles = nil
         @bin_len = nil
         @functions.clear

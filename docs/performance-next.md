@@ -366,7 +366,7 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
   state. CI is sharded instead.
 - An interpreted development mode on CRuby: it hides the Spinel differences a
   developer most needs to see, and needs a shim for every `ffi_func`.
-  Superseded on 2026-11-12 by [docs/design.md D79](design.md): `cybertrain
+  Superseded on 2026-11-12 by [docs/design.md D81](design.md): `cybertrain
   server` answers an edit from a CRuby preview at once and hands the port to
   the compiled binary when its background build finishes, so the
   differences still show; one Fiddle shim implements the FFI DSL for every

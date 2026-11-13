@@ -166,7 +166,7 @@ module Cybertrain
         relation_shape condition_sql set_distinct set_none column_type decimal_scale binary_column? bind_for
         encrypted_column? check_not_encrypted add_where_sql set_order set_order_hash add_order_sql set_limit set_offset to_sql rows count exists?
         delete_all first_row last_row page add_where_like pluck_str pluck_int pluck_float count_by count_by_sql
-        sum_int sum_float increment update_all ids batch_rows pluck_rows aggregate_cell
+        sum_int sum_float increment update_all update_all_sql ids batch_rows pluck_rows aggregate_cell
         order_or_id pick_row write_scope_sql select_sql
         set_having_sql pluck pick minimum_int minimum_float minimum_time maximum_int maximum_float maximum_time
         average sum_float_sql minimum_float_sql maximum_float_sql average_sql sum_int_by sum_float_by
@@ -178,7 +178,7 @@ module Cybertrain
         includes preload preloaded empty?
         where not where_sql where_like where_between or order order_sql limit offset distinct none to_a each
         first last find_by find_by! find find_or_create_by find_or_initialize_by destroy_all find_each size
-        all create create! from_row table_name column_names new name class
+        all create create! from_row table_name column_names human_attribute_name new name class
         validates before_validation before_save after_save before_create after_create before_update
         after_update before_destroy after_destroy add_model_callback validators_for callbacks_for now_string
         transaction upsert upsert_into scope encrypts refuse_encrypted has_many has_one belongs_to validates_foreign_key validate

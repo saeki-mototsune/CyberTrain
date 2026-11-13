@@ -1,5 +1,5 @@
 ---
-source_sha256: 45ac335f704c27617c7aee80f74f3ae736c480c04faacc7088eb90a6cd497fbe
+source_sha256: 88339f5df631b196034ba40e434730ec3512bd68247eae54e5bcda13c1593d62
 ---
 # Тестирование приложения
 
@@ -166,7 +166,7 @@ end
 
 `require "cybertrain/test/jobs"` добавляет пять вспомогательных методов для очереди задач
 тестовой базы данных. Файл поддержки, который пишет `cybertrain generate
-authentication` (`test/support/app_test.rb`), его подключает; приложение без
+authentication` (`test/support/app_test.rb`; его другие хелперы — в разделе [Аутентификация](authentication.md#testing)), его подключает; приложение без
 такого файла добавляет эту строку в свой файл поддержки, как это сделано в
 examples/blog.
 

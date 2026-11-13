@@ -1,0 +1,11 @@
+en:
+  posts:
+    index:
+      title: Posts
+      notice: "Say \"hi\" #{not_ruby}\nthen 100%"
+  date:
+    abbr_day_names: [Sun, Mon, Tue, Wed, Thu, Fri, Sat]
+    abbr_month_names:
+    -
+    - Jan
+    - Feb

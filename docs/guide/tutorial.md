@@ -134,7 +134,7 @@ generated tree:
 
 ```text blog/
 blog/
-  spin.toml  config/app.rb  config/routes.rb  .env.example
+  spin.toml  config/app.rb  config/routes.rb  config/locales/en.yml  .env.example
   db/schema.rb  db/migrate/
   app/controllers/application_controller.rb  app/models/  app/views/  app/helpers/  app/jobs/
   app/assets/stylesheets/application.css  app/assets/images/
@@ -497,7 +497,7 @@ end
 ```
 
 The declared `belongs_to` also makes a comment without an article invalid
-("Article id can't be blank"), before the database would refuse it.
+("Article can't be blank"), before the database would refuse it.
 
 > [!NOTE]
 > `Article#comments` is the comments' relation, so Rails'
@@ -1098,24 +1098,23 @@ cybertrain generate authentication
 cybertrain db migrate    # creates the users and sessions tables
 ```
 
-It writes migrations for `users` (`email_address`, `password_digest`, a unique
-index) and `sessions` (one row per signed-in browser), the `User` and
-`Session` models, `SessionsController` (`/session/new`, `POST /session`,
-`DELETE /session`), `RegistrationsController` (`/sign_up`) and their views, a
-`sessions/_nav` partial at the top of the layout, and `test/authentication.rb`
-with `test/support/app_test.rb`. It also inserts the routes, and a block right
-after the class line of `ApplicationController`:
+It writes the `users` and `sessions` migrations and models, the
+`Authentication` concern, which it includes into `ApplicationController`,
+controllers and views for signing in, signing up, resetting a password and
+the account page, a mailer, the `./blog user` command, and tests. It also
+adds the routes, a `sessions/_nav` partial at the top of the layout, and a
+`base_url` setting in `config/app.rb`, where links in mails start. Every
+file is listed in [Authentication](authentication.md#generating-it).
 
-```ruby app/controllers/application_controller.rb (excerpt)
-class ApplicationController < Cybertrain::Controller
-  before_action :resume_session          # sets @current_user and @current_session
-  before_action :require_authentication  # 303 to /session/new unless signed in
+```ruby app/controllers/concerns/authentication.rb (excerpt)
+module Authentication
+  extend ActiveSupport::Concern
 
-  def self.allow_unauthenticated_access(only: [], except: [])
-    skip_before_action(:require_authentication, only: only, except: except)
+  included do
+    before_action :resume_session          # sets @current_user and @current_session
+    before_action :require_authentication  # 303 to /session/new unless signed in
+    helper_method :authenticated?
   end
-  # authenticated?, start_new_session_for(user), terminate_session,
-  # after_authentication_url ...
 ```
 
 From now on every action needs a signed-in user, and a visitor is redirected
@@ -1154,88 +1153,17 @@ page, because the stream is not an action of a controller.
 Start the server and open `http://127.0.0.1:3000/sign_up` to create the first
 user. Rails&rsquo; generator has no sign-up page and leaves that to the
 console; CyberTrain writes `RegistrationsController`, so the first user signs
-up in the browser.
-Delete it and its routes for an invitation-only app.
+up in the browser. For an invitation-only app, run the generator with
+`--invite-only` instead: there is no sign-up page, and the first user comes
+from `./blog user EMAIL` or from a `/setup` page only the server's own
+machine can open
+([Sign-up, or invite-only](authentication.md#sign-up-or-invite-only)).
 
-<details><summary>An invitation-only app: `--invite-only` — No sign-up page; the first user comes from the command line or a page only the server's machine can open</summary>
-
-The sign-up page lets anyone who reaches the server register, which is the
-wrong default for an internal tool: whoever gets there before the admin
-does has an account. `--invite-only` writes no `RegistrationsController`
-and no sign-up link; the first user comes from the command line or from a
-page only the server's own machine can open, with a link the server prints
-when it starts:
-
-```shell terminal — blog/
-cybertrain generate authentication --invite-only
-cybertrain db migrate
-cybertrain server        # then open the http://127.0.0.1:3000/setup?token=... link it prints, on the same machine
-```
-
-In production, from the directory the binary runs in:
-
-```shell terminal — production host
-./blog user ann@example.com                        # reads the password from stdin (one line)
-printf '%s' "$PASSWORD" | ./blog user ann@example.com
-./blog user ann@example.com 's3cr3t-s3cr3t'        # or as an argument (visible in ps)
-```
-
-<!-- list: points -->
-- `app/commands/user_command.rb` registers the `user` command with
-  `Cybertrain::Main.command` (so `./blog help` lists it) and is required
-  from `bin/blog.rb`. `EMAIL [PASSWORD]` creates the user, or sets the
-  password of the one with that address (which signs that user's browsers
-  out, as any password change does); it prints `created ADDRESS` or
-  `updated ADDRESS` and exits 0. Without `PASSWORD` it reads one line of
-  standard input (prompting when that is a terminal; the typing is echoed)
-  and drops the trailing newline, so the password stays out of `ps` and
-  the shell history. An empty password, a record that does not validate
-  (a password under 8 characters) or bad arguments print an error or the
-  usage line and exit 1.
-- `SetupController` (`GET`/`POST /setup`, `app/views/setup/new.html.erb`)
-  creates the first user and signs them in. It answers only while no user
-  exists, only with the one-time token (below), and only to a connection
-  whose socket peer is the loopback address (`request.loopback?`:
-  `127.0.0.0/8` or `::1`) and that carries no `X-Forwarded-For` header (a
-  proxy on the same host makes every request a loopback one, and it adds
-  that header). A header can close the page, never open it. Everyone else,
-  and a missing or wrong token, gets a 404.
-- The token: `SetupController::SETUP_TOKEN`, 32 random hex characters
-  (`Cybertrain::Crypto.random_token(16)`) made when the program starts and
-  kept until it exits, so a restart makes a new one. `GET /setup` takes it
-  as `?token=`, the form carries it back in a hidden field, and both
-  compare it in constant time (`Cybertrain::Crypto.secure_compare`). It is
-  what keeps the page closed when the address check cannot: a proxy on the
-  same host that adds no `X-Forwarded-For` (nginx without
-  `proxy_set_header X-Forwarded-For ...`) makes every client look like
-  loopback, and only someone who can read the server's log has the token.
-  The request log does not repeat it: `token` is one of the default
-  `filter_parameters`, so the line reads `Started GET
-  "/setup?token=[FILTERED]"` (unless `config.filter_parameters` or
-  `CYBERTRAIN_FILTER_PARAMETERS` leaves `token` out). Once the user exists,
-  the token opens nothing.
-- For a first run behind a proxy on another host, `BLOG_SETUP_OPEN=1`
-  (declared in `config/app.rb` with `c.setting_bool :setup_open`) lifts the
-  address check, still only while no user exists and still only with the
-  token. Unset it once the user is there.
-- While no user exists, the server logs `[WARN] no user exists yet: run
-  ./blog user EMAIL, or open /setup?token=<token> from this machine` before
-  it boots (`UserCommand.warn_if_no_user`, called from `bin/blog.rb` when
-  `Cybertrain::Main.server?(ARGV)`; it connects for that one question and
-  says nothing when the users table is not migrated yet). That line is the
-  only place the token is printed.
-
-The generated `test/authentication.rb` covers both: `/setup` with and
-without the token (`SetupController.setup_token`) or with a wrong one, from
-another address (`client.peer_address = "203.0.113.7"`), through a proxy,
-once a user exists and with the switch on, and the `user` command run
-in-process through `Cybertrain::Main.run`. All of it is application code,
-yours to change (docs/design.md D29); the framework only provides
-`request.loopback?`, `Main.command`, `Main.server?`,
-`Crypto.random_token` / `Crypto.secure_compare` and the test client's
-`peer_address`.
-
-</details>
+The sign-in page also links to a password reset by mail, and the nav to an
+account page; the [Authentication](authentication.md) guide covers them,
+with lockout, "keep me signed in", `--confirmable` and admin users. A reset
+mail needs the SMTP settings and, in production, `BLOG_BASE_URL`
+([Links in mails](authentication.md#links-in-mails)).
 
 > [!RULE] Spinel rule: has_secure_password
 > ### `has_secure_password` is written out
@@ -1247,67 +1175,6 @@ yours to change (docs/design.md D29); the framework only provides
 > default (about 0.2 s compiled): bcrypt would need a C library the binary
 > links. Raise the cost with `Cybertrain::Password.iterations = 600_000` in
 > `config/app.rb`; `User#authenticate` rehashes each user as they sign in.
-
-<details><summary>Authentication: what the framework provides — The pieces the generator is built from, usable without it</summary>
-
-The generator above writes the flow; the pieces it is built from are
-framework API, usable without it (for an API token, an admin password, a
-hand-written sign-in):
-
-<!-- list: points -->
-- **`Cybertrain::Password`**: `hash(plain)` makes a salted
-  PBKDF2-HMAC-SHA256 digest that records its own parameters
-  (`$pbkdf2-sha256$i=100000$salt$key`), `verify?(plain, digest)` checks one
-  in constant time and never raises on a malformed digest, and
-  `needs_rehash?(digest)` says when one is behind the current
-  `Password.iterations`. For a sign-in action:
-  - `verify_serialized(plain, digest)` is `verify?` one at a time per
-    process (a Mutex). A hash takes about 0.2 s of CPU; a burst of attempts
-    side by side would hold every worker, through this method they queue and
-    the other workers keep serving pages.
-  - `dummy_digest` is a digest of a random password, made once per process
-    at the current cost. Verify against it when the address is unknown, so
-    the response time does not tell which addresses have accounts:
-    `Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)`.
-  - `session_key(digest)` is an HMAC of the password digest under
-    `secret_key_base`; keep it in the session at sign-in and check it with
-    `session_key_matches?(session[:password_key], user.password_digest)` on
-    each request. A password change makes a new digest, so every session
-    started before it is signed out.
-  - `iterations` is `Password::TEST_ITERATIONS` (1,000) when
-    `Cybertrain.config.test?`, so test suites do not pay the production cost
-    per user; digests record their count, so nothing else changes.
-- **The session** (`session[:key]`, an encrypted cookie): `clear` empties it
-  (CSRF token included) on sign-out, and `config.session_absolute_max_age`
-  (two weeks; `0` turns it off) bounds a session's whole life however often
-  it is used: the cookie records when it was first written, a cookie older
-  than that loads as an empty session, so a copied cookie cannot be
-  replayed forever. `session.restart_lifetime!` starts the count again (at
-  sign-in).
-- **`Controller#local_path?(text)` and `safe_redirect_path(text, fallback)`**:
-  a path that came from the request (a `return_to` parameter, a remembered
-  page) is redirected to only when it starts with `/` but not `//` or `/\`,
-  holds printable ASCII only and is at most 2,048 bytes:
-  `redirect_to safe_redirect_path(params[:return_to], "/"), status: :see_other`.
-- **`skip_before_action(name, only:, except:)`** on a controller class drops
-  an inherited `before_action` for some actions; the generated
-  `allow_unauthenticated_access` is a one-line wrapper around it.
-- **`cybertrain generate authentication`** writes, as code the app owns: the
-  `users` and `sessions` migrations and models, `SessionsController`,
-  `RegistrationsController`, their views and nav partial, the
-  `ApplicationController` block (`resume_session`, `require_authentication`,
-  `start_new_session_for`, `terminate_session`, `after_authentication_url`)
-  and `test/authentication.rb`. That code uses everything in this list:
-  `User.authenticate_by` verifies with `verify_serialized` and the dummy
-  digest, `start_new_session_for` stores the password key and restarts the
-  lifetime, `resume_session` ends a Session row whose key no longer matches
-  or that is older than `session_absolute_max_age`, and
-  `after_authentication_url` is `safe_redirect_path`. To keep the browser
-  that changed a password signed in, store the new key after saving:
-  `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`.
-  The design: [docs/design.md](../design.md) D25.
-
-</details>
 
 ### Update the tests
 
@@ -1332,21 +1199,15 @@ end
 ```
 
 > [!NOTE]
-> Run `cybertrain spin test` as in [step 16](#test); `test/authentication.rb`
-> and this test use SQLite, so their snapshots come from the compiled binary.
-> `examples/blog` stops before this step. Sign-in attempts are rate limited
-> as in Rails' generator: `SessionsController` declares `rate_limit to: 10,
-> within: 3 * 60, only: [:create]`, ten attempts per client address every
-> three minutes, then back to the form with "Try again later." until the
-> window closes. The counts are kept in the application's database
-> (`Cybertrain::Cache`), so every process of the app counts together.
-> Behind a reverse proxy every visitor counts as the proxy's
-> address unless
-> [trusted proxies](requests.md#rate-limiting-and-the-client-address) are
-> configured. Not generated: password reset, whose e-mail needs the app's
-> SMTP settings (`Cybertrain::Mailer`,
-> [Sending e-mail](external-services.md#sending-e-mail)), which the generator
-> cannot know.
+> Run `cybertrain spin test` as in [step 16](#test); `test/authentication.rb`,
+> the other tests the generator wrote and this one use SQLite, so their
+> snapshots come from the compiled binaries. Sign-in attempts are rate
+> limited as in Rails' generator, ten per client address every three
+> minutes, counted in the application's database so that every process
+> counts together; behind a reverse proxy, configure
+> [trusted proxies](requests.md#rate-limiting-and-the-client-address).
+> `examples/blog` takes this step with `--invite-only` and makes its
+> `/admin` pages admin-only.
 
 <!-- step 18 #attachments stage: You write · `app/`, `db/migrate/`, `config/routes.rb`, `test/` -->
 ## Add a cover image
@@ -1661,6 +1522,8 @@ a clean stop and the database kept on its volume, and loads
 
 <!-- list: next-list -->
 - [**`examples/blog`**](../../examples/blog) — The app this tutorial grows into, with its tests.
+- [**Authentication**](authentication.md) — Password reset, confirmation, lockout, remember me, the account page and admin users.
+- [**Internationalization**](i18n.md) — Dictionaries, `t` and `l`, and a locale per request.
 - [**Guides**](index.md) — One page per topic: models, requests, templates, realtime, background work, testing.
 - [**CyberTrain on GitHub**](https://github.com/saeki-mototsune/CyberTrain) — The source, the README and releases.
 - [**API reference**](site:api/index.html) — Every class and method an app uses, with examples.

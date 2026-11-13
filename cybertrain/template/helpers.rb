@@ -24,12 +24,17 @@ require "cybertrain/stream"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
 require "cybertrain/template/turbo_stream_builder"
+require "cybertrain/strftime"
+require "cybertrain/i18n"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/url_support"
 
 module Cybertrain
   module Template
     class Helpers < HelperBase
+      # number.human.storage_units.units.* after the byte, as
+      # NumberHelper::SIZE_UNITS lists them.
+      STORAGE_UNIT_KEYS = ["kb", "mb", "gb", "tb", "pb", "eb"].freeze
       MINUTES_IN_YEAR = 525_600
       MINUTES_IN_QUARTER_YEAR = 131_400
       MINUTES_IN_THREE_QUARTERS_YEAR = 394_200
@@ -107,6 +112,7 @@ module Cybertrain
         when "label_tag" then label_tag(args, kwargs)
         when "text_field_tag" then text_field_tag(args, kwargs)
         when "hidden_field_tag" then hidden_field_tag(args, kwargs)
+        when "check_box_tag" then check_box_tag(args, kwargs)
         when "submit_tag" then submit_tag(args, kwargs)
         when "render"
           return render_component_helper(kwargs, block, interp, env) if args.empty? && !kwargs["component"].nil?
@@ -123,6 +129,10 @@ module Cybertrain
         when "number_to_currency" then number_to_currency(args, kwargs)
         when "number_to_human_size" then number_to_human_size(args, kwargs)
         when "time_ago_in_words" then distance_of_time_in_words(time_arg(args, 0, name), Time.now)
+        when "distance_of_time_in_words"
+          helper_arity!(name, args, 2, 2)
+          helper_no_keywords!(name, kwargs)
+          distance_of_time_in_words(time_arg(args, 0, name), time_arg(args, 1, name))
         when "content_for" then content_for(args, block, interp, env)
         when "content_for?" then !env["__content_#{text_arg(args, 0, name)}"].nil?
         when "csrf_meta_tags" then csrf_meta_tags
@@ -173,6 +183,8 @@ module Cybertrain
 
           TurboStreamBuilder.new(self, interp, env)
         when "time_tag" then time_tag(args, kwargs, block, interp, env)
+        when "t", "translate" then translate_helper(args, kwargs, interp)
+        when "l", "localize" then localize_helper(args, kwargs)
         when "current_page?" then current_page?(args, kwargs)
         when "signed_stream_name" then signed_stream_name(args)
         when "stream_source_path" then stream_source_path(args, kwargs)
@@ -313,27 +325,35 @@ module Cybertrain
       end
 
       # Rails' distance_of_time_in_words without seconds (and without the
-      # leap-year correction for spans of years).
+      # leap-year correction for spans of years), in the current locale:
+      # datetime.distance_in_words.<key> with count: ("2 minutes").
       def distance_of_time_in_words(from, to)
         seconds = (to - from).abs
         minutes = (seconds / 60.0).round
-        if minutes < 1 then "less than a minute"
-        elsif minutes < 2 then "1 minute"
-        elsif minutes < 45 then "#{minutes} minutes"
-        elsif minutes < 90 then "about 1 hour"
-        elsif minutes < 1440 then "about #{(minutes / 60.0).round} hours"
-        elsif minutes < 2520 then "1 day"
-        elsif minutes < 43_200 then "#{(minutes / 1440.0).round} days"
-        elsif minutes < 86_400 then "about 1 month"
-        elsif minutes < MINUTES_IN_YEAR then "#{(minutes / 43_200.0).round} months"
+        if minutes < 1 then Helpers.distance_words("less_than_x_minutes", 1)
+        elsif minutes < 45 then Helpers.distance_words("x_minutes", minutes)
+        elsif minutes < 90 then Helpers.distance_words("about_x_hours", 1)
+        elsif minutes < 1440 then Helpers.distance_words("about_x_hours", (minutes / 60.0).round)
+        elsif minutes < 2520 then Helpers.distance_words("x_days", 1)
+        elsif minutes < 43_200 then Helpers.distance_words("x_days", (minutes / 1440.0).round)
+        elsif minutes < 86_400 then Helpers.distance_words("about_x_months", 1)
+        elsif minutes < MINUTES_IN_YEAR then Helpers.distance_words("x_months", (minutes / 43_200.0).round)
         else
           years = minutes / MINUTES_IN_YEAR
           rest = minutes % MINUTES_IN_YEAR
-          if rest < MINUTES_IN_QUARTER_YEAR then "about #{plural_words(years, "year")}"
-          elsif rest < MINUTES_IN_THREE_QUARTERS_YEAR then "over #{plural_words(years, "year")}"
-          else "almost #{plural_words(years + 1, "year")}"
+          if rest < MINUTES_IN_QUARTER_YEAR then Helpers.distance_words("about_x_years", years)
+          elsif rest < MINUTES_IN_THREE_QUARTERS_YEAR then Helpers.distance_words("over_x_years", years)
+          else Helpers.distance_words("almost_x_years", years + 1)
           end
         end
+      end
+
+      # datetime.distance_in_words.<key> with count: n.
+      # @param key [String]
+      # @param n [Integer]
+      # @return [String]
+      def self.distance_words(key, n)
+        I18n.t("datetime.distance_in_words.#{key}", { count: n })
       end
 
       # Checks the locals a partial is given against its `<%# locals: (...) %>`
@@ -517,7 +537,7 @@ module Cybertrain
         when Cybertrain::Model
           return url_for(model, @no_url_options) if model.persisted?
 
-          # Bound step by step (see FormBuilder.humanize).
+          # Bound step by step (see I18n.humanize_attribute).
           route("#{route_key_of(model_key(model))}_path", [], @no_url_options)
         when Array then url_for(model, @no_url_options)
         else raise ArgumentError, "form_with needs model: or url:"
@@ -603,7 +623,7 @@ module Cybertrain
       def label_tag(args, kwargs)
         helper_arity!("label_tag", args, 1, 2)
         name = text_arg(args, 0, "label_tag")
-        text = args.size > 1 && !args[1].nil? ? FormBuilder.html_text(args[1]) : Html.escape(FormBuilder.humanize(name))
+        text = args.size > 1 && !args[1].nil? ? FormBuilder.html_text(args[1]) : Html.escape(I18n.humanize_attribute(name))
         SafeString.of("<label for=\"#{Html.escape(FormBuilder.tag_id(name))}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>#{text}</label>")
       end
 
@@ -624,10 +644,30 @@ module Cybertrain
         SafeString.of(FormBuilder.input_tag("hidden", name, args.size > 1 ? args[1] : nil, kwargs, " autocomplete=\"off\""))
       end
 
-      # submit_tag(value = "Save changes"), named commit as f.submit is.
+      # check_box_tag(:remember_me, value = "1", checked = false), as Rails
+      # writes it: a box alone, no hidden field (f.check_box adds one), so an
+      # unchecked box sends nothing; a nil value writes no value attribute.
+      # Other keywords are attributes (id: replaces the id taken from the
+      # name); any truthy `checked` adds checked="checked" after them all,
+      # in Rails' order.
+      def check_box_tag(args, kwargs)
+        helper_arity!("check_box_tag", args, 1, 3)
+        name = text_arg(args, 0, "check_box_tag")
+        html = if args.size > 1
+                 FormBuilder.input_tag("checkbox", name, args[1], kwargs, "")
+               else
+                 FormBuilder.input_tag("checkbox", name, "1", kwargs, "")
+               end
+        return SafeString.of(html) unless args.size > 2 && args[2]
+
+        SafeString.of("#{html[0, html.size - 1]} checked=\"checked\">")
+      end
+
+      # submit_tag(value = "Save changes"), named commit as f.submit is; the
+      # default is cybertrain.helpers.submit.no_model in the locale.
       def submit_tag(args, kwargs)
         helper_arity!("submit_tag", args, 0, 1)
-        text = args.empty? ? "Save changes" : FormBuilder.html_text(args[0])
+        text = args.empty? ? Html.escape(I18n.t("cybertrain.helpers.submit.no_model")) : FormBuilder.html_text(args[0])
         SafeString.of("<input type=\"submit\" name=\"commit\" value=\"#{text}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>")
       end
 
@@ -762,7 +802,9 @@ module Cybertrain
       # --- pagination ----------------------------------------------------------
 
       # paginate @page, articles_path: the Newer / Older links of a Page
-      # (Relation#page) around "Page N", in a <nav class="pager">. Each link
+      # (Relation#page) around "Page N", in a <nav class="pager">; the three
+      # texts are cybertrain.pager.newer / .older / .page ("Page %{page}")
+      # of the current locale. Each link
       # is the path plus the current request's query string with `page`
       # replaced (page 1 drops it), so a search or filter survives paging; a
       # path that carries its own query string ("/search?q=x") uses that one
@@ -788,12 +830,13 @@ module Cybertrain
         buf = +"<nav class=\"pager\">"
         if page.prev?
           href = Html.escape(pager_href(base, rest, page.prev_number))
-          buf << "<a href=\"" << href << "\" rel=\"prev\">Newer</a> "
+          buf << "<a href=\"" << href << "\" rel=\"prev\">" << Html.escape(I18n.t("cybertrain.pager.newer")) << "</a> "
         end
-        buf << "<span class=\"pager-current\">Page " << page.number.to_s << "</span>"
+        current = I18n.t("cybertrain.pager.page", { page: page.number.to_s })
+        buf << "<span class=\"pager-current\">" << Html.escape(current) << "</span>"
         if page.next?
           href = Html.escape(pager_href(base, rest, page.next_number))
-          buf << " <a href=\"" << href << "\" rel=\"next\">Older</a>"
+          buf << " <a href=\"" << href << "\" rel=\"next\">" << Html.escape(I18n.t("cybertrain.pager.older")) << "</a>"
         end
         buf << "</nav>"
         SafeString.of(buf)
@@ -1117,8 +1160,126 @@ module Cybertrain
         ""
       end
 
+      # --- i18n (spec 8) ------------------------------------------------------
+
+      # t(key, **options), as Rails' view helper: I18n.t, with a key
+      # starting with "." looked up under the rendering template's name
+      # (lazy lookup, plan decision D8: "posts/_form.html.erb" ->
+      # "posts.form.title"). A key ending in `_html` or `.html` answers
+      # its text as HTML, every interpolated value escaped (a SafeString
+      # value as it is); any other text is escaped. A missing key answers
+      # `<span class="translation_missing" title="translation missing:
+      # en.posts.index.subtitle">Subtitle</span>` (development and test),
+      # or the humanised last segment (production), or raises
+      # (I18n.raise_on_missing).
+      # @return [SafeString]
+      def translate_helper(args, kwargs, interp)
+        helper_arity!("t", args, 1, 1)
+        key = text_arg(args, 0, "t")
+        if key.start_with?(".")
+          scope = Helpers.lazy_scope(interp.current_template_name)
+          if scope.empty?
+            msg = "t: the lazy key #{key.inspect} needs a template name"
+            raise ArgumentError, msg
+          end
+          key = "#{scope}#{key}"
+        end
+        options = Helpers.symbol_options(kwargs)
+        html = I18n.html_key?(key)
+        options = Helpers.escaped_interpolations(options) if html
+        found = I18n.find_translation(key, options)
+        unless found.nil?
+          return SafeString.of(found) if html
+
+          return SafeString.of(Html.escape(found))
+        end
+        text = I18n.missing_answer(I18n.option_locale(options), key)
+        return SafeString.of(Html.escape(text)) unless I18n.mark_missing?
+
+        dot = key.rindex(".")
+        last = dot.nil? ? key : key[dot + 1, key.size - dot - 1].to_s
+        words = Helpers.titleized(last)
+        SafeString.of("<span class=\"translation_missing\" title=\"#{Html.escape(text)}\">#{Html.escape(words)}</span>")
+      end
+
+      # l(time_or_date, format: :short), as Rails' view helper: I18n.l
+      # in the current locale (`format:` a Symbol or a pattern, `locale:`).
+      # The text is escaped by the template.
+      # @return [String]
+      def localize_helper(args, kwargs)
+        helper_arity!("l", args, 1, 1)
+        options = Helpers.symbol_options(kwargs)
+        format = options[:format]
+        case format
+        when SafeString then options[:format] = format.to_s
+        end
+        I18n.l(args[0], options)
+      end
+
+      # A template's keywords as I18n's options (Symbol keys).
+      def self.symbol_options(kwargs)
+        options = { default: [nil, 0, 0.0, "", true][0] }
+        options.delete(:default)
+        kwargs.each { |name, value| options[name.to_sym] = value }
+        options
+      end
+
+      # The options of an `_html` key's lookup, as Rails' html-safe
+      # translation escapes them: every interpolation value escaped (a
+      # SafeString as it is), I18n's own `default:` and `locale:` and an
+      # Integer `count:` untouched. Shared with Controller#t.
+      # @param options [Hash{Symbol => Object}]
+      # @return [Hash{Symbol => Object}]
+      def self.escaped_interpolations(options)
+        out = { default: [nil, 0, 0.0, "", true][0] }
+        out.delete(:default)
+        options.each do |name, value|
+          if name == :default || name == :locale || (name == :count && value.is_a?(Integer))
+            out[name] = value
+          else
+            case value
+            when SafeString then out[name] = value.to_s
+            else out[name] = Html.escape(FormBuilder.value_text(value))
+            end
+          end
+        end
+        out
+      end
+
+      # The lazy-lookup scope of a template name (D8, Rails' virtual path):
+      # "posts/index.html.erb" -> "posts.index", "posts/_form.html.erb" ->
+      # "posts.form", "__components/card_component.html.erb" ->
+      # "card_component", "admin/posts/show" -> "admin.posts.show".
+      # @param name [String]
+      # @return [String]
+      def self.lazy_scope(name)
+        s = name.to_s
+        prefix = Engine::COMPONENTS_PREFIX
+        s = s[prefix.size, s.size - prefix.size].to_s if s.start_with?(prefix)
+        slash = s.rindex("/")
+        dir = slash.nil? ? "" : s[0, slash].to_s
+        base = slash.nil? ? s : s[slash + 1, s.size - slash - 1].to_s
+        base = base[1, base.size - 1].to_s if base.start_with?("_")
+        dot = base.index(".")
+        base = base[0, dot].to_s unless dot.nil?
+        return base if dir.empty?
+
+        "#{dir.tr("/", ".")}.#{base}"
+      end
+
+      # "bar_baz" -> "Bar Baz": the words of a missing key's last segment,
+      # as Rails' translation_missing span shows them (titleize).
+      def self.titleized(segment)
+        words = segment.to_s.tr("_", " ").split(" ")
+        out = Array.new(0) { "" }
+        words.each { |w| out << w.capitalize }
+        out.join(" ")
+      end
+
       # --- text --------------------------------------------------------------
 
+      # pluralize(2, "post") -> "2 posts" in English; the word as it is
+      # outside English; a third argument is the plural.
       def pluralize(args)
         count = arg(args, 0, "pluralize")
         word = text_arg(args, 1, "pluralize")
@@ -1128,12 +1289,12 @@ module Cybertrain
         else n = int_text(count)
         end
         return "#{n} #{word}" if n == 1
+        return "#{n} #{text_arg(args, 2, "pluralize")}" if args.size > 2
+        # The English inflector only in English (D11); Rails has no rules
+        # for other languages either, so the word stays as it is.
+        return "#{n} #{word}" unless I18n.base_language(I18n.locale.to_s) == "en"
 
-        args.size > 2 ? "#{n} #{text_arg(args, 2, "pluralize")}" : "#{n} #{Inflector.pluralize(word)}"
-      end
-
-      def plural_words(n, word)
-        n == 1 ? "#{n} #{word}" : "#{n} #{word}s"
+        "#{n} #{Inflector.pluralize(word)}"
       end
 
       # truncate(text, length: 30, omission: "...").
@@ -1149,17 +1310,23 @@ module Cybertrain
       end
 
       # The number helpers are Cybertrain::NumberHelper's, with Rails'
-      # keywords: 1234567 -> "1,234,567"; 1234.5 -> "1,234.5".
+      # keywords: 1234567 -> "1,234,567"; 1234.5 -> "1,234.5". A keyword not
+      # given is the current locale's setting, as Rails' helpers read it
+      # (D11): number.<namespace>.format.<name>, else number.format.<name>
+      # (number_to_currency 1234 in ja is "1,234" and the yen sign); the
+      # human units and formats are number.human.decimal_units /
+      # storage_units.
       # nil renders "" in a template (as in Rails and 0.4: a nullable column
       # prints nothing); NumberHelper's module functions, called from Ruby,
-      # raise ArgumentError for nil. Any other non-number raises in both.
+      # keep their English defaults and raise ArgumentError for nil. Any
+      # other non-number raises in both.
       def number_with_delimiter(args, kwargs)
         helper_arity!("number_with_delimiter", args, 1, 1)
         helper_keywords!("number_with_delimiter", kwargs, ["delimiter", "separator"], 0)
         return "" if args[0].nil?
 
-        delimiter = kwargs["delimiter"].nil? ? "," : FormBuilder.value_text(kwargs["delimiter"])
-        separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
+        delimiter = Helpers.number_keyword(kwargs, "delimiter", "")
+        separator = Helpers.number_keyword(kwargs, "separator", "")
         NumberHelper.number_with_delimiter(args[0], delimiter: delimiter, separator: separator)
       end
 
@@ -1168,22 +1335,30 @@ module Cybertrain
         helper_keywords!("number_with_precision", kwargs, ["precision", "delimiter", "separator", "strip_insignificant_zeros"], 0)
         return "" if args[0].nil?
 
-        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
-        delimiter = kwargs["delimiter"].nil? ? "" : FormBuilder.value_text(kwargs["delimiter"])
-        separator = kwargs["separator"].nil? ? "." : FormBuilder.value_text(kwargs["separator"])
-        strip = kwargs["strip_insignificant_zeros"] == true
+        precision = Helpers.number_precision(kwargs, "precision", 3)
+        delimiter = Helpers.number_keyword(kwargs, "delimiter", "precision")
+        separator = Helpers.number_keyword(kwargs, "separator", "precision")
+        given = kwargs["strip_insignificant_zeros"]
+        strip = given.nil? ? Helpers.number_setting("precision", "strip_insignificant_zeros") == "true" : given == true
         NumberHelper.number_with_precision(args[0], precision: precision, delimiter: delimiter, separator: separator, strip_insignificant_zeros: strip)
       end
 
-      # units: { thousand: "lt" } is a template Hash (String keys).
+      # units: { thousand: "lt" } is a template Hash (String keys); the
+      # other names are number.human.decimal_units.units.*.
       def number_to_human(args, kwargs)
         helper_arity!("number_to_human", args, 1, 1)
         helper_keywords!("number_to_human", kwargs, ["precision", "units"], 0)
         return "" if args[0].nil?
 
-        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
+        precision = Helpers.number_precision(kwargs, "human", 3)
         names = NumberHelper::UNIT_NAMES.dup
         given = kwargs["units"]
+        i = 0
+        while i < NumberHelper::UNIT_KEYS.length
+          key = NumberHelper::UNIT_KEYS[i].to_s
+          names[i] = Helpers.number_text("number.human.decimal_units.units.#{key}", false, 0)
+          i += 1
+        end
         case given
         when Hash
           i = 0
@@ -1195,7 +1370,10 @@ module Cybertrain
         when nil then nil
         else raise ArgumentError, "number_to_human units: must be a Hash"
         end
-        NumberHelper.human_text(args[0], precision, names)
+        format = Helpers.number_text("number.human.decimal_units.format", false, 0)
+        delimiter = Helpers.number_setting("human", "delimiter")
+        separator = Helpers.number_setting("human", "separator")
+        NumberHelper.human_text(args[0], precision, names, format, delimiter, separator)
       end
 
       def number_to_percentage(args, kwargs)
@@ -1203,8 +1381,11 @@ module Cybertrain
         helper_keywords!("number_to_percentage", kwargs, ["precision"], 0)
         return "" if args[0].nil?
 
-        precision = kwargs["precision"].nil? ? 3 : int_text(kwargs["precision"])
-        NumberHelper.number_to_percentage(args[0], precision: precision)
+        precision = Helpers.number_precision(kwargs, "percentage", 3)
+        format = Helpers.number_setting("percentage", "format")
+        delimiter = Helpers.number_setting("percentage", "delimiter")
+        separator = Helpers.number_setting("percentage", "separator")
+        NumberHelper.number_to_percentage(args[0], precision: precision, format: format, delimiter: delimiter, separator: separator)
       end
 
       def number_to_currency(args, kwargs)
@@ -1212,18 +1393,95 @@ module Cybertrain
         helper_keywords!("number_to_currency", kwargs, ["unit", "precision", "format"], 0)
         return "" if args[0].nil?
 
-        unit = kwargs["unit"].nil? ? "$" : FormBuilder.value_text(kwargs["unit"])
-        precision = kwargs["precision"].nil? ? 2 : int_text(kwargs["precision"])
-        fmt = kwargs["format"].nil? ? "%u%n" : FormBuilder.value_text(kwargs["format"])
-        NumberHelper.number_to_currency(args[0], unit: unit, precision: precision, format: fmt)
+        unit = Helpers.number_keyword(kwargs, "unit", "currency")
+        precision = Helpers.number_precision(kwargs, "currency", 2)
+        fmt = Helpers.number_keyword(kwargs, "format", "currency")
+        delimiter = Helpers.number_setting("currency", "delimiter")
+        separator = Helpers.number_setting("currency", "separator")
+        NumberHelper.number_to_currency(args[0], unit: unit, precision: precision, format: fmt, delimiter: delimiter, separator: separator)
       end
 
+      # The byte name is number.human.storage_units.units.byte with count:
+      # (en "1 Byte" / "2 Bytes").
       def number_to_human_size(args, kwargs)
         helper_arity!("number_to_human_size", args, 1, 1)
         helper_no_keywords!("number_to_human_size", kwargs)
         return "" if args[0].nil?
 
-        NumberHelper.number_to_human_size(args[0])
+        bytes = NumberHelper.byte_count(args[0])
+        names = Array.new(0) { "" }
+        names << Helpers.number_text("number.human.storage_units.units.byte", true, bytes)
+        STORAGE_UNIT_KEYS.each { |key| names << Helpers.number_text("number.human.storage_units.units.#{key}", false, 0) }
+        precision = Helpers.number_precision(kwargs, "human", 3)
+        format = Helpers.number_text("number.human.storage_units.format", false, 0)
+        separator = Helpers.number_setting("human", "separator")
+        NumberHelper.human_size_text(args[0], precision, names, format, separator)
+      end
+
+      # A number helper's keyword when the template gives it, else the
+      # locale's setting of that name under namespace.
+      # @return [String]
+      def self.number_keyword(kwargs, name, namespace)
+        given = kwargs[name]
+        given.nil? ? Helpers.number_setting(namespace, name) : FormBuilder.value_text(given)
+      end
+
+      # The precision: keyword read as 0.4 read it (its text's whole part:
+      # 2.0 is 2, "abc" is 0), else the locale's setting, else fallback.
+      # @return [Integer]
+      def self.number_precision(kwargs, namespace, fallback)
+        given = kwargs["precision"]
+        return FormBuilder.value_text(given).to_i unless given.nil?
+
+        Params.parse_int(Helpers.number_setting(namespace, "precision"), fallback)
+      end
+
+      # A number setting of the current locale, merged as Rails merges
+      # them: number.<namespace>.format.<name> (none for namespace ""),
+      # else number.format.<name>, in the current locale, then the same in
+      # the default locale, then en's (Rails' helpers fall back to their
+      # English DEFAULTS), so a locale with no number keys never prints a
+      # wrong number; "" only for a name en lacks too.
+      # @param namespace [String] "currency", "percentage", "precision", "human" or ""
+      # @param name [String] "delimiter", "separator", "precision", "unit", "format", ...
+      # @return [String]
+      def self.number_setting(namespace, name)
+        loc = I18n.locale
+        found = Helpers.number_setting_in(loc, namespace, name)
+        return found unless found.nil?
+
+        default = I18n.default_locale
+        unless default == loc
+          found = Helpers.number_setting_in(default, namespace, name)
+          return found unless found.nil?
+        end
+        english = Helpers.number_setting_in(:en, namespace, name)
+        english.nil? ? "" : english
+      end
+
+      # A unit name or format of the human helpers: the text at key (its
+      # plural form for n when counted) in the current locale, then the
+      # default locale, then en; never a missing-key marker, as
+      # number_setting.
+      # @return [String]
+      def self.number_text(key, counted, n)
+        found = I18n.find_in_locales(I18n.locale, key, counted, n)
+        found = I18n.text_in_locale(:en, key, counted, n) if found.nil?
+        return "" if found.nil?
+
+        vars = { "" => "" }
+        vars.delete("")
+        vars["count"] = n.to_s if counted
+        I18n.interpolate_vars(found, vars)
+      end
+
+      # number_setting in one locale; nil when it holds neither key.
+      def self.number_setting_in(loc, namespace, name)
+        unless namespace.empty?
+          found = I18n.text_in_locale(loc, "number.#{namespace}.format.#{name}", false, 0)
+          return found unless found.nil?
+        end
+        I18n.text_in_locale(loc, "number.format.#{name}", false, 0)
       end
 
       # A value for HTML: SafeString as is, anything else escaped.
@@ -1278,7 +1536,11 @@ module Cybertrain
       # </time>`. A Time's datetime is its xmlschema
       # (`2026-11-10T12:00:00Z`), a Date's `2026-11-10`. The text is `text`
       # (escaped unless a SafeString), else the block's output, else the
-      # value in `format:` (:short, :long or a strftime String; by default
+      # value in `format:`: a format name (:short, :long, or any other
+      # time.formats / date.formats key) formatted by I18n.l in the current
+      # locale, as Rails does (`format: :long` on a Date: en
+      # `November 10, 2026`), or a strftime String.
+      # Without `format:` it is the :default format (en
       # `Tue, 10 Nov 2026 12:00:00 +0000` for a Time, `2026-11-10` for a
       # Date). class:, id:, title: and data: are attributes.
       def time_tag(args, kwargs, block, interp, env)
@@ -1295,18 +1557,10 @@ module Cybertrain
           offset = value.utc_offset
           stamp = value.strftime("%Y-%m-%dT%H:%M:%S")
           datetime = offset == 0 ? "#{stamp}Z" : "#{stamp}#{Helpers.offset_text(offset, ":")}"
-          if args.size < 2 && block.nil?
-            if format.nil?
-              text = value.strftime("%a, %d %b %Y %H:%M:%S %z")
-            else
-              pattern = Helpers.time_tag_pattern(format, "", "%d %b %H:%M", "%B %d, %Y %H:%M")
-              text = Helpers.time_tag_strftime(value, pattern)
-            end
-          end
+          text = Helpers.time_tag_text(value, format) if args.size < 2 && block.nil?
         when Date
           datetime = value.strftime("%Y-%m-%d")
-          pattern = Helpers.time_tag_pattern(format, "%Y-%m-%d", "%b %d", "%B %d, %Y")
-          text = Helpers.time_tag_strftime(value, pattern) if args.size < 2 && block.nil?
+          text = Helpers.time_tag_text(value, format) if args.size < 2 && block.nil?
         else
           msg = "time_tag expects a Time or a Date, got #{FormBuilder.value_text(value)}"
           raise ArgumentError, msg
@@ -1326,207 +1580,30 @@ module Cybertrain
         SafeString.of(out)
       end
 
-      # strftime of a pattern that is not a literal, one directive at a time
-      # with literal patterns. Time#strftime given a built String on a
-      # polymorphic receiver handed the pattern back unformatted under
-      # Spinel 2026.11.04.7026 (the call goes through a dispatch that reads
-      # the String's buffer and then returns that buffer).
-      #
-      # A directive is `%`, flags (`-` no padding, `_` space padding, `0`
-      # zero padding, `^` upcase, `#` change case, `:` for `%:z`), a width,
-      # then one of: Y C y m d e j H k I l M S L N s p P a A b h B u w U W
-      # G g V Z z F T D R r c x X v n t %. `%3N` / `%6N` / `%9N` (any width
-      # for N) give that many fraction digits; a width on a number replaces
-      # its padding (`%1d`, `%5e`), as in strftime. Anything else raises
-      # ArgumentError, as does a lone `%` at the end, and so does a width or
-      # flag whose strftime meaning this walk does not reproduce
-      # (strftime_refusal: `%6L`, `%-N`, `%:Y`, `%::z`, `%5Z`, `%-T`, `%-_d`):
-      # it raises rather than render something else. Text between
-      # directives (multibyte included) is copied as it is.
-      def self.time_tag_strftime(time, pattern)
-        s = pattern.to_s # NOTES rule 62: plain byte reads
-        n = s.bytesize
-        out = +""
-        i = 0
-        while i < n
-          start = i
-          i += 1 while i < n && s.getbyte(i) != 37
-          out << s.byteslice(start, i - start).to_s if i > start
-          break if i >= n
+      # strftime of a pattern that is not a literal: Cybertrain::Strftime.walk
+      # (spikes/NOTES.md rule 96), which formats one directive at a time with
+      # literal patterns; its refusals read "time_tag format: ...".
+      # I18n.l formats its dictionary patterns through the same walk.
+      # @param time [Time, Date]
+      # @param pattern [String]
+      # @return [String]
+      def self.time_tag_strftime(time, pattern) = Strftime.walk(time, pattern, "time_tag format")
 
-          dstart = i
-          i += 1
-          flags = +""
-          while i < n
-            f = s.getbyte(i)
-            # - _ 0 ^ # :
-            break unless f == 45 || f == 95 || f == 48 || f == 94 || f == 35 || f == 58
-
-            flags << s.byteslice(i, 1).to_s
-            i += 1
-          end
-          width = 0
-          while i < n
-            w = s.getbyte(i)
-            break unless w >= 48 && w <= 57
-
-            width = width * 10 + (w - 48)
-            i += 1
-          end
-          if i >= n
-            msg = "time_tag format: incomplete directive #{s.byteslice(dstart, n - dstart)} in #{pattern.inspect}"
-            raise ArgumentError, msg
-          end
-          conv = s.byteslice(i, 1).to_s
-          i += 1
-          refused = Helpers.strftime_refusal(conv, flags, width)
-          unless refused.empty?
-            msg = "time_tag format: #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}: #{refused}"
-            raise ArgumentError, msg
-          end
-          piece = Helpers.strftime_directive(time, conv, flags, width)
-          if piece.nil?
-            msg = "time_tag format: unknown directive #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}"
-            raise ArgumentError, msg
-          end
-          out << piece
-        end
-        out
-      end
-
-      # Why a directive's flags or width are refused ("" when they are
-      # not): the combinations whose Time#strftime output this walk does
-      # not reproduce raise instead of rendering something else.
-      def self.strftime_refusal(conv, flags, width)
-        pads = 0
-        pads += 1 if flags.include?("-")
-        pads += 1 if flags.include?("_")
-        pads += 1 if flags.include?("0")
-        return "combine at most one of the flags - _ 0" if pads > 1
-        return "combine at most one of the flags ^ #" if flags.include?("^") && flags.include?("#")
-        if conv == "z"
-          return "%z takes no width and no flag but :" if width > 0 || flags.delete(":").size > 0 || flags.count(":") > 1
-        elsif flags.include?(":")
-          return "the : flag is only for %:z"
-        end
-        return "%L takes no width or flag; use %3N, %6N or %9N" if conv == "L" && (width > 0 || !flags.empty?)
-        return "%N takes no flag" if conv == "N" && !flags.empty?
-        return "%Z takes no width" if conv == "Z" && width > 0
-        return "%#{conv} takes no flag but ^" if "FTDRrcxXv".include?(conv) && !flags.delete("^").empty?
-
-        ""
-      end
-
-      # One directive of time_tag_strftime; nil for an unknown conversion.
-      def self.strftime_directive(time, conv, flags, width)
-        base = case conv
-               when "Y" then time.strftime("%Y")
-               when "C" then time.strftime("%C")
-               when "y" then time.strftime("%y")
-               when "m" then time.strftime("%m")
-               when "d" then time.strftime("%d")
-               when "e" then time.strftime("%e")
-               when "j" then time.strftime("%j")
-               when "H" then time.strftime("%H")
-               when "k" then time.strftime("%k")
-               when "I" then time.strftime("%I")
-               when "l" then time.strftime("%l")
-               when "M" then time.strftime("%M")
-               when "S" then time.strftime("%S")
-               when "L" then time.strftime("%L")
-               when "N"
-                 nine = time.strftime("%9N")
-                 digits = width > 0 ? width : 9
-                 digits <= 9 ? nine[0, digits].to_s : "#{nine}#{"0" * (digits - 9)}"
-               when "s" then time.strftime("%s")
-               when "p" then time.strftime("%p")
-               when "P" then time.strftime("%P")
-               when "a" then time.strftime("%a")
-               when "A" then time.strftime("%A")
-               when "b", "h" then time.strftime("%b")
-               when "B" then time.strftime("%B")
-               when "u" then time.strftime("%u")
-               when "w" then time.strftime("%w")
-               when "U" then time.strftime("%U")
-               when "W" then time.strftime("%W")
-               when "G" then time.strftime("%G")
-               when "g" then time.strftime("%g")
-               when "V" then time.strftime("%V")
-               when "Z" then time.strftime("%Z")
-               when "z"
-                 zone = time.strftime("%z")
-                 flags.include?(":") && zone.size == 5 ? "#{zone[0, 3]}:#{zone[3, 2]}" : zone
-               when "F" then time.strftime("%Y-%m-%d")
-               when "T", "X" then time.strftime("%H:%M:%S")
-               when "D", "x" then time.strftime("%m/%d/%y")
-               when "R" then time.strftime("%H:%M")
-               when "r" then time.strftime("%I:%M:%S %p")
-               when "c" then time.strftime("%a %b %e %H:%M:%S %Y")
-               when "v" then time.strftime("%e-%^b-%Y")
-               when "n" then "\n"
-               when "t" then "\t"
-               when "%" then "%"
-               end
-        return nil if base.nil?
-        return base if flags.empty? && (width == 0 || conv == "N")
-
-        Helpers.strftime_flags(base, conv, flags, conv == "N" ? 0 : width)
-      end
-
-      # Applies the flags and width of a directive to its default text. A
-      # width on a number replaces its default padding, as in strftime
-      # (`%1d` is "5", `%5e` is "    5").
-      def self.strftime_flags(base, conv, flags, width)
-        text = base
-        numeric = "YCymdejHkIlMSsuwUWGgV".include?(conv)
-        if numeric && width > 0
-          k = 0
-          k += 1 while k < text.size - 1 && (text[k] == "0" || text[k] == " ")
-          text = text[k, text.size - k].to_s
-          return text if flags.include?("-") || width <= text.size
-
-          pad = "ekl".include?(conv) ? " " : "0"
-          pad = " " if flags.include?("_")
-          pad = "0" if flags.include?("0")
-          return "#{pad * (width - text.size)}#{text}"
-        end
-        if flags.include?("-")
-          # "05" -> "5", " 5" -> "5"
-          k = 0
-          k += 1 while k < text.size - 1 && (text[k] == "0" || text[k] == " ")
-          text = text[k, text.size - k].to_s
-        elsif flags.include?("_")
-          k = 0
-          lead = +""
-          while k < text.size - 1 && text[k] == "0"
-            lead << " "
-            k += 1
-          end
-          text = "#{lead}#{text[k, text.size - k]}"
-        elsif flags.include?("0")
-          text = text.tr(" ", "0")
-        end
-        text = text.upcase if flags.include?("^")
-        text = text == text.upcase ? text.downcase : text.upcase if flags.include?("#")
-        if width > text.size && !flags.include?("-")
-          pad = flags.include?("_") || !numeric ? " " : "0"
-          pad = "0" if flags.include?("0")
-          text = "#{pad * (width - text.size)}#{text}"
-        end
-        text
-      end
-
-      # The strftime pattern of time_tag's format: (nil: the default).
-      # Interpolated, so that strftime gets a plain String.
-      def self.time_tag_pattern(format, default, short, long)
+      # The text of time_tag's value in format: a format name (nil: the
+      # :default one) through I18n.l in the current locale, which raises
+      # I18n::MissingTranslationData for a name no dictionary holds; a
+      # pattern String through time_tag_strftime.
+      # @param value [Time, Date]
+      # @param format [Symbol, String, SafeString, nil]
+      # @return [String]
+      def self.time_tag_text(value, format)
         case format
-        when nil then return default
-        when :short then return short
-        when :long then return long
-        when SafeString then return "#{format.to_s}"
-        when String then return "#{format}"
+        when nil then return I18n.l(value, { format: :default })
+        when Symbol then return I18n.l(value, { format: format })
+        when SafeString then return Helpers.time_tag_strftime(value, "#{format.to_s}")
+        when String then return Helpers.time_tag_strftime(value, "#{format}")
         end
-        msg = "time_tag format: must be :short, :long or a strftime String, got #{FormBuilder.value_text(format)}"
+        msg = "time_tag format: must be a format name (:short, :long, ...) or a strftime String, got #{FormBuilder.value_text(format)}"
         raise ArgumentError, msg
       end
 
@@ -1922,7 +1999,7 @@ module Cybertrain
       end
 
       # `method: :DELETE` -> "delete"; `length: "10"` -> 10. The text is bound
-      # to a local before the second call (see FormBuilder.humanize).
+      # to a local before the second call (see I18n.humanize_attribute).
       # text.downcase, without the copy for an already lowercase method:.
       def lower_text(v)
         case v

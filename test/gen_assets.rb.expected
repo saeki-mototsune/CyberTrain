@@ -39,6 +39,7 @@ ok   an application with no assets gets an empty table
 ok   the fixture's compiled gen/assets.rb installs its table
 wrote gen/routes.rb
 wrote gen/assets.rb
+wrote gen/locales.rb
 wrote gen/controllers.rb
 wrote gen/concerns.rb
 wrote gen/views.rb

@@ -70,8 +70,22 @@ env:
     # than the proxy. Change it if your Docker networks use another range.
     CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12
     # SPINEL_WORKERS: 2
+    # Password reset mails (CHANGE ME, then uncomment): where the blog is
+    # served, which links in mails start with (without it, production
+    # sends no reset mail), and the SMTP server that sends them.
+    # BLOG_BASE_URL: https://blog.example.com
+    # CYBERTRAIN_SMTP_HOST: smtp.example.com
+    # CYBERTRAIN_SMTP_PORT: 587
+    # CYBERTRAIN_SMTP_USER: blog@example.com
+    # CYBERTRAIN_SMTP_FROM: blog@example.com
+    # The first user: /setup answers only to a connection from the server
+    # itself, never through kamal-proxy. Create it in the container instead
+    # (README, "The first user"):
+    #   kamal app exec -i --reuse "./blog user ann@example.com"
+    # or set BLOG_SETUP_OPEN: 1 for the first run only.
   secret:
     - CYBERTRAIN_SECRET_KEY_BASE
+    # - CYBERTRAIN_SMTP_PASSWORD
 
 # The SQLite database lives in storage/: keep it on the server across
 # deploys. Back it up from there (docs/deploy.md).

@@ -55,6 +55,7 @@ module Cybertrain
       def self.jobs_controller_source(page)
         path = RoutesEmitter.quote(page.jobs_path)
         guard = page.jobs_before_action
+        skip = page.jobs_skip_before_action
         out = +""
         out << "require \"cybertrain/jobs_page\"\n"
         out << "\n"
@@ -63,6 +64,15 @@ module Cybertrain
         out << "# before_action and CSRF protection.\n"
         out << "class CybertrainJobsController < ApplicationController\n"
         unless guard.empty?
+          # Only jobs_page's explicit skip_before_action: (which Mapper
+          # refuses without a guard or naming the guard itself) leaves an
+          # inherited callback out; otherwise the guard runs after them all,
+          # in Rails' order.
+          unless skip.empty?
+            out << "  # jobs_page's skip_before_action: (config/routes.rb): #{skip}\n"
+            out << "  # does not run here, so :#{guard} alone decides who sees the page.\n"
+            out << "  skip_before_action :#{skip}\n"
+          end
           out << "  before_action :#{guard}\n"
           out << "\n"
           out << "  def run_callback(name)\n"
@@ -291,7 +301,11 @@ module Cybertrain
       # A helper method may not take a name that a template helper of the
       # framework, a route helper or an application helper answers.
       def self.check_helper_method(name, helper_modules)
-        if HelperScan::RESERVED_HELPER_NAMES.include?(name) || name.end_with?("_path") || name.end_with?("_url")
+        if name.end_with?("_path") || name.end_with?("_url")
+          msg = "helper_method :#{name}: names ending in _path or _url are reserved for route helpers"
+          raise ArgumentError, msg
+        end
+        if HelperScan::RESERVED_HELPER_NAMES.include?(name)
           msg = "helper_method :#{name}: #{name} is a framework helper"
           raise ArgumentError, msg
         end

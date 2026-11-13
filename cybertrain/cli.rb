@@ -4,7 +4,7 @@
 #   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
 #   cybertrain generate attachment MODEL FIELD [--any]
-#   cybertrain generate authentication [--invite-only]
+#   cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] [--spinel] | build | spin ARGS...
@@ -53,16 +53,30 @@ module Cybertrain
             up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
             accepted, unless --any allows any file; the stored type is always
             the one detected from the bytes.
-        cybertrain generate authentication [--invite-only]
+        cybertrain generate authentication [--invite-only] [--confirmable] [--force]
             Add email-and-password sign-in to the application in the current
             directory: users and sessions tables, User and Session models,
-            SessionsController and RegistrationsController with their views,
-            the routes, a before_action in ApplicationController and a test.
-            --invite-only: no sign-up page. Users are created with
-            `./NAME user EMAIL` (password from stdin), and the first one
-            also at /setup, which answers only to this machine, only with the
-            one-time token the server's boot warning prints, and only while
-            no user exists (NAME_SETUP_OPEN=1 lifts the address check).
+            the Authentication concern (included into ApplicationController),
+            SessionsController and RegistrationsController with their views
+            (their texts in the bundled en and ja dictionaries), the routes,
+            the jobs page behind require_admin, and tests. `./NAME user
+            EMAIL` creates a user (password from stdin), `./NAME user admin
+            EMAIL` makes one an admin, `user unadmin EMAIL` takes it back.
+            --invite-only: no sign-up page. The first user is created with
+            the user command, or at /setup, which answers only to this
+            machine, only with the one-time token the server's boot warning
+            prints, and only while no user exists (NAME_SETUP_OPEN=1 lifts
+            the address check).
+            --confirmable: a new account confirms its address by mail
+            before it can sign in (a form sends the link again), and a new
+            address on the account page takes effect once its own link is
+            opened. Users the user command or /setup creates are confirmed.
+            Run again over an application generated before (by 0.4, or
+            without --confirmable), it writes the missing files and a
+            migration with the missing columns, and prints a diff for each
+            file it would change, to apply by hand (patch -p1 applies them).
+            --force: overwrite those files instead (and replace 0.4's
+            authentication block in ApplicationController, unless edited).
         cybertrain generate helper NAME [--force]
             Add app/helpers/NAME_helper.rb (an empty module NameHelper, which
             `spin run gen` makes callable from every template) and a test.
@@ -349,11 +363,13 @@ module Cybertrain
         puts "  cybertrain server"
         puts "  cybertrain spin test   # test/attachment_*.rb; snapshot it from the binary"
       when "authentication"
-        args = without_flag(argv[2, argv.size - 2], "--invite-only")
-        raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only]" unless args.empty?
+        args = without_flag(without_flag(without_flag(argv[2, argv.size - 2], "--invite-only"), "--confirmable"), "--force")
+        raise InvalidArgument, "usage: cybertrain generate authentication [--invite-only] [--confirmable] [--force]" unless args.empty?
 
         invite_only = argv.include?("--invite-only")
-        Authentication.generate(".", invite_only)
+        confirmable = argv.include?("--confirmable")
+        result = Authentication.generate_with_result(".", invite_only, confirmable, argv.include?("--force"))
+        result.manual.each { |diff| puts diff }
         puts ""
         puts "next:"
         puts "  cybertrain db migrate"
@@ -363,7 +379,27 @@ module Cybertrain
         else
           puts "  cybertrain server      # then open /sign_up"
         end
-        puts "  cybertrain spin test   # test/authentication.rb; snapshot it from the binary"
+        tests = confirmable ? "passwords.rb, accounts.rb and confirmations.rb" : "passwords.rb and accounts.rb"
+        puts "  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, #{tests}; snapshot them from the binaries"
+        base_url_env = Authentication.base_url_env(Build.app_name("."))
+        mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
+        puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
+        unless result.manual.empty?
+          # The warnings above a diff (with --confirmable, what the sessions
+          # and registrations controllers leave out until theirs is
+          # applied), once more at the end.
+          result.manual.each do |diff|
+            lines = diff.lines
+            next if lines.size < 2 || !lines[1].start_with?("IMPORTANT: ")
+
+            path = lines[0].delete_prefix("manual  ")
+            path = path[0, path.index(":").to_i].to_s
+            puts "IMPORTANT: #{path}: #{lines[1].strip.delete_prefix("IMPORTANT: ")}"
+          end
+          puts ""
+          puts "next: apply the diffs above, or re-run with --force for files you never edited"
+          puts "  # the app may not build until these diffs are applied: the files written now need them"
+        end
       when "helper"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate helper NAME [--force]" unless args.size == 1

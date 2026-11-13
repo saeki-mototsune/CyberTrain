@@ -4,5 +4,7 @@ ok   retry resets attempts and requeues; discard and delete act only on failed o
 ok   retry keys a legacy failed row of a keyed kind in the same statement
 ok   retry_all and discard_all_failed count the rows
 ok   each list shows jobs_page_per_page rows, with page links
+ok   the jobs page in English is unchanged
+ok   the jobs page in Japanese
 ok   jobs_page_per_page: 50, CYBERTRAIN_JOBS_PAGE_PER_PAGE, at least 1
-7 tests, 82 assertions, 0 failures
+9 tests, 106 assertions, 0 failures

@@ -87,14 +87,16 @@ end
 # owner controller, so CLI::Templates::ATTACHMENT_RESERVED_ACTIONS must name
 # every instance method and reader a controller already has: those of
 # cybertrain/controller.rb (public or private), and those the generators
-# write into ApplicationController (its template and the authentication
-# block). A field called `params` or `head` would otherwise be accepted and
-# break the controller. Names a field cannot have (with ? ! =) are skipped.
+# write into ApplicationController (its template and the Authentication
+# concern it includes). A field called `params` or `head` would otherwise
+# be accepted and break the controller. Names a field cannot have (with ? ! =) are skipped.
 $LOAD_PATH.unshift(File.expand_path("..", __dir__))
 require "cybertrain/cli/templates"
 require "cybertrain/cli/authentication"
 controller_source = File.read(File.expand_path("../cybertrain/controller.rb", __dir__))
-app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.application_controller_block
+# The concern as --confirmable writes it, which has every method the
+# other modes' has and send_confirmation_mail.
+app_source = Cybertrain::CLI::Templates.application_controller + Cybertrain::CLI::Authentication.authentication_concern("app", true)
 action_names = []
 [controller_source, app_source].each do |text|
   text.scan(/^\s*def\s+(?!self\.)([A-Za-z_][A-Za-z0-9_]*)\b(?![?!=])/) { |(m)| action_names << m }
@@ -163,14 +165,15 @@ jobs_missing = job_names - Cybertrain::Gen::JobScan::RESERVED_CLASS_METHODS
 # rules 10, 34 and 41): a name that more than one class defines, or that a
 # later phase gives a new home, has a row here naming every file allowed to
 # `def` it (instance or `def self.`), today's definers and the homes the
-# phase 4a plan gives it (seeded once, so tasks running in parallel never
-# edit the table; a name the plan did not foresee is added by its task). A
+# phase 4a and 4b plans give it (seeded once per phase, so tasks running in
+# parallel never edit the table; a name the plan did not foresee is added
+# by its task). A
 # `def` of a listed name in any other file under cybertrain/ fails the
 # check, as does an emitted `def` line (a String in
 # cybertrain/generator/*_emitter.rb), which counts as its emitter's. A name
 # with no row is not checked: a brand-new name with no other definer needs
-# none. Rows may name files that do not exist yet. An empty row (t, l)
-# means no file may define the name yet.
+# none. Rows may name files that do not exist yet. An empty row
+# (remember) means no file may define the name.
 NAME_HOMES = {
   # dev/state_file.rb's is Dev::StateFile.format (the state file's text, a
   # String, as Console::Printer.format's), a module function called on its
@@ -241,23 +244,83 @@ NAME_HOMES = {
   # The routes DSL's `scope "/v1" do` (nil), the model macro `scope :x,
   # -> { }` (nil) and the generated Gen::Console.scope(name) (a Relation).
   "scope" => %w[cybertrain/generator/routes_dsl.rb cybertrain/model.rb cybertrain/generator/console_emitter.rb],
-  # i18n's translate and localize helpers come in phase 4b.
   # Controller#send_data(data, filename:, ...) answers a download; the
   # Mailer's SMTP connection writes raw bytes with its own send_data(data).
   "send_data" => %w[cybertrain/controller.rb cybertrain/mailer.rb],
-  "t" => %w[],
-  "l" => %w[],
+  # Phase 4b (plan decision R5): i18n. A String lookup and an Array lookup
+  # are separate names (I18n.t / translate -> String, translate_list ->
+  # Array<String>; Gen::Locales.lookup -> String or nil, lookup_list ->
+  # Array<String>). I18n.t and Controller#t both answer a String.
+  # `locale_available?` (and `admin?` below) have no row: the `def` line
+  # pattern stops before a `?` name, so a row would check nothing (phase
+  # 4b pre-flight finding 21). If Task 4 takes spike 6c's fallback
+  # (Controller#locale), it adds cybertrain/controller.rb to `locale`.
+  "t" => %w[cybertrain/i18n.rb cybertrain/controller.rb],
+  "translate" => %w[cybertrain/i18n.rb cybertrain/controller.rb],
+  "l" => %w[cybertrain/i18n.rb],
+  "localize" => %w[cybertrain/i18n.rb],
+  "translate_list" => %w[cybertrain/i18n.rb],
+  "locale" => %w[cybertrain/i18n.rb],
+  "with_locale" => %w[cybertrain/i18n.rb],
+  "default_locale" => %w[cybertrain/i18n.rb],
+  "available_locales" => %w[cybertrain/i18n.rb],
+  "preferred_locale" => %w[cybertrain/http/request.rb],
+  "human_attribute_name" => %w[cybertrain/i18n.rb cybertrain/generator/models_emitter.rb],
+  # gen/locales.rb's Gen::Locales and the checked-in locales/bundled.rb's
+  # Cybertrain::BundledLocales, both written by locales_emitter.rb.
+  "lookup" => %w[cybertrain/generator/locales_emitter.rb cybertrain/locales/bundled.rb],
+  "lookup_list" => %w[cybertrain/generator/locales_emitter.rb cybertrain/locales/bundled.rb],
+  # Phase 4b: authentication. `remember` is the sessions.remember column's
+  # reader in generated applications, so no framework file defines it
+  # (TimeZone's cache writer is remember_zone).
+  "remember" => %w[],
+  # Mailer.deliver_later and MailMessage#deliver_later both answer the
+  # job's id (an Integer).
+  "deliver_later" => %w[cybertrain/mailer/later.rb cybertrain/mail_message.rb],
+  # The Controller class method, and the 0.4 block's own copy inside
+  # cli/authentication.rb's ApplicationController text.
+  "allow_unauthenticated_access" => %w[cybertrain/controller.rb cybertrain/cli/authentication.rb],
+  "password_reset_token" => %w[cybertrain/cli/authentication.rb],
+  # The generated User's token bindings (Strings), --confirmable's
+  # User#confirm (a Boolean, as Model#save's), User#confirmation_token
+  # (a String) and ConfirmationsMailer.confirmation_instructions (a
+  # Cybertrain::MailMessage): the framework, which every app compiles
+  # with, keeps these names free.
+  "password_reset_binding" => %w[cybertrain/cli/authentication.rb],
+  "confirmation_binding" => %w[cybertrain/cli/authentication.rb],
+  "confirmation_token" => %w[cybertrain/cli/authentication.rb],
+  "confirm" => %w[cybertrain/cli/authentication.rb],
+  "confirmation_instructions" => %w[cybertrain/cli/authentication.rb],
+  # --confirmable's User#save_confirmed (a Boolean) and
+  # User#request_email_change (nil).
+  "save_confirmed" => %w[cybertrain/cli/authentication.rb],
+  "request_email_change" => %w[cybertrain/cli/authentication.rb],
+  # The generated PasswordsMailer.reset answers a Cybertrain::MailMessage
+  # (Rails' name); the framework, which every app compiles with, keeps the
+  # name free (WebSocket's Frame#clear_message was its private `reset`).
+  "reset" => %w[cybertrain/cli/authentication.rb],
+  # Every CLI generator's `generate` answers the paths it created
+  # (Array<String>). A generator that needs to answer more takes a new
+  # name, as phase 4b's do (pre-flight finding 3): the signed token is
+  # Token.issue (cybertrain/token.rb), and the authentication generator's
+  # GenerateResult comes from Authentication.generate_with_result, which
+  # cli.rb calls, beside Authentication.generate.
+  "generate" => %w[cybertrain/cli/helper.rb cybertrain/cli/job.rb cybertrain/cli/authentication.rb
+                   cybertrain/cli/component.rb cybertrain/cli/scaffold.rb cybertrain/cli/attachment.rb],
+  "issue" => %w[cybertrain/token.rb],
+  "generate_with_result" => %w[cybertrain/cli/authentication.rb],
   # The Turbo Stream actions: Turbo.x (SafeString), TurboStreams#x
   # (SafeString, the controller's builder). Model#update returns a Boolean
   # (compiled side by side with TurboStreams#update in test/turbo_helpers.rb
-  # and test/application.rb's program); cli/templates.rb's is the
-  # generated controller's `update` action, written in a template String.
+  # and test/application.rb's program); cli/templates.rb's and
+  # cli/authentication.rb's (PasswordsController) are generated controllers'
+  # `update` actions, written in template Strings.
   # dev/build_status.rb's is Dev::BuildStatus#update(snapshot) (nil), only
   # ever called on a BuildStatus; compiled beside Model#update in
   # examples/blog (its controllers update records, its server role builds
   # the status).
   "update" => %w[cybertrain/model.rb cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb cybertrain/cli/templates.rb
-                 cybertrain/dev/build_status.rb],
+                 cybertrain/cli/authentication.rb cybertrain/dev/build_status.rb],
   "replace" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "append" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "prepend" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
@@ -265,10 +328,11 @@ NAME_HOMES = {
   "after" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "remove" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb]
 }.freeze
-# The names the phase 4a plan lists as the first candidates for a clash
-# must keep a row (Global Constraints of the plan).
+# The names the phase 4a and 4b plans list as the first candidates for a
+# clash must keep a row (Global Constraints of the plans; 4b's `admin?` is
+# left out, see `t` above).
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
-                     csv xml text any permit scope t l].freeze
+                     csv xml text any permit scope t l translate localize locale remember].freeze
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
 homeless = []
@@ -347,7 +411,7 @@ else
   end
   unless home_rows_missing.empty?
     warn "check-reserved-names: NAME_HOMES has no row for #{home_rows_missing.map(&:inspect).join(", ")} " \
-         "(a candidate name of the phase 4a plan); add one"
+         "(a candidate name of the phase 4a or 4b plan); add one"
   end
   unless jobs_missing.empty?
     warn "check-reserved-names: gen/jobs.rb defines #{jobs_missing.map(&:inspect).join(", ")} on every job class " \

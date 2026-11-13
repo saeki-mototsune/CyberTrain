@@ -1,5 +1,5 @@
 ---
-source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
+source_sha256: ef8c5bc57b3af6efc730c5a1f8f518d1f37931f4349c672de3518febebd3b834
 ---
 # バックグラウンド処理と運用
 
@@ -90,13 +90,14 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 ```ruby
 # config/routes.rb
 Cybertrain::Routes.draw do
-  jobs_page "/admin/jobs", before_action: :require_admin
+  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 end
 ```
 
 `jobs_page` が載せるページには、状態ごとの行数、キューにある数と次の期限、`failed` と `discarded` の行（種類、引数、エラー、試行回数、時刻）、`running` の行（誰が確保したか、ハートビートがどれだけ古いか）が、リストごとに `jobs_page_per_page`（50、`CYBERTRAIN_JOBS_PAGE_PER_PAGE`）行ずつ並びます。失敗した行は再試行（すぐにキューに戻し、試行回数を 0 に）、破棄、削除でき、破棄された行は再試行と削除ができ、失敗した行すべてを一度に再試行または破棄することもできます。どの操作も `failed` と `discarded` の行にしか触れないので、ワーカーが確保したばかりの行はそのままです。
 
-- 生成されるコントローラーは `ApplicationController` を継承するので、アプリケーションのレイアウト、ヘルパー、CSRF 保護が効きます。`before_action:` はそのメソッドの 1 つを指定します。拒否するには、そのメソッドがレンダーかリダイレクトをしなければなりません（アプリケーションのログインの確認、または examples/blog の `require_admin` のようなトークンの確認）。`before_action:` がなければページは誰にでも開かれ、`spin run gen` はそのことを警告する行を出します。
+- 生成されるコントローラーは `ApplicationController` を継承するので、アプリケーションのレイアウト、ヘルパー、CSRF 保護が効きます。`before_action:` はそのメソッドの 1 つを指定します。拒否するには、そのメソッドがレンダーかリダイレクトをしなければなりません。`cybertrain generate authentication` は、そのコンサーンの `require_admin`（管理者がサインインしていなければ 404。[管理者ユーザー](authentication.md#admin-users-and-the-jobs-page)）を使って上の行を描きます。`before_action:` がなければページは誰にでも開かれ、`spin run gen` はそのことを警告する行を出します。
+- `skip_before_action:` は、ページで実行しない継承された before コールバックを 1 つ指定します。`:require_authentication` を指定すると、訪問者には `require_admin` だけが答え、サインインへのリダイレクトではなく 404 を返します。gen は、`before_action:` のない場合と、`before_action:` そのものを指す場合を拒否します。
 - ページのボタンは CSRF トークン付きのフォームです。ページのパスを `csrf_exempt_prefixes` に含めないでください。除外されたプレフィックスの下では、それらのフォームはどのサイトからでも受け付けられてしまいます。
 
 シェルからは、`./<app> jobs` が設定されたデータベースに対して同じことをします（スレッドは起動しません）：

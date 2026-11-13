@@ -13,7 +13,8 @@
 # workflow and need no compiling.
 #
 #   false  docs/api/**, script/api-docs, .yardopts (the API reference only)
-#   true   .github/workflows/ci.yml, script/test-shard, script/ci-changes
+#   true   .github/workflows/ci.yml, script/test-shard, script/ci-changes,
+#          script/auth-e2e
 #   false  what on.paths leaves out: site/**, **.md, script/**, .githooks/**,
 #          .github/workflows/** (in a change that started the workflow
 #          through another file)
@@ -42,7 +43,7 @@ decide() {
     case "$path" in
       "") ;;
       docs/api/* | script/api-docs | .yardopts) ;;
-      .github/workflows/ci.yml | script/test-shard | script/ci-changes) framework=true ;;
+      .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e) framework=true ;;
       site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
       *) framework=true ;;
     esac
@@ -88,6 +89,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect true .github/workflows/ci.yml
   expect true script/test-shard
   expect true script/ci-changes
+  expect true script/auth-e2e
   expect true spin.toml
   expect true cybertrain.gemspec
   expect true playground/Dockerfile

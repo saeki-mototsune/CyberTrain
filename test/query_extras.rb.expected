@@ -13,6 +13,8 @@ ok   upsert surfaces SQLite's refusal when no unique index matches the conflict 
 ok   increment adds to a column over the relation's rows and returns how many changed
 ok   increment with a limit or offset changes only that window, by id
 ok   increment refuses a name that is not a column
+ok   update_all_sql sets columns by SQL over the relation's rows in one statement
+ok   update_all_sql refuses an empty SET list and an Array bind
 ok   where_like is a substring match with the text's wildcards escaped
 ok   where_like quotes the column and binds the pattern
 ok   a prefix search writes its own pattern from like_escape
@@ -22,4 +24,4 @@ ok   count_by counts the rows per value, keys as Strings in order
 ok   count_by merges NULL into the empty-String key and groups only the window
 ok   count_by_sql groups by an expression: hour buckets
 ok   sum_int and sum_float add up a column, 0 for no rows
-24 tests, 122 assertions, 0 failures
+26 tests, 138 assertions, 0 failures

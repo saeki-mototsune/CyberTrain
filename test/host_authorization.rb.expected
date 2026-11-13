@@ -7,4 +7,5 @@ ok   empty allowlists and empty entries deny requests
 ok   CYBERTRAIN_HOSTS turns the check on outside development; the health path is exempt
 ok   a CYBERTRAIN_HOSTS entry that is not a host name stops the boot
 ok   a blocked host is logged with its path, escaped
-9 tests, 147 assertions, 0 failures
+ok   a blocked host's line writes a signed token in the path as [FILTERED]
+10 tests, 149 assertions, 0 failures

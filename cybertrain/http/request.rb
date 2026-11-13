@@ -178,6 +178,116 @@ module Cybertrain
       :html
     end
 
+    # The most bytes of `Accept-Language` {#preferred_locale} reads.
+    LOCALE_HEADER_LIMIT = 4096
+
+    # The most `Accept-Language` entries {#preferred_locale} reads.
+    LOCALE_ENTRY_LIMIT = 32
+
+    # The locale the client prefers among `available`, from
+    # `Accept-Language`: the highest q-value wins and the earlier entry
+    # breaks a tie; `ja-JP` matches `:ja` (the full tag is tried before its
+    # language, ASCII case-insensitively); `q=0`, `*` and a malformed entry
+    # match nothing. Without a match (no header, junk, nothing available)
+    # it answers `I18n.default_locale`, never nil. Only the first 4 KB and
+    # 32 entries are read, and the answer is always an element of
+    # `available` (or the default): request text is compared, never turned
+    # into a Symbol.
+    # The default comes from `I18n` (cybertrain/i18n), which the HTTP layer
+    # does not require (script/check-http-layer keeps it standalone): a
+    # program that calls this loads it, as `require "cybertrain"` does.
+    # @example
+    #   request.preferred_locale([:en, :ja])   # "ja-JP, en;q=0.5" => :ja
+    # @param available [Array<Symbol>] the locales the application serves
+    # @return [Symbol]
+    # @api public
+    def preferred_locale(available)
+      raw = header("Accept-Language").to_s
+      return I18n.default_locale if raw.empty?
+
+      text = raw.bytesize > LOCALE_HEADER_LIMIT ? raw.byteslice(0, LOCALE_HEADER_LIMIT).to_s : raw
+      # A header that is not valid text (or was cut inside a character)
+      # cannot be split; it is no preference.
+      return I18n.default_locale unless text.valid_encoding?
+
+      best = I18n.default_locale
+      best_q = 0
+      entries = text.split(",", LOCALE_ENTRY_LIMIT + 1)
+      i = 0
+      while i < entries.size && i < LOCALE_ENTRY_LIMIT
+        parts = entries[i].to_s.split(";")
+        i += 1
+        next if parts.empty?
+
+        q = 1000
+        parts.each_with_index do |param, k|
+          next if k == 0
+
+          pair = param.split("=", 2)
+          next unless pair.size == 2 && pair[0].to_s.strip.downcase == "q"
+
+          q = Request.quality_thousandths(pair[1].to_s.strip)
+        end
+        next if q <= best_q
+
+        found = Request.locale_match(parts[0].to_s.strip.downcase, available)
+        next if found.nil?
+
+        best = found
+        best_q = q
+      end
+      best
+    end
+
+    # A q-value as thousandths (`"0.8"` is 800, `"1"` is 1000); -1 for text
+    # that is not one (so the entry is dropped): `0` or `1` with at most
+    # three decimals, no more than 1.
+    def self.quality_thousandths(value)
+      q = value.to_s
+      return -1 if q.empty? || q.bytesize > 5
+
+      whole = q.getbyte(0)
+      return -1 unless whole == 48 || whole == 49 # "0" "1"
+      return whole - 48 == 1 ? 1000 : 0 if q.bytesize == 1
+      return -1 unless q.getbyte(1) == 46 # "."
+
+      thousandths = 0
+      scale = 100
+      j = 2
+      while j < q.bytesize
+        d = q.getbyte(j)
+        return -1 if d < 48 || d > 57
+
+        thousandths += (d - 48) * scale
+        scale /= 10
+        j += 1
+      end
+      return -1 if whole == 49 && thousandths > 0
+
+      whole == 49 ? 1000 : thousandths
+    end
+
+    # The element of `available` a lowercased language tag names: the
+    # whole tag (`pt-br` finds `:"pt-BR"`), else its language (`ja-jp`
+    # finds `:ja`). nil for `*`, an unknown tag or an empty one.
+    def self.locale_match(tag, available)
+      return nil if tag.empty? || tag == "*"
+
+      tag = tag.tr("_", "-")
+
+      available.each do |candidate|
+        return candidate if candidate.to_s.downcase.tr("_", "-") == tag
+      end
+      cut = tag.index("-")
+      return nil if cut.nil? || cut == 0
+
+      language = tag[0, cut].to_s
+      available.each do |candidate|
+        return candidate if candidate.to_s.downcase == language
+      end
+      nil
+    end
+
     # "0", "0.", "0.0", "0.000": a q-value that refuses the type.
     def self.zero_quality?(value)
       q = value.to_s

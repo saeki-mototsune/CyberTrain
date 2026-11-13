@@ -1,7 +1,7 @@
 <div class="comment" id="<%= dom_id(comment) %>">
-  <p><%= comment_author(comment) %> wrote:</p>
+  <p><%= t(".wrote_html", author: comment_author(comment)) %></p>
 
   <p><%= comment.body %></p>
 
-  <%= button_to "Destroy comment", article_comment_path(comment.article_id, comment), method: :delete %>
+  <%= button_to t(".destroy"), article_comment_path(comment.article_id, comment), method: :delete %>
 </div>
