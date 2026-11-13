@@ -1,3 +1,4 @@
+require "json"
 require "cybertrain/logger"
 require "cybertrain/test"
 require_relative "support/log_capture"
@@ -137,6 +138,49 @@ test "a JSON line's message drops the line's own newline" do
     travel_to(Time.utc(2026, 11, 11, 12)) { sink_logger.info("ends\n") }
   end
   assert_equal %({"time":"2026-11-11T12:00:00.000Z","level":"INFO","tags":[],"message":"ends"}\n), SINK.string
+end
+
+# The quoted form of a text whose `n` bytes are all replaced.
+def replaced(prefix, n, suffix)
+  "\"#{prefix}#{"\\ufffd" * n}#{suffix}\""
+end
+
+# What JSON.parse reads back from a quoted text (CRuby only: the compiled
+# program checks the bytes alone).
+def json_round_trip(quoted)
+  JSON.parse("{\"m\":#{quoted}}")["m"].to_s
+end
+
+test "the byte scan refuses what is not UTF-8: every byte from 0x80 up is replaced" do
+  invalid = [
+    ["\xC0\xAF", 2], ["\xC1\xBF", 2],                   # overlong 2-byte
+    ["\xE0\x80\xAF", 3], ["\xE0\x9F\xBF", 3],           # overlong 3-byte
+    ["\xF0\x80\x80\xAF", 4], ["\xF0\x8F\xBF\xBF", 4],   # overlong 4-byte
+    ["\xED\xA0\x80", 3], ["\xED\xBF\xBF", 3],           # UTF-8-encoded surrogates U+D800, U+DFFF
+    ["\xF4\x90\x80\x80", 4],                            # U+110000, above U+10FFFF
+    ["\x80", 1], ["\xBF", 1],                           # lone continuation bytes
+    ["\xF5", 1], ["\xF6", 1], ["\xF7", 1], ["\xF8", 1], ["\xF9", 1], ["\xFA", 1],
+    ["\xFB", 1], ["\xFC", 1], ["\xFD", 1], ["\xFE", 1], ["\xFF", 1],
+    ["\xF5\x80\x80\x80", 4], ["\xE6\x97", 2],          # a lead byte 0xF5; a truncated character
+    ["\xE6\x97\xA5\x80", 4]                             # a valid character, then a stray byte: all replaced
+  ]
+  invalid.each do |pair|
+    bytes = pair[0].to_s.b
+    n = pair[1].to_i
+    quoted = Cybertrain::Logger.json_quote("a#{bytes}b".b)
+    assert_equal replaced("a", n, "b"), quoted
+    assert_equal "a#{"�" * n}b", json_round_trip(quoted) if RUBY_ENGINE == "ruby"
+  end
+end
+
+test "valid UTF-8 is kept: U+10FFFF, U+2028, a CJK character, an emoji" do
+  valid = ["\xF4\x8F\xBF\xBF", "\xE2\x80\xA8", "\xE6\x97\xA5", "\xF0\x9F\x98\x80", "\xC2\xA0"]
+  valid.each do |text|
+    utf8 = text.dup.force_encoding("UTF-8")
+    assert_equal "\"a#{utf8}b\"", Cybertrain::Logger.json_quote("a#{text}b".b)
+    assert_equal "\"a#{utf8}b\"", Cybertrain::Logger.json_quote("a#{utf8}b")
+    assert_equal "a#{utf8}b", json_round_trip(Cybertrain::Logger.json_quote("a#{utf8}b")) if RUBY_ENGINE == "ruby"
+  end
 end
 
 test "messages with control bytes, invalid UTF-8 and non-ASCII are one valid JSON line" do

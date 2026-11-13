@@ -7,6 +7,14 @@ require "cybertrain/test"
 # Meant to be compiled (`spin test test/logger_threads.rb`), where the
 # threads are real; it also runs under CRuby. Byte checks, no regexp
 # (pre-flight ruling G5).
+#
+# Compiled, Spinel runs threads on SPINEL_WORKERS worker threads, read
+# when the first thread starts; with the default one worker a StringIO
+# write is never pre-empted and the test could not fail. Four workers
+# write at once. Without the lock the failure shows as interleaved or
+# torn lines, or as a crash of the program (a double free inside
+# StringIO), not only as a failed assertion.
+ENV["SPINEL_WORKERS"] = "4"
 
 LINES_PER_THREAD = 200
 PAYLOAD = "x" * 3000

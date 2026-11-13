@@ -195,7 +195,14 @@ test "no runtime or emitted code reads Time.now, and no removed seam is left" do
   hits = []
   framework.each { |path| hits.concat(clock_hits(path)) if clock_scanned?(path) }
   assert_equal [], hits
-  assert_equal 1, clock_hits("cybertrain/logger.rb").size
+  # logger.rb's one read, pinned by its text and its place: Logger.timestamp
+  # reads the real time only when the Clock pushed no instant (-1).
+  logger_hits = clock_hits("cybertrain/logger.rb")
+  assert_equal 1, logger_hits.size
+  logger_lines = File.read("cybertrain/logger.rb").lines.map(&:strip)
+  at = logger_hits[0].to_s.split(":").last.to_i - 1
+  assert_equal "us = Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond) if us == -1", logger_lines[at]
+  assert_equal ["def self.timestamp", "us = @clock_micros"], logger_lines[at - 2, 2]
   # The legacy block is skipped, not absent: 0.4's text still reads Time.now.
   assert File.read("cybertrain/cli/authentication.rb").include?("created_at.to_i + lifetime <= Time.now.to_i")
 

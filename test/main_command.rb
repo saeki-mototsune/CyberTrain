@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/main"
+require_relative "support/log_capture"
 
 # Cybertrain::Main.command: an application's own subcommands on its binary.
 # The blocks below are registered at top level, as bin/<name>.rb does
@@ -116,6 +117,22 @@ Cybertrain::Main.command("today", "record Time.zone and Date.current") do |argv|
   0
 end
 
+# A command that logs one line, as a report command would.
+Cybertrain::Main.command("log_line", "log one line") do |argv|
+  Cybertrain.logger.info("from a command")
+  0
+end
+
+# Runs `argv` with config.log_format = :json, then puts the text format
+# back (a plain method's ensure: pre-flight ruling G4).
+def run_in_json(argv)
+  Cybertrain.config.log_format = :json
+  run(argv)
+ensure
+  Cybertrain.config.log_format = :text
+  Cybertrain::Logger.json_lines = false
+end
+
 def refusal(word)
   Cybertrain::Main.command(word, "never registered") { |argv| 0 }
   "registered"
@@ -203,6 +220,39 @@ test "an unknown time zone is refused before a command, jobs or console runs" do
   Cybertrain.config.time_zone = "UTC"
   assert_equal base, SEEN.size
   assert_equal "UTC", Time.zone.zone_name
+  refute Cybertrain::DB.connected?
+end
+
+test "a command logs in the configured format" do
+  status = -1
+  log = capture_log { travel_to(Time.utc(2026, 11, 11, 12)) { status = run_in_json(["log_line"]) } }
+  assert_equal 0, status
+  assert_equal %({"time":"2026-11-11T12:00:00.000Z","level":"INFO","tags":[],"message":"from a command"}\n), log
+  refute Cybertrain::Logger.json_lines
+  text = capture_log { travel_to(Time.utc(2026, 11, 11, 12)) { status = run(["log_line"]) } }
+  assert_equal "2026-11-11T12:00:00.000Z INFO from a command\n", text
+end
+
+test "a command logs at the configured level" do
+  Cybertrain.config.log_level = :warn
+  quiet = capture_log { run(["log_line"]) }
+  Cybertrain.config.log_level = :info
+  assert_equal "", quiet
+  assert_logged capture_log { run(["log_line"]) }, "INFO", "from a command"
+end
+
+test "an unknown log level or format is refused before a command, jobs or console runs" do
+  base = SEEN.size
+  Cybertrain.config.log_level = :verbose
+  assert_equal 1, run(["user", "y@example.com"])
+  assert_equal 1, run(["jobs", "list"])
+  assert_equal 1, run(["console"])
+  Cybertrain.config.log_level = :info
+  Cybertrain.config.log_format = :xml
+  assert_equal 1, run(["user", "y@example.com"])
+  Cybertrain.config.log_format = :text
+  assert_equal base, SEEN.size
+  refute Cybertrain::Logger.json_lines
   refute Cybertrain::DB.connected?
 end
 

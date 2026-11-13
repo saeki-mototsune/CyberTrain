@@ -78,8 +78,8 @@ module Cybertrain
       Request.trusted_proxies = config.trusted_proxies
       ParameterFilter.names = config.filter_parameters
       Response.default_permissions_policy = config.permissions_policy
-      Cybertrain.logger.level = config.log_level == :none ? :error : config.log_level
-      Logger.json_lines = config.log_format == :json
+      # The level and the format (validation_error has refused unknown ones).
+      apply_logging(config)
       # I18n cannot read Config either: the locales and how a missing
       # translation answers.
       I18n.default_locale = config.i18n_default_locale
@@ -91,6 +91,26 @@ module Cybertrain
       apply_zone(config)
       @applied += 1
       nil
+    end
+
+    # Installs the log level on Cybertrain.logger (`:none` as `:error`: no
+    # request log, errors still printed) and the line format
+    # (Logger.json_lines). {.apply} calls it, and so do a registered command
+    # (`Main.command`), `jobs` and `console`, which run without
+    # Application#boot, so their lines follow `log_level` and `log_format`
+    # too. An unknown level or format is refused as boot refuses it:
+    # nothing is changed and the answer is Config#log_error's message,
+    # which the caller prints as boot does (`error: ...`) before exiting 1.
+    # @param config [Config]
+    # @return [String] "" once installed, else why not
+    # @api public
+    def self.apply_logging(config)
+      problem = config.log_error
+      return problem unless problem.empty?
+
+      Cybertrain.logger.level = config.log_level == :none ? :error : config.log_level
+      Logger.json_lines = config.log_format == :json
+      ""
     end
 
     # Installs `config.time_zone` as `Time.zone` ({Clock.zone}), the one

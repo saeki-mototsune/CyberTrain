@@ -9,6 +9,7 @@
 require "cybertrain"
 require "cybertrain/application"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # What the modules hold before any boot: taken before anything below runs.
 PRISTINE = Cybertrain::Runtime.describe
@@ -83,6 +84,45 @@ test "Runtime.apply installs the log format and reset! puts it back" do
   app_for(config_b).boot.shutdown
   refute Cybertrain::Logger.json_lines
   Cybertrain::Runtime.reset!
+end
+
+test "Runtime.apply_logging installs the level and the format alone, or refuses with boot's message" do
+  c = config_a
+  applied = Cybertrain::Runtime.applied
+  assert_equal "", Cybertrain::Runtime.apply_logging(c)
+  assert Cybertrain::Logger.json_lines
+  assert_equal :warn, Cybertrain.logger.level
+  assert_equal "UTC", Cybertrain::Clock.zone.zone_name
+  Cybertrain::Runtime.reset!
+  c.log_level = :none
+  c.log_format = :text
+  assert_equal "", Cybertrain::Runtime.apply_logging(c)
+  assert_equal :error, Cybertrain.logger.level
+  refute Cybertrain::Logger.json_lines
+  Cybertrain::Runtime.reset!
+  c.log_level = :verbose
+  c.log_format = :json
+  assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", Cybertrain::Runtime.apply_logging(c)
+  assert_equal :info, Cybertrain.logger.level
+  refute Cybertrain::Logger.json_lines
+  c.log_level = :info
+  c.log_format = :xml
+  assert_equal "log_format must be :text or :json (got :xml)", Cybertrain::Runtime.apply_logging(c)
+  refute Cybertrain::Logger.json_lines
+  assert_equal applied, Cybertrain::Runtime.applied
+end
+
+test "a boot logs its mail warning in the configured format" do
+  c = config_b
+  c.env = "development"
+  c.mail_delivery_method = :test
+  c.log_format = :json
+  app = app_for(c)
+  log = capture_log { app.boot }
+  app.shutdown
+  Cybertrain::Runtime.reset!
+  assert_includes log, "{\"time\":\""
+  assert_includes log, "\"level\":\"WARN\",\"tags\":[],\"message\":\"mail_delivery_method is :test outside the test environment"
 end
 
 test "Runtime.reset! restores every default" do

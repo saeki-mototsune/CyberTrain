@@ -147,10 +147,12 @@ module Cybertrain
     end
 
     # A registered command, `jobs` and `console` run without
-    # Application#boot, so each installs the configured zone itself
-    # (Runtime.apply_zone) before anything else; an unknown zone is refused
-    # with boot's line, `error: time_zone "X" is not a known time zone`,
-    # and exit status 1, before the database is opened.
+    # Application#boot, so each installs the configured log level and
+    # format (Runtime.apply_logging), then the zone (Runtime.apply_zone),
+    # before anything else; an unknown level, format or zone is refused
+    # with boot's line (`error: time_zone "X" is not a known time zone`,
+    # `error: log_level must be ...`) and exit status 1, before the
+    # database is opened. This prints the line.
     def self.zone_refused(problem)
       puts "error: #{problem}"
       STDOUT.flush
@@ -165,6 +167,9 @@ module Cybertrain
     # sits in this plain method, which calls the stored block rather than
     # yielding (NOTES rules 32/45).
     def self.run_command(command, args, views, url_resolver)
+      log_problem = Runtime.apply_logging(Cybertrain.config)
+      return zone_refused(log_problem) unless log_problem.empty?
+
       zone_problem = Runtime.apply_zone(Cybertrain.config)
       return zone_refused(zone_problem) unless zone_problem.empty?
 
@@ -185,6 +190,9 @@ module Cybertrain
     # thread), in the configured zone. Returns its exit status, or 1 when
     # the zone is unknown or the database cannot be opened. The rescue sits in this plain method (NOTES rules 32/45).
     def self.run_jobs(args)
+      log_problem = Runtime.apply_logging(Cybertrain.config)
+      return zone_refused(log_problem) unless log_problem.empty?
+
       zone_problem = Runtime.apply_zone(Cybertrain.config)
       return zone_refused(zone_problem) unless zone_problem.empty?
 
@@ -209,6 +217,9 @@ module Cybertrain
     # opened. The rescue sits in this plain method (NOTES
     # rules 32/45).
     def self.run_console
+      log_problem = Runtime.apply_logging(Cybertrain.config)
+      return zone_refused(log_problem) unless log_problem.empty?
+
       zone_problem = Runtime.apply_zone(Cybertrain.config)
       return zone_refused(zone_problem) unless zone_problem.empty?
 

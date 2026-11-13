@@ -102,7 +102,7 @@ test "a feed that keeps dying makes a feeds process exit 1 with the FATAL line" 
   assert_logged out, "INFO", "WebSocket restarted: crashy (restart 1)"
   assert_logged out, "FATAL", "feed crashy restarted 2 times in 600 s; exiting"
   # The FATAL line comes before the feeds are stopped and the role returns.
-  assert out.index(" FATAL feed crashy") < out.index("returned 1")
+  assert out.index("feed crashy restarted 2 times") < out.index("returned 1")
   # A process that gave up keeps its status row, so `/up` reports the feed
   # once the row is stale (a clean stop deletes it: test/main_roles.rb).
   Cybertrain::DB.connect("#{TMP}/feeds.sqlite3")
