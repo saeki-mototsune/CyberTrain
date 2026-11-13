@@ -13,6 +13,7 @@ class JobsPageTest < ActionDispatch::IntegrationTest
     get "/admin/jobs", headers: { "x-admin-token" => "blog-admin-s3cret" }
     assert_not_found
     sign_in_as users(:two)
+    assert_signed_in_as_two
     get "/admin/jobs"
     assert_not_found
 
@@ -37,6 +38,7 @@ class JobsPageTest < ActionDispatch::IntegrationTest
       assert_equal "failed", BlogTestHelper.job_state(failed)
     end
     sign_in_as users(:two)
+    assert_signed_in_as_two
     get "/articles/new"
     ["retry", "discard", "delete"].each do |action|
       post "/admin/jobs/#{failed}/#{action}"
@@ -131,6 +133,17 @@ class JobsPageTest < ActionDispatch::IntegrationTest
   end; nil; end
 
   private
+
+  # The sign-in of users(:two) took: the account page, which only a
+  # signed-in user gets, is theirs. So the 404s after it are the answer
+  # to a user who is not an admin, not to a visitor.
+  def assert_signed_in_as_two
+    assert_redirected_to "/"
+    get "/account/edit"
+    assert_response :ok
+    assert_includes response.body, "<span>two@example.com</span>"
+    nil
+  end
 
   # The Authentication concern's require_admin answer: 404, "Not Found".
   def assert_not_found

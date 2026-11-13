@@ -15,6 +15,15 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   # What the page says after a new address, which takes effect at once.
   ADDRESS_CHANGED = UPDATED
 
+  # A user of the test's own, ann@example.com, password "password",
+  # for the tests that delete the account.
+  def account_holder
+    user = User.new(email_address: "ann@example.com")
+    user.password = "password"
+    user.save!
+    user
+  end
+
   # Nothing more to do for a new address to take effect (with
   # --confirmable, its link is opened here).
   def confirm_new_address(user)
@@ -159,8 +168,12 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert browser_signed_in?(phone, "one@new.example")
   end; nil; end
 
+  # The user deleted here is one the test makes (account_holder): a
+  # fixture of the app's own may point at users(:one) (a scaffold's
+  # `user:references` writes `user: one`), and the database keeps a
+  # user that rows point at.
   def test_deleting_the_account_requires_the_password_and_removes_the_user_and_sessions; begin
-    ann = users(:one)
+    ann = account_holder
     sign_in_as ann
     phone = open_session
     phone.sign_in_as ann
@@ -176,7 +189,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_includes response.body, WRONG_PASSWORD
     refute User.find_by(id: ann.id).nil?
     assert_equal 3, Session.count
-    assert signed_in?
+    assert signed_in?("ann@example.com")
     # The right one: the user, every session of theirs, and this
     # browser's cookie session.
     delete_account("password")
@@ -186,9 +199,10 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     assert_nil User.find_by(id: ann.id)
     assert_equal 0, Session.where(user_id: ann.id).count
     assert_equal 1, Session.count
-    assert_equal 1, User.all.count
-    refute signed_in?
-    refute browser_signed_in?(phone)
+    # The fixtures' users are still there.
+    assert_equal 2, User.all.count
+    refute signed_in?("ann@example.com")
+    refute browser_signed_in?(phone, "ann@example.com")
     assert browser_signed_in?(bobs, "two@example.com")
     # The address signs in no more.
     sign_in_as ann
@@ -353,7 +367,7 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   end; nil; end
 
   def test_a_deletion_the_database_refuses_changes_nothing_and_says_so; begin
-    ann = users(:one)
+    ann = account_holder
     sign_in_as ann
     phone = open_session
     phone.sign_in_as ann
@@ -369,8 +383,8 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
       # log says why.
       refute User.find_by(id: ann.id).nil?
       assert_equal 2, Session.where(user_id: ann.id).count
-      assert signed_in?
-      assert browser_signed_in?(phone)
+      assert signed_in?("ann@example.com")
+      assert browser_signed_in?(phone, "ann@example.com")
       assert_includes log.string, "[ERROR] account not deleted: FOREIGN KEY constraint failed"
     ensure
       drop_notes
@@ -414,17 +428,6 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
     found = ""
     res.cookies.each { |line| found = line if line.start_with?(prefix) }
     found
-  end
-
-  # The authenticity_token of the first form in a page.
-  def authenticity_token_in(body)
-    marker = "name=\"authenticity_token\" value=\""
-    at = body.index(marker)
-    raise "no authenticity_token in the page" if at.nil?
-
-    start = at + marker.size
-    stop = body.index("\"", start).to_i
-    body[start, stop - start].to_s
   end
 
   # A table of the app's own whose rows refer to users (as a migration's

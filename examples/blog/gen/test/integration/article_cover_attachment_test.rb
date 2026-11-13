@@ -4,10 +4,10 @@
 # the model's callbacks and the download action. Written by `cybertrain
 # generate attachment article cover`; run with `cybertrain test`.
 class ArticleCoverAttachmentTest < ActionDispatch::IntegrationTest; def setup; super; setup_article_cover_attachment_test_1; nil; end; def teardown; teardown_article_cover_attachment_test_1; super; nil; end
-  # test/fixtures/files/cover.png: a PNG signature, then NUL, 0xFF and CR LF
-  # bytes. The server sniffs the signature only; the rest shows that every
-  # byte survives the round trip.
-  PNG_BYTES = Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0xFF, 0x0D, 0x0A, 0x00, 0x01])
+  # test/fixtures/files/cover.png: a 1x1 PNG, whose bytes hold NUL, 0xFF and
+  # CR LF; the round trip shows that every byte survives. Read from the
+  # file, so a picture of your own put there is what the tests send.
+  PNG_BYTES = File.binread("test/fixtures/files/cover.png")
   HTML_BYTES = "<html><script>alert(document.cookie)</script></html>"
   SVG_BYTES = '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>'
 

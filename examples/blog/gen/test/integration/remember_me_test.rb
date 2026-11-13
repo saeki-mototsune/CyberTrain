@@ -38,44 +38,44 @@ class RememberMeTest < ActionDispatch::IntegrationTest; def setup; super; setup_
   # limit that ends the sign-in, and the row is gone.
   def test_a_remembered_session_survives_day_15_and_ends_after_day_30; begin
     remember_for = Cybertrain.config.auth_remember_for
-    Cybertrain.config.auth_remember_for = 31.days
-    sign_in_as users(:one), remember: true
-    Cybertrain.config.auth_remember_for = remember_for
-    assert_redirected_to "/"
-    assert_equal true, Session.first.remember
-    assert session_cookie_of(response).end_with?("; Max-Age=2678400"), session_cookie_of(response)
-    travel_to 6.days.from_now do
-      assert signed_in?
-    end
-    travel_to 12.days.from_now do
-      assert signed_in?
-    end
-    travel_to 15.days.from_now do
-      assert signed_in?
-    end
-    travel_to 21.days.from_now do
-      assert signed_in?
-    end
-    travel_to 27.days.from_now do
-      assert signed_in?
-    end
-    cookie = cookie_header
-    first = Session.last
-    travel_to 30.days.from_now - 1.minute do
-      assert signed_in?
-    end
-    travel_to 30.days.from_now do
-      refute signed_in?
-      # Ended: the row is gone.
-      assert_nil Session.find_by(id: first.id)
-    end
-    travel_to 31.days.from_now do
-      refute replayed_signed_in?(cookie)
-    end
-    # A sign-in whose limit was lowered to 15 days since (the cookie
-    # still holds its 30) ends on day 15, its row with it, and a longer
-    # limit set afterwards does not bring back a copy of the cookie.
     begin
+      Cybertrain.config.auth_remember_for = 31.days
+      sign_in_as users(:one), remember: true
+      Cybertrain.config.auth_remember_for = remember_for
+      assert_redirected_to "/"
+      assert_equal true, Session.first.remember
+      assert session_cookie_of(response).end_with?("; Max-Age=2678400"), session_cookie_of(response)
+      travel_to 6.days.from_now do
+        assert signed_in?
+      end
+      travel_to 12.days.from_now do
+        assert signed_in?
+      end
+      travel_to 15.days.from_now do
+        assert signed_in?
+      end
+      travel_to 21.days.from_now do
+        assert signed_in?
+      end
+      travel_to 27.days.from_now do
+        assert signed_in?
+      end
+      cookie = cookie_header
+      first = Session.last
+      travel_to 30.days.from_now - 1.minute do
+        assert signed_in?
+      end
+      travel_to 30.days.from_now do
+        refute signed_in?
+        # Ended: the row is gone.
+        assert_nil Session.find_by(id: first.id)
+      end
+      travel_to 31.days.from_now do
+        refute replayed_signed_in?(cookie)
+      end
+      # A sign-in whose limit was lowered to 15 days since (the cookie
+      # still holds its 30) ends on day 15, its row with it, and a longer
+      # limit set afterwards does not bring back a copy of the cookie.
       sign_in_as users(:one), remember: true
       started = Session.last
       cookie = cookie_header
@@ -133,15 +133,17 @@ class RememberMeTest < ActionDispatch::IntegrationTest; def setup; super; setup_
     begin
       # Off (0): the limit is session_max_age (two weeks), stamped on
       # the cookie and checked on the row. Signed in while it is 15
-      # days, then set back to 14, so that the cookie still holds its
-      # 15 on day 14 and the row's check alone ends the sign-in.
+      # days (the cookie's stamp), then lowered to 13, so that the
+      # cookie still holds its 15 on day 13 and the row's check alone
+      # ends the sign-in (13 days: not the two-week constant).
       Cybertrain.config.session_absolute_max_age = 0
       Cybertrain.config.session_max_age = 15.days
       user = users(:one)
+      assert_equal 1_296_000, stamped_session(user, false).lifetime_limit
       sign_in_as user
       assert_redirected_to "/"
       started = Session.last
-      Cybertrain.config.session_max_age = 14.days
+      Cybertrain.config.session_max_age = 13.days
       refute session_cookie_of(response).empty?
       refute session_cookie_of(response).include?("Max-Age")
       travel_to 6.days.from_now do
@@ -150,16 +152,39 @@ class RememberMeTest < ActionDispatch::IntegrationTest; def setup; super; setup_
       travel_to 12.days.from_now do
         assert signed_in?
       end
-      travel_to 14.days.from_now - 1.minute do
+      travel_to 13.days.from_now - 1.minute do
         assert signed_in?
       end
-      travel_to 14.days.from_now do
+      travel_to 13.days.from_now do
         refute signed_in?
         assert_nil Session.find_by(id: started.id)
       end
-      # The stamp itself.
+      # The cookie holds its 15 days: signed in again while it is 15,
+      # then raised to 60 for the row, the cookie's own stamp ends the
+      # sign-in on day 15 (a browser-session cookie, sent all along).
+      Cybertrain.config.session_max_age = 15.days
+      sign_in_as user
+      started = Session.last
+      Cybertrain.config.session_max_age = 60.days
+      travel_to 6.days.from_now do
+        assert signed_in?
+      end
+      travel_to 12.days.from_now do
+        assert signed_in?
+      end
+      travel_to 15.days.from_now - 1.minute do
+        assert signed_in?
+      end
+      travel_to 15.days.from_now do
+        refute signed_in?
+        # The row is still there: the cookie alone ended it.
+        refute Session.find_by(id: started.id).nil?
+      end
+      # The stamp itself: session_max_age as it is (13 days), not the
+      # two-week constant.
+      Cybertrain.config.session_max_age = 13.days
       stamped = stamped_session(user, false)
-      assert_equal 1_209_600, stamped.lifetime_limit
+      assert_equal 1_123_200, stamped.lifetime_limit
       assert stamped.browser_session?
       # session_max_age not positive either: two weeks all the same.
       Cybertrain.config.session_max_age = 0
