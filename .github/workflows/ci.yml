@@ -151,9 +151,11 @@ jobs:
           fi
           if [ -z "$base" ]; then
             echo "no base commit to compare with: every job"
-            echo "framework=true" >> "$GITHUB_OUTPUT"
-            echo "cruby_preview=true" >> "$GITHUB_OUTPUT"
-            echo "preview_e2e=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "framework=true"
+              echo "cruby_preview=true"
+              echo "preview_e2e=true"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git diff --name-only "$base" HEAD > "$RUNNER_TEMP/changed"
