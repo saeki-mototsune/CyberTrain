@@ -100,4 +100,6 @@ if command -v code >/dev/null 2>&1; then
 fi
 
 cd "$app" || exit 1
-exec cybertrain server
+# The compiled loop the guide describes, until the playground moves to the
+# CRuby preview.
+exec cybertrain server --spinel

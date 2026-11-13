@@ -173,6 +173,15 @@ test "server rejects anything after PORT" do
   assert_equal 1, Cybertrain::CLI.run(["server", "4000", "extra"])
 end
 
+# exe/cybertrain sends `server ... --spinel` here (today's compiled loop);
+# the flag is taken out wherever it stands, so PORT is checked as before.
+test "server --spinel is today's loop: the flag is dropped, PORT and extra words are checked" do
+  assert_equal 1, Cybertrain::CLI.run(["server", "--spinel", "abc"])
+  assert_equal 1, Cybertrain::CLI.run(["server", "4000", "--spinel", "extra"])
+  assert_equal 1, Cybertrain::CLI.run(["server", "--spinel", "4000", "extra"])
+  assert_includes Cybertrain::CLI::USAGE, "cybertrain server [PORT] [--spinel]"
+end
+
 # Stands in for the three spin commands: records each one with whether the
 # build lock (holding this process's PID) was held while it ran, and fails
 # the one named `failing`.

@@ -351,9 +351,15 @@ Usage:
       rollback [N] (generates again afterwards), schema, schema:dump,
       create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
-  cybertrain server [PORT]
-      Generate, then start the development server
-      (spin run gen; spin run NAME [-- PORT]; default port 3000).
+  cybertrain server [PORT] [--spinel]
+      Start the development server (default port: the application's,
+      3000). Right after a change the application runs under CRuby,
+      while Spinel builds it in the background; the compiled binary
+      takes the port when its build succeeds. Each response names the
+      runtime that answered (X-Cybertrain-Runtime: cruby or spinel).
+      --spinel: the compiled loop only, every change waiting for its
+      build (spin run gen; spin run NAME [-- PORT]). The native CLI
+      that `spin install` builds always runs this one.
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
@@ -434,9 +440,15 @@ Usage:
       rollback [N] (generates again afterwards), schema, schema:dump,
       create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
-  cybertrain server [PORT]
-      Generate, then start the development server
-      (spin run gen; spin run NAME [-- PORT]; default port 3000).
+  cybertrain server [PORT] [--spinel]
+      Start the development server (default port: the application's,
+      3000). Right after a change the application runs under CRuby,
+      while Spinel builds it in the background; the compiled binary
+      takes the port when its build succeeds. Each response names the
+      runtime that answered (X-Cybertrain-Runtime: cruby or spinel).
+      --spinel: the compiled loop only, every change waiting for its
+      build (spin run gen; spin run NAME [-- PORT]). The native CLI
+      that `spin install` builds always runs this one.
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
@@ -516,9 +528,15 @@ Usage:
       rollback [N] (generates again afterwards), schema, schema:dump,
       create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
-  cybertrain server [PORT]
-      Generate, then start the development server
-      (spin run gen; spin run NAME [-- PORT]; default port 3000).
+  cybertrain server [PORT] [--spinel]
+      Start the development server (default port: the application's,
+      3000). Right after a change the application runs under CRuby,
+      while Spinel builds it in the background; the compiled binary
+      takes the port when its build succeeds. Each response names the
+      runtime that answered (X-Cybertrain-Runtime: cruby or spinel).
+      --spinel: the compiled loop only, every change waiting for its
+      build (spin run gen; spin run NAME [-- PORT]). The native CLI
+      that `spin install` builds always runs this one.
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
