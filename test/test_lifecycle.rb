@@ -4,6 +4,7 @@
 # CRuby-runnable: it requires the harness alone.
 require "cybertrain/test"
 require "cybertrain/test/http_receiver"
+require "cybertrain/test/test_case"
 
 # A constant, not a local (rule 64's sibling: the blocks must share it).
 ORDER = Array.new(0) { "" }
@@ -103,6 +104,78 @@ test "travel and receivers are undone after a raising teardown" do
   assert_equal ["ERR", "in teardown: RuntimeError: td"], run_by_hand(file, body)
   refute Cybertrain::Clock.travelling?
   refute RECEIVERS[0].serving?
+end
+
+# NotImplementedError, ScriptError and SystemStackError are not
+# StandardErrors; Minitest records them as errors and goes on, and so does
+# this runner (only Interrupt, SystemExit and NoMemoryError end the run).
+# Each lambda does something before it raises (NOTES rule 79).
+test "NotImplementedError, ScriptError and SystemStackError in a body are ERR; teardown still runs" do
+  STEPS.clear
+  file = top_level_file([], [-> { STEPS << "t" }])
+  assert_equal ["ERR", "NotImplementedError: subclass must implement"],
+               run_by_hand(file, -> { STEPS << "b1"; raise NotImplementedError, "subclass must implement" })
+  assert_equal ["ERR", "ScriptError: no such file"], run_by_hand(file, -> { STEPS << "b2"; raise ScriptError, "no such file" })
+  assert_equal ["ERR", "SystemStackError: stack level too deep"],
+               run_by_hand(file, -> { STEPS << "b3"; raise SystemStackError, "stack level too deep" })
+  assert_equal %w[b1 t b2 t b3 t], STEPS
+end
+
+test "the same three in setup, teardown and an on_reset hook are ERR with the step named" do
+  STEPS.clear
+  in_setup = top_level_file([-> { STEPS << "s"; raise NotImplementedError, "ns" }], [-> { STEPS << "t" }])
+  assert_equal ["ERR", "in setup: NotImplementedError: ns"], run_by_hand(in_setup, -> { STEPS << "body" })
+  in_teardown = top_level_file([], [-> { STEPS << "t2" }, -> { STEPS << "t1"; raise ScriptError, "st" }])
+  assert_equal ["ERR", "in teardown: ScriptError: st"], run_by_hand(in_teardown, -> { STEPS << "body2" })
+  after = top_level_file([], [])
+  body = lambda do
+    STEPS << "body3"
+    Cybertrain::Test.after_this_case(-> { STEPS << "a"; raise SystemStackError, "deep" })
+  end
+  assert_equal ["ERR", "after teardown: SystemStackError: deep"], run_by_hand(after, body)
+  assert_equal %w[s t body2 t1 t2 body3 a], STEPS
+end
+
+# 0: nothing raises; 1: setup raises; 2: setup and teardown raise.
+CLASS_MODE = [0]
+
+# A class-form test, driven the way gen/tests.rb's run_case arms drive one.
+class LifecycleClassTest < ActiveSupport::TestCase
+  def setup
+    super
+    STEPS << "setup"
+    raise NotImplementedError, "setup not written" if CLASS_MODE[0] >= 1
+  end
+
+  def teardown
+    STEPS << "teardown"
+    raise SystemStackError, "teardown too deep" if CLASS_MODE[0] >= 2
+  end
+
+  def test_abstract
+    STEPS << "body"
+    raise NotImplementedError, "abstract"
+  end
+end
+
+def run_class_case(t)
+  if Cybertrain::Test.before_case(t)
+    Cybertrain::Test.run_body(t) { t.test_abstract }
+  end
+  Cybertrain::Test.after_case(t)
+  [Cybertrain::Test.last_status, Cybertrain::Test.last_message]
+end
+
+test "a class-form test: the three are ERR in the body, setup and teardown; teardown runs" do
+  STEPS.clear
+  assert_equal ["ERR", "NotImplementedError: abstract"], run_class_case(LifecycleClassTest.new)
+  CLASS_MODE[0] = 1
+  assert_equal ["ERR", "in setup: NotImplementedError: setup not written"], run_class_case(LifecycleClassTest.new)
+  CLASS_MODE[0] = 2
+  result = run_class_case(LifecycleClassTest.new)
+  CLASS_MODE[0] = 0
+  assert_equal ["ERR", "in setup: NotImplementedError: setup not written\nin teardown: SystemStackError: teardown too deep"], result
+  assert_equal %w[setup body teardown setup teardown setup teardown], STEPS
 end
 
 test "a case driven inside a case leaves the outer case's travel, hooks and in_case? alone" do
