@@ -2,6 +2,8 @@ require "json"
 require "cybertrain/middleware"
 require "cybertrain/logger"
 require "cybertrain/http/client_error"
+require "cybertrain/error_reporter"
+require "cybertrain/middleware/request_id"
 
 module Cybertrain
   # Production's error pages (docs/design.md D14), outermost in the stack.
@@ -11,6 +13,11 @@ module Cybertrain
   # "Not Found", `render plain:`) -- gets root/<status>.html when that file
   # exists. An error an action rendered as HTML or JSON is left alone, and
   # so is a status with no page (the plain text stays).
+  #
+  # The exception it turns into a 500 is reported here
+  # ({ErrorReporter#report_unhandled}, `where` {RequestId.where_for}): the
+  # outermost layer that sees it, inside the RequestId whose Scope gives
+  # the event the request's id, method and path. A 4xx is not reported.
   class ErrorPages < Middleware
     def initialize(app, root = "public", logger = Cybertrain.logger)
       super(app)
@@ -29,7 +36,9 @@ module Cybertrain
         # at info level. Caught here because this middleware wraps the whole
         # stack, so Server#respond's own mapping never sees the exception in
         # a real application.
-        ctx.response.reset_to(ClientError.classify(e, @logger))
+        status = ClientError.classify(e, @logger)
+        report_failure(ctx, e) if status >= 500
+        ctx.response.reset_to(status)
       end
       response = ctx.response
       page = page_for(response)
@@ -41,6 +50,13 @@ module Cybertrain
     end
 
     private
+
+    # The 500's report; never raises ({ErrorReporter#report_unhandled}).
+    def report_failure(ctx, e)
+      where = RequestId.where_for(ctx)
+      Cybertrain.error.report_unhandled(e, where, ErrorReporter::NO_CONTEXT)
+      nil
+    end
 
     # The page to serve in place of the response's body, or "".
     def page_for(response)

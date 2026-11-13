@@ -276,4 +276,201 @@ test "a controller run without a RequestId writes nothing to the shared empty Sc
   assert_equal "", Cybertrain::Logger::NO_SCOPE.scope_where
 end
 
+# ---- What a request reports (Task 9; spec section 13.2, plan D7) -----------
+#
+# The request path's automatic reports on the core alone: a 500 is
+# reported once, by RequestId here (no ErrorPages in the test
+# environment), with the action as `where` and the request's id, method
+# and masked path; a 4xx or a rescue_from is not; no parameter, header,
+# cookie, client address, query or reset token reaches an event. The
+# events are collected by a subscriber added before the first test (kept
+# by reset!, which each test runs first).
+
+def no_report_context
+  h = { "" => "" }
+  h.delete("")
+  h
+end
+
+REPORTED = Array.new(0) do
+  Cybertrain::ErrorEvent.new("", "", "", "", "", "", "", "", false, no_report_context, Array.new(0) { "" }, Time.at(0).utc)
+end
+
+class ReportCollect < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTED << event
+    nil
+  end
+end
+
+Cybertrain.error.subscribe(ReportCollect.new)
+
+# The reporter's per-test reset (what cybertrain/test_help registers; this
+# program is core-only and does not load it): no dedupe carried over from
+# the tests above, which raise the same "boom".
+module ReportReset
+  def self.hook
+    -> {
+      Cybertrain.error.reset!
+      REPORTED.clear
+      nil
+    }
+  end
+end
+Cybertrain::Test.on_reset(ReportReset.hook)
+
+class Handled < StandardError
+end
+
+class ReportsController < Cybertrain::Controller
+  rescue_from(Handled) { |c, e| c.render plain: "handled", status: :unprocessable_entity }
+
+  def boom
+    raise RuntimeError, "boom"
+  end
+
+  def bad
+    render plain: params.require(:thing).to_s
+  end
+
+  def rescued
+    raise Handled, "handled"
+  end
+
+  def token
+    raise RuntimeError, "boom"
+  end
+end
+
+REPORT_ROUTER = Cybertrain::Router.new
+REPORT_ROUTER.get("/reports/boom", "reports_boom") { |ctx| ReportsController.new(ctx).process(:boom) { |c| c.boom } }
+REPORT_ROUTER.post("/reports/boom", "reports_boom_post") { |ctx| ReportsController.new(ctx).process(:boom) { |c| c.boom } }
+REPORT_ROUTER.get("/reports/bad", "reports_bad") { |ctx| ReportsController.new(ctx).process(:bad) { |c| c.bad } }
+REPORT_ROUTER.get("/reports/rescued", "reports_rescued") do |ctx|
+  ReportsController.new(ctx).process(:rescued) { |c| c.rescued }
+end
+REPORT_ROUTER.get("/passwords/:token/edit", "edit_password") do |ctx|
+  ReportsController.new(ctx).process(:token) { |c| c.token }
+end
+
+REPORT_APP = Cybertrain::Application.new(router: REPORT_ROUTER, url_resolver: ->(n, a, o) { "/" }, config: config_for("test"))
+REPORT_CLIENT = Cybertrain::Test::Client.new(REPORT_APP)
+
+# A stack that raises what is not a StandardError (a helper not yet
+# written).
+class NotWrittenApp < Cybertrain::Middleware
+  def call(ctx)
+    raise NotImplementedError, "not written"
+  end
+end
+
+def report_client
+  REPORT_CLIENT
+end
+
+# The reports made so far, once delivered.
+def events_after_drain
+  Cybertrain.error.drain_reports(2.0)
+  REPORTED
+end
+
+# The one event reported; fails unless there is exactly one.
+def only_event
+  events = events_after_drain
+  assert_equal 1, events.size
+  events[0]
+end
+
+# Every String an event holds: its fields, its context's keys and values
+# and its backtrace.
+def all_strings(ev)
+  out = [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id, ev.error_request_method,
+         ev.error_request_path, ev.error_environment, ev.error_release]
+  ev.error_context.each do |k, v|
+    out << k
+    out << v
+  end
+  ev.error_backtrace.each { |line| out << line }
+  out
+end
+
+def refute_anywhere(ev, secret)
+  all_strings(ev).each { |s| refute s.include?(secret), "#{secret.inspect} found in #{s.inspect}" }
+end
+
+test "a request's 500 is reported once, with where, method and path" do
+  TrustedProxy.during do
+    assert_raises("RuntimeError") do
+      report_client.get("/reports/boom?page=2&password=hunter2", { "X-Request-Id" => "abc-123" })
+    end
+  end
+  ev = only_event
+  assert_equal ["RuntimeError", "boom", "ReportsController#boom", "GET", "/reports/boom", "abc-123"],
+               [ev.error_class, ev.error_message, ev.error_where, ev.error_request_method, ev.error_request_path,
+                ev.error_request_id]
+  assert_equal false, ev.error_handled
+  assert ev.error_context.empty?
+  refute_anywhere(ev, "hunter2")
+  refute_anywhere(ev, "page=2")
+  # The Scope is put back after the report.
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+end
+
+test "no report for a 4xx or a rescue_from" do
+  assert_equal 400, report_client.get("/reports/bad").status
+  rescued = report_client.get("/reports/rescued")
+  assert_equal 422, rescued.status
+  assert_equal "handled", rescued.body
+  assert_equal 0, events_after_drain.size
+end
+
+test "a reset link's token and the query never reach a report" do
+  token = Cybertrain::Token.issue("reset", 7, 900, "digest")
+  assert_raises("RuntimeError") { report_client.get("/passwords/#{token}/edit?token=#{token}") }
+  ev = only_event
+  assert_equal "ReportsController#token", ev.error_where
+  assert_equal "/passwords/[FILTERED]/edit", ev.error_request_path
+  refute_anywhere(ev, token)
+end
+
+test "no params, headers, cookies or client address in an event" do
+  report_client.cookies["c"] = "v7"
+  TrustedProxy.during do
+    assert_raises("RuntimeError") do
+      report_client.post("/reports/boom", { "secret" => "s3" }, { "X-Api-Key" => "k9", "X-Forwarded-For" => "203.0.113.9" })
+    end
+  end
+  report_client.cookies.delete("c")
+  ev = only_event
+  assert_equal "POST", ev.error_request_method
+  ["s3", "k9", "v7", "203.0.113.9"].each { |secret| refute_anywhere(ev, secret) }
+end
+
+test "a RequestId inside another reports once: the inner one, which saw the exception first" do
+  inner = Cybertrain::RequestId.new(REPORT_APP.stack, [:request_id])
+  outer = Cybertrain::RequestId.new(inner, [:request_id])
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/reports/boom", { "host" => "www.example.com" }, "", "127.0.0.1"))
+  assert_raises("RuntimeError") { outer.call(ctx) }
+  ev = only_event
+  assert_equal "ReportsController#boom", ev.error_where
+  assert_equal ctx.request.request_id, ev.error_request_id
+  assert_equal "/reports/boom", ev.error_request_path
+end
+
+test "an exception outside StandardError is reported too" do
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/x", { "host" => "www.example.com" }, "", "127.0.0.1"))
+  assert_raises("NotImplementedError") { Cybertrain::RequestId.new(NotWrittenApp.new(nil), [:request_id]).call(ctx) }
+  ev = only_event
+  assert_equal "NotImplementedError", ev.error_class
+  assert_equal "request", ev.error_where
+  assert_equal "/x", ev.error_request_path
+end
+
+test "RequestId.where_for is the action, or request when none ran" do
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/x", {}, "", "127.0.0.1"))
+  assert_equal "request", Cybertrain::RequestId.where_for(ctx)
+  ctx.controller_action = "ThingsController#show"
+  assert_equal "ThingsController#show", Cybertrain::RequestId.where_for(ctx)
+end
+
 Cybertrain::Test.run!

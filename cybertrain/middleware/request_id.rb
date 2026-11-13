@@ -5,6 +5,8 @@ require "cybertrain/config"
 require "cybertrain/crypto"
 require "cybertrain/http/request"
 require "cybertrain/http/parameter_filter"
+require "cybertrain/http/client_error"
+require "cybertrain/error_reporter"
 
 module Cybertrain
   # Gives every request an id (spec section 12.2, Rails'
@@ -26,6 +28,17 @@ module Cybertrain
   # A RequestId that finds the request's id already set (the development
   # server's front_app wraps a second one around the diagnostics page)
   # leaves the id, the Scope and the header to the outer one.
+  #
+  # What escapes the stack as a 500 ({ClientError.status_for}) is reported
+  # ({ErrorReporter#report_unhandled}) before it goes on up, while the
+  # request's Scope is still the thread's, so the event carries the id,
+  # the method and the masked path; `where` is the controller and action
+  # ({RequestId.where_for}). Every RequestId reports, the one that found
+  # the id set included: in development the stack's own RequestId sees the
+  # exception first and the diagnostics page outside it takes it, so the
+  # request is reported once. A 4xx is not reported, nor what a
+  # `rescue_from` handled (it never escapes). In production ErrorPages,
+  # inside this middleware, reports and answers the 500 itself.
   # @api public
   class RequestId < Middleware
     # The request and response header.
@@ -63,10 +76,13 @@ module Cybertrain
         nxt = @app
         nxt.call(ctx) unless nxt.nil?
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
-        # What escapes the stack is reported here (plan D7, Task 9).
+        # What escapes the stack is reported here (plan D7), before the
+        # Scope is put back.
+        report_escaped(ctx, e)
         finish_request(ctx, own, id, saved)
         raise e
       rescue NotImplementedError, SystemStackError, ScriptError => e
+        report_escaped(ctx, e)
         finish_request(ctx, own, id, saved)
         raise e
       end
@@ -157,7 +173,28 @@ module Cybertrain
       Logger::Scope.new(id, verb, path, where, tags, id_tag, context)
     end
 
+    # The request's `where` for an error report: the controller and action
+    # that ran ({Context#controller_action}), or `"request"` when none did
+    # (no route matched, or a middleware raised).
+    # @param ctx [Context]
+    # @return [String]
+    # @api public
+    def self.where_for(ctx)
+      action = ctx.controller_action
+      action.empty? ? "request" : action
+    end
+
     private
+
+    # Reports `e` when it ends the request as a 500; never raises
+    # ({ErrorReporter#report_unhandled}).
+    def report_escaped(ctx, e)
+      return nil if ClientError.status_for(e) < 500
+
+      where = RequestId.where_for(ctx)
+      Cybertrain.error.report_unhandled(e, where, ErrorReporter::NO_CONTEXT)
+      nil
+    end
 
     # After the stack: the header on the response and the Scope found
     # before back on the thread, for the RequestId that set the id.

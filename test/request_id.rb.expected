@@ -10,4 +10,11 @@ ok   a raising request leaves no Scope behind on its thread
 ok   a RequestId inside another keeps the outer id and adds no Scope of its own
 ok   the controller and action are the request's where
 ok   a controller run without a RequestId writes nothing to the shared empty Scope
-12 tests, 75 assertions, 0 failures
+ok   a request's 500 is reported once, with where, method and path
+ok   no report for a 4xx or a rescue_from
+ok   a reset link's token and the query never reach a report
+ok   no params, headers, cookies or client address in an event
+ok   a RequestId inside another reports once: the inner one, which saw the exception first
+ok   an exception outside StandardError is reported too
+ok   RequestId.where_for is the action, or request when none ran
+19 tests, 160 assertions, 0 failures

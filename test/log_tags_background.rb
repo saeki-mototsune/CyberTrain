@@ -162,7 +162,7 @@ test "a job enqueued in a request records its id, and the job's lines carry both
     log = capture_log { perform_enqueued_jobs }
     assert_includes log, "2026-11-11T12:00:00.000Z INFO [WelcomeJob #{id}] [#{RID}] welcome 1\n"
     assert_includes log, "2026-11-11T12:00:00.000Z INFO [WelcomeJob #{id}] [#{RID}] job #{id} (WelcomeJob) done\n"
-    assert_equal "id=#{RID} tags=WelcomeJob #{id}|#{RID} at=1 where=WelcomeJob context=job.attempt=1,job.id=#{id}", SEEN[0]
+    assert_equal "id=#{RID} tags=WelcomeJob #{id}|#{RID} at=1 where=WelcomeJob context=job.attempt=1,job.id=#{id},job.max_attempts=5", SEEN[0]
   end
   assert no_scope?
 end
@@ -195,8 +195,8 @@ test "two jobs on one reused thread: the second starts from its own Scope, nothi
   end
   worker.join
   assert_equal 2, SEEN.size
-  assert_equal "id=#{RID} tags=BoomJob #{failing}|#{RID} at=1 where=BoomJob context=job.attempt=1,job.id=#{failing}", SEEN[0]
-  assert_equal "id= tags=WelcomeJob #{quiet} at=-1 where=WelcomeJob context=job.attempt=1,job.id=#{quiet}", SEEN[1]
+  assert_equal "id=#{RID} tags=BoomJob #{failing}|#{RID} at=1 where=BoomJob context=job.attempt=1,job.id=#{failing},job.max_attempts=5", SEEN[0]
+  assert_equal "id= tags=WelcomeJob #{quiet} at=-1 where=WelcomeJob context=job.attempt=1,job.id=#{quiet},job.max_attempts=5", SEEN[1]
   assert_equal "id= tags= at=-1 where= context=", after[0]
   assert no_scope?
 end
@@ -234,7 +234,7 @@ test "log_tags without :request_id leaves the job's request tag off" do
       assert_equal RID, request_id_of(id)
       log = capture_log { perform_enqueued_jobs }
       assert_includes log, "2026-11-11T12:00:00.000Z INFO [WelcomeJob #{id}] welcome 1\n"
-      assert_equal "id=#{RID} tags=WelcomeJob #{id} at=-1 where=WelcomeJob context=job.attempt=1,job.id=#{id}", SEEN[0]
+      assert_equal "id=#{RID} tags=WelcomeJob #{id} at=-1 where=WelcomeJob context=job.attempt=1,job.id=#{id},job.max_attempts=5", SEEN[0]
     end
   end
 end

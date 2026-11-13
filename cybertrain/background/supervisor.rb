@@ -36,6 +36,7 @@
 require "cybertrain/logger"
 require "cybertrain/config"
 require "cybertrain/clock"
+require "cybertrain/error_reporter"
 
 module Cybertrain
   module Background
@@ -86,6 +87,10 @@ module Cybertrain
 
     # How long stop_supervisor! waits for the supervisor thread.
     SUPERVISOR_JOIN_SECONDS = 2.0
+
+    # The class name the supervisor's give-up is reported under (plan D10;
+    # no such class exists).
+    FEED_FAILED = "Cybertrain::Background::FeedFailed"
 
     # Whole seconds on the monotonic clock: the backoff, the window and
     # the publish interval.
@@ -258,7 +263,11 @@ module Cybertrain
 
     # A dead feed: its first sighting schedules the restart (or gives up),
     # a later one past the due time restarts it. True when the process
-    # gives up.
+    # gives up. The give-up is reported too (spec section 13.2), with no
+    # exception object: its class is named
+    # "Cybertrain::Background::FeedFailed" (a name only, never raised), its
+    # message is the FATAL line's, and its `where` `feed:<name>` is given,
+    # since the supervisor's thread runs outside the feed's Scope.
     def self.supervise_feed(config, service, name, mono, generation)
       watch = feed_watch(name)
       due = watch.watch_due_at
@@ -266,7 +275,10 @@ module Cybertrain
         window = config.feed_restart_window
         restarts = watch.watch_restarts_in(mono, window)
         if @exit_on_feed_death && restarts >= config.feed_restart_limit
-          Cybertrain.logger.fatal("feed #{name} restarted #{restarts} times in #{window} s; exiting")
+          text = "feed #{name} restarted #{restarts} times in #{window} s; exiting"
+          Cybertrain.logger.fatal(text)
+          where = "feed:#{name}"
+          Cybertrain.error.report_message(FEED_FAILED, text, where, ErrorReporter::NO_CONTEXT)
           @feeds_failed = true
           return true
         end

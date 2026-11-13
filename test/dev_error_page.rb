@@ -9,6 +9,9 @@ require "cybertrain/template/ast"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/error_page"
 require "cybertrain/http/query"
+require "cybertrain/error_reporter"
+require "cybertrain/middleware/request_id"
+require "cybertrain/middleware/host_authorization"
 require "cybertrain/test"
 
 # Keep the error log out of the snapshot.
@@ -821,6 +824,72 @@ end
 
 test "shell_quote escapes single quotes" do
   assert_equal "'it'\\''s'", Cybertrain::Shell.quote("it's")
+end
+
+# ---- What development reports (Task 9; spec section 13.2, plan D6/D7) -------
+
+def no_report_context
+  h = { "" => "" }
+  h.delete("")
+  h
+end
+
+REPORTED = Array.new(0) do
+  Cybertrain::ErrorEvent.new("", "", "", "", "", "", "", "", false, no_report_context, Array.new(0) { "" }, Time.at(0).utc)
+end
+
+class ReportCollect < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTED << event
+    nil
+  end
+end
+
+Cybertrain.error.subscribe(ReportCollect.new)
+
+# The reporter's per-test reset (cybertrain/test_help's, which this
+# program does not load).
+module ReportReset
+  def self.hook
+    -> {
+      Cybertrain.error.reset!
+      REPORTED.clear
+      nil
+    }
+  end
+end
+Cybertrain::Test.on_reset(ReportReset.hook)
+
+# The development server's front_app (roles/server.rb): a RequestId around
+# HostAuthorization around Dev::ErrorPage around the stack, whose own
+# RequestId is outermost in it.
+def dev_front_app
+  stack = Cybertrain::RequestId.new(Raiser.new(Page.new), [:request_id])
+  page = Cybertrain::Dev::ErrorPage.new(stack, failed_rebuilder)
+  hosts = Cybertrain::HostAuthorization.new(page, ["www.example.com"], "")
+  Cybertrain::RequestId.new(hosts, [:request_id])
+end
+
+test "development's front_app reports a request's 500 once, and the page still renders" do
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/boom", { "host" => "www.example.com" }, "", "127.0.0.1"))
+  dev_front_app.call(ctx)
+  res = ctx.response
+  assert_equal 500, res.status
+  assert_includes res.body, "<h1>RuntimeError</h1>"
+  id = res.header("X-Request-Id").to_s
+  refute id.empty?
+  Cybertrain.error.drain_reports(2.0)
+  assert_equal 1, REPORTED.size
+  ev = REPORTED[0]
+  assert_equal ["RuntimeError", "boom <b>", "request", id, "GET", "/boom"],
+               [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id, ev.error_request_method,
+                ev.error_request_path]
+  # A 400 the page answers is not reported.
+  rejected = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/toomany", { "host" => "www.example.com" }, "", "127.0.0.1"))
+  dev_front_app.call(rejected)
+  assert_equal 400, rejected.response.status
+  Cybertrain.error.drain_reports(2.0)
+  assert_equal 1, REPORTED.size
 end
 
 Cybertrain::Test.run!

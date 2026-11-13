@@ -55,4 +55,5 @@ ok   a lock older than 30 minutes is stale even with a live PID: age wins over a
 ok   the rebuild command quotes the build target like every other interpolated value
 ok   the Rebuilder refuses a build target that is not usable for spin build
 ok   shell_quote escapes single quotes
-57 tests, 231 assertions, 0 failures
+ok   development's front_app reports a request's 500 once, and the page still renders
+58 tests, 238 assertions, 0 failures

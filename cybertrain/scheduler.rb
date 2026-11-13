@@ -1,6 +1,7 @@
 require "json"
 require "cybertrain/logger"
 require "cybertrain/config"
+require "cybertrain/error_reporter"
 require "cybertrain/job"
 require "cybertrain/lease"
 require "cybertrain/time_zone"
@@ -451,7 +452,8 @@ module Cybertrain
     # The run after one at `last`: last plus the interval of an `every`
     # task, Cron.next_after of a `cron` task. -1, logged as the task's
     # failure, when Cron.next_after finds none (the rescue in a plain
-    # method, NOTES rules 32/45).
+    # method, NOTES rules 32/45), and reported, `where` `schedule:<name>`
+    # given (this runs outside the task's Scope).
     def self.schedule_next(task, last)
       expr = task.task_cron
       return last + task.task_interval if expr.nil?
@@ -459,6 +461,7 @@ module Cybertrain
       Cron.next_after(expr, last, task.task_zone)
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("Scheduled task #{task.task_name.inspect} failed: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, task_where(task), ErrorReporter::NO_CONTEXT)
       -1
     end
 
@@ -549,7 +552,7 @@ module Cybertrain
     # @return [Logger::Scope]
     # @api private
     def self.task_scope(task)
-      where = "schedule:#{task.task_name}"
+      where = task_where(task)
       id = ""
       verb = ""
       path = ""
@@ -560,11 +563,21 @@ module Cybertrain
       Logger::Scope.new(id, verb, path, where, tags, -1, context)
     end
 
+    # A task's `where` (its log tag and its error reports' `where`):
+    # `schedule:<name>`.
+    # @param task [Task]
+    # @return [String]
+    # @api private
+    def self.task_where(task)
+      "schedule:#{task.task_name}"
+    end
+
     # Calls the task's block, or enqueues its `job:`, with its rescue in a
     # plain method that reads the Proc from the Task rather than yielding
     # (NOTES rules 32/45/69); naming JSON::NestingError first (rule 61).
-    # False when it raised. Each run starts at the default locale, so a
-    # locale one task set does not stay for the next.
+    # False when it raised, logged and reported (spec section 13.2). Each
+    # run starts at the default locale, so a locale one task set does not
+    # stay for the next.
     def self.run_task_body(task)
       I18n.locale = nil
       kind = task.task_job_kind
@@ -576,6 +589,7 @@ module Cybertrain
       true
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("Scheduled task #{task.task_name.inspect} failed: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, task_where(task), ErrorReporter::NO_CONTEXT)
       false
     end
 
