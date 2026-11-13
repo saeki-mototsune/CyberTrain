@@ -298,7 +298,9 @@ module Cybertrain
     # gives, so it is refused; a connected socket has a peer and is
     # refused too. The one descriptor the fallback cannot tell from a
     # listener is a socket bound but never listened on, which no supervisor
-    # hands down; accept_loop would log its failed accepts.
+    # hands down: on a kernel that does not answer SO_ACCEPTCONN such a
+    # socket passes this check, and accept_loop then logs a failed accept
+    # every ACCEPT_POLL instead of serving.
     def accepting?(listener)
       answer = accept_conn_option(listener)
       return answer > 0 if answer >= 0
@@ -394,20 +396,22 @@ module Cybertrain
     # Ends the wait of every connection whose thread is waiting for its next
     # request and has nothing to read yet, by shutting the socket's read
     # side (a connection still awaiting its first request only once its
-    # FIRST_REQUEST_GRACE is over): the parked wait_readable wakes at once (CRuby and Spinel alike),
-    # the read that follows sees EOF, and serve ends quietly and closes the
-    # socket itself. Only the read side, because the snapshot can be stale:
-    # a connection that left its wait after the snapshot and has already
-    # read its next request still writes the whole response (with
-    # Connection: close, since the server is stopping) before it ends. A
-    # connection whose next request has arrived is left to read it. Every
-    # step tolerates the connection's own thread closing the socket first.
+    # FIRST_REQUEST_GRACE is over): the parked wait_readable wakes at once
+    # (CRuby and Spinel alike), the read that follows sees EOF, and serve
+    # ends quietly and closes the socket itself. Only the read side,
+    # because the snapshot can be stale: a connection that left its wait
+    # after the snapshot and has already read its next request still
+    # writes the whole response (with Connection: close, since the server
+    # is stopping) before it ends. A connection whose next request has
+    # arrived is left to read it. Every step tolerates the connection's own
+    # thread closing the socket first.
     def shut_idle_connections
       idle = []
       now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @lock.synchronize do
         @connections.each_value do |c|
-          idle << c if c.streaming || (c.idle && (!c.awaiting_first_request || now >= c.first_request_grace_end))
+          idle << c if c.streaming ||
+                       (c.idle && (!c.awaiting_first_request || now >= c.first_request_grace_end))
         end
       end
       i = 0
