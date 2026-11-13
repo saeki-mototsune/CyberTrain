@@ -47,5 +47,5 @@ class ProbeOwnTest < ProbeBase
     PROBE_LOG << "own ensure"
   end
 
-  def teardown = PROBE_LOG << "own teardown"
+  def teardown = (super; PROBE_LOG << "own teardown")
 end

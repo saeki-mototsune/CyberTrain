@@ -207,14 +207,17 @@ end
 
 test "a file filter and -n combine" do
   assert_equal "1 test, 1 assertion, 0 failures", bundle_run(["test/legacy.rb", "-n", "old style"])[-2]
-  assert_equal ["", "0 tests, 0 assertions, 0 failures", "exit 0"], bundle_run(["test/legacy.rb", "-n", "counts"])
+  assert_equal ["no test matched the filter", "", "0 tests, 0 assertions, 0 failures", "exit 0"], bundle_run(["test/legacy.rb", "-n", "counts"])
   assert_equal "2 tests, 2 assertions, 1 failure", bundle_run(["./test/models/article_test.rb"])[-2]
   assert_equal "2 tests, 2 assertions, 1 failure", bundle_run(["test/models"])[-2]
   assert_equal "3 tests, 3 assertions, 1 failure", bundle_run(["test/", "test/legacy.rb"])[-2]
 end
 
 test "0 tests is not a failure" do
-  assert_equal ["", "0 tests, 0 assertions, 0 failures", "exit 0"], bundle_run(["-n", "nothing"])
+  # A filter that keeps none says so.
+  assert_equal ["no test matched the filter", "", "0 tests, 0 assertions, 0 failures", "exit 0"], bundle_run(["-n", "nothing"])
+  assert_equal ["no test matched the filter", "", "0 tests, 0 assertions, 0 failures", "exit 0"], bundle_run(["-n", "/nothing/"])
+  assert_equal ["", "0 tests, 0 assertions, 0 failures", "exit 0"], bundle_lines(Array.new(0) { "" }, Array.new(0) { "" })
 end
 
 test "bad arguments print the usage and the reason, run nothing and answer 2" do
@@ -224,6 +227,8 @@ test "bad arguments print the usage and the reason, run nothing and answer 2" do
   assert_equal [usage, "-n needs a name or /text/", "exit 2"], bundle_run(["-n"])
   assert_equal [usage, "no test file at test/modles", "exit 2"], bundle_run(["test/modles"])
   assert_equal [usage, "-n needs a name or /text/", "exit 2"], bundle_run(["-n", "//"])
+  assert_equal [usage, Cybertrain::Test::Args::LINE_FILTER, "exit 2"], bundle_run(["test/legacy.rb:3"])
+  assert_equal [usage, Cybertrain::Test::Args.pattern_problem("^count"), "exit 2"], bundle_run(["-n", "/^count/"])
   assert_equal before, OLD_RUNS[0]
 end
 

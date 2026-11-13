@@ -14,6 +14,7 @@
 #   name       cybertrain test -n "keeps a boolean, a datetime and a decimal"  0
 #   method     cybertrain test -n test_belongs_to_its_author             0
 #   text       cybertrain test -n /article/                              0
+#   nomatch    cybertrain test -n /no-such-test/: says nothing matched   0
 #   usage      cybertrain test --seed 1: the CLI's own check, no step    2
 #   args       build/test/tests -n // run directly: the bundle's own
 #              check, before the boot                                    2
@@ -24,6 +25,8 @@
 #              with the test's line, compiled again                      1
 #   duplicate  test_app_extra/dup_a.rb and dup_b.rb added (both define
 #              new_client): gen's refusal naming both, no compile        1
+#   refused    test_app_extra/refused_test.rb added (the rewrite refuses
+#              it): gen exits 0, its path:line, no compile                1
 #
 # First the committed gen/ is checked (`spin run gen -- --check`). The
 # runs between the first and `failing` reuse the first compile's
@@ -73,8 +76,9 @@ grep -q "path = \"$ROOT\"" "$APP/spin.toml" || fail "spin.toml was not pointed a
 mkdir -p "$APP/tmp" "$APP/storage"
 
 # The committed gen/ (gen/tests.rb and gen/test/** included) is what gen
-# writes. This builds bin/gen, which `cybertrain test` then reuses.
-(cd "$APP" && cybertrain spin run gen -- --check) > "$WORK/gen-check.log" 2>&1 ||
+# writes. This builds bin/gen in the mode `cybertrain test` builds it in
+# (SPIN_DEBUG=1), which `cybertrain test` then reuses.
+(cd "$APP" && SPIN_DEBUG=1 cybertrain spin run gen -- --check) > "$WORK/gen-check.log" 2>&1 ||
   { tail -n 40 "$WORK/gen-check.log" >&2; fail "test/fixtures/test_app/gen/ is stale: run spin run gen in it"; }
 
 # `run_variant NAME STATUS ARGS...`: cybertrain test ARGS in the app; its
@@ -143,6 +147,8 @@ run_variant method 0 -n test_belongs_to_its_author
 same_binary method
 run_variant text 0 -n /article/
 same_binary text
+run_variant nomatch 0 -n /no-such-test/
+same_binary nomatch
 
 # The three ways to exit 2: bad arguments seen by the CLI, by the bundle
 # itself, and a database that is not a test database.
@@ -166,6 +172,16 @@ cp "$EXTRA/dup_a.rb" "$APP/test/dup_a.rb"
 cp "$EXTRA/dup_b.rb" "$APP/test/dup_b.rb"
 run_variant duplicate 1
 same_binary duplicate
+rm "$APP/test/dup_a.rb" "$APP/test/dup_b.rb"
+
+# A test file the class-form rewrite refuses: gen itself succeeds (the
+# development server, db migrate and a build go on), the bundle is the
+# refused program, nothing is compiled.
+cp "$EXTRA/refused_test.rb" "$APP/test/refused_test.rb"
+(cd "$APP" && SPIN_DEBUG=1 cybertrain spin run gen) > "$WORK/refused-gen.log" 2>&1 ||
+  { tail -n 40 "$WORK/refused-gen.log" >&2; fail "refused: spin run gen failed on a refused test file"; }
+run_variant refused 1
+same_binary refused
 
 rm -rf "$WORK"
 echo "test-command-e2e: passed"

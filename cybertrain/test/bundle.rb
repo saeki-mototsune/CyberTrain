@@ -159,7 +159,8 @@ module Cybertrain
       # test, `  ok   Class: name`, or `  FAIL Class: name (path:line)` /
       # `  ERR  ...` with each message line indented by nine spaces (the
       # top-level form without `Class: `), then an empty line and the
-      # totals. Answers the exit status: 0, 1 when a test failed, 2 for bad
+      # totals; when a filter kept no test, Args::NOTHING_MATCHED comes
+      # before them. Answers the exit status: 0, 1 when a test failed, 2 for bad
       # arguments (the usage and the reason are printed, nothing runs).
       # @param argv [Array<String>]
       # @param dispatch [Proc] takes the index of a class-form test
@@ -207,6 +208,7 @@ module Cybertrain
           end
           f += 1
         end
+        say(Args::NOTHING_MATCHED) if tests.zero? && args.filtered?
         say("")
         say("#{counted(tests, "test")}, #{counted(Cybertrain::Test.assertion_count - before, "assertion")}, #{counted(failures, "failure")}")
         failures > 0 ? 1 : 0

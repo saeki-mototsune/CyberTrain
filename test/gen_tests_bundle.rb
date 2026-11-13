@@ -204,6 +204,34 @@ test "a refused bundle is a program that only aborts, and gen still succeeds" do
   assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
 end
 
+test "a test file the class-form rewrite refuses refuses the bundle, and gen still succeeds" do
+  root = app_with_tests
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  copy = File.read("#{root}/gen/test/models/article_test.rb")
+  File.delete("#{root}/gen/routes.rb")
+  broken = "require \"test_helper\"\n\nclass ArticleTest < ActiveSupport::TestCase\n  test \"a\" do\n    assert true\n  end\n\n  test \"a\" do\n  end\nend\n"
+  File.write("#{root}/test/models/article_test.rb", broken)
+  write_file = "#{root}/test/models/other_test.rb"
+  File.write(write_file, "class OtherTest < ActiveSupport::TestCase\n  test \"b\" do\n  end\nend\n")
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  reason = "test/models/article_test.rb:8: test \"a\" has the same method name test_a as test \"a\" (line 4)"
+  assert_equal "#{Cybertrain::Gen::TestsEmitter::HEADER}abort(\"#{reason.gsub("\"", "\\\"")}\")\n", File.read("#{root}/gen/tests.rb")
+  # The application's other outputs are written as usual; gen/test's copies
+  # are left as they were (none written, none swept).
+  assert File.exist?("#{root}/gen/routes.rb")
+  assert_equal copy, File.read("#{root}/gen/test/models/article_test.rb")
+  refute File.exist?("#{root}/gen/test/models/other_test.rb")
+  # Fresh while gen would write the same refused program.
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
+  # Fixed: the bundle and the copies are written again.
+  File.write("#{root}/test/models/article_test.rb", ARTICLE_TEST)
+  assert_equal 1, Cybertrain::Gen::Runner.run(root, ["--check"])
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  assert File.read("#{root}/gen/tests.rb").include?("{ t.test_counts }")
+  assert File.exist?("#{root}/gen/test/models/other_test.rb")
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
+end
+
 test "assert_select with a block and render_inline with a block are refused" do
   select = "test \"list\" do\n  get \"/\"\n  assert_select \"li\", count: 2\n  assert_select \"ul\" do\n    assert_select \"li\"\n  end\nend\n"
   root = temp_app("test/x_test.rb" => select)

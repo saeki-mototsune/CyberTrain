@@ -113,6 +113,44 @@ test "file, directory and option arguments" do
   assert_equal "unknown option --seed", parse(["--seed", "1"]).arg_error
 end
 
+test "-n /TEXT/ with a regexp character, FILE:LINE and -- are answered for what they are" do
+  assert_equal "-n /^test_create/: the text between the slashes is a plain substring of the test name, not a regexp " \
+               "(^ would be looked for as itself); write the text to look for (-n /test_create/)",
+               parse(["-n", "/^test_create/"]).arg_error
+  assert_equal "-n /a.*b|c$/: the text between the slashes is a plain substring of the test name, not a regexp " \
+               "(* would be looked for as itself); write the text to look for (-n /a.bc/)",
+               parse(["-n", "/a.*b|c$/"]).arg_error
+  assert_equal "-n /^$/: the text between the slashes is a plain substring of the test name, not a regexp " \
+               "(^ would be looked for as itself); write the text to look for",
+               parse(["-n", "/^$/"]).arg_error
+  # Taken as themselves: test names hold them.
+  assert_equal "v1.2 (draft)?", parse(["-n", "/v1.2 (draft)?/"]).arg_pattern
+  assert_equal "line filters are not supported; give the file, and -n for the name", parse(["test/models/article_test.rb:14"]).arg_error
+  assert_equal "line filters are not supported; give the file, and -n for the name", parse(["./test/legacy.rb:1"]).arg_error
+  assert_equal "no test file at test/nope.rb:3", parse(["test/nope.rb:3"]).arg_error
+  # `--` ends the options: what follows is a file or directory.
+  assert_equal "", parse(["--", "test/legacy.rb"]).arg_error
+  assert_equal ["test/legacy.rb"], parse(["-n", "a", "--", "test/legacy.rb"]).arg_files
+  assert_equal "no test file at -n", parse(["--", "-n", "a"]).arg_error
+  # filtered? (the bundle prints that nothing matched only under a filter).
+  refute parse(Array.new(0) { "" }).filtered?
+  assert parse(["test/legacy.rb"]).filtered?
+  assert parse(["-n", "a"]).filtered?
+  assert parse(["-n", "/a/"]).filtered?
+end
+
+test "a test's method name: ASCII as Rails' rule, any other character as _u<hex>" do
+  args = Cybertrain::Test::Args
+  assert_equal "test_shows_an_article", args.method_for("shows an article")
+  assert_equal "test_a_b_c_", args.method_for("a-b.c?")
+  assert_equal "test__u30ed_u30b0_u30a4_u30f3_u3067_u304d_u308b", args.method_for("ログインできる")
+  assert_equal "test__u30ed_u30b0_u30a2_u30a6_u30c8_u3059_u308b", args.method_for("ログアウトする")
+  assert_equal "test_caf_ue9_x", args.method_for("café x")
+  assert_equal "test__u1f600", args.method_for("😀")
+  # A byte that starts no well-formed sequence stands for itself.
+  assert_equal "test_a_uff_ue3b", args.method_for("a\xFF\xE3b")
+end
+
 test "bad arguments print the usage and the reason, exit 2 and run no step" do
   runner = StubRunner.new(true, 0)
   assert_equal 2, Cybertrain::CLI::TestCommand.run(APP, ["--seed", "1"], runner)
@@ -238,6 +276,15 @@ test "stale? when the record of the binary's inputs is missing or differs" do
   assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
   write(record, "#{record_now}x\n")
   assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+
+  # A file under test/ that a test requires, deleted: no mtime is newer,
+  # the record's list of test/**/*.rb differs.
+  write("#{APP}/test/lib/shared.rb", "SHARED = 1\n")
+  build_binary
+  refute Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  File.delete("#{APP}/test/lib/shared.rb")
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  Dir.rmdir("#{APP}/test/lib")
 
   # Files older than the binary that change what it is built from: a
   # dependency pointed elsewhere (spin.toml, spin.lock), another framework
