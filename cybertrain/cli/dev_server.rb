@@ -10,7 +10,7 @@
 # Startup: the application's name, the pinned Spinel (Toolchain.ensure!),
 # the load path (the -I directories of `spin flags`), the framework's dev
 # files (below), the leftovers of a supervisor that was killed
-# (tmp/cybertrain-dev/supervisor.pid and child.pid), the address
+# (tmp/cybertrain-dev/supervisor.pid, child.pid and build.pid), the address
 # (`bin/NAME.rb dev-address` under CRuby; a port argument overrides the
 # port), the socket, the banner, then the first round. Each refusal prints
 # `error: ...` and returns 1 before a child is started.
@@ -122,6 +122,7 @@ module Cybertrain
         load_framework(load_path)
         refuse_second_supervisor(root)
         stop_leftover_child(root, name, $stdout)
+        stop_leftover_build(root, name, $stdout)
         host, port = address(root, name, load_path)
         port = Integer(port_argument, 10) unless port_argument == ""
         listener = bind(host, port)
@@ -233,6 +234,70 @@ module Cybertrain
         end
         File.delete(path) if File.exist?(path)
         nil
+      end
+
+      # A build a killed supervisor left (its process group, in build.pid)
+      # is still writing build/: when the group's leader is this
+      # application's build (application_build?), the group is stopped
+      # (stop_group) before this supervisor starts one of its own. Any other
+      # process is left alone.
+      # @param root [String] the application's directory
+      # @param name [String] the package name
+      # @param out [IO] where the line about it goes
+      def self.stop_leftover_build(root, name, out)
+        path = File.join(root, DEV_DIR, "build.pid")
+        pgid = read_pid(path)
+        return if pgid.nil?
+
+        if alive?(pgid) && !ended?(pgid) && application_build?(pgid, root, name)
+          out.puts "=> stopping a build left by an earlier cybertrain server (pid #{pgid})"
+          out.flush
+          stop_group(pgid, LEFTOVER_GRACE) { ended?(pgid) }
+          deadline = monotonic + 1
+          sleep 0.05 until group_pids(pgid).empty? || monotonic >= deadline
+        end
+        File.delete(path) if File.exist?(path)
+        nil
+      end
+
+      # How long a build's leader (spin) gets to end after its children
+      # were sent TERM: spin then removes its compiler's stderr file
+      # ($TMPDIR/spin-compile-PID.err) and exits, which took about 25 ms
+      # here (2026-11-13, spin 2026.11.04). TERM to spin itself ends it
+      # without that cleanup.
+      BUILD_CLEANUP = 0.5
+
+      # Stops the process group pgid, a build: TERM to every member but the
+      # leader, so that spin sees its step fail and cleans up; once the
+      # leader has ended (the block) or after BUILD_CLEANUP, TERM to the
+      # group and, by the end of grace, KILL to whatever is left (a compiler
+      # the leader did not wait for).
+      # @param pgid [Integer] the group, whose leader is the build's spin
+      # @param grace [Numeric] the whole time before KILL
+      # @yieldreturn [Boolean] whether the leader has ended
+      def self.stop_group(pgid, grace)
+        started = monotonic
+        group_pids(pgid).each { |pid| signal(pid, :TERM) unless pid == pgid }
+        sleep 0.01 until yield || monotonic - started >= [BUILD_CLEANUP, grace].min
+        unless yield
+          signal(-pgid, :TERM)
+          sleep 0.01 until yield || monotonic - started >= grace
+        end
+        signal(-pgid, :KILL)
+        nil
+      end
+
+      # The live (not zombie) processes of group pgid, from
+      # `ps -A -o pid=,pgid=,stat=` (Linux and macOS).
+      # @return [Array<Integer>]
+      def self.group_pids(pgid)
+        out = IO.popen(["ps", "-A", "-o", "pid=,pgid=,stat="], in: File::NULL, err: File::NULL, &:read)
+        out.lines.filter_map do |line|
+          pid, group, stat = line.split
+          pid.to_i if group.to_i == pgid && !stat.to_s.start_with?("Z")
+        end
+      rescue SystemCallError
+        []
       end
 
       # P10: host and port as the application's config gives them, from
@@ -439,6 +504,20 @@ module Cybertrain
         return false if program.nil?
 
         names?(pid, program, root, "bin/#{name}.rb") || names?(pid, program, root, "build/bin/#{name}")
+      end
+
+      # P14's identity of a build: the program is spin (the one on PATH,
+      # so by name) with exactly the arguments Processes#build_command
+      # gives it, in this application's directory where /proc shows it.
+      # @param pid [Integer] the group's leader
+      # @return [Boolean]
+      def self.application_build?(pid, root, name)
+        program, rest = program(command_line(pid))
+        return false if program.nil? || File.basename(program) != "spin"
+        return false unless [["build", name], ["build", name, "--", "--incremental"]].include?(rest)
+
+        cwd = process_cwd(pid)
+        cwd.nil? || cwd == root
       end
 
       # A `cybertrain server` command line: a word named cybertrain...

@@ -35,16 +35,17 @@ module Cybertrain
       #
       # The files (docs/superpowers/specs/2026-11-12-cruby-preview-design.md
       # section 6), all under tmp/cybertrain-dev/: state (the only channel
-      # to the child), ready and failure (the child's answers), child.pid
-      # and supervisor.pid (so that the next `cybertrain server` can find
-      # what a killed supervisor left). #close removes them; ffi/ (the
+      # to the child), ready and failure (the child's answers), child.pid,
+      # build.pid (the build's process group, while it runs) and
+      # supervisor.pid (so that the next `cybertrain server` can find what a
+      # killed supervisor left). #close removes them; ffi/ (the
       # preview's compiled libraries) stays.
       #
       # The children's commands come from #child_command, #gen_command and
       # #build_command, which a test overrides with stand-in scripts. CRuby
       # only, never compiled by Spinel.
       class Processes
-        FILES = ["state", "ready", "failure", "child.pid", "supervisor.pid"].freeze
+        FILES = ["state", "ready", "failure", "child.pid", "build.pid", "supervisor.pid"].freeze
 
         # The bounds (P11): a child must write its ready file within
         # READY_TIMEOUT seconds; a stopped child gets STOP_GRACE seconds after
@@ -245,6 +246,7 @@ module Cybertrain
           @build = nil
           signal(-build.pid, :KILL)
           wait_pid(build.pid)
+          delete_file(dev_path("build.pid"))
           nil
         end
 
@@ -405,11 +407,23 @@ module Cybertrain
           @err.is_a?(IO) ? @err : File::NULL
         end
 
+        # The build in a process group of its own, whose id (its PID) goes
+        # to build.pid: a supervisor killed outright leaves the build
+        # running, and the next one stops it (DevServer.stop_leftover_build).
         def spawn_build
           FileUtils.mkdir_p(File.join(@root, "tmp"))
-          Process.spawn(child_env, *build_command(@incremental),
-                        chdir: @root, in: File::NULL, [:out, :err] => [File.join(@root, BUILD_LOG), "w"],
-                        pgroup: true)
+          pid = Process.spawn(child_env, *build_command(@incremental),
+                              chdir: @root, in: File::NULL, [:out, :err] => [File.join(@root, BUILD_LOG), "w"],
+                              pgroup: true)
+          begin
+            FileUtils.mkdir_p(dev_dir)
+            write_file(dev_path("build.pid"), pid.to_s)
+          rescue SystemCallError
+            # The build is still owned and stopped by this runner; only a
+            # later supervisor's cleanup after a crash is lost.
+            nil
+          end
+          pid
         end
 
         def poll_spawn_failure(machine)
@@ -458,6 +472,7 @@ module Cybertrain
             return
           end
           @build = nil
+          delete_file(dev_path("build.pid"))
           machine.on_build_done(build.generation, ok, output)
         end
 

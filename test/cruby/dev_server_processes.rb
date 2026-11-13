@@ -365,6 +365,28 @@ test "cancel_build kills the build's whole process group" do
   end
 end
 
+test "build.pid names the build's group while it runs: gone at its end, its cancel and close" do
+  with_runner({ spin: "sleep 0.3 if ARGV.include?('slow')\nputs 'built'\n" }) do |runner, _listener, root|
+    path = File.join(root, "tmp", "cybertrain-dev", "build.pid")
+    rec = Recorder.new
+    runner.define_singleton_method(:build_command) do |_incremental|
+      [RbConfig.ruby, @scripts.fetch(:spin), "slow"]
+    end
+    runner.start_build(1)
+    assert_equal runner.build_pid.to_s, File.read(path)
+    assert_equal runner.build_pid, Process.getpgid(runner.build_pid)
+    poll_until(runner, rec) { !rec.events.empty? }
+    refute File.exist?(path), "removed when the build ends"
+    runner.start_build(2)
+    assert File.exist?(path)
+    runner.cancel_build
+    refute File.exist?(path), "removed when the build is cancelled"
+    runner.start_build(3)
+    runner.close
+    refute File.exist?(path), "removed at close"
+  end
+end
+
 # --- gen, the state file, the lock --------------------------------------------
 
 test "log loses its line, without raising, once the terminal is gone" do

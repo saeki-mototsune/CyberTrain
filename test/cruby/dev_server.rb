@@ -392,6 +392,51 @@ test "only this application's bin/app.rb or build/bin/app is taken for a leftove
   end
 end
 
+test "only this application's `spin build NAME` is taken for a leftover build" do
+  with_app do |root|
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    FileUtils.mkdir_p(dev)
+    Dir.mktmpdir("dev-server-other") do |other|
+      other = File.realpath(other)
+      spin = File.join(other, "spin")
+      File.write(spin, "#!#{RbConfig.ruby}\nsleep 30\n")
+      File.chmod(0o755, spin)
+      cases = [
+        [[spin, "build", "app", "--", "--incremental"], root, true],
+        [[spin, "build", "app"], root, true],
+        [[spin, "build", "app"], other, false],
+        [[spin, "build", "apps"], root, false],
+        [[spin, "run", "app"], root, false],
+        [[RbConfig.ruby, "-e", "sleep 30", "spin", "build", "app"], root, false]
+      ]
+      cases.each do |command, dir, stopped|
+        pid = Process.spawn(*command, chdir: dir, pgroup: true)
+        begin
+          mine = DevServer.command_line(Process.pid)
+          wait_until { DevServer.command_line(pid) != mine }
+          File.write(File.join(dev, "build.pid"), pid.to_s)
+          log = StringIO.new
+          DevServer.stop_leftover_build(root, "app", log)
+          if stopped
+            assert gone?(pid), "stopped: #{command.join(" ")} in #{dir}"
+            assert_includes log.string, "(pid #{pid})"
+          else
+            refute gone?(pid), "left alone: #{command.join(" ")} in #{dir}"
+          end
+          refute File.exist?(File.join(dev, "build.pid"))
+        ensure
+          begin
+            Process.kill(:KILL, pid)
+          rescue Errno::ESRCH
+            nil
+          end
+          Process.wait(pid)
+        end
+      end
+    end
+  end
+end
+
 test "program finds a ruby interpreter's script after its options" do
   assert_equal ["bin/app.rb", ["4000"]],
                DevServer.program(["/usr/bin/ruby", "-E", "UTF-8", "-I/a", "-I", "/b c", "-r", "cybertrain/preview", "bin/app.rb", "4000"])
@@ -507,7 +552,8 @@ RUBY
 # The spin stand-in on PATH: `spin flags` names the checkout and the
 # application; `spin build` writes build/bin/app (the child stand-in, as
 # the binary) after a moment, or never finishes when the file "slow-build"
-# exists.
+# exists: it then starts a grandchild (a compiler, in the build's process
+# group) and writes both PIDs to "build-pids".
 SPIN = <<~RUBY
   #!#{RbConfig.ruby}
   root = Dir.pwd
@@ -515,7 +561,12 @@ SPIN = <<~RUBY
   when "flags"
     puts "--strict-require -I #{REPO} -I \#{root}"
   when "build"
-    sleep 60 if File.exist?("slow-build")
+    if File.exist?("slow-build")
+      grandchild = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "sleep 60")
+      File.write("build-pids.tmp", "\#{Process.pid} \#{grandchild}")
+      File.rename("build-pids.tmp", "build-pids")
+      sleep 60
+    end
     sleep 0.3
     require "fileutils"
     FileUtils.mkdir_p("build/bin")
@@ -687,18 +738,64 @@ test "INT to the whole process group ends it with 130; the children's deaths are
   end
 end
 
+# The PIDs the slow stand-in build wrote: its own and its grandchild's.
+def build_pids(root)
+  assert wait_until(10) { File.exist?(File.join(root, "build-pids")) }, "the build started:\n#{log_of(root)}"
+  File.read(File.join(root, "build-pids")).split.map(&:to_i)
+end
+
+# The grandchild's command line does not name the directory, so the sweep
+# at with_driver_app's end would not see it: it is checked here.
+def assert_gone_within(pids, seconds = 2)
+  wait_until(seconds) { pids.all? { |pid| gone?(pid) } }
+  assert pids.all? { |pid| gone?(pid) }, "gone: #{pids.reject { |pid| gone?(pid) }.inspect} of #{pids.inspect}"
+ensure
+  pids.each do |pid|
+    Process.kill(:KILL, pid)
+  rescue Errno::ESRCH
+    nil
+  end
+end
+
 test "TERM while the build runs: the build's group is stopped too" do
   with_driver_app do |root, start|
     File.write(File.join(root, "slow-build"), "")
     pid = start.call
     assert wait_until(10) { log_of(root).include?("=> preview: CRuby (") }, "the CRuby child became ready:\n#{log_of(root)}"
+    build = build_pids(root)
     Process.kill(:TERM, pid)
     status = exit_status(pid)
     assert status, "the supervisor stopped within 5 s"
     assert_equal 0, status.exitstatus
     assert_equal [], dev_files(root) - ["ffi"]
     refute_event(root)
-    # with_driver_app's end finds nothing left that names the directory.
+    assert_gone_within(build)
+  end
+end
+
+# R21: a supervisor killed outright leaves its build running in a group of
+# its own; the next one finds it in build.pid and stops the whole group
+# before it starts a build of its own.
+test "a build left by a killed supervisor is stopped, grandchild included" do
+  with_driver_app do |root, start|
+    File.write(File.join(root, "slow-build"), "")
+    first = start.call
+    assert wait_until(10) { log_of(root).include?("=> preview: CRuby (") }, "the CRuby child became ready:\n#{log_of(root)}"
+    build = build_pids(root)
+    assert_equal build[0].to_s, File.read(File.join(root, "tmp", "cybertrain-dev", "build.pid"))
+    Process.kill(:KILL, first)
+    Process.wait(first)
+    File.delete(File.join(root, "build-pids"))
+    second = start.call
+    assert wait_until(10) { log_of(root).include?("=> preview: CRuby (") && File.exist?(File.join(root, "build-pids")) },
+           "the second supervisor serves and builds:\n#{log_of(root)}"
+    assert_includes log_of(root), "=> stopping a build left by an earlier cybertrain server (pid #{build[0]})"
+    assert_gone_within(build, 0.5)
+    rebuilt = build_pids(root)
+    assert_equal rebuilt[0].to_s, File.read(File.join(root, "tmp", "cybertrain-dev", "build.pid"))
+    Process.kill(:TERM, second)
+    assert_equal 0, exit_status(second)&.exitstatus
+    assert_gone_within(rebuilt)
   end
 end
 
