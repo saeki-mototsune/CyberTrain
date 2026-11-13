@@ -229,20 +229,33 @@ module Cybertrain
       CP1252 = [0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017D, 0,
                 0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178].freeze
 
+      # A body read as binary (ASCII-8BIT) as the UTF-8 it is: its
+      # non-ASCII bytes beside a decoded reference would otherwise be an
+      # Encoding::CompatibilityError under CRuby. A copy: the caller's
+      # String keeps its encoding.
+      # @param raw [String]
+      # @return [String]
+      # @api private
+      def self.utf8_text(raw)
+        return raw if raw.encoding.to_s == "UTF-8"
+
+        copy = raw.dup
+        copy.force_encoding("UTF-8")
+        copy
+      end
+
       # Every element of `html`, in document order; each knows its parent's
-      # position (HtmlNode#node_parent_index) and its children.
+      # position (HtmlNode#node_parent_index) and its children. A binary
+      # (ASCII-8BIT) body is read as UTF-8.
       # @param html [String]
       # @return [Array<HtmlNode>]
       # @raise [Malformed] on a mismatched, unexpected or missing end tag,
       #   an unterminated tag, comment or quoted value, or `<div/>`
       # @api public
       def self.parse(html)
-        raw = html.to_s
-        # A body read as binary (ASCII-8BIT) is read as the UTF-8 it is:
-        # its non-ASCII bytes beside a decoded reference would otherwise be
-        # an Encoding::CompatibilityError under CRuby. A copy: the caller's
-        # String keeps its encoding.
-        s = raw.encoding.to_s == "UTF-8" ? raw : raw.dup.force_encoding("UTF-8")
+        # Read through a fresh local (NOTES rule 62).
+        text = HtmlReader.utf8_text(html.to_s)
+        s = text.to_s
         nodes = Array.new(0) { HtmlNode.new("", 0, -1, 0) }
         stack = Array.new(0) { 0 }
         n = s.bytesize
