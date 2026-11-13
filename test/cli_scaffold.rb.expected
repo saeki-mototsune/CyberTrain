@@ -245,6 +245,7 @@ insert app/controllers/events_controller.rb (poster_file= in create)
 insert app/controllers/events_controller.rb (poster_file= in update)
 route event_poster (GET /events/:id/poster)
 identical .gitignore (/storage/uploads/ already ignored)
+create test/fixtures/files/poster.png
 create test/integration/event_poster_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   a datetime field's fixture value, and an attachment field has none

@@ -66,6 +66,18 @@ class ArticlesController < Cybertrain::Controller
   def accept
     render plain: "#{request.header("Accept")} #{request.header("X-Token")}"
   end
+
+  # A multipart form: the text field, then the file's name, declared type
+  # and size (and the bytes' checksum), as the action sees them.
+  def upload
+    doc = params.nested(:doc)
+    file = doc.upload(:file)
+    if file.nil?
+      render plain: "#{request.method} #{doc[:title]} no file"
+    else
+      render plain: "#{request.method} #{doc[:title]} #{file.original_filename} #{file.declared_content_type} #{file.byte_size} #{file.sha256_hex[0, 8]}"
+    end
+  end
 end
 
 def build_router
@@ -80,6 +92,9 @@ def build_router
   router.add("GET", "/go_here", "go_here") { |ctx| ArticlesController.new(ctx).process(:go_here) { |c| c.go_here } }
   router.add("GET", "/go_away", "go_away") { |ctx| ArticlesController.new(ctx).process(:go_away) { |c| c.go_away } }
   router.add("GET", "/accept", "accept") { |ctx| ArticlesController.new(ctx).process(:accept) { |c| c.accept } }
+  router.add("POST", "/uploads", "uploads") { |ctx| ArticlesController.new(ctx).process(:upload) { |c| c.upload } }
+  router.add("PATCH", "/uploads/:id", "upload") { |ctx| ArticlesController.new(ctx).process(:upload) { |c| c.upload } }
+  router.add("PUT", "/uploads/:id", "upload") { |ctx| ArticlesController.new(ctx).process(:upload) { |c| c.upload } }
   router
 end
 
@@ -238,6 +253,36 @@ class UrlTest < ActionDispatch::IntegrationTest
   end
 end
 
+# fixture_file_upload in params: (Rails' shape): a File value in a nested
+# Hash beside Strings makes post / patch / put send multipart/form-data.
+class UploadTest < ActionDispatch::IntegrationTest
+  def test_uploads
+    begin
+      png = File.binread("tmp/test_integration/files/pixel.png")
+      sum = Cybertrain::UploadedFile.new("x", "", png).sha256_hex[0, 8]
+      file = fixture_file_upload("pixel.png", "image/png")
+      assert_equal "pixel.png", file.filename
+      assert_equal "image/png", file.content_type
+      assert_equal png, file.data
+      post "/uploads", params: { doc: { title: "Hi", file: file } }
+      assert_response :success
+      assert_equal "POST Hi pixel.png image/png #{png.bytesize} #{sum}", response.body
+      patch "/uploads/1", params: { doc: { title: "Again", file: fixture_file_upload("pixel.png") } }
+      assert_equal "PATCH Again pixel.png image/png #{png.bytesize} #{sum}", response.body
+      put "/uploads/1", params: { doc: { title: "Put", file: fixture_file_upload("tmp/test_integration/files/notes.txt") } }
+      assert_equal "PUT Put notes.txt text/plain 3 #{Cybertrain::UploadedFile.new("x", "", "abc").sha256_hex[0, 8]}", response.body
+      # Without a file the same params go as a form.
+      post "/uploads", params: { doc: { title: "Plain" } }
+      assert_equal "POST Plain no file", response.body
+      message = assert_raises(ArgumentError) { fixture_file_upload("missing.png") }
+      assert_equal "fixture_file_upload: no file test/fixtures/files/missing.png (nor missing.png)", message
+      message = assert_raises(ArgumentError) { get "/uploads", params: { doc: { file: file } } }
+      assert_equal "params: a file (fixture_file_upload) is sent by post, patch or put as a form, not in a query string (at doc[file])", message
+    end
+    nil
+  end
+end
+
 # ---- the boot, as gen/tests.rb does it ----
 
 def make_dir(dir)
@@ -248,6 +293,13 @@ end
 DATABASE = "tmp/test_integration/test.sqlite3"
 make_dir("tmp")
 make_dir("tmp/test_integration")
+# fixture_file_upload reads test/fixtures/files/ (relative to the current
+# directory, the app's root in the bundle; this program runs from the
+# repository root, whose test/fixtures/files/pixel.png is committed), and a
+# path that is not there as given.
+make_dir("tmp/test_integration/files")
+File.binwrite("tmp/test_integration/files/pixel.png", Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0xFF]))
+File.write("tmp/test_integration/files/notes.txt", "abc")
 ENV["CYBERTRAIN_TEST_DATABASE"] = DATABASE
 
 def integration_config
@@ -411,6 +463,10 @@ test "Rails' CGI-style header names" do
   assert_equal "content-type", Cybertrain::Test.request_header_name("CONTENT_TYPE")
   assert_equal "content-length", Cybertrain::Test.request_header_name("CONTENT_LENGTH")
   assert_equal "X-Token", Cybertrain::Test.request_header_name("X-Token")
+end
+
+test "fixture_file_upload in params: sends post, patch and put as multipart/form-data" do
+  UploadTest.new.test_uploads
 end
 
 Cybertrain::Test.run!

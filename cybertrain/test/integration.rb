@@ -25,34 +25,112 @@ module Cybertrain
     #   Cybertrain::Test.flatten_params({ article: { title: "New" } })   # => { "article[title]" => "New" }
     # @param params [Hash]
     # @return [Hash{String => String}]
-    # @raise [ArgumentError] for any other value (an Array, a model)
+    # @raise [ArgumentError] for any other value (an Array, a model), and for
+    #   a file ({IntegrationTest#fixture_file_upload}), which only a form
+    #   body carries (post, patch, put)
     # @api public
     def self.flatten_params(params)
-      out = { "" => "" }
-      out.delete("")
-      flatten_into(out, "", params)
+      uploads = no_uploads
+      out = flatten_form(params, uploads)
+      unless uploads.empty?
+        message = "params: a file (fixture_file_upload) is sent by post, patch or put as a form, not in a query string (at #{uploads[0].field})"
+        raise ArgumentError, message
+      end
       out
     end
 
-    # Writes params' pairs into out under prefix (`""` at the top).
+    # Like {flatten_params} for a form body: each file value
+    # ({IntegrationTest#fixture_file_upload}) is appended to `uploads` as an
+    # Upload named by its bracketed key (`"article[cover]"`), and left out
+    # of the text fields answered.
+    # @param params [Hash]
+    # @param uploads [Array<Upload>] appended to
+    # @return [Hash{String => String}]
+    # @api private
+    def self.flatten_form(params, uploads)
+      out = { "" => "" }
+      out.delete("")
+      flatten_into(out, uploads, "", params)
+      out
+    end
+
+    # An empty, typed list of uploads (rule 9).
+    # @return [Array<Upload>]
+    # @api private
+    def self.no_uploads
+      Array.new(0) { Upload.new("", "", "", "") }
+    end
+
+    # Writes params' pairs into out (files into uploads) under prefix
+    # (`""` at the top).
     # @return [nil]
     # @api private
-    def self.flatten_into(out, prefix, params)
+    def self.flatten_into(out, uploads, prefix, params)
       params.each do |k, v|
         key = prefix.empty? ? k.to_s : "#{prefix}[#{k}]"
         case v
         when Hash
-          flatten_into(out, key, v)
+          flatten_into(out, uploads, key, v)
         when String, Symbol, Integer, Float, TrueClass, FalseClass
           out[key] = v.to_s
         when nil
           out[key] = ""
+        when Upload
+          uploads << Upload.new(key, v.filename, v.content_type, v.data)
         else
           message = "params: values must be Strings or Hashes (got #{v.class.name} at #{key})"
           raise ArgumentError, message
         end
       end
       nil
+    end
+
+    # Where {IntegrationTest#fixture_file_upload} reads files (Rails'
+    # file_fixture_path).
+    FIXTURE_FILES = "test/fixtures/files".freeze
+
+    # The file part {IntegrationTest#fixture_file_upload} answers: the bytes
+    # of test/fixtures/files/<path> (or of path itself), its last component
+    # as the filename, `mime_type` or the type of its extension. The field
+    # is named when the params are flattened.
+    # @param path [String]
+    # @param mime_type [String] "" to guess from the extension
+    # @return [Upload]
+    # @raise [ArgumentError] when no such file exists
+    # @api private
+    def self.fixture_upload(path, mime_type)
+      full = "#{FIXTURE_FILES}/#{path}"
+      full = path unless File.file?(full)
+      unless File.file?(full)
+        message = "fixture_file_upload: no file #{FIXTURE_FILES}/#{path} (nor #{path})"
+        raise ArgumentError, message
+      end
+      type = mime_type.to_s.empty? ? extension_type(full) : mime_type.to_s
+      Upload.new("", File.basename(full), type, File.binread(full))
+    end
+
+    # The content type of a file name's extension, application/octet-stream
+    # when it is not one of the common ones.
+    # @param name [String]
+    # @return [String]
+    # @api private
+    def self.extension_type(name)
+      base = File.basename(name)
+      dot = base.rindex(".")
+      extension = dot.nil? ? "" : base[dot, base.size - dot].to_s.downcase
+      case extension
+      when ".png" then "image/png"
+      when ".jpg", ".jpeg" then "image/jpeg"
+      when ".gif" then "image/gif"
+      when ".webp" then "image/webp"
+      when ".svg" then "image/svg+xml"
+      when ".txt" then "text/plain"
+      when ".html" then "text/html"
+      when ".pdf" then "application/pdf"
+      when ".json" then "application/json"
+      when ".csv" then "text/csv"
+      else "application/octet-stream"
+      end
     end
 
     # A `headers:` name as a request carries it: Rails' CGI-style names
@@ -169,7 +247,7 @@ module ActionDispatch
     # @return [Cybertrain::Response]
     # @api public
     def post(path, params: {}, headers: {})
-      integration_response(@integration_client.post(integration_target(path), Cybertrain::Test.flatten_params(params), header_names(headers)))
+      integration_response(form_request("POST", integration_target(path), params, header_names(headers)))
     end
 
     # PATCH; `params:` go in the body as a form.
@@ -179,7 +257,7 @@ module ActionDispatch
     # @return [Cybertrain::Response]
     # @api public
     def patch(path, params: {}, headers: {})
-      integration_response(@integration_client.patch(integration_target(path), Cybertrain::Test.flatten_params(params), header_names(headers)))
+      integration_response(form_request("PATCH", integration_target(path), params, header_names(headers)))
     end
 
     # PUT; `params:` go in the body as a form.
@@ -189,7 +267,7 @@ module ActionDispatch
     # @return [Cybertrain::Response]
     # @api public
     def put(path, params: {}, headers: {})
-      integration_response(@integration_client.put(integration_target(path), Cybertrain::Test.flatten_params(params), header_names(headers)))
+      integration_response(form_request("PUT", integration_target(path), params, header_names(headers)))
     end
 
     # DELETE; `params:` go in the body as a form.
@@ -277,7 +355,46 @@ module ActionDispatch
       Cybertrain::Test.check_redirect(@integration_client.response, path)
     end
 
+    # A file to send in `params:` of post, patch or put, as Rails'
+    # `fixture_file_upload` gives one: the request then goes as
+    # multipart/form-data, the file under its bracketed key
+    # (`params: { post: { cover: fixture_file_upload("cover.png", "image/png") } }`
+    # is the part `post[cover]`) and the other params as text parts.
+    # `path` is read from test/fixtures/files/ (Rails' file_fixture_path),
+    # or as given when it exists there; the filename sent is its last
+    # component. Without `mime_type` the type is guessed from the
+    # extension (png, jpg/jpeg, gif, webp, svg, txt, html, pdf, json, csv),
+    # else application/octet-stream.
+    # @example
+    #   post posts_url, params: { post: { title: "Hi", cover: fixture_file_upload("cover.png", "image/png") } }
+    # @param path [String]
+    # @param mime_type [String]
+    # @return [Cybertrain::Test::Upload]
+    # @raise [ArgumentError] when neither test/fixtures/files/<path> nor path is a file
+    # @api public
+    def fixture_file_upload(path, mime_type = "")
+      Cybertrain::Test.fixture_upload(path, mime_type)
+    end
+
     private
+
+    # The request of post, patch and put: a form, or multipart/form-data
+    # when a params value is a file (the Client's encoder; a PUT goes as a
+    # POST carrying `_method=put`, as a browser's form does).
+    def form_request(method, target, params, headers)
+      uploads = Cybertrain::Test.no_uploads
+      fields = Cybertrain::Test.flatten_form(params, uploads)
+      if uploads.empty?
+        return @integration_client.patch(target, fields, headers) if method == "PATCH"
+        return @integration_client.put(target, fields, headers) if method == "PUT"
+
+        return @integration_client.post(target, fields, headers)
+      end
+      return @integration_client.patch_multipart(target, fields, uploads, headers) if method == "PATCH"
+
+      fields["_method"] = "put" if method == "PUT"
+      @integration_client.post_multipart(target, fields, uploads, headers)
+    end
 
     # The response, its body kept as Cybertrain::Test.last_html (for
     # assert_select) with its Content-Type (for assert_turbo_stream).

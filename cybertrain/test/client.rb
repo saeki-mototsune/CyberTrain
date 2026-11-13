@@ -13,6 +13,12 @@ module Cybertrain
     #   png = Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 255])
     #   client.post_multipart("/posts", { "authenticity_token" => token },
     #                         [Cybertrain::Test::Upload.new("post[cover]", "cover.png", "image/png", png)])
+    #
+    # As a value in an integration test's `params:` (what
+    # {ActionDispatch::IntegrationTest#fixture_file_upload} answers) its key
+    # there names the field, so `field` may be `""`:
+    # @example
+    #   post posts_url, params: { post: { cover: Cybertrain::Test::Upload.new("", "../evil.png", "image/png", png) } }
     # @api public
     class Upload
       # @return [String] the form field name, as in `post[cover]`

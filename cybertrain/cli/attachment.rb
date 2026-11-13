@@ -134,7 +134,27 @@ module Cybertrain
         add_assignments(root, spec)
         add_route(root, spec)
         add_gitignore(root)
+        record_bytes(created, root, fixture_upload_file(spec), TEST_PNG_FILE)
         record(created, root, test_file(spec), attachment_test(root, spec))
+        nil
+      end
+
+      # Writes `bytes` (binary) at root/path unless the file is there: a
+      # file with the same bytes is "identical", other bytes are kept
+      # ("exist"), as Templates.write does for text. Appends a created path.
+      def self.record_bytes(created, root, path, bytes)
+        full = File.join(root, path)
+        status = "create"
+        if File.exist?(full)
+          status = File.binread(full) == bytes ? "identical" : "exist"
+        else
+          Templates.mkdir_p(File.dirname(full))
+          f = File.open(full, File::WRONLY | File::CREAT | File::TRUNC | File::BINARY)
+          f.write(bytes)
+          f.close
+          created << path
+        end
+        puts "#{status} #{path}"
         nil
       end
 
@@ -204,6 +224,12 @@ module Cybertrain
 
       def self.test_file(spec)
         "test/integration/#{spec.singular}_#{spec.field}_attachment_test.rb"
+      end
+
+      # The image the test uploads with fixture_file_upload, where Rails
+      # keeps such files: test/fixtures/files/cover.png.
+      def self.fixture_upload_file(spec)
+        "test/fixtures/files/#{spec.field}.png"
       end
 
       def self.route_line(spec)
@@ -1093,11 +1119,11 @@ module Cybertrain
         names
       end
 
-      # The form's text fields as a Hash literal: `{ "post[title]" => "A post" }`.
+      # The form's fields as the params Hash: the attributes the model
+      # requires, then the file, `{ title: "A post", cover: file }`.
       def self.fields_hash(root, spec, names)
-        return "{}" if names.empty?
-
-        pairs = names.map { |name| "\"#{spec.singular}[#{name}]\" => \"#{field_value(root, spec, name)}\"" }
+        pairs = names.map { |name| "#{name}: \"#{field_value(root, spec, name)}\"" }
+        pairs << "#{spec.field}: file"
         "{ #{pairs.join(", ")} }"
       end
 
@@ -1154,8 +1180,9 @@ module Cybertrain
         # the model's callbacks and the download action. Written by `cybertrain
         # generate attachment <<model>> <<field>>`; run with `cybertrain test`.
         class <<TestClass>> < ActionDispatch::IntegrationTest
-          # A PNG signature, then NUL, 0xFF and CR LF bytes: the server sniffs the
-          # signature only, the rest shows that every byte survives the round trip.
+          # test/fixtures/files/<<field>>.png: a PNG signature, then NUL, 0xFF and CR LF
+          # bytes. The server sniffs the signature only; the rest shows that every
+          # byte survives the round trip.
           PNG_BYTES = Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0xFF, 0x0D, 0x0A, 0x00, 0x01])
           HTML_BYTES = "<html><script>alert(document.cookie)</script></html>"
           SVG_BYTES = '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>'
@@ -1171,7 +1198,7 @@ module Cybertrain
       TEST_PNG_ROUNDTRIP = <<~'RUBY'
         test "a PNG upload is stored on disk and served back with safe headers" do
           assert_difference(-> { <<Model>>.count }, 1) do
-            create_<<model>>("<<field>>.png", "image/png", PNG_BYTES)
+            create_<<model>>(fixture_file_upload("<<field>>.png", "image/png"))
           end
           assert_response :see_other
           record = <<Model>>.last
@@ -1199,10 +1226,10 @@ module Cybertrain
       TEST_REJECT_TYPES = <<~'RUBY'
         test "HTML and SVG bytes are refused even when named .png and declared image/png" do
           assert_no_difference(-> { <<Model>>.count }) do
-            create_<<model>>("x.png", "image/png", HTML_BYTES)
+            create_<<model>>(file_named("x.png", "image/png", HTML_BYTES))
             assert_response :unprocessable_entity
             assert_includes response.body, "<<Field>> must be a PNG, JPEG, GIF or WebP image"
-            create_<<model>>("logo.png", "image/png", SVG_BYTES)
+            create_<<model>>(file_named("logo.png", "image/png", SVG_BYTES))
             assert_response :unprocessable_entity
           end
           assert_equal 0, Dir.glob("tmp/test_uploads/*/*").size
@@ -1212,7 +1239,7 @@ module Cybertrain
 
       TEST_ANY_TYPE = <<~'RUBY'
         test "any file is accepted, stored as a download and never served inline" do
-          create_<<model>>("page.html", "text/html", HTML_BYTES)
+          create_<<model>>(file_named("page.html", "text/html", HTML_BYTES))
           assert_response :see_other
           record = <<Model>>.last
           assert_equal "application/octet-stream", record.<<field>>_content_type
@@ -1232,14 +1259,14 @@ module Cybertrain
           big << PNG_BYTES
           big << ("a" * (<<Model>>::<<FIELD>>_MAX_BYTES + 1))
           assert_no_difference(-> { <<Model>>.count }) do
-            create_<<model>>("big.png", "image/png", big)
+            create_<<model>>(file_named("big.png", "image/png", big))
           end
           assert_response :unprocessable_entity
           assert_includes response.body, "<<Field>> is too large (maximum is 2 MB)"
         end
 
         test "the client's filename is a display name: it never reaches the disk path" do
-          create_<<model>>("../../evil.png", "image/png", PNG_BYTES)
+          create_<<model>>(file_named("../../evil.png", "image/png", PNG_BYTES))
           assert_response :see_other
           record = <<Model>>.last
           assert_equal "evil.png", record.<<field>>_filename
@@ -1254,11 +1281,10 @@ module Cybertrain
         end
 
         test "replacing the file deletes the old blob; destroying the record deletes the current one" do
-          create_<<model>>("one.png", "image/png", PNG_BYTES)
+          create_<<model>>(file_named("one.png", "image/png", PNG_BYTES))
           record = <<Model>>.last
           old_key = record.<<field>>_key
-          upload = Cybertrain::Test::Upload.new("<<model>>[<<field>>]", "two.png", "image/png", PNG_BYTES)
-          update_<<model>>(record, upload)
+          update_<<model>>(record, file_named("two.png", "image/png", PNG_BYTES))
           assert_response :see_other
           record = <<Model>>.find(record.id)
           new_key = record.<<field>>_key
@@ -1274,7 +1300,7 @@ module Cybertrain
         end
 
         test "a record whose blob is gone answers 404" do
-          create_<<model>>("<<field>>.png", "image/png", PNG_BYTES)
+          create_<<model>>(fixture_file_upload("<<field>>.png", "image/png"))
           record = <<Model>>.last
           File.delete(Cybertrain::BlobStore.path_for(record.<<field>>_key))
           get "/<<plural>>/#{record.id}/<<field>>"
@@ -1286,7 +1312,7 @@ module Cybertrain
         test "a multipart POST without the CSRF token is refused" do
           assert_no_difference(-> { <<Model>>.count }) do
             with_forgery_protection do
-              create_<<model>>("<<field>>.png", "image/png", PNG_BYTES)
+              create_<<model>>(fixture_file_upload("<<field>>.png", "image/png"))
               assert_response :forbidden
             end
           end
@@ -1299,11 +1325,10 @@ module Cybertrain
         # bytes. The parser drops it, so a form whose only field is the file
         # arrives without any <<model>>[...] key at all.
         test "an update without a file keeps the stored one" do
-          create_<<model>>("<<field>>.png", "image/png", PNG_BYTES)
+          create_<<model>>(fixture_file_upload("<<field>>.png", "image/png"))
           record = <<Model>>.last
           key = record.<<field>>_key
-          empty = Cybertrain::Test::Upload.new("<<model>>[<<field>>]", "", "application/octet-stream", "")
-          update_<<model>>(record, empty)
+          update_<<model>>(record, file_named("", "application/octet-stream", ""))
           assert_response :see_other
           record = <<Model>>.find(record.id)
           assert_equal key, record.<<field>>_key
@@ -1314,7 +1339,7 @@ module Cybertrain
 
       TEST_AUTH_DOWNLOAD = <<~'RUBY'
         test "the download needs a signed-in user, like every other action of the controller" do
-          create_<<model>>("<<field>>.png", "image/png", PNG_BYTES)
+          create_<<model>>(fixture_file_upload("<<field>>.png", "image/png"))
           record = <<Model>>.last
           delete "/session"
           get "/<<plural>>/#{record.id}/<<field>>"
@@ -1325,7 +1350,7 @@ module Cybertrain
 
       TEST_PUBLIC_DOWNLOAD = <<~'RUBY'
         test "the download is public like show: a visitor gets the file" do
-          create_<<model>>("<<field>>.png", "image/png", PNG_BYTES)
+          create_<<model>>(fixture_file_upload("<<field>>.png", "image/png"))
           record = <<Model>>.last
           delete "/session"
           get "/<<plural>>/#{record.id}/<<field>>"
@@ -1338,24 +1363,32 @@ module Cybertrain
       TEST_TAIL = <<~'RUBY'
         private
 
-        # The text fields of the form besides the file. Add the other attributes
-        # your <<Model>> requires.
-        def <<model>>_fields
+        # The form's fields: the file, and the other attributes your <<Model>>
+        # requires.
+        def <<model>>_params(file)
           <<fields_hash>>
         end
 
-        # POST /<<plural>> with one file in <<model>>[<<field>>], as the new form sends
-        # it, through this test's client (its cookies, its last response).
-        def create_<<model>>(filename, type, data)
-          upload = Cybertrain::Test::Upload.new("<<model>>[<<field>>]", filename, type, data)
-          @integration_client.post_multipart("/<<plural>>", <<model>>_fields, [upload])
+        # POST /<<plural>> as the new form sends it: the file in <<model>>[<<field>>]
+        # (multipart/form-data, since a params value is a file).
+        def create_<<model>>(file)
+          post "/<<plural>>", params: { <<model>>: <<model>>_params(file) }
         end
 
-        # PATCH /<<plural>>/:id with `upload` in <<model>>[<<field>>], as the edit form sends it.
-        def update_<<model>>(record, upload)
-          @integration_client.patch_multipart("/<<plural>>/#{record.id}", <<model>>_fields, [upload])
+        # PATCH /<<plural>>/:id as the edit form sends it.
+        def update_<<model>>(record, file)
+          patch "/<<plural>>/#{record.id}", params: { <<model>>: <<model>>_params(file) }
+        end
+
+        # A file with this name, type and bytes, for what no fixture file
+        # holds (a disguised type, a hostile name, a file input left empty).
+        def file_named(filename, type, data)
+          Cybertrain::Test::Upload.new("", filename, type, data)
         end
       RUBY
+
+      # test/fixtures/files/<field>.png: PNG_BYTES of the test above.
+      TEST_PNG_FILE = "\x89PNG\r\n\x1A\n\x00\xFF\r\n\x00\x01".b
     end
   end
 end
