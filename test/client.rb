@@ -44,15 +44,24 @@ def build_app
   router.get("/short_login") do |c|
     c.response.add_cookie(Cybertrain::Cookies.serialize("user", "alice smith", max_age: 60))
     c.response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark"))
-    # Written by hand: an `expires:` Time given to Cookies.serialize here
-    # beside the calls without one crashed the compiled program (the
-    # nil default read as a Time).
-    c.response.add_cookie("dated=1; Path=/; Expires=#{Cybertrain::Request.http_date(Cybertrain::Clock.now + 120)}")
+    # A plain Time given to `expires:` here, beside the calls of
+    # Cookies.serialize without it (the routes above): the compiled program
+    # crashed while that parameter defaulted to nil (NOTES, the rule on nil
+    # defaults).
+    c.response.add_cookie(Cybertrain::Cookies.serialize("dated", "1", expires: Cybertrain::Clock.now + 120))
     c.response.body = "logged in"
   end
   router.get("/expire_dated") do |c|
-    c.response.add_cookie("dated=; Path=/; Expires=Sat, 01 Jan 2000 00:00:00 GMT")
+    c.response.add_cookie(Cybertrain::Cookies.serialize("dated", "", expires: Time.utc(2000, 1, 1)))
     c.response.body = "expired"
+  end
+  # An unreadable Max-Age (ignored: the cookie stays, its Expires then
+  # counts) and a negative one (expired at once).
+  router.get("/odd_max_age") do |c|
+    c.response.add_cookie("kept=1; Path=/; Max-Age=abc")
+    c.response.add_cookie("dated_too=2; Path=/; Max-Age=1x; Expires=Fri, 01 Jan 2100 00:00:00 GMT")
+    c.response.add_cookie("gone=3; Path=/; Max-Age=-5")
+    c.response.body = "odd"
   end
   router.get("/cookie_header") { |c| c.response.body = c.request.cookie_header.to_s }
   router.get("/to_fragment") { |c| c.response.redirect("/echo?a=1#part", 302) }
@@ -230,6 +239,15 @@ test "a cookie past its Max-Age or Expires under the clock is neither sent nor r
     assert_equal ["theme"], client.cookies.keys
     assert_equal "theme=dark", client.get("/cookie_header").body
   end
+end
+
+test "a Max-Age that is not a number is ignored, as RFC 6265 says; a negative one expires the cookie" do
+  client = Cybertrain::Test::Client.new(build_app)
+  client.get("/odd_max_age")
+  assert_equal "1", client.cookies["kept"]
+  assert_equal "2", client.cookies["dated_too"]
+  assert_nil client.cookies["gone"]
+  assert_equal ["kept", "dated_too"], client.cookies.keys
 end
 
 test "an Expires already past drops the cookie, as Max-Age=0 does" do

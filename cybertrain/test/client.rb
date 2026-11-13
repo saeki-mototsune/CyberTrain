@@ -534,9 +534,15 @@ module Cybertrain
           unless eq.nil?
             key = attr[0, eq].to_s.strip.downcase
             value = attr[eq + 1, attr.length - eq - 1].to_s.strip
+            # RFC 6265 5.2.2: digits, or `-` and digits (expired at once);
+            # anything else and the attribute is ignored.
             if key == "max-age"
-              seconds = value.start_with?("-") ? 0 : value.to_i
-              return now + seconds
+              digits = value.start_with?("-") ? value[1, value.length - 1].to_s : value
+              if Client.all_digits?(digits)
+                return now if value.start_with?("-")
+
+                return now + digits.to_i
+              end
             end
             if key == "expires"
               at = Request.parse_http_date(value)
@@ -546,6 +552,23 @@ module Cybertrain
           i += 1
         end
         expires
+      end
+
+      # Whether `text` is one or more ASCII digits (read through a fresh
+      # local, NOTES rule 62).
+      # @api private
+      def self.all_digits?(text)
+        s = text.to_s
+        return false if s.empty?
+
+        i = 0
+        while i < s.bytesize
+          b = s.getbyte(i)
+          return false if b < 48 || b > 57
+
+          i += 1
+        end
+        true
       end
 
       # "https://Example.com:3000/x?y" -> "example.com:3000"; "" without a scheme.

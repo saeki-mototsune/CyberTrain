@@ -397,6 +397,9 @@ test "a Range as the count: at least its first, at most its last" do
   assert_equal "assert_select: give the count once, as the second argument (2..3) or as count:, minimum: and maximum:",
                assert_raises(ArgumentError) { assert_select "li", 2..3, minimum: 1 }
   assert_equal "assert_select: count: must be 0 or more, got -1", assert_raises(ArgumentError) { assert_select "li", -1..3 }
+  # An endless or beginless Range: a clean refusal, not a RangeError.
+  assert_equal "assert_select: a Range count needs both ends (got 2..)", assert_raises(ArgumentError) { assert_select "li", (2..) }
+  assert_equal "assert_select: a Range count needs both ends (got ..3)", assert_raises(ArgumentError) { assert_select "li", (..3) }
 end
 
 test "the trees that differ from a browser's, as documented" do

@@ -564,6 +564,10 @@ def assert_select(selector, equality = nil, count: nil, minimum: nil, maximum: n
     end
     # Rails' `assert_select "li", 2..3`: at least the first, at most the
     # last (one less for `...`).
+    if equality.begin.nil? || equality.end.nil?
+      message = "assert_select: a Range count needs both ends (got #{equality.inspect})"
+      raise ArgumentError, message
+    end
     want_min = Cybertrain::Test.select_bound("count", equality.first)
     high = equality.last.to_i
     high -= 1 if equality.exclude_end?
