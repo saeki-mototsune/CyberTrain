@@ -8,8 +8,9 @@ require "cybertrain/test"
 # descriptor it was handed is unusable: CYBERTRAIN_DEV_LISTEN_FD that is not
 # a number, or a number that is not a listening socket (closed, a regular
 # file). Each is a boot failure: the `error:` line on STDOUT, exit 1, and
-# the same line in CYBERTRAIN_DEV_FAILURE_FILE. Outside development the
-# variable is ignored and the port is bound as always. fail_boot exits, so
+# the same line in CYBERTRAIN_DEV_FAILURE_FILE. Outside development, or
+# without the descriptor variable, the variables are ignored: the port is
+# bound as always and no failure file is written. fail_boot exits, so
 # each case runs this program again as a child (as test/boot_encryption.rb
 # does) and reads its stdout, exit status and failure file. Boot connects
 # SQLite (FFI), so the snapshot comes from the compiled binary
@@ -90,9 +91,19 @@ test "a regular file's descriptor is a boot failure, not a hang" do
   assert_equal ["1", "#{NOT_LISTENING}\n", NOT_LISTENING], boot_child("development", "file")
 end
 
-test "outside development the variable is ignored: the port is bound as always" do
+test "outside development the variables are ignored: the port is bound as always, and no failure file is written" do
   in_use = "error: port PORT on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
-  assert_equal ["1", "#{in_use}\n", in_use], boot_child("test", "7; rm")
+  assert_equal ["1", "#{in_use}\n", ""], boot_child("test", "7; rm")
+end
+
+test "a production boot failure writes no failure file, whatever the variables say" do
+  no_views = "error: views are not embedded in this binary; build with `cybertrain build` (or run with CYBERTRAIN_ENV=development)"
+  assert_equal ["1", "#{no_views}\n", ""], boot_child("production", "7; rm")
+end
+
+test "in development without the descriptor variable no failure file is written" do
+  in_use = "error: port PORT on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+  assert_equal ["1", "#{in_use}\n", ""], boot_child("development", "")
 end
 
 Cybertrain::Test.run!

@@ -285,4 +285,40 @@ test "supervised, every response names its runtime, HTML pages carry the indicat
   assert log.index("__cybertrain").nil?, "the development paths stay out of the request log"
 end
 
+# Outside development the supervision variables change nothing: a
+# production server role given the descriptor variable binds its own port,
+# answers the development paths from the application (404), names no
+# runtime and puts no indicator in a page.
+PRODUCTION_RESPONSES = Array.new(0) { "" }
+
+test "in production the supervision variables are ignored: no development paths, no runtime header, no indicator" do
+  production = Cybertrain::Config.new
+  production.env = "production"
+  production.port = 0
+  held = TCPServer.new("127.0.0.1", 0)
+  held_port = held.addr[1]
+  ENV["CYBERTRAIN_DEV_LISTEN_FD"] = held.fileno.to_s
+  ENV["CYBERTRAIN_DEV_STATE_FILE"] = "#{ROOT}/state"
+  ENV["CYBERTRAIN_DEV_GENERATION"] = "7"
+  runner = Cybertrain::Roles::ServerRunner.new(production, "blog", APP.stack)
+  srv = runner.http_server
+  srv.start
+  port = srv.port
+  PRODUCTION_RESPONSES << supervised_get(port, "/__cybertrain/dev/state")
+  PRODUCTION_RESPONSES << supervised_get(port, "/__cybertrain/dev/indicator.js")
+  PRODUCTION_RESPONSES << supervised_get(port, "/")
+  srv.stop
+  held.close
+  ["CYBERTRAIN_DEV_LISTEN_FD", "CYBERTRAIN_DEV_STATE_FILE", "CYBERTRAIN_DEV_GENERATION"].each { |name| ENV.delete(name) }
+  assert port != held_port, "its own port, not the inherited listener"
+  assert_equal 3, PRODUCTION_RESPONSES.size
+  assert_includes PRODUCTION_RESPONSES[0], "HTTP/1.1 404"
+  assert_includes PRODUCTION_RESPONSES[1], "HTTP/1.1 404"
+  PRODUCTION_RESPONSES.each do |response|
+    assert response.index("X-Cybertrain-Runtime").nil?, "no runtime header in production"
+    assert response.index("cybertrain-dev-indicator").nil?, "no indicator in production"
+  end
+  assert_includes PRODUCTION_RESPONSES[2], "<h1>Home</h1>"
+end
+
 Cybertrain::Test.run!

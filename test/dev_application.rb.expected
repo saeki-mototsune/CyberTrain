@@ -10,4 +10,5 @@ ok   host rejection precedes diagnostics and failed-build output
 ok   the rebuilder targets the app's build/bin/blog
 ok   supervised, the role serves the state file's failed build on its inherited listener and builds no Rebuilder
 ok   supervised, every response names its runtime, HTML pages carry the indicator and the development paths are not logged
-12 tests, 72 assertions, 0 failures
+ok   in production the supervision variables are ignored: no development paths, no runtime header, no indicator
+13 tests, 83 assertions, 0 failures
