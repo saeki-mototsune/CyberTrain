@@ -104,7 +104,7 @@ for the evidence needed to change a status.
 | 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
 | 86 | **Still there**, recorded on this build in phase 2: only Integer Range bounds survive the supported query path; other bounds use `where_between`. Not freshly re-run by the document audit. |
 | 87 | Supported capability on this pin: Ruby-defined class methods on `Time` are exercised by `test/time_ext.rb`; not a defect. |
-| 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). |
+| 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). Narrowed on 2026-11-13 (rule 101): the trigger is the block being written in the subclass's body before the override's `def`; the same block at top level, after the `def`, or capturing a base-class receiver elsewhere dispatches. |
 | 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
 | 90 | **Still there**: found on this build (its reduced program, `C.str(yield)` with a String block at one call site and an Integer block at another, runs the first block twice). |
 | 91 | **Still there**: found on this build (its reduced program, `exit(1)` on a thread spawned through a method while the main thread sleeps, prints the main thread's line and exits 0). |
@@ -115,6 +115,7 @@ for the evidence needed to change a status.
 | 98 | Tool behaviour, checked 2026-11-11: generated C inside a package is refused as input and can invalidate builds. Keep probe outputs outside the package. |
 | 99 | **Not a Spinel defect** (corrected 2026-11-13; recorded on 2026-11-11 as "still there", issue #188): `dup` on a user-defined class is a shallow copy that shares Array ivars, and CRuby's `dup` is shallow in the same way. A probe prints `2 2 0 5` under CRuby 3.3.6 and compiled by this build alike, and a class's `initialize_copy` is called on both (docs/spinel-feedback.md, "Written up on 2026-11-13"). The generated `<Model>Relation#dup` (D72) is what a branching relation needs under either runtime; test/relation_dup.rb fails without it. |
 | 100 | **Still there**: found on this build (2026-11-11, issue #189): `Float#round(n)` on a Float narrowed by a `case` in a method whose scale is a parameter rounds the binary product (1.005 at scale 2 is 1.0; CRuby and a Float local answer 1.01). `Cast.round_digits` (D73) rounds on the decimal digits instead; spikes/decimal/float_round.rb prints both, and test/decimal_contract.rb fails without it. |
+| 101 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional-subsystems design, not of a defect. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
@@ -184,7 +185,7 @@ synchronization or repeat side effects just to work around inference.
 The rules are numbered in the order they were found. By topic:
 
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
-  90, 92, 93, 95, 97
+  90, 92, 93, 95, 97, 101
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
@@ -1457,6 +1458,68 @@ explicitly retires a workaround.
     no `to_s("F")` (ArgumentError at run time: `to_s` takes no format, the
     only text is `0.125e2`), no `bigdecimal/util` (`to_d`), no
     construction from a Float, no NaN or Infinity.
+
+101. A registry of features, an Array of base-class instances whose
+    overridable hooks are called on each element, compiles and dispatches
+    to each subclass's override under Spinel 2026.11.04.7026 (a2d06115,
+    GCC 13.3.0, Linux x86_64, no flags), as the optional-subsystems design
+    needs (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md
+    section 4, plan Task 1). Checked on 2026-11-13 at 6876ae6 with
+    spikes/phase6/feature_registry.rb and feature_registry_ba.rb (the same
+    checks with the two feature files required in the other order),
+    standalone programs with no framework: each compiled (4 s), exited 0
+    and printed CRuby 3.3.6's output line for line (the programs' headers
+    have it); the two orders differ only in the line that prints the
+    registration order. Shape by shape, all passing:
+    - Hooks on the base `Feature` returning String, Bool (base `false` and
+      base `true`), Integer, nil, a typed empty Array of String, and a
+      `Response` (a class with ivars) or nil; one return type per hook
+      name across every override (rules 10, 34, 41).
+    - Two subclasses in two files, each overriding a different subset and
+      registering one instance into a module constant Array at require
+      time; in either require order the same features answer. A second
+      `require_relative` of a feature file registers nothing, and an
+      explicit `Registry.register(FeatureA.new)` after it is refused by
+      the guard on `feature.class.name` (answers false, size stays 2).
+    - Dispatch over the Array: collecting Strings (`while` and `each`),
+      `any?` / `all?` over Bools and a `while` that returns early, the
+      first answer that is not -1, the first non-nil Response, a Response
+      passed through each feature's filter and returned, nil hooks run for
+      their effect, an Array hook flattened.
+    - A hook overridden in one subclass only (`health_problem`, FeatureA):
+      FeatureB runs the base stub (`b=""`).
+    - The periodic hook run from stored blocks, both a scheduler-style
+      Array of Task objects holding a block and a bare Array of blocks,
+      each block's body only `Registry.run_periodic(i, Clock.now)` (the
+      index a parameter of the method that stores the block); the module
+      method indexes the Array and calls the hook: FeatureB#periodic runs.
+    - Reopening a class defined in the core file from a feature file with
+      an instance method (reading the core's ivar) and a class method;
+      both are called (rule 87 has class methods added to a builtin class).
+    The contrast, spikes/phase6/feature_registry_rule88.rb, stores blocks
+    that call the periodic hook on a Feature-typed receiver: captured from
+    a method parameter, the block's own parameter (`cb.call(feature)`, rule
+    88's form), and that block written in a reopened feature subclass's
+    body. All three reach FeatureB#periodic, as under CRuby, and so do
+    run_periodic and a direct call in the same program. Rule 88's own
+    reduced program (docs/spinel-feedback.md Z) still prints `""` on this
+    build, so what triggers it is narrower than "a stored block with a
+    base-class receiver": spikes/phase6/rule88_order.rb stores the same
+    block `{ |r| r.hook }` written in three places and calls each with an
+    instance of two subclasses that override `Base#hook`. Written at top
+    level, or in a subclass's body after that subclass's `def hook`, it
+    dispatches to each override; written in a subclass's body *before*
+    that subclass's `def hook` it runs `Base#hook` for both receivers
+    (`base stub, base stub`; CRuby: `early override, late override`). The
+    call is bound to the base's method at that point in the class body,
+    not dispatched. Rule 88's `add { |r| r.hook }` is that shape. Which
+    module stores the block, and whether `add` is called on implicit self
+    or on another module, does not matter (reductions with a separate
+    `Store` module fail the same way). The design's
+    `Features.run_periodic(i, now)` is clear of it either way; a feature
+    file must still not write a block that calls a hook inside its class
+    body ahead of the hook's `def` (registering at the end of the file,
+    outside the class, as the spike does, is safe).
 
 <a id="numbers-worth-remembering"></a>
 
