@@ -177,8 +177,8 @@ module Cybertrain
 
       # test_ plus the name with every ASCII character outside
       # [A-Za-z0-9_] turned into "_" and every other character into
-      # `_u<hex>` (spec 5.2: "shows an article" -> test_shows_an_article,
-      # "日本" -> test__u65e5_u672c): Test::Args.method_for, the rule
+      # `_u<hex>_` (spec 5.2: "shows an article" -> test_shows_an_article,
+      # "日本" -> test__u65e5__u672c_): Test::Args.method_for, the rule
       # `cybertrain test -n` matches with.
       def self.method_name(name)
         Cybertrain::Test::Args.method_for(name)

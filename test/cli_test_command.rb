@@ -139,16 +139,25 @@ test "-n /TEXT/ with a regexp character, FILE:LINE and -- are answered for what 
   assert parse(["-n", "/a/"]).filtered?
 end
 
-test "a test's method name: ASCII as Rails' rule, any other character as _u<hex>" do
+test "a test's method name: ASCII as Rails' rule, any other character as _u<hex>_" do
   args = Cybertrain::Test::Args
   assert_equal "test_shows_an_article", args.method_for("shows an article")
   assert_equal "test_a_b_c_", args.method_for("a-b.c?")
-  assert_equal "test__u30ed_u30b0_u30a4_u30f3_u3067_u304d_u308b", args.method_for("ログインできる")
-  assert_equal "test__u30ed_u30b0_u30a2_u30a6_u30c8_u3059_u308b", args.method_for("ログアウトする")
-  assert_equal "test_caf_ue9_x", args.method_for("café x")
-  assert_equal "test__u1f600", args.method_for("😀")
+  assert_equal "test__u30ed__u30b0__u30a4__u30f3__u3067__u304d__u308b_", args.method_for("ログインできる")
+  assert_equal "test__u30ed__u30b0__u30a2__u30a6__u30c8__u3059__u308b_", args.method_for("ログアウトする")
+  assert_equal "test_caf_ue9__x", args.method_for("café x")
+  assert_equal "test__ue9__", args.method_for("é!")
+  assert_equal "test__u1f600_", args.method_for("😀")
   # A byte that starts no well-formed sequence stands for itself.
-  assert_equal "test_a_uff_ue3b", args.method_for("a\xFF\xE3b")
+  assert_equal "test_a_uff__ue3_b", args.method_for("a\xFF\xE3b")
+  # The closing `_` keeps an escape from running into what follows.
+  refute args.method_for("\u0E9A") == args.method_for("éa")
+  assert_equal "test__ue9_a", args.method_for("éa")
+  assert_equal "test__ue9a_", args.method_for("ບ")
+  refute args.method_for("x_u3042") == args.method_for("xあ")
+  # The literal text of an escape, underscore included, is the same name
+  # (ASCII is kept as written); in one class gen refuses the pair.
+  assert_equal args.method_for("x_u3042_"), args.method_for("xあ")
 end
 
 test "bad arguments print the usage and the reason, exit 2 and run no step" do

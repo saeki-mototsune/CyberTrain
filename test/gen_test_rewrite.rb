@@ -180,8 +180,14 @@ test "names that collide after the method-name rule, non-ASCII and quoted names"
   # collide (ruling C-M2).
   assert_equal "", refusal(two_tests("日本語", "ロシア"))
   assert_equal "", refusal(two_tests("ログインできる", "ログアウトする"))
-  assert_equal "test__u65e5_u672c_u8a9e_u306e_u30c6_u30b9_u30c8", Cybertrain::Gen::TestScan.method_name("日本語のテスト")
-  assert_equal "  def test__u30ed_u30b0_u30a2_u30a6_u30c8_u3059_u308b; begin\n", rewrite_lines(two_tests("ログインできる", "ログアウトする"))[4]
+  assert_equal "test__u65e5__u672c__u8a9e__u306e__u30c6__u30b9__u30c8_", Cybertrain::Gen::TestScan.method_name("日本語のテスト")
+  assert_equal "  def test__u30ed__u30b0__u30a2__u30a6__u30c8__u3059__u308b_; begin\n", rewrite_lines(two_tests("ログインできる", "ログアウトする"))[4]
+# Each escape ends in `_`: "éa" and U+0E9A, "x_u3042" and "xあ" differ.
+assert_equal "", refusal(two_tests("éa", "ບ"))
+assert_equal "", refusal(two_tests("x_u3042", "xあ"))
+# The escape's own text written out is the same method name: refused.
+assert_equal "test/x_test.rb:5: test \"xあ\" has the same method name test_x_u3042_ as test \"x_u3042_\" (line 2)",
+             refusal(two_tests("x_u3042_", "xあ"))
   assert_equal "test_it_s_here", Cybertrain::Gen::TestScan.method_name("it's here")
   assert_equal "", refusal(two_tests("it's here", "say \"hi\""))
   out = Cybertrain::Gen::TestScan.rewrite(two_tests("it's here", "say \"hi\""), "test/x_test.rb")

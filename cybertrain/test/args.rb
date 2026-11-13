@@ -21,7 +21,7 @@ module Cybertrain
       # The line a run prints when a filter kept no test (the run still
       # exits 0: 0 tests is not a failure, spec section 8).
       NOTHING_MATCHED = "no test matched the filter".freeze
-      # The digits of a method name's `_u<hex>` ({method_for}).
+      # The digits of a method name's `_u<hex>_` ({method_for}).
       HEX = "0123456789abcdef".freeze
 
       attr_reader :arg_files, :arg_name, :arg_pattern, :arg_error
@@ -181,11 +181,18 @@ module Cybertrain
       # The method name of a test (spec 5.2; gen's rewrite uses this one):
       # `test_` and the name with every ASCII character outside
       # [A-Za-z0-9_] turned into `_` and every other character into
-      # `_u<hex>`, the lowercase hex of its code point ("ログ" ->
-      # test__u30ed_u30b0), so that names in another script do not
-      # collide. Read byte by byte as UTF-8, the same under Spinel and
-      # CRuby whatever the String's encoding tag; a byte that starts no
-      # well-formed sequence is `_u<hex>` of the byte.
+      # `_u<hex>_`, the lowercase hex of its code point closed by `_`
+      # ("ログ" -> test__u30ed__u30b0_, "éa" -> test__ue9_a), so that names
+      # in another script do not collide and an escape never runs into
+      # the hex digits or letters after it. Each character is replaced on
+      # its own: adjacent escapes are simply concatenated, and a non-word
+      # ASCII character after one adds its own `_` ("é!" -> test__ue9__).
+      # ASCII is kept as written, so a name holding an escape's text
+      # ("x_u3042_") has the method name of the character ("xあ"); within
+      # one class gen refuses such a pair (TestScan.refuse_collision). Read
+      # byte by byte as UTF-8, the same under Spinel and CRuby whatever
+      # the String's encoding tag; a byte that starts no well-formed
+      # sequence is `_u<hex>_` of the byte.
       # @param name [String]
       # @return [String]
       def self.method_for(name)
@@ -206,7 +213,7 @@ module Cybertrain
               size = 1
               code = b
             end
-            out << "_u" << hex(code)
+            out << "_u" << hex(code) << "_"
             i += size
           end
         end
