@@ -1,4 +1,5 @@
 ok   Time.now follows a travel when the override is loaded
 ok   Time.now is real time outside a travel
-ok   a framework time read through Time.now follows the travel
-3 tests, 3 assertions, 0 failures
+ok   code that reads Time.now follows the travel
+ok   Time.now answers local time, as the builtin does
+4 tests, 8 assertions, 0 failures
