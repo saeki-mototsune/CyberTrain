@@ -26,6 +26,7 @@ ok   without --incremental the rebuild command is the plain spin build
 ok   only spinel refusing the flag reads as a toolchain without --incremental
 ok   a failing rebuild keeps the command output
 ok   a toolchain that refuses --incremental gets the plain build at once, and from then on
+ok   the rebuild command builds gen in spin's debug mode, as the CLI does
 ok   the rebuild command takes the gen step it is given
 ok   the gen check compiles bin/gen.rb to C quietly, with spin's flags and no line map
 ok   gen is compiled once, then run directly while its C stands still
@@ -55,4 +56,4 @@ ok   a lock older than 30 minutes is stale even with a live PID: age wins over a
 ok   the rebuild command quotes the build target like every other interpolated value
 ok   the Rebuilder refuses a build target that is not usable for spin build
 ok   shell_quote escapes single quotes
-57 tests, 233 assertions, 0 failures
+58 tests, 235 assertions, 0 failures

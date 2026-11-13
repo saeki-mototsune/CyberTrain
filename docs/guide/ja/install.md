@@ -1,5 +1,5 @@
 ---
-source_sha256: fd3b69f66ecf75d85160524612fac48d0926e684b92e3871ca1f68dab190c4c8
+source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
 ---
 # インストール
 
@@ -42,14 +42,14 @@ cybertrain doctor
 `cybertrain help` はこれらのコマンドを表示します：
 
 - `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]]
-  [--skip-spin]` は NAME にアプリケーションを作成し、その中で `spin lock` と `spin run gen` を実行します。必要なら先に Spinel をインストールします。
+  [--skip-spin]` は NAME にアプリケーションを作成し、その中で `spin lock` と `SPIN_DEBUG=1 spin run gen` を実行します。必要なら先に Spinel をインストールします（CLI は gen と `bin/db.rb` を spin のデバッグモードでビルドします）。
 - `cybertrain generate scaffold NAME field:type ...`（エイリアスは `g scaffold`）は、カレントディレクトリのアプリケーションにリソースを追加します。
 - `cybertrain generate authentication` は、そのアプリケーションにメールアドレスとパスワードによるサインインを追加します：users と sessions のテーブル、`User` と `Session` のモデル、サインインとサインアップのコントローラーとビュー、ルート、`ApplicationController` の `before_action`、そしてテストです（[サインインを追加する](tutorial.md#authentication)を参照）。`--invite-only` を付けるとサインアップのページはありません：ユーザーは `./NAME user EMAIL` で作成し、ユーザーがまだいない間は、最初のユーザーを `/setup` ページでも作成できます。このページはサーバー自身のマシンにだけ応答し、起動時の警告が表示するワンタイムトークンを必要とします。
 - `cybertrain generate attachment MODEL FIELD [--any]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[カバー画像を追加する](tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。
-- `cybertrain db migrate` は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（`spin run gen; spin run db -- migrate; spin run gen`）。`cybertrain migration` もエイリアスとして残されています。
-- `cybertrain db COMMAND...` は `spin
+- `cybertrain db migrate` は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate; SPIN_DEBUG=1 spin run gen`）。`cybertrain migration` もエイリアスとして残されています。
+- `cybertrain db COMMAND...` は `SPIN_DEBUG=1 spin
   run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema:dump`、`create`。
-- `cybertrain server [PORT]` は生成を行ってから開発サーバーを起動します（`spin run gen; spin run NAME`、または `spin run NAME -- PORT`。デフォルトのポートは 3000）。
+- `cybertrain server [PORT]` は生成を行ってから開発サーバーを起動します（`SPIN_DEBUG=1 spin run gen`。`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`。`spin run NAME`、または `spin run NAME -- PORT`。デフォルトのポートは 3000）。
 - `cybertrain build` は `app/views/` を埋め込んで NAME をビルドし、`dist/`（バイナリ、`public/`、`storage/`、`tmp/`）を組み立てます。
 - `cybertrain spin ARGS...` は、固定された Spinel で `spin` を任意のディレクトリから実行します（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
 - `cybertrain setup [--force]` は固定された Spinel のリリースを `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
@@ -88,9 +88,9 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 ### `cybertrain new` が書き出すもの
 
 `cybertrain new` はアプリケーションを書き出し、その `spin.toml` は CLI と一致するリリースを指します（`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`。X.Y.Z は `cybertrain version` が表示するもの）。次に Spinel がインストールされていることを確認し、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなものです。そして次の手順を表示します。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
+"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`。X.Y.Z は `cybertrain version` が表示するもの）。次に Spinel がインストールされていることを確認し、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `SPIN_DEBUG=1 spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなものです。そして次の手順を表示します。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
 
-Spinel のインストールか、2 つの `spin` ステップのいずれかが失敗した場合、ファイルは残したまま `new` は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：`cybertrain setup` を実行し、続いて新しいディレクトリで `cybertrain spin lock && cybertrain spin run gen`）。
+Spinel のインストールか、2 つの `spin` ステップのいずれかが失敗した場合、ファイルは残したまま `new` は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：`cybertrain setup` を実行し、続いて新しいディレクトリで `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen`）。
 
 4 つのオプションが、書き出すものと実行するものを変えます：
 

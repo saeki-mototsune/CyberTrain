@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
+source_sha256: 62ba3d7589fdceb274dd4bb9293a283cde0cb649f1a0f8b25c65d8130b34e9dc
 ---
 # 工作原理
 
@@ -30,7 +30,7 @@ source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 源代码来自哪里取决于模式：
 
 - 在开发（和测试）模式下，引擎从磁盘读取 `app/views/`，并且在开发模式下，模板改动后会重新解析，所以修改视图无需重新构建。
-- `cybertrain build` 会运行 `spin run gen -- --embed-views`，为那一次 `spin build` 把每个模板的源代码作为字符串表写入 `gen/views.rb`，然后再次运行 `spin run gen`，恢复已提交的空表。
+- `cybertrain build` 会运行 `SPIN_DEBUG=1 spin run gen -- --embed-views`，为那一次 `spin build` 把每个模板的源代码作为字符串表写入 `gen/views.rb`，然后再次运行 `SPIN_DEBUG=1 spin run gen`，恢复已提交的空表。
 - 生产环境的二进制文件只渲染这张表（每个模板解析一次），表为空时拒绝启动（`error: views are not embedded in this binary`）。
 
 ## HTTP 服务器
@@ -54,9 +54,9 @@ source_sha256: 8f50c42c3db37d20db0b3f3a708303822e8ef6d26719a3f1e91d4e25458ecff7
 
 ## 开发循环
 
-在 `development` 模式下（默认的 `CYBERTRAIN_ENV`，`cybertrain build` 构建的二进制文件除外），`cybertrain server`（先 `spin run gen`，再 `spin run NAME`）还会每半秒轮询一次 `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` 以及资源的根（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）。视图被排除在外（引擎会自己重新加载它们），`gen/views.rb` 也被排除，它在开发模式下为空。
+在 `development` 模式下（默认的 `CYBERTRAIN_ENV`，`cybertrain build` 构建的二进制文件除外），`cybertrain server`（先 `SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则运行 `spin build NAME -- --incremental`；再 `spin run NAME`）还会每半秒轮询一次 `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` 以及资源的根（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）。视图被排除在外（引擎会自己重新加载它们），`gen/views.rb` 也被排除，它在开发模式下为空。
 
-发生改动时，会在后台运行 `spin run gen && spin build NAME -- --incremental`：Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元。不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时循环会不带它进行构建。
+发生改动时，会在后台运行 `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`：Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元。不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时循环会不带它进行构建。CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 gen，CLI 还以同样的模式构建 `bin/db.rb`：它们只运行几毫秒，而 gen 的编译时间只是 `-O2` 时的一小部分；应用本身始终是发布构建。
 
 构建成功后会请求重启（与外部 `kill -HUP` 设置的是同一个标志）：一个监视线程停止监听并等待进行中的请求完成，然后主线程在同一端口和 PID 上 `execv` 新的二进制文件，会话进行中的客户端察觉不到。构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出。`cybertrain build` 持有 `tmp/cybertrain-build.lock` 期间会跳过重新构建。这些在生产环境中都不会加载。
 

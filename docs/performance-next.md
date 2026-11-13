@@ -273,6 +273,53 @@ to 7: the 187 Arrays from `sp_PolyArray_new` and the 119 allocations of
 allocates, not the framework method that called it; a debugger does
 (under "How to measure").
 
+## The development flow (2026-11-12)
+
+Not the request path: the time a developer waits while building an
+application. Measured by one script on a 4-core x86-64 Linux VM (Ubuntu
+24.04, gcc 13.3; about a third as fast per core as the Mac of the
+2026-11-05 figures below), Spinel 2026.11.04.7026: a new application,
+the object cache (`~/.cache/spinel`) empty at the start, each step timed
+to the first response that shows it. Before is 34c9b7e, after is the
+branch that left `db/schema.rb` alone when unchanged, built gen and db in
+spin's debug mode and made the server's first build the incremental one
+([the spec](superpowers/specs/2026-11-12-dev-flow-bottlenecks-design.md)
+has the causes and what was left out).
+
+| Step | Before | After |
+| --- | --: | --: |
+| `cybertrain new` | 17.4 s | 11.3 s |
+| `db migrate`, the first migration | 118.5 s | 68.4 s |
+| `db migrate` again, nothing pending | 106.0 s | 64.3 s |
+| `db status` after that | 73.6 s | 0.1 s |
+| `cybertrain server`, first start | 87.6 s | 88.0 s |
+| a controller edit, the first after the start | 121.2 s | 78.1 s |
+| a controller edit, the second | 63.5 s | 65.6 s |
+| a route added (gen's C changes) | 88.9 s | 85.5 s |
+| the server stopped and started, nothing changed | 18.9 s | 9.6 s |
+| the server started after a controller edit | 103.7 s | 68.3 s |
+| `db status` after that edit | 78.3 s | 62.4 s |
+| `db migrate` with one new migration | 117.4 s | 88.2 s |
+
+- The before column is the kinder of two baselines. gen's C is 4.15 MB
+  for a framework at `/home/user/CyberTrain`, 44 KB under the 4 MiB at
+  which spinel splits a unit, and gen then takes 38 s to build; at the
+  88-character path of this run its `#line` directives put it over, and
+  it took 18 s. With the short path the same steps were timed by hand at
+  38 s (`new`), 157 s and 147 s (the two `db migrate`), 130 s (first
+  start) and 136 s (first edit).
+- What is left is Spinel's analysis of the whole program: 44 s of every
+  edit (the second edit did not move), and 48 of the 57 s `bin/db.rb`
+  takes to build, which every `db` command pays once after any Ruby file
+  changed, gen's own output included (the 64 s and the 62 s above). The
+  analysis grew 4.2 times in the week the framework grew 2.3 times
+  ([spinel-feedback.md](spinel-feedback.md), "Build time").
+- Not tried here: leaving the subsystems an application does not call
+  out of its program, and a `bin/db.rb` that requires only the migrator
+  (8 s of analysis instead of 48 s, but it cannot load a `config/app.rb`
+  that names the rest of the framework). Both are in the spec's section
+  6.
+
 ## Things that are not worth doing again
 
 All measured, see benchmark.md and spikes/NOTES.md for the numbers.
@@ -305,6 +352,9 @@ All measured, see benchmark.md and spikes/NOTES.md for the numbers.
   the C compiler and linker together 0.75 s, of which compiling the two changed
   units 0.2 s and linking 0.05 s. The optimization level made no difference to
   an edit, and `--incremental` already has a content-addressed object cache.
+  (2026-11-12: this holds for the application's rebuild. gen and db are
+  another matter, now that gen's C compiler time is 13 to 33 s of its build:
+  they are built at `-O0`, see "The development flow".)
 - A separate binary per model or per request, a thread per request, an external
   SQLite connection layer, or async queries: each adds a boundary or a thread
   switch to a request whose queries are already sub-millisecond, and a query on

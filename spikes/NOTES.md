@@ -96,7 +96,7 @@ for the evidence needed to change a status.
 | 77 | **Retired workaround** since 2026.10.27.7020; reduced program passes on this pin and `test/db_with_value.rb` covers both forms. |
 | 78 | **Still there** (docs/spinel-feedback.md K). |
 | 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
-| 80 | **Still there**: found on this build. |
+| 80 | **Still there**: found on this build, and re-run on 2026-11-13: at `SPINEL_WORKERS=1` a foreign call holds the worker, with or without `blocking: true` (docs/spinel-feedback.md AB). The option is no longer ignored on this build: it takes the worker out of the collector's stop for the call. |
 | 81 | **Still there**, recorded on this build in phase 1: a relative rescue path can swallow an exception; use a defined, fully qualified class. Not freshly re-run by the document audit. |
 | 82 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
 | 83 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
@@ -113,10 +113,10 @@ for the evidence needed to change a status.
 | 94, 96, 97 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
 | 95 | Works on this build: a record of a form that compiles, not of a defect. |
 | 98 | Tool behaviour, checked 2026-11-11: generated C inside a package is refused as input and can invalidate builds. Keep probe outputs outside the package. |
-| 99 | **Still there**: found on this build (2026-11-11, issue #188): `dup` on a user-defined class is a shallow copy that shares Array ivars. The generated `<Model>Relation#dup` (D72) is the workaround; test/relation_dup.rb fails without it. |
+| 99 | **Not a Spinel defect** (corrected 2026-11-13; recorded on 2026-11-11 as "still there", issue #188): `dup` on a user-defined class is a shallow copy that shares Array ivars, and CRuby's `dup` is shallow in the same way. A probe prints `2 2 0 5` under CRuby 3.3.6 and compiled by this build alike, and a class's `initialize_copy` is called on both (docs/spinel-feedback.md, "Written up on 2026-11-13"). The generated `<Model>Relation#dup` (D72) is what a branching relation needs under either runtime; test/relation_dup.rb fails without it. |
 | 100 | **Still there**: found on this build (2026-11-11, issue #189): `Float#round(n)` on a Float narrowed by a `case` in a method whose scale is a parameter rounds the binary product (1.005 at scale 2 is 1.0; CRuby and a Float local answer 1.01). `Cast.round_digits` (D73) rounds on the decimal digits instead; spikes/decimal/float_round.rb prints both, and test/decimal_contract.rb fails without it. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
-| 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98) have their own rows. |
+| 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
 ## Rechecks recorded on 2026-11-11
 
@@ -315,7 +315,8 @@ The rules are numbered in the order they were found. By topic:
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81, 89
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
-- Memory and GC roots: 58, 64, 65, 99 (a shallow built-in `dup`)
+- Memory and GC roots: 58, 64, 65; and 99, a shallow built-in `dup`, which
+  is ordinary Ruby
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
   91
@@ -440,7 +441,7 @@ Read each record together with its per-version status above. Unless its own
 text gives a newer date, the failure narrative describes the original
 2026.09.12 observation. Imperative workarounds stay in force only within the
 affected shape; they do not turn historical symptoms into universal Ruby rules.
-Records 13, 16-17, 23-24, 38, 76, 84-85, 87, 95 and 98 include language/tool
+Records 13, 16-17, 23-24, 38, 76, 84-85, 87, 95, 98 and 99 include language/tool
 behaviour or supported capabilities (the status table classifies each); record 22 is a measured tuning decision, and 77
 explicitly retires a workaround.
 
@@ -1202,8 +1203,16 @@ explicitly retires a workaround.
     result through a method.
 80. Never wait for another connection's SQLite lock inside the SQLite call
     on the request path: an FFI call holds its OS worker for as long as it
-    runs (`blocking: true` is accepted and ignored), and with one worker
-    every green thread is on that OS thread. A transaction that holds the
+    runs, with or without `blocking: true`, and with one worker
+    every green thread is on that OS thread. (2026.09.12 accepted and
+    ignored the option. On 2026.11.04.7026 it brackets the call with
+    `sp_native_enter` / `sp_native_leave`, lib/sp_sched.h, so that a
+    collection raised meanwhile does not wait for it; the worker's other
+    green threads still wait. Checked on 2026-11-13 with a C function that
+    sleeps 0.6 s: at `SPINEL_WORKERS=1` the main thread's first 0.05 s
+    sleep came back only once the call had returned (`ticks=1` in the
+    program of docs/spinel-feedback.md AB), with the option and without
+    it; at `SPINEL_WORKERS=2` it counted ten in the same 0.5 s.) A transaction that holds the
     write lock and parks its green thread (I/O, a `sleep`, a safepoint)
     then cannot reach its COMMIT while a second writer sits in the busy
     handler, which slept 100 us at a time inside `sqlite3_step` for about
@@ -1532,7 +1541,12 @@ explicitly retires a workaround.
     still exited 0). Write such files outside the package (the build
     directory, or a `TMPDIR` outside it) and delete them after the grep.
 
-99. `dup` on an instance of a user-defined class compiles without a
+99. **Ordinary Ruby, not a Spinel defect** (corrected 2026-11-13: CRuby's
+    `dup` is shallow in the same way, and a probe of the shape below
+    prints the same under CRuby 3.3.6 and compiled by 2026.11.04.7026,
+    where a class's `initialize_copy` is also called as under CRuby). The
+    record stays for what a class has to do about it.
+    `dup` on an instance of a user-defined class compiles without a
     `dup` method in the class, on Spinel 2026.11.04.7026, and is a shallow
     copy: the new object has its own Integer, Boolean and String slots
     (assigning `@limit` on one leaves the other), but an Array ivar is the

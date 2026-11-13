@@ -1,8 +1,8 @@
 # The development loop (docs/design.md D12): Application#run in development
 # watches the Ruby sources and the asset roots (Dev::WATCHED, in
-# cybertrain/dev/watched.rb), rebuilds the server with `spin run gen && spin
-# build <name> -- --incremental` (the app's package name; without the flag
-# when the toolchain predates it), and replaces itself with the new
+# cybertrain/dev/watched.rb), rebuilds the server with `SPIN_DEBUG=1 spin run
+# gen && spin build <name> -- --incremental` (the app's package name; without
+# the flag when the toolchain predates it), and replaces itself with the new
 # binary; ErrorPage shows exceptions and failed builds in the browser.
 # Production never loads any of it into the request path. Dev::Supervision
 # (cybertrain/dev/supervision.rb) reads what `cybertrain server` hands a
