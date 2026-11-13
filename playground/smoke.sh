@@ -60,20 +60,22 @@ what_G4="CYBERTRAIN_HOME and XDG_CACHE_HOME point under /opt and CYBERTRAIN_HOST
 what_G5="the blog's spin.toml depends on the tag v$version"
 what_G6="the blog is a clean git repository with one commit that tracks PLAYGROUND.md"
 what_G7="no tmp/secret_key is baked in and build/bin/blog is executable"
+what_G8="cybertrain doctor prints the fiddle line as ok"
 what_A1="GET /articles through the published port answers 200 (default command, CYBERTRAIN_HOST=0.0.0.0)"
 what_A2="the log shows the boot banner of $version listening on http://0.0.0.0:3000"
 what_A3="starting compiled nothing (build/bin/blog keeps the image's mtime)"
+what_A11="the first start runs no C compiler: no cc, gcc, cc1, collect2 or ld process but a --version probe until its startup build has finished, and tmp/cybertrain-dev/ffi/*.so keep the image's mtimes"
 what_A4="GET / answers 200 with <h1>Articles</h1>"
 what_A5="GET /articles/new has a CSRF token and a SameSite=Lax session cookie without Secure or Partitioned"
 what_A6="POST /articles with the token and the cookie answers 303 to the new article, whose page shows it"
 what_A7="POST /articles without token or cookie answers 403"
 what_A8="a view edit shows on the next request"
-what_A9="a model edit rebuilds and restarts the server: a short body then answers 422"
+what_A9="a model edit answers 422 for a short body with X-Cybertrain-Runtime: cruby within 10 s, and with spinel afterwards"
 what_A10="the running container generated tmp/secret_key"
 what_D1="a second playground-server exits 0 saying the server is already running"
-what_D2="exactly one app server process runs"
+what_D2="one supervisor and one child run"
 what_D3="after a container restart (Codespaces' idle stop and resume) the server is back, once, with the earlier article"
-what_D4="playground-server leaves a server started by hand alone: it says a server is already starting while it compiles and the port is in use once it listens, exits 0 both times, and one server runs"
+what_D4="playground-server leaves a server started by hand alone: it says a server is already starting before it listens and the port is in use once it listens, exits 0 both times, and one supervisor and one child run"
 what_C1="with CODESPACES=true the session cookie keeps the default, SameSite=Lax without Secure or Partitioned"
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
 what_C3="with CODESPACES=true and PATH=/usr/bin:/bin, interactive and login bash shells find spin in /opt/cybertrain/bin"
@@ -179,6 +181,60 @@ up_inside() {
   return 1
 }
 
+# The processes of `cybertrain server`: the supervisor, the gem's Ruby script
+# ("/usr/bin/ruby3.2 /usr/local/bin/cybertrain server [PORT]"; docker-init's
+# arguments name `cybertrain server` too, hence the interpreter), and its one
+# child, the blog under CRuby ("ruby -E UTF-8 -I... -r cybertrain/preview
+# bin/blog.rb PORT") or the compiled binary ("build/bin/blog PORT"). Neither
+# matches gen, `bin/blog.rb dev-address` or the build (`spin build blog`).
+supervisor_pattern='^[^ ]*ruby[^ ]* [^ ]*/cybertrain server( |$)'
+child_pattern='^([^ ]*ruby[^ ]* .* bin/blog\.rb|build/bin/blog) [0-9]+$'
+
+# servers CONTAINER: waits up to 10 s for exactly one supervisor and one child
+# (a handover from CRuby to the binary stops one child before it starts the
+# next). Sets $servers to "supervisors: S, children: C" as last counted;
+# returns 0 once both are 1.
+servers() {
+  local began=$SECONDS s c
+  while :; do
+    s=$(docker exec "$1" pgrep -c -f "$supervisor_pattern" 2> /dev/null)
+    c=$(docker exec "$1" pgrep -c -f "$child_pattern" 2> /dev/null)
+    servers="supervisors: ${s:-none}, children: ${c:-none}"
+    if [ "$s" = 1 ] && [ "$c" = 1 ]; then
+      return 0
+    fi
+    if [ $((SECONDS - began)) -ge 10 ]; then
+      return 1
+    fi
+    sleep 0.5
+  done
+}
+
+# built CONTAINER SECONDS: waits until the supervisor's first build has ended
+# (its log says the binary serves, or that the build or the binary failed).
+# Sets $detail when it does not within SECONDS.
+built() {
+  local began=$SECONDS
+  while [ $((SECONDS - began)) -lt "$2" ]; do
+    case "$(docker logs "$1" 2>&1)" in
+      *"=> spinel: ready in "*) return 0 ;;
+      *"=> spinel: build failed"*) detail="the startup build failed"; return 1 ;;
+      *"=> spinel: the binary failed"*) detail="the compiled binary failed"; return 1 ;;
+    esac
+    if ! running "$1"; then
+      detail="the container exited"
+      return 1
+    fi
+    sleep 1
+  done
+  detail="the startup build did not end within $2 s"
+  return 1
+}
+
+# The shim's compiled libraries in the blog at $1, one "NAME MTIME" line each
+# (sorted), the way A11 and E1 compare them with the image's.
+ffi_list='cd "$1/tmp/cybertrain-dev/ffi" 2> /dev/null && for f in *.so; do [ -e "$f" ] && echo "$f $(stat -c %Y "$f")"; done | sort'
+
 # The authenticity_token of the form saved in file $1.
 form_token() {
   sed -n 's/.*name="authenticity_token" value="\([^"]*\)".*/\1/p' "$1" 2> /dev/null | head -n 1
@@ -208,6 +264,7 @@ else
 fi
 
 run_once 60 G3 "$image" cybertrain doctor
+doctor_out=$out
 if [ "$rc" = 0 ]; then
   pass G3 "$what_G3"
 else
@@ -243,11 +300,28 @@ else
   fail G7 "$what_G7" "$(first_line "$out")" out:G7
 fi
 
+# The line `cybertrain doctor` (G3) prints for the library the CRuby preview
+# needs; without it `cybertrain server` would run the compiled loop only.
+fiddle_line=$(printf '%s\n' "$doctor_out" | grep '^fiddle ' | head -n 1)
+if printf '%s\n' "$fiddle_line" | grep -Eq '^fiddle +ok '; then
+  pass G8 "$what_G8"
+else
+  fail G8 "$what_G8" "got: ${fiddle_line:-no fiddle line}" out:G3
+fi
+
 # The prebuilt binary's mtime, which A3 and E1 compare against.
 run_once 30 mtime "$image" stat -c %Y /workspace/blog/build/bin/blog
 image_mtime=""
 if [ "$rc" = 0 ]; then
   image_mtime=$out
+fi
+
+# The shim's libraries the image was built with, which A11 and E1 compare
+# against. None at all would make the comparison say nothing.
+run_once 30 ffi "$image" sh -c "$ffi_list" sh /workspace/blog
+image_ffi=""
+if [ "$rc" = 0 ]; then
+  image_ffi=$out
 fi
 
 # ---- A: the default command, reached from the host, and the edit loop ------
@@ -258,6 +332,10 @@ title=""
 base=""
 if start main -p 127.0.0.1::3000 -e CYBERTRAIN_HOST=0.0.0.0 "$image"; then
   launched=$SECONDS
+  # A11: every C compiler process from now until the startup build has
+  # ended, 20 times a second. `cc --version` compiles nothing: the shim asks
+  # it once per CRuby child for its cache key, and spin may too.
+  docker exec -d "$main" sh -c 'while :; do pgrep -a -x "cc|gcc|cc1|collect2|ld" >> /tmp/smoke-compilers.log; sleep 0.05; done'
   port=$(host_port "$main")
   base="http://127.0.0.1:$port"
   detail="no 200 within 30 s"
@@ -285,11 +363,28 @@ if [ "$main_up" = yes ]; then
     *) fail A2 "$what_A2" "the banner lines are not in docker logs" "$main" ;;
   esac
 
+  # The supervisor serves from CRuby at once and builds in the background
+  # (`spin build blog -- --incremental`), then hands the port to the binary:
+  # nothing is known to be left uncompiled before that build has ended.
+  startup_built=yes
+  if ! built "$main" 300; then
+    startup_built="no ($detail)"
+  fi
+  docker exec "$main" pkill -f smoke-compilers > /dev/null 2>&1
+
   running_mtime=$(docker exec "$main" stat -c %Y /workspace/blog/build/bin/blog 2> /dev/null)
-  if [ -n "$image_mtime" ] && [ "$running_mtime" = "$image_mtime" ]; then
+  if [ "$startup_built" = yes ] && [ -n "$image_mtime" ] && [ "$running_mtime" = "$image_mtime" ]; then
     pass A3 "$what_A3"
   else
-    fail A3 "$what_A3" "image: ${image_mtime:-unknown}, running: ${running_mtime:-unknown}" "$main"
+    fail A3 "$what_A3" "image: ${image_mtime:-unknown}, running: ${running_mtime:-unknown}, startup build ended: $startup_built" "$main"
+  fi
+
+  compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | grep -v ' --version$' | sort -u)
+  running_ffi=$(docker exec "$main" sh -c "$ffi_list" sh /workspace/blog 2> /dev/null)
+  if [ "$startup_built" = yes ] && [ -z "$compilers" ] && [ -n "$image_ffi" ] && [ "$running_ffi" = "$image_ffi" ]; then
+    pass A11 "$what_A11"
+  else
+    fail A11 "$what_A11" "startup build ended: $startup_built, compilers: $(printf '%s' "${compilers:-none}" | tr '\n' ';'), ffi in the image: $(printf '%s' "${image_ffi:-none}" | tr '\n' ';'), running: $(printf '%s' "${running_ffi:-none}" | tr '\n' ';')" "$main"
   fi
 
   code=$(curl -s -o "$work/a4.html" -w '%{http_code}' --max-time 5 "$base/")
@@ -353,36 +448,49 @@ if [ "$main_up" = yes ]; then
     fail A8 "$what_A8" "the edit did not show within 3 s" "$main"
   fi
 
+  # The edit shows at once from the CRuby child (the header says which
+  # runtime answered); the binary the background build makes then takes the
+  # port over and answers the same.
   docker exec "$main" sed -i 's/^class Article$/&\n  validates :body, presence: true, length: { minimum: 10 }/' /workspace/blog/app/models/article.rb
   edited=$(docker exec "$main" grep -c 'validates :body' /workspace/blog/app/models/article.rb 2> /dev/null)
-  short=000
+  edited_at=$SECONDS
+  cruby_after=""
+  spinel_after=""
+  last="no answer"
   deadline=$((SECONDS + 300))
   while [ "$SECONDS" -lt "$deadline" ]; do
-    rm -f "$work/a9.jar" "$work/a9.html"
+    rm -f "$work/a9.jar" "$work/a9.html" "$work/a9.head"
     probe=$(curl -s -c "$work/a9.jar" -o "$work/a9.html" -w '%{http_code}' --max-time 5 "$base/articles/new")
     probe_token=$(form_token "$work/a9.html")
     if [ "$probe" = 200 ] && [ -n "$probe_token" ]; then
-      short=$(curl -s -b "$work/a9.jar" -o /dev/null -w '%{http_code}' --max-time 5 \
+      short=$(curl -s -b "$work/a9.jar" -D "$work/a9.head" -o /dev/null -w '%{http_code}' --max-time 5 \
         --data-urlencode "authenticity_token=$probe_token" \
         --data-urlencode "article[title]=Short body $(date +%s)" \
         --data-urlencode "article[body]=short" \
         "$base/articles")
-      if [ "$short" = 422 ]; then
+      runtime=$(header "$work/a9.head" x-cybertrain-runtime)
+      last="$short from ${runtime:-no runtime header} after $((SECONDS - edited_at)) s"
+      if [ "$short" = 422 ] && [ "$runtime" = cruby ] && [ -z "$cruby_after" ]; then
+        cruby_after=$((SECONDS - edited_at))
+      fi
+      if [ "$short" = 422 ] && [ "$runtime" = spinel ]; then
+        spinel_after=$((SECONDS - edited_at))
         break
       fi
+    else
+      last="GET /articles/new: $probe after $((SECONDS - edited_at)) s"
     fi
-    sleep 3
+    if [ -z "$cruby_after" ]; then
+      sleep 0.5
+    else
+      sleep 3
+    fi
   done
-  logs=$(docker logs "$main" 2>&1)
-  case "$logs" in
-    *"Build succeeded"*) built=yes ;;
-    *) built=no ;;
-  esac
   listed=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$base/articles")
-  if [ "$short" = 422 ] && [ "$built" = yes ] && [ "$listed" = 200 ]; then
+  if [ -n "$cruby_after" ] && [ "$cruby_after" -le 10 ] && [ -n "$spinel_after" ] && [ "$listed" = 200 ]; then
     pass A9 "$what_A9"
   else
-    fail A9 "$what_A9" "validates :body lines: ${edited:-0}, short body: $short, Build succeeded logged: $built, GET /articles: $listed" "$main"
+    fail A9 "$what_A9" "validates :body lines: ${edited:-0}, 422 from cruby after: ${cruby_after:-never} s, from spinel after: ${spinel_after:-never} s, last: $last, GET /articles: $listed" "$main"
   fi
 
   if docker exec "$main" test -s /workspace/blog/tmp/secret_key; then
@@ -405,11 +513,10 @@ if [ "$main_up" = yes ]; then
     fail D1 "$what_D1" "exit $again_rc: $(first_line "$again")" "$main"
   fi
 
-  servers=$(docker exec "$main" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
-  if [ "$servers" = 1 ]; then
+  if servers "$main"; then
     pass D2 "$what_D2"
   else
-    fail D2 "$what_D2" "pgrep counted ${servers:-nothing}" "$main"
+    fail D2 "$what_D2" "$servers" "$main"
   fi
 
   # Codespaces stops an idle codespace and starts the same container again:
@@ -444,38 +551,50 @@ if [ "$main_up" = yes ]; then
   if [ -n "$title" ] && ! grep -qF "$title" "$work/d3.html" 2> /dev/null; then
     kept=no
   fi
-  servers=$(docker exec "$main" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
-  if [ "$restart_ok" = yes ] && [ "$back" = yes ] && [ "$kept" = yes ] && [ "$servers" = 1 ]; then
+  once=no
+  if servers "$main"; then
+    once=yes
+  fi
+  if [ "$restart_ok" = yes ] && [ "$back" = yes ] && [ "$kept" = yes ] && [ "$once" = yes ]; then
     pass D3 "$what_D3"
   else
-    fail D3 "$what_D3" "restarted: $restart_ok, answered 200: $back, article kept: $kept, servers: ${servers:-none}" "$main"
+    fail D3 "$what_D3" "restarted: $restart_ok, answered 200: $back, article kept: $kept, $servers" "$main"
   fi
 else
   fail A1 "$what_A1" "$detail" "$main"
-  for id in A2 A3 A4 A5 A6 A7 A8 A9 A10 D1 D2 D3; do
+  docker exec "$main" pkill -f smoke-compilers > /dev/null 2>&1
+  for id in A2 A3 A11 A4 A5 A6 A7 A8 A9 A10 D1 D2 D3; do
     name="what_$id"
     fail "$id" "${!name}" "skipped: the dev server did not come up"
   done
 fi
 
 # A server started by hand (PLAYGROUND.md's tutorial steps start one with
-# `cybertrain server`) never holds playground-server's lock, and while it
-# compiles it does not hold the port either; the next attach runs
-# playground-server, which must leave it alone in both phases. The model edit
-# makes it compile before it listens, as after a visitor's edit.
+# `cybertrain server`) never holds playground-server's lock, and until it has
+# bound the port it does not hold that either; the next attach runs
+# playground-server, which must leave it alone in both phases. The
+# supervisor binds the port once `spin flags` and the app's address have
+# answered, within a second or two, so this one is given a `spin` that waits
+# while /tmp/hold-spin exists (beside a link to the real spinel, so that the
+# toolchain check still finds spin next to the pinned spinel): it stays
+# before the port until the hold is lifted.
 manual="$prefix-manual"
-if start manual "$image" bash -c 'cd /workspace/blog && echo "# smoke: compile before listening" >> app/models/article.rb && exec cybertrain server'; then
+held='mkdir -p /tmp/held && printf "%s\n" "#!/bin/sh" "while [ -e /tmp/hold-spin ]; do sleep 0.1; done" "exec /opt/cybertrain/bin/spin \"\$@\"" > /tmp/held/spin && chmod +x /tmp/held/spin && ln -s /opt/cybertrain/bin/spinel /tmp/held/spinel && touch /tmp/hold-spin && cd /workspace/blog && PATH=/tmp/held:$PATH exec cybertrain server'
+if start manual "$image" bash -c "$held"; then
   phase=""
   # Its own process, the gem's Ruby script (docker-init's arguments name
   # `cybertrain server` too): playground-server must not run before it exists.
   waited=$SECONDS
-  until docker exec "$manual" pgrep -f '^[^ ]*ruby[^ ]* [^ ]*/cybertrain server( |$)' > /dev/null 2>&1; do
+  until docker exec "$manual" pgrep -f "$supervisor_pattern" > /dev/null 2>&1; do
     if [ $((SECONDS - waited)) -ge 30 ] || ! running "$manual"; then
-      phase="while compiling: no cybertrain server process within 30 s"
+      phase="before listening: no cybertrain server process within 30 s"
       break
     fi
     sleep 0.5
   done
+  if [ -z "$phase" ] && docker exec "$manual" bash -c '(exec 3<>/dev/tcp/127.0.0.1/3000) 2> /dev/null'; then
+    phase="before listening: the port already answers (the hold on spin did not work)"
+  fi
   if [ -z "$phase" ]; then
     starting=$(docker exec "$manual" timeout 10 playground-server 2>&1)
     starting_rc=$?
@@ -484,11 +603,12 @@ if start manual "$image" bash -c 'cd /workspace/blog && echo "# smoke: compile b
       *) said=no ;;
     esac
     if [ "$starting_rc" != 0 ] || [ "$said" != yes ]; then
-      phase="while compiling: exit $starting_rc: $(first_text "$starting")"
+      phase="before listening: exit $starting_rc: $(first_text "$starting")"
     fi
   fi
-  if [ -z "$phase" ] && ! up_inside "$manual" 300; then
-    phase="while compiling: $detail"
+  docker exec "$manual" rm -f /tmp/hold-spin > /dev/null 2>&1
+  if [ -z "$phase" ] && ! up_inside "$manual" 60; then
+    phase="once the hold was lifted: $detail"
   fi
   if [ -z "$phase" ]; then
     again=$(docker exec "$manual" timeout 10 playground-server 2>&1)
@@ -501,11 +621,8 @@ if start manual "$image" bash -c 'cd /workspace/blog && echo "# smoke: compile b
       phase="once listening: exit $again_rc: $(first_text "$again")"
     fi
   fi
-  if [ -z "$phase" ]; then
-    servers=$(docker exec "$manual" pgrep -c -f '^/workspace/blog/build/bin/blog( |$)' 2> /dev/null)
-    if [ "$servers" != 1 ]; then
-      phase="once listening: servers: ${servers:-none}"
-    fi
+  if [ -z "$phase" ] && ! servers "$manual"; then
+    phase="once listening: $servers"
   fi
   if [ -z "$phase" ]; then
     pass D4 "$what_D4"
@@ -592,12 +709,15 @@ fi
 
 copy="$prefix-copy"
 if start copy "$image" bash -c 'cp -a /workspace/blog /tmp/blog-copy && exec playground-server /tmp/blog-copy'; then
-  if up_inside "$copy" 30; then
+  # Once the startup build has ended, as A3 and A11: the binary and the
+  # shim's libraries are still the image's.
+  if up_inside "$copy" 30 && built "$copy" 300; then
     copy_mtime=$(docker exec "$copy" stat -c %Y /tmp/blog-copy/build/bin/blog 2> /dev/null)
-    if [ -n "$image_mtime" ] && [ "$copy_mtime" = "$image_mtime" ]; then
+    copy_ffi=$(docker exec "$copy" sh -c "$ffi_list" sh /tmp/blog-copy 2> /dev/null)
+    if [ -n "$image_mtime" ] && [ "$copy_mtime" = "$image_mtime" ] && [ -n "$image_ffi" ] && [ "$copy_ffi" = "$image_ffi" ]; then
       pass E1 "$what_E1"
     else
-      fail E1 "$what_E1" "image: ${image_mtime:-unknown}, copy: ${copy_mtime:-unknown}" "$copy"
+      fail E1 "$what_E1" "image: ${image_mtime:-unknown}, copy: ${copy_mtime:-unknown}, ffi in the image: $(printf '%s' "${image_ffi:-none}" | tr '\n' ';'), copy: $(printf '%s' "${copy_ffi:-none}" | tr '\n' ';')" "$copy"
     fi
   else
     fail E1 "$what_E1" "$detail" "$copy"

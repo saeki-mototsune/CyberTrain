@@ -45,12 +45,15 @@ ENV LANG=C.UTF-8 \
 # (no g++). procps: ps/pgrep for terminals and smoke.sh.
 # ruby-dev and the prism gem: Spinel's build runs a Ruby generator that
 # requires prism, which Ruby 3.2 does not bundle (1.9.0 is PRISM_VERSION in
-# Spinel's Makefile at Cybertrain::SPINEL_TAG).
+# Spinel's Makefile at Cybertrain::SPINEL_TAG). fiddle, which the CRuby
+# preview's FFI shim needs, comes with Ubuntu's ruby (libruby3.2 and libffi):
+# the build stops here if it does not load.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         ca-certificates curl git gcc make libc6-dev libsqlite3-dev zlib1g-dev libssl-dev procps ruby ruby-dev \
  && rm -rf /var/lib/apt/lists/* \
- && gem install --no-document prism -v 1.9.0
+ && gem install --no-document prism -v 1.9.0 \
+ && ruby -e 'require "fiddle"'
 
 # User dev, uid/gid 1000 (ubuntu:24.04 ships "ubuntu" with 1000: removed
 # first). Nothing the prebuilt app needs lives in its home directory.
@@ -121,10 +124,24 @@ RUN cybertrain generate scaffold article title:string body:text
 # Step 04: the root route.
 COPY --chown=dev:dev playground/routes.rb config/routes.rb
 # Step 07, then one full build: gen/ is current and build/bin/{gen,db,blog}
-# exist, so the first `cybertrain server` compiles nothing. spin's freshness
-# test compares mtimes: never copy this tree with anything but `cp -a`.
+# exist, so the first `cybertrain server` finds the binary newer than its
+# sources. spin's freshness test compares mtimes: never copy this tree with
+# anything but `cp -a`. The blog is built the way `cybertrain server` builds
+# it (`spin build blog -- --incremental`), which also fills spinel's object
+# cache (/opt/cybertrain-cache/spinel): the build after a visitor's edit
+# recompiles only the C units whose text changed. A plain `spin build blog`
+# afterwards says "up to date".
 RUN cybertrain db migrate
-RUN cybertrain spin run gen && cybertrain spin build blog
+RUN cybertrain spin run gen && spin build blog -- --incremental && spin build blog | grep -F "(up to date)"
+# The CRuby preview's FFI shim compiles the framework's C (SQLite, ...) at
+# its first use and keeps it in tmp/cybertrain-dev/ffi/<sha256>.so: built
+# here, with the image's compiler, so the first CRuby child compiles nothing
+# either. The load path is the -I directories of `spin flags`, as
+# `cybertrain server` gives them to its children.
+RUN set -eu; \
+    load_path=$(spin flags | tr ' ' '\n' | awk 'take { print "-I" $0; take = 0; next } $0 == "-I" { take = 1; next } /^-I./ { print }'); \
+    ruby -E UTF-8 $load_path -r cybertrain/preview -e 'require "cybertrain"; puts "ffi libraries built: #{Cybertrain::Preview.warm!}"'; \
+    ls tmp/cybertrain-dev/ffi/*.so
 COPY --chown=dev:dev playground/PLAYGROUND.md PLAYGROUND.md
 # One commit, so the Source Control view shows the visitor's own changes.
 RUN git init -q -b main \
