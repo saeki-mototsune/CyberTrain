@@ -228,6 +228,11 @@ jobs:
       - name: CRuby-only tests
         run: script/test-cruby
 
+      # Some framework tests run the toolchain (test/cli_test_command.rb
+      # calls `spin`), compiled and under CRuby alike.
+      - uses: ./.github/actions/setup-spinel
+        if: runner.os == 'Linux'
+
       - name: The framework's tests under CRuby
         if: runner.os == 'Linux'
         run: script/preview-parity
