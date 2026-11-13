@@ -229,7 +229,7 @@ class AbortInSweepServer < Cybertrain::Server
 end
 
 $log = StringIO.new
-$server =Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 1,
+$server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 1,
                                  max_head_bytes: 1024, max_body_bytes: 64,
                                  logger: Cybertrain::Logger.new($log, :info))
 $server.start
@@ -757,13 +757,15 @@ end
 
 # The client's request arrives a little after the accept: the connection is
 # still waited on (FIRST_REQUEST_GRACE) rather than closed by the drain.
+# 0.1 s is after the drain's first pass (it starts as soon as the accept
+# has requested the stop) and leaves most of the 0.5 s grace as margin.
 test "a connection accepted as the stop is requested is answered when its request comes a moment later" do
   server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
                                                                                     logger: Cybertrain::Logger.new($log, :info))
   runner = Thread.new { server.run }
   sleep 0.01 while server.port == 0
   c = RawClient.new(server.port)
-  sleep 0.2
+  sleep 0.1
   c.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
   res = c.read_response(false)
   assert_equal "hi", res.body
@@ -812,25 +814,30 @@ test "connections still in the accept queue at the stop are answered, not reset"
   $hold_accept = true
   $accept_held = false
   $second_queued = false
-  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
-                                                                                    logger: Cybertrain::Logger.new($log, :info))
-  runner = Thread.new { server.run }
-  sleep 0.01 while server.port == 0
-  port = server.port
-  first = RawClient.new(port)
-  first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
-  sleep 0.01 until $accept_held
-  second = RawClient.new(port)
-  second.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
-  $second_queued = true
-  assert_equal "hi", first.read_response(false).body
-  res = second.read_response(false)
-  assert_equal "hi", res.body
-  assert_equal "close", res.header("connection")
-  first.close
-  second.close
-  runner.join
-  assert port_refused?(port)
+  begin
+    server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                      logger: Cybertrain::Logger.new($log, :info))
+    runner = Thread.new { server.run }
+    sleep 0.01 while server.port == 0
+    port = server.port
+    first = RawClient.new(port)
+    first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    sleep 0.01 until $accept_held
+    second = RawClient.new(port)
+    second.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    $second_queued = true
+    assert_equal "hi", first.read_response(false).body
+    res = second.read_response(false)
+    assert_equal "hi", res.body
+    assert_equal "close", res.header("connection")
+    first.close
+    second.close
+    runner.join
+    assert port_refused?(port)
+  ensure
+    # a failure before the first accept must not leave it set for later tests
+    $hold_accept = false
+  end
 end
 
 # One failed accept in the sweep (AbortInSweepServer) is logged and the
@@ -876,31 +883,36 @@ test "with an inherited listener, connections queued at the stop are left for th
   $hold_accept = true
   $accept_held = false
   $second_queued = false
-  held = TCPServer.new("127.0.0.1", 0)
-  held.autoclose = false
-  port = held.addr[1]
-  supervisor = held.dup
-  supervisor.autoclose = false
-  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
-                                                                                    read_timeout: 5, drain_timeout: 5.0,
-                                                                                    logger: Cybertrain::Logger.new($log, :info))
-  # already listening: a client may connect before the server starts
-  runner = Thread.new { server.run }
-  first = RawClient.new(port)
-  first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
-  sleep 0.01 until $accept_held
-  second = RawClient.new(port)
-  second.send_raw("GET /next HTTP/1.1\r\nHost: t\r\n\r\n")
-  $second_queued = true
-  assert_equal "hi", first.read_response(false).body
-  first.close
-  runner.join
-  following = Cybertrain::Server.new(BareHandler.new, port: port, listen_fd: supervisor.fileno, logger: Cybertrain::Logger.new($log, :info))
-  following.start
-  assert_equal "bare /next", second.read_response(false).body
-  second.close
-  following.stop
-  assert port_refused?(port)
+  begin
+    held = TCPServer.new("127.0.0.1", 0)
+    held.autoclose = false
+    port = held.addr[1]
+    supervisor = held.dup
+    supervisor.autoclose = false
+    server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
+                                                                                      read_timeout: 5, drain_timeout: 5.0,
+                                                                                      logger: Cybertrain::Logger.new($log, :info))
+    # already listening: a client may connect before the server starts
+    runner = Thread.new { server.run }
+    first = RawClient.new(port)
+    first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    sleep 0.01 until $accept_held
+    second = RawClient.new(port)
+    second.send_raw("GET /next HTTP/1.1\r\nHost: t\r\n\r\n")
+    $second_queued = true
+    assert_equal "hi", first.read_response(false).body
+    first.close
+    runner.join
+    following = Cybertrain::Server.new(BareHandler.new, port: port, listen_fd: supervisor.fileno, logger: Cybertrain::Logger.new($log, :info))
+    following.start
+    assert_equal "bare /next", second.read_response(false).body
+    second.close
+    following.stop
+    assert port_refused?(port)
+  ensure
+    # a failure before the first accept must not leave it set for later tests
+    $hold_accept = false
+  end
 end
 
 test "start raises Cybertrain::PortInUse when the port is already bound" do
