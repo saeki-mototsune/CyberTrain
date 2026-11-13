@@ -43,7 +43,7 @@ already.
 | --- | --- | --- |
 | 1 | Scope | Every subsystem above becomes optional: jobs (with the scheduler, the jobs page and the worker role), Turbo Streams, WebSocket feeds, the mailer, the cache, rate limiting |
 | 2 | How an application says what it uses | Explicit requires in `bin/NAME.rb`, as Rails' `config/application.rb` lists railties. `cybertrain new` writes the core alone; a generator that needs a subsystem adds its line |
-| 3 | What `require "cybertrain"` means | Unchanged: everything. Existing applications, `examples/blog` and the playground build and behave as before. The speed-up is opt-in, by replacing it with `require "cybertrain/core"` and the lines needed |
+| 3 | What `require "cybertrain"` means | Unchanged: everything. Existing applications and `examples/blog` build and behave as before (the playground image runs `cybertrain new`, so its blog starts on `cybertrain/core` like any new application). The speed-up is opt-in, by replacing it with `require "cybertrain/core"` and the lines needed |
 | 4 | A view that uses a helper of a subsystem the application did not require | `spin run gen` refuses, naming the file, the line, the helper and the require to add |
 | 5 | Cache, rate limiting and jobs | The cache does not need jobs. With jobs loaded its prune runs on the scheduler as today; without, the cache prunes expired rows itself while writing. Rate limiting keeps counting through the cache, so sign-in throttling across processes is unchanged |
 | 6 | Mailer and jobs | Split: `cybertrain/mailer` sends now (`Mailer.deliver`); `cybertrain/mailer/later` adds `deliver_later` and loads jobs |
@@ -149,7 +149,9 @@ scheduled prune allowed.
   line nor `require "cybertrain"`. The line goes after the last
   `require "cybertrain..."` line, and the generator prints it as it does a
   route.
-- `examples/blog` and the playground keep `require "cybertrain"`.
+- `examples/blog` keeps `require "cybertrain"`. The playground builds its blog
+  with `cybertrain new` (playground/Dockerfile), so it gets
+  `require "cybertrain/core"` and the tutorial's generators add their lines.
 
 ## 6. What does not change
 

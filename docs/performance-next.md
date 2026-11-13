@@ -354,8 +354,10 @@ nothing else running.
 - The binary of the core application served `/articles`, `/articles/new`
   and `/up` with 200, answered `/cybertrain/stream` with 404, and
   `./NAME worker`, `jobs` and `feeds` with the line each needs and status 1.
-- `require "cybertrain"` is unchanged, so an existing application, examples/blog
-  and the playground build as before. The test files the generators write
+- `require "cybertrain"` is unchanged, so an existing application and
+  examples/blog build as before. The playground image runs `cybertrain new`,
+  so its blog now starts on `cybertrain/core` like any new application and
+  builds faster; the tutorial steps that need a subsystem add its line. The test files the generators write
   (`generate job`, `helper`, `authentication`) still require `cybertrain`,
   so each test program keeps compiling the whole framework.
 
