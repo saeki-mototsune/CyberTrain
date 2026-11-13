@@ -368,7 +368,7 @@ module Cybertrain
       end
       if @mail_delivery_method == :test
         stored = MailMessage.new(to: to.to_s, subject: title, body: body.to_s, html: markup, from: sender)
-        return Mailer.store(stored)
+        return Mailer.store_delivery(stored)
       end
 
       perform(sender, recipients, title, text, built)
@@ -378,7 +378,10 @@ module Cybertrain
     # (Rails' `ActionMailer::Base.deliveries`): what a test reads. The
     # test harness (cybertrain/test_help) empties it before every test.
     # Nothing else empties it, so it is for tests: a process that kept
-    # :test while serving would keep every mail in memory.
+    # :test while serving would keep every mail in memory (boot logs a
+    # warning then, {Config#mail_delivery_warning}). Appends take a lock;
+    # reads and `clear` do not, so read it from the test's thread while no
+    # job thread runs (a test program starts none).
     # @example
     #   assert_equal "Welcome", Cybertrain::Mailer.deliveries.last.mail_subject
     # @return [Array<MailMessage>]
@@ -389,7 +392,7 @@ module Cybertrain
 
     # Appends `message` to {.deliveries}, under a lock (request and job
     # threads may deliver at once), and answers {STORED_REPLY}.
-    def self.store(message)
+    def self.store_delivery(message)
       DELIVERIES_LOCK.synchronize { @deliveries << message }
       STORED_REPLY
     end

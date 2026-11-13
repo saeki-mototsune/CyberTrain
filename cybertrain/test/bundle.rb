@@ -33,6 +33,10 @@ module Cybertrain
       # the file CYBERTRAIN_TEST_DATABASE names.
       DEFAULT_DATABASE = "storage/test.sqlite3".freeze
 
+      # The sender a test's mail has when the application gives none
+      # (Rails' generated ApplicationMailer uses it too).
+      DEFAULT_SENDER = "from@example.com".freeze
+
       # Hands over gen's table: the test files in path order, then one entry
       # per class-form test (its file, the line of its `test` call, its
       # class, name and method), in the order of Gen::Tests.run_case's arms.
@@ -66,7 +70,9 @@ module Cybertrain
       # environment), silences the request log unless config/app.rb set
       # `log_level` (its lines, with timings, would print between the test
       # lines; Rails writes them to log/test.log; error-level lines, which
-      # carry no timings, still print), deletes the database and its -wal / -shm, migrates
+      # carry no timings, still print), gives mail the sender
+      # {DEFAULT_SENDER} unless CYBERTRAIN_SMTP_FROM or config/app.rb set
+      # `smtp_from`, deletes the database and its -wal / -shm, migrates
       # Migration.all (quietly), boots, and sets {Cybertrain::Test.app}. Every test
       # then starts in the configured time zone (a reset hook).
       # @param router [Cybertrain::Router]
@@ -79,6 +85,7 @@ module Cybertrain
         c = Cybertrain.config
         c.csrf_unless_given(false)
         c.log_level_unless_given(:none)
+        c.smtp_from_unless_given(DEFAULT_SENDER)
         path = c.database_path
         [path, "#{path}-wal", "#{path}-shm"].each { |f| File.delete(f) if File.exist?(f) }
         connection = Cybertrain::DB::Connection.new(path)

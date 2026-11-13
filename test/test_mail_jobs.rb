@@ -29,6 +29,18 @@ Cybertrain::Job.register("chain") do |run|
   PERFORMED << "chain"
   Cybertrain::Job.enqueue("leaf", "{}")
 end
+# Always raises.
+Cybertrain::Job.register("boom") do |run|
+  PERFORMED << "boom"
+  raise "always"
+end
+# Raises on its first attempt only.
+Cybertrain::Job.register("flaky") do |run|
+  PERFORMED << "flaky #{run.run_attempts}"
+  raise ArgumentError, "not yet" if run.run_attempts == 1
+end
+# The clock the job ran at.
+Cybertrain::Job.register("stamp") { |run| PERFORMED << "stamp #{Time.current.to_i}" }
 
 def fresh_db
   Cybertrain::DB.connect(":memory:")
@@ -41,6 +53,10 @@ def hello_mail(subject)
 end
 
 test "in the test environment deliver stores the message" do
+  # No database yet: assert_emails counts deliver_now without one.
+  refute Cybertrain::DB.connected?
+  assert_emails(1) { hello_mail("No database").deliver_now }
+  Cybertrain::Mailer.deliveries.clear
   assert_equal :test, Cybertrain.config.mail_delivery_method
   # No SMTP host is configured: nothing connects.
   assert_equal "", Cybertrain.config.smtp_host
@@ -161,6 +177,91 @@ test "Job.work_one_after claims above the floor whatever the run_at, of a kind w
   assert_equal ["early", "leaf"], PERFORMED
   refute Cybertrain::Job.work_one_after(below)
   assert_enqueued_jobs 1, "early"
+end
+
+test "a job that raises fails perform_enqueued_jobs with its kind and error, performed once" do
+  fresh_db
+  boom = assert_raises("AssertionFailed") { perform_enqueued_jobs { Cybertrain::Job.enqueue("boom", "{}") } }
+  assert_equal "perform_enqueued_jobs: the job \"boom\" (id 1) raised RuntimeError: always (now queued)", boom
+  assert_equal ["boom"], PERFORMED
+end
+
+test "a job that fails once is not retried in the block; its retry runs once travel_to brings it due" do
+  fresh_db
+  flaky = assert_raises("AssertionFailed") { perform_enqueued_jobs { Cybertrain::Job.enqueue("flaky", "{}") } }
+  assert_equal "perform_enqueued_jobs: the job \"flaky\" (id 1) raised ArgumentError: not yet (now queued)", flaky
+  assert_equal ["flaky 1"], PERFORMED
+  # The retry waits for its run_at (60 s), on the test's clock.
+  refute Cybertrain::Job.work_one_after(0)
+  travel_to(2.minutes.from_now) { assert Cybertrain::Job.work_one_after(0) }
+  assert_equal ["flaky 1", "flaky 2"], PERFORMED
+  assert_no_enqueued_jobs
+end
+
+test "the count is distinct jobs, and jobs run at the test's clock" do
+  fresh_db
+  three = perform_enqueued_jobs do
+    Cybertrain::Job.enqueue("leaf", "{}")
+    Cybertrain::Job.enqueue("leaf", "{}")
+    Cybertrain::Job.enqueue("early", "{}", run_at: 1.day.from_now)
+  end
+  assert_equal 3, three
+  travel_to(Time.at(2_000_000_000)) do
+    assert_equal 1, perform_enqueued_jobs { Cybertrain::Job.enqueue("stamp", "{}") }
+  end
+  assert_equal ["leaf", "leaf", "early", "stamp 2000000000"], PERFORMED
+end
+
+test "a mail job that fails names its error in assert_emails; assert_no_emails without a block" do
+  fresh_db
+  Cybertrain.config.smtp_from = ""
+  nosender = assert_raises("AssertionFailed") { assert_emails(1) { hello_mail("Nobody").deliver_later } }
+  Cybertrain.config.smtp_from = "noreply@example.com"
+  assert_equal "assert_emails: the job \"cybertrain mail\" (id 1) raised ArgumentError: the from address is empty (now discarded)",
+               nosender
+  assert_no_emails
+  hello_mail("One").deliver_now
+  none = assert_raises("AssertionFailed") { assert_no_emails }
+  assert_equal "Expected 0 emails, got 1", none
+end
+
+# A boot of its own (stage_config's shape in test/boot_stages.rb): the
+# warning is logged once outside the test environment.
+def mail_boot_log(env)
+  c = Cybertrain::Config.new
+  c.env = env
+  c.database_path = ":memory:"
+  c.secret_key_base = "test-mail-jobs-secret"
+  c.views_root = "tmp/test_mail_jobs/views"
+  c.public_root = "tmp/test_mail_jobs/public"
+  c.mail_delivery_method = :test
+  views = { "" => "" }
+  views.delete("")
+  views["pages/index.html.erb"] = "<h1>ok</h1>\n"
+  saved = Cybertrain.logger
+  sink = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(sink)
+  app = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" },
+                                    views: views, config: c)
+  app.boot
+  app.shutdown
+  Cybertrain::Runtime.reset!
+  Cybertrain.logger = saved
+  sink.string
+end
+
+test "boot warns about :test delivery outside the test environment, and not in it" do
+  fresh_db
+  warning = "mail_delivery_method is :test outside the test environment (env production): " \
+            "mail is stored in memory (Mailer.deliveries) and not sent"
+  production = mail_boot_log("production")
+  assert_includes production, warning
+  assert_nil production.index("mail_delivery_method", production.index("mail_delivery_method").to_i + 1)
+  assert_not_includes mail_boot_log("test"), "mail_delivery_method"
+  smtp = Cybertrain::Config.new
+  smtp.env = "production"
+  smtp.mail_delivery_method = :smtp
+  assert_equal "", smtp.mail_delivery_warning
 end
 
 Cybertrain::Test.run!

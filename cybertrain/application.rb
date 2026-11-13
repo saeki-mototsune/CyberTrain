@@ -152,6 +152,8 @@ module Cybertrain
       # assignments are checked together.
       problem = c.validation_error
       fail_boot(problem) unless problem.empty?
+      warning = c.mail_delivery_warning
+      Cybertrain.logger.warn(warning) unless warning.empty?
       # A cron task's job: kind no Job.handle registered (Scheduler.start!
       # raises the same message; here it is a boot error before the banner).
       job_kinds_error = Scheduler.job_kinds_error

@@ -167,6 +167,9 @@ test "mail_delivery_method from the environment and its check" do
   ENV["CYBERTRAIN_ENV"] = "development"
   ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "test"
   assert_equal :test, Cybertrain::Config.new.mail_delivery_method
+  # In any case, as CYBERTRAIN_SMTP_TLS.
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "SMTP"
+  assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method
   # An empty variable counts as unset.
   ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = ""
   assert_equal :smtp, Cybertrain::Config.new.mail_delivery_method

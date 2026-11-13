@@ -101,15 +101,16 @@ module Cybertrain
         true
       end
 
-      # {Job.work_one_after}: claims the queued job with the lowest id above
-      # `floor` (of `kind` unless ""), whatever its run_at, runs it at `now`
-      # and has its outcome written. True when a job was claimed.
-      def self.work_one_after(floor, kind, now)
+      # {Job.work_one_after_id}: claims the queued job with the lowest id
+      # above `floor` (of `kind` unless ""; a retry only once due at
+      # `now`), runs it at `now` and has its outcome written. Its id, -1 when
+      # none was claimed.
+      def self.work_one_after_id(floor, kind, now)
         run = Store.claim_after(floor, kind, now, Job.process_label, NO_TICKET)
-        return false if run.run_id < 0
+        return -1 if run.run_id < 0
 
         finish_in_flight(run)
-        true
+        run.run_id
       end
 
       # finish between in_flight_add and in_flight_remove, in a plain method

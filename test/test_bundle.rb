@@ -314,14 +314,18 @@ test "CYBERTRAIN_TEST_DATABASE is honoured" do
   # and that default does not count as given.
   refute c.csrf
   refute c.csrf_given?
+  # Mail has a sender (Rails' from@example.com) unless one was given.
+  assert_equal "from@example.com", c.smtp_from
   assert_nil Cybertrain::Test::Bundle.check_database!
   app.shutdown
   Cybertrain::Runtime.reset!
   # ... unless config/app.rb set it.
   c = bundle_config("test", named)
   c.csrf = true
+  c.smtp_from = "app@example.com"
   app = bundle_boot
   assert c.csrf
+  assert_equal "app@example.com", c.smtp_from
   app.shutdown
   Cybertrain::Runtime.reset!
   ENV.delete("CYBERTRAIN_TEST_DATABASE")

@@ -17,19 +17,21 @@ module Cybertrain
       # The largest job id before a block, or -1 with no database
       # connected (no deliver_later can have been queued then).
       # @return [Integer]
-      def self.floor
+      def self.job_floor
         return -1 unless DB.connected?
 
         Jobs.max_id
       end
 
       # Performs the "cybertrain mail" jobs queued above `floor` (none when
-      # it is -1); answers how many ran.
+      # it is -1); answers how many ran. A mail job that does not end
+      # `done` (a refused address, no sender) fails the test, naming
+      # `helper` and the error ({Jobs.perform_after}).
       # @return [Integer]
-      def self.deliver_queued(floor)
+      def self.deliver_queued(floor, helper)
         return 0 if floor < 0
 
-        Jobs.perform_after(floor, Mailer::JOB_KIND, "assert_emails")
+        Jobs.perform_after(floor, Mailer::JOB_KIND, helper)
       end
     end
 
@@ -49,7 +51,11 @@ end
 # Passes when the block delivered `count` mails: the messages
 # Mailer.deliveries gained during it, after the mail queued in it with
 # deliver_later was delivered (the "cybertrain mail" jobs queued in the
-# block are performed first; jobs of other kinds stay queued). Without a
+# block are performed first; jobs of other kinds stay queued). A mail job
+# that fails (no sender, a refused address) fails the assertion with its
+# error rather than counting short: `assert_emails: the job "cybertrain
+# mail" (id 2) raised ArgumentError: the from address is empty (now
+# discarded)`. Without a
 # block, passes when Mailer.deliveries holds `count` messages (it is
 # emptied before every test).
 # @example
@@ -67,15 +73,16 @@ def assert_emails(count)
   before = 0
   if block_given?
     before = Cybertrain::Mailer.deliveries.size
-    floor = Cybertrain::Test::Mail.floor
+    floor = Cybertrain::Test::Mail.job_floor
     yield
-    Cybertrain::Test::Mail.deliver_queued(floor)
+    Cybertrain::Test::Mail.deliver_queued(floor, "assert_emails")
   end
   Cybertrain::Test.check_emails(count, Cybertrain::Mailer.deliveries.size - before)
 end
 
 # Passes when the block delivered no mail: `assert_emails(0) { }`, the
-# deliver_later mail queued in it included.
+# deliver_later mail queued in it included. Without a block, passes when
+# Mailer.deliveries is empty.
 # @example
 #   assert_no_emails { post "/passwords", params: { email: "nobody@example.com" } }
 # @yield the code that must send no mail
@@ -83,9 +90,12 @@ end
 # @raise [Cybertrain::Test::AssertionFailed] "Expected 0 emails, got 1"
 # @api public
 def assert_no_emails
-  before = Cybertrain::Mailer.deliveries.size
-  floor = Cybertrain::Test::Mail.floor
-  yield
-  Cybertrain::Test::Mail.deliver_queued(floor)
+  before = 0
+  if block_given?
+    before = Cybertrain::Mailer.deliveries.size
+    floor = Cybertrain::Test::Mail.job_floor
+    yield
+    Cybertrain::Test::Mail.deliver_queued(floor, "assert_no_emails")
+  end
   Cybertrain::Test.check_emails(0, Cybertrain::Mailer.deliveries.size - before)
 end

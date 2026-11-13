@@ -44,31 +44,68 @@ module Cybertrain
       # The most jobs {perform_enqueued_jobs} runs in one call.
       PERFORM_LIMIT = 10_000
 
-      # The largest id in cybertrain_jobs, 0 when it is empty: what a block
-      # helper reads before its block, so that the jobs queued during the
-      # block are the ones above it.
+      # Whether cybertrain_jobs exists in the connected database (read
+      # without creating it: an assertion leaves a database that never used
+      # jobs as it was).
+      # @return [Boolean]
+      def self.table?
+        rows = DB.with { |c| c.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'cybertrain_jobs'") }
+        !rows.empty?
+      end
+
+      # The largest id in cybertrain_jobs, 0 when it is empty or missing:
+      # what a block helper reads before its block, so that the jobs queued
+      # during the block are the ones above it.
       # @return [Integer]
       def self.max_id
-        Job.ensure_installed
+        return 0 unless table?
+
         rows = DB.with { |c| c.execute("SELECT COALESCE(MAX(id), 0) AS n FROM cybertrain_jobs") }
         Cast.int(rows[0]["n"])
       end
 
-      # Runs every queued job above `floor` (of `kind` unless ""), whatever
-      # its run_at, and the jobs those queue, until none is left
-      # ({Job.work_one_after}), and answers how many ran; fails the test
-      # after PERFORM_LIMIT, naming `helper`.
+      # Performs every queued job above `floor` (of `kind` unless ""), in
+      # enqueue order, whatever its run_at, and the jobs those queue, until
+      # none is left ({Job.work_one_after_id}), and answers how many
+      # distinct jobs ran. A job whose attempt did not end `done` (its
+      # handler raised, or it discarded or retried itself) fails the test
+      # at once, naming `helper`, the job's kind and its recorded error, as
+      # Rails' inline jobs raise into the test; so a failed attempt is never
+      # retried inside the block. Fails after PERFORM_LIMIT jobs too.
       # @return [Integer]
       def self.perform_after(floor, kind, helper)
-        count = 0
-        while Job.work_one_after(floor, kind)
-          count += 1
-          if count >= PERFORM_LIMIT
+        return 0 unless table?
+
+        seen = Array.new(0) { 0 }
+        while true
+          id = Job.work_one_after_id(floor, kind)
+          break if id < 0
+
+          seen << id unless seen.include?(id)
+          check_performed(id, helper)
+          if seen.size >= PERFORM_LIMIT
             text = "#{helper} ran #{PERFORM_LIMIT} jobs; a job re-enqueues itself"
             Cybertrain::Test.fail_with(text)
           end
         end
-        count
+        seen.size
+      end
+
+      # Fails the test unless the job `id` ended `done`, e.g.
+      # `perform_enqueued_jobs: the job "BoomJob" (id 3) raised
+      # RuntimeError: boom (now queued)`.
+      # @return [nil]
+      def self.check_performed(id, helper)
+        rows = DB.with { |c| c.execute("SELECT kind, state, last_error FROM cybertrain_jobs WHERE id = ?", [id]) }
+        return nil if rows.empty?
+
+        row = rows[0]
+        state = Cast.str(row["state"])
+        return nil if state == "done"
+
+        text = "#{helper}: the job #{Cast.str(row["kind"]).inspect} (id #{id}) raised #{Cast.str(row["last_error"])} (now #{state})"
+        Cybertrain::Test.fail_with(text)
+        nil
       end
 
       # `{"user_id" => 1}` as the failure message shows the wanted args.
@@ -143,9 +180,13 @@ end
 #
 # With a block (Rails' inline form): runs the block, then performs on the
 # calling thread every job queued during it, and the jobs those queue,
-# whatever their run_at (`Job.work_one_after`), and returns how many it
-# ran; `now` is not used. Jobs queued before the block stay queued. A retry
-# is performed again at once, until the job's attempts run out.
+# whatever their run_at, in enqueue order (`Job.work_one_after`), and
+# returns how many distinct jobs it ran; `now` is not used. Jobs queued
+# before the block stay queued. As Rails' inline jobs raise into the test,
+# a job whose attempt does not end `done` (its handler raised, or it
+# discarded or rescheduled itself) fails the test at once with its kind
+# and error: `perform_enqueued_jobs: the job "BoomJob" (id 3) raised
+# RuntimeError: boom (now queued)`. It is not retried in the block.
 #
 # Either form fails the test after 10,000 jobs: a job that enqueues itself
 # would otherwise never let the test end.

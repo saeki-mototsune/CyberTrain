@@ -208,6 +208,18 @@ module Cybertrain
       "mail_delivery_method must be :smtp or :test (got #{delivery.inspect})"
     end
 
+    # The warning Application#boot logs (and boots on) when
+    # mail_delivery_method is :test outside the test environment: every
+    # mail is kept in memory and none is sent. "" otherwise.
+    # @return [String]
+    # @api public
+    def mail_delivery_warning
+      return "" unless @mail_delivery_method == :test && @env != "test"
+
+      "mail_delivery_method is :test outside the test environment (env #{@env}): " \
+        "mail is stored in memory (Mailer.deliveries) and not sent"
+    end
+
     # The error Application#boot reports when an auth_* setting is out of
     # range: auth_lockout_attempts and auth_idle_timeout below 0 (0 is
     # off), auth_lockout_period and auth_remember_for below 1; "" when all

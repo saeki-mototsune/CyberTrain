@@ -423,9 +423,30 @@ attr_accessor :trusted_proxies
     attr_accessor :smtp_password
 
     # The default sender address, `""`, from `CYBERTRAIN_SMTP_FROM`.
+    # `cybertrain test` gives its tests `"from@example.com"` (Rails'
+    # convention) unless the variable or config/app.rb set one.
     # @return [String]
     # @api public
-    attr_accessor :smtp_from
+    attr_reader :smtp_from
+
+    # Sets {#smtp_from}, and records that it was given.
+    # @param value [String]
+    # @api public
+    def smtp_from=(value)
+      @smtp_from = value
+      @smtp_from_given = true
+    end
+
+    # Sets {#smtp_from} to `value` unless CYBERTRAIN_SMTP_FROM or an
+    # assignment gave one, without counting as given: `cybertrain test`'s
+    # default sender.
+    # @param value [String]
+    # @return [nil]
+    # @api private
+    def smtp_from_unless_given(value)
+      @smtp_from = value unless @smtp_from_given
+      nil
+    end
 
     # How the connection is protected, `"starttls"`, from
     # `CYBERTRAIN_SMTP_TLS`: `"starttls"` (upgrade a plain connection, port
@@ -437,13 +458,15 @@ attr_accessor :trusted_proxies
     attr_accessor :smtp_tls
 
     # How {Mailer} delivers, from `CYBERTRAIN_MAIL_DELIVERY_METHOD`
-    # (`smtp` or `test`): `:smtp` sends through the server above; `:test`
-    # (Rails' `delivery_method = :test`) checks each message and appends
-    # it to {Mailer.deliveries} instead of connecting. The default is
-    # `:test` in the test environment (CYBERTRAIN_ENV=test, which
-    # `cybertrain test` sets) and `:smtp` in every other. A test that
+    # (`smtp` or `test`, in any case): `:smtp` sends through the server
+    # above; `:test` (Rails' `delivery_method = :test`) checks each message
+    # and appends it to {Mailer.deliveries} instead of connecting. The
+    # default is `:test` in the test environment (CYBERTRAIN_ENV=test,
+    # which `cybertrain test` sets) and `:smtp` in every other. A test that
     # reads mail at a `Test::SmtpReceiver` sets `:smtp` first. Boot refuses
-    # anything else ({#mail_delivery_error}).
+    # anything else ({#mail_delivery_error}), and logs a warning for `:test`
+    # outside the test environment ({#mail_delivery_warning}): no mail is
+    # sent then.
     # @example a test of the SMTP path
     #   Cybertrain.config.mail_delivery_method = :smtp
     # @return [Symbol]
@@ -453,7 +476,7 @@ attr_accessor :trusted_proxies
     # CYBERTRAIN_MAIL_DELIVERY_METHOD as a Symbol, or, when it is unset or
     # empty, :test for the test environment and :smtp for any other.
     def self.default_mail_delivery_method(env)
-      given = env_or("CYBERTRAIN_MAIL_DELIVERY_METHOD", "")
+      given = env_or("CYBERTRAIN_MAIL_DELIVERY_METHOD", "").downcase
       return given.to_sym unless given.empty?
 
       env == "test" ? :test : :smtp
@@ -1045,6 +1068,7 @@ end
       @smtp_user = Config.env_or("CYBERTRAIN_SMTP_USER", "")
       @smtp_password = Config.env_or("CYBERTRAIN_SMTP_PASSWORD", "")
       @smtp_from = Config.env_or("CYBERTRAIN_SMTP_FROM", "")
+      @smtp_from_given = !@smtp_from.empty?
       @smtp_tls = Config.env_or("CYBERTRAIN_SMTP_TLS", "starttls").downcase
       @mail_delivery_method = Config.default_mail_delivery_method(@env)
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i

@@ -10,4 +10,4 @@ ok   Cybertrain::Test.run! does nothing inside the bundle
 ok   boot refuses a database that is not the test one
 ok   CYBERTRAIN_TEST_DATABASE is honoured
 ok   every test starts in the configured time zone
-12 tests, 68 assertions, 0 failures
+12 tests, 70 assertions, 0 failures

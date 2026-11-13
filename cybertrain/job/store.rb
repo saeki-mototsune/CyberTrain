@@ -480,11 +480,13 @@ module Cybertrain
       end
 
       # Claims the queued row with the lowest id above `floor`, of `kind`
-      # unless it is "", whatever its run_at (a test's inline jobs,
-      # {Job.work_one_after}), as {claim} claims a due one: `running` with
-      # one more attempt, `claimed_by`, a first heartbeat at `now`. The Run's
-      # run_id is -1 when there is none. Concurrency limits are not
-      # consulted: the caller runs one job at a time on its own thread.
+      # unless it is "" (a test's inline jobs, {Job.work_one_after}): a row
+      # never attempted whatever its run_at, a retry only once its run_at
+      # is due at `now`. As {claim} claims a due one: `running` with one
+      # more attempt, `claimed_by`, a first heartbeat at `now`. The Run's
+      # run_id is -1 when there is none. Ordered by id (enqueue order), not
+      # by run_at as a worker claims. Concurrency limits are not consulted:
+      # the caller runs one job at a time on its own thread.
       def self.claim_after(floor, kind, now, label, ticket)
         ensure_installed
         id = -1
@@ -493,8 +495,9 @@ module Cybertrain
         attempts = 0
         DB.transaction(immediate: true) do |c|
           if Job.claim_open?(ticket)
-            sql = +"SELECT id, kind, payload, attempts FROM cybertrain_jobs WHERE state = 'queued' AND id > ?"
-            binds = Cast.binds(floor)
+            sql = +"SELECT id, kind, payload, attempts FROM cybertrain_jobs WHERE state = 'queued' AND id > ? " \
+                   "AND (attempts = 0 OR run_at <= ?)"
+            binds = Cast.binds(floor, now)
             unless kind.empty?
               sql << " AND kind = ?"
               binds << kind
