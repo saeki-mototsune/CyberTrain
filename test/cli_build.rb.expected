@@ -44,6 +44,7 @@ dist/public/
 run:  cd dist && ./blog migrate && ./blog
 ok   releasing the build lock leaves a lock another taker holds at the path
 ok   a build lock whose PID cannot be written is closed and removed, and the error goes on
+ok   a build lock whose close fails as well still raises the write's error
 
 dist/blog       (production by default)
 dist/public/
@@ -62,4 +63,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-36 tests, 264 assertions, 0 failures
+37 tests, 269 assertions, 0 failures

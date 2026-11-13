@@ -186,6 +186,18 @@ module Cybertrain
         rescue StandardError
           nil
         end
+        # A close that fails (the flush of a write that already failed) has
+        # still released the descriptor, and with it the flock; its error
+        # must not replace the one that brought us here.
+        begin
+          close_file(f)
+        rescue StandardError
+          nil
+        end
+        nil
+      end
+
+      def close_file(f)
         f.close
         nil
       end

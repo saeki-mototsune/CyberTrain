@@ -333,6 +333,15 @@ class FullDiskLock < Cybertrain::CLI::BuildLock
   end
 end
 
+# A full disk whose close fails too: CRuby retries the failed flush on
+# close and raises again, after releasing the descriptor.
+class FullDiskCloseLock < FullDiskLock
+  def close_file(f)
+    f.close
+    raise IOError, "close failed too"
+  end
+end
+
 # A build during which another process deletes the lock file and takes a
 # new one (as a reader still on the old PID-and-age rule might delete it).
 class TakeoverRunner < FakeRunner
@@ -542,6 +551,26 @@ test "a build lock whose PID cannot be written is closed and removed, and the er
   warm.release
   before = open_descriptors
   assert_raises("IOError") { FullDiskLock.new(".").take }
+  refute File.exist?(LOCK)
+  assert_equal before, open_descriptors
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  lock.release
+end
+
+test "a build lock whose close fails as well still raises the write's error" do
+  clear_lock
+  warm = Cybertrain::CLI::BuildLock.new(".")
+  assert warm.take
+  warm.release
+  before = open_descriptors
+  message = ""
+  begin
+    FullDiskCloseLock.new(".").take
+  rescue IOError => e
+    message = e.message
+  end
+  assert_equal "No space left on device", message
   refute File.exist?(LOCK)
   assert_equal before, open_descriptors
   lock = Cybertrain::CLI::BuildLock.new(".")
