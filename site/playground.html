@@ -130,7 +130,7 @@
     <h2 id="h-try"><span class="step-num" aria-hidden="true">03</span>What to try</h2>
     <ul class="points">
       <li><strong>Edit a view.</strong> It shows on the next reload: views are read from disk on every request.</li>
-      <li><strong>Add a validation.</strong> Ruby is compiled, so a Ruby change is a full rebuild, about a minute, after which the server restarts by itself.</li>
+      <li><strong>Add a validation.</strong> It shows on the next reload, served by CRuby, the standard Ruby, while Spinel compiles the app in the background; about a minute later the compiled binary takes over. A line in the corner of the page says which one served it.</li>
       <li><strong>Carry on with the tutorial</strong> from <a href="tutorial.html#scaffold-comment">step 08, Scaffold comments</a>.</li>
       <li><strong>Start a fresh app.</strong> <code>cybertrain new</code> works in the codespace with no network.</li>
     </ul>

@@ -130,7 +130,7 @@
     <h2 id="h-try"><span class="step-num" aria-hidden="true">03</span>試してみること</h2>
     <ul class="points">
       <li><strong>ビューを編集する。</strong>次にリロードしたときに反映されます：ビューはリクエストのたびにディスクから読み込まれます。</li>
-      <li><strong>バリデーションを追加する。</strong>Ruby はコンパイルされるため、Ruby の変更は完全な再ビルド（約 1 分）になり、その後サーバーは自動で再起動します。</li>
+      <li><strong>バリデーションを追加する。</strong>次の再読み込みで反映されます。Spinel がバックグラウンドでアプリをコンパイルしている間は、標準の Ruby である CRuby がページを返し、約 1 分後にコンパイル済みバイナリが引き継ぎます。どちらが返したページかは、ページの隅の 1 行に表示されます。</li>
       <li><strong>チュートリアルの続きを進める：</strong><a href="tutorial.html#scaffold-comment">ステップ 08「コメントをスキャフォールドする」</a>から。</li>
       <li><strong>新しいアプリを始める。</strong><code>cybertrain new</code> は codespace 内でネットワークなしで動きます。</li>
     </ul>
