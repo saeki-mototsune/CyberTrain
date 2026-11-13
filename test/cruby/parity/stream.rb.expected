@@ -1,6 +1,7 @@
 ok   broadcast writes a row and returns increasing ids
 ok   broadcast refuses an invalid stream name
-FAIL sign round-trips through verify: expected ["été"], got ["\xC3\xA9t\xC3\xA9"]
+FAIL sign round-trips through verify: Expected: ["été"]
+  Actual: ["\xC3\xA9t\xC3\xA9"]
 ok   verify refuses a tampered, empty or foreign token
 ok   a stream token is not a session cookie
 ok   verify refuses tokens whose names are invalid, even when signed
