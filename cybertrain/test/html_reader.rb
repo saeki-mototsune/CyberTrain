@@ -273,15 +273,19 @@ module Cybertrain
             next
           end
           add_node_texts(nodes, stack, decode_references(s.byteslice(run, i - run))) if i > run
-          case kind
-          when 1 # comment
+          # An if chain, not a statement `case kind`
+          # (spikes/phase5/case_nullable_temp.rb): Spinel compiles it as if
+          # the subject were nullable, with an undeclared temporary, in a
+          # program where an earlier statement `case` on a getbyte value
+          # (Html.escape's) got the same temporary number.
+          if kind == 1 # comment
             close = markup_end(s, i, 1, false)
             if close < 0
               message = "unterminated comment at byte #{i}"
               raise Malformed, message
             end
             i = close
-          when 2 # <!doctype ...>, <?...?>, other <!...>
+          elsif kind == 2 # <!doctype ...>, <?...?>, other <!...>
             foreign = in_foreign?(nodes, stack)
             close = markup_end(s, i, 2, foreign)
             if foreign && s.byteslice(i, 9) == "<![CDATA["
@@ -300,7 +304,7 @@ module Cybertrain
               raise Malformed, message
             end
             i = close
-          when 3 # end tag
+          elsif kind == 3 # end tag
             i = read_end_tag(s, i, nodes, stack)
           else # start tag
             i = read_start_tag(s, i, nodes, stack)
