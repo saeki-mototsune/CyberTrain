@@ -15,8 +15,8 @@
 #
 # One line per step, `ok N ...` or `FAIL N ...: <reason>`: 1, 2, then 13 to
 # 15 (checks of the runtime indicator, made as soon as what they look at
-# exists, before step 3's save changes it), then 3 to 12; then the exit
-# status: 1 when any step failed. A step that fails does not
+# exists, before step 3's save changes it), then 3 to 8, 16 (made at step
+# 8's second start), 9 to 12; then the exit status: 1 when any step failed. A step that fails does not
 # stop the run; the steps after it check their own preconditions. On a FAIL
 # the tail of the supervisor's output and of tmp/rebuild.log go to stderr,
 # since the copy itself is removed.
@@ -45,7 +45,8 @@
 #  8  (the supervisor dying uncleanly) Once the build started in step 7 is
 #     over, SIGKILL the supervisor; the child it leaves still holds the port.
 #     `cybertrain server PORT` again stops that child (P14: the line naming
-#     its PID, the PID gone) and answers 200 from cruby within 5 s.
+#     its PID, the PID gone) and answers 200 within 5 s (from spinel, at
+#     once, when the binary is up to date: step 16).
 #  9  A syntax error in a model: a GET answers 503 naming SyntaxError within
 #     2 s; the fix brings 200 back.
 # 10  A method CRuby never calls, holding a call to a class method no class
@@ -71,6 +72,9 @@
 #     the indicator's script with a tag that carries the nonce of that
 #     response's Content-Security-Policy, and the script answers 200 as
 #     text/javascript.
+# 16  (an up-to-date binary is reused, not compiled again) Step 8's second
+#     start, on the binary step 7's build made, answers from spinel within
+#     5 s of the start, and build/bin/blog keeps its modification time.
 #
 # Ruby rather than sh: the timing steps need a monotonic clock, requests
 # with their own timeouts, a request loop running beside the steps, and a
@@ -103,6 +107,7 @@ STREAM_HANDOVER = 12
 LOCK_QUIET = 2
 LOCK_RELEASE = 10
 RESTART = 5
+UP_TO_DATE_SPINEL = 5
 SYNTAX_ERROR = 2
 SYNTAX_FIX = 5
 BUILD_FAILS = 300
@@ -482,6 +487,7 @@ def main
     port = run.port
     visitor = Visitor.new(port)
     up = nil
+    reused = nil
     article = "/articles/1"
     started = nil
     first_page = nil
@@ -677,6 +683,7 @@ def main
         s if s && (%w[failed binary_failed].include?(s["build"]) || (s["serving"] == "spinel" && s["build"] == "ready"))
       end
       check(done, "the build started in step 7 was not over within #{NEXT_SPINEL} s")
+      reused = { build: done["build"], mtime: File.mtime(run.path("build/bin/blog")) }
       left = run.child_pid
       check(left, "no tmp/cybertrain-dev/child.pid")
       Process.kill(:KILL, run.supervisor)
@@ -685,16 +692,39 @@ def main
       check(held && held.status == 200, "after SIGKILL the child #{left} should still answer on the port; got #{describe(held)}")
       offset = run.output_size
       restarted = now
+      reused[:started] = restarted
+      reused[:left] = left
+      stopping = "=> stopping a child left by an earlier cybertrain server (pid #{left})"
       run.start_server
+      # The leftover answers on the port until the new supervisor has
+      # stopped it: only a response after that is the new one's.
       res, took = until_true(RESTART, from: restarted) do
+        next nil unless run.output_since(offset).include?(stopping) && !run.leftovers.include?(left)
+
         r = visitor.get("/articles", read_timeout: RESTART)
-        r if r && r.status == 200 && r.runtime == "cruby"
+        r if r && r.status == 200
       end
-      check(res, "no 200 from cruby within #{RESTART} s of the second start (last: #{describe(visitor.get('/articles', read_timeout: 2))})")
-      check(run.output_since(offset).include?("=> stopping a child left by an earlier cybertrain server (pid #{left})"),
-            "the second start did not say it stopped the leftover child #{left}")
+      check(res, "no 200 within #{RESTART} s of the second start (last: #{describe(visitor.get('/articles', read_timeout: 2))})")
+      check(run.output_since(offset).include?(stopping), "the second start did not say it stopped the leftover child #{left}")
       check(!run.leftovers.include?(left), "the leftover child #{left} is still running")
-      "after SIGKILL the leftover child (#{held.runtime}, pid #{left}) was stopped; 200 from cruby #{secs(took)} after the second start"
+      "after SIGKILL the leftover child (#{held.runtime}, pid #{left}) was stopped; 200 from #{res.runtime} #{secs(took)} after the second start"
+    end
+
+    step(16, run) do
+      check(reused && reused[:started], "step 8 did not start the server a second time")
+      check(reused[:build] == "ready", "step 7's build ended #{reused[:build]}, so the binary is not up to date")
+      res, took = until_true(UP_TO_DATE_SPINEL, from: reused[:started]) do
+        next nil if run.leftovers.include?(reused[:left])
+
+        r = visitor.get("/articles", read_timeout: UP_TO_DATE_SPINEL)
+        r if r && r.status == 200 && r.runtime == "spinel"
+      end
+      check(res, "no 200 from spinel within #{UP_TO_DATE_SPINEL} s of the second start " \
+                 "(last: #{describe(visitor.get('/articles', read_timeout: 2))}; tmp/rebuild.log: " \
+                 "#{File.read(run.path('tmp/rebuild.log')).lines.first.to_s.strip rescue 'none'})")
+      mtime = File.mtime(run.path("build/bin/blog"))
+      check(mtime == reused[:mtime], "build/bin/blog was replaced: #{reused[:mtime].strftime('%T.%N')} became #{mtime.strftime('%T.%N')}")
+      "the second start answered from spinel #{secs(took)} after it; build/bin/blog kept its time"
     end
 
     step(9, run) do

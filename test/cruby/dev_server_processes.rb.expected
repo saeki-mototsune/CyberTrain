@@ -11,6 +11,10 @@ ok   a child that cannot be recorded in child.pid is stopped, then reported
 ok   the STDERR tail keeps the last characters of each line; the copy is whole
 ok   while holding the supervisor answers 503; after release_hold a child answers
 ok   a toolchain that refuses --incremental is built again without it, and from then on
+ok   a binary newer than every Ruby file is built with the plain command, so that spin can find it up to date
+ok   a missing binary, or one older than a Ruby file, is built incrementally
+ok   a Ruby file of another -I directory newer than the binary makes the build incremental
+ok   a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag
 ok   a failed build reports its log
 ok   a spin that cannot be started is a failed build with the reason
 ok   cancel_build lets the build's leader clean up after its children are stopped
@@ -28,4 +32,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-30 tests, 112 assertions, 0 failures
+34 tests, 119 assertions, 0 failures

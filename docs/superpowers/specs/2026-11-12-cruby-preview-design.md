@@ -283,7 +283,12 @@ exit status and points at the terminal **(call)**.
 **Spinel build**: `spin build NAME -- --incremental`, falling back to no
 flag exactly as `Dev::Rebuilder` does, output to `tmp/rebuild.log`. Gen is
 not compiled or run by spin here: the CRuby gen has already written
-`gen/`. That removes gen's 3.3 s from the build as well.
+`gen/`. That removes gen's 3.3 s from the build as well. Given that flag,
+spin skips its own up-to-date check and compiles every time (60 to 100 s
+for the blog), so a build whose binary is newer than every `*.rb` of the
+application and of the other `-I` directories (the framework) is plain
+`spin build NAME`: spin finds it up to date in a fraction of a second, or
+builds it in full when it sees another input (plan P23).
 
 **State file** (`tmp/` in the application; written whole and renamed into
 place): generation, what is serving (`cruby`, `spinel`, `holding`, or `none` while no child runs), build state (`building`,
@@ -471,7 +476,8 @@ What changes:
   hold under the supervisor: CRuby gen leaves unchanged files alone (it
   does: `Runner.sync_file` writes only a file whose content differs), the
   startup build goes through `spin build` so that an up-to-date binary is
-  reused, and the image is built with the shim's compiled libraries
+  reused (plain `spin build NAME`, without `-- --incremental`, which
+  would make spin compile it again: plan P23), and the image is built with the shim's compiled libraries
   already in the cache (section 7), so the first CRuby child does not run
   the C compiler either. The `cp -a` rule for copies of the blog stays.
 - `playground/smoke.sh`: A3 and E1 (nothing compiled at start) keep their

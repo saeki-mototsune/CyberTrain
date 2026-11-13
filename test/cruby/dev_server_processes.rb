@@ -46,7 +46,7 @@ end
 # A temporary application directory with the given scripts written into
 # bin/stand-ins/; yields the runner, its listener and the directory. Every
 # process the runner still owns is stopped at the end.
-def with_runner(scripts, watch_interval: 0.05)
+def with_runner(scripts, watch_interval: 0.05, load_path: [REPO])
   Dir.mktmpdir("dev-server-processes") do |root|
     root = File.realpath(root)
     Dir.mkdir(File.join(root, "bin"))
@@ -58,7 +58,7 @@ def with_runner(scripts, watch_interval: 0.05)
       paths[role] = path
     end
     listener = TCPServer.new("127.0.0.1", 0)
-    runner = StandIn.new(root: root, name: "app", port: listener.addr[1], load_path: [REPO, root],
+    runner = StandIn.new(root: root, name: "app", port: listener.addr[1], load_path: load_path + [root],
                          listener: listener, out: StringIO.new, err: StringIO.new)
     runner.scripts = paths
     runner.ready_timeout = 5
@@ -379,6 +379,94 @@ test "a toolchain that refuses --incremental is built again without it, and from
     poll_until(runner, rec) { rec.events.size > 1 }
     assert_equal [:build, 5, true, "built\n"], rec.events[1]
     assert_equal ["build app -- --incremental", "build app", "build app"], File.read(File.join(root, "spin-calls.txt")).lines.map(&:chomp)
+  end
+end
+
+# Records its arguments, as SPIN does, and builds.
+RECORDING_SPIN = <<~RUBY
+  File.open(File.join(Dir.pwd, "spin-calls.txt"), "a") { |f| f.puts ARGV.join(" ") }
+  puts "built"
+RUBY
+
+# build/bin/app, written after every Ruby file of the application (the
+# stand-ins included), whose times go back a minute.
+def write_fresh_binary(root)
+  past = Time.now - 60
+  Dir.glob(File.join(root, "**", "*.rb")).each { |path| File.utime(past, past, path) }
+  FileUtils.mkdir_p(File.join(root, "build", "bin"))
+  File.write(File.join(root, "build", "bin", "app"), "binary")
+end
+
+def spin_calls(root)
+  File.read(File.join(root, "spin-calls.txt")).lines.map(&:chomp)
+end
+
+# spin's own up-to-date check is skipped when it is given spinel flags:
+# `spin build NAME -- --incremental` recompiles a binary that is up to date.
+# A binary newer than every Ruby file (Build.binary_stale?, the rule of the
+# compiled loop) gets the plain command, which spin answers "up to date".
+test "a binary newer than every Ruby file is built with the plain command, so that spin can find it up to date" do
+  with_runner({ spin: RECORDING_SPIN }) do |runner, _listener, root|
+    write_fresh_binary(root)
+    rec = Recorder.new
+    runner.start_build(1)
+    poll_until(runner, rec) { !rec.events.empty? }
+    assert_equal [[:build, 1, true, "built\n"]], rec.events
+    assert_equal ["build app"], spin_calls(root)
+  end
+end
+
+test "a missing binary, or one older than a Ruby file, is built incrementally" do
+  with_runner({ spin: RECORDING_SPIN }) do |runner, _listener, root|
+    rec = Recorder.new
+    runner.start_build(1)
+    poll_until(runner, rec) { rec.events.size == 1 }
+    write_fresh_binary(root)
+    File.write(File.join(root, "app.rb"), "# saved after the build\n")
+    runner.start_build(2)
+    poll_until(runner, rec) { rec.events.size == 2 }
+    write_fresh_binary(root)
+    runner.start_build(3)
+    poll_until(runner, rec) { rec.events.size == 3 }
+    assert_equal [[:build, 1, true, "built\n"], [:build, 2, true, "built\n"], [:build, 3, true, "built\n"]], rec.events
+    assert_equal ["build app -- --incremental", "build app -- --incremental", "build app"], spin_calls(root)
+  end
+end
+
+# spin rebuilds after a change to a Ruby file of a path dependency (the
+# framework, among the -I directories), whichever file it is.
+test "a Ruby file of another -I directory newer than the binary makes the build incremental" do
+  Dir.mktmpdir("dev-server-framework") do |framework|
+    FileUtils.mkdir_p(File.join(framework, "cybertrain"))
+    File.write(File.join(framework, "cybertrain", "base.rb"), "# the framework\n")
+    with_runner({ spin: RECORDING_SPIN }, load_path: [framework]) do |runner, _listener, root|
+      past = Time.now - 120
+      File.utime(past, past, File.join(framework, "cybertrain", "base.rb"))
+      write_fresh_binary(root)
+      rec = Recorder.new
+      runner.start_build(1)
+      poll_until(runner, rec) { rec.events.size == 1 }
+      File.write(File.join(framework, "cybertrain", "base.rb"), "# edited after the build\n")
+      runner.start_build(2)
+      poll_until(runner, rec) { rec.events.size == 2 }
+      assert_equal ["build app", "build app -- --incremental"], spin_calls(root)
+    end
+  end
+end
+
+test "a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag" do
+  with_runner({ spin: SPIN }) do |runner, _listener, root|
+    write_fresh_binary(root)
+    rec = Recorder.new
+    runner.start_build(1)
+    poll_until(runner, rec) { rec.events.size == 1 }
+    File.write(File.join(root, "app.rb"), "# saved after the build\n")
+    runner.start_build(2)
+    poll_until(runner, rec) { rec.events.size == 2 }
+    runner.start_build(3)
+    poll_until(runner, rec) { rec.events.size == 3 }
+    assert_equal [[:build, 1, true, "built\n"], [:build, 2, true, "built\n"], [:build, 3, true, "built\n"]], rec.events
+    assert_equal ["build app", "build app -- --incremental", "build app", "build app"], spin_calls(root)
   end
 end
 

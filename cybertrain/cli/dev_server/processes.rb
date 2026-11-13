@@ -150,7 +150,13 @@ module Cybertrain
           ruby_prefix + ["bin/gen.rb"]
         end
 
-        # gen has already run under CRuby: spin only compiles.
+        # gen has already run under CRuby: spin only compiles. Given spinel
+        # flags, spin skips its own up-to-date check and compiles every time
+        # (measured 2026-11-13 on examples/blog: `spin build blog` answers
+        # "build blog (up to date)" at once, `spin build blog --
+        # --incremental` takes 60 to 100 s and replaces the binary), so the
+        # incremental build is for a binary that is out of date
+        # (incremental_build?).
         def build_command(incremental)
           command = ["spin", "build", @name]
           incremental ? command + ["--", "--incremental"] : command
@@ -457,9 +463,9 @@ module Cybertrain
         # The build in a process group of its own, whose id (its PID) goes
         # to build.pid: a supervisor killed outright leaves the build
         # running, and the next one stops it (DevServer.stop_leftover_build).
-        def spawn_build
+        def spawn_build(incremental)
           FileUtils.mkdir_p(File.join(@root, "tmp"))
-          pid = Process.spawn(child_env, *build_command(@incremental),
+          pid = Process.spawn(child_env, *build_command(incremental),
                               chdir: @root, in: File::NULL, [:out, :err] => [File.join(@root, BUILD_LOG), "w"],
                               pgroup: true)
           begin
@@ -471,6 +477,35 @@ module Cybertrain
             nil
           end
           pid
+        end
+
+        # Whether this build is the incremental one: unless the toolchain
+        # refused the flag, when build/bin/NAME is missing or not newer than
+        # every Ruby file of the application (Build.binary_stale?, the rule
+        # the compiled loop's run_server applies, read as there after gen,
+        # which rewrites only the generated files whose text changed), or
+        # not newer than every Ruby file of the other -I directories (the
+        # framework, a path dependency: spin rebuilds after a change to any
+        # of its Ruby files, measured 2026-11-13 with a test file of this
+        # repository). A binary that is newer gets the plain `spin build
+        # NAME`: spin's own check decides, and answers "up to date" in a
+        # fraction of a second, or builds when it finds an input these
+        # rules do not look at (spin.toml, the toolchain): a full build,
+        # slower than an incremental one (2 min against 75 s for
+        # examples/blog here) but correct. A view needs no new binary: the
+        # development binary reads app/views/ from disk.
+        def incremental_build?
+          @incremental && (Build.binary_stale?(@root, @name) || dependency_newer?)
+        end
+
+        # A Ruby file in one of the -I directories other than the
+        # application's own is as new as build/bin/NAME or newer (the same
+        # comparison and the same skipped directories as binary_stale?).
+        def dependency_newer?
+          since = Build.mtime_ns(File.join(@root, "build", "bin", @name))
+          @load_path.any? { |dir| dir != @root && File.directory?(dir) && Build.newer_ruby?(dir, since, true) }
+        rescue StandardError
+          true
         end
 
         def poll_spawn_failure(machine)
@@ -506,11 +541,12 @@ module Cybertrain
         # build, reported by the next #poll with the reason (also written to
         # the build log, which the failure's log line points at).
         def launch_build(generation)
-          @build = Job.new(spawn_build, generation, @incremental)
+          incremental = incremental_build?
+          @build = Job.new(spawn_build(incremental), generation, incremental)
           nil
         rescue SystemCallError => e
           @build = nil
-          text = "could not start #{build_command(@incremental).first}: #{e.message}\n"
+          text = "could not start #{build_command(incremental).first}: #{e.message}\n"
           begin
             File.write(File.join(@root, BUILD_LOG), text)
           rescue SystemCallError
