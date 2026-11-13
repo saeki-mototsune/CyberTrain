@@ -237,7 +237,12 @@ module Cybertrain
       #   an unterminated tag, comment or quoted value, or `<div/>`
       # @api public
       def self.parse(html)
-        s = html.to_s
+        raw = html.to_s
+        # A body read as binary (ASCII-8BIT) is read as the UTF-8 it is:
+        # its non-ASCII bytes beside a decoded reference would otherwise be
+        # an Encoding::CompatibilityError under CRuby. A copy: the caller's
+        # String keeps its encoding.
+        s = raw.encoding.to_s == "UTF-8" ? raw : raw.dup.force_encoding("UTF-8")
         nodes = Array.new(0) { HtmlNode.new("", 0, -1, 0) }
         stack = Array.new(0) { 0 }
         n = s.bytesize
