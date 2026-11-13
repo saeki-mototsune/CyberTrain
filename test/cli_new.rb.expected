@@ -357,8 +357,8 @@ Usage:
       Start the development server (default port: the application's,
       3000). Right after a change the application runs under CRuby,
       while Spinel builds it in the background; the compiled binary
-      takes the port when its build succeeds. Each response names the
-      runtime that answered (X-Cybertrain-Runtime: cruby or spinel).
+      takes the port when its build succeeds. The application's
+      responses carry X-Cybertrain-Runtime: cruby or spinel.
       --spinel: the compiled loop only, every change waiting for its
       build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
       when a Ruby file is newer than build/bin/NAME; spin run NAME
@@ -450,8 +450,8 @@ Usage:
       Start the development server (default port: the application's,
       3000). Right after a change the application runs under CRuby,
       while Spinel builds it in the background; the compiled binary
-      takes the port when its build succeeds. Each response names the
-      runtime that answered (X-Cybertrain-Runtime: cruby or spinel).
+      takes the port when its build succeeds. The application's
+      responses carry X-Cybertrain-Runtime: cruby or spinel.
       --spinel: the compiled loop only, every change waiting for its
       build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
       when a Ruby file is newer than build/bin/NAME; spin run NAME
@@ -542,8 +542,8 @@ Usage:
       Start the development server (default port: the application's,
       3000). Right after a change the application runs under CRuby,
       while Spinel builds it in the background; the compiled binary
-      takes the port when its build succeeds. Each response names the
-      runtime that answered (X-Cybertrain-Runtime: cruby or spinel).
+      takes the port when its build succeeds. The application's
+      responses carry X-Cybertrain-Runtime: cruby or spinel.
       --spinel: the compiled loop only, every change waiting for its
       build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
       when a Ruby file is newer than build/bin/NAME; spin run NAME

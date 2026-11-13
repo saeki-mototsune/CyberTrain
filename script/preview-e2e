@@ -349,11 +349,16 @@ end
 
 # Polls the block every `interval` until it returns a truthy value or
 # `bound` seconds have passed since `from`; returns [value, seconds].
+# Asks the block every interval until it answers something truthy, within
+# bound seconds of from: [the answer, the seconds it took]. An answer that
+# arrived after the bound (a request started just before it, answered
+# seconds later) counts as none: [nil, the seconds].
 def until_true(bound, from: now, interval: 0.05)
   loop do
     value = yield
-    return [value, now - from] if value
-    return [nil, now - from] if now - from > bound
+    took = now - from
+    return [nil, took] if took > bound
+    return [value, took] if value
 
     sleep interval
   end
@@ -472,6 +477,7 @@ def main
         r if r && r.status == 200 && r.runtime == "cruby"
       end
       check(res, "no 200 from cruby within #{FIRST_CRUBY} s (last: #{describe(visitor.get('/articles', read_timeout: 2))})")
+      check(took <= FIRST_CRUBY, "200 from cruby only #{secs(took)} after the start (bound #{FIRST_CRUBY} s)")
       up = UpLoop.new(port)
       visitor.sign_in
       "GET /articles answered 200 from cruby #{secs(took)} after the start (port #{port})"
@@ -483,6 +489,7 @@ def main
         r if r && r.runtime == "spinel"
       end
       check(res, "no response from spinel within #{FIRST_SPINEL} s of the start")
+      check(took <= FIRST_SPINEL, "spinel answered only #{secs(took)} after the start (bound #{FIRST_SPINEL} s)")
       check(res.status == 200, "GET /articles from spinel answered #{res.status}")
       # The binary answers as soon as it accepts; the supervisor logs the
       # line when it next looks at the ready file, a tick (50 ms) later.
