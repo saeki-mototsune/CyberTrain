@@ -614,6 +614,69 @@ module Cybertrain
         TEXT
       end
 
+      # config/deploy.yml's worker role, commented (not `active`: what
+      # `cybertrain new` writes, the role needs cybertrain/jobs, which a new
+      # application does not require, and without it `./NAME worker` exits 1
+      # and the container restarts forever) or `active` (what
+      # enable_worker_role writes once a generator adds cybertrain/jobs).
+      # Indented as a role under `servers:`.
+      # @return [String]
+      def self.worker_role(package, active)
+        lines = [
+          "# Jobs and scheduled tasks without HTTP. Several workers (and the",
+          "# web role) may share the database: one at a time leads the",
+          "# scheduled tasks, and the jobs of one that dies are picked up by",
+          "# the others."
+        ]
+        unless active
+          lines << "# It needs require \"cybertrain/jobs\" in bin/#{package}.rb and bin/db.rb;"
+          lines << "# `cybertrain generate job` and `generate authentication` add that"
+          lines << "# line and uncomment this role."
+        end
+        role = [
+          "worker:",
+          "  hosts:",
+          "    - 192.168.0.1",
+          "  cmd: ./#{package} worker",
+          "  # The process exits non-zero when it cannot boot: the container",
+          "  # runtime must start it again.",
+          "  options:",
+          "    restart: unless-stopped"
+        ]
+        role.each { |line| lines << (active ? line : "# #{line}") }
+        out = +""
+        lines.each { |line| out << "  " << line << "\n" }
+        out
+      end
+
+      # Uncomments config/deploy.yml's worker role, as `cybertrain new` wrote
+      # it commented (worker_role), once: a generator whose code needs the
+      # job threads calls it with its add_require of cybertrain/jobs. A file
+      # without the commented role (an older application, one edited by
+      # hand, no deploy.yml) is left alone with a note.
+      # @return [nil]
+      def self.enable_worker_role(root)
+        app = Build.app_name(root)
+        return nil if app.empty?
+
+        rel = "config/deploy.yml"
+        path = File.join(root, rel)
+        return nil unless File.exist?(path)
+
+        source = File.read(path)
+        commented = worker_role(app, false)
+        active = worker_role(app, true)
+        if source.include?(commented)
+          File.write(path, source.sub(commented, active))
+          puts "insert #{rel} (the worker role, uncommented)"
+        elsif source.include?(active)
+          puts "identical #{rel} (the worker role)"
+        else
+          puts "skip #{rel} (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)"
+        end
+        nil
+      end
+
       def self.deploy_yml(package)
         <<~YAML
           # Kamal 2 (https://kamal-deploy.org): `kamal setup` the first time,
@@ -634,18 +697,7 @@ module Cybertrain
             web:
               hosts:
                 - 192.168.0.1
-            # Jobs and scheduled tasks without HTTP. Several workers (and the
-            # web role) may share the database: one at a time leads the
-            # scheduled tasks, and the jobs of one that dies are picked up by
-            # the others.
-            worker:
-              hosts:
-                - 192.168.0.1
-              cmd: ./#{package} worker
-              # The process exits non-zero when it cannot boot: the container
-              # runtime must start it again.
-              options:
-                restart: unless-stopped
+          #{worker_role(package, false).chomp}
             # One container per WebSocket feed (Cybertrain::WebSocket.subscribe
             # names). If you use it, give web `env: clear: CYBERTRAIN_WORKER: 0`
             # so that the web role does not open the same feeds too.

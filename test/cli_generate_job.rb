@@ -63,6 +63,18 @@ test "generate job adds require \"cybertrain/jobs\" to bin/shop.rb and bin/db.rb
   assert_equal 1, File.read("shop/bin/db.rb").scan("require \"cybertrain/jobs\"").size
 end
 
+test "generate job uncomments config/deploy.yml's worker role, once" do
+  deploy = File.read("shop/config/deploy.yml")
+  assert_includes deploy, "\n  worker:\n    hosts:\n      - 192.168.0.1\n    cmd: ./shop worker\n"
+  assert_includes deploy, "    options:\n      restart: unless-stopped\n"
+  assert_nil deploy.index("  # worker:")
+  assert_nil deploy.index("generate authentication` add that")
+  assert_equal deploy, Cybertrain::CLI::Templates.deploy_yml("shop").sub(Cybertrain::CLI::Templates.worker_role("shop", false),
+                                                                         Cybertrain::CLI::Templates.worker_role("shop", true))
+  assert_equal 0, generate(["send_digest"])
+  assert_equal deploy, File.read("shop/config/deploy.yml")
+end
+
 test "an app that requires \"cybertrain\" gets no line" do
   Cybertrain::CLI::NewApp.create("mall", "{ path = \"../cybertrain\" }")
   ["mall/bin/mall.rb", "mall/bin/db.rb"].each do |path|

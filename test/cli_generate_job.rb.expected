@@ -35,6 +35,7 @@ create app/jobs/send_digest_job.rb
 create test/send_digest_job.rb
 insert bin/shop.rb (require "cybertrain/jobs")
 insert bin/db.rb (require "cybertrain/jobs")
+insert config/deploy.yml (the worker role, uncommented)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -44,11 +45,22 @@ identical app/jobs/send_digest_job.rb
 identical test/send_digest_job.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
   cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
 ok   generate job adds require "cybertrain/jobs" to bin/shop.rb and bin/db.rb, once
+identical app/jobs/send_digest_job.rb
+identical test/send_digest_job.rb
+identical bin/shop.rb (require "cybertrain/jobs")
+identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain spin test   # test/send_digest_job.rb; snapshot it from the binary
+ok   generate job uncomments config/deploy.yml's worker role, once
 create spin.toml
 create .gitignore
 create .env.example
@@ -86,6 +98,7 @@ create app/jobs/audit_job.rb
 create test/audit_job.rb
 identical bin/mall.rb (require "cybertrain" loads cybertrain/jobs)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs)
+insert config/deploy.yml (the worker role, uncommented)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -95,6 +108,7 @@ identical app/jobs/send_digest_job.rb
 identical test/send_digest_job.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -104,6 +118,7 @@ create app/jobs/admin/report_job.rb
 create test/admin_report_job.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -114,6 +129,7 @@ force app/jobs/send_digest_job.rb
 identical test/send_digest_job.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -122,6 +138,7 @@ identical app/jobs/send_digest_job.rb
 identical test/send_digest_job.rb
 identical bin/shop.rb (require "cybertrain/jobs")
 identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -138,4 +155,4 @@ error: bad --retry 'TimeoutError:60:0': use Klass:wait:attempts (wait in seconds
 error: bad --retry 'timeout:60:3': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
 error: ./config/routes.rb not found: run this inside a cybertrain app
 ok   bad names, bad --retry values and usage are rejected
-7 tests, 39 assertions, 0 failures
+8 tests, 46 assertions, 0 failures

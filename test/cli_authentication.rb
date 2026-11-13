@@ -1085,6 +1085,14 @@ test "--invite-only requires the command in bin/<app>.rb and declares setup_open
   assert_includes club_config, "  c.setting_string :base_url, env: \"CLUB_BASE_URL\", default: \"\"\n\n  # c.port = 3000\n"
 end
 
+test "it uncomments config/deploy.yml's worker role, which sends the mails" do
+  [["shop", "shop"], ["club", "club"]].each do |dir, app|
+    deploy = read("#{dir}/config/deploy.yml")
+    assert_includes deploy, "\n  worker:\n    hosts:\n      - 192.168.0.1\n    cmd: ./#{app} worker\n"
+    assert_nil deploy.index("  # worker:")
+  end
+end
+
 test "--invite-only adds the same four subsystem lines to bin/club.rb and bin/db.rb" do
   lines = "require \"cybertrain/core\"\nrequire \"cybertrain/jobs\"\nrequire \"cybertrain/mailer\"\n" \
           "require \"cybertrain/mailer/later\"\nrequire \"cybertrain/rate_limit\"\nrequire_relative"

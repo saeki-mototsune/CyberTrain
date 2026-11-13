@@ -65,6 +65,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 insert bin/shop.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 exist db/migrate/20260925120000_create_users.rb
 exist db/migrate/20260925120001_create_sessions.rb
 create db/migrate/20260925120002_add_authentication_columns.rb
@@ -100,6 +101,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   the fixture holds 0.4's block exactly as LEGACY_APPLICATION_CONTROLLER_BLOCKS has it
 ok   a re-run on a 0.4 application writes the missing files
 exist db/migrate/20260925120000_create_users.rb
@@ -136,6 +138,7 @@ identical bin/shop.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   it prints a diff for each changed file and leaves them alone
 ok   the application_controller diff removes 0.4's block and includes Authentication
 exist db/migrate/20260925120000_create_users.rb
@@ -173,6 +176,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   --force overwrites the generator's files and replaces an exact 0.4 block
 exist db/migrate/20260925120000_create_users.rb
 exist db/migrate/20260925120001_create_sessions.rb
@@ -209,6 +213,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   --force leaves an edited application_controller.rb and prints its diff
 exist db/migrate/20260925120000_create_users.rb
 exist db/migrate/20260925120001_create_sessions.rb
@@ -250,6 +255,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   --confirmable over a 0.4 application adds all seven columns and confirms the users there
 create spin.toml
 create .gitignore
@@ -318,6 +324,7 @@ insert bin/plain.rb (./plain user)
 insert config/app.rb (PLAIN_BASE_URL)
 insert bin/plain.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 exist db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 create db/migrate/20260925120002_add_authentication_columns.rb
@@ -358,6 +365,7 @@ identical bin/plain.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/plain.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 exist db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 manual  app/models/user.rb (diff below)
@@ -397,6 +405,7 @@ identical bin/plain.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/plain.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 exist db/migrate/20260925120000_create_users.rb
 exist db/migrate/20260925120001_create_sessions.rb
 create db/migrate/20260930000002_add_authentication_columns_2.rb
@@ -432,6 +441,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   the add-columns migration is decided per missing column (F19)
 ok   declares_column? names a column only where it ends (review M3)
 exist db/migrate/20260925120000_create_users.rb
@@ -469,6 +479,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 exist db/migrate/20260925120000_create_users.rb
 exist db/migrate/20260925120001_create_sessions.rb
 create db/migrate/20260925120002_add_authentication_columns.rb
@@ -504,6 +515,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   a block that is there twice, or has lost its end line, is left alone (review M2, M6)
 exist db/migrate/20260925120000_create_users.rb
 exist db/migrate/20260925120001_create_sessions.rb
@@ -540,6 +552,7 @@ insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
 identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 ok   the jobs page's line goes inside the draw block, or a skip line says why not (review M4)
 ok   --confirmable's warnings come again at the end, with what the diffs are for (review M1, M6)
 ok   LineDiff.unified writes diff -u's hunks

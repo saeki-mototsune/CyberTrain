@@ -361,6 +361,7 @@ insert bin/club.rb (./club user)
 insert config/app.rb (CLUB_BASE_URL)
 insert bin/club.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
 create app/controllers/posts_controller.rb
@@ -459,6 +460,7 @@ insert bin/blog.rb (./blog user)
 insert config/app.rb (BLOG_BASE_URL)
 insert bin/blog.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_cover_to_articles.rb
 insert app/views/articles/_form.html.erb (cover file field, multipart: true)
 insert app/views/articles/show.html.erb (cover)
@@ -560,6 +562,7 @@ insert bin/desk.rb (./desk user)
 insert config/app.rb (DESK_BASE_URL)
 insert bin/desk.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_scan_to_memos.rb
 insert app/views/memos/_form.html.erb (scan file field, multipart: true)
 insert app/views/memos/show.html.erb (scan)
@@ -649,6 +652,7 @@ insert bin/yard.rb (./yard user)
 insert config/app.rb (YARD_BASE_URL)
 insert bin/yard.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -737,6 +741,7 @@ insert bin/barn.rb (./barn user)
 insert config/app.rb (BARN_BASE_URL)
 insert bin/barn.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create spin.toml
 create .gitignore
 create .env.example
@@ -813,6 +818,7 @@ insert bin/loft.rb (./loft user)
 insert config/app.rb (LOFT_BASE_URL)
 insert bin/loft.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create spin.toml
 create .gitignore
 create .env.example
@@ -889,6 +895,7 @@ insert bin/shed.rb (./shed user)
 insert config/app.rb (SHED_BASE_URL)
 insert bin/shed.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create spin.toml
 create .gitignore
 create .env.example
@@ -965,6 +972,7 @@ insert bin/coop.rb (./coop user)
 insert config/app.rb (COOP_BASE_URL)
 insert bin/coop.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create spin.toml
 create .gitignore
 create .env.example
@@ -1041,6 +1049,7 @@ insert bin/hive.rb (./hive user)
 insert config/app.rb (HIVE_BASE_URL)
 insert bin/hive.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 ok   show restrictions are preserved or attachment generation is refused
 identical spin.toml
 identical .gitignore
@@ -1068,7 +1077,7 @@ identical bin/gen.rb
 exist bin/db.rb
 identical Dockerfile
 identical .dockerignore
-identical config/deploy.yml
+exist config/deploy.yml
 identical .kamal/secrets
 identical .github/workflows/ci.yml
 identical gen/.keep
@@ -1118,6 +1127,7 @@ identical bin/shed.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/shed.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1220,6 +1230,7 @@ insert bin/nook.rb (./nook user)
 insert config/app.rb (NOOK_BASE_URL)
 insert bin/nook.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1322,6 +1333,7 @@ insert bin/pen.rb (./pen user)
 insert config/app.rb (PEN_BASE_URL)
 insert bin/pen.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1481,6 +1493,7 @@ insert bin/restricted.rb (./restricted user)
 insert config/app.rb (RESTRICTED_BASE_URL)
 insert bin/restricted.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1570,6 +1583,7 @@ insert bin/inherited.rb (./inherited user)
 insert config/app.rb (INHERITED_BASE_URL)
 insert bin/inherited.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1660,6 +1674,7 @@ insert bin/concerned.rb (./concerned user)
 insert config/app.rb (CONCERNED_BASE_URL)
 insert bin/concerned.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120003_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1798,6 +1813,7 @@ insert bin/guild.rb (./guild user)
 insert config/app.rb (GUILD_BASE_URL)
 insert bin/guild.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 identical db/migrate/20260925120002_create_users.rb
 identical db/migrate/20260925120003_create_sessions.rb
 identical app/models/user.rb
@@ -1834,6 +1850,7 @@ identical bin/guild.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical bin/guild.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
 identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 ok   authentication generated after the attachment adds the sign-in to its test
 create spin.toml
 create .gitignore

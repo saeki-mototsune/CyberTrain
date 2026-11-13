@@ -58,7 +58,9 @@
 # the job thread that sends the mails), `cybertrain/mailer` (the mailers,
 # and User's address check, Mailer.address_problem), `cybertrain/mailer/later`
 # (the mails' deliver_later) and `cybertrain/rate_limit` (the rate_limit
-# lines of the sign-in, sign-up, reset and account controllers).
+# lines of the sign-in, sign-up, reset and account controllers). With
+# cybertrain/jobs it uncomments config/deploy.yml's worker role
+# (Templates.enable_worker_role), as `generate job` does.
 #
 # Users have an admin flag (`users.admin`, User#admin?), which the
 # concern's require_admin asks for and `./<app> user admin EMAIL` sets.
@@ -432,6 +434,9 @@ module Cybertrain
         add_command_to_bin(bin_path, app, invite_only)
         add_setting_to_config(config_path, app, invite_only)
         Templates.add_requires(root, SUBSYSTEM_REQUIRES)
+        # The mails go out from a job thread: config/deploy.yml's worker role,
+        # commented by `cybertrain new`, can run now.
+        Templates.enable_worker_role(root)
         result
       end
 

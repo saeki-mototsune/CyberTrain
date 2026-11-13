@@ -101,6 +101,14 @@ a cybertrain release without heartbeats, stop every old container with `kamal
 app stop` before `kamal deploy`, so that a new worker does not run an old
 worker's running job a second time.
 
+The `worker` role needs the jobs subsystem: `require "cybertrain/jobs"` in
+`bin/notes.rb` and `bin/db.rb` ([Subsystems](guide/how-it-works.md#subsystems)).
+A new application requires only the core, so `cybertrain new` writes the
+role commented out; `cybertrain generate job` and `generate authentication`
+add the line and uncomment it. Without jobs, leave it out: `./notes worker`
+would print `the worker role needs require "cybertrain/jobs" in
+bin/notes.rb`, exit 1, and be restarted by Docker forever.
+
 The `worker` role (and the commented `feeds` one) carries `options: restart:
 unless-stopped`. kamal-proxy polls the health check of the `web` role only,
 and only during a deploy, so nothing else restarts these containers: Docker

@@ -220,9 +220,13 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   assert_includes deploy, "    CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12\n"
   assert_includes deploy, "  - \"blog_storage:/app/storage\"\n"
   assert_includes deploy, "db_status: app exec --reuse \"./blog db status\""
-  # The roles: web, a worker on the same image, and a commented feeds role.
+  # The roles: web, and commented a worker on the same image (it needs
+  # cybertrain/jobs, which a new app does not require: `./blog worker`
+  # would exit 1 and its container restart forever) and a feeds role.
   assert_includes deploy, "  web:\n    hosts:\n      - 192.168.0.1\n"
-  assert_includes deploy, "  worker:\n    hosts:\n      - 192.168.0.1\n    cmd: ./blog worker\n"
+  assert_includes deploy, "  # worker:\n  #   hosts:\n  #     - 192.168.0.1\n  #   cmd: ./blog worker\n"
+  assert_includes deploy, "  # It needs require \"cybertrain/jobs\" in bin/blog.rb and bin/db.rb;\n"
+  assert_nil deploy.index("\n  worker:")
   assert_includes deploy, "  #   cmd: ./blog feeds trades\n"
   secrets = read("blog/.kamal/secrets")
   assert_includes secrets, "KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD\n"
