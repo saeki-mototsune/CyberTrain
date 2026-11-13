@@ -3,6 +3,7 @@ require "cybertrain/test"
 require "cybertrain/test/views"
 require "cybertrain/test/select"
 require "cybertrain/controller"
+require "cybertrain/streams"
 
 # render_inline (spec section 9.1) and assert_select over what the
 # framework renders: a component (CardComponent, with the Gen::Components

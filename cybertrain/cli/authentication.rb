@@ -57,6 +57,17 @@
 # Cybertrain::Cache; docs/design.md D26), and AppTest.sign_in resets the
 # counts so a test suite never reaches the limit.
 #
+# What it writes needs four of the optional subsystems (docs/design.md
+# D85), so it adds their lines to bin/<app>.rb and bin/db.rb, each unless
+# it or `require "cybertrain"` is there (Templates.add_requires), in every
+# mode and on the upgrade path: `cybertrain/jobs` (the jobs page it draws,
+# the job thread that sends the mails), `cybertrain/mailer` (the mailers,
+# and User's address check, Mailer.address_problem), `cybertrain/mailer/later`
+# (the mails' deliver_later) and `cybertrain/rate_limit` (the rate_limit
+# lines of the sign-in, sign-up, reset and account controllers). With
+# cybertrain/jobs it uncomments config/deploy.yml's worker role
+# (Templates.enable_worker_role), as `generate job` does.
+#
 # Users have an admin flag (`users.admin`, User#admin?), which the
 # concern's require_admin asks for and `./<app> user admin EMAIL` sets.
 #
@@ -145,6 +156,10 @@ module Cybertrain
       PENDING_EMAIL_ROUTE_MARK = "/account/pending_email"
       PENDING_EMAIL_ROUTE = "delete \"/account/pending_email\", to: \"accounts#cancel_email_change\", as: \"account_pending_email\""
       NAV_LINE = "<%= render \"sessions/nav\" %>"
+      # The subsystem lines its files need (Templates.add_requires), in the
+      # order they are added: the jobs page and the mail job's thread, the
+      # mailers and User's address check, deliver_later, rate_limit.
+      SUBSYSTEM_REQUIRES = ["cybertrain/jobs", "cybertrain/mailer", "cybertrain/mailer/later", "cybertrain/rate_limit"]
       # The setup line of an ActionDispatch::IntegrationTest (the
       # attachment's, the scaffold's controller test): `generate attachment`
       # writes test_sign_in_lines after it when app/models/user.rb exists;
@@ -439,6 +454,10 @@ module Cybertrain
         add_sign_in_to_controller_tests(root)
         add_command_to_bin(bin_path, app, invite_only)
         add_setting_to_config(config_path, app, invite_only)
+        Templates.add_requires(root, SUBSYSTEM_REQUIRES)
+        # The mails go out from a job thread: config/deploy.yml's worker role,
+        # commented by `cybertrain new`, can run now.
+        Templates.enable_worker_role(root)
         result
       end
 

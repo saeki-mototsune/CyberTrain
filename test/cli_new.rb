@@ -86,9 +86,16 @@ test "config/app.rb documents the i18n settings, commented" do
   assert(text.include?("docs/guide/i18n.md"))
 end
 
-test "bin/blog.rb is the app's one binary: server, migrate, db" do
+test "bin/blog.rb is the app's one binary: server, migrate, db; it requires the core alone" do
   assert_equal <<~RUBY, read("blog/bin/blog.rb")
-    require "cybertrain"
+    # The framework without its optional subsystems. Add the ones the
+    # application uses after it, here and in bin/db.rb: cybertrain/jobs,
+    # cybertrain/streams, cybertrain/feeds, cybertrain/mailer (and
+    # cybertrain/mailer/later), cybertrain/cache, cybertrain/rate_limit;
+    # or require "cybertrain" for all of them. `generate job` and
+    # `generate authentication` add theirs; `spin run gen` names the
+    # line a view's helper needs.
+    require "cybertrain/core"
     require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
     require_relative "../config/app"     # so it comes before the config
     require_relative "../gen/app"
@@ -122,7 +129,9 @@ end
 
 test "bin/db.rb runs migrations in development without the app's models" do
   assert_equal <<~RUBY, read("blog/bin/db.rb")
-    require "cybertrain"
+    # The same subsystem lines as bin/<app>.rb: config/app.rb may name
+    # them (a Scheduler.cron task needs cybertrain/jobs).
+    require "cybertrain/core"
     require_relative "../config/app"
     require_relative "../gen/migrations"
 
@@ -160,7 +169,9 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes controller, "rescue_from Cybertrain::RecordNotFound, with: :record_not_found"
   assert_includes read("blog/config/app.rb"), "Cybertrain.configure do |c|"
   assert_includes read("blog/config/app.rb"), 'c.allowed_hosts << "my-preview.example.com"'
-  # The commented cron example prunes the done jobs every app now leaves.
+  # The commented cron example prunes the done jobs every app now leaves;
+  # it says which require it needs.
+  assert_includes read("blog/config/app.rb"), "# old (failed ones are kept for the jobs command). It needs\n# require \"cybertrain/jobs\" in bin/<app>.rb and bin/db.rb\n"
   assert_includes read("blog/config/app.rb"),
                   "# Cybertrain::Scheduler.cron(\"0 4 * * *\", \"prune done jobs\") do\n" \
                   "#   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)\n# end\n"
@@ -181,6 +192,7 @@ test "README.md gives the cybertrain command sequence" do
   assert_includes readme, "cybertrain server"
   assert_includes readme, "cybertrain build"
   assert_includes readme, "bin/db.rb"
+  assert_includes readme, "`bin/blog.rb` and `bin/db.rb` require `cybertrain/core`"
   assert_nil readme.index("spin run db")
   # Where it tells how to run the tests, and what CI runs.
   assert_includes readme, "`cybertrain test` runs the tests under `test/`"
@@ -216,9 +228,13 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   assert_includes deploy, "    CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12\n"
   assert_includes deploy, "  - \"blog_storage:/app/storage\"\n"
   assert_includes deploy, "db_status: app exec --reuse \"./blog db status\""
-  # The roles: web, a worker on the same image, and a commented feeds role.
+  # The roles: web, and commented a worker on the same image (it needs
+  # cybertrain/jobs, which a new app does not require: `./blog worker`
+  # would exit 1 and its container restart forever) and a feeds role.
   assert_includes deploy, "  web:\n    hosts:\n      - 192.168.0.1\n"
-  assert_includes deploy, "  worker:\n    hosts:\n      - 192.168.0.1\n    cmd: ./blog worker\n"
+  assert_includes deploy, "  # worker:\n  #   hosts:\n  #     - 192.168.0.1\n  #   cmd: ./blog worker\n"
+  assert_includes deploy, "  # It needs require \"cybertrain/jobs\" in bin/blog.rb and bin/db.rb;\n"
+  assert_nil deploy.index("\n  worker:")
   assert_includes deploy, "  #   cmd: ./blog feeds trades\n"
   secrets = read("blog/.kamal/secrets")
   assert_includes secrets, "KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD\n"

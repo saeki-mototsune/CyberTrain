@@ -1,5 +1,5 @@
 ---
-source_sha256: 3109902f66d644e274188001adeec4f8f23888013cc14b16568df63dee79679f
+source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -103,6 +103,8 @@ blog/
 ```
 
 `bin/blog.rb` はアプリケーション唯一のエントリーポイントで、`spin build blog` がコンパイルするプログラムです：`./blog` でサーバーを起動し、`./blog migrate` と `./blog db status` でデータベースを管理します。`bin/gen.rb` はジェネレーターを実行し（`spin run gen`）、`bin/db.rb` は開発中にマイグレーターを実行します（`cybertrain db migrate` がこれを使います。最初のマイグレーションで `gen/models/` が生成されるまで、`bin/blog.rb` はコンパイルできないためです）。`gen/` にはすでに `spin run gen` が書き出したものが入っています。そのひとつが `views.rb` で、これはコミットされる、空の埋め込みビューのテーブルです。
+
+`bin/blog.rb` と `bin/db.rb` はどちらも `require "cybertrain/core"` で始まります：オプションのサブシステム（ジョブ、Turbo Streams、メーラー、キャッシュなど）を除いたフレームワークで、どのビルドも短くなります。このあとのステップでサブシステムを使うときに、その行を追加します（[サブシステム](how-it-works.md#subsystems)）。
 
 レイアウトは `stylesheet_link_tag` で `app/assets/stylesheets/application.css` を読み込み、`javascript_importmap_tags` で `config/importmap.rb` のインポートマップを通じて `app/javascript/application.js` を読み込みます。`spin run gen` がこの 2 つをダイジェスト付きで `public/assets/` に書き出し、そこは git の管理から外してあります（[アセット](assets.md)を参照）。`.env.example` にはアプリが読む環境変数の一覧があり、`.github/workflows/ci.yml` は GitHub 上でテストを実行します（[継続的インテグレーション](testing.md#continuous-integration)）。ツリーの最後の行は [ステップ 19](#ship) の Kamal 用の設定です。
 
@@ -548,6 +550,13 @@ import "@hotwired/turbo"
 
 レイアウトの `javascript_importmap_tags` がインポートマップと `import "application"` を書き出すので、これですべてのページで Turbo が動きます（[インポートマップ](assets.md#the-import-map)）。
 
+Turbo Streams のサーバー側はサブシステムです：`bin/blog.rb` のコアの行の下にその行を追加し、`bin/db.rb` にも同じ行を追加します。これがないと、`spin run gen` は下の `turbo_stream_from` で止まり、必要な行を示します。
+
+```ruby bin/blog.rb（抜粋）
+require "cybertrain/core"
+require "cybertrain/streams"
+```
+
 ### ページを購読させる
 
 一覧とフォームにそれぞれ id を付け、ページを記事のストリームに購読させます：
@@ -637,7 +646,7 @@ WebSocket や、自分の JavaScript から使うストリームなど、詳し�
 cybertrain generate job notify_comment --retry StandardError:30:3
 ```
 
-オプションで指定した `retry_on` の行と空の `perform` を持つ `app/jobs/notify_comment_job.rb` と、テストを書き出します。`perform` の中身を書いてください。ここではログを出すだけですが、実際のアプリケーションならメールを送るところです：
+オプションで指定した `retry_on` の行と空の `perform` を持つ `app/jobs/notify_comment_job.rb` と、テストを書き出し、`bin/blog.rb` と `bin/db.rb` に `require "cybertrain/jobs"` を追加します。`perform` の中身を書いてください。ここではログを出すだけですが、実際のアプリケーションならメールを送るところです：
 
 ```ruby app/jobs/notify_comment_job.rb
 class NotifyCommentJob < Cybertrain::Job::Base
@@ -856,7 +865,7 @@ cybertrain generate authentication
 cybertrain db migrate    # users と sessions のテーブルを作る
 ```
 
-`users` と `sessions` のマイグレーションとモデル、`ApplicationController` にインクルードする `Authentication` コンサーン、サインイン・サインアップ・パスワードリセット・アカウントページのコントローラーとビュー、メーラー、`./blog user` コマンド、そしてテストを書き出します。さらにルート、レイアウトの先頭の `sessions/_nav` パーシャル、メール中のリンクの始まりになる `config/app.rb` の `base_url` 設定を加えます。すべてのファイルは [認証](authentication.md#generating-it) に一覧があります。
+`users` と `sessions` のマイグレーションとモデル、`ApplicationController` にインクルードする `Authentication` コンサーン、サインイン・サインアップ・パスワードリセット・アカウントページのコントローラーとビュー、メーラー、`./blog user` コマンド、そしてテストを書き出します。さらにルート、レイアウトの先頭の `sessions/_nav` パーシャル、メール中のリンクの始まりになる `config/app.rb` の `base_url` 設定を加えます。最後に、そのコードが使うサブシステムの行を `bin/blog.rb` と `bin/db.rb` に加えます：`cybertrain/jobs`（ジョブページとメールを送るスレッド）、`cybertrain/mailer`、`cybertrain/mailer/later`（メールは `deliver_later` で送られます）、`cybertrain/rate_limit`（サインインの試行にはレート制限がかかります。後述）。すべてのファイルは [認証](authentication.md#generating-it) に一覧があります。
 
 ```ruby app/controllers/concerns/authentication.rb（抜粋）
 module Authentication

@@ -202,7 +202,9 @@ An application that listens to an outside feed (market ticks, device
 telemetry, an event stream) while the server runs subscribes to it with
 `Cybertrain::WebSocket.subscribe`. Like the HTTP client it is not in
 `require "cybertrain"`; require it where the subscription is written, and the
-TLS layer too for `wss://`:
+TLS layer too for `wss://`. It loads the feeds subsystem (the `feeds` role,
+the feed health check), so an application on `cybertrain/core` needs no
+other line:
 
 ```ruby
 # config/app.rb (or a file bin/<app>.rb requires before Cybertrain::Main.run)
@@ -368,8 +370,9 @@ The design: [docs/design.md](../design.md) D33 and D56.
 `Cybertrain::Mailer` sends e-mail, plain text or with an HTML part, through
 an SMTP server (your provider's submission server, or a local relay), now
 (`deliver`) or from a job (`deliver_later`, below). `require "cybertrain"`
-loads it; a program without the framework requires `cybertrain/mailer`
-(which needs no database: `deliver_later` is in `cybertrain/mailer/later`).
+loads it; an application on `cybertrain/core`, or a program without the
+framework, requires `cybertrain/mailer` (which needs no database:
+`deliver_later` is in `cybertrain/mailer/later`, which loads jobs too).
 TLS is a separate require:
 
 ```ruby
@@ -444,8 +447,11 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **Mailers:** a module in `app/mailers` (gen loads them) whose method
   returns a `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`
   reads as Rails does: `PasswordsMailer.reset(user, url).deliver_later`
-  queues it, `deliver_now` sends it at once. `cybertrain generate
-  authentication` writes two ([Password reset](authentication.md#password-reset)).
+  queues it, `deliver_now` sends it at once. `cybertrain/mailer` loads
+  `MailMessage` with `deliver_now`; `deliver_later` comes with
+  `cybertrain/mailer/later`. `cybertrain generate authentication` writes
+  two ([Password reset](authentication.md#password-reset)) and adds both
+  lines.
 - **Not yet:** attachments and inline images, mailer classes with
   `default from:` and views found by name, display names, `Cc`/`Bcc`
   headers (send to several recipients instead), AUTH LOGIN/CRAM-MD5,
@@ -478,7 +484,9 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` takes `deliver`'s arguments, checks them at once (a refused
+`deliver_later` needs `require "cybertrain/mailer/later"` (or
+`require "cybertrain"`) in `bin/<app>.rb` and `bin/db.rb`. It takes
+`deliver`'s arguments, checks them at once (a refused
 address or subject raises here and nothing is enqueued) and enqueues the
 built-in job `"cybertrain mail"` with the finished message; a job thread
 ([Background work](background-and-operations.md#background-work)) sends it

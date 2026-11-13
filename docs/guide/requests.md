@@ -348,7 +348,10 @@ Rotating `secret_key_base` signs everyone out, as before.
 ## Rate limiting and the client address
 
 `rate_limit` in a controller caps how often one client may call some
-actions, counted before the action runs:
+actions, counted before the action runs. It needs
+`require "cybertrain/rate_limit"` (which loads the cache) in
+`bin/<app>.rb` and `bin/db.rb`; `cybertrain generate authentication` adds
+it:
 
 ```ruby
 class SessionsController < ApplicationController

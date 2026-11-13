@@ -1,5 +1,5 @@
 ---
-source_sha256: 3109902f66d644e274188001adeec4f8f23888013cc14b16568df63dee79679f
+source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -166,6 +166,12 @@ développement (`cybertrain db migrate` l’utilise, car `bin/blog.rb` ne peut
 pas compiler tant que la première migration n’a pas généré `gen/models/`).
 `gen/` contient déjà ce qu’a écrit `spin run gen`, dont `views.rb`&nbsp;: la
 table des vues intégrées, versionnée et vide.
+
+`bin/blog.rb` et `bin/db.rb` commencent tous deux par
+`require "cybertrain/core"`&nbsp;: le framework sans ses sous-systèmes
+optionnels (les jobs, Turbo Streams, le mailer, le cache et les autres), ce
+qui raccourcit chaque build. Les étapes suivantes qui en utilisent un ajoutent
+sa ligne ([Sous-systèmes](how-it-works.md#subsystems)).
 
 Le layout lie `app/assets/stylesheets/application.css` avec
 `stylesheet_link_tag` et charge `app/javascript/application.js` via l’import
@@ -736,6 +742,16 @@ Le `javascript_importmap_tags` du layout écrit l’import map et
 `import "application"`&nbsp;: chaque page exécute donc désormais Turbo
 ([L’import map](assets.md#the-import-map)).
 
+Le côté serveur de Turbo Streams est un sous-système&nbsp;: ajoutez sa ligne
+sous celle du cœur dans `bin/blog.rb`, et la même ligne dans `bin/db.rb`.
+Sans elle, `spin run gen` s’arrête au `turbo_stream_from` ci-dessous et nomme
+la ligne.
+
+```ruby bin/blog.rb (extrait)
+require "cybertrain/core"
+require "cybertrain/streams"
+```
+
 ### Abonner la page
 
 Donnez un id à la liste et un autre au formulaire, et abonnez la page au flux
@@ -848,7 +864,8 @@ cybertrain generate job notify_comment --retry StandardError:30:3
 ```
 
 Elle écrit `app/jobs/notify_comment_job.rb`, avec la ligne `retry_on` que
-demandait l’option et un `perform` vide, ainsi qu’un test. Complétez
+demandait l’option et un `perform` vide, ainsi qu’un test, et ajoute
+`require "cybertrain/jobs"` à `bin/blog.rb` et `bin/db.rb`. Complétez
 `perform`&nbsp;; celui-ci se contente de journaliser, là où une vraie
 application enverrait un e-mail&nbsp;:
 
@@ -1152,7 +1169,7 @@ cybertrain generate authentication
 cybertrain db migrate    # crée les tables users et sessions
 ```
 
-Il écrit les migrations et les modèles `users` et `sessions`, le concern `Authentication`, qu’il inclut dans `ApplicationController`, les contrôleurs et les vues de la connexion, de l’inscription, de la réinitialisation du mot de passe et de la page de compte, un mailer, la commande `./blog user`, et des tests. Il ajoute aussi les routes, un partial `sessions/_nav` en haut du layout, et un réglage `base_url` dans `config/app.rb`, par lequel commencent les liens des courriels. Chaque fichier est listé dans [Authentification](authentication.md#generating-it).
+Il écrit les migrations et les modèles `users` et `sessions`, le concern `Authentication`, qu’il inclut dans `ApplicationController`, les contrôleurs et les vues de la connexion, de l’inscription, de la réinitialisation du mot de passe et de la page de compte, un mailer, la commande `./blog user`, et des tests. Il ajoute aussi les routes, un partial `sessions/_nav` en haut du layout, et un réglage `base_url` dans `config/app.rb`, par lequel commencent les liens des courriels. Il ajoute enfin à `bin/blog.rb` et `bin/db.rb` les lignes des sous-systèmes que son code utilise : `cybertrain/jobs` (la page des jobs et le thread qui envoie les courriels), `cybertrain/mailer`, `cybertrain/mailer/later` (les courriels partent avec `deliver_later`) et `cybertrain/rate_limit` (les tentatives de connexion sont limitées, plus bas). Chaque fichier est listé dans [Authentification](authentication.md#generating-it).
 
 ```ruby app/controllers/concerns/authentication.rb (extrait)
 module Authentication

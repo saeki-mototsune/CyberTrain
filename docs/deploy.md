@@ -1073,6 +1073,14 @@ registry:
 上げる 1 回目は、`kamal app stop` で古いコンテナをすべて止めてから `kamal deploy` してください
 （古いワーカーの実行中のジョブを新しいワーカーが二重に実行しないように）。
 
+`worker` の役割にはジョブのサブシステム、つまり `bin/notes.rb` と `bin/db.rb` の
+`require "cybertrain/jobs"` が必要です（[サブシステム](guide/ja/how-it-works.md#subsystems)）。
+新しいアプリはコアだけを読み込むので、`cybertrain new` はこの役割をコメントにして書きます。
+`cybertrain generate job` と `generate authentication` がその行を足し、コメントを外します。
+ジョブを使わないなら外したままにしてください。`./notes worker` が
+`the worker role needs require "cybertrain/jobs" in bin/notes.rb` と出して 1 で終了し、
+Docker が再起動し続けます。
+
 `worker` の役割（とコメントになっている `feeds`）には `options: restart: unless-stopped` が
 付いています。kamal-proxy がヘルスチェックを見るのは `web` の役割だけで、それもデプロイ中だけ
 なので、これらのコンテナを再起動するものはほかにありません。プロセスが終了したときに Docker が

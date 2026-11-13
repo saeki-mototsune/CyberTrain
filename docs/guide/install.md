@@ -186,7 +186,10 @@ sure Spinel is installed, then runs `spin lock` (spin fetches the framework
 into its cache, `~/.cache/spin/packages/`, and pins the commit in
 `spin.lock`) and `SPIN_DEBUG=1 spin run gen`, much as `rails new` runs
 `bundle install`, and prints the next steps. Nothing of the framework is copied into the app;
-commit `spin.toml` and `spin.lock`.
+commit `spin.toml` and `spin.lock`. `bin/<app>.rb` and `bin/db.rb` require
+`cybertrain/core`, the framework without its optional subsystems; the
+generators that need one add its line
+([Subsystems](how-it-works.md#subsystems)).
 
 If Spinel or one of the two `spin` steps fails, the files stay, `new` exits
 with 1 and prints what to run once the cause is fixed (for Spinel:

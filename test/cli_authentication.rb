@@ -1194,10 +1194,17 @@ test "a user scaffold without authentication signs nobody in; with authenticatio
   assert_includes read("authusers/test/controllers/members_controller_test.rb"), "  setup do\n    sign_in_as users(:one)\n    @member = members(:one)\n  end\n"
 end
 
+test "bin/shop.rb and bin/db.rb get the jobs, mailer, mailer/later and rate_limit lines after the core's" do
+  lines = "require \"cybertrain/core\"\nrequire \"cybertrain/jobs\"\nrequire \"cybertrain/mailer\"\n" \
+          "require \"cybertrain/mailer/later\"\nrequire \"cybertrain/rate_limit\"\n"
+  assert_includes read("shop/bin/shop.rb"), "#{lines}require_relative \"../gen/views\""
+  assert_includes read("shop/bin/db.rb"), "#{lines}require_relative \"../config/app\""
+end
+
 test "running the generator again writes and edits nothing" do
   before = {}
   (AUTH_FILES + ["config/routes.rb", "app/controllers/application_controller.rb", "app/views/layouts/application.html.erb",
-                 "bin/shop.rb", "config/app.rb"]).each do |f|
+                 "bin/shop.rb", "bin/db.rb", "config/app.rb"]).each do |f|
     before[f] = read("shop/#{f}")
   end
   status = Dir.chdir("shop") { Cybertrain::CLI.run(["generate", "authentication"]) }
@@ -1319,6 +1326,21 @@ test "--invite-only requires the command in bin/<app>.rb and declares setup_open
   assert_includes club_config, "Cybertrain.configure do |c|\n  # /setup (the first user's page)"
   assert_includes club_config, "  c.setting_bool :setup_open, env: \"CLUB_SETUP_OPEN\", default: false\n\n  # Links in mails"
   assert_includes club_config, "  c.setting_string :base_url, env: \"CLUB_BASE_URL\", default: \"\"\n\n  # c.port = 3000\n"
+end
+
+test "it uncomments config/deploy.yml's worker role, which sends the mails" do
+  [["shop", "shop"], ["club", "club"]].each do |dir, app|
+    deploy = read("#{dir}/config/deploy.yml")
+    assert_includes deploy, "\n  worker:\n    hosts:\n      - 192.168.0.1\n    cmd: ./#{app} worker\n"
+    assert_nil deploy.index("  # worker:")
+  end
+end
+
+test "--invite-only adds the same four subsystem lines to bin/club.rb and bin/db.rb" do
+  lines = "require \"cybertrain/core\"\nrequire \"cybertrain/jobs\"\nrequire \"cybertrain/mailer\"\n" \
+          "require \"cybertrain/mailer/later\"\nrequire \"cybertrain/rate_limit\"\nrequire_relative"
+  assert_includes read("club/bin/club.rb"), lines
+  assert_includes read("club/bin/db.rb"), lines
 end
 
 test "--invite-only's /setup answers only to loopback with the one-time token while no user exists" do
@@ -2189,6 +2211,11 @@ test "--confirmable writes the confirmation files and columns" do
   Cybertrain::CLI::NewApp.create("conf", "{ path = \"../cybertrain\" }")
   result = Cybertrain::CLI::Authentication.generate_with_result("conf", false, true)
   assert_equal CONF_FILES, result.created
+  # The same four subsystem lines as the other modes, once each.
+  lines = "require \"cybertrain/core\"\nrequire \"cybertrain/jobs\"\nrequire \"cybertrain/mailer\"\n" \
+          "require \"cybertrain/mailer/later\"\nrequire \"cybertrain/rate_limit\"\nrequire_relative"
+  assert_includes read("conf/bin/conf.rb"), lines
+  assert_includes read("conf/bin/db.rb"), lines
   assert_equal AUTH_FILES, CONF_FILES - CONF_ONLY_FILES
   CONF_FILES.each { |f| assert(File.exist?("conf/#{f}"), "missing #{f}") }
   # The two columns, for a new application's users table (an older one's

@@ -13,17 +13,18 @@
 # `<turbo-stream>` element as a SafeString ({Cybertrain::Turbo} builds it).
 #
 # The interpreter hands `turbo_stream.x` to Helpers#call_object_method,
-# which calls call_method here (Spinel has no `send`: the actions are a
-# `case`). A block is rendered by the helpers before the call and arrives
+# which calls helper_object_call here, as for any HelperObject (Spinel has
+# no `send`: the actions are a `case`). A block is rendered by the helpers before the call and arrives
 # as its output, so the builder never holds one (spikes/NOTES.md rule 88).
 require "cybertrain/html"
 require "cybertrain/turbo"
 require "cybertrain/template/form_builder"
+require "cybertrain/template/helper_object"
 
 module Cybertrain
   module Template
     # @api public
-    class TurboStreamBuilder
+    class TurboStreamBuilder < HelperObject
       # The keywords of the actions that carry content.
       KEYWORDS = %w[partial locals html]
 
@@ -36,16 +37,17 @@ module Cybertrain
       end
 
       # `turbo_stream.replace(target, partial:, locals:, html:)` and the
-      # other actions, without a block.
+      # other actions, without a block (HelperObject's entry, from
+      # Helpers#call_object_method).
       # @return [SafeString]
-      def call_method(name_sym, args, kwargs)
+      def helper_object_call(name_sym, args, kwargs)
         build(name_sym, args, kwargs, "", false)
       end
 
       # The same with a block, whose output (`content`) is the element's
       # content.
       # @return [SafeString]
-      def call_method_with_block(name_sym, args, kwargs, content)
+      def helper_object_call_with_block(name_sym, args, kwargs, content)
         build(name_sym, args, kwargs, content, true)
       end
 
