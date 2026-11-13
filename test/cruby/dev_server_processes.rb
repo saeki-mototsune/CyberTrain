@@ -367,6 +367,18 @@ end
 
 # --- gen, the state file, the lock --------------------------------------------
 
+test "log loses its line, without raising, once the terminal is gone" do
+  with_runner({}) do |runner, listener, root|
+    reader, writer = IO.pipe
+    reader.close
+    gone = Processes.new(root: root, name: "app", port: listener.addr[1], load_path: [],
+                         listener: listener, out: writer, err: StringIO.new)
+    assert_nil gone.log("=> spinel: ready")
+    writer.close
+    assert_nil gone.log("=> spinel: ready")
+  end
+end
+
 test "run_gen answers gen's status and its output" do
   with_runner({ gen: "puts 'wrote gen/app.rb'\n$stderr.puts 'warning'\nexit 1\n" }) do |runner, _listener, _root|
     ok, output = runner.run_gen

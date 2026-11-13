@@ -334,6 +334,145 @@ test "a leftover child of this application is stopped; another process is left a
   end
 end
 
+# P14 by whole arguments: a process is this application's child only when it
+# runs this application's bin/app.rb (a relative path resolved against the
+# process's directory) or is its build/bin/app. Each case is a live process
+# named by child.pid; startup stops it or leaves it alone.
+test "only this application's bin/app.rb or build/bin/app is taken for a leftover child" do
+  with_app do |root|
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    FileUtils.mkdir_p(dev)
+    FileUtils.mkdir_p(File.join(root, "build", "bin"))
+    sleeper = "trap(:TERM) { exit 0 }\nsleep 30\n"
+    File.write(File.join(root, "sleeper.rb"), sleeper)
+    ["build/bin/app", "build/bin/appx"].each do |path|
+      File.write(File.join(root, path), "#!#{RbConfig.ruby}\n#{sleeper}")
+      File.chmod(0o755, File.join(root, path))
+    end
+    Dir.mktmpdir("dev-server-other") do |other|
+      other = File.realpath(other)
+      FileUtils.mkdir_p(File.join(other, "bin"))
+      File.write(File.join(other, "bin", "app.rb"), sleeper)
+      cases = [
+        # [command, directory, stopped?]
+        [[RbConfig.ruby, "-E", "UTF-8", "-I", root, "-r", "socket", "bin/app.rb", "4000"], root, true],
+        [[RbConfig.ruby, File.join(root, "bin", "app.rb"), "4000"], other, true],
+        [["build/bin/app", "4000"], root, true],
+        [[File.join(root, "build", "bin", "app"), "4000"], other, true],
+        # An editor-like process naming the file, another file, another
+        # application's bin/app.rb, a binary whose name starts the same.
+        [[RbConfig.ruby, "sleeper.rb", "bin/app.rb"], root, false],
+        [[RbConfig.ruby, "-e", "sleep 30", "bin/app.rb"], root, false],
+        [[RbConfig.ruby, "bin/app.rb", "4000"], other, false],
+        [["build/bin/appx", "4000"], root, false]
+      ]
+      cases.each do |command, dir, stopped|
+        pid = Process.spawn(*command, chdir: dir, out: File::NULL)
+        begin
+          # Until the exec: a forked process shows this test's command line.
+          mine = DevServer.command_line(Process.pid)
+          wait_until { DevServer.command_line(pid) != mine }
+          File.write(File.join(dev, "child.pid"), pid.to_s)
+          DevServer.stop_leftover_child(root, "app", StringIO.new)
+          if stopped
+            assert gone?(pid), "stopped: #{command.join(" ")} in #{dir}"
+          else
+            refute gone?(pid), "left alone: #{command.join(" ")} in #{dir}"
+          end
+        ensure
+          begin
+            Process.kill(:KILL, pid)
+          rescue Errno::ESRCH
+            nil
+          end
+          Process.wait(pid)
+        end
+      end
+    end
+  end
+end
+
+test "program finds a ruby interpreter's script after its options" do
+  assert_equal ["bin/app.rb", ["4000"]],
+               DevServer.program(["/usr/bin/ruby", "-E", "UTF-8", "-I/a", "-I", "/b c", "-r", "cybertrain/preview", "bin/app.rb", "4000"])
+  assert_equal ["build/bin/app", ["4000"]], DevServer.program(["build/bin/app", "4000"])
+  assert_equal ["x.rb", []], DevServer.program(["ruby3.3", "-w", "--", "x.rb"])
+  assert_equal [nil, []], DevServer.program(["ruby", "-e", "sleep", "bin/app.rb"])
+  assert_equal [nil, []], DevServer.program(["ruby", "-W0"])
+  assert_equal [nil, []], DevServer.program([])
+end
+
+# Where a process's directory cannot be read (no /proc), a relative path
+# counts only when written as the supervisor spawns it.
+test "without the process's directory a relative path must be the one the supervisor spawns" do
+  original = DevServer.method(:process_cwd)
+  DevServer.define_singleton_method(:process_cwd) { |_pid| nil }
+  assert DevServer.names?(1, "bin/app.rb", "/srv/app", "bin/app.rb")
+  refute DevServer.names?(1, "./bin/app.rb", "/srv/app", "bin/app.rb")
+  refute DevServer.names?(1, "bin/appx.rb", "/srv/app", "bin/app.rb")
+  assert DevServer.names?(1, "/srv/app/bin/../bin/app.rb", "/srv/app", "bin/app.rb")
+  refute DevServer.names?(1, "/srv/other/bin/app.rb", "/srv/app", "bin/app.rb")
+ensure
+  DevServer.define_singleton_method(:process_cwd, original)
+end
+
+# `ps` cuts its output at $COLUMNS (or the terminal's width) unless told not
+# to; the leftover's bin/app.rb comes after every -I directory.
+test "a leftover child is recognised with COLUMNS=40 exported, through ps as well" do
+  with_app do |root|
+    dev = File.join(root, "tmp", "cybertrain-dev")
+    FileUtils.mkdir_p(dev)
+    dirs = (1..4).map { |i| File.join(root, "a-long-load-path-directory-#{i}") }
+    command = [RbConfig.ruby, "-E", "UTF-8", *dirs.map { |dir| "-I#{dir}" }, "bin/app.rb", "4000"]
+    saved = ENV["COLUMNS"]
+    ENV["COLUMNS"] = "40"
+    leftover = Process.spawn(*command, chdir: root)
+    begin
+      assert wait_until { File.exist?(File.join(root, "child-started")) }
+      assert_equal command, DevServer.command_line(leftover)
+      assert_equal command, DevServer.ps_command_line(leftover)
+      File.write(File.join(dev, "child.pid"), leftover.to_s)
+      DevServer.stop_leftover_child(root, "app", StringIO.new)
+      assert gone?(leftover), "the leftover child is stopped"
+    ensure
+      ENV["COLUMNS"] = saved
+      begin
+        Process.kill(:KILL, leftover)
+      rescue Errno::ESRCH
+        nil
+      end
+      Process.wait(leftover)
+    end
+  end
+end
+
+test "a second supervisor is recognised with COLUMNS=40 exported" do
+  taken = TCPServer.new("127.0.0.1", 0)
+  with_app do |root|
+    File.write(File.join(root, "port"), taken.addr[1].to_s)
+    fake = File.join(root, "a-long-directory-name-that-pushes-the-command-past-forty-columns", "cybertrain")
+    FileUtils.mkdir_p(File.dirname(fake))
+    File.write(fake, "sleep 30\n")
+    saved = ENV["COLUMNS"]
+    ENV["COLUMNS"] = "40"
+    other = Process.spawn(RbConfig.ruby, fake, "server")
+    begin
+      FileUtils.mkdir_p(File.join(root, "tmp", "cybertrain-dev"))
+      File.write(File.join(root, "tmp", "cybertrain-dev", "supervisor.pid"), other.to_s)
+      wait_until { DevServer.command_line(other).include?("server") }
+      code, out = run_server(root)
+      assert_equal 1, code
+      assert_includes out, "error: a cybertrain server is already running here (pid #{other})"
+    ensure
+      ENV["COLUMNS"] = saved
+      Process.kill(:KILL, other)
+      Process.wait(other)
+    end
+  end
+ensure
+  taken&.close
+end
+
 # --- the driver ---------------------------------------------------------------
 
 # The child stand-in: dev-address answers with the port in the file "port"
@@ -509,6 +648,24 @@ end
 
 def refute_event(root)
   refute log_of(root).include?("EVENT on_child_exit"), "no child's exit was reported:\n#{log_of(root)}"
+end
+
+# A closed terminal sends HUP to its process group: the same stop as TERM
+# (exit 0), with its cleanup, not death by the default action.
+test "HUP stops it like TERM: exit 0, the files removed, the port free" do
+  with_driver_app do |root, start|
+    File.write(File.join(root, "slow-build"), "")
+    pid = start.call
+    assert wait_until(10) { log_of(root).include?("=> preview: CRuby (") }, "the CRuby child became ready:\n#{log_of(root)}"
+    port = listening_port(root)
+    Process.kill(:HUP, pid)
+    status = exit_status(pid)
+    assert status, "the supervisor stopped within 5 s"
+    assert_equal 0, status.exitstatus
+    assert_equal [], dev_files(root) - ["ffi"]
+    assert port_free?(port), "the port is free"
+    refute_event(root)
+  end
 end
 
 test "INT to the whole process group ends it with 130; the children's deaths are not reported" do

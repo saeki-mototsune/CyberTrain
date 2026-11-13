@@ -30,9 +30,10 @@
 #
 # The loop is one thread: wait (on the child's STDERR, and on the listener
 # while holding) for at most a tick, then Processes#poll, then the machine's
-# on_tick. INT and TERM only set a flag; the loop then stops the machine
-# (the build, the child, the hold), removes the files, closes the socket and
-# returns 0, or 130 for INT.
+# on_tick. INT, TERM and HUP (a closed terminal) only set a flag; the loop
+# then stops the machine (the build, the child, the hold), removes the
+# files, closes the socket and returns 0 (TERM and HUP, a stop that was
+# asked for), or 130 for INT.
 #
 # Children stay in the supervisor's process group, as `spin run NAME` does
 # under today's loop: a Ctrl-C in the terminal reaches the child too, and it
@@ -202,15 +203,15 @@ module Cybertrain
       def self.refuse_second_supervisor(root)
         pid = read_pid(File.join(root, DEV_DIR, "supervisor.pid"))
         return if pid.nil? || pid == Process.pid || !alive?(pid)
-        return unless command_line(pid).match?(/cybertrain\S*\s+server(\s|\z)/)
+        return unless supervisor?(command_line(pid))
 
         raise Failure, "a cybertrain server is already running here (pid #{pid})"
       end
 
       # P14: a child a killed supervisor left still holds the listener (and
-      # may run jobs): when child.pid names a live process whose command
-      # line is this application's (bin/NAME.rb or build/bin/NAME), TERM,
-      # then KILL after LEFTOVER_GRACE. Any other process is left alone.
+      # may run jobs): when child.pid names a live process that is this
+      # application's child (application_child?), TERM, then KILL after
+      # LEFTOVER_GRACE. Any other process is left alone.
       # @param root [String] the application's directory
       # @param name [String] the package name
       # @param out [IO] where the line about it goes
@@ -219,8 +220,7 @@ module Cybertrain
         pid = read_pid(path)
         return if pid.nil?
 
-        command = alive?(pid) ? command_line(pid) : ""
-        if command.include?("bin/#{name}.rb") || command.include?("build/bin/#{name}")
+        if alive?(pid) && application_child?(pid, root, name)
           out.puts "=> stopping a child left by an earlier cybertrain server (pid #{pid})"
           out.flush
           signal(pid, :TERM)
@@ -271,7 +271,7 @@ module Cybertrain
       end
 
       # From the bound socket to the stop: the banner, the first round, the
-      # loop. Returns 0, or 130 when INT stopped it.
+      # loop. Returns 0 (TERM, HUP), or 130 when INT stopped it.
       def self.serve(root, name, load_path, host, listener)
         stop = nil
         previous = {}
@@ -283,6 +283,9 @@ module Cybertrain
           File.write(File.join(dev, "supervisor.pid"), Process.pid.to_s)
           previous[:INT] = trap(:INT) { stop ||= :INT }
           previous[:TERM] = trap(:TERM) { stop ||= :TERM }
+          # A closed terminal: the same stop as TERM, files and build
+          # included, rather than death by the default action.
+          previous[:HUP] = trap(:HUP) { stop ||= :HUP }
           port = listener.addr[1]
           puts "=> Booting cybertrain #{Cybertrain::VERSION}"
           puts "=> preview: CRuby #{RUBY_VERSION}"
@@ -347,12 +350,101 @@ module Cybertrain
         nil
       end
 
-      # The process's command line, "" when it cannot be read. `ps` works
-      # on Linux and macOS alike.
+      # The process's arguments, [] when they cannot be read: from
+      # /proc/PID/cmdline where it exists (Linux), exactly, spaces included;
+      # elsewhere from ps (ps_command_line).
+      # @param pid [Integer]
+      # @return [Array<String>]
       def self.command_line(pid)
-        IO.popen(["ps", "-o", "args=", "-p", pid.to_s], err: File::NULL, &:read).strip
+        path = "/proc/#{pid}/cmdline"
+        return ps_command_line(pid) unless File.exist?(path)
+
+        File.binread(path).force_encoding(Encoding.find("filesystem")).split("\0")
       rescue SystemCallError
-        ""
+        []
+      end
+
+      # `ps -ww -o args=`, split at spaces (an argument with a space in it
+      # comes out as two). -ww, which procps and BSD ps both take, keeps ps
+      # from cutting the line at $COLUMNS or at the terminal's width.
+      # @param pid [Integer]
+      # @return [Array<String>]
+      def self.ps_command_line(pid)
+        IO.popen(["ps", "-ww", "-o", "args=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).split
+      rescue SystemCallError
+        []
+      end
+
+      # The process's working directory, or nil where the system does not
+      # show it (only Linux's /proc is read).
+      def self.process_cwd(pid)
+        File.readlink("/proc/#{pid}/cwd")
+      rescue SystemCallError, NotImplementedError
+        nil
+      end
+
+      # Ruby's options that take the next argument as their value.
+      RUBY_VALUE_OPTIONS = ["-C", "-E", "-I", "-r", "--encoding"].freeze
+
+      # The program a command line runs and its arguments: the first word,
+      # or for a ruby interpreter the script it is given (after its options;
+      # none with -e). [nil, []] when there is none.
+      # @param args [Array<String>]
+      # @return [Array(String, Array<String>)]
+      def self.program(args)
+        return [nil, []] if args.empty?
+        return [args[0], args[1..]] unless File.basename(args[0]).match?(/\Aruby[0-9.]*\z/)
+
+        index = 1
+        while index < args.size
+          arg = args[index]
+          return [nil, []] if arg.start_with?("-e")
+
+          if arg == "--"
+            index += 1
+            break
+          elsif RUBY_VALUE_OPTIONS.include?(arg)
+            index += 2
+          elsif arg.start_with?("-") && arg != "-"
+            index += 1
+          else
+            break
+          end
+        end
+        index < args.size ? [args[index], args[(index + 1)..]] : [nil, []]
+      end
+
+      # Whether path, an argument of process pid, names root's relative
+      # file: an absolute path is compared as it is; a relative one is
+      # resolved against the process's working directory where that can be
+      # read, and elsewhere must be written as the supervisor spawns it
+      # (relative to root, from root).
+      def self.names?(pid, path, root, relative)
+        return File.expand_path(path) == File.join(root, relative) if path.start_with?("/")
+
+        cwd = process_cwd(pid)
+        cwd.nil? ? path == relative : File.expand_path(path, cwd) == File.join(root, relative)
+      end
+
+      # P14's identity of a child: the program (a ruby interpreter's script,
+      # or the executable itself) is this application's bin/NAME.rb or
+      # build/bin/NAME, whole paths. An editor with the file open, another
+      # application's bin/NAME.rb, or build/bin/NAMEx is not.
+      # @param pid [Integer]
+      # @param root [String] the application's directory, a real path
+      # @param name [String]
+      # @return [Boolean]
+      def self.application_child?(pid, root, name)
+        program, = program(command_line(pid))
+        return false if program.nil?
+
+        names?(pid, program, root, "bin/#{name}.rb") || names?(pid, program, root, "build/bin/#{name}")
+      end
+
+      # A `cybertrain server` command line: a word named cybertrain...
+      # (exe/cybertrain, or the gem's wrapper) followed by `server`.
+      def self.supervisor?(args)
+        args.each_cons(2).any? { |word, after| File.basename(word).start_with?("cybertrain") && after == "server" }
       end
 
       # Gone, or a zombie: a leftover is not this process's child, so its

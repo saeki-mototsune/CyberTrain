@@ -11,6 +11,7 @@ ok   while holding the supervisor answers 503; after release_hold a child answer
 ok   a toolchain that refuses --incremental is built again without it, and from then on
 ok   a failed build reports its log
 ok   cancel_build kills the build's whole process group
+ok   log loses its line, without raising, once the terminal is gone
 ok   run_gen answers gen's status and its output
 ok   write_state renames a whole file into place
 ok   build_locked? follows the rebuilder's rule for a stale lock
@@ -18,4 +19,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-20 tests, 66 assertions, 0 failures
+21 tests, 68 assertions, 0 failures

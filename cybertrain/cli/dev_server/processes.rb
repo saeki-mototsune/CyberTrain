@@ -270,9 +270,13 @@ module Cybertrain
           write_file(dev_path("state"), Dev::StateFile.format(generation, serving, build, output))
         end
 
+        # A terminal that was closed (HUP) answers writes with EIO: the line
+        # is lost, and the stop that follows must not be.
         def log(line)
           @out.puts(line)
           @out.flush
+          nil
+        rescue IOError, SystemCallError
           nil
         end
 
