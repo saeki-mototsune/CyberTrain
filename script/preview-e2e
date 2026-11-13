@@ -1,0 +1,734 @@
+#!/usr/bin/env ruby
+# The CRuby preview end to end, on a real application: `cybertrain server`
+# (the supervisor of docs/superpowers/specs/2026-11-12-cruby-preview-design.md
+# section 6) run on a temporary copy of examples/blog, driven over HTTP the
+# way a developer's browser and editor would. It builds the blog with Spinel
+# several times, so a run takes minutes (about ten here).
+#
+# The copy is `cp -a examples/blog` into a temporary directory ($TMPDIR),
+# with spin.toml pointing at this checkout, the copied development database,
+# tmp/cybertrain-dev/, tmp/rebuild.log and any build lock removed, the
+# database migrated under CRuby (bin/db.rb with the preview), and Article's
+# `length: { minimum: 10 }` taken off the body so that step 3 can add it
+# back. The port is free and below the ephemeral range, derived from this
+# process's PID, so two runs (or a client's own port) do not collide.
+#
+# One line per step, `ok N ...` or `FAIL N ...: <reason>`, in order 1 to 12,
+# then the exit status: 1 when any step failed. A step that fails does not
+# stop the run; the steps after it check their own preconditions. On a FAIL
+# the tail of the supervisor's output and of tmp/rebuild.log go to stderr,
+# since the copy itself is removed.
+#
+#  1  `cybertrain server PORT` starts; GET /articles answers 200 from cruby
+#     (X-Cybertrain-Runtime) within 5 s.
+#  2  A response comes from spinel within 300 s of the start (the bound
+#     catches a hang: the first build of the blog takes about 100 s here),
+#     and the output has `=> spinel: ready`.
+#  3  (design goal 1) A POST /articles with a short body, accepted by the
+#     binary before the save, answers 422 from cruby within 1 s of the save
+#     that adds `validates :body, length: { minimum: 10 }`. The time is
+#     printed on the line; over 1 s is a FAIL.
+#  4  Later the same POST answers 422 from spinel.
+#  5  (two saves in quick succession) The minimum goes to 1000 and, 0.3 s
+#     later, back to 10: the next binary (the state file's generation has
+#     moved) accepts a 20-character body, and the output has exactly one
+#     `=> spinel: ready` after the second save.
+#  6  (a request in flight during a handover) With a GET of the article's
+#     stream endpoint open on the binary, a save is answered by cruby
+#     within 12 s.
+#  7  (`cybertrain build` running meanwhile) With tmp/cybertrain-build.lock
+#     naming a live PID, two saves change nothing for 2 s (same generation,
+#     the old validation still answers) and the lock line is printed once;
+#     removing the lock applies them (cruby, the new validation).
+#  8  (the supervisor dying uncleanly) Once the build started in step 7 is
+#     over, SIGKILL the supervisor; the child it leaves still holds the port.
+#     `cybertrain server PORT` again stops that child (P14: the line naming
+#     its PID, the PID gone) and answers 200 from cruby within 5 s.
+#  9  A syntax error in a model: a GET answers 503 naming SyntaxError within
+#     2 s; the fix brings 200 back.
+# 10  A method CRuby never calls, holding a call to a class method no class
+#     defines (spikes/NOTES.md rule 84: Spinel refuses it at compile time):
+#     pages carry the build-failed banner with the compiler's error, the
+#     build log has it, and the header stays cruby.
+# 11  INT to the supervisor's process group (a terminal's Ctrl-C): it exits
+#     with 130 within 12 s, the port is free, tmp/cybertrain-dev/state is
+#     gone and no process of the copy is left.
+# 12  (design goal 4: no request is refused or reset by a switch) From step
+#     1 to the end of step 5 a background loop asks GET /up every 50 ms: no
+#     request is refused, reset, timed out, or answered with anything but
+#     200 (the holding page's 503 included). A failure names its time,
+#     counted from the loop's start, to set against the handovers.
+#
+# Ruby rather than sh: the timing steps need a monotonic clock, requests
+# with their own timeouts, a request loop running beside the steps, and a
+# stream held open while a save is made, all in one process; curl in a shell
+# loop would add a process start (milliseconds, unevenly) to each sample.
+#
+# Everything this script starts is stopped on every exit path (a FAIL, an
+# exception, Ctrl-C or TERM of the script): each supervisor's process group,
+# then any process whose working directory or command line is in the
+# temporary directory (a build whose supervisor was killed keeps a process
+# group of its own), then the directory itself. Linux only (/proc).
+#
+# usage: script/preview-e2e        (from the repository root; needs spin and
+#                                   ruby on PATH, as `cybertrain server` does)
+require "fileutils"
+require "json"
+require "net/http"
+require "rbconfig"
+require "socket"
+require "tmpdir"
+
+REPO = File.expand_path("..", __dir__)
+
+# The bounds the steps check (seconds).
+FIRST_CRUBY = 5
+FIRST_SPINEL = 300
+SAVE_TO_CRUBY = 1.0
+NEXT_SPINEL = 300
+STREAM_HANDOVER = 12
+LOCK_QUIET = 2
+LOCK_RELEASE = 10
+RESTART = 5
+SYNTAX_ERROR = 2
+SYNTAX_FIX = 5
+BUILD_FAILS = 300
+INT_EXIT = 12
+UP_INTERVAL = 0.05
+# How long after the binary's first response its `=> spinel: ready` line may
+# take to reach the output.
+LOG_LAG = 2
+
+MODEL = "app/models/article.rb"
+LENGTH_RULE = "  validates :body, length: { minimum: 10 }\n"
+LOCK_LINE = "=> cybertrain build in progress; the preview reloads when it finishes"
+READY_LINE = "=> spinel: ready"
+FAILED_LINE = "=> spinel: build failed"
+BANNER = 'id="cybertrain-build-failed"'
+UNDEFINED = "e2e_class_method_nobody_defines"
+
+StepFailed = Class.new(StandardError)
+
+def now
+  Process.clock_gettime(Process::CLOCK_MONOTONIC)
+end
+
+def secs(seconds)
+  format("%.2f s", seconds)
+end
+
+# --- the copy, its processes and the cleanup -----------------------------------
+
+class Run
+  attr_reader :app, :port, :log
+  attr_accessor :supervisor
+
+  def initialize
+    @tmp = File.realpath(Dir.mktmpdir("preview-e2e-"))
+    @app = File.join(@tmp, "blog")
+    @log = File.join(@tmp, "server.log")
+    @supervisors = []
+    @supervisor = nil
+    @failed = false
+  end
+
+  def path(relative)
+    File.join(@app, relative)
+  end
+
+  def setup
+    system("cp", "-a", File.join(REPO, "examples/blog"), @app) or raise StepFailed, "cp -a examples/blog failed"
+    toml = File.read(path("spin.toml"))
+    pinned = toml.sub('cybertrain = { path = "../.." }', "cybertrain = { path = #{REPO.dump} }")
+    raise StepFailed, "spin.toml has no `cybertrain = { path = \"../..\" }` to point at the checkout" if pinned == toml
+
+    File.write(path("spin.toml"), pinned)
+    FileUtils.rm_rf([path("tmp/cybertrain-dev"), path("tmp/rebuild.log"), path("tmp/cybertrain-build.lock")])
+    FileUtils.rm_f(Dir.glob(path("storage/*.sqlite3*")))
+    model = File.read(path(MODEL))
+    relaxed = model.sub("validates :body, presence: true, length: { minimum: 10 }", "validates :body, presence: true")
+    raise StepFailed, "#{MODEL} no longer has the body's length rule this script takes off" if relaxed == model
+
+    File.write(path(MODEL), relaxed)
+    out = IO.popen({ "CYBERTRAIN_ENV" => "development" },
+                   [RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-I", @app, "-r", "cybertrain/preview", "bin/db.rb", "migrate"],
+                   chdir: @app, err: [:child, :out], &:read)
+    raise StepFailed, "the migration under CRuby failed:\n#{out}" unless $?.success?
+
+    @port = free_port
+  end
+
+  # A port below the ephemeral range (no client's own port), from the PID.
+  def free_port
+    base = 20_000 + (Process.pid % 9_000)
+    (0...1_000).each do |offset|
+      candidate = base + offset
+      begin
+        TCPServer.new("127.0.0.1", candidate).close
+        return candidate
+      rescue SystemCallError
+        next
+      end
+    end
+    raise StepFailed, "no free port from #{base}"
+  end
+
+  # `cybertrain server PORT` in the copy, in a process group of its own (so
+  # a terminal's Ctrl-C of this script does not reach it, and step 11 can
+  # send INT to the group as a terminal would), its output appended to log.
+  def start_server
+    env = { "CYBERTRAIN_ENV" => nil, "PORT" => nil, "RUBYLIB" => nil, "RUBYOPT" => nil }
+    pid = Process.spawn(env, RbConfig.ruby, "-I", REPO, File.join(REPO, "exe/cybertrain"), "server", @port.to_s,
+                        chdir: @app, in: File::NULL, out: [@log, File::WRONLY | File::APPEND | File::CREAT],
+                        err: [:child, :out], pgroup: true)
+    @supervisors << pid
+    @supervisor = pid
+  end
+
+  def output
+    File.exist?(@log) ? File.binread(@log).force_encoding("UTF-8").scrub : ""
+  end
+
+  def output_since(offset)
+    output.byteslice(offset..) || ""
+  end
+
+  def output_size
+    File.exist?(@log) ? File.size(@log) : 0
+  end
+
+  def child_pid
+    File.read(path("tmp/cybertrain-dev/child.pid")).strip.to_i
+  rescue SystemCallError
+    nil
+  end
+
+  def failed!
+    @failed = true
+  end
+
+  def failed?
+    @failed
+  end
+
+  # Processes whose working directory or command line is in the temporary
+  # directory: the supervisors, their children, gen, and a build left by a
+  # supervisor that was killed.
+  def leftovers
+    Dir.glob("/proc/[0-9]*").filter_map do |dir|
+      pid = File.basename(dir).to_i
+      next if pid == Process.pid
+
+      cwd = begin
+        File.readlink("#{dir}/cwd")
+      rescue SystemCallError
+        ""
+      end
+      cmdline = begin
+        File.binread("#{dir}/cmdline").tr("\0", " ")
+      rescue SystemCallError
+        ""
+      end
+      state = begin
+        File.read("#{dir}/stat")[/\) (\S)/, 1]
+      rescue SystemCallError
+        nil
+      end
+      next if state.nil? || state == "Z"
+
+      pid if cwd == @tmp || cwd.start_with?("#{@tmp}/") || cmdline.include?(@tmp)
+    end
+  end
+
+  def cleanup
+    @supervisors.each { |pid| signal_group(pid) }
+    3.times do
+      pids = leftovers
+      break if pids.empty?
+
+      pids.each do |pid|
+        pgid = begin
+          Process.getpgid(pid)
+        rescue SystemCallError
+          nil
+        end
+        signal_group(pgid) if pgid && pgid != Process.getpgrp
+        Process.kill(:KILL, pid)
+      rescue SystemCallError
+        nil
+      end
+      sleep 0.2
+    end
+    @supervisors.each do |pid|
+      Process.wait(pid, Process::WNOHANG)
+    rescue SystemCallError
+      nil
+    end
+    report_evidence if @failed
+    FileUtils.rm_rf(@tmp)
+  end
+
+  def signal_group(pgid)
+    Process.kill(:KILL, -pgid)
+  rescue SystemCallError
+    nil
+  end
+
+  def report_evidence
+    warn "--- the supervisor's output, last 60 lines (#{@log})"
+    warn output.lines.last(60).join
+    rebuild = path("tmp/rebuild.log")
+    return unless File.exist?(rebuild)
+
+    warn "--- tmp/rebuild.log, last 30 lines"
+    warn File.binread(rebuild).force_encoding("UTF-8").scrub.lines.last(30).join
+  end
+end
+
+# --- HTTP -------------------------------------------------------------------
+
+Response = Struct.new(:status, :runtime, :body, :headers)
+
+# One request on a connection of its own; nil when no response came (with
+# the reason in the block, when one is given).
+def request(port, method, path, form: nil, cookies: nil, read_timeout: 30)
+  http = Net::HTTP.new("127.0.0.1", port)
+  http.open_timeout = 5
+  http.read_timeout = read_timeout
+  http.max_retries = 0
+  req = method == :post ? Net::HTTP::Post.new(path) : Net::HTTP::Get.new(path)
+  req["Connection"] = "close"
+  req["Cookie"] = cookies.map { |name, value| "#{name}=#{value}" }.join("; ") if cookies && !cookies.empty?
+  req.set_form_data(form) if form
+  res = http.start { |h| h.request(req) }
+  Response.new(res.code.to_i, res["x-cybertrain-runtime"], res.body.to_s.dup.force_encoding("UTF-8").scrub, res)
+rescue SystemCallError, IOError, EOFError, Timeout::Error, Net::HTTPBadResponse => e
+  yield e if block_given?
+  nil
+end
+
+# A browser's session: the cookie jar and the CSRF token of the new-article
+# form, so that POST /articles is accepted by either runtime (both read the
+# same tmp/secret_key).
+class Visitor
+  def initialize(port)
+    @port = port
+    @cookies = {}
+    @token = nil
+    @count = 0
+  end
+
+  def get(path, **options)
+    keep(request(@port, :get, path, cookies: @cookies, **options))
+  end
+
+  def sign_in
+    res = get("/articles/new")
+    raise StepFailed, "GET /articles/new: #{res ? res.status : 'no response'}" unless res && res.status == 200
+
+    @token = res.body[/name="authenticity_token" value="([^"]+)"/, 1]
+    raise StepFailed, "no authenticity_token in /articles/new" if @token.nil?
+  end
+
+  def post_article(body)
+    @count += 1
+    form = { "authenticity_token" => @token, "article[title]" => "e2e #{Process.pid} #{@count}", "article[body]" => body }
+    keep(request(@port, :post, "/articles", form: form, cookies: @cookies))
+  end
+
+  def keep(res)
+    return res if res.nil?
+
+    Array(res.headers.get_fields("set-cookie")).each do |line|
+      name, value = line.split(";", 2).first.split("=", 2)
+      @cookies[name] = value
+    end
+    res
+  end
+end
+
+# Polls the block every `interval` until it returns a truthy value or
+# `bound` seconds have passed since `from`; returns [value, seconds].
+def until_true(bound, from: now, interval: 0.05)
+  loop do
+    value = yield
+    return [value, now - from] if value
+    return [nil, now - from] if now - from > bound
+
+    sleep interval
+  end
+end
+
+def state(port)
+  res = request(port, :get, "/__cybertrain/dev/state", read_timeout: 15)
+  return nil unless res && res.status == 200
+
+  JSON.parse(res.body).merge("runtime" => res.runtime)
+rescue JSON::ParserError
+  nil
+end
+
+def describe(res)
+  res ? "#{res.status} from #{res.runtime || 'no runtime'}" : "no response"
+end
+
+# --- the background loop of step 12 --------------------------------------------
+
+class UpLoop
+  def initialize(port)
+    @port = port
+    @started = now
+    @count = 0
+    @failures = []
+    @stop = false
+    @thread = Thread.new { run }
+  end
+
+  def run
+    until @stop
+      started = now
+      error = nil
+      res = request(@port, :get, "/up", read_timeout: 30) { |e| error = e }
+      @count += 1
+      unless res && res.status == 200
+        what = res ? "#{res.status} from #{res.runtime}" : "#{error.class}: #{error.message}"
+        @failures << "#{what} (at #{secs(started - @started)})"
+      end
+      pause = UP_INTERVAL - (now - started)
+      sleep pause if pause.positive?
+    end
+  end
+
+  # Waits for the request in flight unless `wait` is false (the script is
+  # being interrupted).
+  def stop(wait: true)
+    @stop = true
+    @thread.join(35) if wait
+    @thread.kill
+    [@count, @failures]
+  end
+end
+
+# --- the model --------------------------------------------------------------
+
+def model(run)
+  File.read(run.path(MODEL))
+end
+
+# Writes the model and returns the time of the save.
+def save(run, text)
+  File.write(run.path(MODEL), text)
+  now
+end
+
+# The model with `lines` before the class's last `end`.
+def with_lines(text, lines)
+  at = text.rindex(/^end\b/) or raise StepFailed, "#{MODEL} has no closing end"
+  text[0, at] + lines + text[at..]
+end
+
+# --- the steps --------------------------------------------------------------
+
+RESULTS = []
+
+def step(number, run)
+  line = yield
+  RESULTS << [number, true]
+  puts "ok #{number} #{line}"
+rescue StepFailed, StandardError => e
+  RESULTS << [number, false]
+  run.failed!
+  reason = e.is_a?(StepFailed) ? e.message : "#{e.class}: #{e.message}"
+  puts "FAIL #{number}: #{reason}"
+ensure
+  $stdout.flush
+end
+
+def check(condition, reason)
+  raise StepFailed, reason unless condition
+end
+
+def main
+  run = Run.new
+  begin
+    begin
+      run.setup
+    rescue StepFailed => e
+      run.failed!
+      puts "FAIL setup: #{e.message}"
+      return 1
+    end
+    port = run.port
+    visitor = Visitor.new(port)
+    up = nil
+    article = "/articles/1"
+    started = nil
+
+    step(1, run) do
+      started = now
+      run.start_server
+      res, took = until_true(FIRST_CRUBY, from: started) do
+        r = visitor.get("/articles", read_timeout: FIRST_CRUBY)
+        r if r && r.status == 200 && r.runtime == "cruby"
+      end
+      check(res, "no 200 from cruby within #{FIRST_CRUBY} s (last: #{describe(visitor.get('/articles', read_timeout: 2))})")
+      up = UpLoop.new(port)
+      visitor.sign_in
+      "GET /articles answered 200 from cruby #{secs(took)} after the start (port #{port})"
+    end
+
+    step(2, run) do
+      res, took = until_true(FIRST_SPINEL, from: started, interval: 0.5) do
+        r = visitor.get("/articles")
+        r if r && r.runtime == "spinel"
+      end
+      check(res, "no response from spinel within #{FIRST_SPINEL} s of the start")
+      check(res.status == 200, "GET /articles from spinel answered #{res.status}")
+      # The binary answers as soon as it accepts; the supervisor logs the
+      # line when it next looks at the ready file, a tick (50 ms) later.
+      logged, = until_true(LOG_LAG) { run.output.include?(READY_LINE) }
+      check(logged, "the output has no `#{READY_LINE}`")
+      "spinel answered #{secs(took)} after the start; the output has `#{READY_LINE}`"
+    end
+
+    step(3, run) do
+      before = visitor.post_article("short")
+      check(before && before.status == 303 && before.runtime == "spinel",
+            "before the save, a short body should be accepted by the binary (303 from spinel); got #{describe(before)}")
+      article = before.headers["location"].to_s.sub(%r{\Ahttps?://[^/]+}, "")
+      saved = save(run, with_lines(model(run), LENGTH_RULE))
+      seen = []
+      res, took = until_true(10, from: saved, interval: 0.01) do
+        r = visitor.post_article("short")
+        seen << describe(r) if seen.last != describe(r)
+        r if r && r.status == 422 && r.runtime == "cruby"
+      end
+      check(res, "no 422 from cruby within 10 s of the save (answers: #{seen.join(', ')})")
+      check(took <= SAVE_TO_CRUBY, "422 from cruby #{secs(took)} after the save: over the #{SAVE_TO_CRUBY} s of goal 1")
+      "a short body answered 422 from cruby #{secs(took)} after the save"
+    end
+
+    step(4, run) do
+      res, took = until_true(NEXT_SPINEL, interval: 1) do
+        r = visitor.post_article("short")
+        raise StepFailed, "the binary accepted the short body (303 from spinel)" if r && r.runtime == "spinel" && r.status != 422
+
+        r if r && r.status == 422 && r.runtime == "spinel"
+      end
+      check(res, "no 422 from spinel within #{NEXT_SPINEL} s")
+      "the short body answered 422 from spinel #{secs(took)} later"
+    end
+
+    step(5, run) do
+      current = state(port)
+      check(current, "GET /__cybertrain/dev/state did not answer")
+      generation = current["generation"]
+      reverted = model(run)
+      check(reverted.include?("minimum: 10 }"), "#{MODEL} lost the rule of step 3")
+      save(run, reverted.sub("minimum: 10 }", "minimum: 1000 }"))
+      sleep 0.3
+      offset = run.output_size
+      save(run, reverted)
+      fresh, took = until_true(NEXT_SPINEL, interval: 0.5) do
+        s = state(port)
+        s if s && s["runtime"] == "spinel" && s["serving"] == "spinel" && s["generation"] > generation
+      end
+      check(fresh, "no spinel at a generation past #{generation} within #{NEXT_SPINEL} s")
+      res = visitor.post_article("twenty characters ok")
+      check(res && res.status == 303 && res.runtime == "spinel",
+            "a 20-character body should be accepted by the reverted source; got #{describe(res)}")
+      until_true(LOG_LAG) { run.output_since(offset).include?(READY_LINE) }
+      readies = run.output_since(offset).scan(READY_LINE).size
+      check(readies == 1, "the output has #{readies} `#{READY_LINE}` after the second save, not 1")
+      "spinel at generation #{fresh['generation']} (was #{generation}) behaves as the reverted source, " \
+        "#{secs(took)} after the second save; one `#{READY_LINE}` since"
+    end
+
+    if up
+      count, failures = up.stop
+      up = nil
+      RESULTS << [12, failures.empty? && count.positive?]
+      step12 = [count, failures]
+    end
+
+    step(6, run) do
+      page = visitor.get(article)
+      check(page && page.status == 200 && page.runtime == "spinel", "GET #{article} should answer 200 from spinel; got #{describe(page)}")
+      src = page.body[/<turbo-stream-source src="([^"]+)"/, 1]
+      check(src, "#{article} has no <turbo-stream-source>")
+      src = src.gsub("&amp;", "&")
+      stream = TCPSocket.new("127.0.0.1", port)
+      stream.write("GET #{src} HTTP/1.1\r\nHost: 127.0.0.1:#{port}\r\nAccept: text/event-stream\r\n\r\n")
+      head = +""
+      head << stream.readpartial(4096) until head.include?("\r\n\r\n")
+      check(head.start_with?("HTTP/1.1 200") && head.match?(/^X-Cybertrain-Runtime: spinel\r$/i),
+            "the stream did not open on spinel: #{head.lines.first.to_s.strip}")
+      closed = nil
+      reader = Thread.new do
+        loop { stream.readpartial(4096) }
+      rescue EOFError, IOError, SystemCallError
+        closed = now
+      end
+      saved = save(run, model(run) + "# e2e: step 6\n")
+      res, took = until_true(STREAM_HANDOVER + 5, from: saved) do
+        r = visitor.get("/articles", read_timeout: STREAM_HANDOVER + 5)
+        r if r && r.status == 200 && r.runtime == "cruby"
+      end
+      reader.join(1)
+      stream.close
+      check(res, "no 200 from cruby within #{STREAM_HANDOVER + 5} s of the save")
+      check(took <= STREAM_HANDOVER, "cruby answered #{secs(took)} after the save: over #{STREAM_HANDOVER} s")
+      ended = closed ? "the stream ended #{secs(closed - saved)} after it" : "the stream was still open"
+      "with a stream open, cruby answered #{secs(took)} after the save (#{ended})"
+    end
+
+    step(7, run) do
+      res, = until_true(10) do
+        r = visitor.get("/articles")
+        r if r && r.runtime == "cruby"
+      end
+      check(res, "cruby is not serving at the start of the step")
+      before = state(port)
+      check(before, "GET /__cybertrain/dev/state did not answer")
+      lock = run.path("tmp/cybertrain-build.lock")
+      File.write(lock, Process.pid.to_s)
+      offset = run.output_size
+      save(run, model(run).sub("minimum: 10 }", "minimum: 3 }"))
+      sleep LOCK_QUIET / 2.0
+      save(run, model(run) + "# e2e: step 7\n")
+      sleep LOCK_QUIET / 2.0
+      during = state(port)
+      check(during && during["generation"] == before["generation"],
+            "under the lock the generation moved from #{before['generation']} to #{during && during['generation']}")
+      old = visitor.post_article("sixsix")
+      check(old && old.status == 422 && old.runtime == "cruby", "under the lock the old rule should still answer 422 from cruby; got #{describe(old)}")
+      locks = run.output_since(offset).scan(LOCK_LINE).size
+      check(locks == 1, "two saves under the lock printed the lock line #{locks} times, not once")
+      released = now
+      File.delete(lock)
+      res, took = until_true(LOCK_RELEASE, from: released) do
+        r = visitor.post_article("sixsix")
+        r if r && r.status == 303 && r.runtime == "cruby"
+      end
+      check(res, "the new rule did not answer from cruby within #{LOCK_RELEASE} s of removing the lock")
+      "two saves under the lock: no new generation, the lock line once; applied #{secs(took)} after the lock went"
+    end
+
+    step(8, run) do
+      done, = until_true(NEXT_SPINEL, interval: 0.5) do
+        s = state(port)
+        s if s && (%w[failed binary_failed].include?(s["build"]) || (s["serving"] == "spinel" && s["build"] == "ready"))
+      end
+      check(done, "the build started in step 7 was not over within #{NEXT_SPINEL} s")
+      left = run.child_pid
+      check(left, "no tmp/cybertrain-dev/child.pid")
+      Process.kill(:KILL, run.supervisor)
+      Process.wait(run.supervisor)
+      held = request(port, :get, "/up", read_timeout: 5)
+      check(held && held.status == 200, "after SIGKILL the child #{left} should still answer on the port; got #{describe(held)}")
+      offset = run.output_size
+      restarted = now
+      run.start_server
+      res, took = until_true(RESTART, from: restarted) do
+        r = visitor.get("/articles", read_timeout: RESTART)
+        r if r && r.status == 200 && r.runtime == "cruby"
+      end
+      check(res, "no 200 from cruby within #{RESTART} s of the second start (last: #{describe(visitor.get('/articles', read_timeout: 2))})")
+      check(run.output_since(offset).include?("=> stopping a child left by an earlier cybertrain server (pid #{left})"),
+            "the second start did not say it stopped the leftover child #{left}")
+      check(!run.leftovers.include?(left), "the leftover child #{left} is still running")
+      "after SIGKILL the leftover child (#{held.runtime}, pid #{left}) was stopped; 200 from cruby #{secs(took)} after the second start"
+    end
+
+    step(9, run) do
+      good = model(run)
+      saved = save(run, with_lines(good, "  e2e_syntax_error = (1 +\n"))
+      res, took = until_true(SYNTAX_ERROR + 3, from: saved) do
+        r = visitor.get("/articles", read_timeout: 5)
+        r if r && r.status == 503
+      end
+      check(res, "no 503 within #{SYNTAX_ERROR + 3} s of the syntax error (last: #{describe(visitor.get('/articles', read_timeout: 2))})")
+      check(res.body.include?("SyntaxError"), "the 503 does not name SyntaxError: #{res.body[0, 300].inspect}")
+      check(took <= SYNTAX_ERROR, "the 503 came #{secs(took)} after the save: over #{SYNTAX_ERROR} s")
+      fixed = save(run, good)
+      back, back_took = until_true(SYNTAX_FIX, from: fixed) do
+        r = visitor.get("/articles", read_timeout: 5)
+        r if r && r.status == 200
+      end
+      check(back, "no 200 within #{SYNTAX_FIX} s of the fix")
+      "503 naming SyntaxError #{secs(took)} after the save; 200 (#{back.runtime}) #{secs(back_took)} after the fix"
+    end
+
+    step(10, run) do
+      offset = run.output_size
+      refused = "  # CRuby never runs this; Spinel refuses the call (spikes/NOTES.md rule 84).\n" \
+                "  def e2e_never_called\n    Article.#{UNDEFINED}\n  end\n"
+      saved = save(run, with_lines(model(run), refused))
+      page, took = until_true(BUILD_FAILS, from: saved, interval: 0.5) do
+        r = visitor.get("/articles")
+        r if r && r.body.include?(BANNER)
+      end
+      check(page, "no build-failed banner within #{BUILD_FAILS} s")
+      check(page.runtime == "cruby", "the page with the banner came from #{page.runtime}")
+      log = File.binread(run.path("tmp/rebuild.log")).force_encoding("UTF-8").scrub
+      check(log.include?(UNDEFINED), "tmp/rebuild.log does not name #{UNDEFINED}")
+      check(page.body.include?(UNDEFINED), "the banner does not show the compiler's error")
+      check(run.output_since(offset).include?(FAILED_LINE), "the output has no `#{FAILED_LINE}`")
+      sleep 2
+      later = visitor.get("/articles")
+      check(later && later.status == 200 && later.runtime == "cruby", "2 s later GET /articles answered #{describe(later)}")
+      error = log.lines.find { |l| l.include?(UNDEFINED) }.to_s.strip
+      "the banner came #{secs(took)} after the save, from cruby; the build log: #{error[0, 160]}"
+    end
+
+    step(11, run) do
+      pid = run.supervisor
+      interrupted = now
+      Process.kill(:INT, -pid)
+      status, took = until_true(INT_EXIT + 3, from: interrupted) do
+        _, st = Process.wait2(pid, Process::WNOHANG)
+        st
+      end
+      check(status, "still running #{INT_EXIT + 3} s after INT")
+      check(took <= INT_EXIT, "exited #{secs(took)} after INT: over #{INT_EXIT} s")
+      check(status.exitstatus == 130, "exited with #{status.inspect}, not 130")
+      free = begin
+        TCPServer.new("127.0.0.1", port).close
+        true
+      rescue SystemCallError
+        false
+      end
+      check(free, "port #{port} is still taken")
+      check(!File.exist?(run.path("tmp/cybertrain-dev/state")), "tmp/cybertrain-dev/state is still there")
+      left = run.leftovers
+      check(left.empty?, "processes of the copy are left: #{left.join(', ')}")
+      "INT: exit 130 #{secs(took)} later; the port is free, the state file gone, nothing left running"
+    end
+
+    if step12
+      count, failures = step12
+      if failures.empty? && count.positive?
+        puts "ok 12 GET /up every #{(UP_INTERVAL * 1000).round} ms from step 1 to step 5: #{count} requests, none refused, reset or not 200"
+      else
+        run.failed!
+        puts "FAIL 12: #{failures.size} of #{count} requests to /up failed, times from step 1: #{failures.join('; ')}"
+      end
+    else
+      RESULTS << [12, false]
+      run.failed!
+      puts "FAIL 12: the /up loop never ran (step 1 failed)"
+    end
+
+    failed = RESULTS.count { |_, ok| !ok }
+    puts "#{RESULTS.size - failed} ok, #{failed} FAIL"
+    failed.zero? ? 0 : 1
+  rescue Interrupt
+    puts "interrupted"
+    130
+  ensure
+    up&.stop(wait: false)
+    run.cleanup
+  end
+end
+
+exit(main)
