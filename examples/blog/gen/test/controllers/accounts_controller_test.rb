@@ -448,25 +448,28 @@ class AccountsControllerTest < ActionDispatch::IntegrationTest
   end
 
   # Runs the block with Config#env, hosts_from_env and the base_url
-  # setting given (and Cybertrain.logger writing errors to log, unless
-  # it is nil), then puts them back, also when the block fails.
+  # setting given, text log lines (and Cybertrain.logger writing errors to
+  # log, unless it is nil), then puts them back, also when the block fails.
   def with_config(env, hosts, base_url, log = nil)
     c = Cybertrain.config
     saved_env = c.env
     saved_hosts = c.hosts_from_env
     saved_base_url = c.string_setting(:base_url)
     saved_logger = Cybertrain.logger
+    saved_json_lines = Cybertrain::Logger.json_lines
     begin
       c.env = env
       c.hosts_from_env = hosts
       c.set_string_setting(:base_url, base_url)
       Cybertrain.logger = Cybertrain::Logger.new(log, :error) unless log.nil?
+      Cybertrain::Logger.json_lines = false
       yield
     ensure
       c.env = saved_env
       c.hosts_from_env = saved_hosts
       c.set_string_setting(:base_url, saved_base_url)
       Cybertrain.logger = saved_logger
+      Cybertrain::Logger.json_lines = saved_json_lines
     end
     nil
   end

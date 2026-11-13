@@ -13,7 +13,8 @@
 # of the unlocked median. Fallback (D3): no lock, each line one write cut
 # to 4,096 bytes.
 #
-# What it does: copies the framework (cybertrain/, cybertrain.rb,
+# What it does: extracts the framework at FRAMEWORK_REV (git archive:
+# cybertrain/, cybertrain.rb,
 # spin.toml, the gemspec, bin/, exe/) and examples/blog into
 # $TMPDIR/logger_lock/<variant>/, the variant's Logger over
 # cybertrain/logger.rb, and builds the blog there with `cybertrain build`
@@ -70,7 +71,11 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 HERE="$ROOT/spikes/phase5/logger_lock"
 WORK="${TMPDIR:-$ROOT/tmp}/logger_lock"
-LOCK="${BUILD_LOCK:-/tmp/claude-0/-home-user-CyberTrain/b3d8ac30-ff9f-5b84-9a6c-d146460aebde/scratchpad/build.lock}"
+mkdir -p "$WORK"
+LOCK="${BUILD_LOCK:-$WORK/build.lock}"
+# The framework the measurement used. A later framework calls Logger
+# methods the two spike Loggers do not have.
+FRAMEWORK_REV="${FRAMEWORK_REV:-19668bc}"
 SECONDS_PER_RUN="${SECONDS_PER_RUN:-10}"
 RUNS="${RUNS:-5}"
 SECRET=$(ruby -rsecurerandom -e 'print SecureRandom.hex(64)')
@@ -79,9 +84,8 @@ build() {
   local variant=$1 fw="$WORK/$1"
   rm -rf "$fw"
   mkdir -p "$fw/examples"
-  cp -r "$ROOT/cybertrain" "$ROOT/cybertrain.rb" "$ROOT/spin.toml" "$ROOT/cybertrain.gemspec" "$ROOT/bin" "$ROOT/exe" "$fw/"
-  (cd "$ROOT/examples" && tar --exclude=blog/build --exclude=blog/dist --exclude=blog/tmp \
-    --exclude='blog/storage/*.sqlite3*' -cf - blog) | (cd "$fw/examples" && tar -xf -)
+  git -C "$ROOT" archive "$FRAMEWORK_REV" cybertrain cybertrain.rb spin.toml cybertrain.gemspec bin exe examples/blog \
+    | tar -xf - -C "$fw"
   cp "$HERE/logger_$variant.rb" "$fw/cybertrain/logger.rb"
   local started=$(date +%s)
   (cd "$fw/examples/blog" && flock "$LOCK" ruby -I"$fw" "$fw/bin/cybertrain.rb" build)
@@ -119,6 +123,7 @@ serve() {
   (cd "$run" && CYBERTRAIN_ENV=production CYBERTRAIN_SECRET_KEY_BASE=$SECRET CYBERTRAIN_LOG_LEVEL=info \
      SPINEL_WORKERS=2 PORT=$port exec taskset -c 0,1 ./blog > stdout.fifo 2> stderr.log) &
   PID=$!
+  SERVER_PIDS="$SERVER_PIDS $PID"
   for _ in $(seq 1 500); do
     curl -s -o /dev/null "http://127.0.0.1:$port/" && return 0
     sleep 0.02
@@ -153,10 +158,11 @@ bench() {
   fi
   local v
   for v in locked unlocked; do prepare "$v"; done
+  # Neither server outlives a failed step, a failed start included.
+  SERVER_PIDS=""
+  trap 'kill $SERVER_PIDS 2> /dev/null || true' EXIT
   serve locked 3301; local pid_locked=$PID
   serve unlocked 3302; local pid_unlocked=$PID
-  # Neither server outlives a failed step.
-  trap "kill $pid_locked $pid_unlocked 2> /dev/null || true" EXIT
   for v in locked unlocked; do
     local port=3301; [ "$v" = unlocked ] && port=3302
     load "$port" 3 > /dev/null  # warm-up

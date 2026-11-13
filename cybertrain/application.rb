@@ -152,12 +152,17 @@ module Cybertrain
       # assignments are checked together.
       problem = c.validation_error
       fail_boot(problem) unless problem.empty?
-      # The line format before the first line boot logs (the warning
-      # below); Runtime.apply installs it again with the level. Only once
+      # The line format for the first line boot logs (the warning below),
+      # and only for it: a boot that fails after this leaves the format as
+      # it found it. Runtime.apply installs it with the level. Only once
       # validation passed: log_format is known to be :text or :json.
-      Logger.json_lines = c.log_format == :json
       warning = c.mail_delivery_warning
-      Cybertrain.logger.warn(warning) unless warning.empty?
+      unless warning.empty?
+        json_lines_before = Logger.json_lines
+        Logger.json_lines = c.log_format == :json
+        Cybertrain.logger.warn(warning)
+        Logger.json_lines = json_lines_before
+      end
       # A cron task's job: kind no Job.handle registered (Scheduler.start!
       # raises the same message; here it is a boot error before the banner).
       job_kinds_error = Scheduler.job_kinds_error
