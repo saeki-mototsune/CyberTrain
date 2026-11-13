@@ -16,6 +16,12 @@ module Cybertrain
     # tests with {use_table} and ends with `exit(Bundle.run!(ARGV, dispatcher))`.
     # @api private
     module Bundle
+      # What {boot} raises when it refuses the database (an ArgumentError,
+      # as before): {boot!} prints it and exits 2.
+      # @api private
+      class Refused < ArgumentError
+      end
+
       # The class-form tests, parallel Arrays (gen's Gen::Tests table), and
       # the test files in path order.
       @files = Array.new(0) { "" }
@@ -106,7 +112,9 @@ module Cybertrain
         end
         other = Database.other_environment(path)
         return "cybertrain test refuses to delete #{path}: it is the #{other} database" unless other.empty?
-        unless c.env == "test" && (path == DEFAULT_DATABASE || (!named.empty? && path == named))
+        # The same file in any spelling (absolute, `storage//test.sqlite3`).
+        default = Database.same_file?(path, DEFAULT_DATABASE)
+        unless c.env == "test" && (default || (!named.empty? && Database.same_file?(path, named)))
           return "cybertrain test refuses to delete #{path}: not a test database (env #{c.env})"
         end
         return "" if Database.deletable?(path)
@@ -144,7 +152,7 @@ module Cybertrain
       # @return [Cybertrain::Application]
       def self.boot(router, url_resolver)
         problem = refusal
-        raise ArgumentError, problem unless problem.empty?
+        raise Refused, problem unless problem.empty?
 
         c = Cybertrain.config
         c.csrf_unless_given(false)
@@ -162,6 +170,14 @@ module Cybertrain
         # A dangling symlink too: SQLite would create the file it points at.
         [path, "#{path}-wal", "#{path}-shm"].each { |f| File.delete(f) if File.exist?(f) || File.symlink?(f) }
         connection = Cybertrain::DB::Connection.new(path)
+        # A symlink planted between the delete and the open (a shared,
+        # writable directory) was followed by SQLite: nothing is marked or
+        # migrated through it.
+        planted = Bundle.opened_problem(path)
+        unless planted.empty?
+          connection.close
+          raise Refused, planted
+        end
         # The mark first, written through to the file itself (out of the
         # write-ahead log), so a run stopped at any later step leaves a file
         # the next run recognises as its own.
@@ -186,8 +202,35 @@ module Cybertrain
       # @return [nil]
       def self.boot!(router, url_resolver)
         check_database!
-        boot(router, url_resolver)
+        problem = Bundle.boot_problem(router, url_resolver)
+        unless problem.empty?
+          puts problem
+          exit(2)
+        end
         nil
+      end
+
+      # {boot}, answering "" or the refusal it raised ({Refused}); the
+      # rescue in this plain method (NOTES rules 32/45).
+      # @return [String]
+      def self.boot_problem(router, url_resolver)
+        boot(router, url_resolver)
+        ""
+      rescue Refused => e
+        e.message
+      end
+
+      # Why the database just opened at `path` must not be used ("" when it
+      # may): `path` is a symlink, planted after the boot deleted what was
+      # there, so SQLite opened the file it points at.
+      # @param path [String]
+      # @return [String]
+      # @api private
+      def self.opened_problem(path)
+        return "" unless File.symlink?(path)
+
+        "cybertrain test refuses #{path}: it became a symlink while the test database was created " \
+          "(nothing was marked or migrated); remove it and run again"
       end
 
       # When {refusal} refuses the configured database: the reason on

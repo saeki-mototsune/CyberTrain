@@ -191,21 +191,23 @@ module Cybertrain
         File.expand_path(file) == File.expand_path(other)
       end
 
-      # Whether `file` is storage/test.sqlite3 itself (relative or under an
-      # application): its real file is that name in that directory, so a
-      # storage/test.sqlite3 that is a symlink to another file, or into
-      # another directory, is not.
+      # Whether `file` is this application's own storage/test.sqlite3 (the
+      # working directory's), in any spelling (relative, absolute,
+      # `storage//test.sqlite3`): the same file ({same_file?}), whose real
+      # file is that name in that directory. Another project's
+      # storage/test.sqlite3 is not, nor a storage/test.sqlite3 that is a
+      # symlink to another file or into another directory.
       # @param file [String]
       # @return [Boolean]
       # @api private
       def self.default_test_file?(file)
-        return false unless file == TEST_PATH || file.end_with?("/#{TEST_PATH}")
+        return false unless Database.same_file?(file, TEST_PATH)
         return true unless File.exist?(file) || File.symlink?(file)
 
         real = Database.real_path(file)
         return false if real.empty?
 
-        File.basename(real) == File.basename(TEST_PATH) && File.dirname(real) == Database.real_path(File.dirname(file))
+        File.basename(real) == File.basename(TEST_PATH) && File.dirname(real) == Database.real_path(File.dirname(TEST_PATH))
       end
 
       # Whether `file` is a SQLite database carrying {TEST_MARKER}: read from
@@ -301,14 +303,17 @@ module Cybertrain
           raise message
         end
         present = Array.new(0) { "" }
-        c.execute("SELECT name FROM sqlite_master WHERE type = 'table'").each { |r| present << r["name"].to_s } if clear
+        # Every name qualified with "main": a TEMP table of the same name
+        # would otherwise take an unqualified DELETE, and an ATTACHed
+        # database is never the target.
+        c.execute("SELECT name FROM \"main\".sqlite_master WHERE type = 'table'").each { |r| present << r["name"].to_s } if clear
         c.execute("PRAGMA foreign_keys = OFF")
         begin
           c.begin!
           if clear
-            tables.each { |t| c.execute("DELETE FROM \"#{t}\"") }
-            FRAMEWORK_TABLES.each { |t| c.execute("DELETE FROM \"#{t}\"") if present.include?(t) }
-            c.execute("DELETE FROM sqlite_sequence") if present.include?("sqlite_sequence")
+            tables.each { |t| c.execute("DELETE FROM \"main\".\"#{t}\"") }
+            FRAMEWORK_TABLES.each { |t| c.execute("DELETE FROM \"main\".\"#{t}\"") if present.include?(t) }
+            c.execute("DELETE FROM \"main\".sqlite_sequence") if present.include?("sqlite_sequence")
           end
           i = 0
           while i < sql.size

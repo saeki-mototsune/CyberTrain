@@ -395,6 +395,47 @@ test "CYBERTRAIN_TEST_DATABASE naming the development or production database is 
   Dir.rmdir("tmp/test_bundle/live")
 end
 
+test "the default exemption is this application's storage/test.sqlite3 in any spelling, not another project's" do
+  make_dir("tmp")
+  make_dir("tmp/test_bundle")
+  make_dir("tmp/test_bundle/other")
+  make_dir("tmp/test_bundle/other/storage")
+  theirs = "tmp/test_bundle/other/storage/test.sqlite3"
+  File.write(theirs, "another project's rows")
+  [theirs, File.expand_path(theirs)].each do |path|
+    ENV["CYBERTRAIN_TEST_DATABASE"] = path
+    bundle_config("test", path)
+    assert_equal "cybertrain test refuses to delete #{path}: not a database cybertrain test created; " \
+                 "delete it yourself or name another file", boot_refusal
+  end
+  assert_equal "another project's rows", File.read(theirs)
+  ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  # The application's own default written another way is still the default.
+  [File.expand_path("storage/test.sqlite3"), "storage//test.sqlite3", "./storage/test.sqlite3"].each do |path|
+    bundle_config("test", path)
+    assert_equal "", Cybertrain::Test::Bundle.refusal
+  end
+  File.delete(theirs)
+  Dir.rmdir("tmp/test_bundle/other/storage")
+  Dir.rmdir("tmp/test_bundle/other")
+end
+
+test "a symlink found at the path just opened is refused before anything is marked or migrated" do
+  make_dir("tmp")
+  make_dir("tmp/test_bundle")
+  target = "tmp/test_bundle/planted_target.sqlite3"
+  link = "tmp/test_bundle/planted.sqlite3"
+  File.write(target, "someone's rows")
+  File.delete(link) if File.symlink?(link)
+  File.symlink("planted_target.sqlite3", link)
+  assert_equal "cybertrain test refuses #{link}: it became a symlink while the test database was created " \
+               "(nothing was marked or migrated); remove it and run again", Cybertrain::Test::Bundle.opened_problem(link)
+  assert_equal "", Cybertrain::Test::Bundle.opened_problem(target)
+  assert_equal "", Cybertrain::Test::Bundle.opened_problem("tmp/test_bundle/none.sqlite3")
+  File.delete(link)
+  File.delete(target)
+end
+
 test "storage/test.sqlite3 is taken as it is, unless it is a symlink to another file" do
   make_dir("storage")
   ENV.delete("CYBERTRAIN_TEST_DATABASE")

@@ -188,8 +188,11 @@ test "a failing rollback does not keep foreign keys off" do
 end
 
 test "a file: URI counts by its path, and odd forms are refused" do
-  assert_equal "", Database.refusal("test", "file:/srv/app/storage/test.sqlite3")
-  assert_equal "", Database.refusal("test", "file:///srv/app/storage/test.sqlite3")
+  # Another project's storage/test.sqlite3 is not this application's.
+  assert_equal "Test::Database refuses to empty file:/srv/app/storage/test.sqlite3: #{NOT_CREATED}",
+               Database.refusal("test", "file:/srv/app/storage/test.sqlite3")
+  assert_equal "Test::Database refuses to empty file:///srv/app/storage/test.sqlite3: #{NOT_CREATED}",
+               Database.refusal("test", "file:///srv/app/storage/test.sqlite3")
   assert_equal "", Database.refusal("test", "file:storage/test.sqlite3")
   ["file:/app/storage/development.sqlite3#/storage/test.sqlite3", "file:/app/storage/development.sqlite3?x=/storage/test.sqlite3",
    "file://otherhost/app/storage/test.sqlite3", "file:/app/storage/test%2Esqlite3"].each do |uri|
@@ -212,15 +215,24 @@ test "a storage/test.sqlite3 symlinked to another file is refused" do
   File.symlink("#{DIR}/elsewhere/test.sqlite3", link)
   assert_equal "Test::Database refuses to empty #{link}: #{NOT_CREATED}", Database.refusal("test", link)
   File.delete(link)
+  # A real storage/test.sqlite3 of another application (this program's is
+  # the working directory's): unmarked, so refused like any other file.
   File.write(link, "test")
-  assert_equal "", Database.refusal("test", link)
+  assert_equal "Test::Database refuses to empty #{link}: #{NOT_CREATED}", Database.refusal("test", link)
   [link, "#{DIR}/app/storage/development.sqlite3", "#{DIR}/elsewhere/test.sqlite3"].each { |f| File.delete(f) }
   ["#{DIR}/app/storage", "#{DIR}/app", "#{DIR}/elsewhere"].each { |d| Dir.rmdir(d) }
 end
 
 test "only a test database is emptied" do
   assert_equal "", Database.refusal("test", "storage/test.sqlite3")
-  assert_equal "", Database.refusal("test", "/srv/app/storage/test.sqlite3")
+  # This application's default in any spelling; another project's is not.
+  assert_equal "", Database.refusal("test", File.expand_path("storage/test.sqlite3"))
+  assert_equal "", Database.refusal("test", "storage//test.sqlite3")
+  assert_equal "", Database.refusal("test", "./storage/test.sqlite3")
+  assert_equal "Test::Database refuses to empty /srv/app/storage/test.sqlite3: #{NOT_CREATED}",
+               Database.refusal("test", "/srv/app/storage/test.sqlite3")
+  assert_equal "Test::Database refuses to empty ../other/storage/test.sqlite3: #{NOT_CREATED}",
+               Database.refusal("test", "../other/storage/test.sqlite3")
   assert_equal "", Database.refusal("test", ":memory:")
   assert_equal "", Database.refusal("test", DB_PATH)
   assert_equal "Test::Database refuses to empty storage/test.sqlite3: not a test database (env development)",
@@ -266,6 +278,22 @@ test "any other file is emptied only when it carries the bundle's mark" do
   assert Database.marked?(DB_PATH)
   assert_equal "", Database.refusal("test", DB_PATH)
   [plain, text].each { |f| File.delete(f) }
+end
+
+test "the clear empties the main database's tables, never a TEMP table of the same name" do
+  Post.create(title: "extra", body: "long enough body")
+  temp_rows = 0
+  main_rows = 0
+  DB.with do |c|
+    c.execute("CREATE TEMP TABLE \"posts\" (\"id\" INTEGER PRIMARY KEY, \"title\" TEXT)")
+    c.execute("INSERT INTO temp.\"posts\" (\"id\", \"title\") VALUES (1, 'shadow')")
+    Database.clear_on(c, Gen::TestData::TABLES)
+    temp_rows = Cybertrain::Cast.int(c.execute("SELECT COUNT(*) AS n FROM temp.\"posts\"")[0]["n"])
+    main_rows = Cybertrain::Cast.int(c.execute("SELECT COUNT(*) AS n FROM main.\"posts\"")[0]["n"])
+    c.execute("DROP TABLE temp.\"posts\"")
+  end
+  assert_equal 1, temp_rows
+  assert_equal 0, main_rows
 end
 
 test "the clear and the load refuse a connected database that is not a test one" do
