@@ -108,7 +108,7 @@ The hooks, each replacing a direct reference the spike had to cut:
 | `start(app)`, `stop`, `request_stop` | the server role's boot, shutdown and TERM trap | `Scheduler`/`Job` thread start and stop, `Job.request_stop`, `Stream::Poller.start!`/`stop!`, `Background.start_all`/`stop_all` |
 | `failed? -> Bool` | `Roles.wait_stop` | `Background.feeds_failed?` |
 | `health_problem(now) -> String` | the `/up` middleware | the worker and feed staleness checks |
-| `call(request) -> Response or nil` at the stream endpoint's position | the middleware stack | mounting `Stream::Endpoint` |
+| `endpoint(request) -> Response or nil` at the stream endpoint's position (not `call`, which would share a name with `Proc#call`, rule 40) | the middleware stack | mounting `Stream::Endpoint` |
 | `command(name, argv) -> Integer` (−1: not mine), `commands -> rows for help` | `Main.run` | the `worker`, `feeds` and `jobs` arms |
 | `helper(name, args, ...)` | the template helper dispatch, after its own arms | the `turbo_stream_from`, `turbo_stream`, `signed_stream_name`, `stream_source_path` arms and the `TurboStreamBuilder` arm |
 | `periodic_name`, `periodic_interval`, `periodic(now)` | the jobs feature's scheduler, one task per feature that declares one | `Cache.register_prune_task`'s direct `Scheduler.every` |

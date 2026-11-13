@@ -17,7 +17,10 @@ the real change keeps each subsystem's behaviour and moves it behind a hook.
   (`Array.new(0) { "" }`); one return type per method name across the whole
   program, including every override of a hook (spikes/NOTES.md rules 10, 34,
   41); never store a block that calls a method through a base-class-typed
-  receiver (rule 88).
+  receiver (rule 88). Rule 101 (Task 1) narrowed the hazard: such a block is
+  wrong when it is written inside a subclass's body before that hook's `def`.
+  So a feature file defines its subclass first and registers its instance at
+  the end of the file, outside the class body.
 - The core files must not name a class of a subsystem, in code or in a
   `require`. Check with a grep over the core's require closure after each
   task (Task 2 adds the script).
