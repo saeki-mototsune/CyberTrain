@@ -8,7 +8,9 @@
 # The copy is `cp -a examples/blog` into a temporary directory ($TMPDIR),
 # with spin.toml pointing at this checkout, the copied development database,
 # tmp/cybertrain-dev/, tmp/rebuild.log and any build lock removed, the
-# database migrated under CRuby (bin/db.rb with the preview), and Article's
+# database migrated under CRuby (bin/db.rb with the preview), a user
+# created there (`bin/blog.rb user`, under CRuby too: the blog's article
+# forms need a signed-in user), and Article's
 # `length: { minimum: 10 }` taken off the body so that step 3 can add it
 # back. The port is free and below the ephemeral range, derived from this
 # process's PID, so two runs (or a client's own port) do not collide.
@@ -127,6 +129,9 @@ UNDEFINED = "e2e_class_method_nobody_defines"
 BUILDING_TEXT = "CRuby preview · Spinel building…"
 READY_TEXT = "Spinel ready — reload"
 INDICATOR_SCRIPT = "/__cybertrain/dev/indicator.js"
+# The user the visitor signs in as (created by Run#setup).
+USER_EMAIL = "e2e@example.com"
+USER_PASSWORD = "e2e-preview-password"
 
 StepFailed = Class.new(StandardError)
 
@@ -175,6 +180,12 @@ class Run
                    [RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-I", @app, "-r", "cybertrain/preview", "bin/db.rb", "migrate"],
                    chdir: @app, err: [:child, :out], &:read)
     raise StepFailed, "the migration under CRuby failed:\n#{out}" unless $?.success?
+
+    out = IO.popen({ "CYBERTRAIN_ENV" => "development" },
+                   [RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-I", @app, "-r", "cybertrain/preview", "bin/blog.rb", "user",
+                    USER_EMAIL, USER_PASSWORD],
+                   chdir: @app, err: [:child, :out], &:read)
+    raise StepFailed, "`bin/blog.rb user` under CRuby failed:\n#{out}" unless $?.success?
 
     @port = free_port
   end
@@ -328,9 +339,10 @@ rescue SystemCallError, IOError, EOFError, Timeout::Error, Net::HTTPBadResponse 
   nil
 end
 
-# A browser's session: the cookie jar and the CSRF token of the new-article
-# form, so that POST /articles is accepted by either runtime (both read the
-# same tmp/secret_key).
+# A browser's session: the cookie jar, signed in as USER_EMAIL (the blog's
+# article forms need a signed-in user), and the CSRF token of the
+# new-article form, so that POST /articles is accepted by either runtime
+# (both read the same tmp/secret_key and database).
 class Visitor
   def initialize(port)
     @port = port
@@ -344,6 +356,16 @@ class Visitor
   end
 
   def sign_in
+    res = get("/session/new")
+    raise StepFailed, "GET /session/new: #{res ? res.status : 'no response'}" unless res && res.status == 200
+
+    token = res.body[/name="authenticity_token" value="([^"]+)"/, 1]
+    raise StepFailed, "no authenticity_token in /session/new" if token.nil?
+
+    form = { "authenticity_token" => token, "email_address" => USER_EMAIL, "password" => USER_PASSWORD }
+    res = keep(request(@port, :post, "/session", form: form, cookies: @cookies))
+    raise StepFailed, "POST /session: #{res ? res.status : 'no response'}" unless res && res.status == 303
+
     res = get("/articles/new")
     raise StepFailed, "GET /articles/new: #{res ? res.status : 'no response'}" unless res && res.status == 200
 
