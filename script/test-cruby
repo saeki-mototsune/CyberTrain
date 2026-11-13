@@ -9,6 +9,11 @@
 # usage: script/test-cruby [file...]          run these files (default: all)
 #        script/test-cruby --regen [file...]  rewrite their snapshots
 #
+# A file whose output differs by system (the leftover cases of
+# dev_server.rb that need /proc run only on Linux, so macOS counts fewer
+# assertions) has a second snapshot, <name>.rb.expected.<system> (`uname -s`
+# in lower case: darwin), which is used, and rewritten, on that system.
+#
 # Exit status 1 when any file differs or fails; 2 for a bad argument.
 set -u
 
@@ -24,6 +29,8 @@ if [ "$#" -eq 0 ]; then
   set -- $(printf '%s\n' test/cruby/*.rb | LC_ALL=C sort)
 fi
 
+system=$(uname -s | tr '[:upper:]' '[:lower:]')
+
 work=$(mktemp -d) || exit 2
 trap 'rm -rf "$work"' EXIT
 
@@ -34,6 +41,9 @@ for file in "$@"; do
     exit 2
   fi
   snapshot="$file.expected"
+  if [ -f "$file.expected.$system" ]; then
+    snapshot="$file.expected.$system"
+  fi
   out="$work/out"
   ruby -E UTF-8 -I. "$file" > "$out" 2>&1
   rc=$?
