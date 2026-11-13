@@ -407,12 +407,22 @@ if [ "$main_up" = yes ]; then
   # between two polls. The backstop is the mtimes: those of build/bin/gen
   # and the shim's libraries in this check, and the binary's in A3. An
   # unreadable cc line not counted here is the exiting `--version` probe.
+  #
+  # `spinel --version`, which the supervisor runs once at its start (the
+  # toolchain check), probes the C compiler's predefined macros:
+  # `cc -E -dM -x c /dev/null`, whose preprocessor is a cc1 with -E and
+  # -dM. It preprocesses an empty input and compiles nothing, so it is a
+  # probe too, and so is a cc1 caught unreadable as it exits (the backstop
+  # above covers a real compile caught there).
   compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | awk '
-    { name = $2; unreadable = 0 }
+    { name = $2; unreadable = 0; rest = "" }
     name ~ /^\[.*\]$/ { name = substr(name, 2, length(name) - 2); unreadable = 1 }
     {
+      for (i = 3; i <= NF; i++) rest = rest " " $i
       n = split(name, p, "/"); prog = p[n]
       if ((prog == "cc" || prog == "gcc") && (unreadable || NF == 2 || (NF == 3 && $3 == "--version"))) next
+      if ((prog == "cc" || prog == "gcc") && rest == " -E -dM -x c /dev/null") next
+      if (prog == "cc1" && (unreadable || (rest ~ / -E( |$)/ && rest ~ / -dM( |$)/))) next
       print prog
     }' | sort -u | tr '\n' ' ' | sed 's/ $//')
   polled=$(docker exec "$main" test -e /tmp/smoke-compilers.log && echo yes)
