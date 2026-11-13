@@ -1,0 +1,16 @@
+ok   load_path takes the -I directories of spin flags, in order
+ok   load_path keeps directories whose names have spaces, as spin prints them
+ok   a port that is in use is refused with today's wording, before any child
+ok   a port argument overrides the application's port
+ok   a PORT that is not a number, or a word after it, is refused
+ok   an application that does not load under CRuby is refused, naming --spinel
+ok   a second supervisor for the same application is refused
+ok   a supervisor.pid naming a process that is not a cybertrain server is not a refusal
+ok   a leftover child of this application is stopped; another process is left alone
+ok   the driver starts the CRuby child, hands the port to the binary, and stops on TERM
+ok   INT to the whole process group ends it with 130; the children's deaths are not reported
+ok   TERM while the build runs: the build's group is stopped too
+ok   a leftover child holding the port is stopped, and the new supervisor serves on it
+ok   a child that dies of the Ctrl-C that stops the driver is not reported as a death
+ok   the gate passes events to the machine until a stop is asked
+15 tests, 69 assertions, 0 failures

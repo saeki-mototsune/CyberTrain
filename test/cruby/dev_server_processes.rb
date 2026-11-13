@@ -192,7 +192,15 @@ test "stop_child sends TERM, then KILL after the grace" do
     runner.start_child(:cruby, 1)
     pid = runner.child_pid
     assert wait_for_file(File.join(root, "tmp", "cybertrain-dev", "ready")), "the child trapped TERM"
-    took = elapsed { runner.stop_child }
+    # Bounded: a stop_child that never sends KILL fails here instead of
+    # waiting out the stand-in, which never ends by itself.
+    stopper = Thread.new { runner.stop_child }
+    took = elapsed { stopper.join(3) }
+    unless stopper.join(0)
+      Process.kill(:KILL, pid)
+      stopper.join
+      flunk "stop_child did not return within 3 s of TERM (no KILL after the grace)"
+    end
     assert took < 1.0, "stop_child took #{took} s"
     assert gone?(pid), "the child is gone"
     refute File.exist?(File.join(root, "tmp", "cybertrain-dev", "child.pid")), "child.pid is removed"
