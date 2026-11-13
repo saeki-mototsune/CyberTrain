@@ -401,11 +401,15 @@ jobs:
             exit 1
           fi
 
+      # Every test of the blog (test/**/*_test.rb: Rails-shaped classes on
+      # test/fixtures) in one program, then gen --check: the run leaves
+      # gen/ (gen/tests.rb and gen/test/** included) as committed.
       - name: Example app tests
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
-          spin test
+          cybertrain test
+          spin run gen -- --check
 
   # The action applications use (.github/actions/setup-cybertrain, which the
   # workflow `cybertrain new` writes calls at a release tag), run from this
