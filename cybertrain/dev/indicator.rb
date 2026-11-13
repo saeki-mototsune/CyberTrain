@@ -38,7 +38,10 @@ module Cybertrain
     #   application without it only when every tag carries it, the header
     #   being dropped otherwise, as is If-Modified-Since, on GET and HEAD
     #   (Indicator.validate_against_child). A 304 then means the page the
-    #   browser replays was rendered here, its data- attributes right.
+    #   browser replays was rendered here, its data- attributes right. On
+    #   every method If-Match, and on the others If-None-Match, reach the
+    #   application with this child's suffix removed from each tag, so a
+    #   PUT or PATCH that sends back the tag it was given matches.
     # @api private
     class Indicator < Middleware
       ID = "cybertrain-dev-indicator"
@@ -124,9 +127,7 @@ module Cybertrain
         elsif request.method == "GET" && path == SCRIPT_PATH
           answer_script(ctx.response)
         else
-          # GET and HEAD only, the requests HttpCache answers 304: another
-          # method's preconditions are the application's, as sent.
-          Indicator.validate_against_child(request, @etag_suffix) if request.method == "GET" || request.method == "HEAD"
+          Indicator.validate_against_child(request, @etag_suffix)
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
           insert_indicator(ctx, snapshot)
@@ -212,19 +213,34 @@ module Cybertrain
       # and the application answers 200 with a page rendered here.
       # If-Modified-Since is always dropped: a date cannot say which
       # runtime rendered the page, so a page validated by Last-Modified
-      # alone is answered 200 under the preview.
+      # alone is answered 200 under the preview. Those two rules are for
+      # GET and HEAD, the requests HttpCache answers 304. On every other
+      # method (a PUT or PATCH sending back the tag it was given, which
+      # the application compares with its own) If-Match and If-None-Match
+      # reach the application with this child's suffix removed from each
+      # tag and everything else as sent (Indicator.unsuffixed_list): a tag
+      # of another runtime or generation keeps its suffix, so it does not
+      # match. If-Match loses the suffix on GET and HEAD too.
       # @param request [Request]
       # @param suffix [String] this child's, "-dev-<runtime>-<generation>"
       # @return [nil]
       def self.validate_against_child(request, suffix)
         headers = request.headers
-        Indicator.drop_request_header(headers, "If-Modified-Since")
+        safe = request.method == "GET" || request.method == "HEAD"
+        Indicator.drop_request_header(headers, "If-Modified-Since") if safe
+        match = request.header("If-Match")
+        unless match.nil?
+          restored = Indicator.unsuffixed_list(match.to_s, suffix) # NOTES rule 62
+          Indicator.drop_request_header(headers, "If-Match")
+          headers["if-match"] = restored
+        end
         listed = request.header("If-None-Match")
         return nil if listed.nil?
 
-        kept = Indicator.child_none_match(listed.to_s, suffix) # NOTES rule 62
+        text = listed.to_s # NOTES rule 62
+        kept = safe ? Indicator.child_none_match(text, suffix) : Indicator.unsuffixed_list(text, suffix)
         Indicator.drop_request_header(headers, "If-None-Match")
-        headers["if-none-match"] = kept unless kept.empty?
+        headers["if-none-match"] = kept unless safe && kept.empty?
         nil
       end
 
@@ -258,15 +274,54 @@ module Cybertrain
       # The If-None-Match list with suffix removed from each tag, "" when
       # the header must be dropped (see .validate_against_child): an entry
       # that is `*`, is not a quoted entity-tag or lacks suffix, or no
-      # entry at all. A comma inside a quoted tag is part of the tag, so
-      # the list is walked byte by byte; empty entries are skipped.
+      # entry at all.
       # @param list [String]
       # @param suffix [String]
       # @return [String]
       def self.child_none_match(list, suffix)
+        entries = Indicator.list_entries(list)
+        out = +""
+        i = 0
+        while i < entries.size
+          stripped = Indicator.unsuffixed_tag(entries[i], suffix)
+          return "" if stripped.empty?
+
+          out << ", " unless out.empty?
+          out << stripped
+          i += 1
+        end
+        out
+      end
+
+      # The If-Match or If-None-Match list of a request with suffix removed
+      # from each tag that ends in it; every other entry (`*`, a tag of
+      # another runtime or generation, one without a suffix) as it is.
+      # @param list [String]
+      # @param suffix [String]
+      # @return [String]
+      def self.unsuffixed_list(list, suffix)
+        entries = Indicator.list_entries(list)
+        out = +""
+        i = 0
+        while i < entries.size
+          entry = entries[i]
+          stripped = Indicator.unsuffixed_tag(entry, suffix)
+          out << ", " unless out.empty?
+          out << (stripped.empty? ? entry : stripped)
+          i += 1
+        end
+        out
+      end
+
+      # The entries of a list of entity-tags, stripped, empty ones skipped.
+      # A comma inside a quoted tag is part of the tag, so the list is
+      # walked byte by byte.
+      # @param list [String]
+      # @return [Array<String>]
+      def self.list_entries(list)
         text = list.to_s # NOTES rule 62
         n = text.bytesize
-        out = +""
+        entries = Array.new(0) { "" }
         quoted = false
         start = 0
         i = 0
@@ -276,18 +331,12 @@ module Cybertrain
             quoted = !quoted
           elsif b == 44 && (!quoted || i == n) # , or the end
             entry = text.byteslice(start, i - start).to_s.strip
-            unless entry.empty?
-              stripped = Indicator.unsuffixed_tag(entry, suffix)
-              return "" if stripped.empty?
-
-              out << ", " unless out.empty?
-              out << stripped
-            end
+            entries << entry unless entry.empty?
             start = i + 1
           end
           i += 1
         end
-        out
+        entries
       end
 
       # entry without suffix before its closing quote, "" when entry is not

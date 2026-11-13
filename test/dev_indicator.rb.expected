@@ -21,9 +21,10 @@ ok   If-None-Match with this child's suffix reaches the application without it, 
 ok   If-None-Match with another generation's or runtime's tag, none, or * is dropped: the page is rendered again
 ok   If-Modified-Since never reaches the application under supervision
 ok   the validators of a request other than GET or HEAD reach the application unchanged
+ok   If-Match and If-None-Match on PUT and PATCH reach the application without this child's suffix
 ok   without the Indicator the validators and the ETag are the application's own
 ok   with a failed build the banner follows <body> and the indicator precedes </body>
 ok   a page sent as bytes gets the indicator, in ASCII markup, byte for byte
 ok   ascii_html writes the characters past ASCII as numeric references
 ok   the state follows the state file as it changes
-28 tests, 220 assertions, 0 failures
+29 tests, 244 assertions, 0 failures
