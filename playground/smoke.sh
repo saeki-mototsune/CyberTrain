@@ -65,7 +65,7 @@ what_A1="GET /articles through the published port answers 200 (default command, 
 what_A2="the log shows the boot banner of $version listening on http://0.0.0.0:3000"
 what_A3="starting compiled nothing (build/bin/blog keeps the image's mtime)"
 what_A11="the first start runs no C compiler: no cc, gcc, cc1, collect2 or ld process but a --version probe from the container's start until its startup build has finished, and build/bin/gen (gen runs under CRuby) and tmp/cybertrain-dev/ffi/*.so keep the image's mtimes"
-what_A4="GET / answers 200 with <h1>Articles</h1>"
+what_A4="GET / answers 200 with <h1>Articles</h1> and the corner indicator's markup (Dev::Indicator's div)"
 what_A5="GET /articles/new has a CSRF token and a SameSite=Lax session cookie without Secure or Partitioned"
 what_A6="POST /articles with the token and the cookie answers 303 to the new article, whose page shows it"
 what_A7="POST /articles without token or cookie answers 403"
@@ -427,10 +427,11 @@ if [ "$main_up" = yes ]; then
   fi
 
   code=$(curl -s -o "$work/a4.html" -w '%{http_code}' --max-time 5 "$base/")
-  if [ "$code" = 200 ] && grep -qF '<h1>Articles</h1>' "$work/a4.html"; then
+  if [ "$code" = 200 ] && grep -qF '<h1>Articles</h1>' "$work/a4.html" &&
+    grep -qF '<div id="cybertrain-dev-indicator"' "$work/a4.html"; then
     pass A4 "$what_A4"
   else
-    fail A4 "$what_A4" "status $code" "$main"
+    fail A4 "$what_A4" "status $code, indicator: $(grep -c 'cybertrain-dev-indicator' "$work/a4.html" 2> /dev/null)" "$main"
   fi
 
   jar="$work/session.jar"

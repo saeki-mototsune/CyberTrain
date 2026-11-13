@@ -56,7 +56,13 @@ stopped and restarted.
    - `CRuby preview`: CRuby served this page.
 
    The corner line keeps itself up to date, but the page never reloads by itself:
-   reload it to see what the server now serves.
+   reload it to see what the server now serves. It can say `Spinel ready — reload`
+   before you edit anything: the first page may come from CRuby while the binary
+   of the last build starts.
+
+   A save that does not load under CRuby at all (a typo) gets no corner line and
+   no banner: the server answers with a page of its own that names the error and
+   refreshes itself until a save loads.
 3. **Carry on with the tutorial** from step 08, "Scaffold comments":
    https://saeki-mototsune.github.io/CyberTrain/tutorial.html#scaffold-comment
    Stop the server first (Ctrl-C in its terminal), run the step's commands in a new
@@ -77,7 +83,7 @@ cybertrain server
 
 Stop the blog's server first: both use port 3000. `cybertrain new` needs no network
 here. The first `cybertrain server` of a new app serves it from CRuby at once while
-the first build runs (two to three minutes); then the compiled binary takes over.
+the first build runs (a few minutes); then the compiled binary takes over.
 The new app has no root route, so `/` shows "Not Found": its pages start at
 `/products`.
 

@@ -6,6 +6,39 @@ in conversation; the calls marked **(call)** are the author's, listed
 again in section 15, and were approved with the document). The plan is
 docs/superpowers/plans/2026-11-12-cruby-preview-plan.md.
 
+**As built.** The design changed while it was built. This document was
+amended only where a ruling replaced a passage (those passages cite the
+plan's decisions) and is not maintained: the record is docs/design.md D79,
+and the as-built choices are the plan's Decisions P1 to P25. Statements
+below that no longer hold:
+
+- The edit's cost of about 8 s (section 0) and the sample log's
+  `=> spinel: ready in 8.1s` (section 5): the incremental build behind a
+  handover takes about a minute (54 to 68 s in `script/preview-e2e`, D79);
+  only the CRuby answer is under a second.
+- `X-Cybertrain-Runtime` on every response under the supervisor (sections 5
+  and 8): it is on the application's responses, not on the supervisor's
+  own 503 page.
+- Six indicator texts (section 5): there are seven, plain `CRuby preview`
+  included; `Dev::Indicator.text` owns them. The indicator is also not
+  written into attachments or bodies the application encoded (section 8).
+- The address, "the port argument if given, else ask" (section 6): the
+  supervisor always asks the application (it needs the host); a port
+  argument overrides the port (P10).
+- The children's command lines (section 6) and gen's (section 9): `ruby -E
+  UTF-8 -I<dirs> -r cybertrain/preview bin/NAME.rb PORT`, `build/bin/NAME
+  PORT` and `ruby -E UTF-8 -I<dirs> bin/gen.rb` (P9, P19).
+- The limits "stated in the guide and on the holding page" (section 11):
+  the guide states them; the holding page does not.
+- A new application's first build "about a minute" (section 12): 112 s on
+  4 CPUs and 153 s on 2 (playground/README.md).
+- The end-to-end script runs in CI (section 13): `script/preview-e2e` is run
+  by hand.
+- Nothing is said of one supervisor per application (section 6): a second
+  `cybertrain server` for the same application is refused (P14).
+- The fallback causes (section 10) start with `CYBERTRAIN_ENV` set to
+  anything but `development` (P21).
+
 ## 0. Intent
 
 Editing one Ruby file and not seeing the result for about 8 seconds is the
@@ -435,6 +468,10 @@ generator so both agree, not papered over in the preview.
 - If the preview cannot run, `cybertrain server` prints one line on STDERR
   and runs today's loop, as `--spinel` would. The causes are checked in
   this order, and only the first that holds is named:
+  0. `preview unavailable: CYBERTRAIN_ENV is <value>, and the preview serves
+     development only; running the compiled loop` (a child outside
+     development is not supervised and would bind the port the supervisor
+     holds; P21, added while building);
   1. `preview unavailable: this application's cybertrain (<dir>) has no
      cybertrain/preview.rb; running the compiled loop` (an older release;
      `<dir>` is the framework's directory from `spin flags`);

@@ -195,7 +195,8 @@ this loop build gen, and the CLI `bin/db.rb`, in spin's debug mode
 fraction of the time `-O2` takes; the application is always a release
 build. When the preview cannot run, `cybertrain server` prints one line
 beginning `preview unavailable:` and runs the compiled loop. That happens
-when the application's framework is older than the preview (it lacks
+when `CYBERTRAIN_ENV` names another environment than `development`, when
+the application's framework is older than the preview (it lacks
 `cybertrain/preview.rb` or `cybertrain/dev/supervision.rb`), when there is
 no `ruby` on `PATH`, or when that `ruby` cannot be started, does not answer
 within 10 s or cannot load `fiddle` (`cybertrain doctor` checks it). None

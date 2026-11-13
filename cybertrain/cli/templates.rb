@@ -137,9 +137,9 @@ module Cybertrain
           cybertrain build       # dist/: the binary (views embedded) + public/
           ```
 
-          `spin run gen` (which `db` and `build` run for you, and `server`
-          runs under CRuby) regenerates `gen/` from db/schema.rb,
-          config/routes.rb and app/; commit `gen/`. `cybertrain server`
+          `spin run gen` (which `db` and `build` run for you; `server` runs
+          `bin/gen.rb` under CRuby instead) regenerates `gen/` from
+          db/schema.rb, config/routes.rb and app/; commit `gen/`. `cybertrain server`
           answers a Ruby edit at once from a CRuby preview and hands the port
           to the compiled binary when its background build finishes (`--spinel`
           serves only the compiled binary). In development views under

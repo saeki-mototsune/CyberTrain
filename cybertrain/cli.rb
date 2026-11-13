@@ -117,7 +117,8 @@ module Cybertrain
             the PATH line for ~/.cybertrain/bin. The commands above do the
             install by themselves the first time they need spin.
         cybertrain doctor
-            Check the C toolchain, the SQLite headers and the Spinel install.
+            Check the C toolchain, the SQLite headers, the Spinel install
+            and whether the ruby on PATH loads fiddle (the CRuby preview).
         cybertrain version
         cybertrain help
     TEXT

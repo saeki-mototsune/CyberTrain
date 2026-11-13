@@ -241,9 +241,12 @@ module Cybertrain
         nil
       end
 
-      # Config#reuse_port, except in development: the dev server re-execs
-      # itself, and a stray second process on the port would answer with
-      # stale code. #http_server builds once, so this warns once.
+      # Config#reuse_port, except in development: there every change
+      # replaces the server process (under `cybertrain server` the
+      # supervisor starts a new child on the socket it keeps; the binary's
+      # own loop re-execs itself), and a stray second process on the port
+      # would answer with stale code. #http_server builds once, so this
+      # warns once.
       def reuse_port?
         return false unless @config.reuse_port
         return true unless @config.development?

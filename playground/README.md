@@ -302,11 +302,14 @@ that tag is refused: the Release workflow's `promote-latest` job points
   single-threaded). The smoke's A9 timed the same edit's binary at 56 s on
   the same machine, in a separate run. A9 polls every 3 s and can only be
   late, so its 56 s means 53 to 56 s: the same incremental build took 74 s
-  in one run and 53 to 56 s in the other. A codespace's cores can be slower (the compiled loop's
-  full rebuild took 99 s on the default 2-core codespace), so the texts for
+  in one run and 53 to 56 s in the other. None of these was measured in a
+  codespace: the 2-CPU figures are `docker run --cpus 2` on the development
+  machine, and a codespace's cores can be slower (the compiled loop's full
+  rebuild took 99 s on the default 2-core codespace), so the texts for
   visitors say "a minute or two". A new app's first `cybertrain server`
   serves from CRuby at once, and its binary took over after 112 s on 4 CPUs
-  and 153 s with `--cpus 2` ("two to three minutes").
+  and 153 s with `docker run --cpus 2`; the texts for visitors say "a few
+  minutes".
 - In a codespace the editor's preview cannot sign in to the private forwarded
   port by itself. The app opens in a browser tab, and the preview shows the
   app only once that tab has signed in; after every restart of the
