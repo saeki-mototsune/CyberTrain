@@ -10,16 +10,14 @@ require "cybertrain/test/client"
 # two processes on one database count together (plan decision 17). This
 # program runs itself again as a child (RATE_LIMIT_CHILD=1), which makes
 # two requests to the limited action and exits; then the parent, on the
-# same SQLite file, has only the rest of the window's allowance. Both pin
-# the cache's clock to one second, so they share a window. Process.spawn
+# same SQLite file, has only the rest of the window's allowance. Both
+# travel to one second, so they share a window. Process.spawn
 # and Process.wait as spikes/NOTES.md rule 75; the snapshot comes from the
 # compiled binary (SQLite through FFI, rule 23).
 CHILD_FLAG = "RATE_LIMIT_CHILD"
 DB_PATH_VAR = "RATE_LIMIT_DB"
 
 Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
-Cybertrain::Cache.clock = -> { 1_000_000 }
-
 class SharedController < Cybertrain::Controller
   rate_limit to: 5, within: 60
 
@@ -38,6 +36,7 @@ APP = build_app
 
 if ENV[CHILD_FLAG] == "1"
   Cybertrain::DB.connect(ENV[DB_PATH_VAR].to_s)
+  travel_to(Time.at(1_000_000))
   client = Cybertrain::Test::Client.new(APP)
   client.post("/shared")
   client.post("/shared")
@@ -70,6 +69,7 @@ end
 test "the count is shared across two processes" do
   run_child
   Cybertrain::DB.connect(DB_PATH)
+  travel_to(Time.at(1_000_000))
   client = Cybertrain::Test::Client.new(APP)
   # The child made 2 of the 5; this process has 3 left.
   3.times { assert_equal "shared", client.post("/shared").body }

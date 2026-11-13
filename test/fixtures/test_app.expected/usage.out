@@ -1,0 +1,2 @@
+usage: cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+unknown option --seed

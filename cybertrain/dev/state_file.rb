@@ -124,8 +124,8 @@ module Cybertrain
 
       # Reads the state file at a path, again only when its modification
       # time (in nanoseconds), its size or its inode has changed since the
-      # last read. Requests call #current concurrently and it takes no lock
-      # (NOTES rule 57): the stamp and the snapshot live in one StateReading,
+      # last read. Requests call #current_snapshot concurrently and it takes
+      # no lock (NOTES rule 57): the stamp and the snapshot live in one StateReading,
       # replaced by one assignment, so a request never sees the stamp of
       # one read beside the snapshot of another.
       # @api private
@@ -138,7 +138,7 @@ module Cybertrain
 
         # The file's current snapshot; the default one while it is missing.
         # @return [StateSnapshot]
-        def current
+        def current_snapshot
           held = @reading
           stamp = Reader.state_stamp(@path)
           return held.reading_snapshot if stamp == held.reading_stamp

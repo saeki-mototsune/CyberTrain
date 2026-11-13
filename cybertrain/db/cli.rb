@@ -56,7 +56,7 @@ module Cybertrain
         when "create"
           create(root)
         when "backup"
-          backup(root, argv[1, argv.size - 1], name, Time.now.utc)
+          backup(root, argv[1, argv.size - 1], name, Clock.now)
         when "vacuum"
           return usage if argv.size > 1
           vacuum(root)

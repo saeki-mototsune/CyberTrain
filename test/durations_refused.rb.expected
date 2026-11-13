@@ -1,0 +1,4 @@
+ok   1.month raises NoMethodError at run time
+ok   1.year and 2.months raise it too
+ok   the calendar-aware forms replace them
+3 tests, 11 assertions, 0 failures

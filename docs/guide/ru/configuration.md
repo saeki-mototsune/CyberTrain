@@ -1,5 +1,5 @@
 ---
-source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
+source_sha256: 43d500f72cb5115e5617bbb39871cda159cd02f790f639088bebeb380a15d587
 ---
 # Конфигурация
 
@@ -36,7 +36,8 @@ end
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; разделённые запятыми имена заменяют список. Значение параметра, имя которого содержит одно из них (без учёта регистра ASCII: `password` совпадает и с `user[password]`), записывается как `[FILTERED]` в лог запросов и на страницу ошибок режима разработки; `[]` в `config/app.rb` это отключает |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт процессу `server` выполнять задачи по расписанию, фоновые задачи и фиды WebSocket (см. [Роли процессов](background-and-operations.md#process-roles)); `./<app> worker` и `feeds` его игнорируют |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: сколько задач один процесс выполняет одновременно (см. [Фоновая работа](background-and-operations.md#background-work)); не меньше 1 |
-| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`: пояс, в котором читается задача `Scheduler.cron` без `tz:`, имя IANA вроде `Asia/Tokyo` (см. [Часовые пояса](#time-zones)); пояс, которого нет в zoneinfo системы, останавливает запуск |
+| `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`: пояс приложения, имя IANA вроде `Asia/Tokyo`, для `Time.zone`, границ дней и месяцев, `Date.current`, `l` и `time_tag` (см. [Часовые пояса](#time-zones)); пояс, которого нет в zoneinfo системы, останавливает загрузку |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone`, если не задан: пояс, в котором читается задача `Scheduler.cron` без `tz:`, имя IANA (см. [Часовые пояса](#time-zones)); пояс, которого нет в zoneinfo системы, останавливает загрузку |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`: строк в списке на [странице задач](background-and-operations.md#the-jobs-page-and-the-jobs-command); не меньше 1 |
 | `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`: секунд между очистками истёкших строк [кэша](background-and-operations.md#the-cache-store), читается при подключении `cybertrain/cache`; не меньше 1 |
 | `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`: секунд между записями строки состояния каждого фида WebSocket (см. [Состояние фидов](realtime.md#feed-health)); не меньше 1 |
@@ -54,6 +55,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; секрет, никогда не пишется в лог, в стартовый баннер и в сообщения об ошибках |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: отправитель, которого использует `Mailer.deliver`, когда ему не передан `from:` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; также `tls` (неявный TLS) или `none` (открытый текст, учётные данные — только на loopback); обоим режимам TLS нужен `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` в тестовом окружении, `:smtp` во всех остальных: `:test` сохраняет каждое письмо в `Cybertrain::Mailer.deliveries` вместо отправки ([Тестирование почты](testing.md#testing-mail)); вне тестового окружения загрузка идёт с предупреждением, и ничего не отправляется; любое другое значение останавливает загрузку; `cybertrain test` использует `:test`, если `config/app.rb` не задаёт его, что бы ни говорила переменная |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`: файл, который `cybertrain test` удаляет, мигрирует и на котором запускает тесты вместо `storage/test.sqlite3`; путь к файлу (не `:memory:` и не URI `file:`). Существующий файл удаляется, только если его создал `cybertrain test` (он помечает свои базы), если это `storage/test.sqlite3` самого приложения или если он пуст; любой другой, как и база разработки или продакшена, отклоняется с кодом выхода 2, и ничего не удаляется ([Запуск тестов](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: локаль, с которой начинается каждый запрос, имя вроде `ja` или `pt-BR` (см. [Локали](#locales)); всё остальное останавливает загрузку |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`: неверных паролей до блокировки учётной записи; `0` отключает блокировку (см. [Настройки аутентификации](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`: сколько секунд длится блокировка; не меньше 1 |
@@ -282,4 +285,33 @@ run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1],
 без пустых сегментов и сегментов `.` или `..`, поэтому имя пояса, взятое из
 профиля пользователя, не может добраться до файла вне каталога поясов;
 неизвестный или некорректный пояс не кэшируется, а `"UTC"` не нужен файл.
-`l` форматирует время в локали запроса ([Даты и время](i18n.md#dates-and-times)), но `zone:` пока не принимает.
+
+### Пояс приложения
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.time_zone = "Asia/Tokyo"   # или CYBERTRAIN_TIME_ZONE; по умолчанию "UTC"
+end
+```
+
+`c.time_zone` принимает имя IANA (собственные имена Rails, такие как
+«Tokyo», не читаются), и загрузка останавливается на поясе, которого нет в
+системе. Значения остаются моментами в UTC: столбец, `Time.current` и
+календарные методы возвращают `Time` в UTC, а `time.hour` — это час UTC.
+Пояс определяет календарь (`beginning_of_day` и подобные, `Date.current`;
+[Время и часовой пояс](models.md#times-and-the-time-zone)) и отображение:
+`l(time)` и `time_tag(time)` показывают Time в этом поясе, включая `%z` и
+`%Z`, а `datetime` у `time_tag` — это ISO 8601 со смещением пояса
+(`2026-11-12T05:00:00+09:00`). `l(time, zone: "America/New_York")` и
+`time_tag(time, zone: "...")` показывают одно значение в другом поясе.
+Time со смещением 0, то есть любой Time, который выдаёт фреймворк,
+показывается в поясе; Time, несущий собственное другое смещение
+(`time.getlocal("+05:30")`), сохраняет его, если не указан `zone:`; Date
+показывается как есть. Задачи cron без `tz:` тоже следуют этому поясу,
+если не задан `scheduler_tz`. Зарегистрированная команда (`Main.command`), `./<app> jobs` и
+`./<app> console` тоже устанавливают пояс перед запуском и отклоняют
+неизвестный, как загрузка: `error: time_zone "Mars/Base" is not a known
+time zone` и код выхода 1, до открытия базы. В `cybertrain test` каждый тест
+начинается в настроенном поясе. (Форматы `l` — в разделе
+[Даты и время](i18n.md#dates-and-times).)

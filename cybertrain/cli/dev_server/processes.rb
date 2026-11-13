@@ -592,7 +592,7 @@ module Cybertrain
             machine.on_child_exit(child.kind, child.generation, exit_info(child, status))
           elsif !child.ready && now - child.started >= @ready_timeout
             stop_child
-            machine.on_child_exit(child.kind, child.generation, "did not become ready in #{seconds(@ready_timeout)} s")
+            machine.on_child_exit(child.kind, child.generation, "did not become ready in #{seconds_text(@ready_timeout)} s")
           end
         end
 
@@ -750,7 +750,7 @@ module Cybertrain
         end
 
         # 0.3 as "0.3", 30.0 as "30".
-        def seconds(value)
+        def seconds_text(value)
           value == value.to_i ? value.to_i.to_s : value.to_s
         end
 

@@ -69,6 +69,8 @@ test "the first problem in boot's order is the one reported" do
   assert_equal "max_page must be an Integer of at least 1 (got 0)", c.validation_error
   c.job_threads = 0
   assert_equal "job_threads must be at least 1 (got 0)", c.validation_error
+  c.time_zone = "Mars/Base"
+  assert_equal "time_zone \"Mars/Base\" is not a known time zone", c.validation_error
   c.max_multipart_parts = 4097
   assert_equal "max_multipart_parts must be an Integer from 1 to 4096 (got 4097)", c.validation_error
   c.max_body_bytes = 0

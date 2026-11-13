@@ -1,0 +1,10 @@
+test/models/article_test.rb
+  ok   ArticleTest: title must be present
+  ok   ArticleTest: belongs to its author
+  ok   ArticleTest: keeps a boolean, a datetime and a decimal
+  ok   ArticleTest: starts from empty tables
+  ok   ArticleTest: a slug from the support helper
+  ok   ArticleFixturesTest: fixtures: a test changes and adds rows
+  ok   ArticleFixturesTest: fixtures: the next test sees exactly the fixture rows
+
+7 tests, 16 assertions, 0 failures

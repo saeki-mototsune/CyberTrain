@@ -331,6 +331,10 @@ HMAC-SHA256 under a key derived from `secret_key_base`; an encrypted one is
 AES-256-GCM under another; each is bound to its cookie's name, so it does
 not verify or open under another name, and one that was changed reads nil.
 A value read after a write in the same request is the written one.
+Below the jar, `Cybertrain::Cookies.serialize(name, value, expires: time)`
+builds one `Set-Cookie` value; leaving `expires:` out (its default is
+`Cybertrain::Cookies::NO_EXPIRES`, not nil, for a Spinel reason: see
+spikes/NOTES.md rule 109) or passing nil writes no `Expires`.
 
 The session cookie is encrypted and authenticated with AES-256-GCM, as
 Rails' cookie store, under its own key derived from `secret_key_base`: the
@@ -381,9 +385,10 @@ windows and then the oldest ones make room), lost on restart, with a
 window that opens with a key's first request and a lock taken by every
 request to a limited action (name the actions with `only:`). In a test,
 `Cybertrain::RateLimit.reset_all!` forgets every count (the memory tables
-and the cache's rate-limit rows); `Cybertrain::Cache.clock = -> { n }`
-fixes the cache store's clock, and `Cybertrain::RateLimit.current_time = n`
-the memory store's (`-1` restores it).
+and the cache's rate-limit rows; `cybertrain test` does it before every
+test), and both stores read the framework's clock, so `travel 1.minute` or
+`travel_to` moves a test past a window
+([Time travel](testing.md#time-travel)).
 
 ### The client address behind a proxy
 

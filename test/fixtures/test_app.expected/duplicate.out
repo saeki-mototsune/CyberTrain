@@ -1,0 +1,1 @@
+test/dup_b.rb:1: new_client is also defined at test/dup_a.rb:3; move shared helpers to test/support/ or into a test class

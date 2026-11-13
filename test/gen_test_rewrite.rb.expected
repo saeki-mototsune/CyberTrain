@@ -1,0 +1,148 @@
+ok   method names follow Rails' rule
+ok   a class-form file is rewritten into methods with setup, teardown and lines kept
+ok   several setup blocks run in order, teardown blocks in reverse
+ok   a test on one line, a class's own def setup and a class without blocks
+ok   names that collide after the method-name rule, non-ASCII and quoted names
+ok   setup do beside def setup is refused naming both
+ok   a computed test name in a test class is refused
+ok   the form is told apart by content and through an application base class
+ok   what the scan records for the bundle
+ok   a copied helper's relative require is rebased
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/test/test_helper.rb
+wrote gen/test/support/sign_in.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+ok   a require of a copied support file points at the copy
+ok   a computed require_relative is refused
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/test/models/y_test.rb
+wrote gen/test/x_test.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+stale: gen/test/x_test.rb
+stale: gen/tests.rb
+removed gen/test/models/y_test.rb
+removed gen/test/models/
+removed gen/test/x_test.rb
+removed gen/test/
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   gen writes gen/test copies, removes stale ones and --check reports them
+ok   the probe's rewritten copy is fresh
+ok   rewritten methods answer nil through rescue, ensure, a bare return and a hand-written test
+ok   a return with a value in a test method is refused
+ok   heredocs, =begin and multi-line strings inside a test keep their text
+ok   an unterminated heredoc or string and mixed tabs and spaces are refused
+ok   a nested helper class and a heredoc in a helper are left alone
+ok   a nested test class and a test class inside a module are refused
+ok   a test class opened twice is refused naming both places
+ok   a hand-written test method beside a test block of the same name is refused
+ok   a hand-written test method is a case
+ok   a hand-written test method with parameters, or under private or protected, is refused
+ok   def setup or teardown without super under an application base class is refused
+ok   next inside an if or case of a test body is refused, inside an inner block or loop it is not
+ok   setup in a reopened framework class, brace and symbol forms are refused
+ok   a class head with a body on its line is not taken for a closed class
+ok   escapes in test names
+ok   CRLF lines stay CRLF and a missing last newline is added before the footer
+ok   a require from a nested support directory that leaves test/ is rebased
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/test/x_test.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+stale: gen/test/old_test.rb
+removed gen/test/old_test.rb
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/test/x_test.rb
+identical gen/tests.rb
+identical gen/migrations.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   the sweep removes only gen's own copies and --check reports an orphan
+ok   which raw lines look like test declarations
+ok   the safety net refuses a test declaration the rewrite did not place
+ok   a division read as a regexp that runs on is refused, globals are not literals
+ok   common shapes are not refused
+ok   the body level comes from the test declarations
+ok   Rails' nested spelling of a reopened framework class is refused too
+ok   next, break or redo at a test body's own level is refused
+ok   an end with a condition after it is refused
+ok   a return with a value in a lambda is still refused, saying why
+ok   a test class opened after a semicolon is refused as nested
+ok   a heredoc terminator with trailing spaces does not end the heredoc
+ok   a second declaration on a converted line is refused
+ok   a test with a tab or no space before its name is a test, as it is to Ruby
+ok   declarations commented out by =begin or after __END__ are not refused
+ok   Rails' compact reopening of a framework class is refused too
+ok   a test class at the margin inside a module at the margin is refused
+48 tests, 191 assertions, 0 failures

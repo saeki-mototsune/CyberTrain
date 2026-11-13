@@ -1,5 +1,5 @@
 ---
-source_sha256: dcff54852c4d6fae14dd97b90f66e3dc7c39d37abc0be11123dc75a3aba5030f
+source_sha256: 51f6d83b98cc6492a729a00526d4e8c115931cbd8e7bbe6a8a9077b596cb0dc1
 ---
 # インストール
 
@@ -51,6 +51,7 @@ cybertrain doctor
   run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema:dump`、`create`。
 - `cybertrain server [PORT] [--spinel]` は開発サーバーを起動します（デフォルトのポートは 3000）。変更の直後はアプリケーションが CRuby で動き、その間に Spinel がバックグラウンドでビルドし、ビルドが成功するとコンパイル済みのバイナリがポートを引き継ぎます。アプリケーションのレスポンスには `X-Cybertrain-Runtime: cruby` か `spinel` が付きます（[開発ループ](how-it-works.md#the-development-loop)）。`--spinel` はコンパイル版のループだけを実行し、変更のたびにビルドを待ちます（`SPIN_DEBUG=1 spin run gen`。`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`。`spin run NAME`、または `spin run NAME -- PORT`）。
 - `cybertrain build` は `app/views/` を埋め込んで NAME をビルドし、`dist/`（バイナリ、`public/`、`storage/`、`tmp/`）を組み立てます。
+- `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` は生成し、`test/` 以下のすべてのテストを 1 つのプログラムにコンパイルして（何かが変わったときだけ）実行し、引数が指定したテストだけを残します（[アプリをテストする](testing.md#running-the-tests)を参照）。
 - `cybertrain spin ARGS...` は、固定された Spinel で `spin` を任意のディレクトリから実行します（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
 - `cybertrain setup [--force]` は固定された Spinel のリリースを `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
 - `cybertrain doctor` は C ツールチェーン、SQLite のヘッダー、Ruby が `fiddle` を読み込めるかどうか（CRuby プレビューに必要です）、Spinel のインストールを確認します。

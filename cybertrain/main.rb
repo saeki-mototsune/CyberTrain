@@ -154,6 +154,17 @@ module Cybertrain
       end
     end
 
+    # A registered command, `jobs` and `console` run without
+    # Application#boot, so each installs the configured zone itself
+    # (Runtime.apply_zone) before anything else; an unknown zone is refused
+    # with boot's line, `error: time_zone "X" is not a known time zone`,
+    # and exit status 1, before the database is opened.
+    def self.zone_refused(problem)
+      puts "error: #{problem}"
+      STDOUT.flush
+      1
+    end
+
     # A registered command with a pool of one: a one-shot process needs no
     # more, and the server's pool_size of connections would only be opened
     # and closed again. Views are configured as boot does
@@ -162,6 +173,9 @@ module Cybertrain
     # sits in this plain method, which calls the stored block rather than
     # yielding (NOTES rules 32/45).
     def self.run_command(command, args, views, url_resolver)
+      zone_problem = Runtime.apply_zone(Cybertrain.config)
+      return zone_refused(zone_problem) unless zone_problem.empty?
+
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
         Application.configure_views(Cybertrain.config, views, url_resolver, eager: false)
@@ -176,9 +190,12 @@ module Cybertrain
 
     # `./<name> jobs ...`: Job::CLI.run with the database connected as for
     # a registered command (a pool of one; no server, scheduler or job
-    # thread). Returns its exit status, or 1 when the database cannot be
-    # opened. The rescue sits in this plain method (NOTES rules 32/45).
+    # thread), in the configured zone. Returns its exit status, or 1 when
+    # the zone is unknown or the database cannot be opened. The rescue sits in this plain method (NOTES rules 32/45).
     def self.run_jobs(args)
+      zone_problem = Runtime.apply_zone(Cybertrain.config)
+      return zone_refused(zone_problem) unless zone_problem.empty?
+
       status = 0
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
@@ -194,11 +211,15 @@ module Cybertrain
 
     # `./<name> console`: Console.run on the terminal, with the database
     # connected as for a registered command (a pool of one; no server, no
-    # scheduler). The models reach the console through the builders
-    # gen/console.rb sets. Returns the console's exit status, or 1 when the
-    # database cannot be opened. The rescue sits in this plain method (NOTES
+    # scheduler), in the configured zone. The models reach the console
+    # through the builders gen/console.rb sets. Returns the console's exit
+    # status, or 1 when the zone is unknown or the database cannot be
+    # opened. The rescue sits in this plain method (NOTES
     # rules 32/45).
     def self.run_console
+      zone_problem = Runtime.apply_zone(Cybertrain.config)
+      return zone_refused(zone_problem) unless zone_problem.empty?
+
       status = 0
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)

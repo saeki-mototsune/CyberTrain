@@ -29,6 +29,7 @@
 # needs no database: a program that only sends mail links no SQLite and
 # loads under CRuby.
 require "base64"
+require "cybertrain/clock"
 require "cybertrain/config"
 require "cybertrain/crypto"
 require "cybertrain/net/socket"
@@ -239,6 +240,13 @@ module Cybertrain
     # @return [Float] seconds a whole delivery may take
     # @api public
     attr_reader :mail_deadline
+    # @return [Symbol] :smtp (connect and send) or :test (store in
+    #   {.deliveries})
+    # @api public
+    attr_reader :mail_delivery_method
+
+    # What {#deliver} answers for a message stored in {.deliveries}.
+    STORED_REPLY = "250 2.0.0 stored in Mailer.deliveries"
 
     # The port a mode uses when none is configured: 587 (submission) for
     # starttls, 465 (submissions) for tls, 25 for none.
@@ -266,13 +274,23 @@ module Cybertrain
     # @param deadline [Numeric] seconds for a whole delivery, name
     #   resolution included. Default 60.
     # @param helo [String] the name sent with EHLO. Default "localhost".
+    # @param delivery_method [Symbol] :smtp, or :test to store each message
+    #   in {.deliveries} instead of connecting (no host is needed then).
+    #   Default Config#mail_delivery_method: :test in the test environment.
     # @raise [ArgumentError] an empty host, an unknown mode, a port out of
-    #   range, a timeout that is not positive
+    #   range, a timeout that is not positive, a delivery method that is not
+    #   :smtp or :test
     # @api public
     def initialize(host: Cybertrain.config.smtp_host, port: Cybertrain.config.smtp_port,
                    user: Cybertrain.config.smtp_user, password: Cybertrain.config.smtp_password,
                    from: Cybertrain.config.smtp_from, tls: Cybertrain.config.smtp_tls,
-                   timeout: 10, deadline: 60, helo: "localhost")
+                   timeout: 10, deadline: 60, helo: "localhost",
+                   delivery_method: Cybertrain.config.mail_delivery_method)
+      @mail_delivery_method = delivery_method
+      unless delivery_method == :smtp || delivery_method == :test
+        refusal = "delivery_method must be :smtp or :test (got #{delivery_method.inspect})"
+        raise ArgumentError, refusal
+      end
       @mail_host = host.to_s.downcase
       @mail_tls = tls.to_s.downcase
       @mail_user = user.to_s
@@ -281,8 +299,12 @@ module Cybertrain
       @mail_timeout = timeout.to_f
       @mail_deadline = deadline.to_f
       @helo_name = helo.to_s
-      raise ArgumentError, "no SMTP host: set CYBERTRAIN_SMTP_HOST (Config#smtp_host) or pass host:" if @mail_host.empty?
-      raise ArgumentError, "the SMTP host name is malformed" unless Mailer.host_name?(@mail_host)
+      # :test connects nowhere, so it needs no host (a given one is still
+      # checked).
+      unless @mail_delivery_method == :test && @mail_host.empty?
+        raise ArgumentError, "no SMTP host: set CYBERTRAIN_SMTP_HOST (Config#smtp_host) or pass host:" if @mail_host.empty?
+        raise ArgumentError, "the SMTP host name is malformed" unless Mailer.host_name?(@mail_host)
+      end
       unless @mail_tls == "starttls" || @mail_tls == "tls" || @mail_tls == "none"
         raise ArgumentError, "tls must be \"starttls\", \"tls\" or \"none\""
       end
@@ -306,7 +328,10 @@ module Cybertrain
     #   ({Message.build})
     # @param from [String] the sender; "" for Config#smtp_from
     # @return [String] the server's reply to the message ("250 2.0.0 Ok:
-    #   queued as ...")
+    #   queued as ..."); with Config#mail_delivery_method :test (the test
+    #   environment's default) the message is checked and stored in
+    #   {.deliveries} instead, and the answer is "250 2.0.0 stored in
+    #   Mailer.deliveries"
     # @raise [Error] a subclass; ArgumentError for an address, subject or body refused
     # @api public
     def self.deliver(to:, subject:, body:, html: "", from: "")
@@ -321,7 +346,9 @@ module Cybertrain
     #   multipart/alternative (the text part, then the HTML part, both
     #   base64, {Message.build}) with a random boundary
     # @param from [String] the sender; "" for the mailer's `from:`
-    # @return [String] the server's reply to the message
+    # @return [String] the server's reply to the message; with the delivery
+    #   method :test nothing connects: the message, checked as for SMTP, is
+    #   appended to {.deliveries} and the answer is {STORED_REPLY}
     # @raise [Error] a subclass; ArgumentError for an address, subject or body refused
     # @api public
     def deliver(to:, subject:, body:, html: "", from: "")
@@ -339,7 +366,35 @@ module Cybertrain
         boundary << "=_cybertrain_" << Crypto.random_token(16)
         built = Message.build(sender, to.to_s, title, text, markup, boundary)
       end
+      if @mail_delivery_method == :test
+        stored = MailMessage.new(to: to.to_s, subject: title, body: body.to_s, html: markup, from: sender)
+        return Mailer.store_delivery(stored)
+      end
+
       perform(sender, recipients, title, text, built)
+    end
+
+    # Every message delivered with the delivery method :test, oldest first
+    # (Rails' `ActionMailer::Base.deliveries`): what a test reads. The
+    # test harness (cybertrain/test_help) empties it before every test.
+    # Nothing else empties it, so it is for tests: a process that kept
+    # :test while serving would keep every mail in memory (boot logs a
+    # warning then, {Config#mail_delivery_warning}). Appends take a lock;
+    # reads and `clear` do not, so read it from the test's thread while no
+    # job thread runs (a test program starts none).
+    # @example
+    #   assert_equal "Welcome", Cybertrain::Mailer.deliveries.last.mail_subject
+    # @return [Array<MailMessage>]
+    # @api public
+    def self.deliveries
+      @deliveries
+    end
+
+    # Appends `message` to {.deliveries}, under a lock (request and job
+    # threads may deliver at once), and answers {STORED_REPLY}.
+    def self.store_delivery(message)
+      DELIVERIES_LOCK.synchronize { @deliveries << message }
+      STORED_REPLY
     end
 
     # The Net errors translated into the Mailer's, in a method that takes no
@@ -765,7 +820,7 @@ module Cybertrain
     # What goes after DATA (before dot-stuffing): the plain message, or the
     # multipart one `built` with the Date header in front.
     def self.message_for(sender, recipients, title, text, built, encoding)
-      date = Mailer.date_header(Time.now)
+      date = Mailer.date_header(Clock.now)
       return Mailer.build_message(sender, recipients, title, text, date, encoding) if built.empty?
 
       out = String.new
@@ -908,3 +963,13 @@ module Cybertrain
 end
 
 require "cybertrain/mailer/message"
+require "cybertrain/mailer/mail_message"
+
+module Cybertrain
+  class Mailer
+    # {.deliveries}: seeded with its element type (spikes/NOTES.md rule 9),
+    # once MailMessage is defined.
+    @deliveries = Array.new(0) { MailMessage.new(to: "", subject: "", body: "") }
+    DELIVERIES_LOCK = Mutex.new
+  end
+end

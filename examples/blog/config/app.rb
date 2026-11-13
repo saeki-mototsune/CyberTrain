@@ -53,6 +53,6 @@ end
 # 7 days ago are deleted. Failed and discarded rows stay for the jobs page
 # (`./blog jobs prune` removes those).
 Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
-  Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
+  Cybertrain::Job.prune_done(Time.current.to_i - 7 * 86_400)
   nil
 end

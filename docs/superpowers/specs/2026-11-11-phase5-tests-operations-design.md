@@ -69,7 +69,7 @@ log tags).
 | Q10 | Error reporting | `Cybertrain.error.report` / `handle` / `subscribe` with `Cybertrain::ErrorSubscriber`; a Sentry-protocol sender behind `CYBERTRAIN_SENTRY_DSN`; automatic for 500s, jobs, scheduled tasks, feeds, mail; class, message, where, request id, method, path, environment, release, nothing personal; a bounded queue on its own thread, dedupe, `c.error_sample_rate`; a backtrace only if `--debug` builds give one |
 | Q11 | Test file shape | `ActiveSupport::TestCase`, `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`; gen rewrites `test "..." do`, `setup do`, `teardown do` into methods (rule 88); helpers and ivars per class; the top-level form keeps working; generators write the class form; spike, falling back to the top-level DSL with `setup` / `teardown` |
 | Q12 | Fixtures | `test/fixtures/<table>.yml` read by gen with 4b's YAML subset reader; per-test inserts after the clear; `articles(:one)`; `belongs_to` by label with ids derived from the label; all loaded for every test; timestamps filled; ERB refused; generators write fixtures |
-| Q13 | Split and acceptance | 5a (tests) then 5b (operations), one design, two plans and PRs; acceptance through the blog, the generators, the spike, the suite, guides in five languages, design.md D66 onwards and implementation notes here |
+| Q13 | Split and acceptance | 5a (tests) then 5b (operations), one design, two plans and PRs; acceptance through the blog, the generators, the spike, the suite, guides in five languages, design.md D81 onwards (D66 when this was written; renumbered, section 21) and implementation notes here |
 
 # Part 5a
 
@@ -202,9 +202,11 @@ Time.current + 90.seconds
   `5.minutes.ago` does.
 - `month(s)` and `year(s)` are not defined on Integer: a month has no fixed
   length in seconds, and an Integer cannot carry "one calendar month".
-  Calling `1.month` is a build error under Spinel (spike item 2 confirms
-  the refusal) and `NoMethodError` under CRuby. The calendar-aware forms
-  below replace it; the guide shows `1.month.ago` → `Time.current.months_ago(1)`.
+  Calling `1.month` raises `NoMethodError` when it runs, under Spinel as
+  under CRuby (amended 2026-11-12: spike item 2 found the build refusal
+  only in a program where nothing defines `month`; with `ZonedTime#month`
+  it compiles, spikes/NOTES.md rule 105). The calendar-aware forms below
+  replace it; the guide shows `1.month.ago` → `Time.current.months_ago(1)`.
 
 ### 3.2 Time and Date additions
 
@@ -265,9 +267,17 @@ end
   `datetime` attribute is ISO 8601 with the zone's offset
   (`2026-11-12T05:00:00+09:00`). One call in another zone:
   `l(time, zone: "America/New_York")`, `time_tag(time, zone: "...")`. A
-  `Date` is rendered as is.
+  `Date` is rendered as is. Amended 2026-11-12: a Time at offset 0 (every
+  Time the framework hands out) is shown in the configured zone; a Time
+  that carries a non-zero offset of its own (`getlocal("+09:00")`) keeps
+  it, as Rails renders a plain Time; `zone:` always converts.
 - **Schedules.** `scheduler_tz` (`CYBERTRAIN_SCHEDULER_TZ`) defaults to
   `time_zone` when unset; a cron task's `tz:` still wins.
+- **Outside boot** (amended 2026-11-13): a registered command, `./<app>
+  jobs` and `./<app> console` install the zone too
+  (`Runtime.apply_zone`), and refuse an unknown one with boot's line,
+  `error: time_zone "<name>" is not a known time zone`, exit status 1,
+  before the database is opened.
 - Storage is unchanged: datetime columns hold UTC text (D46).
 
 ## 5. Test classes, setup and teardown (T-2)
@@ -368,8 +378,15 @@ end
 ```
 
 - `test "name" do ... end` becomes `def test_<name>` with every character
-  outside `[A-Za-z0-9_]` turned into `_` (Rails' rule, so `-n
-  test_shows_an_article` names the same test as in Rails). Two tests whose
+  outside `[A-Za-z0-9_]` turned into `_`, and each character that is not
+  ASCII into `_u<lowercase hex code point>_`, closed by `_` (`"ログ"` is
+  `test__u30ed__u30b0_`, `"café x"` is `test_caf_ue9__x`, so names in
+  another script do not collide; a name containing the text `_u3042_`
+  equals the encoded `"あ"`, and gen refuses the pair within one class)
+  (amended 2026-11-13: Rails turns only whitespace into `_`, so a name
+  with punctuation has another method name than in Rails;
+  `-n test_shows_an_article` names a plain one the same, and `-n` takes
+  the written name as well). Two tests whose
   method names coincide in one class are refused, naming both lines (Rails
   raises too).
 - `setup do ... end` blocks become one `def setup` that calls `super`
@@ -565,7 +582,14 @@ $ cybertrain test -n /article/
 - **Filters at run time, no recompile.** File arguments keep the tests of
   those files; `-n NAME` keeps the tests whose name, or method name, is
   `NAME`; `-n /TEXT/` keeps those whose name contains `TEXT`. Both combine
-  (a file and a name). Changing a filter reuses the binary.
+  (a file and a name). Changing a filter reuses the binary. Amended
+  2026-11-13: `TEXT` is a plain substring (`.`, `?` and `()` are
+  themselves) and one with `^ $ \ * + [ ] { } |` is refused, exit status
+  2; `FILE:LINE` is refused (`line filters are not supported; give the
+  file, and -n for the name`), exit status 2; `--` ends the options; a
+  filter that keeps no test prints `no test matched the filter` and exits
+  0; a database that is the development or production one is refused,
+  exit status 2 (section 14).
 - **Output.** A heading per file, then a line per test, then the totals;
   no timings, so the output is deterministic:
 
@@ -573,8 +597,8 @@ $ cybertrain test -n /article/
   test/controllers/articles_controller_test.rb
     ok   ArticlesControllerTest: shows an article
     FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:18)
-         Expected: 1
-           Actual: 0
+           Expected: 1
+             Actual: 0
   test/models/article_test.rb
     ok   ArticleTest: title must be present
 
@@ -640,10 +664,16 @@ maximum: nil, text: nil)` checks the most recent of: the last
   (`ul li`) and child (`ul > li`) combinators, and a list (`h1, h2`).
 - **Options**: `count: n` exactly n matches; `minimum:` / `maximum:`
   bounds; `text:` a String compared with each match's text after
-  collapsing whitespace and stripping (Rails' default), or a Regexp. The
+  collapsing whitespace and stripping, or a Regexp (amended 2026-11-12:
+  rails-dom-testing strips the ends and does not collapse; CyberTrain
+  collapses runs of whitespace to one space and strips, for a String and
+  a Regexp alike). The
   default is at least one match. As in Rails, the second positional
   argument may be a String (the text), an Integer (the count) or `false`
-  (no match).
+  (no match); amended 2026-11-13: also a Range as the count (`2..3`;
+  refused beside `count:`, `minimum:` or `maximum:`, and when negative or
+  crossed), and a backslash in a selector is refused (`CSS escapes (\)
+  are not supported`).
 - **Unsupported**, each failing with `"assert_select: <feature> is not
   supported (selector: \"...\")"`: pseudo-classes (`:first-child`,
   `:not(...)`), the sibling combinators `+` and `~`, attribute operators
@@ -718,9 +748,10 @@ New assertions, top-level methods like the existing ones:
 - The block helpers compute the before value, `yield` into a local (rule
   90), compute the after value, and compare; none needs `ensure`. Rails'
   `assert_difference` with an Array or Hash of expressions is not offered.
-- **Failure output.** `assert_equal` and `assert_not_equal` print
-  Minitest's form, `Expected: <inspect>` and `  Actual: <inspect>` on two
-  lines; `assert_select` prints the excerpt of section 9.2.
+- **Failure output.** `assert_equal` prints Minitest's form,
+  `Expected: <inspect>` and `  Actual: <inspect>` on two lines, and
+  `assert_not_equal` Minitest's `Expected 1 to not be equal to 1.`
+  (amended 2026-11-12); `assert_select` prints the excerpt of section 9.2.
 
 **Mail.** As Rails' `delivery_method = :test`:
 
@@ -1004,7 +1035,8 @@ report carries the class, the message and `where`.
 | --- | --- | --- | --- |
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"` | IANA zone for boundaries, `Date.current`, `l` and `time_tag` (5a) |
 | `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` (was `"UTC"`) | 5a |
-| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in test, else `:smtp` | 5a |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in test, else `:smtp` | 5a; `:test` outside the test environment boots with a warning |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""` | the file `cybertrain test` deletes, migrates and tests on instead of `storage/test.sqlite3` (5a, pre-flight ruling R10); amended 2026-11-13: a plain file path (`:memory:` and `file:` URIs refused); an existing file is deleted only when it carries the mark `cybertrain test` gives its databases (`PRAGMA application_id`), is this application's own `storage/test.sqlite3` (in any spelling) or is empty, and the development and production databases are refused by name; a path that becomes a symlink during the creation is refused; a refusal is exit status 2 |
 | `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info` | `debug`, `info`, `warn`, `error`, `fatal`, `none` (5b) |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text` | or `:json` (5b) |
 | — | `log_tags` | `[:request_id]` | `:request_id`, `:remote_ip` (5b) |
@@ -1019,13 +1051,14 @@ repository like any credential.
 
 ## 15. Documentation and design.md changes
 
-- design.md: 5a adds D66 the clock, durations, time helpers and the
-  configured zone; D67 test classes, setup / teardown and database
-  isolation; D68 fixtures and `cybertrain test`; D69 the component,
+- design.md: 5a adds D81 the clock, durations, time helpers and the
+  configured zone; D82 test classes, setup / teardown and database
+  isolation; D83 fixtures and `cybertrain test`; D84 the component,
   stream, mail and job test helpers, the new assertions and the receivers'
-  automatic stop. 5b adds D70 the log line, tags and the request id, and
-  D71 error reporting and the Sentry sender. D13 (tests and CI: the
-  rollback it planned is replaced by D67's clear), D14 (logging), D19
+  automatic stop. 5b adds D85 the log line, tags and the request id, and
+  D86 error reporting and the Sentry sender (D66 to D71 when this was
+  written: main had taken those numbers, pre-flight ruling B3). D13 (tests and CI: the
+  rollback it planned is replaced by D82's clear), D14 (logging), D19
   (time zones), D32 (receivers), D34 (T-1: the application side answered,
   the framework's own suite still deferred), D52 (`scheduler_tz`'s
   default) are amended; section 8 keeps "error pages with stack traces"
@@ -1159,6 +1192,115 @@ header. The results are recorded below the list by those tasks.
    no lock; each line is one `write` of at most 4,096 bytes (a longer
    message is cut and marked), which a pipe does not interleave.
 
+**Results (2026-11-12, Spinel 2026.11.04.7026, programs kept in
+spikes/phase5/ with their commands and output in each header; a shared
+4-vCPU cloud machine):**
+
+1. **Override: yes.** With the whole framework required,
+   `class Time; def self.now = Cybertrain::Clock.now; end` changes what
+   `Time.now` answers at every call site, the framework's included
+   (`Model.now_string` printed the frozen instant). `Process.clock_gettime(
+   Process::CLOCK_REALTIME, :microsecond)` agrees with the builtin within
+   1 ms, `Time.at(s, us).utc` keeps the microseconds, and the builtin
+   `Time.new` is not overridden. Nested `travel_to` in rule 103's
+   save-yield-ensure form restores the outer instant after an inner block
+   raises, for String and Integer blocks and one whose only statement is
+   `raise`. No fallback: `cybertrain/test/time_now.rb` holds the override
+   (time_now.rb).
+2. **Methods on Integer and Time: yes; `1.month` fails at run time.**
+   `5.minutes == 300`, `2.weeks.ago`, `3.days.from_now`,
+   `beginning_of_day`, `advance(months: 1)` (31 January to 28 February),
+   `months_ago`, `in_time_zone`, `Time.current` and `Date.current` beside
+   `Schema.current` all compile and answer in one program with the whole
+   framework, beside every existing namesake: `Cron::Expression#minutes`,
+   `#hours` and `#days` (Array), `Net::Timer.seconds` (String),
+   `Stream::Poller.advance`, `Template::Parser#advance`, and the `now` of
+   Cache, Net::Timer, Test::Receiver and Flash. `ZonedTime#hour`, `min`,
+   `day`, `wday` and `zone` keep Rails' names: on a boxed receiver the
+   generated switch covers Date, ZonedTime and Integer and its default arm
+   calls the builtin Time's method before NoMethodError, so a boxed Time
+   still answers (rule 62's grep: one `sp_raise_nomethod` each for `hour`,
+   `day`, `minutes`, `seconds`, two for `wday`, `zone`, `advance`, none for
+   `min`; each the default arm). The framework-internal `Net::Timer.seconds`
+   and `Stream::Poller.advance` were renamed anyway (`format_seconds`,
+   `advance_to`); `Cron::Expression`'s public readers keep their names.
+   `1.month` is refused at build only while nothing in the program defines
+   `month`; with `ZonedTime#month` it builds and raises `NoMethodError`
+   ("undefined method 'month' for an instance of Integer") when reached,
+   so the guide says it fails at run time (durations.rb,
+   durations_month.rb).
+3. **The class form: yes.** `class_app/tests.rb`, in Task 10's shape over
+   D18's rewritten copies, compiles (about 4 minutes) and runs: an
+   application base class under `ActionDispatch::IntegrationTest` with
+   `setup` / `teardown` overrides, instance variables and a private helper;
+   `get article_path(@article)` and `post articles_path, params: { article:
+   { title: "x" } }` (nested, flattened to `article[title]`) beside
+   `Test::Client#get` / `#post` positional; `head` beside `Controller#head`
+   and `delete` beside every other `delete`; `assert_response :success`
+   beside the top-level two-argument one; the fixture accessor
+   `articles(:one)` as an instance method and as a top-level method beside
+   `User#articles` (has_many); class methods `self.setup`, `self.teardown`,
+   `self.test` and `self.fixtures` beside the instance methods; a
+   `ViewComponent::TestCase` with `render_inline`; the generated `case`
+   calling `before_case` / `run_body { }` / `after_case` through
+   `def self.dispatcher = ->(i) { run_case(i) }`. No fallback: Rails'
+   accessor name, nested `params:`, D6's instance `assert_response`, D9's
+   class methods. The spike compiled, from the application root,
+   `spinel tests.rb $(spin flags) -I .. -I test -o build/test/tests`
+   (`-I ..` only for its stand-ins); SQLite is linked through FFI with no
+   flag of its own, so D7's command is
+   `spinel gen/tests.rb $(spin flags) -I gen/test -I test -o build/test/tests`.
+   Forgery protection had to be off for `post` without a token (403
+   otherwise), as Rails' test environment has it. assert_select's
+   arguments (a positional String, Integer, true, false or nil; `text:` a
+   String or a Regexp) compile in one method (assert_select_args.rb).
+4. **`assert_raises` with a class: yes.** `assert_raises(ArgumentError)`
+   and `assert_raises(Cybertrain::DB::Error)` beside the String form, one
+   parameter, matched by name along the superclass chain (a subclass
+   matches, as Minitest's does), answering the message. Ruby's own
+   exception classes answer no `superclass` under Spinel, so the chain
+   above the first builtin is read from a table of their parents. A
+   top-level method called with and without a block (`block_given?`)
+   compiles: `perform_enqueued_jobs` and `assert_broadcasts` keep one name
+   each (assert_raises.rb).
+5. **Backtraces: only in a `--debug` build.** A release build answers an
+   empty Array and `-g` one `<main>` frame; `--debug` answers
+   `file:line:in 'method'` for each Ruby method on the way (`<main>` always
+   at line 1, no frame for a builtin's own raise). `--debug` compiles
+   faster (-O0: 11 s against 23 s for the probe) and serves about 45% of a
+   release build's in-process request rate (backtrace.rb).
+6. **The framework's 195 programs in one: not measured to the end.**
+   Nine are refused first, one at a time, each for a class defined with
+   two superclasses (the programs' own `PostsController`,
+   `PagesController` and `AccountsController` beside
+   test/fixtures/gen_app's); 84 top-level method names and 34 constants
+   defined in more than one of the remaining 186 are not refused (the
+   later wins). The type analysis of those 186 (59,287 lines) was killed by
+   the OOM killer twice, after 326 s and 772 s and at least 1.76 GB
+   resident, on a 16 GB machine shared with other builds, so the compile
+   time, the binary size and whether rules 41 and 63 stop any of them
+   remain to be measured on a dedicated machine (bundle_suite.sh). Nothing
+   in phase 5 depends on it.
+   Task 10 measured again (2026-11-12, the same machine, about 13 GB free
+   at the start; 206 programs by then, the nine above left out): the
+   bundle of 197 files (61,481 lines; 88 duplicate method names, 37
+   duplicate constants) was refused once more in 35 s, for a module and a
+   class of one name (`Billing`). The remaining 196 files passed the whole
+   front end, rules 41 and 63 included: Spinel wrote 87.6 MB of C (1.17
+   million lines) about 6.5 minutes after it started, at about 1.65 GB
+   resident. Compiling that C (the default -O2, split into units compiled
+   in parallel) then ran for about 21 minutes and was killed by the
+   memory cgroup's OOM killer at a peak of 9.7 GB resident for the
+   build's processes together (one cc1 alone at 4.6 GB), with other
+   builds running by then. So the front end is no obstacle; the C
+   compiler's memory is, and the total time and binary size are still
+   not known (more than 29 minutes in all, against D34's 14 for the
+   separate programs). For an application, the bundle `cybertrain test`
+   builds is small by comparison: the blog's application with three
+   bundled test files (two class-form, one top-level form, eight tests)
+   compiled in 162 to 233 s at a peak of 2.2 GB, into an 8.1 MB binary,
+   about the cost of one of the blog's per-file test programs.
+
 ## 17. Out of scope (recorded so nothing is lost)
 
 - **T-7 coverage**: Spinel's compiled programs carry no coverage
@@ -1265,7 +1407,7 @@ header. The results are recorded below the list by those tasks.
    (exact, method name, `/text/`) without a recompile; the headings,
    `file:line` on a failure, the totals and the exit status; the
    duplicate-helper refusal naming both files; the blog's compile time
-   recorded in D68.
+   recorded in D83.
 6. Components and streams: `render_inline` of a component and a partial;
    every selector form and option of `assert_select`, each unsupported
    form's message, a malformed-HTML failure, the excerpt;
@@ -1288,7 +1430,7 @@ header. The results are recorded below the list by those tasks.
    generated applications' tests pass in CI's end-to-end job.
 10. The full suite, the blog's tests, `gen --check`, the gate; the testing,
     configuration and operations guides and their translations; design.md
-    D66 to D69; this spec's implementation notes for 5a; the spike's
+    D81 to D84; this spec's implementation notes for 5a; the spike's
     results in section 16.
 
 **5b**
@@ -1311,7 +1453,7 @@ header. The results are recorded below the list by those tasks.
 13. The blog: request ids in its log; an error raised by a test-only route
     and a failing job reported to a `Test::HttpReceiver` through
     `CYBERTRAIN_SENTRY_DSN`.
-14. As item 10 for 5b: D70 and D71, the guides, the implementation notes.
+14. As item 10 for 5b: D85 and D86, the guides, the implementation notes.
 
 ## 20. Details chosen while writing
 
@@ -1339,7 +1481,7 @@ it open; the maintainer may change any of them in review.
 - The clear and the fixture insert run with foreign keys off; framework tables are cleared when present; `sqlite_sequence` is emptied.
 - `fixtures :all` and `require "test_helper"` are accepted and have no effect of their own.
 - gen writes the rewritten tests to `gen/test/` and the program to `gen/tests.rb` (committed and checked by `gen --check`, like `gen/concerns/`); the binary is `build/test/tests`.
-- A test's method name is `test_` plus the name with non-word characters turned into `_` (Rails' rule).
+- A test's method name is `test_` plus the name with non-word characters turned into `_` (Rails turns only whitespace into `_`).
 - Several `setup do` blocks run in order after the superclass's; `teardown do` blocks run in reverse order before the superclass's.
 - A failure shows the line of the test's `test "..."` call (no assertion line without a backtrace).
 - `-n` takes an exact name or method name, or `/text/` as a substring.
@@ -1366,3 +1508,225 @@ it open; the maintainer may change any of them in review.
 - `assert_in_delta`'s default delta is 0.001 (Minitest's).
 - `assert_equal`'s failure text is Minitest's `Expected:` / `Actual:` pair.
 - `ActionDispatch::IntegrationTest`'s `params:` takes nested Hashes, encoded with brackets.
+
+## 21. Implementation notes
+
+### Part 5a
+
+Implemented on 2026-11-12 and 2026-11-13 on the branch claude/phase5-design
+by the plan's nineteen tasks (docs/superpowers/plans/2026-11-11-phase5a-tests-plan.md),
+several in parallel. What differs from the sections above, or goes beyond
+them:
+
+**Numbers.** Main had taken D64 to D78 before this phase was built, and
+phase 4b D79 and D80, so 5a's decisions are design.md D81 (the clock,
+durations, the time helpers and the zone), D82 (test classes and
+isolation), D83 (fixtures and `cybertrain test`) and D84 (the helpers,
+assertions and receivers); 5b takes D85 and D86 (pre-flight ruling B3;
+section 15 is amended). The spikes/NOTES.md rules found here are 104 to 110,
+and docs/spinel-feedback.md items AJ to AO.
+
+**The spike (section 16).** Items 1 to 5 passed without their fallbacks:
+the `Time.now` override, Rails' names on Integer and Time (two
+framework-internal methods renamed: `Net::Timer.format_seconds`,
+`Stream::Poller.advance_to`), the class form with nested `params:` and
+Rails' accessor names, `assert_raises(Class)` with a table of the built-in
+classes' parents, and backtraces only in a `--debug` build. Two results
+changed the text: `1.month` fails at run time, not at build (section 3.1
+amended), and item 6 was not measured to the end (the C compile of the
+framework's suite as one program was killed at 9.7 GB), so the framework
+keeps one program per file.
+
+**Where the plan's decisions go beyond the spec.**
+
+- D2: the zone lives on the Clock (`Clock.zone`), installed by
+  `Runtime.apply` and put back by `Runtime.reset!`; `Runtime.describe`
+  ends with `time_zone=`. A Time at offset 0 is shown in the zone, one with
+  its own offset keeps it (section 4 amended). `Time.find_zone!` is the
+  shared refusal of an unknown name. In the bundle every test starts in
+  the configured zone.
+- D3 and D4: the order of one test is owned by `cybertrain/test.rb` for
+  both forms; the hooks (`on_reset`, `after_this_case`,
+  `before_each_bundled`) are lambdas made in methods, and a failure outside
+  the body is reported with its step (`in fixtures:`, `in reset:`,
+  `in setup:`, `in teardown:`).
+- D6: each request answers the `Cybertrain::Response` (Rails answers the
+  status). Beyond the spec: `params:` also takes typed values (Date, Time,
+  numbers, true / false, nil) sent as a form would, so scaffold tests send
+  a record's values as they are; `fixture_file_upload` sends multipart; a
+  URL on the application's host is reduced to its path in requests and on
+  both sides of `assert_redirected_to`, another host refused; Rails'
+  CGI-style header names are read. `assert_response :error` means exactly
+  500 (an earlier decision; Rails takes 5xx). IntegrationTest has no
+  `session`, `flash`, `assigns`, `request`, `host!`, `as:` or client
+  address (section 5.1 does not list them); a second browser is the
+  generated `SessionTestHelper#open_session`.
+- D7: the bundle is compiled with
+  `spinel gen/tests.rb $(spin flags) -I gen/test -I test -o build/test/tests`,
+  a release build, after `SPIN_DEBUG=1 spin run gen` (the CLI builds gen
+  in spin's debug mode since the merge of main). It is compiled again only
+  when an input is newer than the binary or the record beside it
+  (`build/test/tests.inputs`: the command, `spin flags`, the framework's
+  version, spin.toml and spin.lock) differs; paths are compared by their
+  real path (a symlinked checkout).
+- D8: isolation deletes rows and inserts the fixtures in one transaction
+  per test, with `PRAGMA foreign_key_check` before the commit, and refuses
+  any database that is not a test database (the environment `test` and
+  `storage/test.sqlite3`, the file `CYBERTRAIN_TEST_DATABASE` names, or a
+  private in-memory one; symlinks resolved; never inside a transaction).
+  Fixtures are stricter than section 7 says: a `belongs_to` label that
+  names no row of the parent's file is refused at gen (section 7 said the
+  label is not checked), as are impossible dates and times, integers past
+  64 bits, non-positive ids, `yes` / `no` for a boolean and table names that
+  clash with a harness method or a test helper. `DEFAULTS` is not inserted
+  (Rails deletes it; the plan said otherwise and Rails won).
+- D9 and D18 (and the review rulings on them): gen refuses, with
+  `path:line`, whatever the rewrite cannot carry over exactly, including
+  `setup { }`, `setup :name`, `setup do` in a reopened
+  `ActiveSupport::TestCase`, `next` / `break` / `redo`, `return <value>`,
+  nested and reopened test classes and lines it cannot place; a structural
+  check and a run-time backstop in `Test::Base` make a silently dropped test
+  impossible. Every rewritten method ends in `nil` (pre-flight ruling R8).
+- D12: `perform_enqueued_jobs { }` performs each job once per block; a job
+  that raises fails the test with its class and error (it is not retried),
+  a `discard_on` discard counts as performed, a mail the framework
+  discards is a failure.
+- D13: `:test` delivery outside the test environment boots with a warning
+  rather than being refused; the bundle gives mail the sender
+  `from@example.com` unless the application set one; `assert_emails`
+  names a failed mail job's error.
+- D14 and section 9: `assert_select` with nothing requested or rendered in
+  this test fails ("No response yet"); a Range as its second argument was refused, and is accepted as the count since the final review; `text:` collapses whitespace (section 9.2 amended).
+  `assert_turbo_stream` requires `text/vnd.turbo-stream.html` when it reads
+  a response (turbo-rails' check). The reader keeps the literal tree: no
+  `<tbody>` inserted, `<p><div>` nested, omitted end tags and `<div/>`
+  refused.
+- D19: the bundle forces `CYBERTRAIN_ENV=test`, ignores
+  `CYBERTRAIN_DATABASE`, honours `CYBERTRAIN_TEST_DATABASE` (section 14
+  amended), turns forgery protection off and silences the request log
+  unless `config/app.rb` set them. A fixture gen cannot load does not fail
+  gen; `cybertrain test` prints it and exits 1 (extends ruling B2).
+- Section 11: scaffold writes `belongs_to` for a references field and,
+  in an application with authentication, `sign_in_as users(:one)` in its
+  controller test's setup; the authentication generator's re-run names
+  the phase 4b and 0.4 test files the class-form ones replace (`--force`
+  deletes them).
+
+**Left for later** (recorded in the task reports, none blocking): `advance`
+with Float arguments; `open_session` and a client address on
+IntegrationTest itself; a run-time foreign-key failure names the row's id,
+not its label; escapes inside `<script>` are refused as malformed; the
+assertions `assert_includes`, `assert_nil` and `flunk` keep their
+lower-case messages.
+
+**Counts.** `ruby script/gate` counts 216 test programs with snapshots
+(2026-11-13). examples/blog: 149 tests and 1489 assertions in 21 class-form files at
+the blog task (1507 assertions after the final review, 2026-11-13), every test that existed before kept (139, with 1041 assertion calls
+before and 1068 after) and 10 new; its first `cybertrain test` compiled in
+about 527 s (656 s in all, a 10.2 MB binary) and a run with nothing changed
+starts in about 1 s (`cybertrain test test/controllers`, no recompile: the blog task's own run, 2026-11-13, a shared 4-vCPU
+cloud machine; machine-dependent, not a budget). `script/test-command-e2e`
+passes its ten variants; test_app's bundle compiles in about 2 minutes (Task 11's run); the blog's application with three bundled files of eight tests compiled in 162 to 233 s at a peak of 2.2 GB into an 8.1 MB binary (Task 10's run). `script/generators-e2e`
+passed with 44 generated tests (its task's run). Generated applications
+pass `cybertrain test` (sign-up 66 tests, confirmable 80, invite and
+confirmable 87; the authentication task's run). The full framework suite
+(`script/test-shard`) is run once by the controller at the end of the
+phase; its count is not recorded here.
+
+**After the final review (2026-11-13).** A whole-branch review in three
+areas (time, the test runtime, gen and the generators) led to one fix
+wave. What it changed, with the controller's ruling where one was made:
+
+- The zone outside boot: registered commands, `jobs` and `console` install
+  it and refuse an unknown one (section 4). In test programs `Time.now`
+  answers local time, as the builtin and Rails do; `Time.current` stays
+  UTC. A travel back before a memory rate-limit window opens a new window.
+  A travel is published to other threads best effort; a test that travels
+  while live scheduler or worker threads run is not supported.
+- The test database guard (ruling: the bundle deletes the file it tests
+  on, so one wrong export would destroy production data). A first version
+  refused the development and production databases, finding them by
+  running `config/app.rb`'s configure blocks on a development and a
+  production Config; the scoped re-review found that this ran
+  production-only branches inside the tests, and that a `file:` URI with a
+  query passed the deny list. So a positive mark replaces it:
+  `cybertrain test` marks the databases it creates (`PRAGMA
+  application_id`), deletes or empties an existing file only when it
+  carries the mark, is `storage/test.sqlite3` itself or is empty, and
+  otherwise refuses with exit status 2 (`cybertrain test refuses to delete
+  <path>: not a database cybertrain test created; delete it yourself or
+  name another file`); the development and production databases are still
+  refused by name; `:memory:` and `file:` URIs are refused. A custom
+  `CYBERTRAIN_TEST_DATABASE` file made before carries no mark and is
+  refused once (delete it). This reverses the earlier "may name any
+  file". In tests an exported `CYBERTRAIN_HOSTS` no longer turns the host
+  check on, and `CYBERTRAIN_FORCE_SSL` is ignored even when invalid.
+- A class-form rewrite refusal refuses the bundle (exit 1 at `cybertrain
+  test`) instead of failing gen (ruling C-I1: a broken test file must not
+  stop the development server, `db migrate` or a production build).
+- `def setup` / `def teardown` without `super` under an application base
+  class is refused (ruling C-I2: loud and small, rather than re-plumbing
+  the block chain), as are a `def test_x` with parameters or after
+  `private` / `protected`, and `next` / `break` / `redo` nested in a
+  body's conditionals; `test"name"` is accepted.
+- Non-ASCII characters in a test name become `_u<hex>_`, closed by `_` (ruling C-M2:
+  Japanese test names must not collide; section 5.2).
+- `-n /TEXT/` is a plain substring, regexp characters refused (ruling:
+  `.`, `?` and `()` stay literal, test names contain them); `FILE:LINE`
+  refused; `--`; "no test matched the filter"; adding or deleting a test
+  file recompiles (section 8).
+- The runner records `NotImplementedError`, other `ScriptError`s and
+  `SystemStackError` as `ERR` and goes on (a real stack overflow under
+  Spinel still ends the process). `follow_redirect!` on a non-redirect
+  fails as an assertion. `cookies` is a `Test::ClientCookies` with Symbol
+  keys and expiry on the clock. `with_forgery_protection` keeps what the
+  test configured. `assert_select` takes a Range count and refuses a
+  backslash (section 9.2).
+- The test environment: mail `:test` and `force_ssl` off unless
+  `config/app.rb` sets them, `www.example.com` always allowed, uploads in
+  `tmp/test_uploads/`.
+- The authentication generator: its account-deletion tests delete a user
+  of their own; `SessionTestHelper#authenticity_token_in`; the sender
+  tests pin an address no code uses; `--confirmable` writes one more test.
+  `generate attachment` writes a real 70-byte PNG.
+
+Also found in that re-review and fixed: an endless Range count
+(`assert_select: a Range count needs both ends (got 2..)`), an unreadable
+`Max-Age` (ignored), and a crash in `Cookies.serialize` when one caller
+gave `expires:` a Time and another left it out: spikes/NOTES.md rule 109
+(a parameter defaulting to nil that a caller gives a plain Time is
+compiled as a non-nullable Time), docs/spinel-feedback.md AN; the default
+is now `Cookies::NO_EXPIRES`. spikes/NOTES.md's phase 5a rules are 104 to 110.
+
+After the fix wave, CI found two test programs (test/test_render_inline.rb
+and test/test_classes.rb) failing to build with "'_o24' undeclared" in
+`HtmlReader.parse`, while test/test_html.rb, which loads the same file,
+built: a statement `case` on a plain Integer (`case kind`) took the
+temporary number of `Html.escape`'s statement `case b` on a nullable
+`getbyte` value, which Spinel remembers across methods (spikes/NOTES.md
+rule 110, docs/spinel-feedback.md AO). The local landing checks had
+compiled only some programs. `parse` now uses an `if` chain, and the
+landing checks now compile a changed framework file in every test program
+that loads it. The guard was hardened in the same round: the default
+exemption is only this application's own `storage/test.sqlite3` (in any
+spelling), the per-test clear names `"main"`, and a path that becomes a
+symlink during the creation is refused; the mark surviving a `cp`, a run
+killed between create and mark, and a directory at `storage/test.sqlite3`
+are known limits.
+
+Known limits for the maintainer, stated in the guides: a `def setup` in a
+module is not checked for `super`; a class two levels under an application
+base whose base defines no `setup` is still asked for `super`; while a
+test tree is refused, `gen --check` does not compare the stale copies in
+`gen/test/`; the cookie jar has no `each`, `length`, `include?`, `fetch`
+or `==`; a `test "x" do`
+after `private` becomes a private method and fails when it runs (Rails
+runs it); a real stack overflow under Spinel kills the process; there is
+no `Time.zone.local`; `travel_to` takes no Date; IntegrationTest has no
+`session`, `flash`, `assigns` or `host!`.
+
+Measured on 2026-11-13: examples/blog, 149 tests and 1507 assertions, 0
+failures; a scratch application made with `cybertrain new`, `generate
+authentication` and `generate scaffold post user:references`, 66 tests and
+822 assertions, 0 failures; the tutorial's blog, 17 tests and 25
+assertions at step 16 and 83 tests and 870 assertions at step 18.

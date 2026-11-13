@@ -21,7 +21,8 @@ ARG BASE_IMAGE=ubuntu:24.04
 FROM scratch AS cli-src
 COPY cybertrain.gemspec README.md /src/
 COPY exe/cybertrain /src/exe/
-COPY cybertrain/version.rb cybertrain/app_name.rb cybertrain/shell.rb cybertrain/ident.rb cybertrain/cli.rb cybertrain/crypto.rb /src/cybertrain/
+COPY cybertrain/version.rb cybertrain/app_name.rb cybertrain/shell.rb cybertrain/ident.rb cybertrain/cli.rb cybertrain/crypto.rb cybertrain/test_files.rb /src/cybertrain/
+COPY cybertrain/test/args.rb /src/cybertrain/test/
 COPY cybertrain/cli/ /src/cybertrain/cli/
 COPY cybertrain/generator/inflector.rb /src/cybertrain/generator/
 

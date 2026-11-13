@@ -30,24 +30,33 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create db/migrate/20260925120000_create_posts.rb
 create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
 create app/controllers/posts_controller.rb
 create app/views/posts/index.html.erb
 create app/views/posts/show.html.erb
 create app/views/posts/new.html.erb
 create app/views/posts/edit.html.erb
 create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
 route resources :posts
 create db/migrate/20260925120001_create_comments.rb
 create app/models/comment.rb
+create test/models/comment_test.rb
+create test/fixtures/comments.yml
 create app/controllers/comments_controller.rb
 create app/views/comments/index.html.erb
 create app/views/comments/show.html.erb
 create app/views/comments/new.html.erb
 create app/views/comments/edit.html.erb
 create app/views/comments/_form.html.erb
+create test/controllers/comments_controller_test.rb
 route resources :comments
 ok   layouts/application parses
 ok   posts/index parses

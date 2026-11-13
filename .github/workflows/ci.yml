@@ -7,8 +7,9 @@ name: CI
 # see .yardopts), which the api-docs job below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
 # reads them except script/api-docs, script/test-shard, script/ci-changes,
-# script/auth-e2e, script/preview-parity, script/test-cruby and
-# script/preview-e2e, which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
+# script/auth-e2e, script/test-command-e2e, script/generators-e2e,
+# script/preview-parity, script/test-cruby and script/preview-e2e, which are
+# brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
@@ -35,6 +36,8 @@ on:
       - "script/test-shard"
       - "script/ci-changes"
       - "script/auth-e2e"
+      - "script/test-command-e2e"
+      - "script/generators-e2e"
       - "script/preview-parity"
       - "script/test-cruby"
       - "script/preview-e2e"
@@ -52,6 +55,8 @@ on:
       - "script/test-shard"
       - "script/ci-changes"
       - "script/auth-e2e"
+      - "script/test-command-e2e"
+      - "script/generators-e2e"
       - "script/preview-parity"
       - "script/test-cruby"
       - "script/preview-e2e"
@@ -340,13 +345,11 @@ jobs:
           cybertrain db migrate
           cybertrain db status
           cybertrain build
-          cybertrain spin run gen -- --check
+          SPIN_DEBUG=1 cybertrain spin run gen -- --check
           test -x dist/shop
-          # The generated app's own sign-up / sign-in test, compiled and run
-          # from the binary (it links SQLite, so it has no CRuby snapshot).
-          cybertrain spin test test/authentication.rb || true
-          test -x build/test/authentication
-          ./build/test/authentication
+          # The generated app's own tests (the scaffold's, which sign in with
+          # sign_in_as, and the authentication generator's), in one program.
+          cybertrain test
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3999/session/new > /dev/null && break; sleep 0.5; done
@@ -364,7 +367,7 @@ jobs:
           kill %1
 
       # The invitation-only variant (docs/design.md D29): its own generated
-      # test, then the binary: the first-run warning and /setup while no user
+      # tests (cybertrain test), then the binary: the first-run warning and /setup while no user
       # exists, `./club user` reading the password from stdin, and /setup
       # gone once a user exists.
       - name: Gem CLI generates invitation-only authentication and runs its first-run setup
@@ -376,9 +379,7 @@ jobs:
           test ! -e app/controllers/registrations_controller.rb
           cybertrain db migrate
           cybertrain build
-          cybertrain spin test test/authentication.rb || true
-          test -x build/test/authentication
-          ./build/test/authentication
+          cybertrain test
           cd dist
           export CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret
           ./club migrate
@@ -401,13 +402,14 @@ jobs:
 
       # The authentication variants end to end (script/auth-e2e): a new app
       # with a scaffold, the generator (sign-up, --invite-only, --confirmable),
-      # every test the app has compiled and run, then the binary served: the
+      # every test the app has run by `cybertrain test`, then the binary served: the
       # sign-in page, `./shop user` and `user admin`, the jobs page behind
       # require_admin, the mails (reset; with --confirmable the sign-up's and
       # the new address's confirmation) and the account page; and upgrade04,
       # the generator run over test/fixtures/auth_04_app (an app v0.4.1
       # generated): its printed diffs applied with patch, or --force, and
-      # every generated test passing (sqlite3 and patch: the runner's own).
+      # 0.4's replaced test files deleted and every test passing (sqlite3
+      # and patch: the runner's own).
       - name: Authentication end to end
         run: script/auth-e2e signup invite confirmable upgrade04
 
@@ -423,12 +425,11 @@ jobs:
           cybertrain generate scaffold post title:string cover:attachment
           cybertrain db migrate
           cybertrain build
-          cybertrain spin run gen -- --check
+          SPIN_DEBUG=1 cybertrain spin run gen -- --check
           test -x dist/album
-          # Its snapshot would come from the binary, like test/authentication.rb.
-          cybertrain spin test test/attachment_post_cover.rb || true
-          test -x build/test/attachment_post_cover
-          ./build/test/attachment_post_cover
+          # The app's tests, the scaffold's and the upload test
+          # (test/integration/post_cover_attachment_test.rb), in one program.
+          cybertrain test
           printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\xff' > /tmp/gem-e2e-upload/pixel.png
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./album migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3998 ./album > server.log 2>&1 &
@@ -454,6 +455,25 @@ jobs:
           test -n "$(find storage/uploads -type f)"
           kill %1
 
+      # The tests the generators write, run (script/generators-e2e): a new
+      # app with a scaffold (fixtures, model and controller tests), a
+      # component, a helper, a job and a scaffold with an attachment, then
+      # `cybertrain test` (every test passes) and gen --check. One app, one
+      # compile of its tests.
+      - name: Generated applications' tests pass
+        run: script/generators-e2e
+
+      # `cybertrain test` (script/test-command-e2e): test/fixtures/test_app's
+      # tests compiled once into one binary and run with the filters (a
+      # file, -n NAME, a method name, -n /TEXT/) without a recompile, a
+      # failing file (exit 1, the test's line), gen's refusal of duplicate
+      # helpers, the three exits with status 2 (bad arguments seen by the
+      # CLI and by the binary, a database that is not a test database), and
+      # the development database and an exported CYBERTRAIN_DATABASE left
+      # untouched. gen and two compiles of a small application.
+      - name: cybertrain test end to end
+        run: script/test-command-e2e
+
       # What `cybertrain new` does for users: the framework as a git
       # dependency that spin fetches and locks (here this checkout, at a
       # local tag, instead of the release tag).
@@ -467,7 +487,7 @@ jobs:
           test -f spin.lock
           cybertrain generate scaffold item name:string
           cybertrain db migrate
-          cybertrain spin run gen -- --check
+          SPIN_DEBUG=1 cybertrain spin run gen -- --check
 
       # `git status`, not `git diff`: a file the generator writes that was
       # never committed is untracked, and `git diff` does not see it.
@@ -475,7 +495,9 @@ jobs:
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
-          spin run gen
+          # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in, so the
+          # step below reuses this gen binary.
+          SPIN_DEBUG=1 spin run gen
           changed=$(git status --porcelain --untracked-files=all -- gen/)
           if [ -n "$changed" ]; then
             echo "examples/blog/gen/ is not what \`spin run gen\` writes (M changed, D gone, ?? never committed):"
@@ -484,11 +506,18 @@ jobs:
             exit 1
           fi
 
+      # Every test of the blog (test/**/*_test.rb: Rails-shaped classes on
+      # test/fixtures) in one program, then gen --check. `cybertrain test`
+      # has just run gen, so the check cannot prove gen/ is as committed
+      # (the "Generated code is fresh" step above is that guard); it proves
+      # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
+      # mode `cybertrain test` builds gen in, so gen is not built again.
       - name: Example app tests
         if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
-          spin test
+          cybertrain test
+          SPIN_DEBUG=1 spin run gen -- --check
 
   # The action applications use (.github/actions/setup-cybertrain, which the
   # workflow `cybertrain new` writes calls at a release tag), run from this
@@ -592,9 +621,8 @@ jobs:
           spin --version | grep -F "$tag"
           spinel --version | grep -F "$tag"
 
-      # What the generated workflow runs after the action (the app has no
-      # test/*.rb yet, so no `spin test`): spin resolves the framework, and
-      # the gen program compiles against it and runs.
+      # What the generated workflow runs after the action: spin resolves the
+      # framework, and the gen program compiles against it and runs.
       - name: spin.lock is what spin writes, and gen/ builds
         env:
           ROUTE: ${{ matrix.route }}
@@ -604,3 +632,12 @@ jobs:
           if [ "$ROUTE" = git ]; then diff "$RUNNER_TEMP/spin.lock.given" spin.lock; fi
           spin run gen
           spin run gen -- --check
+
+      # The generated workflow's last step as it writes it: `cybertrain
+      # test` through the CLI of the framework the action fetched (the
+      # action puts spin and spinel on PATH, not cybertrain). A new app has
+      # one test, test/integration/health_test.rb.
+      - name: The generated test step runs the new app's test
+        env:
+          CYBERTRAIN_PATH: ${{ steps.setup.outputs.framework-path }}
+        run: ruby -I "$CYBERTRAIN_PATH" "$CYBERTRAIN_PATH/exe/cybertrain" test

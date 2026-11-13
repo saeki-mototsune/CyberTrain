@@ -1,5 +1,5 @@
 ---
-source_sha256: dcff54852c4d6fae14dd97b90f66e3dc7c39d37abc0be11123dc75a3aba5030f
+source_sha256: 51f6d83b98cc6492a729a00526d4e8c115931cbd8e7bbe6a8a9077b596cb0dc1
 ---
 # Установка
 
@@ -121,6 +121,10 @@ cybertrain doctor
   NAME -- PORT`).
 - `cybertrain build` собирает NAME со встроенными `app/views/` и формирует
   `dist/` (бинарный файл, `public/`, `storage/`, `tmp/`).
+- `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` выполняет генерацию,
+  компилирует все тесты из `test/` в одну программу (только когда что-то
+  изменилось) и запускает её, оставляя тесты, названные аргументами (см.
+  [Тестирование приложения](testing.md#running-the-tests)).
 - `cybertrain spin ARGS...` запускает `spin` с зафиксированным Spinel из
   любого каталога (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
 - `cybertrain setup [--force]` устанавливает зафиксированный релиз Spinel в

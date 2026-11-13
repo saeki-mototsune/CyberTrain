@@ -17,18 +17,24 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-manual  test/support/app_test.rb (diff below)
-create test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+manual  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+manual  test/support/app_test.rb (replaced by test/test_helper.rb)
 manual  app/controllers/application_controller.rb (diff below)
 route resources :passwords, resource :account
 manual  config/routes.rb (diff below)
 identical app/views/layouts/application.html.erb (nav already rendered)
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 manual  app/models/user.rb: apply this diff by hand, or re-run with --force to overwrite the file
@@ -150,7 +156,7 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
 +  # (count_failed_attempt!): authenticate_by refuses it until then,
 +  # unless lockout is off (auth_lockout_attempts 0), which also stops
 +  # enforcing a lock made before.
-+  def locked? = !locked_until.nil? && locked_until > Time.now
++  def locked? = !locked_until.nil? && locked_until > Time.current
 +
 +  # A wrong password: one more failed attempt, counted by the database
 +  # in one UPDATE that reads the row as it is (so sign-ins at the same
@@ -164,7 +170,7 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
 +
 +    count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
 +    lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
-+    ends = Time.now + Cybertrain.config.auth_lockout_period
++    ends = Time.current + Cybertrain.config.auth_lockout_period
 +    User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
 +    nil
 +  end
@@ -184,7 +190,7 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
 +  # valid for 15 minutes from now, and bound to password_reset_binding,
 +  # so it stops working once the password or the address changes
 +  # (Cybertrain::Token).
-+  def password_reset_token(now = Time.now.to_i)
++  def password_reset_token(now = Time.current.to_i)
 +    Cybertrain::Token.issue("password_reset", id, 15 * 60, password_reset_binding, now)
 +  end
 +
@@ -417,259 +423,8 @@ manual  app/views/registrations/new.html.erb: apply this diff by hand, or re-run
  
 -<p><%= link_to "Sign in", new_session_path %></p>
 +<p><%= link_to t(".sign_in"), new_session_path %></p>
-manual  test/support/app_test.rb: apply this diff by hand, or re-run with --force to overwrite the file
---- a/test/support/app_test.rb
-+++ b/test/support/app_test.rb
-@@ -5,6 +5,7 @@
- 
- require "cybertrain"
- require "cybertrain/test/client"
-+require "cybertrain/test/jobs"
- require_relative "../../config/app"
- require_relative "../../gen/app"
- require_relative "../../gen/migrations"
-manual  test/authentication.rb: apply this diff by hand, or re-run with --force to overwrite the file
---- a/test/authentication.rb
-+++ b/test/authentication.rb
-@@ -67,6 +67,66 @@
-   assert_includes res.body, "<li>Password can&#39;t be blank</li>"
- end
- 
-+# One address only: Cybertrain::Mailer reads a comma as a second
-+# recipient, so the account would have two mailboxes. Nor any address
-+# the mailer would refuse (Cybertrain::Mailer.address_problem: a
-+# Unicode space or control character, ";", "(" and the like), which
-+# could never be sent its mails.
-+test "POST /sign_up refuses an address list or a malformed address" do
-+  client = new_client
-+  client.get("/sign_up")
-+  ["ann@example.com,eve@evil.example", "ann@example.com eve@evil.example", "<ann@example.com>", "ann", "@example.com", "ann@", "a@b@example.com",
-+   "ann@example.com\u00A0", "ann\u3000@example.com", "ann\u0085@example.com", "ann@exa\u2028mple.com", "ann;x@example.com", "ann(x)@example.com"].each do |address|
-+    Cybertrain::RateLimit.reset_all!
-+    res = client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
-+                                    "user[email_address]" => address,
-+                                    "user[password]" => "s3cr3t-s3cr3t",
-+                                    "user[password_confirmation]" => "s3cr3t-s3cr3t" })
-+    assert_response res, :unprocessable_entity
-+    assert_includes res.body, "<li>Email address is invalid</li>"
-+  end
-+  assert_equal 0, User.count
-+  assert_equal 0, Session.count
-+  # A plus-address is one address the mailer sends to.
-+  Cybertrain::RateLimit.reset_all!
-+  client.post("/sign_up", { "authenticity_token" => AppTest.form_token(client),
-+                            "user[email_address]" => "ann+news@example.com",
-+                            "user[password]" => "s3cr3t-s3cr3t",
-+                            "user[password_confirmation]" => "s3cr3t-s3cr3t" })
-+  assert_equal 1, User.count
-+  assert_equal "ann+news@example.com", User.first.email_address
-+end
-+
-+# RegistrationsController's rate_limit: ten sign-ups per client
-+# address, then the form again until the window closes (the cache's
-+# clock held still, as in POST /session's test). The ten send no
-+# password, so none of them costs a hash.
-+test "POST /sign_up past ten requests is refused for a while" do
-+  client = new_client
-+  Cybertrain::RateLimit.reset_all!
-+  Cybertrain::Cache.clock = -> { 2_000_000_000 }
-+  begin
-+    client.get("/sign_up")
-+    token = AppTest.form_token(client)
-+    empty = { "authenticity_token" => token, "user[email_address]" => "nobody@example.com",
-+              "user[password]" => "", "user[password_confirmation]" => "" }
-+    right = { "authenticity_token" => token, "user[email_address]" => "ann@example.com",
-+              "user[password]" => "s3cr3t-s3cr3t", "user[password_confirmation]" => "s3cr3t-s3cr3t" }
-+    10.times { client.post("/sign_up", empty) }
-+    res = client.post("/sign_up", right)
-+    assert_redirected_to res, "/sign_up"
-+    assert_equal 0, User.count
-+    res = client.follow_redirect!
-+    assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
-+    Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
-+    client.post("/sign_up", right)
-+    assert_equal 1, User.count
-+  ensure
-+    # The system clock again, even when an assertion fails.
-+    Cybertrain::Cache.clock = -> { Time.now.to_i }
-+  end
-+end
-+
- test "an email address can be registered once" do
-   client = new_client
-   AppTest.user("ann@example.com")
-@@ -80,6 +140,54 @@
-   assert_equal 1, User.count
- end
- 
-+# User.email_address_format?: one address, whatever the mail
-+# standards allow beyond that.
-+test "an address is one address: one @, nothing around it that splits it" do
-+  ["ann@example.com", "ann+news@example.com", "ann.lee+news@mail.example.co.jp", "a@b", "o'brien@example.com"].each do |address|
-+    assert User.email_address_format?(address), address
-+  end
-+  ["", "ann", "@example.com", "ann@", "a@b@example.com", "ann@example.com,eve@evil.example",
-+   "ann@example.com eve@evil.example", "ann @example.com", "<ann@example.com>", "Ann <ann@example.com>",
-+   "ann@example.com\n", "ann@exa\tmple.com", "\"ann lee\"@example.com",
-+   "ann@example.com\u00A0", "ann\u3000@example.com", "ann\u0085@example.com", "ann@exa\u2028mple.com",
-+   "ann;x@example.com", "ann(x)@example.com", "ann@[example].com", "ann:x@example.com"].each do |address|
-+    refute User.email_address_format?(address), address
-+  end
-+end
-+
-+# An address saved before the check existed (an older release's) is not
-+# checked again: its owner can still reset the password.
-+test "an address saved before the format check still saves" do
-+  new_client
-+  ann = AppTest.user
-+  ann.update_columns(email_address: "ann@example.com,old@example.com")
-+  kept = User.find(ann.id)
-+  kept.password = "an0ther-s3cr3t"
-+  assert kept.save
-+  kept.email_address = "ann@example.com,new@example.com"
-+  refute kept.save
-+  assert_includes kept.errors.full_messages, "Email address is invalid"
-+end
-+
-+# Every form that signs in, out or resets carries the page's token
-+# (Cybertrain's CSRF check): without it, a 403 and nothing done.
-+test "POST /session, PUT /passwords/:token and DELETE /session without the form's token are refused" do
-+  client = new_client
-+  user = AppTest.user
-+  res = client.post("/session", { "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" })
-+  assert_response res, :forbidden
-+  assert_equal 0, Session.count
-+  token = user.password_reset_token
-+  res = client.put("/passwords/#{token}", { "password" => "an0ther-s3cr3t", "password_confirmation" => "an0ther-s3cr3t" })
-+  assert_response res, :forbidden
-+  refute User.find_by_password_reset_token(token).nil?
-+  AppTest.sign_in(client)
-+  assert_equal 1, Session.count
-+  res = client.post("/session", { "_method" => "delete" })
-+  assert_response res, :forbidden
-+  assert_equal 1, Session.count
-+end
-+
- test "POST /session signs in with the right password" do
-   client = new_client
-   AppTest.user
-@@ -90,30 +198,38 @@
-   assert_equal "127.0.0.1", Session.first.ip_address
- end
- 
-+# after_authentication_url is private (the Authentication concern's):
-+# a controller made for these tests reads it.
-+class ReturnPathProbeController < ApplicationController
-+  def probe_after_authentication_url
-+    after_authentication_url
-+  end
-+end
-+
- test "authentication returns to a local path once" do
-   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
-   ctx.session = Cybertrain::Session.new
--  controller = ApplicationController.new(ctx)
--  assert_equal "/", controller.after_authentication_url
-+  controller = ReturnPathProbeController.new(ctx)
-+  assert_equal "/", controller.probe_after_authentication_url
-   ["/", "/products", "/products/1?tab=details#title", "/products//1", "/caf%C3%A9"].each do |path|
-     controller.session[:return_to_after_authenticating] = path
--    assert_equal path, controller.after_authentication_url
-+    assert_equal path, controller.probe_after_authentication_url
-     refute controller.session.key?(:return_to_after_authenticating)
--    assert_equal "/", controller.after_authentication_url
-+    assert_equal "/", controller.probe_after_authentication_url
-   end
- end
- 
- test "authentication rejects unsafe return destinations and consumes them" do
-   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, ""))
-   ctx.session = Cybertrain::Session.new
--  controller = ApplicationController.new(ctx)
-+  controller = ReturnPathProbeController.new(ctx)
-   unsafe = ["", "products", "https://evil.example/", "//evil.example/", "///evil.example/",
-             "/\\evil.example/", "/products\\evil", " //evil.example/", "/記事", "/" + "a" * 2048]
-   (0..32).each { |byte| unsafe << "/#{Cybertrain::Test.binary([byte])}/evil.example/" }
-   unsafe << "/#{Cybertrain::Test.binary([127])}/evil.example/"
-   unsafe.each do |path|
-     controller.session[:return_to_after_authenticating] = path
--    assert_equal "/", controller.after_authentication_url
-+    assert_equal "/", controller.probe_after_authentication_url
-     refute controller.session.key?(:return_to_after_authenticating)
-   end
- end
-@@ -132,26 +248,37 @@
- 
- # SessionsController's rate_limit: ten attempts per address, then even
- # the right password goes back to the form until the window closes.
-+# The counts live in Cybertrain::Cache, in windows aligned to the
-+# epoch: the cache's clock is held still, so the attempts share one
-+# window, then moved a whole window on. The ten go to an address no
-+# user has: the limit counts per client, whatever the address, and
-+# there is no account for lockout (test/lockout.rb) to lock.
- test "POST /session past ten attempts is refused for a while" do
-   client = new_client
-   AppTest.user
-   Cybertrain::RateLimit.reset_all!
--  client.get("/session/new")
--  wrong_password = { "authenticity_token" => AppTest.form_token(client),
--                     "email_address" => "ann@example.com", "password" => "wrong-password" }
--  right_password = { "authenticity_token" => AppTest.form_token(client),
--                     "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
--  10.times { client.post("/session", wrong_password) }
--  res = client.post("/session", right_password)
--  assert_redirected_to res, "/session/new"
--  assert_equal 0, Session.count
--  res = client.follow_redirect!
--  assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
--  Cybertrain::RateLimit.current_time = Time.now.to_i + 3 * 60
--  res = client.post("/session", right_password)
--  Cybertrain::RateLimit.current_time = -1
--  assert_redirected_to res, "/"
--  assert_equal 1, Session.count
-+  Cybertrain::Cache.clock = -> { 2_000_000_000 }
-+  begin
-+    client.get("/session/new")
-+    wrong_password = { "authenticity_token" => AppTest.form_token(client),
-+                       "email_address" => "nobody@example.com", "password" => "wrong-password" }
-+    right_password = { "authenticity_token" => AppTest.form_token(client),
-+                       "email_address" => "ann@example.com", "password" => "s3cr3t-s3cr3t" }
-+    10.times { client.post("/session", wrong_password) }
-+    res = client.post("/session", right_password)
-+    assert_redirected_to res, "/session/new"
-+    assert_equal 0, Session.count
-+    res = client.follow_redirect!
-+    assert_includes res.body, "<p class=\"alert\">Try again later.</p>"
-+    Cybertrain::Cache.clock = -> { 2_000_000_000 + 3 * 60 }
-+    res = client.post("/session", right_password)
-+    assert_redirected_to res, "/"
-+    assert_equal 1, Session.count
-+  ensure
-+    # The system clock again, even when an assertion fails: the
-+    # tests after this one must not run at a frozen time.
-+    Cybertrain::Cache.clock = -> { Time.now.to_i }
-+  end
- end
- 
- test "DELETE /session signs out and drops the Session row" do
-@@ -206,7 +333,7 @@
-     assert_includes res.body, "<span>ann@example.com</span>"
-     token = AppTest.form_token(client)
- 
--    # Keep the signed cookie and its row, but move the creation time
-+    # Keep the session cookie and its row, but move the creation time
-     # to the expiration boundary. Saving updates updated_at too;
-     # neither that nor a rewritten cookie extends authentication.
-     row = Session.first
-@@ -215,7 +342,7 @@
-     res = client.post("/session", { "_method" => "delete", "authenticity_token" => token },
-                                  { "cookie" => cookie })
-     assert_redirected_to res, "/session/new"
--    assert_equal 1, Session.count
-+    assert_equal 0, Session.count
-     res = client.get("/session/new")
-     refute res.body.include?("<span>ann@example.com</span>")
-     assert_includes res.body, "<a href=\"/session/new\">Sign in</a>"
+manual  test/authentication.rb: replaced by test/controllers/sessions_controller_test.rb; delete it
+manual  test/support/app_test.rb: replaced by test/test_helper.rb; delete it
 manual  app/controllers/application_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
 --- a/app/controllers/application_controller.rb
 +++ b/app/controllers/application_controller.rb
@@ -783,7 +538,7 @@ manual  config/routes.rb: apply this diff by hand with application_controller.rb
 next:
   cybertrain db migrate
   cybertrain server      # then open /sign_up
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb and accounts.rb; snapshot them from the binaries
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset mails: set SHOP_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 
 next: apply the diffs above, or re-run with --force for files you never edited

@@ -30,7 +30,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 ok   new writes the app skeleton and returns the created paths
 ok   spin.toml names the package and references the framework
 ok   config/routes.rb and db/schema.rb are empty DSL blocks (routes with the jobs page commented out)
@@ -45,6 +48,8 @@ ok   README.md gives the cybertrain command sequence
 ok   the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000
 ok   config/deploy.yml and .kamal/secrets configure Kamal for the app
 ok   .github/workflows/ci.yml sets up the toolchain and runs the app's checks
+ok   the CI step runs cybertrain test
+ok   new writes test_helper and the health test and no test/.keep
 create spin.toml
 create .gitignore
 create .env.example
@@ -77,7 +82,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 ok   CLI new --path expands a relative DIR against the current directory
 create spin.toml
 create .gitignore
@@ -111,7 +119,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 ok   CLI new --path keeps an absolute DIR and works for a nested app dir
 error: 'public' is not a valid app name: it collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
 error: 'storage' is not a valid app name: it collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
@@ -151,7 +162,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 ok   CLI new --version writes an index constraint
 create spin.toml
 create .gitignore
@@ -185,7 +199,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create spin.toml
 create .gitignore
 create .env.example
@@ -218,7 +235,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 error: --ref needs --git
 error: --git needs a value
 error: --git needs a value
@@ -256,7 +276,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 error: control characters are not allowed in --path, --version, --git or --ref
 ok   CLI new writes dependency values as TOML strings
 create spin.toml
@@ -291,7 +314,10 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 ok   CLI new defaults to this version's release tag
 ok   new bootstraps the app with spin lock and a debug-mode spin run gen
 usage: cybertrain spin ARGS... (for example: cybertrain spin test)
@@ -391,6 +417,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+      Run the application's tests (test/**/*_test.rb and test/*.rb)
+      as one program: SPIN_DEBUG=1 spin run gen, then gen/tests.rb compiled into
+      build/test/tests when a source is newer than it, then run.
+      FILE or DIR keeps the tests of those files; -n NAME the test
+      named NAME (or its method name, test_...); -n /TEXT/ the tests
+      whose name contains TEXT. A filter never recompiles. Exits 1
+      when a test failed, 2 for bad arguments.
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
@@ -499,6 +533,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+      Run the application's tests (test/**/*_test.rb and test/*.rb)
+      as one program: SPIN_DEBUG=1 spin run gen, then gen/tests.rb compiled into
+      build/test/tests when a source is newer than it, then run.
+      FILE or DIR keeps the tests of those files; -n NAME the test
+      named NAME (or its method name, test_...); -n /TEXT/ the tests
+      whose name contains TEXT. A filter never recompiles. Exits 1
+      when a test failed, 2 for bad arguments.
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
@@ -606,6 +648,14 @@ Usage:
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
+  cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
+      Run the application's tests (test/**/*_test.rb and test/*.rb)
+      as one program: SPIN_DEBUG=1 spin run gen, then gen/tests.rb compiled into
+      build/test/tests when a source is newer than it, then run.
+      FILE or DIR keeps the tests of those files; -n NAME the test
+      named NAME (or its method name, test_...); -n /TEXT/ the tests
+      whose name contains TEXT. A filter never recompiles. Exits 1
+      when a test failed, 2 for bad arguments.
   cybertrain spin ARGS...
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
@@ -647,7 +697,11 @@ ok   CLI version, help and unknown commands
 # Seconds of silence after which a feed counts as stale (180).
 # CYBERTRAIN_HEALTH_FEED_STALE=180
 
-# The IANA zone cron expressions are read in; UTC when unset.
+# The application's time zone (an IANA name; UTC when unset): the
+# boundaries of today and this week, Date.current, l and time_tag.
+# CYBERTRAIN_TIME_ZONE=Asia/Tokyo
+# The IANA zone cron expressions are read in; the time zone above
+# when unset.
 # CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
 
 # Redirect http to https and mark cookies Secure (production behind
@@ -659,4 +713,4 @@ ok   .env.example lists the secrets, commented, with how to make each
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-28 tests, 332 assertions, 0 failures
+30 tests, 354 assertions, 0 failures

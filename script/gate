@@ -273,6 +273,13 @@ else
     abort "cybertrain.gemspec lists files that do not exist: #{missing.join(", ")}" unless missing.empty?
     $LOAD_PATH.unshift(".")
     require "cybertrain/cli"
+    # What the CLI loaded from this tree must all be in the gem: an
+    # installed gem has only spec.files, and a require of anything else is
+    # a LoadError there that loading from the source tree never shows.
+    root = File.expand_path(".") + "/"
+    loaded = $LOADED_FEATURES.select { |f| f.start_with?(root) }.map { |f| f.delete_prefix(root) }
+    unlisted = loaded - spec.files
+    abort "the CLI requires files cybertrain.gemspec does not list: #{unlisted.sort.join(", ")}" unless unlisted.empty?
     print spec.files.size
   RB
   spec_status.success? ? ok("gem file list and CLI load under CRuby", "#{spec_out} files") : fail!("gemspec / CLI", spec_out.lines.map(&:chomp))

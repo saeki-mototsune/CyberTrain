@@ -1,5 +1,5 @@
 ---
-source_sha256: dcff54852c4d6fae14dd97b90f66e3dc7c39d37abc0be11123dc75a3aba5030f
+source_sha256: 51f6d83b98cc6492a729a00526d4e8c115931cbd8e7bbe6a8a9077b596cb0dc1
 ---
 # 安装
 
@@ -51,6 +51,7 @@ cybertrain doctor
   run gen` 之后运行其他任意数据库命令：`status`、`rollback [N]`（之后会再次生成）、`schema:dump`、`create`。
 - `cybertrain server [PORT] [--spinel]` 启动开发服务器（默认端口 3000）。改动之后应用立即在 CRuby 上运行，同时 Spinel 在后台构建它，构建成功后编译好的二进制文件接管端口；应用的响应带有 `X-Cybertrain-Runtime: cruby` 或 `spinel`（[开发循环](how-it-works.md#the-development-loop)）。`--spinel` 只运行编译版的循环，每次改动都要等它的构建（`SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则 `spin build NAME -- --incremental`；`spin run NAME`，或 `spin run NAME -- PORT`）。
 - `cybertrain build` 构建嵌入了 `app/views/` 的 NAME，并组装 `dist/`（二进制文件、`public/`、`storage/`、`tmp/`）。
+- `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` 先生成，再把 `test/` 下的所有测试编译成一个程序（只在有改动时）并运行，只保留参数指定的测试（见[测试应用](testing.md#running-the-tests)）。
 - `cybertrain spin ARGS...` 在任意目录下用锁定版本的 Spinel 运行 `spin`（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
 - `cybertrain setup [--force]` 把锁定版本的 Spinel 安装到 `~/.cybertrain` 中，除非 `PATH` 上已有该版本的 `spinel`；`--force` 会重新构建 `~/.cybertrain` 下的副本。
 - `cybertrain doctor` 检查 C 工具链、SQLite 头文件、Ruby 能否加载 `fiddle`（CRuby 预览需要它）以及 Spinel 的安装情况。

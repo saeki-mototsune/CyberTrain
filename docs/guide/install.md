@@ -118,6 +118,10 @@ from there, from `cybertrain new` to `cybertrain build`.
   NAME -- PORT`).
 - `cybertrain build` builds NAME with `app/views/` embedded and assembles
   `dist/` (the binary, `public/`, `storage/`, `tmp/`).
+- `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` generates, compiles
+  every test under `test/` into one program (again only when something
+  changed) and runs it, keeping the tests the arguments name (see
+  [Testing an app](testing.md#running-the-tests)).
 - `cybertrain spin ARGS...` runs `spin` with the pinned Spinel from any
   directory (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
 - `cybertrain setup [--force]` installs the pinned Spinel release into

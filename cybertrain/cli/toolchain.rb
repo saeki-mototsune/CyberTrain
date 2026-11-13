@@ -668,7 +668,7 @@ module Cybertrain
       # Ruby's development headers, for its extension) on 3.2. Only building
       # Spinel needs it. Applications never run on CRuby in production;
       # in development `cybertrain server` runs them under CRuby until the
-      # compiled binary is built (the CRuby preview, design record D81),
+      # compiled binary is built (the CRuby preview, design record D87),
       # which needs fiddle (fiddle_ok?), not prism.
       def self.prism_ok?
         system("ruby -e 'require \"prism\"' > /dev/null 2>&1")

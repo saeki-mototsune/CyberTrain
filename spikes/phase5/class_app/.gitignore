@@ -1,0 +1,4 @@
+# Written by `spin run gen`, the build and the test run (tests.rb's header).
+/gen/
+/build/
+/storage/

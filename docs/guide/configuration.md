@@ -33,7 +33,8 @@ end
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps a `server` process from running scheduled tasks, jobs and WebSocket feeds (see [Process roles](background-and-operations.md#process-roles)); `./<app> worker` and `feeds` ignore it |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: how many jobs one process runs at once (see [Background work](background-and-operations.md#background-work)); at least 1 |
-| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`: the zone a `Scheduler.cron` task without `tz:` is read in, an IANA name such as `Asia/Tokyo` (see [Time zones](#time-zones)); one the system's zoneinfo does not have stops the boot |
+| `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`: the application's zone, an IANA name such as `Asia/Tokyo`, for `Time.zone`, the day and month boundaries, `Date.current`, `l` and `time_tag` (see [Time zones](#time-zones)); one the system's zoneinfo does not have stops the boot |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` when unset: the zone a `Scheduler.cron` task without `tz:` is read in, an IANA name (see [Time zones](#time-zones)); one the system's zoneinfo does not have stops the boot |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`: rows per list on the [jobs page](background-and-operations.md#the-jobs-page-and-the-jobs-command); at least 1 |
 | `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`: seconds between the prunes of expired [cache](background-and-operations.md#the-cache-store) rows, read when `cybertrain/cache` is required; at least 1 |
 | `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`: seconds between the writes of each WebSocket feed's status row (see [Feed health](realtime.md#feed-health)); at least 1 |
@@ -51,6 +52,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; a secret, never logged, never in the boot banner or an error message |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: the sender `Mailer.deliver` uses when it is not given `from:` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in the test environment, `:smtp` in every other: `:test` keeps each mail in `Cybertrain::Mailer.deliveries` instead of sending it ([Testing mail](testing.md#testing-mail)); outside the test environment it boots with a warning and sends nothing; anything else stops the boot. `cybertrain test` uses `:test` unless `config/app.rb` sets it, whatever the variable says |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`: the file `cybertrain test` deletes, migrates and runs the tests on, instead of `storage/test.sqlite3`; a file path (not `:memory:` or a `file:` URI). An existing file is deleted only when `cybertrain test` created it (it marks its databases), is this application's own `storage/test.sqlite3` or is empty; any other, and the development or production database, is refused with exit status 2 and nothing deleted ([Running the tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: the locale every request starts in, a name such as `ja` or `pt-BR` (see [Locales](#locales)); anything else stops the boot |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`: wrong passwords before an account is locked; `0` turns lockout off (see [Authentication settings](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`: seconds a lockout lasts; at least 1 |
@@ -283,4 +286,34 @@ backward jump repeats gives the earlier instant. `find` accepts only a
 relative name made of `A-Za-z0-9_+-./` with no empty, `.` or `..` segment, so
 a zone name taken from a user's profile cannot reach a file outside the zone
 directory; an unknown or malformed zone is not cached, and `"UTC"` needs no
-file. `l` formats a time in the request's locale ([Dates and times](i18n.md#dates-and-times)) but takes no `zone:` yet.
+file.
+
+### The application's zone
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.time_zone = "Asia/Tokyo"   # or CYBERTRAIN_TIME_ZONE; "UTC" by default
+end
+```
+
+`c.time_zone` takes an IANA name (Rails' own names, such as "Tokyo", are not
+read), and boot stops on one the system does not have. Values stay UTC
+instants: a column, `Time.current` and the calendar methods answer a UTC
+`Time`, and `time.hour` is the UTC hour. The zone decides the calendar
+(`beginning_of_day` and its kin, `Date.current`;
+[Times and the time zone](models.md#times-and-the-time-zone)) and the
+display: `l(time)` and `time_tag(time)` show a Time in it, `%z` and `%Z`
+included, and `time_tag`'s `datetime` is ISO 8601 with the zone's offset
+(`2026-11-12T05:00:00+09:00`). `l(time, zone: "America/New_York")` and
+`time_tag(time, zone: "...")` show one value in another zone. A Time at
+offset 0, which is every Time the framework hands out, is shown in the
+zone; a Time that carries another offset of its own
+(`time.getlocal("+05:30")`) keeps it unless `zone:` is given; a Date is
+shown as it is. Cron tasks without `tz:` follow the zone too, unless `scheduler_tz` is set. A
+registered command (`Main.command`), `./<app> jobs` and `./<app> console`
+install the zone before they run as well, and refuse an unknown one as boot
+does, with `error: time_zone "Mars/Base" is not a known time zone` and exit
+status 1, before the database is opened. In `cybertrain test` every test
+starts in the configured zone. ([Dates and times](i18n.md#dates-and-times) has `l`'s
+formats.)

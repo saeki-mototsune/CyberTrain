@@ -30,39 +30,43 @@ create .github/workflows/ci.yml
 create gen/.keep
 create storage/.keep
 create tmp/.keep
-create test/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
 create app/helpers/prices_helper.rb
-create test/prices_helper.rb
+create test/helpers/prices_helper_test.rb
 
 next:
   spin run gen           # includes the module into the app's helpers
-  cybertrain spin test   # test/prices_helper.rb; snapshot it from the binary
+  cybertrain test        # test/helpers/prices_helper_test.rb among the others
 ok   generate helper prices writes an empty PricesHelper and a test
+ok   the helper test is in the class form
 ok   spin run gen's scan finds the generated module
 create app/helpers/admin/users_helper.rb
-create test/admin_users_helper.rb
+create test/helpers/admin/users_helper_test.rb
 
 next:
   spin run gen           # includes the module into the app's helpers
-  cybertrain spin test   # test/admin_users_helper.rb; snapshot it from the binary
+  cybertrain test        # test/helpers/admin/users_helper_test.rb among the others
 ok   a namespaced helper is nested in its module
 error: app/helpers/prices_helper.rb already exists (pass --force to overwrite it)
 force app/helpers/prices_helper.rb
-identical test/prices_helper.rb
+identical test/helpers/prices_helper_test.rb
 
 next:
   spin run gen           # includes the module into the app's helpers
-  cybertrain spin test   # test/prices_helper.rb; snapshot it from the binary
+  cybertrain test        # test/helpers/prices_helper_test.rb among the others
 identical app/helpers/prices_helper.rb
-identical test/prices_helper.rb
+identical test/helpers/prices_helper_test.rb
 
 next:
   spin run gen           # includes the module into the app's helpers
-  cybertrain spin test   # test/prices_helper.rb; snapshot it from the binary
+  cybertrain test        # test/helpers/prices_helper_test.rb among the others
 ok   an existing, different file is refused unless --force
 error: bad helper name '9lives'
 error: usage: cybertrain generate helper NAME [--force]
 error: usage: cybertrain generate helper NAME [--force]
 error: ./config/routes.rb not found: run this inside a cybertrain app
 ok   bad names and usage are rejected
-5 tests, 20 assertions, 0 failures
+6 tests, 21 assertions, 0 failures

@@ -53,13 +53,13 @@ test "the reader rereads a file that changed and survives its absence" do
   path = "tmp/dev_state_file_test"
   File.delete(path) if File.exist?(path)
   reader = F::Reader.new(path)
-  assert_equal 0, reader.current.generation
+  assert_equal 0, reader.current_snapshot.generation
   File.write(path, F.format(2, "cruby", "building", ""))
-  assert_equal 2, reader.current.generation
+  assert_equal 2, reader.current_snapshot.generation
   File.write(path, F.format(3, "spinel", "ready", ""))
-  assert_equal "spinel", reader.current.serving
+  assert_equal "spinel", reader.current_snapshot.serving
   File.delete(path)
-  assert_equal 0, reader.current.generation
+  assert_equal 0, reader.current_snapshot.generation
 end
 
 test "build status fails for failed and binary_failed only" do
@@ -109,12 +109,12 @@ test "two readers on one path are independent" do
   File.delete(path) if File.exist?(path)
   first = F::Reader.new(path)
   write_into_place(path, F.format(6, "cruby", "building", ""))
-  assert_equal 6, first.current.generation
+  assert_equal 6, first.current_snapshot.generation
   write_into_place(path, F.format(7, "spinel", "ready", ""))
   second = F::Reader.new(path)
-  assert_equal 7, second.current.generation
-  assert_equal "spinel", second.current.serving
-  assert_equal 7, first.current.generation
+  assert_equal 7, second.current_snapshot.generation
+  assert_equal "spinel", second.current_snapshot.serving
+  assert_equal 7, first.current_snapshot.generation
   File.delete(path)
 end
 
@@ -124,11 +124,11 @@ test "a same-size rewrite renamed into place is noticed" do
   File.delete(path) if File.exist?(path)
   reader = F::Reader.new(path)
   write_into_place(path, F.format(8, "cruby", "failed", "aaaa"))
-  assert_equal "aaaa", reader.current.output
+  assert_equal "aaaa", reader.current_snapshot.output
   write_into_place(path, F.format(8, "cruby", "failed", "bbbb"))
-  assert_equal "bbbb", reader.current.output
+  assert_equal "bbbb", reader.current_snapshot.output
   write_into_place(path, F.format(8, "cruby", "failed", "cccc"))
-  assert_equal "cccc", reader.current.output
+  assert_equal "cccc", reader.current_snapshot.output
   File.delete(path)
 end
 
@@ -138,15 +138,15 @@ test "a file that goes away reads as the default snapshot, and is read again whe
   File.delete(path) if File.exist?(path)
   reader = F::Reader.new(path)
   write_into_place(path, F.format(9, "cruby", "failed", "first"))
-  assert_equal "failed", reader.current.build
+  assert_equal "failed", reader.current_snapshot.build
   File.delete(path)
-  s = reader.current
+  s = reader.current_snapshot
   assert_equal 0, s.generation
   assert_equal "idle", s.build
   assert_equal "", s.output
   write_into_place(path, F.format(10, "cruby", "binary_failed", "second"))
-  assert_equal 10, reader.current.generation
-  assert_equal "second", reader.current.output
+  assert_equal 10, reader.current_snapshot.generation
+  assert_equal "second", reader.current_snapshot.output
   File.delete(path)
 end
 

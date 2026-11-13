@@ -125,6 +125,24 @@ module Cybertrain
       nil
     end
   end
+
+  # {#deliver_later} here, beside the job it enqueues; the fields and
+  # {#deliver_now} are in cybertrain/mailer/mail_message.rb.
+  class MailMessage
+    # Enqueues the message for a job thread to send ({Mailer.deliver_later}:
+    # the fields are checked now, so a refused one raises and nothing is
+    # queued).
+    # @example
+    #   PasswordsMailer.reset(user, url).deliver_later
+    # @return [Integer] the job's id
+    # @raise [ArgumentError] for an address, subject or body refused
+    # @raise [Cybertrain::DB::Error] when the database is not connected or
+    #   the insert fails
+    # @api public
+    def deliver_later
+      Mailer.deliver_later(to: @mail_to, subject: @mail_subject, body: @mail_body, html: @mail_html, from: @mail_from)
+    end
+  end
 end
 
 # The built-in mail job, registered when this file is required; its block

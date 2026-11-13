@@ -1,0 +1,15 @@
+# The users every test starts with (cybertrain generate authentication).
+# Their password is "password": each digest is Cybertrain::Password's,
+# made when the generator ran (a fixture is not ERB, so it is written
+# out). Sign one in with `sign_in_as users(:one)`.
+one:
+  email_address: one@example.com
+  password_digest: $pbkdf2-sha256$i=1000$TVm7F1wtCGC7XYu9N8eYxA$w9Wrwn06gGtWMp-GYualC8a_eoTmb5JpsR6vWNEjWhw
+  admin: true
+  failed_attempts: 0
+
+two:
+  email_address: two@example.com
+  password_digest: $pbkdf2-sha256$i=1000$Di4aRryuOtDWZbLp5uVIfg$et5GPodQhaZphHt0ZPOqWLCSZu2oHhGJaLaK0ybh6Ps
+  admin: false
+  failed_attempts: 0

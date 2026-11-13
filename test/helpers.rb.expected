@@ -30,6 +30,7 @@ ok   a template reads the Page
 ok   time_tag for Time, Date, text and format:
 ok   time_tag format: Strings take flags, widths and composites; an unknown directive raises
 ok   time_tag format: a width replaces a number's padding; a width or flag strftime does not mean here raises
+ok   time_tag renders in Time.zone, or once in zone:; a Date as it is
 ok   current_page? path only, with query, false on POST
 ok   time_tag_strftime formats every directive the bundled formats use
 ok   t and l in a template: the bundled dictionary, lazy keys, the missing span
@@ -42,4 +43,4 @@ ok   time_ago_in_words and distance_of_time_in_words in en and ja
 ok   pluralize leaves a word alone outside English
 ok   paginate in ja, and an application's pager text escaped
 ok   time_tag's format names go through I18n.l: a ja page gets ja dates
-44 tests, 263 assertions, 0 failures
+45 tests, 279 assertions, 0 failures

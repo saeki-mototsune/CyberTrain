@@ -10,6 +10,8 @@ ok   an integer setting parses digits and an optional minus within its bounds
 ok   an unparsable or out-of-range value falls back to the default with a warning
 ok   a usable value logs nothing
 ok   CYBERTRAIN_HEALTH_FEED_STALE sets health_feed_stale; unset or bad is 180; below 1 is refused
+ok   time_zone from the environment and its check
+ok   mail_delivery_method from the environment and its check
 ok   boot refuses a health_feed_stale not above feed_status_interval while health_feeds is on
 ok   a bad declaration is an ArgumentError
 ok   reading an undeclared or differently typed setting is an ArgumentError
@@ -50,4 +52,4 @@ ok   a nonce directive that is not a directive, or a CR in permissions_policy, s
 ok   content_security_policy builds the policy once and yields it
 ok   i18n settings from the environment and their checks
 ok   auth settings and their checks
-22 tests, 159 assertions, 0 failures
+24 tests, 182 assertions, 0 failures

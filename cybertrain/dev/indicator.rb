@@ -115,7 +115,7 @@ module Cybertrain
       end
 
       def call(ctx)
-        snapshot = @reader.current
+        snapshot = @reader.current_snapshot
         @status.update(snapshot)
         request = ctx.request
         path = request.path

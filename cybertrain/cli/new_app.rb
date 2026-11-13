@@ -54,7 +54,10 @@ module Cybertrain
           ["gen/.keep", ""],
           ["storage/.keep", ""],
           ["tmp/.keep", ""],
-          ["test/.keep", ""]
+          ["test/test_helper.rb", Templates.test_helper],
+          ["test/integration/health_test.rb", Templates.health_test],
+          ["test/fixtures/.keep", ""],
+          ["test/support/.keep", ""]
         ]
         created = Array.new(0) { "" }
         files.each do |entry|

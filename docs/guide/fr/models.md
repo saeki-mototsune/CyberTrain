@@ -1,5 +1,5 @@
 ---
-source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
+source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
 ---
 # Modèles et base de données
 
@@ -299,6 +299,51 @@ existent sous leurs noms Ruby, et chacun lève `ArgumentError` sur un texte
 qu’il ne sait pas lire. `strptime` accepte `%Y %m %d %H %M %S %L %z %Z %b %B
 %a %A %j %s %%` (`%Z` seulement `UTC`, `GMT` ou `Z`). `Time.at(ms / 1000.0)`
 transforme une époque en millisecondes en Time.
+
+### Les heures et le fuseau horaire
+
+Un Time est toujours un instant UTC&nbsp;: ce qu’une colonne lit,
+`Time.current` et chaque méthode ci-dessous renvoient un `Time` UTC, et il
+n’y a pas de TimeWithZone. Ainsi `time.hour` est l’heure UTC, là où Rails
+renvoie celle du fuseau. Le fuseau (`c.time_zone`,
+[Fuseaux horaires](configuration.md#time-zones)) décide du calendrier&nbsp;: où
+commencent un jour, une semaine, un mois ou une année, `Date.current`, et
+ce que montrent `l` et `time_tag`.
+
+```ruby
+Time.current                         # => le Time UTC de l’horloge (il suit travel_to dans un test)
+5.minutes                            # => 300, des secondes entières
+2.weeks.ago                          # => un Time, 14 jours avant Time.current
+3.days.from_now                      # => un Time
+Time.current.months_ago(1)           # => un mois calendaire en arrière (pas 1.month.ago)
+Time.current.beginning_of_day        # => minuit dans Time.zone, en Time UTC
+Time.utc(2026, 1, 31).advance(months: 1)   # => 2026-02-28 00:00:00 UTC
+Date.current                         # => aujourd’hui dans Time.zone
+Time.current.in_time_zone.hour       # => l’heure dans Time.zone
+```
+
+- Durées&nbsp;: `seconds`, `minutes`, `hours`, `days`, `weeks` et leurs
+  singuliers sont des secondes entières (`5.minutes == 300`, là où Rails
+  renvoie une Duration)&nbsp;; `ago` et `from_now` renvoient un Time sur
+  l’horloge. `1.month` et `1.year` ne sont pas définis, puisqu’un mois n’a
+  pas de durée en secondes&nbsp;: ils lèvent `NoMethodError` quand ils
+  s’exécutent.
+- Sur Time&nbsp;: `beginning_of_day` / `end_of_day`, `_week` (lundi), `_month`,
+  `_year`&nbsp;; `advance(years:, months:, weeks:, days:, hours:, minutes:,
+  seconds:)` avec des entiers (les années à jours déplacent la date murale
+  dans le calendrier du fuseau, le 31 janvier plus un mois étant la fin de
+  février&nbsp;; les heures à secondes ajoutent ensuite du temps écoulé)&nbsp;;
+  `months_ago`, `months_since`, `years_ago`, `years_since`, `yesterday`,
+  `tomorrow`. Une heure murale qu’un passage à l’heure d’été saute avance&nbsp;;
+  une qui arrive deux fois prend l’instant le plus tôt.
+- `Time.zone` est le `Cybertrain::TimeZone` configuré&nbsp;; son nom est
+  `Time.zone.zone_name`. `time.in_time_zone` (ou
+  `in_time_zone("Europe/London")`) renvoie un `Cybertrain::ZonedTime`, une
+  valeur avec `year`, `month`, `day`, `hour`, `min`, `sec`, `wday`,
+  `yday`, `utc_offset`, `zone` (l’abréviation), `to_time` et `to_date`&nbsp;;
+  elle n’a pas d’arithmétique et n’est pas stockée. `Time.find_zone!(name)`
+  lève `ArgumentError` pour un nom inconnu.
+- Les colonnes contiennent toujours du texte UTC, quel que soit le fuseau.
 
 ## Conditions et recherches
 

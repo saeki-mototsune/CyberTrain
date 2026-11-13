@@ -46,7 +46,7 @@ module Cybertrain
 
       def refresh_build_status
         reader = @reader
-        update(reader.current) unless reader.nil?
+        update(reader.current_snapshot) unless reader.nil?
         nil
       end
     end

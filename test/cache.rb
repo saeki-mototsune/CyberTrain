@@ -9,8 +9,8 @@ require "cybertrain/test"
 # counts with an expiry; the typed readers parse what they stored and read
 # a corrupt cell as empty; prune removes only expired rows, from the
 # scheduler task requiring the file registers once; and the table is made
-# on first use and left out of the schema dump. Time comes from an
-# injected clock (CLOCK), so nothing sleeps. Compiled with the whole
+# on first use and left out of the schema dump. Each test moves the clock
+# with travel_to, so nothing sleeps. Compiled with the whole
 # framework (NOTES rule 41); it links SQLite through FFI, so its snapshot
 # comes from the compiled binary (rule 23).
 
@@ -18,11 +18,6 @@ DB = Cybertrain::DB
 Cache = Cybertrain::Cache
 S = Cybertrain::Scheduler
 Cast = Cybertrain::Cast
-
-# The injected clock's epoch seconds, set by each test (a constant: NOTES
-# rule 64).
-CLOCK = [1000]
-Cache.clock = -> { CLOCK[0] }
 
 # What the blocks ran, and what a second caller saw, read back by the tests.
 CALLS = Array.new(0) { "" }
@@ -56,7 +51,7 @@ def failing_fetch(key, ttl)
   assert_raises("RuntimeError") do
     Cache.fetch(key, expires_in: 10, race_condition_ttl: ttl) do
       CALLS << "raise"
-      raise "upstream down" if CLOCK[0] > 0
+      raise "upstream down" if Cybertrain::Clock.now.to_i > 0
 
       "never"
     end
@@ -72,7 +67,7 @@ end
 DB.connect(":memory:")
 
 test "fetch computes once and serves the value until it expires" do
-  CLOCK[0] = 1000
+  travel_to(Time.at(1000))
   CALLS.clear
   first = Cache.fetch("defillama/tvl", expires_in: 60) do
     CALLS << "a"
@@ -85,10 +80,10 @@ test "fetch computes once and serves the value until it expires" do
   assert_equal "one", first
   assert_equal "one", second
   assert_equal "a", calls_text
-  CLOCK[0] = 1060
+  travel_to(Time.at(1060))
   assert_equal "one", Cache.fetch("defillama/tvl", expires_in: 60) { "three" }
   assert Cache.exist?("defillama/tvl")
-  CLOCK[0] = 1061
+  travel_to(Time.at(1061))
   refute Cache.exist?("defillama/tvl")
   assert_nil Cache.read("defillama/tvl")
   assert_equal "three", Cache.fetch("defillama/tvl", expires_in: 60) { "three" }
@@ -97,7 +92,7 @@ test "fetch computes once and serves the value until it expires" do
   # is stored as its to_s.
   assert_equal "forever", Cache.fetch("forever") { "forever" }
   assert_equal "42", Cache.fetch("number") { 42 }
-  CLOCK[0] = 2_000_000_000
+  travel_to(Time.at(2_000_000_000))
   assert_equal "forever", Cache.read("forever")
   assert_equal "42", Cache.read("number")
   assert Cache.delete("forever")
@@ -108,13 +103,13 @@ test "fetch computes once and serves the value until it expires" do
 end
 
 test "write with unless_exist answers false for a live row and true after it expired" do
-  CLOCK[0] = 1000
+  travel_to(Time.at(1000))
   assert Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   refute Cache.write("import-lock", "2", expires_in: 300, unless_exist: true)
   assert_equal "1", Cache.read("import-lock")
-  CLOCK[0] = 1300
+  travel_to(Time.at(1300))
   refute Cache.write("import-lock", "2", expires_in: 300, unless_exist: true)
-  CLOCK[0] = 1301
+  travel_to(Time.at(1301))
   assert Cache.write("import-lock", "3", expires_in: 300, unless_exist: true)
   assert_equal "3", Cache.read("import-lock")
   # A row that never expires is never overwritten by unless_exist.
@@ -124,16 +119,16 @@ test "write with unless_exist answers false for a live row and true after it exp
   # A plain write always replaces, expiry included.
   assert Cache.write("pinned", "c", expires_in: 5)
   assert_equal "c", Cache.read("pinned")
-  CLOCK[0] = 1307
+  travel_to(Time.at(1307))
   assert_nil Cache.read("pinned")
 end
 
 test "race_condition_ttl lets one caller recompute while the other reads the stale value" do
-  CLOCK[0] = 5000
+  travel_to(Time.at(5000))
   CALLS.clear
   SEEN.clear
   assert Cache.write("tvl", "old", expires_in: 10)
-  CLOCK[0] = 5011
+  travel_to(Time.at(5011))
   value = Cache.fetch("tvl", expires_in: 10, race_condition_ttl: 30) do
     CALLS << "a"
     second_caller
@@ -144,23 +139,23 @@ test "race_condition_ttl lets one caller recompute while the other reads the sta
   assert_equal "a", calls_text
   assert_equal "new", Cache.read("tvl")
   # Without race_condition_ttl every caller of an expired key recomputes.
-  CLOCK[0] = 5022
+  travel_to(Time.at(5022))
   assert_equal "again", Cache.fetch("tvl", expires_in: 10) { "again" }
   # A missing row with a block always computes.
   assert_equal "fresh", Cache.fetch("missing", race_condition_ttl: 30) { "fresh" }
 end
 
 test "fetch whose block raises writes nothing" do
-  CLOCK[0] = 3000
+  travel_to(Time.at(3000))
   CALLS.clear
   assert Cache.write("rates", "old", expires_in: 10)
-  CLOCK[0] = 3011
+  travel_to(Time.at(3011))
   assert_includes failing_fetch("rates", 30), "upstream down"
   # The stale row was extended for race_condition_ttl seconds, no more.
   assert_equal "old", Cache.read("rates")
-  CLOCK[0] = 3041
+  travel_to(Time.at(3041))
   assert_equal "old", Cache.read("rates")
-  CLOCK[0] = 3042
+  travel_to(Time.at(3042))
   assert_nil Cache.read("rates")
   assert_includes failing_fetch("nothing", 0), "upstream down"
   assert_nil Cache.read("nothing")
@@ -169,32 +164,32 @@ test "fetch whose block raises writes nothing" do
 end
 
 test "increment creates and adds, with an expiry" do
-  CLOCK[0] = 4000
+  travel_to(Time.at(4000))
   assert_equal 1, Cache.increment("hits")
   assert_equal 6, Cache.increment("hits", by: 5)
   assert_equal 4, Cache.increment("hits", by: -2)
   assert_equal "4", Cache.read("hits")
   assert_equal 1, Cache.increment("rate", expires_in: 60)
-  CLOCK[0] = 4050
+  travel_to(Time.at(4050))
   # Without expires_in the expiry stays.
   assert_equal 2, Cache.increment("rate")
-  CLOCK[0] = 4061
+  travel_to(Time.at(4061))
   assert_nil Cache.read("rate")
   # An expired counter starts again from by, with a new expiry.
   assert_equal 3, Cache.increment("rate", by: 3, expires_in: 60)
   # With expires_in a live counter keeps its expiry: the window is fixed
   # from the counter's start (4061 + 60), not moved by each call.
-  CLOCK[0] = 4100
+  travel_to(Time.at(4100))
   assert_equal 4, Cache.increment("rate", expires_in: 60)
-  CLOCK[0] = 4121
+  travel_to(Time.at(4121))
   assert_equal "4", Cache.read("rate")
-  CLOCK[0] = 4122
+  travel_to(Time.at(4122))
   refute Cache.exist?("rate")
   # A live counter with no expiry takes the one given.
   assert_equal 6, Cache.increment("hits", by: 2, expires_in: 10)
-  CLOCK[0] = 4132
+  travel_to(Time.at(4132))
   assert_equal "6", Cache.read("hits")
-  CLOCK[0] = 4133
+  travel_to(Time.at(4133))
   refute Cache.exist?("hits")
   # A value that is not a number counts as 0.
   assert Cache.write("word", "abc")
@@ -202,7 +197,7 @@ test "increment creates and adds, with an expiry" do
 end
 
 test "fetch_hash / fetch_array / fetch_int parse what they stored and recover from a corrupt cell" do
-  CLOCK[0] = 6000
+  travel_to(Time.at(6000))
   prices = Cache.fetch_hash("prices/eth", expires_in: 60) { { "usd" => 3000, "sym" => "ETH" } }
   assert_equal 3000, Cast.int(prices["usd"])
   assert_equal "ETH", Cast.str(prices["sym"])
@@ -222,7 +217,7 @@ test "fetch_hash / fetch_array / fetch_int parse what they stored and recover fr
   assert_equal 0, Cache.fetch_hash("prices/eth", expires_in: 60) { { "usd" => 2 } }.size
   assert_equal 0, Cache.fetch_array("tags", expires_in: 60) { ["c"] }.size
   assert_equal 0, Cache.fetch_int("count", expires_in: 60) { 9 }
-  CLOCK[0] = 6061
+  travel_to(Time.at(6061))
   assert_equal 2, Cast.int(Cache.fetch_hash("prices/eth", expires_in: 60) { { "usd" => 2 } }["usd"])
   assert_equal 1, Cache.fetch_array("tags", expires_in: 60) { ["c"] }.size
   assert_equal 9, Cache.fetch_int("count", expires_in: 60) { 9 }
@@ -230,7 +225,7 @@ end
 
 test "prune removes only expired rows; the scheduler task is registered once" do
   DB.connect(":memory:")
-  CLOCK[0] = 7000
+  travel_to(Time.at(7000))
   assert Cache.write("keep", "k")
   assert Cache.write("live", "l", expires_in: 100)
   i = 0
@@ -251,7 +246,7 @@ test "prune removes only expired rows; the scheduler task is registered once" do
   Cache.register_prune_task
   assert_equal 1, prune_task_count
   # The task prunes at the clock's now.
-  CLOCK[0] = 7101
+  travel_to(Time.at(7101))
   assert S.run_task(S::TASKS[index])
   assert_equal 1, cache_rows
   assert_equal "k", Cache.read("keep")

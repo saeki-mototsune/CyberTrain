@@ -51,7 +51,7 @@ module Cybertrain
   # @example
   #   cookies[:theme]                      # => "dark" or nil
   #   cookies[:theme] = "dark"
-  #   cookies[:theme] = { value: "dark", expires: Time.now + 365 * 86_400, httponly: false }
+  #   cookies[:theme] = { value: "dark", expires: Time.current + 365 * 86_400, httponly: false }
   #   cookies.delete(:theme)
   #   cookies.permanent[:remember] = "1"   # 20 years
   #   cookies.signed[:user_id] = user.id.to_s
