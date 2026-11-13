@@ -1181,10 +1181,10 @@ module Cybertrain
         # the model's callbacks and the download action. Written by `cybertrain
         # generate attachment <<model>> <<field>>`; run with `cybertrain test`.
         class <<TestClass>> < ActionDispatch::IntegrationTest
-          # test/fixtures/files/<<field>>.png: a PNG signature, then NUL, 0xFF and CR LF
-          # bytes. The server sniffs the signature only; the rest shows that every
-          # byte survives the round trip.
-          PNG_BYTES = Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0xFF, 0x0D, 0x0A, 0x00, 0x01])
+          # test/fixtures/files/<<field>>.png: a 1x1 PNG, whose bytes hold NUL, 0xFF and
+          # CR LF; the round trip shows that every byte survives. Read from the
+          # file, so a picture of your own put there is what the tests send.
+          PNG_BYTES = File.binread("test/fixtures/files/<<field>>.png")
           HTML_BYTES = "<html><script>alert(document.cookie)</script></html>"
           SVG_BYTES = '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>'
 
@@ -1393,8 +1393,13 @@ module Cybertrain
         end
       RUBY
 
-      # test/fixtures/files/<field>.png: PNG_BYTES of the test above.
-      TEST_PNG_FILE = "\x89PNG\r\n\x1A\n\x00\xFF\r\n\x00\x01".b
+      # test/fixtures/files/<field>.png, the PNG_BYTES of the test above: a
+      # real 1x1 PNG (8-bit RGBA, the pixel FF 00 0D 0A), its IHDR, IDAT and
+      # IEND chunks with their CRC-32s.
+      TEST_PNG_FILE = ("\x89PNG\r\n\x1A\n" \
+                       "\x00\x00\x00\x0DIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1F\x15\xC4\x89" \
+                       "\x00\x00\x00\x0DIDATx\xDAc\xF8\xCF\xC0\xCB\x05\x00\x04%\x01\x17v\x05v|" \
+                       "\x00\x00\x00\x00IEND\xAEB`\x82").b
     end
   end
 end

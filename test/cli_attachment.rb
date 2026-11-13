@@ -2,6 +2,7 @@ require "tmpdir"
 require "cybertrain/cli"
 require "cybertrain/template"
 require "cybertrain/test"
+require "cybertrain/generator/crc32"
 
 # `cybertrain generate attachment MODEL FIELD` and the scaffold type
 # `FIELD:attachment` on fresh `cybertrain new` trees: the files they write, the
@@ -167,13 +168,48 @@ test "the .gitignore of a new app ignores the uploads" do
   assert_includes read("shop/.gitignore"), "/storage/uploads/\n"
 end
 
+# The chunk types of a PNG, in order, after checking the signature, each
+# chunk's length and its CRC-32 (over the type and data); [] when any of
+# them is wrong.
+def png_chunks(png)
+  types = Array.new(0) { "" }
+  signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+  i = 0
+  while i < 8
+    return Array.new(0) { "" } unless png.getbyte(i).to_i == signature[i]
+
+    i += 1
+  end
+  at = 8
+  while at + 12 <= png.bytesize
+    length = png_u32(png, at)
+    return Array.new(0) { "" } if at + 12 + length > png.bytesize
+
+    typed = png.byteslice(at + 4, 4 + length).to_s
+    return Array.new(0) { "" } unless Cybertrain::Gen::Crc32.crc32(typed) == png_u32(png, at + 8 + length)
+
+    types << typed.byteslice(0, 4).to_s
+    at += 12 + length
+  end
+  return Array.new(0) { "" } unless at == png.bytesize
+
+  types
+end
+
+# The big-endian 32-bit number at byte at.
+def png_u32(png, at)
+  (png.getbyte(at).to_i << 24) | (png.getbyte(at + 1).to_i << 16) | (png.getbyte(at + 2).to_i << 8) | png.getbyte(at + 3).to_i
+end
+
 test "the generated test covers the security behaviour" do
   spec = read("shop/test/integration/post_cover_attachment_test.rb")
   assert spec.start_with?("require \"test_helper\"\n\n"), spec
   assert_includes spec, "\nclass PostCoverAttachmentTest < ActionDispatch::IntegrationTest\n"
   assert spec.end_with?("\n  end\nend\n"), "the class closes the file"
   assert_includes spec, "  setup do\n    # Uploaded files land here, not in storage/uploads.\n    Cybertrain::BlobStore.root = \"tmp/test_uploads\"\n"
-  assert_includes spec, "  PNG_BYTES = Cybertrain::Test.binary([0x89, 0x50, 0x4E, 0x47"
+  # T16-N2: the bytes are the fixture file's, read from it, not a copy.
+  assert_includes spec, "  PNG_BYTES = File.binread(\"test/fixtures/files/cover.png\")\n"
+  assert spec.index("Cybertrain::Test.binary").nil?
   assert_includes spec, "  def post_params(file)\n    { title: \"A post\", cover: file }\n  end\n"
   # Uploads are params: values of the integration test's own requests, in
   # Rails' shape (multipart/form-data because a value is a file): no
@@ -182,11 +218,14 @@ test "the generated test covers the security behaviour" do
   assert_includes spec, "  def update_post(record, file)\n    patch \"/posts/\#{record.id}\", params: { post: post_params(file) }\n  end\n"
   assert_includes spec, "  def file_named(filename, type, data)\n    Cybertrain::Test::Upload.new(\"\", filename, type, data)\n  end\n"
   refute spec.include?("integration_client"), "no private state of IntegrationTest"
-  # The fixture file the upload reads, where Rails keeps them, holds PNG_BYTES.
+  # The fixture file the upload reads, where Rails keeps them: a real 1x1
+  # PNG (T16-N2), its chunks whole and their CRCs right.
   png = File.binread("shop/test/fixtures/files/cover.png")
   assert_equal Cybertrain::CLI::Attachment::TEST_PNG_FILE, png
-  assert_equal 14, png.bytesize
-  assert_equal [0x89, 0x00, 0xFF, 0x01], [png.getbyte(0), png.getbyte(8), png.getbyte(9), png.getbyte(13)]
+  assert_equal ["IHDR", "IDAT", "IEND"], png_chunks(png)
+  # 1x1, 8-bit RGBA; the pixel's bytes are zlib-compressed in IDAT.
+  assert_equal [1, 1, 8, 6], [png_u32(png, 16), png_u32(png, 20), png.getbyte(24).to_i, png.getbyte(25).to_i]
+  assert_equal 0x78, png.getbyte(41).to_i
   assert_includes spec, "assert_equal \"nosniff\", response.header(\"x-content-type-options\")"
   assert_includes spec, "start_with?(\"inline\")"
   assert_includes spec, "assert_equal \"default-src 'none'; sandbox\", response.header(\"content-security-policy\")"

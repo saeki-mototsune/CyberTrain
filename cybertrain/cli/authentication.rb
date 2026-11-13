@@ -406,7 +406,7 @@ module Cybertrain
         end
         record_file(result, root, "app/views/accounts/edit.html.erb", accounts_edit_view(confirmable), force)
         record_file(result, root, "test/fixtures/users.yml", users_fixture(confirmable), force)
-        record_file(result, root, "test/support/session_test_helper.rb", session_test_helper, force)
+        record_file(result, root, Templates::SESSION_TEST_HELPER, session_test_helper, force)
         record_file(result, root, "test/models/user_test.rb", user_model_test, force)
         record_file(result, root, "test/controllers/sessions_controller_test.rb", sessions_controller_test(invite_only), force)
         if invite_only

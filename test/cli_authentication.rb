@@ -978,6 +978,8 @@ test "writes the session test helper and includes it in IntegrationTest" do
                            "    post session_path, params: fields\n"
   assert_includes support, "  def sign_out = delete(session_path)\n"
   assert_includes support, "  def open_session = ActionDispatch::IntegrationTest.new\n"
+  # T17-N2: the page's form token, once, here; no test file has a copy.
+  assert_includes support, "  def authenticity_token_in(body)\n    marker = \"name=\\\"authenticity_token\\\" value=\\\"\"\n"
   helper = read("shop/test/test_helper.rb")
   assert_equal "#{Cybertrain::CLI::Templates.test_helper}\nrequire_relative \"support/session_test_helper\"\n\n" \
                "class ActionDispatch::IntegrationTest\n  include SessionTestHelper\nend\n", helper
@@ -998,6 +1000,28 @@ test "writes the session test helper and includes it in IntegrationTest" do
   assert_equal helper, read("nomark/test/test_helper.rb")
 end
 
+# The lines of a test file that set a setting (Cybertrain.config.x = or
+# Cybertrain::Password.iterations =) outside a begin/ensure, where a
+# failure would leave it set for the tests after.
+def settings_not_restored(text)
+  found = Array.new(0) { "" }
+  opened = Array.new(0) { 0 }
+  text.each_line do |line|
+    # Not String#strip: a test file may hold UTF-8 bytes read as US-ASCII.
+    indent = 0
+    indent += 1 while indent < line.size && line[indent] == " "
+    code = line[indent, line.size - indent].to_s.chomp
+    if code == "begin"
+      opened << indent
+    elsif code == "end" && !opened.empty? && opened.last == indent
+      opened.pop
+    elsif (code.start_with?("Cybertrain.config.") || code.start_with?("Cybertrain::Password.iterations")) && code.include?(" = ")
+      found << code if opened.empty?
+    end
+  end
+  found
+end
+
 test "remember_me_test checks day 15 and day 30 with travel_to" do
   remember = read("shop/test/integration/remember_me_test.rb")
   assert_includes remember, "require \"test_helper\"\n"
@@ -1007,15 +1031,34 @@ test "remember_me_test checks day 15 and day 30 with travel_to" do
    "last_active_at is touched at most once a minute", "an unremembered sign-in sets a cookie without Max-Age"].each do |name|
     assert_includes remember, "  test \"#{name}\" do\n"
   end
-  assert_includes remember, "    travel_to 15.days.from_now do\n      assert signed_in?\n    end\n"
-  assert_includes remember, "    travel_to 30.days.from_now - 1.minute do\n      assert signed_in?\n    end\n"
-  assert_includes remember, "    travel_to 30.days.from_now do\n      refute signed_in?\n      # Ended: the row is gone.\n      assert_nil Session.find_by(id: first.id)\n    end\n" \
-                            "    travel_to 31.days.from_now do\n      refute replayed_signed_in?(cookie)\n    end\n"
+  assert_includes remember, "      travel_to 15.days.from_now do\n        assert signed_in?\n      end\n"
+  assert_includes remember, "      travel_to 30.days.from_now - 1.minute do\n        assert signed_in?\n      end\n"
+  assert_includes remember, "      travel_to 30.days.from_now do\n        refute signed_in?\n        # Ended: the row is gone.\n        assert_nil Session.find_by(id: first.id)\n      end\n" \
+                            "      travel_to 31.days.from_now do\n        refute replayed_signed_in?(cookie)\n      end\n"
+  # Final review T17-N1: the 31 days set for the sign-in are put back in an
+  # ensure, also when the sign-in fails.
+  assert_includes remember, "    remember_for = Cybertrain.config.auth_remember_for\n    begin\n" \
+                            "      Cybertrain.config.auth_remember_for = 31.days\n      sign_in_as users(:one), remember: true\n" \
+                            "      Cybertrain.config.auth_remember_for = remember_for\n"
+  # Every setting a generated test changes is put back in an ensure.
+  Dir.glob("shop/test/**/*_test.rb").each { |path| assert_equal "#{path}: ", "#{path}: #{settings_not_restored(read(path)).join(", ")}" }
   # Where the server's own check decides (the cookie still valid), the row
   # is gone: the lowered remember limit, idle off at 29 days, and
   # session_max_age's fallback at 14.
   assert_includes remember, "      Cybertrain.config.auth_remember_for = 29.days\n"
   assert_includes remember, "      Cybertrain.config.session_max_age = 15.days\n"
+  # T17-L2: the fallback's 15 days are on the cookie (its own stamp ends a
+  # sign-in whose row limit was raised past them), and the row's limit is
+  # lowered to 13 days, apart from the two-week constant.
+  assert_includes remember, "      assert_equal 1_296_000, stamped_session(user, false).lifetime_limit\n"
+  assert_includes remember, "      Cybertrain.config.session_max_age = 13.days\n"
+  assert_includes remember, "      travel_to 13.days.from_now - 1.minute do\n        assert signed_in?\n      end\n" \
+                            "      travel_to 13.days.from_now do\n        refute signed_in?\n        assert_nil Session.find_by(id: started.id)\n      end\n"
+  assert_includes remember, "      Cybertrain.config.session_max_age = 60.days\n      travel_to 6.days.from_now do\n"
+  assert_includes remember, "      travel_to 15.days.from_now - 1.minute do\n        assert signed_in?\n      end\n" \
+                            "      travel_to 15.days.from_now do\n        refute signed_in?\n        # The row is still there: the cookie alone ended it.\n" \
+                            "        refute Session.find_by(id: started.id).nil?\n      end\n"
+  assert remember.index("Cybertrain.config.session_max_age = 14.days").nil?
   assert_equal 5, remember.scan("assert_nil Session.find_by(id: started.id)").size
   assert_includes remember, "    travel_to 14.days.from_now - 1.minute do\n      assert signed_in?\n    end\n" \
                             "    travel_to 14.days.from_now do\n      refute signed_in?\n    end\n"
@@ -1693,7 +1736,11 @@ test "password reset: the generated tests and their helpers" do
   # The mail is the one the test environment stores (Mailer.deliveries):
   # no SMTP receiver, and its sender is the configured one.
   assert_includes spec, "    mail = Cybertrain::Mailer.deliveries.last\n"
-  assert_includes spec, "    assert_equal \"noreply@example.com\", mail.mail_from\n"
+  # T17-N3: an address no code and no default uses, so a mailer with a
+  # sender of its own cannot pass.
+  assert_includes spec, "      Cybertrain.config.smtp_from = \"set-by-this-test@example.org\"\n"
+  assert_includes spec, "    assert_equal \"set-by-this-test@example.org\", mail.mail_from\n"
+  assert spec.index("noreply").nil?
   assert spec.index("SmtpReceiver").nil?
   assert_includes spec, "  def last_mail_link\n    mail = Cybertrain::Mailer.deliveries.last\n"
   # Review Focus 4: a forged Host, both addresses, one mail, base_url.
@@ -2001,6 +2048,51 @@ test "account pages: the generated test" do
   assert_includes spec, "    get \"/account/edit\"\n    assert_redirected_to \"/session/new\"\n"
   # Other browsers are open_session's.
   assert_includes spec, "    phone = open_session\n    phone.sign_in_as ann\n"
+end
+
+# The tests that delete an account, cut out of accounts_controller_test.rb:
+# each test whose deletion goes through (the user found no more).
+def deleting_tests(spec)
+  found = Array.new(0) { "" }
+  spec.split("\n  test \"").each do |part|
+    found << part if part.include?("    assert_nil User.find_by(id: ann.id)\n")
+  end
+  found
+end
+
+# Final review C, I3: a scaffold with `user:references` after the generator
+# writes fixtures that point at users(:one), and a users row they point at
+# cannot be deleted; so the deletion tests delete a user of their own, in
+# every mode.
+test "the account-deletion tests delete a user they create, not a fixture row, in every mode" do
+  [[false, false], [true, false], [false, true], [true, true]].each do |mode|
+    app = "del#{mode[0] ? "i" : ""}#{mode[1] ? "c" : ""}"
+    Cybertrain::CLI::NewApp.create(app, "{ path = \"../cybertrain\" }")
+    Cybertrain::CLI::Authentication.generate(app, mode[0], mode[1])
+    Cybertrain::CLI::Scaffold.generate(app, "post", ["title:string", "user:references"])
+    assert_includes read("#{app}/test/fixtures/posts.yml"), "  user: one\n"
+    spec = read("#{app}/test/controllers/accounts_controller_test.rb")
+    deleting = deleting_tests(spec)
+    assert_equal 2, deleting.size
+    deleting.each do |text|
+      assert_includes text, "    ann = account_holder\n"
+      assert text.index("ann = users(").nil?, text
+      assert text.index("add_note_for(users(").nil?, text
+    end
+    # T17-N1: every setting a generated test changes is put back in an
+    # ensure, in every mode.
+    Dir.glob("#{app}/test/**/*_test.rb").each { |path| assert_equal "#{path}: ", "#{path}: #{settings_not_restored(read(path)).join(", ")}" }
+    Dir.glob("#{app}/test/**/*_test.rb").each { |path| assert read(path).index("def authenticity_token_in").nil?, path }
+    assert_equal Cybertrain::CLI::Authentication.session_test_helper, read("#{app}/#{Cybertrain::CLI::Templates::SESSION_TEST_HELPER}")
+    # The helper makes a user who can sign in in this mode.
+    assert_includes spec, "  def account_holder\n    user = User.new(email_address: \"ann@example.com\")\n" \
+                          "    user.password = \"password\"\n"
+    if mode[1]
+      assert_includes spec, "    user.confirmed_at = Time.current\n"
+    else
+      assert spec.index("confirmed_at").nil?
+    end
+  end
 end
 
 test "a re-run adds the account route to an app generated before it" do
@@ -2449,12 +2541,25 @@ test "--confirmable: the generated test" do
   # Final review B I3: the reset leaves no address waiting, and its link is dead.
   assert_includes spec, "    assert_nil reset.unconfirmed_email\n    assert_equal confirmed_at, reset.confirmed_at.to_i\n" \
                         "    assert_nil User.find_by_confirmation_token(pending_token)\n"
+  # T17-L1: the send-again and the withdraw forms, refused without their
+  # token and accepted with the page's own.
+  assert_includes spec, "  test \"send again and withdrawing a new address take the page's own form token\" do\n"
+  assert_includes spec, "      get \"/confirmations/new\"\n" \
+                        "      post \"/confirmations\", params: { authenticity_token: authenticity_token_in(response.body), email_address: \"ann@example.com\" }\n" \
+                        "      assert_redirected_to \"/session/new\"\n"
+  assert_includes spec, "      get \"/account/edit\"\n" \
+                        "      delete \"/account/pending_email\", params: { authenticity_token: authenticity_token_in(response.body) }\n" \
+                        "      assert_redirected_to \"/account/edit\"\n"
   # The same answer for a registered, an unknown and a confirmed address.
   assert_includes spec, "    assert_equal known.body, unknown.body\n"
   assert_includes spec, "    assert_equal known.body, confirmed.body\n"
   assert_includes spec, "    assert_includes log.string, \"[ERROR] confirmation mail not sent: set CONF_BASE_URL (or CYBERTRAIN_HOSTS)\\n\"\n"
   # The mail is read where the test environment keeps it.
-  assert_includes spec, "    assert_equal \"noreply@example.com\", mail.mail_from\n"
+  # T17-N3: an address no code and no default uses, so a mailer with a
+  # sender of its own cannot pass.
+  assert_includes spec, "      Cybertrain.config.smtp_from = \"set-by-this-test@example.org\"\n"
+  assert_includes spec, "    assert_equal \"set-by-this-test@example.org\", mail.mail_from\n"
+  assert spec.index("noreply").nil?
   assert spec.index("SmtpReceiver").nil?
   # Global settings change only through with_config.
   assert spec.index("set_string_setting(:base_url, base_url)").nil? == false
