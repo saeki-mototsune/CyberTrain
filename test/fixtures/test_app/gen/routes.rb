@@ -6,6 +6,7 @@ module Gen
     def self.build(router)
       router.add("GET", "/articles", "articles") { |ctx| ArticlesController.new(ctx).process(:index) { |c| c.index } }
       router.add("POST", "/articles", "") { |ctx| ArticlesController.new(ctx).process(:create) { |c| c.create } }
+      router.add("GET", "/articles/new", "new_article") { |ctx| ArticlesController.new(ctx).process(:new) { |c| c.new_action } }
       router.add("GET", "/articles/:id", "article") { |ctx| ArticlesController.new(ctx).process(:show) { |c| c.show } }
       router
     end
@@ -15,6 +16,8 @@ module Gen
       case name
       when "articles_path" then Cybertrain::Gen.with_options("/articles", options)
       when "articles_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles", options)
+      when "new_article_path" then Cybertrain::Gen.with_options("/articles/new", options)
+      when "new_article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/new", options)
       when "article_path" then Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}", options)
       when "article_url" then Cybertrain.url_root + Cybertrain::Gen.with_options("/articles/#{Cybertrain::Gen.segment(args[0])}", options)
       else raise ArgumentError, "unknown route helper '#{name}'"
@@ -34,6 +37,14 @@ module Gen
 
     def articles_url(options = {})
       Cybertrain.url_root + articles_path(options)
+    end
+
+    def new_article_path(options = {})
+      Cybertrain::Gen.with_options("/articles/new", options)
+    end
+
+    def new_article_url(options = {})
+      Cybertrain.url_root + new_article_path(options)
     end
 
     def article_path(article, options = {})

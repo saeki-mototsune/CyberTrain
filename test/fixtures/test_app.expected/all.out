@@ -1,8 +1,12 @@
+test/components/card_component_test.rb
+  ok   CardComponentTest: renders the title
+  ok   CardComponentTest: renders the form partial
 test/controllers/articles_controller_test.rb
   ok   ArticlesControllerTest: lists the rows
   ok   ArticlesControllerTest: shows one through its path helper
   ok   ArticlesControllerTest: creates one and follows the redirect
   ok   ArticlesControllerTest: an unknown path fails with the top-level form's message
+  ok   ArticlesControllerTest: shows the form for a new one
 test/legacy.rb
   ok   shows an article
   ok   the configured zone
@@ -15,4 +19,4 @@ test/models/article_test.rb
   ok   ArticleFixturesTest: fixtures: a test changes and adds rows
   ok   ArticleFixturesTest: fixtures: the next test sees exactly the fixture rows
 
-13 tests, 32 assertions, 0 failures
+16 tests, 38 assertions, 0 failures

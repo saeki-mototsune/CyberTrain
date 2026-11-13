@@ -41,3 +41,4 @@ end
 Cybertrain::Test.on_reset(Cybertrain::Test::Help.rate_limit_reset)
 Cybertrain::Test.on_reset(Cybertrain::Test::Help.locale_reset)
 require "cybertrain/test/database"
+require "cybertrain/test/select"

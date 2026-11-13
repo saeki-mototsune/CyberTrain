@@ -8,6 +8,6 @@ end
 
 class ArticlesController < ApplicationController
   def view_assigns
-    {}
+    { "article" => @article }
   end
 end

@@ -1,3 +1,3 @@
 Cybertrain::Routes.draw do
-  resources :articles, only: [:index, :show, :create]
+  resources :articles, only: [:index, :show, :new, :create]
 end

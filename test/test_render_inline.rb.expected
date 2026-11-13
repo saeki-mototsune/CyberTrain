@@ -1,0 +1,7 @@
+ok   render_inline renders a component and a partial and keeps the HTML
+ok   a component with content:, its view method, and the HTML kept for assert_select
+ok   the form partial: form_with on a new record, outside a request
+ok   a page: doctype, head, script text, a turbo frame around a component, a turbo stream, a link, the form
+ok   ViewComponent::TestCase: the class form reaches render_inline and assert_select
+ok   failures: a missing element, an unsupported selector, a block, neither or both forms, malformed HTML
+6 tests, 57 assertions, 0 failures

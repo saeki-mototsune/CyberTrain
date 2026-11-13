@@ -8,6 +8,10 @@ class ArticlesController < ApplicationController
     render plain: "#{article.title} by #{article.author.name}"
   end
 
+  def new_action
+    @article = Article.new
+  end
+
   def create
     article = Article.new(params.require(:article).permit(:title, :body, :author_id))
     if article.save

@@ -130,7 +130,7 @@ module Cybertrain
         out = GeneratedFiles.test_head("")
         out << "\n"
         out << "# app/helpers/#{rel}.rb, through the app's ApplicationHelpers (gen/helpers.rb).\n"
-        out << "def render_inline(source)\n"
+        out << "def render_helper_template(source)\n"
         out << "  template = Cybertrain::Template::Template.parse(source, \"test/inline\")\n"
         out << "  env = { \"__template_dir\" => \"test\" }\n"
         out << "  Cybertrain::Template::Interpreter.new(Cybertrain::Views.helpers_builder.call(nil)).render(template, env)\n"
@@ -138,7 +138,7 @@ module Cybertrain
         out << "\n"
         out << "test \"#{full} is in the application's helpers\" do\n"
         out << "  assert_equal \"ApplicationHelpers\", Cybertrain::Views.helpers_builder.call(nil).class.name\n"
-        out << "  assert_equal \"&lt;b&gt;\", render_inline(\"<%= h '<b>' %>\")\n"
+        out << "  assert_equal \"&lt;b&gt;\", render_helper_template(\"<%= h '<b>' %>\")\n"
         out << "end\n"
         out << "\n"
         out << "Cybertrain::Test.run!\n"

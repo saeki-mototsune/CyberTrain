@@ -37,4 +37,11 @@ class ArticlesControllerTest < ActionDispatch::IntegrationTest
     message = assert_raises("AssertionFailed") { assert_response :success }
     assert_equal "expected response :success, got 404", message
   end
+
+  test "shows the form for a new one" do
+    get new_article_path
+    assert_response :success
+    assert_select "h1", "New article"
+    assert_select "form[action=\"/articles\"] input[name=\"article[title]\"]"
+  end
 end

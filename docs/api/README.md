@@ -90,6 +90,19 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 {ActionDispatch::IntegrationTest} both read the last response:
 `assert_response :success`, `assert_redirected_to "/articles/1"`.
 
+`assert_select(selector, equality = nil, count:, minimum:, maximum:, text:)`
+(`require "cybertrain/test/select"`, which `cybertrain/test_help` loads)
+checks the last rendered HTML, the last `render_inline` or the last
+response of an integration test, and answers the matching
+{Cybertrain::Test::HtmlNode}s: `assert_select "ul > li", count: 2`,
+`assert_select "h1", "Hello"`, `assert_select "table", false`. Selectors
+are a tag, `.class`, `#id`, `[attr]`, `[attr="v"]`, compounds, the ` ` and
+`>` combinators and lists; other forms fail with their name.
+`render_inline(component, content: "")` and `render_inline(partial:,
+locals: {})` (`require "cybertrain/test/views"`) render outside a request,
+answer the HTML and keep it for `assert_select`; a component test
+inherits `ViewComponent::TestCase`.
+
 The job helpers come with `require "cybertrain/test/jobs"`:
 `assert_enqueued_jobs(count, kind = "")`, `assert_no_enqueued_jobs(kind = "")`,
 `assert_enqueued_with(kind, args = {})` (args compared as strings, so

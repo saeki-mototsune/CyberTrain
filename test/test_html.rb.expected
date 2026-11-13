@@ -1,0 +1,17 @@
+ok   every selector form
+ok   more selector forms: compounds, chains, lists, the universal tag and spacing
+ok   the answer is the matched elements, in document order, each once
+ok   options and the positional second argument
+ok   each option failing, with its message
+ok   text: collapses whitespace and strips; a Regexp sees the same text
+ok   the excerpt is the first 500 characters
+ok   each unsupported form fails with its message
+ok   a selector that is not one fails rather than matching nothing
+ok   a wrong second argument is refused
+ok   real-world well-formed HTML
+ok   the framework's own page: layout, form_with, a component, Turbo, svg
+ok   odd but well-formed HTML: unquoted, valueless and repeated attributes, entities, nesting, case, non-ASCII
+ok   the reader's nodes: tag, attributes, text, html, children, parent
+ok   a malformed document fails with the byte offset
+ok   each malformed shape fails with its offset, and the excerpt
+16 tests, 255 assertions, 0 failures
