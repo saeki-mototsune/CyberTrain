@@ -15,7 +15,11 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
 
 - **The framework compiles under Spinel, not CRuby.** Only the `cybertrain`
   CLI (`cybertrain/cli*`, `exe/`) runs under CRuby and ships as a gem; the
-  rest of `cybertrain/` is a spin package an application depends on. Things
+  rest of `cybertrain/` is a spin package an application depends on. In
+  development `cybertrain server` also runs the framework and the
+  application under CRuby, as a preview, with Spinel's FFI DSL implemented
+  over Ruby's `fiddle` (`cybertrain/preview/`, which Spinel never
+  compiles); that preview is never the program that ships. Things
   Ruby programmers take for granted (`method_missing`, `define_method`,
   `instance_variable_get`, `eval`) do not exist. [spikes/NOTES.md](spikes/NOTES.md)
   lists the constraints found so far and how the code works around them.
@@ -24,8 +28,12 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   shapes are permanent, which are tied to the pinned build and which test
   covers each, and what a Spinel update re-checks.
 - **A CRuby pass is not acceptance for a structural change.** The commit
-  gate and `ruby -I. test/<name>.rb` run under CRuby, where none of Spinel's
-  constraints exist. A change that moves code between methods, classes or
+  gate, `ruby -I. test/<name>.rb`, `script/preview-parity` and the
+  development server's CRuby preview run under CRuby, where none of Spinel's
+  constraints exist: a page that works in the preview, or a test that
+  matches its snapshot there, says nothing about whether the code compiles.
+  The tests known to differ between the runtimes are listed, each with its
+  cause, in [test/cruby/parity-gaps.txt](test/cruby/parity-gaps.txt). A change that moves code between methods, classes or
   files, changes what a block or a Proc crosses, adds a shared helper or a
   base class, or changes what the generator emits must pass the affected
   tests compiled (`spin test`), and a generator change must leave
@@ -174,6 +182,27 @@ spin test
 
 `git status` rather than `git diff`: a file the generator writes for the
 first time is untracked, and `git diff` passes over it. CI fails on either.
+
+The CRuby preview (`cybertrain/preview/`, and the supervisor in
+`cybertrain/cli/dev_server*`) has three checks of its own, none of which
+replaces the compiled tests:
+
+```sh
+script/test-cruby              # test/cruby/*.rb: the preview's own CRuby-only tests (a few seconds)
+script/preview-parity          # every test/*.rb under CRuby with the shim, against the compiled snapshots
+script/preview-e2e             # `cybertrain server` on a copy of examples/blog, over HTTP (about ten minutes)
+```
+
+`script/test-cruby` compares each `test/cruby/<name>.rb` with its snapshot
+as `spin test` does (`--regen` rewrites them). `script/preview-parity`
+passes when every test matches its compiled snapshot except those listed in
+[test/cruby/parity-gaps.txt](test/cruby/parity-gaps.txt), which must still
+differ, and differ only as recorded in `test/cruby/parity/`; a listed test
+that matches again fails it until its line is removed. Both run in CI's
+`cruby-preview` job. `script/preview-e2e` builds the blog with Spinel
+several times, prints one `ok` or `FAIL` line per step and is run by hand:
+run it after changing the supervisor, the shim or the framework's
+development server.
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs all of this on
 Ubuntu and macOS, builds and installs the gem, scaffolds and serves an

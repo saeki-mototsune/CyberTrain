@@ -394,14 +394,18 @@ carries it also:
 
 ### What CRuby cannot tell you
 
-The commit gate and `ruby -I. test/<name>.rb` run under CRuby, where none
-of the constraints above exist. A change that moves code between methods,
+The commit gate, `ruby -I. test/<name>.rb` and the CRuby preview that
+`cybertrain server` serves in development (docs/design.md D79) run under
+CRuby, where none of the constraints above exist. A change that moves code between methods,
 classes or files, changes what a block or a Proc crosses, introduces a
 shared helper or a base class, or changes what the generator emits is
 accepted only when the affected tests pass compiled (`spin test`), and,
 for generator changes, when examples/blog regenerates clean and passes.
 A CRuby pass is evidence for the logic and none for the structure: most
-rules above were found by a refactoring that was correct Ruby.
+rules above were found by a refactoring that was correct Ruby. That holds
+for the preview too: a page that works there is done only once the
+compiled binary serves it (the corner of the page says `Spinel`), and only
+the compiled tests (`spin test`) count.
 
 How far the preview is from the compiled program is a checked fact:
 `script/preview-parity` (the `cruby-preview` CI job) runs every framework
@@ -409,7 +413,10 @@ test under CRuby with the shim against the compiled snapshots, and the
 tests that differ, each with its verified cause, are listed in
 [test/cruby/parity-gaps.txt](../test/cruby/parity-gaps.txt). A match says
 the preview behaves as the compiled tests expect; it does not say the code
-compiles.
+compiles. To run the checks: `script/test-cruby` (the preview's own tests,
+`test/cruby/*.rb`), `script/preview-parity` (both in the `cruby-preview`
+job), and, by hand, `script/preview-e2e` (`cybertrain server` on a copy of
+examples/blog, built with Spinel several times; about ten minutes).
 
 ### What a built binary still depends on
 

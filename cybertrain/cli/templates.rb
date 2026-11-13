@@ -137,10 +137,13 @@ module Cybertrain
           cybertrain build       # dist/: the binary (views embedded) + public/
           ```
 
-          `spin run gen` (which `db`, `server` and `build` run for you)
-          regenerates `gen/` from db/schema.rb, config/routes.rb and app/;
-          commit `gen/`. In development views under `app/views/` are read at
-          run time: edit them without rebuilding. `cybertrain db status` and
+          `spin run gen` (which `db` and `build` run for you, and `server`
+          runs under CRuby) regenerates `gen/` from db/schema.rb,
+          config/routes.rb and app/; commit `gen/`. `cybertrain server`
+          answers a Ruby edit at once from a CRuby preview and hands the port
+          to the compiled binary when its background build finishes (`--spinel`
+          serves only the compiled binary). In development views under
+          `app/views/` are read at run time: edit them without rebuilding. `cybertrain db status` and
           `cybertrain db rollback 1` reach the other database commands.
           `cybertrain db migrate` runs migrations through `bin/db.rb`; a
           deployed `dist/#{package}` runs them with `./#{package} migrate`.

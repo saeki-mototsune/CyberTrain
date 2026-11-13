@@ -56,7 +56,7 @@ cybertrain new blog    # also installs Spinel, the first time (a few minutes)
 cd blog
 cybertrain g scaffold article title:string body:text
 cybertrain db migrate
-cybertrain server      # http://127.0.0.1:3000
+cybertrain server      # http://127.0.0.1:3000; a Ruby edit shows at once from a CRuby preview, then the compiled binary takes over
 cybertrain build       # production: one binary in dist/
 ```
 
@@ -80,8 +80,8 @@ the same app in Rails 8.1, in about a tenth of the memory
 | | |
 | --- | --- |
 | [Tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) | Build the blog step by step: scaffold, comments, authentication, uploads, deployment |
-| [Installing](https://saeki-mototsune.github.io/CyberTrain/guide/install.html) | Requirements, the `cybertrain` command, how Spinel and the framework are installed |
-| [How it works](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop, and a table of the differences from Rails |
+| [Installing](https://saeki-mototsune.github.io/CyberTrain/guide/install.html) | Requirements (Ruby with `fiddle` for the CRuby preview), the `cybertrain` command, how Spinel and the framework are installed |
+| [How it works](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop (the CRuby preview and the compiled binary that takes over), and a table of the differences from Rails |
 | [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database |
 | [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Routing, formats and `respond_to`, concerns, strong parameters, HTTP caching, cookies and the session, rate limiting, CSP, `force_ssl` and hosts, headers, query strings and request bodies |
 | [Assets](https://saeki-mototsune.github.io/CyberTrain/guide/assets.html) | Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving |
