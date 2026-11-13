@@ -300,7 +300,7 @@ test "CYBERTRAIN_TEST_DATABASE is honoured" do
   named = "tmp/test_bundle/named.sqlite3"
   other = "tmp/test_bundle/other.sqlite3"
   ENV["CYBERTRAIN_TEST_DATABASE"] = named
-  File.write(named, "not a database yet")
+  File.delete(named) if File.exist?(named)
   File.write("#{named}-wal", "stale")
   File.write(other, "keep me")
   # Another path than the one named is still refused.
@@ -312,6 +312,10 @@ test "CYBERTRAIN_TEST_DATABASE is honoured" do
   assert sqlite_file?(named)
   tables = Cybertrain::DB.with { |conn| conn.execute("SELECT name FROM sqlite_master WHERE name = 'notes'") }
   assert_equal 1, tables.length
+  # The mark, as SQLite reads it and as the guard reads it from the header.
+  ids = Cybertrain::DB.with { |conn| conn.execute("PRAGMA application_id") }
+  assert_equal Cybertrain::Test::Database::TEST_MARKER, ids[0]["application_id"].to_s.to_i
+  assert Cybertrain::Test::Database.marked?(named)
   refute File.exist?("#{named}-wal") && File.read("#{named}-wal") == "stale"
   assert app.booted?
   assert Cybertrain::Test.app.booted?
@@ -348,24 +352,94 @@ test "CYBERTRAIN_TEST_DATABASE naming the development or production database is 
   bundle_config("test", named)
   assert_equal "cybertrain test refuses to delete #{named}: it is the production database", boot_refusal
   assert_equal "production data", File.read(named)
-  # By the path config/app.rb gives development (gen/tests.rb runs
-  # config/app.rb after cybertrain/test/bundle, which records it), and
-  # through a symlink to it.
-  live = "tmp/test_bundle/live/blog.sqlite3"
-  File.write(live, "development data")
-  Cybertrain.configure { |c| c.database_path = live if c.development? }
+  # In another letter case, and through a symlink.
+  upper = "tmp/test_bundle/live/Development.SQLITE3"
   link = "tmp/test_bundle/live/link.sqlite3"
-  File.symlink("blog.sqlite3", link)
-  [live, link].each do |path|
+  File.symlink("production.sqlite3", link)
+  paths = [upper, link]
+  envs = ["development", "production"]
+  i = 0
+  while i < paths.length
+    ENV["CYBERTRAIN_TEST_DATABASE"] = paths[i]
+    bundle_config("test", paths[i])
+    assert_equal "cybertrain test refuses to delete #{paths[i]}: it is the #{envs[i]} database", boot_refusal
+    i += 1
+  end
+  # Any other existing file that cybertrain test did not create (whatever
+  # config/app.rb or an exported CYBERTRAIN_DATABASE makes it): refused,
+  # kept, nothing opened. A SQLite database without the mark, a text file,
+  # an empty file beside a write-ahead log with data, a storage-like name.
+  live = "tmp/test_bundle/live/blog.sqlite3"
+  # The 16-byte SQLite header string, then zeros: application_id 0.
+  File.binwrite(live, Cybertrain::Test.binary([83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51] + Array.new(85) { 0 }))
+  text = "tmp/test_bundle/live/notes.sqlite3"
+  File.write(text, "keep me")
+  empty = "tmp/test_bundle/live/empty.sqlite3"
+  File.write(empty, "")
+  File.write("#{empty}-wal", "rows not yet checkpointed")
+  [live, text, empty].each do |path|
     ENV["CYBERTRAIN_TEST_DATABASE"] = path
     bundle_config("test", path)
-    assert_equal "cybertrain test refuses to delete #{path}: it is the development database", boot_refusal
+    assert_equal "cybertrain test refuses to delete #{path}: not a database cybertrain test created; " \
+                 "delete it yourself or name another file", boot_refusal
   end
-  assert_equal "development data", File.read(live)
+  assert_equal "keep me", File.read(text)
+  assert_equal "rows not yet checkpointed", File.read("#{empty}-wal")
+  assert_equal 100, File.size(live)
+  # An empty file with no data beside it is all a new database is: taken.
+  File.delete("#{empty}-wal")
+  assert Cybertrain::Test::Database.deletable?(empty)
   refute Cybertrain::DB.connected?
   ENV.delete("CYBERTRAIN_TEST_DATABASE")
-  [link, live, named].each { |f| File.delete(f) }
+  [link, live, text, empty, named].each { |f| File.delete(f) }
   Dir.rmdir("tmp/test_bundle/live")
+end
+
+test "storage/test.sqlite3 is taken as it is, unless it is a symlink to another file" do
+  make_dir("storage")
+  ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  bundle_config("test", "storage/test.sqlite3")
+  existed = File.exist?("storage/test.sqlite3") || File.symlink?("storage/test.sqlite3")
+  unless existed
+    # An older, unmarked test database at the default path.
+    File.write("storage/test.sqlite3", "an old test database")
+    assert_equal "", Cybertrain::Test::Bundle.refusal
+    File.delete("storage/test.sqlite3")
+    make_dir("tmp/test_bundle")
+    File.write("tmp/test_bundle/target.sqlite3", "someone's data")
+    File.symlink("../tmp/test_bundle/target.sqlite3", "storage/test.sqlite3")
+    assert_equal "cybertrain test refuses to delete storage/test.sqlite3: not a database cybertrain test created; " \
+                 "delete it yourself or name another file", Cybertrain::Test::Bundle.refusal
+    File.delete("storage/test.sqlite3")
+    File.delete("tmp/test_bundle/target.sqlite3")
+  end
+  Dir.rmdir("storage") if Dir.children("storage").empty?
+end
+
+test "CYBERTRAIN_TEST_DATABASE takes a file path only: :memory: and file: URIs are refused before anything opens" do
+  ["file:storage/production.sqlite3?mode=rw", "file:tmp/test_bundle/x.sqlite3", ":memory:", "file::memory:?cache=shared"].each do |named|
+    ENV["CYBERTRAIN_TEST_DATABASE"] = named
+    bundle_config("test", named)
+    assert_equal "cybertrain test refuses CYBERTRAIN_TEST_DATABASE #{named.inspect}: name the test database by its file path " \
+                 "(not :memory: or a file: URI)", boot_refusal
+  end
+  ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  bundle_config("test", "file:storage/test.sqlite3")
+  assert_equal "cybertrain test refuses the database \"file:storage/test.sqlite3\": name the test database by its file path " \
+               "(not :memory: or a file: URI)", boot_refusal
+  refute Cybertrain::DB.connected?
+end
+
+# A configure block runs once, also in the bundle: a production-only
+# branch never runs in a test.
+CONFIGURE_RUNS = [0]
+Cybertrain.configure do |c|
+  CONFIGURE_RUNS[0] += 1
+  raise "a production-only branch ran under cybertrain test" if c.production?
+end
+
+test "config/app.rb's configure blocks run exactly once under cybertrain test" do
+  assert_equal 1, CONFIGURE_RUNS[0]
 end
 
 test "the shell's mail, SSL and host variables do not reach the tests; uploads go to an emptied tmp/test_uploads" do
@@ -385,10 +459,12 @@ test "the shell's mail, SSL and host variables do not reach the tests; uploads g
   ENV.delete("CYBERTRAIN_HOSTS")
   assert_equal :smtp, c.mail_delivery_method
   assert c.force_ssl
+  assert c.host_check?
   app = bundle_boot
   assert_equal :test, c.mail_delivery_method
   refute c.force_ssl
-  assert c.host_check?
+  refute c.host_check?
+  assert_equal [], c.hosts_from_env
   assert_includes c.checked_hosts, "www.example.com"
   # Answered by the (empty) router: neither 403 from the host check nor a
   # redirect to https.
@@ -399,6 +475,16 @@ test "the shell's mail, SSL and host variables do not reach the tests; uploads g
   assert_equal [], Dir.children("tmp/test_uploads")
   app.shutdown
   Cybertrain::Runtime.reset!
+  # A CYBERTRAIN_FORCE_SSL that boot would refuse does not stop the tests.
+  ENV["CYBERTRAIN_FORCE_SSL"] = "yes"
+  c = bundle_config("test", named)
+  ENV.delete("CYBERTRAIN_FORCE_SSL")
+  refute c.security_error.empty?
+  app = bundle_boot
+  assert app.booted?
+  assert_equal "", c.security_error
+  app.shutdown
+  Cybertrain::Runtime.reset!
   # config/app.rb's own choices stay.
   make_dir("tmp/test_bundle/uploads")
   File.write("tmp/test_bundle/uploads/kept", "mine")
@@ -406,9 +492,11 @@ test "the shell's mail, SSL and host variables do not reach the tests; uploads g
   c.mail_delivery_method = :smtp
   c.force_ssl = true
   c.upload_root = "tmp/test_bundle/uploads"
+  c.hosts_from_env = ["blog.example.com"]
   app = bundle_boot
   assert_equal :smtp, c.mail_delivery_method
   assert c.force_ssl
+  assert c.host_check?
   assert_equal "tmp/test_bundle/uploads", Cybertrain::BlobStore.root
   assert_equal "mine", File.read("tmp/test_bundle/uploads/kept")
   app.shutdown

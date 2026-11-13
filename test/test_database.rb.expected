@@ -12,6 +12,7 @@ ok   a failing rollback does not keep foreign keys off
 ok   a file: URI counts by its path, and odd forms are refused
 ok   a storage/test.sqlite3 symlinked to another file is refused
 ok   only a test database is emptied
-ok   CYBERTRAIN_TEST_DATABASE naming the development or production database is refused
+ok   the development or production database is refused by its name in any case, or through a symlink
+ok   any other file is emptied only when it carries the bundle's mark
 ok   the clear and the load refuse a connected database that is not a test one
-16 tests, 93 assertions, 0 failures
+17 tests, 99 assertions, 0 failures
