@@ -9,8 +9,10 @@ module SessionTestHelper
   # fixture user's password is "password". `remember: true` checks the
   # form's "Keep me signed in" box.
   def sign_in_as(user, remember: false)
-    post session_path, params: { email_address: user.email_address, password: "password",
-                                 remember_me: remember ? "1" : "0" }
+    fields = { email_address: user.email_address, password: "password" }
+    # A browser sends an unchecked box not at all.
+    fields[:remember_me] = "1" if remember
+    post session_path, params: fields
     nil
   end
 

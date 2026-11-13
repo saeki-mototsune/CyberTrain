@@ -72,9 +72,14 @@ class FirstRunTest < ActionDispatch::IntegrationTest
     assert_equal 404, res.status
   end
 
+  # With forgery protection on, the page's own token is accepted.
   test "POST /setup with the token creates the first user and signs them in" do
-    post "/setup", params: setup_form("s3cr3t-s3cr3t", "s3cr3t-s3cr3t")
-    assert_redirected_to "/"
+    with_forgery_protection do
+      get setup_link
+      post "/setup", params: { authenticity_token: authenticity_token_in(response.body), token: SetupController.setup_token,
+                               user: { email_address: " Ann@Example.com ", password: "s3cr3t-s3cr3t", password_confirmation: "s3cr3t-s3cr3t" } }
+      assert_redirected_to "/"
+    end
     assert_equal 1, User.count
     assert_equal "ann@example.com", User.first.email_address
     assert_equal 1, Session.count
@@ -146,6 +151,17 @@ class FirstRunTest < ActionDispatch::IntegrationTest
   def setup_form(password, confirmation)
     { token: SetupController.setup_token,
       user: { email_address: " Ann@Example.com ", password: password, password_confirmation: confirmation } }
+  end
+
+  # The authenticity_token of the first form in a page.
+  def authenticity_token_in(body)
+    marker = "name=\"authenticity_token\" value=\""
+    at = body.index(marker)
+    raise "no authenticity_token in the page" if at.nil?
+
+    start = at + marker.size
+    stop = body.index("\"", start).to_i
+    body[start, stop - start].to_s
   end
 
   # /setup with this process's token, the link the boot warning prints.
