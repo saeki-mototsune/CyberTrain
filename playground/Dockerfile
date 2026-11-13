@@ -147,11 +147,19 @@ RUN cybertrain spin run gen \
 # its first use and keeps it in tmp/cybertrain-dev/ffi/<sha256>.so: built
 # here, with the image's compiler, so the first CRuby child compiles nothing
 # either. The load path is the -I directories of `spin flags`, as
-# `cybertrain server` gives them to its children.
+# `cybertrain server` gives them to its children. Built as dev, the user
+# every container runs as (devcontainer.json's remoteUser, smoke.sh's
+# docker run and exec): the shim loads nothing from a cache that another
+# user owns or that its group or others may write to (decision P26), so a
+# cache warmed by root would be refused at the first CRuby request. The
+# second run is that check as the visitor's shim makes it: it must find
+# every library and compile none.
 RUN set -eu; \
     load_path=$(spin flags | tr ' ' '\n' | awk 'take { print "-I" $0; take = 0; next } $0 == "-I" { take = 1; next } /^-I./ { print }'); \
+    test "$(id -un)" = dev; \
     ruby -E UTF-8 $load_path -r cybertrain/preview -e 'require "cybertrain"; puts "ffi libraries built: #{Cybertrain::Preview.warm!}"'; \
-    ls tmp/cybertrain-dev/ffi/*.so
+    ls tmp/cybertrain-dev/ffi/*.so; \
+    ruby -E UTF-8 $load_path -r cybertrain/preview -e 'require "cybertrain"; n = Cybertrain::Preview.warm!; abort "the warmed cache was compiled again (#{n})" unless n.zero?'
 COPY --chown=dev:dev playground/PLAYGROUND.md PLAYGROUND.md
 # One commit, so the Source Control view shows the visitor's own changes.
 RUN git init -q -b main \

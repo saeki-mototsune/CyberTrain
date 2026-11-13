@@ -120,12 +120,13 @@ test "the cache key covers the machine's architecture and the flags" do
   assert_equal ["-shared", "-fPIC", "-O2"], library::FLAGS
 end
 
-# A cache directory removed while the compiler ran: the rename fails, and
-# that is not "the C compiler could not be run".
+# A cache directory removed while the compiler ran: setting the library's
+# mode and the rename fail, and that is not "the C compiler could not be
+# run". 0700, as the shim requires of a cache directory whatever the umask.
 test "a failing rename is reported as itself" do
   Dir.mktmpdir("preview-ffi") do |dir|
     cache = File.join(dir, "cache")
-    Dir.mkdir(cache)
+    Dir.mkdir(cache, 0o700)
     cc = File.join(dir, "remove-cc")
     File.write(cc, "#!/bin/sh\ncat > /dev/null\nrm -rf '#{cache}'\n")
     File.chmod(0o755, cc)
@@ -133,6 +134,106 @@ test "a failing rename is reported as itself" do
       message = assert_raises("Errno::ENOENT") { Cybertrain::Preview::FFILibrary.build("int three(void){return 3;}", [], cache) }
       assert message.index("could not be run").nil?, message
     end
+  end
+end
+
+# The cache's ownership check (decision P26): a library is code loaded into
+# the developer's process, so the directory and the file must be this
+# user's alone.
+def mode_of(path)
+  File.stat(path).mode & 0o777
+end
+
+test "a cache directory its group may write to is refused, naming it, and nothing is compiled" do
+  library = Cybertrain::Preview::FFILibrary
+  Dir.mktmpdir("preview-ffi") do |dir|
+    File.chmod(0o770, dir)
+    before = library.built
+    message = assert_raises("Cybertrain::Preview::CacheError") { library.build("int g(void){return 1;}", [], dir) }
+    assert message.include?(dir), message
+    assert message.include?("writable by its group or others (mode 0770)"), message
+    assert_equal before, library.built
+    assert_equal [], Dir.children(dir)
+  end
+end
+
+test "a cache directory others may write to is refused by open_library too" do
+  Dir.mktmpdir("preview-ffi") do |dir|
+    File.chmod(0o702, dir)
+    message = assert_raises("Cybertrain::Preview::CacheError") do
+      Cybertrain::Preview::FFILibrary.open_library("int o(void){return 1;}", [], dir)
+    end
+    assert message.include?("mode 0702"), message
+  end
+end
+
+# Another user's directory or file, without running as another user: the
+# check itself, given a stat.
+test "a directory or file owned by another user is unsafe, whatever its mode" do
+  library = Cybertrain::Preview::FFILibrary
+  stat = Struct.new(:uid, :mode)
+  me = Process.euid
+  assert_equal "is owned by uid #{me + 1}, not by this process's user (uid #{me})",
+               library.problem(stat.new(me + 1, 0o40700), me)
+  assert_equal nil, library.problem(stat.new(me, 0o40700), me)
+  assert_equal nil, library.problem(stat.new(me, 0o100755), me)
+  assert_equal "is writable by its group or others (mode 0664)", library.problem(stat.new(me, 0o100664), me)
+end
+
+test "a library of ours that its group and others may write to is removed and compiled again, 0700" do
+  library = Cybertrain::Preview::FFILibrary
+  Dir.mktmpdir("preview-ffi") do |dir|
+    source = "int loose(void){return 21;}"
+    path = library.build(source, [], dir)
+    File.chmod(0o666, path)
+    before = library.built
+    assert_equal path, library.build(source, [], dir)
+    assert_equal before + 1, library.built
+    assert_equal 0o700, mode_of(path)
+    handle = library.open_library(source, [], dir)
+    assert_equal 21, Fiddle::Function.new(handle.sym("loose"), [], Fiddle::TYPE_INT).call
+    assert_equal before + 1, library.built
+  end
+end
+
+test "a good cache loads without compiling, and keeps the file as it was" do
+  library = Cybertrain::Preview::FFILibrary
+  Dir.mktmpdir("preview-ffi") do |dir|
+    source = "int good(void){return 31;}"
+    path = library.build(source, [], dir)
+    assert_equal 0o700, mode_of(path)
+    stamp = File.mtime(path)
+    before = library.built
+    with_cc(File.join(dir, "no-such-compiler")) do
+      handle = library.open_library(source, [], dir)
+      assert_equal 31, Fiddle::Function.new(handle.sym("good"), [], Fiddle::TYPE_INT).call
+    end
+    assert_equal before, library.built
+    assert_equal stamp, File.mtime(path)
+  end
+end
+
+test "a missing cache directory is created 0700 whatever the umask, its parents too" do
+  Dir.mktmpdir("preview-ffi") do |dir|
+    cache = File.join(dir, "tmp", "cybertrain-dev", "ffi")
+    saved = File.umask(0o002)
+    begin
+      Cybertrain::Preview::FFILibrary.build("int fresh(void){return 1;}", [], cache)
+    ensure
+      File.umask(saved)
+    end
+    assert_equal 0o700, mode_of(cache)
+    assert File.directory?(File.join(dir, "tmp", "cybertrain-dev"))
+  end
+end
+
+test "an existing cache directory is checked, never changed" do
+  Dir.mktmpdir("preview-ffi") do |dir|
+    cache = File.join(dir, "ffi")
+    Dir.mkdir(cache, 0o755)
+    File.chmod(0o755, cache)
+    Cybertrain::Preview::FFILibrary.build("int kept(void){return 1;}", [], cache)
+    assert_equal 0o755, mode_of(cache)
   end
 end
 

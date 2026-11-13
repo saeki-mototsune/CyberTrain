@@ -19,12 +19,11 @@ module Cybertrain
     CACHE_SUBDIRECTORY = File.join("tmp", "cybertrain-dev", "ffi")
 
     # Where compiled FFI libraries are kept: under the current directory, so a
-    # project's cache goes with the project. Created on demand.
+    # project's cache goes with the project. Created on demand, 0700, by
+    # FFILibrary.build, which also refuses one another user owns or may
+    # write to.
     def self.cache_dir
-      dir = File.join(Dir.pwd, CACHE_SUBDIRECTORY)
-      require "fileutils"
-      FileUtils.mkdir_p(dir)
-      dir
+      File.join(Dir.pwd, CACHE_SUBDIRECTORY)
     end
   end
 end

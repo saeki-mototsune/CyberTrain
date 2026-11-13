@@ -12,13 +12,41 @@ module Cybertrain
     # This one exists only under CRuby.
     CompileError = Class.new(StandardError)
 
+    # The cache of compiled libraries is not safe to load from: another
+    # user owns the directory, or a group or others may write to it.
+    # Assigned for the same reason as CompileError.
+    CacheError = Class.new(StandardError)
+
     # Compiles C source into a shared library and keeps it by content, so a
     # restart of the dev server does not pay for the compiler again.
+    #
+    # A cached library is loaded into the developer's process with
+    # Fiddle.dlopen, which runs its code, so nothing is loaded from the
+    # cache unless the directory and the file belong to this process's
+    # effective user and neither is writable by its group or others
+    # (decision P26 of docs/superpowers/plans/2026-11-12-cruby-preview-plan.md).
+    # A missing directory is made 0700, a new library is written 0700 (read
+    # for dlopen, and the execute bit cc gives a shared object). A directory
+    # that fails the check is an error that names it and what is wrong, and
+    # nothing is compiled elsewhere instead: under the dev server the child
+    # then fails to boot (its first SQLite call loads a library) and the
+    # supervisor's 503 page shows the message. A file that fails, in a
+    # directory that passed, is removed and compiled once more. The check
+    # reads the owner and the mode bits, which Linux and macOS (the
+    # platforms the framework targets) both have.
     module FFILibrary
       @built = 0
 
       # How every library is compiled (the output and the -l flags follow).
       FLAGS = ["-shared", "-fPIC", "-O2"].freeze
+
+      # The mode of a directory this module creates and of a library it
+      # writes: the owner's alone.
+      DIRECTORY_MODE = 0o700
+      LIBRARY_MODE = 0o700
+
+      # The mode bits that let a group or others write.
+      SHARED_WRITE = 0o022
 
       class << self
         # How many libraries this process has compiled (not found cached).
@@ -30,13 +58,70 @@ module Cybertrain
         # libraries, the compiler's own version line, FLAGS and the
         # machine's architecture (a project directory shared by two
         # machines), so changing any of them compiles again; an existing
-        # file is returned as it is (open_library checks that it loads).
+        # file that passes the ownership check is returned as it is
+        # (open_library checks that it loads); one that does not is removed
+        # and compiled again. The directory is created when missing and must
+        # pass the check itself (CacheError otherwise).
         def build(source, libs, cache_dir)
+          secure_directory(cache_dir)
           path = File.join(cache_dir, "#{key(source, libs)}.so")
-          return path if File.exist?(path)
+          stat = begin
+            File.stat(path)
+          rescue Errno::ENOENT
+            nil
+          end
+          return path if stat && problem(stat).nil?
 
-          # Compiled to a name of its own and renamed, so two processes
-          # starting together never load a half-written library.
+          # Ours to remove: the directory passed, so it is this user's and
+          # nobody else can have put the file there or replace it now.
+          File.delete(path) if stat
+          compile(source, libs, path)
+          unsafe = problem(File.stat(path))
+          raise CacheError, "#{path} #{unsafe} right after it was compiled; the CRuby preview does not load it" if unsafe
+
+          path
+        end
+
+        # Creates `dir` when it is missing (0700; its parents as the umask
+        # makes them, since only this last directory holds what is loaded),
+        # then raises CacheError unless it is this user's alone. An existing
+        # directory is never chmod-ed: what it holds was written while it
+        # was open to others, so the developer decides, and the message
+        # says how.
+        def secure_directory(dir)
+          unless File.directory?(dir)
+            require "fileutils"
+            FileUtils.mkdir_p(File.dirname(dir))
+            begin
+              Dir.mkdir(dir, DIRECTORY_MODE)
+            rescue Errno::EEXIST
+              nil # another process made it meanwhile: checked below like any other
+            end
+          end
+          unsafe = problem(File.stat(dir))
+          return dir if unsafe.nil?
+
+          raise CacheError,
+                "the CRuby preview's library cache #{dir} #{unsafe}, so no compiled library is loaded from it " \
+                "(remove the directory, and it is made again for this user alone)"
+        end
+
+        # Why a file or directory with this stat (anything with #uid and
+        # #mode, a File::Stat) is unsafe to load from for the effective user
+        # `euid`; nil when it is safe.
+        # @return [String, nil]
+        def problem(stat, euid = Process.euid)
+          if stat.uid != euid
+            "is owned by uid #{stat.uid}, not by this process's user (uid #{euid})"
+          elsif stat.mode & SHARED_WRITE != 0
+            format("is writable by its group or others (mode %04o)", stat.mode & 0o7777)
+          end
+        end
+
+        # Compiles `source` into `path`: to a name of its own first, then
+        # renamed, so two processes starting together never load a
+        # half-written library.
+        def compile(source, libs, path)
           partial = "#{path}.#{Process.pid}.#{Thread.current.object_id}.tmp"
           command = [compiler, *FLAGS, "-x", "c", "-", "-o", partial, *libs.map { |name| "-l#{name}" }]
           begin
@@ -48,6 +133,7 @@ module Cybertrain
             File.delete(partial) if File.exist?(partial)
             raise CompileError, "#{command.join(' ')} failed:\n#{output}"
           end
+          File.chmod(LIBRARY_MODE, partial)
           File.rename(partial, path)
           @built += 1
           path

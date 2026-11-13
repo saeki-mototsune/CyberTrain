@@ -7,6 +7,13 @@ ok   a cached library that cannot be loaded is built once more
 ok   a library that still does not load after one more build is reported
 ok   the cache key covers the machine's architecture and the flags
 ok   a failing rename is reported as itself
+ok   a cache directory its group may write to is refused, naming it, and nothing is compiled
+ok   a cache directory others may write to is refused by open_library too
+ok   a directory or file owned by another user is unsafe, whatever its mode
+ok   a library of ours that its group and others may write to is removed and compiled again, 0700
+ok   a good cache loads without compiling, and keeps the file as it was
+ok   a missing cache directory is created 0700 whatever the umask, its parents too
+ok   an existing cache directory is checked, never changed
 ok   a C error carries the compiler's output
 ok   no file under cybertrain/preview/ declares an Error class by a `class` line (test/gen_jobs.rb scans for them)
-11 tests, 28 assertions, 0 failures
+18 tests, 51 assertions, 0 failures
