@@ -425,6 +425,29 @@ test ".env.example lists the secrets, commented, with how to make each" do
   print text
 end
 
+test "new writes the logging and reporting variables, all commented" do
+  env = read("blog/.env.example")
+  assert_includes env, "# Logs and error reports. Settings, except the DSN, which is kept out of the repository like a secret.\n"
+  assert_includes env, "# CYBERTRAIN_LOG_LEVEL=info\n"
+  assert_includes env, "# CYBERTRAIN_LOG_FORMAT=json\n"
+  assert_includes env, "# CYBERTRAIN_SENTRY_DSN=https://<public key>@<host>/<project id>\n"
+  assert_includes env, "# CYBERTRAIN_ERROR_SAMPLE_RATE=1.0\n"
+  assert_includes env, "# CYBERTRAIN_RELEASE=\n"
+  app = read("blog/config/app.rb")
+  assert_includes app, "# c.log_format = :json if c.production?\n"
+  assert_includes app, "# c.log_tags = [:request_id]\n"
+  assert_includes app, "# Cybertrain.error.subscribe(AuditSubscriber.new)\n"
+  assert_includes read("blog/config/deploy.yml"), "    # CYBERTRAIN_LOG_FORMAT: json\n"
+  assert_includes read("blog/config/deploy.yml"), "    # - CYBERTRAIN_SENTRY_DSN\n"
+  assert_includes read("blog/.kamal/secrets"), "# CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN\n"
+  # Nothing is uncommented: a new application behaves as before.
+  [env, app, read("blog/config/deploy.yml"), read("blog/.kamal/secrets")].each do |text|
+    text.each_line do |line|
+      refute line.include?("SENTRY") && !line.lstrip.start_with?("#")
+    end
+  end
+end
+
 test "CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)" do
   [[], ["--hex"]].each do |args|
     secret = Cybertrain::CLI.secret_text(args)

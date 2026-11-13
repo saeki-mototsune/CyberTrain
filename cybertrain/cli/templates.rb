@@ -215,6 +215,22 @@ module Cybertrain
           # CYBERTRAIN_FORCE_SSL=1
           # The host names the application answers to, comma-separated.
           # CYBERTRAIN_HOSTS=app.example.com
+
+          # Logs and error reports. Settings, except the DSN, which is kept out of the repository like a secret.
+          # The least important log line written: debug, info, warn, error or
+          # none (info).
+          # CYBERTRAIN_LOG_LEVEL=info
+          # How each line is written: text (the default) or json, one JSON
+          # object per line, for a log collector.
+          # CYBERTRAIN_LOG_FORMAT=json
+          # Where error reports are sent, a Sentry DSN; empty sends nothing.
+          # It holds a key: set it in the environment (or your deploy's
+          # secrets), never in a file you commit.
+          # CYBERTRAIN_SENTRY_DSN=https://<public key>@<host>/<project id>
+          # The share of error reports sent, 0.0 to 1.0 (1.0, all of them).
+          # CYBERTRAIN_ERROR_SAMPLE_RATE=1.0
+          # The release sent with each error report: a version or a commit.
+          # CYBERTRAIN_RELEASE=
         TEXT
       end
 
@@ -349,7 +365,19 @@ module Cybertrain
             # c.i18n_default_locale = :en
             # c.i18n_available_locales = [:en, :ja]
             # c.i18n_raise_on_missing = true
+
+            # Log lines as JSON objects (one per line) in production, for a
+            # log collector; text otherwise. CYBERTRAIN_LOG_FORMAT sets it too.
+            # c.log_format = :json if c.production?
+            # The request's tags on every log line it causes: :request_id (the
+            # default) and :remote_ip (personal data, so off by default).
+            # c.log_tags = [:request_id]
           end
+
+          # Error reports go to a Sentry DSN (CYBERTRAIN_SENTRY_DSN) and to
+          # the subscribers added here: a subclass of Cybertrain::ErrorSubscriber
+          # whose report method receives a Cybertrain::ErrorEvent.
+          # Cybertrain.error.subscribe(AuditSubscriber.new)
 
           # A scheduled task: a cron expression (read in c.scheduler_tz, which
           # follows c.time_zone, UTC by default, unless set), a unique name and
@@ -757,8 +785,13 @@ module Cybertrain
               # than the proxy. Change it if your Docker networks use another range.
               CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12
               # SPINEL_WORKERS: 2
+              # One JSON object per log line, for a log collector.
+              # CYBERTRAIN_LOG_FORMAT: json
             secret:
               - CYBERTRAIN_SECRET_KEY_BASE
+              # Where error reports are sent (a Sentry DSN); also list it in
+              # .kamal/secrets.
+              # - CYBERTRAIN_SENTRY_DSN
 
           # The SQLite database lives in storage/: keep it on the server across
           # deploys. Back it up from there (docs/deploy.md).
@@ -802,6 +835,10 @@ module Cybertrain
           # Signs the session cookie; changing it signs everyone out. Generate it
           # once with `openssl rand -hex 32` and keep it somewhere safe.
           CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE
+
+          # Where error reports are sent (a Sentry DSN, which holds a key). Add
+          # it to env: secret: in config/deploy.yml too.
+          # CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN
         TEXT
       end
 
