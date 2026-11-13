@@ -4,7 +4,7 @@
 # Ruby: runs under CRuby (the gem) and compiles under Spinel (the CLI binary,
 # and an application's development loop).
 #
-# The lock is the kernel's (spikes/NOTES.md rule 111): an exclusive flock(2)
+# The lock is the kernel's (spikes/NOTES.md rule 112): an exclusive flock(2)
 # on the file, held through the descriptor the holder keeps open for the
 # whole build. The kernel drops it when that descriptor closes, the holder's
 # death included, so a lock is never stale and nothing has to judge or
@@ -137,7 +137,7 @@ module Cybertrain
       # The device and inode of the file f has open, from fstat(2). Under
       # Spinel File#stat stats the path instead, and IO.for_fd's handle is a
       # dup of the descriptor that stats it but must be closed here, or it
-      # would keep the flock alive after f closes (rule 111). Under CRuby
+      # would keep the flock alive after f closes (rule 112). Under CRuby
       # File#stat is fstat, and closing an IO.for_fd would close f's own
       # descriptor.
       def descriptor_id(f)

@@ -15,7 +15,7 @@
 # program.
 #
 # Run (Spinel 2026.11.04.7026, from the repository root):
-#   spinel spikes/phase5/case_nullable_temp.rb -o $TMPDIR/case_nullable_temp && $TMPDIR/case_nullable_temp
+#   spinel spikes/phase5/case_nullable_temp.rb -o "${TMPDIR:-/tmp}/case_nullable_temp" && "${TMPDIR:-/tmp}/case_nullable_temp"
 # Output: the C compilation fails:
 #   case_nullable_temp.rb:...: error: '_o1' undeclared (first use in this function); did you mean '_t1'?
 #   spinel: C compilation failed

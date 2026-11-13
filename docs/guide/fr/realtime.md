@@ -1,5 +1,5 @@
 ---
-source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
+source_sha256: 2b56112469f77822eff135a926be5aadaa4c4f8c9e6c75c262213c049b39f367
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -43,7 +43,11 @@ fonctionnalité.
 `<turbo-stream action="append" target="comments">`, comme le font les
 applications Rails 8. Chargez Turbo dans le layout (il n’y a pas d’asset
 pipeline&nbsp;: un CDN ou une copie dans `public/`), et abonnez une page avec
-`turbo_stream_from`&nbsp;:
+`turbo_stream_from`. Les diffusions, le point d’accès des flux et les helpers
+de flux demandent `require "cybertrain/streams"` dans `bin/<app>.rb` et
+`bin/db.rb`&nbsp;; sans elle, `spin run gen` s’arrête au premier
+`turbo_stream_from` et nomme la ligne
+([Sous-systèmes](how-it-works.md#subsystems))&nbsp;:
 
 ```erb app/views/layouts/application.html.erb (extrait)
 <head>

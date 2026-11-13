@@ -1,5 +1,5 @@
 ---
-source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
+source_sha256: f91f3179b1b8012bb304301973b9de2d6e153abc889799c6d946d2c35f104605
 ---
 # Аутентификация
 
@@ -27,7 +27,7 @@ cybertrain db migrate
 | `app/views/...` | экраны, каждый текст через `t()`, и partial `sessions/_nav` |
 | `test/fixtures/users.yml`, `test/support/session_test_helper.rb`, `test/models/`, `test/controllers/`, `test/integration/` | пользователи из фикстур, `sign_in_as` и тесты каждой части ([Тестирование](#testing)) |
 
-и правки, каждую один раз: `include Authentication` в `ApplicationController`, маршруты, строку страницы заданий ([Администраторы](#admin-users-and-the-jobs-page)), partial навигации в макете, команду пользователя в `bin/<app>.rb` и настройку `base_url` в `config/app.rb` ([Ссылки в письмах](#links-in-mails)). Повторный запуск с теми же опциями ничего не меняет: уже сделанная правка находится и пропускается, а файл, который уже таков, каким генератор его напишет, остаётся. Файл, который он написал бы иначе (отредактированный вами, или написанный более старым генератором или с другими опциями), без `--force` никогда не перезаписывается: вместо этого печатается его diff ([Обновление с 0.4](#upgrading-from-04), [Подтверждение адресов позже](#turning-on-confirmation-later)).
+и правки, каждую один раз: `include Authentication` в `ApplicationController`, маршруты, строку страницы заданий ([Администраторы](#admin-users-and-the-jobs-page)), partial навигации в макете, команду пользователя в `bin/<app>.rb`, настройку `base_url` в `config/app.rb` ([Ссылки в письмах](#links-in-mails)), а в `bin/<app>.rb` и `bin/db.rb` — строки подсистем, которые использует код, если `require "cybertrain"` ещё не загружает их все: `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` и `cybertrain/rate_limit` ([Подсистемы](how-it-works.md#subsystems)). Повторный запуск с теми же опциями ничего не меняет: уже сделанная правка находится и пропускается, а файл, который уже таков, каким генератор его напишет, остаётся. Файл, который он написал бы иначе (отредактированный вами, или написанный более старым генератором или с другими опциями), без `--force` никогда не перезаписывается: вместо этого печатается его diff ([Обновление с 0.4](#upgrading-from-04), [Подтверждение адресов позже](#turning-on-confirmation-later)).
 
 Тексты сгенерированных экранов лежат в английском и японском словарях фреймворка под своими ключами ленивого поиска (`sessions.new.title`, `passwords.create.sent`); приложение переопределяет их или добавляет язык в `config/locales/` ([Интернационализация](i18n.md#the-bundled-dictionaries)).
 

@@ -37,6 +37,9 @@ create test/test_helper.rb
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
+identical bin/shop.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+identical bin/db.rb (require "cybertrain" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (no commented worker role to uncomment; the web role runs jobs unless CYBERTRAIN_WORKER is 0)
 manual  app/models/user.rb: apply this diff by hand, or re-run with --force to overwrite the file
 --- a/app/models/user.rb
 +++ b/app/models/user.rb

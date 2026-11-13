@@ -5,6 +5,11 @@
 # and the reset hooks every test runs before its setup (spec section 5.3,
 # step 3).
 #
+# It loads the helpers of every subsystem too (cybertrain/test/jobs,
+# test/mail, test/broadcasts, and rate_limit's reset), each in that
+# subsystem's file: the program that requires it, gen/tests.rb, requires
+# all of cybertrain whatever bin/<app>.rb requires (docs/design.md D85).
+#
 # Later features append their require or hook here, one line each.
 require "cybertrain/test"
 require "cybertrain/test/client"

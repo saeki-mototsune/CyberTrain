@@ -1,5 +1,5 @@
 ---
-source_sha256: 5d22bfaa17499080fccfdc4c7a0ef16005a2cbfe0d2885341c549229e05e3fd7
+source_sha256: 1c841be578fe9abd45361ed92eac5251533f12d6df8f5b8dbbe5c28429edce66
 ---
 # 安装
 
@@ -89,7 +89,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 ### `cybertrain new` 写出什么
 
 `cybertrain new` 会写出应用，其 `spin.toml` 指向与 CLI 相匹配的版本（`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`，X.Y.Z 即 `cybertrain version` 打印的版本），确保 Spinel 已安装，然后运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `SPIN_DEBUG=1 spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，最后打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。
+"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`，X.Y.Z 即 `cybertrain version` 打印的版本），确保 Spinel 已安装，然后运行 `spin lock`（spin 会把框架拉取到其缓存 `~/.cache/spin/packages/` 中，并在 `spin.lock` 中锁定提交）和 `SPIN_DEBUG=1 spin run gen`，就像 `rails new` 会运行 `bundle install` 一样，最后打印接下来的步骤。框架的任何部分都不会被复制到应用中；请提交 `spin.toml` 和 `spin.lock`。`bin/<app>.rb` 和 `bin/db.rb` require `cybertrain/core`，即不含可选子系统的框架；需要某个子系统的生成器会添加它的那一行（[子系统](how-it-works.md#subsystems)）。
 
 如果 Spinel 或两个 `spin` 步骤之一失败，已写出的文件会保留，`new` 以状态码 1 退出，并打印排除原因后需要运行的命令（对于 Spinel：先运行 `cybertrain setup`，再在新目录中运行 `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen`）。
 

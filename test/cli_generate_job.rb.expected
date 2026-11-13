@@ -36,6 +36,9 @@ create test/fixtures/.keep
 create test/support/.keep
 create app/jobs/send_digest_job.rb
 create test/jobs/send_digest_job_test.rb
+insert bin/shop.rb (require "cybertrain/jobs")
+insert bin/db.rb (require "cybertrain/jobs")
+insert config/deploy.yml (the worker role, uncommented)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -44,6 +47,75 @@ ok   generate job send_digest writes a Job::Base subclass with an empty perform 
 ok   the job test is in the class form and performs the job with perform_enqueued_jobs
 identical app/jobs/send_digest_job.rb
 identical test/jobs/send_digest_job_test.rb
+identical bin/shop.rb (require "cybertrain/jobs")
+identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
+ok   generate job adds require "cybertrain/jobs" to bin/shop.rb and bin/db.rb, once
+identical app/jobs/send_digest_job.rb
+identical test/jobs/send_digest_job_test.rb
+identical bin/shop.rb (require "cybertrain/jobs")
+identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain test        # test/jobs/send_digest_job_test.rb among the others
+ok   generate job uncomments config/deploy.yml's worker role, once
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/mall.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create app/jobs/audit_job.rb
+create test/jobs/audit_job_test.rb
+identical bin/mall.rb (require "cybertrain" loads cybertrain/jobs)
+identical bin/db.rb (require "cybertrain" loads cybertrain/jobs)
+insert config/deploy.yml (the worker role, uncommented)
+
+next:
+  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
+  cybertrain test        # test/jobs/audit_job_test.rb among the others
+ok   an app that requires "cybertrain" gets no line
+identical app/jobs/send_digest_job.rb
+identical test/jobs/send_digest_job_test.rb
+identical bin/shop.rb (require "cybertrain/jobs")
+identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -51,6 +123,9 @@ next:
 ok   a name given as the class name is not doubled: SendDigestJob is send_digest_job.rb
 create app/jobs/admin/report_job.rb
 create test/jobs/admin/report_job_test.rb
+identical bin/shop.rb (require "cybertrain/jobs")
+identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -59,12 +134,18 @@ ok   --retry writes a retry_on line each, and spin run gen's scan reads them
 error: app/jobs/send_digest_job.rb already exists (pass --force to overwrite it)
 force app/jobs/send_digest_job.rb
 identical test/jobs/send_digest_job_test.rb
+identical bin/shop.rb (require "cybertrain/jobs")
+identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
   cybertrain test        # test/jobs/send_digest_job_test.rb among the others
 identical app/jobs/send_digest_job.rb
 identical test/jobs/send_digest_job_test.rb
+identical bin/shop.rb (require "cybertrain/jobs")
+identical bin/db.rb (require "cybertrain/jobs")
+identical config/deploy.yml (the worker role)
 
 next:
   spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)
@@ -81,4 +162,4 @@ error: bad --retry 'TimeoutError:60:0': use Klass:wait:attempts (wait in seconds
 error: bad --retry 'timeout:60:3': use Klass:wait:attempts (wait in seconds or polynomially_longer, attempts 1 or more)
 error: ./config/routes.rb not found: run this inside a cybertrain app
 ok   bad names, bad --retry values and usage are rejected
-6 tests, 31 assertions, 0 failures
+9 tests, 46 assertions, 0 failures

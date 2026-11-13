@@ -1,4 +1,4 @@
-# spikes/NOTES.md rule 111: File#flock, and which stat a File answers.
+# spikes/NOTES.md rule 112: File#flock, and which stat a File answers.
 # Run under CRuby and compiled (`spinel spikes/phase5/flock_fstat.rb -o
 # /tmp/flock_fstat && /tmp/flock_fstat`); the lines differ only where marked.
 require "tmpdir"

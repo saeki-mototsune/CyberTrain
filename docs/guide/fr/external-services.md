@@ -1,5 +1,5 @@
 ---
-source_sha256: 3746092c625dd7310582429d7fe08d53cca20a086690f3046c41f1684ebc20db
+source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -223,7 +223,9 @@ Une application qui écoute un flux extérieur (cotations de marché, télémét
 d’appareils, flux d’événements) pendant que le serveur tourne s’y abonne avec
 `Cybertrain::WebSocket.subscribe`. Comme le client HTTP, il n’est pas inclus
 dans `require "cybertrain"`&nbsp;; requérez-le là où l’abonnement est écrit,
-ainsi que la couche TLS pour `wss://`&nbsp;:
+ainsi que la couche TLS pour `wss://`. Il charge le sous-système des feeds (le
+rôle `feeds`, le contrôle de santé des feeds), donc une application sur
+`cybertrain/core` n’a besoin d’aucune autre ligne&nbsp;:
 
 ```ruby
 # config/app.rb (ou un fichier que bin/<app>.rb requiert avant Cybertrain::Main.run)
@@ -405,9 +407,10 @@ La conception&nbsp;: [docs/design.md](../design.md) D33 et D56.
 `Cybertrain::Mailer` envoie des e-mails, en texte brut ou avec une partie
 HTML, via un serveur SMTP (le serveur de soumission de votre fournisseur, ou
 un relais local), tout de suite (`deliver`) ou depuis un job
-(`deliver_later`, ci-dessous). `require "cybertrain"` le charge&nbsp;; un
-programme sans le framework requiert `cybertrain/mailer` (qui n’a pas besoin
-de base de données&nbsp;: `deliver_later` est dans `cybertrain/mailer/later`).
+(`deliver_later`, ci-dessous). `require "cybertrain"` le charge&nbsp;; une
+application sur `cybertrain/core`, ou un programme sans le framework, requiert
+`cybertrain/mailer` (qui n’a pas besoin de base de données&nbsp;:
+`deliver_later` est dans `cybertrain/mailer/later`, qui charge aussi les jobs).
 Le TLS se requiert séparément&nbsp;:
 
 ```ruby
@@ -488,8 +491,11 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **Mailers&nbsp;:** un module dans `app/mailers` (gen les charge) dont la
   méthode renvoie un `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`
   se lit comme dans Rails&nbsp;: `PasswordsMailer.reset(user, url).deliver_later`
-  le met en file, `deliver_now` l’envoie aussitôt. `cybertrain generate
-  authentication` en écrit deux ([Réinitialisation du mot de passe](authentication.md#password-reset)).
+  le met en file, `deliver_now` l’envoie aussitôt. `cybertrain/mailer`
+  charge `MailMessage` avec `deliver_now`&nbsp;; `deliver_later` vient avec
+  `cybertrain/mailer/later`. `cybertrain generate authentication` en écrit
+  deux ([Réinitialisation du mot de passe](authentication.md#password-reset))
+  et ajoute les deux lignes.
 - **Pas encore&nbsp;:** les pièces jointes et les images en ligne, les
   classes de mailer avec `default from:` et des vues trouvées par leur nom,
   les noms affichés, les en-têtes `Cc`/`Bcc` (envoyez plutôt à plusieurs
@@ -524,7 +530,9 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` prend les arguments de `deliver`, les vérifie tout de suite
+`deliver_later` demande `require "cybertrain/mailer/later"` (ou
+`require "cybertrain"`) dans `bin/<app>.rb` et `bin/db.rb`. Il prend les
+arguments de `deliver`, les vérifie tout de suite
 (une adresse ou un sujet refusé lève une exception ici et rien n’est mis en
 file) et met en file le job intégré `"cybertrain mail"` avec le message
 terminé&nbsp;; un thread de jobs

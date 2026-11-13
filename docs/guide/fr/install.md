@@ -1,5 +1,5 @@
 ---
-source_sha256: 5d22bfaa17499080fccfdc4c7a0ef16005a2cbfe0d2885341c549229e05e3fd7
+source_sha256: 1c841be578fe9abd45361ed92eac5251533f12d6df8f5b8dbbe5c28429edce66
 ---
 # Installer cybertrain
 
@@ -201,7 +201,10 @@ que Spinel est installé, puis lance `spin lock` (spin récupère le framework d
 son cache, `~/.cache/spin/packages/`, et épingle le commit dans `spin.lock`) et
 `SPIN_DEBUG=1 spin run gen`, un peu comme `rails new` lance `bundle install`, et affiche les
 étapes suivantes. Rien du framework n’est copié dans l’application&nbsp;;
-commitez `spin.toml` et `spin.lock`.
+commitez `spin.toml` et `spin.lock`. `bin/<app>.rb` et `bin/db.rb` requièrent
+`cybertrain/core`, le framework sans ses sous-systèmes optionnels&nbsp;; les
+générateurs qui en demandent un ajoutent sa ligne
+([Sous-systèmes](how-it-works.md#subsystems)).
 
 Si Spinel ou l’une des deux étapes `spin` échoue, les fichiers restent en
 place, `new` sort avec le code 1 et affiche ce qu’il faut lancer une fois la

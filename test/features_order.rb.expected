@@ -1,0 +1,23 @@
+ok   the features run in rank order, not in the requires' order
+ok   a feature registered later takes its place by rank
+probe-a early: poller=false scheduler=false job=false background=false
+probe-b early: poller=false scheduler=false job=false background=false
+probe-c early: poller=false scheduler=false job=false background=false
+probe-d early: poller=true scheduler=false job=false background=false
+listener
+probe-a start: poller=true scheduler=false job=false background=false
+probe-b start: poller=true scheduler=true job=true background=false
+background started
+probe-c start: poller=true scheduler=true job=true background=true
+probe-d start: poller=true scheduler=true job=true background=true
+probe-a request stop: poller=true scheduler=true job=true background=true
+probe-b request stop: poller=true scheduler=true job=false background=true
+probe-c request stop: poller=true scheduler=true job=false background=true
+probe-d request stop: poller=true scheduler=true job=false background=true
+probe-a stop: poller=true scheduler=true job=false background=true
+probe-b stop: poller=true scheduler=false job=false background=true
+background stopped
+probe-c stop: poller=true scheduler=false job=false background=false
+probe-d stop: poller=false scheduler=false job=false background=false
+ok   the server role's starts and stops: poller, Scheduler, Job, Background; then Job, Scheduler, Background, poller
+3 tests, 6 assertions, 0 failures
