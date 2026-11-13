@@ -176,12 +176,14 @@ listening socket for its whole life and runs one child at a time on it.
 
 1. Make sure the pinned Spinel is there (`Toolchain.ensure!`, as today).
 2. Find the load path: `spin flags`, taking its `-I` directories.
-3. If the framework that resolves has no `cybertrain/preview/` or no
+3. If the framework that resolves has no `cybertrain/preview.rb` or no
    `cybertrain/dev/supervision.rb` (an application pinned to an older
-   release), say so in one line and run today's loop. Otherwise put the
-   `-I` directories on `$LOAD_PATH` ahead of the gem's and load the
-   framework's `cybertrain/dev/supervision.rb`, `state_file.rb`,
-   `watcher.rb` and `watched.rb` from there: the gem ships none of them,
+   release), or the `ruby` on PATH that runs the children cannot load
+   `fiddle`, say so in one line and run today's loop (section 10).
+   Otherwise put the `-I` directories on `$LOAD_PATH` ahead of the gem's
+   and load the framework's `cybertrain/dev/supervision.rb`,
+   `state_file.rb`, `watcher.rb` and `watched.rb` from there: the gem
+   ships none of them,
    so the supervisor and its children share one definition of the state
    file and the supervision variables, the application's framework's.
 4. Learn the address: the port argument if given, else ask the
@@ -285,15 +287,17 @@ not compiled or run by spin here: the CRuby gen has already written
 
 **State file** (`tmp/` in the application; written whole and renamed into
 place): generation, what is serving (`cruby`, `spinel`, `holding`, or `none` while no child runs), build state (`building`,
-`ready`, `failed`, `binary failed`), and the output that goes with a
+`ready`, `failed`, `binary_failed`), and the output that goes with a
 failure (the compiler's, or what is known about the dead binary). It is the only
 channel from the supervisor to a child.
 
 **Stopping**: Ctrl-C, TERM or HUP stops the build, stops the child with
 TERM, closes the socket, removes the state and readiness files and the
 PID files (`tmp/cybertrain-dev/supervisor.pid`, `child.pid`, and
-`build.pid`, the build's process group). A supervisor killed outright
-leaves them behind; the next one stops the child and the build they name
+`build.pid`, the build's process group; a PID file stays while the
+process it names still runs, as after a stop that failed half-way). A
+supervisor killed outright leaves them behind; the next one stops the
+child and the build they name
 when they are this application's, before it binds the socket.
 
 **Where the code lives**: the supervisor is CRuby-only (descriptor
@@ -414,8 +418,20 @@ generator so both agree, not papered over in the preview.
 
 - Ruby 3.2+ with `fiddle` loadable (it needs libffi). `cybertrain doctor`
   checks it and says the preview is unavailable without it.
-- If `fiddle` is missing, or the framework has no `cybertrain/preview/`,
-  `cybertrain server` prints one line and runs today's loop.
+- If the preview cannot run, `cybertrain server` prints one line on STDERR
+  and runs today's loop, as `--spinel` would. The causes are checked in
+  this order, and only the first that holds is named:
+  1. `preview unavailable: this application's cybertrain (<dir>) has no
+     cybertrain/preview.rb; running the compiled loop` (an older release;
+     `<dir>` is the framework's directory from `spin flags`);
+  2. `preview unavailable: this application's cybertrain (<dir>) has no
+     cybertrain/dev/supervision.rb; running the compiled loop`;
+  3. `preview unavailable: Ruby cannot load fiddle (cybertrain doctor has
+     the details); running the compiled loop`, for the `ruby` on PATH
+     (the children's), asked in the same run that gives the banner its
+     version.
+  The framework comes first: a newer framework is the fix there, whatever
+  the Ruby.
 - `--spinel` always runs today's loop.
 
 ## 11. What the preview does not show
