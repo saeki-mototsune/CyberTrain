@@ -10,7 +10,8 @@ require_relative "support/log_capture"
 # test/logger_scope.rb`), where the threads are real; it also runs under
 # CRuby. Restores go through plain helpers' `ensure` (pre-flight ruling
 # G4); threads are started through methods (spikes/NOTES.md rule 21) and
-# interleave through a timed sleep (ruling S4).
+# meet through Queue waits, not timing (ruling S4: `sleep 0` does not
+# switch threads).
 
 NOON = Time.utc(2026, 11, 11, 12)
 
@@ -24,7 +25,8 @@ end
 def scope_for(id)
   tags = Array.new(0) { "" }
   tags << id
-  Cybertrain::Logger::Scope.new(id, "GET", "/n", "", tags, 0, no_context)
+  context = no_context
+  Cybertrain::Logger::Scope.new(id, "GET", "/n", "", tags, 0, context)
 end
 
 def no_scope?
@@ -140,6 +142,23 @@ test "NO_SCOPE, shared by every thread, is never written: scope_where= on it doe
   assert_equal %(id="" where="" no_scope=true), read_on_thread
 end
 
+# NO_SCOPE's containers are frozen (review I1, ruling S1): a write through
+# `scope_tags` or `scope_context`, or through the context a `with_tags` copy
+# shares with it, raises FrozenError (compiled too) instead of changing the
+# Scope every thread without one of its own shares.
+test "NO_SCOPE's tags and context cannot be written, nor the context a with_tags copy shares" do
+  assert no_scope?
+  assert_raises("FrozenError") { Cybertrain::Logger.current_scope.scope_tags << "x" }
+  assert_raises("FrozenError") { Cybertrain::Logger.current_scope.scope_context["job.id"] = "1" }
+  copy = Cybertrain::Logger::NO_SCOPE.with_tags(["a"])
+  assert_raises("FrozenError") { copy.scope_context["job.id"] = "1" }
+  copy.scope_tags << "b"
+  assert_equal "a|b", copy.scope_tags.join("|")
+  assert_equal 0, Cybertrain::Logger::NO_SCOPE.scope_tags.size
+  assert_equal 0, Cybertrain::Logger::NO_SCOPE.scope_context.size
+  assert_equal %(id="" where="" no_scope=true), read_on_thread
+end
+
 test "with_tags is a copy with the tags appended and the request id's place kept" do
   base = scope_for("r1")
   more = base.with_tags(["a", "b"])
@@ -152,31 +171,34 @@ test "with_tags is a copy with the tags appended and the request id's place kept
   assert_equal 0, Cybertrain::Logger::NO_SCOPE.scope_tags.size
 end
 
-# Concurrent `tagged` (ruling S3): each thread swaps in its own Scope, tags
-# it, sleeps 10 ms inside the block (a timed sleep: ruling S4), reads the
-# scope and logs; thread 2's block then raises. `order` records each
-# thread's entry ("s<n>") and read ("r<n>").
-def tagging_thread(logger, n, out, order)
-  Thread.new { tag_work(logger, n, out, order) }
+# Concurrent `tagged` (ruling S3): each thread swaps in its own Scope and
+# tags it; inside its block it posts its number to the other thread's
+# inbox and waits (up to 5 s) on its own for the other's, so both are
+# inside their blocks at once whatever the timing (no sleep needed: a
+# Queue wait parks the thread, spikes/NOTES.md rule 85). Each then reads
+# the scope and logs; thread 2's block raises. The two Queues are passed
+# as Queues: `mail[i].pop(timeout: 5)` on an Array element is compiled as
+# Array#pop ("no implicit conversion of Hash into Integer").
+def tagging_thread(logger, n, out, inbox, outbox)
+  Thread.new { tag_work(logger, n, out, inbox, outbox) }
 end
 
-def tag_work(logger, n, out, order)
+def tag_work(logger, n, out, inbox, outbox)
   previous = Cybertrain::Logger.swap_scope(scope_for("r#{n}"))
-  msg = rescued_message { tagged_block(logger, n, out, order) }
+  msg = rescued_message { tagged_block(logger, n, out, inbox, outbox) }
   after = Cybertrain::Logger.current_scope.scope_tags.join("|")
   Cybertrain::Logger.swap_scope(previous)
   out << "thread #{n}: #{msg}; after: #{after}; swapped back: #{no_scope?}"
   nil
 end
 
-def tagged_block(logger, n, out, order)
+def tagged_block(logger, n, out, inbox, outbox)
   logger.tagged("t#{n}") do
-    order << "s#{n}"
-    sleep 0.01
-    order << "r#{n}"
+    outbox << n
+    met = inbox.pop(timeout: 5)
     seen = Cybertrain::Logger.current_scope.scope_tags.join("|")
     logger.info("in #{n}")
-    out << "thread #{n} inside: #{seen}"
+    out << "thread #{n} inside: #{seen}, met #{met.nil? ? "nobody" : "thread #{met}"}"
     raise "boom #{n}" if n == 2
 
     seen
@@ -201,17 +223,14 @@ test "tagged on concurrent threads: each sees its own tags, and a raising block 
   sink = StringIO.new
   logger = Cybertrain::Logger.new(sink)
   out = Queue.new
-  order = Queue.new
-  threads = [tagging_thread(logger, 1, out, order)]
-  threads << tagging_thread(logger, 2, out, order)
+  first = Queue.new
+  second = Queue.new
+  threads = [tagging_thread(logger, 1, out, first, second)]
+  threads << tagging_thread(logger, 2, out, second, first)
   threads.each(&:join)
-  assert_equal ["thread 1 inside: r1|t1", "thread 1: answered r1|t1; after: r1; swapped back: true",
-                "thread 2 inside: r2|t2", "thread 2: rescued boom 2; after: r2; swapped back: true"],
+  assert_equal ["thread 1 inside: r1|t1, met thread 2", "thread 1: answered r1|t1; after: r1; swapped back: true",
+                "thread 2 inside: r2|t2, met thread 1", "thread 2: rescued boom 2; after: r2; swapped back: true"],
                drained(out).sort
-  steps = drained(order)
-  # Both threads were inside their blocks at once: the second entry comes
-  # before the first read.
-  assert_equal "s", steps[1].byteslice(0, 1)
   assert_equal ["INFO [r1] [t1] in 1", "INFO [r2] [t2] in 2"], sink.string.split("\n").map { |l| l.byteslice(25, l.bytesize - 25).to_s }.sort
   assert no_scope?
 end

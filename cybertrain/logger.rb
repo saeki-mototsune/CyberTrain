@@ -52,10 +52,17 @@ module Cybertrain
     class Scope
       # @return [String]
       attr_reader :scope_request_id, :scope_request_method, :scope_request_path, :scope_where
+      # The line's tags in order. Never mutate what this answers (on
+      # {Logger::NO_SCOPE} it is frozen and shared by every thread): build
+      # a new Scope, or use {#with_tags}.
       # @return [Array<String>]
       attr_reader :scope_tags
       # @return [Integer]
       attr_reader :scope_id_tag
+      # The context an error report adds. Never mutate what this answers:
+      # on {Logger::NO_SCOPE} it is frozen and shared by every thread, and
+      # {#with_tags} copies share it with the Scope they were made from.
+      # Build a new Scope with a new Hash instead.
       # @return [Hash{String => String}]
       attr_reader :scope_context
 
@@ -87,7 +94,8 @@ module Cybertrain
       end
 
       # A copy with `more` appended to the tags, the request id's place
-      # kept; this Scope is not changed.
+      # kept; this Scope is not changed. The tags are a new Array; the
+      # context Hash is shared with the copy, not copied.
       # @param more [Array<String>]
       # @return [Scope]
       def with_tags(more)
@@ -112,12 +120,17 @@ module Cybertrain
       where = ""
       context = { "" => "" }
       context.delete("")
-      Scope.new(id, verb, path, where, Array.new(0) { "" }, -1, context)
+      tags = Array.new(0) { "" }
+      Scope.new(id, verb, path, where, tags, -1, context)
     end
 
     # The Scope of a thread with none of its own: no request id, no tags.
-    # One object shared by every thread, so nothing writes to it.
+    # One object shared by every thread, so nothing writes to it: its
+    # `scope_where=` does nothing, and its tags and context are frozen (a
+    # write raises FrozenError, compiled as under CRuby).
     NO_SCOPE = Logger.empty_scope
+    NO_SCOPE.scope_tags.freeze
+    NO_SCOPE.scope_context.freeze
 
     # This thread's Scope, {NO_SCOPE} when it has none.
     # @return [Scope]
@@ -226,10 +239,13 @@ module Cybertrain
 
     # One whole line, its newline included. Text: the time, the level,
     # each tag in brackets in order, the message, and a newline unless the
-    # message ends in one. JSON ({json_lines}): `time`, `level`, then
-    # `request_id` when `id_tag` is the index of the request id among
-    # `tags` (-1 when none of them is), `tags` without it, and `message`
-    # (without the one newline it may end in).
+    # message ends in one; the tags' and the message's bytes are written
+    # unchanged, so a text line may hold bytes that are not valid UTF-8
+    # (the String is tagged UTF-8 all the same). JSON ({json_lines}):
+    # `time`, `level`, then `request_id` when `id_tag` is the index of the
+    # request id among `tags` (-1 when none of them is), `tags` without
+    # it, and `message` (without the one newline it may end in); bytes
+    # that are not valid UTF-8 are replaced there ({json_quote}).
     # @param level_name [String] `"INFO"`, `"ERROR"`, ...
     # @param tags [Array<String>]
     # @param id_tag [Integer]

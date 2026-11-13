@@ -527,9 +527,9 @@ module Cybertrain
     # its travel and its own callables.
     def self.case_cleanup
       Cybertrain::Clock.travel_back
-      # A Scope the case swapped in and never swapped back is dropped; a
-      # nested case gives the outer case its own back.
-      Cybertrain::Logger.reset_scope
+      # A Scope the case swapped in and never swapped back is dropped: the
+      # slot becomes the outer case's Scope, or empty (NO_SCOPE is stored
+      # as nil) for an outermost case.
       outer_scope = @scope_marks.empty? ? Cybertrain::Logger::NO_SCOPE : @scope_marks.pop
       Cybertrain::Logger.swap_scope(outer_scope)
       from = @case_marks.empty? ? 0 : @case_marks.pop
