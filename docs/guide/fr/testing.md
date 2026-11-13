@@ -1,5 +1,5 @@
 ---
-source_sha256: c39fb5af16ddcefad03783e11241e4ee155261821393a5f812e3fee3bc524faf
+source_sha256: 8708d189e270a6ea82cabcd3fcc2f574bb7b99b714678d9820d9a6b7bc315312
 ---
 # Tester une application
 
@@ -125,7 +125,7 @@ jobs, de planificateur ni de flux&nbsp;: un test exécute lui-même les jobs).
 `CYBERTRAIN_TEST_DATABASE` désigne un autre fichier à la place. Comme le programme supprime le fichier sur lequel il teste, il marque
 chaque base qu’il crée (`PRAGMA application_id`, une valeur à lui) et ne
 supprime ou ne vide un fichier existant que s’il porte cette marque, s’il
-est `storage/test.sqlite3` lui-même ou s’il est vide. Tout autre fichier est
+est le `storage/test.sqlite3` de cette application (quelle que soit l’écriture du chemin) ou s’il est vide. Tout autre fichier est
 refusé avec le code de sortie 2, sans rien supprimer&nbsp;: `cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`. Un
 fichier nommé `development.sqlite3` ou `production.sqlite3` (quelle que soit
 la casse), ou le même fichier que `storage/development.sqlite3` ou
@@ -134,8 +134,16 @@ nom doit être un chemin de fichier&nbsp;: `:memory:` et les URI `file:` sont
 refusés (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`). Après une mise à niveau, un fichier que vous aviez
 désigné dans `CYBERTRAIN_TEST_DATABASE` ne porte pas de marque et est
 refusé une fois&nbsp;: supprimez-le (avec ses `-wal` et `-shm`), et
-`cybertrain test` en crée un marqué&nbsp;; le `storage/test.sqlite3` par
-défaut n’a besoin de rien.
+`cybertrain test` en crée un marqué&nbsp;; le `storage/test.sqlite3` par défaut n’a besoin de rien. Un chemin qui
+devient un lien symbolique pendant la création de la base est refusé avec
+le code de sortie 2&nbsp;: `cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`. Le vidage avant chaque test ne touche que les
+tables de la base principale, jamais une table TEMP ou attachée du même
+nom. Limites connues&nbsp;: la marque survit à un `cp` d’une base de test, si
+bien qu’une copie nommée comme la base de test (ou à laquelle un test se
+connecte) est vidée&nbsp;; une exécution tuée entre la création du fichier et
+sa marque laisse un fichier non marqué à un chemin que vous avez désigné,
+refusé la fois suivante (supprimez-le)&nbsp;; un répertoire à
+`storage/test.sqlite3` lève une exception quand le programme le supprime.
 
 Le programme prépare l’environnement de test comme celui de Rails, sauf si
 `config/app.rb` règle lui-même la même chose&nbsp;: protection contre la

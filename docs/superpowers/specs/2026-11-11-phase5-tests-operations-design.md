@@ -1036,7 +1036,7 @@ report carries the class, the message and `where`.
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"` | IANA zone for boundaries, `Date.current`, `l` and `time_tag` (5a) |
 | `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` (was `"UTC"`) | 5a |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in test, else `:smtp` | 5a; `:test` outside the test environment boots with a warning |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""` | the file `cybertrain test` deletes, migrates and tests on instead of `storage/test.sqlite3` (5a, pre-flight ruling R10); amended 2026-11-13: a plain file path (`:memory:` and `file:` URIs refused); an existing file is deleted only when it carries the mark `cybertrain test` gives its databases (`PRAGMA application_id`), is `storage/test.sqlite3` itself or is empty, and the development and production databases are refused by name; a refusal is exit status 2 |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""` | the file `cybertrain test` deletes, migrates and tests on instead of `storage/test.sqlite3` (5a, pre-flight ruling R10); amended 2026-11-13: a plain file path (`:memory:` and `file:` URIs refused); an existing file is deleted only when it carries the mark `cybertrain test` gives its databases (`PRAGMA application_id`), is this application's own `storage/test.sqlite3` (in any spelling) or is empty, and the development and production databases are refused by name; a path that becomes a symlink during the creation is refused; a refusal is exit status 2 |
 | `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info` | `debug`, `info`, `warn`, `error`, `fatal`, `none` (5b) |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text` | or `:json` (5b) |
 | — | `log_tags` | `[:request_id]` | `:request_id`, `:remote_ip` (5b) |
@@ -1523,8 +1523,8 @@ phase 4b D79 and D80, so 5a's decisions are design.md D81 (the clock,
 durations, the time helpers and the zone), D82 (test classes and
 isolation), D83 (fixtures and `cybertrain test`) and D84 (the helpers,
 assertions and receivers); 5b takes D85 and D86 (pre-flight ruling B3;
-section 15 is amended). The spikes/NOTES.md rules found here are 104 to 109,
-and docs/spinel-feedback.md items AJ to AN.
+section 15 is amended). The spikes/NOTES.md rules found here are 104 to 110,
+and docs/spinel-feedback.md items AJ to AO.
 
 **The spike (section 16).** Items 1 to 5 passed without their fallbacks:
 the `Time.now` override, Rails' names on Integer and Time (two
@@ -1696,8 +1696,23 @@ Also found in that re-review and fixed: an endless Range count
 gave `expires:` a Time and another left it out: spikes/NOTES.md rule 109
 (a parameter defaulting to nil that a caller gives a plain Time is
 compiled as a non-nullable Time), docs/spinel-feedback.md AN; the default
-is now `Cookies::NO_EXPIRES`. spikes/NOTES.md's phase 5a rules are 104 to
-109.
+is now `Cookies::NO_EXPIRES`. spikes/NOTES.md's phase 5a rules are 104 to 110.
+
+After the fix wave, CI found two test programs (test/test_render_inline.rb
+and test/test_classes.rb) failing to build with "'_o24' undeclared" in
+`HtmlReader.parse`, while test/test_html.rb, which loads the same file,
+built: a statement `case` on a plain Integer (`case kind`) took the
+temporary number of `Html.escape`'s statement `case b` on a nullable
+`getbyte` value, which Spinel remembers across methods (spikes/NOTES.md
+rule 110, docs/spinel-feedback.md AO). The local landing checks had
+compiled only some programs. `parse` now uses an `if` chain, and the
+landing checks now compile a changed framework file in every test program
+that loads it. The guard was hardened in the same round: the default
+exemption is only this application's own `storage/test.sqlite3` (in any
+spelling), the per-test clear names `"main"`, and a path that becomes a
+symlink during the creation is refused; the mark surviving a `cp`, a run
+killed between create and mark, and a directory at `storage/test.sqlite3`
+are known limits.
 
 Known limits for the maintainer, stated in the guides: a `def setup` in a
 module is not checked for `super`; a class two levels under an application

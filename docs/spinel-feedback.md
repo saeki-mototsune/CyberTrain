@@ -148,7 +148,7 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
   way.
 
 Letters are the items of this document (AA to AH are new, written up at
-the end; AI, phase 4b's, and AJ to AN, phase 5a's, were merged in after the inventory); numbers
+the end; AI, phase 4b's, and AJ to AO, phase 5a's, were merged in after the inventory); numbers
 after "rule" are spikes/NOTES.md's.
 
 ### 1. What CyberTrain does today because of Spinel
@@ -188,6 +188,7 @@ after "rule" are spikes/NOTES.md's.
 | AL (rule 108) | `spin run gen` rebuilds `bin/gen` when any `.rb` of the package is newer, test files included (spin, a cost) | Accepted: `cybertrain test` pays about 55 s on each edit of a test | Not reported |
 | AM (rule 107) | A release build's `e.backtrace` is empty; only `--debug` gives frames | A failing test is named by its `test` line; reports carry class, message and where | Open; not reported |
 | AN (rule 109) | A parameter defaulting to nil that a caller gives a plain Time is compiled as a non-nullable Time; the defaulted call crashes (SIGSEGV): fails (2026-11-13) | `Cookies.serialize`'s `expires:` defaults to the sentinel `Cookies::NO_EXPIRES`; framework callers pass `Cast.time_or_nil(...)` (http/cookies.rb, phase 5a) | Open; not reported |
+| AO (rule 110) | A statement `case` on a plain Integer, compiled after a statement `case` on a nullable Integer in another method, can take its temporary number and not compile (`'_oN' undeclared`): fails (2026-11-13) | `HtmlReader.parse` uses an `if` chain; shared framework code avoids statement `case` on a plain Integer (cybertrain/test/html_reader.rb) | Open; not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -468,8 +469,8 @@ again since the lock left it).
   it is ready to report as a request (a large constant literal's stores
   written into helper functions of bounded size), and nothing in
   CyberTrain waits on it.
-- **AJ to AN** (phase 5a, 2026-11-12 and 2026-11-13): AJ, AM and AN are
-  defects with a program each, ready to report; AK and AL are costs (the C compiler's
+- **AJ to AO** (phase 5a, 2026-11-12 and 2026-11-13): AJ, AM, AN and AO
+  are defects with a program each, ready to report; AK and AL are costs (the C compiler's
   memory on a very large program, spin's freshness check), and nothing in
   CyberTrain waits on any of them.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
@@ -539,6 +540,7 @@ run on master 1c0cc5e35:
 | AL | none (the cost is paid) | A request to spin, not to Spinel. Not reported |
 | AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master |
 | AN | the sentinel default `Cookies::NO_EXPIRES` (spikes/NOTES.md rule 109) | **Ready to report**: spikes/phase5/nil_default_time.rb (SIGSEGV, exit 139; CRuby `none`, `1970`). Not reported; not run on master |
+| AO | an `if` chain in `HtmlReader.parse` instead of a statement `case` (spikes/NOTES.md rule 110) | **Ready to report**: spikes/phase5/case_nullable_temp.rb (the C compile fails, `'_o1' undeclared`; CRuby `amp`, `long`). Not reported; not run on master |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026 when this table
@@ -613,6 +615,7 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | AL. `spin run gen` rebuilds the generator when a test file changes | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12; rule 108) |
 | AM. A release build has no backtrace | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 107) |
 | AN. A parameter defaulting to nil, given a plain Time by a caller, is a non-nullable Time | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 109) |
+| AO. A statement `case` on a plain Integer takes an earlier nullable case's temporary number | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 110) |
 
 ## What CyberTrain still works around
 
@@ -3570,3 +3573,55 @@ work.
   caller leaves it out.
 - Reproduced by spikes/phase5/nil_default_time.rb (and the workaround,
   nil_default_time_fixed.rb); not reported upstream.
+
+### AO. A statement `case` on a plain Integer takes an earlier nullable case's temporary and does not compile
+
+Rule 110 (2026-11-13).
+
+```ruby
+def esc(s)
+  out = +""
+  b = s.getbyte(0)
+  case b
+  when 38 then out << "amp"
+  else out << "other"
+  end
+  out
+end
+
+def kind_of(s)
+  return 1 if s.bytesize > 3
+
+  0
+end
+
+def parse(s)
+  out = +""
+  k = kind_of(s)
+  case k
+  when 1 then out << "long"
+  else out << "short"
+  end
+  out
+end
+
+puts esc("&x")
+puts parse("abcd")
+```
+
+CRuby prints `amp` and `long`; Spinel's C does not compile: `'_o1'
+undeclared`. `case b` (a nullable Integer) declares `sp_oint _o1` and
+`sp_int _t1` and switches on `_o1.nil ? 0LL : _t1`; `case k` (a plain
+Integer) declares only `sp_int _t1` but switches on the same expression.
+The "nullable subject" mark is kept by temporary number across methods.
+With the methods in the other order, or both cases as return values, it
+compiles. In the framework it showed as two test programs failing to
+build while a third, loading the same file, built.
+
+- Today: `HtmlReader.parse` uses an `if` chain; shared framework code
+  avoids a statement `case` on a plain Integer. `Html.escape`'s `case b`
+  still leaks its mark.
+- Asked of Spinel: keep the nullable-subject mark per case (or per
+  method), not per temporary number.
+- Reproduced by spikes/phase5/case_nullable_temp.rb; not reported
+  upstream.

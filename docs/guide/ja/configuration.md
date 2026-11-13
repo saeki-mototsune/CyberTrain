@@ -1,5 +1,5 @@
 ---
-source_sha256: 3edf5b7a57bd95529290737c87303ea72cbc6d4113b29e414f8bd07e84667542
+source_sha256: 43d500f72cb5115e5617bbb39871cda159cd02f790f639088bebeb380a15d587
 ---
 # 設定
 
@@ -56,7 +56,7 @@ end
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：`from:` が与えられないときに `Mailer.deliver` が使う送信者 |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`。`tls`（暗黙の TLS）や `none`（平文。資格情報はループバックへのみ）も可。どちらの TLS モードにも `require "cybertrain/net/tls"` が必要 |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | テスト環境では `:test`、それ以外では `:smtp`：`:test` は各メールを送らずに `Cybertrain::Mailer.deliveries` に保持する（[メールのテスト](testing.md#testing-mail)）。テスト環境の外では警告を出して起動し、何も送らない。それ以外の値では起動が止まる。`cybertrain test` は、変数が何であっても、`config/app.rb` が設定しない限り `:test` を使う |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`storage/test.sqlite3` の代わりに、`cybertrain test` が削除し、マイグレートし、テストを実行するファイル。ファイルのパス（`:memory:` や `file:` の URI は不可）。既存のファイルを削除するのは、`cybertrain test` が作ったもの（作るデータベースに印を付ける）、`storage/test.sqlite3` そのもの、空のファイルのときだけ。それ以外と、開発用や本番用のデータベースは終了ステータス 2 で拒否され、何も削除されない（[テストを実行する](testing.md#running-the-tests)） |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`storage/test.sqlite3` の代わりに、`cybertrain test` が削除し、マイグレートし、テストを実行するファイル。ファイルのパス（`:memory:` や `file:` の URI は不可）。既存のファイルを削除するのは、`cybertrain test` が作ったもの（作るデータベースに印を付ける）、このアプリケーション自身の `storage/test.sqlite3`、空のファイルのときだけ。それ以外と、開発用や本番用のデータベースは終了ステータス 2 で拒否され、何も削除されない（[テストを実行する](testing.md#running-the-tests)） |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：すべてのリクエストが始まるロケール。`ja` や `pt-BR` のような名前（[ロケール](#locales) を参照）。それ以外は起動を止める |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`：アカウントがロックされるまでの間違ったパスワードの回数。`0` でロックアウトを無効にする（[認証の設定](#authentication-settings) を参照） |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`：ロックアウトが続く秒数。1 以上 |

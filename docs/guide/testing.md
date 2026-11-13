@@ -112,8 +112,8 @@ and `test/fixtures/` hold no tests. The program deletes
 before the first test (no job, scheduler or feed threads: a test runs jobs
 itself). `CYBERTRAIN_TEST_DATABASE` names another file instead. Since the program deletes the file it tests on, it marks every database it
 creates (`PRAGMA application_id`, a value of its own) and deletes or
-empties an existing file only when it carries that mark, when it is
-`storage/test.sqlite3` itself, or when it is an empty file. Anything else
+empties an existing file only when it carries that mark, when it is this
+application's own `storage/test.sqlite3` (however the path is written), or when it is an empty file. Anything else
 is refused with exit status 2 and nothing deleted: `cybertrain test
 refuses to delete <path>: not a database cybertrain test created; delete
 it yourself or name another file`. A file named `development.sqlite3` or
@@ -126,7 +126,15 @@ database` (or `production`). The name must be a file path: `:memory:` and
 file: URI)`). After an upgrade, a file you named in
 `CYBERTRAIN_TEST_DATABASE` before carries no mark and is refused once:
 delete it (with its `-wal` and `-shm`), and `cybertrain test` creates a
-marked one; the default `storage/test.sqlite3` needs nothing.
+marked one; the default `storage/test.sqlite3` needs nothing. A path that turns into a
+symlink while the database is being created is refused with exit status 2:
+`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`. The per-test clear empties only the main database's tables, never a
+TEMP or attached table of the same name. Known limits: the mark survives a
+`cp` of a test database, so a copy named as the test database (or one a
+test connects to) is emptied; a run killed between creating the file and
+marking it leaves an unmarked file at a path you named, refused the next
+time (delete it); a directory at `storage/test.sqlite3` raises when the
+program deletes it.
 
 The program sets up the test environment as Rails' does, unless
 `config/app.rb` sets the same thing itself: forgery protection off, the

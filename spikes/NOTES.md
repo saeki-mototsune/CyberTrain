@@ -123,6 +123,7 @@ for the evidence needed to change a status.
 | 107 | Build-mode behaviour recorded on this build (phase 5a, 2026-11-12); the empty release backtrace is still there. |
 | 108 | Tool behaviour, checked 2026-11-12: spin's freshness check for `bin/gen` counts test files and gen's outputs as inputs. |
 | 109 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb). |
+| 110 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/case_nullable_temp.rb does not compile). |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
@@ -196,7 +197,7 @@ The rules are numbered in the order they were found. By topic:
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87, 105, 106
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
-  37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97, 109
+  37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97, 109, 110
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100, 109
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93,
   101
@@ -209,7 +210,7 @@ The rules are numbered in the order they were found. By topic:
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
   91, 102
 - FFI: 15, 59
-- Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98, 105, 107, 108
+- Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98, 105, 107, 108, 110
 
 ## Workarounds that shape the design, and what a Spinel update re-checks
 
@@ -1615,6 +1616,33 @@ explicitly retires a workaround.
      regression program is test/client.rb; docs/spinel-feedback.md AN).
      examples/blog never crashed: `CookieJar#assign_cookie` passes
      `Cast.time_or_nil(...)`, and remember me uses `max_age:`.
+
+110. A statement `case` (its value unused) on a plain Integer can compile
+     with an undeclared temporary on Spinel 2026.11.04.7026. A statement
+     `case` on a nullable Integer (a `getbyte` value) in a method compiled
+     earlier leaves a "nullable subject" mark that Spinel keeps by
+     temporary NUMBER across methods, not per method; when a later
+     statement `case` on a plain Integer gets the same number, Spinel
+     declares only `sp_int _tN = ...` but switches on `_oN.nil ? 0LL : _tN`,
+     and gcc stops at `'_oN' undeclared` (clang: "member reference base
+     type 'sp_int' is not a structure or union"). Which programs fail
+     depends on whole-program type inference: test/test_render_inline.rb
+     and test/test_classes.rb failed (`'_o24' undeclared` in
+     `HtmlReader.parse`, at `case kind`) while test/test_html.rb, loading
+     the same file, built (phase 5a, CI after the fix wave, 2026-11-13).
+     Commit 50bbcb8 reshuffled the code before that case, which only moved
+     the number: it fixed one program and not the others. So shared
+     framework code does not use a statement `case` on a plain Integer
+     local: it uses an `if x == 1 / elsif x == 2 / else` chain (as
+     `HtmlReader.parse` does now); a `case` used as a method's value
+     compiled. Still open: the case whose mark leaks is `Html.escape`'s
+     `case b`, so any other statement `case` on a plain Integer compiled
+     after it can fail the same way when the numbers line up (CI builds
+     every program, so it shows as a build failure, not wrong behaviour).
+     Reduced program: spikes/phase5/case_nullable_temp.rb (as written it
+     does not compile, `'_o1' undeclared`, where CRuby prints `amp` and
+     `long`; with the methods in the other order it compiles; with both
+     cases as return values it compiles; docs/spinel-feedback.md AO).
 
 <a id="numbers-worth-remembering"></a>
 
