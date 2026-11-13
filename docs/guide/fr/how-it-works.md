@@ -1,5 +1,5 @@
 ---
-source_sha256: f22dcd005dd90c45c00770da96f33164e05a94aa11d052f1ae901236b279ca91
+source_sha256: 213c14714700a8d77cf55d41583442abd46b6e5ffe0d85f613e8e95e3e80b7b0
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -40,7 +40,7 @@ Spinel compile chaque méthode de chaque fichier qu’un programme requiert, app
 | `require "cybertrain/rate_limit"` | `rate_limit` dans les contrôleurs&nbsp;; charge le cache |
 | `require "cybertrain"` | tout ce qui précède |
 
-Chaque ligne charge le cœur, et leur ordre n’a pas d’importance&nbsp;: le framework démarre et arrête les sous-systèmes dans un ordre fixe qui lui est propre. Sur une application générée par scaffold, le cœur seul compile 2&nbsp;205 méthodes au lieu de 2&nbsp;767 et s’analyse en 38&nbsp;s au lieu de 52&nbsp;s&nbsp;; un build complet prend 83&nbsp;s au lieu de 108&nbsp;s, et une modification de contrôleur environ 47&nbsp;s au lieu de 65&nbsp;s ([docs/performance-next.md](../performance-next.md)).
+Chaque ligne se place après `require "cybertrain/core"` (`cybertrain/jobs` et `cybertrain/feeds` chargent le cœur eux-mêmes, les autres non), et leur ordre n’a pas d’importance&nbsp;: le framework démarre et arrête les sous-systèmes dans un ordre fixe qui lui est propre. Sur une application générée par scaffold, le cœur seul compile 2&nbsp;205 méthodes au lieu de 2&nbsp;767 et s’analyse en 38&nbsp;s au lieu de 52&nbsp;s&nbsp;; un build complet prend 83&nbsp;s au lieu de 108&nbsp;s, et une modification de contrôleur environ 47&nbsp;s au lieu de 65&nbsp;s ([docs/performance-next.md](../performance-next.md)).
 
 `cybertrain new` écrit `require "cybertrain/core"` dans `bin/<app>.rb` et `bin/db.rb` (qui charge `config/app.rb` et a donc besoin des mêmes lignes). `cybertrain generate job` ajoute `require "cybertrain/jobs"` aux deux, et `generate authentication` les quatre que son code utilise (`cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit`&nbsp;: la page des jobs, les courriels envoyés avec `deliver_later`, la connexion à débit limité)&nbsp;; les autres lignes sont à ajouter vous-même. Une application écrite avant la séparation contient `require "cybertrain"`, qui charge toujours tout&nbsp;: elle se construit et se comporte comme avant, et c’est en remplaçant cette ligne par le cœur et les lignes qu’elle utilise qu’elle se construit plus vite.
 

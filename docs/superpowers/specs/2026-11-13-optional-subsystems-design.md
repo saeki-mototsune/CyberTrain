@@ -54,15 +54,19 @@ already.
 | --- | --- | --- |
 | `require "cybertrain/core"` | everything else of today's `cybertrain.rb`: HTTP, routing, controllers, models, views and helpers, assets, sessions, CSRF, CSP, the console, `db` and `migrate` | |
 | `require "cybertrain/jobs"` | `Job`, job classes, retries, `Scheduler`, `every`/`cron`, the lease, the worker role, the jobs page and the `jobs` command | core |
-| `require "cybertrain/streams"` | `Stream`, broadcasts, the stream endpoint (SSE and WebSocket) and its poller, `turbo_stream_from` and the other stream helpers, `Controller#turbo_stream` | core |
+| `require "cybertrain/streams"` | `Stream`, broadcasts, the stream endpoint (SSE and WebSocket) and its poller, `turbo_stream_from` and the other stream helpers, `Controller#turbo_stream` | the core files it uses, not `cybertrain/core` |
 | `require "cybertrain/feeds"` | `WebSocket.subscribe` feeds, `Background`, the feeds role, the feed health check | core |
-| `require "cybertrain/mailer"` | `Mailer.deliver` | core |
+| `require "cybertrain/mailer"` | `Mailer.deliver` | config, crypto, the socket layer only: it loads under CRuby and without SQLite |
 | `require "cybertrain/mailer/later"` | `deliver_later` | mailer, jobs |
-| `require "cybertrain/cache"` | `Cache`, its prune | core |
-| `require "cybertrain/rate_limit"` | `Controller.rate_limit` | cache |
+| `require "cybertrain/cache"` | `Cache`, its prune | the core files it uses (db, config), not `cybertrain/core` |
+| `require "cybertrain/rate_limit"` | `Controller.rate_limit` | cache, and the core files it uses, not `cybertrain/core` |
 | `require "cybertrain"` | all of the above | |
 
-Requires are order-insensitive and repeatable. Each line is what Rails users
+Every subsystem line goes after `require "cybertrain/core"` (as implemented:
+jobs and feeds, and so `mailer/later`, load the core themselves; streams,
+the mailer, the cache and rate limiting load only the core files they use,
+so one of them alone is not an application). Requires are order-insensitive
+and repeatable. Each line is what Rails users
 would expect from the name. `cybertrain/mailer`, `mailer/later`, `cache` and
 `rate_limit` are today's files; `core`, `jobs`, `streams` and `feeds` are new
 entry files.

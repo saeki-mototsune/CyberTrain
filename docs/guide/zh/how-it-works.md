@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: f22dcd005dd90c45c00770da96f33164e05a94aa11d052f1ae901236b279ca91
+source_sha256: 213c14714700a8d77cf55d41583442abd46b6e5ffe0d85f613e8e95e3e80b7b0
 ---
 # 工作原理
 
@@ -40,7 +40,7 @@ Spinel 会编译程序 require 的每个文件里的每个方法，无论是否�
 | `require "cybertrain/rate_limit"` | 控制器中的 `rate_limit`；同时加载缓存 |
 | `require "cybertrain"` | 以上全部 |
 
-每一行都会加载核心，行的顺序无关紧要：框架按自己的固定顺序启动和停止各子系统。在一个用脚手架生成的应用上，只用核心时编译 2,205 个方法而不是 2,767 个，分析用 38 秒而不是 52 秒；完整构建用 83 秒而不是 108 秒，修改一次控制器约 47 秒而不是约 65 秒（[docs/performance-next.md](../performance-next.md)）。
+每一行都写在 `require "cybertrain/core"` 之后（`cybertrain/jobs` 和 `cybertrain/feeds` 会自己加载核心，其他行不会），行的顺序无关紧要：框架按自己的固定顺序启动和停止各子系统。在一个用脚手架生成的应用上，只用核心时编译 2,205 个方法而不是 2,767 个，分析用 38 秒而不是 52 秒；完整构建用 83 秒而不是 108 秒，修改一次控制器约 47 秒而不是约 65 秒（[docs/performance-next.md](../performance-next.md)）。
 
 `cybertrain new` 在 `bin/<app>.rb` 和 `bin/db.rb`（它加载 `config/app.rb`，所以需要相同的行）中写入 `require "cybertrain/core"`。`cybertrain generate job` 向两者添加 `require "cybertrain/jobs"`，`generate authentication` 添加其代码用到的四行（`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later` 和 `cybertrain/rate_limit`：作业页面、用 `deliver_later` 发送的邮件、有速率限制的登录）；其余的行由你自己添加。拆分之前编写的应用里是 `require "cybertrain"`，它仍然加载全部内容：应用照旧构建和运行；把这一行换成核心加上用到的行，构建才会变快。
 

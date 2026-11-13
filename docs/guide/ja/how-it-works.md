@@ -1,5 +1,5 @@
 ---
-source_sha256: f22dcd005dd90c45c00770da96f33164e05a94aa11d052f1ae901236b279ca91
+source_sha256: 213c14714700a8d77cf55d41583442abd46b6e5ffe0d85f613e8e95e3e80b7b0
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -40,7 +40,7 @@ Spinel は、プログラムが require したすべてのファイルのすべ�
 | `require "cybertrain/rate_limit"` | コントローラーの `rate_limit`。キャッシュも読み込む |
 | `require "cybertrain"` | 上のすべて |
 
-どの行もコアを読み込み、行の順序は関係ありません：フレームワークはサブシステムを自分の決まった順序で起動・停止します。スキャフォールドしたアプリでは、コアだけなら 2,767 ではなく 2,205 メソッドをコンパイルし、解析は 52 秒ではなく 38 秒です。フルビルドは 108 秒ではなく 83 秒、コントローラーの編集 1 回は約 65 秒ではなく約 47 秒です（[docs/performance-next.md](../performance-next.md)）。
+どの行も `require "cybertrain/core"` の後に書きます（`cybertrain/jobs` と `cybertrain/feeds` は自分でコアを読み込みますが、ほかの行は読み込みません）。行の順序は関係ありません：フレームワークはサブシステムを自分の決まった順序で起動・停止します。スキャフォールドしたアプリでは、コアだけなら 2,767 ではなく 2,205 メソッドをコンパイルし、解析は 52 秒ではなく 38 秒です。フルビルドは 108 秒ではなく 83 秒、コントローラーの編集 1 回は約 65 秒ではなく約 47 秒です（[docs/performance-next.md](../performance-next.md)）。
 
 `cybertrain new` は `bin/<app>.rb` と `bin/db.rb`（`config/app.rb` を読み込むので同じ行が必要）に `require "cybertrain/core"` を書きます。`cybertrain generate job` は両方に `require "cybertrain/jobs"` を、`generate authentication` はそのコードが使う 4 行（`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later`、`cybertrain/rate_limit`：ジョブページ、`deliver_later` で送るメール、レート制限つきのサインイン）を追加します。それ以外の行は自分で追加します。分割より前に書かれたアプリには `require "cybertrain"` があり、これは今もすべてを読み込みます：以前と同じようにビルドされ動作します。この行をコアと使う行に置き換えると、ビルドが速くなります。
 

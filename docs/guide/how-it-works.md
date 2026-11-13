@@ -66,7 +66,9 @@ lists railties:
 | `require "cybertrain/rate_limit"` | `rate_limit` in controllers; loads the cache |
 | `require "cybertrain"` | all of the above |
 
-Every line loads the core, and their order does not matter: the framework
+Each line goes after `require "cybertrain/core"` (`cybertrain/jobs` and
+`cybertrain/feeds` load the core themselves, the others do not), and their
+order does not matter: the framework
 starts and stops the subsystems in a fixed order of its own. On a
 scaffolded application, the core alone compiles 2,205 methods instead of
 2,767 and analyses in 38 s instead of 52 s; a full build takes 83 s
