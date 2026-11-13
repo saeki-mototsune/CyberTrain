@@ -52,18 +52,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
 ok   generate authentication writes the migrations, models, controllers, views and tests
@@ -160,7 +163,122 @@ ok   the controllers open their sign-in actions and the views post to the routes
 ok   every view and flash string goes through t
 ok   every key the generated files use exists in the bundled en and ja dictionaries
 ok   the routes and the layout's nav are inserted
-ok   the app's test boots the app and drives the sign-in flow
+ok   the app's tests are Rails-shaped classes that sign in with sign_in_as
+ok   writes users.yml with real digests
+identical test/test_helper.rb (includes SessionTestHelper)
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/nomark.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+skip test/test_helper.rb (no `# Helper methods used by all tests go here.` line): add require_relative "support/session_test_helper"
+  and class ActionDispatch::IntegrationTest;   include SessionTestHelper; end to it
+create test/test_helper.rb
+insert test/test_helper.rb (include SessionTestHelper)
+ok   writes the session test helper and includes it in IntegrationTest
+ok   remember_me_test checks day 15 and day 30 with travel_to
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/fourb.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/fourb.rb (./fourb user)
+insert config/app.rb (FOURB_BASE_URL)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -179,25 +297,487 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
+manual  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+manual  test/admin.rb (replaced by test/integration/admin_test.rb)
+manual  test/remember_me.rb (replaced by test/integration/remember_me_test.rb)
+manual  test/lockout.rb (replaced by test/integration/lockout_test.rb)
+manual  test/passwords.rb (replaced by test/controllers/passwords_controller_test.rb)
+manual  test/accounts.rb (replaced by test/controllers/accounts_controller_test.rb)
+manual  test/support/app_test.rb (replaced by test/test_helper.rb)
+manual  test/support/authentication_helpers.rb (replaced by test/support/session_test_helper.rb)
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
+identical bin/fourb.rb (user command already required)
+identical config/app.rb (base_url already declared)
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
+manual  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+manual  test/admin.rb (replaced by test/integration/admin_test.rb)
+manual  test/remember_me.rb (replaced by test/integration/remember_me_test.rb)
+manual  test/lockout.rb (replaced by test/integration/lockout_test.rb)
+manual  test/passwords.rb (replaced by test/controllers/passwords_controller_test.rb)
+manual  test/accounts.rb (replaced by test/controllers/accounts_controller_test.rb)
+manual  test/support/app_test.rb (replaced by test/test_helper.rb)
+manual  test/support/authentication_helpers.rb (replaced by test/support/session_test_helper.rb)
+identical app/controllers/application_controller.rb (include Authentication)
+identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
+identical bin/fourb.rb (user command already required)
+identical config/app.rb (base_url already declared)
+manual  test/authentication.rb: replaced by test/controllers/sessions_controller_test.rb; delete it
+manual  test/admin.rb: replaced by test/integration/admin_test.rb; delete it
+manual  test/remember_me.rb: replaced by test/integration/remember_me_test.rb; delete it
+manual  test/lockout.rb: replaced by test/integration/lockout_test.rb; delete it
+manual  test/passwords.rb: replaced by test/controllers/passwords_controller_test.rb; delete it
+manual  test/accounts.rb: replaced by test/controllers/accounts_controller_test.rb; delete it
+manual  test/support/app_test.rb: replaced by test/test_helper.rb; delete it
+manual  test/support/authentication_helpers.rb: replaced by test/support/session_test_helper.rb; delete it
+
+next:
+  cybertrain db migrate
+  cybertrain server      # then open /sign_up
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
+  # password reset mails: set FOURB_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
+
+next: apply the diffs above, or re-run with --force for files you never edited
+  # the app may not build until these diffs are applied: the files written now need them
+ok   a re-run on a 4b application lists the replaced test files
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/fourbf.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/fourbf.rb (./fourbf user)
+insert config/app.rb (FOURBF_BASE_URL)
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
+remove  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+remove  test/admin.rb (replaced by test/integration/admin_test.rb)
+remove  test/remember_me.rb (replaced by test/integration/remember_me_test.rb)
+remove  test/lockout.rb (replaced by test/integration/lockout_test.rb)
+remove  test/passwords.rb (replaced by test/controllers/passwords_controller_test.rb)
+remove  test/accounts.rb (replaced by test/controllers/accounts_controller_test.rb)
+remove  test/support/app_test.rb (replaced by test/test_helper.rb)
+remove  test/support/authentication_helpers.rb (replaced by test/support/session_test_helper.rb)
+identical app/controllers/application_controller.rb (include Authentication)
+identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
+identical bin/fourbf.rb (user command already required)
+identical config/app.rb (base_url already declared)
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
+identical app/controllers/application_controller.rb (include Authentication)
+identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
+identical bin/fourbf.rb (user command already required)
+identical config/app.rb (base_url already declared)
+ok   --force deletes them
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/oldatt.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+note   test/attachment_post_cover.rb: its requests now need a signed-in user; sign one in before them (post "/session" with a user's email_address and password), or move it to the class form (an ActionDispatch::IntegrationTest with `sign_in_as users(:one)` in its setup)
+insert bin/oldatt.rb (./oldatt user)
+insert config/app.rb (OLDATT_BASE_URL)
+ok   an earlier top-level attachment test is named, not rewritten
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/signs.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_products.rb
+create app/models/product.rb
+create test/models/product_test.rb
+create test/fixtures/products.yml
+create app/controllers/products_controller.rb
+create app/views/products/index.html.erb
+create app/views/products/show.html.erb
+create app/views/products/new.html.erb
+create app/views/products/edit.html.erb
+create app/views/products/_form.html.erb
+create test/controllers/products_controller_test.rb
+route resources :products
+create db/migrate/20260925120001_create_users.rb
+create db/migrate/20260925120002_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert test/controllers/products_controller_test.rb (sign_in_as users(:one))
+insert bin/signs.rb (./signs user)
+insert config/app.rb (SIGNS_BASE_URL)
+identical db/migrate/20260925120001_create_users.rb
+identical db/migrate/20260925120002_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
+identical app/controllers/application_controller.rb (include Authentication)
+identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
+identical bin/signs.rb (user command already required)
+identical config/app.rb (base_url already declared)
+create db/migrate/20260925120003_create_orders.rb
+create app/models/order.rb
+create test/models/order_test.rb
+create test/fixtures/orders.yml
+create app/controllers/orders_controller.rb
+create app/views/orders/index.html.erb
+create app/views/orders/show.html.erb
+create app/views/orders/new.html.erb
+create app/views/orders/edit.html.erb
+create app/views/orders/_form.html.erb
+create test/controllers/orders_controller_test.rb
+route resources :orders
+ok   a scaffold's controller test signs in, written before the generator or after it
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
+identical app/controllers/application_controller.rb (include Authentication)
+identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/shop.rb (user command already required)
 identical config/app.rb (base_url already declared)
 
 next:
   cybertrain db migrate
   cybertrain server      # then open /sign_up
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb and accounts.rb; snapshot them from the binaries
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset mails: set SHOP_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   running the generator again writes and edits nothing
 create spin.toml
@@ -266,18 +846,22 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert test/controllers/products_controller_test.rb (sign_in_as users(:one))
 insert bin/store.rb (./store user)
 insert config/app.rb (STORE_BASE_URL)
 ok   the generator runs after a scaffold, with migration versions that follow
@@ -335,18 +919,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/integration/first_run_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /setup
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/club.rb (./club user, the first-run warning)
 insert config/app.rb (CLUB_BASE_URL)
 insert config/app.rb (CLUB_SETUP_OPEN)
@@ -354,7 +941,7 @@ insert config/app.rb (CLUB_SETUP_OPEN)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb and accounts.rb; snapshot them from the binaries
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset mails: set CLUB_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   --invite-only writes the user command and /setup instead of the sign-up page
 ok   --invite-only's screens go through t, with keys the bundled dictionaries have
@@ -423,19 +1010,22 @@ create app/views/mail/_password_reset.html.erb
 create app/views/confirmations/new.html.erb
 create app/views/mail/_confirmation.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
-create test/confirmations.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/integration/first_run_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/controllers/confirmations_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /setup
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/flags.rb (./flags user, the first-run warning)
 insert config/app.rb (FLAGS_BASE_URL)
 insert config/app.rb (FLAGS_SETUP_OPEN)
@@ -443,7 +1033,7 @@ insert config/app.rb (FLAGS_SETUP_OPEN)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run flags -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb, accounts.rb and confirmations.rb; snapshot them from the binaries
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset and confirmation mails: set FLAGS_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   an unknown flag is refused before writing; --force is taken
 identical db/migrate/20260925120000_create_users.rb
@@ -464,18 +1054,21 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/integration/first_run_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/club.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical config/app.rb (setup_open already declared)
@@ -483,7 +1076,7 @@ identical config/app.rb (setup_open already declared)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run club -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb and accounts.rb; snapshot them from the binaries
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset mails: set CLUB_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   --invite-only run again writes and edits nothing
 create spin.toml
@@ -585,18 +1178,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/older.rb (./older user)
 insert config/app.rb (OLDER_BASE_URL)
 identical db/migrate/20260925120000_create_users.rb
@@ -617,18 +1213,21 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resources :passwords
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/older.rb (user command already required)
 insert config/app.rb (OLDER_BASE_URL)
 ok   a re-run adds the reset route and the base_url setting to an app generated before them
@@ -688,18 +1287,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/prior.rb (./prior user)
 insert config/app.rb (PRIOR_BASE_URL)
 identical db/migrate/20260925120000_create_users.rb
@@ -720,18 +1322,21 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/prior.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical db/migrate/20260925120000_create_users.rb
@@ -752,18 +1357,21 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resources :passwords, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/prior.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical db/migrate/20260925120000_create_users.rb
@@ -784,18 +1392,21 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/prior.rb (user command already required)
 identical config/app.rb (base_url already declared)
 ok   a re-run adds the account route to an app generated before it
@@ -857,19 +1468,22 @@ create app/views/mail/_password_reset.html.erb
 create app/views/confirmations/new.html.erb
 create app/views/mail/_confirmation.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
-create test/confirmations.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/controllers/confirmations_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/conf.rb (./conf user)
 insert config/app.rb (CONF_BASE_URL)
 ok   --confirmable writes the confirmation files and columns
@@ -931,19 +1545,22 @@ create app/views/mail/_password_reset.html.erb
 create app/views/confirmations/new.html.erb
 create app/views/mail/_confirmation.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
-create test/confirmations.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/integration/first_run_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/controllers/confirmations_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /setup
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/cclub.rb (./cclub user, the first-run warning)
 insert config/app.rb (CCLUB_BASE_URL)
 insert config/app.rb (CCLUB_SETUP_OPEN)
@@ -951,7 +1568,7 @@ insert config/app.rb (CCLUB_SETUP_OPEN)
 next:
   cybertrain db migrate
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run cclub -- user EMAIL)
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb, accounts.rb and confirmations.rb; snapshot them from the binaries
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset and confirmation mails: set CCLUB_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 ok   --confirmable confirms the users nothing mails: the user command's and /setup's (pre-flight finding 6)
 ok   without --confirmable none of them
@@ -979,26 +1596,29 @@ identical app/views/mail/_password_reset.html.erb
 identical app/views/confirmations/new.html.erb
 identical app/views/mail/_confirmation.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
-identical test/confirmations.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resources :confirmations, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
 
 next:
   cybertrain db migrate
   cybertrain server      # then open /sign_up
-  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, passwords.rb, accounts.rb and confirmations.rb; snapshot them from the binaries
+  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset and confirmation mails: set CONF_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
@@ -1022,19 +1642,22 @@ identical app/views/mail/_password_reset.html.erb
 identical app/views/confirmations/new.html.erb
 identical app/views/mail/_confirmation.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
-identical test/confirmations.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resources :confirmations
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical db/migrate/20260925120000_create_users.rb
@@ -1059,19 +1682,22 @@ identical app/views/mail/_password_reset.html.erb
 identical app/views/confirmations/new.html.erb
 identical app/views/mail/_confirmation.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
-identical test/confirmations.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resource :account, resources :confirmations
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical db/migrate/20260925120000_create_users.rb
@@ -1096,19 +1722,22 @@ identical app/views/mail/_password_reset.html.erb
 identical app/views/confirmations/new.html.erb
 identical app/views/mail/_confirmation.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
-identical test/confirmations.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route delete /account/pending_email
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
 ok   --confirmable run again writes and edits nothing, and adds its route to routes without it
@@ -1206,18 +1835,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /sign_up
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/later.rb (./later user)
 insert config/app.rb (LATER_BASE_URL)
 exist db/migrate/20260925120000_create_users.rb
@@ -1243,19 +1875,22 @@ identical app/views/mail/_password_reset.html.erb
 create app/views/confirmations/new.html.erb
 create app/views/mail/_confirmation.html.erb
 manual  app/views/accounts/edit.html.erb (diff below)
-manual  test/support/app_test.rb (diff below)
-identical test/support/authentication_helpers.rb
-manual  test/authentication.rb (diff below)
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-manual  test/accounts.rb (diff below)
-create test/confirmations.rb
+manual  test/fixtures/users.yml (diff below)
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+manual  test/controllers/registrations_controller_test.rb (diff below)
+identical test/controllers/passwords_controller_test.rb
+manual  test/controllers/accounts_controller_test.rb (diff below)
+create test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resources :confirmations, delete /account/pending_email
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/later.rb (user command already required)
 identical config/app.rb (base_url already declared)
 create spin.toml
@@ -1312,18 +1947,21 @@ create app/views/passwords/new.html.erb
 create app/views/passwords/edit.html.erb
 create app/views/mail/_password_reset.html.erb
 create app/views/accounts/edit.html.erb
-create test/support/app_test.rb
-create test/support/authentication_helpers.rb
-create test/authentication.rb
-create test/admin.rb
-create test/remember_me.rb
-create test/lockout.rb
-create test/passwords.rb
-create test/accounts.rb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/integration/first_run_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
 insert app/controllers/application_controller.rb (include Authentication)
 route resource :session, resources :passwords, resource :account, get/post /setup
 route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
 insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
 insert bin/laterinv.rb (./laterinv user, the first-run warning)
 insert config/app.rb (LATERINV_BASE_URL)
 insert config/app.rb (LATERINV_SETUP_OPEN)
@@ -1350,19 +1988,22 @@ identical app/views/mail/_password_reset.html.erb
 create app/views/confirmations/new.html.erb
 create app/views/mail/_confirmation.html.erb
 manual  app/views/accounts/edit.html.erb (diff below)
-manual  test/support/app_test.rb (diff below)
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-manual  test/accounts.rb (diff below)
-create test/confirmations.rb
+manual  test/fixtures/users.yml (diff below)
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/integration/first_run_test.rb
+identical test/controllers/passwords_controller_test.rb
+manual  test/controllers/accounts_controller_test.rb (diff below)
+create test/controllers/confirmations_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 route resources :confirmations, delete /account/pending_email
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/laterinv.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical config/app.rb (setup_open already declared)
@@ -1384,18 +2025,21 @@ identical app/views/passwords/new.html.erb
 identical app/views/passwords/edit.html.erb
 identical app/views/mail/_password_reset.html.erb
 identical app/views/accounts/edit.html.erb
-identical test/support/app_test.rb
-identical test/support/authentication_helpers.rb
-identical test/authentication.rb
-identical test/admin.rb
-identical test/remember_me.rb
-identical test/lockout.rb
-identical test/passwords.rb
-identical test/accounts.rb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
 identical app/controllers/application_controller.rb (include Authentication)
 identical route resource :session, resources :passwords, resource :account
 identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
 identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/later.rb (user command already required)
 identical config/app.rb (base_url already declared)
 ok   a re-run with --confirmable over an app generated without it marks the concern's and setup's diffs IMPORTANT
@@ -1484,4 +2128,4 @@ create test/fixtures/.keep
 create test/support/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-46 tests, 1381 assertions, 0 failures
+53 tests, 1473 assertions, 0 failures

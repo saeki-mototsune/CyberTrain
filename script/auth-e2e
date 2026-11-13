@@ -2,7 +2,7 @@
 # Drives an application made by `cybertrain generate authentication` from
 # end to end, once per VARIANT: a new app (this checkout as its framework)
 # with a scaffold, the generator, `db migrate`, `build`, `spin run gen --
-# --check`, every test/*.rb the app has compiled and run from build/test/,
+# --check`, every test the app has run by `cybertrain test` (one program),
 # then the built binary served on a free port and probed with curl and
 # the user command, and a password reset whose mail the server's job thread
 # sends to an SMTP receiver (cybertrain/test/smtp_receiver.rb, run by
@@ -19,15 +19,17 @@
 #                opened
 #   upgrade04    test/fixtures/auth_04_app (a sign-up app v0.4.1 generated)
 #                with today's generator run over it: its printed diffs
-#                applied with patch -p1, then db migrate, build and every
-#                test/*.rb (0.4's test/authentication.rb, patched, and the
-#                new ones); then a fresh copy with --force, the same; then a
+#                applied with patch -p1 and 0.4's test files that the
+#                generator names as replaced deleted, then db migrate, build
+#                and `cybertrain test`; then a fresh copy with --force (which
+#                deletes them itself), the same; then a
 #                copy migrated by 0.4's migrations with a user in it, run
 #                with --confirmable: the add-columns migration keeps the
 #                user and counts it as confirmed; with every diff applied
 #                but the sessions controller's, the app builds and the
-#                concern still signs no unconfirmed account in; with that
-#                one applied too, every test passes
+#                concern still signs no unconfirmed account in (one test,
+#                `cybertrain test -n`); with that one applied too, every test
+#                passes
 #
 # Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
 # it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
@@ -168,29 +170,17 @@ form_token() {
   printf '%s' "$1" | sed -n 's/.*name="authenticity_token" value="\([^"]*\)".*/\1/p' | head -n 1
 }
 
-# In the app's directory: db migrate, build, gen --check, then every
-# test/*.rb the app has compiled and run.
+# In the app's directory: db migrate, build, gen --check, then every test
+# the app has, through `cybertrain test` (gen, one compile, one run).
 build_and_test() {
   step "db migrate, build, gen --check"
   cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate"; }
   cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build"; }
   test -x dist/shop || fail "no dist/shop"
   cybertrain spin run gen -- --check > gen-check.log 2>&1 || { cat gen-check.log >&2; fail "spin run gen -- --check"; }
-
-  # The app's own tests link SQLite, so they have no CRuby snapshot: `spin
-  # test` compiles each one (and fails for want of a snapshot), then the
-  # binary is run here and must pass.
-  for test_file in test/*.rb; do
-    # `cybertrain new`'s test/test_helper.rb is not a program: the class-form
-    # tests' helper, which `cybertrain test` loads.
-    [ "$test_file" = test/test_helper.rb ] && continue
-    name=$(basename "$test_file" .rb)
-    step "test/$name.rb"
-    cybertrain spin test "$test_file" > "test-$name.log" 2>&1 || true
-    test -x "build/test/$name" || { tail -n 40 "test-$name.log" >&2; fail "test/$name.rb did not compile"; }
-    out=$("./build/test/$name" 2>&1) || { printf '%s\n' "$out" | grep -v '^ok ' >&2; fail "test/$name.rb"; }
-    expect_contains "test/$name.rb" " 0 failures" "$out"
-  done
+  step "cybertrain test"
+  cybertrain test > test.log 2>&1 || { grep -v '^  ok ' test.log | tail -n 60 >&2; fail "cybertrain test"; }
+  expect_contains "cybertrain test" " 0 failures" "$(tail -n 3 test.log)"
 }
 
 # `copy_04_app NAME`: test/fixtures/auth_04_app copied to $WORK/NAME, its
@@ -205,11 +195,27 @@ copy_04_app() {
 }
 
 # The generated tests every upgraded copy must have, and pass.
-UPGRADE_TESTS="authentication admin remember_me lockout passwords accounts"
+UPGRADE_TESTS="test/test_helper.rb test/fixtures/users.yml test/support/session_test_helper.rb test/models/user_test.rb
+  test/controllers/sessions_controller_test.rb test/controllers/registrations_controller_test.rb
+  test/controllers/passwords_controller_test.rb test/controllers/accounts_controller_test.rb
+  test/integration/remember_me_test.rb test/integration/lockout_test.rb test/integration/admin_test.rb"
 
 expect_upgrade_tests() {
-  for name in $UPGRADE_TESTS; do
-    test -f "test/$name.rb" || fail "no test/$name.rb"
+  for f in $UPGRADE_TESTS; do
+    test -f "$f" || fail "no $f"
+  done
+}
+
+# `delete_replaced OUTPUT`: deletes the files the generator's output names
+# as replaced by its class-form tests (`manual  <path>: replaced by ...;
+# delete it`, plan decision D15), as its user is told to.
+delete_replaced() {
+  local names
+  names=$(sed -n 's/^manual  \([^:]*\): replaced by .*; delete it$/\1/p' "$1")
+  [ -n "$names" ] || fail "no replaced test files named in $1"
+  for f in $names; do
+    test -f "$f" || fail "$f, named as replaced, is not there"
+    rm "$f"
   done
 }
 
@@ -223,7 +229,7 @@ run_upgrade04() {
   # Left alone until patched: the files 0.4 wrote that today's generator
   # writes otherwise, and the 0.4 block in ApplicationController.
   for f in app/controllers/application_controller.rb app/controllers/sessions_controller.rb app/models/user.rb \
-           app/views/sessions/new.html.erb test/authentication.rb; do
+           app/views/sessions/new.html.erb test/authentication.rb test/support/app_test.rb; do
     cmp -s "$f" "$fixture/$f" || fail "$f changed before the diffs were applied"
   done
   grep -q '^manual  app/controllers/application_controller.rb: ' generate.out || fail "no diff for application_controller.rb"
@@ -235,6 +241,9 @@ run_upgrade04() {
     fail "patched ApplicationController still has 0.4's block"
   fi
   grep -q '^  jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication$' config/routes.rb || fail "the jobs page is not drawn after patching"
+  # 0.4's top-level tests, named as replaced (patch deletes nothing).
+  grep -q '^manual  test/authentication.rb: replaced by test/controllers/sessions_controller_test.rb; delete it$' generate.out || fail "test/authentication.rb is not named as replaced"
+  delete_replaced generate.out
   expect_upgrade_tests
   build_and_test
 
@@ -245,6 +254,8 @@ run_upgrade04() {
     fail "--force left diffs to apply: $(grep '^manual  ' generate.out)"
   fi
   grep -q '^  include Authentication$' app/controllers/application_controller.rb || fail "--force did not include Authentication"
+  test ! -e test/authentication.rb || fail "--force left 0.4's test/authentication.rb"
+  test ! -e test/support/app_test.rb || fail "--force left 0.4's test/support/app_test.rb"
   expect_upgrade_tests
   build_and_test
 
@@ -272,39 +283,38 @@ run_upgrade04() {
   expect_equal "the 0.4 user after the migration" "old@example.com|0|0|2026-09-25 12:00:00.000000|" \
     "$(sqlite3 "$db" "SELECT email_address, admin, failed_attempts, confirmed_at, unconfirmed_email FROM users")"
   # 0.4's SessionsController#create calls start_new_session_for for any
-  # right password: the concern's own check must refuse the account.
-  cat > test/unconfirmed_backstop.rb <<'RUBY'
-require_relative "support/app_test"
+  # right password: the concern's own check must refuse the account. Run
+  # alone (-n), as the other tests need the sessions controller's diff.
+  delete_replaced generate.out
+  cat > test/integration/unconfirmed_backstop_test.rb <<'RUBY'
+require "test_helper"
 
-test "an unconfirmed account gets no session, whichever sessions controller asks" do
-  Session.all.delete_all
-  User.all.delete_all
-  client = Cybertrain::Test::Client.new(APP)
-  user = User.new(email_address: "new@example.com")
-  user.password = "s3cr3t-s3cr3t"
-  user.save!
-  assert_equal false, user.confirmed?
-  AppTest.sign_in(client, "new@example.com")
-  assert_equal 0, Session.count
-  refute client.get("/session/new").body.include?("<span>new@example.com</span>")
-  user.update_columns(confirmed_at: Time.now)
-  AppTest.sign_in(client, "new@example.com")
-  assert_equal 1, Session.count
-  assert_includes client.get("/session/new").body, "<span>new@example.com</span>"
+class UnconfirmedBackstopTest < ActionDispatch::IntegrationTest
+  test "an unconfirmed account gets no session, whichever sessions controller asks" do
+    user = User.new(email_address: "new@example.com")
+    user.password = "s3cr3t-s3cr3t"
+    user.save!
+    assert_equal false, user.confirmed?
+    post "/session", params: { email_address: "new@example.com", password: "s3cr3t-s3cr3t" }
+    assert_equal 0, Session.count
+    get "/session/new"
+    refute response.body.include?("<span>new@example.com</span>")
+    user.update_columns(confirmed_at: Time.current)
+    post "/session", params: { email_address: "new@example.com", password: "s3cr3t-s3cr3t" }
+    assert_equal 1, Session.count
+    get "/session/new"
+    assert_includes response.body, "<span>new@example.com</span>"
+  end
 end
-
-Cybertrain::Test.run!
 RUBY
   cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build, every diff but the sessions controller's applied"; }
-  cybertrain spin test test/unconfirmed_backstop.rb > test-unconfirmed_backstop.log 2>&1 || true
-  test -x build/test/unconfirmed_backstop || { tail -n 40 test-unconfirmed_backstop.log >&2; fail "test/unconfirmed_backstop.rb did not compile"; }
-  out=$(./build/test/unconfirmed_backstop 2>&1) || { printf '%s\n' "$out" >&2; fail "an unconfirmed account signed in through 0.4's sessions controller"; }
-  expect_contains "test/unconfirmed_backstop.rb" " 0 failures" "$out"
+  out=$(cybertrain test test/integration/unconfirmed_backstop_test.rb 2>&1) || { printf '%s\n' "$out" | tail -n 40 >&2; fail "an unconfirmed account signed in through 0.4's sessions controller"; }
+  expect_contains "test/integration/unconfirmed_backstop_test.rb" "1 test, 5 assertions, 0 failures" "$out"
 
   step "the sessions controller's diff applied too: every test"
   patch -p1 < sessions.diff > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < the sessions controller's diff"; }
   expect_upgrade_tests
-  test -f test/confirmations.rb || fail "no test/confirmations.rb"
+  test -f test/controllers/confirmations_controller_test.rb || fail "no test/controllers/confirmations_controller_test.rb"
   build_and_test
 
   cd "$ROOT"
@@ -344,7 +354,7 @@ run_variant() {
   if [ "$VARIANT" = "confirmable" ]; then
     test -f app/controllers/confirmations_controller.rb || fail "no ConfirmationsController"
     test -f app/mailers/confirmations_mailer.rb || fail "no ConfirmationsMailer"
-    test -f test/confirmations.rb || fail "no test/confirmations.rb"
+    test -f test/controllers/confirmations_controller_test.rb || fail "no test/controllers/confirmations_controller_test.rb"
     grep -q '^  resources :confirmations, param: :token, only: \[:new, :create, :show\]$' config/routes.rb || fail "no confirmation routes"
     grep -q 't.datetime "confirmed_at"' db/migrate/*_create_users.rb || fail "no users.confirmed_at"
     grep -q 't.string "unconfirmed_email"' db/migrate/*_create_users.rb || fail "no users.unconfirmed_email"

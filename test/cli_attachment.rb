@@ -340,27 +340,27 @@ test "with authentication the generated test signs in first" do
   Cybertrain::CLI::Scaffold.generate("club", "post", ["title:string"])
   Cybertrain::CLI::Attachment.generate("club", "post", "cover", false)
   spec = read("club/test/integration/post_cover_attachment_test.rb")
-  # A user signed in through the form in setup, before the upload directory
-  # is emptied; the integration test's own client keeps the cookie.
+  # The fixture user `one` signed in through the form in setup
+  # (SessionTestHelper#sign_in_as), before the upload directory is emptied;
+  # the integration test's own client keeps the cookie.
   assert_includes spec, "  setup do\n" \
                         "    # A user signed in through the form: the controller's actions need one.\n" \
-                        "    user = User.new(email_address: \"ann@example.com\")\n" \
-                        "    user.password = \"s3cr3t-s3cr3t\"\n" \
-                        "    user.save!\n" \
-                        "    post \"/session\", params: { email_address: \"ann@example.com\", password: \"s3cr3t-s3cr3t\" }\n" \
+                        "    sign_in_as users(:one)\n" \
                         "    # Uploaded files land here, not in storage/uploads.\n"
   refute spec.include?("confirmed_at"), "not --confirmable"
+  refute spec.include?("User.new"), "the fixture's user"
   refute spec.include?("AppTest"), "no AppTest"
   assert_includes spec, "    delete \"/session\"\n    get \"/posts/\#{record.id}/cover\"\n    assert_redirected_to \"/session/new\"\n"
 end
 
-test "with --confirmable authentication the signed-in user is confirmed" do
+test "with --confirmable authentication the signed-in user is the fixtures' confirmed one" do
   Cybertrain::CLI::NewApp.create("guard", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Authentication.generate("guard", false, true)
   Cybertrain::CLI::Scaffold.generate("guard", "post", ["title:string"])
   Cybertrain::CLI::Attachment.generate("guard", "post", "cover", false)
   spec = read("guard/test/integration/post_cover_attachment_test.rb")
-  assert_includes spec, "    user.password = \"s3cr3t-s3cr3t\"\n    user.confirmed_at = Time.current\n    user.save!\n"
+  assert_includes spec, "    sign_in_as users(:one)\n"
+  assert_includes read("guard/test/fixtures/users.yml"), "  confirmed_at: 2026-11-11 12:00:00\n"
 end
 
 # The tutorial's blog at step 14: step 05 gave the body a minimum length and
@@ -597,15 +597,14 @@ test "authentication generated after the attachment adds the sign-in to its test
   Cybertrain::CLI::Scaffold.generate("guild", "product", ["name:string"])
   Cybertrain::CLI::Attachment.generate("guild", "product", "photo", true)
   path = "guild/test/integration/product_photo_attachment_test.rb"
-  refute read(path).include?("post \"/session\""), "no sign-in before authentication"
+  refute read(path).include?("sign_in_as"), "no sign-in before authentication"
   File.write("guild/test/integration/notes_attachment_test.rb", "# written by hand\n")
   Cybertrain::CLI::Authentication.generate("guild")
   spec = read(path)
   assert_includes spec, "  setup do\n    # A user signed in through the form: the controller's actions need one.\n" \
-                        "    user = User.new(email_address: \"ann@example.com\")\n"
-  assert_includes spec, "    post \"/session\", params: { email_address: \"ann@example.com\", password: \"s3cr3t-s3cr3t\" }\n" \
+                        "    sign_in_as users(:one)\n" \
                         "    # Uploaded files land here, not in storage/uploads.\n"
-  assert_equal 1, count_of(spec, "post \"/session\"")
+  assert_equal 1, count_of(spec, "sign_in_as")
   assert_equal "# written by hand\n", read("guild/test/integration/notes_attachment_test.rb")
   Cybertrain::CLI::Authentication.generate("guild")
   assert_equal spec, read(path)

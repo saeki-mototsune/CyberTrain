@@ -898,19 +898,32 @@ module Cybertrain
         pairs.empty? ? "{ #{s}: {} }" : "{ #{s}: { #{pairs.join(", ")} } }"
       end
 
+      # Whether line is the scaffold controller test's setup line
+      # (`    @article = articles(:one)`), which `generate authentication`
+      # signs in before.
+      def self.scaffold_setup_line?(line)
+        return false unless line.start_with?("    @") && line.end_with?("(:one)")
+
+        eq = line.index(" = ")
+        !eq.nil? && line.index(" ", 5) == eq
+      end
+
       # test/controllers/<plural>_controller_test.rb: Rails' scaffold test,
-      # one request per action, on the fixture row `one`.
-      def self.controller_test(res)
+      # one request per action, on the fixture row `one`. In an application
+      # with authentication (`signed_in`) every test signs the fixture user
+      # `one` in first (SessionTestHelper#sign_in_as).
+      def self.controller_test(res, signed_in = false)
         s = res.singular
         words = s.tr("_", " ")
         index = res.index_helper
         params = controller_test_params(res)
+        sign_in = signed_in ? "    sign_in_as users(:one)\n" : ""
         <<~RUBY
           require "test_helper"
 
           class #{res.plural_class}ControllerTest < ActionDispatch::IntegrationTest
             setup do
-              @#{s} = #{res.plural}(:one)
+          #{sign_in}    @#{s} = #{res.plural}(:one)
             end
 
             test "should get index" do

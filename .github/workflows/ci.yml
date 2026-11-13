@@ -244,11 +244,9 @@ jobs:
           cybertrain build
           cybertrain spin run gen -- --check
           test -x dist/shop
-          # The generated app's own sign-up / sign-in test, compiled and run
-          # from the binary (it links SQLite, so it has no CRuby snapshot).
-          cybertrain spin test test/authentication.rb || true
-          test -x build/test/authentication
-          ./build/test/authentication
+          # The generated app's own tests (the scaffold's, which sign in with
+          # sign_in_as, and the authentication generator's), in one program.
+          cybertrain test
           cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
           CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3999/session/new > /dev/null && break; sleep 0.5; done
@@ -266,7 +264,7 @@ jobs:
           kill %1
 
       # The invitation-only variant (docs/design.md D29): its own generated
-      # test, then the binary: the first-run warning and /setup while no user
+      # tests (cybertrain test), then the binary: the first-run warning and /setup while no user
       # exists, `./club user` reading the password from stdin, and /setup
       # gone once a user exists.
       - name: Gem CLI generates invitation-only authentication and runs its first-run setup
@@ -278,9 +276,7 @@ jobs:
           test ! -e app/controllers/registrations_controller.rb
           cybertrain db migrate
           cybertrain build
-          cybertrain spin test test/authentication.rb || true
-          test -x build/test/authentication
-          ./build/test/authentication
+          cybertrain test
           cd dist
           export CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret
           ./club migrate
@@ -303,13 +299,14 @@ jobs:
 
       # The authentication variants end to end (script/auth-e2e): a new app
       # with a scaffold, the generator (sign-up, --invite-only, --confirmable),
-      # every test the app has compiled and run, then the binary served: the
+      # every test the app has run by `cybertrain test`, then the binary served: the
       # sign-in page, `./shop user` and `user admin`, the jobs page behind
       # require_admin, the mails (reset; with --confirmable the sign-up's and
       # the new address's confirmation) and the account page; and upgrade04,
       # the generator run over test/fixtures/auth_04_app (an app v0.4.1
       # generated): its printed diffs applied with patch, or --force, and
-      # every generated test passing (sqlite3 and patch: the runner's own).
+      # 0.4's replaced test files deleted and every test passing (sqlite3
+      # and patch: the runner's own).
       - name: Authentication end to end
         run: script/auth-e2e signup invite confirmable upgrade04
 

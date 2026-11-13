@@ -241,7 +241,7 @@ module Cybertrain
         record(created, root, "#{views}/new.html.erb", Templates.new_view(res))
         record(created, root, "#{views}/edit.html.erb", Templates.edit_view(res))
         record(created, root, "#{views}/_form.html.erb", Templates.form_partial(res))
-        record(created, root, "test/controllers/#{res.plural}_controller_test.rb", Templates.controller_test(res))
+        record(created, root, "test/controllers/#{res.plural}_controller_test.rb", Templates.controller_test(res, File.exist?(File.join(root, "app/models/user.rb"))))
         add_route(routes_path, res.plural)
         attachments = false
         res.fields.each do |f|

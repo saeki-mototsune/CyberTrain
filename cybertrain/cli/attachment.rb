@@ -1083,8 +1083,7 @@ module Cybertrain
         body += TEST_TAIL
         body = body.sub("<<show_check>>", show_check(root, spec))
         body = body.sub("<<fields_hash>>", fields_hash(root, spec, fields))
-        confirmable = File.exist?(File.join(root, "app/controllers/confirmations_controller.rb"))
-        text = TEST_HEAD.sub("<<sign_in>>", auth ? Authentication.test_sign_in_lines(confirmable) : "")
+        text = TEST_HEAD.sub("<<sign_in>>", auth ? Authentication.test_sign_in_lines : "")
         text = text.sub("<<TestClass>>", test_class(spec))
         text += Authentication.margin(body, 2)
         text += "end\n"

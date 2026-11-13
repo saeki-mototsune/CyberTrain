@@ -372,8 +372,7 @@ module Cybertrain
         else
           puts "  cybertrain server      # then open /sign_up"
         end
-        tests = confirmable ? "passwords.rb, accounts.rb and confirmations.rb" : "passwords.rb and accounts.rb"
-        puts "  cybertrain spin test   # test/authentication.rb, admin.rb, remember_me.rb, lockout.rb, #{tests}; snapshot them from the binaries"
+        puts "  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others"
         base_url_env = Authentication.base_url_env(Build.app_name("."))
         mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
         puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
