@@ -230,15 +230,17 @@ bash playground/smoke.sh IMAGE
 It needs bash 3.2 or newer, docker and curl. It prints one PASS or FAIL line
 per check, then `smoke: N passed, M failed`, and exits 0 only when every
 check passes; CI runs it on every build before pushing. A3's and A9's PASS
-lines also say what they timed. Most of its time goes to two compiles of
-about a minute each: the binary after the model edit (A9) and the offline
-app (B3). A3, A11 and E1 wait for the startup build to end, which finds the
+lines also say what they timed. Most of its time goes to two compiles: the
+binary after the model edit (A9) and the offline app (B3, not timed on its
+own). A3, A11 and E1 wait for the startup build to end, which finds the
 binary up to date: the binary serves a fraction of a second after the start.
 Measured on 4 CPUs (linux/amd64, 2026-11-13), twice, on the image built from
 commit c04bb23 and this directory: 33 passed in 3 min 23 s and in 2 min 48 s;
-A3, the binary served 0.2 s after the start; A9, CRuby answered 1 s after the
-save and the binary 56 s after it (whole seconds; spinel's object cache is
-warm).
+A3, the binary served 0.2 s after the start of the supervisor's first round
+(its own `=> spinel: ready in` figure, which counts from after `spin flags`,
+the address probe and the bind, not from `docker run`); A9, CRuby answered
+1 s after the save and the binary 56 s after it (whole seconds, polled every
+3 s once CRuby has answered; spinel's object cache is warm).
 
 | ID | Checks |
 | --- | --- |
@@ -297,7 +299,10 @@ that tag is refused: the Release workflow's `promote-latest` job points
   (2026-11-13) by saving the model edit A9 makes in a running blog: CRuby
   answered 0.6 s after the save and the binary 74 s after it on 4 CPUs, and
   0.7 s and 74 s under `docker run --cpus 2` (most of that build is
-  single-threaded); a codespace's cores can be slower (the compiled loop's
+  single-threaded). The smoke's A9 timed the same edit's binary at 56 s on
+  the same machine; its polling can only make it late, by up to 3 s, so the
+  two are separate runs of one incremental build, which took 56 to 74 s
+  there. A codespace's cores can be slower (the compiled loop's
   full rebuild took 99 s on the default 2-core codespace), so the texts for
   visitors say "a minute or two". A new app's first `cybertrain server`
   serves from CRuby at once, and its binary took over after 112 s on 4 CPUs

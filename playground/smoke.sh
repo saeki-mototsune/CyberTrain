@@ -389,14 +389,28 @@ if [ "$main_up" = yes ]; then
   running_mtime=$(docker exec "$main" stat -c %Y /workspace/blog/build/bin/blog 2> /dev/null)
   ready_in=$(docker logs "$main" 2>&1 | sed -n 's/^=> spinel: ready in \([0-9.]*s\).*/\1/p' | head -n 1)
   if [ "$startup_built" = yes ] && [ -n "$image_mtime" ] && [ "$running_mtime" = "$image_mtime" ]; then
-    pass A3 "$what_A3" "the binary served ${ready_in:-?} after the start"
+    pass A3 "$what_A3" "the binary served ${ready_in:-?} after the supervisor's first round began (its ready-in figure)"
   else
     fail A3 "$what_A3" "image: ${image_mtime:-unknown}, running: ${running_mtime:-unknown}, startup build ended: $startup_built" "$main"
   fi
 
   # One word per program that ran (its pgrep -a line, but for a --version
-  # probe): the whole command lines run to pages.
-  compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | grep -v ' --version$' | awk '{ n = split($2, p, "/"); print p[n] }' | sort -u | tr '\n' ' ' | sed 's/ $//')
+  # probe): the whole command lines run to pages. A probe is a cc or gcc line
+  # that is `cc --version` or that has no arguments at all: pgrep -a prints
+  # only the name, as `[cc]` (with ` <defunct>` once it has exited but not
+  # been reaped), when the process's command line cannot be read, which is
+  # the case in the instant a process exits; a probe caught there has lost
+  # its `--version`. Not counting such a line is sound because every real
+  # compile or link runs cc1, or collect2 and ld, and those count whatever
+  # their line looks like, as does a cc or gcc line with any other arguments.
+  compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | awk '
+    { name = $2; unreadable = 0 }
+    name ~ /^\[.*\]$/ { name = substr(name, 2, length(name) - 2); unreadable = 1 }
+    {
+      n = split(name, p, "/"); prog = p[n]
+      if ((prog == "cc" || prog == "gcc") && (unreadable || NF == 2 || (NF == 3 && $3 == "--version"))) next
+      print prog
+    }' | sort -u | tr '\n' ' ' | sed 's/ $//')
   polled=$(docker exec "$main" test -e /tmp/smoke-compilers.log && echo yes)
   running_gen_mtime=$(docker exec "$main" stat -c %Y /workspace/blog/build/bin/gen 2> /dev/null)
   running_ffi=$(docker exec "$main" sh -c "$ffi_list" sh /workspace/blog 2> /dev/null)
@@ -765,7 +779,10 @@ if start boot -e CYBERTRAIN_SESSION_SAME_SITE=lax "$image"; then
     esac
     answer=$(docker exec "$boot" curl -s -o /tmp/f1.html -w '%{http_code}' --max-time 2 http://127.0.0.1:3000/articles 2> /dev/null)
     named=""
-    if [ "$answer" = 503 ] && docker exec "$boot" grep -qF "$message" /tmp/f1.html 2> /dev/null; then
+    # CRuby's reason is the text before the "the compiled binary also
+    # failed" line and the binary's the text from it on: the message must be
+    # in both parts, so that the binary's part alone cannot stand for CRuby.
+    if [ "$answer" = 503 ] && docker exec "$boot" sed '/the compiled binary also failed/,$d' /tmp/f1.html 2> /dev/null | grep -qF "$message"; then
       named=cruby
       if docker exec "$boot" sed -n '/the compiled binary also failed/,$p' /tmp/f1.html 2> /dev/null | grep -qF "$message"; then
         named="cruby and the binary"

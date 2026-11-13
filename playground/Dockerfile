@@ -163,13 +163,17 @@ RUN git init -q -b main \
 # P23's rule as the supervisor reads it, once nothing more is written: the
 # binary is newer than every *.rb of the blog (Build.binary_stale?) and of
 # the other -I directories of `spin flags` (the framework), and spin agrees.
+# No -I directory, or none but the blog's, would check nothing: that fails.
 RUN set -eu; \
     dirs=$(spin flags | tr ' ' '\n' | awk 'take { print $0; take = 0; next } $0 == "-I" { take = 1; next } /^-I./ { print substr($0, 3) }'); \
+    test -n "$dirs" || { echo "spin flags names no -I directory" >&2; exit 1; }; \
     ruby -r cybertrain/cli/build -e ' \
       build = Cybertrain::CLI::Build; \
       since = build.mtime_ns("build/bin/blog"); \
       abort "build/bin/blog is stale (Build.binary_stale?)" if build.binary_stale?(Dir.pwd, "blog"); \
-      newer = ARGV.reject { |dir| File.expand_path(dir) == Dir.pwd }.select { |dir| build.newer_ruby?(dir, since, true) }; \
+      others = ARGV.reject { |dir| File.expand_path(dir) == Dir.pwd }; \
+      abort "spin flags names no -I directory but the blog: #{ARGV.join(", ")}" if others.empty?; \
+      newer = others.select { |dir| build.newer_ruby?(dir, since, true) }; \
       abort "a Ruby file is as new as build/bin/blog or newer in #{newer.join(", ")}" unless newer.empty?' $dirs; \
     spin build blog | grep -F "(up to date)"
 
