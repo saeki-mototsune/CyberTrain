@@ -2745,4 +2745,4 @@ create test/fixtures/.keep
 create test/support/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-56 tests, 1651 assertions, 0 failures
+56 tests, 1652 assertions, 0 failures

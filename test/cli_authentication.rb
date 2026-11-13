@@ -1767,7 +1767,9 @@ test "password reset: the generated tests and their helpers" do
   # Every change to global state is put back in an ensure.
   assert_includes spec, "  def with_config(env, hosts, base_url, log = nil)\n"
   assert_includes spec, "    ensure\n      c.env = saved_env\n      c.hosts_from_env = saved_hosts\n" \
-                        "      c.set_string_setting(:base_url, saved_base_url)\n      Cybertrain.logger = saved_logger\n    end\n"
+                        "      c.set_string_setting(:base_url, saved_base_url)\n      Cybertrain.logger = saved_logger\n" \
+                        "      Cybertrain::Logger.json_lines = saved_json_lines\n    end\n"
+  assert_includes spec, "      Cybertrain::Logger.json_lines = false\n      yield\n"
   assert_includes spec, "  NO_HOSTS = Array.new(0) { \"\" }\n"
   assert spec.index("Cybertrain.config.set_string_setting").nil?
   assert spec.index("config.env = ").nil?
