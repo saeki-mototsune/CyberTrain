@@ -439,8 +439,11 @@ generator so both agree, not papered over in the preview.
   3. for the `ruby` on PATH (the children's), asked in the same run that
      gives the banner its version, which may take 10 s at most (a probe
      still running then is killed): `preview unavailable: no ruby on PATH;
-     running the compiled loop`, `preview unavailable: the ruby on PATH did
-     not answer within 10 s; running the compiled loop`, or `preview
+     running the compiled loop`, `preview unavailable: the ruby on PATH
+     cannot be started (<file>: <why>); running the compiled loop` (not
+     executable, its `#!` interpreter missing or not executable),
+     `preview unavailable: the ruby on PATH did not answer within 10 s;
+     running the compiled loop`, or `preview
      unavailable: Ruby cannot load fiddle (cybertrain doctor has the
      details); running the compiled loop`. `doctor`'s fiddle line also
      says when there is no `ruby` on PATH.

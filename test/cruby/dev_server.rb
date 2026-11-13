@@ -336,6 +336,85 @@ test "child_ruby gives up on a ruby that does not answer, and kills it with what
   end
 end
 
+# A `ruby` on PATH that is there but cannot be started is neither "no ruby"
+# nor "cannot load fiddle": the line says what is wrong with it.
+test "child_ruby names a ruby on PATH that cannot be started, and why" do
+  Dir.mktmpdir("dev-server-ruby") do |dir|
+    ruby = File.join(dir, "ruby")
+    saved = ENV["PATH"]
+    ENV["PATH"] = dir
+    begin
+      File.write(File.join(dir, "interpreter"), "not a program\n")
+      File.write(ruby, "#!#{File.join(dir, "interpreter")}\n")
+      File.chmod(0o755, ruby)
+      assert_equal ["(unknown version)", "the ruby on PATH cannot be started (#{ruby}: Permission denied)"],
+                   DevServer.child_ruby
+      File.write(ruby, "#!#{File.join(dir, "no-such-interpreter")}\n")
+      assert_equal ["(unknown version)",
+                    "the ruby on PATH cannot be started (#{ruby}: its #! interpreter is missing (No such file or directory))"],
+                   DevServer.child_ruby
+      File.chmod(0o644, ruby)
+      assert_equal ["(unknown version)", "the ruby on PATH cannot be started (#{ruby}: it is not executable)"],
+                   DevServer.child_ruby
+      File.delete(ruby)
+      assert_equal ["(unknown version)", DevServer::NO_RUBY], DevServer.child_ruby
+    ensure
+      ENV["PATH"] = saved
+    end
+  end
+end
+
+test "bounded_run answers a pipe it cannot make as a failure, and keeps a bounded part of the output" do
+  original = IO.singleton_class.instance_method(:pipe)
+  IO.singleton_class.send(:define_method, :pipe) { |*_args| raise Errno::EMFILE }
+  begin
+    assert_equal ["Too many open files", :failed], DevServer.bounded_run(["sh", "-c", "exit 0"], 1)
+    assert_equal ["(unknown version)", "the ruby on PATH cannot be started (Too many open files)"], DevServer.child_ruby
+  ensure
+    IO.singleton_class.send(:define_method, :pipe, original)
+  end
+  out, status = DevServer.bounded_run(["sh", "-c", "head -c 200000 /dev/zero; echo done >&2"], 5)
+  assert_equal DevServer::BOUNDED_OUTPUT, out.bytesize
+  assert status.success?
+end
+
+# CRuby raises TERM and HUP as a SignalException until `serve` traps them:
+# the probe's ensure stops its process group, and the supervisor still ends
+# by the signal.
+test "a TERM or HUP during the probe of the children's ruby stops the probe's process group too" do
+  Dir.mktmpdir("dev-server-ruby") do |dir|
+    pids = File.join(dir, "pids")
+    File.write(File.join(dir, "ruby"), "#!/bin/sh\nsleep 30 &\necho \"$$ $!\" > '#{pids}'\nwait\n")
+    File.chmod(0o755, File.join(dir, "ruby"))
+    probe = "require 'cybertrain/cli/dev_server'; Cybertrain::CLI::DevServer.child_ruby(30)"
+    [:TERM, :HUP].each do |name|
+      File.delete(pids) if File.exist?(pids)
+      supervisor = Process.spawn({ "PATH" => "#{dir}:#{ENV.fetch("PATH")}" }, RbConfig.ruby, "-I", REPO, "-e", probe)
+      begin
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 5
+        sleep 0.02 until (File.exist?(pids) && File.read(pids).split.size == 2) ||
+                         Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+        started = File.read(pids).split.map(&:to_i)
+        Process.kill(name, supervisor)
+        _, status = Process.wait2(supervisor)
+        assert_equal Signal.list[name.to_s], status.termsig
+        started.each do |pid|
+          deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+          sleep 0.02 until DevServer.ended?(pid) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+          assert DevServer.ended?(pid), "pid #{pid} of the probe is still running after #{name}"
+        end
+      ensure
+        begin
+          Process.kill(:KILL, supervisor)
+          Process.wait(supervisor)
+        rescue SystemCallError
+          nil
+        end
+      end
+    end
+  end
+end
+
 test "a port that is in use is refused with today's wording, before any child" do
   taken = TCPServer.new("127.0.0.1", 0)
   port = taken.addr[1]

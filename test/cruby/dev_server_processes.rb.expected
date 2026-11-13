@@ -19,6 +19,7 @@ ok   a build after a cancelled first build is incremental
 ok   a save in the last instant of a plain build is compiled by the next build, not found up to date
 ok   without --incremental, a save in the last instant of a build leaves the binary older than the save
 ok   a Ruby file of another -I directory newer than the binary makes the build incremental
+ok   the framework's walk passes over an application inside it, its build/ and tmp/ included
 ok   a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag
 ok   a failed build reports its log
 ok   a spin that cannot be started is a failed build with the reason
@@ -29,6 +30,7 @@ ok   close keeps child.pid and build.pid while the process they name still runs
 ok   cancel_build reaps the build's leader only after the group's KILL
 ok   without /proc and a ps that fails, cancel_build still sends TERM before KILL
 ok   ended? reads /proc: a running process is not ended, a zombie is, a reaped one is
+ok   proc_state answers ended only for a process that is gone; other errors and odd text are unknown
 ok   close removes the files' leftover .tmp copies too
 ok   the file watch survives a poll that raises, says so once, and notices later saves
 ok   log loses its line, without raising, once the terminal is gone
@@ -39,4 +41,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-41 tests, 148 assertions, 0 failures
+43 tests, 160 assertions, 0 failures

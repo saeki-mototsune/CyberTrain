@@ -546,9 +546,36 @@ module Cybertrain
         # comparison and the same skipped directories as binary_stale?).
         def dependency_newer?
           since = Build.mtime_ns(File.join(@root, "build", "bin", @name))
-          @load_path.any? { |dir| dir != @root && File.directory?(dir) && Build.newer_ruby?(dir, since, true) }
+          @load_path.any? do |dir|
+            next false unless File.directory?(dir)
+
+            dir = File.realpath(dir)
+            dir != @root && newer_ruby_around_app?(dir, since, true)
+          end
         rescue StandardError
           true
+        end
+
+        # Build.newer_ruby? over dir, but for the application's own tree
+        # when dir holds it (an application inside the framework's
+        # checkout, as examples/blog is): binary_stale? reads that tree
+        # with its build/ and tmp/ skipped, which the framework's walk
+        # would not skip below its top level, and a Ruby file the
+        # application keeps there (a cache) would make every build
+        # incremental.
+        def newer_ruby_around_app?(dir, since, top)
+          return Build.newer_ruby?(dir, since, top) unless @root.start_with?("#{dir}/")
+
+          Build.listing(dir).any? do |child|
+            next false if top && (Build::STALE_SKIPPED.include?(child) || child.start_with?("."))
+
+            path = File.join(dir, child)
+            if File.directory?(path)
+              path != @root && !File.symlink?(path) && newer_ruby_around_app?(path, since, false)
+            else
+              child.end_with?(".rb") && File.file?(path) && Build.mtime_ns(path) >= since
+            end
+          end
         end
 
         def poll_spawn_failure(machine)

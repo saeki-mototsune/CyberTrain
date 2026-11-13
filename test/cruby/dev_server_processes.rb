@@ -44,10 +44,10 @@ class Recorder
 end
 
 # A temporary application directory with the given scripts written into
-# bin/stand-ins/; yields the runner, its listener and the directory. Every
+# bin/stand-ins/ (a directory made in inside when given); yields the runner, its listener and the directory. Every
 # process the runner still owns is stopped at the end.
-def with_runner(scripts, watch_interval: 0.05, load_path: [REPO])
-  Dir.mktmpdir("dev-server-processes") do |root|
+def with_runner(scripts, watch_interval: 0.05, load_path: [REPO], inside: nil)
+  Dir.mktmpdir("dev-server-processes", inside) do |root|
     root = File.realpath(root)
     Dir.mkdir(File.join(root, "bin"))
     Dir.mkdir(File.join(root, "bin", "stand-ins"))
@@ -627,6 +627,34 @@ test "a Ruby file of another -I directory newer than the binary makes the build 
   end
 end
 
+# An application inside its framework's checkout (examples/blog in the
+# repository): the framework's walk passes over the application's tree,
+# which binary_stale? reads with its own build/ and tmp/ skipped. A Ruby
+# file the application keeps under tmp/ or build/ is not a source.
+test "the framework's walk passes over an application inside it, its build/ and tmp/ included" do
+  Dir.mktmpdir("dev-server-framework") do |framework|
+    framework = File.realpath(framework)
+    FileUtils.mkdir_p(File.join(framework, "cybertrain"))
+    base = File.join(framework, "cybertrain", "base.rb")
+    File.write(base, "# the framework\n")
+    past = Time.now - 120
+    File.utime(past, past, base)
+    with_runner({ spin: RECORDING_SPIN }, load_path: [framework], inside: framework) do |runner, _listener, root|
+      write_fresh_binary(root)
+      FileUtils.mkdir_p(File.join(root, "tmp", "cache"))
+      later = Time.now + 60
+      ["tmp/cache/compiled.rb", "build/generated.rb"].each do |path|
+        File.write(File.join(root, path), "# written after the binary\n")
+        File.utime(later, later, File.join(root, path))
+      end
+      rec = Recorder.new
+      runner.start_build(1)
+      poll_until(runner, rec) { rec.events.size == 1 }
+      assert_equal ["build app"], spin_calls(root)
+    end
+  end
+end
+
 test "a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag" do
   with_runner({ spin: SPIN }, load_path: []) do |runner, _listener, root|
     write_fresh_binary(root)
@@ -838,12 +866,16 @@ test "without /proc and a ps that fails, cancel_build still sends TERM before KI
   end
 end
 
+# Where /proc is absent (macOS) the zombie is found by ps; the wait for it
+# is bounded either way.
 test "ended? reads /proc: a running process is not ended, a zombie is, a reaped one is" do
   pid = Process.spawn(RbConfig.ruby, "-e", "sleep 30")
   refute DevServer.ended?(pid)
   Process.kill(:KILL, pid)
-  sleep 0.01 until DevServer.proc_state(pid) == "Z"
+  deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
+  sleep 0.01 until DevServer.ended?(pid) || Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
   assert DevServer.ended?(pid)
+  assert_equal File.directory?("/proc/self") ? "Z" : nil, DevServer.proc_state(pid)
   Process.wait(pid)
   assert DevServer.ended?(pid)
 ensure
@@ -852,6 +884,52 @@ ensure
     Process.wait(pid)
   rescue SystemCallError
     nil
+  end
+end
+
+# A /proc/PID/stat read through File.read gives what answer gives.
+def with_stat_read(answer)
+  original = File.singleton_class.instance_method(:read)
+  File.singleton_class.send(:define_method, :read) do |path, *rest, **options|
+    path.to_s.match?(%r{/[0-9]+/stat\z}) ? answer.call : original.bind(self).call(path, *rest, **options)
+  end
+  yield
+ensure
+  File.singleton_class.send(:remove_method, :read)
+end
+
+# Only "no such process" means gone. /proc mounted with hidepid, or a
+# container's restricted /proc, answers EACCES or EPERM for a process that
+# runs: proc_state does not know then, and ended? asks ps. A /proc of the
+# test's own (proc_state's second argument), so that the same assertions
+# run where there is no /proc.
+test "proc_state answers ended only for a process that is gone; other errors and odd text are unknown" do
+  Dir.mktmpdir("dev-server-proc") do |proc_dir|
+    Dir.mkdir(File.join(proc_dir, "self"))
+    Dir.mkdir(File.join(proc_dir, "42"))
+    stat = File.join(proc_dir, "42", "stat")
+    File.write(stat, "42 (a (b) c) S 1 42")
+    assert_equal "S", DevServer.proc_state(42, proc_dir)
+    File.write(stat, "42 no parenthesis S 1")
+    assert_nil DevServer.proc_state(42, proc_dir)
+    File.write(stat, "42 (ruby) ")
+    assert_nil DevServer.proc_state(42, proc_dir)
+    assert_equal "X", DevServer.proc_state(43, proc_dir)
+    with_stat_read(-> { raise Errno::ESRCH }) { assert_equal "X", DevServer.proc_state(42, proc_dir) }
+    [Errno::EACCES, Errno::EPERM, Errno::EIO].each do |error|
+      with_stat_read(-> { raise error }) { assert_nil DevServer.proc_state(42, proc_dir) }
+    end
+    Dir.rmdir(File.join(proc_dir, "self"))
+    assert_nil DevServer.proc_state(42, proc_dir)
+  end
+  pid = Process.spawn(RbConfig.ruby, "-e", "sleep 30")
+  begin
+    with_stat_read(-> { raise Errno::EACCES }) do
+      refute DevServer.ended?(pid), "a running process whose stat cannot be read is not ended"
+    end
+  ensure
+    Process.kill(:KILL, pid)
+    Process.wait(pid)
   end
 end
 

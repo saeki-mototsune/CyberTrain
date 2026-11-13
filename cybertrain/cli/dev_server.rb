@@ -33,8 +33,8 @@
 # (no_preview_reason): the framework has no cybertrain/preview.rb (a
 # release older than the preview); it has no cybertrain/dev/supervision.rb
 # (the children's contract); the `ruby` on PATH, which runs the children,
-# is missing, does not answer within RUBY_PROBE_TIMEOUT, or cannot load
-# fiddle (the preview's FFI shim needs it). The framework is checked first:
+# is missing, cannot be started, does not answer within
+# RUBY_PROBE_TIMEOUT, or cannot load fiddle (the preview's FFI shim needs it). The framework is checked first:
 # a newer framework is the fix there, whatever the Ruby.
 #
 # The loop is one thread: wait (on the child's STDERR, and on the listener
@@ -466,16 +466,19 @@ module Cybertrain
       # than the one running this supervisor. Its version (for the banner)
       # and what keeps it from running the preview (no_preview_reason): nil
       # when it loads fiddle; NO_RUBY when there is no `ruby` on PATH; a
-      # line naming the bound when it has not answered within timeout
-      # seconds (it is killed, with whatever it started); NO_FIDDLE when it
-      # does not load fiddle, or fails. The version is UNKNOWN_VERSION
-      # unless the Ruby answered.
+      # line saying it cannot be started, and why, when there is one that
+      # cannot (not executable, its #! interpreter missing or not
+      # executable, or no pipe to ask it through); a line naming the bound
+      # when it has not answered within timeout seconds (it is killed, with
+      # whatever it started); NO_FIDDLE when it does not load fiddle, or
+      # fails. The version is UNKNOWN_VERSION unless the Ruby answered.
       # @param timeout [Numeric] RUBY_PROBE_TIMEOUT (a test shortens it)
       # @return [Array(String, String|nil)]
       def self.child_ruby(timeout = RUBY_PROBE_TIMEOUT)
         script = "print RUBY_VERSION; print(begin; require 'fiddle'; ' fiddle'; rescue LoadError, StandardError; ''; end)"
         out, status = bounded_run(["ruby", "-e", script], timeout)
         return [UNKNOWN_VERSION, NO_RUBY] if status == :missing
+        return [UNKNOWN_VERSION, "the ruby on PATH cannot be started (#{out})"] if status == :failed
         return [UNKNOWN_VERSION, "the ruby on PATH did not answer within #{timeout} s"] if status == :timeout
 
         version, fiddle = out.split
@@ -484,24 +487,35 @@ module Cybertrain
         [version, fiddle == "fiddle" ? nil : NO_FIDDLE]
       end
 
+      # How much of its STDOUT bounded_run keeps; the rest is read and
+      # dropped, so that the program never blocks on a full pipe.
+      BOUNDED_OUTPUT = 64 * 1024
+
       # Runs command (STDIN empty, STDERR dropped) in a process group of
-      # its own, for timeout seconds at most: [its STDOUT, its status];
-      # ["", :missing] when there is no such program; ["", :failed] when it
-      # cannot be started otherwise; [what it printed, :timeout] once its
-      # group has been killed for taking longer. The group is killed too
-      # when this ends any other way (a Ctrl-C, which the group, apart from
-      # the terminal's, does not get).
+      # its own, for timeout seconds at most: [its STDOUT (the first
+      # BOUNDED_OUTPUT bytes), its status]; ["", :missing] when there is no
+      # such program; [why, :failed] when it cannot be started otherwise
+      # (spawn_failure), or no pipe can be made; [what it printed,
+      # :timeout] once its group has been killed for taking longer. The
+      # group is killed too when this ends any other way: a Ctrl-C, which
+      # the group, apart from the terminal's, does not get, or a TERM or
+      # HUP, which CRuby raises as a SignalException here until `serve`
+      # traps them (the process then still ends by that signal).
       # @param command [Array<String>]
       # @param timeout [Numeric]
       # @return [Array(String, Process::Status|Symbol)]
       def self.bounded_run(command, timeout)
-        reader, writer = IO.pipe
+        pid = nil
+        status = nil
+        begin
+          reader, writer = IO.pipe
+        rescue SystemCallError => e
+          return [errno_text(e), :failed]
+        end
         begin
           pid = Process.spawn(*command, in: File::NULL, out: writer, err: File::NULL, pgroup: true)
-        rescue Errno::ENOENT
-          return ["", :missing]
-        rescue SystemCallError
-          return ["", :failed]
+        rescue SystemCallError => e
+          return spawn_failure(command[0], e)
         ensure
           writer.close
         end
@@ -515,9 +529,8 @@ module Cybertrain
           chunk = reader.read_nonblock(65_536, exception: false)
           break if chunk.nil?
 
-          out << chunk if chunk.is_a?(String)
+          out << chunk.byteslice(0, BOUNDED_OUTPUT - out.bytesize) if chunk.is_a?(String) && out.bytesize < BOUNDED_OUTPUT
         end
-        status = nil
         loop do
           _, status = Process.waitpid2(pid, Process::WNOHANG)
           break if status || monotonic >= deadline
@@ -526,11 +539,44 @@ module Cybertrain
         end
         [out, status || :timeout]
       ensure
-        reader.close
+        reader&.close
         if pid && status.nil?
           signal(-pid, :KILL)
           wait_quietly(pid)
         end
+      end
+
+      # bounded_run's answer when program could not be started: :missing
+      # only when PATH holds no file of that name. A file that is there
+      # gets ["FILE: why", :failed]: CRuby passes over one that is not
+      # executable and answers ENOENT, as it does for a script whose #!
+      # interpreter is missing; EACCES is an interpreter (or a mount) that
+      # cannot be executed.
+      # @return [Array(String, Symbol)]
+      def self.spawn_failure(program, error)
+        found = on_path(program)
+        return ["", :missing] if error.is_a?(Errno::ENOENT) && found.nil?
+
+        why = errno_text(error)
+        if error.is_a?(Errno::ENOENT)
+          why = File.executable?(found) ? "its #! interpreter is missing (#{why})" : "it is not executable"
+        end
+        ["#{found || program}: #{why}", :failed]
+      end
+
+      # The file PATH gives for program: the first executable one, else
+      # the first one; nil when there is none.
+      def self.on_path(program)
+        return (File.file?(program) ? program : nil) if program.include?("/")
+
+        files = ENV["PATH"].to_s.split(File::PATH_SEPARATOR).map { |dir| File.join(dir.empty? ? "." : dir, program) }
+                           .select { |path| File.file?(path) }
+        files.find { |path| File.executable?(path) } || files.first
+      end
+
+      # "Permission denied", without the " - ruby" CRuby adds.
+      def self.errno_text(error)
+        error.message.sub(/ - .*\z/m, "")
       end
 
       def self.wait_quietly(pid)
@@ -756,15 +802,25 @@ module Cybertrain
 
       # The state letter of /proc/PID/stat (after the parenthesised command
       # name, which may hold spaces and parentheses itself; Z a zombie, X
-      # dead), "X" for a process that has gone since, nil where there is
-      # no /proc.
-      def self.proc_state(pid)
-        return nil unless File.directory?("/proc/self")
+      # dead), "X" for a process that has gone since (ENOENT, ESRCH). nil,
+      # so that the caller asks ps, where there is no /proc, where the file
+      # cannot be read otherwise (EACCES or EPERM under hidepid or a
+      # container's restricted /proc, for a process that may well run), or
+      # where its text has no state letter after a ")".
+      # @param proc_dir [String] the /proc to read (a test gives its own)
+      # @return [String, nil]
+      def self.proc_state(pid, proc_dir = "/proc")
+        return nil unless File.directory?("#{proc_dir}/self")
 
-        stat = File.read("/proc/#{pid}/stat")
-        stat[(stat.rindex(")") + 1)..].to_s.strip[0].to_s
-      rescue SystemCallError
+        stat = File.read("#{proc_dir}/#{pid}/stat")
+        close = stat.rindex(")")
+        return nil if close.nil?
+
+        stat[(close + 1)..].strip[0]
+      rescue Errno::ENOENT, Errno::ESRCH
         "X"
+      rescue SystemCallError
+        nil
       end
 
       # The `ps -o stat=` letters; "" when ps cannot tell.
