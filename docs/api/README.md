@@ -103,6 +103,15 @@ locals: {})` (`require "cybertrain/test/views"`) render outside a request,
 answer the HTML and keep it for `assert_select`; a component test
 inherits `ViewComponent::TestCase`.
 
+`assert_broadcasts(stream, count) { }` (`require "cybertrain/test/broadcasts"`,
+which `cybertrain/test_help` loads) counts the rows written to
+`cybertrain_messages` for a stream name or a record ({Cybertrain::Stream.name_for})
+while the block runs, or since the test began without a block, and answers
+their payloads; `assert_no_broadcasts(stream)` expects none.
+`assert_turbo_stream action: "append", target: "comments"` (a DOM id or a
+record; `count:` 1 by default, as turbo-rails) checks the last response or
+render of the test for that `<turbo-stream>` element.
+
 The job helpers come with `require "cybertrain/test/jobs"`:
 `assert_enqueued_jobs(count, kind = "")`, `assert_no_enqueued_jobs(kind = "")`,
 `assert_enqueued_with(kind, args = {})` (args compared as strings, so
