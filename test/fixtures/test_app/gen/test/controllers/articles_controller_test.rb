@@ -1,35 +1,34 @@
 
 
-# ActionDispatch::IntegrationTest against the booted application: its own
-# rows (no fixtures), the path helpers, a create with nested params.
+# ActionDispatch::IntegrationTest against the booted application, on the
+# fixture rows (test/fixtures/*.yml): the path helpers, a create with
+# nested params, follow_redirect!.
 class ArticlesControllerTest < ActionDispatch::IntegrationTest; def setup; super; setup_articles_controller_test_1; nil; end
   def setup_articles_controller_test_1; begin
-    Article.all.delete_all
-    User.all.delete_all
-    @author = User.create(name: "Cy", email: "cy@example.com")
-    @first = Article.create(title: "First", body: "A body.", author_id: @author.id)
+    @article = articles(:one)
   end; nil; end
 
   def test_lists_the_rows; begin
     get articles_path
     assert_response :success
-    assert_equal "First", response.body
+    assert_includes response.body, "First post"
+    assert_includes response.body, "Second post"
   end; nil; end
 
   def test_shows_one_through_its_path_helper; begin
-    get article_path(@first)
+    get article_path(@article)
     assert_response :success
-    assert_equal "First by Cy", response.body
+    assert_equal "First post by Alice", response.body
   end; nil; end
 
   def test_creates_one_and_follows_the_redirect; begin
     assert_difference -> { Article.count }, 1 do
-      post articles_path, params: { article: { title: "New", body: "A body long enough", author_id: @author.id } }
+      post articles_path, params: { article: { title: "New", body: "A body long enough", author_id: users(:alice).id } }
     end
     assert_redirected_to article_path(Article.last)
     follow_redirect!
     assert_response :success
-    assert_equal "New by Cy", response.body
+    assert_equal "New by Alice", response.body
   end; nil; end
 
   def test_an_unknown_path_fails_with_the_top_level_form_s_message; begin
