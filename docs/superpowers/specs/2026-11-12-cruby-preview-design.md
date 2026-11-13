@@ -176,9 +176,14 @@ listening socket for its whole life and runs one child at a time on it.
 
 1. Make sure the pinned Spinel is there (`Toolchain.ensure!`, as today).
 2. Find the load path: `spin flags`, taking its `-I` directories.
-3. If the framework that resolves has no `cybertrain/preview/` (an
-   application pinned to an older release), say so in one line and run
-   today's loop.
+3. If the framework that resolves has no `cybertrain/preview/` or no
+   `cybertrain/dev/supervision.rb` (an application pinned to an older
+   release), say so in one line and run today's loop. Otherwise put the
+   `-I` directories on `$LOAD_PATH` ahead of the gem's and load the
+   framework's `cybertrain/dev/supervision.rb`, `state_file.rb`,
+   `watcher.rb` and `watched.rb` from there: the gem ships none of them,
+   so the supervisor and its children share one definition of the state
+   file and the supervision variables, the application's framework's.
 4. Learn the address: the port argument if given, else ask the
    application under CRuby (a new internal command of `Main` that prints
    host and port from the loaded config) **(call)**. If the application
@@ -284,14 +289,20 @@ place): generation, which runtime is serving, build state (`building`,
 failure (the compiler's, or what is known about the dead binary). It is the only
 channel from the supervisor to a child.
 
-**Stopping**: Ctrl-C or TERM stops the build, stops the child with TERM,
-closes the socket, removes the state and readiness files.
+**Stopping**: Ctrl-C, TERM or HUP stops the build, stops the child with
+TERM, closes the socket, removes the state and readiness files and the
+PID files (`tmp/cybertrain-dev/supervisor.pid`, `child.pid`, and
+`build.pid`, the build's process group). A supervisor killed outright
+leaves them behind; the next one stops the child and the build they name
+when they are this application's, before it binds the socket.
 
 **Where the code lives**: the supervisor is CRuby-only (descriptor
 inheritance in `spawn`, `Process.wait`, signals). `cybertrain/cli.rb` is
 also compiled by Spinel for the native CLI, so the supervisor must be in
 files that only `exe/cybertrain` loads, and be listed in
-`cybertrain.gemspec` (the gate checks the list). Its decisions (the state
+`cybertrain.gemspec` (the gate checks the list). The framework's
+`cybertrain/dev/*.rb` files it uses are not in the gem: it loads them from
+the application's framework (startup, step 3). Its decisions (the state
 machine: what to do on change, build result, child exit, lock) are a
 plain object that takes a process runner, as `Build.run` takes a `Runner`,
 so they are tested without processes.
