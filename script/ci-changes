@@ -1,10 +1,11 @@
 #!/bin/sh
 # Which CI jobs a change needs: reads the changed paths, one a line, on
-# stdin and prints `framework=true|false` and `cruby_preview=true|false`.
-# The `changes` job of .github/workflows/ci.yml runs it. The jobs that
-# compile (the framework tests, the end-to-end jobs, the setup-cybertrain
-# action's) run only on `framework=true`; the cruby-preview job only on
-# `cruby_preview=true`. The api-docs job runs on every CI run and is not
+# stdin and prints `framework=true|false`, `cruby_preview=true|false` and
+# `preview_e2e=true|false`. The `changes` job of .github/workflows/ci.yml
+# runs it. The jobs that compile (the framework tests, the end-to-end jobs,
+# the setup-cybertrain action's) run only on `framework=true`; the
+# cruby-preview job only on `cruby_preview=true`; the preview-e2e job only
+# on `preview_e2e=true`. The api-docs job runs on every CI run and is not
 # decided here.
 #
 # `on.paths` in ci.yml decides whether the workflow starts at all; it cannot
@@ -26,6 +27,15 @@
 # script/ci-changes (and a quoted path); false for everything else. For the
 # two scripts it is the only job that runs: `framework` stays false.
 #
+# preview_e2e (script/preview-e2e: `cybertrain server` on a copy of
+# examples/blog, built with Spinel): true for what that run reads, which
+# is the framework (cybertrain/**, cybertrain.rb), the CLI it starts
+# (exe/**), examples/blog/**, spin.toml (the packages), the script itself,
+# the toolchain's action (.github/actions/setup-spinel/**), ci.yml and
+# script/ci-changes (and a quoted path); false for everything else, the
+# framework's tests (test/**) included. For script/preview-e2e alone it is
+# the only job that runs.
+#
 # One path that says true is enough. A path this file does not know says
 # true, and so does one git printed quoted (an unusual character in the
 # name): the jobs run when in doubt.
@@ -36,9 +46,13 @@
 decide() {
   framework=false
   cruby=false
+  e2e=false
   while IFS= read -r path; do
     case "$path" in
       cybertrain/* | cybertrain.rb | test/* | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | \"*) cruby=true ;;
+    esac
+    case "$path" in
+      cybertrain/* | cybertrain.rb | exe/* | examples/blog/* | spin.toml | script/preview-e2e | .github/actions/setup-spinel/* | .github/workflows/ci.yml | script/ci-changes | \"*) e2e=true ;;
     esac
     case "$path" in
       "") ;;
@@ -50,10 +64,12 @@ decide() {
   done
   echo "framework=$framework"
   echo "cruby_preview=$cruby"
+  echo "preview_e2e=$e2e"
 }
 
 # expect WANT PATH...: decide on the paths and compare `framework`;
-# expect_cruby does the same for `cruby_preview`.
+# expect_cruby does the same for `cruby_preview`, expect_e2e for
+# `preview_e2e`.
 expect() {
   want="framework=$1"
   shift
@@ -66,6 +82,14 @@ expect_cruby() {
   want="cruby_preview=$1"
   shift
   got=$(printf '%s\n' "$@" | decide | grep '^cruby_preview=')
+  if [ "$got" = "$want" ]; then return 0; fi
+  echo "script/ci-changes: $* gave $got, expected $want" >&2
+  failed=1
+}
+expect_e2e() {
+  want="preview_e2e=$1"
+  shift
+  got=$(printf '%s\n' "$@" | decide | grep '^preview_e2e=')
   if [ "$got" = "$want" ]; then return 0; fi
   echo "script/ci-changes: $* gave $got, expected $want" >&2
   failed=1
@@ -110,6 +134,25 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_cruby true docs/api/README.md test/router.rb
   # The two scripts start the workflow and need no compiling.
   expect false script/preview-parity script/test-cruby
+  # The preview end to end: what script/preview-e2e reads.
+  expect_e2e true cybertrain/preview/ffi_library.rb
+  expect_e2e true cybertrain/cli/dev_server/processes.rb
+  expect_e2e true cybertrain/dev/watcher.rb
+  expect_e2e true cybertrain.rb
+  expect_e2e true exe/cybertrain
+  expect_e2e true examples/blog/app/models/article.rb
+  expect_e2e true spin.toml
+  expect_e2e true script/preview-e2e
+  expect_e2e true .github/actions/setup-spinel/action.yml
+  expect_e2e true .github/workflows/ci.yml
+  expect_e2e true script/ci-changes
+  expect_e2e true '"docs/api/caf\303\251.rb"'
+  expect_e2e false test/router.rb test/cruby/preview_ffi.rb script/preview-parity script/test-cruby
+  expect_e2e false docs/api/README.md site/index.html README.md script/gate playground/Dockerfile .github/actions/setup-cybertrain/action.yml
+  # The script starts the workflow and needs no compiling, nor the CRuby
+  # preview job.
+  expect false script/preview-e2e
+  expect_cruby false script/preview-e2e
   if [ "$failed" = 0 ]; then echo "script/ci-changes: self-test passed"; fi
   exit "$failed"
 fi

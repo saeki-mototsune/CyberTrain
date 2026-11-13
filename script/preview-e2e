@@ -89,6 +89,11 @@
 # temporary directory (a build whose supervisor was killed keeps a process
 # group of its own), then the directory itself. Linux only (/proc).
 #
+# With PREVIEW_E2E_EVIDENCE set to a directory, a run with a FAIL also
+# copies the supervisor's whole output (server.log) and tmp/rebuild.log
+# there before the copy is removed: the CI job (preview-e2e in
+# .github/workflows/ci.yml) uploads that directory when the run fails.
+#
 # usage: script/preview-e2e        (from the repository root; needs spin and
 #                                   ruby on PATH, as `cybertrain server` does)
 require "fileutils"
@@ -296,7 +301,10 @@ class Run
     rescue SystemCallError
       nil
     end
-    report_evidence if @failed
+    if @failed
+      report_evidence
+      keep_evidence(ENV["PREVIEW_E2E_EVIDENCE"].to_s)
+    end
     FileUtils.rm_rf(@tmp)
   end
 
@@ -314,6 +322,19 @@ class Run
 
     warn "--- tmp/rebuild.log, last 30 lines"
     warn File.binread(rebuild).force_encoding("UTF-8").scrub.lines.last(30).join
+  end
+
+  # The whole logs, for a reader who needs more than the tails above.
+  def keep_evidence(dir)
+    return if dir.empty?
+
+    FileUtils.mkdir_p(dir)
+    FileUtils.cp(@log, File.join(dir, "server.log")) if File.exist?(@log)
+    rebuild = path("tmp/rebuild.log")
+    FileUtils.cp(rebuild, File.join(dir, "rebuild.log")) if File.exist?(rebuild)
+    warn "--- the whole logs are in #{dir}"
+  rescue SystemCallError => e
+    warn "--- the logs could not be kept in #{dir}: #{e.message}"
   end
 end
 
