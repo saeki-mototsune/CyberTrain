@@ -33,6 +33,7 @@ ok   an idle keep-alive connection is closed after read_timeout
 ok   a failed accept is logged and the server keeps accepting
 ok   stop makes the port refuse connections
 ok   serves a bare HttpHandler with no Context or Middleware involved
+ok   the bare path's 500 carries the id a RequestId set; a handler without one sends none
 ok   run serves until stop is called
 ok   request_stop (what the TERM trap calls) makes run return without joining
 ok   request_stop waits for a request in flight and answers it completely
@@ -51,4 +52,4 @@ ok   reuse_port on an IPv6 literal binds it or says why not
 ok   reuse_port on a host that does not resolve stops with a message naming the setting
 ok   reuse_port on an address this machine does not have stops with the same message
 ok   reuse_port is off unless asked for
-53 tests, 203 assertions, 0 failures
+54 tests, 210 assertions, 0 failures

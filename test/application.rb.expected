@@ -16,7 +16,7 @@ ok   resolve_secret! keeps an explicit secret_key_base
 ok   resolve_secret! raises in production when the secret is empty
 ok   Cybertrain.configure fills the process-wide config
 ok   DB::CLI.database_path follows Cybertrain.config once it is loaded
-ok   the stack is RequestLogger, Stream::Endpoint, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router
+ok   the stack is RequestId, RequestLogger, Stream::Endpoint, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router
 ok   log_level :none, static_files and csrf switch their middleware off
 ok   the stack's session cookie follows session_same_site and session_partitioned
 2026-11-11T12:00:00.000Z WARN Blocked host: "rebind.example" for "/"
@@ -25,7 +25,7 @@ ok   the stack's session cookie follows session_same_site and session_partitione
 2026-11-11T12:00:00.000Z WARN Blocked host: "rebind.example" for "/notes/7"
 2026-11-11T12:00:00.000Z WARN Blocked host: "rebind.example" for "/"
 ok   development rejects hostile hosts before pages, static files, sessions and writes
-ok   production puts ErrorPages outermost
+ok   production puts ErrorPages outermost, inside RequestId
 ok   Application.new accepts any name; only the Rebuilder refuses one
 ok   Application.name_problem is the text a development boot prints for a bad name
 ok   production refuses to boot without embedded views

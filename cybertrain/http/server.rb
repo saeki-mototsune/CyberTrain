@@ -532,7 +532,14 @@ module Cybertrain
       # and the template Interpreter are the guard against those.
       # ClientError maps and logs (a client's fault is its 4xx at info);
       # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
-      error_response(ClientError.classify(e, @logger))
+      response = error_response(ClientError.classify(e, @logger))
+      # The id a RequestId in the app gave the request, echoed on this
+      # answer too (the response the stack had is replaced). The header's
+      # name is written out: the HTTP layer loads alone
+      # (script/check-http-layer) and cannot name the middleware.
+      id = request.request_id
+      response.set_header("X-Request-Id", id) unless id.empty?
+      response
     end
 
     # Writes an error response; serve closes the socket afterwards.

@@ -110,7 +110,7 @@ def stack_names(app)
 end
 
 test "the header sits inside RequestLogger's place, outside the stream endpoint" do
-  assert_equal ["Cybertrain::ContentSecurityPolicyHeader", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck",
+  assert_equal ["Cybertrain::RequestId", "Cybertrain::ContentSecurityPolicyHeader", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck",
                 "Cybertrain::Static", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
 end

@@ -5,6 +5,7 @@ require "socket"
 require "stringio"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
+require "cybertrain/middleware/request_id"
 require "cybertrain/test"
 require_relative "support/log_capture"
 
@@ -548,6 +549,30 @@ test "serves a bare HttpHandler with no Context or Middleware involved" do
   assert_equal "HTTP/1.1 500 Internal Server Error", c.get("/boom", "Connection: close\r\n").status_line
   c.close
   server.stop
+end
+
+test "the bare path's 500 carries the id a RequestId set; a handler without one sends none" do
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new($log, :info))
+  server.start
+  c = RawClient.new(server.port)
+  ok = c.get("/hello")
+  assert_equal "hi", ok.body
+  assert LogCapture.uuid?(ok.header("x-request-id")), ok.head
+  boom = c.get("/boom", "Connection: close\r\n")
+  assert_equal "HTTP/1.1 500 Internal Server Error", boom.status_line
+  assert LogCapture.uuid?(boom.header("x-request-id")), boom.head
+  refute boom.header("x-request-id") == ok.header("x-request-id")
+  c.close
+  server.stop
+  bare = Cybertrain::Server.new(BareHandler.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  bare.start
+  c = RawClient.new(bare.port)
+  res = c.get("/boom", "Connection: close\r\n")
+  assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
+  assert_equal "", res.header("x-request-id")
+  c.close
+  bare.stop
 end
 
 test "run serves until stop is called" do

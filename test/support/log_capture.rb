@@ -119,3 +119,30 @@ end
 def assert_logged(log, level, message)
   assert LogCapture.count(log, level, message) > 0, "expected a #{level} line starting #{message.inspect} in:\n#{log}"
 end
+
+module LogCapture
+  # Whether `value` is a version 4 UUID in lower-case hex,
+  # `xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx` (a request id
+  # Cybertrain::Crypto.uuid made), read byte by byte (no regexp,
+  # pre-flight ruling G5).
+  def self.uuid?(value)
+    s = value.to_s
+    return false unless s.bytesize == 36
+
+    i = 0
+    while i < 36
+      b = s.getbyte(i).to_i
+      if i == 8 || i == 13 || i == 18 || i == 23
+        return false unless b == 45
+      elsif i == 14
+        return false unless b == 52
+      elsif i == 19
+        return false unless b == 56 || b == 57 || b == 97 || b == 98
+      else
+        return false unless (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
+      end
+      i += 1
+    end
+    true
+  end
+end

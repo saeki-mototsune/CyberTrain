@@ -3,6 +3,7 @@ require "cybertrain/version"
 require "cybertrain/logger"
 require "cybertrain/middleware"
 require "cybertrain/middleware/host_authorization"
+require "cybertrain/middleware/request_id"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/feature"
@@ -230,13 +231,20 @@ module Cybertrain
 
       # The stack the server runs: diagnostics must stay inside hostname
       # authorization too, including when the stack was built before
-      # serving.
+      # serving. In development a RequestId wraps them all, so the
+      # diagnostics page and its log line carry the request's id; the
+      # stack's own RequestId then finds the id set and adds nothing
+      # (plan D6).
       def front_app
         app = @stack
         rebuilder = @rebuilder
         unless rebuilder.nil?
+          config = @config
           app = Dev::ErrorPage.new(app, rebuilder)
-          app = HostAuthorization.new(app, @config.checked_hosts, @config.health_path) if @config.development?
+          if config.development?
+            app = HostAuthorization.new(app, config.checked_hosts, config.health_path)
+            app = RequestId.new(app, config.log_tags)
+          end
         end
         app
       end

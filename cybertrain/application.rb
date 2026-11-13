@@ -6,6 +6,7 @@ require "cybertrain/version"
 require "cybertrain/logger"
 require "cybertrain/middleware"
 require "cybertrain/router"
+require "cybertrain/middleware/request_id"
 require "cybertrain/middleware/request_logger"
 require "cybertrain/middleware/static"
 require "cybertrain/middleware/method_override"
@@ -96,6 +97,8 @@ module Cybertrain
       config.production? && views.empty?
     end
 
+    # RequestId (always: the request's id, its X-Request-Id and its log
+    # tags, Config#log_tags) ->
     # HostAuthorization (Config#host_check?: development, or CYBERTRAIN_HOSTS
     # set; the health path exempt) -> SslRedirect (if force_ssl) ->
     # ErrorPages (in production) -> RequestLogger (unless log_level :none) ->
@@ -439,6 +442,9 @@ module Cybertrain
       # redirected, and the redirect's host is one the check accepted.
       app = SslRedirect.new(app, c.health_path) if c.force_ssl
       app = HostAuthorization.new(app, c.checked_hosts, c.health_path) if c.host_check?
+      # Outermost (plan D6): the 403 above, the redirect and the error
+      # pages carry the id, and every line the stack logs has its tags.
+      app = RequestId.new(app, c.log_tags)
       app
     end
   end

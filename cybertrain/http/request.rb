@@ -82,6 +82,17 @@ module Cybertrain
 
     attr_reader :http_version
 
+    # The request's id (spec section 12.2): a UUID that
+    # Cybertrain::RequestId made, or the `X-Request-Id` a trusted proxy sent
+    # (1 to 255 letters, digits and hyphens); the response's `X-Request-Id`
+    # echoes it, and every line logged during the request carries it.
+    # `""` until the RequestId middleware has run.
+    # @example
+    #   Cybertrain.logger.info("export for #{request.request_id}")
+    # @return [String]
+    # @api public
+    attr_accessor :request_id
+
     def initialize(method, target, headers, body, remote_addr = "", http_version = "HTTP/1.1")
       @method = method.upcase
       q = target.index("?")
@@ -96,6 +107,7 @@ module Cybertrain
       @body = body
       @remote_addr = remote_addr
       @http_version = http_version
+      @request_id = ""
       @utf8_query_string = nil
       @utf8_body = nil
       @decoded_body = nil

@@ -1,0 +1,13 @@
+ok   every request gets a UUID, echoed and readable as request.request_id
+ok   X-Request-Id from a trusted proxy is used only when well-formed
+ok   RequestId.accepted? takes 1 to 255 bytes of letters, digits and hyphens
+ok   every line logged in the request carries the id, the application's own included
+ok   log_tags orders the request's tags; [] turns them off
+ok   RequestId.scope_for puts the tags in log_tags order and marks the id's place
+ok   the request path in the Scope is masked as the request log masks it
+ok   the id is echoed on error responses
+ok   a raising request leaves no Scope behind on its thread
+ok   a RequestId inside another keeps the outer id and adds no Scope of its own
+ok   the controller and action are the request's where
+ok   a controller run without a RequestId writes nothing to the shared empty Scope
+12 tests, 75 assertions, 0 failures

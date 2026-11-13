@@ -91,6 +91,20 @@ test "an exception from the inner app becomes a 500 HTML page" do
   assert res.body.index("boom <b>").nil?, "the message must be escaped"
 end
 
+test "the diagnostics page and the plain 400 carry the request's id; no id, no header" do
+  ctx = build_ctx("GET", "/boom")
+  ctx.request.request_id = "abc-123" # what a RequestId inside the stack set
+  plain_app.call(ctx)
+  assert_equal 500, ctx.response.status
+  assert_equal "abc-123", ctx.response.header("X-Request-Id")
+  rejected = build_ctx("GET", "/toomany")
+  rejected.request.request_id = "abc-456"
+  plain_app.call(rejected)
+  assert_equal 400, rejected.response.status
+  assert_equal "abc-456", rejected.response.header("X-Request-Id")
+  assert_nil request(plain_app, "/boom").header("X-Request-Id")
+end
+
 test "the diagnostics page carries the security defaults on the wire" do
   wire = request(plain_app, "/boom").to_http
   assert_includes wire, "X-Content-Type-Options: nosniff\r\n"

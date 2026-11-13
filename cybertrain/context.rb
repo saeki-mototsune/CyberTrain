@@ -20,6 +20,9 @@ module Cybertrain
     # (Controller.content_security_policy) or the application's, set by
     # ContentSecurityPolicyHeader and Controller#process; nil without one.
     attr_accessor :csp_policy
+    # The controller and action that answered, `"ArticlesController#show"`
+    # (Controller#run_action sets it); `""` when no action ran.
+    attr_accessor :controller_action
 
     def initialize(request)
       @request = request
@@ -32,6 +35,7 @@ module Cybertrain
       @cookie_jar = nil
       @csp_policy = nil
       @csp_nonce = ""
+      @controller_action = ""
     end
 
     # This request's CSP nonce: 16 bytes from SecureRandom, strict Base64,
