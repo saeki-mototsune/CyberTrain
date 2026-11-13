@@ -1,6 +1,9 @@
 test/components/card_component_test.rb
   ok   CardComponentTest: renders the title
   ok   CardComponentTest: renders the form partial
+test/controllers/article_streams_test.rb
+  ok   ArticleStreamsTest: a new article is broadcast
+  ok   ArticleStreamsTest: a new article answers with a Turbo Stream
 test/controllers/articles_controller_test.rb
   ok   ArticlesControllerTest: lists the rows
   ok   ArticlesControllerTest: shows one through its path helper
@@ -23,4 +26,4 @@ test/models/article_test.rb
   ok   ArticleFixturesTest: fixtures: a test changes and adds rows
   ok   ArticleFixturesTest: fixtures: the next test sees exactly the fixture rows
 
-19 tests, 46 assertions, 0 failures
+21 tests, 53 assertions, 0 failures

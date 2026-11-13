@@ -257,24 +257,17 @@ module Cybertrain
           add_node_texts(nodes, stack, decode_references(s.byteslice(run, i - run))) if i > run
           case kind
           when 1 # comment
-            # `<!-->` and `<!--->` are empty comments, as in HTML.
-            close = -1
-            if i + 4 < n && s.getbyte(i + 4) == 62
-              close = i + 5
-            elsif i + 5 < n && s.getbyte(i + 4) == 45 && s.getbyte(i + 5) == 62
-              close = i + 6
-            else
-              close = byte_after(s, i + 4, "-->")
-            end
+            close = markup_end(s, i, 1, false)
             if close < 0
               message = "unterminated comment at byte #{i}"
               raise Malformed, message
             end
             i = close
           when 2 # <!doctype ...>, <?...?>, other <!...>
-            if in_foreign?(nodes, stack) && s.byteslice(i, 9) == "<![CDATA["
+            foreign = in_foreign?(nodes, stack)
+            close = markup_end(s, i, 2, foreign)
+            if foreign && s.byteslice(i, 9) == "<![CDATA["
               # Text in svg / math, up to `]]>`.
-              close = byte_after(s, i + 9, "]]>")
               if close < 0
                 message = "unterminated CDATA section at byte #{i}"
                 raise Malformed, message
@@ -284,13 +277,11 @@ module Cybertrain
               run = i
               next
             end
-            j = i + 2
-            j += 1 while j < n && s.getbyte(j) != 62
-            if j >= n
+            if close < 0
               message = "unterminated declaration at byte #{i}"
               raise Malformed, message
             end
-            i = j + 1
+            i = close
           when 3 # end tag
             i = read_end_tag(s, i, nodes, stack)
           else # start tag
@@ -327,6 +318,31 @@ module Cybertrain
         return 2 if c == 63 # ?
 
         0
+      end
+
+      # The byte after the comment (`kind` 1) or the declaration or
+      # processing instruction (`kind` 2, {tag_kind}) whose `<` is at byte
+      # i; -1 when it has no end. `<!-->` and `<!--->` are empty comments,
+      # as in HTML; inside svg / math (`foreign`) a CDATA section runs to
+      # `]]>`, elsewhere to the first `>`. The one rule {parse} and
+      # assert_turbo_stream's template scan share.
+      # @api private
+      def self.markup_end(html, i, kind, foreign)
+        s = html.to_s
+        n = s.bytesize
+        if kind == 1
+          return i + 5 if i + 4 < n && s.getbyte(i + 4) == 62
+          return i + 6 if i + 5 < n && s.getbyte(i + 4) == 45 && s.getbyte(i + 5) == 62
+
+          return byte_after(s, i + 4, "-->")
+        end
+        return byte_after(s, i + 9, "]]>") if foreign && s.byteslice(i, 9) == "<![CDATA["
+
+        j = i + 2
+        j += 1 while j < n && s.getbyte(j) != 62
+        return -1 if j >= n
+
+        j + 1
       end
 
       # The byte offset just after the first `marker` at or after byte

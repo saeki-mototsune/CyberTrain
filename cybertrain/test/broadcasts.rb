@@ -9,10 +9,17 @@
 # - `assert_broadcasts(stream, count) { }` reads the table's largest id
 #   before the block, then counts the stream's rows above it.
 # - Without a block it counts from the floor the reset hook read when the
-#   test began (`Test.case_message_floor`, step 3 of the order), so a
-#   broadcast of an earlier test is never counted.
+#   test began (`Test.case_message_floor`, step 3 of the order, after the
+#   bundle's clear of the tables), so a broadcast of an earlier test is
+#   never counted.
+# - Rows the poller prunes are not counted: the poller runs only in a
+#   server a test boots itself (`Application#serve`), never in-process,
+#   and prunes by `Config#stream_retention` against the Clock, so a test
+#   that serves and then travels far ahead can lose rows it broadcast
+#   before the travel. Count before travelling, or use the block form.
 # - `assert_turbo_stream(action:, target:)` reads the last response or
-#   render (`Test.last_html`) with the test HTML reader. The content of a
+#   render (`Test.last_html`) with the test HTML reader; a response must be
+#   `text/vnd.turbo-stream.html`, as turbo-rails checks. The content of a
 #   `<template>` is not read (Turbo inserts it as a fragment, and the
 #   assertion is about the `<turbo-stream>` elements): it is blanked byte
 #   for byte first, so the reader's offsets stay those of the HTML as
@@ -89,129 +96,125 @@ module Cybertrain
         }
       end
 
-      # The reset hook that forgets the previous test's response or render,
-      # so assert_turbo_stream never reads it.
-      # @api private
-      def self.last_html_reset
-        -> {
-          Test.last_html = ""
-          nil
-        }
-      end
 
       # `html` with the content of every `<template>` replaced by spaces,
-      # byte for byte (nested templates counted; comments, `script` and
-      # `style` skipped, so a "<template>" in them is not one). A template
-      # with no end is left as it is.
+      # byte for byte, so the reader's offsets stay those of the HTML as
+      # written. The scan tokenises as HtmlReader.parse does, through the
+      # reader's own functions: comments and declarations end where
+      # {HtmlReader.markup_end} says, start tags (quoted attribute values,
+      # `script` / `style` raw text, `textarea` / `title` text) are read by
+      # {HtmlReader.read_start_tag}, so a `</template>` inside any of them
+      # does not end a template. Only end tags are lenient: one closes the
+      # nearest open element of its name (or nothing), because a template's
+      # content need not be balanced. When the reader cannot tokenise the
+      # HTML (an unterminated tag, comment or quoted value, `<div/>`), it is
+      # answered unchanged, so the reader reports the problem itself.
       # @api private
       def self.blank_templates(html)
         s = html.to_s
         out = s.dup
         n = s.bytesize
+        nodes = Array.new(0) { HtmlNode.new("", 0, -1, 0) }
+        stack = Array.new(0) { 0 }
+        content_from = -1
         i = 0
         while i < n
           if s.getbyte(i) != 60
             i += 1
             next
           end
-          skip = skipped_end(s, i)
-          if skip > i
-            i = skip
-            next
-          end
-          if tag_named?(s, i, "template", false)
-            open_end = HtmlReader.byte_after(s, i, ">")
-            break if open_end < 0
+          kind = HtmlReader.tag_kind(s, i)
+          if kind == 0
+            i += 1
+          elsif kind == 1 || kind == 2
+            close = HtmlReader.markup_end(s, i, kind, HtmlReader.in_foreign?(nodes, stack))
+            return s if close < 0
 
-            close = template_close(s, open_end)
-            break if close < 0
+            i = close
+          elsif kind == 3
+            j = i + 2
+            j += 1 while j < n && !HtmlReader.tag_name_end?(s.getbyte(j))
+            tag = s.byteslice(i + 2, j - i - 2).downcase
+            j += 1 while j < n && s.getbyte(j) != 62
+            return s if j >= n
 
-            k = open_end
-            while k < close
-              out.setbyte(k, 32)
-              k += 1
+            close_open(nodes, stack, tag)
+            if tag == "template" && content_from >= 0 && !template_open?(nodes, stack)
+              k = content_from
+              while k < i
+                out.setbyte(k, 32)
+                k += 1
+              end
+              content_from = -1
             end
-            i = close + 1
-            next
+            i = j + 1
+          else
+            after = start_tag_end(s, i, nodes, stack)
+            return s if after < 0
+
+            opened = !stack.empty? && stack[stack.length - 1] == nodes.length - 1
+            content_from = after if content_from < 0 && opened && nodes[nodes.length - 1].node_tag == "template"
+            i = after
           end
-          i += 1
         end
         out
       end
 
-      # The byte of the `</template` that closes a template whose content
-      # starts at `from`; -1 when there is none.
+      # HtmlReader.read_start_tag at byte i; -1 when it refuses the tag.
       # @api private
-      def self.template_close(html, from)
+      def self.start_tag_end(html, i, nodes, stack)
         s = html.to_s
-        n = s.bytesize
-        depth = 1
-        j = from
-        while j < n
-          if s.getbyte(j) != 60
-            j += 1
-            next
-          end
-          skip = skipped_end(s, j)
-          return -1 if skip == -2
-          if skip > j
-            j = skip
-            next
-          end
-          if tag_named?(s, j, "template", false)
-            depth += 1
-          elsif tag_named?(s, j, "template", true)
-            depth -= 1
-            return j if depth == 0
-          end
-          j += 1
+        after = -1
+        begin
+          after = HtmlReader.read_start_tag(s, i, nodes, stack)
+        rescue HtmlReader::Malformed
+          after = -1
         end
-        -1
+        after
       end
 
-      # At a `<`: the byte after a comment, a `script` or a `style`
-      # element that starts there; `i` itself when none does; -2 when one
-      # starts there and has no end.
+      # Pops the open elements down to and including the nearest one named
+      # `tag`; nothing when none is open.
       # @api private
-      def self.skipped_end(html, i)
-        s = html.to_s
-        if HtmlReader.tag_kind(s, i) == 1
-          close = HtmlReader.byte_after(s, i + 4, "-->")
-          return close < 0 ? -2 : close
+      def self.close_open(nodes, stack, tag)
+        k = stack.length - 1
+        k -= 1 while k >= 0 && nodes[stack[k]].node_tag != tag
+        stack.pop while k >= 0 && stack.length > k
+        nil
+      end
+
+      # Whether a template is among the open elements.
+      # @api private
+      def self.template_open?(nodes, stack)
+        k = 0
+        while k < stack.length
+          return true if nodes[stack[k]].node_tag == "template"
+
+          k += 1
         end
-        raw = ""
-        raw = "script" if tag_named?(s, i, "script", false)
-        raw = "style" if tag_named?(s, i, "style", false)
-        return i if raw.empty?
-
-        close = HtmlReader.raw_end(s, i + 1, raw)
-        close < 0 ? -2 : close
+        false
       end
 
-      # Whether a start (or, with `end_tag`, an end) tag named `name`
-      # starts at the `<` at byte i, in any case.
-      # @api private
-      def self.tag_named?(html, i, name, end_tag)
-        s = html.to_s
-        t = name.to_s
-        n = s.bytesize
-        at = end_tag ? i + 2 : i + 1
-        return false if end_tag && (i + 1 >= n || s.getbyte(i + 1) != 47)
-        return false if at + t.bytesize > n
-        return false unless s.byteslice(at, t.bytesize).downcase == t
-        return true if at + t.bytesize == n
-
-        HtmlReader.tag_name_end?(s.getbyte(at + t.bytesize))
-      end
-
-      # `append comments` for one turbo-stream element (`refresh` alone
-      # when it has no target).
+      # `append comments` for one turbo-stream element: `refresh` alone when
+      # it has no target, `remove targets=.x` for one with `targets`.
       # @api private
       def self.turbo_label(node)
+        action = node.node_attr("action")
         target = node.node_attr("target")
-        return node.node_attr("action") if target.empty?
+        return "#{action} #{target}" unless target.empty?
+        return "#{action} targets=#{node.node_attr("targets")}" if node.node_attr?("targets")
 
-        "#{node.node_attr("action")} #{target}"
+        action
+      end
+
+      # The media type of a Content-Type value, lower-cased, without its
+      # parameters (`text/vnd.turbo-stream.html`).
+      # @api private
+      def self.media_type(content_type)
+        text = content_type.to_s
+        cut = text.index(";")
+        text = text[0, cut] unless cut.nil?
+        text.strip.downcase
       end
     end
 
@@ -257,12 +260,39 @@ module Cybertrain
       found
     end
 
-    # `assert_turbo_stream`: exactly `count` streams of `action` on
-    # `target` among `streams`.
+    # What assert_turbo_stream fails with when the running test has neither
+    # requested a page nor called `render_inline` (as assert_select).
+    NO_TURBO_STREAM_YET = "assert_turbo_stream: No response yet. Request a page or call render_inline first."
+
+    # The media type a Turbo Stream response has.
+    TURBO_STREAM_MEDIA = "text/vnd.turbo-stream.html"
+
+    # Before `assert_turbo_stream` reads the last HTML: something was
+    # rendered or requested in this test, and a response (not a
+    # `render_inline`) is a Turbo Stream, as turbo-rails' integration
+    # assertion checks (`response.media_type`).
     # @api private
-    # An empty `html` (no request or render yet in this test, or an empty
-    # body) is said so after "none".
-    def self.check_turbo_stream(action, target, count, streams, html)
+    def self.check_turbo_source
+      unless last_html?
+        text = NO_TURBO_STREAM_YET
+        fail_with(text)
+      end
+      return nil unless last_html_response?
+
+      media = Broadcasts.media_type(last_content_type)
+      return nil if media == TURBO_STREAM_MEDIA
+
+      shown = last_content_type.empty? ? "no Content-Type" : last_content_type.inspect
+      text = "assert_turbo_stream: expected a #{TURBO_STREAM_MEDIA} response, got #{shown}"
+      fail_with(text)
+      nil
+    end
+
+    # `assert_turbo_stream`: exactly `count` streams of `action` on
+    # `target` among `streams`. A `target` of "" matches a stream that has
+    # none (`refresh`).
+    # @api private
+    def self.check_turbo_stream(action, target, count, streams)
       if count < 0
         message = "assert_turbo_stream: count: must be 0 or more (got #{count})"
         raise ArgumentError, message
@@ -278,7 +308,6 @@ module Cybertrain
 
       element = "<turbo-stream action=\"#{action}\" target=\"#{target}\">"
       list = seen.empty? ? "none" : seen.join(", ")
-      list = "none (no response or render yet in this test, or an empty body)" if html.to_s.empty?
       text = if count == 1 && matched == 0
                "Expected a #{element}, found: #{list}"
              elsif count == 0
@@ -296,6 +325,14 @@ end
 # `cybertrain_messages`) while the block ran, or, without a block, since
 # the test began; answers their payloads, oldest first. `stream` is a name
 # or a record (its {Cybertrain::Stream.name_for}, `"articles:12"`).
+#
+# Only rows still in the table are counted. In-process nothing deletes
+# them, but a test that boots a real server (`Application#serve`) runs its
+# poller, which prunes rows older than `Config#stream_retention` by the
+# Clock: after `travel_to` far ahead, rows broadcast before the travel can
+# be gone, so a count without a block comes out low and
+# `assert_no_broadcasts` passes. Count before travelling, or wrap the
+# broadcasting code in the block.
 # @example
 #   payloads = assert_broadcasts(articles(:one), 1) do
 #     post article_comments_path(articles(:one)), params: { comment: { body: "Hi" } }
@@ -320,7 +357,8 @@ def assert_broadcasts(stream, count)
 end
 
 # Passes when nothing was broadcast to `stream` while the block ran, or,
-# without a block, since the test began: `assert_broadcasts(stream, 0)`.
+# without a block, since the test began: `assert_broadcasts(stream, 0)`
+# (and, as it, blind to rows a real server's poller pruned).
 # @param stream [String, Cybertrain::Model]
 # @yield the code that must not broadcast (optional)
 # @return [nil]
@@ -339,8 +377,13 @@ end
 # Passes when the last response (or `render_inline`) of this test holds
 # exactly `count` `<turbo-stream action="..." target="...">` elements, as
 # turbo-rails' assertion does (count 1 by default). `target` is a DOM id
-# or a record (its dom_id, `"article_12"`). The content of the streams'
-# templates is not read; the block form of turbo-rails is not offered.
+# or a record (its dom_id, `"article_12"`); `""` matches a stream with no
+# target (`refresh`). After an integration request the response must be
+# `text/vnd.turbo-stream.html` (turbo-rails' media type check; its
+# `status: :ok` check is not made: assert the status with
+# `assert_response`). With nothing requested or rendered in this test it
+# fails ("No response yet"). The content of the streams' templates is not
+# read; turbo-rails' block form and `targets:` are not offered.
 # @example
 #   post article_comments_path(article), params: { comment: { body: "Hi" } },
 #        headers: { "Accept" => "text/vnd.turbo-stream.html" }
@@ -353,7 +396,7 @@ end
 # @api public
 def assert_turbo_stream(action:, target:, count: 1)
   id = Cybertrain::Turbo.target_text(target)
-  html = Cybertrain::Test.last_html
-  streams = Cybertrain::Test.turbo_stream_nodes(html)
-  Cybertrain::Test.check_turbo_stream(action.to_s, id, count, streams, html)
+  Cybertrain::Test.check_turbo_source
+  streams = Cybertrain::Test.turbo_stream_nodes(Cybertrain::Test.last_html)
+  Cybertrain::Test.check_turbo_stream(action.to_s, id, count, streams)
 end

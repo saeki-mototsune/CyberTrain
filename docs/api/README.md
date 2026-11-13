@@ -110,7 +110,9 @@ while the block runs, or since the test began without a block, and answers
 their payloads; `assert_no_broadcasts(stream)` expects none.
 `assert_turbo_stream action: "append", target: "comments"` (a DOM id or a
 record; `count:` 1 by default, as turbo-rails) checks the last response or
-render of the test for that `<turbo-stream>` element.
+render of the test for that `<turbo-stream>` element; a response must be
+`text/vnd.turbo-stream.html` (turbo-rails' status check is left to
+`assert_response`).
 
 The job helpers come with `require "cybertrain/test/jobs"`:
 `assert_enqueued_jobs(count, kind = "")`, `assert_no_enqueued_jobs(kind = "")`,

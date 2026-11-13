@@ -132,6 +132,11 @@ module Cybertrain
     # starts with nothing (Test.case_begin), so assert_select cannot read
     # the HTML an earlier test left.
     @last_html_given = false
+    # Whether the last HTML is an integration response's body (not a
+    # render_inline), and that response's Content-Type (assert_turbo_stream
+    # checks its media type, as turbo-rails does).
+    @last_html_response = false
+    @last_content_type = ""
     # True inside `cybertrain test`'s program (Test.bundled!): run! at the
     # end of a top-level-form file then does nothing.
     @bundled = false
@@ -266,8 +271,37 @@ module Cybertrain
 
     def self.last_html=(html)
       @last_html_given = true
+      @last_html_response = false
+      @last_content_type = ""
       @last_html = html
     end
+
+    # Keeps a response's body as the last HTML, with its Content-Type:
+    # what an integration request records (`last_html=` is a render's).
+    # @param body [String]
+    # @param content_type [String] "" when the response has none
+    # @return [nil]
+    # @api private
+    def self.record_last_response(body, content_type)
+      Cybertrain::Test.last_html = body
+      @last_html_response = true
+      @last_content_type = content_type
+      nil
+    end
+
+    # Whether the last HTML came from a response (true) or from
+    # `render_inline` (false).
+    # @return [Boolean]
+    # @api private
+    def self.last_html_response?
+      @last_html_response
+    end
+
+    # The Content-Type of the response kept as the last HTML; "" for a
+    # render, or a response without one.
+    # @return [String]
+    # @api private
+    def self.last_content_type = @last_content_type
 
     # Whether the running test has made a request or a `render_inline`
     # yet: false at the start of every test, so "nothing rendered" is never
@@ -283,6 +317,8 @@ module Cybertrain
     # @api private
     def self.clear_last_html
       @last_html_given = false
+      @last_html_response = false
+      @last_content_type = ""
       @last_html = ""
       nil
     end

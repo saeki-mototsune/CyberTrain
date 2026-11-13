@@ -85,8 +85,9 @@ class CommentsTest < ActionDispatch::IntegrationTest
       post "/articles/3/comments", params: { body: "Hi" }
       assert_response :success
       assert_equal "Comment saved", response.body
+      # A response must be a Turbo Stream, as turbo-rails checks.
       message = assert_raises("AssertionFailed") { assert_turbo_stream action: "append", target: "comments" }
-      assert_equal "Expected a <turbo-stream action=\"append\" target=\"comments\">, found: none", message
+      assert_includes message, "assert_turbo_stream: expected a text/vnd.turbo-stream.html response, got \"text/plain"
     end
     nil
   end
@@ -218,7 +219,7 @@ test "assert_turbo_stream finds the action and target" do
   CommentsTest.new.test_turbo_stream_response
 end
 
-test "assert_turbo_stream reads the last response, so an HTML answer has none" do
+test "assert_turbo_stream reads the last response, and an HTML answer is not a Turbo Stream" do
   CommentsTest.new.test_html_response
 end
 
@@ -236,10 +237,38 @@ end
 
 test "assert_turbo_stream never reads the previous test's response or render" do
   # The previous test's last render held an append on comments.
+  refute Cybertrain::Test.last_html?
   message = assert_raises("AssertionFailed") { assert_turbo_stream action: "append", target: "comments" }
-  assert_equal "Expected a <turbo-stream action=\"append\" target=\"comments\">, " \
-               "found: none (no response or render yet in this test, or an empty body)", message
-  assert_equal "", Cybertrain::Test.last_html
+  assert_equal "assert_turbo_stream: No response yet. Request a page or call render_inline first.", message
+  # A render that answered nothing is not "nothing yet".
+  Cybertrain::Test.last_html = ""
+  message = assert_raises("AssertionFailed") { assert_turbo_stream action: "append", target: "comments" }
+  assert_equal "Expected a <turbo-stream action=\"append\" target=\"comments\">, found: none", message
+end
+
+test "assert_turbo_stream checks a response's media type, never a render's" do
+  stream = Turbo.remove("c").to_s
+  Cybertrain::Test.record_last_response(stream, "Text/Vnd.Turbo-Stream.HTML; charset=utf-8")
+  assert Cybertrain::Test.last_html_response?
+  assert_turbo_stream action: "remove", target: "c"
+  Cybertrain::Test.record_last_response(stream, "text/html; charset=utf-8")
+  message = assert_raises("AssertionFailed") { assert_turbo_stream action: "remove", target: "c" }
+  assert_equal "assert_turbo_stream: expected a text/vnd.turbo-stream.html response, got \"text/html; charset=utf-8\"", message
+  Cybertrain::Test.record_last_response(stream, "")
+  message = assert_raises("AssertionFailed") { assert_turbo_stream action: "remove", target: "c" }
+  assert_equal "assert_turbo_stream: expected a text/vnd.turbo-stream.html response, got no Content-Type", message
+  # A render after the response: nothing to check.
+  Cybertrain::Test.last_html = stream
+  refute Cybertrain::Test.last_html_response?
+  assert_equal "", Cybertrain::Test.last_content_type
+  assert_turbo_stream action: "remove", target: "c"
+end
+
+test "a stream with targets= is named so, and target: \"\" matches one with no target" do
+  Cybertrain::Test.last_html = "<turbo-stream action=\"remove\" targets=\".x\"></turbo-stream>#{Turbo.refresh}"
+  assert_turbo_stream action: "refresh", target: ""
+  message = assert_raises("AssertionFailed") { assert_turbo_stream action: "remove", target: "x" }
+  assert_equal "Expected a <turbo-stream action=\"remove\" target=\"x\">, found: remove targets=.x, refresh", message
 end
 
 test "assert_turbo_stream takes a record as the target and count:" do
@@ -281,8 +310,31 @@ test "assert_turbo_stream does not read a template's content, only the elements 
   html = "<template><p></template><p></div>"
   Cybertrain::Test.last_html = html
   message = assert_raises("AssertionFailed") { assert_turbo_stream action: "append", target: "x" }
-  assert_equal "assert_turbo_stream: the HTML could not be read: mismatched end tag </div> at byte 27 (open: <p>)\n" \
+  assert_equal "assert_turbo_stream: the HTML could not be read: mismatched end tag </div> at byte 27 (open: <p>); " \
+               "HTML lets a page omit </p>, but this reader does not repair: write it\n" \
                "HTML (first 500 characters):\n#{html}", message
+  # `<!-->` and `<!--->` are whole comments (the reader's rule): the
+  # template after them is a template, its stream content.
+  Cybertrain::Test.last_html = "<!--><template><turbo-stream action=\"remove\" target=\"x\"></turbo-stream></template><!-- -->"
+  assert_turbo_stream action: "remove", target: "x", count: 0
+  Cybertrain::Test.last_html = "<!---><template><turbo-stream action=\"remove\" target=\"x\"></turbo-stream></template>"
+  assert_turbo_stream action: "remove", target: "x", count: 0
+  # A "</template>" in a quoted attribute value or in a textarea's text does
+  # not end the template.
+  Cybertrain::Test.last_html = "<template><div title=\"</template>\"><turbo-stream action=\"remove\" target=\"y\"></turbo-stream></div></template>" \
+                               "<turbo-stream action=\"remove\" target=\"z\"></turbo-stream>"
+  assert_turbo_stream action: "remove", target: "y", count: 0
+  assert_turbo_stream action: "remove", target: "z"
+  Cybertrain::Test.last_html = "<template><textarea></template><turbo-stream action=\"remove\" target=\"y\"></turbo-stream></textarea></template>" \
+                               "<turbo-stream action=\"remove\" target=\"z\"></turbo-stream>"
+  assert_turbo_stream action: "remove", target: "y", count: 0
+  assert_turbo_stream action: "remove", target: "z"
+  # HTML the reader cannot tokenise is left as written, so the reader
+  # reports it.
+  html = "<template><div title=\"x></template>"
+  Cybertrain::Test.last_html = html
+  message = assert_raises("AssertionFailed") { assert_turbo_stream action: "append", target: "x" }
+  assert_includes message, "assert_turbo_stream: the HTML could not be read: unterminated attribute value (title) in <div at byte 10"
   # An unterminated template is left as it is, and read.
   html = "<template><p>"
   Cybertrain::Test.last_html = html

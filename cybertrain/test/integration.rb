@@ -280,9 +280,9 @@ module ActionDispatch
     private
 
     # The response, its body kept as Cybertrain::Test.last_html (for
-    # assert_select).
+    # assert_select) with its Content-Type (for assert_turbo_stream).
     def integration_response(res)
-      Cybertrain::Test.last_html = res.body
+      Cybertrain::Test.record_last_response(res.body, res.header("Content-Type").to_s)
       res
     end
 

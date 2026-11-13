@@ -4,7 +4,9 @@
 # Bundle.run! over a class-form table and a top-level-form file) with
 # test/fixtures/gen_app's generated gen/test/data.rb. The first test
 # inserts and updates rows; the next one sees exactly the fixture rows,
-# with the sequence restarted; posts(:one) answers in both forms. Links
+# with the sequence restarted; posts(:one) answers in both forms; the
+# messages table is cleared before the broadcast floor is read, so the
+# second test counts its own broadcast and not the first's. Links
 # SQLite through FFI, so this runs compiled only (spikes/NOTES.md rule 23).
 require "cybertrain"
 require "cybertrain/test_help"
@@ -42,6 +44,7 @@ class PostFixturesTest < ActiveSupport::TestCase
       Comment.create(post_id: extra.id, commenter: "Bo", body: "Hi", extras: "{}", seen_on: Date.new(2026, 11, 5))
       assert_equal 3, Post.count
       assert_equal 2, Comment.count
+      assert_broadcasts("posts", 1) { Cybertrain::Stream.broadcast("posts", "first test") }
     end
     nil
   end
@@ -54,6 +57,14 @@ class PostFixturesTest < ActiveSupport::TestCase
       assert_equal 980_190_962, comments(:greeting).post_id
       again = Post.create(title: "Extra", body: "long enough body")
       SEEN << "extra id #{again.id}"
+      # The bundle's clear (steps 1-2) runs before the reset hooks (step
+      # 3): the floor is read on the emptied messages table, so it is 0,
+      # the first test's broadcast is not seen, and this test's own (id 1
+      # again) is counted without a block.
+      assert_equal 0, Cybertrain::Test.case_message_floor
+      assert_no_broadcasts("posts")
+      Cybertrain::Stream.broadcast("posts", "second test")
+      assert_equal ["second test"], assert_broadcasts("posts", 1)
     end
     nil
   end
@@ -117,7 +128,7 @@ test "two bundled tests in a row: the second sees exactly the fixtures, ids rest
               "test/legacy.rb",
               "  ok   top-level form reads posts(:one)",
               "",
-              "3 tests, 8 assertions, 0 failures"]
+              "3 tests, 13 assertions, 0 failures"]
   assert_equal expected, Cybertrain::Test::Bundle.captured_output
   assert_equal 0, status
   # Both extra posts took the id after the fixtures' highest: the
