@@ -900,6 +900,19 @@ module Cybertrain
         pairs.empty? ? "{ #{s}: {} }" : "{ #{s}: { #{pairs.join(", ")} } }"
       end
 
+      # What `generate authentication` writes (and nothing else does): the
+      # sign_in_as helper that a generated test's `sign_in_as users(:one)`
+      # needs. Its presence is how the scaffold and the attachment
+      # generators tell an application with authentication (a scaffold of
+      # its own `user` model writes app/models/user.rb too).
+      SESSION_TEST_HELPER = "test/support/session_test_helper.rb"
+
+      # Whether the application at root has `generate authentication`'s
+      # test helper (SESSION_TEST_HELPER).
+      def self.signs_in_tests?(root)
+        File.exist?(File.join(root, SESSION_TEST_HELPER))
+      end
+
       # Whether line is the scaffold controller test's setup line
       # (`    @article = articles(:one)`), which `generate authentication`
       # signs in before.

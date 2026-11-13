@@ -404,6 +404,122 @@ create app/views/layouts/application.html.erb
 create public/404.html
 create public/500.html
 create public/up.html
+create bin/fourbo.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/fourbo.rb (./fourbo user)
+insert config/app.rb (FOURBO_BASE_URL)
+identical db/migrate/20260925120000_create_users.rb
+identical db/migrate/20260925120001_create_sessions.rb
+identical app/models/user.rb
+identical app/models/session.rb
+identical app/controllers/concerns/authentication.rb
+identical app/controllers/sessions_controller.rb
+identical app/controllers/registrations_controller.rb
+identical app/controllers/passwords_controller.rb
+identical app/controllers/accounts_controller.rb
+identical app/mailers/passwords_mailer.rb
+identical app/commands/user_command.rb
+identical app/views/sessions/new.html.erb
+identical app/views/sessions/_nav.html.erb
+identical app/views/registrations/new.html.erb
+identical app/views/passwords/new.html.erb
+identical app/views/passwords/edit.html.erb
+identical app/views/mail/_password_reset.html.erb
+identical app/views/accounts/edit.html.erb
+identical test/fixtures/users.yml
+identical test/support/session_test_helper.rb
+identical test/models/user_test.rb
+identical test/controllers/sessions_controller_test.rb
+identical test/controllers/registrations_controller_test.rb
+identical test/controllers/passwords_controller_test.rb
+identical test/controllers/accounts_controller_test.rb
+identical test/integration/remember_me_test.rb
+identical test/integration/lockout_test.rb
+identical test/integration/admin_test.rb
+note   test/orders.rb uses test/support/app_test.rb (AppTest), which test/test_helper.rb replaces: move it to the class form (require "test_helper", sign_in_as users(:one)) before deleting it
+remove  test/authentication.rb (replaced by test/controllers/sessions_controller_test.rb)
+remove  test/admin.rb (replaced by test/integration/admin_test.rb)
+remove  test/remember_me.rb (replaced by test/integration/remember_me_test.rb)
+remove  test/lockout.rb (replaced by test/integration/lockout_test.rb)
+remove  test/passwords.rb (replaced by test/controllers/passwords_controller_test.rb)
+remove  test/accounts.rb (replaced by test/controllers/accounts_controller_test.rb)
+remove  test/support/app_test.rb (replaced by test/test_helper.rb)
+remove  test/support/authentication_helpers.rb (replaced by test/support/session_test_helper.rb)
+identical app/controllers/application_controller.rb (include Authentication)
+identical route resource :session, resources :passwords, resource :account
+identical config/routes.rb (jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication)
+identical app/views/layouts/application.html.erb (nav already rendered)
+identical test/test_helper.rb (includes SessionTestHelper)
+identical bin/fourbo.rb (user command already required)
+identical config/app.rb (base_url already declared)
+ok   a test of the application's own that uses AppTest is named before app_test.rb goes
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
 create bin/fourbf.rb
 create bin/gen.rb
 create bin/db.rb
@@ -738,6 +854,162 @@ create app/views/orders/_form.html.erb
 create test/controllers/orders_controller_test.rb
 route resources :orders
 ok   a scaffold's controller test signs in, written before the generator or after it
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/ownusers.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create app/models/user.rb
+create test/models/user_test.rb
+create test/fixtures/users.yml
+create app/controllers/users_controller.rb
+create app/views/users/index.html.erb
+create app/views/users/show.html.erb
+create app/views/users/new.html.erb
+create app/views/users/edit.html.erb
+create app/views/users/_form.html.erb
+create test/controllers/users_controller_test.rb
+route resources :users
+create db/migrate/20260925120001_create_posts.rb
+create app/models/post.rb
+create test/models/post_test.rb
+create test/fixtures/posts.yml
+create app/controllers/posts_controller.rb
+create app/views/posts/index.html.erb
+create app/views/posts/show.html.erb
+create app/views/posts/new.html.erb
+create app/views/posts/edit.html.erb
+create app/views/posts/_form.html.erb
+create test/controllers/posts_controller_test.rb
+route resources :posts
+create db/migrate/20260925120002_add_cover_to_posts.rb
+insert app/views/posts/_form.html.erb (cover file field, multipart: true)
+insert app/views/posts/show.html.erb (cover)
+insert app/models/post.rb (attachment cover)
+insert app/controllers/posts_controller.rb (def cover)
+insert app/controllers/posts_controller.rb (:cover in before_action :set_post)
+insert app/controllers/posts_controller.rb (cover_file= in create)
+insert app/controllers/posts_controller.rb (cover_file= in update)
+route post_cover (GET /posts/:id/cover)
+identical .gitignore (/storage/uploads/ already ignored)
+create test/fixtures/files/cover.png
+create test/integration/post_cover_attachment_test.rb
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/authusers.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/registrations_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/registrations/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/controllers/registrations_controller_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resource :account, get/post /sign_up
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/authusers.rb (./authusers user)
+insert config/app.rb (AUTHUSERS_BASE_URL)
+create db/migrate/20260925120002_create_members.rb
+create app/models/member.rb
+create test/models/member_test.rb
+create test/fixtures/members.yml
+create app/controllers/members_controller.rb
+create app/views/members/index.html.erb
+create app/views/members/show.html.erb
+create app/views/members/new.html.erb
+create app/views/members/edit.html.erb
+create app/views/members/_form.html.erb
+create test/controllers/members_controller_test.rb
+route resources :members
+ok   a user scaffold without authentication signs nobody in; with authentication it does
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -2128,4 +2400,4 @@ create test/fixtures/.keep
 create test/support/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-53 tests, 1473 assertions, 0 failures
+55 tests, 1490 assertions, 0 failures

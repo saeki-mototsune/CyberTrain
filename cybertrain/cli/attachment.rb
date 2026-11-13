@@ -1065,12 +1065,14 @@ module Cybertrain
       # The app test for this attachment, in the class form: written as
       # test/integration/post_cover_attachment_test.rb, an
       # ActionDispatch::IntegrationTest. It signs in first when the app has
-      # authentication (app/models/user.rb; a later `generate
-      # authentication` adds the sign-in to it instead), fills the form
+      # authentication (Templates.signs_in_tests?: the authentication
+      # generator's test helper, not app/models/user.rb, which a scaffold
+      # of a `user` model writes too; a later `generate authentication`
+      # adds the sign-in to it instead), fills the form
       # fields the model validates for presence, and checks the
       # security-relevant behaviour (type, filename, CSRF, cleanup).
       def self.attachment_test(root, spec)
-        auth = File.exist?(File.join(root, "app/models/user.rb"))
+        auth = Templates.signs_in_tests?(root)
         # The class body after setup is written flush and indented here.
         body = spec.any ? TEST_PNG_ROUNDTRIP + TEST_ANY_TYPE : TEST_PNG_ROUNDTRIP + TEST_REJECT_TYPES
         body += TEST_COMMON

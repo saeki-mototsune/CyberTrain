@@ -1035,10 +1035,8 @@ module Cybertrain
         # An earlier generator's top-level-form attachment test
         # (test/attachment_<model>_<field>.rb) is not rewritten: it is named,
         # with what it needs, since its forms now redirect to the sign-in page.
-        Dir.glob(File.join(root, "test/attachment_*.rb")).sort.each do |path|
-          next unless File.read(path).index("/session").nil?
-
-          puts "note   test/#{File.basename(path)}: its requests now need a signed-in user; sign one in before them " \
+        unsigned_attachment_tests(root).each do |name|
+          puts "note   #{name}: its requests now need a signed-in user; sign one in before them " \
                "(post \"/session\" with a user's email_address and password), or move it to the class form " \
                "(an ActionDispatch::IntegrationTest with `#{TEST_SIGN_IN_POST}` in its setup)"
         end

@@ -145,8 +145,10 @@ module Cybertrain
             # fixture user's password is "password". `remember: true` checks the
             # form's "Keep me signed in" box.
             def sign_in_as(user, remember: false)
-              post session_path, params: { email_address: user.email_address, password: "password",
-                                           remember_me: remember ? "1" : "0" }
+              fields = { email_address: user.email_address, password: "password" }
+              # A browser sends an unchecked box not at all.
+              fields[:remember_me] = "1" if remember
+              post session_path, params: fields
               nil
             end
 
@@ -218,6 +220,12 @@ module Cybertrain
       # `cybertrain test` beside the new ones, each defining its own
       # top-level new_client, which the bundle refuses.
       def self.record_replaced_tests(result, root, force)
+        if File.exist?(File.join(root, "test/support/app_test.rb"))
+          app_test_users(root).each do |user|
+            puts "note   #{user} uses test/support/app_test.rb (AppTest), which test/test_helper.rb replaces: " \
+                 "move it to the class form (require \"test_helper\", sign_in_as users(:one)) before deleting it"
+          end
+        end
         TEST_FILES_REPLACED.each do |pair|
           old = pair[0]
           path = File.join(root, old)
@@ -233,6 +241,34 @@ module Cybertrain
           end
         end
         nil
+      end
+
+      # The test files (other than TEST_FILES_REPLACED) that require
+      # test/support/app_test.rb or call AppTest: an application's own tests
+      # written in phase 4b's shape, which lose their helper with it.
+      def self.app_test_users(root)
+        replaced = Array.new(0) { "" }
+        TEST_FILES_REPLACED.each { |pair| replaced << pair[0] }
+        out = Array.new(0) { "" }
+        Dir.glob(File.join(root, "test/**/*.rb")).sort.each do |path|
+          rel = path.delete_prefix("#{root}/")
+          next if replaced.include?(rel)
+
+          text = File.read(path)
+          out << rel unless text.index("support/app_test").nil? && text.index("AppTest").nil?
+        end
+        out
+      end
+
+      # The earlier generator's top-level-form attachment tests
+      # (test/attachment_<model>_<field>.rb) that sign nobody in: named by
+      # add_sign_in_to_attachment_tests, never rewritten.
+      def self.unsigned_attachment_tests(root)
+        out = Array.new(0) { "" }
+        Dir.glob(File.join(root, "test/attachment_*.rb")).sort.each do |path|
+          out << "test/#{File.basename(path)}" if File.read(path).index("/session").nil?
+        end
+        out
       end
 
       # A scaffold's controller test written before this generator ran
@@ -360,7 +396,12 @@ module Cybertrain
                 assert_response :forbidden
                 refute User.find_by_password_reset_token(token).nil?
               end
-              sign_in_as user
+              # The sign-in form's own token is accepted.
+              with_forgery_protection do
+                get "/session/new"
+                post "/session", params: { authenticity_token: authenticity_token_in(response.body), email_address: "one@example.com", password: "password" }
+                assert_redirected_to "/"
+              end
               assert_equal 1, Session.count
               with_forgery_protection do
                 delete "/session"
@@ -475,7 +516,9 @@ module Cybertrain
             # The Session row's own limit, apart from the cookie's: signed in for
             # two minutes, then the limit lowered to one, so that a minute later
             # the cookie is still within its own two (SessionStore keeps it) and
-            # only the row's check can end the sign-in.
+            # only the row's check can end the sign-in. The row is saved at that
+            # moment, which moves its updated_at: neither that nor a rewritten
+            # cookie extends authentication (the limit counts from created_at).
             test "an expired cookie cannot restore its user or reach a protected action" do
               max_age = Cybertrain.config.session_absolute_max_age
               begin
@@ -489,9 +532,15 @@ module Cybertrain
 
                 Cybertrain.config.session_absolute_max_age = 60
                 travel 1.minute
+                row = Session.first
+                row.user_agent = "saved at the limit"
+                row.save!
+                assert_equal Time.current.to_i, Session.first.updated_at.to_i
+                get "/session/new", headers: { "cookie" => cookie }
+                refute response.body.include?("<span>one@example.com</span>")
+                assert_equal 0, Session.count
                 delete "/session", headers: { "cookie" => cookie }
                 assert_redirected_to "/session/new"
-                assert_equal 0, Session.count
                 get "/session/new"
                 refute response.body.include?("<span>one@example.com</span>")
                 assert_includes response.body, "<a href=\"/session/new\">Sign in</a>"
@@ -503,6 +552,19 @@ module Cybertrain
               ensure
                 Cybertrain.config.session_absolute_max_age = max_age
               end
+            end
+
+            private
+
+            # The authenticity_token of the first form in a page.
+            def authenticity_token_in(body)
+              marker = "name=\"authenticity_token\" value=\""
+              at = body.index(marker)
+              raise "no authenticity_token in the page" if at.nil?
+
+              start = at + marker.size
+              stop = body.index("\"", start).to_i
+              body[start, stop - start].to_s
             end
           end
         RUBY
@@ -716,9 +778,14 @@ module Cybertrain
               assert_equal 404, res.status
             end
 
+            # With forgery protection on, the page's own token is accepted.
             test "POST /setup with the token creates the first user and signs them in" do
-              post "/setup", params: setup_form("s3cr3t-s3cr3t", "s3cr3t-s3cr3t")
-              assert_redirected_to "/"
+              with_forgery_protection do
+                get setup_link
+                post "/setup", params: { authenticity_token: authenticity_token_in(response.body), token: SetupController.setup_token,
+                                         user: { email_address: " Ann@Example.com ", password: "s3cr3t-s3cr3t", password_confirmation: "s3cr3t-s3cr3t" } }
+                assert_redirected_to "/"
+              end
               assert_equal 1, User.count
               assert_equal "ann@example.com", User.first.email_address
               assert_equal 1, Session.count
@@ -790,6 +857,17 @@ module Cybertrain
             def setup_form(password, confirmation)
               { token: SetupController.setup_token,
                 user: { email_address: " Ann@Example.com ", password: password, password_confirmation: confirmation } }
+            end
+
+            # The authenticity_token of the first form in a page.
+            def authenticity_token_in(body)
+              marker = "name=\"authenticity_token\" value=\""
+              at = body.index(marker)
+              raise "no authenticity_token in the page" if at.nil?
+
+              start = at + marker.size
+              stop = body.index("\"", start).to_i
+              body[start, stop - start].to_s
             end
 
             # /setup with this process's token, the link the boot warning prints.
@@ -971,11 +1049,17 @@ module Cybertrain
               assert_equal 0, ctx.session.issued_at
             end
 
+            # Signed in while auth_remember_for is 31 days, then set back to its
+            # 30: the cookie holds 31, so on day 30 it is the Session row's own
+            # limit that ends the sign-in, and the row is gone.
             test "a remembered session survives day 15 and ends after day 30" do
+              remember_for = Cybertrain.config.auth_remember_for
+              Cybertrain.config.auth_remember_for = 31.days
               sign_in_as users(:one), remember: true
+              Cybertrain.config.auth_remember_for = remember_for
               assert_redirected_to "/"
               assert_equal true, Session.first.remember
-              assert session_cookie_of(response).end_with?("; Max-Age=2592000"), session_cookie_of(response)
+              assert session_cookie_of(response).end_with?("; Max-Age=2678400"), session_cookie_of(response)
               travel_to 6.days.from_now do
                 assert signed_in?
               end
@@ -992,20 +1076,21 @@ module Cybertrain
                 assert signed_in?
               end
               cookie = cookie_header
+              first = Session.last
               travel_to 30.days.from_now - 1.minute do
                 assert signed_in?
               end
               travel_to 30.days.from_now do
                 refute signed_in?
+                # Ended: the row is gone.
+                assert_nil Session.find_by(id: first.id)
               end
               travel_to 31.days.from_now do
                 refute replayed_signed_in?(cookie)
               end
-              # The row's own limit ends it too, and its row with it: a sign-in
-              # whose limit was lowered to 15 days since (the cookie still holds
-              # its 30) ends on day 15, and a longer limit set afterwards does not
-              # bring back a copy of the cookie.
-              remember_for = Cybertrain.config.auth_remember_for
+              # A sign-in whose limit was lowered to 15 days since (the cookie
+              # still holds its 30) ends on day 15, its row with it, and a longer
+              # limit set afterwards does not bring back a copy of the cookie.
               begin
                 sign_in_as users(:one), remember: true
                 started = Session.last
@@ -1063,11 +1148,16 @@ module Cybertrain
               remember_for = Cybertrain.config.auth_remember_for
               begin
                 # Off (0): the limit is session_max_age (two weeks), stamped on
-                # the cookie and checked on the row.
+                # the cookie and checked on the row. Signed in while it is 15
+                # days, then set back to 14, so that the cookie still holds its
+                # 15 on day 14 and the row's check alone ends the sign-in.
                 Cybertrain.config.session_absolute_max_age = 0
+                Cybertrain.config.session_max_age = 15.days
                 user = users(:one)
                 sign_in_as user
                 assert_redirected_to "/"
+                started = Session.last
+                Cybertrain.config.session_max_age = 14.days
                 refute session_cookie_of(response).empty?
                 refute session_cookie_of(response).include?("Max-Age")
                 travel_to 6.days.from_now do
@@ -1081,6 +1171,7 @@ module Cybertrain
                 end
                 travel_to 14.days.from_now do
                   refute signed_in?
+                  assert_nil Session.find_by(id: started.id)
                 end
                 # The stamp itself.
                 stamped = stamped_session(user, false)
@@ -1151,19 +1242,26 @@ module Cybertrain
                 refute signed_in?
                 assert_nil Session.find_by(id: started.id)
               end
-              # auth_idle_timeout 0: no idle limit, the absolute one alone.
+              # auth_idle_timeout 0: no idle limit, the absolute one alone (on
+              # the row: lowered to 29 days after the sign-in, while the cookie
+              # holds its 30).
               idle = Cybertrain.config.auth_idle_timeout
+              remember_for = Cybertrain.config.auth_remember_for
               begin
                 Cybertrain.config.auth_idle_timeout = 0
                 sign_in_as users(:one), remember: true
-                travel_to 29.days.from_now do
+                started = Session.last
+                Cybertrain.config.auth_remember_for = 29.days
+                travel_to 29.days.from_now - 1.minute do
                   assert signed_in?
                 end
-                travel_to 30.days.from_now do
+                travel_to 29.days.from_now do
                   refute signed_in?
+                  assert_nil Session.find_by(id: started.id)
                 end
               ensure
                 Cybertrain.config.auth_idle_timeout = idle
+                Cybertrain.config.auth_remember_for = remember_for
               end
             end
 
@@ -1789,13 +1887,21 @@ module Cybertrain
                 request_reset("one@example.com")
               end
               assert_enqueued_jobs 1, "cybertrain mail"
-              assert_equal 1, perform_enqueued_jobs
+              # The sender is Config#smtp_from (CYBERTRAIN_SMTP_FROM): set here,
+              # so that the mail's is pinned whatever the environment gives.
+              from = Cybertrain.config.smtp_from
+              begin
+                Cybertrain.config.smtp_from = "noreply@example.com"
+                assert_equal 1, perform_enqueued_jobs
+              ensure
+                Cybertrain.config.smtp_from = from
+              end
               mail = Cybertrain::Mailer.deliveries.last
               refute mail.nil?
               assert_equal "Reset your password", mail.mail_subject
               assert_equal I18n.t("passwords_mailer.reset.subject"), mail.mail_subject
               assert_equal "one@example.com", mail.mail_to
-              assert_equal Cybertrain.config.smtp_from, mail.mail_from
+              assert_equal "noreply@example.com", mail.mail_from
               link = last_mail_link
               # base_url's trailing slash is not doubled.
               assert link.start_with?("https://shop.example/passwords/"), link
@@ -2951,13 +3057,19 @@ module Cybertrain
             assert_nil user.unconfirmed_email
             assert_equal 0, Session.count
             assert_enqueued_jobs 1, "cybertrain mail"
-            assert_equal 1, perform_enqueued_jobs
+            from = Cybertrain.config.smtp_from
+            begin
+              Cybertrain.config.smtp_from = "noreply@example.com"
+              assert_equal 1, perform_enqueued_jobs
+            ensure
+              Cybertrain.config.smtp_from = from
+            end
             mail = Cybertrain::Mailer.deliveries.last
             refute mail.nil?
             assert_equal "Confirm your email address", mail.mail_subject
             assert_equal I18n.t("confirmations_mailer.confirmation_instructions.subject"), mail.mail_subject
             assert_equal "ann@example.com", mail.mail_to
-            assert_equal Cybertrain.config.smtp_from, mail.mail_from
+            assert_equal "noreply@example.com", mail.mail_from
             link = last_mail_link
             assert link.start_with?("http://www.example.com/confirmations/#{user.id}--"), link
             assert_equal "Hello ann@example.com,\n\nOpen this link within the next 3 days to confirm your email address:\n" \
