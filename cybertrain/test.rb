@@ -128,6 +128,10 @@ module Cybertrain
     # bundle booted, and the HTML the last request or render answered.
     @app = nil
     @last_html = ""
+    # Whether this test has rendered or requested anything yet: each case
+    # starts with nothing (Test.case_begin), so assert_select cannot read
+    # the HTML an earlier test left.
+    @last_html_given = false
     # True inside `cybertrain test`'s program (Test.bundled!): run! at the
     # end of a top-level-form file then does nothing.
     @bundled = false
@@ -253,14 +257,34 @@ module Cybertrain
       @app = app
     end
 
-    # The HTML the last integration request or `render_inline` answered,
-    # which `assert_select` reads.
+    # The HTML the last integration request or `render_inline` of the
+    # running test answered, which `assert_select` reads; "" before the
+    # first (see {last_html?}).
     # @return [String]
     # @api private
     def self.last_html = @last_html
 
     def self.last_html=(html)
+      @last_html_given = true
       @last_html = html
+    end
+
+    # Whether the running test has made a request or a `render_inline`
+    # yet: false at the start of every test, so "nothing rendered" is never
+    # read as an empty page (or as the previous test's).
+    # @return [Boolean]
+    # @api private
+    def self.last_html?
+      @last_html_given
+    end
+
+    # Forgets the last HTML: the start of every test (step 3).
+    # @return [nil]
+    # @api private
+    def self.clear_last_html
+      @last_html_given = false
+      @last_html = ""
+      nil
     end
 
     # The status of the case just run: `"ok"`, `"FAIL"` or `"ERR"`.
@@ -390,6 +414,9 @@ module Cybertrain
       @message = ""
       @case_marks << @after_this_case.length
       @travel_marks << (@in_case && Cybertrain::Clock.travelling? ? Cybertrain::Clock.travelled_micros : -1)
+      # Each test starts with nothing rendered; a case driven by hand inside
+      # a running one leaves the outer case's HTML alone.
+      clear_last_html unless @in_case
       @in_case = true
       run_case_hooks(@before_each, "in fixtures") && run_case_hooks(@resets, "in reset")
     end

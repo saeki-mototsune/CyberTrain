@@ -116,4 +116,5 @@ identical gen/migrations.rb
 wrote gen/console.rb
 identical gen/app.rb
 ok   gen/tests.rb goes when test/ goes
-13 tests, 121 assertions, 0 failures
+ok   an app's own top-level render_inline is refused: it would replace the framework's
+14 tests, 124 assertions, 0 failures

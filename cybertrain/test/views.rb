@@ -66,7 +66,8 @@ end
 # @param locals [Hash] the partial's locals
 # @return [String] the HTML
 # @raise [ArgumentError] for neither or both of a component and `partial:`,
-#   for `content:` with a partial, and for a block
+#   for `content:` with a partial, `locals:` with a component, and for a
+#   block
 # @api public
 def render_inline(component = nil, content: "", partial: "", locals: {})
   if block_given?
@@ -79,6 +80,10 @@ def render_inline(component = nil, content: "", partial: "", locals: {})
   end
   html = ""
   if partial == ""
+    unless locals.empty?
+      message = "render_inline: locals: are for a partial; a component takes its values in new(...)"
+      raise ArgumentError, message
+    end
     html = Cybertrain::Views.render_component(component, content).to_s
   else
     unless content == ""

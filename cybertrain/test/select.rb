@@ -14,7 +14,9 @@
 # refused with `assert_select: <feature> is not supported (selector: "...")`
 # rather than matching nothing: pseudo-classes and pseudo-elements, the
 # sibling combinators `+` and `~`, attribute operators other than `=`,
-# namespaces, `?` substitution values and the nested block form.
+# namespaces, CSS escapes, `?` substitution values and the nested block
+# form. A test that has neither requested a page nor called render_inline
+# fails ("No response yet"), never searching an earlier test's HTML.
 #
 # A byte scanner (spikes/NOTES.md rule 62): Selector.parse reads its
 # parameter through a fresh local.
@@ -155,6 +157,8 @@ module Cybertrain
             refuse_selector(s, "pseudo-classes are")
           elsif c == 124 # |
             refuse_selector(s, "namespaces are")
+          elsif c == 92 # \
+            refuse_selector(s, "CSS escapes (\\) are")
           elsif c == 63 # ?
             refuse_selector(s, "substitution values (?) are")
           elsif c == 42 # *
@@ -189,6 +193,7 @@ module Cybertrain
         i += 1 while i < n && HtmlReader.html_space?(s.getbyte(i))
         invalid_selector(s) if i >= n
         c = s.getbyte(i)
+        refuse_selector(s, "CSS escapes (\\) are") if c == 92
         if c == 93 # ]
           current.sel_attr_names << name
           current.sel_attr_values << ""
@@ -231,12 +236,26 @@ module Cybertrain
         i += 1 while i < n && HtmlReader.html_space?(s.getbyte(i))
         invalid_selector(s) if i >= n
         # `[a="v" i]` (a case flag) and anything else before the `]`.
-        refuse_selector(s, "attribute flags are") if s.getbyte(i) != 93 && HtmlReader.ascii_letter?(s.getbyte(i))
+        refuse_selector(s, "attribute flags are") if flag_at?(s, i)
         invalid_selector(s) unless s.getbyte(i) == 93
         current.sel_attr_names << name
         current.sel_attr_values << value
         current.sel_attr_valued << true
         i + 1
+      end
+
+      # Whether a case flag (`i` or `s`, then optional spaces and `]`)
+      # starts at byte i: `[a="v" i]`.
+      # @api private
+      def self.flag_at?(text, i)
+        s = text.to_s
+        n = s.bytesize
+        c = s.getbyte(i)
+        return false unless c == 105 || c == 73 || c == 115 || c == 83
+
+        j = i + 1
+        j += 1 while j < n && HtmlReader.html_space?(s.getbyte(j))
+        j < n && s.getbyte(j) == 93
       end
 
       # The byte after the identifier starting at `from`: letters, digits,
@@ -377,6 +396,49 @@ module Cybertrain
       out
     end
 
+    # What `assert_select` fails with when the running test has neither
+    # requested a page nor called `render_inline` (Rails' "No response
+    # yet"): an empty or earlier test's page is never searched.
+    NOTHING_RENDERED = "assert_select: No response yet. Request a page or call render_inline first."
+
+    # Fails unless the running test has rendered or requested something
+    # ({last_html?}).
+    # @return [nil]
+    # @api private
+    def self.check_rendered
+      return nil if last_html?
+
+      text = NOTHING_RENDERED
+      fail_with(text)
+      nil
+    end
+
+    # A count option as an Integer, -1 when not given.
+    # @raise [ArgumentError] when it is negative
+    # @api private
+    def self.select_bound(name, value)
+      return -1 if value.nil?
+
+      n = value.to_i
+      if n < 0
+        message = "assert_select: #{name}: must be 0 or more, got #{n}"
+        raise ArgumentError, message
+      end
+      n
+    end
+
+    # A Regexp cannot be matched against text that is not valid UTF-8:
+    # the assertion fails, naming the element, rather than raising.
+    # @return [nil]
+    # @api private
+    def self.check_valid_text(node, text)
+      return nil if text.valid_encoding?
+
+      message = "assert_select: the text of <#{node.node_tag}> at byte #{node.node_start} is not valid UTF-8; a Regexp cannot match it"
+      fail_with(message)
+      nil
+    end
+
     # `assert_select`'s count check (pre-flight R17: the one check every
     # form calls). `count`, `minimum` and `maximum` are -1 when not given;
     # `text_label` is "" or the text option's inspect.
@@ -443,9 +505,15 @@ def assert_select(selector, equality = nil, count: nil, minimum: nil, maximum: n
     Cybertrain::Test.fail_with(message)
   end
   want_text = text
-  want_count = count.nil? ? -1 : count.to_i
-  want_min = minimum.nil? ? -1 : minimum.to_i
-  want_max = maximum.nil? ? -1 : maximum.to_i
+  want_count = Cybertrain::Test.select_bound("count", count)
+  want_min = Cybertrain::Test.select_bound("minimum", minimum)
+  want_max = Cybertrain::Test.select_bound("maximum", maximum)
+  if want_min >= 0 && want_max >= 0 && want_min > want_max
+    message = "assert_select: minimum: #{want_min} is above maximum: #{want_max}"
+    raise ArgumentError, message
+  end
+  # Rails takes the count positionally or as options, not both.
+  counted = want_count >= 0 || want_min >= 0 || want_max >= 0
   case equality
   when nil then nil
   when String, Regexp
@@ -454,13 +522,23 @@ def assert_select(selector, equality = nil, count: nil, minimum: nil, maximum: n
       raise ArgumentError, message
     end
     want_text = equality
-  when Integer then want_count = equality
-  when true then want_min = 1 if want_min < 0
-  when false then want_count = 0
+  when Integer, true, false
+    if counted
+      message = "assert_select: give the count once, as the second argument (#{equality.inspect}) or as count:, minimum: and maximum:"
+      raise ArgumentError, message
+    end
+    case equality
+    when Integer then want_count = Cybertrain::Test.select_bound("count", equality)
+    when true then want_min = 1
+    else want_count = 0
+    end
   else
     message = "assert_select: the second argument must be a String, a Regexp, an Integer, true or false"
     raise ArgumentError, message
   end
+  # An unsupported selector is named before anything else.
+  Cybertrain::Test::Selector.parse(selector)
+  Cybertrain::Test.check_rendered
   html = Cybertrain::Test.last_html
   nodes = Cybertrain::Test.select_nodes(selector, html)
   label = ""
@@ -470,7 +548,11 @@ def assert_select(selector, equality = nil, count: nil, minimum: nil, maximum: n
     found = nodes
   when Regexp
     label = want_text.inspect
-    nodes.each { |node| found << node if Cybertrain::Test.squished_text(node.node_text).match?(want_text) }
+    nodes.each do |node|
+      seen = Cybertrain::Test.squished_text(node.node_text)
+      Cybertrain::Test.check_valid_text(node, seen)
+      found << node if seen.match?(want_text)
+    end
   else
     wanted = want_text.to_s
     label = wanted.inspect

@@ -311,4 +311,19 @@ test "gen/tests.rb goes when test/ goes" do
   refute File.exist?("#{root}/gen/tests.rb")
 end
 
+test "an app's own top-level render_inline is refused: it would replace the framework's" do
+  # The helper test the helper generator wrote before render_helper_template.
+  old_helper = "require \"cybertrain/test\"\n\n# app/helpers/prices_helper.rb\ndef render_inline(source)\n  source\nend\n"
+  root = temp_app("test/prices_helper.rb" => old_helper)
+  assert_equal "test/prices_helper.rb:4: render_inline is the framework's (component and partial tests); " \
+               "rename this one render_helper_template, or regenerate the helper test", bundle_refusal(root)
+  root = temp_app("test/support/views.rb" => "def render_inline(c) = c\n")
+  assert_equal "test/support/views.rb:1: render_inline is the framework's (component and partial tests); " \
+               "rename this one render_helper_template, or regenerate the helper test", bundle_refusal(root)
+  # The renamed helper, a call, and a method inside a class are fine.
+  fine = "def render_helper_template(source) = source\n\nclass X\n  def render_inline(c) = c\nend\n\ntest \"t\" do\n  render_inline(Card.new)\nend\n"
+  root = temp_app("test/prices_helper.rb" => fine)
+  assert_equal "", bundle_refusal(root)
+end
+
 Cybertrain::Test.run!

@@ -147,6 +147,42 @@ class CardComponentTest < ViewComponent::TestCase
   end
 end
 
+# The class form's lifecycle, driven as gen/tests.rb drives it and outside
+# any running case (as in the bundle): a test that renders, then one that
+# forgets to and asserts on what the first left.
+class LeakTest < ViewComponent::TestCase
+  def test_renders
+    render_inline(CardComponent.new(title: "Hello"))
+    assert_select "h2", "Hello"
+    nil
+  end
+
+  def test_forgets_to_render
+    assert_select "h2", "Hello"
+    nil
+  end
+end
+
+LEAK_RESULTS = Array.new(0) { "" }
+first = LeakTest.new
+if Cybertrain::Test.before_case(first)
+  Cybertrain::Test.run_body(first) { first.test_renders }
+end
+Cybertrain::Test.after_case(first)
+LEAK_RESULTS << "#{Cybertrain::Test.last_status} #{Cybertrain::Test.last_message}"
+second = LeakTest.new
+if Cybertrain::Test.before_case(second)
+  Cybertrain::Test.run_body(second) { second.test_forgets_to_render }
+end
+Cybertrain::Test.after_case(second)
+LEAK_RESULTS << "#{Cybertrain::Test.last_status} #{Cybertrain::Test.last_message}"
+
+test "class form: a render in one test does not leak into the next" do
+  assert_equal ["ok ", "FAIL assert_select: No response yet. Request a page or call render_inline first."], LEAK_RESULTS
+  # This test has rendered nothing either.
+  assert_equal false, Cybertrain::Test.last_html?
+end
+
 test "render_inline renders a component and a partial and keeps the HTML" do
   assert_includes render_inline(CardComponent.new(title: "Hello")), "Hello"
   assert_select "div.card > h2", text: "Hello"
@@ -230,8 +266,10 @@ test "failures: a missing element, an unsupported selector, a block, neither or 
                assert_raises(ArgumentError) { render_inline(CardComponent.new(title: "x"), partial: "articles/form") }
   assert_equal "render_inline: content: is for a component; a partial takes locals:",
                assert_raises(ArgumentError) { render_inline(partial: "articles/form", content: "x", locals: { article: Article.new(0, "") }) }
+  assert_equal "render_inline: locals: are for a partial; a component takes its values in new(...)",
+               assert_raises(ArgumentError) { render_inline(CardComponent.new(title: "x"), locals: { article: Article.new(0, "") }) }
   render_inline(partial: "pages/broken")
-  assert_equal "assert_select: the HTML could not be read: mismatched end tag </div> at byte 12 (open: <p>)\n" \
+  assert_equal "assert_select: the HTML could not be read: mismatched end tag </div> at byte 12 (open: <p>); HTML lets a page omit </p>, but this reader does not repair: write it\n" \
                "HTML (first 500 characters):\n<div><p>open</div>", assert_raises("AssertionFailed") { assert_select "p" }
 end
 

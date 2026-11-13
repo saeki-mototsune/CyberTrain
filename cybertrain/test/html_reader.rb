@@ -19,6 +19,26 @@
 # the browser would not build. `<x/>` closes itself for void elements and
 # inside `svg` / `math`.
 #
+# The tree is the document as written. Where a browser (and Nokogiri,
+# behind Rails' assert_select) would build another tree from valid HTML,
+# this reader does not repair, and an assertion can differ from Rails':
+# - a block element inside `<p>` (`<p><div>x</div></p>`): here the div is
+#   the p's child, so `p > div` matches; a browser closes the p first;
+# - a table without `<tbody>` (`<table><tr>...`): here `table > tr`
+#   matches and `table > tbody > tr` does not; a browser inserts the tbody;
+# - omitted optional end tags (`<li>a<li>b`, `<p>a<p>b`): refused as a
+#   missing or mismatched end tag (the message says so), not repaired;
+# - a `<!--` inside a script (`<script><!-- ... <script></script> -->`):
+#   the script ends at its first `</script`, so the rest is refused;
+# - CDATA outside svg / math is skipped up to its first `>` (a bogus
+#   comment, as in HTML); inside them it is text up to `]]>`;
+# - character references: the basic five, `&apos;`, the Latin-1 names
+#   (`&ouml;`, `&eacute;`, ...), a few symbols (`&mdash;`, `&hearts;`, ...)
+#   and every numeric one (`&#x80;`-`&#x9F;` as windows-1252, as HTML5
+#   does) are decoded; any other name stays as written.
+# The framework's own templates, helpers and pages parse; the differences
+# matter for HTML a template writes by hand.
+#
 # A byte scanner (spikes/NOTES.md rule 62): every scanning method reads its
 # String parameter through a fresh local (`s = html.to_s`).
 require "cybertrain/test"
@@ -187,8 +207,27 @@ module Cybertrain
         "ndash" => "–", "laquo" => "«", "raquo" => "»", "lsquo" => "‘", "rsquo" => "’",
         "ldquo" => "“", "rdquo" => "”", "times" => "×", "middot" => "·", "bull" => "•",
         "rarr" => "→", "larr" => "←", "uarr" => "↑", "darr" => "↓", "deg" => "°",
-        "euro" => "€", "yen" => "¥", "pound" => "£", "sect" => "§", "para" => "¶"
+        "euro" => "€", "yen" => "¥", "pound" => "£", "sect" => "§", "para" => "\u00B6",
+        "hearts" => "♥", "spades" => "♠", "clubs" => "♣", "diams" => "♦", "check" => "✓",
+        "minus" => "−", "le" => "≤", "ge" => "≥", "ne" => "≠", "infin" => "∞",
+        "dagger" => "†", "permil" => "‰", "prime" => "′", "sbquo" => "‚", "bdquo" => "„",
+        "lsaquo" => "‹", "rsaquo" => "›", "OElig" => "Œ", "oelig" => "œ", "Scaron" => "Š",
+        "scaron" => "š", "Yuml" => "Ÿ", "fnof" => "ƒ", "ensp" => " ", "emsp" => " ",
+        "thinsp" => " ", "zwnj" => "‌", "zwj" => "‍", "AMP" => "&", "LT" => "<", "GT" => ">", "QUOT" => "\""
       }.freeze
+
+      # The Latin-1 names, U+00A0 to U+00FF in order (`&ouml;` is U+00F6).
+      LATIN1 = %w[nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr
+                  deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest
+                  Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml
+                  ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig
+                  agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml
+                  eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml].freeze
+
+      # `&#x80;` to `&#x9F;` as HTML5 reads them (windows-1252); 0 keeps the
+      # code point.
+      CP1252 = [0x20AC, 0, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0, 0x017D, 0,
+                0, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0, 0x017E, 0x0178].freeze
 
       # Every element of `html`, in document order; each knows its parent's
       # position (HtmlNode#node_parent_index) and its children.
@@ -218,13 +257,33 @@ module Cybertrain
           add_node_texts(nodes, stack, decode_references(s.byteslice(run, i - run))) if i > run
           case kind
           when 1 # comment
-            close = byte_after(s, i + 4, "-->")
+            # `<!-->` and `<!--->` are empty comments, as in HTML.
+            close = -1
+            if i + 4 < n && s.getbyte(i + 4) == 62
+              close = i + 5
+            elsif i + 5 < n && s.getbyte(i + 4) == 45 && s.getbyte(i + 5) == 62
+              close = i + 6
+            else
+              close = byte_after(s, i + 4, "-->")
+            end
             if close < 0
               message = "unterminated comment at byte #{i}"
               raise Malformed, message
             end
             i = close
           when 2 # <!doctype ...>, <?...?>, other <!...>
+            if in_foreign?(nodes, stack) && s.byteslice(i, 9) == "<![CDATA["
+              # Text in svg / math, up to `]]>`.
+              close = byte_after(s, i + 9, "]]>")
+              if close < 0
+                message = "unterminated CDATA section at byte #{i}"
+                raise Malformed, message
+              end
+              add_node_texts(nodes, stack, s.byteslice(i + 9, close - 3 - i - 9))
+              i = close
+              run = i
+              next
+            end
             j = i + 2
             j += 1 while j < n && s.getbyte(j) != 62
             if j >= n
@@ -242,7 +301,7 @@ module Cybertrain
         add_node_texts(nodes, stack, decode_references(s.byteslice(run, n - run))) if n > run
         unless stack.empty?
           top = nodes[stack[stack.length - 1]]
-          message = "missing end tag </#{top.node_tag}> for <#{top.node_tag}> opened at byte #{top.node_start}"
+          message = "missing end tag </#{top.node_tag}> for <#{top.node_tag}> opened at byte #{top.node_start}#{optional_end_hint(top.node_tag)}"
           raise Malformed, message
         end
         nodes
@@ -418,7 +477,7 @@ module Cybertrain
         end
         top = nodes[stack[stack.length - 1]]
         unless top.node_tag == tag
-          message = "mismatched end tag </#{tag}> at byte #{i} (open: <#{top.node_tag}>)"
+          message = "mismatched end tag </#{tag}> at byte #{i} (open: <#{top.node_tag}>)#{optional_end_hint(top.node_tag)}"
           raise Malformed, message
         end
         stack.pop
@@ -444,6 +503,18 @@ module Cybertrain
           j += 1
         end
         -1
+      end
+
+      # The elements whose end tag HTML lets a page leave out.
+      OPTIONAL_END = %w[li p td th tr option optgroup dt dd thead tbody tfoot colgroup caption rt rp].freeze
+
+      # The hint a missing or mismatched end tag gets when the open element
+      # is one whose end tag HTML lets a page omit; "" otherwise.
+      # @api private
+      def self.optional_end_hint(tag)
+        return "" unless OPTIONAL_END.include?(tag)
+
+        "; HTML lets a page omit </#{tag}>, but this reader does not repair: write it"
       end
 
       # Whether an open element is svg or math (foreign content).
@@ -526,11 +597,15 @@ module Cybertrain
           return "" if code < 0
           return "\uFFFD" if code == 0 || code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)
 
+          code = CP1252[code - 0x80] if code >= 0x80 && code <= 0x9F && CP1252[code - 0x80] != 0
           return code.chr(Encoding::UTF_8)
         end
-        return "" unless NAMED.key?(s)
+        return NAMED[s] if NAMED.key?(s)
 
-        NAMED[s]
+        k = LATIN1.index(s)
+        return "" if k.nil?
+
+        (0xA0 + k).chr(Encoding::UTF_8)
       end
 
       # The number in `text` from byte `from` in `base` (10 or 16); -1 when

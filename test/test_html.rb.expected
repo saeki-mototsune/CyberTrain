@@ -14,4 +14,11 @@ ok   odd but well-formed HTML: unquoted, valueless and repeated attributes, enti
 ok   the reader's nodes: tag, attributes, text, html, children, parent
 ok   a malformed document fails with the byte offset
 ok   each malformed shape fails with its offset, and the excerpt
-16 tests, 255 assertions, 0 failures
+ok   a test that rendered nothing fails, whatever the last test left
+ok   the next test does not see the previous test's HTML
+ok   empty comments, CDATA in svg, references beyond the basic five
+ok   count options given twice, negative or crossed are refused
+ok   a Regexp against text that is not UTF-8 fails the assertion
+ok   selector messages: CSS escapes, and a flag only where a flag stands
+ok   the trees that differ from a browser's, as documented
+23 tests, 307 assertions, 0 failures

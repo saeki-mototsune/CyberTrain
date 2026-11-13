@@ -19,7 +19,8 @@ module Cybertrain
     # gen/tests.rb that only aborts with the reason, so `spin run gen` and
     # `spin test` keep working and `cybertrain test` fails with it: a
     # top-level `def` or constant defined in two bundled files (they would
-    # merge into one in one program), and the block forms that are not
+    # merge into one in one program), a top-level `def render_inline` that
+    # would replace the framework's, and the block forms that are not
     # offered (plan decision 14).
     module TestsEmitter
       PATH = "gen/tests.rb".freeze
@@ -186,6 +187,9 @@ module Cybertrain
         problem = duplicate(files)
         return problem unless problem.empty?
 
+        problem = framework_helper(files)
+        return problem unless problem.empty?
+
         k = 0
         while k < files.length
           f = files[k]
@@ -214,6 +218,28 @@ module Cybertrain
                    "put it in a test file or in a test class"
           end
           i += 1
+        end
+        ""
+      end
+
+      # A top-level `def render_inline` in a bundled file: the bundle also
+      # loads the framework's (cybertrain/test/views.rb), and the later
+      # definition would silently replace it under CRuby and Spinel alike.
+      # The helper generator wrote one in each helper test before 0.5.
+      def self.framework_helper(files)
+        k = 0
+        while k < files.length
+          f = files[k]
+          j = 0
+          while j < f.test_helpers.length
+            h = f.test_helpers[j]
+            j += 1
+            next unless h.helper_kind == "def" && h.helper_name == "render_inline"
+
+            return "#{f.test_path}:#{h.helper_line}: render_inline is the framework's (component and partial tests); " \
+                   "rename this one render_helper_template, or regenerate the helper test"
+          end
+          k += 1
         end
         ""
       end

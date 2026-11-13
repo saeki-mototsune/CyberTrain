@@ -267,11 +267,11 @@ end
 
 test "each malformed shape fails with its offset, and the excerpt" do
   {
-    "<div><p>x</div>" => "mismatched end tag </div> at byte 9 (open: <p>)",
+    "<div><p>x</div>" => "mismatched end tag </div> at byte 9 (open: <p>); HTML lets a page omit </p>, but this reader does not repair: write it",
     "<p>x</p></p>" => "unexpected end tag </p> at byte 8 (open: none)",
-    "<ul><li>a</ul>" => "mismatched end tag </ul> at byte 9 (open: <li>)",
+    "<ul><li>a</ul>" => "mismatched end tag </ul> at byte 9 (open: <li>); HTML lets a page omit </li>, but this reader does not repair: write it",
     "<div><p>x</p>" => "missing end tag </div> for <div> opened at byte 0",
-    "<p>a<p>b</p>" => "missing end tag </p> for <p> opened at byte 0",
+    "<p>a<p>b</p>" => "missing end tag </p> for <p> opened at byte 0; HTML lets a page omit </p>, but this reader does not repair: write it",
     "<p><!-- x </p>" => "unterminated comment at byte 3",
     "<p class=\"a>x</p>" => "unterminated attribute value (class) in <p at byte 0",
     "<p class=a" => "unterminated tag <p at byte 0",
@@ -286,8 +286,82 @@ test "each malformed shape fails with its offset, and the excerpt" do
                  assert_raises("AssertionFailed") { assert_select "p" }
   end
   # The reader itself raises Malformed.
-  assert_equal "mismatched end tag </div> at byte 9 (open: <p>)",
+  assert_equal "mismatched end tag </div> at byte 9 (open: <p>); HTML lets a page omit </p>, but this reader does not repair: write it",
                assert_raises(Cybertrain::Test::HtmlReader::Malformed) { Cybertrain::Test::HtmlReader.parse("<div><p>x</div>") }
+end
+
+test "a test that rendered nothing fails, whatever the last test left" do
+  assert_equal false, Cybertrain::Test.last_html?
+  assert_equal "", Cybertrain::Test.last_html
+  assert_equal Cybertrain::Test::NOTHING_RENDERED, assert_raises("AssertionFailed") { assert_select "form", false }
+  assert_equal "assert_select: No response yet. Request a page or call render_inline first.",
+               assert_raises("AssertionFailed") { assert_select "div.error", count: 0 }
+  # An unsupported selector is still named first.
+  assert_includes assert_raises("AssertionFailed") { assert_select "p:first-child" }, "pseudo-classes are not supported"
+  # A render or request in the same test (here: what they set) is read.
+  Cybertrain::Test.last_html = "<h1>Welcome</h1><p class=notice>Saved</p>"
+  assert Cybertrain::Test.last_html?
+  assert_select "form", false
+  assert_select "p.notice", "Saved"
+end
+
+test "the next test does not see the previous test's HTML" do
+  assert_equal false, Cybertrain::Test.last_html?
+  assert_equal Cybertrain::Test::NOTHING_RENDERED, assert_raises("AssertionFailed") { assert_select "p.notice", "Saved" }
+  # A case driven by hand inside this one leaves this one's HTML alone.
+  Cybertrain::Test.last_html = "<p>outer</p>"
+  inner = Cybertrain::Test::Case.new("inner", -> { nil }, Cybertrain::Test::TopLevelFile.new(""))
+  Cybertrain::Test.run_top_level_case(inner)
+  assert_select "p", "outer"
+end
+
+test "empty comments, CDATA in svg, references beyond the basic five" do
+  Cybertrain::Test.last_html = "<!--><p>x</p><!-- y --><!---><p>z</p><!---->"
+  assert_select "p", count: 2
+  Cybertrain::Test.last_html = "<svg><text><![CDATA[a > b <c>]]></text></svg><div><![CDATA[x > y]]></div>"
+  assert_select "svg text", text: "a > b <c>"
+  assert_select "c", false
+  # Outside svg / math, CDATA is a bogus comment up to its first `>`.
+  assert_select "div", text: "y]]>"
+  Cybertrain::Test.last_html = "<p>K&ouml;ln &Eacute;t&eacute; &hearts; &check; &AMP; &#x80;&#x81; &yuml;&iexcl;</p>"
+  assert_select "p", text: "Köln Été ♥ ✓ & €\u0081 ÿ¡"
+  assert_equal "&nosuch; &hearts", Cybertrain::Test::HtmlReader.decode_references("&nosuch; &hearts")
+end
+
+test "count options given twice, negative or crossed are refused" do
+  html!
+  assert_includes assert_raises(ArgumentError) { assert_select "li", 2, count: 5 }, "give the count once, as the second argument (2) or as count:"
+  assert_includes assert_raises(ArgumentError) { assert_select "li", false, minimum: 1 }, "give the count once, as the second argument (false)"
+  assert_includes assert_raises(ArgumentError) { assert_select "li", true, maximum: 1 }, "give the count once"
+  assert_equal "assert_select: count: must be 0 or more, got -1", assert_raises(ArgumentError) { assert_select "li", count: -1 }
+  assert_equal "assert_select: minimum: must be 0 or more, got -2", assert_raises(ArgumentError) { assert_select "li", minimum: -2 }
+  assert_equal "assert_select: count: must be 0 or more, got -3", assert_raises(ArgumentError) { assert_select "li", -3 }
+  assert_equal "assert_select: minimum: 3 is above maximum: 2", assert_raises(ArgumentError) { assert_select "li", minimum: 3, maximum: 2 }
+  # Text positionally and a count as options is fine.
+  assert_select "li", "a", count: 1
+end
+
+test "a Regexp against text that is not UTF-8 fails the assertion" do
+  Cybertrain::Test.last_html = "<p>a\xFFb</p>".dup.force_encoding("UTF-8")
+  assert_equal "assert_select: the text of <p> at byte 0 is not valid UTF-8; a Regexp cannot match it",
+               assert_raises("AssertionFailed") { assert_select "p", text: /a/ }
+  assert_select "p", count: 1
+end
+
+test "selector messages: CSS escapes, and a flag only where a flag stands" do
+  html!
+  assert_equal "assert_select: CSS escapes (\\) are not supported (selector: \".md\\\\:flex\")", assert_raises("AssertionFailed") { assert_select ".md\\:flex" }
+  assert_equal "assert_select: CSS escapes (\\) are not supported (selector: \"[a\\\\:b]\")", assert_raises("AssertionFailed") { assert_select "[a\\:b]" }
+  assert_equal "assert_select: attribute flags are not supported (selector: \"a[class=btn s]\")", assert_raises("AssertionFailed") { assert_select "a[class=btn s]" }
+  assert_equal "assert_select: invalid selector \"p[data-x=a b]\"", assert_raises("AssertionFailed") { assert_select "p[data-x=a b]" }
+  assert_equal "assert_select: invalid selector \"p[data-x=\\\"a\\\" in]\"", assert_raises("AssertionFailed") { assert_select "p[data-x=\"a\" in]" }
+end
+
+test "the trees that differ from a browser's, as documented" do
+  Cybertrain::Test.last_html = "<p><div>x</div></p><table><tr><td>1</td></tr></table>"
+  assert_select "p > div", count: 1
+  assert_select "table > tr", count: 1
+  assert_select "table > tbody > tr", count: 0
 end
 
 Cybertrain::Test.run!
