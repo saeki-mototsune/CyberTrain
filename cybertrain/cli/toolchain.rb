@@ -671,6 +671,18 @@ module Cybertrain
         system("ruby -e 'require \"prism\"' > /dev/null 2>&1")
       end
 
+      # `cybertrain server`'s CRuby preview gives the application its FFI
+      # through fiddle, under the `ruby` on PATH (the one its children run);
+      # without it the server runs the compiled loop only. Not a missing
+      # requirement: nothing else needs it.
+      def self.fiddle_ok?
+        system("ruby -e 'require \"fiddle\"' > /dev/null 2>&1")
+      end
+
+      def self.fiddle_detail(ok)
+        ok ? "the fiddle library loads (the CRuby preview needs it)" : "ruby cannot load fiddle: cybertrain server runs the compiled loop only"
+      end
+
       # What building an application needs even once Spinel is installed.
       def self.missing_app_requirements
         missing = Array.new(0) { "" }
@@ -745,7 +757,8 @@ module Cybertrain
       # `cybertrain doctor`: prints one line per check. The exit code is 0
       # when a Spinel of the pinned release is usable and applications can
       # be built, or when nothing stops `cybertrain setup` from building
-      # one; 1 otherwise.
+      # one; 1 otherwise (the fiddle line is not counted: without it the
+      # server still runs, compiled).
       def self.doctor
         puts "cybertrain #{Cybertrain::VERSION}, pinned to Spinel #{tag}"
         puts "home      #{home == "" ? "(unset: set CYBERTRAIN_HOME or HOME)" : home}"
@@ -753,6 +766,8 @@ module Cybertrain
         report("make", have_command?("make"), sh_read("command -v make"))
         report("curl", have_command?("curl"), sh_read("command -v curl"))
         report("prism", prism_ok?, prism_ok? ? "the prism gem loads (building Spinel needs it)" : "ruby cannot load the prism gem (building Spinel needs it)")
+        fiddle = fiddle_ok?
+        report("fiddle", fiddle, fiddle_detail(fiddle))
         report("cc", have_command?(cc_program), sh_read("#{cc} --version 2>/dev/null | head -n 1"))
         if have_command?(cc_program)
           report("sqlite3", sqlite_ok?, sqlite_ok? ? "headers and library found" : "sqlite3.h or -lsqlite3 missing")

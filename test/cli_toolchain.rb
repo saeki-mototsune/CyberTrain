@@ -250,6 +250,22 @@ test "missing OpenSSL headers or library are a missing requirement, like sqlite3
   ENV["CC"] = ""
 end
 
+test "doctor's fiddle line: the ruby on PATH loads fiddle, and the exit code does not depend on it" do
+  reset_env
+  assert Toolchain.fiddle_ok?
+  assert_equal "the fiddle library loads (the CRuby preview needs it)", Toolchain.fiddle_detail(true)
+  assert_equal "ruby cannot load fiddle: cybertrain server runs the compiled loop only", Toolchain.fiddle_detail(false)
+  # A ruby first on PATH that fails, as one without fiddle fails its require.
+  mkdir_p("nofiddle")
+  File.write("nofiddle/ruby", "#!/bin/sh\nexit 1\n")
+  File.chmod(0o755, "nofiddle/ruby")
+  ENV["PATH"] = "#{here("nofiddle")}:#{ORIGINAL_PATH}"
+  refute Toolchain.fiddle_ok?
+  refute Toolchain.doctor_problems(true).any? { |problem| problem.include?("fiddle") }
+  refute Toolchain.doctor_problems(false).any? { |problem| problem.include?("fiddle") }
+  ENV["PATH"] = ORIGINAL_PATH
+end
+
 test "install refuses a home it cannot write, without hanging" do
   reset_env
   ENV["CYBERTRAIN_HOME"] = "/proc/cybertrain-test"
