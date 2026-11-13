@@ -87,9 +87,11 @@ what_B1="with no network, git ls-remote of the repository URL lists refs/tags/v$
 what_B2="with no network, cybertrain new works in /workspace (next to the blog) and locks the blog's commit"
 what_B3="with no network, the new app builds"
 
+# pass ID WHAT [MEASURED]: MEASURED, a few words of what was timed, goes
+# after WHAT in parentheses (playground/README.md quotes such figures).
 pass() {
   passed=$((passed + 1))
-  echo "PASS $1 $2"
+  echo "PASS $1 $2${3:+ ($3)}"
 }
 
 # fail ID WHAT DETAIL [WHERE]: WHERE is a container name, or out:ID for the
@@ -385,8 +387,9 @@ if [ "$main_up" = yes ]; then
   docker exec "$main" touch /tmp/smoke-compilers.stop > /dev/null 2>&1
 
   running_mtime=$(docker exec "$main" stat -c %Y /workspace/blog/build/bin/blog 2> /dev/null)
+  ready_in=$(docker logs "$main" 2>&1 | sed -n 's/^=> spinel: ready in \([0-9.]*s\).*/\1/p' | head -n 1)
   if [ "$startup_built" = yes ] && [ -n "$image_mtime" ] && [ "$running_mtime" = "$image_mtime" ]; then
-    pass A3 "$what_A3"
+    pass A3 "$what_A3" "the binary served ${ready_in:-?} after the start"
   else
     fail A3 "$what_A3" "image: ${image_mtime:-unknown}, running: ${running_mtime:-unknown}, startup build ended: $startup_built" "$main"
   fi
@@ -525,7 +528,7 @@ if [ "$main_up" = yes ]; then
   done
   listed=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$base/articles")
   if [ -n "$cruby_after" ] && [ "$cruby_after" -le 10 ] && [ -n "$spinel_after" ] && [ "$listed" = 200 ]; then
-    pass A9 "$what_A9"
+    pass A9 "$what_A9" "cruby after $cruby_after s, spinel after $spinel_after s"
   else
     fail A9 "$what_A9" "validates :body lines: ${edited:-0}, 422 from cruby after: ${cruby_after:-never} s, from spinel after: ${spinel_after:-never} s, last: $last, GET /articles: $listed" "$main"
   fi

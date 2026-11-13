@@ -42,7 +42,7 @@ stopped and restarted.
    Reload the app's tab: an article with a short body now fails with "Body is too
    short (minimum is 10 characters)". The change shows at once because the server
    runs your Ruby under CRuby, the standard Ruby, while Spinel compiles the app in
-   the background; when the compiled binary is ready (about a minute), it takes
+   the background; when the compiled binary is ready (a minute or two), it takes
    over. The corner of each page says which one you are looking at:
 
    - `CRuby preview · Spinel building…`: CRuby served this page; the build runs.
@@ -77,7 +77,7 @@ cybertrain server
 
 Stop the blog's server first: both use port 3000. `cybertrain new` needs no network
 here. The first `cybertrain server` of a new app serves it from CRuby at once while
-the first build runs (about a minute); then the compiled binary takes over.
+the first build runs (two to three minutes); then the compiled binary takes over.
 The new app has no root route, so `/` shows "Not Found": its pages start at
 `/products`.
 
