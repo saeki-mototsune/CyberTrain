@@ -64,13 +64,14 @@ what_G8="cybertrain doctor prints the fiddle line as ok"
 what_A1="GET /articles through the published port answers 200 (default command, CYBERTRAIN_HOST=0.0.0.0)"
 what_A2="the log shows the boot banner of $version listening on http://0.0.0.0:3000"
 what_A3="starting compiled nothing (build/bin/blog keeps the image's mtime)"
-what_A11="the first start runs no C compiler: no cc, gcc, cc1, collect2 or ld process but a --version probe until its startup build has finished, and tmp/cybertrain-dev/ffi/*.so keep the image's mtimes"
+what_A11="the first start runs no C compiler: no cc, gcc, cc1, collect2 or ld process but a --version probe from the container's start until its startup build has finished, and build/bin/gen (gen runs under CRuby) and tmp/cybertrain-dev/ffi/*.so keep the image's mtimes"
 what_A4="GET / answers 200 with <h1>Articles</h1>"
 what_A5="GET /articles/new has a CSRF token and a SameSite=Lax session cookie without Secure or Partitioned"
 what_A6="POST /articles with the token and the cookie answers 303 to the new article, whose page shows it"
 what_A7="POST /articles without token or cookie answers 403"
 what_A8="a view edit shows on the next request"
 what_A9="a model edit answers 422 for a short body with X-Cybertrain-Runtime: cruby within 10 s, and with spinel afterwards"
+what_A12="the CRuby child that serves the model edit compiles nothing: once it has inserted an article and listed the articles through SQLite (X-Cybertrain-Runtime: cruby), tmp/cybertrain-dev/ffi/*.so are still the image's, names and mtimes"
 what_A10="the running container generated tmp/secret_key"
 what_D1="a second playground-server exits 0 saying the server is already running"
 what_D2="one supervisor and one child run"
@@ -80,7 +81,7 @@ what_C1="with CODESPACES=true the session cookie keeps the default, SameSite=Lax
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
 what_C3="with CODESPACES=true and PATH=/usr/bin:/bin, interactive and login bash shells find spin in /opt/cybertrain/bin"
 what_C4="with VS Code's code command on PATH, playground-server opens PLAYGROUND.md and, once the server listens, the forwarded URL (code --openExternal)"
-what_F1="CYBERTRAIN_SESSION_SAME_SITE=lax stops the app at boot: the server logs the valid values and answers 503 naming them instead of serving the app"
+what_F1="CYBERTRAIN_SESSION_SAME_SITE=lax stops the app at boot under CRuby and as the compiled binary (tried as soon as the startup build finds it up to date): the server logs the valid values and that the binary failed, and answers 503 naming them for both instead of serving the app"
 what_E1="a cp -a copy of the blog started by playground-server compiles nothing"
 what_B1="with no network, git ls-remote of the repository URL lists refs/tags/v$version (the mirror)"
 what_B2="with no network, cybertrain new works in /workspace (next to the blog) and locks the blog's commit"
@@ -309,11 +310,15 @@ else
   fail G8 "$what_G8" "got: ${fiddle_line:-no fiddle line}" out:G3
 fi
 
-# The prebuilt binary's mtime, which A3 and E1 compare against.
-run_once 30 mtime "$image" stat -c %Y /workspace/blog/build/bin/blog
+# The prebuilt binary's mtime, which A3 and E1 compare against, and gen's,
+# which A11 compares against (the supervisor runs gen under CRuby, bin/gen.rb,
+# and builds only the blog's binary, so nothing rebuilds build/bin/gen).
+run_once 30 mtime "$image" stat -c %Y /workspace/blog/build/bin/blog /workspace/blog/build/bin/gen
 image_mtime=""
+image_gen_mtime=""
 if [ "$rc" = 0 ]; then
-  image_mtime=$out
+  image_mtime=$(printf '%s\n' "$out" | sed -n 1p)
+  image_gen_mtime=$(printf '%s\n' "$out" | sed -n 2p)
 fi
 
 # The shim's libraries the image was built with, which A11 and E1 compare
@@ -330,12 +335,15 @@ main="$prefix-main"
 main_up=no
 title=""
 base=""
-if start main -p 127.0.0.1::3000 -e CYBERTRAIN_HOST=0.0.0.0 "$image"; then
+# A11: every C compiler process from the container's start until the startup
+# build has ended, 20 times a second, polled by a loop that the container's
+# own command line starts before it execs the default command, so that no
+# moment goes unpolled; A11 stops it with /tmp/smoke-compilers.stop, which
+# also keeps it stopped after D3's restart. `cc --version` compiles nothing:
+# the shim asks it once per CRuby child for its cache key, and spin may too.
+poller='while [ ! -e /tmp/smoke-compilers.stop ]; do pgrep -a -x "cc|gcc|cc1|collect2|ld" >> /tmp/smoke-compilers.log; sleep 0.05; done'
+if start main -p 127.0.0.1::3000 -e CYBERTRAIN_HOST=0.0.0.0 "$image" sh -c "($poller) & exec playground-server"; then
   launched=$SECONDS
-  # A11: every C compiler process from now until the startup build has
-  # ended, 20 times a second. `cc --version` compiles nothing: the shim asks
-  # it once per CRuby child for its cache key, and spin may too.
-  docker exec -d "$main" sh -c 'while :; do pgrep -a -x "cc|gcc|cc1|collect2|ld" >> /tmp/smoke-compilers.log; sleep 0.05; done'
   port=$(host_port "$main")
   base="http://127.0.0.1:$port"
   detail="no 200 within 30 s"
@@ -363,14 +371,18 @@ if [ "$main_up" = yes ]; then
     *) fail A2 "$what_A2" "the banner lines are not in docker logs" "$main" ;;
   esac
 
-  # The supervisor serves from CRuby at once and builds in the background
-  # (`spin build blog -- --incremental`), then hands the port to the binary:
-  # nothing is known to be left uncompiled before that build has ended.
+  # The supervisor serves from CRuby at once, runs gen under CRuby and then
+  # builds in the background. The image's binary is newer than every Ruby
+  # file of the blog and the framework, so that build is a plain `spin build
+  # blog`, which finds it up to date in a fraction of a second, and the
+  # binary takes the port over (`spin build blog -- --incremental` would
+  # compile every time). Whether anything was compiled is known only once
+  # that build has ended.
   startup_built=yes
   if ! built "$main" 300; then
     startup_built="no ($detail)"
   fi
-  docker exec "$main" pkill -f smoke-compilers > /dev/null 2>&1
+  docker exec "$main" touch /tmp/smoke-compilers.stop > /dev/null 2>&1
 
   running_mtime=$(docker exec "$main" stat -c %Y /workspace/blog/build/bin/blog 2> /dev/null)
   if [ "$startup_built" = yes ] && [ -n "$image_mtime" ] && [ "$running_mtime" = "$image_mtime" ]; then
@@ -382,11 +394,15 @@ if [ "$main_up" = yes ]; then
   # One word per program that ran (its pgrep -a line, but for a --version
   # probe): the whole command lines run to pages.
   compilers=$(docker exec "$main" cat /tmp/smoke-compilers.log 2> /dev/null | grep -v ' --version$' | awk '{ n = split($2, p, "/"); print p[n] }' | sort -u | tr '\n' ' ' | sed 's/ $//')
+  polled=$(docker exec "$main" test -e /tmp/smoke-compilers.log && echo yes)
+  running_gen_mtime=$(docker exec "$main" stat -c %Y /workspace/blog/build/bin/gen 2> /dev/null)
   running_ffi=$(docker exec "$main" sh -c "$ffi_list" sh /workspace/blog 2> /dev/null)
-  if [ "$startup_built" = yes ] && [ -z "$compilers" ] && [ -n "$image_ffi" ] && [ "$running_ffi" = "$image_ffi" ]; then
+  if [ "$startup_built" = yes ] && [ "$polled" = yes ] && [ -z "$compilers" ] &&
+    [ -n "$image_gen_mtime" ] && [ "$running_gen_mtime" = "$image_gen_mtime" ] &&
+    [ -n "$image_ffi" ] && [ "$running_ffi" = "$image_ffi" ]; then
     pass A11 "$what_A11"
   else
-    fail A11 "$what_A11" "startup build ended: $startup_built, compilers: ${compilers:-none}, ffi in the image: $(printf '%s' "${image_ffi:-none}" | tr '\n' ';'), running: $(printf '%s' "${running_ffi:-none}" | tr '\n' ';')" "$main"
+    fail A11 "$what_A11" "startup build ended: $startup_built, polled: ${polled:-no}, compilers: ${compilers:-none}, build/bin/gen in the image: ${image_gen_mtime:-unknown}, running: ${running_gen_mtime:-unknown}, ffi in the image: $(printf '%s' "${image_ffi:-none}" | tr '\n' ';'), running: $(printf '%s' "${running_ffi:-none}" | tr '\n' ';')" "$main"
   fi
 
   code=$(curl -s -o "$work/a4.html" -w '%{http_code}' --max-time 5 "$base/")
@@ -453,6 +469,15 @@ if [ "$main_up" = yes ]; then
   # The edit shows at once from the CRuby child (the header says which
   # runtime answered); the binary the background build makes then takes the
   # port over and answers the same.
+  # A12: the startup build takes under a second, so the binary serves before
+  # any CRuby child has used the shim, whose libraries are built at a
+  # module's first call (the SQLite one at the first query). The child that
+  # the edit starts is the first to use them: at its first 422 it inserts an
+  # article and lists the articles, then the shim's libraries are compared
+  # with the image's (none compiled, none rebuilt).
+  cruby_insert=""
+  cruby_list=""
+  cruby_ffi=""
   docker exec "$main" sed -i 's/^class Article$/&\n  validates :body, presence: true, length: { minimum: 10 }/' /workspace/blog/app/models/article.rb
   edited=$(docker exec "$main" grep -c 'validates :body' /workspace/blog/app/models/article.rb 2> /dev/null)
   edited_at=$SECONDS
@@ -474,6 +499,16 @@ if [ "$main_up" = yes ]; then
       last="$short from ${runtime:-no runtime header} after $((SECONDS - edited_at)) s"
       if [ "$short" = 422 ] && [ "$runtime" = cruby ] && [ -z "$cruby_after" ]; then
         cruby_after=$((SECONDS - edited_at))
+        rm -f "$work/a12.head" "$work/a12-list.head"
+        code=$(curl -s -b "$work/a9.jar" -c "$work/a9.jar" -D "$work/a12.head" -o /dev/null -w '%{http_code}' --max-time 5 \
+          --data-urlencode "authenticity_token=$probe_token" \
+          --data-urlencode "article[title]=CRuby insert $(date +%s)" \
+          --data-urlencode "article[body]=A body that is long enough." \
+          "$base/articles")
+        cruby_insert="$code from $(header "$work/a12.head" x-cybertrain-runtime)"
+        code=$(curl -s -D "$work/a12-list.head" -o /dev/null -w '%{http_code}' --max-time 5 "$base/articles")
+        cruby_list="$code from $(header "$work/a12-list.head" x-cybertrain-runtime)"
+        cruby_ffi=$(docker exec "$main" sh -c "$ffi_list" sh /workspace/blog 2> /dev/null)
       fi
       if [ "$short" = 422 ] && [ "$runtime" = spinel ]; then
         spinel_after=$((SECONDS - edited_at))
@@ -493,6 +528,13 @@ if [ "$main_up" = yes ]; then
     pass A9 "$what_A9"
   else
     fail A9 "$what_A9" "validates :body lines: ${edited:-0}, 422 from cruby after: ${cruby_after:-never} s, from spinel after: ${spinel_after:-never} s, last: $last, GET /articles: $listed" "$main"
+  fi
+
+  if [ "$cruby_insert" = "303 from cruby" ] && [ "$cruby_list" = "200 from cruby" ] &&
+    [ -n "$image_ffi" ] && [ "$cruby_ffi" = "$image_ffi" ]; then
+    pass A12 "$what_A12"
+  else
+    fail A12 "$what_A12" "insert: ${cruby_insert:-not tried (no 422 from cruby)}, list: ${cruby_list:-not tried}, ffi in the image: $(printf '%s' "${image_ffi:-none}" | tr '\n' ';'), after: $(printf '%s' "${cruby_ffi:-none}" | tr '\n' ';')" "$main"
   fi
 
   if docker exec "$main" test -s /workspace/blog/tmp/secret_key; then
@@ -564,8 +606,8 @@ if [ "$main_up" = yes ]; then
   fi
 else
   fail A1 "$what_A1" "$detail" "$main"
-  docker exec "$main" pkill -f smoke-compilers > /dev/null 2>&1
-  for id in A2 A3 A11 A4 A5 A6 A7 A8 A9 A10 D1 D2 D3; do
+  docker exec "$main" touch /tmp/smoke-compilers.stop > /dev/null 2>&1
+  for id in A2 A3 A11 A4 A5 A6 A7 A8 A9 A12 A10 D1 D2 D3; do
     name="what_$id"
     fail "$id" "${!name}" "skipped: the dev server did not come up"
   done
@@ -694,22 +736,39 @@ fi
 
 # ---- F: the boot check -----------------------------------------------------
 
-# The app's boot check stops the child that serves it, CRuby first and the
-# compiled binary after its build. The supervisor outlives its child (it
-# holds the port and waits for a change), so the server does not exit: its
-# page says why the app is not served.
+# The app's boot check stops the child that serves it. The CRuby child
+# boots first; the startup build finds the image's binary up to date within
+# a second, so the supervisor tries the binary too: it stops at the same
+# check ("=> spinel: the binary failed; serving the CRuby preview"), and the
+# CRuby child it starts again stops as well. The supervisor outlives its
+# children (it holds the port and waits for a change), so the server does
+# not exit: its page says why the app is not served, the binary's reason
+# after "the compiled binary also failed:". Both runtimes must refuse.
 boot="$prefix-boot"
+message='must be Lax, Strict or None (got &quot;lax&quot;)'
 if start boot -e CYBERTRAIN_SESSION_SAME_SITE=lax "$image"; then
   logged=no
+  binary_failed=no
   answer=""
+  named=""
   began=$SECONDS
-  while [ $((SECONDS - began)) -lt 30 ]; do
-    case "$(docker logs "$boot" 2>&1)" in
+  while [ $((SECONDS - began)) -lt 300 ]; do
+    logs=$(docker logs "$boot" 2>&1)
+    case "$logs" in
       *'must be Lax, Strict or None (got "lax")'*) logged=yes ;;
     esac
+    case "$logs" in
+      *"=> spinel: the binary failed"*) binary_failed=yes ;;
+    esac
     answer=$(docker exec "$boot" curl -s -o /tmp/f1.html -w '%{http_code}' --max-time 2 http://127.0.0.1:3000/articles 2> /dev/null)
-    if [ "$logged" = yes ] && [ "$answer" = 503 ] &&
-      docker exec "$boot" grep -qF 'must be Lax, Strict or None (got &quot;lax&quot;)' /tmp/f1.html 2> /dev/null; then
+    named=""
+    if [ "$answer" = 503 ] && docker exec "$boot" grep -qF "$message" /tmp/f1.html 2> /dev/null; then
+      named=cruby
+      if docker exec "$boot" sed -n '/the compiled binary also failed/,$p' /tmp/f1.html 2> /dev/null | grep -qF "$message"; then
+        named="cruby and the binary"
+      fi
+    fi
+    if [ "$logged" = yes ] && [ "$binary_failed" = yes ] && [ "$named" = "cruby and the binary" ]; then
       break
     fi
     if ! running "$boot"; then
@@ -717,11 +776,10 @@ if start boot -e CYBERTRAIN_SESSION_SAME_SITE=lax "$image"; then
     fi
     sleep 0.5
   done
-  if [ "$logged" = yes ] && [ "$answer" = 503 ] &&
-    docker exec "$boot" grep -qF 'must be Lax, Strict or None (got &quot;lax&quot;)' /tmp/f1.html 2> /dev/null; then
+  if [ "$logged" = yes ] && [ "$binary_failed" = yes ] && [ "$named" = "cruby and the binary" ]; then
     pass F1 "$what_F1"
   else
-    fail F1 "$what_F1" "logged: $logged, GET /articles: ${answer:-no answer}" "$boot"
+    fail F1 "$what_F1" "logged: $logged, the binary failed: $binary_failed, GET /articles: ${answer:-no answer}, the page names the values for: ${named:-neither}" "$boot"
   fi
 else
   fail F1 "$what_F1" "docker run failed: $(first_line "$(cat "$work/boot.start")")"
@@ -732,8 +790,10 @@ fi
 
 copy="$prefix-copy"
 if start copy "$image" bash -c 'cp -a /workspace/blog /tmp/blog-copy && exec playground-server /tmp/blog-copy'; then
-  # Once the startup build has ended, as A3 and A11: the binary and the
-  # shim's libraries are still the image's.
+  # Once the startup build has ended, as A3 and A11: the binary is still the
+  # image's (the startup build found it up to date after the copy), and the
+  # shim's libraries came through the copy with their names and mtimes, for
+  # the copy's first CRuby child after an edit to find (as A12's does).
   if up_inside "$copy" 30 && built "$copy" 300; then
     copy_mtime=$(docker exec "$copy" stat -c %Y /tmp/blog-copy/build/bin/blog 2> /dev/null)
     copy_ffi=$(docker exec "$copy" sh -c "$ffi_list" sh /tmp/blog-copy 2> /dev/null)

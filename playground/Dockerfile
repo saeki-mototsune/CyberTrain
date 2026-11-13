@@ -123,16 +123,26 @@ WORKDIR /workspace/blog
 RUN cybertrain generate scaffold article title:string body:text
 # Step 04: the root route.
 COPY --chown=dev:dev playground/routes.rb config/routes.rb
-# Step 07, then one full build: gen/ is current and build/bin/{gen,db,blog}
-# exist, so the first `cybertrain server` finds the binary newer than its
-# sources. spin's freshness test compares mtimes: never copy this tree with
-# anything but `cp -a`. The blog is built the way `cybertrain server` builds
-# it (`spin build blog -- --incremental`), which also fills spinel's object
-# cache (/opt/cybertrain-cache/spinel): the build after a visitor's edit
-# recompiles only the C units whose text changed. A plain `spin build blog`
-# afterwards says "up to date".
+# Step 07, then the blog's build: gen/ is current and build/bin/{gen,db,blog}
+# exist. The binary shipped is the release build of a plain `spin build
+# blog` (spinel compiles the program's C in a few large parts; with
+# --incremental it compiles units of 256K, at the same -O2 and flags, into a
+# slightly larger binary). The incremental build runs first only to fill
+# spinel's object cache (/opt/cybertrain-cache/spinel), so that the build
+# after a visitor's edit recompiles only the C units whose text changed; its
+# binary is then removed, so that the release build runs and comes last. The
+# first `cybertrain server` picks its startup build by file times (decision
+# P23): a binary newer than every Ruby file of the blog and the framework
+# (a tie counts as stale) gets a plain `spin build blog`, which says "up to
+# date" in a fraction of a second; any other gets `spin build blog --
+# --incremental`, which compiles every time. The last RUN checks both rules.
+# Never copy this tree with anything but `cp -a`, which keeps the times.
 RUN cybertrain db migrate
-RUN cybertrain spin run gen && spin build blog -- --incremental && spin build blog | grep -F "(up to date)"
+RUN cybertrain spin run gen \
+ && spin build blog -- --incremental \
+ && rm build/bin/blog \
+ && spin build blog \
+ && spin build blog | grep -F "(up to date)"
 # The CRuby preview's FFI shim compiles the framework's C (SQLite, ...) at
 # its first use and keeps it in tmp/cybertrain-dev/ffi/<sha256>.so: built
 # here, with the image's compiler, so the first CRuby child compiles nothing
@@ -149,6 +159,19 @@ RUN git init -q -b main \
  && git -c user.name="cybertrain playground" -c user.email="playground@cybertrain.invalid" \
         commit -q -m "Tutorial steps 02-04 and 07: new, scaffold article, root route, db migrate" \
  && test -z "$(git status --porcelain)"
+
+# P23's rule as the supervisor reads it, once nothing more is written: the
+# binary is newer than every *.rb of the blog (Build.binary_stale?) and of
+# the other -I directories of `spin flags` (the framework), and spin agrees.
+RUN set -eu; \
+    dirs=$(spin flags | tr ' ' '\n' | awk 'take { print $0; take = 0; next } $0 == "-I" { take = 1; next } /^-I./ { print substr($0, 3) }'); \
+    ruby -r cybertrain/cli/build -e ' \
+      build = Cybertrain::CLI::Build; \
+      since = build.mtime_ns("build/bin/blog"); \
+      abort "build/bin/blog is stale (Build.binary_stale?)" if build.binary_stale?(Dir.pwd, "blog"); \
+      newer = ARGV.reject { |dir| File.expand_path(dir) == Dir.pwd }.select { |dir| build.newer_ruby?(dir, since, true) }; \
+      abort "a Ruby file is as new as build/bin/blog or newer in #{newer.join(", ")}" unless newer.empty?' $dirs; \
+    spin build blog | grep -F "(up to date)"
 
 EXPOSE 3000
 CMD ["playground-server"]
