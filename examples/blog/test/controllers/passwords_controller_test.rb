@@ -309,7 +309,7 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
     # so that the mail's is pinned whatever the environment gives.
     from = Cybertrain.config.smtp_from
     begin
-      Cybertrain.config.smtp_from = "noreply@example.com"
+      Cybertrain.config.smtp_from = "set-by-this-test@example.org"
       assert_equal 1, perform_enqueued_jobs
     ensure
       Cybertrain.config.smtp_from = from
@@ -319,7 +319,7 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Reset your password", mail.mail_subject
     assert_equal I18n.t("passwords_mailer.reset.subject"), mail.mail_subject
     assert_equal "one@example.com", mail.mail_to
-    assert_equal "noreply@example.com", mail.mail_from
+    assert_equal "set-by-this-test@example.org", mail.mail_from
     link = last_mail_link
     # base_url's trailing slash is not doubled.
     assert link.start_with?("https://shop.example/passwords/"), link

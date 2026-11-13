@@ -203,16 +203,4 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  private
-
-  # The authenticity_token of the first form in a page.
-  def authenticity_token_in(body)
-    marker = "name=\"authenticity_token\" value=\""
-    at = body.index(marker)
-    raise "no authenticity_token in the page" if at.nil?
-
-    start = at + marker.size
-    stop = body.index("\"", start).to_i
-    body[start, stop - start].to_s
-  end
 end

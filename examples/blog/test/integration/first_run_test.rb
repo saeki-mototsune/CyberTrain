@@ -153,17 +153,6 @@ class FirstRunTest < ActionDispatch::IntegrationTest
       user: { email_address: " Ann@Example.com ", password: password, password_confirmation: confirmation } }
   end
 
-  # The authenticity_token of the first form in a page.
-  def authenticity_token_in(body)
-    marker = "name=\"authenticity_token\" value=\""
-    at = body.index(marker)
-    raise "no authenticity_token in the page" if at.nil?
-
-    start = at + marker.size
-    stop = body.index("\"", start).to_i
-    body[start, stop - start].to_s
-  end
-
   # /setup with this process's token, the link the boot warning prints.
   def setup_link
     "/setup?token=#{SetupController.setup_token}"
