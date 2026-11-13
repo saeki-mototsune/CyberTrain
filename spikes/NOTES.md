@@ -419,8 +419,9 @@ tests that differ, each with its verified cause, are listed in
 the preview behaves as the compiled tests expect; it does not say the code
 compiles. To run the checks: `script/test-cruby` (the preview's own tests,
 `test/cruby/*.rb`), `script/preview-parity` (both in the `cruby-preview`
-job), and, by hand, `script/preview-e2e` (`cybertrain server` on a copy of
-examples/blog, built with Spinel several times; about ten minutes).
+job; its macOS leg runs the first only), and `script/preview-e2e`
+(`cybertrain server` on a copy of examples/blog, built with Spinel several
+times; about ten minutes; the `preview-e2e` job, on Ubuntu).
 
 ### What a built binary still depends on
 

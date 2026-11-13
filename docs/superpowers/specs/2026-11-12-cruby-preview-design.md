@@ -9,7 +9,7 @@ docs/superpowers/plans/2026-11-12-cruby-preview-plan.md.
 **As built.** The design changed while it was built. This document was
 amended only where a ruling replaced a passage (those passages cite the
 plan's decisions) and is not maintained: the record is docs/design.md D81,
-and the as-built choices are the plan's Decisions P1 to P25. Statements
+and the as-built choices are the plan's Decisions P1 to P26. Statements
 below that no longer hold:
 
 - The edit's cost of about 8 s (section 0) and the sample log's
@@ -32,8 +32,9 @@ below that no longer hold:
   the guide states them; the holding page does not.
 - A new application's first build "about a minute" (section 12): 112 s on
   4 CPUs and 153 s on 2 (playground/README.md).
-- The end-to-end script runs in CI (section 13): `script/preview-e2e` is run
-  by hand.
+- The end-to-end script runs in CI (section 13): it does since 2026-11-13,
+  in a job of its own (`preview-e2e`, Ubuntu only: the script reads
+  `/proc`), not after the blog's build in the `test` job.
 - Nothing is said of one supervisor per application (section 6): a second
   `cybertrain server` for the same application is refused (P14).
 - The fallback causes (section 10) start with `CYBERTRAIN_ENV` set to

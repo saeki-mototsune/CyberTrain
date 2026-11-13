@@ -110,7 +110,11 @@ The blog is the tutorial after steps 02, 03, 04 and 07 (`cybertrain new
 blog`, the article scaffold, the root route, `cybertrain db migrate`) plus
 its build: `gen/` is current and `build/bin/{gen,db,blog}` exist, and the
 CRuby preview's FFI shim has compiled the framework's C into
-`tmp/cybertrain-dev/ffi/` (`Cybertrain::Preview.warm!`).
+`tmp/cybertrain-dev/ffi/` (`Cybertrain::Preview.warm!`), as `dev`, the user
+every container runs as: the shim loads nothing from a cache that another
+user owns or that its group or others may write to (decision P26 of the
+preview's plan), and the build checks that a second `warm!` compiles
+nothing.
 
 - `build/bin/blog` is the release build of a plain `spin build blog`.
   `spin build blog -- --incremental` runs before it only to fill spinel's

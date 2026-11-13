@@ -200,9 +200,13 @@ passes when every test matches its compiled snapshot except those listed in
 [test/cruby/parity-gaps.txt](test/cruby/parity-gaps.txt), which must still
 differ, and differ only as recorded in `test/cruby/parity/`; a listed test
 that matches again fails it until its line is removed. Both run in CI's
-`cruby-preview` job. `script/preview-e2e` builds the blog with Spinel
-several times, prints one `ok` or `FAIL` line per step and is run by hand:
-run it after changing the supervisor, the shim or the framework's
+`cruby-preview` job on Ubuntu; its macOS leg runs `script/test-cruby` only
+(`script/preview-parity` needs GNU `timeout`). `script/preview-e2e` builds
+the blog with Spinel several times and prints one `ok` or `FAIL` line per
+step; CI's `preview-e2e` job runs it on Ubuntu (Linux only: it reads
+`/proc`) and, when it fails, keeps the supervisor's whole output and the
+build log as the run's `preview-e2e-logs` artifact. Run it yourself too,
+before pushing, after changing the supervisor, the shim or the framework's
 development server.
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs all of this on
