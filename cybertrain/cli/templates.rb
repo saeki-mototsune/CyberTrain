@@ -970,8 +970,10 @@ module Cybertrain
         # A form whose only fields are files sends no `#{s}[...]` key at all
         # when no file is chosen (the parser drops an empty file input), so
         # `require` would make such an edit a 400: `nested` reads the absent
-        # key as empty, and the update keeps the stored file.
-        lookup = permit_list.empty? && res.attachments? ? "nested" : "require"
+        # key as empty, and the update keeps the stored file. A scaffold with
+        # no fields at all is the same case (Rails writes
+        # `params.fetch(:widget, {})` there): nothing to require.
+        lookup = permit_list.empty? ? "nested" : "require"
         <<~RUBY
           class #{res.plural_class}Controller < ApplicationController
             before_action :set_#{s}, only: [:show, :edit, :update, :destroy]

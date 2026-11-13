@@ -161,6 +161,30 @@ job_names = jobs_emitter_source.scan(/out << "  def self\.([a-z_][A-Za-z0-9_]*[?
 abort "check-reserved-names: jobs_emitter.rb emits no `def self.` line" if job_names.empty?
 jobs_missing = job_names - Cybertrain::Gen::JobScan::RESERVED_CLASS_METHODS
 
+# A fixture accessor `def <table>(label)` (gen/test/data.rb) is a top-level
+# method and a method of ActiveSupport::TestCase, so
+# Gen::FixtureScan::TAKEN_NAMES must name every method a test reaches by a
+# bare name: the harness's top-level defs (cybertrain/test.rb and
+# cybertrain/test/*.rb) and the instance methods of its base classes
+# (Test::Base, ActiveSupport::TestCase, ActionDispatch::IntegrationTest,
+# ViewComponent::TestCase), private ones included. Names with ? ! or = are
+# no table name.
+require "cybertrain/generator/fixture_scan"
+fixture_taken = []
+([File.expand_path("../cybertrain/test.rb", __dir__)] + Dir[File.expand_path("../cybertrain/test/*.rb", __dir__)]).sort.each do |path|
+  current = ""
+  File.foreach(path, encoding: "utf-8") do |line|
+    current = Regexp.last_match(1).split("::").last if line =~ /^\s*class (\S+)/
+    next unless line =~ /^(\s*)def ([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=])/
+    next if line.include?("def self.")
+
+    name = Regexp.last_match(2)
+    fixture_taken << name if Regexp.last_match(1).empty? || %w[Base TestCase IntegrationTest].include?(current)
+  end
+end
+fixture_taken = fixture_taken.uniq.sort
+fixtures_missing = fixture_taken - Cybertrain::Gen::FixtureScan::TAKEN_NAMES
+
 # One return type per method name across the program (spikes/NOTES.md
 # rules 10, 34 and 41): a name that more than one class defines, or that a
 # later phase gives a new home, has a row here naming every file allowed to
@@ -486,8 +510,8 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
 end
 
 if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty? && scopes_missing.empty? &&
-   jobs_missing.empty? && homeless.empty? && home_rows_missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods; #{NAME_HOMES.size} shared method names defined only in their homes"
+   jobs_missing.empty? && homeless.empty? && home_rows_missing.empty? && fixtures_missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods; #{NAME_HOMES.size} shared method names defined only in their homes; #{fixture_taken.size} test harness names refused as fixture accessors"
 else
   homeless.each do |rel, number, name, homes|
     where = homes.empty? ? "no file may define it yet" : "its homes are #{homes.join(", ")}"
@@ -498,6 +522,11 @@ else
   unless home_rows_missing.empty?
     warn "check-reserved-names: NAME_HOMES has no row for #{home_rows_missing.map(&:inspect).join(", ")} " \
          "(a candidate name of the phase 4a or 4b plan); add one"
+  end
+  unless fixtures_missing.empty?
+    warn "check-reserved-names: the test harness defines #{fixtures_missing.map(&:inspect).join(", ")} " \
+         "(a top-level def in cybertrain/test.rb or cybertrain/test/*.rb, or a method of a test base class) but " \
+         "Cybertrain::Gen::FixtureScan::TAKEN_NAMES (cybertrain/generator/fixture_scan.rb) does not refuse it as a fixture file's name; add it"
   end
   unless jobs_missing.empty?
     warn "check-reserved-names: gen/jobs.rb defines #{jobs_missing.map(&:inspect).join(", ")} on every job class " \

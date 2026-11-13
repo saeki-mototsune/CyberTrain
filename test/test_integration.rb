@@ -67,6 +67,24 @@ class ArticlesController < Cybertrain::Controller
     render plain: "#{request.header("Accept")} #{request.header("X-Token")}"
   end
 
+  # Each typed param read back through the casts a model's writers use
+  # (models_emitter's cast_for): what create and update would store.
+  def casts
+    v = params.require(:value)
+    on = Cybertrain::Cast.date_or_nil(v[:on].to_s)
+    at = Cybertrain::Cast.time_or_nil(v[:at].to_s)
+    parts = Array.new(0) { "" }
+    parts << request.method
+    parts << on.to_s
+    parts << (at.nil? ? "nil" : Cybertrain::Cast.sql_datetime(at))
+    parts << Cybertrain::Cast.float(v[:f].to_s).to_s
+    parts << Cybertrain::Cast.int(v[:n].to_s).to_s
+    parts << Cybertrain::Cast.bool(v[:yes].to_s).to_s
+    parts << Cybertrain::Cast.bool(v[:no].to_s).to_s
+    parts << v[:none].to_s.empty?.to_s
+    render plain: parts.join("|")
+  end
+
   # A multipart form: the text field, then the file's name, declared type
   # and size (and the bytes' checksum), as the action sees them.
   def upload
@@ -92,6 +110,8 @@ def build_router
   router.add("GET", "/go_here", "go_here") { |ctx| ArticlesController.new(ctx).process(:go_here) { |c| c.go_here } }
   router.add("GET", "/go_away", "go_away") { |ctx| ArticlesController.new(ctx).process(:go_away) { |c| c.go_away } }
   router.add("GET", "/accept", "accept") { |ctx| ArticlesController.new(ctx).process(:accept) { |c| c.accept } }
+  router.add("POST", "/casts", "casts") { |ctx| ArticlesController.new(ctx).process(:casts) { |c| c.casts } }
+  router.add("PATCH", "/casts/:id", "cast") { |ctx| ArticlesController.new(ctx).process(:casts) { |c| c.casts } }
   router.add("POST", "/uploads", "uploads") { |ctx| ArticlesController.new(ctx).process(:upload) { |c| c.upload } }
   router.add("PATCH", "/uploads/:id", "upload") { |ctx| ArticlesController.new(ctx).process(:upload) { |c| c.upload } }
   router.add("PUT", "/uploads/:id", "upload") { |ctx| ArticlesController.new(ctx).process(:upload) { |c| c.upload } }
@@ -248,6 +268,29 @@ class UrlTest < ActionDispatch::IntegrationTest
       post "/articles", params: { article: { title: "Kept" } }
       assert_response :see_other
       assert_equal ["Kept"], TITLES
+    end
+    nil
+  end
+end
+
+# A record's readers answer Dates, Times, Floats, Integers, booleans and nil;
+# a scaffold's test sends them as they are (params: { event: { on: @event.on } }),
+# and what the model casts them back to is what was sent.
+class TypedParamsTest < ActionDispatch::IntegrationTest
+  def test_typed_params
+    begin
+      on = Date.new(2028, 2, 29)
+      at = Time.utc(2026, 11, 11, 12, 0, 0, 123456)
+      post "/casts", params: { value: { on: on, at: at, f: 1.5, n: 42, yes: true, no: false, none: nil } }
+      assert_equal "POST|2028-02-29|2026-11-11 12:00:00.123456|1.5|42|true|false|true", response.body
+      patch "/casts/1", params: { value: { on: on, at: at, f: 0.1, n: -7, yes: true, no: false, none: nil } }
+      assert_equal "PATCH|2028-02-29|2026-11-11 12:00:00.123456|0.1|-7|true|false|true", response.body
+      flat = Cybertrain::Test.flatten_params({ value: { on: on, at: at, f: 1.5 } })
+      assert_equal "2028-02-29", flat["value[on]"]
+      assert_equal "2026-11-11 12:00:00.123456", flat["value[at]"]
+      assert_equal "1.5", flat["value[f]"]
+      assert_equal at, Cybertrain::Cast.time_or_nil(flat["value[at]"])
+      assert_equal on, Cybertrain::Cast.date_or_nil(flat["value[on]"])
     end
     nil
   end
@@ -463,6 +506,10 @@ test "Rails' CGI-style header names" do
   assert_equal "content-type", Cybertrain::Test.request_header_name("CONTENT_TYPE")
   assert_equal "content-length", Cybertrain::Test.request_header_name("CONTENT_LENGTH")
   assert_equal "X-Token", Cybertrain::Test.request_header_name("X-Token")
+end
+
+test "Date, Time, Float, Integer, booleans and nil in params: are sent as the casts read them back" do
+  TypedParamsTest.new.test_typed_params
 end
 
 test "fixture_file_upload in params: sends post, patch and put as multipart/form-data" do

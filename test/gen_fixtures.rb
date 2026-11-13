@@ -229,7 +229,20 @@ test "an accessor that would replace a harness, Kernel or test-helper method is 
   rescue ArgumentError => e
     message = e.message
   end
-  assert_equal "test/fixtures/test.yml:1: the fixture accessor test(label) would replace the top-level test of the test harness or Kernel", message
+  assert_equal "test/fixtures/test.yml:1: the fixture accessor test(label) would replace the top-level test of the test harness or Kernel, " \
+               "or lose to a test class's own test", message
+  # IntegrationTest's own methods too: a `cookies` table's accessor would
+  # lose to IntegrationTest#cookies in a controller test.
+  ["cookies", "response", "get", "assert_select", "render_inline"].each do |name|
+    row = Cybertrain::Gen::FixtureRow.new(name, "one", 1, ["id"], ["1"], 1, Array.new(0) { "" }, Array.new(0) { "" })
+    message = ""
+    begin
+      Cybertrain::Gen::FixtureScan.refuse_accessor_clashes([row], Array.new(0) { file })
+    rescue ArgumentError => e
+      message = e.message
+    end
+    assert_includes message, "test/fixtures/#{name}.yml:1: the fixture accessor #{name}(label) would replace"
+  end
   Cybertrain::Gen::FixtureScan.refuse_accessor_clashes(rows, Array.new(0) { file })
   root = app_copy("posts.yml" => "one:\n  title: x\n")
   File.write("#{root}/test/test_helper.rb", "def posts = 1\n")

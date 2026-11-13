@@ -14,5 +14,6 @@ ok   *_url helpers are requested and asserted by their path; another host is ref
 ok   the top-level assert_redirected_to reduces a URL on the test host too
 ok   every status Symbol the controller knows, and Rails' :missing
 ok   Rails' CGI-style header names
+ok   Date, Time, Float, Integer, booleans and nil in params: are sent as the casts read them back
 ok   fixture_file_upload in params: sends post, patch and put as multipart/form-data
-17 tests, 192 assertions, 0 failures
+18 tests, 199 assertions, 0 failures

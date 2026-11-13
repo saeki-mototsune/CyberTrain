@@ -453,9 +453,43 @@ test "a datetime field's fixture value, and an attachment field has none" do
   fixtures = read("blog/test/fixtures/events.yml")
   assert_includes fixtures, "one:\n  starts_at: 2026-11-11 12:00:00\n\ntwo:\n  starts_at: 2026-11-11 12:00:00\n"
   refute fixtures.include?("poster"), fixtures
-  # The file is never a param: the create test sends the other columns.
+  # The file is never a param: the create test sends the other columns,
+  # each as the record's reader answers it (a Time here, which the
+  # integration test's request sends in the form the model's cast reads
+  # back: Cybertrain::Test.flatten_params, test/test_integration.rb).
   assert_includes read("blog/test/controllers/events_controller_test.rb"), "params: { event: { starts_at: @event.starts_at } }"
   assert File.exist?("blog/test/integration/event_poster_attachment_test.rb")
+end
+
+# Rails writes params.fetch(:widget, {}) for a scaffold with no fields: the
+# test's params: { widget: {} } sends no widget[...] key, and require would
+# answer 400.
+test "a scaffold with no fields reads its params with nested, so its tests can create and update" do
+  Cybertrain::CLI::Scaffold.generate("blog", "widget", [])
+  assert_includes read("blog/app/controllers/widgets_controller.rb"), "    params.nested(:widget).permit()\n"
+  test_source = read("blog/test/controllers/widgets_controller_test.rb")
+  assert_includes test_source, "post widgets_url, params: { widget: {} }\n"
+  assert_includes test_source, "patch widget_url(@widget), params: { widget: {} }\n"
+  assert_equal "# The rows every test starts with: `cybertrain test` loads every file of\n" \
+               "# test/fixtures/ before each test, and widgets(:one) answers the first.\n\none:\n\ntwo:\n",
+               read("blog/test/fixtures/widgets.yml")
+end
+
+# Every test is compiled into one program: a scaffold whose test class is
+# already another file's (`cybertrain new`'s HealthTest) is refused before
+# anything is written, instead of stopping gen afterwards.
+test "a scaffold whose test class another test file defines is refused" do
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Scaffold.generate("blog", "health", ["status:string"]) }
+  assert_equal "test/integration/health_test.rb already defines HealthTest, the class of test/models/health_test.rb: " \
+               "every test runs in one program, so pick another name for the scaffold, or rename that test class", message
+  refute File.exist?("blog/app/models/health.rb")
+  refute File.exist?("blog/test/models/health_test.rb")
+  File.write("blog/test/integration/doors_test.rb", "class DoorsControllerTest < ActionDispatch::IntegrationTest\nend\n")
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Scaffold.generate("blog", "door", ["name:string"]) }
+  assert_includes message, "test/integration/doors_test.rb already defines DoorsControllerTest, the class of test/controllers/doors_controller_test.rb"
+  File.delete("blog/test/integration/doors_test.rb")
+  # Running a scaffold again is not a clash with its own files.
+  Cybertrain::CLI::Scaffold.generate("blog", "widget", [])
 end
 
 test "an attachment field expands to five columns and is not a column itself" do

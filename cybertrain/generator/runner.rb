@@ -89,10 +89,15 @@ module Cybertrain
         # that creates its table, and `cybertrain db migrate` runs gen first.
         tests_rb = "#{root}/#{TestsEmitter::PATH}"
         fixture_problem = ""
+        # The rows of test/fixtures/*.yml (none while they are refused) and
+        # the models, each scanned once here and used again below.
+        fixture_rows = Array.new(0) { FixtureScan.empty_row }
+        infos = ModelScan.scan_dir("#{root}/app/models")
         if File.directory?("#{root}/test")
-          fixture_problem = Runner.fixture_problem(root) unless Cybertrain::Schema.current.nil?
+          test_files = TestScan.scan(root)
+          fixture_problem = Runner.fixture_problem(root, infos, test_files, fixture_rows) unless Cybertrain::Schema.current.nil?
           bundle = if fixture_problem.empty?
-                     TestsEmitter.emit(root, TestScan.scan(root), !Cybertrain::Schema.current.nil?)
+                     TestsEmitter.emit(root, test_files, !Cybertrain::Schema.current.nil?)
                    else
                      TestsEmitter.refused_program(fixture_problem)
                    end
@@ -131,12 +136,10 @@ module Cybertrain
         else
           # Scan, then the semantic validation, then the emitter (D69): a
           # model that cannot be generated raises before anything is written.
-          infos = ModelScan.scan_dir("#{root}/app/models")
           validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
           if File.directory?("#{root}/test")
             # No rows while the fixtures are refused (gen/tests.rb aborts).
-            rows = fixture_problem.empty? ? FixtureScan.scan(root, schema, infos) : Array.new(0) { FixtureScan.empty_row }
-            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, rows)]
+            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, fixture_rows)]
           end
           models = Array.new(0) { "" }
           ModelsEmitter.outputs_for(validated).each do |rel, source|
@@ -164,13 +167,15 @@ module Cybertrain
 
       # Why test/fixtures/*.yml cannot be loaded, "<path>:<line>: ..." ("" when
       # they can): FixtureScan's refusals and its accessor clashes. The schema
-      # is loaded (Schema.current).
+      # is loaded (Schema.current). When they can, their rows are appended to
+      # `rows` (one scan for the check and for gen/test/data.rb).
       # @return [String]
-      def self.fixture_problem(root)
+      def self.fixture_problem(root, infos, files, rows)
         problem = ""
         begin
-          rows = FixtureScan.scan(root, Cybertrain::Schema.current, ModelScan.scan_dir("#{root}/app/models"))
-          FixtureScan.refuse_accessor_clashes(rows, TestScan.scan(root))
+          found = FixtureScan.scan(root, Cybertrain::Schema.current, infos)
+          FixtureScan.refuse_accessor_clashes(found, files)
+          found.each { |r| rows << r }
         rescue ArgumentError => e
           problem = e.message
         end

@@ -1193,6 +1193,11 @@ module Cybertrain
             Dir.glob("tmp/test_uploads/*/*").each { |path| File.delete(path) }
           end
 
+          # The configured upload directory again, for the tests after this one.
+          teardown do
+            Cybertrain::BlobStore.root = Cybertrain.config.upload_root
+          end
+
       RUBY
 
       TEST_PNG_ROUNDTRIP = <<~'RUBY'

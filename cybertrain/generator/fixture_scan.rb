@@ -62,15 +62,21 @@ module Cybertrain
       TIMESTAMPS = %w[created_at updated_at].freeze
       # Rails' label for a fixture file's shared values: never a row.
       DEFAULTS_LABEL = "DEFAULTS".freeze
-      # Top-level methods an accessor `def <table>(label)` would replace:
-      # the test harness's (cybertrain/test.rb, cybertrain/test/*.rb) and
-      # Kernel's.
-      TAKEN_NAMES = %w[assert assert_changes assert_difference assert_empty assert_enqueued_jobs assert_enqueued_with
-                       assert_equal assert_in_delta assert_includes assert_match assert_nil assert_no_difference
-                       assert_no_enqueued_jobs assert_no_match assert_not assert_not_empty assert_not_equal
-                       assert_not_includes assert_not_nil assert_nothing_raised assert_raises assert_redirected_to
-                       assert_response clear_enqueued_jobs flunk freeze_time perform_enqueued_jobs refute setup teardown
-                       test travel travel_back travel_to abort at_exit binding caller catch exit fail fork format
+      # Methods an accessor `def <table>(label)` would replace or be
+      # shadowed by: the test harness's top-level ones (cybertrain/test.rb,
+      # cybertrain/test/*.rb), those of the test base classes
+      # (IntegrationTest's get, post, response, cookies, ...; a `cookies`
+      # table's accessor would lose to IntegrationTest#cookies), and
+      # Kernel's. script/check-reserved-names fails when the harness gains
+      # one this list lacks.
+      TAKEN_NAMES = %w[assert assert_broadcasts assert_changes assert_difference assert_emails assert_empty assert_enqueued_jobs
+                       assert_enqueued_with assert_equal assert_in_delta assert_includes assert_match assert_nil
+                       assert_no_broadcasts assert_no_difference assert_no_emails assert_no_enqueued_jobs assert_no_match
+                       assert_not assert_not_empty assert_not_equal assert_not_includes assert_not_nil assert_nothing_raised
+                       assert_raises assert_redirected_to assert_response assert_select assert_turbo_stream clear_enqueued_jobs
+                       flunk freeze_time perform_enqueued_jobs refute render_inline setup teardown test travel travel_back
+                       travel_to cookies delete fixture_file_upload form_request get head header_names initialize
+                       integration_response integration_target patch post put response with_forgery_protection with_query abort at_exit binding caller catch exit fail fork format
                        gets lambda load loop open p print printf proc putc puts raise rand readline readlines require
                        require_relative select sleep spawn sprintf srand system throw trap warn].freeze
       INT64_MAX = "9223372036854775807".freeze
@@ -137,7 +143,7 @@ module Cybertrain
           seen << set
           path = "test/fixtures/#{set}.yml"
           if TAKEN_NAMES.include?(set)
-            FixtureScan.refuse_fixture(path, 1, "the fixture accessor #{set}(label) would replace the top-level #{set} of the test harness or Kernel")
+            FixtureScan.refuse_fixture(path, 1, "the fixture accessor #{set}(label) would replace the top-level #{set} of the test harness or Kernel, or lose to a test class's own #{set}")
           end
           files.each do |f|
             f.test_helpers.each do |h|

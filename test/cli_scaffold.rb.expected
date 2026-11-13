@@ -249,6 +249,32 @@ create test/fixtures/files/poster.png
 create test/integration/event_poster_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   a datetime field's fixture value, and an attachment field has none
+create db/migrate/20260925120008_create_widgets.rb
+create app/models/widget.rb
+create test/models/widget_test.rb
+create test/fixtures/widgets.yml
+create app/controllers/widgets_controller.rb
+create app/views/widgets/index.html.erb
+create app/views/widgets/show.html.erb
+create app/views/widgets/new.html.erb
+create app/views/widgets/edit.html.erb
+create app/views/widgets/_form.html.erb
+create test/controllers/widgets_controller_test.rb
+route resources :widgets
+ok   a scaffold with no fields reads its params with nested, so its tests can create and update
+identical db/migrate/20260925120008_create_widgets.rb
+identical app/models/widget.rb
+identical test/models/widget_test.rb
+identical test/fixtures/widgets.yml
+identical app/controllers/widgets_controller.rb
+identical app/views/widgets/index.html.erb
+identical app/views/widgets/show.html.erb
+identical app/views/widgets/new.html.erb
+identical app/views/widgets/edit.html.erb
+identical app/views/widgets/_form.html.erb
+identical test/controllers/widgets_controller_test.rb
+identical route resources :widgets
+ok   a scaffold whose test class another test file defines is refused
 ok   an attachment field expands to five columns and is not a column itself
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-21 tests, 210 assertions, 0 failures
+23 tests, 220 assertions, 0 failures

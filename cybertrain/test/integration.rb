@@ -5,6 +5,9 @@
 # from one request to the next within a test and start empty in the next.
 # The bundle (gen/tests.rb) includes the application's Gen::UrlHelpers, so
 # `article_path(article)` works in a test as in a controller.
+require "date"
+require "cybertrain/cast"
+require "cybertrain/zoned_time"
 require "cybertrain/test"
 require "cybertrain/test/client"
 require "cybertrain/test/test_case"
@@ -20,7 +23,12 @@ module Cybertrain
     # values are written with `to_s`; a value may be a String, Symbol,
     # number, true / false, nil (sent empty, as Rails sends it) or a nested
     # Hash. A key already written with brackets (`"article[title]" => "x"`)
-    # is kept as it is.
+    # is kept as it is. Each value is written as the text the model's cast
+    # reads back to the same value (what a record's readers answer can be
+    # sent as it is, as Rails' scaffold tests send them): a Date as
+    # `YYYY-MM-DD`, a Time (or ZonedTime) in the storage format, UTC with
+    # microseconds (`2026-11-11 12:00:00.000000`, {Cast.sql_datetime}),
+    # true / false as `"true"` / `"false"`, a Float by its shortest text.
     # @example
     #   Cybertrain::Test.flatten_params({ article: { title: "New" } })   # => { "article[title]" => "New" }
     # @param params [Hash]
@@ -75,6 +83,12 @@ module Cybertrain
           out[key] = v.to_s
         when nil
           out[key] = ""
+        when Time
+          out[key] = Cybertrain::Cast.sql_datetime(v)
+        when Cybertrain::ZonedTime
+          out[key] = Cybertrain::Cast.sql_datetime(v.to_time)
+        when Date
+          out[key] = v.to_s
         when Upload
           uploads << Upload.new(key, v.filename, v.content_type, v.data)
         else

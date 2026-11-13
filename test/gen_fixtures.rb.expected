@@ -136,4 +136,4 @@ identical gen/app.rb
 ok   gen writes gen/test/data.rb and --check reports it stale
 ok   with test/ and no fixtures, data.rb holds the tables and empty lists
 ok   the fixture app's gen/test/data.rb and gen/tests.rb match the emitters (fixture stale otherwise)
-12 tests, 107 assertions, 0 failures
+12 tests, 112 assertions, 0 failures
