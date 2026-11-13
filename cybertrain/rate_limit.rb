@@ -194,7 +194,10 @@ module Cybertrain
     def count_hit(key, now)
       if @starts.key?(key)
         start = @starts[key]
-        if now - start < @period_seconds
+        # A window that starts after now (a test travelled back) is over,
+        # as one whose period has run out: counting into it would answer a
+        # Retry-After up to the distance travelled.
+        if now >= start && now - start < @period_seconds
           seen = @counts[key] + 1
           @counts[key] = seen
           return 0 if seen <= @limit_count
@@ -214,8 +217,9 @@ module Cybertrain
     end
 
     # Under the lock, with the table full: drops the expired windows at the
-    # front, then the oldest open ones until a tenth of the table (at least
-    # one key) is free. keys is a copy of every key, made only when the
+    # front (a window that starts after now counts as expired, as in
+    # count_hit), then the oldest open ones until a tenth of the table (at
+    # least one key) is free. keys is a copy of every key, made only when the
     # table is full and then for a tenth of its size in inserts.
     def make_room(now)
       target = @max_keys - (@max_keys / 10 < 1 ? 1 : @max_keys / 10)
@@ -223,7 +227,8 @@ module Cybertrain
       i = 0
       while i < keys.length
         k = keys[i]
-        expired = now - @starts[k] >= @period_seconds
+        start = @starts[k]
+        expired = now < start || now - start >= @period_seconds
         break unless expired || @starts.length > target
 
         @starts.delete(k)
@@ -253,8 +258,8 @@ module Cybertrain
 
     # Forgets every count of every limiter: the `store: :memory` tables,
     # and, when a limiter counts in the cache, the cache's rate-limit rows.
-    # The generated `AppTest.sign_in` calls it, so that a test suite that
-    # signs in in every test never reaches the sign-in limit.
+    # `cybertrain/test_help` calls it before every test, so that a test
+    # suite that signs in in every test never reaches the sign-in limit.
     # @return [nil]
     # @raise [Cybertrain::DB::Error] when a limiter counts in the cache and
     #   the database is not reachable
@@ -280,27 +285,13 @@ module Cybertrain
       nil
     end
 
-    # -1 while the system clock is used; see {.current_time=}.
-    @fixed_time = -1
-
     # The time the `store: :memory` limiters count with, in epoch seconds:
-    # the system clock, unless a test fixed it. The cache store counts with
-    # {Cache.now} instead (a test fixes it with {Cache.clock=}).
+    # {Clock.now}, so a test moves a window with `travel_to` / `travel`.
+    # The cache store counts with {Cache.now}, which reads the same clock.
     # @return [Integer]
     # @api public
     def self.current_time
-      fixed = @fixed_time
-      fixed < 0 ? Time.now.to_i : fixed
-    end
-
-    # Fixes the time the `store: :memory` limiters see, for a test that
-    # needs a window to pass; -1 goes back to the system clock.
-    # @param seconds [Integer] epoch seconds, or -1
-    # @return [nil]
-    # @api public
-    def self.current_time=(seconds)
-      @fixed_time = seconds
-      nil
+      Clock.now.to_i
     end
   end
 end

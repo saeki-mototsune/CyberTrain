@@ -1,5 +1,5 @@
 ---
-source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
+source_sha256: 43d500f72cb5115e5617bbb39871cda159cd02f790f639088bebeb380a15d587
 ---
 # 設定
 
@@ -36,7 +36,8 @@ end
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`。カンマ区切りの名前でリストを置き換える。名前にこれらのいずれかを含むパラメーター（ASCII の大文字小文字を区別しない：`password` は `user[password]` にも一致する）は、リクエストログと開発環境のエラーページで値が `[FILTERED]` と書かれる。`config/app.rb` で `[]` にすると無効になる |
 | `CYBERTRAIN_WORKER` | `worker` | `true`。`0` または `false` にすると、`server` プロセスは定期タスク、ジョブ、WebSocket のフィードを実行しない（[プロセスの役割](background-and-operations.md#process-roles)を参照）。`./<app> worker` と `feeds` はこれを無視する |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：1 つのプロセスが同時に実行するジョブの数（[バックグラウンド処理](background-and-operations.md#background-work)を参照）。1 以上 |
-| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`：`tz:` のない `Scheduler.cron` のタスクを読むゾーン。`Asia/Tokyo` のような IANA の名前（[タイムゾーン](#time-zones)を参照）。システムの zoneinfo にないゾーンでは起動が止まる |
+| `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`：アプリケーションのゾーン。`Asia/Tokyo` のような IANA の名前で、`Time.zone`、日と月の境界、`Date.current`、`l` と `time_tag` に使う（[タイムゾーン](#time-zones)を参照）。システムの zoneinfo にないゾーンでは起動が止まる |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | 設定しなければ `time_zone`：`tz:` のない `Scheduler.cron` のタスクを読むゾーン。IANA の名前（[タイムゾーン](#time-zones)を参照）。システムの zoneinfo にないゾーンでは起動が止まる |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`：[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)のリストごとの行数。1 以上 |
 | `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`：[キャッシュ](background-and-operations.md#the-cache-store)の期限切れの行を掃除する間隔の秒数。`cybertrain/cache` を require したときに読まれる。1 以上 |
 | `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`：各 WebSocket フィードの状態の行を書く間隔の秒数（[フィードのヘルス](realtime.md#feed-health)を参照）。1 以上 |
@@ -54,6 +55,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`。秘密の値で、ログにも起動バナーにもエラーメッセージにも出ない |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：`from:` が与えられないときに `Mailer.deliver` が使う送信者 |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`。`tls`（暗黙の TLS）や `none`（平文。資格情報はループバックへのみ）も可。どちらの TLS モードにも `require "cybertrain/net/tls"` が必要 |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | テスト環境では `:test`、それ以外では `:smtp`：`:test` は各メールを送らずに `Cybertrain::Mailer.deliveries` に保持する（[メールのテスト](testing.md#testing-mail)）。テスト環境の外では警告を出して起動し、何も送らない。それ以外の値では起動が止まる。`cybertrain test` は、変数が何であっても、`config/app.rb` が設定しない限り `:test` を使う |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`storage/test.sqlite3` の代わりに、`cybertrain test` が削除し、マイグレートし、テストを実行するファイル。ファイルのパス（`:memory:` や `file:` の URI は不可）。既存のファイルを削除するのは、`cybertrain test` が作ったもの（作るデータベースに印を付ける）、このアプリケーション自身の `storage/test.sqlite3`、空のファイルのときだけ。それ以外と、開発用や本番用のデータベースは終了ステータス 2 で拒否され、何も削除されない（[テストを実行する](testing.md#running-the-tests)） |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：すべてのリクエストが始まるロケール。`ja` や `pt-BR` のような名前（[ロケール](#locales) を参照）。それ以外は起動を止める |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`：アカウントがロックされるまでの間違ったパスワードの回数。`0` でロックアウトを無効にする（[認証の設定](#authentication-settings) を参照） |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`：ロックアウトが続く秒数。1 以上 |
@@ -133,4 +136,15 @@ run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1],
 run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2] + 1, 9, 0, 0)) if run <= now
 ```
 
-夏時間の切り替わりでも `local_to_utc` は決定的です：前方へのジャンプで飛ばされる壁時計の時刻（米国で時計を進める日の 02:30）はジャンプ前のオフセットで読まれるので、ジャンプの後（03:30 EDT）になります。後方へのジャンプで繰り返される壁時計の時刻は、早いほうの瞬間になります。`find` は、空、`.`、`..` のセグメントを含まない、`A-Za-z0-9_+-./` からなる相対的な名前だけを受け付けるので、ユーザーのプロフィールから取ったゾーン名がゾーンディレクトリ外のファイルに到達することはありません。未知のゾーンや形式の壊れたゾーンはキャッシュされず、`"UTC"` にはファイルは不要です。`l` はリクエストのロケールで時刻を整形しますが（[日付と時刻](i18n.md#dates-and-times)）、`zone:` はまだ取りません。
+夏時間の切り替わりでも `local_to_utc` は決定的です：前方へのジャンプで飛ばされる壁時計の時刻（米国で時計を進める日の 02:30）はジャンプ前のオフセットで読まれるので、ジャンプの後（03:30 EDT）になります。後方へのジャンプで繰り返される壁時計の時刻は、早いほうの瞬間になります。`find` は、空、`.`、`..` のセグメントを含まない、`A-Za-z0-9_+-./` からなる相対的な名前だけを受け付けるので、ユーザーのプロフィールから取ったゾーン名がゾーンディレクトリ外のファイルに到達することはありません。未知のゾーンや形式の壊れたゾーンはキャッシュされず、`"UTC"` にはファイルは不要です。
+
+### アプリケーションのゾーン
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.time_zone = "Asia/Tokyo"   # または CYBERTRAIN_TIME_ZONE。既定は "UTC"
+end
+```
+
+`c.time_zone` は IANA の名前を取り（「Tokyo」のような Rails 独自の名前は読みません）、システムにないゾーンでは起動が止まります。値は UTC の瞬間のままです：カラム、`Time.current`、カレンダーのメソッドは UTC の `Time` を返し、`time.hour` は UTC の時です。ゾーンが決めるのはカレンダー（`beginning_of_day` などや `Date.current`。[時刻とタイムゾーン](models.md#times-and-the-time-zone)）と表示です：`l(time)` と `time_tag(time)` は Time をそのゾーンで表示し（`%z` と `%Z` も含む）、`time_tag` の `datetime` はゾーンのオフセット付きの ISO 8601 です（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` と `time_tag(time, zone: "...")` は 1 つの値を別のゾーンで表示します。オフセット 0 の Time、つまりフレームワークが渡すすべての Time はそのゾーンで表示されます。自分自身の別のオフセットを持つ Time（`time.getlocal("+05:30")`）は、`zone:` を渡さない限りそのオフセットのままです。Date はそのまま表示されます。`tz:` のない cron のタスクも、`scheduler_tz` を設定しない限りこのゾーンに従います。登録されたコマンド（`Main.command`）、`./<app> jobs`、`./<app> console` も実行の前にゾーンを設定し、未知のゾーンは起動と同じく `error: time_zone "Mars/Base" is not a known time zone` を出して、データベースを開く前に終了ステータス 1 で拒否します。`cybertrain test` では、各テストは設定したゾーンで始まります。（`l` の書式は[日付と時刻](i18n.md#dates-and-times)にあります。）

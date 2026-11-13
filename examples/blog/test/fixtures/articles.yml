@@ -1,0 +1,15 @@
+# The articles every test starts with. `one` is the Getting Started
+# guide's first article and has a comment (comments.yml); `two` has none.
+# Both are dated, so their JSON and <time> tags do not depend on the clock;
+# `two` is the newer, so it comes first in the index (Article.recent).
+one:
+  title: Hello Rails
+  body: I am on Rails! This is my first article.
+  created_at: 2024-03-10 09:00:00
+  updated_at: 2024-03-10 09:00:00
+
+two:
+  title: Second article
+  body: Another article, with no comments.
+  created_at: 2024-03-11 09:00:00
+  updated_at: 2024-03-11 09:00:00

@@ -8,6 +8,13 @@ user failed: cannot open database no/such/dir/x.sqlite3: unable to open database
 ok   a database that cannot be opened is a DB::Error too
 ok   a command can render a partial, path helpers included
 ok   in production a command parses embedded templates only when it renders them
+ok   a registered command runs in the configured time zone
+no failed jobs
+ok   jobs installs the configured time zone too
+error: time_zone "Mars/Olympus_Mons" is not a known time zone
+error: time_zone "Mars/Olympus_Mons" is not a known time zone
+error: time_zone "Mars/Olympus_Mons" is not a known time zone
+ok   an unknown time zone is refused before a command, jobs or console runs
 ok   server? is false for a registered name
 Usage:
   ./blog [server [PORT]]   start the server
@@ -28,6 +35,7 @@ Usage:
   ./blog greet             render a partial
   ./blog embedded_greet    render an embedded partial
   ./blog embedded_broken   render a partial that does not parse
+  ./blog today             record Time.zone and Date.current
   ./blog help
 ok   help lists the registered commands after the built-in ones
 ok   built-in, numeric, empty and taken names are refused
@@ -53,6 +61,7 @@ Usage:
   ./blog greet             render a partial
   ./blog embedded_greet    render an embedded partial
   ./blog embedded_broken   render a partial that does not parse
+  ./blog today             record Time.zone and Date.current
   ./blog help
 ok   the built-ins still work next to registered commands
-11 tests, 40 assertions, 0 failures
+14 tests, 52 assertions, 0 failures

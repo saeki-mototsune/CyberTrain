@@ -1,5 +1,5 @@
 ---
-source_sha256: fe2c05ecaf069531464f4c4acba55c5839ea809973a39f81eec7caf7f761d280
+source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
 ---
 # リクエスト
 
@@ -165,7 +165,7 @@ cookies.signed[:user_id]           # => "5"、書き換えられていれば nil
 cookies.delete(:theme)
 ```
 
-書き込みには String か、`value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:`、`same_site:` を持つ Hash を渡します。Cookie は `Path=/`、`HttpOnly`、`SameSite=Lax` で書かれ、セッション Cookie が `Secure` のとき（本番、または `force_ssl` のとき）は `Secure` も付きます。書き込みで別の指定をすればそちらが使われます。`permanent` は 20 年の `Max-Age` を書きます。署名付きの値は `secret_key_base` から導いた鍵での HMAC-SHA256、暗号化した値は別の鍵での AES-256-GCM です。どちらもその Cookie の名前に結び付いているので、別の名前では検証も復号もできず、書き換えられた値は nil として読まれます。同じリクエストの中で書いた後に読むと、書いた値が返ります。
+書き込みには String か、`value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:`、`same_site:` を持つ Hash を渡します。Cookie は `Path=/`、`HttpOnly`、`SameSite=Lax` で書かれ、セッション Cookie が `Secure` のとき（本番、または `force_ssl` のとき）は `Secure` も付きます。書き込みで別の指定をすればそちらが使われます。`permanent` は 20 年の `Max-Age` を書きます。署名付きの値は `secret_key_base` から導いた鍵での HMAC-SHA256、暗号化した値は別の鍵での AES-256-GCM です。どちらもその Cookie の名前に結び付いているので、別の名前では検証も復号もできず、書き換えられた値は nil として読まれます。同じリクエストの中で書いた後に読むと、書いた値が返ります。jar の下では、`Cybertrain::Cookies.serialize(name, value, expires: time)` が `Set-Cookie` の値を 1 つ作ります。`expires:` を省く（既定値は nil ではなく `Cybertrain::Cookies::NO_EXPIRES` で、Spinel の事情によります：spikes/NOTES.md のルール 109 を参照）か nil を渡すと、`Expires` は書かれません。
 
 セッション Cookie は、Rails の cookie store と同じく AES-256-GCM で暗号化・認証され、`secret_key_base` から導いた専用の鍵を使います：クライアントは読むことも書き換えることもできません。復号できない Cookie（書き換えられたもの、別のアプリのもの、以前の署名付きのもの）は空のセッションとして読み込まれ、4096 バイトを超えるものも同じです。Cookie が 4096 バイトを超えるセッション、または `name=value` が 4096 バイトを超えるジャーの Cookie は、書き込むときに `Session::CookieOverflow` を発生させます。値は String のままです。`secret_key_base` を変えると、これまでどおり全員がサインアウトします。
 
@@ -188,7 +188,7 @@ end
 
 各宣言は、クライアントとコントローラーごとに、`within` 秒の時間枠あたり最大 `to` 件のリクエストを数え、それを超えると `Retry-After` ヘッダー（時間枠の残りの秒数）付きで 429 を返すか、`redirect_to:` が指定されていればリダイレクトします。ほかのオプションはコントローラーのメソッドを指します：`by:` はキー（既定は `:client_ip`、接続の相手なら `:remote_addr`、または `account_key` のようなメソッド。その値が nil か `""` なら、全クライアントをまとめて数える代わりに例外を発生させます）、`with:` は代わりに返す応答（何も描画しなければ 429 が続きます）、`if:` / `unless:` は制限をかける条件です（除外されたリクエストは数えません）。制限を二つ持つコントローラーは、それぞれに別の `name:` を付けます（一つのコントローラーの中で、親のものも含めて同じ名前の二つ目の制限と、`:` を含む名前は gen が拒否します）。`within:` は秒単位で、`only:`/`except:` は Array を受け取ります。
 
-カウントはアプリのデータベースの `Cybertrain::Cache` にあるので、アプリを動かすすべてのプロセスがまとめて数え、再起動してもカウントは残ります。時間枠は固定で、時計にそろえてあります（`now / within`）。`store: :memory` は以前のプロセスごとのカウンターです：各プロセスがそれぞれ、最大 10,000 キーのテーブルで数え（満杯になると、期限切れの時間枠、次に最も古いものが場所を空けます）、再起動で失われ、時間枠はキーの最初のリクエストで始まり、制限されたアクションへのリクエストはどれもロックを 1 回取ります（アクションは `only:` で指定してください）。テストでは、`Cybertrain::RateLimit.reset_all!` がすべてのカウント（メモリのテーブルと、キャッシュのレート制限の行）を忘れます。`Cybertrain::Cache.clock = -> { n }` はキャッシュのストアの時計を、`Cybertrain::RateLimit.current_time = n` はメモリのストアの時計を固定します（`-1` で元に戻ります）。
+カウントはアプリのデータベースの `Cybertrain::Cache` にあるので、アプリを動かすすべてのプロセスがまとめて数え、再起動してもカウントは残ります。時間枠は固定で、時計にそろえてあります（`now / within`）。`store: :memory` は以前のプロセスごとのカウンターです：各プロセスがそれぞれ、最大 10,000 キーのテーブルで数え（満杯になると、期限切れの時間枠、次に最も古いものが場所を空けます）、再起動で失われ、時間枠はキーの最初のリクエストで始まり、制限されたアクションへのリクエストはどれもロックを 1 回取ります（アクションは `only:` で指定してください）。テストでは、`Cybertrain::RateLimit.reset_all!` がすべてのカウント（メモリのテーブルと、キャッシュのレート制限の行）を忘れます（`cybertrain test` は各テストの前にこれを行います）。どちらのストアもフレームワークの時計を読むので、`travel 1.minute` や `travel_to` でテストを時間枠の先に進められます（[タイムトラベル](testing.md#time-travel)）。
 
 ### プロキシの後ろにいるクライアントのアドレス
 

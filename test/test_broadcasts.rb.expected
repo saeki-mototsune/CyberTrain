@@ -1,0 +1,14 @@
+ok   assert_broadcasts with a record and a name answers the payloads
+ok   without a block it counts since the test began
+ok   assert_broadcasts fails with the counts
+ok   assert_no_broadcasts passes when nothing was broadcast to the stream and fails naming the count
+ok   the floor hook and the reads touch no database that has no messages table
+ok   assert_turbo_stream finds the action and target
+ok   assert_turbo_stream reads the last response, and an HTML answer is not a Turbo Stream
+ok   assert_turbo_stream reads the last render and names every stream it found
+ok   assert_turbo_stream never reads the previous test's response or render
+ok   assert_turbo_stream checks a response's media type, never a render's
+ok   a stream with targets= is named so, and target: "" matches one with no target
+ok   assert_turbo_stream takes a record as the target and count:
+ok   assert_turbo_stream does not read a template's content, only the elements around it
+13 tests, 122 assertions, 0 failures

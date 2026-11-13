@@ -44,6 +44,82 @@ module Cybertrain
       # The most jobs {perform_enqueued_jobs} runs in one call.
       PERFORM_LIMIT = 10_000
 
+      # Whether cybertrain_jobs exists in the connected database (read
+      # without creating it: an assertion leaves a database that never used
+      # jobs as it was).
+      # @return [Boolean]
+      def self.table?
+        rows = DB.with { |c| c.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'cybertrain_jobs'") }
+        !rows.empty?
+      end
+
+      # The largest id in cybertrain_jobs, 0 when it is empty or missing:
+      # what a block helper reads before its block, so that the jobs queued
+      # during the block are the ones above it.
+      # @return [Integer]
+      def self.max_id
+        return 0 unless table?
+
+        rows = DB.with { |c| c.execute("SELECT COALESCE(MAX(id), 0) AS n FROM cybertrain_jobs") }
+        Cast.int(rows[0]["n"])
+      end
+
+      # Performs every queued job above `floor` (of `kind` unless ""), in
+      # enqueue order, whatever its run_at, and the jobs those queue, until
+      # none is left ({Job.work_one_after_id}), and answers how many
+      # distinct jobs ran. A job whose attempt ended failed or rescheduled
+      # (its handler raised), or a framework job the framework discarded
+      # ({check_performed}; an application's `discard_on` counts as
+      # performed), fails the test at once, naming `helper`, the job's kind
+      # and its recorded error, as Rails' inline jobs raise into the test;
+      # so a failed attempt is never retried inside the block. Fails after
+      # PERFORM_LIMIT jobs too.
+      # @return [Integer]
+      def self.perform_after(floor, kind, helper)
+        return 0 unless table?
+
+        seen = Array.new(0) { 0 }
+        while true
+          id = Job.work_one_after_id(floor, kind)
+          break if id < 0
+
+          seen << id unless seen.include?(id)
+          check_performed(id, helper)
+          if seen.size >= PERFORM_LIMIT
+            text = "#{helper} ran #{PERFORM_LIMIT} jobs; a job re-enqueues itself"
+            Cybertrain::Test.fail_with(text)
+          end
+        end
+        seen.size
+      end
+
+      # The framework's own job kinds (Mailer::JOB_KIND), whose discard is
+      # the framework's: a mail that cannot be built or sent (no sender, a
+      # refused address). The store records the kind with the discard, so a
+      # discarded row of one of these is told from an application's
+      # `discard_on`.
+      FRAMEWORK_KINDS = ["cybertrain mail"].freeze
+
+      # Fails the test unless the job `id` ended `done`, or `discarded` by
+      # the application on purpose (its `discard_on`, as in Rails, where the
+      # block completes). A failed or rescheduled job, and a framework job
+      # the framework discarded, fail it, e.g. `perform_enqueued_jobs: the
+      # job "BoomJob" (id 3) raised RuntimeError: boom (now queued)`.
+      # @return [nil]
+      def self.check_performed(id, helper)
+        rows = DB.with { |c| c.execute("SELECT kind, state, last_error FROM cybertrain_jobs WHERE id = ?", [id]) }
+        return nil if rows.empty?
+
+        row = rows[0]
+        state = Cast.str(row["state"])
+        return nil if state == "done"
+        return nil if state == "discarded" && !FRAMEWORK_KINDS.include?(Cast.str(row["kind"]))
+
+        text = "#{helper}: the job #{Cast.str(row["kind"]).inspect} (id #{id}) raised #{Cast.str(row["last_error"])} (now #{state})"
+        Cybertrain::Test.fail_with(text)
+        nil
+      end
+
       # `{"user_id" => 1}` as the failure message shows the wanted args.
       def self.describe_args(args)
         parts = Array.new(0) { "" }
@@ -110,19 +186,40 @@ def assert_enqueued_with(kind, args = Cybertrain::Cast.empty_hash)
   flunk("expected an enqueued #{kind.inspect} job#{wanted}; #{queued}")
 end
 
-# Runs every job due at `now` on the calling thread, until none is due
-# (`Job.work_one`), and returns how many it ran. A retry the job scheduled
-# for later is left queued; pass a later `now` to run it. It fails the test
-# after 10,000 jobs: a job that enqueues itself due at once would otherwise
-# never let the test end.
+# Without a block: runs every job due at `now` on the calling thread,
+# until none is due (`Job.work_one`), and returns how many it ran. A retry
+# the job scheduled for later is left queued; pass a later `now` to run it.
+#
+# With a block (Rails' inline form): runs the block, then performs on the
+# calling thread every job queued during it, and the jobs those queue,
+# whatever their run_at, in enqueue order (`Job.work_one_after`), and
+# returns how many distinct jobs it ran; `now` is not used. Jobs queued
+# before the block stay queued. As Rails' inline jobs raise into the test,
+# a job whose attempt ends failed or rescheduled (its handler raised), or
+# a mail the framework discarded (no sender, a refused address), fails the
+# test at once with its kind and error: `perform_enqueued_jobs: the job
+# "BoomJob" (id 3) raised RuntimeError: boom (now queued)`. It is not
+# retried in the block. A job the application discards on purpose
+# (`discard_on`) counts as performed, as in Rails.
+#
+# Either form fails the test after 10,000 jobs: a job that enqueues itself
+# would otherwise never let the test end.
 # @example
 #   post "/signup", ...
 #   assert_equal 1, perform_enqueued_jobs
+# @example the block form
+#   performed = perform_enqueued_jobs { ReminderJob.perform_in(3600, { "id" => 1 }) }
 # @param now [Time]
 # @return [Integer]
 # @raise [Cybertrain::Test::AssertionFailed] after 10,000 jobs in one call
 # @api public
-def perform_enqueued_jobs(now = Time.now)
+def perform_enqueued_jobs(now = Time.current)
+  if block_given?
+    floor = Cybertrain::Test::Jobs.max_id
+    yield
+    return Cybertrain::Test::Jobs.perform_after(floor, "", "perform_enqueued_jobs")
+  end
+
   count = 0
   at = now.to_i
   while Cybertrain::Job.work_one(at)

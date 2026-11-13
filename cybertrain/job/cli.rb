@@ -172,7 +172,7 @@ module Cybertrain
       end
 
       def self.prune(days)
-        count = Job.prune_finished(Time.now.to_i - days * 86_400)
+        count = Job.prune_finished(Clock.now.to_i - days * 86_400)
         puts "pruned #{count} failed or discarded job(s) last updated more than #{days} day(s) ago"
         0
       end

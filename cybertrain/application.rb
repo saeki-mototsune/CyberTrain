@@ -59,6 +59,12 @@ module Cybertrain
   class Application
     attr_reader :config, :router
 
+    # The resolver the path helpers of its templates call (what gen/routes.rb
+    # hands over as Gen::Routes.url_resolver).
+    # @return [Proc]
+    # @api private
+    attr_reader :url_resolver
+
     def initialize(router:, url_resolver:, views: Application.no_views, name: "server", config: Cybertrain.config)
       @router = router
       @url_resolver = url_resolver
@@ -146,6 +152,8 @@ module Cybertrain
       # assignments are checked together.
       problem = c.validation_error
       fail_boot(problem) unless problem.empty?
+      warning = c.mail_delivery_warning
+      Cybertrain.logger.warn(warning) unless warning.empty?
       # A cron task's job: kind no Job.handle registered (Scheduler.start!
       # raises the same message; here it is a boot error before the banner).
       job_kinds_error = Scheduler.job_kinds_error
@@ -371,19 +379,6 @@ module Cybertrain
     # @api public
     def self.request_stop_roles
       Roles.request_stop
-    end
-
-    # The "now" (epoch seconds) `feeds status` measures ages from; 0, the
-    # default, is the clock. A test sets it to make the output repeatable.
-    # @api public
-    def self.status_now = @status_now.to_i
-
-    # @param value [Integer] epoch seconds; 0 for the clock
-    # @return [nil]
-    # @api public
-    def self.status_now=(value)
-      @status_now = value
-      nil
     end
 
     def self.reset_roles_stop

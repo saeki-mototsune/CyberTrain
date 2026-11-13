@@ -34,6 +34,8 @@ on:
       - "cybertrain/version.rb"
       - "cybertrain/app_name.rb"
       - "cybertrain/shell.rb"
+      - "cybertrain/test_files.rb"
+      - "cybertrain/test/args.rb"
       - "cybertrain/ident.rb"
       - "cybertrain/crypto.rb"
       - "cybertrain/generator/inflector.rb"

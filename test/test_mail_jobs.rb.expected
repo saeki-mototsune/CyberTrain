@@ -1,0 +1,15 @@
+ok   in the test environment deliver stores the message
+ok   deliveries are cleared before every test
+ok   assert_emails counts deliver_later in the block
+ok   assert_no_emails
+ok   the :smtp opt-out reaches the SmtpReceiver
+ok   perform_enqueued_jobs with a block runs jobs queued in it, the jobs they queue and a future run_at, not earlier jobs
+ok   the block-less form still runs due jobs at a given time
+ok   Job.work_one_after claims above the floor whatever the run_at, of a kind when given
+ok   a job that raises fails perform_enqueued_jobs with its kind and error, performed once
+ok   a job that fails once is not retried in the block; its retry runs once travel_to brings it due
+ok   the count is distinct jobs, and jobs run at the test's clock
+ok   a job the application discards on purpose counts as performed
+ok   a mail job that fails names its error in assert_emails; assert_no_emails without a block
+ok   boot warns about :test delivery outside the test environment, and not in it
+14 tests, 85 assertions, 0 failures

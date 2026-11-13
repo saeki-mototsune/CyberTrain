@@ -1,0 +1,8 @@
+# belongs_to by label: post_id is one's id.
+greeting:
+  post: one
+  commenter: Ann
+  body: Nice post
+  approved: true
+  extras: '{"stars":5}'
+  seen_on: 2026-11-02

@@ -1,5 +1,5 @@
 ---
-source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
+source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
 ---
 # モデルとデータベース
 
@@ -159,6 +159,27 @@ done
 ### 時刻のパース
 
 `Time.iso8601(text)`、`Time.rfc2822(text)`、`Time.strptime(text, format)` が Ruby の名前のまま使え、読めないテキストにはそれぞれ `ArgumentError` を出します。`strptime` が受け付けるのは `%Y %m %d %H %M %S %L %z %Z %b %B %a %A %j %s %%` です（`%Z` は `UTC`、`GMT`、`Z` のみ）。ミリ秒のエポックは `Time.at(ms / 1000.0)` で Time になります。
+
+### 時刻とタイムゾーン
+
+Time は常に UTC の瞬間です：カラムから読んだもの、`Time.current`、以下のすべてのメソッドは UTC の `Time` を返し、TimeWithZone はありません。そのため `time.hour` は UTC の時で、Rails ならゾーンの時を返すところです。ゾーン（`c.time_zone`、[タイムゾーン](configuration.md#time-zones)）が決めるのはカレンダーです：日、週、月、年がどこで始まるか、`Date.current`、そして `l` と `time_tag` が何を表示するか。
+
+```ruby
+Time.current                         # => 時計の UTC の Time（テストでは travel_to に従う）
+5.minutes                            # => 300、Integer の秒
+2.weeks.ago                          # => Time.current の 14 日前の Time
+3.days.from_now                      # => Time
+Time.current.months_ago(1)           # => カレンダーで 1 か月前（1.month.ago ではない）
+Time.current.beginning_of_day        # => Time.zone での真夜中を UTC の Time で
+Time.utc(2026, 1, 31).advance(months: 1)   # => 2026-02-28 00:00:00 UTC
+Date.current                         # => Time.zone での今日
+Time.current.in_time_zone.hour       # => Time.zone での時
+```
+
+- 期間：`seconds`、`minutes`、`hours`、`days`、`weeks` とその単数形は Integer の秒です（`5.minutes == 300`。Rails は Duration を返します）。`ago` と `from_now` は時計の上の Time を返します。1 か月には秒での長さがないので、`1.month` と `1.year` は定義されていません：実行されたときに `NoMethodError` を発生させます。
+- Time のメソッド：`beginning_of_day` / `end_of_day`、`_week`（月曜始まり）、`_month`、`_year`。`advance(years:, months:, weeks:, days:, hours:, minutes:, seconds:)` は Integer を取ります（年から日までは壁時計の日付をゾーンのカレンダーで動かし、1 月 31 日に 1 か月足すと 2 月の末日になります。そのあと時から秒までを経過時間として足します）。`months_ago`、`months_since`、`years_ago`、`years_since`、`yesterday`、`tomorrow`。夏時間で飛ばされる壁時計の時刻は先へ進み、2 回ある時刻は早いほうの瞬間になります。
+- `Time.zone` は設定した `Cybertrain::TimeZone` で、その名前は `Time.zone.zone_name` です。`time.in_time_zone`（または `in_time_zone("Europe/London")`）は `Cybertrain::ZonedTime` を返します。これは `year`、`month`、`day`、`hour`、`min`、`sec`、`wday`、`yday`、`utc_offset`、`zone`（略称）、`to_time`、`to_date` を持つ値で、演算はできず、保存もされません。`Time.find_zone!(name)` は未知の名前に `ArgumentError` を発生させます。
+- ゾーンにかかわらず、カラムには UTC のテキストが入ったままです。
 
 ## 条件と検索
 

@@ -72,7 +72,7 @@ module Cybertrain
       # checked the kind and derived the key).
       def self.insert(kind, payload, run_at, key)
         ensure_installed
-        now = Time.now.to_i
+        now = Clock.now.to_i
         binds = Cast.binds(kind, payload, run_at, now, now, key)
         id = 0
         DB.with do |c|
@@ -477,6 +477,49 @@ module Cybertrain
           end
         end
         Run.new(id, kind, payload, attempts, label, now)
+      end
+
+      # Claims the queued row with the lowest id above `floor`, of `kind`
+      # unless it is "" (a test's inline jobs, {Job.work_one_after}): a row
+      # never attempted whatever its run_at, a retry only once its run_at
+      # is due at `now`. As {claim} claims a due one: `running` with one
+      # more attempt, `claimed_by`, a first heartbeat at `now`. The Run's
+      # run_id is -1 when there is none. Ordered by id (enqueue order), not
+      # by run_at as a worker claims. Concurrency limits are not consulted:
+      # the caller runs one job at a time on its own thread.
+      def self.claim_after(floor, kind, now, label, ticket)
+        ensure_installed
+        id = -1
+        found_kind = ""
+        payload = ""
+        attempts = 0
+        DB.transaction(immediate: true) do |c|
+          if Job.claim_open?(ticket)
+            sql = +"SELECT id, kind, payload, attempts FROM cybertrain_jobs WHERE state = 'queued' AND id > ? " \
+                   "AND (attempts = 0 OR run_at <= ?)"
+            binds = Cast.binds(floor, now)
+            unless kind.empty?
+              sql << " AND kind = ?"
+              binds << kind
+            end
+            sql << " ORDER BY id LIMIT 1"
+            rows = c.execute(sql, binds)
+            unless rows.empty?
+              row = rows[0]
+              found = Cast.int(row["id"])
+              claim = Cast.binds(label, now, now, found)
+              c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
+                        "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", claim)
+              if c.changes == 1
+                id = found
+                found_kind = Cast.str(row["kind"])
+                payload = Cast.str(row["payload"])
+                attempts = Cast.int(row["attempts"]) + 1
+              end
+            end
+          end
+        end
+        Run.new(id, found_kind, payload, attempts, label, now)
       end
 
       # Whether some queued row is due at `now` (a plain read).

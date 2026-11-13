@@ -67,7 +67,7 @@ module Cybertrain
     def self.index_html(page, per_page, path, helpers)
       per = per_page < 1 ? 1 : per_page
       number = page < 1 ? 1 : page
-      now = Time.now.to_i
+      now = Clock.now.to_i
       counts = Array.new(0) { 0 }
       STATES.each { |state| counts << Job.state_count(state) }
       parts = Array.new(0) { SafeString.of("") }
@@ -122,7 +122,7 @@ module Cybertrain
       changed = 0
       DB.with do |c|
         rows = c.execute("SELECT kind, payload FROM cybertrain_jobs WHERE id = ? AND state IN ('failed', 'discarded')", [id])
-        changed = requeue(c, id, Cast.str(rows[0]["kind"]), Cast.str(rows[0]["payload"]), Time.now.to_i) unless rows.empty?
+        changed = requeue(c, id, Cast.str(rows[0]["kind"]), Cast.str(rows[0]["payload"]), Clock.now.to_i) unless rows.empty?
       end
       changed > 0
     end
@@ -140,7 +140,7 @@ module Cybertrain
         # again does not put off its pruning.
         c.execute("UPDATE cybertrain_jobs SET state = 'discarded', " \
                   "updated_at = CASE WHEN state = 'discarded' THEN updated_at ELSE ? END " \
-                  "WHERE id = ? AND state IN ('failed', 'discarded')", Cast.binds(Time.now.to_i, id))
+                  "WHERE id = ? AND state IN ('failed', 'discarded')", Cast.binds(Clock.now.to_i, id))
         changed = c.changes
       end
       changed > 0
@@ -167,7 +167,7 @@ module Cybertrain
     # @api public
     def self.retry_all
       Job.ensure_installed
-      now = Time.now.to_i
+      now = Clock.now.to_i
       count = 0
       DB.transaction(immediate: true) do |c|
         rows = c.execute("SELECT id, kind, payload FROM cybertrain_jobs WHERE state = 'failed' ORDER BY id")
@@ -185,7 +185,7 @@ module Cybertrain
       Job.ensure_installed
       count = 0
       DB.with do |c|
-        c.execute("UPDATE cybertrain_jobs SET state = 'discarded', updated_at = ? WHERE state = 'failed'", [Time.now.to_i])
+        c.execute("UPDATE cybertrain_jobs SET state = 'discarded', updated_at = ? WHERE state = 'failed'", [Clock.now.to_i])
         count = c.changes
       end
       count

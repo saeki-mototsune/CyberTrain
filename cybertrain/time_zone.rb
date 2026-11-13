@@ -30,7 +30,7 @@ module Cybertrain
   # and whose {#found?} is false, so the caller can log a warning.
   # @example The next 09:00 in Asia/Tokyo after now
   #   tokyo = Cybertrain::TimeZone.find("Asia/Tokyo")
-  #   now = Time.now.to_i
+  #   now = Time.current.to_i
   #   today = Cybertrain::TimeZone.epoch_to_civil(tokyo.utc_to_local(now))
   #   run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2], 9, 0, 0))
   #   run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2] + 1, 9, 0, 0)) if run <= now
@@ -701,7 +701,6 @@ module Cybertrain
     # @api public
     def self.parse_tzif(name, bytes)
       s = bytes.to_s
-      n = s.bytesize
       return unknown(name) unless tzif_magic?(s, 0)
 
       version = s.getbyte(4)

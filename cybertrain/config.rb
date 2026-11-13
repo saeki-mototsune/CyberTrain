@@ -119,10 +119,37 @@ module Cybertrain
 
     # `:info` (the default), `:debug`, `:warn`, `:error`, or `:none`, which
     # also turns off the request log but still prints errors. Lines go to
-    # standard output as `[INFO] ...`.
+    # standard output as `[INFO] ...`. `cybertrain test` sets `:none` for
+    # its tests unless config/app.rb assigns it (the request log would
+    # print between the test lines).
     # @return [Symbol]
     # @api public
-    attr_accessor :log_level
+    attr_reader :log_level
+
+    # Sets {#log_level}, and records that it was given ({#log_level_given?}).
+    # @param value [Symbol]
+    # @api public
+    def log_level=(value)
+      @log_level = value
+      @log_level_given = true
+    end
+
+    # Whether {#log_level} was assigned (by config/app.rb or later), rather
+    # than left at its default: what `cybertrain test`'s boot asks.
+    # @return [Boolean]
+    # @api private
+    def log_level_given? = @log_level_given
+
+    # Sets {#log_level} to `value` unless it was given, without counting as
+    # given: `cybertrain test`'s default (`:none`, no request log between
+    # the test lines).
+    # @param value [Symbol]
+    # @return [nil]
+    # @api private
+    def log_level_unless_given(value)
+      @log_level = value unless @log_level_given
+      nil
+    end
 
     # The session cookie's name, `"_cybertrain_session"`.
     # @return [String]
@@ -214,9 +241,35 @@ attr_accessor :trusted_proxies
     # health path is never redirected.
     # On, the session and cookie jar cookies are `Secure` whatever
     # {#session_secure} says ({#secure_cookies?}).
+    # `cybertrain test` turns it off for its tests unless config/app.rb
+    # assigns it (an exported CYBERTRAIN_FORCE_SSL would answer every test
+    # request with a redirect to https).
     # @return [Boolean]
     # @api public
-    attr_accessor :force_ssl
+    attr_reader :force_ssl
+
+    # Sets {#force_ssl}, and records that it was given.
+    # @param value [Boolean]
+    # @api public
+    def force_ssl=(value)
+      @force_ssl = value
+      @force_ssl_given = true
+    end
+
+    # Sets {#force_ssl} to `value` unless an assignment gave it, without
+    # counting as given: `cybertrain test`'s default (off).
+    # @param value [Boolean]
+    # @return [nil]
+    # @api private
+    def force_ssl_unless_given(value)
+      unless @force_ssl_given
+        @force_ssl = value
+        # CYBERTRAIN_FORCE_SSL no longer counts, so a value boot would
+        # refuse (security_error) does not stop the tests either.
+        @force_ssl_text = ""
+      end
+      nil
+    end
 
     # The `Host` names from `CYBERTRAIN_HOSTS` (comma-separated, `[]` when
     # unset), also appended to {#allowed_hosts}, after its loopback names:
@@ -225,10 +278,31 @@ attr_accessor :trusted_proxies
     # check on outside development ({#host_check?}): a request whose Host
     # is not in {#allowed_hosts} or this list answers 403. Exact names (an
     # IPv6 address in brackets); no scheme, path, port or wildcard (boot
-    # refuses one).
+    # refuses one). `cybertrain test` empties it for its tests unless
+    # config/app.rb assigns or changes it (an exported CYBERTRAIN_HOSTS
+    # would turn the host check on and answer the test host 403).
     # @return [Array<String>]
     # @api public
-    attr_accessor :hosts_from_env
+    attr_reader :hosts_from_env
+
+    # Sets {#hosts_from_env}, and records that it was given.
+    # @param value [Array<String>]
+    # @api public
+    def hosts_from_env=(value)
+      @hosts_from_env = value
+      @hosts_from_env_given = true
+    end
+
+    # Sets {#hosts_from_env} to `value` unless an assignment gave it or it
+    # was changed in place since CYBERTRAIN_HOSTS filled it, without
+    # counting as given: `cybertrain test`'s default (no host check).
+    # @param value [Array<String>]
+    # @return [nil]
+    # @api private
+    def hosts_from_env_unless_given(value)
+      @hosts_from_env = value unless @hosts_from_env_given || @hosts_from_env != @hosts_from_env_read
+      nil
+    end
 
     # The `Permissions-Policy` every response carries unless it sets its
     # own, `"camera=(), microphone=(), geolocation=()"`; `""` sends none.
@@ -266,10 +340,48 @@ attr_accessor :trusted_proxies
     attr_accessor :static_files
 
     # Whether non-GET requests must carry the CSRF token, `true`. A request
-    # without it gets 403.
+    # without it gets 403. `cybertrain test` turns it off for its tests
+    # unless config/app.rb assigns it (Rails' test environment has
+    # forgery protection off).
     # @return [Boolean]
     # @api public
-    attr_accessor :csrf
+    attr_reader :csrf
+
+    # Sets {#csrf}, and records that it was given ({#csrf_given?}).
+    # @param value [Boolean]
+    # @api public
+    def csrf=(value)
+      @csrf = value
+      @csrf_given = true
+    end
+
+    # Whether {#csrf} was assigned (by config/app.rb or later), rather than
+    # left at its default: what `cybertrain test`'s boot asks.
+    # @return [Boolean]
+    # @api private
+    def csrf_given? = @csrf_given
+
+    # Sets {#csrf} to `value` unless it was given, without counting as
+    # given: `cybertrain test`'s default (forgery protection off).
+    # @param value [Boolean]
+    # @return [nil]
+    # @api private
+    def csrf_unless_given(value)
+      @csrf = value unless @csrf_given
+      nil
+    end
+
+    # Puts {#csrf} and whether it was given back as a test found them
+    # (ActionDispatch::IntegrationTest#with_forgery_protection).
+    # @param value [Boolean]
+    # @param given [Boolean]
+    # @return [nil]
+    # @api private
+    def restore_csrf(value, given)
+      @csrf = value
+      @csrf_given = given
+      nil
+    end
 
     # Path prefixes whose non-GET requests skip the CSRF check, `[]`: for an
     # API that other programs call with a token of its own (a webhook
@@ -313,9 +425,34 @@ attr_accessor :trusted_proxies
     # (relative to the working directory). It is created on the first write,
     # not at boot, and is never under `public/`: `storage/` is the persistent
     # volume of a deployment, `public/` is replaced on every build.
+    # `cybertrain test` gives its tests `tmp/test_uploads`, emptied when
+    # the tests start, unless config/app.rb assigns it.
     # @return [String]
     # @api public
-    attr_accessor :upload_root
+    attr_reader :upload_root
+
+    # Sets {#upload_root}, and records that it was given.
+    # @param value [String]
+    # @api public
+    def upload_root=(value)
+      @upload_root = value
+      @upload_root_given = true
+    end
+
+    # Whether {#upload_root} was assigned (by config/app.rb or later).
+    # @return [Boolean]
+    # @api private
+    def upload_root_given? = @upload_root_given
+
+    # Sets {#upload_root} to `value` unless an assignment gave it, without
+    # counting as given: `cybertrain test`'s temporary directory.
+    # @param value [String]
+    # @return [nil]
+    # @api private
+    def upload_root_unless_given(value)
+      @upload_root = value unless @upload_root_given
+      nil
+    end
 
     # Whether {HttpClient} may connect to addresses that are not public
     # (loopback, private, link-local, CGNAT, multicast, ...; see
@@ -358,9 +495,30 @@ attr_accessor :trusted_proxies
     attr_accessor :smtp_password
 
     # The default sender address, `""`, from `CYBERTRAIN_SMTP_FROM`.
+    # `cybertrain test` gives its tests `"from@example.com"` (Rails'
+    # convention) unless the variable or config/app.rb set one.
     # @return [String]
     # @api public
-    attr_accessor :smtp_from
+    attr_reader :smtp_from
+
+    # Sets {#smtp_from}, and records that it was given.
+    # @param value [String]
+    # @api public
+    def smtp_from=(value)
+      @smtp_from = value
+      @smtp_from_given = true
+    end
+
+    # Sets {#smtp_from} to `value` unless CYBERTRAIN_SMTP_FROM or an
+    # assignment gave one, without counting as given: `cybertrain test`'s
+    # default sender.
+    # @param value [String]
+    # @return [nil]
+    # @api private
+    def smtp_from_unless_given(value)
+      @smtp_from = value unless @smtp_from_given
+      nil
+    end
 
     # How the connection is protected, `"starttls"`, from
     # `CYBERTRAIN_SMTP_TLS`: `"starttls"` (upgrade a plain connection, port
@@ -370,6 +528,52 @@ attr_accessor :trusted_proxies
     # @return [String]
     # @api public
     attr_accessor :smtp_tls
+
+    # How {Mailer} delivers, from `CYBERTRAIN_MAIL_DELIVERY_METHOD`
+    # (`smtp` or `test`, in any case): `:smtp` sends through the server
+    # above; `:test` (Rails' `delivery_method = :test`) checks each message
+    # and appends it to {Mailer.deliveries} instead of connecting. The
+    # default is `:test` in the test environment (CYBERTRAIN_ENV=test,
+    # which `cybertrain test` sets) and `:smtp` in every other. A test that
+    # reads mail at a `Test::SmtpReceiver` sets `:smtp` first. Boot refuses
+    # anything else ({#mail_delivery_error}), and logs a warning for `:test`
+    # outside the test environment ({#mail_delivery_warning}): no mail is
+    # sent then.
+    # `cybertrain test` keeps its tests at `:test` whatever
+    # CYBERTRAIN_MAIL_DELIVERY_METHOD says, unless config/app.rb assigns
+    # it (an exported `smtp` must not make a test send real mail).
+    # @example a test of the SMTP path
+    #   Cybertrain.config.mail_delivery_method = :smtp
+    # @return [Symbol]
+    # @api public
+    attr_reader :mail_delivery_method
+
+    # Sets {#mail_delivery_method}, and records that it was given.
+    # @param value [Symbol]
+    # @api public
+    def mail_delivery_method=(value)
+      @mail_delivery_method = value
+      @mail_delivery_method_given = true
+    end
+
+    # Sets {#mail_delivery_method} to `value` unless an assignment gave it,
+    # without counting as given: `cybertrain test`'s `:test`.
+    # @param value [Symbol]
+    # @return [nil]
+    # @api private
+    def mail_delivery_method_unless_given(value)
+      @mail_delivery_method = value unless @mail_delivery_method_given
+      nil
+    end
+
+    # CYBERTRAIN_MAIL_DELIVERY_METHOD as a Symbol, or, when it is unset or
+    # empty, :test for the test environment and :smtp for any other.
+    def self.default_mail_delivery_method(env)
+      given = env_or("CYBERTRAIN_MAIL_DELIVERY_METHOD", "").downcase
+      return given.to_sym unless given.empty?
+
+      env == "test" ? :test : :smtp
+    end
 
     # CYBERTRAIN_SMTP_PORT: 0 (the mode's port) unless it is 1..65535.
     def self.default_smtp_port
@@ -479,13 +683,38 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :scheduler_lease_ttl
 
-    # The zone a `Scheduler.cron` task's expression is read in when it
-    # names none (`tz:`), `"UTC"`, from `CYBERTRAIN_SCHEDULER_TZ`: an IANA
-    # name such as `"Asia/Tokyo"` ({TimeZone.find}). Boot refuses a name
-    # the system zoneinfo does not have.
+    # The application's time zone, `"UTC"`, from `CYBERTRAIN_TIME_ZONE`:
+    # an IANA name such as `"Asia/Tokyo"` ({TimeZone.find}; Rails'
+    # `config.time_zone` takes Rails' own names, here IANA names only).
+    # Boot refuses a name the system zoneinfo does not have
+    # ({#time_zone_error}) and installs the zone as `Time.zone`
+    # ({Clock.zone}): the boundaries of `beginning_of_day` and the other
+    # calendar methods, `Date.current`, `l` and `time_tag` follow it, and
+    # {#scheduler_tz} defaults to it. Values stay UTC instants.
+    # @example config/app.rb
+    #   c.time_zone = "Asia/Tokyo"
     # @return [String]
     # @api public
-    attr_accessor :scheduler_tz
+    attr_accessor :time_zone
+
+    # The zone a `Scheduler.cron` task's expression is read in when it
+    # names none (`tz:`), from `CYBERTRAIN_SCHEDULER_TZ`: an IANA name such
+    # as `"Asia/Tokyo"` ({TimeZone.find}). While neither the variable nor
+    # an assignment set it, it is {#time_zone} (read each time, so a later
+    # `c.time_zone =` moves it too). Boot refuses a name the system
+    # zoneinfo does not have.
+    # @return [String]
+    # @api public
+    def scheduler_tz
+      own = @scheduler_tz
+      own.empty? ? @time_zone : own
+    end
+
+    # Sets {#scheduler_tz}; `""` makes it follow {#time_zone} again.
+    # @param value [String]
+    # @return [String]
+    # @api public
+    attr_writer :scheduler_tz
 
     # How many rows each list of the jobs page (`jobs_page` in
     # config/routes.rb, {JobsPage}) shows on one page, `50`, from
@@ -862,6 +1091,7 @@ attr_accessor :trusted_proxies
       @public_root = "public"
       @layout = "layouts/application"
       @log_level = :info
+      @log_level_given = false
       @session_cookie_name = "_cybertrain_session"
       @session_max_age = 1209600
       # Absolute session lifetime, enforced by SessionStore: the two weeks
@@ -893,6 +1123,7 @@ end
       # CYBERTRAIN_FORCE_SSL, kept as written for security_error.
       @force_ssl_text = Config.env_or("CYBERTRAIN_FORCE_SSL", "")
       @force_ssl = @force_ssl_text == "1" || @force_ssl_text == "true"
+      @force_ssl_given = false
       # CYBERTRAIN_HOSTS: checked by security_error, appended to
       # allowed_hosts (typed seed, rule 9).
       @hosts_from_env = Array.new(0) { "" }
@@ -903,6 +1134,9 @@ end
         @hosts_from_env << env_host
         @allowed_hosts << env_host
       end
+      # What CYBERTRAIN_HOSTS gave, to tell an in-place change from it.
+      @hosts_from_env_read = @hosts_from_env.dup
+      @hosts_from_env_given = false
       @permissions_policy = "camera=(), microphone=(), geolocation=()"
       # Off until config/app.rb declares one (as in Rails).
       @content_security_policy = nil
@@ -911,6 +1145,7 @@ end
       @pool_size = 4
       @static_files = true
       @csrf = true
+      @csrf_given = false
       # An element-typed empty Array (spikes/NOTES.md rule 9): config/app.rb
       # assigns a literal, the stack reads it.
       @csrf_exempt_prefixes = Array.new(0) { "" }
@@ -922,6 +1157,7 @@ end
       @max_upload_bytes = 5_242_880
       @max_multipart_parts = 128
       @upload_root = "storage/uploads"
+      @upload_root_given = false
       @http_allow_private = Config.default_http_allow_private
       # Mailer's settings (CYBERTRAIN_SMTP_*). Assigned here, not in a
       # helper: an ivar first set outside initialize is boxed.
@@ -930,7 +1166,10 @@ end
       @smtp_user = Config.env_or("CYBERTRAIN_SMTP_USER", "")
       @smtp_password = Config.env_or("CYBERTRAIN_SMTP_PASSWORD", "")
       @smtp_from = Config.env_or("CYBERTRAIN_SMTP_FROM", "")
+      @smtp_from_given = !@smtp_from.empty?
       @smtp_tls = Config.env_or("CYBERTRAIN_SMTP_TLS", "starttls").downcase
+      @mail_delivery_method = Config.default_mail_delivery_method(@env)
+      @mail_delivery_method_given = false
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
       # Application-defined settings (setting_string / setting_int /
       # setting_bool): one typed Hash per type, keyed by the setting's name
@@ -967,7 +1206,9 @@ end
       @feed_restart_limit = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_LIMIT", 10)
       @feed_restart_window = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_WINDOW", 600)
       @scheduler_lease_ttl = 30
-      @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "UTC")
+      @time_zone = Config.env_or("CYBERTRAIN_TIME_ZONE", "UTC")
+      # "" (unset): scheduler_tz answers time_zone.
+      @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "")
       # ParameterFilter.names' list; Application#boot installs it there.
       @filter_parameters = Config.default_filter_parameters
       # The health check (HealthCheck). An empty variable turns it off,

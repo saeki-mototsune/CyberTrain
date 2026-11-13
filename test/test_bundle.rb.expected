@@ -1,0 +1,20 @@
+ok   the output has headings, file:line on failures and pluralised totals
+ok   -n exact name, method name and /text/ keep only those tests
+ok   a file filter and -n combine
+ok   0 tests is not a failure
+ok   bad arguments print the usage and the reason, run nothing and answer 2
+ok   an error outside the body names the step, and a computed name has no line
+ok   the arguments are checked before the boot
+ok   two top-level tests of one name each report their own line
+ok   Cybertrain::Test.run! does nothing inside the bundle
+ok   boot refuses a database that is not the test one
+ok   CYBERTRAIN_TEST_DATABASE is honoured
+ok   CYBERTRAIN_TEST_DATABASE naming the development or production database is refused and kept
+ok   the default exemption is this application's storage/test.sqlite3 in any spelling, not another project's
+ok   a symlink found at the path just opened is refused before anything is marked or migrated
+ok   storage/test.sqlite3 is taken as it is, unless it is a symlink to another file
+ok   CYBERTRAIN_TEST_DATABASE takes a file path only: :memory: and file: URIs are refused before anything opens
+ok   config/app.rb's configure blocks run exactly once under cybertrain test
+ok   the shell's mail, SSL and host variables do not reach the tests; uploads go to an emptied tmp/test_uploads
+ok   every test starts in the configured time zone
+19 tests, 127 assertions, 0 failures

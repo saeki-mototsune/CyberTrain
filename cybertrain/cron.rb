@@ -28,7 +28,7 @@ module Cybertrain
   # @example The next 09:00 on a weekday in Tokyo
   #   expr = Cybertrain::Cron.parse("0 9 * * mon-fri")
   #   tokyo = Cybertrain::TimeZone.find("Asia/Tokyo")
-  #   Cybertrain::Cron.next_after(expr, Time.now.to_i, tokyo) # => epoch seconds
+  #   Cybertrain::Cron.next_after(expr, Time.current.to_i, tokyo) # => epoch seconds
   # @api public
   module Cron
     # How far ahead {Cron.next_after} looks before it gives up: five years

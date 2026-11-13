@@ -124,6 +124,16 @@ module Cybertrain
       Query.plain?(text) ? text : URI.encode_www_form_component(text)
     end
 
+    # The epoch second of {NO_EXPIRES}.
+    NO_EXPIRES_EPOCH = -1
+
+    # {serialize}'s default `expires:`, standing for "no Expires". Not nil:
+    # under Spinel a parameter defaulting to nil that some caller gives a
+    # plain Time is compiled as a Time, its `nil?` as false, and the
+    # default call then reads a NULL Time and crashes (NOTES, the rule on
+    # nil defaults; spikes/phase5/nil_default_time.rb).
+    NO_EXPIRES = Time.at(NO_EXPIRES_EPOCH).utc
+
     # A Set-Cookie value for {Response#add_cookie}, the value
     # percent-encoded. `same_site` `"None"` and `partitioned` both require
     # `Secure` (browsers drop such a cookie without it), so either adds
@@ -138,13 +148,13 @@ module Cybertrain
     # @param secure [Boolean]
     # @param partitioned [Boolean] adds `Partitioned` (and `Secure`)
     # @param expires [Time, nil] adds `Expires=` with the time as an HTTP
-    #   date ({Request.http_date}); nil leaves it out
+    #   date ({Request.http_date}); nil (or leaving it out) writes none
     # @return [String]
     # @raise [ArgumentError] `name` is not an RFC 6265 token, `path` holds
     #   ";", CR or LF, or `same_site` is not Lax, Strict or None (any case)
     # @api public
     def self.serialize(name, value, path: "/", max_age: -1, http_only: true, same_site: "Lax", secure: false,
-                       partitioned: false, expires: nil)
+                       partitioned: false, expires: NO_EXPIRES)
       Cookies.validate!(name, path, same_site)
       # value.to_s: a String for Query.plain?'s byte reads (see Html.escape)
       out = +"#{name}=#{Cookies.encoded_value(value.to_s)}"
@@ -152,7 +162,7 @@ module Cybertrain
       out << "; HttpOnly" if http_only
       out << "; SameSite=#{same_site}"
       out << "; Max-Age=#{max_age}" if max_age >= 0
-      out << "; Expires=#{Request.http_date(expires)}" unless expires.nil?
+      out << "; Expires=#{Request.http_date(expires)}" unless expires.nil? || expires.to_i == NO_EXPIRES_EPOCH
       out << "; Secure" if secure || partitioned || same_site.downcase == "none"
       out << "; Partitioned" if partitioned
       out

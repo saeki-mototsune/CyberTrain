@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# Drives `cybertrain test` from end to end (spec section 8, acceptance 5) on
+# test/fixtures/test_app, copied to a scratch directory with its spin.toml
+# pointed at this checkout. Each run's stdout is compared with
+# test/fixtures/test_app.expected/<variant>.out and its exit status with
+# the variant's:
+#
+#   all        cybertrain test, with CYBERTRAIN_ENV=development and
+#              CYBERTRAIN_DATABASE=tmp/other.sqlite3 exported: the bundle
+#              uses storage/test.sqlite3 all the same, and the development
+#              database and the exported file keep their bytes (plan
+#              decision 19); the first compile, timed                    0
+#   file       cybertrain test test/models/article_test.rb               0
+#   name       cybertrain test -n "keeps a boolean, a datetime and a decimal"  0
+#   method     cybertrain test -n test_belongs_to_its_author             0
+#   text       cybertrain test -n /article/                              0
+#   nomatch    cybertrain test -n /no-such-test/: says nothing matched   0
+#   usage      cybertrain test --seed 1: the CLI's own check, no step    2
+#   args       build/test/tests -n // run directly: the bundle's own
+#              check, before the boot                                    2
+#   database   TEST_APP_DATABASE=storage/development.sqlite3 (config/app.rb
+#              names its database from it): refused before anything loads
+#              or is deleted, the file keeps its bytes                   2
+#   failing    test_app_extra/failing_test.rb added: FAIL and ERR lines
+#              with the test's line, compiled again                      1
+#   duplicate  test_app_extra/dup_a.rb and dup_b.rb added (both define
+#              new_client): gen's refusal naming both, no compile        1
+#   refused    test_app_extra/refused_test.rb added (the rewrite refuses
+#              it): gen exits 0, its path:line, no compile                1
+#
+# First the committed gen/ is checked (`spin run gen -- --check`). The
+# runs between the first and `failing` reuse the first compile's
+# build/test/tests (its mtime is checked). gen's and the compiler's output (stderr) are kept in
+# <variant>.err beside the outputs. The first failure stops the script and
+# leaves the scratch directory in place to look at.
+#
+# usage: script/test-command-e2e           check
+#        script/test-command-e2e --regen   write the .out files from this run
+#                                          (exit statuses and the compile
+#                                          checks still apply); review the diff
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+FIXTURE="$ROOT/test/fixtures/test_app"
+EXTRA="$ROOT/test/fixtures/test_app_extra"
+EXPECTED="$ROOT/test/fixtures/test_app.expected"
+
+REGEN=0
+case "${1:-}" in
+  "") ;;
+  --regen) REGEN=1 ;;
+  *)
+    echo "usage: script/test-command-e2e [--regen]" >&2
+    exit 2
+    ;;
+esac
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/test-command-e2e.XXXXXX")
+APP="$WORK/test_app"
+
+fail() {
+  echo "test-command-e2e: FAIL: $*" >&2
+  echo "test-command-e2e: the app is in $APP" >&2
+  exit 1
+}
+
+cybertrain() {
+  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
+}
+
+# The application without what a build or a run in place leaves behind.
+mkdir "$APP"
+(cd "$FIXTURE" && tar cf - --exclude ./build --exclude ./tmp --exclude './storage/*.sqlite3*' .) | (cd "$APP" && tar xf -)
+sed "s|^cybertrain = .*|cybertrain = { path = \"$ROOT\" }|" "$FIXTURE/spin.toml" > "$APP/spin.toml"
+grep -q "path = \"$ROOT\"" "$APP/spin.toml" || fail "spin.toml was not pointed at $ROOT"
+mkdir -p "$APP/tmp" "$APP/storage"
+
+# The committed gen/ (gen/tests.rb and gen/test/** included) is what gen
+# writes. This builds bin/gen in the mode `cybertrain test` builds it in
+# (SPIN_DEBUG=1), which `cybertrain test` then reuses.
+(cd "$APP" && SPIN_DEBUG=1 cybertrain spin run gen -- --check) > "$WORK/gen-check.log" 2>&1 ||
+  { tail -n 40 "$WORK/gen-check.log" >&2; fail "test/fixtures/test_app/gen/ is stale: run spin run gen in it"; }
+
+# `run_variant NAME STATUS ARGS...`: cybertrain test ARGS in the app; its
+# stdout against NAME.out, its status against STATUS. The environment of
+# the call is the caller's (`VAR=x run_variant ...` exports VAR to it).
+run_variant() {
+  local name=$1 want=$2
+  shift 2
+  check_run "$name" "$want" cybertrain test "$@"
+}
+
+# `check_run NAME STATUS COMMAND...`: as run_variant, for any command run
+# in the app.
+check_run() {
+  local name=$1 want=$2
+  shift 2
+  local got=0
+  (cd "$APP" && "$@") > "$WORK/$name.out" 2> "$WORK/$name.err" || got=$?
+  if [ "$got" != "$want" ]; then
+    echo "--- $name: stdout" >&2
+    cat "$WORK/$name.out" >&2
+    echo "--- $name: stderr (last 40 lines)" >&2
+    tail -n 40 "$WORK/$name.err" >&2
+    fail "$name: exit status $got, expected $want"
+  fi
+  if [ "$REGEN" = 1 ]; then
+    cp "$WORK/$name.out" "$EXPECTED/$name.out"
+    echo "test-command-e2e: wrote test/fixtures/test_app.expected/$name.out"
+  elif ! diff -u "$EXPECTED/$name.out" "$WORK/$name.out" >&2; then
+    fail "$name: output differs from test/fixtures/test_app.expected/$name.out (the diff is above)"
+  fi
+  echo "test-command-e2e: $name ok (exit $got)"
+}
+
+BINARY="$APP/build/test/tests"
+STAMP="$WORK/binary.stamp"
+
+# Fails unless build/test/tests is the one STAMP recorded.
+same_binary() {
+  [ -x "$BINARY" ] || fail "$1: build/test/tests is missing"
+  if [ "$BINARY" -nt "$STAMP" ] || [ "$STAMP" -nt "$BINARY" ]; then fail "$1: build/test/tests was compiled again"; fi
+}
+
+# all: the first compile, under a development environment and an exported
+# database path (decision 19).
+printf 'development bytes\n' > "$APP/storage/development.sqlite3"
+printf 'other bytes\n' > "$APP/tmp/other.sqlite3"
+cp "$APP/storage/development.sqlite3" "$WORK/development.copy"
+cp "$APP/tmp/other.sqlite3" "$WORK/other.copy"
+started=$(date +%s)
+CYBERTRAIN_ENV=development CYBERTRAIN_DATABASE=tmp/other.sqlite3 run_variant all 0
+seconds=$(($(date +%s) - started))
+cmp "$WORK/development.copy" "$APP/storage/development.sqlite3" || fail "all: storage/development.sqlite3 changed"
+cmp "$WORK/other.copy" "$APP/tmp/other.sqlite3" || fail "all: tmp/other.sqlite3 (CYBERTRAIN_DATABASE) changed"
+[ -f "$APP/storage/test.sqlite3" ] || fail "all: storage/test.sqlite3 was not created"
+[ -x "$BINARY" ] || fail "all: build/test/tests was not built"
+touch -r "$BINARY" "$STAMP"
+echo "test-command-e2e: the first run (gen, the compile, the tests) took ${seconds}s"
+
+# The filters: the same binary.
+run_variant file 0 test/models/article_test.rb
+same_binary file
+run_variant name 0 -n "keeps a boolean, a datetime and a decimal"
+same_binary name
+run_variant method 0 -n test_belongs_to_its_author
+same_binary method
+run_variant text 0 -n /article/
+same_binary text
+run_variant nomatch 0 -n /no-such-test/
+same_binary nomatch
+
+# The three ways to exit 2: bad arguments seen by the CLI, by the bundle
+# itself, and a database that is not a test database.
+run_variant usage 2 --seed 1
+same_binary usage
+check_run args 2 ./build/test/tests -n //
+same_binary args
+TEST_APP_DATABASE=storage/development.sqlite3 run_variant database 2
+cmp "$WORK/development.copy" "$APP/storage/development.sqlite3" || fail "database: storage/development.sqlite3 changed"
+same_binary database
+
+# A failing file: a new input, so one more compile.
+cp "$EXTRA/failing_test.rb" "$APP/test/failing_test.rb"
+run_variant failing 1
+[ "$BINARY" -nt "$STAMP" ] || fail "failing: build/test/tests was not compiled again for test/failing_test.rb"
+rm "$APP/test/failing_test.rb"
+touch -r "$BINARY" "$STAMP"
+
+# Duplicate helpers: gen refuses the bundle, nothing is compiled.
+cp "$EXTRA/dup_a.rb" "$APP/test/dup_a.rb"
+cp "$EXTRA/dup_b.rb" "$APP/test/dup_b.rb"
+run_variant duplicate 1
+same_binary duplicate
+rm "$APP/test/dup_a.rb" "$APP/test/dup_b.rb"
+
+# A test file the class-form rewrite refuses: gen itself succeeds (the
+# development server, db migrate and a build go on), the bundle is the
+# refused program, nothing is compiled.
+cp "$EXTRA/refused_test.rb" "$APP/test/refused_test.rb"
+(cd "$APP" && SPIN_DEBUG=1 cybertrain spin run gen) > "$WORK/refused-gen.log" 2>&1 ||
+  { tail -n 40 "$WORK/refused-gen.log" >&2; fail "refused: spin run gen failed on a refused test file"; }
+run_variant refused 1
+same_binary refused
+
+rm -rf "$WORK"
+echo "test-command-e2e: passed"

@@ -1,5 +1,5 @@
 ---
-source_sha256: fe2c05ecaf069531464f4c4acba55c5839ea809973a39f81eec7caf7f761d280
+source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
 ---
 # 请求
 
@@ -165,7 +165,7 @@ cookies.signed[:user_id]           # => "5"，被改过则为 nil
 cookies.delete(:theme)
 ```
 
-写入接受一个 String，或一个带 `value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:` 和 `same_site:` 的 Hash。cookie 写入时带 `Path=/`、`HttpOnly` 和 `SameSite=Lax`，会话 cookie 带 `Secure` 时（生产环境中，或开启 `force_ssl` 时）也带 `Secure`，除非写入时另有指定。`permanent` 写入 20 年的 `Max-Age`。签名的值是用从 `secret_key_base` 派生的密钥计算的 HMAC-SHA256；加密的值是用另一个密钥的 AES-256-GCM；两者都绑定到各自 cookie 的名称，因此换一个名称既无法验证也无法解密，被改过的值读出来是 nil。同一请求中写入后再读取，得到的是写入的值。
+写入接受一个 String，或一个带 `value:`、`expires:`（Time）、`max_age:`、`path:`、`httponly:`、`secure:` 和 `same_site:` 的 Hash。cookie 写入时带 `Path=/`、`HttpOnly` 和 `SameSite=Lax`，会话 cookie 带 `Secure` 时（生产环境中，或开启 `force_ssl` 时）也带 `Secure`，除非写入时另有指定。`permanent` 写入 20 年的 `Max-Age`。签名的值是用从 `secret_key_base` 派生的密钥计算的 HMAC-SHA256；加密的值是用另一个密钥的 AES-256-GCM；两者都绑定到各自 cookie 的名称，因此换一个名称既无法验证也无法解密，被改过的值读出来是 nil。同一请求中写入后再读取，得到的是写入的值。在 jar 之下，`Cybertrain::Cookies.serialize(name, value, expires: time)` 构造一个 `Set-Cookie` 值；省略 `expires:`（它的默认值是 `Cybertrain::Cookies::NO_EXPIRES` 而不是 nil，这是出于 Spinel 的原因：见 spikes/NOTES.md 第 109 条规则）或传入 nil 都不会写出 `Expires`。
 
 会话 cookie 与 Rails 的 cookie store 一样，用 AES-256-GCM 加密并认证，使用从 `secret_key_base` 派生的专用密钥：客户端既不能读取也不能修改它。无法解密的 cookie（被改过的、来自别处的或旧的签名 cookie）会作为空会话加载，超过 4096 字节的 cookie 也是如此；cookie 会超过 4096 字节的会话，或 `name=value` 超过 4096 字节的 jar cookie，在写入时抛出 `Session::CookieOverflow`。值仍然是 String。和以前一样，更换 `secret_key_base` 会让所有人退出登录。
 
@@ -188,7 +188,7 @@ end
 
 每条声明针对每个客户端和控制器，在每个 `within` 秒的窗口内最多计 `to` 个请求，之后以 429 和 `Retry-After` 响应头（窗口剩余的秒数）作答；如果给出了 `redirect_to:`，则改为重定向。其他选项指向控制器方法：`by:` 是键（默认 `:client_ip`，`:remote_addr` 表示连接的对端，或者像 `account_key` 这样的方法，它返回 nil 或 `""` 时会抛出异常，而不是把所有客户端算在一起），`with:` 是改为返回的响应（它什么都没渲染时，随后仍返回 429），`if:` / `unless:` 决定限制何时生效（被跳过的请求不计数）。有两个限制的控制器要为每个限制取不同的 `name:`（gen 会拒绝同一控制器中（包括其父类的）同名的第二个限制，以及含有 `:` 的名称）。`within:` 以秒为单位，`only:`/`except:` 接收数组。
 
-计数保存在应用数据库中的 `Cybertrain::Cache` 里，所以服务该应用的所有进程一起计数，重启后计数仍然保留；窗口是固定的，并与时钟对齐（`now / within`）。`store: :memory` 保留原来的按进程计数：每个进程各自计数，存放在一张最多容纳 10,000 个键的表里（表满时，先清除已过期的窗口，再清除最旧的窗口来腾出空间），重启后丢失，窗口从某个键的第一个请求开始，并且对受限动作的每个请求都会获取一次锁（请用 `only:` 指明动作）。在测试中，`Cybertrain::RateLimit.reset_all!` 会清除所有计数（内存中的表和缓存中的限流行）；`Cybertrain::Cache.clock = -> { n }` 固定缓存存储的时钟，`Cybertrain::RateLimit.current_time = n` 固定内存存储的时钟（`-1` 恢复）。
+计数保存在应用数据库中的 `Cybertrain::Cache` 里，所以服务该应用的所有进程一起计数，重启后计数仍然保留；窗口是固定的，并与时钟对齐（`now / within`）。`store: :memory` 保留原来的按进程计数：每个进程各自计数，存放在一张最多容纳 10,000 个键的表里（表满时，先清除已过期的窗口，再清除最旧的窗口来腾出空间），重启后丢失，窗口从某个键的第一个请求开始，并且对受限动作的每个请求都会获取一次锁（请用 `only:` 指明动作）。在测试中，`Cybertrain::RateLimit.reset_all!` 会清除所有计数（内存中的表和缓存中的限流行；`cybertrain test` 在每个测试之前都会这样做），两种存储都读取框架的时钟，所以 `travel 1.minute` 或 `travel_to` 可以让测试越过一个窗口（[时间旅行](testing.md#time-travel)）。
 
 ### 代理背后的客户端地址
 

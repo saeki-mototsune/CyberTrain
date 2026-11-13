@@ -282,10 +282,10 @@ module Cybertrain
         end
         ping = @ping_interval.to_f
         slice = ping < SLICE ? ping : SLICE
-        quiet_since = Time.now.to_f
+        quiet_since = Clock.monotonic
         while !sink.closed? && !sub.dropped? && Poller.running?
           msg = sub.stream_pop(slice)
-          now = Time.now.to_f
+          now = Clock.monotonic
           if msg.nil?
             if now - quiet_since >= ping
               sink.write(": ping\n\n")

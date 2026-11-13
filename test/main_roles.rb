@@ -224,7 +224,7 @@ test "feeds status prints one line per status row and returns 0; with none it sa
   Cybertrain::WebSocket::FeedTable.ensure_installed
   Cybertrain::DB.with { |c| c.execute("DELETE FROM cybertrain_feeds") }
   now = 2_000_000_000
-  Cybertrain::Application.status_now = now
+  travel_to(Time.at(now))
   assert_equal 0, run(["feeds", "status"])
   Cybertrain::WebSocket::FeedTable.upsert_feed("quotes", "host:42", false, now - 100, 0, 2, now - 5)
   Cybertrain::WebSocket::FeedTable.upsert_feed("trades", "host:42", true, now - 100, now - 7, 0, now - 5)
@@ -241,7 +241,7 @@ test "feeds status prints one line per status row and returns 0; with none it sa
   gone = Cybertrain::WebSocket::FeedTable.read_feeds[0]
   assert_equal "gone  disconnected  host:41  last activity never  restarts 0  updated 800s ago  (not registered)",
                Cybertrain::Application.feed_status_line(gone, now)
-  Cybertrain::Application.status_now = 0
+  travel_back
   # status starts nothing.
   refute Cybertrain::WebSocket.running?
 end

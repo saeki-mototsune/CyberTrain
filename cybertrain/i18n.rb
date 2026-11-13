@@ -1,6 +1,8 @@
 require "date"
 require "cybertrain/locales/bundled"
 require "cybertrain/strftime"
+require "cybertrain/clock"
+require "cybertrain/zoned_time"
 
 # I18n, a top-level module as in Rails (plan decision D1), so application
 # code writes `I18n.t` and `I18n.locale` as there.
@@ -345,21 +347,32 @@ module I18n
   # `time.am` / `time.pm` (upper- and lower-cased, as the i18n gem does;
   # "" for a Date), `%^a` and the like upper-case the name; every other
   # directive is strftime's.
+  #
+  # A Time is rendered in `Time.zone` (spec section 4): its wall fields,
+  # `%z` and `%Z` are the zone's, and so are the day and month names and
+  # `%p`. `zone:` (an IANA name) renders this one call in another zone. A
+  # Time that carries an offset of its own (`getlocal("+09:00")`) keeps it
+  # unless `zone:` is given. A Date is rendered as it is.
   # @example
   #   I18n.l(Time.utc(2026, 11, 10, 9, 5), format: :long)    # => "November 10, 2026 09:05"
+  #   I18n.l(Time.utc(2026, 11, 11, 20), format: "%H:%M %Z", zone: "Asia/Tokyo")  # => "05:00 JST"
   #   I18n.l(Date.new(2026, 11, 10), locale: :ja)            # => "2026/11/10"
   #   I18n.l(Time.utc(2026, 11, 10, 9, 5), format: "%a %p", locale: :ja)  # => "火 午前"
   # @param value [Time, Date]
   # @param options [Hash{Symbol => Object}]
   # @return [String]
   # @raise [ArgumentError] `"l: expected a Time or a Date (got Integer)"`,
-  #   or a pattern directive the strftime walk does not know
+  #   `unknown time zone "Mars/Base"` for a `zone:` the system zoneinfo
+  #   does not have, or a pattern directive the strftime walk does not know
   # @raise [MissingTranslationData] `"translation missing: en.time.formats.nope"`
   #   for a format Symbol no dictionary holds
   # @raise [InvalidLocale] for a `locale:` that is not available
   # @api public
   def self.l(value, options = {})
     loc = I18n.option_locale(options)
+    zone_option = options[:zone]
+    zone = zone_option.nil? ? Cybertrain::Clock.zone : Cybertrain::ZonedTime.zone_from(zone_option)
+    subject = value
     kind = ""
     wday = 0
     mon = 0
@@ -367,9 +380,13 @@ module I18n
     case value
     when Time
       kind = "time"
-      wday = value.wday
-      mon = value.mon
-      hour = value.hour
+      # zone: renders this call in that zone whatever offset the Time has.
+      instant = zone_option.nil? ? value : value.getutc
+      subject = instant
+      shown = Cybertrain::Strftime.zoned_time(instant, zone)
+      wday = shown.wday
+      mon = shown.mon
+      hour = shown.hour
     when Date
       kind = "date"
       wday = value.wday
@@ -396,7 +413,7 @@ module I18n
       raise ArgumentError, message
     end
     named = I18n.localized_names(pattern, loc, wday, mon, hour)
-    Cybertrain::Strftime.walk(value, named, "l format")
+    Cybertrain::Strftime.walk(subject, named, "l format", zone)
   end
 
   # The same as {I18n.l}.
