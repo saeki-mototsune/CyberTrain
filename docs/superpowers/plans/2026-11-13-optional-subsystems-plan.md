@@ -69,7 +69,7 @@ it.
   core file names a subsystem constant; run by `script/gate`.
 - Tests: `test/features_core.rb` (compiled: the core alone boots an
   application in-process and serves a page; `worker`/`jobs` without jobs
-  print the require); `test/cache.rb` gains the self-prune case with a fixed
+  print the require); `test/cache_self_prune.rb` (as built; the plan said test/cache.rb) has the self-prune case with a fixed
   clock; the existing job, scheduler, server and health-check tests pass
   unchanged.
 
@@ -82,7 +82,7 @@ the stream helpers through the helper hook); `Controller#turbo_stream` moves
 here by reopening `Controller`. The template helper dispatch in
 `template/helpers.rb` loses its stream arms and asks `Features` after its own
 arms. Tests: the existing stream, Turbo and template tests pass; a core-only
-program has no `turbo_stream_from` (Task 6 makes gen refuse it).
+program has no `turbo_stream_from` (Task 5 makes gen refuse it).
 
 ## Task 4: feeds, mailer, rate limiting
 

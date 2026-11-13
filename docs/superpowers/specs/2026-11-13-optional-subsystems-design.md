@@ -55,7 +55,7 @@ already.
 | `require "cybertrain/core"` | everything else of today's `cybertrain.rb`: HTTP, routing, controllers, models, views and helpers, assets, sessions, CSRF, CSP, the console, `db` and `migrate` | |
 | `require "cybertrain/jobs"` | `Job`, job classes, retries, `Scheduler`, `every`/`cron`, the lease, the worker role, the jobs page and the `jobs` command | core |
 | `require "cybertrain/streams"` | `Stream`, broadcasts, the stream endpoint (SSE and WebSocket) and its poller, `turbo_stream_from` and the other stream helpers, `Controller#turbo_stream` | the core files it uses, not `cybertrain/core` |
-| `require "cybertrain/feeds"` | `WebSocket.subscribe` feeds, `Background`, the feeds role, the feed health check | core |
+| `require "cybertrain/feeds"` | `Background`, the feeds role, the feed health check (`require "cybertrain/websocket"`, for `WebSocket.subscribe`, loads this line, not the other way round) | core |
 | `require "cybertrain/mailer"` | `Mailer.deliver` | config, crypto, the socket layer only: it loads under CRuby and without SQLite |
 | `require "cybertrain/mailer/later"` | `deliver_later` | mailer, jobs |
 | `require "cybertrain/cache"` | `Cache`, its prune | the core files it uses (db, config), not `cybertrain/core` |
@@ -117,6 +117,16 @@ The hooks, each replacing a direct reference the spike had to cut:
 | `helper(name, args, ...)` | the template helper dispatch, after its own arms | the `turbo_stream_from`, `turbo_stream`, `signed_stream_name`, `stream_source_path` arms and the `TurboStreamBuilder` arm |
 | `periodic_name`, `periodic_interval`, `periodic(now)` | the jobs feature's scheduler, one task per feature that declares one | `Cache.register_prune_task`'s direct `Scheduler.every` |
 
+As built, the names differ (one name per return type across the program
+made most of them longer): `boot_problem`, `server_problem`,
+`start_feature_early`, `start_feature`, `stop_feature`,
+`request_stop_feature`, `feature_failed?`, `health_problem`,
+`feature_middleware` (the endpoint), `run_controller_limit` (rate
+limiting's check), `run_feature_command` and `feature_usage` (commands and
+help), `feature_helper?` and `feature_helper`, `periodic_name`,
+`periodic_interval`, `periodic`, `schedules_periodic?` and
+`schedule_periodic`; cybertrain/feature.rb is the reference.
+
 The exact signatures follow the code they replace (one return type per method
 name across the program, rules 10, 34 and 41); the plan pins them.
 
@@ -141,7 +151,11 @@ scheduled prune allowed.
   checks) gains a table of helper name to subsystem; a helper whose subsystem
   is not loaded fails gen with
   `app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`.
-  The table is one constant read by gen and by the runtime's error message.
+  The table is one constant (`Cybertrain::FeatureCatalog`), read by gen, by
+  `./NAME worker`/`feeds`/`jobs`'s message (Main.run). The
+  runtime's `undefined helper 'X'` for a template rendered anyway does not
+  name the line (as built: the catalog stays out of the core's template
+  dispatch; gen has refused the view before it could run).
   `--check` refuses the same way.
 - `cybertrain new` writes `require "cybertrain/core"`.
 - `generate job` adds `require "cybertrain/jobs"`, `generate authentication`
