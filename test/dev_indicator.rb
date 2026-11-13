@@ -52,6 +52,12 @@ class IndicatorPage < Cybertrain::Middleware
       response.status = 304
     when "/fragment"
       response.body = "<p>no body tag</p>"
+    when "/download"
+      # An HTML file served for saving, its header names spelled as an
+      # application might; inline is still shown in the browser.
+      response.content_type = "text/html; charset=utf-8"
+      response.set_header("content-disposition", ctx.request.query_value("disposition"))
+      response.body = "<!DOCTYPE html>\n<html><body><h1>Export</h1></body></html>"
     else
       response.body = "<!DOCTYPE html>\n<html><body class=\"app\"><h1>Posts</h1></body></html>"
     end
@@ -235,6 +241,21 @@ test "a 304 passes through with the header and no indicator" do
   assert_equal 304, response.status
   assert_equal "cruby", response.header("X-Cybertrain-Runtime")
   assert_equal "", response.body
+end
+
+# A download is the file as the application wrote it: the indicator would
+# change what the developer saves. The header's name and its disposition
+# type are case-insensitive (RFC 6266); inline is a page like any other.
+test "a response served as an attachment gets the header and no indicator" do
+  reader = state_reader("download", 3, "cruby", "idle", "")
+  app = indicator(IndicatorPage.new, reader, "cruby", 3, no_directives)
+  ["attachment", "attachment;%20filename%3D%22export.html%22", "ATTACHMENT;filename=x.html", "%20Attachment"].each do |disposition|
+    response = run_request(app, "/download?disposition=#{disposition}").response
+    assert_equal "cruby", response.header("X-Cybertrain-Runtime")
+    assert_equal "<!DOCTYPE html>\n<html><body><h1>Export</h1></body></html>", response.body
+  end
+  inline = run_request(app, "/download?disposition=inline").response.body
+  assert_equal 1, count_of(inline, INDICATOR_DIV)
 end
 
 test "the script path answers the script" do

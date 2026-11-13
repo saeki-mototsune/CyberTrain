@@ -19,7 +19,8 @@ module Cybertrain
     # - sets X-Cybertrain-Runtime ("cruby" or "spinel") on every response;
     # - writes the indicator, one line naming the runtime and what the
     #   background build is doing (Indicator.text), before `</body>` of an
-    #   HTML response that ErrorPage would give a banner (its rules), with
+    #   HTML response that ErrorPage would give a banner (its rules) and
+    #   that is not served as a download (attachment_disposition?), with
     #   the runtime and generation the page was rendered with, and a script
     #   tag (with the request's CSP nonce when the application uses nonce
     #   directives);
@@ -141,6 +142,19 @@ module Cybertrain
         s.gsub("\\", "\\\\\\\\").gsub("\"", "\\\\\"")
       end
 
+      # Whether the response is served for saving (Content-Disposition:
+      # attachment, the type case-insensitive as RFC 6266 has it; the header
+      # name is matched case-insensitively by Response#header). The file is
+      # the application's: the indicator must not end up in what the
+      # developer saves.
+      # @return [Boolean]
+      def self.attachment_disposition?(response)
+        value = response.header("Content-Disposition")
+        return false if value.nil?
+
+        value.to_s.lstrip.downcase.start_with?("attachment") # NOTES rule 62
+      end
+
       # The decoded value of name in the request's query string
       # (Request#query_value), "" when there is none or the query is
       # malformed or too long (Query raises a client fault; the rescue sits
@@ -188,6 +202,7 @@ module Cybertrain
         body = response.body.to_s # NOTES rule 62
         return nil if body.empty?
         return nil unless ErrorPage.html_response?(response)
+        return nil if Indicator.attachment_disposition?(response)
         return nil unless body.index(ID).nil?
 
         at = body.rindex("</body>")
