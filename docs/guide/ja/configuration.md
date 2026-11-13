@@ -1,5 +1,5 @@
 ---
-source_sha256: be4fff88f6e163067e559bb2cc0d966fbd37f467261def1c4f2a3d1d29c83797
+source_sha256: 311993e56b6623a89ee8433358d1cfbd9d5307a9d9aaf69287de3c81ef9378b1
 ---
 # 設定
 
@@ -55,8 +55,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`。秘密の値で、ログにも起動バナーにもエラーメッセージにも出ない |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：`from:` が与えられないときに `Mailer.deliver` が使う送信者 |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`。`tls`（暗黙の TLS）や `none`（平文。資格情報はループバックへのみ）も可。どちらの TLS モードにも `require "cybertrain/net/tls"` が必要 |
-| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | テスト環境では `:test`、それ以外では `:smtp`：`:test` は各メールを送らずに `Cybertrain::Mailer.deliveries` に保持する（[メールのテスト](testing.md#testing-mail)）。テスト環境の外では警告を出して起動し、何も送らない。それ以外の値では起動が止まる |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`storage/test.sqlite3` の代わりに、`cybertrain test` が削除し、マイグレートし、テストを実行するファイル。どのファイルでも指定できるので、使い捨てのファイルを指定すること |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | テスト環境では `:test`、それ以外では `:smtp`：`:test` は各メールを送らずに `Cybertrain::Mailer.deliveries` に保持する（[メールのテスト](testing.md#testing-mail)）。テスト環境の外では警告を出して起動し、何も送らない。それ以外の値では起動が止まる。`cybertrain test` は、変数が何であっても、`config/app.rb` が設定しない限り `:test` を使う |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`storage/test.sqlite3` の代わりに、`cybertrain test` が削除し、マイグレートし、テストを実行するファイル。開発用や本番用のデータベースであるファイル（`development.sqlite3` や `production.sqlite3` という名前、またはそれらの環境が指すファイル）は終了ステータス 2 で拒否され、何も削除されない（[テストを実行する](testing.md#running-the-tests)） |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：すべてのリクエストが始まるロケール。`ja` や `pt-BR` のような名前（[ロケール](#locales) を参照）。それ以外は起動を止める |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`：アカウントがロックされるまでの間違ったパスワードの回数。`0` でロックアウトを無効にする（[認証の設定](#authentication-settings) を参照） |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`：ロックアウトが続く秒数。1 以上 |
@@ -147,4 +147,4 @@ Cybertrain.configure do |c|
 end
 ```
 
-`c.time_zone` は IANA の名前を取り（「Tokyo」のような Rails 独自の名前は読みません）、システムにないゾーンでは起動が止まります。値は UTC の瞬間のままです：カラム、`Time.current`、カレンダーのメソッドは UTC の `Time` を返し、`time.hour` は UTC の時です。ゾーンが決めるのはカレンダー（`beginning_of_day` などや `Date.current`。[時刻とタイムゾーン](models.md#times-and-the-time-zone)）と表示です：`l(time)` と `time_tag(time)` は Time をそのゾーンで表示し（`%z` と `%Z` も含む）、`time_tag` の `datetime` はゾーンのオフセット付きの ISO 8601 です（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` と `time_tag(time, zone: "...")` は 1 つの値を別のゾーンで表示します。オフセット 0 の Time、つまりフレームワークが渡すすべての Time はそのゾーンで表示されます。自分自身の別のオフセットを持つ Time（`time.getlocal("+05:30")`）は、`zone:` を渡さない限りそのオフセットのままです。Date はそのまま表示されます。`tz:` のない cron のタスクも、`scheduler_tz` を設定しない限りこのゾーンに従います。`cybertrain test` では、各テストは設定したゾーンで始まります。（`l` の書式は[日付と時刻](i18n.md#dates-and-times)にあります。）
+`c.time_zone` は IANA の名前を取り（「Tokyo」のような Rails 独自の名前は読みません）、システムにないゾーンでは起動が止まります。値は UTC の瞬間のままです：カラム、`Time.current`、カレンダーのメソッドは UTC の `Time` を返し、`time.hour` は UTC の時です。ゾーンが決めるのはカレンダー（`beginning_of_day` などや `Date.current`。[時刻とタイムゾーン](models.md#times-and-the-time-zone)）と表示です：`l(time)` と `time_tag(time)` は Time をそのゾーンで表示し（`%z` と `%Z` も含む）、`time_tag` の `datetime` はゾーンのオフセット付きの ISO 8601 です（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` と `time_tag(time, zone: "...")` は 1 つの値を別のゾーンで表示します。オフセット 0 の Time、つまりフレームワークが渡すすべての Time はそのゾーンで表示されます。自分自身の別のオフセットを持つ Time（`time.getlocal("+05:30")`）は、`zone:` を渡さない限りそのオフセットのままです。Date はそのまま表示されます。`tz:` のない cron のタスクも、`scheduler_tz` を設定しない限りこのゾーンに従います。登録されたコマンド（`Main.command`）、`./<app> jobs`、`./<app> console` も実行の前にゾーンを設定し、未知のゾーンは起動と同じく `error: time_zone "Mars/Base" is not a known time zone` を出して、データベースを開く前に終了ステータス 1 で拒否します。`cybertrain test` では、各テストは設定したゾーンで始まります。（`l` の書式は[日付と時刻](i18n.md#dates-and-times)にあります。）

@@ -1,5 +1,5 @@
 ---
-source_sha256: f3bcfd3ed3b2e1d10465e077b4d4112cf657c0d69aa82e1f28e1f43e6554c840
+source_sha256: fa24ad25d47e813a8c1ca7c12ad7824ac930732eef3be4ec7cbc279633235411
 ---
 # アプリをテストする
 
@@ -81,7 +81,9 @@ cybertrain test -n test_creates_an_article              # またはメソッド�
 cybertrain test -n /article/                            # 名前に "article" を含むテスト
 ```
 
-`cybertrain test` は `SPIN_DEBUG=1 spin run gen` を実行します（CLI のどのコマンドとも同じく、gen は spin のデバッグモードでビルドされます）。これが `gen/tests.rb`（プログラム）と、`gen/test/` 以下に各テストクラスを書き換えたコピーを書き出します。どちらも `gen/` のほかの部分と一緒にコミットします。次に、いずれかの入力がバイナリより新しければ `gen/tests.rb` を `build/test/tests` にコンパイルし（リリースビルド）、実行します。`test/**/*_test.rb` のすべてと、`test/test_helper.rb` 以外の `test/*.rb` のすべてがこれに入ります。`test/support/`（ヘルパーが読み込む）と `test/fixtures/` にはテストはありません。プログラムは最初のテストの前に `storage/test.sqlite3` を削除し、新しいデータベースをマイグレートして、その上でアプリケーションを起動します（ジョブ、スケジューラー、フィードのスレッドはなし：ジョブはテストが自分で実行します）。`CYBERTRAIN_TEST_DATABASE` を設定すると代わりに別のファイルを使います。指定されたファイルは何であっても削除されるので、使い捨てのファイルだけを指定してください。
+`cybertrain test` は `SPIN_DEBUG=1 spin run gen` を実行します（CLI のどのコマンドとも同じく、gen は spin のデバッグモードでビルドされます）。これが `gen/tests.rb`（プログラム）と、`gen/test/` 以下に各テストクラスを書き換えたコピーを書き出します。どちらも `gen/` のほかの部分と一緒にコミットします。次に、いずれかの入力がバイナリより新しければ `gen/tests.rb` を `build/test/tests` にコンパイルし（リリースビルド）、実行します。`test/**/*_test.rb` のすべてと、`test/test_helper.rb` 以外の `test/*.rb` のすべてがこれに入ります。`test/support/`（ヘルパーが読み込む）と `test/fixtures/` にはテストはありません。プログラムは最初のテストの前に `storage/test.sqlite3` を削除し、新しいデータベースをマイグレートして、その上でアプリケーションを起動します（ジョブ、スケジューラー、フィードのスレッドはなし：ジョブはテストが自分で実行します）。`CYBERTRAIN_TEST_DATABASE` を設定すると代わりに別のファイルを使います。プログラムはテストに使うファイルを削除するので、開発用や本番用のデータベースであるファイルは、終了ステータス 2 で何も削除せずに拒否します：`development.sqlite3` や `production.sqlite3` という名前のファイル、またはそれらの環境が指すファイル（`config/app.rb` の `c.database_path` も、シンボリックリンク経由でも含む）です。そのときは `cybertrain test refuses to delete <path>: it is the <env> database` と出力します。
+
+プログラムは、`config/app.rb` が自分で同じことを設定していない限り、Rails と同じようにテスト環境を整えます：リクエスト偽造対策は無効、リクエストのログは出さず、メールは `Mailer.deliveries` に保持し（`:test`）、`force_ssl` は無効（テストでは変数 `CYBERTRAIN_MAIL_DELIVERY_METHOD` と `CYBERTRAIN_FORCE_SSL` は読まれません）、アップロードは `tmp/test_uploads/` に書かれ、実行のたびに空になります。`*_url` ヘルパーのホストである `www.example.com` は常に許可されたホストです。
 
 ```text 出力 — cybertrain test
 test/controllers/articles_controller_test.rb
@@ -94,7 +96,9 @@ test/models/article_test.rb
 3 tests, 6 assertions, 1 failure
 ```
 
-ファイルごとに見出し、テストごとに 1 行、最後に合計を出し、所要時間は出しません。示される行はテストの `test "..."` の行です：コンパイル済みのプログラムにはバックトレースがないので、失敗したアサーションの行はわかりません。終了ステータスは、失敗したテストがあれば 1、なければ 0、受け付けない引数には 2 です。
+ファイルごとに見出し、テストごとに 1 行、最後に合計を出し、所要時間は出しません。示される行はテストの `test "..."` の行です：コンパイル済みのプログラムにはバックトレースがないので、失敗したアサーションの行はわかりません。終了ステータスは、失敗したテストがあれば 1、なければ 0、受け付けない引数には 2 です。テスト対象のコードが自分で出力したもの（コマンドの出力行など）は、テストの行の間に出ます。テスト、setup、teardown、フックが `NotImplementedError`、ほかの `ScriptError`、`SystemStackError` を発生させても、ほかの例外と同じく `ERR` になり、実行は続きます。実行を終わらせるのは `Interrupt`、`SystemExit`、`NoMemoryError` だけです。Spinel では、本当のスタックオーバーフローは今もセグメンテーション違反でプロセスを終わらせます：ランナーに届くのは、コード自身が発生させた `SystemStackError` だけです。
+
+引数：`-n NAME` はその名前またはメソッド名のテストを残し、`-n /TEXT/` は名前またはメソッド名に TEXT を素の文字列として含むテストを残します（`.`、`?`、`()` は文字そのものです）。`^ $ \ * + [ ] { } |` のどれかを含む TEXT は正規表現ではないので、終了ステータス 2 で拒否されます：`-n /^test_create/: the text between the slashes is a plain substring of the test name, not a regexp (^ would be looked for as itself); write the text to look for (-n /test_create/)`。ファイルやディレクトリはそのテストを残します。`FILE:LINE` は拒否され（`line filters are not supported; give the file, and -n for the name`）、`--` でオプションが終わります。どのテストも残らない絞り込みは、合計の前に `no test matched the filter` を出して 0 で終わります。`test/` 以下のファイルを加えたり消したりすると、プログラムはコンパイルし直されます。
 
 **変更にかかる手間。** ファイルの引数と `-n` は、どのテストを実行するかを選ぶもので、何をコンパイルするかは変えません。プログラムは常にすべてのテストを含むので、絞り込みを変えてもバイナリはそのまま使われます。一方、どれか 1 つのテスト（あるいはプログラムを作るほかの何か）を編集すると、先に `bin/gen` をビルドし直したうえで、プログラム全体をコンパイルし直します。2026-11-12 と 2026-11-13 に、共有の 4 vCPU のクラウドマシンで測った値です（手元のマシンでは違います）：examples/blog の 21 ファイル 149 テストは、初回のコンパイルに約 527 秒かかり（初回の実行全体で 656 秒、バイナリは 10.2 MB）、そのあと何も変えずに `cybertrain test test/controllers` を実行すると、バイナリをそのまま使って約 1 秒で始まりました（ブログ自身の実行、2026-11-13）。ブログのアプリケーションに 3 つのテストファイル（8 テスト）を入れたものは、最大約 2.2 GB のメモリで 162〜233 秒かけてコンパイルされ、8.1 MB のバイナリになりました（2026-11-12）。テストはいくつか書いてからまとめて実行し、1 つのテストに取り組む間は、ビルドではなく実行のほうを絞り込んでください。
 
@@ -140,7 +144,9 @@ two:
 - `post`、`patch`、`put` の `params:` に `fixture_file_upload("cover.png", "image/png")` を入れると、リクエストは multipart で送られます。ファイルは `test/fixtures/files/` から読まれます。
 - `headers:` はヘッダーの名前か、Rails の `HTTP_ACCEPT` の形を取ります。
 - `config/routes.rb` のパスヘルパーはコントローラーの中と同じく使えます。`*_url` ヘルパーは `http://www.example.com/...` を書きます。このホストの URL はパスでリクエストされ、`assert_redirected_to` はどちらの形でも比べます。ほかのホストの URL は拒否されます。
-- `follow_redirect!`、`cookies`、`assert_response(:success)`（どのステータスのシンボルでも、数値でも。`:error` はちょうど 500 を意味し、Rails はどの 5xx でも受け付けます）、`assert_redirected_to(path)`、`assert_select`、`assert_turbo_stream`。
+- `cookies` はテストの cookie jar で、`Cybertrain::Test::ClientCookies` です：`cookies[:user]` または `cookies["user"]`（生の、パーセントエンコードされたままの値）、`[]=`、`key?`、`delete`、`keys`、`size`、`empty?`、`to_h`。`Max-Age` や `Expires` が時計の上で過ぎた cookie は、その先へ `travel_to` した場合も含めて消えます（`Max-Age` が `Expires` より優先されます）。テストが `[]=` で書いた cookie は期限切れになりません。
+- `follow_redirect!` は最後のレスポンスの `Location` を（`#fragment` を除いて）リクエストします。リダイレクトではないレスポンスのあとでは、テストを失敗させます：`follow_redirect!: the last response was 200, not a redirect (3xx with a Location)`。
+- `assert_response(:success)`（どのステータスのシンボルでも、数値でも。`:error` はちょうど 500 を意味し、Rails はどの 5xx でも受け付けます）、`assert_redirected_to(path)`、`assert_select`、`assert_turbo_stream`。
 - ないもの：`session`、`flash`、`assigns`、`request`、`host!`、`as:`。代わりにページを検証してください（`assert_select`、`response.body`）。
 
 **リクエスト偽造対策**は、Rails のテスト環境と同じく、`config/app.rb` が `csrf` を設定しない限りテストでは無効です。そのため `post` にトークンは要りません。この検査そのもののテストは、いくつかのリクエストだけ有効にします：
@@ -154,9 +160,9 @@ test "a form without the token is refused" do
 end
 ```
 
-ブロックの中では、フォームにはテストがリクエストしたページの `authenticity_token` が必要です。ブロックが終わると、中のアサーションが失敗した場合でも、すべて元に戻ります。
+ブロックの中では、フォームにはテストがリクエストしたページの `authenticity_token` が必要です。ブロックが終わると、中のアサーションが失敗した場合でも、すべて元に戻ります。テスト自身が設定したもの（アップロードのルート、ゾーン、ロケール、ログレベル）はそのまま残ります。
 
-**サインイン。** `cybertrain generate authentication` は `test/support/session_test_helper.rb` を書き出し、これはどの統合テストにも include されます：`sign_in_as users(:one)`（フィクスチャのユーザーのパスワードは `"password"`。`remember: true` で「ログインしたままにする」にチェックが入ります）、`sign_out`、そして自分のクッキーを持つ 2 つ目のブラウザーである `open_session`（`phone = open_session` のあと、`phone.sign_in_as users(:two)` や `phone.get ...`）。リクエストはどれも `127.0.0.1` から来ます。別のクライアントアドレスが必要なテストは、自分で `client = Cybertrain::Test::Client.new(Cybertrain::Test.app)` を作って `client.peer_address = "203.0.113.7"` を設定します（クライアント自身のメソッドは `client.get(path, headers)` と `client.post(path, fields, headers)` です）。
+**サインイン。** `cybertrain generate authentication` は `test/support/session_test_helper.rb` を書き出し、これはどの統合テストにも include されます：`sign_in_as users(:one)`（フィクスチャのユーザーのパスワードは `"password"`。`remember: true` で「ログインしたままにする」にチェックが入ります）、`sign_out`、`authenticity_token_in(response.body)`（ページの最初のフォームのトークン。`with_forgery_protection` の中のリクエスト用）、そして自分のクッキーを持つ 2 つ目のブラウザーである `open_session`（`phone = open_session` のあと、`phone.sign_in_as users(:two)` や `phone.get ...`）。リクエストはどれも `127.0.0.1` から来ます。別のクライアントアドレスが必要なテストは、自分で `client = Cybertrain::Test::Client.new(Cybertrain::Test.app)` を作って `client.peer_address = "203.0.113.7"` を設定します（クライアント自身のメソッドは `client.get(path, headers)` と `client.post(path, fields, headers)` です）。
 
 ## アサーション
 
@@ -196,7 +202,7 @@ test "the cache entry expires" do
 end
 ```
 
-`travel_to(time)`、`travel(seconds)`、`freeze_time`、`travel_back` は Rails のヘルパーです：どれも時計を止め、1 秒未満の部分を落とします。ブロックを渡すと、ブロックが終わったとき（例外が起きたときも）元の時刻に戻り、渡さなければ `travel_back` かテストの終わりまで移動したままです。フレームワークが時刻を記録するものはすべてこれに従います：`Time.current`、テストプログラムの中の `Time.now`、レコードのタイムスタンプ、キャッシュの有効期限、レート制限、セッションの寿命、ジョブの `run_at`、トークンの有効期限、スケジューラー。待ちとタイムアウト（ストリームの読み取り、受信者）は実時間のままなので、時計を止めても待ちが止まったままになることはありません。本番では `Time.now` はシステムの時計です：移動に従うべきコードは、Rails が勧めるとおり `Time.current` を読みます。
+`travel_to(time)`、`travel(seconds)`、`freeze_time`、`travel_back` は Rails のヘルパーです：どれも時計を止め、1 秒未満の部分を落とします。ブロックを渡すと、ブロックが終わったとき（例外が起きたときも）元の時刻に戻り、渡さなければ `travel_back` かテストの終わりまで移動したままです。フレームワークが時刻を記録するものはすべてこれに従います：`Time.current`、テストプログラムの中の `Time.now`、レコードのタイムスタンプ、キャッシュの有効期限、レート制限、セッションの寿命、ジョブの `run_at`、トークンの有効期限、スケジューラー。待ちとタイムアウト（ストリームの読み取り、受信者）は実時間のままなので、時計を止めても待ちが止まったままになることはありません。本番では `Time.now` はシステムの時計です：移動に従うべきコードは、Rails が勧めるとおり `Time.current` を読みます。`Time.now` は組み込みのものと同じくプロセスの `TZ` での現地時刻を返し、`Time.current` は UTC です。`travel_to` が取るのは Time で、Date は取りません。`Time.zone.local` もありません：瞬間は `Time.utc(...)` で書いてください。スケジューラーは覚えていること（最後の回復、次の実行時刻）をタイムトラベルの間も持ち続けます。スケジューラーやワーカーのスレッドが動いている間にタイムトラベルするテストはサポートしていません。
 
 期間は Integer の秒です：`5.minutes` は `300` で、`2.weeks.ago` と `3.days.from_now` は時計の上の Time を返します。`1.month` はありません（1 か月には秒での長さがありません）：実行されたときに `NoMethodError` になります。Time のカレンダーのメソッドを使ってください：`Time.current.months_ago(1)`、`advance(months: 1)`、`beginning_of_day`、`end_of_month`、`yesterday`（[時刻とタイムゾーン](models.md#times-and-the-time-zone)）。`advance` は時、分、秒をカレンダーの部分のあとに経過時間として足し、Integer を取ります。実時間の時計はマイクロ秒を保ちます。
 
@@ -223,8 +229,8 @@ end
 
 `assert_select(selector, equality = nil, count:, minimum:, maximum:, text:)` は、このテストの最後の `render_inline` かレスポンスを検査し（どちらもなければ「No response yet」で失敗します）、一致した要素を返します：
 
-- セレクター：タグ、`.class`、`#id`、`[attr]`、`[attr="v"]`、それらの組み合わせ（`a.btn[href="/x"]`）、子孫と子（`>`）の結合子、リスト（`h1, h2`）。疑似クラス、`+` と `~`、ほかの属性演算子、入れ子のブロックの形は `assert_select: <feature> is not supported` で失敗します。
-- `text:` は各要素のテキストと比べる String か、そのテキストに当てる Regexp です。テキストは、空白の連続を 1 つのスペースにし、両端を取り除いたものです（Rails は両端を取り除くだけです）。2 つ目の引数は Rails の位置引数の形にでき、テキスト（String か Regexp）、件数（Integer）、`true` / `false` を取ります。Range は拒否されます（`minimum:` と `maximum:` を書いてください）。
+- セレクター：タグ、`.class`、`#id`、`[attr]`、`[attr="v"]`、それらの組み合わせ（`a.btn[href="/x"]`）、子孫と子（`>`）の結合子、リスト（`h1, h2`）。疑似クラス、`+` と `~`、ほかの属性演算子、バックスラッシュ（`assert_select: CSS escapes (\) are not supported`）、入れ子のブロックの形は `assert_select: <feature> is not supported` で失敗します。
+- `text:` は各要素のテキストと比べる String か、そのテキストに当てる Regexp です。テキストは、空白の連続を 1 つのスペースにし、両端を取り除いたものです（Rails は両端を取り除くだけです）。2 つ目の引数は Rails の位置引数の形にでき、テキスト（String か Regexp）、件数（Integer）、`true` / `false` を取ります。件数には `2..3` のような Range も使えます。そこで件数を渡しつつ `count:`、`minimum:`、`maximum:` も渡すと拒否され、負の Range や逆向きの Range も拒否されます。
 - HTML は書かれたとおりに読まれ、ブラウザー（と、Rails の `assert_select` の裏にある Nokogiri）のように修復はされません：`<tbody>` なしで書かれた表には `table > tr` が一致し、`<p><div>` には `p > div` が一致し、省略された終了タグ（`<li>a<li>b`、`<p>a<p>b`）や自己終了の `<div/>` は、その位置を示してアサーションを失敗させます。フレームワーク自身のテンプレートはすべて読めます。
 
 ブロードキャストは `cybertrain_messages` の行なので、ストリームのアサーションはポーラーもソケットも使わずにテーブルを読みます：
@@ -245,7 +251,7 @@ end
 
 ## メールのテスト
 
-テスト環境では `Cybertrain.config.mail_delivery_method` が `:test` です：`deliver_now`、`Mailer.deliver`、`deliver_later` のジョブはメッセージを検査し、接続する代わりに `Cybertrain::Mailer.deliveries` に保持します。このリストは各テストの前に空になります。アプリケーションが送信者を設定していなければ、テストプログラムはメールの送信者を `from@example.com` にします。
+`cybertrain test` では、`config/app.rb` が設定していない限り `Cybertrain.config.mail_delivery_method` は `:test` です：`deliver_now`、`Mailer.deliver`、`deliver_later` のジョブはメッセージを検査し、接続する代わりに `Cybertrain::Mailer.deliveries` に保持します。このリストは各テストの前に空になります。アプリケーションが送信者を設定していなければ、テストプログラムはメールの送信者を `from@example.com` にします。
 
 ```ruby
 test "a reset mails a link" do
@@ -371,20 +377,21 @@ end
 
 ## テストクラスで gen が拒否するもの
 
-gen はテストクラスをメソッドに書き換えます：`test "shows it" do` は `def test_shows_it` になり（`[A-Za-z0-9_]` 以外の文字はどれも `_` になります。`-n` にもこの名前を渡せます）、`setup do` と `teardown do` のブロックは `super` を呼ぶ `setup` と `teardown` のメソッドになります。正確に移せないものがあると、`spin run gen` は `パス:行:` と理由を出して止まります。黙って誤ったコピーを作ったり、テストを失ったりはしません：
+gen はテストクラスをメソッドに書き換えます：`test "shows it" do` は `def test_shows_it` になり（`[A-Za-z0-9_]` 以外の ASCII の文字は `_` に、それ以外の文字は `_u<hex>` になるので、`"ログ"` は `test__u30ed_u30b0` です。`-n` にはメソッド名も書いたとおりの名前も渡せます）、`setup do` と `teardown do` のブロックは `super` を呼ぶ `setup` と `teardown` のメソッドになります。書き換えで正確に移せないものがあると、そのファイルは拒否されます。黙って誤ったコピーを作ったり、テストを失ったりはしません：
 
 - 素の文字列リテラルではないテスト名（式展開）や、gen が読まないエスケープ（`\u`、`\x`、`\c`、`\C`、`\M`、8 進数）を含むテスト名（文字そのものを書いてください。`\n`、`\t`、`\"` は読まれます）。
 - 1 つのクラスの中でメソッド名が同じになる 2 つのテスト（`def test_x` も含む）。
-- 1 つのクラスの中の `setup do` と `def setup` の両方（`teardown` も同じ）。
+- 1 つのクラスの中の `setup do` と `def setup` の両方（`teardown` も同じ）、そして親がアプリケーションの基底クラスであるクラスの中の、`super` のない `def setup` や `def teardown`（基底クラスの `setup do` ブロックが実行されなくなります）。
+- パラメーターを取る `def test_x`、または `private` や `protected` のあとの `def test_x`（Minitest は public なテストメソッドしか実行しません）。
 - `setup { }` と `setup :name`（`setup do ... end` と書いてください）、`test`、`setup`、`teardown` のブロックパラメーター。
-- テスト、setup、teardown の本体の中の `next`、`break`、`redo`（`return` を使ってください）、`return <value>`（どれも nil を返します）。
+- テスト、setup、teardown の本体の中の `next`、`break`、`redo`（本体の中の `if`、`unless`、`case`、`begin` の中にあっても。`return` を使ってください）、`return <value>`（どれも nil を返します）。
 - 別のクラスやモジュールの中に入れ子にしたテストクラス、2 回開いたテストクラス、開き直した `ActiveSupport::TestCase` の中の `setup do`（`setup do` を持つアプリケーションの基底クラスを書いて継承してください）。
 - gen がクラス本体の中に置けない `test`、`setup`、`teardown` の行（条件、ループ、文字列、ヒアドキュメントの中）、`end` で終わらない 1 行の形、あとにコードが続く `end`、タブとスペースが混じったインデント。
 - 引数が文字列リテラルではない `require_relative`。
 
-このような拒否は `spin run gen` そのものを止めるので、そのアプリケーションで gen を実行するものもすべて止まります：`cybertrain test`、`cybertrain db migrate`、開発サーバーの再ビルド、`cybertrain build`。再開するには、示された行を直すか、直すまでそのテストファイルを `test/` の外に移してください。
+拒否されたファイルがあっても `spin run gen` は止まらないので、開発サーバー、`cybertrain db migrate`、`cybertrain build` は動き続けます：gen は理由を出すだけの `gen/tests.rb` を書き、`cybertrain test` はコンパイルせずに `<path>:<line>: <reason>` を出して 1 で終わります。示された行を直してください。`test "name" do` は `test"name"` やタブを挟んだ形でも書けます。`private` のあとに書いた `test "x" do` は拒否されませんが、コピーの中で private なメソッドになり、実行すると失敗します（Rails では実行されます）：テストは `private` より上に書いてください。
 
-`cybertrain test` はさらに（`spin run gen` は先に進みつつ）次のものを拒否します：`test/test_helper.rb` や `test/support/` の中のトップレベルの `test`、`setup`、`teardown`（実行されることがありません）、トップレベルの `def render_inline`（フレームワークのものを置き換えてしまいます）、`assert_select ... do` と `render_inline ... do`、そして[テストを実行する](#running-the-tests)で述べた重複するトップレベルのヘルパー。クラスの形のファイルは `cybertrain test` でしか実行できません：`spin test` では、そのクラス本体が「class-form tests run with `cybertrain test FILE`」を発生させます。
+`cybertrain test` はさらに、同じやり方で次のものを拒否します：`test/test_helper.rb` や `test/support/` の中のトップレベルの `test`、`setup`、`teardown`（実行されることがありません）、トップレベルの `def render_inline`（フレームワークのものを置き換えてしまいます）、`assert_select ... do` と `render_inline ... do`、そして[テストを実行する](#running-the-tests)で述べた重複するトップレベルのヘルパー。クラスの形のファイルは `cybertrain test` でしか実行できません：`spin test` では、そのクラス本体が「class-form tests run with `cybertrain test FILE`」を発生させます。
 
 ## トップレベルの形
 

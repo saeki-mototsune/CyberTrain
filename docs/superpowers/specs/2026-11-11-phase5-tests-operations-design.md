@@ -273,6 +273,11 @@ end
   it, as Rails renders a plain Time; `zone:` always converts.
 - **Schedules.** `scheduler_tz` (`CYBERTRAIN_SCHEDULER_TZ`) defaults to
   `time_zone` when unset; a cron task's `tz:` still wins.
+- **Outside boot** (amended 2026-11-13): a registered command, `./<app>
+  jobs` and `./<app> console` install the zone too
+  (`Runtime.apply_zone`), and refuse an unknown one with boot's line,
+  `error: time_zone "<name>" is not a known time zone`, exit status 1,
+  before the database is opened.
 - Storage is unchanged: datetime columns hold UTC text (D46).
 
 ## 5. Test classes, setup and teardown (T-2)
@@ -373,10 +378,13 @@ end
 ```
 
 - `test "name" do ... end` becomes `def test_<name>` with every character
-  outside `[A-Za-z0-9_]` turned into `_` (amended 2026-11-13: Rails turns
-  only whitespace into `_`, so a name with punctuation has another method
-  name than in Rails; `-n test_shows_an_article` names a plain one the
-  same). Two tests whose
+  outside `[A-Za-z0-9_]` turned into `_`, and each character that is not
+  ASCII into `_u<lowercase hex code point>` (`"ログ"` is
+  `test__u30ed_u30b0`, so names in another script do not collide)
+  (amended 2026-11-13: Rails turns only whitespace into `_`, so a name
+  with punctuation has another method name than in Rails;
+  `-n test_shows_an_article` names a plain one the same, and `-n` takes
+  the written name as well). Two tests whose
   method names coincide in one class are refused, naming both lines (Rails
   raises too).
 - `setup do ... end` blocks become one `def setup` that calls `super`
@@ -572,7 +580,14 @@ $ cybertrain test -n /article/
 - **Filters at run time, no recompile.** File arguments keep the tests of
   those files; `-n NAME` keeps the tests whose name, or method name, is
   `NAME`; `-n /TEXT/` keeps those whose name contains `TEXT`. Both combine
-  (a file and a name). Changing a filter reuses the binary.
+  (a file and a name). Changing a filter reuses the binary. Amended
+  2026-11-13: `TEXT` is a plain substring (`.`, `?` and `()` are
+  themselves) and one with `^ $ \ * + [ ] { } |` is refused, exit status
+  2; `FILE:LINE` is refused (`line filters are not supported; give the
+  file, and -n for the name`), exit status 2; `--` ends the options; a
+  filter that keeps no test prints `no test matched the filter` and exits
+  0; a database that is the development or production one is refused,
+  exit status 2 (section 14).
 - **Output.** A heading per file, then a line per test, then the totals;
   no timings, so the output is deterministic:
 
@@ -653,7 +668,10 @@ maximum: nil, text: nil)` checks the most recent of: the last
   a Regexp alike). The
   default is at least one match. As in Rails, the second positional
   argument may be a String (the text), an Integer (the count) or `false`
-  (no match).
+  (no match); amended 2026-11-13: also a Range as the count (`2..3`;
+  refused beside `count:`, `minimum:` or `maximum:`, and when negative or
+  crossed), and a backslash in a selector is refused (`CSS escapes (\)
+  are not supported`).
 - **Unsupported**, each failing with `"assert_select: <feature> is not
   supported (selector: \"...\")"`: pseudo-classes (`:first-child`,
   `:not(...)`), the sibling combinators `+` and `~`, attribute operators
@@ -1016,7 +1034,7 @@ report carries the class, the message and `where`.
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"` | IANA zone for boundaries, `Date.current`, `l` and `time_tag` (5a) |
 | `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` (was `"UTC"`) | 5a |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in test, else `:smtp` | 5a; `:test` outside the test environment boots with a warning |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""` | the file `cybertrain test` deletes, migrates and tests on instead of `storage/test.sqlite3` (5a, pre-flight ruling R10); it may name any file, the development one included |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""` | the file `cybertrain test` deletes, migrates and tests on instead of `storage/test.sqlite3` (5a, pre-flight ruling R10); amended 2026-11-13: one that is the development or production database (named `development.sqlite3` or `production.sqlite3`, or the file those environments resolve to, `config/app.rb`'s `c.database_path` included) is refused, exit status 2 |
 | `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info` | `debug`, `info`, `warn`, `error`, `fatal`, `none` (5b) |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text` | or `:json` (5b) |
 | — | `log_tags` | `[:request_id]` | `:request_id`, `:remote_ip` (5b) |
@@ -1576,8 +1594,7 @@ keeps one program per file.
   `from@example.com` unless the application set one; `assert_emails`
   names a failed mail job's error.
 - D14 and section 9: `assert_select` with nothing requested or rendered in
-  this test fails ("No response yet"); a Range as its second argument is
-  refused; `text:` collapses whitespace (section 9.2 amended).
+  this test fails ("No response yet"); a Range as its second argument was refused, and is accepted as the count since the final review; `text:` collapses whitespace (section 9.2 amended).
   `assert_turbo_stream` requires `text/vnd.turbo-stream.html` when it reads
   a response (turbo-rails' check). The reader keeps the literal tree: no
   `<tbody>` inserted, `<p><div>` nested, omitted end tags and `<div/>`
@@ -1594,16 +1611,15 @@ keeps one program per file.
   deletes them).
 
 **Left for later** (recorded in the task reports, none blocking): `advance`
-with Float arguments; a `CYBERTRAIN_TEST_DATABASE` that names the
-development file is accepted; `open_session` and a client address on
+with Float arguments; `open_session` and a client address on
 IntegrationTest itself; a run-time foreign-key failure names the row's id,
 not its label; escapes inside `<script>` are refused as malformed; the
 assertions `assert_includes`, `assert_nil` and `flunk` keep their
 lower-case messages.
 
 **Counts.** `ruby script/gate` counts 216 test programs with snapshots
-(2026-11-13). examples/blog: 149 tests and 1489 assertions in 21 class-form
-files, every test that existed before kept (139, with 1041 assertion calls
+(2026-11-13). examples/blog: 149 tests and 1489 assertions in 21 class-form files at
+the blog task (1507 assertions after the final review, 2026-11-13), every test that existed before kept (139, with 1041 assertion calls
 before and 1068 after) and 10 new; its first `cybertrain test` compiled in
 about 527 s (656 s in all, a 10.2 MB binary) and a run with nothing changed
 starts in about 1 s (`cybertrain test test/controllers`, no recompile: the blog task's own run, 2026-11-13, a shared 4-vCPU
@@ -1614,3 +1630,58 @@ pass `cybertrain test` (sign-up 66 tests, confirmable 80, invite and
 confirmable 87; the authentication task's run). The full framework suite
 (`script/test-shard`) is run once by the controller at the end of the
 phase; its count is not recorded here.
+
+**After the final review (2026-11-13).** A whole-branch review in three
+areas (time, the test runtime, gen and the generators) led to one fix
+wave. What it changed, with the controller's ruling where one was made:
+
+- The zone outside boot: registered commands, `jobs` and `console` install
+  it and refuse an unknown one (section 4). In test programs `Time.now`
+  answers local time, as the builtin and Rails do; `Time.current` stays
+  UTC. A travel back before a memory rate-limit window opens a new window.
+  A travel is published to other threads best effort; a test that travels
+  while live scheduler or worker threads run is not supported.
+- The test database guard: `CYBERTRAIN_TEST_DATABASE` may not name the
+  development or production database (ruling: the bundle deletes the
+  file, so one wrong export would destroy production data; this reverses
+  the earlier "may name any file").
+- A class-form rewrite refusal refuses the bundle (exit 1 at `cybertrain
+  test`) instead of failing gen (ruling C-I1: a broken test file must not
+  stop the development server, `db migrate` or a production build).
+- `def setup` / `def teardown` without `super` under an application base
+  class is refused (ruling C-I2: loud and small, rather than re-plumbing
+  the block chain), as are a `def test_x` with parameters or after
+  `private` / `protected`, and `next` / `break` / `redo` nested in a
+  body's conditionals; `test"name"` is accepted.
+- Non-ASCII characters in a test name become `_u<hex>` (ruling C-M2:
+  Japanese test names must not collide; section 5.2).
+- `-n /TEXT/` is a plain substring, regexp characters refused (ruling:
+  `.`, `?` and `()` stay literal, test names contain them); `FILE:LINE`
+  refused; `--`; "no test matched the filter"; adding or deleting a test
+  file recompiles (section 8).
+- The runner records `NotImplementedError`, other `ScriptError`s and
+  `SystemStackError` as `ERR` and goes on (a real stack overflow under
+  Spinel still ends the process). `follow_redirect!` on a non-redirect
+  fails as an assertion. `cookies` is a `Test::ClientCookies` with Symbol
+  keys and expiry on the clock. `with_forgery_protection` keeps what the
+  test configured. `assert_select` takes a Range count and refuses a
+  backslash (section 9.2).
+- The test environment: mail `:test` and `force_ssl` off unless
+  `config/app.rb` sets them, `www.example.com` always allowed, uploads in
+  `tmp/test_uploads/`.
+- The authentication generator: its account-deletion tests delete a user
+  of their own; `SessionTestHelper#authenticity_token_in`; the sender
+  tests pin an address no code uses; `--confirmable` writes one more test.
+  `generate attachment` writes a real 70-byte PNG.
+
+Known limits for the maintainer, stated in the guides: a `test "x" do`
+after `private` becomes a private method and fails when it runs (Rails
+runs it); a real stack overflow under Spinel kills the process; there is
+no `Time.zone.local`; `travel_to` takes no Date; IntegrationTest has no
+`session`, `flash`, `assigns` or `host!`.
+
+Measured on 2026-11-13: examples/blog, 149 tests and 1507 assertions, 0
+failures; a scratch application made with `cybertrain new`, `generate
+authentication` and `generate scaffold post user:references`, 66 tests and
+822 assertions, 0 failures; the tutorial's blog, 17 tests and 25
+assertions at step 16 and 83 tests and 870 assertions at step 18.

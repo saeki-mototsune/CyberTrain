@@ -362,7 +362,7 @@ runs ([Testing an app](testing.md)):
 | File | What it tests |
 | --- | --- |
 | `test/fixtures/users.yml` | `one` (an admin) and `two`, whose password is `"password"` (with `--confirmable`, both confirmed) |
-| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out` and `open_session` (a second browser), included into every integration test by `test/test_helper.rb` |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out`, `open_session` (a second browser) and `authenticity_token_in(body)` (the token of a page's first form, for requests inside `with_forgery_protection`), included into every integration test by `test/test_helper.rb` |
 | `test/models/user_test.rb` | the address format |
 | `test/controllers/sessions_controller_test.rb` | sign-in and sign-out |
 | `test/controllers/registrations_controller_test.rb` | sign-up (not with `--invite-only`) |

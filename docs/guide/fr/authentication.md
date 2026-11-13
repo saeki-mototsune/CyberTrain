@@ -1,5 +1,5 @@
 ---
-source_sha256: ad73a71c35a10fd8d024458d144dd784063934ffc0d91ba95a6adcdd752bfd74
+source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
 ---
 # Authentification
 
@@ -191,7 +191,7 @@ exécute ([Tester une application](testing.md))&nbsp;:
 | Fichier | Ce qu’il teste |
 | --- | --- |
 | `test/fixtures/users.yml` | `one` (un administrateur) et `two`, dont le mot de passe est `"password"` (avec `--confirmable`, tous deux confirmés) |
-| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out` et `open_session` (un second navigateur), inclus dans chaque test d’intégration par `test/test_helper.rb` |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out`, `open_session` (un second navigateur) et `authenticity_token_in(body)` (le jeton du premier formulaire d’une page, pour les requêtes dans `with_forgery_protection`), inclus dans chaque test d’intégration par `test/test_helper.rb` |
 | `test/models/user_test.rb` | le format de l’adresse |
 | `test/controllers/sessions_controller_test.rb` | la connexion et la déconnexion |
 | `test/controllers/registrations_controller_test.rb` | l’inscription (pas avec `--invite-only`) |

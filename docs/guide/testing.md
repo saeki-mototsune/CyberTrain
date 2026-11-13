@@ -110,8 +110,21 @@ Every `test/**/*_test.rb` and every other `test/*.rb` but
 and `test/fixtures/` hold no tests. The program deletes
 `storage/test.sqlite3`, migrates a new one and boots the application on it
 before the first test (no job, scheduler or feed threads: a test runs jobs
-itself). `CYBERTRAIN_TEST_DATABASE` names another file instead; the bundle
-deletes whatever file it names, so point it only at a scratch file.
+itself). `CYBERTRAIN_TEST_DATABASE` names another file instead. Since the program
+deletes the file it tests on, it refuses, with exit status 2 and nothing
+deleted, a file that is the development or production database: one named
+`development.sqlite3` or `production.sqlite3`, or the file those
+environments resolve to (`config/app.rb`'s `c.database_path` included, also
+through a symlink). It prints `cybertrain test refuses to delete <path>: it
+is the <env> database`.
+
+The program sets up the test environment as Rails' does, unless
+`config/app.rb` sets the same thing itself: forgery protection off, the
+request log silent, mail kept in `Mailer.deliveries` (`:test`) and
+`force_ssl` off (the variables `CYBERTRAIN_MAIL_DELIVERY_METHOD` and
+`CYBERTRAIN_FORCE_SSL` are not read for the tests), and uploads written to
+`tmp/test_uploads/`, emptied at every run. `www.example.com`, the host of
+the `*_url` helpers, is always an allowed host.
 
 ```text output — cybertrain test
 test/controllers/articles_controller_test.rb
@@ -126,9 +139,26 @@ test/models/article_test.rb
 
 A heading per file, a line per test, then the totals, with no timings. The
 line named is the test's `test "..."` line: a compiled program has no
-backtrace, so the line of the failing assertion is not known. The exit
-status is 1 when a test failed, 0 otherwise, and 2 for arguments it does
-not take.
+backtrace, so the line of the failing assertion is not known. The exit status is 1 when a test failed, 0 otherwise, and 2 for arguments it does
+not take. What the code under test prints itself (a command's output line)
+appears between the test lines. A test, setup, teardown or hook that raises
+`NotImplementedError`, another `ScriptError` or `SystemStackError` is an
+`ERR` like any other exception, and the run goes on; only `Interrupt`,
+`SystemExit` and `NoMemoryError` end it. Under Spinel a real stack overflow
+still ends the process with a segmentation fault: only a
+`SystemStackError` raised by the code itself reaches the runner.
+
+The arguments: `-n NAME` keeps the test with that name or method name, and
+`-n /TEXT/` the tests whose name or method name contains TEXT as plain
+text (`.`, `?` and `()` are themselves). TEXT with one of
+`^ $ \ * + [ ] { } |` is refused with exit status 2, since it is not a
+regexp: `-n /^test_create/: the text between the slashes is a plain
+substring of the test name, not a regexp (^ would be looked for as itself);
+write the text to look for (-n /test_create/)`. A file or directory keeps
+its tests; `FILE:LINE` is refused (`line filters are not supported; give
+the file, and -n for the name`); `--` ends the options. A filter that keeps
+no test prints `no test matched the filter` before the totals and exits 0.
+Adding or deleting a file under `test/` compiles the program again.
 
 **What a change costs.** A file argument and `-n` choose which tests run,
 not what is compiled: the program always holds every test, so changing the
@@ -225,7 +255,17 @@ process, with no socket and a new cookie jar for each test:
   helper writes `http://www.example.com/...`; a URL on that host is
   requested by its path, and `assert_redirected_to` compares either form.
   A URL on another host is refused.
-- `follow_redirect!`, `cookies`, `assert_response(:success)` (or any status
+- `cookies` is the test's cookie jar, a `Cybertrain::Test::ClientCookies`:
+  `cookies[:user]` or `cookies["user"]` (the raw, still percent-encoded
+  value), `[]=`, `key?`, `delete`, `keys`, `size`, `empty?` and `to_h`. A
+  cookie whose `Max-Age` or `Expires` has passed on the clock, so also
+  after `travel_to` past it, is gone (`Max-Age` wins over `Expires`); one a
+  test writes with `[]=` never expires.
+- `follow_redirect!` requests the last response's `Location` (without its
+  `#fragment`); after a response that is not a redirect it fails the test:
+  `follow_redirect!: the last response was 200, not a redirect (3xx with a
+  Location)`.
+- `assert_response(:success)` (or any status
   symbol, or a number; `:error` means exactly 500, where Rails takes any
   5xx), `assert_redirected_to(path)`, `assert_select`, `assert_turbo_stream`.
 - Not there: `session`, `flash`, `assigns`, `request`, `host!` and `as:`.
@@ -246,12 +286,15 @@ end
 
 Inside the block a form needs the `authenticity_token` of a page the test
 requested; everything is put back when the block ends, also when an
-assertion in it fails.
+assertion in it fails, and what the test itself set (the upload root, the
+zone, the locale, the log level) is kept.
 
 **Signing in.** `cybertrain generate authentication` writes
 `test/support/session_test_helper.rb`, included into every integration
 test: `sign_in_as users(:one)` (fixture users' password is `"password"`;
-`remember: true` checks "Keep me signed in"), `sign_out`, and
+`remember: true` checks "Keep me signed in"), `sign_out`,
+`authenticity_token_in(response.body)` (the token of the first form in a
+page, for requests inside `with_forgery_protection`), and
 `open_session`, a second browser with cookies of its own (`phone =
 open_session`, then `phone.sign_in_as users(:two)` and `phone.get ...`).
 Every request comes from `127.0.0.1`; a test that needs another client
@@ -322,9 +365,14 @@ of the test. Everything the framework times follows: `Time.current`,
 `Time.now` in a test program, records' timestamps, the cache's expiry, rate
 limits, the session's lifetime, jobs' `run_at`, tokens' expiry, the
 scheduler. Waits and timeouts (stream reads, receivers) keep real time,
-so a frozen clock never hangs one. In production `Time.now` is the system's
-clock: code that should follow a travel reads `Time.current`, as Rails
-advises.
+so a frozen clock never hangs one. `Time.now` answers local time, in the process's `TZ`, as the builtin
+does, while `Time.current` is UTC. In production `Time.now` is the
+system's clock: code that should follow a travel reads `Time.current`, as
+Rails advises. `travel_to` takes a Time, not a Date, and there is no
+`Time.zone.local`: write the instant with `Time.utc(...)`. The scheduler
+keeps what it remembers (the last recovery, the next run times) across a
+travel; a test that travels while live scheduler or worker threads are
+running is not supported.
 
 Durations are Integer seconds: `5.minutes` is `300`, and `2.weeks.ago` and
 `3.days.from_now` answer a Time on the clock. There is no `1.month` (a month
@@ -366,14 +414,15 @@ neither it fails: "No response yet") and answers the matching elements:
 
 - Selectors: a tag, `.class`, `#id`, `[attr]`, `[attr="v"]`, compounds
   (`a.btn[href="/x"]`), the descendant and child (`>`) combinators, and a
-  list (`h1, h2`). Pseudo-classes, `+` and `~`, other attribute operators
-  and the nested block form fail with `assert_select: <feature> is not
-  supported`.
+  list (`h1, h2`). Pseudo-classes, `+` and `~`, other attribute operators, a backslash
+  (`assert_select: CSS escapes (\) are not supported`) and the nested block
+  form fail with `assert_select: <feature> is not supported`.
 - `text:` is a String compared with each element's text, or a Regexp
   matched against it. The text has its runs of whitespace made one space
-  and its ends stripped (Rails strips the ends only). The second argument
-  may be Rails' positional text (a String or a Regexp), count (an Integer)
-  or `true` / `false`; a Range is refused (write `minimum:` and `maximum:`).
+  and its ends stripped (Rails strips the ends only). The second argument may be Rails' positional text (a String or a Regexp),
+  count (an Integer, or a Range such as `2..3`) or `true` / `false`; a count
+  given there and in `count:`, `minimum:` or `maximum:` too is refused, and
+  so are a negative or crossed Range.
 - The HTML is read as written, not repaired as a browser (and Nokogiri,
   behind Rails' `assert_select`) would: `table > tr` matches a table
   written without `<tbody>`, `p > div` matches `<p><div>`, and an omitted
@@ -406,8 +455,8 @@ streaming response in memory ([Realtime](realtime.md)).
 
 ## Testing mail
 
-In the test environment `Cybertrain.config.mail_delivery_method` is
-`:test`: `deliver_now`, `Mailer.deliver` and the `deliver_later` job check
+In `cybertrain test` `Cybertrain.config.mail_delivery_method` is `:test` unless
+`config/app.rb` sets it: `deliver_now`, `Mailer.deliver` and the `deliver_later` job check
 the message and keep it in `Cybertrain::Mailer.deliveries` instead of
 connecting, and the list is emptied before every test. The test program
 gives mail the sender `from@example.com` when the application sets none.
@@ -583,22 +632,27 @@ end
 ## What gen refuses in a test class
 
 gen rewrites a test class into methods: `test "shows it" do` becomes `def
-test_shows_it` (every character outside `[A-Za-z0-9_]` turned into `_`;
-`-n` accepts that name), and the `setup do` and `teardown do` blocks
-become `setup` and `teardown` methods calling `super`. Whatever it cannot
-carry over exactly stops `spin run gen` with `path:line:` and the reason,
-never a silently wrong copy or a lost test:
+test_shows_it` (an ASCII character outside `[A-Za-z0-9_]` turned into `_`, any
+other into `_u<hex>`, so `"ログ"` is `test__u30ed_u30b0`; `-n` takes the
+method name or the written one), and the `setup do` and `teardown do` blocks
+become `setup` and `teardown` methods calling `super`. Whatever the rewrite cannot carry over
+exactly refuses that file, never a silently wrong copy or a lost test:
 
 - a test name that is not a plain string literal (interpolation), or one
   with an escape gen does not read (`\u`, `\x`, `\c`, `\C`, `\M` or an
   octal one: write the character itself; `\n`, `\t` and `\"` are read);
 - two tests whose method names coincide in one class, a `def test_x`
   included;
-- both `setup do` and `def setup` in one class (likewise `teardown`);
+- both `setup do` and `def setup` in one class (likewise `teardown`), and
+  a `def setup` or `def teardown` without `super` in a class whose parent is
+  an application base class (its `setup do` blocks would not run);
+- a `def test_x` that takes parameters, or one after `private` or
+  `protected` (Minitest runs only public test methods);
 - `setup { }` and `setup :name` (write `setup do ... end`), and block
   parameters on `test`, `setup` or `teardown`;
-- `next`, `break` or `redo` in a test, setup or teardown body (use
-  `return`), and `return <value>` (each answers nil);
+- `next`, `break` or `redo` in a test, setup or teardown body, also inside
+  an `if`, `unless`, `case` or `begin` there (use `return`), and
+  `return <value>` (each answers nil);
 - a test class nested in another class or module, a test class opened
   twice, and `setup do` in a reopened `ActiveSupport::TestCase` (write an
   application base class with `setup do` and inherit from it);
@@ -608,13 +662,16 @@ never a silently wrong copy or a lost test:
   that mixes tabs and spaces;
 - a `require_relative` whose argument is not a string literal.
 
-Such a refusal stops `spin run gen` itself, and with it everything that
-runs gen in that application: `cybertrain test`, `cybertrain db migrate`,
-the development server's rebuild and `cybertrain build`. To get going
-again, fix the line it names, or move the test file out of `test/` until
-you do.
+A refused file does not stop `spin run gen`, so the development server,
+`cybertrain db migrate` and `cybertrain build` keep working: gen writes a
+`gen/tests.rb` that only prints the reason, and `cybertrain test` then
+prints `<path>:<line>: <reason>` and exits 1, with
+no compile. Fix the line it names. `test "name" do` may also be written
+`test"name"` or with a tab. A `test "x" do` written after `private` is not
+refused, but it becomes a private method of the copy and fails when it
+runs, where Rails runs it: keep tests above `private`.
 
-`cybertrain test` also refuses (with `spin run gen` going on) a top-level
+`cybertrain test` also refuses, the same way, a top-level
 `test`, `setup` or `teardown` in `test/test_helper.rb` or `test/support/`
 (it would never run), a top-level `def render_inline` (it would replace
 the framework's), `assert_select ... do` and `render_inline ... do`, and

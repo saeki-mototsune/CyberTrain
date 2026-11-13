@@ -1,5 +1,5 @@
 ---
-source_sha256: f3bcfd3ed3b2e1d10465e077b4d4112cf657c0d69aa82e1f28e1f43e6554c840
+source_sha256: fa24ad25d47e813a8c1ca7c12ad7824ac930732eef3be4ec7cbc279633235411
 ---
 # 测试应用
 
@@ -81,7 +81,9 @@ cybertrain test -n test_creates_an_article              # 或按方法名
 cybertrain test -n /article/                            # 名称包含 "article" 的测试
 ```
 
-`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件；无论指定的是什么文件，程序都会删除它，所以只让它指向一个可以丢弃的文件。
+`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。由于程序会删除它测试所用的文件，它会以退出状态 2 拒绝开发或生产数据库的文件，什么都不删除：名为 `development.sqlite3` 或 `production.sqlite3` 的文件，或者这些环境解析到的文件（包括 `config/app.rb` 的 `c.database_path`，经由符号链接也一样）。它会输出 `cybertrain test refuses to delete <path>: it is the <env> database`。
+
+除非 `config/app.rb` 自己设置了同样的东西，程序会像 Rails 那样准备测试环境：关闭防伪造保护，请求日志不输出，邮件保存在 `Mailer.deliveries` 中（`:test`），关闭 `force_ssl`（测试时不读取变量 `CYBERTRAIN_MAIL_DELIVERY_METHOD` 和 `CYBERTRAIN_FORCE_SSL`），上传的文件写入 `tmp/test_uploads/`，每次运行时清空。`*_url` 辅助方法的主机 `www.example.com` 始终是允许的主机。
 
 ```text 输出 — cybertrain test
 test/controllers/articles_controller_test.rb
@@ -94,7 +96,9 @@ test/models/article_test.rb
 3 tests, 6 assertions, 1 failure
 ```
 
-每个文件一个标题，每个测试一行，最后是合计，不显示耗时。给出的行号是测试的 `test "..."` 所在的行：编译后的程序没有回溯，所以不知道失败的断言在哪一行。有测试失败时退出状态为 1，否则为 0，参数不被接受时为 2。
+每个文件一个标题，每个测试一行，最后是合计，不显示耗时。给出的行号是测试的 `test "..."` 所在的行：编译后的程序没有回溯，所以不知道失败的断言在哪一行。有测试失败时退出状态为 1，否则为 0，参数不被接受时为 2。被测代码自己输出的内容（比如某个命令的输出行）会出现在测试行之间。测试、setup、teardown 或钩子抛出 `NotImplementedError`、其他 `ScriptError` 或 `SystemStackError` 时，和其他异常一样记为 `ERR`，运行继续；只有 `Interrupt`、`SystemExit` 和 `NoMemoryError` 会结束运行。在 Spinel 下，真正的栈溢出仍会以段错误结束进程：只有代码自己抛出的 `SystemStackError` 才会到达运行器。
+
+参数：`-n NAME` 保留名称或方法名为 NAME 的测试，`-n /TEXT/` 保留名称或方法名中以纯文本形式包含 TEXT 的测试（`.`、`?` 和 `()` 就是它们自己）。包含 `^ $ \ * + [ ] { } |` 之一的 TEXT 不是正则表达式，会以退出状态 2 被拒绝：`-n /^test_create/: the text between the slashes is a plain substring of the test name, not a regexp (^ would be looked for as itself); write the text to look for (-n /test_create/)`。文件或目录保留其中的测试；`FILE:LINE` 会被拒绝（`line filters are not supported; give the file, and -n for the name`）；`--` 结束选项。一个测试都没保留的筛选会在合计之前输出 `no test matched the filter`，并以 0 退出。在 `test/` 下添加或删除文件会重新编译程序。
 
 **一次修改的代价。** 文件参数和 `-n` 选择运行哪些测试，而不是编译什么：程序总是包含所有测试，所以改变筛选会复用二进制文件；而修改任何一个测试（或构建程序所用的任何其他东西）都会先重新构建 `bin/gen`，再重新编译整个程序。以下是 2026-11-12 和 2026-11-13 在一台共享的 4 vCPU 云机器上测得的数字（你自己的机器会不同）：examples/blog 的 21 个文件、149 个测试第一次编译用了约 527 秒（第一次运行总共 656 秒，二进制文件 10.2 MB），之后不做改动运行 `cybertrain test test/controllers`，复用了二进制文件，约 1 秒就开始（博客自己的运行，2026-11-13）；博客的应用加上三个测试文件（八个测试）编译用了 162 到 233 秒，内存峰值约 2.2 GB，生成 8.1 MB 的二进制文件（2026-11-12）。先写好几个测试再一起运行；专注于某一个测试时，缩小的是运行范围，而不是构建。
 
@@ -140,7 +144,9 @@ two:
 - 在 `post`、`patch` 或 `put` 的 `params:` 中放入 `fixture_file_upload("cover.png", "image/png")` 会以 multipart 发送请求；文件从 `test/fixtures/files/` 读取。
 - `headers:` 接受头的名称，或 Rails 的 `HTTP_ACCEPT` 形式。
 - `config/routes.rb` 的路径辅助方法和在控制器中一样可用。`*_url` 辅助方法写出 `http://www.example.com/...`；这个主机上的 URL 按其路径请求，`assert_redirected_to` 可以比较任一种形式。其他主机上的 URL 会被拒绝。
-- `follow_redirect!`、`cookies`、`assert_response(:success)`（或任何状态符号，或一个数字；`:error` 恰好表示 500，而 Rails 接受任何 5xx）、`assert_redirected_to(path)`、`assert_select`、`assert_turbo_stream`。
+- `cookies` 是测试的 cookie 存储，一个 `Cybertrain::Test::ClientCookies`：`cookies[:user]` 或 `cookies["user"]`（原始的、仍是百分号编码的值）、`[]=`、`key?`、`delete`、`keys`、`size`、`empty?` 和 `to_h`。`Max-Age` 或 `Expires` 在时钟上已过的 cookie 会消失，`travel_to` 越过它之后也是如此（`Max-Age` 优先于 `Expires`）；测试用 `[]=` 写入的 cookie 永不过期。
+- `follow_redirect!` 请求上一个响应的 `Location`（不带 `#fragment`）；如果上一个响应不是重定向，它会让测试失败：`follow_redirect!: the last response was 200, not a redirect (3xx with a Location)`。
+- `assert_response(:success)`（或任何状态符号，或一个数字；`:error` 恰好表示 500，而 Rails 接受任何 5xx）、`assert_redirected_to(path)`、`assert_select`、`assert_turbo_stream`。
 - 没有：`session`、`flash`、`assigns`、`request`、`host!` 和 `as:`。请改为检查页面（`assert_select`、`response.body`）。
 
 **防伪造保护**在测试中是关闭的，除非 `config/app.rb` 设置了 `csrf`，这和 Rails 的测试环境一样，所以 `post` 不需要令牌。测试这项检查本身的测试可以为部分请求打开它：
@@ -154,9 +160,9 @@ test "a form without the token is refused" do
 end
 ```
 
-在块中，表单需要测试请求过的某个页面中的 `authenticity_token`；块结束时一切都会恢复，即使块中的断言失败也是如此。
+在块中，表单需要测试请求过的某个页面中的 `authenticity_token`；块结束时一切都会恢复，即使块中的断言失败也是如此，而测试自己设置的东西（上传根目录、时区、语言区域、日志级别）会保留。
 
-**登录。** `cybertrain generate authentication` 会写出 `test/support/session_test_helper.rb`，它被包含进每个集成测试：`sign_in_as users(:one)`（夹具用户的密码是 `"password"`；`remember: true` 会勾选“保持登录”）、`sign_out`，以及 `open_session`，即有自己 Cookie 的第二个浏览器（`phone = open_session`，然后 `phone.sign_in_as users(:two)` 和 `phone.get ...`）。每个请求都来自 `127.0.0.1`；需要另一个客户端地址的测试自己创建 `client = Cybertrain::Test::Client.new(Cybertrain::Test.app)` 并设置 `client.peer_address = "203.0.113.7"`（客户端自己的方法是 `client.get(path, headers)` 和 `client.post(path, fields, headers)`）。
+**登录。** `cybertrain generate authentication` 会写出 `test/support/session_test_helper.rb`，它被包含进每个集成测试：`sign_in_as users(:one)`（夹具用户的密码是 `"password"`；`remember: true` 会勾选“保持登录”）、`sign_out`、`authenticity_token_in(response.body)`（页面中第一个表单的令牌，用于 `with_forgery_protection` 中的请求），以及 `open_session`，即有自己 Cookie 的第二个浏览器（`phone = open_session`，然后 `phone.sign_in_as users(:two)` 和 `phone.get ...`）。每个请求都来自 `127.0.0.1`；需要另一个客户端地址的测试自己创建 `client = Cybertrain::Test::Client.new(Cybertrain::Test.app)` 并设置 `client.peer_address = "203.0.113.7"`（客户端自己的方法是 `client.get(path, headers)` 和 `client.post(path, fields, headers)`）。
 
 ## 断言
 
@@ -196,7 +202,7 @@ test "the cache entry expires" do
 end
 ```
 
-`travel_to(time)`、`travel(seconds)`、`freeze_time` 和 `travel_back` 是 Rails 的辅助方法：每一个都会冻结时钟并丢弃秒以下的部分；带块时，块结束时（即使抛出异常）会恢复之前的时间，不带块时，旅行一直持续到 `travel_back` 或测试结束。框架记录时间的一切都会跟随：`Time.current`、测试程序中的 `Time.now`、记录的时间戳、缓存的过期、限流、会话的寿命、作业的 `run_at`、令牌的过期、调度器。等待和超时（读取流、接收器）仍使用真实时间，所以冻结的时钟永远不会让它们卡住。在生产环境中 `Time.now` 是系统时钟：应当跟随时间旅行的代码请读取 `Time.current`，这也是 Rails 的建议。
+`travel_to(time)`、`travel(seconds)`、`freeze_time` 和 `travel_back` 是 Rails 的辅助方法：每一个都会冻结时钟并丢弃秒以下的部分；带块时，块结束时（即使抛出异常）会恢复之前的时间，不带块时，旅行一直持续到 `travel_back` 或测试结束。框架记录时间的一切都会跟随：`Time.current`、测试程序中的 `Time.now`、记录的时间戳、缓存的过期、限流、会话的寿命、作业的 `run_at`、令牌的过期、调度器。等待和超时（读取流、接收器）仍使用真实时间，所以冻结的时钟永远不会让它们卡住。在生产环境中 `Time.now` 是系统时钟：应当跟随时间旅行的代码请读取 `Time.current`，这也是 Rails 的建议。`Time.now` 像内置方法一样返回进程 `TZ` 中的本地时间，而 `Time.current` 是 UTC。`travel_to` 接受 Time，不接受 Date，也没有 `Time.zone.local`：请用 `Time.utc(...)` 写出这个瞬间。调度器在时间旅行前后保留它记住的东西（上一次恢复、下一次运行的时间）；在调度器或工作线程运行时进行时间旅行的测试不受支持。
 
 时长是 Integer 秒数：`5.minutes` 是 `300`，`2.weeks.ago` 和 `3.days.from_now` 返回时钟上的 Time。没有 `1.month`（一个月没有以秒计的固定长度）：它在运行时会产生 `NoMethodError`。请使用 Time 上的日历方法：`Time.current.months_ago(1)`、`advance(months: 1)`、`beginning_of_day`、`end_of_month`、`yesterday`（[时间与时区](models.md#times-and-the-time-zone)）。`advance` 在日历部分之后把时、分、秒作为经过的时间加上，并且只接受 Integer；真实时钟保留微秒。
 
@@ -223,8 +229,8 @@ end
 
 `assert_select(selector, equality = nil, count:, minimum:, maximum:, text:)` 检查本测试中最后一次 `render_inline` 或最后一个响应（两者都没有时失败：“No response yet”），并返回匹配的元素：
 
-- 选择器：标签、`.class`、`#id`、`[attr]`、`[attr="v"]`、它们的组合（`a.btn[href="/x"]`）、后代和子代（`>`）组合符，以及列表（`h1, h2`）。伪类、`+` 和 `~`、其他属性运算符以及嵌套块形式会以 `assert_select: <feature> is not supported` 失败。
-- `text:` 是与每个元素的文本比较的 String，或对该文本进行匹配的 Regexp。文本中连续的空白会合并为一个空格，两端会被去掉（Rails 只去掉两端）。第二个参数可以是 Rails 的位置参数形式：文本（String 或 Regexp）、数量（Integer）或 `true` / `false`；Range 会被拒绝（请写 `minimum:` 和 `maximum:`）。
+- 选择器：标签、`.class`、`#id`、`[attr]`、`[attr="v"]`、它们的组合（`a.btn[href="/x"]`）、后代和子代（`>`）组合符，以及列表（`h1, h2`）。伪类、`+` 和 `~`、其他属性运算符、反斜杠（`assert_select: CSS escapes (\) are not supported`）以及嵌套块形式会以 `assert_select: <feature> is not supported` 失败。
+- `text:` 是与每个元素的文本比较的 String，或对该文本进行匹配的 Regexp。文本中连续的空白会合并为一个空格，两端会被去掉（Rails 只去掉两端）。第二个参数可以是 Rails 的位置参数形式：文本（String 或 Regexp）、数量（Integer）或 `true` / `false`；数量也可以是 `2..3` 这样的 Range；在这里给出数量的同时又给出 `count:`、`minimum:` 或 `maximum:` 会被拒绝，负的或反向的 Range 也会被拒绝。
 - HTML 按书写的样子读取，不会像浏览器（以及 Rails 的 `assert_select` 背后的 Nokogiri）那样修复：`table > tr` 能匹配不写 `<tbody>` 的表格，`p > div` 能匹配 `<p><div>`，而省略的结束标签（`<li>a<li>b`、`<p>a<p>b`）或自闭合的 `<div/>` 会让断言失败并给出位置。框架自身的模板都能读取。
 
 广播是 `cybertrain_messages` 中的一行，所以流的断言直接读取这张表，不需要轮询器或套接字：
@@ -245,7 +251,7 @@ end
 
 ## 测试邮件
 
-在测试环境中 `Cybertrain.config.mail_delivery_method` 是 `:test`：`deliver_now`、`Mailer.deliver` 和 `deliver_later` 的作业会检查消息，并把它保存在 `Cybertrain::Mailer.deliveries` 中而不是建立连接，这个列表在每个测试之前清空。当应用没有设置发件人时，测试程序会使用发件人 `from@example.com`。
+在 `cybertrain test` 中，除非 `config/app.rb` 设置了它，`Cybertrain.config.mail_delivery_method` 是 `:test`：`deliver_now`、`Mailer.deliver` 和 `deliver_later` 的作业会检查消息，并把它保存在 `Cybertrain::Mailer.deliveries` 中而不是建立连接，这个列表在每个测试之前清空。当应用没有设置发件人时，测试程序会使用发件人 `from@example.com`。
 
 ```ruby
 test "a reset mails a link" do
@@ -371,20 +377,21 @@ end
 
 ## gen 在测试类中拒绝的写法
 
-gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it`（`[A-Za-z0-9_]` 之外的每个字符都变成 `_`，`-n` 接受这个名称），`setup do` 和 `teardown do` 块变成调用 `super` 的 `setup` 和 `teardown` 方法。凡是不能原样搬过去的内容，都会让 `spin run gen` 带着 `路径:行:` 和原因停止，绝不会悄悄生成错误的副本或丢掉测试：
+gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it`（`[A-Za-z0-9_]` 之外的 ASCII 字符变成 `_`，其他字符变成 `_u<hex>`，所以 `"ログ"` 是 `test__u30ed_u30b0`；`-n` 接受方法名，也接受写出的名称），`setup do` 和 `teardown do` 块变成调用 `super` 的 `setup` 和 `teardown` 方法。凡是改写不能原样搬过去的内容，都会让这个文件被拒绝，绝不会悄悄生成错误的副本或丢掉测试：
 
 - 不是纯字符串字面量的测试名（插值），或带有 gen 不读取的转义的测试名（`\u`、`\x`、`\c`、`\C`、`\M` 或八进制：请直接写出字符本身；`\n`、`\t` 和 `\"` 会被读取）；
 - 同一个类中方法名重合的两个测试，包括 `def test_x`；
-- 同一个类中同时有 `setup do` 和 `def setup`（`teardown` 同理）；
+- 同一个类中同时有 `setup do` 和 `def setup`（`teardown` 同理），以及父类是应用基类的类中不调用 `super` 的 `def setup` 或 `def teardown`（基类的 `setup do` 块就不会运行）；
+- 带参数的 `def test_x`，或写在 `private` 或 `protected` 之后的 `def test_x`（Minitest 只运行公开的测试方法）；
 - `setup { }` 和 `setup :name`（请写 `setup do ... end`），以及 `test`、`setup` 或 `teardown` 上的块参数；
-- 测试、setup 或 teardown 主体中的 `next`、`break` 或 `redo`（请用 `return`），以及 `return <value>`（每个都返回 nil）；
+- 测试、setup 或 teardown 主体中的 `next`、`break` 或 `redo`，包括在主体的 `if`、`unless`、`case` 或 `begin` 之中（请用 `return`），以及 `return <value>`（每个都返回 nil）；
 - 嵌套在另一个类或模块中的测试类、打开了两次的测试类，以及重新打开的 `ActiveSupport::TestCase` 中的 `setup do`（请写一个带 `setup do` 的应用基类并继承它）；
 - gen 无法放进类体的 `test`、`setup` 或 `teardown` 行（在条件、循环、字符串或 heredoc 中）、不以 `end` 结尾的单行形式、后面还有代码的 `end`，以及混用制表符和空格的缩进；
 - 参数不是字符串字面量的 `require_relative`。
 
-这样的拒绝会让 `spin run gen` 本身停止，于是这个应用中所有运行 gen 的东西也都停下：`cybertrain test`、`cybertrain db migrate`、开发服务器的重新构建和 `cybertrain build`。要继续，请修正它指出的那一行，或者在修好之前把这个测试文件移出 `test/`。
+被拒绝的文件不会让 `spin run gen` 停止，所以开发服务器、`cybertrain db migrate` 和 `cybertrain build` 照常工作：gen 写出一个只输出原因的 `gen/tests.rb`，`cybertrain test` 不编译，输出 `<path>:<line>: <reason>` 并以 1 退出。请修正它指出的那一行。`test "name" do` 也可以写成 `test"name"` 或中间用制表符。写在 `private` 之后的 `test "x" do` 不会被拒绝，但它在副本中会成为私有方法，运行时失败（Rails 会运行它）：请把测试写在 `private` 之上。
 
-`cybertrain test` 还会拒绝（同时 `spin run gen` 继续运行）：`test/test_helper.rb` 或 `test/support/` 中的顶层 `test`、`setup` 或 `teardown`（它们永远不会运行）、顶层的 `def render_inline`（它会替换框架的那个）、`assert_select ... do` 和 `render_inline ... do`，以及[运行测试](#running-the-tests)中所说的重复的顶层辅助方法。类形式的文件只能通过 `cybertrain test` 运行：在 `spin test` 下，它的类体会抛出 “class-form tests run with `cybertrain test FILE`”。
+`cybertrain test` 还会以同样的方式拒绝：`test/test_helper.rb` 或 `test/support/` 中的顶层 `test`、`setup` 或 `teardown`（它们永远不会运行）、顶层的 `def render_inline`（它会替换框架的那个）、`assert_select ... do` 和 `render_inline ... do`，以及[运行测试](#running-the-tests)中所说的重复的顶层辅助方法。类形式的文件只能通过 `cybertrain test` 运行：在 `spin test` 下，它的类体会抛出 “class-form tests run with `cybertrain test FILE`”。
 
 ## 顶层形式
 

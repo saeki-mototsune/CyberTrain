@@ -108,7 +108,7 @@ cybertrain test -n /comment/                     # the tests whose name matches
 - `test/test_helper.rb` loads the app and `cybertrain/test_help`, and
   includes `SessionTestHelper` (`test/support/session_test_helper.rb`:
   `sign_in_as users(:one)`, `sign_out`, `open_session` for a second
-  browser) into every `ActionDispatch::IntegrationTest`.
+  browser, `authenticity_token_in(response.body)` for a form's token) into every `ActionDispatch::IntegrationTest`.
   `test/support/blog_test_helper.rb` holds what several classes read
   (a page's form token, job rows, the last broadcast).
 - Every test starts from the fixtures, `test/fixtures/*.yml`:

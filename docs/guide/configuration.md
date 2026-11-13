@@ -52,8 +52,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; a secret, never logged, never in the boot banner or an error message |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: the sender `Mailer.deliver` uses when it is not given `from:` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"` |
-| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in the test environment, `:smtp` in every other: `:test` keeps each mail in `Cybertrain::Mailer.deliveries` instead of sending it ([Testing mail](testing.md#testing-mail)); outside the test environment it boots with a warning and sends nothing; anything else stops the boot |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`: the file `cybertrain test` deletes, migrates and runs the tests on, instead of `storage/test.sqlite3`; it may name any file, so name a scratch one |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in the test environment, `:smtp` in every other: `:test` keeps each mail in `Cybertrain::Mailer.deliveries` instead of sending it ([Testing mail](testing.md#testing-mail)); outside the test environment it boots with a warning and sends nothing; anything else stops the boot. `cybertrain test` uses `:test` unless `config/app.rb` sets it, whatever the variable says |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`: the file `cybertrain test` deletes, migrates and runs the tests on, instead of `storage/test.sqlite3`; one that is the development or production database (named `development.sqlite3` or `production.sqlite3`, or the file those environments resolve to) is refused with exit status 2 and nothing deleted ([Running the tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: the locale every request starts in, a name such as `ja` or `pt-BR` (see [Locales](#locales)); anything else stops the boot |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`: wrong passwords before an account is locked; `0` turns lockout off (see [Authentication settings](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`: seconds a lockout lasts; at least 1 |
@@ -310,7 +310,10 @@ included, and `time_tag`'s `datetime` is ISO 8601 with the zone's offset
 offset 0, which is every Time the framework hands out, is shown in the
 zone; a Time that carries another offset of its own
 (`time.getlocal("+05:30")`) keeps it unless `zone:` is given; a Date is
-shown as it is. Cron tasks without `tz:` follow the zone too, unless
-`scheduler_tz` is set. In `cybertrain test` every test starts in the
-configured zone. ([Dates and times](i18n.md#dates-and-times) has `l`'s
+shown as it is. Cron tasks without `tz:` follow the zone too, unless `scheduler_tz` is set. A
+registered command (`Main.command`), `./<app> jobs` and `./<app> console`
+install the zone before they run as well, and refuse an unknown one as boot
+does, with `error: time_zone "Mars/Base" is not a known time zone` and exit
+status 1, before the database is opened. In `cybertrain test` every test
+starts in the configured zone. ([Dates and times](i18n.md#dates-and-times) has `l`'s
 formats.)

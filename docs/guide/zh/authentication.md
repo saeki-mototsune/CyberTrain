@@ -1,5 +1,5 @@
 ---
-source_sha256: ad73a71c35a10fd8d024458d144dd784063934ffc0d91ba95a6adcdd752bfd74
+source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
 ---
 # 认证
 
@@ -190,7 +190,7 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 | 文件 | 测试的内容 |
 | --- | --- |
 | `test/fixtures/users.yml` | `one`（管理员）和 `two`，密码是 `"password"`（使用 `--confirmable` 时两者都已确认） |
-| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`、`sign_out` 和 `open_session`（第二个浏览器），由 `test/test_helper.rb` 包含进每个集成测试 |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`、`sign_out`、`open_session`（第二个浏览器）和 `authenticity_token_in(body)`（页面第一个表单的令牌，用于 `with_forgery_protection` 中的请求），由 `test/test_helper.rb` 包含进每个集成测试 |
 | `test/models/user_test.rb` | 地址格式 |
 | `test/controllers/sessions_controller_test.rb` | 登录和退出 |
 | `test/controllers/registrations_controller_test.rb` | 注册（不使用 `--invite-only` 时） |

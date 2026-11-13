@@ -1,5 +1,5 @@
 ---
-source_sha256: be4fff88f6e163067e559bb2cc0d966fbd37f467261def1c4f2a3d1d29c83797
+source_sha256: 311993e56b6623a89ee8433358d1cfbd9d5307a9d9aaf69287de3c81ef9378b1
 ---
 # Configuration
 
@@ -56,8 +56,8 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`&nbsp;; un secret, jamais journalisé, jamais dans la bannière de démarrage ni dans un message d’erreur |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`&nbsp;: l’expéditeur qu’utilise `Mailer.deliver` quand `from:` n’est pas fourni |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"` |
-| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` dans l’environnement de test, `:smtp` dans tous les autres&nbsp;: `:test` garde chaque courriel dans `Cybertrain::Mailer.deliveries` au lieu de l’envoyer ([Tester les courriels](testing.md#testing-mail))&nbsp;; hors de l’environnement de test il démarre avec un avertissement et n’envoie rien&nbsp;; toute autre valeur arrête le démarrage |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`&nbsp;: le fichier que `cybertrain test` supprime, migre et sur lequel il exécute les tests, à la place de `storage/test.sqlite3`&nbsp;; il peut désigner n’importe quel fichier, donc désignez-en un jetable |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` dans l’environnement de test, `:smtp` dans tous les autres&nbsp;: `:test` garde chaque courriel dans `Cybertrain::Mailer.deliveries` au lieu de l’envoyer ([Tester les courriels](testing.md#testing-mail))&nbsp;; hors de l’environnement de test il démarre avec un avertissement et n’envoie rien&nbsp;; toute autre valeur arrête le démarrage&nbsp;; `cybertrain test` utilise `:test` sauf si `config/app.rb` le règle, quoi que dise la variable. |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`&nbsp;: le fichier que `cybertrain test` supprime, migre et sur lequel il exécute les tests, à la place de `storage/test.sqlite3`&nbsp;; un fichier qui est la base de développement ou de production (nommé `development.sqlite3` ou `production.sqlite3`, ou celui que ces environnements désignent) est refusé avec le code de sortie 2 et rien n’est supprimé ([Exécuter les tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`&nbsp;: la locale dans laquelle commence chaque requête, un nom comme `ja` ou `pt-BR` (voir [Locales](#locales))&nbsp;; toute autre valeur arrête le démarrage |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`&nbsp;: mauvais mots de passe avant qu’un compte soit verrouillé&nbsp;; `0` désactive le verrouillage (voir [Réglages de l’authentification](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`&nbsp;: durée d’un verrouillage en secondes&nbsp;; au moins 1 |
@@ -329,6 +329,10 @@ tout Time que le framework fournit, est montré dans le fuseau&nbsp;; un Time qu
 porte un autre décalage qui lui est propre (`time.getlocal("+05:30")`) le
 garde sauf si `zone:` est donné&nbsp;; une Date est montrée telle quelle. Les
 tâches cron sans `tz:` suivent aussi le fuseau, sauf si `scheduler_tz` est
-réglé. Dans `cybertrain test`, chaque test commence dans le fuseau
-configuré. ([Dates et heures](i18n.md#dates-and-times) donne les formats de
+réglé. Une commande enregistrée (`Main.command`), `./<app> jobs` et
+`./<app> console` installent aussi le fuseau avant de s’exécuter, et
+refusent un fuseau inconnu comme le démarrage, avec
+`error: time_zone "Mars/Base" is not a known time zone` et le code de
+sortie 1, avant d’ouvrir la base. Dans `cybertrain test`, chaque test
+commence dans le fuseau configuré. ([Dates et heures](i18n.md#dates-and-times) donne les formats de
 `l`.)

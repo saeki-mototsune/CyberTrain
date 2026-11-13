@@ -1,5 +1,5 @@
 ---
-source_sha256: ad73a71c35a10fd8d024458d144dd784063934ffc0d91ba95a6adcdd752bfd74
+source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
 ---
 # 認証
 
@@ -190,7 +190,7 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 | ファイル | テストする内容 |
 | --- | --- |
 | `test/fixtures/users.yml` | `one`（管理者）と `two`。パスワードは `"password"`（`--confirmable` ではどちらも確認済み） |
-| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`、`sign_out`、`open_session`（2 つ目のブラウザー）。`test/test_helper.rb` がすべての統合テストに include する |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`、`sign_out`、`open_session`（2 つ目のブラウザー）、`authenticity_token_in(body)`（ページの最初のフォームのトークン。`with_forgery_protection` の中のリクエスト用）。`test/test_helper.rb` がすべての統合テストに include する |
 | `test/models/user_test.rb` | アドレスの形式 |
 | `test/controllers/sessions_controller_test.rb` | サインインとサインアウト |
 | `test/controllers/registrations_controller_test.rb` | サインアップ（`--invite-only` ではないとき） |

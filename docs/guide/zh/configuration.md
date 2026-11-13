@@ -1,5 +1,5 @@
 ---
-source_sha256: be4fff88f6e163067e559bb2cc0d966fbd37f467261def1c4f2a3d1d29c83797
+source_sha256: 311993e56b6623a89ee8433358d1cfbd9d5307a9d9aaf69287de3c81ef9378b1
 ---
 # 配置
 
@@ -55,8 +55,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`；属于机密，从不写入日志，也从不出现在启动横幅或错误消息中 |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：未给出 `from:` 时 `Mailer.deliver` 使用的发件人 |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；也可以是 `tls`（隐式 TLS）或 `none`（明文，凭据只发往环回地址）；两种 TLS 模式都需要 `require "cybertrain/net/tls"` |
-| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | 测试环境中为 `:test`，其他环境中为 `:smtp`：`:test` 把每封邮件保存在 `Cybertrain::Mailer.deliveries` 中而不发送（[测试邮件](testing.md#testing-mail)）；在测试环境之外它会带着警告启动，什么也不发送；其他值会让启动停止 |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`cybertrain test` 删除、迁移并在其上运行测试的文件，代替 `storage/test.sqlite3`；它可以指定任何文件，所以请指定一个可以丢弃的文件 |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | 测试环境中为 `:test`，其他环境中为 `:smtp`：`:test` 把每封邮件保存在 `Cybertrain::Mailer.deliveries` 中而不发送（[测试邮件](testing.md#testing-mail)）；在测试环境之外它会带着警告启动，什么也不发送；其他值会让启动停止；`cybertrain test` 无论变量怎么写，除非 `config/app.rb` 设置了它，都使用 `:test` |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`cybertrain test` 删除、迁移并在其上运行测试的文件，代替 `storage/test.sqlite3`；开发或生产数据库的文件（名为 `development.sqlite3` 或 `production.sqlite3`，或这些环境解析到的文件）会以退出状态 2 被拒绝，什么都不删除（[运行测试](testing.md#running-the-tests)） |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：每个请求开始时的语言区域，`ja` 或 `pt-BR` 这样的名字（见 [语言区域](#locales)）；其他值会使启动停止 |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`：账户被锁定前允许的错误密码次数；`0` 关闭锁定（见 [认证设置](#authentication-settings)） |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`：锁定持续的秒数；至少为 1 |
@@ -147,4 +147,4 @@ Cybertrain.configure do |c|
 end
 ```
 
-`c.time_zone` 接受 IANA 名称（不读取 Rails 自己的名称，比如 “Tokyo”），系统中没有的时区会让启动停止。值仍然是 UTC 瞬间：列、`Time.current` 和日历方法返回 UTC 的 `Time`，`time.hour` 是 UTC 的小时。时区决定日历（`beginning_of_day` 等以及 `Date.current`；[时间与时区](models.md#times-and-the-time-zone)）和显示：`l(time)` 和 `time_tag(time)` 在该时区显示 Time，包括 `%z` 和 `%Z`，`time_tag` 的 `datetime` 是带时区偏移的 ISO 8601（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` 和 `time_tag(time, zone: "...")` 在另一个时区显示一个值。偏移为 0 的 Time，也就是框架给出的所有 Time，在该时区显示；自己带着另一个偏移的 Time（`time.getlocal("+05:30")`）保持它的偏移，除非给出 `zone:`；Date 原样显示。没有 `tz:` 的 cron 任务也跟随这个时区，除非设置了 `scheduler_tz`。在 `cybertrain test` 中，每个测试都从配置的时区开始。（`l` 的格式见[日期和时间](i18n.md#dates-and-times)。）
+`c.time_zone` 接受 IANA 名称（不读取 Rails 自己的名称，比如 “Tokyo”），系统中没有的时区会让启动停止。值仍然是 UTC 瞬间：列、`Time.current` 和日历方法返回 UTC 的 `Time`，`time.hour` 是 UTC 的小时。时区决定日历（`beginning_of_day` 等以及 `Date.current`；[时间与时区](models.md#times-and-the-time-zone)）和显示：`l(time)` 和 `time_tag(time)` 在该时区显示 Time，包括 `%z` 和 `%Z`，`time_tag` 的 `datetime` 是带时区偏移的 ISO 8601（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` 和 `time_tag(time, zone: "...")` 在另一个时区显示一个值。偏移为 0 的 Time，也就是框架给出的所有 Time，在该时区显示；自己带着另一个偏移的 Time（`time.getlocal("+05:30")`）保持它的偏移，除非给出 `zone:`；Date 原样显示。没有 `tz:` 的 cron 任务也跟随这个时区，除非设置了 `scheduler_tz`。注册的命令（`Main.command`）、`./<app> jobs` 和 `./<app> console` 也会在运行前设置时区，并像启动时一样拒绝未知的时区：输出 `error: time_zone "Mars/Base" is not a known time zone`，在打开数据库之前以退出状态 1 结束。在 `cybertrain test` 中，每个测试都从配置的时区开始。（`l` 的格式见[日期和时间](i18n.md#dates-and-times)。）

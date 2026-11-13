@@ -1,5 +1,5 @@
 ---
-source_sha256: be4fff88f6e163067e559bb2cc0d966fbd37f467261def1c4f2a3d1d29c83797
+source_sha256: 311993e56b6623a89ee8433358d1cfbd9d5307a9d9aaf69287de3c81ef9378b1
 ---
 # Конфигурация
 
@@ -55,8 +55,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; секрет, никогда не пишется в лог, в стартовый баннер и в сообщения об ошибках |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: отправитель, которого использует `Mailer.deliver`, когда ему не передан `from:` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; также `tls` (неявный TLS) или `none` (открытый текст, учётные данные — только на loopback); обоим режимам TLS нужен `require "cybertrain/net/tls"` |
-| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` в тестовом окружении, `:smtp` во всех остальных: `:test` сохраняет каждое письмо в `Cybertrain::Mailer.deliveries` вместо отправки ([Тестирование почты](testing.md#testing-mail)); вне тестового окружения загрузка идёт с предупреждением, и ничего не отправляется; любое другое значение останавливает загрузку |
-| `CYBERTRAIN_TEST_DATABASE` | — | `""`: файл, который `cybertrain test` удаляет, мигрирует и на котором запускает тесты вместо `storage/test.sqlite3`; он может указывать на любой файл, поэтому указывайте одноразовый |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` в тестовом окружении, `:smtp` во всех остальных: `:test` сохраняет каждое письмо в `Cybertrain::Mailer.deliveries` вместо отправки ([Тестирование почты](testing.md#testing-mail)); вне тестового окружения загрузка идёт с предупреждением, и ничего не отправляется; любое другое значение останавливает загрузку; `cybertrain test` использует `:test`, если `config/app.rb` не задаёт его, что бы ни говорила переменная |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`: файл, который `cybertrain test` удаляет, мигрирует и на котором запускает тесты вместо `storage/test.sqlite3`; файл, который является базой разработки или продакшена (с именем `development.sqlite3` или `production.sqlite3` или тот, на который указывают эти окружения), отклоняется с кодом выхода 2, и ничего не удаляется ([Запуск тестов](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: локаль, с которой начинается каждый запрос, имя вроде `ja` или `pt-BR` (см. [Локали](#locales)); всё остальное останавливает загрузку |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`: неверных паролей до блокировки учётной записи; `0` отключает блокировку (см. [Настройки аутентификации](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`: сколько секунд длится блокировка; не меньше 1 |
@@ -309,6 +309,9 @@ Time со смещением 0, то есть любой Time, который в
 показывается в поясе; Time, несущий собственное другое смещение
 (`time.getlocal("+05:30")`), сохраняет его, если не указан `zone:`; Date
 показывается как есть. Задачи cron без `tz:` тоже следуют этому поясу,
-если не задан `scheduler_tz`. В `cybertrain test` каждый тест начинается в
-настроенном поясе. (Форматы `l` — в разделе
+если не задан `scheduler_tz`. Зарегистрированная команда (`Main.command`), `./<app> jobs` и
+`./<app> console` тоже устанавливают пояс перед запуском и отклоняют
+неизвестный, как загрузка: `error: time_zone "Mars/Base" is not a known
+time zone` и код выхода 1, до открытия базы. В `cybertrain test` каждый тест
+начинается в настроенном поясе. (Форматы `l` — в разделе
 [Даты и время](i18n.md#dates-and-times).)

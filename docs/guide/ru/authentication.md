@@ -1,5 +1,5 @@
 ---
-source_sha256: ad73a71c35a10fd8d024458d144dd784063934ffc0d91ba95a6adcdd752bfd74
+source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
 ---
 # Аутентификация
 
@@ -191,7 +191,7 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 | Файл | Что проверяет |
 | --- | --- |
 | `test/fixtures/users.yml` | `one` (администратор) и `two`, пароль которых `"password"` (с `--confirmable` оба подтверждены) |
-| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out` и `open_session` (второй браузер), которые `test/test_helper.rb` включает в каждый интеграционный тест |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out`, `open_session` (второй браузер) и `authenticity_token_in(body)` (токен первой формы страницы, для запросов внутри `with_forgery_protection`), которые `test/test_helper.rb` включает в каждый интеграционный тест |
 | `test/models/user_test.rb` | формат адреса |
 | `test/controllers/sessions_controller_test.rb` | вход и выход |
 | `test/controllers/registrations_controller_test.rb` | регистрацию (не с `--invite-only`) |
