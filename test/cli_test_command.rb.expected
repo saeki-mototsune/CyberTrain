@@ -1,6 +1,6 @@
 ok   file, directory and option arguments
 ok   -n /TEXT/ with a regexp character, FILE:LINE and -- are answered for what they are
-ok   a test's method name: ASCII as Rails' rule, any other character as _u<hex>
+ok   a test's method name: ASCII as Rails' rule, any other character as _u<hex>_
 ok   bad arguments print the usage and the reason, exit 2 and run no step
 ok   gen, the compile when stale, then the run with the arguments and its status
 ok   a failed compile exits 1, runs nothing and leaves no binary or record
@@ -17,4 +17,4 @@ ok   the compile command
 ok   the run passes each argument as one word and answers the binary's status
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   cybertrain test outside an application
-18 tests, 110 assertions, 0 failures
+18 tests, 116 assertions, 0 failures

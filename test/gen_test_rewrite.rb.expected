@@ -145,4 +145,4 @@ ok   a test with a tab or no space before its name is a test, as it is to Ruby
 ok   declarations commented out by =begin or after __END__ are not refused
 ok   Rails' compact reopening of a framework class is refused too
 ok   a test class at the margin inside a module at the margin is refused
-48 tests, 188 assertions, 0 failures
+48 tests, 191 assertions, 0 failures
