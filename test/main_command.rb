@@ -203,19 +203,12 @@ test "a registered command runs in the configured time zone" do
   assert_equal "zone=UTC today=2026-1-1", SEEN[base + 1]
 end
 
-test "jobs installs the configured time zone too" do
-  Cybertrain.config.time_zone = "Asia/Tokyo"
-  assert_equal 0, run(["jobs", "list"])
-  Cybertrain.config.time_zone = "UTC"
-  assert_equal "Asia/Tokyo", Time.zone.zone_name
-  Cybertrain::Clock.zone = Cybertrain::TimeZone::UTC
-end
-
-test "an unknown time zone is refused before a command, jobs or console runs" do
+# `jobs` applies the zone too: test/main_jobs.rb (it needs cybertrain/jobs,
+# which this program, on the core's Main, does not load).
+test "an unknown time zone is refused before a command or console runs" do
   base = SEEN.size
   Cybertrain.config.time_zone = "Mars/Olympus_Mons"
   assert_equal 1, run(["user", "z@example.com"])
-  assert_equal 1, run(["jobs", "list"])
   assert_equal 1, run(["console"])
   Cybertrain.config.time_zone = "UTC"
   assert_equal base, SEEN.size
@@ -241,11 +234,11 @@ test "a command logs at the configured level" do
   assert_logged capture_log { run(["log_line"]) }, "INFO", "from a command"
 end
 
-test "an unknown log level or format is refused before a command, jobs or console runs" do
+# `jobs` is refused too: test/main_jobs.rb.
+test "an unknown log level or format is refused before a command or console runs" do
   base = SEEN.size
   Cybertrain.config.log_level = :verbose
   assert_equal 1, run(["user", "y@example.com"])
-  assert_equal 1, run(["jobs", "list"])
   assert_equal 1, run(["console"])
   Cybertrain.config.log_level = :info
   Cybertrain.config.log_format = :xml

@@ -1,0 +1,7 @@
+ok   streams is the one registered feature
+ok   the stack mounts the stream endpoint after the health check
+ok   the endpoint answers: no server role started the poller
+ok   turbo_stream_from renders a stream source with a token that verifies
+ok   the template's turbo_stream builder renders an element
+ok   a controller's turbo_stream answers render turbo_stream:
+6 tests, 11 assertions, 0 failures

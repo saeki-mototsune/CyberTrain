@@ -1,5 +1,5 @@
 ---
-source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
+source_sha256: 2b56112469f77822eff135a926be5aadaa4c4f8c9e6c75c262213c049b39f367
 ---
 # 实时：推送到浏览器的流
 
@@ -18,7 +18,7 @@ source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
 
 ## Turbo Streams
 
-[Turbo](https://turbo.hotwired.dev) 根据 `<turbo-stream action="append" target="comments">` 元素更新页面，就像 Rails 8 应用那样。在布局中加载 Turbo（没有资源管道：使用 CDN 或放在 `public/` 中的副本），然后用 `turbo_stream_from` 让页面订阅：
+[Turbo](https://turbo.hotwired.dev) 根据 `<turbo-stream action="append" target="comments">` 元素更新页面，就像 Rails 8 应用那样。在布局中加载 Turbo（没有资源管道：使用 CDN 或放在 `public/` 中的副本），然后用 `turbo_stream_from` 让页面订阅。广播、流端点和流辅助方法需要在 `bin/<app>.rb` 和 `bin/db.rb` 中写 `require "cybertrain/streams"`；缺少它时，`spin run gen` 会停在第一个 `turbo_stream_from` 处并指出那一行（[子系统](how-it-works.md#subsystems)）：
 
 ```erb app/views/layouts/application.html.erb（节选）
 <head>

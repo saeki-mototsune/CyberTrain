@@ -43,4 +43,8 @@ ID  KIND    STATE  ATTEMPTS  RUN AT                   ERROR
 9   Mailer  done   3         2023-11-14 22:13:29 UTC
 8   Mailer  done   3         2023-11-14 22:13:28 UTC
 ok   jobs list prints at most the newest 1000 rows and says how many there are
-8 tests, 48 assertions, 0 failures
+no failed jobs
+ok   jobs installs the configured time zone too
+error: time_zone "Mars/Olympus_Mons" is not a known time zone
+ok   an unknown time zone is refused before jobs runs
+10 tests, 53 assertions, 0 failures

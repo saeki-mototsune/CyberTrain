@@ -1,5 +1,5 @@
 ---
-source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
+source_sha256: f91f3179b1b8012bb304301973b9de2d6e153abc889799c6d946d2c35f104605
 ---
 # 認証
 
@@ -27,7 +27,7 @@ cybertrain db migrate
 | `app/views/...` | 画面（すべてのテキストは `t()` を通る）と `sessions/_nav` パーシャル |
 | `test/fixtures/users.yml`、`test/support/session_test_helper.rb`、`test/models/`、`test/controllers/`、`test/integration/` | フィクスチャのユーザー、`sign_in_as`、各部分のテスト（[テスト](#testing)） |
 
-そして次の編集を 1 回ずつ行います：`ApplicationController` への `include Authentication`、ルート、ジョブページの行（[管理者ユーザー](#admin-users-and-the-jobs-page)）、レイアウトへの nav パーシャル、`bin/<app>.rb` へのユーザーコマンド、`config/app.rb` への `base_url` 設定（[メール中のリンク](#links-in-mails)）。同じオプションでもう一度実行しても何も変わりません：すでに行った編集は見つけて飛ばし、書き出すとおりのファイルはそのままにします。違う内容で書き出すことになるファイル（自分で編集したもの、古いジェネレーターや別のオプションが書いたもの）は、`--force` なしでは決して上書きせず、代わりに差分を表示します（[0.4 からのアップグレード](#upgrading-from-04)、[あとから確認を有効にする](#turning-on-confirmation-later)）。
+そして次の編集を 1 回ずつ行います：`ApplicationController` への `include Authentication`、ルート、ジョブページの行（[管理者ユーザー](#admin-users-and-the-jobs-page)）、レイアウトへの nav パーシャル、`bin/<app>.rb` へのユーザーコマンド、`config/app.rb` への `base_url` 設定（[メール中のリンク](#links-in-mails)）、そして `bin/<app>.rb` と `bin/db.rb` への、コードが使うサブシステムの行（`require "cybertrain"` がすでにすべてを読み込む場合を除く）：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later`、`cybertrain/rate_limit`（[サブシステム](how-it-works.md#subsystems)）。同じオプションでもう一度実行しても何も変わりません：すでに行った編集は見つけて飛ばし、書き出すとおりのファイルはそのままにします。違う内容で書き出すことになるファイル（自分で編集したもの、古いジェネレーターや別のオプションが書いたもの）は、`--force` なしでは決して上書きせず、代わりに差分を表示します（[0.4 からのアップグレード](#upgrading-from-04)、[あとから確認を有効にする](#turning-on-confirmation-later)）。
 
 生成される画面のテキストは、フレームワークの英語と日本語の辞書に、それぞれの遅延ルックアップのキー（`sessions.new.title`、`passwords.create.sent`）で入っています。アプリケーションは `config/locales/` でそれらを上書きしたり、言語を足したりできます（[国際化](i18n.md#the-bundled-dictionaries)）。
 

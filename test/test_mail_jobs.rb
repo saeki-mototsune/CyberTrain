@@ -274,7 +274,7 @@ end
 test "boot warns about :test delivery outside the test environment, and not in it" do
   fresh_db
   warning = "mail_delivery_method is :test outside the test environment (env production): " \
-            "mail is stored in memory (Mailer.deliveries) and not sent"
+            "mail is stored in memory (the mailer's deliveries) and not sent"
   production = mail_boot_log("production")
   assert_includes production, warning
   assert_nil production.index("mail_delivery_method", production.index("mail_delivery_method").to_i + 1)

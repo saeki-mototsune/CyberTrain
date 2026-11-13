@@ -1,5 +1,5 @@
 ---
-source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
+source_sha256: f91f3179b1b8012bb304301973b9de2d6e153abc889799c6d946d2c35f104605
 ---
 # Authentification
 
@@ -27,7 +27,7 @@ Il écrit, dans l’application&nbsp;:
 | `app/views/...` | les écrans, chaque texte passant par `t()`, et le partial `sessions/_nav` |
 | `test/fixtures/users.yml`, `test/support/session_test_helper.rb`, `test/models/`, `test/controllers/`, `test/integration/` | les utilisateurs de fixture, `sign_in_as`, et des tests pour chaque partie ([Tests](#testing)) |
 
-et des modifications, une fois chacune&nbsp;: `include Authentication` dans `ApplicationController`, les routes, la ligne de la page des jobs ([Administrateurs](#admin-users-and-the-jobs-page)), le partial de navigation dans le layout, la commande utilisateur dans `bin/<app>.rb` et le réglage `base_url` dans `config/app.rb` ([Liens dans les courriels](#links-in-mails)). Le relancer avec les mêmes options ne change rien&nbsp;: une modification déjà faite est retrouvée et sautée, et un fichier déjà tel qu’il l’écrirait est laissé. Un fichier qu’il écrirait autrement (que vous avez modifié, ou qu’un générateur plus ancien ou d’autres options ont écrit) n’est jamais écrasé sans `--force`&nbsp;: son diff est affiché à la place ([Mettre à jour depuis 0.4](#upgrading-from-04), [Activer la confirmation plus tard](#turning-on-confirmation-later)).
+et des modifications, une fois chacune&nbsp;: `include Authentication` dans `ApplicationController`, les routes, la ligne de la page des jobs ([Administrateurs](#admin-users-and-the-jobs-page)), le partial de navigation dans le layout, la commande utilisateur dans `bin/<app>.rb`, le réglage `base_url` dans `config/app.rb` ([Liens dans les courriels](#links-in-mails)), et dans `bin/<app>.rb` et `bin/db.rb` les lignes des sous-systèmes que le code utilise, sauf si `require "cybertrain"` les charge déjà toutes&nbsp;: `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit` ([Sous-systèmes](how-it-works.md#subsystems)). Le relancer avec les mêmes options ne change rien&nbsp;: une modification déjà faite est retrouvée et sautée, et un fichier déjà tel qu’il l’écrirait est laissé. Un fichier qu’il écrirait autrement (que vous avez modifié, ou qu’un générateur plus ancien ou d’autres options ont écrit) n’est jamais écrasé sans `--force`&nbsp;: son diff est affiché à la place ([Mettre à jour depuis 0.4](#upgrading-from-04), [Activer la confirmation plus tard](#turning-on-confirmation-later)).
 
 Les textes des écrans générés sont dans les dictionnaires anglais et japonais du framework, sous leurs clés de recherche paresseuse (`sessions.new.title`, `passwords.create.sent`)&nbsp;; une application les surcharge, ou ajoute une langue, dans `config/locales/` ([Internationalisation](i18n.md#the-bundled-dictionaries)).
 

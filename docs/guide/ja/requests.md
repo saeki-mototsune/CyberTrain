@@ -1,5 +1,5 @@
 ---
-source_sha256: 438452e58fab3541e4164d86ccbe380b726de6e50c551e2b69e565b85b135daf
+source_sha256: e9f54a9f55d52674351fe3c7cbf908b9cea71747715df0fbfc08f2bb15e41506
 ---
 # リクエスト
 
@@ -171,7 +171,7 @@ cookies.delete(:theme)
 
 ## レート制限とクライアントのアドレス
 
-コントローラーの `rate_limit` は、ひとつのクライアントがいくつかのアクションを呼び出せる頻度に上限を設けます。数えるのはアクションの実行前です：
+コントローラーの `rate_limit` は、ひとつのクライアントがいくつかのアクションを呼び出せる頻度に上限を設けます。数えるのはアクションの実行前です。`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/rate_limit"`（キャッシュも読み込みます）が必要で、`cybertrain generate authentication` が追加します：
 
 ```ruby
 class SessionsController < ApplicationController

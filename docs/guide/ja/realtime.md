@@ -1,5 +1,5 @@
 ---
-source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
+source_sha256: 2b56112469f77822eff135a926be5aadaa4c4f8c9e6c75c262213c049b39f367
 ---
 # リアルタイム：ブラウザーへのストリーム
 
@@ -18,7 +18,7 @@ source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
 
 ## Turbo Streams
 
-[Turbo](https://turbo.hotwired.dev) は、Rails 8 のアプリケーションと同じように、`<turbo-stream action="append" target="comments">` 要素からページを更新します。レイアウトで Turbo を読み込み（アセットパイプラインはありません：CDN か `public/` に置いたコピー）、`turbo_stream_from` でページを購読させます：
+[Turbo](https://turbo.hotwired.dev) は、Rails 8 のアプリケーションと同じように、`<turbo-stream action="append" target="comments">` 要素からページを更新します。レイアウトで Turbo を読み込み（アセットパイプラインはありません：CDN か `public/` に置いたコピー）、`turbo_stream_from` でページを購読させます。ブロードキャスト、ストリームエンドポイント、ストリームのヘルパーには、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/streams"` が必要です。ないと、`spin run gen` は最初の `turbo_stream_from` で止まり、その行を示します（[サブシステム](how-it-works.md#subsystems)）：
 
 ```erb app/views/layouts/application.html.erb（抜粋）
 <head>

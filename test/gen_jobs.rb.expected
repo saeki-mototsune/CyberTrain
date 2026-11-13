@@ -18,5 +18,5 @@ ok   the manifest requires the mailer, then the job files, application_job first
 ok   every job class is scanned: two in one file, one nested in a class, and a grandchild
 ok   a job's superclass must load before it; < ApplicationJob needs application_job.rb
 ok   framework errors: those require "cybertrain" loads need no require line, the mailer's do
-ok   FRAMEWORK_ERRORS names every Error class under cybertrain/, and the preloaded files are loaded by cybertrain.rb
+ok   FRAMEWORK_ERRORS names every Error class under cybertrain/, and the preloaded files are loaded by cybertrain/core.rb
 21 tests, 137 assertions, 0 failures

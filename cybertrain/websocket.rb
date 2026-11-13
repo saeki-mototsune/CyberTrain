@@ -35,8 +35,8 @@
 # A feed's thread that ends anyway (an exception that is not a
 # StandardError, or the runtime killing it) is started again by the
 # supervisor (cybertrain/background/supervisor.rb), which also writes each
-# feed's status into `cybertrain_feeds` (WebSocket::FeedTable, which the
-# framework entry point requires) every
+# feed's status into `cybertrain_feeds` (WebSocket::FeedTable, which
+# cybertrain/feeds requires, and so this file) every
 # Config#feed_status_interval seconds; a `feeds` process whose feed keeps
 # dying exits with status 1.
 #
@@ -57,6 +57,9 @@ require "cybertrain/logger"
 require "cybertrain/config"
 require "cybertrain/clock"
 require "cybertrain/background"
+# The feeds subsystem: the server role starts the services, `./<app> feeds`
+# runs them, `/up` checks them (FeedsFeature).
+require "cybertrain/feeds"
 require "cybertrain/http_client"
 require "cybertrain/websocket/frame"
 require "cybertrain/websocket/client"

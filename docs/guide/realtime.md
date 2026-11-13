@@ -35,7 +35,11 @@ endpoint. `config.stream_path = ""` turns the whole feature off.
 [Turbo](https://turbo.hotwired.dev) updates a page from
 `<turbo-stream action="append" target="comments">` elements, the way Rails 8
 applications do. Load Turbo in the layout (there is no asset pipeline: a CDN
-or a copy in `public/`), and subscribe a page with `turbo_stream_from`:
+or a copy in `public/`), and subscribe a page with `turbo_stream_from`.
+Broadcasts, the stream endpoint and the stream helpers need
+`require "cybertrain/streams"` in `bin/<app>.rb` and `bin/db.rb`; without
+it `spin run gen` stops at the first `turbo_stream_from` and names the
+line ([Subsystems](how-it-works.md#subsystems)):
 
 ```erb app/views/layouts/application.html.erb (excerpt)
 <head>

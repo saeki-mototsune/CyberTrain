@@ -1,11 +1,11 @@
 ---
-source_sha256: 66329a4e69356e00eec156cd03179a5e587cc9a35a29646fcab43f1db4291e7b
+source_sha256: 59a38ba829e8a8142914927b1b6e1d51aa9494f36f943063ea08ec3a17375ac5
 ---
 # バックグラウンド処理と運用
 
 ## バックグラウンド処理
 
-リクエストの外で何かをしなければならないアプリケーション（レスポンスを返した後に通知を送る、毎晩古い行を掃除する、失敗した呼び出しを再試行する）は、それをフレームワークに任せます。フレームワークは、配信を行うプロセス、または別のワーカープロセスのバックグラウンドスレッドでそれを実行します。ジョブは Rails と同じく `app/jobs/` のクラスです：
+リクエストの外で何かをしなければならないアプリケーション（レスポンスを返した後に通知を送る、毎晩古い行を掃除する、失敗した呼び出しを再試行する）は、それをフレームワークに任せます。フレームワークは、配信を行うプロセス、または別のワーカープロセスのバックグラウンドスレッドでそれを実行します。ジョブは Rails と同じく `app/jobs/` のクラスです。ジョブと定期タスクには、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/jobs"` が必要で、`cybertrain generate job` が追加します（[サブシステム](how-it-works.md#subsystems)）：
 
 ```ruby
 # app/jobs/welcome_job.rb
@@ -32,7 +32,7 @@ Cybertrain::Scheduler.cron("0 4 * * *", "nightly digest", job: "DigestJob")
 Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 ```
 
-- **どこで実行されるか。** ジョブは `job_threads` 本のジョブスレッド（3、`CYBERTRAIN_JOB_THREADS`）で、定期タスクはそれ専用の 1 本のスケジューラーのスレッドで実行されるので、長いジョブがタスクを遅らせることはありません。どちらも、バイナリが配信を行うとき（`./<app>`、`./<app> server`）か、ワーカーとして動くとき（`./<app> worker`。[プロセスの役割](#process-roles)を参照）に、起動処理がデータベースに接続し `SPINEL_WORKERS` を設定した後で始まります。`migrate`、`db ...`、`jobs ...`、`console`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。ジョブスレッドは、ジョブクラスのないアプリケーションでも、こうしたプロセスのすべてで始まります。フレームワークが自分のメールのジョブ（`Mailer.deliver_later`、[メールを送る](external-services.md#sending-e-mail)）を登録するからです。
+- **どこで実行されるか。** ジョブは `job_threads` 本のジョブスレッド（3、`CYBERTRAIN_JOB_THREADS`）で、定期タスクはそれ専用の 1 本のスケジューラーのスレッドで実行されるので、長いジョブがタスクを遅らせることはありません。どちらも、バイナリが配信を行うとき（`./<app>`、`./<app> server`）か、ワーカーとして動くとき（`./<app> worker`。[プロセスの役割](#process-roles)を参照）に、起動処理がデータベースに接続し `SPINEL_WORKERS` を設定した後で始まります。`migrate`、`db ...`、`jobs ...`、`console`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。ジョブを require していれば、ジョブスレッドは、ジョブクラスのないアプリケーションでも、こうしたプロセスのすべてで始まります。フレームワークが自分のメールのジョブ（`Mailer.deliver_later`、[メールを送る](external-services.md#sending-e-mail)）を登録するからです。
 - **テーブル。** ジョブは `cybertrain_jobs` の行です。このテーブルはフレームワークが自分で作り（最初の使用時に `CREATE TABLE IF NOT EXISTS`）、`db/schema.rb` には含めません。`DB.transaction` の中では、行は他のものと一緒にコミットまたはロールバックされます。各ジョブスレッドは、期限の来た最も古い行を短い `BEGIN IMMEDIATE` トランザクションで確保し、トランザクションの外で実行して、次を探します。期限の来たものがなければ `job_poll_interval` 秒（1）待つので、リクエストがキューに入れたジョブは 1 秒ほどで始まります。行の状態は `queued`、`running`、`done`、`failed`（再試行を使い切ったもの。調べられるように残ります）、`discarded`（`discard_on` が止めたもの）のどれかです。
 
 ### ジョブクラス
@@ -144,10 +144,11 @@ end
 - よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` と `worker` の役割（とコメントにした `feeds`）を書きます。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 7「Splitting the roles」にあります。
 - **ハートビートのないリリースから上げるとき**：最初の新しいプロセスを起動する前に、古いプロセスをすべて止めてください。古いプロセスはハートビートを書かないので、新しいワーカーは、古いワーカーがまだ実行しているジョブを放棄されたものとして取ってしまいます。
 - `Cybertrain::Main.worker?(ARGV)` と `Main.feeds?(ARGV)` は、`Main.server?(ARGV)` と同じく、`bin/<app>.rb` にどの役割を起動しているかを教えます。
+- `worker` には `bin/<app>.rb` に `require "cybertrain/jobs"` が、`feeds` には `require "cybertrain/feeds"`（`cybertrain/websocket` が読み込みます）が必要です。ないと、バイナリはどの行が足りないかを表示して 1 で終了します。
 
 ## キャッシュストア
 
-`Cybertrain::Cache` は、答えをアプリケーション自身のデータベースにしばらく残し、次のリクエストが遅い API にもう一度尋ねなくて済むようにします。これは `require "cybertrain"` には含まれません。使う場所で require してください：
+`Cybertrain::Cache` は、答えをアプリケーション自身のデータベースにしばらく残し、次のリクエストが遅い API にもう一度尋ねなくて済むようにします。`require "cybertrain"` はこれを読み込みます。`cybertrain/core` のアプリケーションは `bin/<app>.rb` と `bin/db.rb`、または使う場所に `require "cybertrain/cache"` を追加します：
 
 ```ruby
 require "cybertrain/cache"
@@ -163,7 +164,7 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
 - **値は String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` は有効な値を返すか、ブロックを実行してその戻り値を保存します。`fetch_hash`、`fetch_array`、`fetch_int` は JSON か Integer のテキストを保存し、取り出すときに解釈するので、壊れたセルは期限が切れてブロックがもう一度実行されるまで `{}`、`[]`、`0` として読まれます（Spinel には `Marshal` がなく、1 つのメソッドは 1 つの型しか返せません）。残りは `read(key)`（String か nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（1 つの文。期限の切れたカウンターは `by` からやり直します。`expires_in:` はカウンターの開始時にだけ期限を決めるので、1 分間のカウンターはその 1 分を数えます）、`clear` です。
 - **期限。** `expires_in:` は秒数です。デフォルトの `0` は期限切れになりません（負の値も同じです）。`race_condition_ttl: n`：行の期限が切れていると、最初の呼び出し元がそれを `n` 秒延ばして新しい値を計算し、その間ほかの呼び出し元は古い値を読み続けます。Rails と同じです。これがなければ、期限の切れたキーの呼び出し元が全員計算します。例外を出したブロックは何も書きません。
 - **保存先。** 行は `cybertrain_cache` にあります。このテーブルはフレームワークが最初の使用時に作り、`db/schema.rb` には含めません。メモリには何も保持しません。読み出しはどれも SELECT で、SQLite はそのページキャッシュから答えます。書き込みはどれもデータベースの書き込みロックを取り、自分の行を書くリクエストはそれを待ちます。忙しいリクエストの経路で書くのではなく、ジョブが作るものや、変わるよりはるかに頻繁に読まれる値をキャッシュしてください。
-- **掃除。** このファイルを require すると、定期タスク `"cybertrain cache prune"` が登録されます。これは `cache_prune_interval` 秒（300、`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）ごとに、期限の切れた行を 1 文あたり 1000 行ずつ消します。間隔はファイルを require したときに読まれます。環境変数を設定するか、require より前に実行される `Cybertrain.configure` のブロックで `c.cache_prune_interval` を設定してください。`Cache.prune(now)` はテスト用の入り口です。
+- **掃除。** ジョブが読み込まれていれば、このファイルを require すると、定期タスク `"cybertrain cache prune"` が登録されます。これは `cache_prune_interval` 秒（300、`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）ごとに、期限の切れた行を 1 文あたり 1000 行ずつ消します。ジョブがなければキャッシュが自分で掃除します：プロセスの最初の書き込みと、`cache_prune_interval` ごとの最初の書き込みが、期限の切れた行を最大 1000 行消します。間隔はファイルを require したときに読まれます。環境変数を設定するか、require より前に実行される `Cybertrain.configure` のブロックで `c.cache_prune_interval` を設定してください。`Cache.prune(now)` はテスト用の入り口です。
 
 まだないもの：キャッシュ専用のデータベースファイル、サイズの上限、メモリ上のストア。設計：`docs/design.md` D54。
 

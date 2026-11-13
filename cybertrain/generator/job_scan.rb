@@ -152,10 +152,11 @@ module Cybertrain
         ["Cybertrain::WebSocket::ClosedError", "websocket/frame"]
       ]
 
-      # The files of FRAMEWORK_ERRORS that `require "cybertrain"` already
-      # loads (cybertrain.rb requires cybertrain/db, which requires
-      # db/error; http/parser; cybertrain/template, which requires
-      # template/ast): gen/app.rb writes no require for them.
+      # The files of FRAMEWORK_ERRORS that `require "cybertrain/core"` (and
+      # so `require "cybertrain"`) already loads (core.rb requires
+      # cybertrain/db, which requires db/error; http/parser;
+      # cybertrain/template, which requires template/ast): gen/app.rb
+      # writes no require for them.
       PRELOADED_FILES = ["db/error", "http/parser", "template/ast"]
 
       # The file (under cybertrain/, without .rb) defining a framework

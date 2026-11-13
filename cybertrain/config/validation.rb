@@ -274,7 +274,7 @@ module Cybertrain
       return "" unless @mail_delivery_method == :test && @env != "test"
 
       "mail_delivery_method is :test outside the test environment (env #{@env}): " \
-        "mail is stored in memory (Mailer.deliveries) and not sent"
+        "mail is stored in memory (the mailer's deliveries) and not sent"
     end
 
     # The error Application#boot reports when an auth_* setting is out of

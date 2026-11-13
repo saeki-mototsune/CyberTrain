@@ -1,5 +1,5 @@
 ---
-source_sha256: 3746092c625dd7310582429d7fe08d53cca20a086690f3046c41f1684ebc20db
+source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -211,7 +211,9 @@ parser.finish { |event| Answer.append(event.event_data) }   # последнее
 устройств, поток событий), пока работает сервер, подписывается на него через
 `Cybertrain::WebSocket.subscribe`. Как и HTTP-клиент, он не входит в
 `require "cybertrain"`; подключайте его там, где пишется подписка, а для
-`wss://` — также слой TLS:
+`wss://` — также слой TLS. Он загружает подсистему фидов (роль `feeds`,
+проверку здоровья фидов), так что приложению на `cybertrain/core` другая
+строка не нужна:
 
 ```ruby
 # config/app.rb (или файл, который bin/<app>.rb подключает до Cybertrain::Main.run)
@@ -385,9 +387,10 @@ client.close
 `Cybertrain::Mailer` отправляет электронные письма, простым текстом или с
 HTML-частью, через SMTP-сервер (сервер отправки вашего провайдера или
 локальный ретранслятор) — сразу (`deliver`) или из задачи (`deliver_later`,
-ниже). `require "cybertrain"` его загружает; программа без фреймворка
-подключает `cybertrain/mailer` (которому не нужна база данных:
-`deliver_later` находится в `cybertrain/mailer/later`). TLS подключается
+ниже). `require "cybertrain"` его загружает; приложение на `cybertrain/core`
+или программа без фреймворка подключает `cybertrain/mailer` (которому не
+нужна база данных: `deliver_later` находится в `cybertrain/mailer/later`,
+который загружает и задачи). TLS подключается
 отдельным require:
 
 ```ruby
@@ -462,8 +465,11 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **Мейлеры:** модуль в `app/mailers` (gen их загружает), метод которого
   возвращает `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`,
   читается как в Rails: `PasswordsMailer.reset(user, url).deliver_later`
-  ставит письмо в очередь, `deliver_now` отправляет сразу. `cybertrain
-  generate authentication` пишет два таких ([Сброс пароля](authentication.md#password-reset)).
+  ставит письмо в очередь, `deliver_now` отправляет сразу. `cybertrain/mailer`
+  загружает `MailMessage` с `deliver_now`; `deliver_later` приходит с
+  `cybertrain/mailer/later`. `cybertrain generate authentication` пишет два
+  таких ([Сброс пароля](authentication.md#password-reset)) и добавляет обе
+  строки.
 - **Пока нет:** вложений и встроенных изображений, классов мейлеров с
   `default from:` и представлениями, найденными по имени, отображаемых имён,
   заголовков `Cc`/`Bcc` (вместо этого отправляйте нескольким получателям),
@@ -497,7 +503,9 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` принимает аргументы `deliver`, сразу их проверяет
+`deliver_later` требует `require "cybertrain/mailer/later"` (или
+`require "cybertrain"`) в `bin/<app>.rb` и `bin/db.rb`. Он принимает
+аргументы `deliver`, сразу их проверяет
 (отвергнутый адрес или тема возбуждает исключение здесь, и в очередь ничего
 не попадает) и ставит в очередь встроенную задачу `"cybertrain mail"` с
 готовым сообщением; поток задач

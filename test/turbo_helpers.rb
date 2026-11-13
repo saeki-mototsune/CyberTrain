@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/controller"
+require "cybertrain/streams"
 require "cybertrain/router"
 require "cybertrain/app"
 require "cybertrain/test/client"

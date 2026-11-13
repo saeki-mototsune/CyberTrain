@@ -1,5 +1,5 @@
 ---
-source_sha256: 3109902f66d644e274188001adeec4f8f23888013cc14b16568df63dee79679f
+source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -103,6 +103,8 @@ blog/
 ```
 
 `bin/blog.rb` 是应用唯一的入口，也就是 `spin build blog` 编译的程序：`./blog` 提供服务，`./blog migrate` 和 `./blog db status` 管理数据库。`bin/gen.rb` 运行生成器（`spin run gen`），`bin/db.rb` 在开发期间运行迁移器（`cybertrain db migrate` 会用到它，因为在第一次迁移生成 `gen/models/` 之前，`bin/blog.rb` 无法编译）。`gen/` 中已经有 `spin run gen` 写出的内容，其中包括 `views.rb`：已提交的、空的内嵌视图表。
+
+`bin/blog.rb` 和 `bin/db.rb` 都以 `require "cybertrain/core"` 开头：这是不含可选子系统（作业、Turbo Streams、邮件发送器、缓存等）的框架，能让每次构建都更短。后面用到某个子系统的步骤会添加它的那一行（[子系统](how-it-works.md#subsystems)）。
 
 布局用 `stylesheet_link_tag` 引入 `app/assets/stylesheets/application.css`，并用 `javascript_importmap_tags` 通过 `config/importmap.rb` 的 import map 加载 `app/javascript/application.js`；`spin run gen` 把两者加上摘要写入 `public/assets/`，该目录被 git 忽略（参见[资源](assets.md)）。`.env.example` 列出应用读取的变量，`.github/workflows/ci.yml` 在 GitHub 上运行测试（[持续集成](testing.md#continuous-integration)），目录树的最后一行则是[第 19 步](#ship)的 Kamal 配置。
 
@@ -548,6 +550,13 @@ import "@hotwired/turbo"
 
 布局中的 `javascript_importmap_tags` 会写出 import map 和 `import "application"`，所以现在每个页面都会运行 Turbo（[import map](assets.md#the-import-map)）。
 
+Turbo Streams 的服务器端是一个子系统：在 `bin/blog.rb` 中核心那一行的下面添加它的那一行，并在 `bin/db.rb` 中添加同样的一行。没有它，`spin run gen` 会停在下面的 `turbo_stream_from` 处，并指出需要的那一行。
+
+```ruby bin/blog.rb（节选）
+require "cybertrain/core"
+require "cybertrain/streams"
+```
+
 ### 让页面订阅
 
 给列表和表单各加一个 id，并让页面订阅这篇文章的流：
@@ -637,7 +646,7 @@ import "@hotwired/turbo"
 cybertrain generate job notify_comment --retry StandardError:30:3
 ```
 
-它会写出 `app/jobs/notify_comment_job.rb`，其中有该选项所要求的 `retry_on` 行和一个空的 `perform`，另外还有一个测试。把 `perform` 填上；这里它只写一条日志，真实的应用会在这里发送邮件：
+它会写出 `app/jobs/notify_comment_job.rb`，其中有该选项所要求的 `retry_on` 行和一个空的 `perform`，另外还有一个测试，并向 `bin/blog.rb` 和 `bin/db.rb` 添加 `require "cybertrain/jobs"`。把 `perform` 填上；这里它只写一条日志，真实的应用会在这里发送邮件：
 
 ```ruby app/jobs/notify_comment_job.rb
 class NotifyCommentJob < Cybertrain::Job::Base
@@ -856,7 +865,7 @@ cybertrain generate authentication
 cybertrain db migrate    # 创建 users 和 sessions 表
 ```
 
-它写出 `users` 和 `sessions` 的迁移与模型、被它包含进 `ApplicationController` 的 `Authentication` 关注点、用于登录、注册、重置密码和账户页面的控制器与视图、一个邮件程序、`./blog user` 命令，以及测试。它还会添加路由、布局顶部的 `sessions/_nav` 局部模板，以及 `config/app.rb` 中的 `base_url` 设置，邮件中的链接以它开头。每个文件都列在 [认证](authentication.md#generating-it) 中。
+它写出 `users` 和 `sessions` 的迁移与模型、被它包含进 `ApplicationController` 的 `Authentication` 关注点、用于登录、注册、重置密码和账户页面的控制器与视图、一个邮件程序、`./blog user` 命令，以及测试。它还会添加路由、布局顶部的 `sessions/_nav` 局部模板，以及 `config/app.rb` 中的 `base_url` 设置，邮件中的链接以它开头。最后，它会向 `bin/blog.rb` 和 `bin/db.rb` 添加其代码用到的子系统的行：`cybertrain/jobs`（作业页面和发送邮件的线程）、`cybertrain/mailer`、`cybertrain/mailer/later`（邮件通过 `deliver_later` 发送）和 `cybertrain/rate_limit`（登录尝试有速率限制，见下文）。每个文件都列在 [认证](authentication.md#generating-it) 中。
 
 ```ruby app/controllers/concerns/authentication.rb（节选）
 module Authentication
