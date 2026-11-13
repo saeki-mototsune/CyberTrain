@@ -170,6 +170,12 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
   `cybertrain server` in the same app cannot run anyway: the second stops
   with "a cybertrain server is already running here".)
   Codespaces runs it on every attach.
+- A supervisor killed outright (SIGKILL, the OOM killer) leaves its child
+  serving on the port. When the port answers but
+  `tmp/cybertrain-dev/child.pid` names a live process working in the app
+  and `tmp/cybertrain-dev/supervisor.pid` names none, the script says so and
+  starts `cybertrain server`, which stops that leftover child and takes the
+  port over.
 - The banner shows the app's URL (in a codespace the forwarded
   `https://<codespace>-3000.app.github.dev/`, elsewhere
   `http://localhost:3000/`), where the guide is, and what an edit does (a
@@ -250,7 +256,7 @@ the address probe and the bind, not from `docker run`); A9, CRuby answered
 | --- | --- |
 | G1-G8 | The image as built: user `dev` (uid 1000); `cybertrain version`; `cybertrain doctor`; `CYBERTRAIN_HOME` and `XDG_CACHE_HOME` set, `CYBERTRAIN_HOST` not; the blog's `spin.toml` points at `v<VERSION>`; the blog is a clean one-commit git repository that tracks `PLAYGROUND.md`; no `tmp/secret_key`, an executable `build/bin/blog`; `cybertrain doctor`'s `fiddle` line is ok (the CRuby preview needs it) |
 | A1-A12 | The default command with `CYBERTRAIN_HOST=0.0.0.0`, reached from the host: `GET /articles`; the boot banner; nothing compiled at start (`build/bin/blog` keeps the image's mtime once the startup build has ended); `GET /` shows `<h1>Articles</h1>`; a CSRF token and a `SameSite=Lax` cookie; creating an article (303, then its page); 403 without a token; a view edit shows on the next request; a model edit answers 422 for a short body from `X-Cybertrain-Runtime: cruby` within 10 s, then from `spinel`; `tmp/secret_key` generated; A11, no C compiler at the first start (no `cc1`, `collect2` or `ld` in any form, and no `cc` or `gcc` but `--version` probes and lines whose command line could not be read, from the container's start until the startup build has ended, polled by a loop the container's command line starts before `playground-server`, and `build/bin/gen` and the shim's `tmp/cybertrain-dev/ffi/*.so` keep the image's mtimes); A12, the CRuby child that serves the model edit, the first to use the shim, inserts and lists articles and the shim's libraries are still the image's |
-| D1-D4 | `playground-server` again: it exits 0 saying "already running"; one supervisor and one child; after a container restart (idle stop and resume) the server is back, once, with the data; a server started by hand is left alone, before it listens (held there by a `spin` that waits) and once it listens |
+| D1-D5 | `playground-server` again: it exits 0 saying "already running"; one supervisor and one child; after a container restart (idle stop and resume) the server is back, once, with the data; a server started by hand is left alone, before it listens (held there by a `spin` that waits) and once it listens; D5, once a server started by hand has had its supervisor SIGKILLed, the script takes the port over from the child it left: a new supervisor stops that child and serves, one supervisor and one child |
 | C1-C4 | `CODESPACES=true`: the cookie keeps the default, `SameSite=Lax` without `Secure` or `Partitioned`; the banner shows the forwarded URL; interactive and login shells started with `PATH=/usr/bin:/bin` find `spin` in `/opt/cybertrain/bin`; with a stand-in for VS Code's `code` on `PATH`, `playground-server` opens `PLAYGROUND.md` and then the forwarded URL with `--openExternal` |
 | F1 | `CYBERTRAIN_SESSION_SAME_SITE=lax` stops the app at boot, under CRuby and as the compiled binary, which the supervisor tries as soon as the startup build finds it up to date: the log names the valid values and says the binary failed, and the server answers 503 with a page that names them for both (the supervisor outlives its children, so the container does not exit) |
 | E1 | A `cp -a` copy of the blog starts without compiling (its binary and the shim's libraries keep the image's mtimes once the startup build has ended) |
