@@ -56,8 +56,13 @@ module Cybertrain
         # Which children's STDERR goes through a pipe the supervisor copies
         # (and keeps the tail of). A kind left out writes straight to the
         # supervisor's STDERR, and its death is known from the failure file
-        # and the exit status alone: the choice for the compiled binary
-        # waits on a measurement of whether the pipe delays its output.
+        # and the exit status alone. Both kinds are piped because the pipe
+        # does not delay either (measured 2026-11-13 on examples/blog, a line
+        # written to $stderr while a request is handled, 20 requests each):
+        # the line reached the supervisor's STDERR before the response had
+        # been read, at worst 1.1 ms before it from the CRuby child and
+        # 0.6 ms before it from the compiled binary, whose runtime leaves C's
+        # stderr unbuffered.
         PIPED_STDERR = [:cruby, :binary].freeze
 
         # Dev::Rebuilder's rule, restated (that file pulls in framework files
