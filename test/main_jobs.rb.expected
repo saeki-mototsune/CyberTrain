@@ -47,4 +47,6 @@ no failed jobs
 ok   jobs installs the configured time zone too
 error: time_zone "Mars/Olympus_Mons" is not a known time zone
 ok   an unknown time zone is refused before jobs runs
-10 tests, 53 assertions, 0 failures
+error: log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)
+ok   an unknown log level is refused before jobs runs
+11 tests, 55 assertions, 0 failures
