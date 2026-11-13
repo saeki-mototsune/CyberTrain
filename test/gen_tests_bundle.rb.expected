@@ -35,6 +35,63 @@ identical gen/concerns/controllers/concerns/admin_gate.rb
 identical gen/concerns/controllers/concerns/auditing.rb
 identical gen/concerns/controllers/concerns/stamped.rb
 identical gen/concerns/models/concerns/visible.rb
+wrote gen/test/models/article_test.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/console.rb
+identical gen/app.rb
+wrote gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+identical gen/console.rb
+identical gen/app.rb
+stale: gen/test/models/other_test.rb
+stale: gen/tests.rb
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/test/models/article_test.rb
+wrote gen/test/models/other_test.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   a test file the class-form rewrite refuses refuses the bundle, and gen still succeeds
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
 wrote gen/tests.rb
 identical gen/migrations.rb
 wrote gen/console.rb
@@ -117,4 +174,4 @@ wrote gen/console.rb
 identical gen/app.rb
 ok   gen/tests.rb goes when test/ goes
 ok   an app's own top-level render_inline is refused: it would replace the framework's
-14 tests, 124 assertions, 0 failures
+15 tests, 136 assertions, 0 failures

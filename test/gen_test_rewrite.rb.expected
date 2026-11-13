@@ -82,6 +82,9 @@ ok   a nested test class and a test class inside a module are refused
 ok   a test class opened twice is refused naming both places
 ok   a hand-written test method beside a test block of the same name is refused
 ok   a hand-written test method is a case
+ok   a hand-written test method with parameters, or under private or protected, is refused
+ok   def setup or teardown without super under an application base class is refused
+ok   next inside an if or case of a test body is refused, inside an inner block or loop it is not
 ok   setup in a reopened framework class, brace and symbol forms are refused
 ok   a class head with a body on its line is not taken for a closed class
 ok   escapes in test names
@@ -138,8 +141,8 @@ ok   a return with a value in a lambda is still refused, saying why
 ok   a test class opened after a semicolon is refused as nested
 ok   a heredoc terminator with trailing spaces does not end the heredoc
 ok   a second declaration on a converted line is refused
-ok   a test with a tab or no space before its name is refused, not left at class level
+ok   a test with a tab or no space before its name is a test, as it is to Ruby
 ok   declarations commented out by =begin or after __END__ are not refused
 ok   Rails' compact reopening of a framework class is refused too
 ok   a test class at the margin inside a module at the margin is refused
-45 tests, 167 assertions, 0 failures
+48 tests, 188 assertions, 0 failures
