@@ -1,5 +1,5 @@
 ---
-source_sha256: cbd431aac3ca2ef8bf0e14cfaf9a22c24f968b66143a02d4efc5b482d085184b
+source_sha256: 8bf1e8b4b6f49c71977f7962ba570bf0d29cc5af86a5dd089c93108a8e865203
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
@@ -96,7 +96,7 @@ parser.finish { |event| Answer.append(event.event_data) }   # 流没有以空行
 
 ## 订阅 WebSocket 数据流
 
-在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。与 HTTP 客户端一样，它不在 `require "cybertrain"` 之中；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层：
+在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。与 HTTP 客户端一样，它不在 `require "cybertrain"` 之中；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层。它会加载 feed 子系统（`feeds` 角色、feed 健康检查），所以使用 `cybertrain/core` 的应用不需要别的行：
 
 ```ruby
 # config/app.rb（或 bin/<app>.rb 在 Cybertrain::Main.run 之前 require 的某个文件）
@@ -163,7 +163,7 @@ client.close
 
 ## 发送电子邮件
 
-`Cybertrain::Mailer` 通过 SMTP 服务器（你的邮件服务商的提交服务器，或本地中继）发送纯文本或带 HTML 部分的电子邮件，可以立即发送（`deliver`），也可以从作业中发送（`deliver_later`，见下文）。`require "cybertrain"` 会加载它；不使用框架的程序 require `cybertrain/mailer`（它不需要数据库：`deliver_later` 在 `cybertrain/mailer/later` 中）。TLS 需要单独 require：
+`Cybertrain::Mailer` 通过 SMTP 服务器（你的邮件服务商的提交服务器，或本地中继）发送纯文本或带 HTML 部分的电子邮件，可以立即发送（`deliver`），也可以从作业中发送（`deliver_later`，见下文）。`require "cybertrain"` 会加载它；使用 `cybertrain/core` 的应用或不使用框架的程序 require `cybertrain/mailer`（它不需要数据库：`deliver_later` 在 `cybertrain/mailer/later` 中，后者还会加载作业）。TLS 需要单独 require：
 
 ```ruby
 require "cybertrain/mailer"
@@ -218,7 +218,7 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` 接收与 `deliver` 相同的参数，并立即检查它们（被拒绝的地址或主题会在这里抛出异常，什么也不会入队），然后把内置作业 `"cybertrain mail"` 连同完成的邮件一起入队；一个作业线程（[后台任务](background-and-operations.md#background-work)）会用那时生效的 SMTP 设置发送它。请在调用之前渲染好正文：作业没有视图上下文。它返回作业的 id。
+`deliver_later` 需要在 `bin/<app>.rb` 和 `bin/db.rb` 中写 `require "cybertrain/mailer/later"`（或 `require "cybertrain"`）。它接收与 `deliver` 相同的参数，并立即检查它们（被拒绝的地址或主题会在这里抛出异常，什么也不会入队），然后把内置作业 `"cybertrain mail"` 连同完成的邮件一起入队；一个作业线程（[后台任务](background-and-operations.md#background-work)）会用那时生效的 SMTP 设置发送它。请在调用之前渲染好正文：作业没有视图上下文。它返回作业的 id。
 
 - **重试。** 超时、被拒绝的连接或 `4xx` 应答（灰名单、`421`、`452`）会在 60 秒后重试，最多 5 次尝试，然后这一行变为 `failed`。`5xx` 应答（不存在的地址、被拒绝的登录）会立即丢弃这一行：重试不会改变答复。
 - **错误也会被丢弃。** 作业运行时的 `ArgumentError` 会被丢弃，什么也不发送：这既包括配置错误（没有 `CYBERTRAIN_SMTP_HOST`、没有发件人），也包括在数据库中被修改过的负载。这样的邮件会一直丢失，直到有人查看作业页面或 `./<app> jobs list discarded`；修正配置之后，`./<app> jobs retry ID` 会把它重新入队（被丢弃的 `535` 登录失败也一样）。

@@ -1,5 +1,5 @@
 ---
-source_sha256: c3fdfe6dfa20ecfa65983a2d32a087f3ded3169cea41670686a8b55891174b0f
+source_sha256: f07cc847b2cbe37adcf2c0787d8d3bcd819c938ac8f621efc9628f5f4c446f27
 ---
 # Запросы
 
@@ -172,7 +172,9 @@ Cookie сессии шифруется и аутентифицируется AES
 ## Ограничение частоты запросов и адрес клиента
 
 `rate_limit` в контроллере ограничивает, как часто один клиент может вызывать
-некоторые действия; подсчёт ведётся до выполнения действия:
+некоторые действия; подсчёт ведётся до выполнения действия. Ему нужна строка
+`require "cybertrain/rate_limit"` (она загружает кэш) в `bin/<app>.rb` и
+`bin/db.rb`; её добавляет `cybertrain generate authentication`:
 
 ```ruby
 class SessionsController < ApplicationController

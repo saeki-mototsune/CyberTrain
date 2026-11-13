@@ -1,5 +1,5 @@
 ---
-source_sha256: cbd431aac3ca2ef8bf0e14cfaf9a22c24f968b66143a02d4efc5b482d085184b
+source_sha256: 8bf1e8b4b6f49c71977f7962ba570bf0d29cc5af86a5dd089c93108a8e865203
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -223,7 +223,9 @@ Une application qui écoute un flux extérieur (cotations de marché, télémét
 d’appareils, flux d’événements) pendant que le serveur tourne s’y abonne avec
 `Cybertrain::WebSocket.subscribe`. Comme le client HTTP, il n’est pas inclus
 dans `require "cybertrain"`&nbsp;; requérez-le là où l’abonnement est écrit,
-ainsi que la couche TLS pour `wss://`&nbsp;:
+ainsi que la couche TLS pour `wss://`. Il charge le sous-système des feeds (le
+rôle `feeds`, le contrôle de santé des feeds), donc une application sur
+`cybertrain/core` n’a besoin d’aucune autre ligne&nbsp;:
 
 ```ruby
 # config/app.rb (ou un fichier que bin/<app>.rb requiert avant Cybertrain::Main.run)
@@ -405,9 +407,10 @@ La conception&nbsp;: [docs/design.md](../design.md) D33 et D56.
 `Cybertrain::Mailer` envoie des e-mails, en texte brut ou avec une partie
 HTML, via un serveur SMTP (le serveur de soumission de votre fournisseur, ou
 un relais local), tout de suite (`deliver`) ou depuis un job
-(`deliver_later`, ci-dessous). `require "cybertrain"` le charge&nbsp;; un
-programme sans le framework requiert `cybertrain/mailer` (qui n’a pas besoin
-de base de données&nbsp;: `deliver_later` est dans `cybertrain/mailer/later`).
+(`deliver_later`, ci-dessous). `require "cybertrain"` le charge&nbsp;; une
+application sur `cybertrain/core`, ou un programme sans le framework, requiert
+`cybertrain/mailer` (qui n’a pas besoin de base de données&nbsp;:
+`deliver_later` est dans `cybertrain/mailer/later`, qui charge aussi les jobs).
 Le TLS se requiert séparément&nbsp;:
 
 ```ruby
@@ -521,7 +524,9 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` prend les arguments de `deliver`, les vérifie tout de suite
+`deliver_later` demande `require "cybertrain/mailer/later"` (ou
+`require "cybertrain"`) dans `bin/<app>.rb` et `bin/db.rb`. Il prend les
+arguments de `deliver`, les vérifie tout de suite
 (une adresse ou un sujet refusé lève une exception ici et rien n’est mis en
 file) et met en file le job intégré `"cybertrain mail"` avec le message
 terminé&nbsp;; un thread de jobs

@@ -202,7 +202,9 @@ An application that listens to an outside feed (market ticks, device
 telemetry, an event stream) while the server runs subscribes to it with
 `Cybertrain::WebSocket.subscribe`. Like the HTTP client it is not in
 `require "cybertrain"`; require it where the subscription is written, and the
-TLS layer too for `wss://`:
+TLS layer too for `wss://`. It loads the feeds subsystem (the `feeds` role,
+the feed health check), so an application on `cybertrain/core` needs no
+other line:
 
 ```ruby
 # config/app.rb (or a file bin/<app>.rb requires before Cybertrain::Main.run)
@@ -368,8 +370,9 @@ The design: [docs/design.md](../design.md) D33 and D56.
 `Cybertrain::Mailer` sends e-mail, plain text or with an HTML part, through
 an SMTP server (your provider's submission server, or a local relay), now
 (`deliver`) or from a job (`deliver_later`, below). `require "cybertrain"`
-loads it; a program without the framework requires `cybertrain/mailer`
-(which needs no database: `deliver_later` is in `cybertrain/mailer/later`).
+loads it; an application on `cybertrain/core`, or a program without the
+framework, requires `cybertrain/mailer` (which needs no database:
+`deliver_later` is in `cybertrain/mailer/later`, which loads jobs too).
 TLS is a separate require:
 
 ```ruby
@@ -475,7 +478,9 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` takes `deliver`'s arguments, checks them at once (a refused
+`deliver_later` needs `require "cybertrain/mailer/later"` (or
+`require "cybertrain"`) in `bin/<app>.rb` and `bin/db.rb`. It takes
+`deliver`'s arguments, checks them at once (a refused
 address or subject raises here and nothing is enqueued) and enqueues the
 built-in job `"cybertrain mail"` with the finished message; a job thread
 ([Background work](background-and-operations.md#background-work)) sends it

@@ -1,10 +1,10 @@
 ---
-description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 62ba3d7589fdceb274dd4bb9293a283cde0cb649f1a0f8b25c65d8130b34e9dc
+description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
+source_sha256: 0578e9ef913645d988674afb0de1fa6622594b35dab3d19ebad653077ac91c27
 ---
 # 工作原理
 
-本页说明 CyberTrain 应用如何构建和运行：构建时生成的代码、请求时解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite 以及开发循环，然后是一张与 Rails 的差异表。首页的[性能一节](site:index.html#performance)把结果与用 Rails 8.1 编写的同一个博客作了对比。测量方法、全部数字以及如何重新测量，见 [docs/benchmark.md](../benchmark.md)。
+本页说明 CyberTrain 应用如何构建和运行：构建时生成的代码、应用 require 的子系统、请求时解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite 以及开发循环，然后是一张与 Rails 的差异表。首页的[性能一节](site:index.html#performance)把结果与用 Rails 8.1 编写的同一个博客作了对比。测量方法、全部数字以及如何重新测量，见 [docs/benchmark.md](../benchmark.md)。
 
 ## 构建时代码生成
 
@@ -22,6 +22,38 @@ source_sha256: 62ba3d7589fdceb274dd4bb9293a283cde0cb649f1a0f8b25c65d8130b34e9dc
 - `gen/app.rb`：`require_relative` 清单。
 
 `gen/` 要提交，而不是加入 gitignore：`spin build`/`spin test` 没有先运行生成的钩子，所以签入的输出必须已经是可以编译的代码。CI 会重新运行 `spin run gen`，出现差异就失败，因此过时的生成代码无法合并。
+
+## 子系统
+
+Spinel 会编译程序 require 的每个文件里的每个方法，无论是否被调用，而它对整个程序的分析占了每次构建的大部分时间。所以应用可能用不到的框架部分是分开的，由 `bin/<app>.rb` 指明应用用到哪些，就像 Rails 的 `config/application.rb` 列出 railtie 一样：
+
+| 行 | 加载的内容 |
+| --- | --- |
+| `require "cybertrain/core"` | HTTP、路由、控制器、模型、视图与辅助方法（包括 `turbo_frame_tag`、`dom_id`、`render turbo_stream:` 和 `format.turbo_stream`）、资源、会话、CSRF、CSP、控制台、`db` 与 `migrate` |
+| `require "cybertrain/jobs"` | `Job` 与作业类、`Scheduler`（`every`、`cron`）、`worker` 角色、`jobs` 命令和作业页面 |
+| `require "cybertrain/streams"` | `Stream.broadcast_*`、流端点（SSE 与 WebSocket）、`Controller#turbo_stream`，以及辅助方法 `turbo_stream_from`、`turbo_stream`、`signed_stream_name` 和 `stream_source_path` |
+| `require "cybertrain/feeds"` | `Background`、`feeds` 角色及其健康检查；`require "cybertrain/websocket"`（`WebSocket.subscribe`）会加载它 |
+| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer/later"` | `Mailer.deliver_later`；同时加载邮件发送器和作业 |
+| `require "cybertrain/cache"` | `Cache` |
+| `require "cybertrain/rate_limit"` | 控制器中的 `rate_limit`；同时加载缓存 |
+| `require "cybertrain"` | 以上全部 |
+
+每一行都会加载核心，行的顺序无关紧要：框架按自己的固定顺序启动和停止各子系统。在一个用脚手架生成的应用上，只用核心时编译 2,205 个方法而不是 2,767 个，分析用 38 秒而不是 52 秒；完整构建用 83 秒而不是 108 秒，修改一次控制器约 47 秒而不是约 65 秒（[docs/performance-next.md](../performance-next.md)）。
+
+`cybertrain new` 在 `bin/<app>.rb` 和 `bin/db.rb`（它加载 `config/app.rb`，所以需要相同的行）中写入 `require "cybertrain/core"`。`cybertrain generate job` 向两者添加 `require "cybertrain/jobs"`，`generate authentication` 添加 `require "cybertrain/rate_limit"`；其余的行由你自己添加。拆分之前编写的应用里是 `require "cybertrain"`，它仍然加载全部内容：应用照旧构建和运行；把这一行换成核心加上用到的行，构建才会变快。
+
+缺少的行会在应用运行之前被发现：
+
+<!-- list: points -->
+- 引用了缺失子系统的 Ruby 代码（`ReportJob.perform_later`、`Cybertrain::Stream.broadcast_append_to`、`Cybertrain::Mailer.deliver`、`rate_limit to:`）无法编译；错误会指出常量或方法，上表给出对应的行。
+- 调用子系统辅助方法的视图会让 `spin run gen`（以及 `spin run gen -- --check`）以退出状态 1 停止：`app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`。如果模板仍被渲染，会抛出 `undefined helper 'turbo_stream_from'`。
+- `./<app> worker`、`./<app> jobs` 和 `./<app> feeds` 会打印例如 `the worker role needs require "cybertrain/jobs" in bin/<app>.rb`，并以 1 退出。
+- `/up` 只报告已加载的部分：没有作业就不检查 worker 是否停滞，没有 feed 就不检查 feed 是否停滞。
+
+没有作业时，缓存自己清除过期的行：进程的第一次写入，以及每过 `cache_prune_interval` 后的第一次写入，最多删除一千行。有作业时，仍由计划任务 `"cybertrain cache prune"` 完成（[缓存存储](background-and-operations.md#the-cache-store)）。
+
+有两种情况 gen 不会发现：没有 `cybertrain/jobs` 时在 `config/routes.rb` 中写了 `jobs_page` 行，会成为生成的控制器的编译错误，而不是 gen 的提示；`retry_on` 或 `discard_on` 引用了 `Cybertrain::Mailer` 错误的作业，会让生成的 `gen/app.rb` 自己 require `cybertrain/mailer`。
 
 ## 视图是解释执行的
 
@@ -66,6 +98,7 @@ source_sha256: 62ba3d7589fdceb274dd4bb9293a283cde0cb649f1a0f8b25c65d8130b34e9dc
 | Rails | CyberTrain |
 | --- | --- |
 | `rails console`、`rails dbconsole` | `./<app> console` 在模型上求值模板的表达式语言（Spinel 没有 `eval`，所以不是 Ruby）；`./<app> dbconsole` 打开 `sqlite3`（[控制台](background-and-operations.md#the-console)） |
+| `config/application.rb` require 应用用到的 railtie | `bin/<app>.rb` 和 `bin/db.rb` require `cybertrain/core` 以及应用用到的[子系统](#subsystems)；`require "cybertrain"` 就是全部 |
 | `rails runner`、`lib/tasks/*.rake` | 在 `bin/<app>.rb` 中写 `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }`：`./<app> name ARGS` 会在连接好数据库的情况下运行它 |
 | 修改代码，正在运行的应用会自动采用 | Ruby 需要重新构建；开发时 `cybertrain server` 会替你完成（重新构建、停止、`execv`） |
 | 修改视图，无需重新加载 | 相同——开发时视图在每次请求时从磁盘解析 |

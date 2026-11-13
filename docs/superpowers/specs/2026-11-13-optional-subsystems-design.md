@@ -164,7 +164,8 @@ the HTTP contract, the deploy files.
 - The cache prunes without jobs (a test with a fixed clock).
 - The measurement of section 1 repeated on the real implementation: a
   scaffolded application with `cybertrain/core` against one with
-  `cybertrain`, recorded in docs/performance-next.md.
+  `cybertrain`, recorded in docs/performance-next.md ("Optional subsystems
+  (2026-11-13)").
 
 ## 8. Not in this change
 

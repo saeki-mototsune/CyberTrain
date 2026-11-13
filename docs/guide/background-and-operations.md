@@ -6,7 +6,9 @@ An application that has to do something outside a request (send a
 notification after the response went out, sweep old rows every night, retry
 a call that failed) hands it to the framework, which runs it on background
 threads of the served process, or of a separate worker process. A job is a
-class in `app/jobs/`, as in Rails:
+class in `app/jobs/`, as in Rails. Jobs and scheduled tasks need
+`require "cybertrain/jobs"` in `bin/<app>.rb` and `bin/db.rb`, which
+`cybertrain generate job` adds ([Subsystems](how-it-works.md#subsystems)):
 
 ```ruby
 # app/jobs/welcome_job.rb
@@ -40,8 +42,9 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
   (`./<app> worker`, see [Process roles](#process-roles)), after boot has
   connected the database and set `SPINEL_WORKERS`; `migrate`, `db ...`,
   `jobs ...`, `console` and `Main.command` commands never start them, and
-  neither does `Cybertrain::Test::Client`. The job threads start in every
-  such process, even in an application with no job class: the framework
+  neither does `Cybertrain::Test::Client`. With jobs required, the job
+  threads start in every such process, even in an application with no job
+  class: the framework
   registers its own mail job (`Mailer.deliver_later`,
   [Sending e-mail](external-services.md#sending-e-mail)).
 - **The table.** Jobs are rows of `cybertrain_jobs`, which the framework
@@ -345,12 +348,17 @@ image and the same database:
   heartbeat.
 - `Cybertrain::Main.worker?(ARGV)` and `Main.feeds?(ARGV)`, like
   `Main.server?(ARGV)`, tell `bin/<app>.rb` which role it is starting.
+- `worker` needs `require "cybertrain/jobs"` in `bin/<app>.rb`, and `feeds`
+  `require "cybertrain/feeds"` (which `cybertrain/websocket` loads); without
+  it the binary says which line is missing and exits with 1.
 
 ## The cache store
 
 `Cybertrain::Cache` keeps answers for a while in the application's own
-database, so the next request does not ask the slow API again. It is not in
-`require "cybertrain"`; require it where it is used:
+database, so the next request does not ask the slow API again.
+`require "cybertrain"` loads it; an application on `cybertrain/core` adds
+`require "cybertrain/cache"` to `bin/<app>.rb` and `bin/db.rb`, or where it
+is used:
 
 ```ruby
 require "cybertrain/cache"
@@ -386,9 +394,12 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   Every write takes the database's writer lock, which requests writing their
   own rows wait for: cache what jobs produce, or values read far more often
   than they change, rather than writing in a busy request path.
-- **Pruning.** Requiring the file registers the scheduled task `"cybertrain
-  cache prune"`, which deletes expired rows every `cache_prune_interval`
-  seconds (300, `CYBERTRAIN_CACHE_PRUNE_INTERVAL`), a thousand per statement.
+- **Pruning.** With jobs loaded, requiring the file registers the scheduled
+  task `"cybertrain cache prune"`, which deletes expired rows every
+  `cache_prune_interval` seconds (300, `CYBERTRAIN_CACHE_PRUNE_INTERVAL`), a
+  thousand per statement. Without jobs the cache prunes itself: the first
+  write of a process, and the first after each `cache_prune_interval`,
+  deletes up to a thousand expired rows.
   The interval is read when the file is required: set the variable, or
   `c.cache_prune_interval` in a `Cybertrain.configure` block that runs before
   the require. `Cache.prune(now)` is the test entry point.

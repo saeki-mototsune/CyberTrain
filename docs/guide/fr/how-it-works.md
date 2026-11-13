@@ -1,10 +1,10 @@
 ---
-source_sha256: 62ba3d7589fdceb274dd4bb9293a283cde0cb649f1a0f8b25c65d8130b34e9dc
-description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
+source_sha256: 0578e9ef913645d988674afb0de1fa6622594b35dab3d19ebad653077ac91c27
+description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
 
-Cette page explique comment une application CyberTrain est construite et exécutée&nbsp;: le code généré à la compilation, les vues interprétées au moment de la requête, le serveur HTTP, SQLite via la FFI et la boucle de développement, puis un tableau des différences avec Rails. La [section performances](site:index.html#performance) de la page d’accueil compare le résultat avec le même blog écrit en Rails 8.1. La méthode, chaque chiffre et la façon de refaire la mesure se trouvent dans [docs/benchmark.md](../benchmark.md).
+Cette page explique comment une application CyberTrain est construite et exécutée&nbsp;: le code généré à la compilation, les sous-systèmes qu’une application requiert, les vues interprétées au moment de la requête, le serveur HTTP, SQLite via la FFI et la boucle de développement, puis un tableau des différences avec Rails. La [section performances](site:index.html#performance) de la page d’accueil compare le résultat avec le même blog écrit en Rails 8.1. La méthode, chaque chiffre et la façon de refaire la mesure se trouvent dans [docs/benchmark.md](../benchmark.md).
 
 ## Génération de code à la compilation
 
@@ -22,6 +22,38 @@ Cette page explique comment une application CyberTrain est construite et exécut
 - `gen/app.rb`&nbsp;: le manifeste des `require_relative`.
 
 `gen/` est versionné, pas ignoré par git&nbsp;: `spin build` et `spin test` n’ont pas de hook pour générer d’abord, donc la sortie versionnée doit déjà être ce qui compile. La CI relance `spin run gen` et échoue s’il y a un diff&nbsp;: du code généré périmé ne peut donc pas être fusionné.
+
+## Sous-systèmes
+
+Spinel compile chaque méthode de chaque fichier qu’un programme requiert, appelée ou non, et son analyse du programme entier représente l’essentiel de chaque build. Les parties du framework qu’une application peut ne pas utiliser sont donc séparées, et `bin/<app>.rb` nomme celles qu’elle utilise, comme le `config/application.rb` de Rails liste les railties&nbsp;:
+
+| Ligne | Charge |
+| --- | --- |
+| `require "cybertrain/core"` | HTTP, le routage, les contrôleurs, les modèles, les vues et les helpers (dont `turbo_frame_tag`, `dom_id`, `render turbo_stream:` et `format.turbo_stream`), les assets, les sessions, CSRF, CSP, la console, `db` et `migrate` |
+| `require "cybertrain/jobs"` | `Job` et les classes de jobs, `Scheduler` (`every`, `cron`), le rôle `worker`, la commande `jobs` et la page des jobs |
+| `require "cybertrain/streams"` | `Stream.broadcast_*`, le point d’accès des flux (SSE et WebSocket), `Controller#turbo_stream`, les helpers `turbo_stream_from`, `turbo_stream`, `signed_stream_name` et `stream_source_path` |
+| `require "cybertrain/feeds"` | `Background`, le rôle `feeds` et son contrôle de santé&nbsp;; `require "cybertrain/websocket"` (`WebSocket.subscribe`) le charge |
+| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer/later"` | `Mailer.deliver_later`&nbsp;; charge le mailer et les jobs |
+| `require "cybertrain/cache"` | `Cache` |
+| `require "cybertrain/rate_limit"` | `rate_limit` dans les contrôleurs&nbsp;; charge le cache |
+| `require "cybertrain"` | tout ce qui précède |
+
+Chaque ligne charge le cœur, et leur ordre n’a pas d’importance&nbsp;: le framework démarre et arrête les sous-systèmes dans un ordre fixe qui lui est propre. Sur une application générée par scaffold, le cœur seul compile 2&nbsp;205 méthodes au lieu de 2&nbsp;767 et s’analyse en 38&nbsp;s au lieu de 52&nbsp;s&nbsp;; un build complet prend 83&nbsp;s au lieu de 108&nbsp;s, et une modification de contrôleur environ 47&nbsp;s au lieu de 65&nbsp;s ([docs/performance-next.md](../performance-next.md)).
+
+`cybertrain new` écrit `require "cybertrain/core"` dans `bin/<app>.rb` et `bin/db.rb` (qui charge `config/app.rb` et a donc besoin des mêmes lignes). `cybertrain generate job` ajoute `require "cybertrain/jobs"` aux deux, et `generate authentication` ajoute `require "cybertrain/rate_limit"`&nbsp;; les autres lignes sont à ajouter vous-même. Une application écrite avant la séparation contient `require "cybertrain"`, qui charge toujours tout&nbsp;: elle se construit et se comporte comme avant, et c’est en remplaçant cette ligne par le cœur et les lignes qu’elle utilise qu’elle se construit plus vite.
+
+Une ligne manquante est détectée avant que l’application ne tourne&nbsp;:
+
+<!-- list: points -->
+- Du code Ruby qui nomme un sous-système manquant (`ReportJob.perform_later`, `Cybertrain::Stream.broadcast_append_to`, `Cybertrain::Mailer.deliver`, `rate_limit to:`) ne compile pas&nbsp;; l’erreur nomme la constante ou la méthode, et le tableau ci-dessus nomme sa ligne.
+- Une vue qui appelle un helper d’un sous-système arrête `spin run gen` (et `spin run gen -- --check`) avec le code de sortie 1&nbsp;: `app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`. Un template rendu malgré tout lève `undefined helper 'turbo_stream_from'`.
+- `./<app> worker`, `./<app> jobs` et `./<app> feeds` affichent par exemple `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` et sortent avec 1.
+- `/up` ne rend compte que de ce qui est chargé&nbsp;: pas de worker figé sans les jobs, pas de flux figé sans les feeds.
+
+Sans les jobs, le cache purge lui-même ses lignes expirées&nbsp;: la première écriture d’un processus, puis la première après chaque `cache_prune_interval`, en supprime jusqu’à mille. Avec les jobs, c’est la tâche planifiée `"cybertrain cache prune"`, comme avant ([Le cache](background-and-operations.md#the-cache-store)).
+
+Deux cas ne sont pas détectés par gen&nbsp;: une ligne `jobs_page` dans `config/routes.rb` sans `cybertrain/jobs` est une erreur de compilation du contrôleur généré plutôt que le message de gen, et un job dont le `retry_on` ou le `discard_on` nomme une erreur de `Cybertrain::Mailer` fait requérir `cybertrain/mailer` par le `gen/app.rb` généré lui-même.
 
 ## Les vues sont interprétées
 
@@ -66,6 +98,7 @@ Un succès demande un redémarrage (le même indicateur qu’un `kill -HUP` exte
 | Rails | CyberTrain |
 | --- | --- |
 | `rails console`, `rails dbconsole` | `./<app> console` évalue le langage d’expressions des templates sur les modèles (Spinel n’a pas d’`eval`, donc pas de Ruby)&nbsp;; `./<app> dbconsole` ouvre `sqlite3` ([La console](background-and-operations.md#the-console)) |
+| `config/application.rb` requiert les railties que l’application utilise | `bin/<app>.rb` et `bin/db.rb` requièrent `cybertrain/core` et les [sous-systèmes](#subsystems) que l’application utilise&nbsp;; `require "cybertrain"` les charge tous |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` dans `bin/<app>.rb`&nbsp;: `./<app> name ARGS` la lance avec la base de données connectée |
 | Modifiez le code, l’application en cours d’exécution le prend en compte | Le Ruby demande une recompilation&nbsp;; en développement, `cybertrain server` s’en charge pour vous (recompilation, arrêt, `execv`) |
 | Modifiez une vue, aucun rechargement nécessaire | Pareil — en développement, les vues sont analysées depuis le disque à chaque requête |

@@ -1,5 +1,5 @@
 ---
-source_sha256: c3fdfe6dfa20ecfa65983a2d32a087f3ded3169cea41670686a8b55891174b0f
+source_sha256: f07cc847b2cbe37adcf2c0787d8d3bcd819c938ac8f621efc9628f5f4c446f27
 ---
 # Requêtes
 
@@ -172,7 +172,9 @@ Le cookie de session est chiffré et authentifié en AES-256-GCM, comme le cooki
 ## Limitation du débit et adresse du client
 
 `rate_limit` dans un contrôleur plafonne la fréquence à laquelle un client peut
-appeler certaines actions, compté avant l’exécution de l’action&nbsp;:
+appeler certaines actions, compté avant l’exécution de l’action. Il demande
+`require "cybertrain/rate_limit"` (qui charge le cache) dans `bin/<app>.rb`
+et `bin/db.rb`&nbsp;; `cybertrain generate authentication` l’ajoute&nbsp;:
 
 ```ruby
 class SessionsController < ApplicationController

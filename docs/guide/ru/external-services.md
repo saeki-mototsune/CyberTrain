@@ -1,5 +1,5 @@
 ---
-source_sha256: cbd431aac3ca2ef8bf0e14cfaf9a22c24f968b66143a02d4efc5b482d085184b
+source_sha256: 8bf1e8b4b6f49c71977f7962ba570bf0d29cc5af86a5dd089c93108a8e865203
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -211,7 +211,9 @@ parser.finish { |event| Answer.append(event.event_data) }   # последнее
 устройств, поток событий), пока работает сервер, подписывается на него через
 `Cybertrain::WebSocket.subscribe`. Как и HTTP-клиент, он не входит в
 `require "cybertrain"`; подключайте его там, где пишется подписка, а для
-`wss://` — также слой TLS:
+`wss://` — также слой TLS. Он загружает подсистему фидов (роль `feeds`,
+проверку здоровья фидов), так что приложению на `cybertrain/core` другая
+строка не нужна:
 
 ```ruby
 # config/app.rb (или файл, который bin/<app>.rb подключает до Cybertrain::Main.run)
@@ -385,9 +387,10 @@ client.close
 `Cybertrain::Mailer` отправляет электронные письма, простым текстом или с
 HTML-частью, через SMTP-сервер (сервер отправки вашего провайдера или
 локальный ретранслятор) — сразу (`deliver`) или из задачи (`deliver_later`,
-ниже). `require "cybertrain"` его загружает; программа без фреймворка
-подключает `cybertrain/mailer` (которому не нужна база данных:
-`deliver_later` находится в `cybertrain/mailer/later`). TLS подключается
+ниже). `require "cybertrain"` его загружает; приложение на `cybertrain/core`
+или программа без фреймворка подключает `cybertrain/mailer` (которому не
+нужна база данных: `deliver_later` находится в `cybertrain/mailer/later`,
+который загружает и задачи). TLS подключается
 отдельным require:
 
 ```ruby
@@ -494,7 +497,9 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` принимает аргументы `deliver`, сразу их проверяет
+`deliver_later` требует `require "cybertrain/mailer/later"` (или
+`require "cybertrain"`) в `bin/<app>.rb` и `bin/db.rb`. Он принимает
+аргументы `deliver`, сразу их проверяет
 (отвергнутый адрес или тема возбуждает исключение здесь, и в очередь ничего
 не попадает) и ставит в очередь встроенную задачу `"cybertrain mail"` с
 готовым сообщением; поток задач

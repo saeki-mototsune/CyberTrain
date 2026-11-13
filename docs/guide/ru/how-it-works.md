@@ -1,12 +1,13 @@
 ---
-description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: 62ba3d7589fdceb274dd4bb9293a283cde0cb649f1a0f8b25c65d8130b34e9dc
+description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, необязательные подсистемы, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
+source_sha256: 0578e9ef913645d988674afb0de1fa6622594b35dab3d19ebad653077ac91c27
 ---
 
 # Как это работает
 
 На этой странице объясняется, как CyberTrain-приложение собирается и запускается:
-код, генерируемый при сборке, представления, интерпретируемые во время запроса,
+код, генерируемый при сборке, подсистемы, которые требует приложение,
+представления, интерпретируемые во время запроса,
 HTTP-сервер, SQLite через FFI и цикл разработки, а затем таблица отличий
 от Rails. [Раздел о производительности](site:index.html#performance) на главной
 странице сравнивает результат с тем же блогом, написанным на Rails 8.1. Методика,
@@ -40,6 +41,70 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 должен быть тем, что компилируется. CI заново запускает `spin run gen` и падает
 при наличии различий, так что устаревший сгенерированный код не может попасть
 в основную ветку.
+
+## Подсистемы
+
+Spinel компилирует каждый метод каждого файла, который требует программа,
+вызывается он или нет, а анализ всей программы занимает большую часть каждой
+сборки. Поэтому части фреймворка, которые приложению могут быть не нужны,
+вынесены отдельно, и `bin/<app>.rb` перечисляет те, что оно использует, как
+`config/application.rb` в Rails перечисляет railtie:
+
+| Строка | Загружает |
+| --- | --- |
+| `require "cybertrain/core"` | HTTP, маршрутизацию, контроллеры, модели, представления и хелперы (среди них `turbo_frame_tag`, `dom_id`, `render turbo_stream:` и `format.turbo_stream`), ассеты, сессии, CSRF, CSP, консоль, `db` и `migrate` |
+| `require "cybertrain/jobs"` | `Job` и классы задач, `Scheduler` (`every`, `cron`), роль `worker`, команду `jobs` и страницу задач |
+| `require "cybertrain/streams"` | `Stream.broadcast_*`, конечную точку потоков (SSE и WebSocket), `Controller#turbo_stream`, хелперы `turbo_stream_from`, `turbo_stream`, `signed_stream_name` и `stream_source_path` |
+| `require "cybertrain/feeds"` | `Background`, роль `feeds` и её проверку здоровья; её загружает `require "cybertrain/websocket"` (`WebSocket.subscribe`) |
+| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; загружает почту и задачи |
+| `require "cybertrain/cache"` | `Cache` |
+| `require "cybertrain/rate_limit"` | `rate_limit` в контроллерах; загружает кэш |
+| `require "cybertrain"` | всё перечисленное |
+
+Каждая строка загружает ядро, и порядок строк не важен: фреймворк запускает
+и останавливает подсистемы в собственном фиксированном порядке. В приложении,
+созданном scaffold, одно ядро компилирует 2 205 методов вместо 2 767
+и анализируется 38 с вместо 52 с; полная сборка занимает 83 с вместо 108 с,
+а правка контроллера — около 47 с вместо 65 с
+([docs/performance-next.md](../performance-next.md)).
+
+`cybertrain new` пишет `require "cybertrain/core"` в `bin/<app>.rb` и в
+`bin/db.rb` (он загружает `config/app.rb`, поэтому ему нужны те же строки).
+`cybertrain generate job` добавляет в оба файла `require "cybertrain/jobs"`,
+а `generate authentication` — `require "cybertrain/rate_limit"`; остальные
+строки добавляете вы. В приложении, написанном до разделения, стоит
+`require "cybertrain"`, которая по-прежнему загружает всё: оно собирается
+и работает как раньше, а быстрее его сборку делает замена этой строки на ядро
+и нужные строки.
+
+Недостающая строка обнаруживается до запуска приложения:
+
+<!-- list: points -->
+- Код на Ruby, который называет недостающую подсистему (`ReportJob.perform_later`,
+  `Cybertrain::Stream.broadcast_append_to`, `Cybertrain::Mailer.deliver`,
+  `rate_limit to:`), не компилируется; ошибка называет константу или метод,
+  а таблица выше — нужную строку.
+- Представление, вызывающее хелпер подсистемы, останавливает `spin run gen`
+  (и `spin run gen -- --check`) с кодом выхода 1:
+  `app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`.
+  Шаблон, отрисованный несмотря на это, выбрасывает `undefined helper 'turbo_stream_from'`.
+- `./<app> worker`, `./<app> jobs` и `./<app> feeds` печатают, например,
+  `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` и
+  завершаются с кодом 1.
+- `/up` сообщает только о загруженном: без задач не проверяет, не завис ли
+  воркер, без фидов — не зависли ли фиды.
+
+Без задач кэш сам удаляет просроченные строки: первая запись процесса и первая
+запись после каждого `cache_prune_interval` удаляют до тысячи таких строк.
+С задачами это делает, как и раньше, плановая задача `"cybertrain cache
+prune"` ([Хранилище кэша](background-and-operations.md#the-cache-store)).
+
+Два случая gen не обнаруживает: строка `jobs_page` в `config/routes.rb` без
+`cybertrain/jobs` даёт ошибку компиляции сгенерированного контроллера, а не
+сообщение gen, а задача, чей `retry_on` или `discard_on` называет ошибку
+`Cybertrain::Mailer`, заставляет сгенерированный `gen/app.rb` самому требовать
+`cybertrain/mailer`.
 
 ## Представления интерпретируются
 
@@ -122,6 +187,7 @@ run NAME`) в `development`
 | Rails | CyberTrain |
 | --- | --- |
 | `rails console`, `rails dbconsole` | `./<app> console` вычисляет язык выражений шаблонов над моделями (в Spinel нет `eval`, так что это не Ruby); `./<app> dbconsole` открывает `sqlite3` ([Консоль](background-and-operations.md#the-console)) |
+| `config/application.rb` требует railtie, которые использует приложение | `bin/<app>.rb` и `bin/db.rb` требуют `cybertrain/core` и [подсистемы](#subsystems), которые использует приложение; `require "cybertrain"` — это все они |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` в `bin/<app>.rb`: `./<app> name ARGS` запускает её с подключённой базой данных |
 | Правите код — запущенное приложение подхватывает изменения | Ruby требует пересборки; в режиме разработки `cybertrain server` делает это за вас (пересборка, остановка, `execv`) |
 | Правите представление — перезагрузка не нужна | Так же — в режиме разработки представления разбираются с диска при каждом запросе |

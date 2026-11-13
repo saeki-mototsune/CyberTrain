@@ -315,10 +315,49 @@ has the causes and what was left out).
   analysis grew 4.2 times in the week the framework grew 2.3 times
   ([spinel-feedback.md](spinel-feedback.md), "Build time").
 - Not tried here: leaving the subsystems an application does not call
-  out of its program, and a `bin/db.rb` that requires only the migrator
-  (8 s of analysis instead of 48 s, but it cannot load a `config/app.rb`
-  that names the rest of the framework). Both are in the spec's section
-  6.
+  out of its program (done since, below), and a `bin/db.rb` that requires
+  only the migrator (8 s of analysis instead of 48 s, but it cannot load a
+  `config/app.rb` that names the rest of the framework). Both are in the
+  spec's section 6.
+
+### Optional subsystems (2026-11-13)
+
+An application now requires `cybertrain/core` and a line per subsystem it
+uses (jobs, streams, feeds, the mailer, the cache, rate limiting), and
+`cybertrain new` writes the core alone
+([the spec](superpowers/specs/2026-11-13-optional-subsystems-design.md),
+docs/design.md D79). Measured on the same 4-core VM and Spinel at fabd28a:
+one application made with `cybertrain new --path`, `generate scaffold
+article title:string body:text` and `db migrate`, copied, and the copy's
+`require "cybertrain/core"` replaced by `require "cybertrain"` in
+`bin/NAME.rb` and `bin/db.rb` (two directories of equal path length, so
+the `#line` directives are the same length). One compile at a time,
+nothing else running.
+
+| Step | `cybertrain` | `cybertrain/core` | Change |
+| --- | --: | --: | --: |
+| Methods compiled (`cg_methods`) | 2,767 | 2,205 | -20% |
+| `phase=analysis`, two compiles | 52.6 s, 52.1 s | 38.4 s, 38.9 s | -26% |
+| Generated C | 15.7 MB | 12.7 MB | -19% |
+| `spin build NAME`, `~/.cache/spinel` empty | 108.3 s | 83.4 s | -23% |
+| `spin build NAME -- --incremental`, a controller edit, three edits | 68.3 s, 61.6 s, 66.4 s | 42.3 s, 52.9 s, 47.1 s | about -27% |
+| `cybertrain db status` after a controller edit (rebuilds `bin/db.rb`) | 84.0 s | 60.0 s | -29% |
+
+- The analysis and the method count are `spinel bin/NAME.rb -c -o x.c
+  --force --timing $(spin flags)`. The edits follow a warm incremental
+  build: three edits of `articles_controller.rb`, each built and timed
+  alone (an added comment, then two changed flash messages). `db status`
+  was run once first, so the build it timed is the one the edit caused.
+- The spike of the spec (cut by hand from a915504) found 41.6 s against
+  30-31 s of analysis for the same cut; the framework has grown since, and
+  the saving held: about 14 s of every edit and every `db` command.
+- The binary of the core application served `/articles`, `/articles/new`
+  and `/up` with 200, answered `/cybertrain/stream` with 404, and
+  `./NAME worker`, `jobs` and `feeds` with the line each needs and status 1.
+- `require "cybertrain"` is unchanged, so an existing application, examples/blog
+  and the playground build as before. The test files the generators write
+  (`generate job`, `helper`, `authentication`) still require `cybertrain`,
+  so each test program keeps compiling the whole framework.
 
 ## Things that are not worth doing again
 

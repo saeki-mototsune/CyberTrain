@@ -2975,8 +2975,14 @@ What would fix it, for Spinel to judge:
   the two files it needs, which it cannot require because the
   application's config file may name anything.
 
-What CyberTrain does today: nothing reduces it. The framework keeps
-growing through phase 5 of the Rails-gap programme.
+What CyberTrain does today: since 2026-11-13 an application can leave
+the subsystems it does not use out of its program (`require
+"cybertrain/core"` and a line per subsystem, what `cybertrain new` writes):
+for a scaffolded application 2,205 methods instead of 2,767 and 38 s of
+analysis instead of 52 s, a controller edit about 47 s instead of 65 s
+(docs/performance-next.md, "Optional subsystems"). That is pruning by
+hand, and the framework keeps growing through phase 5 of the Rails-gap
+programme.
 
 ### spin: every executable is stale when any Ruby file is newer
 

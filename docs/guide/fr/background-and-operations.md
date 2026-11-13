@@ -1,5 +1,5 @@
 ---
-source_sha256: dd5d7eebef29220e2e57c95a61ce59c4a8e72ca3ba539128e77f832bc46ef65b
+source_sha256: 81830614213a647312f38c864c43c884f88bd2e50841a5fc690109f00ad33375
 ---
 # Tâches de fond et exploitation
 
@@ -10,7 +10,9 @@ une notification une fois la réponse partie, purger les anciennes lignes
 chaque nuit, réessayer un appel qui a échoué) le confie au framework, qui
 l’exécute sur des threads d’arrière-plan du processus qui sert, ou d’un
 processus worker séparé. Un job est une classe dans `app/jobs/`, comme dans
-Rails&nbsp;:
+Rails. Les jobs et les tâches planifiées demandent `require "cybertrain/jobs"`
+dans `bin/<app>.rb` et `bin/db.rb`, que `cybertrain generate job` ajoute
+([Sous-systèmes](how-it-works.md#subsystems))&nbsp;:
 
 ```ruby
 # app/jobs/welcome_job.rb
@@ -45,9 +47,9 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
   [Rôles des processus](#process-roles)), après que le démarrage a connecté
   la base de données et défini `SPINEL_WORKERS`&nbsp;; les commandes
   `migrate`, `db ...`, `jobs ...`, `console` et `Main.command` ne les
-  démarrent jamais, pas plus que `Cybertrain::Test::Client`. Les threads de
-  jobs démarrent dans chacun de ces processus, même dans une application
-  sans classe de job&nbsp;: le framework enregistre son propre job de mail
+  démarrent jamais, pas plus que `Cybertrain::Test::Client`. Avec les jobs
+  requis, les threads de jobs démarrent dans chacun de ces processus, même
+  dans une application sans classe de job&nbsp;: le framework enregistre son propre job de mail
   (`Mailer.deliver_later`,
   [Envoyer des e-mails](external-services.md#sending-e-mail)).
 - **La table.** Les jobs sont des lignes de `cybertrain_jobs`, que le
@@ -390,13 +392,17 @@ des conteneurs, tous à partir de la même image et de la même base&nbsp;:
   puisqu’un ancien processus n’écrit aucun battement de cœur.
 - `Cybertrain::Main.worker?(ARGV)` et `Main.feeds?(ARGV)`, comme
   `Main.server?(ARGV)`, indiquent à `bin/<app>.rb` quel rôle il démarre.
+- `worker` demande `require "cybertrain/jobs"` dans `bin/<app>.rb`, et `feeds`
+  `require "cybertrain/feeds"` (que `cybertrain/websocket` charge)&nbsp;; sans
+  elle, le binaire dit quelle ligne manque et sort avec 1.
 
 ## Le cache
 
 `Cybertrain::Cache` garde des réponses un certain temps dans la base de
 l’application elle-même, pour que la requête suivante ne réinterroge pas
-l’API lente. Il n’est pas dans `require "cybertrain"`&nbsp;; requérez-le là où
-il sert&nbsp;:
+l’API lente. `require "cybertrain"` le charge&nbsp;; une application sur
+`cybertrain/core` ajoute `require "cybertrain/cache"` à `bin/<app>.rb` et
+`bin/db.rb`, ou là où il sert&nbsp;:
 
 ```ruby
 require "cybertrain/cache"
@@ -436,10 +442,13 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   propres lignes&nbsp;: mettez en cache ce que produisent les jobs, ou des
   valeurs lues bien plus souvent qu’elles ne changent, plutôt que d’écrire
   dans un chemin de requête chargé.
-- **Purge.** Requérir le fichier enregistre la tâche planifiée
-  `"cybertrain cache prune"`, qui supprime les lignes expirées toutes les
-  `cache_prune_interval` secondes (300, `CYBERTRAIN_CACHE_PRUNE_INTERVAL`),
-  mille par instruction. L’intervalle est lu quand le fichier est
+- **Purge.** Avec les jobs chargés, requérir le fichier enregistre la tâche
+  planifiée `"cybertrain cache prune"`, qui supprime les lignes expirées
+  toutes les `cache_prune_interval` secondes (300,
+  `CYBERTRAIN_CACHE_PRUNE_INTERVAL`), mille par instruction. Sans les jobs, le
+  cache se purge lui-même&nbsp;: la première écriture d’un processus, puis la
+  première après chaque `cache_prune_interval`, supprime jusqu’à mille lignes
+  expirées. L’intervalle est lu quand le fichier est
   requis&nbsp;: réglez la variable, ou `c.cache_prune_interval` dans un bloc
   `Cybertrain.configure` exécuté avant le require. `Cache.prune(now)` est le
   point d’entrée des tests.

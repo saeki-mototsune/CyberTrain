@@ -1,5 +1,5 @@
 ---
-source_sha256: cbd431aac3ca2ef8bf0e14cfaf9a22c24f968b66143a02d4efc5b482d085184b
+source_sha256: 8bf1e8b4b6f49c71977f7962ba570bf0d29cc5af86a5dd089c93108a8e865203
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
@@ -96,7 +96,7 @@ parser.finish { |event| Answer.append(event.event_data) }   # ストリームが
 
 ## WebSocket フィードを購読する
 
-サーバーの動作中に外部のフィード（市場のティック、デバイスのテレメトリー、イベントストリーム）を受信するアプリケーションは、`Cybertrain::WebSocket.subscribe` でそれを購読します。HTTP クライアントと同じく `require "cybertrain"` には含まれていません。購読を書く場所で require し、`wss://` には TLS の層も require してください：
+サーバーの動作中に外部のフィード（市場のティック、デバイスのテレメトリー、イベントストリーム）を受信するアプリケーションは、`Cybertrain::WebSocket.subscribe` でそれを購読します。HTTP クライアントと同じく `require "cybertrain"` には含まれていません。購読を書く場所で require し、`wss://` には TLS の層も require してください。これはフィードのサブシステム（`feeds` ロール、フィードのヘルスチェック）を読み込むので、`cybertrain/core` のアプリケーションにほかの行は要りません：
 
 ```ruby
 # config/app.rb（または bin/<app>.rb が Cybertrain::Main.run の前に require するファイル）
@@ -163,7 +163,7 @@ client.close
 
 ## メールを送る
 
-`Cybertrain::Mailer` は、SMTP サーバー（プロバイダーのサブミッションサーバー、またはローカルのリレー）を通じて、プレーンテキストか HTML の部分を持つメールを、すぐに（`deliver`）またはジョブから（`deliver_later`、下記）送ります。`require "cybertrain"` がこれを読み込みます。フレームワークを使わないプログラムは `cybertrain/mailer` を require します（データベースは要りません。`deliver_later` は `cybertrain/mailer/later` にあります）。TLS は別に require します：
+`Cybertrain::Mailer` は、SMTP サーバー（プロバイダーのサブミッションサーバー、またはローカルのリレー）を通じて、プレーンテキストか HTML の部分を持つメールを、すぐに（`deliver`）またはジョブから（`deliver_later`、下記）送ります。`require "cybertrain"` がこれを読み込みます。`cybertrain/core` のアプリケーションや、フレームワークを使わないプログラムは `cybertrain/mailer` を require します（データベースは要りません。`deliver_later` は `cybertrain/mailer/later` にあり、こちらはジョブも読み込みます）。TLS は別に require します：
 
 ```ruby
 require "cybertrain/mailer"
@@ -218,7 +218,7 @@ Cybertrain::Mailer.deliver(to: user.email, subject: "Welcome", body: "Welcome, #
 Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text, html: html)
 ```
 
-`deliver_later` は `deliver` と同じ引数を取ってその場で確かめ（拒否されるアドレスや件名はここで例外になり、何もキューに入りません）、組み込みのジョブ `"cybertrain mail"` を、できあがったメッセージとともにキューに入れます。ジョブスレッド（[バックグラウンド処理](background-and-operations.md#background-work)）が、その時点の SMTP の設定で送ります。本文は呼び出す前にレンダーしてください。ジョブにはビューのコンテキストがありません。戻り値はジョブの id です。
+`deliver_later` には `bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/mailer/later"`（または `require "cybertrain"`）が必要です。`deliver` と同じ引数を取ってその場で確かめ（拒否されるアドレスや件名はここで例外になり、何もキューに入りません）、組み込みのジョブ `"cybertrain mail"` を、できあがったメッセージとともにキューに入れます。ジョブスレッド（[バックグラウンド処理](background-and-operations.md#background-work)）が、その時点の SMTP の設定で送ります。本文は呼び出す前にレンダーしてください。ジョブにはビューのコンテキストがありません。戻り値はジョブの id です。
 
 - **再試行。** タイムアウト、拒否された接続、`4xx` の応答（グレイリスティング、`421`、`452`）は 60 秒後に再試行され、5 回の試行の後、行は `failed` になります。`5xx` の応答（存在しないアドレス、拒否されたログイン）は、行をすぐに破棄します。再試行しても答えは変わらないからです。
 - **間違いも破棄されます。** ジョブの実行時の `ArgumentError` は、何も送らずに破棄されます。これは、データベースで書き換えられたペイロードだけでなく、設定の間違い（`CYBERTRAIN_SMTP_HOST` がない、送信者がない）も含みます。そうしたメールは、誰かがジョブページか `./<app> jobs list discarded` を見るまで失われたままです。設定を直してから `./<app> jobs retry ID` でキューに戻してください（破棄された `535` のログイン失敗も同じです）。

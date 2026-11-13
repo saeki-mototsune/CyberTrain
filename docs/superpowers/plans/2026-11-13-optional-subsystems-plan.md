@@ -121,7 +121,7 @@ print it. Tests: `test/cli_new.rb`, `test/cli_generate_job.rb`,
   table, what a missing line does), the configuration or install page's
   mention of `bin/NAME.rb`, the tutorial where it shows `bin/blog.rb` if it
   does; four translations each.
-- docs/design.md: a new decision D71 (this spec in short).
+- docs/design.md: a new decision D79 (this spec in short; D71 was taken).
 - Measure: a scaffolded application with `cybertrain/core` against the same
   with `cybertrain` (analysis, full build, one controller edit with the dev
   loop), recorded in docs/performance-next.md.
