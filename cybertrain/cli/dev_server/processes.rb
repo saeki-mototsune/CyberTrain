@@ -1,5 +1,4 @@
 require "fileutils"
-require "open3"
 require "socket"
 require "io/nonblock"
 # The supervisor's own files, relative to this one; the framework's dev
@@ -108,8 +107,11 @@ module Cybertrain
         # @param listener [TCPServer] the supervisor's socket, inherited by every child
         # @param out [IO] the supervisor's log lines (and the children's STDOUT when it is an IO)
         # @param err [IO] where the children's STDERR is copied as it arrives
-        def initialize(root:, name:, port:, load_path:, listener:, out:, err:)
+        # @param stopping [Proc, nil] true once the supervisor is stopping
+        #   (DevServer.serve's flag): #run_gen stops gen then; nil for never
+        def initialize(root:, name:, port:, load_path:, listener:, out:, err:, stopping: nil)
           @root = root
+          @stopping = stopping || DevServer::NEVER
           @name = name
           @port = port
           @load_path = load_path
@@ -183,8 +185,16 @@ module Cybertrain
 
         # --- the runner (Machine's contract) ----------------------------------
 
+        # gen as a run this runner owns (DevServer.owned_run), its STDOUT
+        # and STDERR together: a stop asked while it runs (INT, TERM, HUP:
+        # the stopping predicate) stops its process group within the stop
+        # grace, and the round ends as a failed gen, [false, "stopped"],
+        # which starts nothing (Machine#run_round holds); the driver then
+        # stops the machine and removes the files.
         def run_gen
-          output, status = Open3.capture2e(child_env, *gen_command, chdir: @root)
+          output, _, status = DevServer.owned_run(child_env, gen_command, @root, @stop_grace, true, @stopping)
+          return [false, "stopped"] if status == :stopped
+
           # The rewritten gen/ files are not a change: this round made them.
           @watch&.settle
           ok = status.success?

@@ -1105,6 +1105,24 @@ RUBY
 HARNESS = <<~RUBY
   require "cybertrain/cli/dev_server"
   Cybertrain::CLI::DevServer.define_singleton_method(:ensure_toolchain) { true }
+  # HARNESS_GRACE: the stop grace of the children and of gen, and of the
+  # start-up probes, cut to a fraction of a second (Processes is loaded
+  # with the framework's dev files, after spin flags).
+  unless ENV["HARNESS_GRACE"].to_s.empty?
+    grace = Float(ENV["HARNESS_GRACE"])
+    dev_server = Cybertrain::CLI::DevServer
+    dev_server.define_singleton_method(:probe_grace) { grace }
+    load_framework = dev_server.method(:load_framework)
+    dev_server.define_singleton_method(:load_framework) do |load_path|
+      load_framework.call(load_path)
+      dev_server::Processes.prepend(Module.new do
+        define_method(:initialize) do |**options|
+          super(**options)
+          self.stop_grace = grace
+        end
+      end)
+    end
+  end
   Cybertrain::CLI::DevServer::Machine.prepend(Module.new do
     def on_child_exit(kind, generation, info)
       puts "EVENT on_child_exit \#{kind} \#{generation}"
@@ -1131,8 +1149,8 @@ def with_driver_app
     File.chmod(0o755, File.join(root, "fakebin", "spin"))
     File.write(File.join(root, "harness.rb"), HARNESS)
     pids = []
-    start = lambda do |*args|
-      env = { "PATH" => "#{File.join(root, "fakebin")}:#{ENV.fetch("PATH")}" }
+    start = lambda do |*args, env: {}|
+      env = env.merge("PATH" => "#{File.join(root, "fakebin")}:#{ENV.fetch("PATH")}")
       pid = Process.spawn(env, RbConfig.ruby, "-E", "UTF-8", "-I", REPO, File.join(root, "harness.rb"), "server", *args,
                           chdir: root, in: File::NULL, [:out, :err] => [File.join(root, "log"), "w"], pgroup: true)
       pids << pid
@@ -1290,6 +1308,98 @@ test "TERM while the build runs: the build's group is stopped too" do
     assert_equal [], dev_files(root) - ["ffi"]
     refute_event(root)
     assert_gone_within(build)
+  end
+end
+
+# A gen that hangs, from its second run on (the first, the start-up
+# round's, ends at once): it starts a grandchild in its process group,
+# writes both PIDs to "gen-pids" and sleeps; with the file "stubborn" both
+# ignore TERM.
+ROUND_GEN = <<~RUBY
+  runs = File.exist?("gen-runs") ? File.read("gen-runs").to_i : 0
+  File.write("gen-runs", (runs + 1).to_s)
+  exit 0 if runs.zero?
+  stubborn = File.exist?("stubborn")
+  trap(:TERM) {} if stubborn
+  grandchild = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "trap(:TERM) {} if \#{stubborn}; loop { sleep 1 }")
+  File.write("gen-pids.tmp", "\#{Process.pid} \#{grandchild}")
+  File.rename("gen-pids.tmp", "gen-pids")
+  loop { sleep 1 }
+RUBY
+
+# The stop grace the harness is given in the tests of a stop during gen,
+# and the margin the supervisor gets on top of it.
+GRACE = 0.3
+MARGIN = 1.5
+
+def gen_pids(root)
+  assert wait_until(10) { File.exist?(File.join(root, "gen-pids")) }, "gen started:\n#{log_of(root)}"
+  File.read(File.join(root, "gen-pids")).split.map(&:to_i)
+end
+
+# R32: gen runs on the driver's thread, so a TERM while it hangs must reach
+# it: the supervisor stops gen's group (TERM, the grace, KILL), starts
+# nothing, stops the child it had and exits 0 within the grace and a
+# margin, the files of P2 removed.
+test "TERM while a round's gen runs: gen's group and the child are stopped, exit 0, the files removed" do
+  [false, true].each do |stubborn|
+    with_driver_app do |root, start|
+      File.write(File.join(root, "bin", "gen.rb"), ROUND_GEN)
+      File.write(File.join(root, "stubborn"), "") if stubborn
+      pid = start.call(env: { "HARNESS_GRACE" => GRACE.to_s })
+      assert wait_until(10) { log_of(root).include?("=> spinel: ready") }, "the binary took the port:\n#{log_of(root)}"
+      port = listening_port(root)
+      child = File.read(File.join(root, "tmp", "cybertrain-dev", "child.pid")).to_i
+      FileUtils.mkdir_p(File.join(root, "app", "models"))
+      File.write(File.join(root, "app", "models", "post.rb"), "# saved\n")
+      gen = gen_pids(root)
+      Process.kill(:TERM, pid)
+      status = exit_status(pid, GRACE + MARGIN)
+      assert status, "the supervisor stopped within #{GRACE + MARGIN} s (stubborn: #{stubborn}):\n#{log_of(root)}"
+      assert_equal 0, status.exitstatus
+      assert_gone_within(gen + [child], 1)
+      assert_equal [], dev_files(root) - ["ffi"]
+      assert port_free?(port), "the port is free"
+      assert log_of(root).index("gen failed").nil?, "a stop is not a failed gen:\n#{log_of(root)}"
+      refute_event(root)
+    end
+  end
+end
+
+# The start-up probes run before `serve` traps the signals: a TERM raises
+# in them, their group is stopped, and the supervisor ends by TERM, as it
+# does during the probe of the children's Ruby. No child was started and
+# no file of P2 written.
+STARTUP_HANG = <<~RUBY
+  stubborn = File.exist?("stubborn")
+  trap(:TERM) {} if stubborn
+  grandchild = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "trap(:TERM) {} if \#{stubborn}; loop { sleep 1 }")
+  File.write("gen-pids.tmp", "\#{Process.pid} \#{grandchild}")
+  File.rename("gen-pids.tmp", "gen-pids")
+  loop { sleep 1 }
+RUBY
+
+test "TERM during the start-up gen or dev-address stops the probe's group; the supervisor ends by TERM" do
+  [[:gen, false], [:gen, true], [:address, false], [:address, true]].each do |probe, stubborn|
+    with_driver_app do |root, start|
+      if probe == :gen
+        # dev-address fails until gen has written gen/app.rb; gen hangs.
+        File.write(File.join(root, "bin", "app.rb"), "require_relative '../gen/app'\n" + CHILD)
+        File.write(File.join(root, "bin", "gen.rb"), STARTUP_HANG)
+      else
+        File.write(File.join(root, "bin", "app.rb"), "if ARGV[0] == 'dev-address'\n#{STARTUP_HANG}end\n" + CHILD)
+      end
+      File.write(File.join(root, "stubborn"), "") if stubborn
+      pid = start.call(env: { "HARNESS_GRACE" => GRACE.to_s })
+      hung = gen_pids(root)
+      Process.kill(:TERM, pid)
+      status = exit_status(pid, GRACE + MARGIN)
+      assert status, "the supervisor stopped within #{GRACE + MARGIN} s (#{probe}, stubborn: #{stubborn}):\n#{log_of(root)}"
+      assert_equal Signal.list["TERM"], status.termsig
+      assert_gone_within(hung, 1)
+      assert_equal [], dev_files(root)
+      refute log_of(root).include?("* Listening"), "nothing was served"
+    end
   end
 end
 

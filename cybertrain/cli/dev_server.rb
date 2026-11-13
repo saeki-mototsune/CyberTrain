@@ -45,7 +45,13 @@
 # on_tick. INT, TERM and HUP (a closed terminal) only set a flag; the loop
 # then stops the machine (the build, the child, the hold), removes the
 # files, closes the socket and returns 0 (TERM and HUP, a stop that was
-# asked for), or 130 for INT.
+# asked for), or 130 for INT. gen, which a round runs on this thread, is a
+# process group the runner owns and watches the flag while it waits
+# (owned_run): a stop stops it within the stop grace and the round starts
+# nothing. The start-up probes (dev-address, and gen when the first answer
+# fails) run the same way before the flag exists; INT, TERM or HUP then
+# raises in them, their group is stopped, and the process ends by that
+# signal, as during the probe of the children's Ruby (bounded_run).
 #
 # Children stay in the supervisor's process group, as `spin run NAME` does
 # under today's loop: a Ctrl-C in the terminal reaches the child too, and it
@@ -429,7 +435,7 @@ module Cybertrain
         return found unless found.nil?
 
         unless Processes.build_locked?(root)
-          gen_out, gen_status = Open3.capture2e(child_env, *ruby_prefix(load_path), "bin/gen.rb", chdir: root, stdin_data: "")
+          gen_out, _, gen_status = owned_run(child_env, ruby_prefix(load_path) + ["bin/gen.rb"], root, probe_grace, true, NEVER)
           if gen_status.success?
             found, text = ask_address(root, name, load_path)
             return found unless found.nil?
@@ -446,11 +452,120 @@ module Cybertrain
       # One `dev-address`: [[host, port], ""], or [nil, what it printed].
       def self.ask_address(root, name, load_path)
         command = ["ruby"] + cruby_child_args(load_path, name) + ["dev-address"]
-        out, err, status = Open3.capture3(child_env, *command, chdir: root, stdin_data: "")
+        out, err, status = owned_run(child_env, command, root, probe_grace, false, NEVER)
         match = out.lines.map(&:strip).reject(&:empty?).last.to_s.match(/\A(\S+) (\d+)\z/)
         return [[match[1], match[2].to_i], ""] if status.success? && match
 
         [nil, [err, out].map(&:strip).reject(&:empty?).join("\n")]
+      end
+
+      # The stop predicate of a run that only an exception stops: the
+      # start-up probes, which run before `serve` traps INT, TERM and HUP.
+      NEVER = -> { false }
+
+      # How long a start-up probe (gen, dev-address) gets after TERM before
+      # KILL: a stopped child's grace (P11).
+      def self.probe_grace
+        Processes::STOP_GRACE
+      end
+
+      # Runs command in root, STDIN empty, in a process group of its own,
+      # and waits for it in slices of TICK, reading its STDOUT and STDERR as
+      # they come (a full pipe never blocks it): [STDOUT, STDERR, status]
+      # once it has exited, with merge its STDERR in its STDOUT, in order,
+      # and STDERR "". The run is owned, so that a stop reaches it: when
+      # stopping answers true between two slices, or when this method is
+      # left by an exception (INT, TERM or HUP, which CRuby raises here
+      # until `serve` traps them; the process then ends by that signal, as
+      # it does in bounded_run), the whole group gets TERM, the leader
+      # grace seconds to end, KILL to whatever of the group is left, and
+      # the leader is reaped; status is then :stopped. What the command
+      # left running in its group after its own exit is KILLed too. A
+      # command that cannot be started raises SystemCallError.
+      # @param env [Hash{String => String}]
+      # @param command [Array<String>]
+      # @param root [String] the directory it runs in
+      # @param grace [Numeric] seconds between TERM and KILL on a stop
+      # @param merge [Boolean] STDERR into STDOUT
+      # @param stopping [Proc] true once the supervisor is stopping
+      # @return [Array(String, String, Process::Status|Symbol)]
+      def self.owned_run(env, command, root, grace, merge, stopping)
+        out = +""
+        err = +""
+        pid = nil
+        status = nil
+        out_reader, out_writer = IO.pipe
+        readers = { out_reader => out }
+        err_writer = out_writer
+        unless merge
+          err_reader, err_writer = IO.pipe
+          readers[err_reader] = err
+        end
+        begin
+          pid = Process.spawn(env, *command, chdir: root, in: File::NULL, out: out_writer, err: err_writer, pgroup: true)
+        ensure
+          [out_writer, err_writer].each { |io| io.close unless io.closed? }
+        end
+        loop do
+          _, status = Process.waitpid2(pid, Process::WNOHANG)
+          unless status.nil?
+            # What it wrote is in the pipes by now; a process it left in
+            # the background may hold them open, so their end is not
+            # waited for.
+            readers.each { |io, sink| nil while owned_read(io, sink).is_a?(String) }
+            break
+          end
+          if stopping.call
+            status = :stopped
+            break
+          end
+          open = readers.keys.reject(&:closed?)
+          next sleep(TICK) if open.empty?
+
+          ready, = IO.select(open, nil, nil, TICK)
+          ready&.each { |io| owned_read(io, readers[io]) }
+        end
+        [out, err, status]
+      ensure
+        readers&.each_key { |io| io.close unless io.closed? }
+        if pid
+          if status.is_a?(Process::Status)
+            signal(-pid, :KILL)
+          else
+            stop_owned(pid, grace)
+          end
+        end
+      end
+
+      # One read from an owned run's pipe, without blocking, appended to
+      # sink: nil at the pipe's end (the pipe is closed), :wait_readable
+      # when nothing is there yet, otherwise what was read.
+      def self.owned_read(io, sink)
+        return nil if io.closed?
+
+        chunk = io.read_nonblock(65_536, exception: false)
+        if chunk.nil?
+          io.close
+        elsif chunk.is_a?(String)
+          sink << chunk
+        end
+        chunk
+      end
+
+      # Stops the process group of an owned run whose leader pid has not
+      # been reaped: TERM to the group, up to grace seconds for the leader
+      # to end (ended?: a zombie counts, and until it is reaped the group's
+      # id is not given to another group), KILL to the group, then the
+      # leader is reaped. Unlike stop_group (a build), there is no step
+      # for a leader that cleans up after its children: gen and
+      # dev-address are one Ruby each.
+      def self.stop_owned(pid, grace)
+        signal(-pid, :TERM)
+        deadline = monotonic + grace
+        sleep 0.01 until ended?(pid) || monotonic >= deadline
+        signal(-pid, :KILL)
+        wait_quietly(pid)
+        nil
       end
 
       # What every child, gen and dev-address add to the environment (P9):
@@ -511,7 +626,7 @@ module Cybertrain
           puts "* Listening on http://#{host}:#{port}"
           $stdout.flush
           runner = new_runner(root: root, name: name, port: port, load_path: load_path,
-                              listener: listener, out: $stdout, err: $stderr)
+                              listener: listener, out: $stdout, err: $stderr, stopping: -> { !stop.nil? })
           runner.watch
           machine = Machine.new(runner)
           gate = Gate.new(machine) { !stop.nil? }

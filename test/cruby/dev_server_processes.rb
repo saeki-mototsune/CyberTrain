@@ -46,7 +46,7 @@ end
 # A temporary application directory with the given scripts written into
 # bin/stand-ins/ (a directory made in inside when given); yields the runner, its listener and the directory. Every
 # process the runner still owns is stopped at the end.
-def with_runner(scripts, watch_interval: 0.05, load_path: [REPO], inside: nil)
+def with_runner(scripts, watch_interval: 0.05, load_path: [REPO], inside: nil, stopping: nil)
   Dir.mktmpdir("dev-server-processes", inside) do |root|
     root = File.realpath(root)
     Dir.mkdir(File.join(root, "bin"))
@@ -58,8 +58,10 @@ def with_runner(scripts, watch_interval: 0.05, load_path: [REPO], inside: nil)
       paths[role] = path
     end
     listener = TCPServer.new("127.0.0.1", 0)
-    runner = StandIn.new(root: root, name: "app", port: listener.addr[1], load_path: load_path + [root],
-                         listener: listener, out: StringIO.new, err: StringIO.new)
+    options = { root: root, name: "app", port: listener.addr[1], load_path: load_path + [root],
+                listener: listener, out: StringIO.new, err: StringIO.new }
+    options[:stopping] = stopping unless stopping.nil?
+    runner = StandIn.new(**options)
     runner.scripts = paths
     runner.ready_timeout = 5
     runner.stop_grace = 2
@@ -1217,6 +1219,76 @@ test "run_gen answers gen's status and its output" do
     refute ok
     assert_includes output, "wrote gen/app.rb"
     assert_includes output, "warning"
+  end
+end
+
+# A gen that hangs: it starts a grandchild in its process group, writes
+# both PIDs to "gen-pids", and sleeps; with the file "stubborn" both ignore
+# TERM.
+SLOW_GEN = <<~RUBY
+  stubborn = File.exist?("stubborn")
+  trap(:TERM) {} if stubborn
+  grandchild = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "trap(:TERM) {} if \#{stubborn}; loop { sleep 1 }")
+  File.write("gen-pids.tmp", "\#{Process.pid} \#{grandchild}")
+  File.rename("gen-pids.tmp", "gen-pids")
+  $stdout.puts "gen: working"
+  $stdout.flush
+  loop { sleep 1 }
+RUBY
+
+# R32: a stop asked while gen runs (the driver's flag, the stopping
+# predicate) reaches gen: its whole group gets TERM, then KILL after the
+# stop grace, and run_gen answers [false, "stopped"] without the "gen
+# failed" message. Within the grace (0.3 s here) and a margin.
+test "a stop asked while gen runs stops gen's process group within the grace" do
+  [false, true].each do |stubborn|
+    stop = false
+    with_runner({ gen: SLOW_GEN }, stopping: -> { stop }) do |runner, _listener, root|
+      runner.stop_grace = 0.3
+      File.write(File.join(root, "stubborn"), "") if stubborn
+      pids = []
+      watcher = Thread.new do
+        wait_for_file(File.join(root, "gen-pids"))
+        pids = File.read(File.join(root, "gen-pids")).split.map(&:to_i)
+        stop = true
+      end
+      result = nil
+      took = elapsed { result = runner.run_gen }
+      watcher.join
+      assert_equal [false, "stopped"], result
+      assert_equal 2, pids.size
+      assert took < 2.0, "run_gen returned in #{took} s"
+      assert took >= 0.3, "a gen that ignores TERM gets the grace (#{took} s)" if stubborn
+      pids.each { |pid| assert gone?(pid), "pid #{pid} of gen is still running (stubborn: #{stubborn})" }
+      assert runner.err.string.index("gen failed").nil?, "no gen failed message for a stop"
+    ensure
+      pids&.each do |pid|
+        Process.kill(:KILL, pid)
+      rescue Errno::ESRCH
+        nil
+      end
+    end
+  end
+end
+
+# Without a stop, a gen that finishes is read whole, and what it left
+# running in its process group does not outlive it.
+test "run_gen reads gen's output as it comes and stops what gen left in its group" do
+  gen = <<~RUBY
+    grandchild = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "loop { sleep 1 }")
+    File.write("left.tmp", grandchild.to_s)
+    File.rename("left.tmp", "left")
+    $stdout.write("x" * 200_000)
+    $stderr.puts "\nwarning: done"
+    exit 0
+  RUBY
+  with_runner({ gen: gen }) do |runner, _listener, root|
+    ok, output = runner.run_gen
+    assert ok
+    assert_equal 200_000, output.count("x")
+    assert_includes output, "warning: done"
+    left = File.read(File.join(root, "left")).to_i
+    assert wait_for(2) { gone?(left) }, "gen's leftover #{left} is still running"
   end
 end
 
