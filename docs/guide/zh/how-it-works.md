@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 6bd541e5eb705ff4d4b38794824be4498b39ffbb03dd0b84b14849a30529a637
+source_sha256: 1518d4a3bd40cc2219279673f495c34489b0a25b4db7c3ae16bf49a61b143f51
 ---
 # 工作原理
 
@@ -56,7 +56,7 @@ source_sha256: 6bd541e5eb705ff4d4b38794824be4498b39ffbb03dd0b84b14849a30529a637
 
 在 `development` 模式下（默认的 `CYBERTRAIN_ENV`，`cybertrain build` 构建的二进制文件除外），`cybertrain server` 是一个监管进程。它运行在 CRuby 上，也就是运行 `cybertrain` 命令的那个 Ruby，自己持有监听套接字，并在上面一次只运行一个子进程：改动之后立刻是 CRuby 上的应用，等 Spinel 在后台构建完成后则是编译好的二进制文件。Ruby 的修改会立即由 CRuby 预览响应（在 examples/blog 上不到一秒），随后编译好的程序会接管端口，你什么都不用做。
 
-启动时，监管进程用 CRuby 运行 gen（`ruby bin/gen.rb`，写出的 `gen/` 与 `spin run gen` 相同），用 CRuby 启动应用（`ruby -r cybertrain/preview bin/NAME.rb`），并开始构建。预览通过 Ruby 的 `fiddle` 之上的一层垫片为框架提供 FFI（SQLite、zlib），这层垫片把二进制文件所用的同一份 C 代码一次性编译到 `tmp/cybertrain-dev/ffi/`。第一次构建是 `spin build NAME`，所以自二进制文件构建以来没有改动过的应用什么都不编译，二进制文件在一秒内就开始响应。当二进制文件比某个 Ruby 文件旧时的第一次构建，以及之后的每一次构建，都是 `spin build NAME -- --incremental`：Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元。不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时构建不带它进行。输出写入 `tmp/rebuild.log`。
+启动时，监管进程用 CRuby 运行 gen（`ruby bin/gen.rb`，写出的 `gen/` 与 `spin run gen` 相同），用 CRuby 启动应用（`ruby -r cybertrain/preview bin/NAME.rb`），并开始构建。两者都由 `PATH` 上的 `ruby` 运行，也就是 `cybertrain doctor` 检查能否加载 `fiddle` 的那个 Ruby，它可能与运行 `cybertrain` 命令的 Ruby 不是同一个。预览通过 Ruby 的 `fiddle` 之上的一层垫片为框架提供 FFI（SQLite、zlib），这层垫片把二进制文件所用的同一份 C 代码一次性编译到 `tmp/cybertrain-dev/ffi/`。第一次构建是 `spin build NAME`，所以自二进制文件构建以来没有改动过的应用什么都不编译，二进制文件在一秒内就开始响应。当二进制文件比某个 Ruby 文件旧时的第一次构建，以及之后的每一次构建，都是 `spin build NAME -- --incremental`：Spinel 的增量构建，只重新编译这次编辑改动了的 C 单元。不支持 `--incremental` 的 Spinel 版本会拒绝这个参数，此时构建不带它进行。输出写入 `tmp/rebuild.log`。
 
 监管进程每秒十次轮询 `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` 以及资源的根（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）。视图被排除在外（两种运行时都会从磁盘重新读取它们），`gen/views.rb` 也被排除，它在开发模式下为空。发生改动时，会取消正在进行的构建，用 CRuby 运行 gen，把子进程换成新的 CRuby 子进程，并开始新的构建。当构建成功且期间没有新的改动时，监管进程停止 CRuby 子进程，并在同一个套接字上启动 `build/bin/NAME`：先停止，再启动，期间套接字一直保持打开，因此切换过程中到来的请求会稍等片刻再得到响应。不会拒绝任何请求。
 
@@ -70,7 +70,7 @@ source_sha256: 6bd541e5eb705ff4d4b38794824be4498b39ffbb03dd0b84b14849a30529a637
 - `Source changed — reload`：页面渲染之后有文件发生了改动。
 - `CRuby preview`：由 CRuby 渲染了这个页面，且以上情况都不适用。
 
-这一行会自己保持最新；页面本身从不自动重新加载，所以正在填写的表单不会丢失。当 gen 失败，或应用无法在 CRuby 上启动（例如 `SyntaxError`）时，监管进程自己用 503 页面响应每个请求，页面显示错误以及它在等待什么；这个页面会自己刷新，保存修正错误的文件后应用就会回来。`cybertrain build` 持有 `tmp/cybertrain-build.lock` 期间，不会重新生成也不会重启；锁消失后服务器会自己跟上。监管进程把它的文件放在 `tmp/cybertrain-dev/`；每个应用只运行一个，Ctrl-C 会停止构建、子进程和服务器。
+这一行会自己保持最新；应用的页面从不自动重新加载，所以正在填写的表单不会丢失。当 gen 失败，或应用无法在 CRuby 上启动（例如 `SyntaxError`）时，监管进程自己用 503 页面响应每个请求，页面显示错误以及它在等待什么；这个属于监管进程自己的页面每 2 秒自动重新加载一次，直到有子进程能够响应，保存修正错误的文件后应用就会回来。`cybertrain build` 持有 `tmp/cybertrain-build.lock` 期间，不会重新生成也不会重启；锁消失后服务器会自己跟上。监管进程把它的文件放在 `tmp/cybertrain-dev/`；每个应用只运行一个，Ctrl-C 会停止构建、子进程和服务器。
 
 预览看不到的东西：
 
@@ -80,7 +80,7 @@ source_sha256: 6bd541e5eb705ff4d4b38794824be4498b39ffbb03dd0b84b14849a30529a637
 
 后台工作（作业、调度器、流的轮询器、WebSocket 订阅源）在正在响应的那个子进程中运行，所以一次编辑会让它们重启两次，先进入 CRuby，再进入二进制文件，Server-Sent Events 和 WebSocket 客户端也会重连两次。在预览中能用的页面，只有当二进制文件也能提供它时才算完成，并且只有编译后的测试（`spin test`）才算数。
 
-`cybertrain server --spinel` 则运行编译版的循环，直接输入的 `spin run NAME` 和 `spin install` 构建的原生 CLI 也是如此：先 `SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则运行 `spin build NAME -- --incremental`；再 `spin run NAME`。二进制文件自己每半秒轮询同样的文件，发生改动时在后台运行 `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`，成功后停止监听并等待进行中的请求完成，然后在同一端口和 PID 上 `execv` 新的二进制文件；构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出，`cybertrain build` 持有它的锁期间会跳过重新构建。CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 gen，CLI 还以同样的模式构建 `bin/db.rb`：它们只运行几毫秒，而 gen 的编译时间只是 `-O2` 时的一小部分；应用本身始终是发布构建。当应用的框架比预览旧，或 `PATH` 上的 `ruby` 无法加载 `fiddle` 时（`cybertrain doctor` 会检查），`cybertrain server` 也会输出一行（`preview unavailable: <cause>; running the compiled loop`）后运行这个循环。这些在生产环境中都不会加载。
+`cybertrain server --spinel` 则运行编译版的循环，直接输入的 `spin run NAME` 和 `spin install` 构建的原生 CLI 也是如此：先 `SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则运行 `spin build NAME -- --incremental`；再 `spin run NAME`。二进制文件自己每半秒轮询同样的文件，发生改动时在后台运行 `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`，成功后停止监听并等待进行中的请求完成，然后在同一端口和 PID 上 `execv` 新的二进制文件；构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出，`cybertrain build` 持有它的锁期间会跳过重新构建。CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 gen，CLI 还以同样的模式构建 `bin/db.rb`：它们只运行几毫秒，而 gen 的编译时间只是 `-O2` 时的一小部分；应用本身始终是发布构建。预览无法运行时，`cybertrain server` 会输出一行以 `preview unavailable:` 开头的信息，然后运行编译版的循环。这发生在以下情况：应用的框架比预览旧（缺少 `cybertrain/preview.rb` 或 `cybertrain/dev/supervision.rb`）；`PATH` 上没有 `ruby`；或者那个 `ruby` 无法启动、10 秒内没有响应、无法加载 `fiddle`（`cybertrain doctor` 会检查）。这些在生产环境中都不会加载。
 
 ## 与 Rails 的差异
 

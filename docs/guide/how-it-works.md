@@ -111,8 +111,10 @@ over without you doing anything.
 
 At the start the supervisor runs gen under CRuby (`ruby bin/gen.rb`, which
 writes the same `gen/` as `spin run gen`), starts the application under
-CRuby (`ruby -r cybertrain/preview bin/NAME.rb`) and starts the build. The
-preview gives the framework its FFI (SQLite, zlib) through a shim over
+CRuby (`ruby -r cybertrain/preview bin/NAME.rb`) and starts the build. Both
+run the `ruby` on `PATH`, the one `cybertrain doctor` checks for `fiddle`,
+which may be another Ruby than the one that runs the `cybertrain` command.
+The preview gives the framework its FFI (SQLite, zlib) through a shim over
 Ruby's `fiddle` that compiles the same C the binary uses, once, into
 `tmp/cybertrain-dev/ffi/`. The first build is `spin build NAME`, so an
 application that has not changed since its binary was built compiles
@@ -150,12 +152,13 @@ Every response of the application carries `X-Cybertrain-Runtime: cruby` or
 - `Source changed — reload`: a file changed after the page was rendered.
 - `CRuby preview`: CRuby rendered the page and none of the above applies.
 
-The line keeps itself current; the page never reloads itself, so a form
-being filled in is not lost. When gen fails, or the application cannot
-boot under CRuby (a `SyntaxError`, say), the supervisor answers every
-request itself with a 503 page that shows the error and what it is waiting
-for; the page refreshes itself, and the save that fixes the error brings
-the application back. While `cybertrain build` holds
+The line keeps itself current; the application's pages never reload
+themselves, so a form being filled in is not lost. When gen fails, or the
+application cannot boot under CRuby (a `SyntaxError`, say), the supervisor
+answers every request itself with a 503 page that shows the error and what
+it is waiting for; that page, the supervisor's own, refreshes itself every
+2 s until a child can answer, and the save that fixes the error brings the
+application back. While `cybertrain build` holds
 `tmp/cybertrain-build.lock`, nothing is regenerated or restarted; the
 server catches up once the lock is gone. The supervisor keeps its files in
 `tmp/cybertrain-dev/`; one runs per application, and Ctrl-C stops the
@@ -190,11 +193,13 @@ rebuilds are skipped while `cybertrain build` holds its lock. The CLI and
 this loop build gen, and the CLI `bin/db.rb`, in spin's debug mode
 (`SPIN_DEBUG=1`, `-O0`): they run for milliseconds, and gen compiles in a
 fraction of the time `-O2` takes; the application is always a release
-build. `cybertrain server` runs this loop too, after one line
-(`preview unavailable: <cause>; running the compiled loop`), when the
-application's framework is older than the preview or the `ruby` on `PATH`
-cannot load `fiddle` (`cybertrain doctor` checks it). None of this loads
-in production.
+build. When the preview cannot run, `cybertrain server` prints one line
+beginning `preview unavailable:` and runs the compiled loop. That happens
+when the application's framework is older than the preview (it lacks
+`cybertrain/preview.rb` or `cybertrain/dev/supervision.rb`), when there is
+no `ruby` on `PATH`, or when that `ruby` cannot be started, does not answer
+within 10 s or cannot load `fiddle` (`cybertrain doctor` checks it). None
+of this loads in production.
 
 ## Differences from Rails
 

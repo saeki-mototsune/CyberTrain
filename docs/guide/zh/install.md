@@ -1,5 +1,5 @@
 ---
-source_sha256: 7962843f67deb96029a132f179d5ab73944f67df44deadd5aa501bed92c1c3f7
+source_sha256: dcff54852c4d6fae14dd97b90f66e3dc7c39d37abc0be11123dc75a3aba5030f
 ---
 # 安装
 
@@ -83,7 +83,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 ## gem 与框架
 
-`gem install cybertrain` 安装的是一个命令，而不是框架。这个 gem 就是 `cybertrain` 命令，它是纯 Ruby 编写的，在你的机器上运行于 CRuby（3.2 或更新版本）之下，并替你调用 Spinel 的 `spin` 工具；框架和 Spinel 都不在这个 gem 里。框架是一个 Spinel 包，你的应用在其 `spin.toml` 中依赖它：Spinel 把它和你的代码一起进行 AOT 编译，它是随应用交付的部分。`dist/` 中的二进制文件无需 Ruby、gem 或 Spinel 即可运行。只有在开发时它才也在 CRuby 上运行：`cybertrain server` 会提供应用的 CRuby 预览，直到编译好的二进制文件接管。
+`gem install cybertrain` 安装的是一个命令，而不是框架。这个 gem 就是 `cybertrain` 命令，它是纯 Ruby 编写的，在你的机器上运行于 CRuby（3.2 或更新版本）之下，并替你调用 Spinel 的 `spin` 工具；框架和 Spinel 都不在这个 gem 里。框架是一个 Spinel 包，你的应用在其 `spin.toml` 中依赖它：Spinel 把它和你的代码一起进行 AOT 编译，它是随应用交付的部分。`dist/` 中的二进制文件无需 Ruby、gem 或 Spinel 即可运行。只有在开发时，应用的代码（包括框架）才也在 CRuby 上运行：`cybertrain server` 会提供应用的 CRuby 预览，直到编译好的二进制文件接管。
 
 ### `cybertrain new` 写出什么
 

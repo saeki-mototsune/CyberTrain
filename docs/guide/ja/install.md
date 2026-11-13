@@ -1,5 +1,5 @@
 ---
-source_sha256: 7962843f67deb96029a132f179d5ab73944f67df44deadd5aa501bed92c1c3f7
+source_sha256: dcff54852c4d6fae14dd97b90f66e3dc7c39d37abc0be11123dc75a3aba5030f
 ---
 # インストール
 
@@ -83,7 +83,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 ## gem とフレームワーク
 
-`gem install cybertrain` がインストールするのはコマンドであり、フレームワークではありません。gem は `cybertrain` コマンドで、手元のマシン上で CRuby（3.2 以降）で動く素の Ruby であり、Spinel の `spin` ツールを代わりに呼び出します。フレームワークも Spinel も gem には含まれません。フレームワークは、アプリが `spin.toml` で依存する Spinel のパッケージです：Spinel がそれをあなたのコードと一緒に事前（AOT）コンパイルし、出荷されるのはこの部分です。`dist/` のバイナリは Ruby、gem、Spinel なしで動きます。CRuby でも動くのは開発時だけです：`cybertrain server` は、コンパイル済みのバイナリが引き継ぐまで、アプリケーションの CRuby プレビューを配信します。
+`gem install cybertrain` がインストールするのはコマンドであり、フレームワークではありません。gem は `cybertrain` コマンドで、手元のマシン上で CRuby（3.2 以降）で動く素の Ruby であり、Spinel の `spin` ツールを代わりに呼び出します。フレームワークも Spinel も gem には含まれません。フレームワークは、アプリが `spin.toml` で依存する Spinel のパッケージです：Spinel がそれをあなたのコードと一緒に事前（AOT）コンパイルし、出荷されるのはこの部分です。`dist/` のバイナリは Ruby、gem、Spinel なしで動きます。アプリケーションのコードが、フレームワークも含めて CRuby でも動くのは開発時だけです：`cybertrain server` は、コンパイル済みのバイナリが引き継ぐまで、アプリケーションの CRuby プレビューを配信します。
 
 ### `cybertrain new` が書き出すもの
 

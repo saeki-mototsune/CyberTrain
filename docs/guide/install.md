@@ -179,9 +179,9 @@ the `cybertrain` command, plain Ruby that runs on your machine under CRuby
 nor Spinel is in the gem. The framework is a Spinel package your app depends
 on in its `spin.toml`: Spinel compiles it together with your code ahead of
 time, and it is the part that ships. The binary in `dist/` runs without
-Ruby, the gem or Spinel. Only in development does it also run under CRuby:
-`cybertrain server` serves a CRuby preview of the application until the
-compiled binary takes over.
+Ruby, the gem or Spinel. Only in development does the application's code,
+the framework included, also run under CRuby: `cybertrain server` serves a
+CRuby preview of the application until the compiled binary takes over.
 
 ### What `cybertrain new` writes
 

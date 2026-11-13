@@ -1,5 +1,5 @@
 ---
-source_sha256: 7962843f67deb96029a132f179d5ab73944f67df44deadd5aa501bed92c1c3f7
+source_sha256: dcff54852c4d6fae14dd97b90f66e3dc7c39d37abc0be11123dc75a3aba5030f
 ---
 # Installer cybertrain
 
@@ -196,8 +196,9 @@ commande `cybertrain`, du Ruby pur qui s’exécute sur votre machine sous CRuby
 framework ni Spinel ne sont dans la gem. Le framework est un paquet Spinel dont
 votre application dépend dans son `spin.toml`&nbsp;: Spinel le compile à
 l’avance avec votre code, et c’est la partie qui est livrée. Le binaire de
-`dist/` tourne sans Ruby, sans la gem et sans Spinel. Il ne tourne aussi sous
-CRuby qu’en développement&nbsp;: `cybertrain server` sert un aperçu CRuby de
+`dist/` tourne sans Ruby, sans la gem et sans Spinel. Le code de
+l’application, framework compris, ne tourne aussi sous CRuby qu’en
+développement&nbsp;: `cybertrain server` sert un aperçu CRuby de
 l’application jusqu’à ce que le binaire compilé prenne le relais.
 
 ### Ce que `cybertrain new` écrit
