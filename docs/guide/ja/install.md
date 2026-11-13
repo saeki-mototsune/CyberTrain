@@ -1,5 +1,5 @@
 ---
-source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
+source_sha256: 5d22bfaa17499080fccfdc4c7a0ef16005a2cbfe0d2885341c549229e05e3fd7
 ---
 # インストール
 
@@ -51,6 +51,7 @@ cybertrain doctor
   run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema:dump`、`create`。
 - `cybertrain server [PORT]` は生成を行ってから開発サーバーを起動します（`SPIN_DEBUG=1 spin run gen`。`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`。`spin run NAME`、または `spin run NAME -- PORT`。デフォルトのポートは 3000）。
 - `cybertrain build` は `app/views/` を埋め込んで NAME をビルドし、`dist/`（バイナリ、`public/`、`storage/`、`tmp/`）を組み立てます。
+- `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` は生成し、`test/` 以下のすべてのテストを 1 つのプログラムにコンパイルして（何かが変わったときだけ）実行し、引数が指定したテストだけを残します（[アプリをテストする](testing.md#running-the-tests)を参照）。
 - `cybertrain spin ARGS...` は、固定された Spinel で `spin` を任意のディレクトリから実行します（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
 - `cybertrain setup [--force]` は固定された Spinel のリリースを `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
 - `cybertrain doctor` は C ツールチェーン、SQLite のヘッダー、Spinel のインストールを確認します。

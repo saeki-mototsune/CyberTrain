@@ -1,5 +1,5 @@
 ---
-source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
+source_sha256: be4fff88f6e163067e559bb2cc0d966fbd37f467261def1c4f2a3d1d29c83797
 ---
 # 配置
 
@@ -36,7 +36,8 @@ end
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`；以逗号分隔的名称会替换这个列表。名称中包含其中任一项的参数（按 ASCII 不区分大小写：`password` 也匹配 `user[password]`），其值在请求日志和开发时的错误页面上会写成 `[FILTERED]`；在 `config/app.rb` 中设为 `[]` 可关闭此功能 |
 | `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让 `server` 进程不运行定时任务、作业和 WebSocket 数据订阅（参见[进程角色](background-and-operations.md#process-roles)）；`./<app> worker` 和 `feeds` 会忽略它 |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：一个进程同时运行的作业数（参见[后台任务](background-and-operations.md#background-work)）；至少为 1 |
-| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`：没有 `tz:` 的 `Scheduler.cron` 任务读取所用的时区，一个 IANA 名称，例如 `Asia/Tokyo`（参见[时区](#time-zones)）；系统 zoneinfo 中没有的时区会让启动停止 |
+| `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`：应用的时区，`Asia/Tokyo` 这样的 IANA 名称，用于 `Time.zone`、日和月的边界、`Date.current`、`l` 和 `time_tag`（见[时区](#time-zones)）；系统 zoneinfo 中没有的时区会让启动停止 |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | 未设置时为 `time_zone`：没有 `tz:` 的 `Scheduler.cron` 任务按此时区读取，一个 IANA 名称（见[时区](#time-zones)）；系统 zoneinfo 中没有的时区会让启动停止 |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`：[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)每个列表的行数；至少为 1 |
 | `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`：两次清理过期[缓存](background-and-operations.md#the-cache-store)行之间的秒数，在 require `cybertrain/cache` 时读取；至少为 1 |
 | `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`：两次写入每个 WebSocket 数据订阅状态行之间的秒数（参见[数据订阅的健康状况](realtime.md#feed-health)）；至少为 1 |
@@ -54,6 +55,8 @@ end
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`；属于机密，从不写入日志，也从不出现在启动横幅或错误消息中 |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：未给出 `from:` 时 `Mailer.deliver` 使用的发件人 |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；也可以是 `tls`（隐式 TLS）或 `none`（明文，凭据只发往环回地址）；两种 TLS 模式都需要 `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | 测试环境中为 `:test`，其他环境中为 `:smtp`：`:test` 把每封邮件保存在 `Cybertrain::Mailer.deliveries` 中而不发送（[测试邮件](testing.md#testing-mail)）；在测试环境之外它会带着警告启动，什么也不发送；其他值会让启动停止 |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`：`cybertrain test` 删除、迁移并在其上运行测试的文件，代替 `storage/test.sqlite3`；它可以指定任何文件，所以请指定一个可以丢弃的文件 |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：每个请求开始时的语言区域，`ja` 或 `pt-BR` 这样的名字（见 [语言区域](#locales)）；其他值会使启动停止 |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`：账户被锁定前允许的错误密码次数；`0` 关闭锁定（见 [认证设置](#authentication-settings)） |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`：锁定持续的秒数；至少为 1 |
@@ -133,4 +136,15 @@ run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1],
 run = tokyo.local_to_utc(Cybertrain::TimeZone.civil_to_epoch(today[0], today[1], today[2] + 1, 9, 0, 0)) if run <= now
 ```
 
-在夏令时转换时，`local_to_utc` 的结果是确定的：被向前跳变跳过的挂钟时间（美国开始夏令时那天的 02:30）按跳变之前的偏移量解读，所以它落在跳变之后（03:30 EDT）；被向后跳变重复的挂钟时间则得到较早的那个时刻。`find` 只接受由 `A-Za-z0-9_+-./` 组成、不含空段、`.` 段或 `..` 段的相对名称，所以从用户资料中取得的时区名无法访问时区目录之外的文件；未知或格式错误的时区不会被缓存，`"UTC"` 不需要文件。`l` 按请求的语言区域格式化时间（[日期和时间](i18n.md#dates-and-times)），但还不接受 `zone:`。
+在夏令时转换时，`local_to_utc` 的结果是确定的：被向前跳变跳过的挂钟时间（美国开始夏令时那天的 02:30）按跳变之前的偏移量解读，所以它落在跳变之后（03:30 EDT）；被向后跳变重复的挂钟时间则得到较早的那个时刻。`find` 只接受由 `A-Za-z0-9_+-./` 组成、不含空段、`.` 段或 `..` 段的相对名称，所以从用户资料中取得的时区名无法访问时区目录之外的文件；未知或格式错误的时区不会被缓存，`"UTC"` 不需要文件。
+
+### 应用的时区
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.time_zone = "Asia/Tokyo"   # 或 CYBERTRAIN_TIME_ZONE；默认 "UTC"
+end
+```
+
+`c.time_zone` 接受 IANA 名称（不读取 Rails 自己的名称，比如 “Tokyo”），系统中没有的时区会让启动停止。值仍然是 UTC 瞬间：列、`Time.current` 和日历方法返回 UTC 的 `Time`，`time.hour` 是 UTC 的小时。时区决定日历（`beginning_of_day` 等以及 `Date.current`；[时间与时区](models.md#times-and-the-time-zone)）和显示：`l(time)` 和 `time_tag(time)` 在该时区显示 Time，包括 `%z` 和 `%Z`，`time_tag` 的 `datetime` 是带时区偏移的 ISO 8601（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` 和 `time_tag(time, zone: "...")` 在另一个时区显示一个值。偏移为 0 的 Time，也就是框架给出的所有 Time，在该时区显示；自己带着另一个偏移的 Time（`time.getlocal("+05:30")`）保持它的偏移，除非给出 `zone:`；Date 原样显示。没有 `tz:` 的 cron 任务也跟随这个时区，除非设置了 `scheduler_tz`。在 `cybertrain test` 中，每个测试都从配置的时区开始。（`l` 的格式见[日期和时间](i18n.md#dates-and-times)。）

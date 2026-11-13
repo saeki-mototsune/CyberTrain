@@ -1,286 +1,740 @@
 ---
-source_sha256: 88339f5df631b196034ba40e434730ec3512bd68247eae54e5bcda13c1593d62
+source_sha256: 635312e7f45c6813a305b32c77a30beb91a7fe05c4b4c3d139920dc3e510ae0f
 ---
 # Тестирование приложения
 
-Тесты приложения — это обычные программы Spinel в `test/`, как и собственные тесты фреймворка:
+Тесты приложения — это классы в духе Rails в каталоге `test/`, и
+`cybertrain test` запускает их все как одну скомпилированную программу.
+Minitest и RSpec находят тестовые методы через рефлексию, чего
+AOT-компилятор сделать не может, поэтому `spin run gen` переписывает каждый
+тестовый класс в обычные методы и записывает одну таблицу диспетчеризации
+по всем тестам.
 
-```ruby
-require_relative "support/blog_test"   # приложение, BLOG и Cybertrain::Test
+## Как написать тест
 
-test "title must be present" do
-  article = Article.new(body: "a body long enough to pass length")
-  refute article.save
-  assert_includes article.errors.full_messages, "Title can't be blank"
+`cybertrain new` записывает `test/test_helper.rb`; каждый тестовый файл,
+как в Rails, начинается с его подключения:
+
+```ruby test/test_helper.rb
+ENV["CYBERTRAIN_ENV"] ||= "test"
+require_relative "../config/app"
+require "cybertrain/test_help"
+
+class ActiveSupport::TestCase
+  fixtures :all
+
+  # Вспомогательные методы для всех тестов пишутся здесь.
 end
 ```
 
-Утверждения: `assert`, `refute`, `assert_equal`, `assert_nil`,
-`assert_includes`, `assert_raises("Class") { }`, `flunk`. Для контроллеров и
-полных HTTP-сценариев `Cybertrain::Test::Client` прогоняет приложение внутри
-процесса (без сокета) с хранилищем cookie, поэтому сессии и CSRF ведут себя
-так же, как за браузером:
+```ruby test/models/article_test.rb
+require "test_helper"
 
-```ruby
-require_relative "support/blog_test"   # приложение, BLOG и Cybertrain::Test
-
-test "POST /articles creates an article and redirects to it" do
-  client = Cybertrain::Test::Client.new(BLOG)
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, BlogTest.article_path(Article.last)
-  assert_response res, :see_other
+class ArticleTest < ActiveSupport::TestCase
+  test "title must be present" do
+    article = Article.new(body: "a body long enough to pass length")
+    assert_not article.save
+    assert_includes article.errors.full_messages, "Title can't be blank"
+  end
 end
 ```
 
-Оба фрагмента начинаются с хелпера из примера,
-[`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb):
-скопируйте его в `test/support/` приложения, где файлы подключаются, а не
-запускаются. Он выполняет миграции на свежей `storage/test.sqlite3`, запускает
-приложение как `BLOG`, загружает `Cybertrain::Test` и его клиент и считывает
-токен CSRF из последней отрисованной формы (`BlogTest.form_token`).
-Заканчивайте каждый файл тестов вызовом `Cybertrain::Test.run!`;
-`examples/blog/test/articles.rb` и `comments.rb` показывают полный шаблон.
+```ruby test/controllers/articles_controller_test.rb
+require "test_helper"
 
-Каждый запрос, который отправляет тестовый клиент, приходит с `127.0.0.1`
-(`request.remote_addr`, поэтому `request.loopback?` истинно). Чтобы увидеть,
-что страница делает для посетителя с другой машины, задайте
-`client.peer_address = "203.0.113.7"` перед запросом.
+class ArticlesControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    @article = articles(:one)
+  end
 
-Запускайте командой `cybertrain spin test`: она компилирует каждый `test/*.rb`
-в отдельную программу и сравнивает её вывод (stdout и stderr вместе) с
-`test/<name>.rb.expected`. Перегенерируйте снимок командой `cybertrain spin test --regen
-test/<name>.rb`; тесты с FFI/базой данных не могут работать под CRuby, поэтому
-их снимок берётся из скомпилированного бинарного файла: `rm -f build/test/<name>; cybertrain
-spin test test/<name>.rb; [ -x build/test/<name> ] && ./build/test/<name> >
-test/<name>.rb.expected 2>&1` (`cybertrain spin test` завершается с ненулевым
-кодом, пока снимок устарел, поэтому за ним следует `;`, а не `&&`; проверка
-`[ -x ]` пропускает снятие вывода, если компиляция не удалась, и старый снимок
-сохраняется; в рабочей копии фреймворка `script/regen-snapshot test/<name>.rb`
-делает ровно это и выводит статистику изменений).
+  test "shows an article" do
+    get article_path(@article)
+    assert_response :success
+    assert_select "h1", text: @article.title
+  end
+
+  test "creates an article" do
+    assert_difference -> { Article.count }, 1 do
+      post articles_path, params: { article: { title: "New", body: "A body long enough" } }
+    end
+    assert_redirected_to article_path(Article.last)
+  end
+end
+```
+
+Базовых классов три, те же, что в Rails: `ActiveSupport::TestCase`
+(модели, задачи, почтовики — всё, что обходится без запроса),
+`ActionDispatch::IntegrationTest` (запросы,
+[Интеграционные тесты](#integration-tests)) и `ViewComponent::TestCase`
+(`render_inline`, [Тестирование потоков и компонентов](#testing-streams-and-components)).
+Приложение может положить свой базовый класс в `test/test_helper.rb` или
+`test/support/` и наследоваться от него. Вспомогательные методы, константы
+и `private` пишутся в теле класса, как в Rails; каждый тест выполняется на
+новом экземпляре, поэтому переменные экземпляра, заданные в `setup`,
+принадлежат этому тесту. `fixtures :all` и `require "test_helper"`
+принимаются и сами ничего не делают: для каждого теста загружаются все
+фикстуры.
+
+Каждый тест выполняется в таком порядке:
+
+1. все таблицы очищаются, включая таблицы фреймворка (задачи, кэш,
+   сообщения Turbo, расписания, фиды, аренды), и id снова начинаются с 1;
+2. вставляются фикстуры ([Фикстуры](#fixtures));
+3. сбрасываются `Mailer.deliveries`, счётчики ограничения частоты и
+   `I18n.locale`, а часовой пояс становится тем, что настроен в
+   `config/app.rb`;
+4. `setup` (сначала суперкласса; несколько блоков `setup do` по порядку);
+5. тело теста, если до него ничего не упало;
+6. `teardown`, всегда: после упавшей проверки, исключения или упавшего
+   setup (несколько блоков `teardown do` в обратном порядке, затем
+   суперкласса);
+7. часы снова идут по реальному времени, и каждый приёмник, запущенный
+   тестом, останавливается.
+
+Rails вместо этого откатывает каждый тест в транзакции. Здесь это не
+подходит: у SQLite в этом фреймворке нет точек сохранения, поэтому
+собственная `transaction` теста завершила бы внешнюю, а потоки задач
+используют другие соединения, которые не увидели бы строки теста.
+
+## Запуск тестов
+
+```sh
+cybertrain test                                         # все тесты
+cybertrain test test/controllers                        # файлы в каталоге
+cybertrain test test/models/article_test.rb             # один файл
+cybertrain test -n "creates an article"                 # один тест по имени
+cybertrain test -n test_creates_an_article              # или по имени метода
+cybertrain test -n /article/                            # тесты, в имени которых есть "article"
+```
+
+`cybertrain test` выполняет `SPIN_DEBUG=1 spin run gen` (gen собирается в
+отладочном режиме spin, как его собирает любая команда CLI), который
+записывает `gen/tests.rb` (программу) и переписанную копию каждого
+тестового класса в `gen/test/`; обе коммитятся вместе с остальным `gen/`.
+Затем он компилирует `gen/tests.rb` в `build/test/tests` (релизная
+сборка), если какой-либо вход новее этого бинарника, и запускает его. В
+программу входят все `test/**/*_test.rb` и все остальные `test/*.rb`,
+кроме `test/test_helper.rb`; в `test/support/` (его подключает хелпер) и
+`test/fixtures/` тестов нет. Перед первым тестом программа удаляет
+`storage/test.sqlite3`, мигрирует новую базу и загружает на ней приложение
+(без потоков задач, планировщика и фидов: задачи тест выполняет сам).
+`CYBERTRAIN_TEST_DATABASE` указывает вместо неё другой файл; программа
+удаляет файл, на который она указывает, каким бы он ни был, поэтому
+указывайте только на одноразовый файл.
+
+```text вывод — cybertrain test
+test/controllers/articles_controller_test.rb
+  ok   ArticlesControllerTest: shows an article
+  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:13)
+         Expected: 1
+           Actual: 0
+test/models/article_test.rb
+  ok   ArticleTest: title must be present
+
+3 tests, 6 assertions, 1 failure
+```
+
+Заголовок на файл, строка на тест, затем итоги, без времени выполнения.
+Указанная строка — это строка `test "..."` теста: у скомпилированной
+программы нет трассировки стека, поэтому строка упавшей проверки
+неизвестна. Код выхода — 1, если какой-то тест упал, 0 в противном случае
+и 2 для аргументов, которые команда не принимает.
+
+**Чего стоит изменение.** Аргумент-файл и `-n` выбирают, какие тесты
+запускать, а не что компилировать: программа всегда содержит все тесты,
+поэтому смена фильтра использует тот же бинарник, а правка любого теста
+(или чего-либо ещё, из чего собрана программа) заново компилирует всю
+программу, предварительно пересобрав `bin/gen`. Измерено 2026-11-12 и
+2026-11-13 на общей облачной машине с 4 vCPU (на вашей машине цифры будут
+другими): 149 тестов examples/blog в 21 файле скомпилировались в первый раз
+примерно за 527 с (весь первый запуск занял 656 с, бинарник — 10,2 МБ), а
+повторный запуск без изменений начался примерно через 1 с; небольшое
+приложение с несколькими тестовыми файлами компилировалось около 3 минут
+при примерно 2,2 ГБ памяти в бинарник на 8 МБ. Напишите несколько тестов,
+прежде чем запускать их, а работая над одним, сужайте запуск, а не сборку.
+
+`gen/tests.rb` отклоняется, и `cybertrain test` завершается с кодом 1,
+причиной и без компиляции, когда два тестовых или вспомогательных файла
+определяют один и тот же метод или константу верхнего уровня (в одной
+программе они слились бы в одно: перенесите общий хелпер в
+`test/support/` или внутрь класса), а также в остальных случаях из раздела
+[Что gen отклоняет в тестовом классе](#what-gen-refuses-in-a-test-class).
+
+## Фикстуры
+
+```yaml test/fixtures/users.yml
+alice:
+  email_address: alice@example.com
+  admin: true
+```
+
+```yaml test/fixtures/articles.yml
+one:
+  title: First post
+  body: A body long enough to pass the length check.
+  author: alice
+  created_at: 2026-11-01 09:00:00
+
+two:
+  id: 42
+  title: Second post
+  body: Another body long enough.
+  author: alice
+```
+
+`test/fixtures/<table>.yml` имеет форму Rails: метки, под ними столбцы. gen
+читает файлы при запуске тем же подмножеством YAML, что и
+[словари](i18n.md#dictionaries), и отклоняет с `файл:строка` файл, который
+не является таблицей из `db/schema.rb`, ключ, который не является ни
+столбцом, ни `belongs_to` модели, ERB (`<%` где угодно: `eval` нет; время
+относительно текущего задайте в `setup` или через `travel_to`), значение
+не того типа, что у столбца (несуществующую дату, целое за пределами 64
+бит, `yes` для булева), две метки с одним id и метку `belongs_to`, которая
+не указывает ни на одну строку файла родителя. `DEFAULTS`, как и в Rails, —
+не строка.
+
+- Строка без `id:` получает id, который Rails вычисляет для её метки
+  (`ActiveRecord::FixtureSet.identify`), поэтому у метки тот же id, что и в
+  приложении на Rails. `author: alice` записывает в `author_id` id alice.
+- Дата и время — в UTC. Опущенные в строке `created_at` и `updated_at`
+  получают время часов в момент вставки строки перед каждым тестом.
+- `articles(:one)` возвращает `Article.find` этой строки; неизвестная
+  метка вызывает `Cybertrain::Test::FixtureNotFound`. Одна метка за вызов.
+- Фикстура проверяется при запуске gen, но её ошибка останавливает только
+  прогон тестов: `spin run gen` (а значит, и `cybertrain db migrate`, к
+  которому фикстура скаффолда появляется раньше) продолжает работу, а
+  `cybertrain test` выводит `test/fixtures/<table>.yml:<строка>: ...` и
+  завершается с кодом 1.
+- Как и в Rails, фикстура, указывающая на родителя, не даёт этого родителя
+  удалить: как только в `comments.yml` есть `article: one`, тест скаффолда
+  «should destroy article» падает на внешнем ключе. Объявите
+  `has_many :comments, dependent: :destroy`, направьте дочерние фикстуры
+  на другую строку (`article: two`) или удаляйте строку, на которую
+  ничего не ссылается.
+- Нет: `fixtures :articles` (загружается каждый файл),
+  `articles(:one, :two)`, полиморфных меток (`commentable: one (Article)`;
+  пишите столбцы `_id` и `_type`), меток `has_and_belongs_to_many`, якорей
+  и псевдонимов.
+
+## Интеграционные тесты
+
+`ActionDispatch::IntegrationTest` отправляет запросы загруженному
+приложению внутри процесса, без сокета, с новой банкой cookie для каждого
+теста:
+
+- `get`, `post`, `patch`, `put`, `delete`, `head` (путь, `params: {}`,
+  `headers: {}`), как их пишет Rails. Каждый возвращает
+  `Cybertrain::Response` (Rails возвращает статус), который также доступен
+  как `response` (`response.body`, `response.status`,
+  `response.header(name)`).
+- `params:` принимает вложенные Hash и отправляет их так, как отправляет
+  форма (`article[title]=New`); значением может быть String, Symbol, число,
+  `true` / `false`, nil, Date или Time (отправляются как текст, который
+  столбец прочитает обратно), так что тест скаффолда может отправить
+  значения записи как есть. Array отклоняется.
+- `fixture_file_upload("cover.png", "image/png")` в `params:` у `post`,
+  `patch` или `put` отправляет запрос как multipart; файл читается из
+  `test/fixtures/files/`.
+- `headers:` принимает имя заголовка или форму Rails `HTTP_ACCEPT`.
+- Хелперы путей из `config/routes.rb` работают, как в контроллере. Хелпер
+  `*_url` пишет `http://www.example.com/...`; URL на этом хосте
+  запрашивается по своему пути, и `assert_redirected_to` сравнивает любую
+  из двух форм. URL на другом хосте отклоняется.
+- `follow_redirect!`, `cookies`, `assert_response(:success)` (или любой
+  символ статуса, или число; `:error` означает ровно 500, тогда как Rails
+  принимает любой 5xx), `assert_redirected_to(path)`, `assert_select`,
+  `assert_turbo_stream`.
+- Нет: `session`, `flash`, `assigns`, `request`, `host!` и `as:`.
+  Проверяйте вместо этого страницу (`assert_select`, `response.body`).
+
+**Защита от подделки запросов** в тестах выключена, если `config/app.rb` не
+задаёт `csrf`, как в тестовом окружении Rails, поэтому `post` не нужен
+токен. Тест самой проверки включает её для нескольких запросов:
+
+```ruby
+test "a form without the token is refused" do
+  with_forgery_protection do
+    post articles_path, params: { article: { title: "x" } }
+    assert_response :forbidden
+  end
+end
+```
+
+Внутри блока форме нужен `authenticity_token` страницы, которую запросил
+тест; когда блок заканчивается, всё возвращается назад, даже если проверка
+внутри упала.
+
+**Вход.** `cybertrain generate authentication` записывает
+`test/support/session_test_helper.rb`, включённый в каждый интеграционный
+тест: `sign_in_as users(:one)` (пароль пользователей из фикстур —
+`"password"`; `remember: true` отмечает «Оставаться в системе»),
+`sign_out` и `open_session` — второй браузер со своими cookie
+(`phone = open_session`, затем `phone.sign_in_as users(:two)` и
+`phone.get ...`). Каждый запрос приходит с `127.0.0.1`; тест, которому
+нужен другой адрес клиента, создаёт свой
+`client = Cybertrain::Test::Client.new(Cybertrain::Test.app)` и задаёт
+`client.peer_address = "203.0.113.7"` (собственные методы клиента —
+`client.get(path, headers)` и `client.post(path, fields, headers)`).
+
+## Проверки
+
+`assert`, `assert_not` (`refute`), `assert_equal`, `assert_not_equal`,
+`assert_nil`, `assert_not_nil`, `assert_includes`, `assert_not_includes`,
+`assert_empty`, `assert_not_empty`, `assert_match` / `assert_no_match`
+(Regexp или String как подстрока), `assert_in_delta(expected, actual,
+delta = 0.001)`, `assert_nothing_raised { }` и `flunk` — как в Minitest, с
+текстом ошибки Minitest (`Expected: 1` и `  Actual: 0` на двух строках).
+Формы с блоком принимают лямбду, переданную позиционно:
+
+```ruby
+assert_difference -> { Article.count }, 1 do
+  post articles_path, params: { article: { title: "New", body: "A body long enough" } }
+end
+assert_no_difference(-> { Article.count }) { post articles_path, params: { article: { title: "" } } }
+assert_changes(-> { article.reload.title }, from: "Old", to: "New") { article.update(title: "New") }
+
+message = assert_raises(Cybertrain::RecordNotFound) { Article.find(999) }
+assert_includes message, "999"
+```
+
+- `assert_raises` принимает класс (подкласс тоже подходит, как в
+  Minitest), часть имени класса строкой (`assert_raises("RecordNotFound")`)
+  или ничего (любой StandardError) и возвращает **сообщение** исключения, а
+  не само исключение: там, где в Rails пишут `error = assert_raises(X) { }`
+  и затем `error.message`, используйте возвращённую String. Под Spinel
+  метод возвращает один тип, а тесты читают именно сообщение.
+- Проверки с блоком возвращают nil, а не значение блока.
+- Нет: `assert_predicate` (для него нужен вычисляемый `send`: пишите
+  `assert article.valid?`), строковых выражений в `assert_difference` (им
+  нужен `eval`), Array или Hash выражений и аргумента-сообщения.
+
+## Путешествие во времени
+
+```ruby
+test "a remembered session survives day 15" do
+  sign_in_as users(:one), remember: true
+  travel_to 15.days.from_now do
+    get root_path
+    assert_response :success
+  end
+end
+
+test "the cache entry expires" do
+  freeze_time
+  Cybertrain::Cache.write("k", "v", expires_in: 5.minutes)
+  travel 6.minutes
+  assert_nil Cybertrain::Cache.read("k")
+end
+```
+
+`travel_to(time)`, `travel(seconds)`, `freeze_time` и `travel_back` —
+хелперы Rails: каждый останавливает часы и отбрасывает доли секунды; с
+блоком прежнее время возвращается, когда блок заканчивается (даже с
+исключением), без блока путешествие длится до `travel_back` или конца
+теста. За ним следует всё, чему фреймворк ставит время: `Time.current`,
+`Time.now` в тестовой программе, метки времени записей, истечение кэша,
+ограничения частоты, срок жизни сессии, `run_at` задач, истечение токенов,
+планировщик. Ожидания и таймауты (чтение потоков, приёмники) остаются на
+реальном времени, поэтому остановленные часы никогда их не подвешивают. В
+продакшене `Time.now` — системные часы: код, который должен следовать
+путешествию, читает `Time.current`, как и советует Rails.
+
+Длительности — это целые секунды: `5.minutes` — это `300`, а `2.weeks.ago`
+и `3.days.from_now` возвращают Time на часах. `1.month` нет (у месяца нет
+длины в секундах): при выполнении это `NoMethodError`. Используйте
+календарные методы Time: `Time.current.months_ago(1)`,
+`advance(months: 1)`, `beginning_of_day`, `end_of_month`, `yesterday`
+([Время и часовой пояс](models.md#times-and-the-time-zone)). `advance`
+прибавляет часы, минуты и секунды как прошедшее время, после календарной
+части, и принимает целые числа; реальные часы сохраняют микросекунды.
+
+## Тестирование потоков и компонентов
+
+```ruby test/components/comment_component_test.rb
+require "test_helper"
+
+class CommentComponentTest < ViewComponent::TestCase
+  test "renders the comment" do
+    render_inline(CommentComponent.new(comment: comments(:one)))
+    assert_select "div.comment strong.comment-author", text: "Alice"
+  end
+
+  test "renders the form partial" do
+    html = render_inline(partial: "articles/form", locals: { article: Article.new })
+    assert_select "form[action=\"/articles\"] input[name=\"article[title]\"]"
+    assert_includes html, "Save"
+  end
+end
+```
+
+`render_inline(component, content: "")` и `render_inline(partial:,
+locals: {})` рендерят вне всякого запроса, возвращают HTML (Rails
+возвращает фрагмент Nokogiri и принимает содержимое блоком) и сохраняют его
+для `assert_select`. Хелпер, которому нужен запрос, вызывает
+`Cybertrain::Views::OutsideRequest`.
+
+`assert_select(selector, equality = nil, count:, minimum:, maximum:,
+text:)` проверяет последний `render_inline` или ответ этого теста (без них
+падает: «No response yet») и возвращает найденные элементы:
+
+- Селекторы: тег, `.class`, `#id`, `[attr]`, `[attr="v"]`, составные
+  (`a.btn[href="/x"]`), комбинаторы потомка и ребёнка (`>`) и список
+  (`h1, h2`). Псевдоклассы, `+` и `~`, другие операторы атрибутов и форма с
+  вложенным блоком падают с `assert_select: <feature> is not supported`.
+- `text:` — это String, сравниваемая с текстом каждого элемента, или
+  Regexp, применяемый к нему. В тексте каждая последовательность пробельных
+  символов становится одним пробелом, а края обрезаются (Rails только
+  обрезает края). Вторым аргументом может быть позиционная форма Rails:
+  текст (String или Regexp), количество (Integer) или `true` / `false`;
+  Range отклоняется (пишите `minimum:` и `maximum:`).
+- HTML читается так, как написан, без исправлений, которые сделал бы
+  браузер (и Nokogiri за `assert_select` в Rails): `table > tr` совпадает
+  с таблицей, написанной без `<tbody>`, `p > div` совпадает с `<p><div>`, а
+  пропущенный закрывающий тег (`<li>a<li>b`, `<p>a<p>b`) или
+  самозакрывающийся `<div/>` валит проверку с указанием позиции. Шаблоны
+  самого фреймворка читаются все.
+
+Трансляция — это строка `cybertrain_messages`, поэтому проверки потоков
+читают таблицу, без поллера и сокета:
+
+```ruby
+test "a new comment is broadcast and answered with a Turbo Stream" do
+  article = articles(:one)
+  payloads = assert_broadcasts(article, 1) do
+    post article_comments_path(article), params: { comment: { commenter: "Dave", body: "Hi" } },
+                                         headers: { "Accept" => "text/vnd.turbo-stream.html" }
+  end
+  assert_includes payloads[0], 'target="comments"'
+  assert_turbo_stream action: "append", target: "comments"
+end
+```
+
+`assert_broadcasts(stream, count) { }` считает, что было отправлено в поток
+(имя или запись) за время блока или, без блока, с начала теста, и
+возвращает содержимое; `assert_no_broadcasts(stream)` требует, чтобы не
+было ничего. `assert_turbo_stream(action:, target:, count: 1)` читает
+последний ответ, который должен быть `text/vnd.turbo-stream.html`, или
+последний `render_inline`. Чтобы прочитать живой поток, как браузер,
+`client.get_stream(path, events: n)` у `Cybertrain::Test::Client`
+выполняет потоковый ответ в памяти ([Реальное время](realtime.md)).
+
+## Тестирование почты
+
+В тестовом окружении `Cybertrain.config.mail_delivery_method` равен
+`:test`: `deliver_now`, `Mailer.deliver` и задача `deliver_later` проверяют
+сообщение и сохраняют его в `Cybertrain::Mailer.deliveries` вместо
+подключения, а список очищается перед каждым тестом. Тестовая программа
+даёт письмам отправителя `from@example.com`, когда приложение его не
+задаёт.
+
+```ruby
+test "a reset mails a link" do
+  assert_emails 1 do
+    post passwords_path, params: { email_address: users(:one).email_address }
+  end
+  mail = Cybertrain::Mailer.deliveries.last
+  assert_equal "Reset your password", mail.mail_subject
+  assert_includes mail.mail_body, "/passwords/"
+end
+```
+
+`assert_emails(count) { }` считает письма, отправленные блоком; письмо,
+поставленное в очередь в блоке через `deliver_later`, сначала отправляется,
+а упавшая почтовая задача валит проверку со своей ошибкой.
+`assert_no_emails { }` требует, чтобы писем не было. Читатели сообщения —
+`mail_to`, `mail_from`, `mail_subject`, `mail_body` и `mail_html`. Тест
+самого пути SMTP задаёт `Cybertrain.config.mail_delivery_method = :smtp` и
+возвращает `:test` в `teardown` (настройка не сбрасывается между тестами),
+как в разделе [Тестирование исходящих вызовов](#testing-outbound-calls).
+Вне тестового окружения `:test` запускается с предупреждением, и письма не
+отправляются.
+
+## Тестирование задач
+
+```ruby test/jobs/notify_comment_job_test.rb
+require "test_helper"
+
+class NotifyCommentJobTest < ActiveSupport::TestCase
+  test "a comment queues its notification, which runs" do
+    comment = comments(:one)
+    NotifyCommentJob.perform_later("comment_id" => comment.id, "article_id" => comment.article_id)
+    assert_enqueued_jobs 1, "NotifyCommentJob"
+    assert_enqueued_with "NotifyCommentJob", { "comment_id" => comment.id }
+    assert_equal 1, perform_enqueued_jobs
+    assert_no_enqueued_jobs
+  end
+
+  test "the jobs a block queues run at once" do
+    performed = perform_enqueued_jobs { ReminderJob.perform_in(3600, { "id" => 1 }) }
+    assert_equal 1, performed
+  end
+end
+```
+
+- `assert_enqueued_jobs(count, kind = "")` считает задачи в очереди (одного
+  вида, если он указан); `assert_no_enqueued_jobs(kind = "")` требует,
+  чтобы их не было.
+- `assert_enqueued_with(kind, args)` требует задачу этого вида в очереди,
+  аргументы которой содержат каждый указанный ключ с равным значением
+  (`"comment_id" => 7` совпадает с JSON-значением `7`; `comment_id: 7`
+  тоже работает).
+- `perform_enqueued_jobs { }`, встроенная форма Rails, выполняет блок,
+  затем каждую задачу, поставленную в очередь в нём, и задачи, которые
+  ставят они, независимо от их `run_at`, и возвращает, сколько их
+  выполнилось. Задача, бросившая исключение, валит тест со своим классом и
+  ошибкой и не повторяется; задача, которую приложение отбрасывает
+  (`discard_on`), считается выполненной.
+- `perform_enqueued_jobs(now = Time.current)` без блока выполняет по одной
+  каждую задачу, срок которой наступил к `now`, пока такие есть. Повтор,
+  назначенный на потом, остаётся в очереди: переместитесь за него через
+  `travel` или передайте более поздний `now`. Обе формы валят тест после
+  10 000 задач (задача, которая снова ставит себя в очередь).
+- `clear_enqueued_jobs` удаляет задачи из очереди;
+  `WelcomeJob.perform_now(args)` выполняет одну задачу напрямую, и
+  исключение доходит до теста.
+- Плановые задачи выполняются по одному такту через
+  `Cybertrain::Scheduler.run_due(Time.current)`.
 
 ## Тестирование исходящих вызовов
 
-Когда тестируемый код отправляет вебхук ([Исходящий HTTP](external-services.md#outbound-http)) или
-письмо ([Отправка электронной почты](external-services.md#sending-e-mail)), тест получает его
-внутри процесса: `Cybertrain::Test::HttpReceiver` и `Cybertrain::Test::SmtpReceiver`
-слушают на `127.0.0.1`, записывают то, что приходит, и отвечают заготовленным
-ответом. Файл начинается с того же хелпера, что и выше, `support/blog_test`;
-`require "cybertrain"` загружает мейлер, и явный require ниже не мешает.
+Когда тестируемый код отправляет веб-хук ([Исходящий HTTP](external-services.md#outbound-http))
+или письмо по SMTP ([Отправка почты](external-services.md#sending-e-mail)),
+тест принимает его внутри процесса: `Cybertrain::Test::HttpReceiver` и
+`Cybertrain::Test::SmtpReceiver` слушают на `127.0.0.1`, записывают то,
+что пришло, и отвечают заготовленным ответом. Приёмник, запущенный в
+тесте, останавливается после него, даже если тест упал.
 
-```ruby
-require_relative "support/blog_test"   # приложение, BLOG и Cybertrain::Test
-require "cybertrain/mailer"
+```ruby test/integration/signup_hook_test.rb
+require "test_helper"
 require "cybertrain/test/http_receiver"
 require "cybertrain/test/smtp_receiver"
 
-test "a sign-up posts a webhook" do
-  hook = Cybertrain::Test::HttpReceiver.new(status: 202, body: "queued")
-  hook.start                                   # занимает свободный порт и возвращает его
-  Cybertrain.config.http_allow_private = true  # иначе HttpClient отвергает loopback
-  SignupHook.post(hook.url("/hooks/signup"), "ann@example.com")   # код приложения
-  req = hook.received_request                  # ждёт не более 5 с; nil, если ничего не пришло
-  hook.stop
-  assert_equal "POST", req.http_method
-  assert_equal "/hooks/signup", req.http_target
-  assert_equal "application/json", req.http_header("Content-Type")
-  assert_includes req.http_body, "ann@example.com"
-end
+class SignupHookTest < ActiveSupport::TestCase
+  setup do
+    Cybertrain.config.http_allow_private = true   # иначе HttpClient отклоняет loopback
+  end
 
-test "a refused recipient is reported" do
-  smtp = Cybertrain::Test::SmtpReceiver.new(reject: { rcpt: "550 5.1.1 no such user" })
-  port = smtp.start
-  mailer = Cybertrain::Mailer.new(host: "127.0.0.1", port: port, tls: "none", from: "app@example.com")
-  assert_raises("RejectedError") { mailer.deliver(to: "nobody@example.org", subject: "Hi", body: "Hello\n") }
-  mail = smtp.received_message
-  smtp.stop
-  assert_equal ["EHLO localhost", "MAIL FROM:<app@example.com>", "RCPT TO:<nobody@example.org>"],
-               mail.transcript.first(3)
-  refute mail.delivered?
-end
+  teardown do
+    Cybertrain.config.http_allow_private = false
+    Cybertrain.config.mail_delivery_method = :test
+  end
 
-Cybertrain::Test.run!
+  test "a sign-up posts a webhook" do
+    hook = Cybertrain::Test::HttpReceiver.new(status: 202, body: "queued")
+    hook.start                                   # занимает свободный порт и возвращает его
+    SignupHook.post(hook.url("/hooks/signup"), "ann@example.com")   # код приложения
+    req = hook.received_request                  # ждёт не больше 5 с; nil, если ничего не пришло
+    assert_equal "POST", req.http_method
+    assert_equal "/hooks/signup", req.http_target
+    assert_equal "application/json", req.http_header("Content-Type")
+    assert_includes req.http_body, "ann@example.com"
+  end
+
+  test "a refused recipient is reported" do
+    Cybertrain.config.mail_delivery_method = :smtp
+    smtp = Cybertrain::Test::SmtpReceiver.new(reject: { rcpt: "550 5.1.1 no such user" })
+    port = smtp.start
+    mailer = Cybertrain::Mailer.new(host: "127.0.0.1", port: port, tls: "none", from: "app@example.com")
+    assert_raises("RejectedError") { mailer.deliver(to: "nobody@example.org", subject: "Hi", body: "Hello\n") }
+    mail = smtp.received_message
+    assert_equal ["EHLO localhost", "MAIL FROM:<app@example.com>", "RCPT TO:<nobody@example.org>"],
+                 mail.transcript.first(3)
+    assert_not mail.delivered?
+  end
+end
 ```
 
 `HttpReceiver.new` принимает заготовленные `status:`, `headers:`, `body:` и
-`chunked:` (`respond_with` меняет их между запросами); запрос возвращается как
-`ReceivedRequest` (`http_method`, `http_target`, `http_path`, `http_headers` с
-именами в нижнем регистре, `http_header(name)`, `http_body` с декодированным
-chunked-телом). `SmtpReceiver` разыгрывает 220, EHLO (с 8BITMIME, если не
-задано `eight_bit_mime: false`, и с AUTH PLAIN при `auth: true`), MAIL, RCPT,
-DATA и QUIT; `reject:` проваливает любой из шагов `:greeting`, `:ehlo`, `:mail`,
-`:rcpt`, `:data` или `:message` с заданным ответом. У `ReceivedMessage` есть
-`envelope_from`, `envelope_recipients`, `message_data` (с отменённым
-dot-stuffing), `message_header(name)`, `message_body` и `transcript` команд;
-для HTML-письма `message_parts` раскладывает его на `"subject"`, `"text"` и
-`"html"`.
-Оба принимают одно соединение, если `max:` не говорит, что больше
-(`received_requests` / `received_messages` возвращают их все). Каждое ожидание
-ограничено: приёмник сдаётся после `accept_window:` (10 с) без соединения,
-молчащий клиент — после `read_timeout:` (5 с), а `stop` (его безопасно вызывать
-дважды) завершает поток приёмника, дожидается его и закрывает его порт, поэтому
-приёмник никогда не перехватит соединение более позднего теста. Им нужна только
-библиотека сокетов Ruby, а не openssl.
+`chunked:` (`respond_with` меняет их между запросами); запрос возвращается
+как `ReceivedRequest` (`http_method`, `http_target`, `http_path`,
+`http_headers` с именами в нижнем регистре, `http_header(name)`,
+`http_body` с декодированным chunked-телом). `SmtpReceiver` разыгрывает 220,
+EHLO (с 8BITMIME, если не `eight_bit_mime: false`, и с AUTH PLAIN при
+`auth: true`), MAIL, RCPT, DATA и QUIT; `reject:` проваливает любой из
+`:greeting`, `:ehlo`, `:mail`, `:rcpt`, `:data` или `:message` с заданным
+ответом. У `ReceivedMessage` есть `envelope_from`, `envelope_recipients`,
+`message_data` (с отменённым dot-stuffing), `message_header(name)`,
+`message_body` и `transcript` команд; для HTML-письма `message_parts`
+декодирует его в `"subject"`, `"text"` и `"html"`. Оба принимают одно
+соединение, если `max:` не указывает больше (`received_requests` /
+`received_messages` возвращают все). Каждое ожидание ограничено: приёмник
+сдаётся после `accept_window:` (10 с) без соединения, молчащий клиент
+отключается после `read_timeout:` (5 с), а `stop` (его можно вызвать
+дважды) завершает поток и закрывает порт, так что приёмник никогда не
+заберёт соединение более позднего теста. Приёмник, запущенный вне теста
+(в начале файла), за вас не останавливается.
 
-Поток данных тестируется так же с помощью `Cybertrain::Test::WebSocketReceiver` —
-сервера WebSocket по сценарию на `127.0.0.1`: каждое соединение разыгрывает
-список `Cybertrain::Test::WsStep` (`"accept"`, `"send_text"`, `"expect"`,
-`"silent"`, `"close"`, `"drop"`, `"echo_until_close"`, ...), а фреймы, которые
-отправил клиент, возвращаются без маски из `ws_received`.
+Фид тестируется так же, с `Cybertrain::Test::WebSocketReceiver`,
+WebSocket-сервером на `127.0.0.1`, работающим по сценарию: каждое
+соединение проигрывает список `Cybertrain::Test::WsStep` (`"accept"`,
+`"send_text"`, `"expect"`, `"silent"`, `"close"`, `"drop"`,
+`"echo_until_close"`, ...), а кадры, отправленные клиентом, возвращаются
+без маски из `ws_received`.
 
-```ruby
+```ruby test/integration/trades_feed_test.rb
+require "test_helper"
 require "cybertrain/websocket"
 require "cybertrain/test/websocket_receiver"
 
-TICKS = Array.new(0) { "" }   # константа: блоки не видят локальные переменные
+TICKS = Array.new(0) { "" }   # константа: блоки не видят локальных переменных
 
-# Блоки написаны в методе, где используются их параметры,
-# а не внутри блока теста.
+# Блоки пишутся в методе, где используются их параметры.
 def subscribe_trades(url)
   Cybertrain::WebSocket.subscribe("trades", url, allow_private: true)
     .on_open { |conn| conn.send_text("subscribe") }
     .on_message { |conn, text| TICKS << text }
 end
 
-test "a trade message is stored" do
-  rx = Cybertrain::Test::WebSocketReceiver.new
-  rx.ws_script([Cybertrain::Test::WsStep.new("accept"), Cybertrain::Test::WsStep.new("expect"),
-                Cybertrain::Test::WsStep.new("send_text", "tick"), Cybertrain::Test::WsStep.new("echo_until_close")])
-  rx.start
-  subscribe_trades(rx.url("/trades"))
-  Cybertrain::WebSocket.start!               # Test::Client никогда не запускает потоки
-  # ... опрашивать TICKS не дольше нескольких секунд ...
-  Cybertrain::WebSocket.stop!
-  assert_equal ["tick"], TICKS
-  assert_equal "subscribe", rx.ws_received[0].rec_data
-  rx.stop
+class TradesFeedTest < ActiveSupport::TestCase
+  test "a trade message is stored" do
+    rx = Cybertrain::Test::WebSocketReceiver.new
+    rx.ws_script([Cybertrain::Test::WsStep.new("accept"), Cybertrain::Test::WsStep.new("expect"),
+                  Cybertrain::Test::WsStep.new("send_text", "tick"), Cybertrain::Test::WsStep.new("echo_until_close")])
+    rx.start
+    subscribe_trades(rx.url("/trades"))
+    Cybertrain::WebSocket.start!               # тестовая программа никогда не запускает фиды
+    # ... опрашивать TICKS не дольше нескольких секунд ...
+    Cybertrain::WebSocket.stop!
+    assert_equal ["tick"], TICKS
+    assert_equal "subscribe", rx.ws_received[0].rec_data
+  end
 end
 ```
 
-`Cybertrain::WebSocket.random_source = -> { 0.5 }` делает задержки повторов точными.
-`test/websocket_integration.rb` в этом репозитории показывает полный тест.
+`Cybertrain::WebSocket.random_source = -> { 0.5 }` делает задержки
+переподключения точными. `test/websocket_integration.rb` в этом
+репозитории показывает полный тест.
 
-## Тестирование задач
+## Что gen отклоняет в тестовом классе
 
-`require "cybertrain/test/jobs"` добавляет пять вспомогательных методов для очереди задач
-тестовой базы данных. Файл поддержки, который пишет `cybertrain generate
-authentication` (`test/support/app_test.rb`; его другие хелперы — в разделе [Аутентификация](authentication.md#testing)), его подключает; приложение без
-такого файла добавляет эту строку в свой файл поддержки, как это сделано в
-examples/blog.
+gen переписывает тестовый класс в методы: `test "shows it" do` становится
+`def test_shows_it` (каждый символ вне `[A-Za-z0-9_]` превращается в `_`,
+как в Rails, и `-n` принимает это имя), а блоки `setup do` и `teardown do`
+становятся методами `setup` и `teardown`, которые вызывают `super`. То, что
+нельзя перенести в точности, останавливает `spin run gen` с `путь:строка:`
+и причиной — никогда молча неверная копия или потерянный тест:
 
-```ruby
-require_relative "support/blog_test"
-require "cybertrain/test/jobs"
+- имя теста, которое не является простым строковым литералом
+  (интерполяция, экранирование вроде `\n`: напишите сам символ);
+- два теста, имена методов которых совпадают в одном классе, включая
+  `def test_x`;
+- и `setup do`, и `def setup` в одном классе (то же для `teardown`);
+- `setup { }` и `setup :name` (пишите `setup do ... end`) и параметры
+  блока у `test`, `setup` или `teardown`;
+- `next`, `break` или `redo` в теле теста, setup или teardown
+  (используйте `return`) и `return <value>` (каждый возвращает nil);
+- тестовый класс, вложенный в другой класс или модуль, тестовый класс,
+  открытый дважды, и `setup do` в повторно открытом
+  `ActiveSupport::TestCase` (напишите базовый класс приложения с
+  `setup do` и наследуйтесь от него);
+- строка `test`, `setup` или `teardown`, которую gen не может разместить в
+  теле класса (внутри условия, цикла, строки или heredoc), однострочная
+  форма, которая не заканчивается `end`, `end`, за которым идёт код, и
+  отступы, смешивающие табуляции и пробелы;
+- `require_relative`, аргумент которого не строковый литерал.
 
-test "a notification is enqueued, then runs" do
-  clear_enqueued_jobs
-  NotifyCommentJob.perform_later("comment_id" => 7, "article_id" => 1)
-  assert_enqueued_jobs 1, "NotifyCommentJob"
-  assert_enqueued_with "NotifyCommentJob", { "comment_id" => 7 }
-  assert_equal 1, perform_enqueued_jobs
-  assert_no_enqueued_jobs
+`cybertrain test` также отклоняет (при этом `spin run gen` продолжает
+работу) `test`, `setup` или `teardown` верхнего уровня в
+`test/test_helper.rb` или `test/support/` (они никогда не выполнились бы),
+`def render_inline` верхнего уровня (он заменил бы метод фреймворка),
+`assert_select ... do` и `render_inline ... do`, а также повторяющиеся
+хелперы верхнего уровня из раздела [Запуск тестов](#running-the-tests).
+Файл в форме класса выполняется только через `cybertrain test`: под
+`spin test` тело его класса вызывает «class-form tests run with
+`cybertrain test FILE`».
+
+## Форма верхнего уровня
+
+Прежняя форма — блоки `test` на верхнем уровне файла — продолжает работать
+и в `cybertrain test` (как здесь, с приложением и фикстурами программы), и
+под `cybertrain spin test`:
+
+```ruby test/legacy.rb
+require "test_helper"
+
+setup do
+  Cybertrain.config.http_allow_private = true
 end
 
-test "the job itself" do
-  assert_nil NotifyCommentJob.perform_now("comment_id" => 1, "article_id" => 1)
+teardown do
+  Cybertrain.config.http_allow_private = false
 end
+
+test "shows an article" do
+  client = Cybertrain::Test::Client.new(Cybertrain::Test.app)
+  res = client.get("/articles/#{articles(:one).id}")
+  assert_response res, :success
+  assert_includes res.body, articles(:one).title
+end
+
+Cybertrain::Test.run!
 ```
 
-<!-- list: points -->
-- `assert_enqueued_jobs(count, kind = "")` считает строки `queued` (одного
-  вида, если он задан); `assert_no_enqueued_jobs(kind = "")` требует, чтобы
-  их не было.
-- `assert_enqueued_with(kind, args)` требует строку этого вида в очереди,
-  аргументы которой содержат каждый заданный ключ с равным значением; обе
-  стороны сравниваются через `Cast.str`, так что `"comment_id" => 7`
-  совпадает с `7` из JSON. Ключ-Symbol читается как его имя, так что
-  `assert_enqueued_with "NotifyCommentJob", comment_id: 7` тоже работает.
-- `perform_enqueued_jobs(now = Time.now)` выполняет каждую наступившую задачу
-  в вызывающем потоке, по одной (`Job.work_one`), пока наступивших не
-  останется, и возвращает, сколько выполнено. Повтор, запланированный на
-  потом, остаётся в очереди: передайте более поздний `now`, чтобы выполнить
-  его. Задача, которая снова ставит себя в очередь с немедленным сроком,
-  заставила бы его работать бесконечно, поэтому после 10 000 задач он
-  проваливает тест.
-- `clear_enqueued_jobs` удаляет все строки `queued`; строки `failed` и
-  `discarded` остаются, так что тест, который их создаёт, удаляет их сам.
-- `WelcomeJob.perform_now(args)` выполняет одну задачу напрямую, без очереди
-  и без rescue: исключение доходит до теста.
-- Письмо, отправленное через `deliver_later`, — это задача
-  `"cybertrain mail"`: `perform_enqueued_jobs` отправляет его в
-  `SmtpReceiver` (если `smtp_host` и `smtp_port` указывают на него).
-- Задачи по расписанию выполняются по одному такту через
-  `Cybertrain::Scheduler.run_due(now)`, а `Cybertrain::Cache.prune(now)`
-  очищает кэш на выбранный вами момент.
+Блоки `setup do` и `teardown do` верхнего уровня выполняются до и после
+каждого теста своего файла. `cybertrain spin test` компилирует каждый
+`test/*.rb` в отдельную программу и сравнивает её вывод с
+`test/<name>.rb.expected`; там нет ни очистки, ни фикстур (им нужен список
+таблиц gen), а `Cybertrain::Test.run!` выполняет тесты файла. В
+`cybertrain test` тесты файла выполняются вместе с остальными, после
+очистки и фикстур, а `run!` ничего не делает. Под `spin test` никто не
+загружает приложение для файла, поэтому такой файл загружает его сам, как
+это делали вспомогательные файлы 0.4 (`AppTest.boot`, `BlogTest.boot`), и
+фикстур не использует. `Cybertrain::Test::Client` управляет приложением с
+банкой cookie, включая CSRF (`client.get`, `client.post(path, fields,
+headers)`, `client.follow_redirect!`, `client.response` и формы с двумя
+аргументами `assert_response res, :ok` и `assert_redirected_to res, path`).
+Снимок теста, который обращается к SQLite, берётся из скомпилированного
+бинарника: `script/regen-snapshot test/<name>.rb` в репозитории
+фреймворка или
+`rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`.
 
-## Тестирование потоков и компонентов
+## Обновление с 0.4
 
-`require "cybertrain/test/views"` добавляет две функции отрисовки, которым
-не нужен запрос, чтобы проверять HTML партиала или
-[компонента](template-language.md#components):
-
-```ruby
-require_relative "support/blog_test"
-require "cybertrain/test/views"
-
-test "the comment component names its author" do
-  html = Cybertrain::Test.render_component(CommentComponent.new(comment: Comment.first))
-  assert_includes html, "<strong>"
-end
-
-test "the article partial links to the article" do
-  article = Article.create(title: "Hello", body: "Rendered for the test")
-  html = Cybertrain::Test.render_partial("articles/article", article: article)
-  assert_includes html, BlogTest.article_path(article)
-end
-```
-
-`Test.render_component(component, content: "")` передаёт `content:` как HTML
-блока. Обе отрисовывают так же, как рассылка, поэтому хелпер, которому нужен
-запрос, и здесь возбуждает `Cybertrain::Views::OutsideRequest`.
-
-[Поток](realtime.md) тестируется через точку входа.
-`client.get_stream(path, events: n, timeout: 2, headers: {})` выполняет
-потоковый ответ в памяти, пока не будут записаны `n` событий (ping не
-считаются) или не истечёт время ожидания, и возвращает его с записанным в
-качестве тела. Пока опросчик потоков не работает, точка входа отвечает 503,
-а тестовый клиент его не запускает, поэтому запустите его один раз в файле:
-
-```ruby
-Cybertrain::Stream::Poller.start!
-
-test "a new comment is broadcast to the article's stream" do
-  article = Article.create(title: "Live comments", body: "Posted for the test")
-  Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
-  token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
-  client = Cybertrain::Test::Client.new(BLOG)
-  res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
-  assert_includes res.body, '<turbo-stream action="append" target="comments">'
-end
-```
-
-Новое соединение получает только то, что разослано после подключения;
-`last-event-id`, равный `0`, повторяет то, что уже есть в таблице, — так тест
-может сначала разослать, а потом прочитать. Чтобы проверить только то, что
-действие сделало рассылку, прочитайте таблицу:
-`Cybertrain::DB.with { |c| c.execute("SELECT stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }`.
+- Добавьте `test/test_helper.rb`, как показано выше, и уберите из
+  вспомогательного файла то, что он делал при загрузке (`AppTest.boot`,
+  `BlogTest.boot`, миграцию базы): тестовая программа загружается на новой
+  базе перед первым тестом, а повторная загрузка лишь отнимает время.
+- Замените шаг CI `spin test` на `cybertrain test`.
+- Два файла, определяющих один и тот же хелпер или константу верхнего
+  уровня (по `new_client` в каждом, как их писали генераторы 0.4),
+  отклоняются вместе: перенесите хелпер в `test/support/` или
+  переименуйте один из них.
+- Перед каждым тестом все таблицы очищаются, поэтому более поздний тест
+  уже не может полагаться на строки, созданные предыдущим: перенесите
+  такие данные в фикстуры или в `setup`.
+- Точки подмены часов удалены: `Cybertrain::Cache.clock=`,
+  `Cache.system_clock`, `RateLimit.current_time=`, `SessionStore#fixed_now=`,
+  `Application.status_now=` и `Background.supervisor_clock=`. Используйте
+  `travel_to`, `travel` или `freeze_time`, блок которых возвращает время
+  без вашего собственного `ensure`.
+- Почта в тестах хранится в `Cybertrain::Mailer.deliveries`; тест,
+  читающий письма на `Test::SmtpReceiver`, сначала задаёт
+  `Cybertrain.config.mail_delivery_method = :smtp`.
+- Тест хелпера, написанный `generate helper` версии 0.4, определяет
+  `render_inline(source)` верхнего уровня, который конфликтует с методом
+  фреймворка: переименуйте его в этом файле в `render_helper_template`,
+  вместе с вызовами.
+- `1.month.ago` пишется `Time.current.months_ago(1)`.
+- `assert_equal` падает с двухстрочным текстом Minitest; снимок
+  проходящего теста не меняется.
+- `cybertrain generate authentication`, запущенный снова, записывает тесты
+  в форме классов и называет каждый старый файл, который они заменяют
+  (`test/authentication.rb`, `test/support/app_test.rb`, ...); `--force`
+  их удаляет.
 
 ## Непрерывная интеграция
 
-`cybertrain new` пишет для приложения `.github/workflows/ci.yml`. Он вызывает
-action `setup-cybertrain` из этого репозитория
+`cybertrain new` записывает для приложения `.github/workflows/ci.yml`. Он
+вызывает действие `setup-cybertrain` этого репозитория
 ([.github/actions/setup-cybertrain](../../.github/actions/setup-cybertrain/action.yml)),
-зафиксированный на релизном теге CLI, который устанавливает заголовки SQLite,
-zlib и OpenSSL и Ruby, считывает из `spin.lock` коммит фреймворка, на котором
-зафиксировано приложение, загружает фреймворк на этом коммите и запускает его
-`cybertrain doctor` и `cybertrain setup` (с `~/.cybertrain/spinel`,
-кэшируемым по релизу Spinel и образу раннера). Затем workflow проверяет, что
-`spin.lock` актуален (`spin lock && git diff --exit-code spin.lock`), а `gen/`
-свежий (`spin run gen -- --check`), и запускает `spin test`, как только в
-`test/` появляется тестовая программа. Когда меняются шаги установки
-инструментов, меняется action, а не копия в каждом приложении. Коммит берётся
-из `spin.lock`, поэтому workflow предполагает git-зависимость по умолчанию;
-приложение, созданное с `--path`, передаёт рабочую копию фреймворка в action
-как `framework-path`.
+закреплённое на теге релиза CLI; действие устанавливает заголовки SQLite,
+zlib и OpenSSL и Ruby, читает из `spin.lock` коммит фреймворка, на котором
+зафиксировано приложение, получает фреймворк на этом коммите и запускает
+его `cybertrain doctor` и `cybertrain setup` (с `~/.cybertrain/spinel`,
+кэшируемым по релизу Spinel и образу раннера). Затем workflow проверяет,
+что `spin.lock` актуален (`spin lock && git diff --exit-code spin.lock`) и
+`gen/` свеж (`SPIN_DEBUG=1 spin run gen -- --check`), и запускает
+`cybertrain test`. Когда шаги тулчейна меняются, меняется действие, а не
+копия каждого приложения. Коммит читается из `spin.lock`, поэтому workflow
+предполагает git-зависимость по умолчанию; приложение, созданное с
+`--path`, передаёт действию checkout фреймворка как `framework-path`.

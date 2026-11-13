@@ -1,5 +1,5 @@
 ---
-source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
+source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
 ---
 # 模型与数据库
 
@@ -159,6 +159,27 @@ done
 ### 解析时间
 
 `Time.iso8601(text)`、`Time.rfc2822(text)` 和 `Time.strptime(text, format)` 以 Ruby 的名字提供，遇到无法读取的文本都会抛出 `ArgumentError`。`strptime` 接受 `%Y %m %d %H %M %S %L %z %Z %b %B %a %A %j %s %%`（`%Z` 只接受 `UTC`、`GMT` 或 `Z`）。`Time.at(ms / 1000.0)` 把毫秒纪元转成 Time。
+
+### 时间与时区
+
+Time 始终是 UTC 瞬间：列中读出的值、`Time.current` 以及下面的每个方法都返回 UTC 的 `Time`，没有 TimeWithZone。所以 `time.hour` 是 UTC 的小时，而 Rails 返回的是时区中的小时。时区（`c.time_zone`，[时区](configuration.md#time-zones)）决定日历：一天、一周、一月或一年从哪里开始，`Date.current`，以及 `l` 和 `time_tag` 显示什么。
+
+```ruby
+Time.current                         # => 时钟的 UTC Time（在测试中跟随 travel_to）
+5.minutes                            # => 300，Integer 秒
+2.weeks.ago                          # => 一个 Time，比 Time.current 早 14 天
+3.days.from_now                      # => 一个 Time
+Time.current.months_ago(1)           # => 往前一个日历月（不是 1.month.ago）
+Time.current.beginning_of_day        # => Time.zone 中的午夜，表示为 UTC Time
+Time.utc(2026, 1, 31).advance(months: 1)   # => 2026-02-28 00:00:00 UTC
+Date.current                         # => Time.zone 中的今天
+Time.current.in_time_zone.hour       # => Time.zone 中的小时
+```
+
+- 时长：`seconds`、`minutes`、`hours`、`days`、`weeks` 及其单数形式是 Integer 秒（`5.minutes == 300`，而 Rails 返回 Duration）；`ago` 和 `from_now` 返回时钟上的 Time。`1.month` 和 `1.year` 没有定义，因为一个月没有以秒计的固定长度：它们在运行时抛出 `NoMethodError`。
+- Time 上的方法：`beginning_of_day` / `end_of_day`、`_week`（从周一开始）、`_month`、`_year`；`advance(years:, months:, weeks:, days:, hours:, minutes:, seconds:)`，参数为 Integer（年到日按时区的日历移动墙上日期，1 月 31 日加一个月是二月的最后一天；然后时到秒作为经过的时间加上）；`months_ago`、`months_since`、`years_ago`、`years_since`、`yesterday`、`tomorrow`。夏令时跳过的墙上时间会往后移；出现两次的时间取较早的瞬间。
+- `Time.zone` 是配置的 `Cybertrain::TimeZone`；它的名称是 `Time.zone.zone_name`。`time.in_time_zone`（或 `in_time_zone("Europe/London")`）返回 `Cybertrain::ZonedTime`，这是一个带有 `year`、`month`、`day`、`hour`、`min`、`sec`、`wday`、`yday`、`utc_offset`、`zone`（缩写）、`to_time` 和 `to_date` 的值；它不能做算术，也不会被存储。`Time.find_zone!(name)` 对未知名称抛出 `ArgumentError`。
+- 无论时区如何，列中保存的仍是 UTC 文本。
 
 ## 条件与查找
 

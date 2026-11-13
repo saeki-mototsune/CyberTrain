@@ -1,5 +1,5 @@
 ---
-source_sha256: ec95cb4cc2399795bb0f2b118a54d2fc79b0e844a95ab315210f07134e14d755
+source_sha256: ad73a71c35a10fd8d024458d144dd784063934ffc0d91ba95a6adcdd752bfd74
 ---
 # 认证
 
@@ -25,7 +25,7 @@ cybertrain db migrate
 | `app/mailers/passwords_mailer.rb`、`confirmations_mailer.rb` | 邮件 |
 | `app/commands/user_command.rb` | `./<app> user ...`，由 `bin/<app>.rb` require |
 | `app/views/...` | 各个页面（每段文本都经过 `t()`）以及 `sessions/_nav` 局部模板 |
-| `test/*.rb`、`test/support/*.rb` | 每个部分的测试（[测试](#testing)） |
+| `test/fixtures/users.yml`、`test/support/session_test_helper.rb`、`test/models/`、`test/controllers/`、`test/integration/` | 夹具用户、`sign_in_as`，以及每个部分的测试（[测试](#testing)） |
 
 以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令，以及 `config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)）。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[从 0.4 升级](#upgrading-from-04)、[之后再开启确认](#turning-on-confirmation-later)）。
 
@@ -185,13 +185,26 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 ## 测试
 
-生成器为每个部分写出一个测试程序：`test/authentication.rb`、`admin.rb`、`remember_me.rb`、`lockout.rb`、`passwords.rb`、`accounts.rb`，使用 `--confirmable` 时还有 `confirmations.rb`；它们使用 SQLite，所以用 `cybertrain spin test` 运行，并从二进制取得快照。它们的支持文件应用也可以使用：
+生成器写出 Rails 风格的测试类，由 `cybertrain test` 运行（[测试应用](testing.md)）：
 
-<!-- list: points -->
-- `test/support/app_test.rb`：`AppTest.boot`、`AppTest.user(email, password)`、`AppTest.sign_in(client, email, password)`（同时重置速率限制的计数）和 `AppTest.form_token(client)`。
-- `test/support/authentication_helpers.rb`：`with_smtp_receiver { |receiver| ... }`（应用的邮件发送到测试进程中的接收器）、`last_mail_link(receiver)`、`backdate_session(row, seconds)`，以及 `with_config(env, hosts, base_url, log = nil) { ... }`，它在代码块期间设置环境、`CYBERTRAIN_HOSTS` 和基础 URL，然后恢复原值。
+| 文件 | 测试的内容 |
+| --- | --- |
+| `test/fixtures/users.yml` | `one`（管理员）和 `two`，密码是 `"password"`（使用 `--confirmable` 时两者都已确认） |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`、`sign_out` 和 `open_session`（第二个浏览器），由 `test/test_helper.rb` 包含进每个集成测试 |
+| `test/models/user_test.rb` | 地址格式 |
+| `test/controllers/sessions_controller_test.rb` | 登录和退出 |
+| `test/controllers/registrations_controller_test.rb` | 注册（不使用 `--invite-only` 时） |
+| `test/integration/first_run_test.rb` | `/setup` 和 user 命令（使用 `--invite-only` 时） |
+| `test/controllers/passwords_controller_test.rb` | 重置、它的邮件和链接 |
+| `test/controllers/accounts_controller_test.rb` | 账户页面 |
+| `test/controllers/confirmations_controller_test.rb` | 确认（使用 `--confirmable` 时） |
+| `test/integration/remember_me_test.rb` | 第 15 天和第 30 天、空闲上限 |
+| `test/integration/lockout_test.rb` | 锁定和它的一小时 |
+| `test/integration/admin_test.rb` | `require_admin`、`user admin` |
 
-本仓库的 `script/auth-e2e signup invite confirmable upgrade04` 用生成器构建应用，并从头到尾驱动它们。
+时间用 `travel_to` 和 `travel` 推进（不会把任何行往回改时间），邮件用 `assert_emails` 和 `perform_enqueued_jobs` 从 `Cybertrain::Mailer.deliveries` 中读取。在认证之后生成的脚手架会在其控制器测试开头登录 `users(:one)`；在认证之前生成的不会，请在它的 `setup` 中加上 `sign_in_as users(:one)`。在一个由早先的生成器写过测试的应用中再次运行（`test/authentication.rb`、`admin.rb`、`remember_me.rb`、`lockout.rb`、`passwords.rb`、`accounts.rb`、`confirmations.rb`、`test/support/app_test.rb`、`test/support/authentication_helpers.rb`），生成器会指出每个文件以及替代它的文件；`--force` 会删除它们。
+
+本仓库的 `script/auth-e2e signup invite confirmable upgrade04` 用生成器构建应用，并端到端地驱动它们。
 
 ## 从 0.4 升级
 

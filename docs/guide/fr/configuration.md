@@ -1,5 +1,5 @@
 ---
-source_sha256: d5fefad19aa87e6ad7742fd4c11230287f05414918158021130686e4e9c0e5ba
+source_sha256: be4fff88f6e163067e559bb2cc0d966fbd37f467261def1c4f2a3d1d29c83797
 ---
 # Configuration
 
@@ -37,7 +37,8 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`&nbsp;; des noms séparés par des virgules remplacent la liste. Un paramètre dont le nom contient l’un d’eux (sans tenir compte de la casse ASCII&nbsp;: `password` correspond aussi à `user[password]`) voit sa valeur écrite `[FILTERED]` dans le journal des requêtes et sur la page d’erreur de développement&nbsp;; `[]` dans `config/app.rb` désactive ce filtrage |
 | `CYBERTRAIN_WORKER` | `worker` | `true`&nbsp;; `0` ou `false` empêche un processus `server` d’exécuter les tâches planifiées, les jobs et les flux WebSocket (voir [Rôles des processus](background-and-operations.md#process-roles))&nbsp;; `./<app> worker` et `feeds` l’ignorent |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`&nbsp;: le nombre de jobs qu’un processus exécute en même temps (voir [Tâches de fond](background-and-operations.md#background-work))&nbsp;; au moins 1 |
-| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `"UTC"`&nbsp;: le fuseau dans lequel se lit une tâche `Scheduler.cron` sans `tz:`, un nom IANA comme `Asia/Tokyo` (voir [Fuseaux horaires](#time-zones))&nbsp;; un fuseau absent du zoneinfo du système arrête le démarrage |
+| `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`&nbsp;: le fuseau de l’application, un nom IANA comme `Asia/Tokyo`, pour `Time.zone`, les limites des jours et des mois, `Date.current`, `l` et `time_tag` (voir [Fuseaux horaires](#time-zones))&nbsp;; un fuseau absent du zoneinfo du système arrête le démarrage |
+| `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` quand il n’est pas réglé&nbsp;: le fuseau dans lequel se lit une tâche `Scheduler.cron` sans `tz:`, un nom IANA (voir [Fuseaux horaires](#time-zones))&nbsp;; un fuseau absent du zoneinfo du système arrête le démarrage |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`&nbsp;: lignes par liste sur la [page des jobs](background-and-operations.md#the-jobs-page-and-the-jobs-command)&nbsp;; au moins 1 |
 | `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`&nbsp;: secondes entre deux purges des lignes expirées du [cache](background-and-operations.md#the-cache-store), lu quand `cybertrain/cache` est requis&nbsp;; au moins 1 |
 | `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`&nbsp;: secondes entre deux écritures de la ligne d’état de chaque flux WebSocket (voir [Santé des flux](realtime.md#feed-health))&nbsp;; au moins 1 |
@@ -55,6 +56,8 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`&nbsp;; un secret, jamais journalisé, jamais dans la bannière de démarrage ni dans un message d’erreur |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`&nbsp;: l’expéditeur qu’utilise `Mailer.deliver` quand `from:` n’est pas fourni |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` dans l’environnement de test, `:smtp` dans tous les autres&nbsp;: `:test` garde chaque courriel dans `Cybertrain::Mailer.deliveries` au lieu de l’envoyer ([Tester les courriels](testing.md#testing-mail))&nbsp;; hors de l’environnement de test il démarre avec un avertissement et n’envoie rien&nbsp;; toute autre valeur arrête le démarrage |
+| `CYBERTRAIN_TEST_DATABASE` | — | `""`&nbsp;: le fichier que `cybertrain test` supprime, migre et sur lequel il exécute les tests, à la place de `storage/test.sqlite3`&nbsp;; il peut désigner n’importe quel fichier, donc désignez-en un jetable |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`&nbsp;: la locale dans laquelle commence chaque requête, un nom comme `ja` ou `pt-BR` (voir [Locales](#locales))&nbsp;; toute autre valeur arrête le démarrage |
 | `CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS` | `auth_lockout_attempts` | `10`&nbsp;: mauvais mots de passe avant qu’un compte soit verrouillé&nbsp;; `0` désactive le verrouillage (voir [Réglages de l’authentification](#authentication-settings)) |
 | `CYBERTRAIN_AUTH_LOCKOUT_PERIOD` | `auth_lockout_period` | `3600`&nbsp;: durée d’un verrouillage en secondes&nbsp;; au moins 1 |
@@ -299,5 +302,33 @@ plus tôt. `find` n’accepte qu’un nom relatif composé de `A-Za-z0-9_+-./` s
 segment vide, `.` ou `..`, de sorte qu’un nom de fuseau tiré du profil d’un
 utilisateur ne peut pas atteindre un fichier hors du répertoire des
 fuseaux&nbsp;; un fuseau inconnu ou mal formé n’est pas mis en cache, et `"UTC"`
-n’a besoin d’aucun fichier. `l` formate une heure dans la locale de la requête
-([Dates et heures](i18n.md#dates-and-times)) mais ne prend pas encore de `zone:`.
+n’a besoin d’aucun fichier.
+
+### Le fuseau de l’application
+
+```ruby
+# config/app.rb
+Cybertrain.configure do |c|
+  c.time_zone = "Asia/Tokyo"   # ou CYBERTRAIN_TIME_ZONE ; "UTC" par défaut
+end
+```
+
+`c.time_zone` prend un nom IANA (les noms propres à Rails, comme « Tokyo »,
+ne sont pas lus), et le démarrage s’arrête sur un fuseau que le système
+n’a pas. Les valeurs restent des instants UTC&nbsp;: une colonne,
+`Time.current` et les méthodes de calendrier renvoient un `Time` UTC, et
+`time.hour` est l’heure UTC. Le fuseau décide du calendrier
+(`beginning_of_day` et consorts, `Date.current`&nbsp;;
+[Les heures et le fuseau horaire](models.md#times-and-the-time-zone)) et de
+l’affichage&nbsp;: `l(time)` et `time_tag(time)` montrent un Time dans ce
+fuseau, `%z` et `%Z` compris, et le `datetime` de `time_tag` est en ISO 8601
+avec le décalage du fuseau (`2026-11-12T05:00:00+09:00`).
+`l(time, zone: "America/New_York")` et `time_tag(time, zone: "...")`
+montrent une valeur dans un autre fuseau. Un Time au décalage 0, c’est-à-dire
+tout Time que le framework fournit, est montré dans le fuseau&nbsp;; un Time qui
+porte un autre décalage qui lui est propre (`time.getlocal("+05:30")`) le
+garde sauf si `zone:` est donné&nbsp;; une Date est montrée telle quelle. Les
+tâches cron sans `tz:` suivent aussi le fuseau, sauf si `scheduler_tz` est
+réglé. Dans `cybertrain test`, chaque test commence dans le fuseau
+configuré. ([Dates et heures](i18n.md#dates-and-times) donne les formats de
+`l`.)

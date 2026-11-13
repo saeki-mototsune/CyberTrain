@@ -1,5 +1,5 @@
 ---
-source_sha256: ec95cb4cc2399795bb0f2b118a54d2fc79b0e844a95ab315210f07134e14d755
+source_sha256: ad73a71c35a10fd8d024458d144dd784063934ffc0d91ba95a6adcdd752bfd74
 ---
 # Аутентификация
 
@@ -25,7 +25,7 @@ cybertrain db migrate
 | `app/mailers/passwords_mailer.rb`, `confirmations_mailer.rb` | письма |
 | `app/commands/user_command.rb` | `./<app> user ...`, подключается из `bin/<app>.rb` |
 | `app/views/...` | экраны, каждый текст через `t()`, и partial `sessions/_nav` |
-| `test/*.rb`, `test/support/*.rb` | тесты каждой части ([Тестирование](#testing)) |
+| `test/fixtures/users.yml`, `test/support/session_test_helper.rb`, `test/models/`, `test/controllers/`, `test/integration/` | пользователи из фикстур, `sign_in_as` и тесты каждой части ([Тестирование](#testing)) |
 
 и правки, каждую один раз: `include Authentication` в `ApplicationController`, маршруты, строку страницы заданий ([Администраторы](#admin-users-and-the-jobs-page)), partial навигации в макете, команду пользователя в `bin/<app>.rb` и настройку `base_url` в `config/app.rb` ([Ссылки в письмах](#links-in-mails)). Повторный запуск с теми же опциями ничего не меняет: уже сделанная правка находится и пропускается, а файл, который уже таков, каким генератор его напишет, остаётся. Файл, который он написал бы иначе (отредактированный вами, или написанный более старым генератором или с другими опциями), без `--force` никогда не перезаписывается: вместо этого печатается его diff ([Обновление с 0.4](#upgrading-from-04), [Подтверждение адресов позже](#turning-on-confirmation-later)).
 
@@ -185,11 +185,36 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 ## Тестирование
 
-Генератор пишет по тестовой программе на каждую часть: `test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`, `passwords.rb`, `accounts.rb`, а с `--confirmable` ещё `confirmations.rb`; они используют SQLite, так что запускайте их через `cybertrain spin test` и берите снимки из бинарников. Их вспомогательными файлами может пользоваться и приложение:
+Генератор записывает тестовые классы в духе Rails, которые запускает
+`cybertrain test` ([Тестирование приложения](testing.md)):
 
-<!-- list: points -->
-- `test/support/app_test.rb`: `AppTest.boot`, `AppTest.user(email, password)`, `AppTest.sign_in(client, email, password)` (который также сбрасывает счётчики ограничения частоты) и `AppTest.form_token(client)`.
-- `test/support/authentication_helpers.rb`: `with_smtp_receiver { |receiver| ... }` (почта приложения идёт получателю внутри тестового процесса), `last_mail_link(receiver)`, `backdate_session(row, seconds)` и `with_config(env, hosts, base_url, log = nil) { ... }`, который на время блока задаёт окружение, `CYBERTRAIN_HOSTS` и базовый URL и затем возвращает их.
+| Файл | Что проверяет |
+| --- | --- |
+| `test/fixtures/users.yml` | `one` (администратор) и `two`, пароль которых `"password"` (с `--confirmable` оба подтверждены) |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`, `sign_out` и `open_session` (второй браузер), которые `test/test_helper.rb` включает в каждый интеграционный тест |
+| `test/models/user_test.rb` | формат адреса |
+| `test/controllers/sessions_controller_test.rb` | вход и выход |
+| `test/controllers/registrations_controller_test.rb` | регистрацию (не с `--invite-only`) |
+| `test/integration/first_run_test.rb` | `/setup` и команду user (с `--invite-only`) |
+| `test/controllers/passwords_controller_test.rb` | сброс, его письмо и ссылку |
+| `test/controllers/accounts_controller_test.rb` | страницу аккаунта |
+| `test/controllers/confirmations_controller_test.rb` | подтверждение (с `--confirmable`) |
+| `test/integration/remember_me_test.rb` | 15-й и 30-й день, предел бездействия |
+| `test/integration/lockout_test.rb` | блокировку и её час |
+| `test/integration/admin_test.rb` | `require_admin`, `user admin` |
+
+Время сдвигается через `travel_to` и `travel` (никакие строки не
+переносятся назад во времени), а письма читаются из
+`Cybertrain::Mailer.deliveries` через `assert_emails` и
+`perform_enqueued_jobs`. Скаффолд, сгенерированный после аутентификации,
+выполняет вход `users(:one)` в начале своего теста контроллера;
+сгенерированный до неё — нет, поэтому добавьте в его `setup`
+`sign_in_as users(:one)`. При повторном запуске в приложении, тесты
+которого написал прежний генератор (`test/authentication.rb`, `admin.rb`,
+`remember_me.rb`, `lockout.rb`, `passwords.rb`, `accounts.rb`,
+`confirmations.rb`, `test/support/app_test.rb`,
+`test/support/authentication_helpers.rb`), генератор называет каждый вместе
+с файлом, который его заменяет; `--force` их удаляет.
 
 `script/auth-e2e signup invite confirmable upgrade04` в этом репозитории собирает приложения генератором и прогоняет их от начала до конца.
 
