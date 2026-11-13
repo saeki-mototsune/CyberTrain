@@ -61,4 +61,6 @@ ok   listen_fd naming a descriptor that is not open raises PortInUse
 ok   listen_fd naming a read-only regular file raises PortInUse
 ok   listen_fd naming a read-write regular file raises PortInUse
 ok   listen_fd naming a connected socket that does not listen raises PortInUse
-63 tests, 236 assertions, 0 failures
+ok   where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served
+ok   where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused
+65 tests, 246 assertions, 0 failures

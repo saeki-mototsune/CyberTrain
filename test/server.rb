@@ -1160,4 +1160,56 @@ test "listen_fd naming a connected socket that does not listen raises PortInUse"
   held.close
 end
 
+# macOS's kernel does not answer SO_ACCEPTCONN (xnu's sogetoptlock has no
+# case for it: ENOPROTOOPT), so there the option's read fails for a real
+# listener too. This server reads it as failed everywhere, as on macOS:
+# the listener must still be served and every other descriptor still
+# refused.
+class NoAcceptConnServer < Cybertrain::Server
+  private
+
+  def accept_conn_option(listener)
+    -1
+  end
+end
+
+def no_accept_conn_start_message(fd)
+  server = NoAcceptConnServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 3000, listen_fd: fd,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  assert_raises("Cybertrain::PortInUse") { server.start }
+end
+
+test "where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served" do
+  held = TCPServer.new("127.0.0.1", 0)
+  held.autoclose = false
+  port = held.addr[1]
+  server = NoAcceptConnServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  server.start
+  c = RawClient.new(port)
+  assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
+  c.close
+  server.stop
+  assert port_refused?(port)
+end
+
+test "where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused" do
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(900)
+  file = File.open(__FILE__)
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(file.fileno)
+  file.close
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/server_listen_fd_test"
+  File.write(path, "#")
+  file = File.open(path, "r+")
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(file.fileno)
+  file.close
+  File.delete(path)
+  held = TCPServer.new("127.0.0.1", 0)
+  client = TCPSocket.new("127.0.0.1", held.addr[1])
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(client.fileno)
+  client.close
+  held.close
+end
+
 Cybertrain::Test.run!

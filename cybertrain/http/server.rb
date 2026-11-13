@@ -282,16 +282,48 @@ module Cybertrain
       raise PortInUse.new(@host, @port, PortInUse::NOT_LISTENING)
     end
 
-    # Whether the socket listens: SO_ACCEPTCONN is positive only then. A
-    # listening socket answers 1 on Linux and the option's own bit (2) on
-    # macOS, one that does not listen 0. For a descriptor that is not a
-    # socket CRuby raises ENOTSOCK, but Spinel's getsockopt answers -1
-    # instead of raising, so "non-zero" would take a read-write file for a
-    # listener and accept_loop would fail on it forever. Only a positive
-    # answer passes, so any failed read of the option refuses the number:
-    # at worst a listener is refused at boot, never a non-listener served.
+    # Whether the socket listens. Where the kernel answers SO_ACCEPTCONN
+    # its answer decides: positive only for a listener (1 on Linux), 0 for
+    # a socket that does not listen. macOS's kernel does not answer it at
+    # all (xnu's sogetoptlock has no case for the option: ENOPROTOOPT), and
+    # Spinel's getsockopt answers -1 for a descriptor that is not a socket
+    # instead of raising, so a failed read decides nothing and the
+    # addresses do: a socket bound to a port (getsockname) with no peer
+    # (getpeername) is taken for the listener. Under Spinel neither call
+    # raises; a failure reads as port 0, which is what a read-write file
+    # gives, so it is refused; a connected socket has a peer and is
+    # refused too. The one descriptor the fallback cannot tell from a
+    # listener is a socket bound but never listened on, which no supervisor
+    # hands down; accept_loop would log its failed accepts.
     def accepting?(listener)
-      listener.getsockopt(Socket::SOL_SOCKET, Socket::SO_ACCEPTCONN).int > 0
+      answer = accept_conn_option(listener)
+      return answer > 0 if answer >= 0
+
+      bound_unconnected?(listener)
+    end
+
+    # SO_ACCEPTCONN's value, or -1 when it cannot be read (CRuby raises
+    # ENOPROTOOPT on macOS, ENOTSOCK for a non-socket).
+    def accept_conn_option(listener)
+      listener.getsockopt(Socket::SOL_SOCKET, Socket::SO_ACCEPTCONN).int
+    rescue SystemCallError, IOError
+      -1
+    end
+
+    def bound_unconnected?(listener)
+      return false unless listener.addr[1].to_i > 0
+
+      peer_port(listener) == 0
+    rescue SystemCallError, IOError
+      false
+    end
+
+    # The peer's port, 0 for a socket with no peer (CRuby raises ENOTCONN;
+    # Spinel answers port 0).
+    def peer_port(listener)
+      listener.peeraddr[1].to_i
+    rescue Errno::ENOTCONN
+      0
     end
 
     # A separate method so its rescue stays away from the raw socket calls'
