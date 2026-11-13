@@ -40,6 +40,24 @@ end
 
 Cybertrain::Test.on_reset(Cybertrain::Test::Help.rate_limit_reset)
 Cybertrain::Test.on_reset(Cybertrain::Test::Help.locale_reset)
+require "cybertrain/error_reporter"
+
+module Cybertrain
+  module Test
+    module Help
+      # Cybertrain.error: the previous test's reports delivered (up to 2
+      # seconds), no dedupe or drop count carried over, and only the
+      # subscribers added at boot (config/app.rb) kept.
+      def self.error_reporter_reset
+        -> {
+          Cybertrain.error.reset!
+          nil
+        }
+      end
+    end
+  end
+end
+Cybertrain::Test.on_reset(Cybertrain::Test::Help.error_reporter_reset)
 require "cybertrain/test/database"
 require "cybertrain/test/select"
 require "cybertrain/test/mail"
