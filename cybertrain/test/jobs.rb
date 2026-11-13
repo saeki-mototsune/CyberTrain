@@ -67,11 +67,13 @@ module Cybertrain
       # Performs every queued job above `floor` (of `kind` unless ""), in
       # enqueue order, whatever its run_at, and the jobs those queue, until
       # none is left ({Job.work_one_after_id}), and answers how many
-      # distinct jobs ran. A job whose attempt did not end `done` (its
-      # handler raised, or it discarded or retried itself) fails the test
-      # at once, naming `helper`, the job's kind and its recorded error, as
-      # Rails' inline jobs raise into the test; so a failed attempt is never
-      # retried inside the block. Fails after PERFORM_LIMIT jobs too.
+      # distinct jobs ran. A job whose attempt ended failed or rescheduled
+      # (its handler raised), or a framework job the framework discarded
+      # ({check_performed}; an application's `discard_on` counts as
+      # performed), fails the test at once, naming `helper`, the job's kind
+      # and its recorded error, as Rails' inline jobs raise into the test;
+      # so a failed attempt is never retried inside the block. Fails after
+      # PERFORM_LIMIT jobs too.
       # @return [Integer]
       def self.perform_after(floor, kind, helper)
         return 0 unless table?
@@ -91,9 +93,18 @@ module Cybertrain
         seen.size
       end
 
-      # Fails the test unless the job `id` ended `done`, e.g.
-      # `perform_enqueued_jobs: the job "BoomJob" (id 3) raised
-      # RuntimeError: boom (now queued)`.
+      # The framework's own job kinds (Mailer::JOB_KIND), whose discard is
+      # the framework's: a mail that cannot be built or sent (no sender, a
+      # refused address). The store records the kind with the discard, so a
+      # discarded row of one of these is told from an application's
+      # `discard_on`.
+      FRAMEWORK_KINDS = ["cybertrain mail"].freeze
+
+      # Fails the test unless the job `id` ended `done`, or `discarded` by
+      # the application on purpose (its `discard_on`, as in Rails, where the
+      # block completes). A failed or rescheduled job, and a framework job
+      # the framework discarded, fail it, e.g. `perform_enqueued_jobs: the
+      # job "BoomJob" (id 3) raised RuntimeError: boom (now queued)`.
       # @return [nil]
       def self.check_performed(id, helper)
         rows = DB.with { |c| c.execute("SELECT kind, state, last_error FROM cybertrain_jobs WHERE id = ?", [id]) }
@@ -102,6 +113,7 @@ module Cybertrain
         row = rows[0]
         state = Cast.str(row["state"])
         return nil if state == "done"
+        return nil if state == "discarded" && !FRAMEWORK_KINDS.include?(Cast.str(row["kind"]))
 
         text = "#{helper}: the job #{Cast.str(row["kind"]).inspect} (id #{id}) raised #{Cast.str(row["last_error"])} (now #{state})"
         Cybertrain::Test.fail_with(text)
@@ -183,10 +195,12 @@ end
 # whatever their run_at, in enqueue order (`Job.work_one_after`), and
 # returns how many distinct jobs it ran; `now` is not used. Jobs queued
 # before the block stay queued. As Rails' inline jobs raise into the test,
-# a job whose attempt does not end `done` (its handler raised, or it
-# discarded or rescheduled itself) fails the test at once with its kind
-# and error: `perform_enqueued_jobs: the job "BoomJob" (id 3) raised
-# RuntimeError: boom (now queued)`. It is not retried in the block.
+# a job whose attempt ends failed or rescheduled (its handler raised), or
+# a mail the framework discarded (no sender, a refused address), fails the
+# test at once with its kind and error: `perform_enqueued_jobs: the job
+# "BoomJob" (id 3) raised RuntimeError: boom (now queued)`. It is not
+# retried in the block. A job the application discards on purpose
+# (`discard_on`) counts as performed, as in Rails.
 #
 # Either form fails the test after 10,000 jobs: a job that enqueues itself
 # would otherwise never let the test end.

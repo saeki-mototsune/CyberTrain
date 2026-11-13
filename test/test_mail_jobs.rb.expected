@@ -9,6 +9,7 @@ ok   Job.work_one_after claims above the floor whatever the run_at, of a kind wh
 ok   a job that raises fails perform_enqueued_jobs with its kind and error, performed once
 ok   a job that fails once is not retried in the block; its retry runs once travel_to brings it due
 ok   the count is distinct jobs, and jobs run at the test's clock
+ok   a job the application discards on purpose counts as performed
 ok   a mail job that fails names its error in assert_emails; assert_no_emails without a block
 ok   boot warns about :test delivery outside the test environment, and not in it
-13 tests, 82 assertions, 0 failures
+14 tests, 85 assertions, 0 failures

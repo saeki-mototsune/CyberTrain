@@ -41,6 +41,19 @@ Cybertrain::Job.register("flaky") do |run|
 end
 # The clock the job ran at.
 Cybertrain::Job.register("stamp") { |run| PERFORMED << "stamp #{Time.current.to_i}" }
+# An application job with `discard_on ArgumentError`: the arms the job
+# generator writes (cybertrain/generator/jobs_emitter.rb), in a method
+# that takes no block (NOTES rules 32, 45).
+def run_discarding(run)
+  begin
+    PERFORMED << "discarding"
+    raise ArgumentError, "no longer wanted"
+  rescue ::ArgumentError => e
+    Cybertrain::Job.discard(run, e)
+  end
+  nil
+end
+Cybertrain::Job.register("discarding") { |run| run_discarding(run) }
 
 def fresh_db
   Cybertrain::DB.connect(":memory:")
@@ -210,6 +223,14 @@ test "the count is distinct jobs, and jobs run at the test's clock" do
     assert_equal 1, perform_enqueued_jobs { Cybertrain::Job.enqueue("stamp", "{}") }
   end
   assert_equal ["leaf", "leaf", "early", "stamp 2000000000"], PERFORMED
+end
+
+test "a job the application discards on purpose counts as performed" do
+  fresh_db
+  assert_equal 1, perform_enqueued_jobs { Cybertrain::Job.enqueue("discarding", "{}") }
+  assert_equal ["discarding"], PERFORMED
+  state = Cybertrain::DB.with { |c| c.execute("SELECT state FROM cybertrain_jobs WHERE id = 1") }
+  assert_equal "discarded", Cybertrain::Cast.str(state[0]["state"])
 end
 
 test "a mail job that fails names its error in assert_emails; assert_no_emails without a block" do
