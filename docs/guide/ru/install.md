@@ -1,5 +1,5 @@
 ---
-source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
+source_sha256: 7962843f67deb96029a132f179d5ab73944f67df44deadd5aa501bed92c1c3f7
 ---
 # Установка
 
@@ -38,13 +38,17 @@ source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
   он keg-only, и добавьте его в пути компилятора:
   `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.
-- Ruby 3.2+ и RubyGems — только для команды `cybertrain` (приложения никогда
-  не запускаются на CRuby); на Ruby 3.2 для сборки Spinel также нужен gem
-  `prism` (ниже).
+- Ruby 3.2+ и RubyGems — для команды `cybertrain` и для CRuby-превью сервера
+  разработки, которому нужна ещё библиотека Ruby `fiddle` (ей нужен
+  libffi); без `fiddle` `cybertrain server` запускает только
+  скомпилированный цикл. Развёрнутое приложение никогда не запускается на
+  CRuby. На Ruby 3.2 для сборки Spinel также нужен gem `prism` (ниже).
 
-`cybertrain doctor` проверяет эти инструменты и заголовки, а также установку
-Spinel; если чего-то обязательного не хватает, она также выводит команду
-установки для вашей платформы.
+`cybertrain doctor` проверяет эти инструменты и заголовки, загружает ли
+`ruby` из `PATH` библиотеку `fiddle`, а также установку Spinel; если чего-то
+обязательного не хватает, она также выводит команду установки для вашей
+платформы (отсутствие `fiddle` не считается: сервер всё равно работает,
+скомпилированным).
 
 <details><summary>Ещё пакеты — prism на Ruby 3.2; jemalloc, необязателен</summary>
 
@@ -105,10 +109,16 @@ cybertrain doctor
 - `cybertrain db COMMAND...` после `SPIN_DEBUG=1 spin
   run gen` запускает любую другую команду базы данных: `status`, `rollback [N]`
   (после которой генерация выполняется снова), `schema:dump`, `create`.
-- `cybertrain server [PORT]` выполняет генерацию, затем запускает сервер
-  разработки (`SPIN_DEBUG=1 spin run gen`; `spin build NAME -- --incremental`,
-  если какой-то Ruby-файл новее `build/bin/NAME`; `spin run NAME` или `spin
-  run NAME -- PORT`; порт по умолчанию — 3000).
+- `cybertrain server [PORT] [--spinel]` запускает сервер разработки (порт по
+  умолчанию — 3000). Сразу после изменения приложение работает под CRuby,
+  пока Spinel собирает его в фоне, а когда сборка удаётся, порт забирает
+  скомпилированный бинарный файл; ответы приложения несут
+  `X-Cybertrain-Runtime: cruby` или `spinel` ([Цикл
+  разработки](how-it-works.md#the-development-loop)). `--spinel` запускает
+  только скомпилированный цикл, где каждое изменение ждёт своей сборки
+  (`SPIN_DEBUG=1 spin run gen`; `spin build NAME -- --incremental`, если
+  какой-то Ruby-файл новее `build/bin/NAME`; `spin run NAME` или `spin run
+  NAME -- PORT`).
 - `cybertrain build` собирает NAME со встроенными `app/views/` и формирует
   `dist/` (бинарный файл, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` запускает `spin` с зафиксированным Spinel из
@@ -116,8 +126,8 @@ cybertrain doctor
 - `cybertrain setup [--force]` устанавливает зафиксированный релиз Spinel в
   `~/.cybertrain`, если `spinel` этого релиза ещё нет в `PATH`;
   `--force` пересобирает копию в `~/.cybertrain`.
-- `cybertrain doctor` проверяет инструменты C, заголовки SQLite и установку
-  Spinel.
+- `cybertrain doctor` проверяет инструменты C, заголовки SQLite, загружает
+  ли Ruby `fiddle` (он нужен CRuby-превью) и установку Spinel.
 - `cybertrain version` выводит версию.
 
 `db`, `server` и `build` запускаются внутри приложения; NAME — это
@@ -168,8 +178,10 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 (3.2 или новее) и вызывает за вас инструмент Spinel `spin`; ни фреймворка, ни
 Spinel в геме нет. Фреймворк — это пакет Spinel, от которого зависит ваше
 приложение в `spin.toml`: Spinel заранее компилирует его вместе с вашим кодом,
-поэтому на CRuby он никогда не запускается, и именно он попадает в поставку.
-Бинарный файл в `dist/` работает без Ruby, гема и Spinel.
+и именно он попадает в поставку. Бинарный файл в `dist/` работает без Ruby,
+гема и Spinel. Под CRuby фреймворк работает только в разработке:
+`cybertrain server` отдаёт CRuby-превью приложения, пока порт не заберёт
+скомпилированный бинарный файл.
 
 ### Что записывает `cybertrain new`
 

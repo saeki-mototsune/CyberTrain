@@ -1,5 +1,5 @@
 ---
-source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
+source_sha256: 7962843f67deb96029a132f179d5ab73944f67df44deadd5aa501bed92c1c3f7
 ---
 # Installer cybertrain
 
@@ -38,13 +38,18 @@ Ce dont CyberTrain a besoin sur votre machine, comment installer la commande `cy
   (`brew install openssl@3`), qui est keg-only, et placez-le dans les chemins
   du compilateur&nbsp;: `export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`.
-- Ruby 3.2+ et RubyGems, uniquement pour la commande `cybertrain` (les
-  applications ne tournent jamais sur CRuby)&nbsp;; avec Ruby 3.2, la
-  compilation de Spinel demande aussi la gem `prism` (ci-dessous).
+- Ruby 3.2+ et RubyGems, pour la commande `cybertrain` et pour l’aperçu
+  CRuby du serveur de développement, qui demande aussi la bibliothèque
+  `fiddle` de Ruby (elle a besoin de libffi)&nbsp;; sans `fiddle`,
+  `cybertrain server` ne lance que la boucle compilée. Une application
+  déployée ne tourne jamais sur CRuby. Avec Ruby 3.2, la compilation de
+  Spinel demande aussi la gem `prism` (ci-dessous).
 
-`cybertrain doctor` vérifie ces outils et en-têtes ainsi que l’installation de
-Spinel&nbsp;; quand un élément requis manque, il affiche aussi la commande
-d’installation pour votre plateforme.
+`cybertrain doctor` vérifie ces outils et en-têtes, si le `ruby` du `PATH`
+charge `fiddle`, ainsi que l’installation de Spinel&nbsp;; quand un élément
+requis manque, il affiche aussi la commande d’installation pour votre
+plateforme (un `fiddle` manquant ne compte pas&nbsp;: le serveur tourne
+quand même, compilé).
 
 <details><summary>Autres paquets — prism avec Ruby 3.2&nbsp;; jemalloc, facultatif</summary>
 
@@ -111,10 +116,16 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   après `SPIN_DEBUG=1 spin
   run gen`&nbsp;: `status`, `rollback [N]` (qui génère à nouveau ensuite),
   `schema:dump`, `create`.
-- `cybertrain server [PORT]` génère, puis démarre le serveur de développement
-  (`SPIN_DEBUG=1 spin run gen`&nbsp;; `spin build NAME -- --incremental` si un
-  fichier Ruby est plus récent que `build/bin/NAME`&nbsp;; `spin run NAME`, ou
-  `spin run NAME -- PORT`&nbsp;; port 3000 par défaut).
+- `cybertrain server [PORT] [--spinel]` démarre le serveur de développement
+  (port 3000 par défaut). Juste après un changement, l’application tourne
+  sous CRuby pendant que Spinel la compile en arrière-plan, et le binaire
+  compilé reprend le port quand sa compilation réussit&nbsp;; les réponses
+  de l’application portent `X-Cybertrain-Runtime: cruby` ou `spinel`
+  ([La boucle de développement](how-it-works.md#the-development-loop)).
+  `--spinel` ne lance que la boucle compilée, chaque changement attendant
+  sa compilation (`SPIN_DEBUG=1 spin run gen`&nbsp;; `spin build NAME --
+  --incremental` si un fichier Ruby est plus récent que
+  `build/bin/NAME`&nbsp;; `spin run NAME`, ou `spin run NAME -- PORT`).
 - `cybertrain build` compile NAME avec `app/views/` intégré et assemble
   `dist/` (le binaire, `public/`, `storage/`, `tmp/`).
 - `cybertrain spin ARGS...` lance `spin` avec le Spinel épinglé, depuis
@@ -123,8 +134,9 @@ partir de là, de `cybertrain new` à `cybertrain build`.
 - `cybertrain setup [--force]` installe la version épinglée de Spinel dans
   `~/.cybertrain`, sauf si un `spinel` de cette version est déjà dans le
   `PATH`&nbsp;; `--force` recompile la copie sous `~/.cybertrain`.
-- `cybertrain doctor` vérifie la chaîne de compilation C, les en-têtes SQLite
-  et l’installation de Spinel.
+- `cybertrain doctor` vérifie la chaîne de compilation C, les en-têtes SQLite,
+  si Ruby charge `fiddle` (l’aperçu CRuby en a besoin) et l’installation de
+  Spinel.
 - `cybertrain version` affiche la version.
 
 `db`, `server` et `build` s’exécutent dans une application&nbsp;; NAME est le
@@ -183,9 +195,10 @@ commande `cybertrain`, du Ruby pur qui s’exécute sur votre machine sous CRuby
 (3.2 ou plus récent) et appelle pour vous l’outil `spin` de Spinel&nbsp;; ni le
 framework ni Spinel ne sont dans la gem. Le framework est un paquet Spinel dont
 votre application dépend dans son `spin.toml`&nbsp;: Spinel le compile à
-l’avance avec votre code, il ne tourne donc jamais sur CRuby, et c’est la partie
-qui est livrée. Le binaire de `dist/` tourne sans Ruby, sans la gem et sans
-Spinel.
+l’avance avec votre code, et c’est la partie qui est livrée. Le binaire de
+`dist/` tourne sans Ruby, sans la gem et sans Spinel. Il ne tourne aussi sous
+CRuby qu’en développement&nbsp;: `cybertrain server` sert un aperçu CRuby de
+l’application jusqu’à ce que le binaire compilé prenne le relais.
 
 ### Ce que `cybertrain new` écrit
 

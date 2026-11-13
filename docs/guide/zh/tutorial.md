@@ -1,5 +1,5 @@
 ---
-source_sha256: 784f2a41d27411547f29595accf5896b57611dd7008eb2c1e4312fe0952a3c9c
+source_sha256: c2f96f8f50f04cab47730f6250861c9e5972ee4062f847857965f41bda0a2e85
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -30,7 +30,7 @@ meta:
 > CyberTrain 通过 Spinel 编译为 C，所以需要 C 工具链和 SQLite 头文件；`cybertrain` 命令是一个 gem，所以需要 Ruby。
 
 <!-- list: checklist -->
-- Ruby 3.2+ 和 RubyGems，仅供 `cybertrain` 命令使用；应用本身从不在 CRuby 上运行。在 Ruby 3.2 上，还需要 `gem install prism`。
+- Ruby 3.2+ 和 RubyGems，供 `cybertrain` 命令和开发服务器的 CRuby 预览（需要 Ruby 的 `fiddle`）使用；部署后的应用从不在 CRuby 上运行。在 Ruby 3.2 上，还需要 `gem install prism`。
 - Spinel，版本为 CyberTrain 锁定的版本（`cybertrain doctor` 会打印它），即 [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) 分支的一个版本，它先于上游收录了 CyberTrain 所需的修复；未在其他版本上测试。你无需手动安装：第一个需要它的命令会把该版本构建到 `~/.cybertrain` 中（需要几分钟，仅一次），除非 `PATH` 上已有该版本的 `spinel`。
 - C 工具链（`cc`，或 `CC` 指定的编译器）和 `make`，以及 `git` 和 `curl`，用于构建 Spinel；Spinel 会把每个程序编译为 C。
 - SQLite 3、zlib 和 OpenSSL 的头文件和库：Debian/Ubuntu 上为 `libsqlite3-dev`、`zlib1g-dev` 和 `libssl-dev`。在 macOS 上，SQLite 和 zlib 随 Xcode 命令行工具提供，OpenSSL 则来自 Homebrew（`brew install openssl@3`，再设置[环境要求](install.md#requirements)给出的两个路径）。
@@ -231,20 +231,22 @@ end
 
 ```shell 终端 — blog/
 cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen（gen 和 db 为调试模式）
-cybertrain server        # http://127.0.0.1:3000；修改 Ruby 后会重新构建，视图无需重新构建即可重新加载
+cybertrain server        # http://127.0.0.1:3000；修改 Ruby 后立即由 CRuby 反映，随后换成编译版；视图两者都不需要
 ```
 
 `spin run gen` 读取 `db/schema.rb` 和 `config/routes.rb`，扫描 `app/` 并写入 `gen/`；`spin run db -- migrate` 执行 `db/migrate/*.rb` 并重写 `db/schema.rb`。顺序很重要：第一次 `spin run gen` 把新迁移放进 `gen/migrations.rb`（`bin/db.rb` 会 require 它），第二次则根据重写后的 `db/schema.rb` 构建模型。
 
-`cybertrain server` 会打印它运行的每条 `spin` 命令，然后是应用的启动横幅。第一次启动需要编译应用，所以要花一些时间：
+`cybertrain server` 在一秒内就从 CRuby 提供应用，并在后台用 Spinel 构建它。第一次构建要编译整个应用，需要几分钟；在它完成之前由 CRuby 预览响应，每个页面的右下角都会说明这一点：
 
 ```text 输出 — cybertrain server
 => Booting cybertrain X.Y.Z
-=> development environment (1 worker)
-=> Watching app/, config/ and db/schema.rb for changes
+=> preview: CRuby 3.3.6
 * Listening on http://127.0.0.1:3000
-Use Ctrl-C to stop
+=> spinel: building (log: tmp/rebuild.log)
+=> preview: CRuby (0.5s)
 ```
+
+构建完成后，服务器会打印 `=> spinel: ready in …s; serving the compiled binary`，此后由编译好的二进制文件响应。修改 Ruby 后，它会打印 `Changed` 和文件名，立即重新由 CRuby 响应，并再次构建（[开发循环](how-it-works.md#the-development-loop)）。按 Ctrl-C 停止。
 
 <!-- list: points -->
 - 修改 schema、路由，控制器或模型的回调和实例变量，辅助方法、组件或作业，或者某个资源之后，重新运行 `cybertrain spin run gen` 并提交 `gen/`。开发服务器会替你完成这一步，而 `cybertrain spin run gen -- --check` 只列出哪些内容已经过时，不写入任何东西。
@@ -254,7 +256,7 @@ Use Ctrl-C to stop
 > [!RULE]
 > ### 控制台不是 Ruby
 >
-> `rails console` 没有完全对应的功能：Spinel 没有 `eval`。`cybertrain spin run blog -- console`（构建之后为 `./blog console`）在模型上求值模板表达式，例如 `Article.where(title: "x").count`，而 `dbconsole` 打开 `sqlite3`（[控制台](background-and-operations.md#the-console)）。修改 Ruby 代码需要重新构建，开发时 `cybertrain server` 会替你完成（重新构建、停止、`execv`）。开发时视图在每次请求时从磁盘解析，所以修改视图无需重新构建；`cybertrain build` 会为生产环境把它们嵌入。
+> `rails console` 没有完全对应的功能：Spinel 没有 `eval`。`cybertrain spin run blog -- console`（构建之后为 `./blog console`）在模型上求值模板表达式，例如 `Article.where(title: "x").count`，而 `dbconsole` 打开 `sqlite3`（[控制台](background-and-operations.md#the-console)）。修改 Ruby 代码需要重新构建：开发时 `cybertrain server` 会立即通过 CRuby 预览响应这些修改，并在构建完成后把端口交给编译好的二进制文件。开发时视图在每次请求时从磁盘解析，所以修改视图无需重新构建；`cybertrain build` 会为生产环境把它们嵌入。
 
 <!-- step 08 #scaffold-comment stage: 你编写 · `db/migrate/`, `app/` -->
 ## 生成评论脚手架
@@ -286,7 +288,7 @@ cybertrain db migrate    # 脚手架已为 comments 表写好了迁移
 脚手架会插入一行独立的 `resources :comments`，下一步会替换它。
 
 > [!NOTE]
-> 如果 `cybertrain server` 一直开着，脚手架一写出文件它就会重新构建，而此时表还不存在，于是它会记录 `Build failed; still serving the previous build (see tmp/rebuild.log)`。等 `cybertrain db migrate` 重写了 `db/schema.rb`，它会再次重新构建。
+> 如果 `cybertrain server` 一直开着，脚手架一写出文件它就会立刻接手，而此时表还不存在。新的 `Comment` 模型的列来自 `gen/models/comment.rb`，而 gen 要等表出现在 `db/schema.rb` 中才会写出这个文件，所以 CRuby 预览无法加载这个模型（`NoMethodError`）：服务器会用它自己的、写明错误的 503 页面响应，Spinel 的构建也会失败。等 `cybertrain db migrate` 重写了 `db/schema.rb`，服务器就会恢复响应。
 
 > [!EXAMPLE] 删除带评论的文章
 > ### 删除带评论的文章
@@ -1119,7 +1121,7 @@ end
 - 没有 `CYBERTRAIN_SECRET_KEY_BASE` 时，生产环境会拒绝启动。
 - 在生产环境中，异常会返回 500；而裸错误响应（路由器的纯文本 404、`head :not_found`、`render plain:`）在 `public/<status>.html` 存在时会被该文件替换；`cybertrain new` 会写出 `404.html` 和 `500.html`。
 - `SIGTERM` 会让服务器停止接受新连接，让正在处理的请求完成，并在它们完成后退出，或在服务器的 `drain_timeout`（10 秒）之后退出。
-- 监视器和重新构建循环永远不会在生产环境中运行。正在运行的 `cybertrain server` 会在 `cybertrain build` 持有 `tmp/cybertrain-build.lock` 期间跳过重新构建。
+- 监视器、CRuby 预览和重新构建循环永远不会在生产环境中运行。正在运行的 `cybertrain server` 在 `cybertrain build` 持有 `tmp/cybertrain-build.lock` 期间不会重新生成，也不会重启任何东西。
 
 `cybertrain new` 还会写出一套 [Kamal 2](https://kamal-deploy.org) 配置。`Dockerfile` 在 Ubuntu 构建阶段运行 `cybertrain setup` 和 `cybertrain build`，再把 `dist/` 复制到同一发行版的精简阶段；该镜像启动时先执行迁移，然后在 `0.0.0.0:3000` 上提供服务。此外还有 `.dockerignore`、`config/deploy.yml`（前端是带 Let&rsquo;s Encrypt 的 kamal-proxy，健康检查使用 `public/up.html`，SQLite 文件放在挂载于 `/app/storage` 的卷上），以及从环境变量读取 `KAMAL_REGISTRY_PASSWORD` 和 `CYBERTRAIN_SECRET_KEY_BASE` 的 `.kamal/secrets`。填好 `config/deploy.yml` 中标为 `CHANGE ME` 的值，提交，然后运行：
 

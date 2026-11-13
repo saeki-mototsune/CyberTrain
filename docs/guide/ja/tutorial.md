@@ -1,5 +1,5 @@
 ---
-source_sha256: 784f2a41d27411547f29595accf5896b57611dd7008eb2c1e4312fe0952a3c9c
+source_sha256: c2f96f8f50f04cab47730f6250861c9e5972ee4062f847857965f41bda0a2e85
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -30,7 +30,7 @@ Rails 公式の [Getting Started](https://guides.rubyonrails.org/getting_started
 > CyberTrain は Spinel を通じて C にコンパイルされるため、C ツールチェーンと SQLite のヘッダーが必要です。`cybertrain` コマンドは gem なので、Ruby が必要です。
 
 <!-- list: checklist -->
-- Ruby 3.2+ と RubyGems。`cybertrain` コマンドのためだけに必要で、アプリケーションが CRuby 上で動くことはありません。Ruby 3.2 では `gem install prism` も実行します。
+- Ruby 3.2+ と RubyGems。`cybertrain` コマンドと、開発サーバーの CRuby プレビュー（Ruby の `fiddle` が必要です）に必要です。デプロイしたアプリケーションが CRuby 上で動くことはありません。Ruby 3.2 では `gem install prism` も実行します。
 - Spinel の、CyberTrain が固定しているリリース（`cybertrain doctor` が表示します）。CyberTrain が必要とする修正を本家より先に取り込んだフォーク [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) のリリースです。他のバージョンでは未テストです。手動でインストールする必要はありません：Spinel を必要とする最初のコマンドが、そのリリースを `~/.cybertrain` にビルドします（数分、初回のみ）。ただし、そのリリースの `spinel` がすでに `PATH` 上にある場合は除きます。
 - C ツールチェーン（`cc`、または `CC` で指定したコンパイラ）と `make`、さらに `git` と `curl`。すべてのプログラムを C にコンパイルする Spinel をビルドするために使います。
 - SQLite 3、zlib、OpenSSL のヘッダーとライブラリ：Debian/Ubuntu では `libsqlite3-dev`、`zlib1g-dev`、`libssl-dev`。macOS では、SQLite と zlib は Xcode のコマンドラインツールに含まれ、OpenSSL は Homebrew から入れます（`brew install openssl@3` を実行し、[必要なもの](install.md#requirements)にある 2 つのパスを設定します）。
@@ -231,20 +231,22 @@ end
 
 ```shell ターミナル — blog/
 cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen（gen と db はデバッグモード）
-cybertrain server        # http://127.0.0.1:3000。Ruby を編集すると再ビルド、ビューは再ビルドなしで再読み込み
+cybertrain server        # http://127.0.0.1:3000。Ruby の編集はまず CRuby ですぐに反映され、その後コンパイル版に。ビューはどちらも不要
 ```
 
 `spin run gen` は `db/schema.rb` と `config/routes.rb` を読み、`app/` をスキャンして `gen/` を書き出します。`spin run db -- migrate` は `db/migrate/*.rb` を適用して `db/schema.rb` を書き換えます。順序が重要です：1 回目の `spin run gen` は新しいマイグレーションを `gen/migrations.rb` に入れ（これを `bin/db.rb` が require します）、2 回目は書き換えられた `db/schema.rb` からモデルを構築します。
 
-`cybertrain server` は実行する `spin` コマンドをひとつずつ表示し、続いてアプリの起動バナーを表示します。初回の起動ではアプリをコンパイルするため、しばらく時間がかかります：
+`cybertrain server` は 1 秒以内に CRuby からアプリを配信し、バックグラウンドで Spinel によるビルドを行います。最初のビルドはアプリ全体をコンパイルするので数分かかります。それが終わるまでは CRuby のプレビューが応答し、どのページも右下隅でそのことを示します：
 
 ```text 出力 — cybertrain server
 => Booting cybertrain X.Y.Z
-=> development environment (1 worker)
-=> Watching app/, config/ and db/schema.rb for changes
+=> preview: CRuby 3.3.6
 * Listening on http://127.0.0.1:3000
-Use Ctrl-C to stop
+=> spinel: building (log: tmp/rebuild.log)
+=> preview: CRuby (0.5s)
 ```
+
+ビルドが終わるとサーバーは `=> spinel: ready in …s; serving the compiled binary` と表示し、それ以降はコンパイル済みのバイナリが応答します。Ruby を編集すると `Changed` とファイル名を表示し、すぐに CRuby から応答し直して、もう一度ビルドします（[開発ループ](how-it-works.md#the-development-loop)）。Ctrl-C で止まります。
 
 <!-- list: points -->
 - スキーマ、ルーティング、コントローラーやモデルのコールバックとインスタンス変数、ヘルパー・コンポーネント・ジョブ、アセットのいずれかを変更したら、`cybertrain spin run gen` を再実行して `gen/` をコミットしてください。開発サーバーはこれを自動で行います。`cybertrain spin run gen -- --check` は、何も書き込まずに、古くなっているファイルを一覧します。
@@ -254,7 +256,7 @@ Use Ctrl-C to stop
 > [!RULE] Spinel のルール：コンソールは Ruby ではない
 > ### コンソールは Ruby ではない
 >
-> `rails console` にそのまま相当するものはありません：Spinel には `eval` がないからです。`cybertrain spin run blog -- console`（ビルド後は `./blog console`）は、`Article.where(title: "x").count` のようなテンプレートの式をモデルに対して評価し、`dbconsole` は `sqlite3` を開きます（[コンソール](background-and-operations.md#the-console)）。Ruby の変更には再ビルドが必要ですが、開発環境では `cybertrain server` が代わりに行います（再ビルド、停止、`execv`）。開発環境ではビューはリクエストごとにディスクからパースされるので、ビューの編集に再ビルドは不要です。本番用には `cybertrain build` がビューを埋め込みます。
+> `rails console` にそのまま相当するものはありません：Spinel には `eval` がないからです。`cybertrain spin run blog -- console`（ビルド後は `./blog console`）は、`Article.where(title: "x").count` のようなテンプレートの式をモデルに対して評価し、`dbconsole` は `sqlite3` を開きます（[コンソール](background-and-operations.md#the-console)）。Ruby の変更には再ビルドが必要です：開発環境では `cybertrain server` が CRuby のプレビューからすぐに応答し、ビルドが終わるとコンパイル済みのバイナリにポートを引き渡します。開発環境ではビューはリクエストごとにディスクからパースされるので、ビューの編集に再ビルドは不要です。本番用には `cybertrain build` がビューを埋め込みます。
 
 <!-- step 08 #scaffold-comment stage: 自分で書く · `db/migrate/`, `app/` -->
 ## コメントをスキャフォールドする
@@ -286,7 +288,7 @@ cybertrain db migrate    # スキャフォールドが comments テーブルの�
 スキャフォールドは独立した `resources :comments` の行を挿入しますが、これは次のステップで置き換えます。
 
 > [!NOTE]
-> `cybertrain server` を動かしたままにしていると、スキャフォールドがファイルを書き出した時点で、まだテーブルがないうちに再ビルドが走り、`Build failed; still serving the previous build (see tmp/rebuild.log)` とログに出ます。`cybertrain db migrate` が `db/schema.rb` を書き換えると、もう一度再ビルドされます。
+> `cybertrain server` を動かしたままにしていると、スキャフォールドが書き出したファイルを、まだテーブルがないうちにすぐ取り込みます。新しい `Comment` モデルのカラムは `gen/models/comment.rb` から来ますが、gen はテーブルが `db/schema.rb` に入って初めてこのファイルを書くので、CRuby のプレビューはモデルを読み込めません（`NoMethodError`）：サーバーはエラーを示す自前の 503 のページで応答し、Spinel のビルドも失敗します。`cybertrain db migrate` が `db/schema.rb` を書き換えると、サーバーは再び応答するようになります。
 
 > [!EXAMPLE] コメントのある記事を削除する
 > ### コメントのある記事を削除する
@@ -1119,7 +1121,7 @@ end
 - 本番環境では、`CYBERTRAIN_SECRET_KEY_BASE` がないと起動を拒否します。
 - 本番環境では例外に対して 500 を返し、素のエラーレスポンス（ルーターのプレーンテキストの 404、`head :not_found`、`render plain:`）は、`public/<status>.html` が存在すればそれに置き換えられます。`cybertrain new` は `404.html` と `500.html` を書き出します。
 - `SIGTERM` を受けると新たな受け付けを止め、処理中のリクエストを完了させ、それらが終わった時点か、サーバーの `drain_timeout`（10 秒）が過ぎた時点で終了します。
-- ファイル監視と再ビルドのループが本番環境で動くことはありません。実行中の `cybertrain server` は、`cybertrain build` が `tmp/cybertrain-build.lock` を保持している間、再ビルドをスキップします。
+- ファイル監視、CRuby プレビュー、再ビルドのループが本番環境で動くことはありません。実行中の `cybertrain server` は、`cybertrain build` が `tmp/cybertrain-build.lock` を保持している間、再生成も再起動も行いません。
 
 `cybertrain new` は [Kamal 2](https://kamal-deploy.org) 用の設定も書き出します。`Dockerfile` は Ubuntu のビルドステージで `cybertrain setup` と `cybertrain build` を実行し、`dist/` を同じリリースの軽量なステージにコピーします。このイメージは起動時にマイグレーションを流してから `0.0.0.0:3000` で待ち受けます。ほかに `.dockerignore`、`config/deploy.yml`（前段に Let&rsquo;s Encrypt 付きの kamal-proxy、ヘルスチェックは `public/up.html`、SQLite のファイルは `/app/storage` のボリューム）、`KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を環境変数から読む `.kamal/secrets` が作られます。`config/deploy.yml` の `CHANGE ME` の値を書き換えてコミットし、次を実行します：
 

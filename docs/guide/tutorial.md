@@ -35,8 +35,9 @@ a deployable `dist/` folder. The app this grows into is
 > SQLite headers; the `cybertrain` command is a gem, so it needs Ruby.
 
 <!-- list: checklist -->
-- Ruby 3.2+ and RubyGems, for the `cybertrain` command only; applications
-  never run on CRuby. On Ruby 3.2, also `gem install prism`.
+- Ruby 3.2+ and RubyGems, for the `cybertrain` command and the development
+  server's CRuby preview (which needs Ruby's `fiddle`); a deployed
+  application never runs on CRuby. On Ruby 3.2, also `gem install prism`.
 - Spinel, at the release CyberTrain pins (`cybertrain doctor` prints it), of
   the [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel) fork,
   which carries the fixes CyberTrain needs ahead of an upstream release;
@@ -312,7 +313,7 @@ and `destroy` too; the excerpt above omits them. In `index`,
 
 ```shell terminal — blog/
 cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen (gen and db in debug mode)
-cybertrain server        # http://127.0.0.1:3000; rebuilds on Ruby edits, views reload without a rebuild
+cybertrain server        # http://127.0.0.1:3000; Ruby edits show at once (CRuby), then compiled; views need neither
 ```
 
 `spin run gen` reads `db/schema.rb` and `config/routes.rb`, scans `app/` and
@@ -321,16 +322,24 @@ writes `gen/`; `spin run db -- migrate` applies `db/migrate/*.rb` and rewrites
 migration into `gen/migrations.rb`, which `bin/db.rb` requires, and the second
 builds the models from the rewritten `db/schema.rb`.
 
-`cybertrain server` prints each `spin` command it runs, then the app's boot
-banner. The first start compiles the app, so it takes a while:
+`cybertrain server` serves the app from CRuby within a second and builds it
+with Spinel in the background. The first build compiles the whole app, which
+takes a couple of minutes; until it is done the CRuby preview answers, and
+every page says so in its bottom right corner:
 
 ```text output — cybertrain server
 => Booting cybertrain X.Y.Z
-=> development environment (1 worker)
-=> Watching app/, config/ and db/schema.rb for changes
+=> preview: CRuby 3.3.6
 * Listening on http://127.0.0.1:3000
-Use Ctrl-C to stop
+=> spinel: building (log: tmp/rebuild.log)
+=> preview: CRuby (0.5s)
 ```
+
+When the build is done the server prints `=> spinel: ready in …s; serving
+the compiled binary`, and the compiled binary answers from then on. After a
+Ruby edit it prints `Changed` and the file, answers from CRuby again at once
+and builds again ([The development loop](how-it-works.md#the-development-loop)).
+Ctrl-C stops it.
 
 <!-- list: points -->
 - Re-run `cybertrain spin run gen` and commit `gen/` after touching the
@@ -350,9 +359,10 @@ Use Ctrl-C to stop
 > evaluates template expressions over the models, such as
 > `Article.where(title: "x").count`, and `dbconsole` opens `sqlite3`
 > ([The console](background-and-operations.md#the-console)). Ruby changes need a
-> rebuild, which `cybertrain server` does for you in development (rebuild, stop,
-> `execv`). In development views are parsed from disk per request, so editing
-> one needs no rebuild; `cybertrain build` embeds them for production.
+> rebuild: in development `cybertrain server` answers them at once from a CRuby
+> preview and hands the port to the compiled binary when its build finishes. In
+> development views are parsed from disk per request, so editing one needs no
+> rebuild; `cybertrain build` embeds them for production.
 
 <!-- step 08 #scaffold-comment stage: You write · `db/migrate/`, `app/` -->
 ## Scaffold comments
@@ -389,10 +399,13 @@ The scaffold inserts an independent `resources :comments` line, which the next
 step replaces.
 
 > [!NOTE]
-> A `cybertrain server` left running rebuilds as soon as the scaffold writes
-> its files, before the table exists, and logs `Build failed; still serving
-> the previous build (see tmp/rebuild.log)`. It rebuilds again once
-> `cybertrain db migrate` has rewritten `db/schema.rb`.
+> A `cybertrain server` left running picks the scaffold's files up as soon as
+> they are written, before the table exists. The new `Comment` model gets its
+> columns from `gen/models/comment.rb`, which gen writes only once the table
+> is in `db/schema.rb`, so the CRuby preview cannot load it (a
+> `NoMethodError`): the server answers with its own 503 page naming the
+> error, and the Spinel build fails too. Once `cybertrain db migrate` has
+> rewritten `db/schema.rb`, the server serves again.
 
 > [!EXAMPLE] Deleting an article with comments
 > ### Deleting an article with comments
@@ -1567,9 +1580,9 @@ end
   `404.html` and `500.html`.
 - `SIGTERM` stops accepting, lets requests in flight finish and exits when
   they are done, or after the server's `drain_timeout` (10 s).
-- The watcher and rebuild loop never run in production. A running
-  `cybertrain server` skips its rebuilds while `cybertrain build` holds
-  `tmp/cybertrain-build.lock`.
+- The watcher, the CRuby preview and the rebuild loop never run in
+  production. A running `cybertrain server` regenerates and restarts
+  nothing while `cybertrain build` holds `tmp/cybertrain-build.lock`.
 
 `cybertrain new` also writes a [Kamal 2](https://kamal-deploy.org) setup. The
 `Dockerfile` runs `cybertrain setup` and `cybertrain build` in an Ubuntu build

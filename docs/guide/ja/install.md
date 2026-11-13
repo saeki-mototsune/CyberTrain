@@ -1,5 +1,5 @@
 ---
-source_sha256: 09fb3d0913012dacd58c84d18295535a265c93a528dbd0d5d0f51a44f50540d3
+source_sha256: 7962843f67deb96029a132f179d5ab73944f67df44deadd5aa501bed92c1c3f7
 ---
 # インストール
 
@@ -16,9 +16,9 @@ CyberTrain が手元のマシンに必要とするもの、`cybertrain` コマ�
 - zlib のヘッダーとライブラリ（Debian/Ubuntu では `zlib1g-dev`。macOS では SDK に含まれています） — gzip されたリクエストボディ（`request.decoded_body`）は、同じ方法でバインドしたシステムの zlib で展開されます。
 - OpenSSL のヘッダーとライブラリ（Debian/Ubuntu では `libssl-dev`） — どのアプリケーションもリンクします：セッション Cookie と `cookies.encrypted` は Spinel の `openssl` パッケージによる AES-256-GCM で、Spinel はヘッダーがあるときだけこのパッケージをビルドします。macOS では Homebrew のもの（`brew install openssl@3`）を入れ、keg-only なのでコンパイラのパスに加えます：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`。
-- Ruby 3.2+ と RubyGems。`cybertrain` コマンドのためだけに必要です（アプリケーションが CRuby 上で動くことはありません）。Ruby 3.2 では、Spinel のビルドに `prism` gem も必要です（下記）。
+- Ruby 3.2+ と RubyGems。`cybertrain` コマンドと、開発サーバーの CRuby プレビューに必要です。プレビューにはさらに Ruby の `fiddle` ライブラリが必要です（libffi が要ります）。`fiddle` がなければ、`cybertrain server` はコンパイル版のループだけを実行します。デプロイしたアプリケーションが CRuby 上で動くことはありません。Ruby 3.2 では、Spinel のビルドに `prism` gem も必要です（下記）。
 
-`cybertrain doctor` はこれらのツールとヘッダー、Spinel のインストールを確認します。必要なものが欠けている場合は、プラットフォームに応じたインストールコマンドも表示します。
+`cybertrain doctor` はこれらのツールとヘッダー、`PATH` 上の `ruby` が `fiddle` を読み込めるかどうか、Spinel のインストールを確認します。必要なものが欠けている場合は、プラットフォームに応じたインストールコマンドも表示します（`fiddle` がないことは数えません：サーバーはコンパイル版で動くからです）。
 
 <details><summary>その他のパッケージ — Ruby 3.2 での prism、任意の jemalloc</summary>
 
@@ -49,11 +49,11 @@ cybertrain doctor
 - `cybertrain db migrate` は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate; SPIN_DEBUG=1 spin run gen`）。`cybertrain migration` もエイリアスとして残されています。
 - `cybertrain db COMMAND...` は `SPIN_DEBUG=1 spin
   run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema:dump`、`create`。
-- `cybertrain server [PORT]` は生成を行ってから開発サーバーを起動します（`SPIN_DEBUG=1 spin run gen`。`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`。`spin run NAME`、または `spin run NAME -- PORT`。デフォルトのポートは 3000）。
+- `cybertrain server [PORT] [--spinel]` は開発サーバーを起動します（デフォルトのポートは 3000）。変更の直後はアプリケーションが CRuby で動き、その間に Spinel がバックグラウンドでビルドし、ビルドが成功するとコンパイル済みのバイナリがポートを引き継ぎます。アプリケーションのレスポンスには `X-Cybertrain-Runtime: cruby` か `spinel` が付きます（[開発ループ](how-it-works.md#the-development-loop)）。`--spinel` はコンパイル版のループだけを実行し、変更のたびにビルドを待ちます（`SPIN_DEBUG=1 spin run gen`。`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`。`spin run NAME`、または `spin run NAME -- PORT`）。
 - `cybertrain build` は `app/views/` を埋め込んで NAME をビルドし、`dist/`（バイナリ、`public/`、`storage/`、`tmp/`）を組み立てます。
 - `cybertrain spin ARGS...` は、固定された Spinel で `spin` を任意のディレクトリから実行します（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
 - `cybertrain setup [--force]` は固定された Spinel のリリースを `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
-- `cybertrain doctor` は C ツールチェーン、SQLite のヘッダー、Spinel のインストールを確認します。
+- `cybertrain doctor` は C ツールチェーン、SQLite のヘッダー、Ruby が `fiddle` を読み込めるかどうか（CRuby プレビューに必要です）、Spinel のインストールを確認します。
 - `cybertrain version` はバージョンを表示します。
 
 `db`、`server`、`build` はアプリケーションの中で実行します。NAME はそのアプリケーションの `spin.toml` にある `[package] name` です。
@@ -83,7 +83,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 ## gem とフレームワーク
 
-`gem install cybertrain` がインストールするのはコマンドであり、フレームワークではありません。gem は `cybertrain` コマンドで、手元のマシン上で CRuby（3.2 以降）で動く素の Ruby であり、Spinel の `spin` ツールを代わりに呼び出します。フレームワークも Spinel も gem には含まれません。フレームワークは、アプリが `spin.toml` で依存する Spinel のパッケージです：Spinel がそれをあなたのコードと一緒に事前（AOT）コンパイルするので、CRuby 上で動くことはなく、出荷されるのはこの部分です。`dist/` のバイナリは Ruby、gem、Spinel なしで動きます。
+`gem install cybertrain` がインストールするのはコマンドであり、フレームワークではありません。gem は `cybertrain` コマンドで、手元のマシン上で CRuby（3.2 以降）で動く素の Ruby であり、Spinel の `spin` ツールを代わりに呼び出します。フレームワークも Spinel も gem には含まれません。フレームワークは、アプリが `spin.toml` で依存する Spinel のパッケージです：Spinel がそれをあなたのコードと一緒に事前（AOT）コンパイルし、出荷されるのはこの部分です。`dist/` のバイナリは Ruby、gem、Spinel なしで動きます。CRuby でも動くのは開発時だけです：`cybertrain server` は、コンパイル済みのバイナリが引き継ぐまで、アプリケーションの CRuby プレビューを配信します。
 
 ### `cybertrain new` が書き出すもの
 
