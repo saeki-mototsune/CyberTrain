@@ -1301,6 +1301,68 @@ spikes/phase5/ with their commands and output in each header; a shared
    compiled in 162 to 233 s at a peak of 2.2 GB, into an 8.1 MB binary,
    about the cost of one of the blog's per-file test programs.
 
+**Results (2026-11-13, Spinel 2026.11.04.7026, framework 19668bc, programs
+kept in spikes/phase5/ with their commands and output in each header; a
+shared 4-vCPU cloud machine; CRuby 3.3.6 runs items 7 and 8 over
+standins/cruby_framework.rb, since `require "cybertrain"` loads SQLite and
+zlib through Spinel's FFI):**
+
+7. **Thread-local scope: yes, one object in one slot.** A Scope (String
+   ivars, an `Array<String>` of tags, an Integer, a
+   `Hash{String => String}`, `scope_*` readers, the `scope_where=`
+   writer, `with_tags`) in `Thread.current[:cybertrain_log_scope]`, beside
+   I18n's Symbol and the pool's Connection inside a transaction: four
+   threads started through a method each read back their own request id,
+   tags, `where`, context and locale under `SPINEL_WORKERS=1` and `4`
+   (three runs each, output identical to CRuby's), three of the four
+   reading after another thread had stored its own. `swap_scope` storing
+   nil for `NO_SCOPE` and `current_scope` answering `NO_SCOPE` for nil
+   restore the empty slot. `tagged` as an instance method forwarding
+   `{ yield }` to a save-yield-ensure module function nests three deep,
+   restores the tags after the innermost block raised (rescued by an
+   `assert_raises`-shaped yielder) and after a block whose only statement
+   is `raise`, and answers a String, an Integer and nil. The two-key form
+   works too and is not needed. `sleep 0` alone did not switch threads
+   under `SPINEL_WORKERS=1` (the threads ran one after another), so the
+   program also sleeps 2 ms. No fallback: D5's Scope in one slot, `tagged`
+   answering the block's value (thread_scope.rb).
+8. **Rails.error's names: yes.** In one program with the whole framework,
+   `require "cybertrain/websocket"`, `"cybertrain/lease"` and
+   `"cybertrain/cli/toolchain"`: `Cybertrain.error` (an ErrorReporter)
+   beside `Logger#error` and `Template::Parser#error`;
+   `ErrorReporter#report(e, handled:, context:)` and
+   `ErrorSubscriber#report` (one override answering nil, one an Array)
+   beside `CLI::Toolchain.report`; `ErrorReporter#handle(context:) { }`
+   beside `Job.handle`, written with one `rescue JSON::NestingError,
+   JSON::ParserError, StandardError => e` clause around `value = yield`
+   and answering the block's value (a String, an Integer, nil; nil after a
+   raise, a block whose only statement is `raise` included), called from a
+   method body, from a block nested in a block at the top level and from
+   one inside a method; `ErrorReporter#subscribe` beside
+   `WebSocket.subscribe` and `Stream::Hub#subscribe`; `Config#release`
+   (a String) beside `Lease.release` (nil); `ErrorEvent#error_message`
+   beside `DB::Connection#error_message(sql)` and `I18n.error_message`;
+   `context:` given `{ "order_id" => 7 }` and `{ order_id: "x" }` in one
+   program, each key and value read back as a String. It compiles (99 to
+   109 s) and prints what CRuby prints. No fallback: Rails' names,
+   `c.release`, `handle` answering the block's value, Symbol or String
+   keys in `context:` (error_names.rb).
+9. **The logger's lock: kept.** examples/blog built with `cybertrain
+   build` twice over a copy of the framework, once with a Logger whose
+   `log` builds the line and does one `STDOUT.write` + `flush` inside
+   `Logger::LOCK.synchronize`, once without the lock; served under
+   `taskset -c 0,1` with `SPINEL_WORKERS=2`, the request log on, stdout
+   into a pipe. wrk is not installed and bench/run builds its own copy of
+   the blog, so the load was the spike's CRuby loader on CPUs 2-3 (8
+   keep-alive connections from 8 threads in two processes, GET `/` and
+   `/articles/1`, 10 s a run, five runs alternating the two servers).
+   Locked: 1,565, 1,590, 1,716, 1,572 and 1,639 requests per second;
+   unlocked: 1,558, 1,575, 1,590, 1,581 and 1,617; medians 1,590 and
+   1,581 (100.6%); no request over 1 s (the slowest 34.8 ms), no error,
+   both servers alive, each at 184 to 185% CPU (server-bound). No
+   fallback: D3's lock around the one write stays (logger_lock/run.sh).
+   Not measured: wrk's higher rates, where rule 57's stalls showed.
+
 ## 17. Out of scope (recorded so nothing is lost)
 
 - **T-7 coverage**: Spinel's compiled programs carry no coverage
