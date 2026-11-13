@@ -1,0 +1,15 @@
+ok   report records an exception the application rescued, with the request's fields
+ok   outside a request the request fields and where are empty
+ok   context keys and values become Strings, merged over the Scope's context
+ok   handle answers the block's value, or nil after reporting what it raised
+ok   handle through a forwarding block, with next, and nested in blocks
+ok   report_unhandled and report_message
+ok   a raising subscriber is logged, the others still receive, nothing is reported for it
+ok   the same class, message and where is queued once a minute
+ok   reports in one test are not deduplicated against the previous test's
+ok   a subscriber added in a test is gone in the next; the one added at boot stays
+ok   a full queue drops and counts, logged at most once a minute
+ok   drain_reports answers false while an event is still in flight
+ok   with no subscriber and no sender nothing is queued and no thread starts
+ok   Cybertrain.error is one ErrorReporter
+14 tests, 56 assertions, 0 failures
