@@ -106,7 +106,7 @@ module Cybertrain
       # text was read, and the snapshot of that text. A Reader holds one
       # and replaces it whole.
       # @api private
-      class Reading
+      class StateReading
         # @return [String] see Reader.state_stamp
         attr_reader :reading_stamp
         # @return [StateSnapshot]
@@ -121,7 +121,7 @@ module Cybertrain
       # Reads the state file at a path, again only when its modification
       # time (in nanoseconds), its size or its inode has changed since the
       # last read. Requests call #current concurrently and it takes no lock
-      # (NOTES rule 57): the stamp and the snapshot live in one Reading,
+      # (NOTES rule 57): the stamp and the snapshot live in one StateReading,
       # replaced by one assignment, so a request never sees the stamp of
       # one read beside the snapshot of another.
       # @api private
@@ -129,7 +129,7 @@ module Cybertrain
         # @param path [String]
         def initialize(path)
           @path = path
-          @reading = Reading.new("", StateSnapshot.new)
+          @reading = StateReading.new("", StateSnapshot.new)
         end
 
         # The file's current snapshot; the default one while it is missing.
@@ -140,13 +140,13 @@ module Cybertrain
           return held.reading_snapshot if stamp == held.reading_stamp
 
           # The stamp is taken before the text is read and both go into the
-          # Reading together. A file replaced between the two gives newer
+          # StateReading together. A file replaced between the two gives newer
           # text under an older stamp, which the next call finds different
           # from the file's and reads again; never a new stamp over old
           # text. Two requests refreshing at once each store a consistent
           # pair; if the older pair lands last, the next call reads again.
           snapshot = stamp.empty? ? StateSnapshot.new : StateFile.parse(Reader.state_text(@path))
-          @reading = Reading.new(stamp, snapshot)
+          @reading = StateReading.new(stamp, snapshot)
           snapshot
         end
 
