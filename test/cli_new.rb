@@ -94,7 +94,8 @@ test "bin/blog.rb is the app's one binary: server, migrate, db; it requires the 
     # cybertrain/mailer/later), cybertrain/cache, cybertrain/rate_limit;
     # or require "cybertrain" for all of them. `generate job` and
     # `generate authentication` add theirs; `spin run gen` names the
-    # line a view's helper needs.
+    # line a view's helper needs. cybertrain/error_reporter/sentry
+    # (error reports to Sentry or GlitchTip) goes here only.
     require "cybertrain/core"
     require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
     require_relative "../config/app"     # so it comes before the config

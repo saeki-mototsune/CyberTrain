@@ -93,6 +93,13 @@ SUBSYSTEMS = {
     constants: %w[RateLimit RateLimitFeature],
     # Controller.rate_limit, .rate_limit_named?, #apply_rate_limit.
     methods: %w[rate_limit rate_limit_named? apply_rate_limit]
+  },
+  # The error reporter's Sentry sender: the core reaches it only through
+  # ErrorReporter::Sender#sender_name.
+  "sentry" => {
+    files: %w[cybertrain/error_reporter/sentry.rb],
+    constants: %w[SentrySender],
+    methods: %w[]
   }
 }.freeze
 

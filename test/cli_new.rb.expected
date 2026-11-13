@@ -698,7 +698,8 @@ ok   CLI version, help and unknown commands
 # CYBERTRAIN_LOG_FORMAT=json
 # Where error reports are sent, a Sentry DSN; empty sends nothing.
 # It holds a key: set it in the environment (or your deploy's
-# secrets), never in a file you commit.
+# secrets), never in a file you commit. It needs
+# require "cybertrain/error_reporter/sentry" in bin/<app>.rb.
 # CYBERTRAIN_SENTRY_DSN=https://<public key>@<host>/<project id>
 # The share of error reports sent, 0.0 to 1.0 (1.0, all of them).
 # CYBERTRAIN_ERROR_SAMPLE_RATE=1.0
@@ -709,4 +710,4 @@ ok   new writes the logging and reporting variables, all commented
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-31 tests, 618 assertions, 0 failures
+31 tests, 620 assertions, 0 failures

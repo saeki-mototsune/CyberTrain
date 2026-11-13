@@ -22,6 +22,8 @@ require "cybertrain/i18n"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/feature"
+require "cybertrain/feature_catalog"
+require "cybertrain/error_reporter"
 require "cybertrain/views"
 require "cybertrain/runtime"
 require "cybertrain/dev"
@@ -169,7 +171,18 @@ module Cybertrain
       # raises the same message; here it is a boot error before the banner).
       feature_problem = Features.boot_problem(c)
       fail_boot(feature_problem) unless feature_problem.empty?
+      # A DSN with no sender to send it (the Sentry sender is its own
+      # line): refused, not ignored. The sender is asked its line's name,
+      # never named here (the core does not reach it).
+      fail_boot(sender_missing_message) if !c.sentry_dsn.to_s.empty? && Cybertrain.error.sender.sender_name.empty?
       nil
+    end
+
+    # What boot says when the DSN is set and no sender is linked.
+    def sender_missing_message
+      line = FeatureCatalog.require_line("sentry")
+      "CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: " \
+        "add require \"#{line}\" to bin/#{@name}.rb"
     end
 
     # Stage 2: the secret (the one step that may write a file:

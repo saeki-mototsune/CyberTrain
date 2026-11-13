@@ -7,6 +7,7 @@ require "cybertrain/middleware/request_id"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/feature"
+require "cybertrain/error_reporter"
 require "cybertrain/dev"
 
 module Cybertrain
@@ -24,7 +25,8 @@ module Cybertrain
     #   waits    Server#wait (TERM stops the listener and asks the features
     #            to stop: the job claims)
     #   stops    the features, in rank order (with `require
-    #            "cybertrain"`: Job, Scheduler, Background, Stream::Poller)
+    #            "cybertrain"`: Job, Scheduler, Background, Stream::Poller);
+    #            then waits up to 2 s for the queued error reports
     #
     # In development it is also the whole of D12: the rebuilder, the
     # watcher, the HUP trap, the restart monitor and the execv of the new
@@ -126,6 +128,9 @@ module Cybertrain
           # Also when a start above raised (D66): each stop is a no-op for
           # what never started, so nothing this role began outlives it.
           Features.stop_features
+          # The error reports still queued: up to 2 seconds for them once
+          # every service has stopped (what is left is lost; D11).
+          Cybertrain.error.drain_reports(2.0)
           Runtime.leave_role
         end
         nil
@@ -288,7 +293,10 @@ module Cybertrain
       # closed, so the new process can bind the port again.
       def exec_new_build(srv, rebuilder)
         binary = rebuilder.binary_path
-        STDOUT.flush # exec discards whatever the log has not written yet
+        # exec discards the queued error reports and whatever the log has
+        # not written yet.
+        Cybertrain.error.drain_reports(2.0)
+        STDOUT.flush
         # The new process inherits the environment and reads SPINEL_WORKERS
         # as config.workers again: hand it the configured count, not the one
         # #run_server gave Spinel, or every rebuild would add a worker.

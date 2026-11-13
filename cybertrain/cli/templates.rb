@@ -225,7 +225,8 @@ module Cybertrain
           # CYBERTRAIN_LOG_FORMAT=json
           # Where error reports are sent, a Sentry DSN; empty sends nothing.
           # It holds a key: set it in the environment (or your deploy's
-          # secrets), never in a file you commit.
+          # secrets), never in a file you commit. It needs
+          # require "cybertrain/error_reporter/sentry" in bin/<app>.rb.
           # CYBERTRAIN_SENTRY_DSN=https://<public key>@<host>/<project id>
           # The share of error reports sent, 0.0 to 1.0 (1.0, all of them).
           # CYBERTRAIN_ERROR_SAMPLE_RATE=1.0
@@ -374,7 +375,8 @@ module Cybertrain
             # c.log_tags = [:request_id]
           end
 
-          # Error reports go to a Sentry DSN (CYBERTRAIN_SENTRY_DSN) and to
+          # Error reports go to a Sentry DSN (CYBERTRAIN_SENTRY_DSN, with
+          # require "cybertrain/error_reporter/sentry" in bin/<app>.rb) and to
           # the subscribers added here: a subclass of Cybertrain::ErrorSubscriber
           # whose report method receives a Cybertrain::ErrorEvent.
           # Cybertrain.error.subscribe(AuditSubscriber.new)
@@ -515,7 +517,8 @@ module Cybertrain
           # cybertrain/mailer/later), cybertrain/cache, cybertrain/rate_limit;
           # or require "cybertrain" for all of them. `generate job` and
           # `generate authentication` add theirs; `spin run gen` names the
-          # line a view's helper needs.
+          # line a view's helper needs. cybertrain/error_reporter/sentry
+          # (error reports to Sentry or GlitchTip) goes here only.
           require "cybertrain/core"
           require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
           require_relative "../config/app"     # so it comes before the config

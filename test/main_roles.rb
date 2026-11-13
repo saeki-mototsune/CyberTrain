@@ -145,6 +145,40 @@ test "feeds runs only the named subscription and stops it" do
   refute LOG.string.include?("WebSocket started: quotes")
 end
 
+# What SlowSubscriber received: a subscriber slower than a role's own stop.
+# It stays subscribed; other reports (a feed's) pass it by at once.
+REPORTED = Array.new(0) { "" }
+
+class SlowSubscriber < Cybertrain::ErrorSubscriber
+  def report(event)
+    text = event.error_message
+    return nil unless text.start_with?("before the ")
+
+    sleep 1.0
+    REPORTED << text
+    nil
+  end
+end
+
+def report_runtime(message)
+  raise message
+rescue RuntimeError => e
+  Cybertrain.error.report(e)
+end
+
+# After the feeds test above registered "trades".
+test "worker and feeds wait for the queued error reports when they stop" do
+  Cybertrain.error.subscribe(SlowSubscriber.new)
+  report_runtime("before the worker stops")
+  spawn_stopper(0.1)
+  assert_equal 0, run(["worker"])
+  assert_equal ["before the worker stops"], REPORTED
+  report_runtime("before the feeds stop")
+  spawn_stopper(0.1)
+  assert_equal 0, run(["feeds", "trades"])
+  assert_equal ["before the worker stops", "before the feeds stop"], REPORTED
+end
+
 test "worker and feeds give Spinel the SPINEL_WORKERS serve does" do
   Cybertrain.config.workers = 2
   expected = Cybertrain::Application.spinel_workers_for(Cybertrain.config).to_s

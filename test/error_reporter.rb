@@ -426,11 +426,13 @@ test "a raising sender is logged at warn, the thread goes on, and reset! puts th
   assert_logged log, "WARN", "error sender UnsureSender failed: ArgumentError: unsure\n"
   assert_equal ["sent", "unsure"], EVENTS.map(&:error_message)
   Cybertrain.error.reset!
-  assert_equal "Cybertrain::ErrorReporter::Sender", Cybertrain.error.sender.class.name
+  assert_equal "Cybertrain::ErrorReporter::SentrySender", Cybertrain.error.sender.class.name
 end
 
+# The boot sender is the Sentry sender: `require "cybertrain"` loads its
+# line, which installs it.
 test "the sender a test installed is gone in the next" do
-  assert_equal "Cybertrain::ErrorReporter::Sender", Cybertrain.error.sender.class.name
+  assert_equal "Cybertrain::ErrorReporter::SentrySender", Cybertrain.error.sender.class.name
 end
 
 test "report never raises into its caller: a failure is logged and it answers nil" do

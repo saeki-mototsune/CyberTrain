@@ -475,7 +475,10 @@ NAME_HOMES = {
   "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
   "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb],
   # Server#drain; the reporter's is drain_reports.
-  "drain" => %w[cybertrain/http/server.rb]
+  "drain" => %w[cybertrain/http/server.rb],
+  # ErrorReporter::Sender#sender_name ("") and SentrySender's ("sentry"):
+  # one String-typed hook the boot check reads.
+  "sender_name" => %w[cybertrain/error_reporter.rb cybertrain/error_reporter/sentry.rb]
 }.freeze
 # The names the phase 4a, 4b, 5a and 5b plans list as the first candidates
 # for a clash must keep a row (Global Constraints of the plans; 4b's

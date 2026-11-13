@@ -1,9 +1,9 @@
 # cybertrain/test_help -- what an application's test/test_helper.rb
 # requires (as Rails' rails/test_help): the harness and its assertions,
 # the request client, the job helpers, the views helper, the receivers'
-# base, the test base classes and the Time.now override (spec section 5.1),
-# and the reset hooks every test runs before its setup (spec section 5.3,
-# step 3).
+# base and the Sentry receiver, the test base classes and the Time.now
+# override (spec section 5.1), and the reset hooks every test runs before
+# its setup (spec section 5.3, step 3).
 #
 # It loads the helpers of every subsystem too (cybertrain/test/jobs,
 # test/mail, test/broadcasts, and rate_limit's reset), each in that
@@ -16,6 +16,7 @@ require "cybertrain/test/client"
 require "cybertrain/test/jobs"
 require "cybertrain/test/views"
 require "cybertrain/test/receiver"
+require "cybertrain/test/sentry_receiver"
 require "cybertrain/test/test_case"
 require "cybertrain/test/time_now"
 require "cybertrain/rate_limit"

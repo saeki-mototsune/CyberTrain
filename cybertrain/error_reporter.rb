@@ -172,7 +172,7 @@ module Cybertrain
     NO_CONTEXT = ErrorReporter.empty_context
 
     # Where the delivery thread sends each event after the subscribers.
-    # The base sends nothing; the Sentry sender overrides both methods.
+    # The base sends nothing; the Sentry sender overrides its methods.
     # @api public
     class Sender
       # Whether this sender sends at all (a DSN is configured).
@@ -188,6 +188,16 @@ module Cybertrain
       # @api public
       def deliver_event(event)
         false
+      end
+
+      # The require line's name of the sender this is ("" for the base,
+      # which sends nothing; `"sentry"` for the Sentry sender): the boot
+      # check of a DSN set with no sender linked asks it
+      # (Application#validate_boot), without naming a sender's class.
+      # @return [String]
+      # @api public
+      def sender_name
+        ""
       end
     end
 
