@@ -253,8 +253,8 @@ module Cybertrain
 
     # Forgets every count of every limiter: the `store: :memory` tables,
     # and, when a limiter counts in the cache, the cache's rate-limit rows.
-    # The generated `AppTest.sign_in` calls it, so that a test suite that
-    # signs in in every test never reaches the sign-in limit.
+    # `cybertrain/test_help` calls it before every test, so that a test
+    # suite that signs in in every test never reaches the sign-in limit.
     # @return [nil]
     # @raise [Cybertrain::DB::Error] when a limiter counts in the cache and
     #   the database is not reachable

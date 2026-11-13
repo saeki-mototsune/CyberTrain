@@ -148,7 +148,7 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
   way.
 
 Letters are the items of this document (AA to AH are new, written up at
-the end; AI, phase 4b's, was merged in after the inventory); numbers
+the end; AI, phase 4b's, and AJ to AM, phase 5a's, were merged in after the inventory); numbers
 after "rule" are spikes/NOTES.md's.
 
 ### 1. What CyberTrain does today because of Spinel
@@ -3419,3 +3419,105 @@ shaped the code in four places:
 One finding was CRuby's, not Spinel's: under a C locale `File.read`
 answers US-ASCII text, which the authentication generator's diff
 compares with generated UTF-8 through `LineDiff.as_utf8`.
+
+## Found in phase 5a of the Rails-gap programme (2026-11-12)
+
+The tests part of the phase 5 design
+(docs/superpowers/specs/2026-11-11-phase5-tests-operations-design.md,
+section 16) ran six checks against 2026.11.04.7026 before the code
+(spikes/phase5/), and the eighteen tasks after them met the rest. Four
+items are new; spikes/NOTES.md has them as rules 104, 107 and 108, and the
+measurement behind AK.
+
+### AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError
+
+Rule 104; AE's failing half, on the core classes as well.
+
+```ruby
+begin
+  raise "boom"
+rescue RuntimeError => e
+  puts e.class.superclass.name
+end
+```
+
+CRuby prints `StandardError`; the compiled program raises `undefined
+method 'superclass' for module RuntimeError (NoMethodError)`. The
+namespaced built-ins (`Errno::ENOENT`, `JSON::ParserError`,
+`Math::DomainError`) answer their qualified `Class#name` but no
+`superclass` either. A class the program defines answers it up to its
+first built-in ancestor.
+
+- Today: `assert_raises(Class)` walks a raised exception's ancestry by
+  name and, at the first built-in class, reads the rest from a table of
+  parents checked against CRuby 3.3 (`Test::BUILTIN_PARENTS`, every
+  `Errno::` class by its prefix); a built-in class outside the table fails
+  the assertion by name.
+- Asked of Spinel: answer `superclass` for the built-in exception classes
+  as for the program's own.
+- Reproduced by spikes/phase5/assert_raises.rb; not reported upstream.
+
+### AK. The C of a very large program needs more memory to compile than its front end
+
+Spike item 6 bundled 196 of the framework's test programs (61,000 lines of
+Ruby) into one. Spinel's front end, every rule included, passed in about
+6.5 minutes at about 1.65 GB resident and wrote 87.6 MB of C (1.17 million
+lines). Compiling that C at the default -O2, split into units compiled in
+parallel, ran for about 21 minutes and was killed by the memory cgroup's
+OOM killer at a peak of 9.7 GB for the build's processes together (one
+cc1 at 4.6 GB), on a 16 GB machine shared with other builds (2026-11-12).
+An application's test program is far smaller (the blog's: about 527 s,
+a 10.2 MB binary).
+
+- Today: the framework's suite stays one program per file (design D34,
+  D83); only applications bundle their tests (`cybertrain test`).
+- A possible upstream change: smaller C units for a large program, or a
+  lower optimisation level for the largest functions.
+- Measured with spikes/phase5/bundle_suite.sh; not reported upstream.
+
+### AL. `spin run gen` rebuilds the generator when a test file changes
+
+Rule 108. spin's freshness check for an application's `build/bin/gen`
+counts every `.rb` file under the package, `test/**` and gen's own
+outputs (`gen/tests.rb`) included: identical inputs print "build gen (up
+to date)", and one rewritten `gen/tests.rb` costs a full rebuild of about
+55 s on the next run.
+
+- Today: accepted; `cybertrain test` pays it on every edit of a test,
+  before it compiles the test program.
+- A possible upstream change (to spin): a package's build inputs
+  declared, or followed through `require`, rather than every `.rb` in the
+  tree.
+
+### AM. A release build has no backtrace
+
+Rule 107. A release build's `e.backtrace` is an empty Array, `-g`'s one
+`<main>:1` frame; only `--debug` answers `file:line:in 'Mod.meth'` per Ruby
+method (with `<main>` always at line 1 and no frame for a builtin's raise),
+compiling faster (-O0) and serving about 45% of a release build's request
+rate.
+
+- Today: a failing test is named by the line of its `test` call, not of
+  the assertion; error reports carry the class, the message and where.
+- Asked of Spinel: frames (even without line numbers) in a release
+  build, at a cost a server can carry.
+- Reproduced by spikes/phase5/backtrace.rb; not reported upstream.
+
+### What the rest of phase 5a met (no new item)
+
+- A call of an undefined instance method is refused at build only while
+  no class defines the name; with `ZonedTime#month` in the program,
+  `1.month` builds and raises `NoMethodError` when reached, as under CRuby
+  (rule 105). Not a defect: rule 84's refusal by design has no
+  instance-method counterpart to rely on.
+- A Ruby-source `def self.now` on `Time` overrides the builtin at every
+  call site, framework files included (spike item 1), and methods named
+  like builtin Time methods on another class leave a boxed Time working
+  (rule 106).
+- `rescue Exception => e` in a yielding method catches ScriptError and
+  NotImplementedError as CRuby does; rule 47's `is_a?` half did not
+  reproduce for its own example (its status row).
+- One return type per name (rule 34) shaped `assert_raises` (it answers
+  the message String) and the block assertions (nil); no stored block
+  through a base class (rule 88) is why gen rewrites test classes into
+  methods.

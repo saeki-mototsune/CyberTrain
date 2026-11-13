@@ -133,10 +133,11 @@ module Cybertrain
     # are not followed unless you call {#follow_redirect!}. Requires
     # `require "cybertrain/test/client"` (which also loads {Test}).
     # @example
-    #   # BLOG and BlogTest come from examples/blog/test/support/blog_test.rb
-    #   client = Cybertrain::Test::Client.new(BLOG)
+    #   # Cybertrain::Test.app is the application `cybertrain test` booted;
+    #   # BlogTestHelper is examples/blog/test/support/blog_test_helper.rb
+    #   client = Cybertrain::Test::Client.new(Cybertrain::Test.app)
     #   client.get("/articles/new")
-    #   res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
+    #   res = client.post("/articles", { "authenticity_token" => BlogTestHelper.form_token(client.response.body),
     #                                    "article[title]" => "Hello Rails",
     #                                    "article[body]" => "I am on Rails! This is my first article." })
     #   assert_response res, :see_other

@@ -23,6 +23,9 @@ module Cybertrain
   # asserts with the top-level `assert*` methods (see the
   # {file:docs/api/README.md overview}), and ends with
   # {Test.run! Cybertrain::Test.run!}. For requests, see {Test::Client}.
+  # An application's tests are usually the class form instead
+  # (ActiveSupport::TestCase and its subclasses, run by `cybertrain test`;
+  # docs/guide/testing.md); this is the top-level form.
   #
   # `cybertrain spin test` compiles each `test/*.rb` (not `test/support/`)
   # into its own program and compares its output with `test/<name>.rb.expected`.
@@ -30,9 +33,10 @@ module Cybertrain
   # after every case of the file; after each case the clock is real again
   # and every receiver the case started is stopped. Nothing else is reset
   # between cases under `spin test`: clear what you need in `setup`
-  # (e.g. `Article.all.delete_all`).
-  # @example test/articles.rb
-  #   require_relative "support/blog_test"   # boots the app as BLOG, see examples/blog
+  # (e.g. `Article.all.delete_all`). In `cybertrain test` every table is
+  # emptied and the fixtures loaded before each case.
+  # @example test/article_title.rb
+  #   require "test_helper"
   #
   #   setup do
   #     Article.all.delete_all

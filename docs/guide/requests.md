@@ -381,9 +381,10 @@ windows and then the oldest ones make room), lost on restart, with a
 window that opens with a key's first request and a lock taken by every
 request to a limited action (name the actions with `only:`). In a test,
 `Cybertrain::RateLimit.reset_all!` forgets every count (the memory tables
-and the cache's rate-limit rows); `Cybertrain::Cache.clock = -> { n }`
-fixes the cache store's clock, and `Cybertrain::RateLimit.current_time = n`
-the memory store's (`-1` restores it).
+and the cache's rate-limit rows; `cybertrain test` does it before every
+test), and both stores read the framework's clock, so `travel 1.minute` or
+`travel_to` moves a test past a window
+([Time travel](testing.md#time-travel)).
 
 ### The client address behind a proxy
 
