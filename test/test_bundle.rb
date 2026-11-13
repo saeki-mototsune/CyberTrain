@@ -277,10 +277,10 @@ test "boot refuses a database that is not the test one" do
   File.write(path, "keep me") unless existed
   bytes = File.read(path)
   bundle_config("development", path)
-  assert_equal "cybertrain test refuses to delete storage/development.sqlite3: not a test database (env development)", boot_refusal
+  assert_equal "cybertrain test refuses to delete storage/development.sqlite3: it is the development database", boot_refusal
   assert_equal bytes, File.read(path)
   bundle_config("test", path)
-  assert_equal "cybertrain test refuses to delete storage/development.sqlite3: not a test database (env test)", boot_refusal
+  assert_equal "cybertrain test refuses to delete storage/development.sqlite3: it is the development database", boot_refusal
   assert_equal bytes, File.read(path)
   bundle_config("development", "storage/test.sqlite3")
   assert_equal "cybertrain test refuses to delete storage/test.sqlite3: not a test database (env development)", boot_refusal
@@ -330,6 +330,88 @@ test "CYBERTRAIN_TEST_DATABASE is honoured" do
   Cybertrain::Runtime.reset!
   ENV.delete("CYBERTRAIN_TEST_DATABASE")
   [named, "#{named}-wal", "#{named}-shm", other].each { |f| File.delete(f) if File.exist?(f) }
+end
+
+test "CYBERTRAIN_TEST_DATABASE naming the development or production database is refused and kept" do
+  make_dir("tmp")
+  make_dir("tmp/test_bundle")
+  make_dir("tmp/test_bundle/live")
+  # By the file's name.
+  named = "tmp/test_bundle/live/production.sqlite3"
+  File.write(named, "production data")
+  ENV["CYBERTRAIN_TEST_DATABASE"] = named
+  bundle_config("test", named)
+  assert_equal "cybertrain test refuses to delete #{named}: it is the production database", boot_refusal
+  assert_equal "production data", File.read(named)
+  # By the path config/app.rb gives development (gen/tests.rb runs
+  # config/app.rb after cybertrain/test/bundle, which records it), and
+  # through a symlink to it.
+  live = "tmp/test_bundle/live/blog.sqlite3"
+  File.write(live, "development data")
+  Cybertrain.configure { |c| c.database_path = live if c.development? }
+  link = "tmp/test_bundle/live/link.sqlite3"
+  File.symlink("blog.sqlite3", link)
+  [live, link].each do |path|
+    ENV["CYBERTRAIN_TEST_DATABASE"] = path
+    bundle_config("test", path)
+    assert_equal "cybertrain test refuses to delete #{path}: it is the development database", boot_refusal
+  end
+  assert_equal "development data", File.read(live)
+  refute Cybertrain::DB.connected?
+  ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  [link, live, named].each { |f| File.delete(f) }
+  Dir.rmdir("tmp/test_bundle/live")
+end
+
+test "the shell's mail, SSL and host variables do not reach the tests; uploads go to an emptied tmp/test_uploads" do
+  make_dir("tmp")
+  make_dir("tmp/test_bundle")
+  named = "tmp/test_bundle/env.sqlite3"
+  ENV["CYBERTRAIN_TEST_DATABASE"] = named
+  make_dir("tmp/test_uploads")
+  make_dir("tmp/test_uploads/ab")
+  File.write("tmp/test_uploads/ab/stale", "from an earlier run")
+  ENV["CYBERTRAIN_MAIL_DELIVERY_METHOD"] = "smtp"
+  ENV["CYBERTRAIN_FORCE_SSL"] = "1"
+  ENV["CYBERTRAIN_HOSTS"] = "blog.example.com"
+  c = bundle_config("test", named)
+  ENV.delete("CYBERTRAIN_MAIL_DELIVERY_METHOD")
+  ENV.delete("CYBERTRAIN_FORCE_SSL")
+  ENV.delete("CYBERTRAIN_HOSTS")
+  assert_equal :smtp, c.mail_delivery_method
+  assert c.force_ssl
+  app = bundle_boot
+  assert_equal :test, c.mail_delivery_method
+  refute c.force_ssl
+  assert c.host_check?
+  assert_includes c.checked_hosts, "www.example.com"
+  # Answered by the (empty) router: neither 403 from the host check nor a
+  # redirect to https.
+  assert_equal 404, Cybertrain::Test::Client.new(app).get("/nowhere").status
+  assert_equal "tmp/test_uploads", c.upload_root
+  assert_equal "tmp/test_uploads", Cybertrain::BlobStore.root
+  assert File.directory?("tmp/test_uploads")
+  assert_equal [], Dir.children("tmp/test_uploads")
+  app.shutdown
+  Cybertrain::Runtime.reset!
+  # config/app.rb's own choices stay.
+  make_dir("tmp/test_bundle/uploads")
+  File.write("tmp/test_bundle/uploads/kept", "mine")
+  c = bundle_config("test", named)
+  c.mail_delivery_method = :smtp
+  c.force_ssl = true
+  c.upload_root = "tmp/test_bundle/uploads"
+  app = bundle_boot
+  assert_equal :smtp, c.mail_delivery_method
+  assert c.force_ssl
+  assert_equal "tmp/test_bundle/uploads", Cybertrain::BlobStore.root
+  assert_equal "mine", File.read("tmp/test_bundle/uploads/kept")
+  app.shutdown
+  Cybertrain::Runtime.reset!
+  ENV.delete("CYBERTRAIN_TEST_DATABASE")
+  File.delete("tmp/test_bundle/uploads/kept")
+  Dir.rmdir("tmp/test_bundle/uploads")
+  [named, "#{named}-wal", "#{named}-shm"].each { |f| File.delete(f) if File.exist?(f) }
 end
 
 test "every test starts in the configured time zone" do

@@ -44,11 +44,14 @@ def build_app
   router.get("/short_login") do |c|
     c.response.add_cookie(Cybertrain::Cookies.serialize("user", "alice smith", max_age: 60))
     c.response.add_cookie(Cybertrain::Cookies.serialize("theme", "dark"))
-    c.response.add_cookie(Cybertrain::Cookies.serialize("dated", "1", expires: Cybertrain::Clock.now + 120))
+    # Written by hand: an `expires:` Time given to Cookies.serialize here
+    # beside the calls without one crashed the compiled program (the
+    # nil default read as a Time).
+    c.response.add_cookie("dated=1; Path=/; Expires=#{Cybertrain::Request.http_date(Cybertrain::Clock.now + 120)}")
     c.response.body = "logged in"
   end
   router.get("/expire_dated") do |c|
-    c.response.add_cookie(Cybertrain::Cookies.serialize("dated", "", expires: Time.utc(2000, 1, 1)))
+    c.response.add_cookie("dated=; Path=/; Expires=Sat, 01 Jan 2000 00:00:00 GMT")
     c.response.body = "expired"
   end
   router.get("/cookie_header") { |c| c.response.body = c.request.cookie_header.to_s }

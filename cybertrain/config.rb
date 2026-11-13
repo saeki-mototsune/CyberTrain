@@ -241,9 +241,30 @@ attr_accessor :trusted_proxies
     # health path is never redirected.
     # On, the session and cookie jar cookies are `Secure` whatever
     # {#session_secure} says ({#secure_cookies?}).
+    # `cybertrain test` turns it off for its tests unless config/app.rb
+    # assigns it (an exported CYBERTRAIN_FORCE_SSL would answer every test
+    # request with a redirect to https).
     # @return [Boolean]
     # @api public
-    attr_accessor :force_ssl
+    attr_reader :force_ssl
+
+    # Sets {#force_ssl}, and records that it was given.
+    # @param value [Boolean]
+    # @api public
+    def force_ssl=(value)
+      @force_ssl = value
+      @force_ssl_given = true
+    end
+
+    # Sets {#force_ssl} to `value` unless an assignment gave it, without
+    # counting as given: `cybertrain test`'s default (off).
+    # @param value [Boolean]
+    # @return [nil]
+    # @api private
+    def force_ssl_unless_given(value)
+      @force_ssl = value unless @force_ssl_given
+      nil
+    end
 
     # The `Host` names from `CYBERTRAIN_HOSTS` (comma-separated, `[]` when
     # unset), also appended to {#allowed_hosts}, after its loopback names:
@@ -378,9 +399,34 @@ attr_accessor :trusted_proxies
     # (relative to the working directory). It is created on the first write,
     # not at boot, and is never under `public/`: `storage/` is the persistent
     # volume of a deployment, `public/` is replaced on every build.
+    # `cybertrain test` gives its tests `tmp/test_uploads`, emptied when
+    # the tests start, unless config/app.rb assigns it.
     # @return [String]
     # @api public
-    attr_accessor :upload_root
+    attr_reader :upload_root
+
+    # Sets {#upload_root}, and records that it was given.
+    # @param value [String]
+    # @api public
+    def upload_root=(value)
+      @upload_root = value
+      @upload_root_given = true
+    end
+
+    # Whether {#upload_root} was assigned (by config/app.rb or later).
+    # @return [Boolean]
+    # @api private
+    def upload_root_given? = @upload_root_given
+
+    # Sets {#upload_root} to `value` unless an assignment gave it, without
+    # counting as given: `cybertrain test`'s temporary directory.
+    # @param value [String]
+    # @return [nil]
+    # @api private
+    def upload_root_unless_given(value)
+      @upload_root = value unless @upload_root_given
+      nil
+    end
 
     # Whether {HttpClient} may connect to addresses that are not public
     # (loopback, private, link-local, CGNAT, multicast, ...; see
@@ -467,11 +513,32 @@ attr_accessor :trusted_proxies
     # anything else ({#mail_delivery_error}), and logs a warning for `:test`
     # outside the test environment ({#mail_delivery_warning}): no mail is
     # sent then.
+    # `cybertrain test` keeps its tests at `:test` whatever
+    # CYBERTRAIN_MAIL_DELIVERY_METHOD says, unless config/app.rb assigns
+    # it (an exported `smtp` must not make a test send real mail).
     # @example a test of the SMTP path
     #   Cybertrain.config.mail_delivery_method = :smtp
     # @return [Symbol]
     # @api public
-    attr_accessor :mail_delivery_method
+    attr_reader :mail_delivery_method
+
+    # Sets {#mail_delivery_method}, and records that it was given.
+    # @param value [Symbol]
+    # @api public
+    def mail_delivery_method=(value)
+      @mail_delivery_method = value
+      @mail_delivery_method_given = true
+    end
+
+    # Sets {#mail_delivery_method} to `value` unless an assignment gave it,
+    # without counting as given: `cybertrain test`'s `:test`.
+    # @param value [Symbol]
+    # @return [nil]
+    # @api private
+    def mail_delivery_method_unless_given(value)
+      @mail_delivery_method = value unless @mail_delivery_method_given
+      nil
+    end
 
     # CYBERTRAIN_MAIL_DELIVERY_METHOD as a Symbol, or, when it is unset or
     # empty, :test for the test environment and :smtp for any other.
@@ -1030,6 +1097,7 @@ end
       # CYBERTRAIN_FORCE_SSL, kept as written for security_error.
       @force_ssl_text = Config.env_or("CYBERTRAIN_FORCE_SSL", "")
       @force_ssl = @force_ssl_text == "1" || @force_ssl_text == "true"
+      @force_ssl_given = false
       # CYBERTRAIN_HOSTS: checked by security_error, appended to
       # allowed_hosts (typed seed, rule 9).
       @hosts_from_env = Array.new(0) { "" }
@@ -1060,6 +1128,7 @@ end
       @max_upload_bytes = 5_242_880
       @max_multipart_parts = 128
       @upload_root = "storage/uploads"
+      @upload_root_given = false
       @http_allow_private = Config.default_http_allow_private
       # Mailer's settings (CYBERTRAIN_SMTP_*). Assigned here, not in a
       # helper: an ivar first set outside initialize is boxed.
@@ -1071,6 +1140,7 @@ end
       @smtp_from_given = !@smtp_from.empty?
       @smtp_tls = Config.env_or("CYBERTRAIN_SMTP_TLS", "starttls").downcase
       @mail_delivery_method = Config.default_mail_delivery_method(@env)
+      @mail_delivery_method_given = false
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i
       # Application-defined settings (setting_string / setting_int /
       # setting_bool): one typed Hash per type, keyed by the setting's name
@@ -1664,7 +1734,65 @@ end
   # @api public
   def self.configure(&block)
     block.call(config)
+    record_other_databases(block) if @recording_other_databases
     nil
+  end
+
+  # What the development and production environments' database_path
+  # would be after the configure blocks (a test database must not be
+  # either: `cybertrain test` deletes it). Recorded only once
+  # {record_other_databases!} was called, which the bundle of
+  # `cybertrain test` does before config/app.rb runs.
+  @recording_other_databases = false
+  @other_database_envs = Array.new(0) { "" }
+  @other_database_paths = Array.new(0) { "" }
+
+  # From now on each {configure} block is also run on a development and a
+  # production Config of its own (not the application's), and the
+  # database_path each ends with is recorded ({other_database_paths}).
+  # @return [nil]
+  # @api private
+  def self.record_other_databases!
+    @recording_other_databases = true
+    nil
+  end
+
+  # The environments of {other_database_paths}, entry for entry.
+  # @return [Array<String>]
+  # @api private
+  def self.other_database_envs = @other_database_envs
+
+  # The database_path a development or production Config had after a
+  # configure block ran on it (see {record_other_databases!}).
+  # @return [Array<String>]
+  # @api private
+  def self.other_database_paths = @other_database_paths
+
+  # Runs `block` on a development and a production Config and records
+  # their database_path; a block that raises for that environment records
+  # nothing for it.
+  def self.record_other_databases(block)
+    ["development", "production"].each do |env|
+      path = other_database_path(block, env)
+      next if path.empty?
+
+      @other_database_envs << env
+      @other_database_paths << path
+    end
+    nil
+  end
+
+  # The database_path `block` leaves on a fresh Config of `env` (starting
+  # from storage/<env>.sqlite3), "" when it raises. The rescue is in this
+  # plain method, which takes the block as a Proc (NOTES rules 32/45).
+  def self.other_database_path(block, env)
+    other = Config.new
+    other.env = env
+    other.database_path = "storage/#{env}.sqlite3"
+    block.call(other)
+    other.database_path.to_s
+  rescue StandardError
+    ""
   end
 
   # @return [String] `Cybertrain.config.env`

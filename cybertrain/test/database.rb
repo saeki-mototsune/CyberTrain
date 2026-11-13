@@ -119,9 +119,61 @@ module Cybertrain
       # "" when env and path name a test database, else the refusal.
       # @return [String]
       def self.refusal(env, path)
+        other = Database.other_environment(path)
+        unless other.empty?
+          return "Test::Database refuses to empty #{path}: it is the #{other} database"
+        end
         return "" if env == "test" && Database.test_path?(path)
 
         "Test::Database refuses to empty #{path}: not a test database (env #{env})"
+      end
+
+      # The environment ("development" or "production") whose database
+      # `path` is, "" when it is neither: a file named development.sqlite3
+      # or production.sqlite3 (by its name, or the name of the file a
+      # symlink leads to), or the file one of those environments resolves
+      # to: storage/<env>.sqlite3, or the `c.database_path` config/app.rb
+      # gives it (Cybertrain.other_database_paths, recorded in
+      # `cybertrain test`), compared as written, as an absolute path and by
+      # real path.
+      # @param path [String]
+      # @return [String]
+      # @api private
+      def self.other_environment(path)
+        return "" if DB::Connection.private_database?(path)
+
+        file = Database.uri_file(path)
+        return "" if file.empty?
+
+        real = Database.real_path(file)
+        envs = Array.new(0) { "" }
+        paths = Array.new(0) { "" }
+        ["development", "production"].each do |env|
+          name = "#{env}.sqlite3"
+          return env if File.basename(file) == name || (!real.empty? && File.basename(real) == name)
+
+          envs << env
+          paths << "storage/#{name}"
+        end
+        Cybertrain.other_database_envs.each { |env| envs << env }
+        Cybertrain.other_database_paths.each { |other| paths << other }
+        i = 0
+        while i < paths.length
+          return envs[i] if Database.same_file?(file, real, Database.uri_file(paths[i]))
+
+          i += 1
+        end
+        ""
+      end
+
+      # Whether `file` (whose real path is `real`, "" when it does not
+      # exist) and `other` name one file.
+      # @api private
+      def self.same_file?(file, real, other)
+        return false if other.empty?
+        return true if file == other || File.expand_path(file) == File.expand_path(other)
+
+        !real.empty? && real == Database.real_path(other)
       end
 
       # storage/test.sqlite3 (relative or under an application), the file

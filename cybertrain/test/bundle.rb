@@ -7,6 +7,13 @@
 require "cybertrain"
 require "cybertrain/test"
 require "cybertrain/test/args"
+require "cybertrain/test/client"
+require "cybertrain/test/database"
+
+# config/app.rb runs after this file in gen/tests.rb: each of its configure
+# blocks is also run for development and production, so the refusal knows
+# their database files (Bundle.refusal).
+Cybertrain.record_other_databases!
 
 module Cybertrain
   module Test
@@ -37,6 +44,33 @@ module Cybertrain
       # (Rails' generated ApplicationMailer uses it too).
       DEFAULT_SENDER = "from@example.com".freeze
 
+      # Where a test's uploads go when config/app.rb sets no
+      # `upload_root`: emptied by every boot, never storage/uploads.
+      TEST_UPLOADS = "tmp/test_uploads".freeze
+
+      # Deletes what `dir` holds (files, symlinks and directories, the
+      # latter emptied first; a symlink is removed, never followed), and
+      # keeps `dir` itself. Nothing when it does not exist.
+      # @param dir [String]
+      # @return [nil]
+      def self.empty_directory(dir)
+        return nil unless File.directory?(dir) && !File.symlink?(dir)
+
+        Dir.children(dir).each { |child| Bundle.remove_tree("#{dir}/#{child}") }
+        nil
+      end
+
+      # Removes a file, a symlink, or a directory with what it holds.
+      def self.remove_tree(path)
+        if File.directory?(path) && !File.symlink?(path)
+          Dir.children(path).each { |child| Bundle.remove_tree("#{path}/#{child}") }
+          Dir.rmdir(path)
+        else
+          File.delete(path)
+        end
+        nil
+      end
+
       # Hands over gen's table: the test files in path order, then one entry
       # per class-form test (its file, the line of its `test` call, its
       # class, name and method), in the order of Gen::Tests.run_case's arms.
@@ -52,12 +86,20 @@ module Cybertrain
       end
 
       # Why boot must not delete the configured database ("" when it may):
-      # the environment is not test, or the path is neither
+      # the path is the development or production database
+      # (Database.other_environment: named development.sqlite3 or
+      # production.sqlite3, or the file those environments resolve to,
+      # config/app.rb's `c.database_path` included, also through a
+      # symlink), the environment is not test, or the path is neither
       # storage/test.sqlite3 nor the one CYBERTRAIN_TEST_DATABASE names.
       # @return [String]
       def self.refusal
         c = Cybertrain.config
         path = c.database_path
+        other = Database.other_environment(path)
+        unless other.empty?
+          return "cybertrain test refuses to delete #{path}: it is the #{other} database"
+        end
         named = ENV["CYBERTRAIN_TEST_DATABASE"].to_s
         return "" if c.env == "test" && (path == DEFAULT_DATABASE || (!named.empty? && path == named))
 
@@ -67,7 +109,12 @@ module Cybertrain
       # Boots the application on a new test database: refuses first
       # ({refusal}, raising ArgumentError, nothing deleted), turns forgery
       # protection off unless config/app.rb set `csrf` (Rails' test
-      # environment), silences the request log unless config/app.rb set
+      # environment), keeps mail at delivery `:test` and `force_ssl` off
+      # unless config/app.rb set them (whatever CYBERTRAIN_MAIL_DELIVERY_METHOD
+      # and CYBERTRAIN_FORCE_SSL say), accepts the test host
+      # (www.example.com) whatever CYBERTRAIN_HOSTS says, puts uploads in
+      # {TEST_UPLOADS}, emptied here, unless config/app.rb set
+      # `upload_root`, silences the request log unless config/app.rb set
       # `log_level` (its lines, with timings, would print between the test
       # lines; Rails writes them to log/test.log; error-level lines, which
       # carry no timings, still print), gives mail the sender
@@ -86,6 +133,13 @@ module Cybertrain
         c.csrf_unless_given(false)
         c.log_level_unless_given(:none)
         c.smtp_from_unless_given(DEFAULT_SENDER)
+        c.mail_delivery_method_unless_given(:test)
+        c.force_ssl_unless_given(false)
+        c.allowed_hosts << Client::TEST_HOST unless c.allowed_hosts.include?(Client::TEST_HOST)
+        unless c.upload_root_given?
+          c.upload_root_unless_given(TEST_UPLOADS)
+          Bundle.empty_directory(TEST_UPLOADS)
+        end
         path = c.database_path
         [path, "#{path}-wal", "#{path}-shm"].each { |f| File.delete(f) if File.exist?(f) }
         connection = Cybertrain::DB::Connection.new(path)
