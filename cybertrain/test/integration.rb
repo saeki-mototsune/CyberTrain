@@ -34,7 +34,7 @@ module Cybertrain
     # @param params [Hash]
     # @return [Hash{String => String}]
     # @raise [ArgumentError] for any other value (an Array, a model), and for
-    #   a file ({IntegrationTest#fixture_file_upload}), which only a form
+    #   a file ({ActionDispatch::IntegrationTest#fixture_file_upload}), which only a form
     #   body carries (post, patch, put)
     # @api public
     def self.flatten_params(params)
@@ -48,7 +48,7 @@ module Cybertrain
     end
 
     # Like {flatten_params} for a form body: each file value
-    # ({IntegrationTest#fixture_file_upload}) is appended to `uploads` as an
+    # ({ActionDispatch::IntegrationTest#fixture_file_upload}) is appended to `uploads` as an
     # Upload named by its bracketed key (`"article[cover]"`), and left out
     # of the text fields answered.
     # @param params [Hash]
@@ -99,11 +99,11 @@ module Cybertrain
       nil
     end
 
-    # Where {IntegrationTest#fixture_file_upload} reads files (Rails'
+    # Where {ActionDispatch::IntegrationTest#fixture_file_upload} reads files (Rails'
     # file_fixture_path).
     FIXTURE_FILES = "test/fixtures/files".freeze
 
-    # The file part {IntegrationTest#fixture_file_upload} answers: the bytes
+    # The file part {ActionDispatch::IntegrationTest#fixture_file_upload} answers: the bytes
     # of test/fixtures/files/<path> (or of path itself), its last component
     # as the filename, `mime_type` or the type of its extension. The field
     # is named when the params are flattened.
