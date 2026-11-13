@@ -243,6 +243,113 @@ test "a failed restore exits 1, warns about gen/views.rb and releases the lock" 
   refute File.exist?("tmp/cybertrain-build.lock")
 end
 
+# The build lock is taken with one exclusive create (CLI::BuildLock). PID 1
+# stands for another live process: it always exists (EPERM for a non-root
+# test reads as alive, as for any process of another user); 2147483647 for
+# one that has gone.
+LOCK = "tmp/cybertrain-build.lock"
+OTHER_LIVE_PID = "1"
+DEAD_PID = "2147483647"
+
+def clear_lock
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  File.delete(LOCK) if File.exist?(LOCK)
+end
+
+# Another taker that wins between this one's look at the lock and its
+# create: the lock file appears, naming a live process, just before the
+# create runs.
+class RacingLock < Cybertrain::CLI::BuildLock
+  def create_lock
+    File.write(lock_path, OTHER_LIVE_PID) unless File.exist?(lock_path)
+    super
+  end
+end
+
+# A build whose lock another process takes over while `spin build` runs
+# (it judged this one stale).
+class TakeoverRunner < FakeRunner
+  def run_step(root, command)
+    ok = super
+    File.write("#{root}/tmp/cybertrain-build.lock", OTHER_LIVE_PID) if command == "spin build blog"
+    ok
+  end
+end
+
+test "the build lock is created holding this process's PID when it is free" do
+  clear_lock
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  lock.release
+  refute File.exist?(LOCK)
+end
+
+test "a build lock held by a live process is refused, and cybertrain build stops before any step" do
+  clear_lock
+  File.write(LOCK, OTHER_LIVE_PID)
+  refute Cybertrain::CLI::BuildLock.new(".").take
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  runner = FakeRunner.new("")
+  assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal 0, runner.log.size
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  refute File.exist?("dist")
+  # a lock recording no PID cannot be told stale, so it is held too
+  File.write(LOCK, "")
+  refute Cybertrain::CLI::BuildLock.new(".").take
+  assert_equal "", File.read(LOCK)
+  clear_lock
+end
+
+test "a stale build lock (dead PID, or older than 30 minutes) is taken over" do
+  clear_lock
+  File.write(LOCK, DEAD_PID)
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  lock.release
+  File.write(LOCK, OTHER_LIVE_PID)
+  old = Time.now - 31 * 60
+  File.utime(old, old, LOCK)
+  assert lock.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  lock.release
+  refute File.exist?(LOCK)
+end
+
+test "two takers racing for a free build lock leave exactly one holder" do
+  clear_lock
+  # the other process creates the lock after this one found it free
+  racer = RacingLock.new(".")
+  refute racer.take
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  clear_lock
+  # two takers in this process: the second finds the first's live lock
+  first = Cybertrain::CLI::BuildLock.new(".")
+  second = Cybertrain::CLI::BuildLock.new(".")
+  assert first.take
+  refute second.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  first.release
+  refute File.exist?(LOCK)
+end
+
+test "releasing the build lock leaves a lock another process has taken over" do
+  clear_lock
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  File.write(LOCK, OTHER_LIVE_PID)
+  lock.release
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  clear_lock
+  runner = TakeoverRunner.new("")
+  assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  rm_tree("dist")
+  clear_lock
+end
+
 test "assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/" do
   Dir.mkdir("dist")
   Dir.mkdir("dist/storage")

@@ -28,6 +28,16 @@ ok   build runs the three steps under tmp/cybertrain-build.lock, then assembles 
 ok   a failed spin build still restores gen/views.rb, skips assemble and exits 1
 warning: gen/views.rb still holds the embedded views; run spin run gen
 ok   a failed restore exits 1, warns about gen/views.rb and releases the lock
+ok   the build lock is created holding this process's PID when it is free
+error: another cybertrain build (pid 1) holds tmp/cybertrain-build.lock; remove it if no build is running
+ok   a build lock held by a live process is refused, and cybertrain build stops before any step
+ok   a stale build lock (dead PID, or older than 30 minutes) is taken over
+ok   two takers racing for a free build lock leave exactly one holder
+
+dist/blog       (production by default)
+dist/public/
+run:  cd dist && ./blog migrate && ./blog
+ok   releasing the build lock leaves a lock another process has taken over
 ok   assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/
 ok   assemble removes a symlink in dist/public without following it
 ok   assemble fails clearly when the binary is missing
@@ -41,4 +51,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-24 tests, 188 assertions, 0 failures
+29 tests, 214 assertions, 0 failures
