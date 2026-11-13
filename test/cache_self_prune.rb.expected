@@ -1,0 +1,4 @@
+ok   the cache is a feature with a periodic prune, and nothing schedules it
+ok   a write prunes the expired rows once the interval has passed since the last prune
+ok   an increment prunes too
+3 tests, 17 assertions, 0 failures

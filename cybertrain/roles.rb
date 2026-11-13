@@ -6,6 +6,7 @@
 #
 #   Roles::ServerRunner   ./<app> server [PORT]   cybertrain/roles/server.rb
 #   Roles::WorkerRunner   ./<app> worker          cybertrain/roles/worker.rb
+#                         (loaded by cybertrain/jobs, not by the core)
 #   Roles::FeedsRunner    ./<app> feeds [NAME...] cybertrain/roles/feeds.rb
 #
 # This module holds only what the three really share: the stop flag of the
@@ -91,5 +92,4 @@ module Cybertrain
 end
 
 require "cybertrain/roles/server"
-require "cybertrain/roles/worker"
 require "cybertrain/roles/feeds"

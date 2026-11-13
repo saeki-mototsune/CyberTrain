@@ -5,8 +5,7 @@ require "cybertrain/middleware"
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
-require "cybertrain/job"
-require "cybertrain/scheduler"
+require "cybertrain/feature"
 require "cybertrain/background"
 require "cybertrain/stream/endpoint"
 require "cybertrain/dev"
@@ -18,10 +17,12 @@ module Cybertrain
     # called.
     #
     #   starts   Stream::Poller (when the endpoint is mounted), the
-    #            listener, Scheduler, Job (when Config#worker), the
+    #            listener, the features (Features.start_features: with
+    #            cybertrain/jobs, Scheduler and Job when Config#worker), the
     #            Background services
-    #   waits    Server#wait (TERM stops the listener and the job claims)
-    #   stops    Job, Scheduler, Background, Stream::Poller
+    #   waits    Server#wait (TERM stops the listener and asks the features
+    #            to stop: the job claims)
+    #   stops    the features (Job, Scheduler), Background, Stream::Poller
     #
     # In development it is also the whole of D12: the rebuilder, the
     # watcher, the HUP trap, the restart monitor and the execv of the new
@@ -101,9 +102,10 @@ module Cybertrain
           srv.start # bind first: a PortInUse error must not come after the banner
           print_boot_banner
           # After boot connected the database and SPINEL_WORKERS is set;
-          # only here, so `migrate`, `db` and Main.command never start it.
-          Scheduler.start!(config)
-          Job.start!(config) if config.worker
+          # only here, so `migrate`, `db` and Main.command never start
+          # them: the loaded subsystems' threads (with cybertrain/jobs, the
+          # Scheduler and, when Config#worker, the job threads).
+          Features.start_features(config)
           # Services files like cybertrain/websocket registered when required.
           Background.start_all(config)
           if config.development?
@@ -114,15 +116,14 @@ module Cybertrain
             # left of its job_drain_timeout, inside systemd's TimeoutStopSec.
             previous_term = trap("TERM") do
               srv.request_stop
-              Job.request_stop
+              Features.request_stop_features
             end
             wait_for_stop(srv, previous_term)
           end
         ensure
           # Also when a start above raised (D66): each stop is a no-op for
           # what never started, so nothing this role began outlives it.
-          Job.stop!
-          Scheduler.stop!
+          Features.stop_features
           Background.stop_all
           Stream::Poller.stop!
           Runtime.leave_role
@@ -155,7 +156,7 @@ module Cybertrain
         rebuilder = @rebuilder
         previous_term = trap("TERM") do
           srv.request_stop
-          Job.request_stop
+          Features.request_stop_features
         end
         previous_hup = trap("HUP") { request_restart }
         watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)

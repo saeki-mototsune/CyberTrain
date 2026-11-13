@@ -1,7 +1,7 @@
 require "cybertrain/application"
 require "cybertrain/db/cli"
 require "cybertrain/console"
-require "cybertrain/job/cli"
+require "cybertrain/feature"
 
 module Cybertrain
   # Cybertrain::Main -- what bin/<name>.rb runs, the one binary an app
@@ -17,6 +17,8 @@ module Cybertrain
   #   ./blog worker       jobs and scheduled tasks, no HTTP (several may share a database)
   #   ./blog jobs list    any Job::CLI command: list [STATE], retry ID|--all, discard ID,
   #                       delete ID, prune [--before DAYS]
+  #                       (worker and jobs with require "cybertrain/jobs":
+  #                       JobsFeature#run_feature_command)
   #   ./blog feeds [NAME...]  the WebSocket subscriptions (all, or the named ones)
   #   ./blog feeds status     each feed's health, from the status rows
   #   ./blog console      the expression console over the models (Console.run)
@@ -122,16 +124,12 @@ module Cybertrain
       return serve(name, argv, router, url_resolver, views) if server?(argv)
 
       case argv[0]
-      when "worker"
-        role_app(name, router, url_resolver, views).run_worker(argv[1, argv.size - 1])
       when "feeds"
         role_app(name, router, url_resolver, views).run_feeds(argv[1, argv.size - 1])
       when "migrate"
         DB::CLI.run(["migrate"], ".", name)
       when "db"
         DB::CLI.run(argv[1, argv.size - 1], ".", name)
-      when "jobs"
-        run_jobs(argv[1, argv.size - 1])
       when "console"
         run_console
       when "dbconsole"
@@ -140,9 +138,39 @@ module Cybertrain
         puts usage(name)
         0
       else
-        puts "Unknown command '#{argv[0]}'"
-        puts usage(name)
-        1
+        run_other(name, argv, router, url_resolver, views)
+      end
+    end
+
+    # A word none of Main's own arms takes: a loaded subsystem's command
+    # (Features.command_status: `worker` and `jobs` with cybertrain/jobs),
+    # else the require line a subsystem's word needs, else unknown.
+    def self.run_other(name, argv, router, url_resolver, views)
+      word = argv[0]
+      status = Features.command_status(word, argv[1, argv.size - 1], name, router, url_resolver, views)
+      return status if status >= 0
+
+      missing = missing_subsystem(word, name)
+      unless missing.empty?
+        puts missing
+        STDOUT.flush
+        return 1
+      end
+      puts "Unknown command '#{word}'"
+      puts usage(name)
+      1
+    end
+
+    # What `./NAME WORD` prints when WORD belongs to a subsystem bin/NAME.rb
+    # did not require: which line it needs. "" for any other word.
+    # @param word [String]
+    # @param name [String] the binary's name
+    # @return [String]
+    def self.missing_subsystem(word, name)
+      case word
+      when "worker" then "the worker role needs require \"cybertrain/jobs\" in bin/#{name}.rb"
+      when "jobs" then "the jobs command needs require \"cybertrain/jobs\" in bin/#{name}.rb"
+      else ""
       end
     end
 
@@ -164,24 +192,6 @@ module Cybertrain
       ensure
         DB.disconnect
       end
-    end
-
-    # `./<name> jobs ...`: Job::CLI.run with the database connected as for
-    # a registered command (a pool of one; no server, scheduler or job
-    # thread). Returns its exit status, or 1 when the database cannot be
-    # opened. The rescue sits in this plain method (NOTES rules 32/45).
-    def self.run_jobs(args)
-      status = 0
-      begin
-        DB.connect(Cybertrain.config.database_path, size: 1)
-        status = Job::CLI.run(args)
-      rescue DB::Error => e
-        puts "jobs failed: #{e.message}"
-        status = 1
-      ensure
-        DB.disconnect
-      end
-      status
     end
 
     # `./<name> console`: Console.run on the terminal, with the database
@@ -308,7 +318,8 @@ module Cybertrain
     def self.usage(name)
       text = +"Usage:\n"
       text << "  ./#{name} [server [PORT]]   start the server\n"
-      text << "  ./#{name} worker            run jobs and scheduled tasks, without HTTP\n"
+      # A loaded subsystem's roles (cybertrain/jobs: worker).
+      text << Features.usage_text(name, "roles")
       text << "  ./#{name} feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)\n"
       text << "  ./#{name} feeds status      print each feed's health from the status rows\n"
       text << "  ./#{name} migrate           apply pending migrations\n"
@@ -316,8 +327,8 @@ module Cybertrain
       # The continuation lines up under "migrate" whatever the name.
       indent = "".ljust(name.size + 23)
       text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize\n"
-      text << "  ./#{name} #{"jobs COMMAND".ljust(17)} list [STATE] | retry ID | retry --all | discard ID | delete ID\n"
-      text << "#{indent}prune [--before DAYS]\n"
+      # A loaded subsystem's commands (cybertrain/jobs: jobs).
+      text << Features.usage_text(name, "commands")
       text << "  ./#{name} #{"console".ljust(17)} evaluate expressions over the models (help inside)\n"
       text << "  ./#{name} #{"dbconsole".ljust(17)} open the sqlite3 shell on the database\n"
       COMMANDS.each do |command|

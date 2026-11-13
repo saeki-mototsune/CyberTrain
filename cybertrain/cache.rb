@@ -3,7 +3,7 @@ require "cybertrain/cast"
 require "cybertrain/config"
 require "cybertrain/db"
 require "cybertrain/params"
-require "cybertrain/scheduler"
+require "cybertrain/feature"
 
 module Cybertrain
   # Cybertrain::Cache -- a cache store in the application's own SQLite
@@ -30,10 +30,12 @@ module Cybertrain
   # application's SQLite writer lock, which requests writing their own
   # rows wait for: cache what the jobs produce rather than in request
   # paths that write often. Nothing is kept in memory: every read is a
-  # SELECT, which SQLite answers from its page cache. Requiring this file
-  # registers the scheduled task `"cybertrain cache prune"`, which deletes
-  # the expired rows every {Config#cache_prune_interval} seconds
-  # ({Cache.prune}).
+  # SELECT, which SQLite answers from its page cache. The expired rows are
+  # deleted every {Config#cache_prune_interval} seconds ({Cache.prune}):
+  # with `require "cybertrain/jobs"`, by the scheduled task
+  # `"cybertrain cache prune"` (requiring both registers it); without
+  # jobs, by the write ({Cache.write}, {Cache.increment}) that comes once
+  # that interval has passed since the last prune.
   # @api public
   module Cache
     TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_cache (" \
@@ -91,6 +93,10 @@ module Cybertrain
     # The DB.generation the table was last ensured for; -1 for never (as
     # Job's and Lease's).
     @installed_generation = -1
+
+    # Without jobs: the Cache.now of the last prune a write ran, or of the
+    # first write; -1 before it (a typed initial value: NOTES rule 7).
+    @last_self_prune = -1
 
     # The clock Cache.now reads: the system's until a test injects one.
     # Made in a method (NOTES rule 82).
@@ -300,6 +306,7 @@ module Cybertrain
     def self.write(key, value, expires_in: 0, unless_exist: false)
       ensure_installed
       now = Cache.now
+      prune_if_due(now)
       expires_at = expires_in > 0 ? now + expires_in : 0
       sql = unless_exist ? ADD_SQL : WRITE_SQL
       binds = Cast.binds(key, value, expires_at, now)
@@ -355,6 +362,7 @@ module Cybertrain
     def self.increment(key, by: 1, expires_in: 0)
       ensure_installed
       now = Cache.now
+      prune_if_due(now)
       expires_at = expires_in > 0 ? now + expires_in : 0
       rows = DB.with { |c| c.execute(INCREMENT_SQL, Cast.binds(key, by, expires_at, now)) }
       return 0 if rows.empty?
@@ -395,22 +403,43 @@ module Cybertrain
       total
     end
 
-    # Registers the scheduled task `"cybertrain cache prune"`, every
-    # {Config#cache_prune_interval} seconds, unless a task of that name is
-    # registered already. Requiring this file calls it; an interval below 1
-    # is registered as 1, and boot refuses it ({Config#scheduler_error}).
-    #
-    # It does not create {Cybertrain.config}: `require "cybertrain"` runs
-    # this, and a config made then would keep the environment of that
-    # moment (`development`), before a test sets `CYBERTRAIN_ENV` or an
-    # embedded build's gen/views.rb defaults it to production. Until the
-    # config exists, the interval comes from the variable as
-    # {Config#cache_prune_interval} would read it.
+    # Without jobs (no loaded feature runs periodic work:
+    # Features.periodic_scheduler?), the prune the scheduled task would run: once
+    # {Config#cache_prune_interval} seconds have passed since the last one
+    # (counted from the first write of the process), the writing caller
+    # runs {Cache.prune}, the same statements as the task. With jobs it
+    # does nothing: the scheduler prunes, or, with CYBERTRAIN_WORKER=0,
+    # the process that runs it does. Two writers may both prune at the
+    # edge; the second deletes nothing.
+    # @param now [Integer] epoch seconds ({Cache.now})
     # @return [nil]
-    # @api public
-    def self.register_prune_task
-      return nil if Scheduler.task_index(PRUNE_TASK) >= 0
+    # @api private
+    def self.prune_if_due(now)
+      return nil if Features.periodic_scheduler?
 
+      last = @last_self_prune
+      if last < 0
+        @last_self_prune = now
+        return nil
+      end
+      return nil if now - last < prune_interval
+
+      @last_self_prune = now
+      prune(now)
+      nil
+    end
+
+    # Seconds between two prunes: {Config#cache_prune_interval}, at least
+    # 1 (boot refuses less: {Config#scheduler_error}). It does not create
+    # {Cybertrain.config}: `require "cybertrain"` reads it while
+    # registering the task, and a config made then would keep the
+    # environment of that moment (`development`), before a test sets
+    # `CYBERTRAIN_ENV` or an embedded build's gen/views.rb defaults it to
+    # production. Until the config exists, the interval comes from the
+    # variable as {Config#cache_prune_interval} would read it.
+    # @return [Integer]
+    # @api private
+    def self.prune_interval
       interval = 0
       if Cybertrain.config_loaded?
         interval = Cybertrain.config.cache_prune_interval
@@ -418,10 +447,47 @@ module Cybertrain
         interval = Config.default_cache_prune_interval
       end
       interval = 1 if interval < 1
-      Scheduler.every(interval, PRUNE_TASK) { Cache.prune(Cache.now) }
+      interval
+    end
+
+    # Registers the scheduled task `"cybertrain cache prune"`, every
+    # {Cache.prune_interval} seconds, when cybertrain/jobs is loaded and no
+    # task of that name is registered already
+    # (Features.schedule_all_periodic: JobsFeature takes on CacheFeature's
+    # periodic hook). Requiring this file and cybertrain/jobs, in either order,
+    # registers it; calling it again adds nothing.
+    # @return [nil]
+    # @api public
+    def self.register_prune_task
+      Features.schedule_all_periodic
+      nil
+    end
+  end
+
+  # The cache's feature (cybertrain/feature.rb): its prune as a periodic
+  # hook, which the jobs feature runs on the scheduler.
+  # @api private
+  class CacheFeature < Feature
+    def feature_name
+      "cache"
+    end
+
+    def periodic_name
+      Cache::PRUNE_TASK
+    end
+
+    def periodic_interval
+      Cache.prune_interval
+    end
+
+    # The cache's own clock, not the scheduler's `now`: a test that
+    # injects one (Cache.clock=) moves the prune with it, as the task
+    # always did.
+    def periodic(now)
+      Cache.prune(Cache.now)
       nil
     end
   end
 end
 
-Cybertrain::Cache.register_prune_task
+Cybertrain::Features.register_feature(Cybertrain::CacheFeature.new)

@@ -1,0 +1,31 @@
+ok   no registered feature is jobs, and none runs periodic work
+ok   an application on the core boots and serves a page
+ok   /up answers ok: with no jobs there is no worker to be stale
+the worker role needs require "cybertrain/jobs" in bin/blog.rb
+ok   worker says which require it needs and exits 1
+the jobs command needs require "cybertrain/jobs" in bin/blog.rb
+ok   jobs says which require it needs and exits 1
+Usage:
+  ./blog [server [PORT]]   start the server
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
+  ./blog migrate           apply pending migrations
+  ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
+  ./blog help
+ok   help lists neither worker nor jobs
+Unknown command 'nosuch'
+Usage:
+  ./blog [server [PORT]]   start the server
+  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
+  ./blog feeds status      print each feed's health from the status rows
+  ./blog migrate           apply pending migrations
+  ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
+                           backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
+  ./blog console           evaluate expressions over the models (help inside)
+  ./blog dbconsole         open the sqlite3 shell on the database
+  ./blog help
+ok   an unknown word is still unknown
+7 tests, 14 assertions, 0 failures

@@ -2,70 +2,18 @@
 #
 # A Rails-like web application framework written natively for the Spinel
 # AOT Ruby compiler. See docs/design.md for the architecture.
-require "cybertrain/version"
-require "cybertrain/logger"
-require "cybertrain/html"
-require "cybertrain/http/parser"
-require "cybertrain/http/request"
-require "cybertrain/http/response"
-require "cybertrain/http/query"
-require "cybertrain/http/uploaded_file"
-require "cybertrain/http/multipart"
-require "cybertrain/http/cookies"
-require "cybertrain/params"
-require "cybertrain/context"
-require "cybertrain/middleware"
-require "cybertrain/middleware/static"
-require "cybertrain/middleware/request_logger"
-require "cybertrain/middleware/method_override"
-require "cybertrain/router"
-require "cybertrain/app"
-require "cybertrain/http/handler"
-require "cybertrain/context_handler"
-require "cybertrain/http/server"
-require "cybertrain/http/gzip_ffi"
-require "cybertrain/db"
-require "cybertrain/time_ext"
-require "cybertrain/model"
-require "cybertrain/callback"
-require "cybertrain/active_support"
-require "cybertrain/controller"
-require "cybertrain/crypto"
-require "cybertrain/encryptor"
-require "cybertrain/cookie_jar"
-require "cybertrain/blob_store"
-require "cybertrain/password"
-require "cybertrain/time_zone"
-require "cybertrain/session"
-require "cybertrain/flash"
-require "cybertrain/middleware/session_store"
-require "cybertrain/middleware/csrf_protection"
-require "cybertrain/middleware/error_pages"
-require "cybertrain/schema"
-require "cybertrain/schema/dumper"
-require "cybertrain/migration"
-require "cybertrain/generator/url_support"
-require "cybertrain/template"
-require "cybertrain/db/sqlite_ddl"
-require "cybertrain/db/migrator"
-require "cybertrain/db/schema_dumper"
-require "cybertrain/db/cli"
-require "cybertrain/views"
-require "cybertrain/number_helper"
-require "cybertrain/template/helpers"
-require "cybertrain/template/form_builder"
-require "cybertrain/config"
-require "cybertrain/job"
+#
+# Everything: the core and every optional subsystem. An application that
+# uses only some of them requires "cybertrain/core" and their lines instead,
+# and compiles less (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md).
+require "cybertrain/core"
+require "cybertrain/jobs"
+# Turbo Streams (the core still loads them today; cybertrain/streams later).
+require "cybertrain/stream"
+# WebSocket feeds (cybertrain/feeds later).
+require "cybertrain/websocket/feed_table"
+require "cybertrain/mailer"
 require "cybertrain/mailer/later"
-require "cybertrain/lease"
-require "cybertrain/scheduler"
 # The default store of Controller.rate_limit counts.
 require "cybertrain/cache"
-require "cybertrain/websocket/feed_table"
-require "cybertrain/application"
-require "cybertrain/main"
-
-# The gzip inflater behind Request#decoded_body (system zlib through FFI):
-# installed here, since cybertrain/http/request.rb itself must load under
-# CRuby, where the FFI DSL does not exist.
-Cybertrain::GzipFFI.install!
+require "cybertrain/rate_limit"

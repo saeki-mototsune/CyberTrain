@@ -20,7 +20,7 @@ require "cybertrain/stream/endpoint"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/db"
-require "cybertrain/scheduler"
+require "cybertrain/feature"
 require "cybertrain/background"
 require "cybertrain/views"
 require "cybertrain/runtime"
@@ -145,10 +145,11 @@ module Cybertrain
       # assignments are checked together.
       problem = c.validation_error
       fail_boot(problem) unless problem.empty?
-      # A cron task's job: kind no Job.handle registered (Scheduler.start!
+      # What a loaded subsystem refuses (Feature#boot_problem): with jobs, a
+      # cron task's job: kind no Job.handle registered (Scheduler.start!
       # raises the same message; here it is a boot error before the banner).
-      job_kinds_error = Scheduler.job_kinds_error
-      fail_boot(job_kinds_error) unless job_kinds_error.empty?
+      feature_problem = Features.boot_problem(c)
+      fail_boot(feature_problem) unless feature_problem.empty?
       nil
     end
 
@@ -268,34 +269,6 @@ module Cybertrain
     # @return [nil]
     def serve(argv)
       server_runner.run_server(argv)
-    end
-
-    # `./<app> worker` (Main.run): boots (the config checks, the database)
-    # and runs Roles::WorkerRunner: a banner, the scheduler (lease-gated:
-    # several workers may share the database) and the job threads, until
-    # SIGTERM or SIGINT (or Application.request_stop_roles), then their
-    # shutdown (the job threads finish their jobs, for at most
-    # Config#job_drain_timeout seconds). No port, no HTTP. Config#worker is
-    # set: in this role it is what the process is for.
-    # @param argv [Array<String>] what follows `worker`; must be empty
-    # @return [Integer] the exit status
-    # @api public
-    def run_worker(argv)
-      unless argv.empty?
-        puts "error: worker takes no arguments (got #{argv.join(" ")})"
-        STDOUT.flush
-        return 1
-      end
-      # Before anything shared changes: a second role in a process that
-      # runs one must not clear its stop flag or re-apply the settings.
-      busy = Runtime.role_problem
-      return Roles.refuse(busy) unless busy.empty?
-
-      # Before boot: a stop asked for while booting is kept.
-      Roles.reset_stop
-      @config.worker = true
-      boot
-      Roles::WorkerRunner.new(@config).run_worker
     end
 
     # `./<app> feeds [NAME...]` (Main.run): boots and runs

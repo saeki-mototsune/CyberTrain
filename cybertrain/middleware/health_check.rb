@@ -1,6 +1,6 @@
 require "cybertrain/middleware"
 require "cybertrain/db"
-require "cybertrain/scheduler"
+require "cybertrain/feature"
 require "cybertrain/cast"
 require "cybertrain/websocket/feed_table"
 require "cybertrain/background"
@@ -17,6 +17,8 @@ module Cybertrain
   #                             closed pool: any Cybertrain::DB::Error)
   #   503 worker stale          the Scheduler runs, and its last tick is
   #                             older than Config#health_worker_stale seconds
+  #                             (with cybertrain/jobs: JobsFeature's
+  #                             Feature#health_problem)
   #
   #   503 feed stale            Config#health_feeds, and a feed status row
   #                             (WebSocket::FeedTable) whose updated_at, or
@@ -72,7 +74,9 @@ module Cybertrain
     # that cannot reach it is stale for that reason.
     def self.problem(now, worker_stale, feeds, feed_stale)
       return "database unavailable" unless database_ok?
-      return "worker stale" if worker_stale?(now, worker_stale)
+
+      feature_problem = Features.health_problem(now, worker_stale, feeds, feed_stale)
+      return feature_problem unless feature_problem.empty?
       return "feed stale" if feeds && feed_stale?(now, feed_stale)
 
       ""
@@ -86,15 +90,6 @@ module Cybertrain
       true
     rescue Cybertrain::DB::Error, StandardError
       false
-    end
-
-    # Only a running Scheduler can be stale; before its first tick
-    # (last_tick 0, the moment after start) it is not.
-    def self.worker_stale?(now, worker_stale)
-      return false unless Scheduler.running?
-
-      tick = Scheduler.last_tick
-      tick > 0 && now - tick > worker_stale
     end
 
     # Spec section 9's two independent conditions over every status row:
