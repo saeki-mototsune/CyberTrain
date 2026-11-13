@@ -657,12 +657,16 @@ test "a leftover child of this application is stopped; another process is left a
       File.write(File.join(dev, "child.pid"), stranger.to_s)
       DevServer.stop_leftover_child(root, "app", StringIO.new)
       refute gone?(stranger), "a process that is not this application's child is left alone"
-      File.write(File.join(dev, "child.pid"), leftover.to_s)
-      log = StringIO.new
-      DevServer.stop_leftover_child(root, "app", log)
-      assert gone?(leftover), "the leftover child is stopped"
-      assert_includes log.string, "pid #{leftover}"
-      refute File.exist?(File.join(dev, "child.pid"))
+      # Without /proc a child is known only by the line the supervisor
+      # spawns (the tests "without /proc ..." below), not this one's.
+      if PROC
+        File.write(File.join(dev, "child.pid"), leftover.to_s)
+        log = StringIO.new
+        DevServer.stop_leftover_child(root, "app", log)
+        assert gone?(leftover), "the leftover child is stopped"
+        assert_includes log.string, "pid #{leftover}"
+        refute File.exist?(File.join(dev, "child.pid"))
+      end
     ensure
       [leftover, stranger].each do |pid|
         Process.kill(:KILL, pid)
@@ -843,7 +847,9 @@ test "a child or build of a live supervisor whose command line is not recognised
     File.write(File.join(root, "fake", "cybertrain"), FAKE_SUPERVISOR)
     File.write(File.join(root, "fake", "spin"), "#!#{RbConfig.ruby}\nsleep 30\n")
     File.chmod(0o755, File.join(root, "fake", "spin"))
-    ["child", "build"].each do |what|
+    # The fake's child runs `ruby bin/app.rb 4000`, which only /proc tells
+    # for this application's; its build is known by ps as well.
+    (PROC ? ["child", "build"] : ["build"]).each do |what|
       File.delete(File.join(root, "fake-ready")) if File.exist?(File.join(root, "fake-ready"))
       fake = Process.spawn(RbConfig.ruby, File.join(root, "fake", "cybertrain"), "_0.4.0_", "server", what, chdir: root)
       started = nil
@@ -990,9 +996,13 @@ test "a leftover child is recognised with COLUMNS=40 exported, through ps as wel
       assert wait_until { File.exist?(File.join(root, "child-started")) }
       assert_equal command, DevServer.command_line(leftover)
       assert_equal command, DevServer.ps_command_line(leftover)
-      File.write(File.join(dev, "child.pid"), leftover.to_s)
-      DevServer.stop_leftover_child(root, "app", StringIO.new)
-      assert gone?(leftover), "the leftover child is stopped"
+      # Stopping it needs /proc: this line is not the one the supervisor
+      # spawns (no -r cybertrain/preview), which is all ps can go by.
+      if PROC
+        File.write(File.join(dev, "child.pid"), leftover.to_s)
+        DevServer.stop_leftover_child(root, "app", StringIO.new)
+        assert gone?(leftover), "the leftover child is stopped"
+      end
     ensure
       ENV["COLUMNS"] = saved
       begin
@@ -1457,7 +1467,11 @@ test "a build left by a killed supervisor is stopped, grandchild included" do
   end
 end
 
+# The leftover runs `ruby bin/app.rb leftover`, known for this
+# application's child only through /proc.
 test "a leftover child holding the port is stopped, and the new supervisor serves on it" do
+  next unless PROC
+
   with_driver_app do |root, start|
     leftover = Process.spawn(RbConfig.ruby, File.join(root, "bin", "app.rb"), "leftover", chdir: root)
     Process.detach(leftover)
