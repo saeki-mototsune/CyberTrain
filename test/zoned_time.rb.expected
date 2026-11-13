@@ -1,0 +1,7 @@
+ok   in_time_zone's fields
+ok   in_time_zone without an argument reads Time.zone at call time
+ok   in_time_zone takes a TimeZone as well as a name
+ok   the offset and abbreviation follow the zone's DST rules
+ok   to_time is the UTC instant, sub-second part included
+ok   an unknown zone name is an ArgumentError
+6 tests, 34 assertions, 0 failures

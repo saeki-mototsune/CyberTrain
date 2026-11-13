@@ -1,0 +1,8 @@
+ok   model timestamps follow travel_to
+ok   a cache entry expires after travel
+ok   a job's run_at and perform_in follow the clock
+ok   a rate-limit window follows the clock
+ok   a session's absolute limit follows travel_to
+ok   a signed token expires with the clock
+ok   a stream read and a receiver wait do not hang under freeze_time
+7 tests, 15 assertions, 0 failures

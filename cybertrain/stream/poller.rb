@@ -46,7 +46,7 @@ module Cybertrain
         return false unless started
 
         @last_id = head
-        @last_prune = Time.now.to_i
+        @last_prune = Clock.monotonic.to_i
         Poller.spawn_loop(config.stream_poll_ms, config.stream_retention, generation)
         true
       end
@@ -84,7 +84,7 @@ module Cybertrain
 
       # Moves last_id up to `id` (never down); Hub#deliver_polled calls it
       # under the hub's lock.
-      def self.advance(id)
+      def self.advance_to(id)
         @last_id = id if id > @last_id
         nil
       end
@@ -137,10 +137,12 @@ module Cybertrain
       # name (rule 70). A database that is gone is logged and polled again.
       def self.tick(retention)
         Poller.run_once(Stream.hub)
-        now = Time.now.to_i
-        if now - @last_prune >= PRUNE_INTERVAL
-          @last_prune = now
-          Stream.prune(now - retention)
+        # The interval between prunes on the monotonic clock; the cut-off
+        # from the current time, which follows a travel.
+        mono = Clock.monotonic.to_i
+        if mono - @last_prune >= PRUNE_INTERVAL
+          @last_prune = mono
+          Stream.prune(Clock.now.to_i - retention)
         end
         nil
       rescue Cybertrain::DB::Error, JSON::NestingError, JSON::ParserError, StandardError => e

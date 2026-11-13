@@ -410,7 +410,7 @@ module Cybertrain
     end
 
     def self.now_string
-      Cast.sql_datetime(Time.now.utc)
+      Cast.sql_datetime(Clock.now)
     end
 
     # `Cybertrain::DB.transaction`, under the name Rails gives it: saves,

@@ -1,104 +1,597 @@
 # Testing an app
 
-App tests are plain Spinel programs under `test/`, like the framework's own:
+An application's tests are Rails-shaped classes under `test/`, and
+`cybertrain test` runs them all as one compiled program. Minitest and RSpec
+find test methods by reflection, which an ahead-of-time compiler cannot do,
+so `spin run gen` rewrites each test class into plain methods and writes
+one dispatch table over every test.
 
-```ruby
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
+## Writing a test
 
-test "title must be present" do
-  article = Article.new(body: "a body long enough to pass length")
-  refute article.save
-  assert_includes article.errors.full_messages, "Title can't be blank"
+`cybertrain new` writes `test/test_helper.rb`; every test file starts by
+requiring it, as in Rails:
+
+```ruby test/test_helper.rb
+ENV["CYBERTRAIN_ENV"] ||= "test"
+require_relative "../config/app"
+require "cybertrain/test_help"
+
+class ActiveSupport::TestCase
+  fixtures :all
+
+  # Helper methods used by all tests go here.
 end
 ```
 
-Assertions: `assert`, `refute`, `assert_equal`, `assert_nil`,
-`assert_includes`, `assert_raises("Class") { }`, `flunk`. For controllers and
-full HTTP flows, `Cybertrain::Test::Client` drives an app in-process (no
-socket) with a cookie jar, so sessions and CSRF behave as behind a browser:
+```ruby test/models/article_test.rb
+require "test_helper"
 
-```ruby
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
-
-test "POST /articles creates an article and redirects to it" do
-  client = Cybertrain::Test::Client.new(BLOG)
-  client.get("/articles/new")
-  res = client.post("/articles", { "authenticity_token" => BlogTest.form_token(client),
-                                   "article[title]" => "Hello Rails",
-                                   "article[body]" => "I am on Rails! This is my first article." })
-  assert_redirected_to res, BlogTest.article_path(Article.last)
-  assert_response res, :see_other
+class ArticleTest < ActiveSupport::TestCase
+  test "title must be present" do
+    article = Article.new(body: "a body long enough to pass length")
+    assert_not article.save
+    assert_includes article.errors.full_messages, "Title can't be blank"
+  end
 end
 ```
 
-Both snippets start from the example's helper,
-[`examples/blog/test/support/blog_test.rb`](../../examples/blog/test/support/blog_test.rb):
-copy it into an app's `test/support/`, where files are required, not run.
-It migrates a fresh `storage/test.sqlite3`, boots the app as `BLOG`, loads
-`Cybertrain::Test` and its client, and reads the CSRF token out of the last
-rendered form (`BlogTest.form_token`). End each test file with
-`Cybertrain::Test.run!`; `examples/blog/test/articles.rb` and `comments.rb`
-show the full pattern.
+```ruby test/controllers/articles_controller_test.rb
+require "test_helper"
 
-Every request a test client sends comes from `127.0.0.1` (`request.remote_addr`,
-so `request.loopback?` is true). To see what a page does for a visitor on
-another machine, set `client.peer_address = "203.0.113.7"` before the
-request.
+class ArticlesControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    @article = articles(:one)
+  end
 
-Run with `cybertrain spin test`: it compiles each `test/*.rb` into its own
-program and diffs its output (stdout and stderr together) against
-`test/<name>.rb.expected`. Regenerate with `cybertrain spin test --regen
-test/<name>.rb`; FFI/database tests can't run under CRuby, so their snapshot
-comes from the compiled binary instead: `rm -f build/test/<name>; cybertrain
-spin test test/<name>.rb; [ -x build/test/<name> ] && ./build/test/<name> >
-test/<name>.rb.expected 2>&1` (`cybertrain spin test` exits non-zero while the
-snapshot is stale, so it is followed by `;`, not `&&`; the `[ -x ]` check skips
-the capture when the compile failed, so the old snapshot is kept; in the
-framework checkout, `script/regen-snapshot test/<name>.rb` does exactly this and
-prints the diff stat).
+  test "shows an article" do
+    get article_path(@article)
+    assert_response :success
+    assert_select "h1", text: @article.title
+  end
+
+  test "creates an article" do
+    assert_difference -> { Article.count }, 1 do
+      post articles_path, params: { article: { title: "New", body: "A body long enough" } }
+    end
+    assert_redirected_to article_path(Article.last)
+  end
+end
+```
+
+There are three base classes, Rails' own: `ActiveSupport::TestCase` (models,
+jobs, mailers, anything without a request), `ActionDispatch::IntegrationTest`
+(requests, [Integration tests](#integration-tests)) and
+`ViewComponent::TestCase` (`render_inline`,
+[Testing streams and components](#testing-streams-and-components)). An
+application may put a base class of its own in `test/test_helper.rb` or
+`test/support/` and inherit from it. Helper methods, constants and
+`private` go in the class body as in Rails; each test runs on a new
+instance, so instance variables set in `setup` belong to that test.
+`fixtures :all` and `require "test_helper"` are accepted and do nothing of
+their own: every fixture is loaded for every test.
+
+Every test runs in this order:
+
+1. every table is emptied, the framework's (jobs, cache, Turbo messages,
+   schedules, feeds, leases) included, and ids start again at 1;
+2. the fixtures are inserted ([Fixtures](#fixtures));
+3. `Mailer.deliveries`, the rate-limit counters and `I18n.locale` are reset,
+   and the time zone is the one `config/app.rb` configured;
+4. `setup` (a superclass's first; several `setup do` blocks in order);
+5. the test body, if nothing before it failed;
+6. `teardown`, always: after a failed assertion, an exception or a failed
+   setup (several `teardown do` blocks in reverse order, then the
+   superclass's);
+7. the clock is real again, and every receiver the test started is stopped.
+
+Rails rolls each test back in a transaction instead. That does not fit
+here: SQLite has no savepoints in this framework, so a test's own
+`transaction` would end the wrapping one, and job threads use other
+connections that would not see the test's rows.
+
+## Running the tests
+
+```sh
+cybertrain test                                         # every test
+cybertrain test test/controllers                        # the files under a directory
+cybertrain test test/models/article_test.rb             # one file
+cybertrain test -n "creates an article"                 # one test by its name
+cybertrain test -n test_creates_an_article              # or by its method name
+cybertrain test -n /article/                            # the tests whose name contains "article"
+```
+
+`cybertrain test` runs `SPIN_DEBUG=1 spin run gen` (gen built in spin's
+debug mode, as every command of the CLI builds it), which writes `gen/tests.rb` (the
+program) and a rewritten copy of each test class under `gen/test/`, both
+committed with the rest of `gen/`; it then compiles `gen/tests.rb` into
+`build/test/tests` (a release build) when any input is newer than that binary, and runs it.
+Every `test/**/*_test.rb` and every other `test/*.rb` but
+`test/test_helper.rb` is in it; `test/support/` (required by the helper)
+and `test/fixtures/` hold no tests. The program deletes
+`storage/test.sqlite3`, migrates a new one and boots the application on it
+before the first test (no job, scheduler or feed threads: a test runs jobs
+itself). `CYBERTRAIN_TEST_DATABASE` names another file instead. Since the program deletes the file it tests on, it marks every database it
+creates (`PRAGMA application_id`, a value of its own) and deletes or
+empties an existing file only when it carries that mark, when it is this
+application's own `storage/test.sqlite3` (however the path is written), or when it is an empty file. Anything else
+is refused with exit status 2 and nothing deleted: `cybertrain test
+refuses to delete <path>: not a database cybertrain test created; delete
+it yourself or name another file`. A file named `development.sqlite3` or
+`production.sqlite3` (in any letter case), or the same file as
+`storage/development.sqlite3` or `storage/production.sqlite3`, is refused
+as `cybertrain test refuses to delete <path>: it is the development
+database` (or `production`). The name must be a file path: `:memory:` and
+`file:` URIs are refused (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE
+":memory:": name the test database by its file path (not :memory: or a
+file: URI)`). After an upgrade, a file you named in
+`CYBERTRAIN_TEST_DATABASE` before carries no mark and is refused once:
+delete it (with its `-wal` and `-shm`), and `cybertrain test` creates a
+marked one; the default `storage/test.sqlite3` needs nothing. A path that turns into a
+symlink while the database is being created is refused with exit status 2:
+`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`. The per-test clear empties only the main database's tables, never a
+TEMP or attached table of the same name. Known limits: the mark survives a
+`cp` of a test database, so a copy named as the test database (or one a
+test connects to) is emptied; a run killed between creating the file and
+marking it leaves an unmarked file at a path you named, refused the next
+time (delete it); a directory at `storage/test.sqlite3` raises when the
+program deletes it.
+
+The program sets up the test environment as Rails' does, unless
+`config/app.rb` sets the same thing itself: forgery protection off, the
+request log silent, mail kept in `Mailer.deliveries` (`:test`) and
+`force_ssl` off (the variables `CYBERTRAIN_MAIL_DELIVERY_METHOD` and
+`CYBERTRAIN_FORCE_SSL` are not read for the tests, even when invalid),
+uploads written to `tmp/test_uploads/`, emptied at every run, and no host
+check (an exported `CYBERTRAIN_HOSTS` does not turn it on). `www.example.com`,
+the host of the `*_url` helpers, is always an allowed host.
+
+```text output — cybertrain test
+test/controllers/articles_controller_test.rb
+  ok   ArticlesControllerTest: shows an article
+  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:14)
+         Expected change of 1, got 0 (from 2 to 2)
+test/models/article_test.rb
+  ok   ArticleTest: title must be present
+
+3 tests, 6 assertions, 1 failure
+```
+
+A heading per file, a line per test, then the totals, with no timings. The
+line named is the test's `test "..."` line: a compiled program has no
+backtrace, so the line of the failing assertion is not known. The exit status is 1 when a test failed, 0 otherwise, and 2 for arguments it does
+not take. What the code under test prints itself (a command's output line)
+appears between the test lines. A test, setup, teardown or hook that raises
+`NotImplementedError`, another `ScriptError` or `SystemStackError` is an
+`ERR` like any other exception, and the run goes on; only `Interrupt`,
+`SystemExit` and `NoMemoryError` end it. Under Spinel a real stack overflow
+still ends the process with a segmentation fault: only a
+`SystemStackError` raised by the code itself reaches the runner.
+
+The arguments: `-n NAME` keeps the test with that name or method name, and
+`-n /TEXT/` the tests whose name or method name contains TEXT as plain
+text (`.`, `?` and `()` are themselves). TEXT with one of
+`^ $ \ * + [ ] { } |` is refused with exit status 2, since it is not a
+regexp: `-n /^test_create/: the text between the slashes is a plain
+substring of the test name, not a regexp (^ would be looked for as itself);
+write the text to look for (-n /test_create/)`. A file or directory keeps
+its tests; `FILE:LINE` is refused (`line filters are not supported; give
+the file, and -n for the name`); `--` ends the options. A filter that keeps
+no test prints `no test matched the filter` before the totals and exits 0.
+Adding or deleting a file under `test/` compiles the program again.
+
+**What a change costs.** A file argument and `-n` choose which tests run,
+not what is compiled: the program always holds every test, so changing the
+filter reuses the binary, and editing any test (or anything else the
+program is built from) compiles the whole program again, and rebuilds
+`bin/gen` first. Measured on 2026-11-12 and 2026-11-13 on a shared 4-vCPU
+cloud machine (a machine of your own will differ): examples/blog's 149
+tests in 21 files compiled in about 527 s the first time (the whole first
+run took 656 s, the binary is 10.2 MB), and a later `cybertrain test
+test/controllers` with nothing changed reused the binary and started in
+about 1 s (the blog's own run, 2026-11-13); the blog's application with
+three test files of eight tests compiled in 162 to 233 s at a peak of
+about 2.2 GB, into an 8.1 MB binary (2026-11-12). Write several tests before running them, and narrow the run, not
+the build, while you work on one.
+
+`gen/tests.rb` is refused, and `cybertrain test` exits 1 with the reason
+and no compile, when two test or support files define the same top-level
+method or constant (they would become one in one program: move a shared
+helper to `test/support/`, or into the class), and for the other cases of
+[What gen refuses in a test class](#what-gen-refuses-in-a-test-class).
+
+## Fixtures
+
+```yaml test/fixtures/users.yml
+alice:
+  email_address: alice@example.com
+  admin: true
+```
+
+```yaml test/fixtures/articles.yml
+one:
+  title: First post
+  body: A body long enough to pass the length check.
+  author: alice
+  created_at: 2026-11-01 09:00:00
+
+two:
+  id: 42
+  title: Second post
+  body: Another body long enough.
+  author: alice
+```
+
+`test/fixtures/<table>.yml` is Rails' shape: labels, then columns. gen reads
+the files when it runs, with the YAML subset of [the dictionaries](i18n.md#dictionaries),
+and refuses with `file:line` a file that is not a table of `db/schema.rb`, a
+key that is neither a column nor a `belongs_to` of the model, ERB (`<%`
+anywhere: there is no `eval`; set a time relative to now in `setup` or with
+`travel_to`), a value that is not of the column's type (an impossible date,
+an integer outside 64 bits, `yes` for a boolean), two labels with one id,
+and a `belongs_to` label that names no row of the parent's file. `DEFAULTS`
+is not a row, as in Rails.
+
+- A row without `id:` gets Rails' id for its label
+  (`ActiveRecord::FixtureSet.identify`), so a label has the same id as in a
+  Rails application. `author: alice` sets `author_id` to alice's id.
+- Datetimes are UTC. `created_at` and `updated_at` that a row leaves out
+  are the clock's time when the row is inserted, before each test.
+- `articles(:one)` answers `Article.find` of that row; an unknown label
+  raises `Cybertrain::Test::FixtureNotFound`. One label per call.
+- A fixture is checked when gen runs, but its error stops only the test
+  run: `spin run gen` (and so `cybertrain db migrate`, which a scaffold's
+  fixture comes before) goes on, and `cybertrain test` prints
+  `test/fixtures/<table>.yml:<line>: ...` and exits 1.
+- As in Rails, a fixture that points at a parent keeps that parent from
+  being deleted: once `comments.yml` has `article: one`, the scaffold's
+  "should destroy article" fails on the foreign key. Declare
+  `has_many :comments, dependent: :destroy`, point the child fixtures at
+  another row (`article: two`), or destroy a row nothing references.
+- Not offered: `fixtures :articles` (every file is loaded),
+  `articles(:one, :two)`, polymorphic labels (`commentable: one (Article)`;
+  write the `_id` and `_type` columns), `has_and_belongs_to_many` labels,
+  and anchors and aliases.
+
+## Integration tests
+
+`ActionDispatch::IntegrationTest` requests the booted application in
+process, with no socket and a new cookie jar for each test:
+
+- `get`, `post`, `patch`, `put`, `delete`, `head` (path, `params: {}`,
+  `headers: {}`), as Rails spells them. Each answers the
+  `Cybertrain::Response` (Rails answers the status), which is also
+  `response` (`response.body`, `response.status`, `response.header(name)`).
+- `params:` takes nested Hashes, sent as a form sends them
+  (`article[title]=New`); a value may be a String, a Symbol, a number,
+  `true` / `false`, nil, a Date or a Time (sent as the text the column reads
+  back), so a scaffold test can send a record's values as they are. An
+  Array is refused.
+- `fixture_file_upload("cover.png", "image/png")` in `params:` of `post`,
+  `patch` or `put` sends the request as multipart; the file is read from
+  `test/fixtures/files/`.
+- `headers:` takes the header's name, or Rails' `HTTP_ACCEPT` form.
+- The path helpers of `config/routes.rb` work as in a controller. A `*_url`
+  helper writes `http://www.example.com/...`; a URL on that host is
+  requested by its path, and `assert_redirected_to` compares either form.
+  A URL on another host is refused.
+- `cookies` is the test's cookie jar, a `Cybertrain::Test::ClientCookies`:
+  `cookies[:user]` or `cookies["user"]` (the raw, still percent-encoded
+  value), `[]=`, `key?`, `delete`, `keys`, `size`, `empty?` and `to_h`. A
+  cookie whose `Max-Age` or `Expires` has passed on the clock, so also
+  after `travel_to` past it, is gone (`Max-Age` wins over `Expires`); one a
+  test writes with `[]=` never expires. An unreadable `Max-Age` (`Max-Age=abc`)
+  is ignored and a negative one expires the cookie. Unlike Rails' jar, it
+  has no `each`, `length`, `include?`, `fetch` or `==`: a ported test reads
+  `cookies.to_h` for those.
+- `follow_redirect!` requests the last response's `Location` (without its
+  `#fragment`); after a response that is not a redirect it fails the test:
+  `follow_redirect!: the last response was 200, not a redirect (3xx with a
+  Location)`.
+- `assert_response(:success)` (or any status
+  symbol, or a number; `:error` means exactly 500, where Rails takes any
+  5xx), `assert_redirected_to(path)`, `assert_select`, `assert_turbo_stream`.
+- Not there: `session`, `flash`, `assigns`, `request`, `host!` and `as:`.
+  Assert on the page (`assert_select`, `response.body`) instead.
+
+**Forgery protection** is off in tests unless `config/app.rb` sets `csrf`,
+as in Rails' test environment, so a `post` needs no token. A test of the
+check turns it on for some requests:
+
+```ruby
+test "a form without the token is refused" do
+  with_forgery_protection do
+    post articles_path, params: { article: { title: "x" } }
+    assert_response :forbidden
+  end
+end
+```
+
+Inside the block a form needs the `authenticity_token` of a page the test
+requested; everything is put back when the block ends, also when an
+assertion in it fails, and what the test itself set (the upload root, the
+zone, the locale, the log level) is kept.
+
+**Signing in.** `cybertrain generate authentication` writes
+`test/support/session_test_helper.rb`, included into every integration
+test: `sign_in_as users(:one)` (fixture users' password is `"password"`;
+`remember: true` checks "Keep me signed in"), `sign_out`,
+`authenticity_token_in(response.body)` (the token of the first form in a
+page, for requests inside `with_forgery_protection`), and
+`open_session`, a second browser with cookies of its own (`phone =
+open_session`, then `phone.sign_in_as users(:two)` and `phone.get ...`).
+Every request comes from `127.0.0.1`; a test that needs another client
+address makes its own `client = Cybertrain::Test::Client.new(Cybertrain::Test.app)`
+and sets `client.peer_address = "203.0.113.7"` (the client's own methods
+are `client.get(path, headers)` and `client.post(path, fields, headers)`).
+
+## Assertions
+
+`assert`, `assert_not` (`refute`), `assert_equal`, `assert_not_equal`,
+`assert_nil`, `assert_not_nil`, `assert_includes`, `assert_not_includes`,
+`assert_empty`, `assert_not_empty`, `assert_match` / `assert_no_match` (a
+Regexp, or a String as a substring), `assert_in_delta(expected, actual,
+delta = 0.001)`, `assert_nothing_raised { }` and `flunk`, as Minitest has
+them. `assert_equal` fails with Minitest's text (`Expected: 1` and
+`  Actual: 0` on two lines), and so do the newer assertions;
+`assert_includes`, `assert_nil` and `flunk` keep shorter texts of their
+own. `assert` and `refute` take a message as their second argument. The
+block forms take a lambda, passed positionally:
+
+```ruby
+assert_difference -> { Article.count }, 1 do
+  post articles_path, params: { article: { title: "New", body: "A body long enough" } }
+end
+assert_no_difference(-> { Article.count }) { post articles_path, params: { article: { title: "" } } }
+assert_changes(-> { article.reload.title }, from: "Old", to: "New") { article.update(title: "New") }
+
+message = assert_raises(Cybertrain::RecordNotFound) { Article.find(999) }
+assert_includes message, "999"
+```
+
+- `assert_raises` takes a class (a subclass matches, as in Minitest), part
+  of a class name as a String (`assert_raises("RecordNotFound")`), or
+  nothing (any StandardError), and answers the exception's **message**, not
+  the exception: where Rails writes `error = assert_raises(X) { }` and
+  `error.message`, use the String it answers. A method answers one type
+  under Spinel, and the message is what tests read.
+- The block assertions answer nil, not the block's value.
+- Not offered: `assert_predicate` (it needs a computed `send`: write
+  `assert article.valid?`), String expressions in `assert_difference` (they
+  need `eval`), an Array or Hash of expressions, and a message argument
+  on the other assertions.
+
+## Time travel
+
+```ruby
+test "a remembered session survives day 15" do
+  sign_in_as users(:one), remember: true
+  travel_to 15.days.from_now do
+    get root_path
+    assert_response :success
+  end
+end
+
+test "the cache entry expires" do
+  freeze_time
+  Cybertrain::Cache.write("k", "v", expires_in: 5.minutes)
+  travel 6.minutes
+  assert_nil Cybertrain::Cache.read("k")
+end
+```
+
+`travel_to(time)`, `travel(seconds)`, `freeze_time` and `travel_back` are
+Rails' helpers: each freezes the clock and drops the sub-second part;
+with a block the previous time comes back when the block ends (also when
+it raises), and without one the travel lasts until `travel_back` or the end
+of the test. Everything the framework times follows: `Time.current`,
+`Time.now` in a test program, records' timestamps, the cache's expiry, rate
+limits, the session's lifetime, jobs' `run_at`, tokens' expiry, the
+scheduler. Waits and timeouts (stream reads, receivers) keep real time,
+so a frozen clock never hangs one. `Time.now` answers local time, in the process's `TZ`, as the builtin
+does, while `Time.current` is UTC. In production `Time.now` is the
+system's clock: code that should follow a travel reads `Time.current`, as
+Rails advises. `travel_to` takes a Time, not a Date, and there is no
+`Time.zone.local`: write the instant with `Time.utc(...)`. The scheduler
+keeps what it remembers (the last recovery, the next run times) across a
+travel; a test that travels while live scheduler or worker threads are
+running is not supported.
+
+Durations are Integer seconds: `5.minutes` is `300`, and `2.weeks.ago` and
+`3.days.from_now` answer a Time on the clock. There is no `1.month` (a month
+has no length in seconds): it is a `NoMethodError` when it runs. Use the
+calendar methods on Time: `Time.current.months_ago(1)`,
+`advance(months: 1)`, `beginning_of_day`, `end_of_month`, `yesterday`
+([Times and the time zone](models.md#times-and-the-time-zone)). `advance`
+adds hours, minutes and seconds as elapsed time, after the calendar part,
+and takes Integers; the real clock keeps microseconds.
+
+## Testing streams and components
+
+```ruby test/components/comment_component_test.rb
+require "test_helper"
+
+class CommentComponentTest < ViewComponent::TestCase
+  test "renders the comment" do
+    render_inline(CommentComponent.new(comment: comments(:one)))
+    assert_select "div.comment strong.comment-author", text: "Alice"
+  end
+
+  test "renders the form partial" do
+    html = render_inline(partial: "articles/form", locals: { article: Article.new })
+    assert_select "form[action=\"/articles\"] input[name=\"article[title]\"]"
+    assert_includes html, "Save"
+  end
+end
+```
+
+`render_inline(component, content: "")` and `render_inline(partial:,
+locals: {})` render outside any request, answer the HTML (Rails answers a
+Nokogiri fragment, and takes the content as a block) and keep it for
+`assert_select`. A helper that needs a request raises
+`Cybertrain::Views::OutsideRequest`.
+
+`assert_select(selector, equality = nil, count:, minimum:, maximum:,
+text:)` checks the last `render_inline` or response of this test (with
+neither it fails: "No response yet") and answers the matching elements:
+
+- Selectors: a tag, `.class`, `#id`, `[attr]`, `[attr="v"]`, compounds
+  (`a.btn[href="/x"]`), the descendant and child (`>`) combinators, and a
+  list (`h1, h2`). Pseudo-classes, `+` and `~`, other attribute operators, a backslash
+  (`assert_select: CSS escapes (\) are not supported`) and the nested block
+  form fail with `assert_select: <feature> is not supported`.
+- `text:` is a String compared with each element's text, or a Regexp
+  matched against it. The text has its runs of whitespace made one space
+  and its ends stripped (Rails strips the ends only). The second argument may be Rails' positional text (a String or a Regexp),
+  count (an Integer, or a Range such as `2..3`) or `true` / `false`; a count
+  given there and in `count:`, `minimum:` or `maximum:` too is refused, and
+  so are a negative or crossed Range and one without both ends
+  (`assert_select: a Range count needs both ends (got 2..)`).
+- The HTML is read as written, not repaired as a browser (and Nokogiri,
+  behind Rails' `assert_select`) would: `table > tr` matches a table
+  written without `<tbody>`, `p > div` matches `<p><div>`, and an omitted
+  end tag (`<li>a<li>b`, `<p>a<p>b`) or a self-closing `<div/>` fails the
+  assertion with its position. The framework's own templates all read.
+
+A broadcast is a row of `cybertrain_messages`, so the stream assertions
+read the table, with no poller or socket:
+
+```ruby
+test "a new comment is broadcast and answered with a Turbo Stream" do
+  article = articles(:one)
+  payloads = assert_broadcasts(article, 1) do
+    post article_comments_path(article), params: { comment: { commenter: "Dave", body: "Hi" } },
+                                         headers: { "Accept" => "text/vnd.turbo-stream.html" }
+  end
+  assert_includes payloads[0], 'target="comments"'
+  assert_turbo_stream action: "append", target: "comments"
+end
+```
+
+`assert_broadcasts(stream, count) { }` counts what was broadcast to a
+stream (a name, or a record) while the block ran, or without a block since
+the test began, and answers the payloads; `assert_no_broadcasts(stream)`
+wants none. `assert_turbo_stream(action:, target:, count: 1)` reads the
+last response, which must be `text/vnd.turbo-stream.html`, or the last
+`render_inline`. To read a live stream as a browser does,
+`client.get_stream(path, events: n)` of a `Cybertrain::Test::Client` runs a
+streaming response in memory ([Realtime](realtime.md)).
+
+## Testing mail
+
+In `cybertrain test` `Cybertrain.config.mail_delivery_method` is `:test` unless
+`config/app.rb` sets it: `deliver_now`, `Mailer.deliver` and the `deliver_later` job check
+the message and keep it in `Cybertrain::Mailer.deliveries` instead of
+connecting, and the list is emptied before every test. The test program
+gives mail the sender `from@example.com` when the application sets none.
+
+```ruby
+test "a reset mails a link" do
+  assert_emails 1 do
+    post passwords_path, params: { email_address: users(:one).email_address }
+  end
+  mail = Cybertrain::Mailer.deliveries.last
+  assert_equal "Reset your password", mail.mail_subject
+  assert_includes mail.mail_body, "/passwords/"
+end
+```
+
+`assert_emails(count) { }` counts the mail the block delivered; mail queued
+in it with `deliver_later` is delivered first, and a mail job that fails
+fails the assertion with its error. `assert_no_emails { }` wants none. A
+message's readers are `mail_to`, `mail_from`, `mail_subject`, `mail_body`
+and `mail_html`. A test of the SMTP path itself sets
+`Cybertrain.config.mail_delivery_method = :smtp` and puts `:test` back in
+`teardown` (the setting is not reset between tests), as in
+[Testing outbound calls](#testing-outbound-calls). Outside the test
+environment `:test` boots with a warning, and no mail is sent.
+
+## Testing jobs
+
+```ruby test/jobs/notify_comment_job_test.rb
+require "test_helper"
+
+class NotifyCommentJobTest < ActiveSupport::TestCase
+  test "a comment queues its notification, which runs" do
+    comment = comments(:one)
+    NotifyCommentJob.perform_later("comment_id" => comment.id, "article_id" => comment.article_id)
+    assert_enqueued_jobs 1, "NotifyCommentJob"
+    assert_enqueued_with "NotifyCommentJob", { "comment_id" => comment.id }
+    assert_equal 1, perform_enqueued_jobs
+    assert_no_enqueued_jobs
+  end
+
+  test "the jobs a block queues run at once" do
+    performed = perform_enqueued_jobs { ReminderJob.perform_in(3600, { "id" => 1 }) }
+    assert_equal 1, performed
+  end
+end
+```
+
+- `assert_enqueued_jobs(count, kind = "")` counts the queued jobs (of one
+  kind when given); `assert_no_enqueued_jobs(kind = "")` wants none.
+- `assert_enqueued_with(kind, args)` wants a queued job of that kind whose
+  args hold every given key with an equal value (`"comment_id" => 7`
+  matches a JSON `7`; `comment_id: 7` works too).
+- `perform_enqueued_jobs { }`, Rails' inline form, runs the block, then
+  every job queued in it and the jobs those queue, whatever their `run_at`,
+  and answers how many ran. A job that raises fails the test with its class
+  and error, and is not retried; a job the application discards
+  (`discard_on`) counts as run.
+- `perform_enqueued_jobs(now = Time.current)` without a block runs every
+  job due at `now`, one by one, until none is due. A retry scheduled for
+  later stays queued: `travel` past it, or pass a later `now`. Either form
+  fails the test after 10,000 jobs (a job that queues itself again).
+- `clear_enqueued_jobs` deletes the queued jobs; `WelcomeJob.perform_now(args)`
+  runs one directly, an exception reaching the test.
+- Scheduled tasks run one tick at a time with `Cybertrain::Scheduler.run_due(Time.current.to_i)`
+  (epoch seconds).
 
 ## Testing outbound calls
 
 When the code under test sends a webhook ([Outbound HTTP](external-services.md#outbound-http)) or
-an e-mail ([Sending e-mail](external-services.md#sending-e-mail)), the test receives it
-in-process: `Cybertrain::Test::HttpReceiver` and `Cybertrain::Test::SmtpReceiver`
+an e-mail over SMTP ([Sending e-mail](external-services.md#sending-e-mail)), the test receives
+it in process: `Cybertrain::Test::HttpReceiver` and `Cybertrain::Test::SmtpReceiver`
 listen on `127.0.0.1`, record what arrives and answer with a canned reply.
-The file starts from the same helper as above, `support/blog_test`;
-`require "cybertrain"` loads the mailer, and the explicit require below does
-no harm.
+A receiver started in a test is stopped after it, also when it fails.
 
-```ruby
-require_relative "support/blog_test"   # the app, BLOG and Cybertrain::Test
-require "cybertrain/mailer"
+```ruby test/integration/signup_hook_test.rb
+require "test_helper"
 require "cybertrain/test/http_receiver"
 require "cybertrain/test/smtp_receiver"
 
-test "a sign-up posts a webhook" do
-  hook = Cybertrain::Test::HttpReceiver.new(status: 202, body: "queued")
-  hook.start                                   # binds a free port, returns it
-  Cybertrain.config.http_allow_private = true  # HttpClient refuses loopback otherwise
-  SignupHook.post(hook.url("/hooks/signup"), "ann@example.com")   # the app's code
-  req = hook.received_request                  # waits at most 5 s; nil if nothing came
-  hook.stop
-  assert_equal "POST", req.http_method
-  assert_equal "/hooks/signup", req.http_target
-  assert_equal "application/json", req.http_header("Content-Type")
-  assert_includes req.http_body, "ann@example.com"
-end
+class SignupHookTest < ActiveSupport::TestCase
+  setup do
+    Cybertrain.config.http_allow_private = true   # HttpClient refuses loopback otherwise
+  end
 
-test "a refused recipient is reported" do
-  smtp = Cybertrain::Test::SmtpReceiver.new(reject: { rcpt: "550 5.1.1 no such user" })
-  port = smtp.start
-  mailer = Cybertrain::Mailer.new(host: "127.0.0.1", port: port, tls: "none", from: "app@example.com")
-  assert_raises("RejectedError") { mailer.deliver(to: "nobody@example.org", subject: "Hi", body: "Hello\n") }
-  mail = smtp.received_message
-  smtp.stop
-  assert_equal ["EHLO localhost", "MAIL FROM:<app@example.com>", "RCPT TO:<nobody@example.org>"],
-               mail.transcript.first(3)
-  refute mail.delivered?
-end
+  teardown do
+    Cybertrain.config.http_allow_private = false
+    Cybertrain.config.mail_delivery_method = :test
+  end
 
-Cybertrain::Test.run!
+  test "a sign-up posts a webhook" do
+    hook = Cybertrain::Test::HttpReceiver.new(status: 202, body: "queued")
+    hook.start                                   # binds a free port, returns it
+    SignupHook.post(hook.url("/hooks/signup"), "ann@example.com")   # the app's code
+    req = hook.received_request                  # waits at most 5 s; nil if nothing came
+    assert_equal "POST", req.http_method
+    assert_equal "/hooks/signup", req.http_target
+    assert_equal "application/json", req.http_header("Content-Type")
+    assert_includes req.http_body, "ann@example.com"
+  end
+
+  test "a refused recipient is reported" do
+    Cybertrain.config.mail_delivery_method = :smtp
+    smtp = Cybertrain::Test::SmtpReceiver.new(reject: { rcpt: "550 5.1.1 no such user" })
+    port = smtp.start
+    mailer = Cybertrain::Mailer.new(host: "127.0.0.1", port: port, tls: "none", from: "app@example.com")
+    assert_raises("RejectedError") { mailer.deliver(to: "nobody@example.org", subject: "Hi", body: "Hello\n") }
+    mail = smtp.received_message
+    assert_equal ["EHLO localhost", "MAIL FROM:<app@example.com>", "RCPT TO:<nobody@example.org>"],
+                 mail.transcript.first(3)
+    assert_not mail.delivered?
+  end
+end
 ```
 
 `HttpReceiver.new` takes the canned `status:`, `headers:`, `body:` and
@@ -115,10 +608,10 @@ commands; for an HTML message, `message_parts` decodes it into
 `"subject"`, `"text"` and `"html"`. Both accept one connection unless `max:` says more
 (`received_requests` / `received_messages` return them all). Every wait is
 bounded: a receiver gives up after `accept_window:` (10 s) without a
-connection, a silent client after `read_timeout:` (5 s), and `stop` (safe
-to call twice) ends and joins the receiver's thread and closes its port, so
-a receiver never takes a later test's connection. They need only Ruby's
-socket library, not openssl.
+connection and a silent client after `read_timeout:` (5 s), and `stop` (safe
+to call twice) ends its thread and closes its port, so a receiver never
+takes a later test's connection. A receiver started outside a test (at the
+top of a file) is not stopped for you.
 
 A feed is tested the same way with `Cybertrain::Test::WebSocketReceiver`, a
 scripted WebSocket server on `127.0.0.1`: each connection plays a list of
@@ -126,138 +619,169 @@ scripted WebSocket server on `127.0.0.1`: each connection plays a list of
 `"silent"`, `"close"`, `"drop"`, `"echo_until_close"`, ...), and the frames
 the client sent come back unmasked from `ws_received`.
 
-```ruby
+```ruby test/integration/trades_feed_test.rb
+require "test_helper"
 require "cybertrain/websocket"
 require "cybertrain/test/websocket_receiver"
 
 TICKS = Array.new(0) { "" }   # a constant: the blocks cannot see locals
 
-# The blocks are written in a method, where their parameters are used,
-# not inside the test block.
+# The blocks are written in a method, where their parameters are used.
 def subscribe_trades(url)
   Cybertrain::WebSocket.subscribe("trades", url, allow_private: true)
     .on_open { |conn| conn.send_text("subscribe") }
     .on_message { |conn, text| TICKS << text }
 end
 
-test "a trade message is stored" do
-  rx = Cybertrain::Test::WebSocketReceiver.new
-  rx.ws_script([Cybertrain::Test::WsStep.new("accept"), Cybertrain::Test::WsStep.new("expect"),
-                Cybertrain::Test::WsStep.new("send_text", "tick"), Cybertrain::Test::WsStep.new("echo_until_close")])
-  rx.start
-  subscribe_trades(rx.url("/trades"))
-  Cybertrain::WebSocket.start!               # Test::Client never starts feeds
-  # ... poll TICKS for at most a few seconds ...
-  Cybertrain::WebSocket.stop!
-  assert_equal ["tick"], TICKS
-  assert_equal "subscribe", rx.ws_received[0].rec_data
-  rx.stop
+class TradesFeedTest < ActiveSupport::TestCase
+  test "a trade message is stored" do
+    rx = Cybertrain::Test::WebSocketReceiver.new
+    rx.ws_script([Cybertrain::Test::WsStep.new("accept"), Cybertrain::Test::WsStep.new("expect"),
+                  Cybertrain::Test::WsStep.new("send_text", "tick"), Cybertrain::Test::WsStep.new("echo_until_close")])
+    rx.start
+    subscribe_trades(rx.url("/trades"))
+    Cybertrain::WebSocket.start!               # the test program never starts feeds
+    # ... poll TICKS for at most a few seconds ...
+    Cybertrain::WebSocket.stop!
+    assert_equal ["tick"], TICKS
+    assert_equal "subscribe", rx.ws_received[0].rec_data
+  end
 end
 ```
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` makes the retry delays exact.
 `test/websocket_integration.rb` in this repository shows a complete test.
 
-## Testing jobs
+## What gen refuses in a test class
 
-`require "cybertrain/test/jobs"` adds five helpers over the job queue of
-the test database. The support file `cybertrain generate authentication`
-writes (`test/support/app_test.rb`, with its other helpers in
-[Authentication](authentication.md#testing)) requires it; an application
-without one adds the line to its own support file, as examples/blog's
-does.
+gen rewrites a test class into methods: `test "shows it" do` becomes `def
+test_shows_it` (an ASCII character outside `[A-Za-z0-9_]` turned into `_`, any other into `_u<hex>_` (its lowercase code point, closed by `_`), so
+`"ログ"` is `test__u30ed__u30b0_` and `"café x"` is `test_caf_ue9__x`; `-n` takes the
+method name or the written one), and the `setup do` and `teardown do` blocks
+become `setup` and `teardown` methods calling `super`. Whatever the rewrite cannot carry over
+exactly refuses that file, never a silently wrong copy or a lost test:
 
-```ruby
-require_relative "support/blog_test"
-require "cybertrain/test/jobs"
+- a test name that is not a plain string literal (interpolation), or one
+  with an escape gen does not read (`\u`, `\x`, `\c`, `\C`, `\M` or an
+  octal one: write the character itself; `\n`, `\t` and `\"` are read);
+- two tests whose method names coincide in one class, a `def test_x`
+  included;
+- both `setup do` and `def setup` in one class (likewise `teardown`), and
+  a `def setup` or `def teardown` without `super` in a class whose parent is
+  an application base class (its `setup do` blocks would not run);
+- a `def test_x` that takes parameters, or one after `private` or
+  `protected` (Minitest runs only public test methods);
+- `setup { }` and `setup :name` (write `setup do ... end`), and block
+  parameters on `test`, `setup` or `teardown`;
+- `next`, `break` or `redo` in a test, setup or teardown body, also inside
+  an `if`, `unless`, `case` or `begin` there (use `return`), and
+  `return <value>` (each answers nil);
+- a test class nested in another class or module, a test class opened
+  twice, and `setup do` in a reopened `ActiveSupport::TestCase` (write an
+  application base class with `setup do` and inherit from it);
+- a `test`, `setup` or `teardown` line gen cannot place in the class body
+  (inside a condition, a loop, a string or a heredoc), a one-line form that
+  does not end with `end`, an `end` with code after it, and indentation
+  that mixes tabs and spaces;
+- a `require_relative` whose argument is not a string literal.
 
-test "a notification is enqueued, then runs" do
-  clear_enqueued_jobs
-  NotifyCommentJob.perform_later("comment_id" => 7, "article_id" => 1)
-  assert_enqueued_jobs 1, "NotifyCommentJob"
-  assert_enqueued_with "NotifyCommentJob", { "comment_id" => 7 }
-  assert_equal 1, perform_enqueued_jobs
-  assert_no_enqueued_jobs
+A refused file does not stop `spin run gen`, so the development server,
+`cybertrain db migrate` and `cybertrain build` keep working: gen writes a
+`gen/tests.rb` that only prints the reason, and `cybertrain test` then
+prints `<path>:<line>: <reason>` and exits 1, with
+no compile. Fix the line it names. `test "name" do` may also be written
+`test"name"` or with a tab. A `test "x" do` written after `private` is not
+refused, but it becomes a private method of the copy and fails when it
+runs, where Rails runs it: keep tests above `private`. Other known limits:
+a name that contains the text `_u3042_` has the method name of one with
+`"あ"` in its place (gen refuses the pair within one class); a `def setup`
+in a module is not checked for `super`; a class two levels under an
+application base class is asked for `super` even when that base defines
+no `setup`; and while a test file is refused, `spin run gen -- --check`
+does not compare the stale copies in `gen/test/` (CI fails at
+`cybertrain test` instead).
+
+`cybertrain test` also refuses, the same way, a top-level
+`test`, `setup` or `teardown` in `test/test_helper.rb` or `test/support/`
+(it would never run), a top-level `def render_inline` (it would replace
+the framework's), `assert_select ... do` and `render_inline ... do`, and
+the duplicate top-level helpers of [Running the tests](#running-the-tests).
+A class-form file runs only through `cybertrain test`: under `spin test`
+its class body raises "class-form tests run with `cybertrain test FILE`".
+
+## The top-level form
+
+The earlier shape, `test` blocks at the top of a file, keeps working, in
+`cybertrain test` (as here, with the bundle's application and fixtures) and
+under `cybertrain spin test`:
+
+```ruby test/legacy.rb
+require "test_helper"
+
+setup do
+  Cybertrain.config.http_allow_private = true
 end
 
-test "the job itself" do
-  assert_nil NotifyCommentJob.perform_now("comment_id" => 1, "article_id" => 1)
+teardown do
+  Cybertrain.config.http_allow_private = false
 end
+
+test "shows an article" do
+  client = Cybertrain::Test::Client.new(Cybertrain::Test.app)
+  res = client.get("/articles/#{articles(:one).id}")
+  assert_response res, :success
+  assert_includes res.body, articles(:one).title
+end
+
+Cybertrain::Test.run!
 ```
 
-<!-- list: points -->
-- `assert_enqueued_jobs(count, kind = "")` counts the `queued` rows (of one
-  kind when given); `assert_no_enqueued_jobs(kind = "")` wants none.
-- `assert_enqueued_with(kind, args)` wants a queued row of that kind whose
-  args hold every given key with an equal value, both sides compared as
-  `Cast.str`, so `"comment_id" => 7` matches a JSON `7`. A Symbol key is
-  read as its name: `assert_enqueued_with "NotifyCommentJob", comment_id: 7`
-  works too.
-- `perform_enqueued_jobs(now = Time.now)` runs every due job on the calling
-  thread, one by one (`Job.work_one`), until none is due, and returns how
-  many ran. A retry scheduled for later stays queued: pass a later `now` to
-  run it. A job that enqueues itself again, due at once, would keep it
-  running: it fails the test after 10,000 jobs instead.
-- `clear_enqueued_jobs` deletes every `queued` row; `failed` and
-  `discarded` rows stay, so a test that makes them deletes them itself.
-- `WelcomeJob.perform_now(args)` runs one job directly, with no queue and
-  no rescue: an exception reaches the test.
-- A mail sent with `deliver_later` is a `"cybertrain mail"` job:
-  `perform_enqueued_jobs` sends it to a `SmtpReceiver` (with
-  `smtp_host` and `smtp_port` pointing at it).
-- Scheduled tasks run one tick at a time with `Cybertrain::Scheduler.run_due(now)`,
-  and `Cybertrain::Cache.prune(now)` prunes the cache at a time you choose.
+Top-level `setup do` and `teardown do` run before and after every test of
+their file. `cybertrain spin test` compiles each `test/*.rb` into its own
+program and compares its output with `test/<name>.rb.expected`; there it
+has no clear and no fixtures (they need gen's table list), and
+`Cybertrain::Test.run!` runs the file's tests. In `cybertrain test` the
+file's tests run with the others, after the clear and the fixtures, and
+`run!` does nothing. Under `spin test` nothing boots the application for
+the file, so such a file boots it itself, as 0.4's support files
+(`AppTest.boot`, `BlogTest.boot`) did, and uses no fixtures.
+`Cybertrain::Test::Client` drives the application
+with a cookie jar, CSRF included (`client.get`, `client.post(path, fields,
+headers)`, `client.follow_redirect!`, `client.response`, and the two-argument
+`assert_response res, :ok` and `assert_redirected_to res, path`). A
+snapshot whose test touches SQLite comes from the compiled binary:
+`script/regen-snapshot test/<name>.rb` in the framework's checkout, or
+`rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`.
 
-## Testing streams and components
+## Upgrading from 0.4
 
-`require "cybertrain/test/views"` adds two renderers that need no request,
-for asserting on the HTML of a partial or a [component](template-language.md#components):
-
-```ruby
-require_relative "support/blog_test"
-require "cybertrain/test/views"
-
-test "the comment component names its author" do
-  html = Cybertrain::Test.render_component(CommentComponent.new(comment: Comment.first))
-  assert_includes html, "<strong>"
-end
-
-test "the article partial links to the article" do
-  article = Article.create(title: "Hello", body: "Rendered for the test")
-  html = Cybertrain::Test.render_partial("articles/article", article: article)
-  assert_includes html, BlogTest.article_path(article)
-end
-```
-
-`Test.render_component(component, content: "")` passes `content:` as the
-block's HTML. Both render as a broadcast does, so a helper that needs a
-request raises `Cybertrain::Views::OutsideRequest` here too.
-
-A [stream](realtime.md) is tested through the endpoint.
-`client.get_stream(path, events: n, timeout: 2, headers: {})` runs a streaming
-response in memory until `n` events have been written (pings do not count)
-or the timeout has passed, and returns it with what was written as its body.
-The endpoint answers 503 until the stream poller runs, and a test client does
-not start it, so start it once in the file:
-
-```ruby
-Cybertrain::Stream::Poller.start!
-
-test "a new comment is broadcast to the article's stream" do
-  article = Article.create(title: "Live comments", body: "Posted for the test")
-  Cybertrain::Stream.broadcast_append_to(article, target: "comments", html: "hi")
-  token = Cybertrain::Stream.sign([Cybertrain::Stream.name_for(article)])
-  client = Cybertrain::Test::Client.new(BLOG)
-  res = client.get_stream("/cybertrain/stream?s=#{token}", events: 1, headers: { "last-event-id" => "0" })
-  assert_includes res.body, '<turbo-stream action="append" target="comments">'
-end
-```
-
-A new connection receives only what is broadcast after it connects;
-`last-event-id` set to `0` replays what is already in the table, which is
-what lets a test broadcast first and read after. To check only that an action
-broadcast, read the table: `Cybertrain::DB.with { |c| c.execute("SELECT
-stream, payload FROM cybertrain_messages ORDER BY id DESC LIMIT 1") }`.
+- Add `test/test_helper.rb` as above, and move what a support file did at
+  load time (`AppTest.boot`, `BlogTest.boot`, migrating a database) out of
+  it: the test program boots on a fresh database before the first test,
+  and a second boot only costs time.
+- Change the CI step from `spin test` to `cybertrain test`.
+- Two files that define the same top-level helper or constant (a
+  `new_client` in each, as the 0.4 generators wrote them) are refused
+  together: move the helper to `test/support/` or rename one.
+- Every table is emptied before each test, so a later test can no longer
+  rely on rows an earlier one made: move such data to fixtures or `setup`.
+- The clock seams are gone: `Cybertrain::Cache.clock=`,
+  `Cache.system_clock`, `RateLimit.current_time=`, `SessionStore#fixed_now=`,
+  `Application.status_now=` and `Background.supervisor_clock=`. Use
+  `travel_to`, `travel` or `freeze_time`, whose block puts the time back
+  without an `ensure` of your own.
+- Mail in tests is kept in `Cybertrain::Mailer.deliveries`; a test that
+  reads mail at a `Test::SmtpReceiver` sets
+  `Cybertrain.config.mail_delivery_method = :smtp` first.
+- A helper test 0.4's `generate helper` wrote defines a top-level
+  `render_inline(source)`, which clashes with the framework's: rename it
+  `render_helper_template` in that file, calls included.
+- `1.month.ago` is `Time.current.months_ago(1)`.
+- `assert_equal` fails with Minitest's two-line text; a passing snapshot
+  does not change.
+- `cybertrain generate authentication`, run again, writes the class-form
+  tests and names each old file they replace (`test/authentication.rb`,
+  `test/support/app_test.rb`, ...); `--force` deletes them.
 
 ## Continuous integration
 
@@ -270,8 +794,8 @@ headers and Ruby, reads the framework commit the app is locked to out of
 doctor` and `cybertrain setup` (with `~/.cybertrain/spinel` cached per Spinel
 release and runner image). The workflow then checks that `spin.lock` is
 current (`spin lock && git diff --exit-code spin.lock`) and `gen/` is fresh
-(`spin run gen -- --check`), and runs `spin test` once `test/` has a test
-program. When the toolchain steps change, the action changes, not every app's
-copy. The commit is read from `spin.lock`, so the workflow assumes the
-default git dependency; an app made with `--path` passes the framework
-checkout to the action as `framework-path`.
+(`SPIN_DEBUG=1 spin run gen -- --check`), and runs `cybertrain test`. When the toolchain
+steps change, the action changes, not every app's copy. The commit is read
+from `spin.lock`, so the workflow assumes the default git dependency; an app
+made with `--path` passes the framework checkout to the action as
+`framework-path`.

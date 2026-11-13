@@ -87,8 +87,46 @@ otherwise), and its counts go through `number_with_delimiter`
 cybertrain db migrate  # spin run gen; spin run db -- migrate; spin run gen (gen and db in debug mode)
 cybertrain server      # http://127.0.0.1:3000 (`cybertrain server 4000`, or PORT=4000, to change it)
 cybertrain build       # dist/blog (views embedded) + dist/public/
-cybertrain spin test   # test/*.rb (the blog's, the generated authentication tests and test/attachment_article_cover.rb) against storage/test.sqlite3
+cybertrain test        # every test (test/**/*_test.rb) in one program, against storage/test.sqlite3
 ```
+
+## Tests
+
+The tests are Rails-shaped classes under `test/`, run by `cybertrain test`:
+`spin run gen` turns them into one program (`gen/tests.rb`, with
+`gen/test/**`, committed with the rest of `gen/`), which is compiled once
+into `build/test/tests` and run; a second run with nothing changed does
+not compile again.
+
+```sh
+cybertrain test                                  # all of them
+cybertrain test test/controllers                 # one directory
+cybertrain test test/models/article_test.rb      # one file
+cybertrain test -n /comment/                     # the tests whose name matches
+```
+
+- `test/test_helper.rb` loads the app and `cybertrain/test_help`, and
+  includes `SessionTestHelper` (`test/support/session_test_helper.rb`:
+  `sign_in_as users(:one)`, `sign_out`, `open_session` for a second
+  browser, `authenticity_token_in(response.body)` for a form's token) into every `ActionDispatch::IntegrationTest`.
+  `test/support/blog_test_helper.rb` holds what several classes read
+  (a page's form token, job rows, the last broadcast).
+- Every test starts from the fixtures, `test/fixtures/*.yml`:
+  `articles(:one)` ("Hello Rails", with `comments(:one)`, Alice's "Great
+  post!") and `articles(:two)`, `users(:one)` (an admin) and `users(:two)`
+  (a writer who is not one), whose password is `"password"`. The jobs,
+  cache and Turbo messages tables are empty.
+- `test/models/` (Article, Comment, User), `test/controllers/` (articles,
+  comments, `admin/articles`, and the generated sessions, passwords and
+  accounts tests), `test/components/comment_component_test.rb`
+  (`render_inline` and `assert_select`), `test/jobs/` (NotifyCommentJob and
+  the scheduled prune of done jobs) and `test/integration/` (the jobs page,
+  the two languages, the assets and the CSP, the live comments with
+  `assert_broadcasts` and `assert_turbo_stream`, the cover image, and the
+  generated first-run, remember-me, lockout and admin tests).
+- Forgery protection is off in tests, as in Rails' test environment; the
+  CSRF tests turn it on for their requests with `with_forgery_protection`.
+  Time moves with `travel_to`, `travel` and `freeze_time`.
 
 Run `cybertrain spin run gen` after changing the schema, the routes or a
 controller's instance variables and callbacks, a job class, a file under
@@ -114,9 +152,10 @@ cybertrain db migrate
   the callbacks that store and delete the file), `ArticlesController#cover`
   with its route (`GET /articles/1/cover`), one line each in `create` and
   `update`, the file input of the form (now `multipart: true`), the image on
-  the article page, and `test/attachment_article_cover.rb` (its client
-  signs in first, as the generator writes it for an application with
-  authentication).
+  the article page, and `test/integration/article_cover_attachment_test.rb`
+  (it signs in `users(:one)` first, as the generator writes it for an
+  application with authentication) with its upload,
+  `test/fixtures/files/cover.png`.
 - **Who may upload and download.** Whoever may write an article (a
   signed-in user) may attach, replace or remove its cover with `create` and
   `update`, and whoever may read it (anyone) may fetch the cover:
@@ -175,12 +214,15 @@ cybertrain db migrate
   declares `before_action :require_admin` (`spin run gen` splices it into
   the controller, `gen/concerns.rb`).
 
-`test/comments.rb` checks the enqueue with `assert_enqueued_with` and runs
-the job with `perform_enqueued_jobs` (`require "cybertrain/test/jobs"` in
-`test/support/blog_test.rb`, which also empties the cache, the jobs
-table and the users before each test); `test/articles.rb` covers the
-cached count, the formats, the assets, the import map and the CSP nonce,
-the admin namespace and who may see it, and the two languages.
+`test/controllers/comments_controller_test.rb` checks the enqueue with
+`assert_enqueued_with` and runs the job with `perform_enqueued_jobs`;
+`test/jobs/prune_done_jobs_test.rb` runs the scheduled prune, also after
+`travel 7.days`. `test/controllers/articles_controller_test.rb` covers the
+cached count and the formats, `test/integration/assets_test.rb` the
+assets, the import map and the CSP nonce,
+`test/controllers/admin/articles_controller_test.rb` and
+`test/integration/jobs_page_test.rb` the admin namespace and who may see
+it, and `test/integration/locale_test.rb` the two languages.
 [Background work](../../docs/guide/background-and-operations.md) in the
 guide covers jobs and scheduled tasks in full.
 
@@ -194,9 +236,13 @@ generator wrote the `Authentication` concern
 (`app/controllers/concerns/authentication.rb`, included by
 `ApplicationController`), the `User` and `Session` models, their
 controllers and views (`app/views/sessions/`, `passwords/`, `accounts/`,
-`setup/`), the user command (`app/commands/user_command.rb`) and the tests
-`test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`,
-`passwords.rb` and `accounts.rb`.
+`setup/`), the user command (`app/commands/user_command.rb`), the users
+fixtures (`test/fixtures/users.yml`), `sign_in_as`
+(`test/support/session_test_helper.rb`) and the tests
+`test/models/user_test.rb`, `test/controllers/sessions_controller_test.rb`,
+`passwords_controller_test.rb`, `accounts_controller_test.rb` and
+`test/integration/first_run_test.rb`, `admin_test.rb`,
+`remember_me_test.rb` and `lockout_test.rb`.
 
 - **Who may do what.** Anyone reads the articles and posts comments
   (`allow_unauthenticated_access only: [:index, :show]` in

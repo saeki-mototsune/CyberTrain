@@ -1,7 +1,8 @@
 # Cybertrain::Strftime -- strftime of a pattern built at run time, one
 # directive at a time (spikes/NOTES.md rule 96). time_tag's `format:`
 # (Template::Helpers.time_tag_strftime) and I18n.l's dictionary formats
-# both format through Cybertrain::Strftime.walk. It requires nothing
+# both format through Cybertrain::Strftime.walk, in the TimeZone the
+# caller passes (Time.zone, or the call's `zone:`). It requires nothing
 # else, so cybertrain/i18n.rb (which also loads on its own under CRuby,
 # as gen/locales.rb does) uses it without the template layer.
 require "date"
@@ -27,7 +28,55 @@ module Cybertrain
     # it raises rather than render something else; each message starts
     # with label ("time_tag format", "l format"). Text between
     # directives (multibyte included) is copied as it is.
-    def self.walk(time, pattern, label)
+    #
+    # A Time at offset 0 (every Time the framework hands out is a UTC
+    # instant) is rendered in zone (spec section 4): the wall fields, `%z`
+    # and `%Z` are the zone's (zoned_time). A Time that carries another
+    # offset of its own (`getlocal("+09:00")`) keeps it, as Rails renders
+    # a plain Time; a caller that wants it in the zone passes `getutc`. A
+    # Date is rendered as it is.
+    def self.walk(time, pattern, label, zone)
+      case time
+      when Time
+        abbr = time.utc_offset == 0 ? zone.abbreviation_at(time.to_i) : ""
+        return Strftime.walk_fields(Strftime.zoned_time(time, zone), pattern, label, abbr)
+      end
+      Strftime.walk_fields(time, pattern, label, "")
+    end
+
+    # time read in zone: a Time at offset 0 as the same instant at the
+    # zone's offset then (`getlocal`), so strftime's fields, `%z` and `%s`
+    # are right; any other Time as it is. `%Z` is not: a Time at a fixed
+    # offset has no abbreviation, so walk passes the zone's to walk_fields.
+    # @param time [Time]
+    # @param zone [TimeZone]
+    # @return [Time]
+    def self.zoned_time(time, zone)
+      return time unless time.utc_offset == 0
+
+      offset = zone.utc_offset_at(time.to_i)
+      offset == 0 ? time : time.getlocal(offset)
+    end
+
+    # Whether zone is UTC itself at epoch (not merely at offset 0, as
+    # London in winter): xmlschema writes `Z` for it and the offset for any
+    # other. Decided as Rails' TimeWithZone#utc? decides it, by what the
+    # zone is rather than its name: offset 0 with the abbreviation "UTC"
+    # or "UCT", so every alias (`Etc/UTC`, `Etc/Universal`, `Etc/Zulu`,
+    # `Etc/UCT`) counts.
+    # @param zone [TimeZone]
+    # @param epoch [Integer]
+    # @return [Boolean]
+    def self.utc_zone?(zone, epoch)
+      return false unless zone.utc_offset_at(epoch) == 0
+
+      abbr = zone.abbreviation_at(epoch)
+      abbr == "UTC" || abbr == "UCT"
+    end
+
+    # walk's directive loop. abbr is what `%Z` writes; "" leaves it to
+    # strftime.
+    def self.walk_fields(time, pattern, label, abbr)
       s = pattern.to_s # NOTES rule 62: plain byte reads
       n = s.bytesize
       out = +""
@@ -68,7 +117,7 @@ module Cybertrain
           msg = "#{label}: #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}: #{refused}"
           raise ArgumentError, msg
         end
-        piece = Strftime.strftime_directive(time, conv, flags, width)
+        piece = Strftime.strftime_directive(time, conv, flags, width, abbr)
         if piece.nil?
           msg = "#{label}: unknown directive #{s.byteslice(dstart, i - dstart)} in #{pattern.inspect}"
           raise ArgumentError, msg
@@ -102,7 +151,8 @@ module Cybertrain
     end
 
     # One directive of time_tag_strftime; nil for an unknown conversion.
-    def self.strftime_directive(time, conv, flags, width)
+    # abbr, when not "", is what `%Z` writes (the zone's abbreviation).
+    def self.strftime_directive(time, conv, flags, width, abbr)
       base = case conv
              when "Y" then time.strftime("%Y")
              when "C" then time.strftime("%C")
@@ -136,7 +186,7 @@ module Cybertrain
              when "G" then time.strftime("%G")
              when "g" then time.strftime("%g")
              when "V" then time.strftime("%V")
-             when "Z" then time.strftime("%Z")
+             when "Z" then abbr.empty? ? time.strftime("%Z") : abbr
              when "z"
                zone = time.strftime("%z")
                flags.include?(":") && zone.size == 5 ? "#{zone[0, 3]}:#{zone[3, 2]}" : zone

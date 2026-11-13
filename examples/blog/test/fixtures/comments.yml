@@ -1,0 +1,5 @@
+# The comment every test starts with, on articles(:one).
+one:
+  article: one
+  commenter: Alice
+  body: Great post!

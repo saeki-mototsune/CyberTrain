@@ -347,4 +347,33 @@ test "a message that never comes: nil after the bound, and stop is idempotent" d
   assert_equal 0, smtp.received_messages(1, 0.1).size
 end
 
+# Spec section 10: the runner stops every receiver a test started, after
+# its teardown, so one the test left running (a failed assertion before
+# its own stop) does not hold its port until the accept window ends.
+LEFT_HTTP = Array.new(0) { Cybertrain::Test::HttpReceiver.new }
+LEFT_SMTP = Array.new(0) { Cybertrain::Test::SmtpReceiver.new }
+
+test "receivers a test starts and never stops are still serving at its end" do
+  http = Cybertrain::Test::HttpReceiver.new(accept_window: 30.0)
+  http.start
+  smtp = Cybertrain::Test::SmtpReceiver.new(accept_window: 30.0)
+  smtp.start
+  LEFT_HTTP << http
+  LEFT_SMTP << smtp
+  assert http.serving?
+  assert smtp.serving?
+end
+
+test "the runner stopped them after that test" do
+  refute LEFT_HTTP[0].serving?
+  refute LEFT_SMTP[0].serving?
+end
+
+test "a receiver the test stops itself is stopped again by the runner without harm" do
+  http = Cybertrain::Test::HttpReceiver.new(accept_window: 30.0)
+  http.start
+  http.stop
+  refute http.serving?
+end
+
 Cybertrain::Test.run!

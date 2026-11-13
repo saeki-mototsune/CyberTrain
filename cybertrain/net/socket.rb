@@ -105,15 +105,15 @@ module Cybertrain
       # nothing ready.
       def timed_out!(step, limit)
         deadline_passed!(step) if limit < @per_wait
-        raise TimeoutError, "#{@timer_label}: #{step} timed out after #{Timer.seconds(@per_wait)}"
+        raise TimeoutError, "#{@timer_label}: #{step} timed out after #{Timer.format_seconds(@per_wait)}"
       end
 
       def deadline_passed!(step)
-        raise TimeoutError, "#{@timer_label}: the #{Timer.seconds(@deadline_seconds)} deadline passed while #{step}"
+        raise TimeoutError, "#{@timer_label}: the #{Timer.format_seconds(@deadline_seconds)} deadline passed while #{step}"
       end
 
       # "5s", "0.25s".
-      def self.seconds(value)
+      def self.format_seconds(value)
         whole = value.to_i
         return "#{whole}s" if value == whole.to_f
 

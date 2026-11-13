@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 907a29b5d36fca8f9097a09feff8fcb3dc26ef78cc447274941169820026b584
+source_sha256: cbc4c6e0ed59c5b14c68f6aca3748e7d61d32efbfeb0aab16a66152b6bc6bf90
 ---
 # 工作原理
 
@@ -20,7 +20,8 @@ source_sha256: 907a29b5d36fca8f9097a09feff8fcb3dc26ef78cc447274941169820026b584
 - `gen/locales.rb`：应用的词典，存为两个 Hash，供 `I18n.t` 读取（[国际化](i18n.md#dictionaries)）；
 - `gen/migrations.rb`；
 - `gen/views.rb`：内嵌视图表，除非为部署而构建，否则为空；
-- `gen/app.rb`：`require_relative` 清单。
+- `gen/app.rb`：`require_relative` 清单；
+- `gen/tests.rb` 和 `gen/test/**`：把 `test/` 的所有测试合成一个程序，每个测试类改写成方法，`gen/test/data.rb` 中是表和夹具（[测试应用](testing.md#running-the-tests)）。
 
 `gen/` 要提交，而不是加入 gitignore：`spin build`/`spin test` 没有先运行生成的钩子，所以签入的输出必须已经是可以编译的代码。CI 会重新运行 `spin run gen`，出现差异就失败，因此过时的生成代码无法合并。
 
@@ -89,13 +90,13 @@ source_sha256: 907a29b5d36fca8f9097a09feff8fcb3dc26ef78cc447274941169820026b584
 | `order("lower(title)")`、`order("posts.title")`、`order(params[:sort])` | `order` 只接受 `column [ASC\|DESC]` 列表；请求数据要先经过允许列表，原始 SQL 则通过 `order_sql`（[排序](models.md#ordering)）。格式错误或嵌套过深的参数返回 400（[查询字符串与请求体](requests.md#query-strings-and-bodies)） |
 | 异常时的完整回溯 | 类名、消息、请求行、模板名和行号——Spinel 不提供回溯 |
 | Rack、它的中间件，以及 `Gemfile` 中的任意 gem | 不兼容 Rack；一小组固定的中间件；Spinel 自己的 `spin-index`，仅限能在其 Ruby 子集下编译的内容 |
-| minitest / RSpec | `Cybertrain::Test`——基于反射的运行器无法在提前编译下工作 |
+| minitest / RSpec | Rails 风格的测试类（`ActiveSupport::TestCase`、`ActionDispatch::IntegrationTest`、`ViewComponent::TestCase`）和夹具，`spin run gen` 把它们改写成一个程序，由 `cybertrain test` 编译并运行；基于反射的运行器无法在提前编译下工作（[测试应用](testing.md)） |
 | `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` 写出同样的结构，外加一个注册页面；密码使用 PBKDF2-HMAC-SHA256（bcrypt 需要 C 库，而 macOS 上的 `String#crypt` 不支持它）；密码重置、确认、锁定和保持登录也会像 Devise 所增加的那样一并生成（[认证](authentication.md)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment` 写出五个 `cover_*` 列和模型方法；文件保存在本地磁盘的 `storage/uploads/` 下，由 `send_blob` 提供；每个字段一个文件，没有变体，也没有直接上传（[添加封面图片](tutorial.md#attachments)） |
 | `skip_before_action :x` | 相同，适用于有名称的 before 回调（块形式的回调没有可供跳过的名称）；没有 `skip_after_action` |
 | `resource :session` | 同样是指向 `SessionsController` 的六条路由；不能在其下嵌套 |
 | 先 `get "/x"` 再 `post "/x"` | 两者都可以：第二条路由推导出的名称已被占用，所以它没有名称，与 Rails 相同；重复的 `as:` 仍然是错误 |
-| `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport 自带的时区数据 | `Cybertrain::TimeZone.find("Asia/Tokyo")` 读取系统的 TZif 文件（`/usr/share/zoneinfo`，或 `TZDIR`），并转换 Integer 类型的纪元秒数（`utc_offset_at`、`utc_to_local`、`local_to_utc`）；暂时没有按请求设置的 `Time.zone`，也没有 `l(time, zone:)`（[时区](configuration.md#time-zones)） |
+| `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport 自带的时区数据 | `Cybertrain::TimeZone.find("Asia/Tokyo")` 读取系统的 TZif 文件（`/usr/share/zoneinfo`，或 `TZDIR`），并转换 Integer 类型的纪元秒数（`utc_offset_at`、`utc_to_local`、`local_to_utc`）；`c.time_zone` 为整个应用设置 `Time.zone`，`in_time_zone` 返回带墙上时间字段的小值对象，Time 仍是 UTC 瞬间（没有 TimeWithZone，`time.hour` 是 UTC）（[时区](configuration.md#time-zones)） |
 | `Net::HTTP`、Faraday | 用于 webhook 和 API 的 `Cybertrain::HttpClient`：每次等待都有上限，默认拒绝非公网目标，只在要求时跟随重定向，支持流式和 gzip 响应，带有 Server-Sent Events 解析器，不保持连接（参见[出站 HTTP](external-services.md#outbound-http)）；Spinel 的 `Net::HTTP` 遇到停滞的对端会阻塞整个服务器 |
 | Action Mailer（`deliver_later`、邮件程序类、视图） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` 通过 SMTP 发送纯文本，或带有从局部模板渲染的 HTML 部分（`Views.render_mail`）的 `multipart/alternative`（STARTTLS、隐式 TLS，或对环回地址使用明文；AUTH PLAIN；每次等待都有上限）；`Mailer.deliver_later` 从一个内置作业发送；邮件程序是 `app/mailers` 中的模块，其方法返回 `Cybertrain::MailMessage`（`deliver_later`、`deliver_now`），生成的 `PasswordsMailer` 就是如此；没有附件（参见[发送电子邮件](external-services.md#sending-e-mail)） |
 | Active Job、`perform_later`、`solid_queue`、周期性任务、Mission Control | `app/jobs` 中的作业类（`< Cybertrain::Job::Base`，`perform(args)` 接收由 JSON 值组成的 Hash，`perform_later`、`retry_on`、`discard_on`、带键的 `limits_concurrency`），`Job.handle(kind)` 作为简短形式；带时区和保存在数据库中的时间表的 `Scheduler.every` 与 `Scheduler.cron`；作业页面（路由中的 `jobs_page`）和 `./<app> jobs`；每个进程 `job_threads` 个线程，在服务器或 `./<app> worker` 进程中运行，至少投递一次（[后台任务](background-and-operations.md#background-work)） |

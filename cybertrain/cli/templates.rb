@@ -113,7 +113,11 @@ module Cybertrain
           # Seconds of silence after which a feed counts as stale (180).
           # CYBERTRAIN_HEALTH_FEED_STALE=180
 
-          # The IANA zone cron expressions are read in; UTC when unset.
+          # The application's time zone (an IANA name; UTC when unset): the
+          # boundaries of today and this week, Date.current, l and time_tag.
+          # CYBERTRAIN_TIME_ZONE=Asia/Tokyo
+          # The IANA zone cron expressions are read in; the time zone above
+          # when unset.
           # CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo
 
           # Redirect http to https and mark cookies Secure (production behind
@@ -155,9 +159,14 @@ module Cybertrain
           `.kamal/secrets`), commit, then `kamal setup` once and `kamal deploy`
           after that. The `Dockerfile` builds the binary inside the image.
 
+          `cybertrain test` runs the tests under `test/` (models, controllers,
+          integration, with the rows of `test/fixtures/*.yml`) as one program;
+          `cybertrain test test/models/post_test.rb` runs one file and
+          `cybertrain test -n /title/` the tests whose names match.
+
           On GitHub, `.github/workflows/ci.yml` installs the toolchain the
           framework commit in `spin.lock` pins and checks that `spin.lock` and
-          `gen/` are committed and current, then runs `spin test`.
+          `gen/` are committed and current, then runs `cybertrain test`.
         MARKDOWN
       end
 
@@ -243,12 +252,12 @@ module Cybertrain
             # c.i18n_raise_on_missing = true
           end
 
-          # A scheduled task: a cron expression (read in CYBERTRAIN_SCHEDULER_TZ,
-          # UTC by default), a unique name and a block. One process at a time
-          # leads the schedule; the web and worker roles both run it. Finished
-          # jobs stay in cybertrain_jobs until something deletes them: this one
-          # deletes the done ones a week old (failed ones are kept for
-          # the jobs command).
+          # A scheduled task: a cron expression (read in c.scheduler_tz, which
+          # follows c.time_zone, UTC by default, unless set), a unique name and
+          # a block. One process at a time leads the schedule; the web and
+          # worker roles both run it. Finished jobs stay in cybertrain_jobs
+          # until something deletes them: this one deletes the done ones a week
+          # old (failed ones are kept for the jobs command).
           # Cybertrain::Scheduler.cron("0 4 * * *", "prune done jobs") do
           #   Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400)
           # end
@@ -670,6 +679,7 @@ module Cybertrain
                 # path dependency, check the framework out yourself and pass
                 # `with: { framework-path: ... }`.
                 - uses: #{action}
+                  id: cybertrain
 
                 # spin.lock is committed and matches spin.toml.
                 - name: spin.lock is current
@@ -680,15 +690,49 @@ module Cybertrain
                 - name: gen/ is current
                   run: #{Shell::TOOL_SPIN} run gen -- --check
 
-                # `spin test` fails when there is no test/*.rb; a new app has none.
+                # Every test under test/, compiled into one program and run.
+                # The action puts spin on PATH; the cybertrain command is the
+                # CLI of the framework commit it fetched.
                 - name: Tests
-                  run: |
-                    if ls test/*.rb > /dev/null 2>&1; then
-                      spin test
-                    else
-                      echo "no test/*.rb yet"
-                    fi
+                  env:
+                    CYBERTRAIN_PATH: ${{ steps.cybertrain.outputs.framework-path }}
+                  run: ruby -I "$CYBERTRAIN_PATH" "$CYBERTRAIN_PATH/exe/cybertrain" test
         YAML
+      end
+
+      # test/test_helper.rb (spec 5.1): what every test file's `require
+      # "test_helper"` loads. `cybertrain test` requires it before the test
+      # files; the generators that add helpers (authentication) insert them
+      # after TEST_HELPER_MARKER.
+      TEST_HELPER_MARKER = "  # Helper methods used by all tests go here."
+
+      def self.test_helper
+        <<~RUBY
+          ENV["CYBERTRAIN_ENV"] ||= "test"
+          require_relative "../config/app"
+          require "cybertrain/test_help"
+
+          class ActiveSupport::TestCase
+            fixtures :all
+
+          #{TEST_HELPER_MARKER}
+          end
+        RUBY
+      end
+
+      # test/integration/health_test.rb: a new application's one test, a
+      # request to the health check.
+      def self.health_test
+        <<~RUBY
+          require "test_helper"
+
+          class HealthTest < ActionDispatch::IntegrationTest
+            test "the health check answers" do
+              get "/up"
+              assert_response :success
+            end
+          end
+        RUBY
       end
 
       # What kamal-proxy polls before it sends traffic to a new container.
@@ -793,10 +837,152 @@ module Cybertrain
         buf << "# Columns, associations and the Cybertrain::Model superclass come from\n"
         buf << "# gen/models/#{res.singular}.rb, generated from db/schema.rb by `spin run gen`.\n"
         buf << "class #{res.class_name}\n"
+        res.fields.each { |f| buf << "  belongs_to :#{f.field_name}\n" if f.reference? }
         first = res.first_string_field
         buf << "  validates :#{first}, presence: true\n" unless first == ""
         buf << "end\n"
         buf
+      end
+
+      # A fixture value of a field's type, as Rails' scaffold writes it
+      # (MyString, MyText, ...), the same in both rows. A references field
+      # names the parent's row `one`.
+      def self.fixture_value(f)
+        case f.field_type
+        when "string" then "MyString"
+        when "text" then "MyText"
+        when "integer" then "1"
+        when "float" then "1.5"
+        when "boolean" then "false"
+        when "date" then "2026-11-11"
+        when "datetime" then "2026-11-11 12:00:00"
+        when "references" then "one"
+        else ""
+        end
+      end
+
+      # test/fixtures/<plural>.yml: the rows `one` and `two`, a sample value
+      # per field. An attachment field has none: its columns default to
+      # nothing attached.
+      def self.fixture_file(res)
+        buf = +""
+        buf << "# The rows every test starts with: `cybertrain test` loads every file of\n"
+        buf << "# test/fixtures/ before each test, and #{res.plural}(:one) answers the first.\n"
+        ["one", "two"].each do |label|
+          buf << "\n#{label}:\n"
+          res.fields.each do |f|
+            buf << "  #{f.field_name}: #{fixture_value(f)}\n" unless f.attachment?
+          end
+        end
+        buf
+      end
+
+      # test/models/<singular>_test.rb: the fixture is a valid record.
+      def self.model_test(res)
+        <<~RUBY
+          require "test_helper"
+
+          class #{res.class_name}Test < ActiveSupport::TestCase
+            test "the fixture is valid" do
+              assert #{res.plural}(:one).valid?
+            end
+          end
+        RUBY
+      end
+
+      # The params of the create and update tests: the fixture's values,
+      # keys sorted as Rails' scaffold sorts them. A file is never a param.
+      def self.controller_test_params(res)
+        s = res.singular
+        keys = Array.new(0) { "" }
+        res.fields.each { |f| keys << f.column_name unless f.attachment? }
+        pairs = keys.sort.map { |k| "#{k}: @#{s}.#{k}" }
+        pairs.empty? ? "{ #{s}: {} }" : "{ #{s}: { #{pairs.join(", ")} } }"
+      end
+
+      # What `generate authentication` writes (and nothing else does): the
+      # sign_in_as helper that a generated test's `sign_in_as users(:one)`
+      # needs. Its presence is how the scaffold and the attachment
+      # generators tell an application with authentication (a scaffold of
+      # its own `user` model writes app/models/user.rb too).
+      SESSION_TEST_HELPER = "test/support/session_test_helper.rb"
+
+      # Whether the application at root has `generate authentication`'s
+      # test helper (SESSION_TEST_HELPER).
+      def self.signs_in_tests?(root)
+        File.exist?(File.join(root, SESSION_TEST_HELPER))
+      end
+
+      # Whether line is the scaffold controller test's setup line
+      # (`    @article = articles(:one)`), which `generate authentication`
+      # signs in before.
+      def self.scaffold_setup_line?(line)
+        return false unless line.start_with?("    @") && line.end_with?("(:one)")
+
+        eq = line.index(" = ")
+        !eq.nil? && line.index(" ", 5) == eq
+      end
+
+      # test/controllers/<plural>_controller_test.rb: Rails' scaffold test,
+      # one request per action, on the fixture row `one`. In an application
+      # with authentication (`signed_in`) every test signs the fixture user
+      # `one` in first (SessionTestHelper#sign_in_as).
+      def self.controller_test(res, signed_in = false)
+        s = res.singular
+        words = s.tr("_", " ")
+        index = res.index_helper
+        params = controller_test_params(res)
+        sign_in = signed_in ? "    sign_in_as users(:one)\n" : ""
+        <<~RUBY
+          require "test_helper"
+
+          class #{res.plural_class}ControllerTest < ActionDispatch::IntegrationTest
+            setup do
+          #{sign_in}    @#{s} = #{res.plural}(:one)
+            end
+
+            test "should get index" do
+              get #{index}_url
+              assert_response :success
+            end
+
+            test "should get new" do
+              get new_#{s}_url
+              assert_response :success
+            end
+
+            test "should create #{words}" do
+              assert_difference(-> { #{res.class_name}.count }, 1) do
+                post #{index}_url, params: #{params}
+              end
+
+              assert_redirected_to #{s}_url(#{res.class_name}.last)
+            end
+
+            test "should show #{words}" do
+              get #{s}_url(@#{s})
+              assert_response :success
+            end
+
+            test "should get edit" do
+              get edit_#{s}_url(@#{s})
+              assert_response :success
+            end
+
+            test "should update #{words}" do
+              patch #{s}_url(@#{s}), params: #{params}
+              assert_redirected_to #{s}_url(@#{s})
+            end
+
+            test "should destroy #{words}" do
+              assert_difference(-> { #{res.class_name}.count }, -1) do
+                delete #{s}_url(@#{s})
+              end
+
+              assert_redirected_to #{index}_url
+            end
+          end
+        RUBY
       end
 
       def self.controller(res)
@@ -812,8 +998,10 @@ module Cybertrain
         # A form whose only fields are files sends no `#{s}[...]` key at all
         # when no file is chosen (the parser drops an empty file input), so
         # `require` would make such an edit a 400: `nested` reads the absent
-        # key as empty, and the update keeps the stored file.
-        lookup = permit_list.empty? && res.attachments? ? "nested" : "require"
+        # key as empty, and the update keeps the stored file. A scaffold with
+        # no fields at all is the same case (Rails writes
+        # `params.fetch(:widget, {})` there): nothing to require.
+        lookup = permit_list.empty? ? "nested" : "require"
         <<~RUBY
           class #{res.plural_class}Controller < ApplicationController
             before_action :set_#{s}, only: [:show, :edit, :update, :destroy]

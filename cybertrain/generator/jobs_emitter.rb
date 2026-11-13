@@ -113,7 +113,7 @@ module Cybertrain
         out << "\n"
         out << "  def self.perform_in(seconds, args = {})\n"
         out << hash_check(full, "perform_in")
-        out << "    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: Time.now + seconds)\n"
+        out << "    Cybertrain::Job.enqueue(job_kind, JSON.generate(args), run_at: Time.current + seconds)\n"
         out << "  end\n"
         out << "\n"
         out << "  def self.perform_now(args = {})\n"

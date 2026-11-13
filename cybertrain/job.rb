@@ -292,13 +292,14 @@ module Cybertrain
     # Who this process is in `claimed_by`: "<hostname>:<pid>:<epoch of the
     # first call>:<6 random hex digits>", computed once, so neither two
     # processes on one host nor a container restarted within the same
-    # second with the same pid share a label.
+    # second with the same pid share a label. The epoch is real time
+    # ({Clock.real_now}): an identity, not an instant a test travels.
     # @return [String]
     # @api public
     def self.process_label
       label = @process_label
       if label.empty?
-        label = "#{Socket.gethostname}:#{Process.pid}:#{Time.now.to_i}:#{SecureRandom.hex(3)}"
+        label = "#{Socket.gethostname}:#{Process.pid}:#{Clock.real_now.to_i}:#{SecureRandom.hex(3)}"
         @process_label = label
       end
       label
@@ -396,7 +397,7 @@ module Cybertrain
     # A kind registered with a `concurrency_key:` stores the payload's
     # {Job.concurrency_key_for} with the row; its limit then counts per key.
     # @example run in ten minutes
-    #   Cybertrain::Job.enqueue("reminder", order.id.to_s, run_at: Time.now + 600)
+    #   Cybertrain::Job.enqueue("reminder", order.id.to_s, run_at: Time.current + 600)
     # @param kind [String] a kind registered with {Job.handle}
     # @param payload [String] handed to the handler as it is
     # @param run_at [Time] the earliest time to run it (now by default)
@@ -408,7 +409,7 @@ module Cybertrain
     # @raise [Cybertrain::DB::Error] when the database is not connected or
     #   the insert fails
     # @api public
-    def self.enqueue(kind, payload, run_at: Time.now)
+    def self.enqueue(kind, payload, run_at: Time.current)
       raise ArgumentError, "Job.enqueue: no handler registered for #{kind.inspect}" if handler_index(kind) < 0
 
       key = concurrency_key_for(kind, payload)
@@ -599,6 +600,36 @@ module Cybertrain
     # @api public
     def self.work_one(now)
       Executor.work_one(now)
+    end
+
+    # Claims and runs the queued job with the lowest id above `floor` and
+    # records the outcome as {.work_one} does: what `perform_enqueued_jobs
+    # { }` and `assert_emails { }` call to run the jobs queued during their
+    # block (ids above the largest one before it), and the jobs those
+    # queue, on the test's thread, in enqueue order. A job not yet
+    # attempted runs whatever its run_at; a retry (a failed attempt
+    # rescheduled) only once its run_at has come. The attempt is timed at
+    # the clock's now ({Clock.now}: `travel_to` moves it, and can bring a
+    # retry due).
+    # @example
+    #   floor = id_before_the_block
+    #   nil while Cybertrain::Job.work_one_after(floor)
+    # @param floor [Integer] only rows whose id is greater
+    # @param kind [String] only rows of this kind; "" for any
+    # @return [Boolean] true when a job was claimed
+    # @api public
+    def self.work_one_after(floor, kind = "")
+      work_one_after_id(floor, kind) >= 0
+    end
+
+    # {.work_one_after}, answering the id of the job it ran, -1 when none
+    # (the test helpers read that row's outcome).
+    # @param floor [Integer]
+    # @param kind [String]
+    # @return [Integer]
+    # @api private
+    def self.work_one_after_id(floor, kind = "")
+      Executor.work_one_after_id(floor, kind, Clock.now.to_i)
     end
 
     # Works through due jobs, at most `limit` of them, one after another on

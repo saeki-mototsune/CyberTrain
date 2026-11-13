@@ -59,7 +59,7 @@ module Cybertrain
       request = ctx.request
       return super unless request.path == @health_path && (request.get? || request.head?)
 
-      body = HealthCheck.problem(Time.now.to_i, @worker_stale, @health_feeds, @feed_stale)
+      body = HealthCheck.problem(Clock.now.to_i, @worker_stale, @health_feeds, @feed_stale)
       response = ctx.response
       response.status = body.empty? ? 200 : 503
       response.content_type = "text/plain; charset=utf-8"

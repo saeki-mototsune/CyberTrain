@@ -1,0 +1,139 @@
+ok   ids are Rails' for the same labels
+ok   labels, id:, belongs_to by label, every column type, filled timestamps
+ok   values with quotes, YAML 1.1 words, newlines and nulls insert as written
+ok   a label with nothing under it and a datetime's spellings
+ok   files outside test/fixtures' top level are not fixtures
+ok   the refusals name file and line
+ok   a belongs_to label must name a label of the parent's file, by Rails' id
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/test/data.rb
+identical gen/models/comment.rb
+identical gen/models/post.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   an accessor that would replace a harness, Kernel or test-helper method is refused
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/test/data.rb
+identical gen/models/comment.rb
+identical gen/models/post.rb
+identical gen/console.rb
+identical gen/app.rb
+stale: gen/tests.rb
+stale: gen/test/data.rb
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+wrote gen/tests.rb
+identical gen/migrations.rb
+wrote gen/test/data.rb
+identical gen/models/comment.rb
+identical gen/models/post.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   a fixture gen cannot load refuses the bundle, not gen
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/tests.rb
+identical gen/migrations.rb
+wrote gen/test/data.rb
+identical gen/models/comment.rb
+identical gen/models/post.rb
+identical gen/console.rb
+identical gen/app.rb
+stale: gen/test/data.rb
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/tests.rb
+identical gen/migrations.rb
+wrote gen/test/data.rb
+identical gen/models/comment.rb
+identical gen/models/post.rb
+identical gen/console.rb
+identical gen/app.rb
+stale: gen/tests.rb
+stale: gen/test/data.rb
+removed gen/tests.rb
+removed gen/test/data.rb
+removed gen/test/
+identical gen/routes.rb
+identical gen/assets.rb
+identical gen/locales.rb
+identical gen/controllers.rb
+identical gen/concerns.rb
+identical gen/views.rb
+identical gen/helpers.rb
+identical gen/components.rb
+identical gen/jobs.rb
+identical gen/concerns/controllers/concerns/admin_gate.rb
+identical gen/concerns/controllers/concerns/auditing.rb
+identical gen/concerns/controllers/concerns/stamped.rb
+identical gen/concerns/models/concerns/visible.rb
+identical gen/migrations.rb
+identical gen/models/comment.rb
+identical gen/models/post.rb
+identical gen/console.rb
+identical gen/app.rb
+ok   gen writes gen/test/data.rb and --check reports it stale
+ok   with test/ and no fixtures, data.rb holds the tables and empty lists
+ok   the fixture app's gen/test/data.rb and gen/tests.rb match the emitters (fixture stale otherwise)
+12 tests, 112 assertions, 0 failures

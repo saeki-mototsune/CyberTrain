@@ -1,9 +1,10 @@
 # `cybertrain generate component card title value:integer`: writes
 # app/components/card_component.rb (a Cybertrain::Component with one
 # keyword per attribute), its template app/components/card_component.html.erb
-# (each attribute, then the block's content) and test/card_component.rb,
-# which renders it through Cybertrain::Test.render_component. A name may
-# carry a namespace ("admin/user_row" -> Admin::UserRowComponent).
+# (each attribute, then the block's content) and
+# test/components/card_component_test.rb (a ViewComponent::TestCase that
+# renders it with render_inline and checks it with assert_select). A name
+# may carry a namespace ("admin/user_row" -> Admin::UserRowComponent).
 require "cybertrain/generator/inflector"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/scaffold"
@@ -44,7 +45,7 @@ module Cybertrain
         files = [
           ["app/components/#{rel}.rb", class_source(modules, names)],
           ["app/components/#{rel}.html.erb", template_source(segments.last, names)],
-          ["test/#{segments.join("_")}.rb", test_source(full, rel, names, types)]
+          ["test/components/#{rel}_test.rb", test_source(full, segments.last, names, types)]
         ]
         GeneratedFiles.write_all(root, files, force)
       end
@@ -83,11 +84,10 @@ module Cybertrain
         end
       end
 
-      def self.test_source(full, rel, names, types)
-        out = GeneratedFiles.test_head("cybertrain/test/views")
-        out << "\n"
-        out << "Cybertrain::Views.configure(\"app/views\", cache: false)\n"
-        out << "\n"
+      # The class-form test: render_inline, then assert_select on each
+      # attribute's paragraph and on the content.
+      def self.test_source(full, file_name, names, types)
+        css = file_name.delete_suffix("_component").tr("_", "-")
         args = Array.new(0) { "" }
         expected = Array.new(0) { "" }
         names.each_with_index do |n, i|
@@ -101,13 +101,16 @@ module Cybertrain
           end
         end
         call = args.empty? ? "#{full}.new" : "#{full}.new(#{args.join(", ")})"
-        out << "test \"#{full} renders its attributes and content\" do\n"
-        out << "  html = Cybertrain::Test.render_component(#{call}, content: \"<b>inside</b>\")\n"
-        expected.each { |e| out << "  assert_includes html, \"<p>#{e}</p>\"\n" }
-        out << "  assert_includes html, \"<b>inside</b>\"\n"
-        out << "end\n"
+        out = +""
+        out << "require \"test_helper\"\n"
         out << "\n"
-        out << "Cybertrain::Test.run!\n"
+        out << "class #{full}Test < ViewComponent::TestCase\n"
+        out << "  test \"renders its attributes and content\" do\n"
+        out << "    render_inline(#{call}, content: \"<b>inside</b>\")\n"
+        expected.each { |e| out << "    assert_select \"div.#{css} > p\", text: \"#{e}\"\n" }
+        out << "    assert_select \"div.#{css} > b\", text: \"inside\"\n"
+        out << "  end\n"
+        out << "end\n"
         out
       end
     end

@@ -1,5 +1,5 @@
 ---
-source_sha256: eb517f839e16e12e0f021680f219f193bf23627ffded9d1f95a155d73e1bf4f4
+source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
 ---
 # Модели и база данных
 
@@ -294,6 +294,50 @@ nil. Столбец даты NOT NULL получает сгенерирован�
 тексте, который не может прочитать. `strptime` принимает `%Y %m %d %H %M %S
 %L %z %Z %b %B %a %A %j %s %%` (`%Z` — только `UTC`, `GMT` или `Z`).
 `Time.at(ms / 1000.0)` превращает эпоху в миллисекундах в Time.
+
+### Время и часовой пояс
+
+Time — всегда момент в UTC: то, что читается из столбца, `Time.current` и
+каждый метод ниже возвращают `Time` в UTC, и TimeWithZone нет. Поэтому
+`time.hour` — это час UTC, тогда как Rails возвращает час пояса. Пояс
+(`c.time_zone`, [Часовые пояса](configuration.md#time-zones)) определяет
+календарь: где начинаются день, неделя, месяц или год, `Date.current` и то,
+что показывают `l` и `time_tag`.
+
+```ruby
+Time.current                         # => UTC-время часов (в тесте следует travel_to)
+5.minutes                            # => 300, целые секунды
+2.weeks.ago                          # => Time, на 14 дней раньше Time.current
+3.days.from_now                      # => Time
+Time.current.months_ago(1)           # => на календарный месяц назад (не 1.month.ago)
+Time.current.beginning_of_day        # => полночь в Time.zone как UTC-время
+Time.utc(2026, 1, 31).advance(months: 1)   # => 2026-02-28 00:00:00 UTC
+Date.current                         # => сегодня в Time.zone
+Time.current.in_time_zone.hour       # => час в Time.zone
+```
+
+- Длительности: `seconds`, `minutes`, `hours`, `days`, `weeks` и их формы
+  в единственном числе — это целые секунды (`5.minutes == 300`, тогда как
+  Rails возвращает Duration); `ago` и `from_now` возвращают Time на часах.
+  `1.month` и `1.year` не определены, потому что у месяца нет длины в
+  секундах: при выполнении они вызывают `NoMethodError`.
+- У Time: `beginning_of_day` / `end_of_day`, `_week` (с понедельника),
+  `_month`, `_year`; `advance(years:, months:, weeks:, days:, hours:,
+  minutes:, seconds:)` с целыми числами (годы, месяцы, недели и дни сдвигают
+  местную дату в календаре пояса, и 31 января плюс месяц — это конец
+  февраля; затем часы, минуты и секунды добавляются как прошедшее время);
+  `months_ago`, `months_since`, `years_ago`, `years_since`, `yesterday`,
+  `tomorrow`. Местное время, пропущенное переходом на летнее время,
+  сдвигается вперёд; время, которое наступает дважды, берёт более ранний
+  момент.
+- `Time.zone` — это настроенный `Cybertrain::TimeZone`; его имя —
+  `Time.zone.zone_name`. `time.in_time_zone` (или
+  `in_time_zone("Europe/London")`) возвращает `Cybertrain::ZonedTime`,
+  значение с `year`, `month`, `day`, `hour`, `min`, `sec`, `wday`, `yday`,
+  `utc_offset`, `zone` (сокращение), `to_time` и `to_date`; арифметики у
+  него нет, и оно не сохраняется. `Time.find_zone!(name)` вызывает
+  `ArgumentError` для неизвестного имени.
+- Столбцы по-прежнему хранят текст в UTC, каким бы ни был пояс.
 
 ## Условия и поиск
 

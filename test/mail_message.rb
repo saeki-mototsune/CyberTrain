@@ -13,6 +13,9 @@ require "cybertrain/test/smtp_receiver"
 # (spikes/NOTES.md rule 23).
 
 Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
+# The mail goes to an SmtpReceiver: the SMTP path, whatever CYBERTRAIN_ENV
+# says (the test environment stores mail in Mailer.deliveries instead).
+Cybertrain.config.mail_delivery_method = :smtp
 
 def fresh_db
   Cybertrain::DB.connect(":memory:")

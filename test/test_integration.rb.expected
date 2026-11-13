@@ -1,0 +1,21 @@
+ok   without a booted application an integration test says where it runs
+ok   get, post with nested params, patch, put, delete, head answer the response
+ok   get puts params: in the query string, after any already there
+ok   cookies persist across requests in one test and not into the next
+ok   assert_response with a symbol, an Integer and the wrong status
+ok   the top-level forms share the instance forms' checks
+ok   flatten_params encodes brackets and refuses arrays
+ok   the bundle's boot silences the request log and turns forgery protection off unless config gives them
+ok   with_forgery_protection turns it on for its block only
+ok   with_forgery_protection leaves the upload directory and the zone the test set, also when the block fails
+ok   follow_redirect! never sends the Location's fragment
+ok   an assertion failing inside with_forgery_protection puts everything back
+ok   and the next test's post is accepted
+ok   the backstop after the test restores the application and csrf
+ok   *_url helpers are requested and asserted by their path; another host is refused
+ok   the top-level assert_redirected_to reduces a URL on the test host too
+ok   every status Symbol the controller knows, and Rails' :missing
+ok   Rails' CGI-style header names
+ok   Date, Time, Float, Integer, booleans and nil in params: are sent as the casts read them back
+ok   fixture_file_upload in params: sends post, patch and put as multipart/form-data
+20 tests, 211 assertions, 0 failures

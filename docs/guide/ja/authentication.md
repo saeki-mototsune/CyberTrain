@@ -1,5 +1,5 @@
 ---
-source_sha256: ec95cb4cc2399795bb0f2b118a54d2fc79b0e844a95ab315210f07134e14d755
+source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
 ---
 # 認証
 
@@ -25,7 +25,7 @@ cybertrain db migrate
 | `app/mailers/passwords_mailer.rb`、`confirmations_mailer.rb` | メール |
 | `app/commands/user_command.rb` | `./<app> user ...`。`bin/<app>.rb` から require される |
 | `app/views/...` | 画面（すべてのテキストは `t()` を通る）と `sessions/_nav` パーシャル |
-| `test/*.rb`、`test/support/*.rb` | 各部分のテスト（[テスト](#testing)） |
+| `test/fixtures/users.yml`、`test/support/session_test_helper.rb`、`test/models/`、`test/controllers/`、`test/integration/` | フィクスチャのユーザー、`sign_in_as`、各部分のテスト（[テスト](#testing)） |
 
 そして次の編集を 1 回ずつ行います：`ApplicationController` への `include Authentication`、ルート、ジョブページの行（[管理者ユーザー](#admin-users-and-the-jobs-page)）、レイアウトへの nav パーシャル、`bin/<app>.rb` へのユーザーコマンド、`config/app.rb` への `base_url` 設定（[メール中のリンク](#links-in-mails)）。同じオプションでもう一度実行しても何も変わりません：すでに行った編集は見つけて飛ばし、書き出すとおりのファイルはそのままにします。違う内容で書き出すことになるファイル（自分で編集したもの、古いジェネレーターや別のオプションが書いたもの）は、`--force` なしでは決して上書きせず、代わりに差分を表示します（[0.4 からのアップグレード](#upgrading-from-04)、[あとから確認を有効にする](#turning-on-confirmation-later)）。
 
@@ -185,11 +185,24 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 ## テスト
 
-ジェネレーターは部分ごとにテストプログラムを書き出します：`test/authentication.rb`、`admin.rb`、`remember_me.rb`、`lockout.rb`、`passwords.rb`、`accounts.rb`、`--confirmable` では `confirmations.rb`。どれも SQLite を使うので、`cybertrain spin test` で実行し、スナップショットはバイナリから取ります。サポートファイルはアプリケーションでも使えます：
+ジェネレーターは Rails 流のテストクラスを書き出し、`cybertrain test` がそれを実行します（[アプリをテストする](testing.md)）：
 
-<!-- list: points -->
-- `test/support/app_test.rb`：`AppTest.boot`、`AppTest.user(email, password)`、`AppTest.sign_in(client, email, password)`（レート制限の回数もリセットします）、`AppTest.form_token(client)`。
-- `test/support/authentication_helpers.rb`：`with_smtp_receiver { |receiver| ... }`（アプリケーションのメールはテストプロセス内の受信者に届きます）、`last_mail_link(receiver)`、`backdate_session(row, seconds)`、そして `with_config(env, hosts, base_url, log = nil) { ... }`。最後のものはブロックの間だけ環境、`CYBERTRAIN_HOSTS`、ベース URL を設定し、元に戻します。
+| ファイル | テストする内容 |
+| --- | --- |
+| `test/fixtures/users.yml` | `one`（管理者）と `two`。パスワードは `"password"`（`--confirmable` ではどちらも確認済み） |
+| `test/support/session_test_helper.rb` | `sign_in_as(user, remember: false)`、`sign_out`、`open_session`（2 つ目のブラウザー）、`authenticity_token_in(body)`（ページの最初のフォームのトークン。`with_forgery_protection` の中のリクエスト用）。`test/test_helper.rb` がすべての統合テストに include する |
+| `test/models/user_test.rb` | アドレスの形式 |
+| `test/controllers/sessions_controller_test.rb` | サインインとサインアウト |
+| `test/controllers/registrations_controller_test.rb` | サインアップ（`--invite-only` ではないとき） |
+| `test/integration/first_run_test.rb` | `/setup` と user コマンド（`--invite-only` のとき） |
+| `test/controllers/passwords_controller_test.rb` | リセット、そのメールとリンク |
+| `test/controllers/accounts_controller_test.rb` | アカウントのページ |
+| `test/controllers/confirmations_controller_test.rb` | 確認（`--confirmable` のとき） |
+| `test/integration/remember_me_test.rb` | 15 日目と 30 日目、アイドルの上限 |
+| `test/integration/lockout_test.rb` | ロックとその 1 時間 |
+| `test/integration/admin_test.rb` | `require_admin`、`user admin` |
+
+時刻は `travel_to` と `travel` で進め（行を過去にずらすことはしません）、メールは `assert_emails` と `perform_enqueued_jobs` を使って `Cybertrain::Mailer.deliveries` から読みます。認証のあとに生成したスキャフォールドは、コントローラーのテストの冒頭で `users(:one)` をサインインさせます。認証の前に生成したものはそうしないので、その `setup` に `sign_in_as users(:one)` を加えてください。以前のジェネレーターがテストを書いたアプリケーション（`test/authentication.rb`、`admin.rb`、`remember_me.rb`、`lockout.rb`、`passwords.rb`、`accounts.rb`、`confirmations.rb`、`test/support/app_test.rb`、`test/support/authentication_helpers.rb`）でもう一度実行すると、ジェネレーターはそれぞれを置き換えるファイルと一緒に示します。`--force` でそれらを削除します。
 
 このリポジトリの `script/auth-e2e signup invite confirmable upgrade04` は、ジェネレーターでアプリケーションを作り、端から端まで動かします。
 

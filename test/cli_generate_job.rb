@@ -44,13 +44,25 @@ test "generate job send_digest writes a Job::Base subclass with an empty perform
       end
     end
   RUBY
-  test_source = File.read("shop/test/send_digest_job.rb")
-  assert_includes test_source, "require_relative \"../gen/app\"\n"
-  assert_includes test_source, "test \"SendDigestJob runs\" do\n" \
-                               "  assert_equal \"SendDigestJob\", SendDigestJob.job_kind\n" \
-                               "  assert_nil SendDigestJob.perform_now({ \"id\" => 1 })\n" \
-                               "end\n"
-  assert_includes test_source, "Cybertrain::Test.run!\n"
+  refute File.exist?("shop/test/send_digest_job.rb")
+end
+
+test "the job test is in the class form and performs the job with perform_enqueued_jobs" do
+  assert_equal <<~'RUBY', File.read("shop/test/jobs/send_digest_job_test.rb")
+    require "test_helper"
+
+    # app/jobs/send_digest_job.rb: perform_enqueued_jobs performs the jobs its block queues.
+    class SendDigestJobTest < ActiveSupport::TestCase
+      test "SendDigestJob runs" do
+        assert_equal "SendDigestJob", SendDigestJob.job_kind
+        performed = perform_enqueued_jobs do
+          SendDigestJob.perform_later({ "id" => 1 })
+        end
+        assert_equal 1, performed
+      end
+    end
+  RUBY
+  refute File.exist?("shop/test/support/app_test.rb")
 end
 
 test "a name given as the class name is not doubled: SendDigestJob is send_digest_job.rb" do
@@ -66,7 +78,7 @@ test "--retry writes a retry_on line each, and spin run gen's scan reads them" d
   assert source.start_with?("module Admin\n  class ReportJob < Cybertrain::Job::Base\n" \
                             "    retry_on Cybertrain::Mailer::TimeoutError, wait: 60, attempts: 5\n" \
                             "    retry_on StandardError, wait: :polynomially_longer, attempts: 20\n\n")
-  assert File.exist?("shop/test/admin_report_job.rb")
+  assert_includes File.read("shop/test/jobs/admin/report_job_test.rb"), "class Admin::ReportJobTest < ActiveSupport::TestCase\n"
   infos = Cybertrain::Gen::JobScan.scan_dir("shop/app/jobs")
   assert_equal ["Admin::ReportJob", "SendDigestJob"], infos.map { |i| i.class_name }
   out = Cybertrain::Gen::JobsEmitter.emit(infos)

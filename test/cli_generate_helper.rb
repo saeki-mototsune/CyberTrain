@@ -32,10 +32,34 @@ test "generate helper prices writes an empty PricesHelper and a test" do
   source = File.read("shop/app/helpers/prices_helper.rb")
   assert source.start_with?("module PricesHelper\n")
   assert source.end_with?("end\n")
-  test_source = File.read("shop/test/prices_helper.rb")
-  assert_includes test_source, "require_relative \"../gen/app\"\n"
-  assert_includes test_source, "test \"PricesHelper is in the application's helpers\" do\n"
-  assert_includes test_source, "Cybertrain::Test.run!\n"
+  refute File.exist?("shop/test/prices_helper.rb")
+end
+
+# The class form; the local template helper is render_helper_template, not
+# render_inline (the framework's, which gen refuses an app to redefine).
+test "the helper test is in the class form" do
+  assert_equal <<~'RUBY', File.read("shop/test/helpers/prices_helper_test.rb")
+    require "test_helper"
+
+    # app/helpers/prices_helper.rb, through the app's ApplicationHelpers (gen/helpers.rb).
+    class PricesHelperTest < ActiveSupport::TestCase
+      test "PricesHelper is in the application's helpers" do
+        assert_equal "ApplicationHelpers", Cybertrain::Views.helpers_builder.call(nil).class.name
+        assert_equal "&lt;b&gt;", render_helper_template("<%= h '<b>' %>")
+      end
+
+      private
+
+      # A template rendered with the application's helpers.
+      def render_helper_template(source)
+        template = Cybertrain::Template::Template.parse(source, "test/inline")
+        env = { "__template_dir" => "test" }
+        Cybertrain::Template::Interpreter.new(Cybertrain::Views.helpers_builder.call(nil)).render(template, env)
+      end
+    end
+  RUBY
+  refute File.read("shop/test/helpers/prices_helper_test.rb").include?("render_inline")
+  refute File.exist?("shop/test/support/app_test.rb")
 end
 
 test "spin run gen's scan finds the generated module" do
@@ -50,7 +74,7 @@ test "a namespaced helper is nested in its module" do
     module Admin
       module UsersHelper
   RUBY
-  assert File.exist?("shop/test/admin_users_helper.rb")
+  assert_includes File.read("shop/test/helpers/admin/users_helper_test.rb"), "class Admin::UsersHelperTest < ActiveSupport::TestCase\n"
 end
 
 test "an existing, different file is refused unless --force" do

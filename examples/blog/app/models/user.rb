@@ -145,7 +145,7 @@ class User
   # (count_failed_attempt!): authenticate_by refuses it until then,
   # unless lockout is off (auth_lockout_attempts 0), which also stops
   # enforcing a lock made before.
-  def locked? = !locked_until.nil? && locked_until > Time.now
+  def locked? = !locked_until.nil? && locked_until > Time.current
 
   # A wrong password: one more failed attempt, counted by the database
   # in one UPDATE that reads the row as it is (so sign-ins at the same
@@ -159,7 +159,7 @@ class User
 
     count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
     lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
-    ends = Time.now + Cybertrain.config.auth_lockout_period
+    ends = Time.current + Cybertrain.config.auth_lockout_period
     User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
     nil
   end
@@ -179,7 +179,7 @@ class User
   # valid for 15 minutes from now, and bound to password_reset_binding,
   # so it stops working once the password or the address changes
   # (Cybertrain::Token).
-  def password_reset_token(now = Time.now.to_i)
+  def password_reset_token(now = Time.current.to_i)
     Cybertrain::Token.issue("password_reset", id, 15 * 60, password_reset_binding, now)
   end
 

@@ -18,10 +18,15 @@
 #   Cybertrain::Server does.
 #
 # The thread closes the listener when it ends; #stop asks it to end and
-# joins it, bounded. Nothing here requires openssl or the rest of the
-# framework (only Ruby's socket library), so a test program pays for no
-# more than it uses.
+# joins it, bounded. A receiver started inside a test registers its #stop
+# with the harness (Cybertrain::Test.after_this_case), which calls it after
+# the test's teardown, so a failed assertion does not leave a listener
+# running; one started outside a test is stopped only by its owner.
+# Nothing here requires openssl or the rest of the framework (only Ruby's
+# socket library and the harness), so a test program pays for no more
+# than it uses.
 require "socket"
+require "cybertrain/test"
 
 module Cybertrain
   module Test
@@ -62,7 +67,8 @@ module Cybertrain
       end
 
       # Binds 127.0.0.1:`port` (0 for any free port) and starts the thread
-      # that accepts the connections. Returns once listening.
+      # that accepts the connections. Returns once listening. Inside a test
+      # the harness calls {#stop} after the test's teardown.
       # @param port [Integer]
       # @return [Integer] the bound port
       # @raise [ArgumentError] when already started
@@ -77,7 +83,15 @@ module Cybertrain
         @stopping = false
         @serving = true
         @thread = rx_spawn(listener)
+        Cybertrain::Test.after_this_case(rx_stopper) if Cybertrain::Test.in_case?
         @port
+      end
+
+      # The callable the harness keeps until the test ends: created in a
+      # method (rule 82), called with no argument and no receiver (rule 88;
+      # #stop is defined on this class only).
+      def rx_stopper
+        -> { stop }
       end
 
       # Stops accepting, ends the connection in progress at its next wait,

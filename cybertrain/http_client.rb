@@ -538,7 +538,7 @@ module Cybertrain
         target = HttpClient.parse_url(current)
         budget = hops == 0 ? @deadline : ends_at - Net::Timer.now
         if budget <= 0.0
-          message = "#{target.target_label}: the #{Net::Timer.seconds(@deadline)} deadline passed while following redirects"
+          message = "#{target.target_label}: the #{Net::Timer.format_seconds(@deadline)} deadline passed while following redirects"
           raise TimeoutError, message
         end
         res = perform_once(hop_verb, target, hop_body, hop_type, hop_headers, sink, budget)

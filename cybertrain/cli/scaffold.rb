@@ -1,5 +1,6 @@
 # `cybertrain generate scaffold post title:string body:text`: writes the
-# migration, model, controller and views of a resource and adds
+# migration, model, controller and views of a resource, its fixtures
+# (test/fixtures/posts.yml), a model test and a controller test, and adds
 # `resources :posts` to config/routes.rb, the way Rails' scaffold does.
 #
 # A `cover:attachment` field is a stored file rather than a column: the
@@ -215,6 +216,8 @@ module Cybertrain
           parsed << field
         end
         res = Resource.new(name, parsed, any)
+        refuse_test_class_clash!(root, "test/models/#{res.singular}_test.rb", "#{res.class_name}Test")
+        refuse_test_class_clash!(root, "test/controllers/#{res.plural}_controller_test.rb", "#{res.plural_class}ControllerTest")
 
         res.fields.each do |f|
           next unless f.attachment?
@@ -229,6 +232,8 @@ module Cybertrain
         migration = migration_path(root, res)
         record(created, root, migration, Templates.migration(res))
         record(created, root, "app/models/#{res.singular}.rb", Templates.model(res))
+        record(created, root, "test/models/#{res.singular}_test.rb", Templates.model_test(res))
+        record(created, root, "test/fixtures/#{res.plural}.yml", Templates.fixture_file(res))
         record(created, root, "app/controllers/#{res.plural}_controller.rb", Templates.controller(res))
         views = "app/views/#{res.plural}"
         record(created, root, "#{views}/index.html.erb", Templates.index_view(res))
@@ -236,6 +241,7 @@ module Cybertrain
         record(created, root, "#{views}/new.html.erb", Templates.new_view(res))
         record(created, root, "#{views}/edit.html.erb", Templates.edit_view(res))
         record(created, root, "#{views}/_form.html.erb", Templates.form_partial(res))
+        record(created, root, "test/controllers/#{res.plural}_controller_test.rb", Templates.controller_test(res, Templates.signs_in_tests?(root)))
         add_route(routes_path, res.plural)
         attachments = false
         res.fields.each do |f|
@@ -262,6 +268,28 @@ module Cybertrain
           notes << "note: '#{res.singular}' shadows Object##{res.singular} on a model that references #{res.plural} (belongs_to reader); call it as record.#{res.singular}"
         end
         notes
+      end
+
+      # `cybertrain test` compiles every test into one program, where a class
+      # opened in two files is one class (gen refuses that, and stops): the
+      # scaffold's test class must not be another file's already, as
+      # `scaffold health` would reopen `cybertrain new`'s HealthTest.
+      # Raises InvalidArgument before anything is written; nil otherwise.
+      def self.refuse_test_class_clash!(root, path, class_name)
+        Dir.glob(File.join(root, "test/**/*.rb")).sort.each do |file|
+          rel = file.delete_prefix("#{root}/")
+          next if rel == path
+
+          File.read(file).each_line do |line|
+            text = line.chomp
+            next unless text == "class #{class_name}" || text.start_with?("class #{class_name} ") || text.start_with?("class #{class_name};")
+
+            message = "#{rel} already defines #{class_name}, the class of #{path}: every test runs in one program, " \
+                      "so pick another name for the scaffold, or rename that test class"
+            raise InvalidArgument, message
+          end
+        end
+        nil
       end
 
       def self.record(created, root, path, content)

@@ -1,0 +1,36 @@
+test/components/card_component_test.rb
+  ok   CardComponentTest: renders the title
+  ok   CardComponentTest: renders the form partial
+test/controllers/article_streams_test.rb
+  ok   ArticleStreamsTest: a new article is broadcast
+  ok   ArticleStreamsTest: a new article answers with a Turbo Stream
+test/controllers/articles_controller_test.rb
+  ok   ArticlesControllerTest: lists the rows
+  ok   ArticlesControllerTest: shows one through its path helper
+  ok   ArticlesControllerTest: creates one and follows the redirect
+  ok   ArticlesControllerTest: an unknown path fails with the top-level form's message
+  ok   ArticlesControllerTest: shows the form for a new one
+test/failing_test.rb
+  FAIL FailingTest: counts the articles (test/failing_test.rb:6)
+         Expected: 2
+           Actual: 1
+  ERR  FailingTest: raises (test/failing_test.rb:11)
+         ArgumentError: boom
+  ok   FailingTest: still passes
+test/legacy.rb
+  ok   shows an article
+  ok   the configured zone
+test/mailers/news_mailer_test.rb
+  ok   NewsMailerTest: mail is stored, not sent
+  ok   NewsMailerTest: deliveries start empty and deliver_later counts
+  ok   NewsMailerTest: a job queued in the block runs, and the mail it queues
+test/models/article_test.rb
+  ok   ArticleTest: title must be present
+  ok   ArticleTest: belongs to its author
+  ok   ArticleTest: keeps a boolean, a datetime and a decimal
+  ok   ArticleTest: starts from empty tables
+  ok   ArticleTest: a slug from the support helper
+  ok   ArticleFixturesTest: fixtures: a test changes and adds rows
+  ok   ArticleFixturesTest: fixtures: the next test sees exactly the fixture rows
+
+24 tests, 55 assertions, 2 failures

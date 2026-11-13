@@ -1,5 +1,5 @@
 ---
-source_sha256: 907a29b5d36fca8f9097a09feff8fcb3dc26ef78cc447274941169820026b584
+source_sha256: cbc4c6e0ed59c5b14c68f6aca3748e7d61d32efbfeb0aab16a66152b6bc6bf90
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -21,6 +21,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 - `gen/migrations.rb`
 - `gen/views.rb`：埋め込みビューのテーブル。デプロイ用のビルド以外では空
 - `gen/app.rb`：`require_relative` のマニフェスト
+- `gen/tests.rb` と `gen/test/**`：`test/` のすべてのテストを 1 つのプログラムにしたもの。各テストクラスはメソッドに書き換えられ、`gen/test/data.rb` にはテーブルとフィクスチャが入る（[アプリをテストする](testing.md#running-the-tests)）
 
 `gen/` は gitignore せずにコミットします：`spin build` と `spin test` には先に生成を行うフックがないため、チェックインされた出力がそのままコンパイルできるものでなければなりません。CI は `spin run gen` を再実行して差分があれば失敗するので、古い生成コードがマージされることはありません。
 
@@ -89,13 +90,13 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | `order("lower(title)")`、`order("posts.title")`、`order(params[:sort])` | `order` は `column [ASC\|DESC]` のリストだけを受け取る。リクエストのデータは許可リストを通し、生の SQL は `order_sql` を通す（[並び順](models.md#ordering)）。形式の壊れたパラメーターや深くネストしたパラメーターは 400（[クエリ文字列とボディ](requests.md#query-strings-and-bodies)） |
 | 例外時の完全なバックトレース | クラス、メッセージ、リクエスト行、テンプレート名と行 — Spinel はバックトレースを公開していない |
 | Rack、そのミドルウェア、`Gemfile` の任意の gem | Rack 互換性はない。小さな固定のミドルウェア群。Spinel 自身の `spin-index` で、その Ruby サブセットでコンパイルできるものに限られる |
-| minitest / RSpec | `Cybertrain::Test` — リフレクションに基づくランナーは AOT では動かない |
+| minitest / RSpec | Rails 流のテストクラス（`ActiveSupport::TestCase`、`ActionDispatch::IntegrationTest`、`ViewComponent::TestCase`）とフィクスチャ。`spin run gen` がそれらを 1 つのプログラムに書き換え、`cybertrain test` がコンパイルして実行する。リフレクションに基づくランナーは AOT では動かない（[アプリをテストする](testing.md)） |
 | `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形に加えてサインアップのページを書き出す。パスワードには PBKDF2-HMAC-SHA256 を使う（bcrypt は C ライブラリを必要とし、macOS の `String#crypt` には bcrypt がない）。パスワードリセット、確認、ロックアウト、ログインしたままにする機能も、Devise が加えるように生成される（[認証](authentication.md)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment` は 5 つの `cover_*` カラムとモデルのメソッドを書き出す。ファイルはローカルディスクの `storage/uploads/` 以下に置かれ、`send_blob` で配信される。フィールドごとに 1 つで、バリアントやダイレクトアップロードはない（[カバー画像を追加する](tutorial.md#attachments)） |
 | `skip_before_action :x` | 名前付きの before コールバックについては同じ（ブロックのコールバックにはスキップする名前がない）。`skip_after_action` はない |
 | `resource :session` | `SessionsController` への同じ 6 つのルート。その下へのネストはない |
 | `get "/x"` の後に `post "/x"` | どちらも問題ない：2 つ目のルートから導かれる名前は使用済みなので、Rails と同じく名前なしになる。`as:` の重複は引き続きエラー |
-| `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport に同梱のタイムゾーンデータ | `Cybertrain::TimeZone.find("Asia/Tokyo")` はシステムの TZif ファイル（`/usr/share/zoneinfo`、または `TZDIR`）を読み、Integer のエポック秒を変換する（`utc_offset_at`、`utc_to_local`、`local_to_utc`）。リクエストごとの `Time.zone` や `l(time, zone:)` はまだない（[タイムゾーン](configuration.md#time-zones)） |
+| `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport に同梱のタイムゾーンデータ | `Cybertrain::TimeZone.find("Asia/Tokyo")` はシステムの TZif ファイル（`/usr/share/zoneinfo`、または `TZDIR`）を読み、Integer のエポック秒を変換する（`utc_offset_at`、`utc_to_local`、`local_to_utc`）。`c.time_zone` がアプリケーション全体の `Time.zone` を決め、`in_time_zone` は壁時計の値を持つ小さな値を返し、Time は UTC の瞬間のまま（TimeWithZone はなく、`time.hour` は UTC）（[タイムゾーン](configuration.md#time-zones)） |
 | `Net::HTTP`、Faraday | Webhook や API には `Cybertrain::HttpClient`：すべての待ちに上限があり、公開されていない宛先はデフォルトで拒否され、リダイレクトは求められたときだけ、ストリーミングと gzip のレスポンス、Server-Sent Events のパーサーがあり、keep-alive はない（[外向きの HTTP](external-services.md#outbound-http) を参照）。Spinel の `Net::HTTP` は、相手が止まるとサーバー全体を止めてしまう |
 | Action Mailer（`deliver_later`、メーラークラス、ビュー） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` はプレーンテキスト、またはパーシャルからレンダーした HTML の部分（`Views.render_mail`）を持つ `multipart/alternative` を SMTP で送る（STARTTLS、暗黙の TLS、またはループバックへの平文。AUTH PLAIN。すべての待ちに上限がある）。`Mailer.deliver_later` は組み込みのジョブから送る。メーラーは `app/mailers` のモジュールで、そのメソッドは `Cybertrain::MailMessage` を返す（`deliver_later`、`deliver_now`）。生成される `PasswordsMailer` がその例。添付ファイルはない（[メールを送る](external-services.md#sending-e-mail)を参照） |
 | Active Job、`perform_later`、`solid_queue`、定期タスク、Mission Control | `app/jobs` のジョブクラス（`< Cybertrain::Job::Base`、JSON の値の Hash を受け取る `perform(args)`、`perform_later`、`retry_on`、`discard_on`、キー付きの `limits_concurrency`）、短い形の `Job.handle(kind)`。タイムゾーンとデータベースに保存される時刻表を持つ `Scheduler.every` と `Scheduler.cron`。ジョブページ（ルートの `jobs_page`）と `./<app> jobs`。サーバーか `./<app> worker` のプロセスで、プロセスあたり `job_threads` 本のスレッド。少なくとも 1 回の配信（[バックグラウンド処理](background-and-operations.md#background-work)） |

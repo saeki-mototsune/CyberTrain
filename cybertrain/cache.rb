@@ -92,14 +92,6 @@ module Cybertrain
     # Job's and Lease's).
     @installed_generation = -1
 
-    # The clock Cache.now reads: the system's until a test injects one.
-    # Made in a method (NOTES rule 82).
-    def self.system_clock
-      -> { Time.now.to_i }
-    end
-
-    @clock = system_clock
-
     # Creates the table if it is missing. Every other method calls it once
     # per connected database; call it yourself only to create the table
     # ahead of time.
@@ -120,24 +112,12 @@ module Cybertrain
       nil
     end
 
-    # The current time as the cache sees it: the injected clock's
-    # ({Cache.clock=}), `Time.now.to_i` by default.
+    # The current time as the cache sees it: {Clock.now} in epoch seconds,
+    # so a test moves it with `travel_to` / `travel` instead of sleeping.
     # @return [Integer] epoch seconds
     # @api public
     def self.now
-      @clock.call
-    end
-
-    # Replaces the clock {Cache.now} reads, so a test can move time
-    # instead of sleeping; `-> { Time.now.to_i }` restores the system's.
-    # @example
-    #   CLOCK = [1000]
-    #   Cybertrain::Cache.clock = -> { CLOCK[0] }
-    # @param clock [Proc] takes no arguments, answers epoch seconds
-    # @return [Proc]
-    # @api public
-    def self.clock=(clock)
-      @clock = clock
+      Clock.now.to_i
     end
 
     # The value stored under `key`, or the block's value, which is then

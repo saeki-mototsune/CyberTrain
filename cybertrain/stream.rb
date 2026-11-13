@@ -74,7 +74,7 @@ module Cybertrain
       raise ArgumentError, "Stream.broadcast: invalid stream name #{stream.inspect}" unless Stream.valid_name?(stream)
 
       ensure_installed
-      binds = Cast.binds(stream, payload.to_s, Time.now.to_i)
+      binds = Cast.binds(stream, payload.to_s, Clock.now.to_i)
       id = 0
       DB.with do |c|
         c.execute("INSERT INTO cybertrain_messages (stream, payload, created_at) VALUES (?, ?, ?)", binds)

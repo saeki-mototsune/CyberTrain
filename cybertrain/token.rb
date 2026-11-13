@@ -18,6 +18,7 @@
 # Code inside Cybertrain::Template that names `Token` means the template
 # lexer's (cybertrain/template/lexer.rb); write `Cybertrain::Token` there.
 require "cybertrain/crypto"
+require "cybertrain/clock"
 require "cybertrain/config"
 
 module Cybertrain
@@ -51,7 +52,7 @@ module Cybertrain
     # @raise [ArgumentError] for a purpose, id or lifetime the token could
     #   not carry, or when `Cybertrain.config.secret_key_base` is empty
     # @api public
-    def self.issue(purpose, id, expires_in, bound_to, now = Time.now.to_i)
+    def self.issue(purpose, id, expires_in, bound_to, now = Clock.now.to_i)
       label = purpose.to_s
       unless Token.purpose_ok?(label)
         message = "the token purpose must be non-empty and contain no \":\""
@@ -107,7 +108,7 @@ module Cybertrain
     # @return [Boolean]
     # @raise [ArgumentError] when `Cybertrain.config.secret_key_base` is empty
     # @api public
-    def self.valid?(token, purpose, bound_to, now = Time.now.to_i)
+    def self.valid?(token, purpose, bound_to, now = Clock.now.to_i)
       label = purpose.to_s
       fields = Token.token_fields(token)
       return false if fields.empty?
