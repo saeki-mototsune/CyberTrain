@@ -120,11 +120,45 @@ module Cybertrain
       # else reaches Worker.claim_safely, which logs it, and without this the
       # row would be heartbeated for the life of the process and never
       # recovered.
+      # The job's log Scope ({job_scope}) is this thread's while it runs and
+      # its outcome is written; the one found before is back in the `ensure`
+      # (rule 103's save-yield-ensure, no rescue), so a job thread starts
+      # the next job from its own Scope, never with this job's tags.
       def self.finish_in_flight(run)
+        saved = Logger.current_scope
         in_flight_add(run.run_id, run.run_attempts)
+        Logger.swap_scope(job_scope(run))
         finish(run)
       ensure
+        Logger.swap_scope(saved)
         in_flight_remove(run.run_id, run.run_attempts)
+      end
+
+      # The log Scope of one attempt (spec section 12.3): the tag
+      # `"<kind> <id>"`, then the id of the request that enqueued it when
+      # it was enqueued in one and {Config#log_tags} includes :request_id;
+      # `where` is the kind; the context holds `job.id` and `job.attempt`.
+      # The request id is the Scope's request id whether or not it is
+      # shown, so a job this one enqueues records it too.
+      # @param run [Run]
+      # @return [Logger::Scope]
+      # @api private
+      def self.job_scope(run)
+        id = run.run_id
+        attempts = run.run_attempts
+        request_id = run.run_request_id
+        kind = "#{run.run_kind}"
+        verb = ""
+        path = ""
+        tags = Array.new(0) { "" }
+        tags << "#{kind} #{id}"
+        id_tag = -1
+        if !request_id.empty? && Cybertrain.config.log_tags.include?(:request_id)
+          tags << request_id
+          id_tag = 1
+        end
+        context = { "job.id" => id.to_s, "job.attempt" => attempts.to_s }
+        Logger::Scope.new(request_id, verb, path, kind, tags, id_tag, context)
       end
 
       # {Job.work_due}.

@@ -504,7 +504,7 @@ test "install! adds claimed_by and heartbeat_at to a table made before them" do
   # here one of the two columns is already there.
   DB.with { |c| c.execute("ALTER TABLE cybertrain_jobs ADD COLUMN claimed_by TEXT") }
   Job.install!
-  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key", job_columns
+  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key,request_id", job_columns
   Job.install!
   # A probe job, claimed by work_one at 2000, calls recover!(2001) from its
   # handler: the old release's running row (no heartbeat) is requeued at
@@ -885,7 +885,7 @@ test "an upgrade adds the column and the index to an existing table" do
   refute job_columns.include?("concurrency_key")
   assert_equal "index_cybertrain_jobs_on_state_and_run_at", job_indexes
   Job.install!
-  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key", job_columns
+  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key,request_id", job_columns
   assert_equal "cybertrain_jobs_state_kind_key,index_cybertrain_jobs_on_state_and_run_at", job_indexes
   assert_equal "state,kind,concurrency_key", index_column_list("cybertrain_jobs_state_kind_key")
   # The old row carries "" until the backfill keys it.
@@ -896,7 +896,7 @@ test "an upgrade adds the column and the index to an existing table" do
   # A table made now has the same columns and indexes.
   fresh_db
   Job.install!
-  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key", job_columns
+  assert_equal "id,kind,payload,run_at,attempts,last_error,state,created_at,updated_at,claimed_by,heartbeat_at,concurrency_key,request_id", job_columns
   assert_equal "cybertrain_jobs_state_kind_key,index_cybertrain_jobs_on_state_and_run_at", job_indexes
 end
 

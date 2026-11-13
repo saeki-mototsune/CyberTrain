@@ -530,12 +530,42 @@ module Cybertrain
       0
     end
 
-    # Runs one task -- calls its block, or enqueues its `job:` -- with its
-    # rescue in a plain method that reads the Proc from the Task rather
-    # than yielding (NOTES rules 32/45/69); naming JSON::NestingError first
-    # (rule 61). False when it raised. Each run starts at the default
-    # locale, so a locale one task set does not stay for the next.
+    # Runs one task (run_task_body) with the task's log Scope
+    # ({task_scope}) as this thread's, and puts back the one found before
+    # in an `ensure` (rule 103's save-yield-ensure, no rescue): its lines,
+    # and the failure line, carry `[schedule:<name>]`. False when it raised.
     def self.run_task(task)
+      saved = Logger.current_scope
+      Logger.swap_scope(task_scope(task))
+      value = run_task_body(task)
+      value
+    ensure
+      Logger.swap_scope(saved)
+    end
+
+    # The log Scope of a scheduled task's run (spec section 12.3): the tag
+    # and `where` `schedule:<name>`, no request id, no context.
+    # @param task [Task]
+    # @return [Logger::Scope]
+    # @api private
+    def self.task_scope(task)
+      where = "schedule:#{task.task_name}"
+      id = ""
+      verb = ""
+      path = ""
+      tags = Array.new(0) { "" }
+      tags << where
+      context = { "" => "" }
+      context.delete("")
+      Logger::Scope.new(id, verb, path, where, tags, -1, context)
+    end
+
+    # Calls the task's block, or enqueues its `job:`, with its rescue in a
+    # plain method that reads the Proc from the Task rather than yielding
+    # (NOTES rules 32/45/69); naming JSON::NestingError first (rule 61).
+    # False when it raised. Each run starts at the default locale, so a
+    # locale one task set does not stay for the next.
+    def self.run_task_body(task)
       I18n.locale = nil
       kind = task.task_job_kind
       if kind.empty?

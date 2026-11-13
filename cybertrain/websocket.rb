@@ -792,12 +792,33 @@ module Cybertrain
     # Exception, in a method that takes no block (NOTES rules 32/45).
     # The connection the thread had open is closed before the thread ends,
     # so the restart does not leave a second subscriber on the server.
+    # The feed's log Scope ({feed_scope}) is swapped in first and stays
+    # for the life of the thread (nothing else runs on it): every line of
+    # the feed and of its callbacks carries `[feed:<name>]`.
     def self.run_feed_logged(sub, generation)
+      Logger.swap_scope(feed_scope(sub))
       run_feed(sub, generation)
     rescue Exception => e
       Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} thread ended: #{e.class.name}: #{e.message}")
       sub.sub_drop_client
       nil
+    end
+
+    # The log Scope of a feed thread (spec section 12.3): the tag and
+    # `where` `feed:<name>`, no request id, no context.
+    # @param sub [Subscription]
+    # @return [Logger::Scope]
+    # @api private
+    def self.feed_scope(sub)
+      where = "feed:#{sub.sub_name}"
+      id = ""
+      verb = ""
+      path = ""
+      tags = Array.new(0) { "" }
+      tags << where
+      context = { "" => "" }
+      context.delete("")
+      Logger::Scope.new(id, verb, path, where, tags, -1, context)
     end
 
     def self.run_feed(sub, generation)

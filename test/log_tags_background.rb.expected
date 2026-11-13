@@ -1,0 +1,12 @@
+ok   a job enqueued in a request records its id, and the job's lines carry both tags
+ok   a failing job, then a job enqueued outside a request
+ok   two jobs on one reused thread: the second starts from its own Scope, nothing of the first
+ok   a block job's lines carry its kind and id
+ok   an older cybertrain_jobs gets request_id on first use
+ok   log_tags without :request_id leaves the job's request tag off
+ok   a JSON job line names the request id apart from the job's tag
+ok   a scheduled task's lines carry [schedule:<name>]
+ok   a scheduled task inside a request's Scope puts that Scope back
+ok   a job a scheduled task enqueues records no request id
+ok   a feed thread's lines carry [feed:<name>]
+11 tests, 39 assertions, 0 failures

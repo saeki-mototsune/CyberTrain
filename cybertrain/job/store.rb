@@ -27,7 +27,9 @@ module Cybertrain
       # heartbeat_at the last time that process said the job still runs
       # ({Job.heartbeat!}); both are NULL until the first claim.
       # concurrency_key is the row's {Job.concurrency_key_for}, written at
-      # enqueue; "" for a kind with no key. A table made before these columns
+      # enqueue; "" for a kind with no key. request_id is the id of the
+      # request the job was enqueued in (the enqueuing thread's log Scope),
+      # "" outside one; the job's log lines carry it. A table made before these columns
       # existed gets them from install! (ALTER_COLUMNS), last, so an upgraded
       # table lists the same columns in the same order as a new one.
       TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_jobs (" \
@@ -42,7 +44,8 @@ module Cybertrain
                   "updated_at INTEGER NOT NULL, " \
                   "claimed_by TEXT, " \
                   "heartbeat_at INTEGER, " \
-                  "concurrency_key TEXT NOT NULL DEFAULT ''); " \
+                  "concurrency_key TEXT NOT NULL DEFAULT '', " \
+                  "request_id TEXT NOT NULL DEFAULT ''); " \
                   "CREATE INDEX IF NOT EXISTS index_cybertrain_jobs_on_state_and_run_at " \
                   "ON cybertrain_jobs (state, run_at);"
 
@@ -51,7 +54,8 @@ module Cybertrain
       ALTER_COLUMNS = [
         ["claimed_by", "ALTER TABLE cybertrain_jobs ADD COLUMN claimed_by TEXT"],
         ["heartbeat_at", "ALTER TABLE cybertrain_jobs ADD COLUMN heartbeat_at INTEGER"],
-        ["concurrency_key", "ALTER TABLE cybertrain_jobs ADD COLUMN concurrency_key TEXT NOT NULL DEFAULT ''"]
+        ["concurrency_key", "ALTER TABLE cybertrain_jobs ADD COLUMN concurrency_key TEXT NOT NULL DEFAULT ''"],
+        ["request_id", "ALTER TABLE cybertrain_jobs ADD COLUMN request_id TEXT NOT NULL DEFAULT ''"]
       ].freeze
 
       # The index the claim's per-key count and the backfill read, created
@@ -69,15 +73,16 @@ module Cybertrain
       @failing_outcome_writes = 0
 
       # Inserts a `queued` row and returns its id ({Job.enqueue}, which has
-      # checked the kind and derived the key).
-      def self.insert(kind, payload, run_at, key)
+      # checked the kind and derived the key, and passes the enqueuing
+      # request's id, "" outside a request).
+      def self.insert(kind, payload, run_at, key, request_id)
         ensure_installed
         now = Clock.now.to_i
-        binds = Cast.binds(kind, payload, run_at, now, now, key)
+        binds = Cast.binds(kind, payload, run_at, now, now, key, request_id)
         id = 0
         DB.with do |c|
-          c.execute("INSERT INTO cybertrain_jobs (kind, payload, run_at, created_at, updated_at, concurrency_key) " \
-                    "VALUES (?, ?, ?, ?, ?, ?)", binds)
+          c.execute("INSERT INTO cybertrain_jobs (kind, payload, run_at, created_at, updated_at, concurrency_key, request_id) " \
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)", binds)
           id = c.last_insert_id
         end
         id
@@ -399,7 +404,7 @@ module Cybertrain
       # each, after run_at's) and then each (kind, key) of `pairs` (two bound
       # `?`s each).
       def self.claim_sql(excluded, pairs)
-        sql = +"SELECT id, kind, payload, attempts FROM cybertrain_jobs WHERE state = 'queued' AND run_at <= ?"
+        sql = +"SELECT id, kind, payload, attempts, request_id FROM cybertrain_jobs WHERE state = 'queued' AND run_at <= ?"
         unless excluded.empty?
           sql << " AND kind NOT IN ("
           i = 0
@@ -436,12 +441,13 @@ module Cybertrain
         # write lock (three BEGIN IMMEDIATEs a second per process otherwise,
         # each able to hold an OS worker in the busy handler while another
         # process writes).
-        return Run.new(-1, "", "", 0, label, now) unless due_exists?(now)
+        return Run.new(-1, "", "", 0, label, now, "") unless due_exists?(now)
 
         id = -1
         kind = ""
         payload = ""
         attempts = 0
+        request_id = ""
         # The claim is its own short BEGIN IMMEDIATE transaction: the SELECT
         # and the UPDATE run under the write lock, and the `state = 'queued'`
         # guard with the changes check refuses a row another claimer took.
@@ -472,11 +478,12 @@ module Cybertrain
                 kind = Cast.str(row["kind"])
                 payload = Cast.str(row["payload"])
                 attempts = Cast.int(row["attempts"]) + 1
+                request_id = Cast.str(row["request_id"])
               end
             end
           end
         end
-        Run.new(id, kind, payload, attempts, label, now)
+        Run.new(id, kind, payload, attempts, label, now, request_id)
       end
 
       # Claims the queued row with the lowest id above `floor`, of `kind`
@@ -493,9 +500,10 @@ module Cybertrain
         found_kind = ""
         payload = ""
         attempts = 0
+        request_id = ""
         DB.transaction(immediate: true) do |c|
           if Job.claim_open?(ticket)
-            sql = +"SELECT id, kind, payload, attempts FROM cybertrain_jobs WHERE state = 'queued' AND id > ? " \
+            sql = +"SELECT id, kind, payload, attempts, request_id FROM cybertrain_jobs WHERE state = 'queued' AND id > ? " \
                    "AND (attempts = 0 OR run_at <= ?)"
             binds = Cast.binds(floor, now)
             unless kind.empty?
@@ -515,11 +523,12 @@ module Cybertrain
                 found_kind = Cast.str(row["kind"])
                 payload = Cast.str(row["payload"])
                 attempts = Cast.int(row["attempts"]) + 1
+                request_id = Cast.str(row["request_id"])
               end
             end
           end
         end
-        Run.new(id, found_kind, payload, attempts, label, now)
+        Run.new(id, found_kind, payload, attempts, label, now, request_id)
       end
 
       # Whether some queued row is due at `now` (a plain read).
