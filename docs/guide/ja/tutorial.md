@@ -1,5 +1,5 @@
 ---
-source_sha256: ccb62b94c7b9aa57d1504b3b470a5f349e42eb705f7be7008e664d0d791667de
+source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -691,7 +691,7 @@ end
 > end
 > ```
 >
-> cron 式は `CYBERTRAIN_SCHEDULER_TZ`（デフォルトは UTC）のタイムゾーンで読まれ、スケジュールを実行するのは一度に 1 つのプロセスだけです（[定期タスク](background-and-operations.md#scheduled-tasks)）。
+> cron 式は `CYBERTRAIN_SCHEDULER_TZ`（デフォルトはアプリケーションの `time_zone`、設定しなければ UTC）のタイムゾーンで読まれ、スケジュールを実行するのは一度に 1 つのプロセスだけです（[定期タスク](background-and-operations.md#scheduled-tasks)）。
 
 <!-- step 15 #json stage: 自分で書く · `app/controllers/` -->
 ## JSON で応答する
@@ -766,7 +766,11 @@ two:
   end
 ```
 
-`comments.yml` の行は `article: one` に属します。Rails と同じく、記事を指すフィクスチャがあるとその記事は削除できません。「should destroy article」が通るのは、[ステップ 08](#scaffold-comment) で `has_many :comments, dependent: :destroy` を宣言したからです。
+`comments.yml` の行は `article: one` に属します。Rails と同じく、記事を指すフィクスチャがあるとその記事は削除できません。そのため、`Article` が `has_many :comments, dependent: :destroy` を宣言していなければ（[ステップ 08](#scaffold-comment) の最後の囲み）、「should destroy article」は外部キーで失敗します。まだなら、examples/blog と同じく `app/models/article.rb` に加えてください：
+
+```ruby app/models/article.rb（抜粋）
+  has_many :comments, dependent: :destroy
+```
 
 ### 記事の下のコメント
 
@@ -909,7 +913,16 @@ class ArticlesController < ApplicationController
   end
 ```
 
-コメントのテストでも、削除のところや、テストが書き込むところで同じようにします。これから生成するスキャフォールドは自分でサインインします。
+コメントのテストには `setup` がなく、4 つのテストのどれもがいまはサインインしたユーザーを必要とします。`setup` を加えます：
+
+```ruby test/controllers/comments_controller_test.rb（抜粋）
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+これから生成するスキャフォールドは自分でサインインします。
 
 > [!NOTE]
 > ジェネレーター自身のテスト（`test/controllers/sessions_controller_test.rb`、`registrations_controller_test.rb`、`passwords_controller_test.rb`、`accounts_controller_test.rb`、`test/integration/remember_me_test.rb`、`lockout_test.rb`、`admin_test.rb`。[テスト](authentication.md#testing)）は `cybertrain test` でほかのテストと一緒に実行され、`travel_to` で時計を動かして 15 日目と 30 日目を確かめます。サインインの試行は Rails のジェネレーターと同じく、クライアントのアドレスごとに 3 分間に 10 回までに制限され、アプリのデータベースで数えるので、すべてのプロセスがまとめて数えます。リバースプロキシの後ろでは[信頼するプロキシ](requests.md#rate-limiting-and-the-client-address)を設定してください。`examples/blog` はこのステップを `--invite-only` で行い、`/admin` のページを管理者だけのものにしています。

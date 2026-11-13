@@ -1,5 +1,5 @@
 ---
-source_sha256: 635312e7f45c6813a305b32c77a30beb91a7fe05c4b4c3d139920dc3e510ae0f
+source_sha256: f3bcfd3ed3b2e1d10465e077b4d4112cf657c0d69aa82e1f28e1f43e6554c840
 ---
 # 测试应用
 
@@ -86,9 +86,8 @@ cybertrain test -n /article/                            # 名称包含 "article"
 ```text 输出 — cybertrain test
 test/controllers/articles_controller_test.rb
   ok   ArticlesControllerTest: shows an article
-  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:13)
-         Expected: 1
-           Actual: 0
+  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:14)
+         Expected change of 1, got 0 (from 2 to 2)
 test/models/article_test.rb
   ok   ArticleTest: title must be present
 
@@ -97,7 +96,7 @@ test/models/article_test.rb
 
 每个文件一个标题，每个测试一行，最后是合计，不显示耗时。给出的行号是测试的 `test "..."` 所在的行：编译后的程序没有回溯，所以不知道失败的断言在哪一行。有测试失败时退出状态为 1，否则为 0，参数不被接受时为 2。
 
-**一次修改的代价。** 文件参数和 `-n` 选择运行哪些测试，而不是编译什么：程序总是包含所有测试，所以改变筛选会复用二进制文件；而修改任何一个测试（或构建程序所用的任何其他东西）都会先重新构建 `bin/gen`，再重新编译整个程序。以下是 2026-11-12 和 2026-11-13 在一台共享的 4 vCPU 云机器上测得的数字（你自己的机器会不同）：examples/blog 的 21 个文件、149 个测试第一次编译用了约 527 秒（第一次运行总共 656 秒，二进制文件 10.2 MB），不做改动再运行一次约 1 秒就开始；一个只有几个测试文件的小应用编译用了约 3 分钟、约 2.2 GB 内存，生成 8 MB 的二进制文件。先写好几个测试再一起运行；专注于某一个测试时，缩小的是运行范围，而不是构建。
+**一次修改的代价。** 文件参数和 `-n` 选择运行哪些测试，而不是编译什么：程序总是包含所有测试，所以改变筛选会复用二进制文件；而修改任何一个测试（或构建程序所用的任何其他东西）都会先重新构建 `bin/gen`，再重新编译整个程序。以下是 2026-11-12 和 2026-11-13 在一台共享的 4 vCPU 云机器上测得的数字（你自己的机器会不同）：examples/blog 的 21 个文件、149 个测试第一次编译用了约 527 秒（第一次运行总共 656 秒，二进制文件 10.2 MB），之后不做改动运行 `cybertrain test test/controllers`，复用了二进制文件，约 1 秒就开始（博客自己的运行，2026-11-13）；博客的应用加上三个测试文件（八个测试）编译用了 162 到 233 秒，内存峰值约 2.2 GB，生成 8.1 MB 的二进制文件（2026-11-12）。先写好几个测试再一起运行；专注于某一个测试时，缩小的是运行范围，而不是构建。
 
 当两个测试文件或支持文件定义了同一个顶层方法或常量时（在一个程序中它们会变成一个：把共享的辅助方法移到 `test/support/`，或移进类里），`gen/tests.rb` 会被拒绝，`cybertrain test` 不编译，给出原因并以 1 退出；[gen 在测试类中拒绝的写法](#what-gen-refuses-in-a-test-class)中的其他情况也一样。
 
@@ -134,7 +133,7 @@ two:
 
 ## 集成测试
 
-`ActionDispatch::IntegrationTest` 在进程内向已启动的应用发送请求，不使用套接字，每个测试都有一个新的 Cookie 罐：
+`ActionDispatch::IntegrationTest` 在进程内向已启动的应用发送请求，不使用套接字，每个测试都有一个新的 cookie 存储：
 
 - `get`、`post`、`patch`、`put`、`delete`、`head`（路径、`params: {}`、`headers: {}`），写法与 Rails 相同。每个都返回 `Cybertrain::Response`（Rails 返回状态码），它也是 `response`（`response.body`、`response.status`、`response.header(name)`）。
 - `params:` 接受嵌套的 Hash，按表单的方式发送（`article[title]=New`）；值可以是 String、Symbol、数字、`true` / `false`、nil、Date 或 Time（以列读回时的文本发送），所以脚手架测试可以原样发送记录的值。Array 会被拒绝。
@@ -161,7 +160,7 @@ end
 
 ## 断言
 
-`assert`、`assert_not`（`refute`）、`assert_equal`、`assert_not_equal`、`assert_nil`、`assert_not_nil`、`assert_includes`、`assert_not_includes`、`assert_empty`、`assert_not_empty`、`assert_match` / `assert_no_match`（Regexp，或作为子串的 String）、`assert_in_delta(expected, actual, delta = 0.001)`、`assert_nothing_raised { }` 和 `flunk`，与 Minitest 相同，失败文本也是 Minitest 的（两行的 `Expected: 1` 和 `  Actual: 0`）。块形式接受一个按位置传入的 lambda：
+`assert`、`assert_not`（`refute`）、`assert_equal`、`assert_not_equal`、`assert_nil`、`assert_not_nil`、`assert_includes`、`assert_not_includes`、`assert_empty`、`assert_not_empty`、`assert_match` / `assert_no_match`（Regexp，或作为子串的 String）、`assert_in_delta(expected, actual, delta = 0.001)`、`assert_nothing_raised { }` 和 `flunk`，与 Minitest 相同。`assert_equal` 以 Minitest 的文本失败（两行的 `Expected: 1` 和 `  Actual: 0`），新增的断言也是如此；`assert_includes`、`assert_nil` 和 `flunk` 保留各自较短的文本。`assert` 和 `refute` 的第二个参数是消息。块形式接受一个按位置传入的 lambda：
 
 ```ruby
 assert_difference -> { Article.count }, 1 do
@@ -176,7 +175,7 @@ assert_includes message, "999"
 
 - `assert_raises` 接受一个类（和 Minitest 一样，子类也匹配）、作为 String 的类名的一部分（`assert_raises("RecordNotFound")`），或什么都不传（任何 StandardError），并返回异常的**消息**，而不是异常：在 Rails 写 `error = assert_raises(X) { }` 再用 `error.message` 的地方，请直接使用它返回的 String。在 Spinel 下一个方法只返回一种类型，而测试读取的正是消息。
 - 块断言返回 nil，而不是块的值。
-- 不提供：`assert_predicate`（它需要计算出的 `send`：请写 `assert article.valid?`）、`assert_difference` 中的 String 表达式（需要 `eval`）、表达式的 Array 或 Hash，以及消息参数。
+- 不提供：`assert_predicate`（它需要计算出的 `send`：请写 `assert article.valid?`）、`assert_difference` 中的 String 表达式（需要 `eval`）、表达式的 Array 或 Hash，以及其他断言的消息参数。
 
 ## 时间旅行
 
@@ -288,7 +287,7 @@ end
 - `perform_enqueued_jobs { }` 是 Rails 的内联形式：运行块，然后运行块中排队的每个作业以及它们再排队的作业，不管其 `run_at`，并返回运行了多少个。抛出异常的作业会让测试带着它的类和错误失败，并且不会重试；应用丢弃的作业（`discard_on`）算作已运行。
 - 不带块的 `perform_enqueued_jobs(now = Time.current)` 逐个运行在 `now` 到期的作业，直到没有到期的为止。安排在以后的重试会留在队列中：用 `travel` 越过它，或传入更晚的 `now`。两种形式都会在 10,000 个作业之后让测试失败（一个不断把自己重新排队的作业）。
 - `clear_enqueued_jobs` 删除队列中的作业；`WelcomeJob.perform_now(args)` 直接运行一个作业，异常会传到测试。
-- 计划任务用 `Cybertrain::Scheduler.run_due(Time.current)` 一次运行一轮。
+- 计划任务用 `Cybertrain::Scheduler.run_due(Time.current.to_i)` （纪元秒数） 一次运行一轮。
 
 ## 测试出站调用
 
@@ -372,9 +371,9 @@ end
 
 ## gen 在测试类中拒绝的写法
 
-gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it`（`[A-Za-z0-9_]` 之外的每个字符都变成 `_`，和 Rails 一样，`-n` 也接受这个名称），`setup do` 和 `teardown do` 块变成调用 `super` 的 `setup` 和 `teardown` 方法。凡是不能原样搬过去的内容，都会让 `spin run gen` 带着 `路径:行:` 和原因停止，绝不会悄悄生成错误的副本或丢掉测试：
+gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it`（`[A-Za-z0-9_]` 之外的每个字符都变成 `_`，`-n` 接受这个名称），`setup do` 和 `teardown do` 块变成调用 `super` 的 `setup` 和 `teardown` 方法。凡是不能原样搬过去的内容，都会让 `spin run gen` 带着 `路径:行:` 和原因停止，绝不会悄悄生成错误的副本或丢掉测试：
 
-- 不是纯字符串字面量的测试名（插值、`\n` 之类的转义：请直接写出字符本身）；
+- 不是纯字符串字面量的测试名（插值），或带有 gen 不读取的转义的测试名（`\u`、`\x`、`\c`、`\C`、`\M` 或八进制：请直接写出字符本身；`\n`、`\t` 和 `\"` 会被读取）；
 - 同一个类中方法名重合的两个测试，包括 `def test_x`；
 - 同一个类中同时有 `setup do` 和 `def setup`（`teardown` 同理）；
 - `setup { }` 和 `setup :name`（请写 `setup do ... end`），以及 `test`、`setup` 或 `teardown` 上的块参数；
@@ -382,6 +381,8 @@ gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it
 - 嵌套在另一个类或模块中的测试类、打开了两次的测试类，以及重新打开的 `ActiveSupport::TestCase` 中的 `setup do`（请写一个带 `setup do` 的应用基类并继承它）；
 - gen 无法放进类体的 `test`、`setup` 或 `teardown` 行（在条件、循环、字符串或 heredoc 中）、不以 `end` 结尾的单行形式、后面还有代码的 `end`，以及混用制表符和空格的缩进；
 - 参数不是字符串字面量的 `require_relative`。
+
+这样的拒绝会让 `spin run gen` 本身停止，于是这个应用中所有运行 gen 的东西也都停下：`cybertrain test`、`cybertrain db migrate`、开发服务器的重新构建和 `cybertrain build`。要继续，请修正它指出的那一行，或者在修好之前把这个测试文件移出 `test/`。
 
 `cybertrain test` 还会拒绝（同时 `spin run gen` 继续运行）：`test/test_helper.rb` 或 `test/support/` 中的顶层 `test`、`setup` 或 `teardown`（它们永远不会运行）、顶层的 `def render_inline`（它会替换框架的那个）、`assert_select ... do` 和 `render_inline ... do`，以及[运行测试](#running-the-tests)中所说的重复的顶层辅助方法。类形式的文件只能通过 `cybertrain test` 运行：在 `spin test` 下，它的类体会抛出 “class-form tests run with `cybertrain test FILE`”。
 
@@ -410,7 +411,7 @@ end
 Cybertrain::Test.run!
 ```
 
-顶层的 `setup do` 和 `teardown do` 在其文件的每个测试前后运行。`cybertrain spin test` 把每个 `test/*.rb` 编译成单独的程序，并把输出与 `test/<name>.rb.expected` 比较；在那里既不清空表也没有夹具（它们需要 gen 的表清单），由 `Cybertrain::Test.run!` 运行该文件的测试。在 `cybertrain test` 中，文件的测试在清空和加载夹具之后与其他测试一起运行，`run!` 什么也不做。在 `spin test` 下没有东西会为这个文件启动应用，所以这样的文件要像 0.4 的支持文件（`AppTest.boot`、`BlogTest.boot`）那样自己启动，并且不使用夹具。`Cybertrain::Test::Client` 带着 Cookie 罐驱动应用，包括 CSRF（`client.get`、`client.post(path, fields, headers)`、`client.follow_redirect!`、`client.response`，以及两个参数的 `assert_response res, :ok` 和 `assert_redirected_to res, path`）。涉及 SQLite 的测试的快照来自编译后的二进制文件：在框架的检出中用 `script/regen-snapshot test/<name>.rb`，或者 `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`。
+顶层的 `setup do` 和 `teardown do` 在其文件的每个测试前后运行。`cybertrain spin test` 把每个 `test/*.rb` 编译成单独的程序，并把输出与 `test/<name>.rb.expected` 比较；在那里既不清空表也没有夹具（它们需要 gen 的表清单），由 `Cybertrain::Test.run!` 运行该文件的测试。在 `cybertrain test` 中，文件的测试在清空和加载夹具之后与其他测试一起运行，`run!` 什么也不做。在 `spin test` 下没有东西会为这个文件启动应用，所以这样的文件要像 0.4 的支持文件（`AppTest.boot`、`BlogTest.boot`）那样自己启动，并且不使用夹具。`Cybertrain::Test::Client` 带着 cookie 存储驱动应用，包括 CSRF（`client.get`、`client.post(path, fields, headers)`、`client.follow_redirect!`、`client.response`，以及两个参数的 `assert_response res, :ok` 和 `assert_redirected_to res, path`）。涉及 SQLite 的测试的快照来自编译后的二进制文件：在框架的检出中用 `script/regen-snapshot test/<name>.rb`，或者 `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`。
 
 ## 从 0.4 升级
 

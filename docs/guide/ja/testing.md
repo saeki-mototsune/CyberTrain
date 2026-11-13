@@ -1,5 +1,5 @@
 ---
-source_sha256: 635312e7f45c6813a305b32c77a30beb91a7fe05c4b4c3d139920dc3e510ae0f
+source_sha256: f3bcfd3ed3b2e1d10465e077b4d4112cf657c0d69aa82e1f28e1f43e6554c840
 ---
 # アプリをテストする
 
@@ -86,9 +86,8 @@ cybertrain test -n /article/                            # 名前に "article" �
 ```text 出力 — cybertrain test
 test/controllers/articles_controller_test.rb
   ok   ArticlesControllerTest: shows an article
-  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:13)
-         Expected: 1
-           Actual: 0
+  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:14)
+         Expected change of 1, got 0 (from 2 to 2)
 test/models/article_test.rb
   ok   ArticleTest: title must be present
 
@@ -97,7 +96,7 @@ test/models/article_test.rb
 
 ファイルごとに見出し、テストごとに 1 行、最後に合計を出し、所要時間は出しません。示される行はテストの `test "..."` の行です：コンパイル済みのプログラムにはバックトレースがないので、失敗したアサーションの行はわかりません。終了ステータスは、失敗したテストがあれば 1、なければ 0、受け付けない引数には 2 です。
 
-**変更にかかる手間。** ファイルの引数と `-n` は、どのテストを実行するかを選ぶもので、何をコンパイルするかは変えません：プログラムは常にすべてのテストを含むので、絞り込みを変えてもバイナリはそのまま使われ、どれか 1 つのテスト（あるいはプログラムを作るほかの何か）を編集すると、先に `bin/gen` をビルドし直したうえで、プログラム全体をコンパイルし直します。2026-11-12 と 2026-11-13 に、共有の 4 vCPU のクラウドマシンで測った値です（手元のマシンでは違います）：examples/blog の 21 ファイル 149 テストは、初回のコンパイルに約 527 秒かかり（初回の実行全体で 656 秒、バイナリは 10.2 MB）、何も変えずにもう一度実行すると約 1 秒で始まりました。テストファイルが数個の小さなアプリケーションは、約 2.2 GB のメモリで約 3 分かけてコンパイルされ、8 MB のバイナリになりました。テストはいくつか書いてからまとめて実行し、1 つのテストに取り組む間は、ビルドではなく実行のほうを絞り込んでください。
+**変更にかかる手間。** ファイルの引数と `-n` は、どのテストを実行するかを選ぶもので、何をコンパイルするかは変えません。プログラムは常にすべてのテストを含むので、絞り込みを変えてもバイナリはそのまま使われます。一方、どれか 1 つのテスト（あるいはプログラムを作るほかの何か）を編集すると、先に `bin/gen` をビルドし直したうえで、プログラム全体をコンパイルし直します。2026-11-12 と 2026-11-13 に、共有の 4 vCPU のクラウドマシンで測った値です（手元のマシンでは違います）：examples/blog の 21 ファイル 149 テストは、初回のコンパイルに約 527 秒かかり（初回の実行全体で 656 秒、バイナリは 10.2 MB）、そのあと何も変えずに `cybertrain test test/controllers` を実行すると、バイナリをそのまま使って約 1 秒で始まりました（ブログ自身の実行、2026-11-13）。ブログのアプリケーションに 3 つのテストファイル（8 テスト）を入れたものは、最大約 2.2 GB のメモリで 162〜233 秒かけてコンパイルされ、8.1 MB のバイナリになりました（2026-11-12）。テストはいくつか書いてからまとめて実行し、1 つのテストに取り組む間は、ビルドではなく実行のほうを絞り込んでください。
 
 2 つのテストファイルやサポートファイルが同じトップレベルのメソッドや定数を定義していると（1 つのプログラムの中では 1 つになってしまいます：共有するヘルパーは `test/support/` か、クラスの中に移してください）、`gen/tests.rb` は拒否され、`cybertrain test` はコンパイルせずに理由を出して 1 で終わります。[テストクラスで gen が拒否するもの](#what-gen-refuses-in-a-test-class)のほかの場合も同じです。
 
@@ -128,13 +127,13 @@ two:
 - `id:` のない行には、ラベルに対する Rails の id が付きます（`ActiveRecord::FixtureSet.identify`）。そのため、ラベルの id は Rails のアプリケーションと同じです。`author: alice` は `author_id` を alice の id にします。
 - 日時は UTC です。行が省いた `created_at` と `updated_at` は、各テストの前にその行を挿入した時点の時計の時刻になります。
 - `articles(:one)` はその行の `Article.find` を返します。未知のラベルは `Cybertrain::Test::FixtureNotFound` を発生させます。1 回の呼び出しで 1 つのラベルです。
-- フィクスチャは gen の実行時に検査されますが、そのエラーで止まるのはテストの実行だけです：`spin run gen`（したがって、スキャフォールドのフィクスチャのほうが先にできる `cybertrain db migrate` も）は先に進み、`cybertrain test` が `test/fixtures/<table>.yml:<行>: ...` を出して 1 で終わります。
+- フィクスチャは gen の実行時に検査されますが、そのエラーで止まるのはテストの実行だけです：`spin run gen` は先に進みます。スキャフォールドはマイグレーションより先にフィクスチャを書くので、`cybertrain db migrate`（先に gen を実行します）も止まりません。そして`cybertrain test` が `test/fixtures/<table>.yml:<行>: ...` を出して 1 で終わります。
 - Rails と同じく、親を指すフィクスチャがあると、その親は削除できません：`comments.yml` に `article: one` があると、スキャフォールドの「should destroy article」は外部キーで失敗します。`has_many :comments, dependent: :destroy` を宣言するか、子のフィクスチャを別の行に向けるか（`article: two`）、何からも参照されていない行を削除してください。
 - 提供しないもの：`fixtures :articles`（どのファイルも読み込まれます）、`articles(:one, :two)`、ポリモーフィックなラベル（`commentable: one (Article)`。`_id` と `_type` のカラムを書いてください）、`has_and_belongs_to_many` のラベル、アンカーとエイリアス。
 
 ## 統合テスト
 
-`ActionDispatch::IntegrationTest` は起動したアプリケーションにプロセス内でリクエストを送ります。ソケットは使わず、クッキーの入れ物はテストごとに新しくなります：
+`ActionDispatch::IntegrationTest` は起動したアプリケーションにプロセス内でリクエストを送ります。ソケットは使わず、cookie jar はテストごとに新しくなります：
 
 - `get`、`post`、`patch`、`put`、`delete`、`head`（パス、`params: {}`、`headers: {}`）。書き方は Rails と同じです。どれも `Cybertrain::Response` を返し（Rails はステータスを返します）、それは `response` でもあります（`response.body`、`response.status`、`response.header(name)`）。
 - `params:` は入れ子の Hash を受け取り、フォームと同じ形で送ります（`article[title]=New`）。値は String、Symbol、数値、`true` / `false`、nil、Date、Time にでき（カラムが読み戻すテキストとして送られます）、スキャフォールドのテストはレコードの値をそのまま送れます。Array は拒否されます。
@@ -161,7 +160,7 @@ end
 
 ## アサーション
 
-`assert`、`assert_not`（`refute`）、`assert_equal`、`assert_not_equal`、`assert_nil`、`assert_not_nil`、`assert_includes`、`assert_not_includes`、`assert_empty`、`assert_not_empty`、`assert_match` / `assert_no_match`（Regexp か、部分文字列としての String）、`assert_in_delta(expected, actual, delta = 0.001)`、`assert_nothing_raised { }`、`flunk` が Minitest と同じくあり、失敗時のテキストも Minitest のもの（2 行の `Expected: 1` と `  Actual: 0`）です。ブロックの形はラムダを位置引数で取ります：
+`assert`、`assert_not`（`refute`）、`assert_equal`、`assert_not_equal`、`assert_nil`、`assert_not_nil`、`assert_includes`、`assert_not_includes`、`assert_empty`、`assert_not_empty`、`assert_match` / `assert_no_match`（Regexp か、部分文字列としての String）、`assert_in_delta(expected, actual, delta = 0.001)`、`assert_nothing_raised { }`、`flunk` が Minitest と同じくあります。`assert_equal` は Minitest のテキスト（2 行の `Expected: 1` と `  Actual: 0`）で失敗し、新しく加わったアサーションも同様です。`assert_includes`、`assert_nil`、`flunk` はそれぞれ独自の短いテキストのままです。`assert` と `refute` は 2 つ目の引数にメッセージを取ります。ブロックの形はラムダを位置引数で取ります：
 
 ```ruby
 assert_difference -> { Article.count }, 1 do
@@ -176,7 +175,7 @@ assert_includes message, "999"
 
 - `assert_raises` はクラス（Minitest と同じくサブクラスも一致します）、String としてのクラス名の一部（`assert_raises("RecordNotFound")`）、または何も取らず（どの StandardError でも）、例外ではなく例外の**メッセージ**を返します：Rails で `error = assert_raises(X) { }` と書いて `error.message` を使うところでは、返ってくる String を使ってください。Spinel ではメソッドは 1 つの型しか返せず、テストが読むのはメッセージだからです。
 - ブロックのアサーションはブロックの値ではなく nil を返します。
-- 提供しないもの：`assert_predicate`（計算された `send` が要ります：`assert article.valid?` と書いてください）、`assert_difference` の String の式（`eval` が要ります）、式の Array や Hash、メッセージの引数。
+- 提供しないもの：`assert_predicate`（計算された `send` が要ります：`assert article.valid?` と書いてください）、`assert_difference` の String の式（`eval` が要ります）、式の Array や Hash、ほかのアサーションのメッセージの引数。
 
 ## タイムトラベル
 
@@ -288,7 +287,7 @@ end
 - `perform_enqueued_jobs { }` は Rails のインラインの形で、ブロックを実行し、そのあとブロックの間にキューに入ったジョブと、それらがキューに入れたジョブを、`run_at` にかかわらずすべて実行し、実行した数を返します。例外を出したジョブはそのクラスとエラーでテストを失敗させ、再試行されません。アプリケーションが破棄したジョブ（`discard_on`）は実行済みと数えます。
 - ブロックのない `perform_enqueued_jobs(now = Time.current)` は、`now` の時点で期限の来たジョブを 1 つずつ、なくなるまで実行します。あとに予定された再試行はキューに残ります：その時刻を過ぎるまで `travel` するか、もっと遅い `now` を渡してください。どちらの形も、10,000 件のジョブのあとテストを失敗させます（自分自身を再びキューに入れるジョブ）。
 - `clear_enqueued_jobs` はキューにあるジョブを削除します。`WelcomeJob.perform_now(args)` はジョブを 1 つ直接実行し、例外はテストまで届きます。
-- 定期タスクは `Cybertrain::Scheduler.run_due(Time.current)` で 1 回ずつ実行します。
+- 定期タスクは `Cybertrain::Scheduler.run_due(Time.current.to_i)` （エポック秒） で 1 回ずつ実行します。
 
 ## 外向きの呼び出しをテストする
 
@@ -372,9 +371,9 @@ end
 
 ## テストクラスで gen が拒否するもの
 
-gen はテストクラスをメソッドに書き換えます：`test "shows it" do` は `def test_shows_it` になり（`[A-Za-z0-9_]` 以外の文字はどれも `_` になります。Rails と同じで、`-n` にもこの名前を渡せます）、`setup do` と `teardown do` のブロックは `super` を呼ぶ `setup` と `teardown` のメソッドになります。正確に移せないものがあると、`spin run gen` は `パス:行:` と理由を出して止まります。黙って誤ったコピーを作ったり、テストを失ったりはしません：
+gen はテストクラスをメソッドに書き換えます：`test "shows it" do` は `def test_shows_it` になり（`[A-Za-z0-9_]` 以外の文字はどれも `_` になります。`-n` にもこの名前を渡せます）、`setup do` と `teardown do` のブロックは `super` を呼ぶ `setup` と `teardown` のメソッドになります。正確に移せないものがあると、`spin run gen` は `パス:行:` と理由を出して止まります。黙って誤ったコピーを作ったり、テストを失ったりはしません：
 
-- 素の文字列リテラルではないテスト名（式展開、`\n` のようなエスケープ：文字そのものを書いてください）。
+- 素の文字列リテラルではないテスト名（式展開）や、gen が読まないエスケープ（`\u`、`\x`、`\c`、`\C`、`\M`、8 進数）を含むテスト名（文字そのものを書いてください。`\n`、`\t`、`\"` は読まれます）。
 - 1 つのクラスの中でメソッド名が同じになる 2 つのテスト（`def test_x` も含む）。
 - 1 つのクラスの中の `setup do` と `def setup` の両方（`teardown` も同じ）。
 - `setup { }` と `setup :name`（`setup do ... end` と書いてください）、`test`、`setup`、`teardown` のブロックパラメーター。
@@ -382,6 +381,8 @@ gen はテストクラスをメソッドに書き換えます：`test "shows it"
 - 別のクラスやモジュールの中に入れ子にしたテストクラス、2 回開いたテストクラス、開き直した `ActiveSupport::TestCase` の中の `setup do`（`setup do` を持つアプリケーションの基底クラスを書いて継承してください）。
 - gen がクラス本体の中に置けない `test`、`setup`、`teardown` の行（条件、ループ、文字列、ヒアドキュメントの中）、`end` で終わらない 1 行の形、あとにコードが続く `end`、タブとスペースが混じったインデント。
 - 引数が文字列リテラルではない `require_relative`。
+
+このような拒否は `spin run gen` そのものを止めるので、そのアプリケーションで gen を実行するものもすべて止まります：`cybertrain test`、`cybertrain db migrate`、開発サーバーの再ビルド、`cybertrain build`。再開するには、示された行を直すか、直すまでそのテストファイルを `test/` の外に移してください。
 
 `cybertrain test` はさらに（`spin run gen` は先に進みつつ）次のものを拒否します：`test/test_helper.rb` や `test/support/` の中のトップレベルの `test`、`setup`、`teardown`（実行されることがありません）、トップレベルの `def render_inline`（フレームワークのものを置き換えてしまいます）、`assert_select ... do` と `render_inline ... do`、そして[テストを実行する](#running-the-tests)で述べた重複するトップレベルのヘルパー。クラスの形のファイルは `cybertrain test` でしか実行できません：`spin test` では、そのクラス本体が「class-form tests run with `cybertrain test FILE`」を発生させます。
 
@@ -410,7 +411,7 @@ end
 Cybertrain::Test.run!
 ```
 
-トップレベルの `setup do` と `teardown do` は、そのファイルの各テストの前後に実行されます。`cybertrain spin test` は各 `test/*.rb` を別々のプログラムにコンパイルし、出力を `test/<name>.rb.expected` と比べます。そこではテーブルを空にすることもフィクスチャもなく（どちらも gen のテーブルの一覧が要ります）、`Cybertrain::Test.run!` がファイルのテストを実行します。`cybertrain test` では、ファイルのテストはテーブルを空にしてフィクスチャを入れたあとにほかのテストと一緒に実行され、`run!` は何もしません。`spin test` ではそのファイルのためにアプリケーションを起動するものがないので、そのようなファイルは 0.4 のサポートファイル（`AppTest.boot`、`BlogTest.boot`）がしていたように自分で起動し、フィクスチャは使いません。`Cybertrain::Test::Client` はクッキーの入れ物を持ち、CSRF も含めてアプリケーションを操作します（`client.get`、`client.post(path, fields, headers)`、`client.follow_redirect!`、`client.response`、引数 2 つの `assert_response res, :ok` と `assert_redirected_to res, path`）。SQLite に触れるテストのスナップショットはコンパイル済みのバイナリから取ります：フレームワークのチェックアウトでは `script/regen-snapshot test/<name>.rb`、または `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`。
+トップレベルの `setup do` と `teardown do` は、そのファイルの各テストの前後に実行されます。`cybertrain spin test` は各 `test/*.rb` を別々のプログラムにコンパイルし、出力を `test/<name>.rb.expected` と比べます。そこではテーブルを空にすることもフィクスチャもなく（どちらも gen のテーブルの一覧が要ります）、`Cybertrain::Test.run!` がファイルのテストを実行します。`cybertrain test` では、ファイルのテストはテーブルを空にしてフィクスチャを入れたあとにほかのテストと一緒に実行され、`run!` は何もしません。`spin test` ではそのファイルのためにアプリケーションを起動するものがないので、そのようなファイルは 0.4 のサポートファイル（`AppTest.boot`、`BlogTest.boot`）がしていたように自分で起動し、フィクスチャは使いません。`Cybertrain::Test::Client` は cookie jar を持ち、CSRF も含めてアプリケーションを操作します（`client.get`、`client.post(path, fields, headers)`、`client.follow_redirect!`、`client.response`、引数 2 つの `assert_response res, :ok` と `assert_redirected_to res, path`）。SQLite に触れるテストのスナップショットはコンパイル済みのバイナリから取ります：フレームワークのチェックアウトでは `script/regen-snapshot test/<name>.rb`、または `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`。
 
 ## 0.4 からのアップグレード
 

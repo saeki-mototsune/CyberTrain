@@ -1,5 +1,5 @@
 ---
-source_sha256: ccb62b94c7b9aa57d1504b3b470a5f349e42eb705f7be7008e664d0d791667de
+source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -691,7 +691,7 @@ end
 > end
 > ```
 >
-> cron 表达式按 `CYBERTRAIN_SCHEDULER_TZ`（默认为 UTC）解读，并且同一时间只有一个进程运行这份时间表（[定时任务](background-and-operations.md#scheduled-tasks)）。
+> cron 表达式按 `CYBERTRAIN_SCHEDULER_TZ`（默认为应用的 `time_zone`，未设置时为 UTC）解读，并且同一时间只有一个进程运行这份时间表（[定时任务](background-and-operations.md#scheduled-tasks)）。
 
 <!-- step 15 #json stage: 你编写 · `app/controllers/` -->
 ## 返回 JSON
@@ -766,7 +766,11 @@ two:
   end
 ```
 
-`comments.yml` 的行属于 `article: one`。和 Rails 一样，指向某篇文章的夹具会让这篇文章无法删除，所以 “should destroy article” 之所以能通过，只是因为[步骤 08](#scaffold-comment) 声明了 `has_many :comments, dependent: :destroy`。
+`comments.yml` 的行属于 `article: one`。和 Rails 一样，指向某篇文章的夹具会让这篇文章无法删除，所以除非 `Article` 声明了 `has_many :comments, dependent: :destroy`（[步骤 08](#scaffold-comment) 末尾的方框），“should destroy article” 会因外键而失败。如果还没有，像 examples/blog 一样把它加到 `app/models/article.rb` 中：
+
+```ruby app/models/article.rb（节选）
+  has_many :comments, dependent: :destroy
+```
 
 ### 文章下的评论
 
@@ -909,7 +913,16 @@ class ArticlesController < ApplicationController
   end
 ```
 
-在评论测试中删除评论的地方，以及任何测试写入数据的地方，也这样做。从现在起生成的脚手架会自己登录。
+评论测试没有 `setup`，而它的四个测试现在都需要一个已登录的用户；给它加上：
+
+```ruby test/controllers/comments_controller_test.rb（节选）
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+从现在起生成的脚手架会自己登录。
 
 > [!NOTE]
 > 生成器自己的测试（`test/controllers/sessions_controller_test.rb`、`registrations_controller_test.rb`、`passwords_controller_test.rb`、`accounts_controller_test.rb`、`test/integration/remember_me_test.rb`、`lockout_test.rb`、`admin_test.rb`，见[测试](authentication.md#testing)）在 `cybertrain test` 中和其他测试一起运行，用 `travel_to` 拨动时钟来检查第 15 天和第 30 天。和 Rails 的生成器一样，登录尝试受到限流：每个客户端地址每三分钟十次，在应用的数据库中计数，所以所有进程一起计数；在反向代理之后，请配置[受信任的代理](requests.md#rate-limiting-and-the-client-address)。`examples/blog` 用 `--invite-only` 完成这一步，并让它的 `/admin` 页面只对管理员开放。

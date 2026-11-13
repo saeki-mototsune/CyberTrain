@@ -373,8 +373,10 @@ end
 ```
 
 - `test "name" do ... end` becomes `def test_<name>` with every character
-  outside `[A-Za-z0-9_]` turned into `_` (Rails' rule, so `-n
-  test_shows_an_article` names the same test as in Rails). Two tests whose
+  outside `[A-Za-z0-9_]` turned into `_` (amended 2026-11-13: Rails turns
+  only whitespace into `_`, so a name with punctuation has another method
+  name than in Rails; `-n test_shows_an_article` names a plain one the
+  same). Two tests whose
   method names coincide in one class are refused, naming both lines (Rails
   raises too).
 - `setup do ... end` blocks become one `def setup` that calls `super`
@@ -578,8 +580,8 @@ $ cybertrain test -n /article/
   test/controllers/articles_controller_test.rb
     ok   ArticlesControllerTest: shows an article
     FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:18)
-         Expected: 1
-           Actual: 0
+           Expected: 1
+             Actual: 0
   test/models/article_test.rb
     ok   ArticleTest: title must be present
 
@@ -1459,7 +1461,7 @@ it open; the maintainer may change any of them in review.
 - The clear and the fixture insert run with foreign keys off; framework tables are cleared when present; `sqlite_sequence` is emptied.
 - `fixtures :all` and `require "test_helper"` are accepted and have no effect of their own.
 - gen writes the rewritten tests to `gen/test/` and the program to `gen/tests.rb` (committed and checked by `gen --check`, like `gen/concerns/`); the binary is `build/test/tests`.
-- A test's method name is `test_` plus the name with non-word characters turned into `_` (Rails' rule).
+- A test's method name is `test_` plus the name with non-word characters turned into `_` (Rails turns only whitespace into `_`).
 - Several `setup do` blocks run in order after the superclass's; `teardown do` blocks run in reverse order before the superclass's.
 - A failure shows the line of the test's `test "..."` call (no assertion line without a backtrace).
 - `-n` takes an exact name or method name, or `/text/` as a substring.
@@ -1604,10 +1606,9 @@ lower-case messages.
 files, every test that existed before kept (139, with 1041 assertion calls
 before and 1068 after) and 10 new; its first `cybertrain test` compiled in
 about 527 s (656 s in all, a 10.2 MB binary) and a run with nothing changed
-starts in about 1 s (the blog task's own run, 2026-11-13, a shared 4-vCPU
+starts in about 1 s (`cybertrain test test/controllers`, no recompile: the blog task's own run, 2026-11-13, a shared 4-vCPU
 cloud machine; machine-dependent, not a budget). `script/test-command-e2e`
-passes its ten variants; the small application's bundle compiles in about
-3 minutes at about 2.2 GB into an 8 MB binary. `script/generators-e2e`
+passes its ten variants; test_app's bundle compiles in about 2 minutes (Task 11's run); the blog's application with three bundled files of eight tests compiled in 162 to 233 s at a peak of 2.2 GB into an 8.1 MB binary (Task 10's run). `script/generators-e2e`
 passed with 44 generated tests (its task's run). Generated applications
 pass `cybertrain test` (sign-up 66 tests, confirmable 80, invite and
 confirmable 87; the authentication task's run). The full framework suite

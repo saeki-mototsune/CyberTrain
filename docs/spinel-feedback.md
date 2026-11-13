@@ -183,6 +183,10 @@ after "rule" are spikes/NOTES.md's.
 | AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED`: fails (2026-11-13); a privileged port refused to a non-root user raised the same class | `Server#bind_listener` turns both into `PortInUse`, and `privileged_denied?` tells them apart by the port number and the user (http/server.rb) | Open; not reported |
 | AA | A method that holds a block allocates a heap cell for each captured local when it is entered | `while` loops in `Interpreter#eval_expr` and `Helpers#nested_url`, and `Response#respell_header` as a method of its own (template/interpreter.rb, template/helpers.rb, http/response.rb) | Open; not reduced, not reported |
 | AI (rule 101) | A large Hash literal constant is one long C function that cc takes some 13 s to build (a cost, not a wrong result) | gen/locales.rb and cybertrain/locales/bundled.rb fill their Hash through methods of at most 50 stores (generator/locales_emitter.rb, phase 4b) | Not reported |
+| AJ (rule 104) | `Class#superclass` on Ruby's own exception classes is NoMethodError: fails (2026-11-12) | `assert_raises(Class)` reads the chain above the first built-in class from `Test::BUILTIN_PARENTS` (test/assertions.rb, phase 5a) | Open; not reported |
+| AK | The C of a very large program (87.6 MB, 196 test programs bundled) needs more than 9.7 GB to compile at -O2 (a cost, not a wrong result) | The framework's suite stays one program per file; only applications bundle their tests (`cybertrain test`, D83) | Not reported |
+| AL (rule 108) | `spin run gen` rebuilds `bin/gen` when any `.rb` of the package is newer, test files included (spin, a cost) | Accepted: `cybertrain test` pays about 55 s on each edit of a test | Not reported |
+| AM (rule 107) | A release build's `e.backtrace` is empty; only `--debug` gives frames | A failing test is named by its `test` line; reports carry class, message and where | Open; not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -463,6 +467,10 @@ again since the lock left it).
   it is ready to report as a request (a large constant literal's stores
   written into helper functions of bounded size), and nothing in
   CyberTrain waits on it.
+- **AJ to AM** (phase 5a, 2026-11-12): AJ and AM are defects with a
+  program each, ready to report; AK and AL are costs (the C compiler's
+  memory on a very large program, spin's freshness check), and nothing in
+  CyberTrain waits on any of them.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
   (#10525, #10524), F, G, H (#10415) and I (#10735, #10786); their
   workarounds are dropped where there were any (see each).
@@ -525,6 +533,10 @@ run on master 1c0cc5e35:
 | AG | `privileged_denied?` in `Server#bind_listener` | **Ready to report**: the 9-line program in AG (CRuby `Errno::EADDRINUSE`, compiled `Errno::ECONNREFUSED`). Not reported; not run on master |
 | AH | none | The 2-line program in AH. A difference in form, not in value: to be mentioned with AF rather than reported alone |
 | AI | gen/locales.rb fills its Hash through methods of at most 50 stores (spikes/NOTES.md rule 101) | **Ready to report** as a compile-time cost, not a defect: spikes/phase4b/locale_hash.rb and its generator make_keys.rb, with the `--timing` figures (see AI). Not reported upstream yet |
+| AJ | `Test::BUILTIN_PARENTS` and the `Errno::` prefix in `assert_raises` (spikes/NOTES.md rule 104) | **Ready to report**: the 5-line program in AJ. Not reported; not run on master |
+| AK | the framework's suite kept one program per file (design D34, D83) | A measurement (spikes/phase5/bundle_suite.sh), to be mentioned as a cost, not reported alone. Not reported |
+| AL | none (the cost is paid) | A request to spin, not to Spinel. Not reported |
+| AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026 when this table
@@ -594,6 +606,10 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | AG. `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-13) |
 | AH. `JSON.generate` writes a Float in another form than CRuby's | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-11 and 2026-11-13) |
 | AI. A large Hash literal constant takes cc 13 s | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4b spike, 2026-11-11; rule 101) |
+| AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 104) |
+| AK. The C of a very large program needs more memory to compile than its front end | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12) |
+| AL. `spin run gen` rebuilds the generator when a test file changes | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12; rule 108) |
+| AM. A release build has no backtrace | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 107) |
 
 ## What CyberTrain still works around
 

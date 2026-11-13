@@ -1,5 +1,5 @@
 ---
-source_sha256: 635312e7f45c6813a305b32c77a30beb91a7fe05c4b4c3d139920dc3e510ae0f
+source_sha256: f3bcfd3ed3b2e1d10465e077b4d4112cf657c0d69aa82e1f28e1f43e6554c840
 ---
 # Tester une application
 
@@ -129,9 +129,8 @@ faites pointer que vers un fichier jetable.
 ```text sortie — cybertrain test
 test/controllers/articles_controller_test.rb
   ok   ArticlesControllerTest: shows an article
-  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:13)
-         Expected: 1
-           Actual: 0
+  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:14)
+         Expected change of 1, got 0 (from 2 to 2)
 test/models/article_test.rb
   ok   ArticleTest: title must be present
 
@@ -153,10 +152,11 @@ reconstruit `bin/gen`. Mesuré les 2026-11-12 et 2026-11-13 sur une machine
 cloud partagée à 4 vCPU (votre propre machine donnera d’autres
 chiffres)&nbsp;: les 149 tests en 21 fichiers d’examples/blog ont compilé en
 environ 527 s la première fois (toute la première exécution a pris 656 s,
-le binaire fait 10,2 Mo), et une deuxième exécution sans changement a
-démarré en environ 1 s&nbsp;; une petite application avec quelques fichiers de
-test a compilé en environ 3 minutes avec environ 2,2 Go de mémoire, en un
-binaire de 8 Mo. Écrivez plusieurs tests avant de les exécuter, et
+le binaire fait 10,2 Mo), et une deuxième exécution sans changement un `cybertrain test test/controllers` ultérieur, sans changement, a
+réutilisé le binaire et démarré en environ 1 s (l’exécution du blog
+lui-même, 2026-11-13)&nbsp;; l’application du blog avec trois fichiers de
+test de huit tests a compilé en 162 à 233 s avec un pic d’environ 2,2 Go,
+en un binaire de 8,1 Mo (2026-11-12). Écrivez plusieurs tests avant de les exécuter, et
 restreignez l’exécution, pas la compilation, pendant que vous travaillez
 sur l’un d’eux.
 
@@ -231,8 +231,8 @@ n’est pas une ligne, comme dans Rails.
 ## Tests d’intégration
 
 `ActionDispatch::IntegrationTest` envoie des requêtes à l’application
-démarrée, dans le processus, sans socket et avec un nouveau bocal à
-cookies pour chaque test&nbsp;:
+démarrée, dans le processus, sans socket et avec une nouvelle cookie jar
+pour chaque test&nbsp;:
 
 - `get`, `post`, `patch`, `put`, `delete`, `head` (chemin, `params: {}`,
   `headers: {}`), écrits comme dans Rails. Chacun renvoie la
@@ -296,9 +296,12 @@ besoin d’une autre adresse cliente crée son propre
 `assert_empty`, `assert_not_empty`, `assert_match` / `assert_no_match`
 (une Regexp, ou une String comme sous-chaîne), `assert_in_delta(expected,
 actual, delta = 0.001)`, `assert_nothing_raised { }` et `flunk`, comme dans
-Minitest, avec le texte d’échec de Minitest (`Expected: 1` et
-`  Actual: 0` sur deux lignes). Les formes à bloc prennent un lambda,
-passé en position&nbsp;:
+Minitest. `assert_equal` échoue avec le texte de Minitest (`Expected: 1`
+et `  Actual: 0` sur deux lignes), de même que les assertions plus
+récentes&nbsp;; `assert_includes`, `assert_nil` et `flunk` gardent des textes
+plus courts qui leur sont propres. `assert` et `refute` prennent un
+message en deuxième argument. Les formes à bloc prennent un lambda, passé
+en position&nbsp;:
 
 ```ruby
 assert_difference -> { Article.count }, 1 do
@@ -322,7 +325,7 @@ assert_includes message, "999"
 - Non proposés&nbsp;: `assert_predicate` (il faudrait un `send` calculé&nbsp;:
   écrivez `assert article.valid?`), les expressions en String dans
   `assert_difference` (il faudrait `eval`), un Array ou un Hash
-  d’expressions, et un argument de message.
+  d’expressions, et un argument de message pour les autres assertions.
 
 ## Voyager dans le temps
 
@@ -515,7 +518,7 @@ end
   `WelcomeJob.perform_now(args)` en exécute un directement, une exception
   remontant jusqu’au test.
 - Les tâches planifiées s’exécutent un tour à la fois avec
-  `Cybertrain::Scheduler.run_due(Time.current)`.
+  `Cybertrain::Scheduler.run_due(Time.current.to_i)` (des secondes epoch).
 
 ## Tester les appels sortants
 
@@ -632,14 +635,16 @@ complet.
 
 gen réécrit une classe de test en méthodes&nbsp;: `test "shows it" do` devient
 `def test_shows_it` (chaque caractère hors de `[A-Za-z0-9_]` devenant `_`,
-comme dans Rails, ce que `-n` accepte), et les blocs `setup do` et
+nom que `-n` accepte), et les blocs `setup do` et
 `teardown do` deviennent des méthodes `setup` et `teardown` qui appellent
 `super`. Ce qu’il ne peut pas reporter exactement arrête `spin run gen`
 avec `chemin:ligne:` et la raison, jamais une copie fausse en silence ni un
 test perdu&nbsp;:
 
-- un nom de test qui n’est pas un simple littéral de chaîne (interpolation,
-  échappement comme `\n`&nbsp;: écrivez le caractère lui-même)&nbsp;;
+- un nom de test qui n’est pas un simple littéral de chaîne
+  (interpolation), ou qui contient un échappement que gen ne lit pas
+  (`\u`, `\x`, `\c`, `\C`, `\M` ou un octal&nbsp;: écrivez le caractère
+  lui-même&nbsp;; `\n`, `\t` et `\"` sont lus)&nbsp;;
 - deux tests dont les noms de méthode coïncident dans une classe, un
   `def test_x` compris&nbsp;;
 - à la fois `setup do` et `def setup` dans une classe (de même pour
@@ -658,6 +663,12 @@ test perdu&nbsp;:
   `end` suivi de code, et une indentation qui mélange tabulations et
   espaces&nbsp;;
 - un `require_relative` dont l’argument n’est pas un littéral de chaîne.
+
+Un tel refus arrête `spin run gen` lui-même, et avec lui tout ce qui lance
+gen dans cette application&nbsp;: `cybertrain test`, `cybertrain db migrate`,
+la recompilation du serveur de développement et `cybertrain build`. Pour
+repartir, corrigez la ligne indiquée, ou sortez le fichier de test de
+`test/` en attendant.
 
 `cybertrain test` refuse aussi (pendant que `spin run gen` continue) un
 `test`, `setup` ou `teardown` de premier niveau dans `test/test_helper.rb`
@@ -705,8 +716,8 @@ avec les autres, après le vidage et les fixtures, et `run!` ne fait rien.
 Sous `spin test`, rien ne démarre l’application pour le fichier&nbsp;: un tel
 fichier la démarre donc lui-même, comme le faisaient les fichiers de
 support de 0.4 (`AppTest.boot`, `BlogTest.boot`), et n’utilise pas de
-fixtures. `Cybertrain::Test::Client` pilote l’application avec un bocal à
-cookies, CSRF compris (`client.get`, `client.post(path, fields, headers)`,
+fixtures. `Cybertrain::Test::Client` pilote l’application avec une
+cookie jar, CSRF compris (`client.get`, `client.post(path, fields, headers)`,
 `client.follow_redirect!`, `client.response`, et les formes à deux
 arguments `assert_response res, :ok` et `assert_redirected_to res, path`).
 L’instantané d’un test qui touche SQLite vient du binaire compilé&nbsp;:

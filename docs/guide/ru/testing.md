@@ -1,5 +1,5 @@
 ---
-source_sha256: 635312e7f45c6813a305b32c77a30beb91a7fe05c4b4c3d139920dc3e510ae0f
+source_sha256: f3bcfd3ed3b2e1d10465e077b4d4112cf657c0d69aa82e1f28e1f43e6554c840
 ---
 # Тестирование приложения
 
@@ -125,9 +125,8 @@ cybertrain test -n /article/                            # тесты, в име�
 ```text вывод — cybertrain test
 test/controllers/articles_controller_test.rb
   ok   ArticlesControllerTest: shows an article
-  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:13)
-         Expected: 1
-           Actual: 0
+  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:14)
+         Expected change of 1, got 0 (from 2 to 2)
 test/models/article_test.rb
   ok   ArticleTest: title must be present
 
@@ -148,9 +147,11 @@ test/models/article_test.rb
 2026-11-13 на общей облачной машине с 4 vCPU (на вашей машине цифры будут
 другими): 149 тестов examples/blog в 21 файле скомпилировались в первый раз
 примерно за 527 с (весь первый запуск занял 656 с, бинарник — 10,2 МБ), а
-повторный запуск без изменений начался примерно через 1 с; небольшое
-приложение с несколькими тестовыми файлами компилировалось около 3 минут
-при примерно 2,2 ГБ памяти в бинарник на 8 МБ. Напишите несколько тестов,
+последующий `cybertrain test test/controllers` без изменений использовал
+тот же бинарник и начался примерно через 1 с (собственный запуск блога,
+2026-11-13); приложение блога с тремя тестовыми файлами на восемь тестов
+компилировалось от 162 до 233 с при пике около 2,2 ГБ памяти в бинарник
+на 8,1 МБ (2026-11-12). Напишите несколько тестов,
 прежде чем запускать их, а работая над одним, сужайте запуск, а не сборку.
 
 `gen/tests.rb` отклоняется, и `cybertrain test` завершается с кодом 1,
@@ -219,7 +220,7 @@ two:
 ## Интеграционные тесты
 
 `ActionDispatch::IntegrationTest` отправляет запросы загруженному
-приложению внутри процесса, без сокета, с новой банкой cookie для каждого
+приложению внутри процесса, без сокета, с новым хранилищем cookie для каждого
 теста:
 
 - `get`, `post`, `patch`, `put`, `delete`, `head` (путь, `params: {}`,
@@ -282,9 +283,12 @@ end
 `assert_nil`, `assert_not_nil`, `assert_includes`, `assert_not_includes`,
 `assert_empty`, `assert_not_empty`, `assert_match` / `assert_no_match`
 (Regexp или String как подстрока), `assert_in_delta(expected, actual,
-delta = 0.001)`, `assert_nothing_raised { }` и `flunk` — как в Minitest, с
-текстом ошибки Minitest (`Expected: 1` и `  Actual: 0` на двух строках).
-Формы с блоком принимают лямбду, переданную позиционно:
+delta = 0.001)`, `assert_nothing_raised { }` и `flunk` — как в Minitest.
+`assert_equal` падает с текстом Minitest (`Expected: 1` и `  Actual: 0` на
+двух строках), как и более новые проверки; `assert_includes`,
+`assert_nil` и `flunk` сохраняют собственные, более короткие тексты.
+`assert` и `refute` принимают сообщение вторым аргументом. Формы с блоком
+принимают лямбду, переданную позиционно:
 
 ```ruby
 assert_difference -> { Article.count }, 1 do
@@ -306,7 +310,7 @@ assert_includes message, "999"
 - Проверки с блоком возвращают nil, а не значение блока.
 - Нет: `assert_predicate` (для него нужен вычисляемый `send`: пишите
   `assert article.valid?`), строковых выражений в `assert_difference` (им
-  нужен `eval`), Array или Hash выражений и аргумента-сообщения.
+  нужен `eval`), Array или Hash выражений и аргумента-сообщения у остальных проверок.
 
 ## Путешествие во времени
 
@@ -493,7 +497,7 @@ end
   `WelcomeJob.perform_now(args)` выполняет одну задачу напрямую, и
   исключение доходит до теста.
 - Плановые задачи выполняются по одному такту через
-  `Cybertrain::Scheduler.run_due(Time.current)`.
+  `Cybertrain::Scheduler.run_due(Time.current.to_i)` (секунды эпохи).
 
 ## Тестирование исходящих вызовов
 
@@ -609,13 +613,15 @@ end
 
 gen переписывает тестовый класс в методы: `test "shows it" do` становится
 `def test_shows_it` (каждый символ вне `[A-Za-z0-9_]` превращается в `_`,
-как в Rails, и `-n` принимает это имя), а блоки `setup do` и `teardown do`
+и `-n` принимает это имя), а блоки `setup do` и `teardown do`
 становятся методами `setup` и `teardown`, которые вызывают `super`. То, что
 нельзя перенести в точности, останавливает `spin run gen` с `путь:строка:`
 и причиной — никогда молча неверная копия или потерянный тест:
 
 - имя теста, которое не является простым строковым литералом
-  (интерполяция, экранирование вроде `\n`: напишите сам символ);
+  (интерполяция), или имя с экранированием, которое gen не читает (`\u`,
+  `\x`, `\c`, `\C`, `\M` или восьмеричное: напишите сам символ; `\n`,
+  `\t` и `\"` читаются);
 - два теста, имена методов которых совпадают в одном классе, включая
   `def test_x`;
 - и `setup do`, и `def setup` в одном классе (то же для `teardown`);
@@ -632,6 +638,12 @@ gen переписывает тестовый класс в методы: `test 
   форма, которая не заканчивается `end`, `end`, за которым идёт код, и
   отступы, смешивающие табуляции и пробелы;
 - `require_relative`, аргумент которого не строковый литерал.
+
+Такой отказ останавливает сам `spin run gen`, а с ним и всё, что
+запускает gen в этом приложении: `cybertrain test`, `cybertrain db migrate`,
+пересборку сервера разработки и `cybertrain build`. Чтобы продолжить,
+исправьте названную строку или уберите тестовый файл из `test/`, пока не
+исправите.
 
 `cybertrain test` также отклоняет (при этом `spin run gen` продолжает
 работу) `test`, `setup` или `teardown` верхнего уровня в
@@ -680,7 +692,7 @@ Cybertrain::Test.run!
 загружает приложение для файла, поэтому такой файл загружает его сам, как
 это делали вспомогательные файлы 0.4 (`AppTest.boot`, `BlogTest.boot`), и
 фикстур не использует. `Cybertrain::Test::Client` управляет приложением с
-банкой cookie, включая CSRF (`client.get`, `client.post(path, fields,
+хранилищем cookie, включая CSRF (`client.get`, `client.post(path, fields,
 headers)`, `client.follow_redirect!`, `client.response` и формы с двумя
 аргументами `assert_response res, :ok` и `assert_redirected_to res, path`).
 Снимок теста, который обращается к SQLite, берётся из скомпилированного

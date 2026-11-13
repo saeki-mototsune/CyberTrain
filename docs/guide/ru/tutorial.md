@@ -1,5 +1,5 @@
 ---
-source_sha256: ccb62b94c7b9aa57d1504b3b470a5f349e42eb705f7be7008e664d0d791667de
+source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -909,7 +909,7 @@ end
 > ```
 >
 > Выражение cron читается в часовом поясе `CYBERTRAIN_SCHEDULER_TZ` (по
-> умолчанию UTC), а расписание в каждый момент выполняет только один процесс
+> умолчанию — `time_zone` приложения, UTC, если он не задан), а расписание в каждый момент выполняет только один процесс
 > ([Задачи по расписанию](background-and-operations.md#scheduled-tasks)).
 
 <!-- step 15 #json stage: Вы пишете · `app/controllers/` -->
@@ -1009,8 +1009,14 @@ two:
 
 Строки `comments.yml` принадлежат `article: one`. Как и в Rails, фикстура,
 указывающая на статью, не даёт эту статью удалить, поэтому «should destroy
-article» проходит только потому, что [шаг 08](#scaffold-comment) объявил
-`has_many :comments, dependent: :destroy`.
+article» падает на внешнем ключе, если `Article` не объявляет
+`has_many :comments, dependent: :destroy` (врезка в конце
+[шага 08](#scaffold-comment)). Если вы этого не сделали, добавьте его в
+`app/models/article.rb`, как в examples/blog:
+
+```ruby app/models/article.rb (отрывок)
+  has_many :comments, dependent: :destroy
+```
 
 ### Комментарии под своей статьёй
 
@@ -1194,8 +1200,17 @@ class ArticlesController < ApplicationController
   end
 ```
 
-Сделайте то же в тесте комментариев для удаления или везде, где тест
-что-то записывает. Скаффолд, сгенерированный с этого момента, входит сам.
+У теста комментариев нет `setup`, а каждому из четырёх его тестов теперь
+нужен вошедший пользователь; дайте его:
+
+```ruby test/controllers/comments_controller_test.rb (отрывок)
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+Скаффолд, сгенерированный с этого момента, входит сам.
 
 > [!NOTE]
 > Собственные тесты генератора (`test/controllers/sessions_controller_test.rb`,

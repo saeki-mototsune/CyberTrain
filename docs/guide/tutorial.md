@@ -882,7 +882,7 @@ response:
 > end
 > ```
 >
-> The cron expression is read in `CYBERTRAIN_SCHEDULER_TZ` (UTC by default),
+> The cron expression is read in `CYBERTRAIN_SCHEDULER_TZ` (by default the application's `time_zone`, UTC unless set),
 > and one process at a time runs the schedule
 > ([Scheduled tasks](background-and-operations.md#scheduled-tasks)).
 
@@ -981,8 +981,14 @@ a new one:
 
 `comments.yml`'s rows belong to `article: one`. As in Rails, a fixture that
 points at an article keeps the article from being deleted, so "should
-destroy article" passes only because [step 08](#scaffold-comment) declared
-`has_many :comments, dependent: :destroy`.
+destroy article" fails on the foreign key unless `Article` declares
+`has_many :comments, dependent: :destroy` (the box at the end of
+[step 08](#scaffold-comment)). Add it to `app/models/article.rb` if you
+have not, as examples/blog does:
+
+```ruby app/models/article.rb (excerpt)
+  has_many :comments, dependent: :destroy
+```
 
 ### Comments under their article
 
@@ -1179,8 +1185,17 @@ in first:
   end
 ```
 
-Do the same in the comments test for the destroy, or wherever a test
-writes. A scaffold generated from now on signs in by itself.
+The comments test has no `setup`, and each of its four tests now needs a
+signed-in user; give it one:
+
+```ruby test/controllers/comments_controller_test.rb (excerpt)
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+A scaffold generated from now on signs in by itself.
 
 > [!NOTE]
 > The generator's own tests (`test/controllers/sessions_controller_test.rb`,

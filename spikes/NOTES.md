@@ -1560,7 +1560,7 @@ explicitly retires a workaround.
      spikes/phase5/durations_month.rb, test/durations_refused.rb).
 
 106. A method named like a builtin `Time` instance method (`hour`, `day`,
-     `min`, `wday`, `zone`, `advance`) defined in Ruby source, on another
+     `min`, `wday`, `zone`) defined in Ruby source, on another
      class (`Cybertrain::ZonedTime`) or on `Time` itself, does not break a
      boxed `Time` receiver on Spinel 2026.11.04.7026: the generated
      dispatch switch covers the classes that define the name and its

@@ -1,5 +1,5 @@
 ---
-source_sha256: ccb62b94c7b9aa57d1504b3b470a5f349e42eb705f7be7008e664d0d791667de
+source_sha256: a43d340b255b94ac2e467a5c1b135dce26a544ca1b84f03f227fdb7204efffdc
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -925,8 +925,8 @@ après la réponse&nbsp;:
 > end
 > ```
 >
-> L’expression cron est lue dans le fuseau `CYBERTRAIN_SCHEDULER_TZ` (UTC par
-> défaut), et un seul processus à la fois exécute la planification
+> L’expression cron est lue dans le fuseau `CYBERTRAIN_SCHEDULER_TZ` (par défaut le
+> `time_zone` de l’application, UTC s’il n’est pas réglé), et un seul processus à la fois exécute la planification
 > ([Les tâches planifiées](background-and-operations.md#scheduled-tasks)).
 
 <!-- step 15 #json stage: Vous écrivez · `app/controllers/` -->
@@ -1029,9 +1029,14 @@ pris&nbsp;; donnez-lui-en un nouveau&nbsp;:
 
 Les lignes de `comments.yml` appartiennent à `article: one`. Comme dans
 Rails, une fixture qui pointe vers un article empêche de supprimer cet
-article&nbsp;: « should destroy article » ne passe donc que parce que
-l’[étape 08](#scaffold-comment) a déclaré
-`has_many :comments, dependent: :destroy`.
+article&nbsp;: « should destroy article » échoue donc sur la clé étrangère sauf
+si `Article` déclare `has_many :comments, dependent: :destroy` (l’encadré
+à la fin de l’[étape 08](#scaffold-comment)). Ajoutez-le à
+`app/models/article.rb` si ce n’est pas fait, comme examples/blog&nbsp;:
+
+```ruby app/models/article.rb (extrait)
+  has_many :comments, dependent: :destroy
+```
 
 ### Les commentaires sous leur article
 
@@ -1222,9 +1227,17 @@ d’abord&nbsp;:
   end
 ```
 
-Faites de même dans le test des commentaires pour la suppression, ou
-partout où un test écrit. Un scaffold généré désormais se connecte de
-lui-même.
+Le test des commentaires n’a pas de `setup`, et chacun de ses quatre
+tests a maintenant besoin d’un utilisateur connecté&nbsp;; donnez-lui-en un&nbsp;:
+
+```ruby test/controllers/comments_controller_test.rb (extrait)
+class CommentsControllerTest < ActionDispatch::IntegrationTest
+  setup do
+    sign_in_as users(:one)
+  end
+```
+
+Un scaffold généré désormais se connecte de lui-même.
 
 > [!NOTE]
 > Les propres tests du générateur (`test/controllers/sessions_controller_test.rb`,

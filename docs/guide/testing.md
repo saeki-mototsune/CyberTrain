@@ -116,9 +116,8 @@ deletes whatever file it names, so point it only at a scratch file.
 ```text output — cybertrain test
 test/controllers/articles_controller_test.rb
   ok   ArticlesControllerTest: shows an article
-  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:13)
-         Expected: 1
-           Actual: 0
+  FAIL ArticlesControllerTest: creates an article (test/controllers/articles_controller_test.rb:14)
+         Expected change of 1, got 0 (from 2 to 2)
 test/models/article_test.rb
   ok   ArticleTest: title must be present
 
@@ -138,10 +137,11 @@ program is built from) compiles the whole program again, and rebuilds
 `bin/gen` first. Measured on 2026-11-12 and 2026-11-13 on a shared 4-vCPU
 cloud machine (a machine of your own will differ): examples/blog's 149
 tests in 21 files compiled in about 527 s the first time (the whole first
-run took 656 s, the binary is 10.2 MB), and a second run with nothing
-changed started in about 1 s; a small application with a few test files
-compiled in about 3 minutes at about 2.2 GB of memory, into an 8 MB
-binary. Write several tests before running them, and narrow the run, not
+run took 656 s, the binary is 10.2 MB), and a later `cybertrain test
+test/controllers` with nothing changed reused the binary and started in
+about 1 s (the blog's own run, 2026-11-13); the blog's application with
+three test files of eight tests compiled in 162 to 233 s at a peak of
+about 2.2 GB, into an 8.1 MB binary (2026-11-12). Write several tests before running them, and narrow the run, not
 the build, while you work on one.
 
 `gen/tests.rb` is refused, and `cybertrain test` exits 1 with the reason
@@ -266,8 +266,11 @@ are `client.get(path, headers)` and `client.post(path, fields, headers)`).
 `assert_empty`, `assert_not_empty`, `assert_match` / `assert_no_match` (a
 Regexp, or a String as a substring), `assert_in_delta(expected, actual,
 delta = 0.001)`, `assert_nothing_raised { }` and `flunk`, as Minitest has
-them, with Minitest's failure text (`Expected: 1` and `  Actual: 0` on two
-lines). The block forms take a lambda, passed positionally:
+them. `assert_equal` fails with Minitest's text (`Expected: 1` and
+`  Actual: 0` on two lines), and so do the newer assertions;
+`assert_includes`, `assert_nil` and `flunk` keep shorter texts of their
+own. `assert` and `refute` take a message as their second argument. The
+block forms take a lambda, passed positionally:
 
 ```ruby
 assert_difference -> { Article.count }, 1 do
@@ -289,7 +292,8 @@ assert_includes message, "999"
 - The block assertions answer nil, not the block's value.
 - Not offered: `assert_predicate` (it needs a computed `send`: write
   `assert article.valid?`), String expressions in `assert_difference` (they
-  need `eval`), an Array or Hash of expressions, and a message argument.
+  need `eval`), an Array or Hash of expressions, and a message argument
+  on the other assertions.
 
 ## Time travel
 
@@ -467,7 +471,8 @@ end
   fails the test after 10,000 jobs (a job that queues itself again).
 - `clear_enqueued_jobs` deletes the queued jobs; `WelcomeJob.perform_now(args)`
   runs one directly, an exception reaching the test.
-- Scheduled tasks run one tick at a time with `Cybertrain::Scheduler.run_due(Time.current)`.
+- Scheduled tasks run one tick at a time with `Cybertrain::Scheduler.run_due(Time.current.to_i)`
+  (epoch seconds).
 
 ## Testing outbound calls
 
@@ -578,14 +583,15 @@ end
 ## What gen refuses in a test class
 
 gen rewrites a test class into methods: `test "shows it" do` becomes `def
-test_shows_it` (every character outside `[A-Za-z0-9_]` turned into `_`, as
-in Rails, which `-n` accepts), and the `setup do` and `teardown do` blocks
+test_shows_it` (every character outside `[A-Za-z0-9_]` turned into `_`;
+`-n` accepts that name), and the `setup do` and `teardown do` blocks
 become `setup` and `teardown` methods calling `super`. Whatever it cannot
 carry over exactly stops `spin run gen` with `path:line:` and the reason,
 never a silently wrong copy or a lost test:
 
-- a test name that is not a plain string literal (interpolation, an escape
-  such as `\n`: write the character itself);
+- a test name that is not a plain string literal (interpolation), or one
+  with an escape gen does not read (`\u`, `\x`, `\c`, `\C`, `\M` or an
+  octal one: write the character itself; `\n`, `\t` and `\"` are read);
 - two tests whose method names coincide in one class, a `def test_x`
   included;
 - both `setup do` and `def setup` in one class (likewise `teardown`);
@@ -601,6 +607,12 @@ never a silently wrong copy or a lost test:
   does not end with `end`, an `end` with code after it, and indentation
   that mixes tabs and spaces;
 - a `require_relative` whose argument is not a string literal.
+
+Such a refusal stops `spin run gen` itself, and with it everything that
+runs gen in that application: `cybertrain test`, `cybertrain db migrate`,
+the development server's rebuild and `cybertrain build`. To get going
+again, fix the line it names, or move the test file out of `test/` until
+you do.
 
 `cybertrain test` also refuses (with `spin run gen` going on) a top-level
 `test`, `setup` or `teardown` in `test/test_helper.rb` or `test/support/`
