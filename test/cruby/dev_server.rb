@@ -20,6 +20,7 @@ require "timeout"
 
 DevServer = Cybertrain::CLI::DevServer
 REPO = File.expand_path("../..", __dir__)
+RUBY_VERSION_ON_PATH = IO.popen(["ruby", "-e", "print RUBY_VERSION"], &:read)
 
 def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
@@ -161,11 +162,20 @@ def with_installed_gem
 end
 
 # Runs the probe in root; returns its output (stdout and stderr together).
-def probe(dir, gem_dir, framework, root, *args)
-  env = { "RUBYLIB" => nil, "RUBYOPT" => nil }
+# extra_env adds to (or overrides) the probe's environment.
+def probe(dir, gem_dir, framework, root, *args, extra_env: {})
+  env = { "RUBYLIB" => nil, "RUBYOPT" => nil }.merge(extra_env)
   command = [RbConfig.ruby, "--disable-gems", "-E", "UTF-8", "-I", gem_dir, File.join(dir, "probe.rb"), gem_dir, framework, *args]
-  out, = Open3.capture2e(env, *command, chdir: root)
-  out
+  Open3.popen2e(env, *command, chdir: root, pgroup: true) do |stdin, out, waiter|
+    stdin.close
+    # A regression that goes on to serve would never end: it fails instead.
+    unless waiter.join(20)
+      Process.kill(:KILL, -waiter.pid)
+      waiter.join
+      return "probe did not end within 20 s:\n#{out.read}"
+    end
+    out.read
+  end
 end
 
 test "the gem's files alone load the supervisor; the dev files come from the application's framework, after spin flags" do
@@ -198,17 +208,91 @@ ensure
   taken&.close
 end
 
-test "a framework without the CRuby preview runs the compiled loop, after one line" do
+# The probe's output without its where-loaded lines.
+def said(out)
+  out.lines.map(&:chomp).grep_v(/\A(required|flags|ran) /)
+end
+
+# A framework whose cybertrain/preview.rb is there but whose supervision
+# contract is not (a release between the two).
+test "a framework without cybertrain/dev/supervision.rb runs the compiled loop, after one line" do
   with_installed_gem do |dir, gem_dir, framework|
     FileUtils.rm(File.join(framework, "cybertrain", "dev", "supervision.rb"))
     with_app do |root|
       out = probe(dir, gem_dir, framework, root, "4000")
-      assert_equal ["cybertrain: this application's framework has no CRuby preview; running the compiled loop (--spinel)",
-                    "compiled loop server 4000 --spinel", "exit 7"], out.lines.map(&:chomp).grep_v(/\A(required|flags|ran) /)
+      assert_equal ["preview unavailable: this application's cybertrain (#{framework}) has no cybertrain/dev/supervision.rb; " \
+                    "running the compiled loop",
+                    "compiled loop server 4000 --spinel", "exit 7"], said(out)
       refute File.exist?(File.join(root, "tmp", "cybertrain-dev")), "the supervisor wrote nothing"
       refute File.exist?(File.join(root, "child-started")), "no child was started"
     end
   end
+end
+
+# An application pinned to a release older than the preview: neither file.
+# preview.rb is checked first, so that release gets that line alone.
+test "a framework without cybertrain/preview.rb runs the compiled loop, after one line" do
+  with_installed_gem do |dir, gem_dir, framework|
+    FileUtils.rm(File.join(framework, "cybertrain", "preview.rb"))
+    with_app do |root|
+      out = probe(dir, gem_dir, framework, root, "4000")
+      line = "preview unavailable: this application's cybertrain (#{framework}) has no cybertrain/preview.rb; running the compiled loop"
+      assert_equal [line, "compiled loop server 4000 --spinel", "exit 7"], said(out)
+      FileUtils.rm(File.join(framework, "cybertrain", "dev", "supervision.rb"))
+      out = probe(dir, gem_dir, framework, root)
+      assert_equal [line, "compiled loop server --spinel", "exit 7"], said(out)
+      refute File.exist?(File.join(root, "tmp", "cybertrain-dev")), "the supervisor wrote nothing"
+      refute File.exist?(File.join(root, "child-started")), "no child was started"
+    end
+  end
+end
+
+# A `ruby` first on PATH (the children's) that cannot load fiddle: the real
+# one, with a directory ahead of its own whose fiddle.rb raises the
+# LoadError a Ruby built without libffi gives. Yields the PATH to use.
+def without_fiddle
+  Dir.mktmpdir("dev-server-nofiddle") do |dir|
+    real = IO.popen(["sh", "-c", "command -v ruby"], &:read).strip
+    FileUtils.mkdir_p(File.join(dir, "lib"))
+    File.write(File.join(dir, "lib", "fiddle.rb"), "raise LoadError, 'cannot load such file -- fiddle'\n")
+    FileUtils.mkdir_p(File.join(dir, "bin"))
+    File.write(File.join(dir, "bin", "ruby"), "#!/bin/sh\nexec '#{real}' -I'#{File.join(dir, "lib")}' \"$@\"\n")
+    File.chmod(0o755, File.join(dir, "bin", "ruby"))
+    yield "#{File.join(dir, "bin")}:#{ENV.fetch("PATH")}"
+  end
+end
+
+test "a ruby on PATH that cannot load fiddle runs the compiled loop, after one line; the framework is checked first" do
+  with_installed_gem do |dir, gem_dir, framework|
+    with_app do |root|
+      without_fiddle do |path|
+        out = probe(dir, gem_dir, framework, root, "4000", extra_env: { "PATH" => path })
+        assert_equal ["preview unavailable: Ruby cannot load fiddle (cybertrain doctor has the details); running the compiled loop",
+                      "compiled loop server 4000 --spinel", "exit 7"], said(out)
+        refute File.exist?(File.join(root, "tmp", "cybertrain-dev")), "the supervisor wrote nothing"
+        refute File.exist?(File.join(root, "child-started")), "no child was started"
+        FileUtils.rm(File.join(framework, "cybertrain", "preview.rb"))
+        out = probe(dir, gem_dir, framework, root, extra_env: { "PATH" => path })
+        assert_equal ["preview unavailable: this application's cybertrain (#{framework}) has no cybertrain/preview.rb; running the compiled loop",
+                      "compiled loop server --spinel", "exit 7"], said(out)
+      end
+    end
+  end
+end
+
+# The supervisor's own Ruby loads fiddle (the probe above runs it); only
+# the children's is judged.
+test "child_ruby asks the ruby on PATH for its version and whether it loads fiddle, in one run" do
+  without_fiddle do |path|
+    saved = ENV["PATH"]
+    ENV["PATH"] = path
+    begin
+      assert_equal [RUBY_VERSION_ON_PATH, false], DevServer.child_ruby
+    ensure
+      ENV["PATH"] = saved
+    end
+  end
+  assert_equal [RUBY_VERSION_ON_PATH, true], DevServer.child_ruby
 end
 
 test "a port that is in use is refused with today's wording, before any child" do
@@ -925,22 +1009,24 @@ ensure
 end
 
 # The children run the `ruby` on PATH, which a version manager can make
-# another CRuby than the supervisor's: the banner names theirs.
+# another CRuby than the supervisor's: the banner names theirs, and the
+# fiddle check is theirs.
 test "the banner's CRuby version is the one the children run" do
   Dir.mktmpdir("dev-server-ruby") do |dir|
-    File.write(File.join(dir, "ruby"), "#!/bin/sh\nprintf '9.8.7'\n")
+    File.write(File.join(dir, "ruby"), "#!/bin/sh\nprintf '9.8.7 fiddle'\n")
     File.chmod(0o755, File.join(dir, "ruby"))
     saved = ENV["PATH"]
     ENV["PATH"] = "#{dir}:#{saved}"
     begin
-      assert_equal "9.8.7", DevServer.child_ruby_version
-    ensure
-      ENV["PATH"] = saved
-    end
-    File.write(File.join(dir, "ruby"), "#!/bin/sh\nexit 1\n")
-    ENV["PATH"] = "#{dir}:#{saved}"
-    begin
-      assert_equal "(unknown version)", DevServer.child_ruby_version
+      assert_equal ["9.8.7", true], DevServer.child_ruby
+      File.write(File.join(dir, "ruby"), "#!/bin/sh\nprintf '9.8.7'\n")
+      assert_equal ["9.8.7", false], DevServer.child_ruby
+      File.write(File.join(dir, "ruby"), "#!/bin/sh\nprintf '9.8.7 fiddle'\nexit 1\n")
+      assert_equal ["(unknown version)", false], DevServer.child_ruby
+      File.write(File.join(dir, "ruby"), "#!/bin/sh\nexit 1\n")
+      assert_equal ["(unknown version)", false], DevServer.child_ruby
+      ENV["PATH"] = File.join(dir, "nothing-here")
+      assert_equal ["(unknown version)", false], DevServer.child_ruby
     ensure
       ENV["PATH"] = saved
     end

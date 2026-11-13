@@ -1,7 +1,10 @@
 ok   load_path takes the -I directories of spin flags, in order
 ok   load_path keeps directories whose names have spaces, as spin prints them
 ok   the gem's files alone load the supervisor; the dev files come from the application's framework, after spin flags
-ok   a framework without the CRuby preview runs the compiled loop, after one line
+ok   a framework without cybertrain/dev/supervision.rb runs the compiled loop, after one line
+ok   a framework without cybertrain/preview.rb runs the compiled loop, after one line
+ok   a ruby on PATH that cannot load fiddle runs the compiled loop, after one line; the framework is checked first
+ok   child_ruby asks the ruby on PATH for its version and whether it loads fiddle, in one run
 ok   a port that is in use is refused with today's wording, before any child
 ok   a port argument overrides the application's port
 ok   a PORT that is not a number, or a word after it, is refused
@@ -25,4 +28,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-27 tests, 149 assertions, 0 failures
+30 tests, 162 assertions, 0 failures

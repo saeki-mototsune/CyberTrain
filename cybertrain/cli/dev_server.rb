@@ -24,9 +24,17 @@
 # definition of the state file's format and of the environment a child
 # reads: the child's framework is the authority. The supervisor's own files
 # are required relative to this one, so a framework that carries copies of
-# them never replaces them. A framework without a CRuby preview (an older
-# one) is not refused: one line on STDERR names the reason and the compiled
-# loop runs, as `cybertrain server --spinel` would (no_preview_reason).
+# them never replaces them.
+#
+# An application that cannot have the preview is not refused: one line on
+# STDERR, `preview unavailable: <reason>; running the compiled loop`, then
+# the compiled loop runs, as `cybertrain server --spinel` would. The
+# reasons, checked in this order, the first that holds being the one named
+# (no_preview_reason): the framework has no cybertrain/preview.rb (a
+# release older than the preview); it has no cybertrain/dev/supervision.rb
+# (the children's contract); the `ruby` on PATH, which runs the children,
+# cannot load fiddle (the preview's FFI shim needs it). The framework is
+# checked first: a newer framework is the fix there, whatever the Ruby.
 #
 # The loop is one thread: wait (on the child's STDERR, and on the listener
 # while holding) for at most a tick, then Processes#poll, then the machine's
@@ -58,9 +66,17 @@ module Cybertrain
       # The supervisor's files in the application (P2).
       DEV_DIR = "tmp/cybertrain-dev"
 
-      # The framework file whose absence means the framework predates the
-      # CRuby preview (its supervised children read this contract).
+      # The framework's files the preview needs, in the order they are
+      # checked: the FFI shim the CRuby child is started with (-r
+      # cybertrain/preview), then the contract a supervised child reads.
+      PREVIEW = "cybertrain/preview.rb"
       SUPERVISION = "cybertrain/dev/supervision.rb"
+
+      # The reason given when the children's Ruby cannot load fiddle.
+      NO_FIDDLE = "Ruby cannot load fiddle (cybertrain doctor has the details)"
+
+      # What the banner says when the children's Ruby does not answer.
+      UNKNOWN_VERSION = "(unknown version)"
 
       # The driver's tick (P11): the longest the loop waits before it polls
       # the processes and gives the machine its on_tick.
@@ -116,7 +132,11 @@ module Cybertrain
         return 1 unless ensure_toolchain
 
         load_path = load_path(spin_flags(root))
-        reason = no_preview_reason(load_path)
+        ruby_version, fiddle = nil
+        reason = no_preview_reason(load_path) do
+          ruby_version, fiddle = child_ruby
+          fiddle
+        end
         return fall_back(argv, reason) unless reason.nil?
 
         load_framework(load_path)
@@ -126,7 +146,7 @@ module Cybertrain
         host, port = address(root, name, load_path)
         port = Integer(port_argument, 10) unless port_argument == ""
         listener = bind(host, port)
-        serve(root, name, load_path, host, listener)
+        serve(root, name, load_path, host, listener, ruby_version)
       rescue Failure, InvalidArgument => e
         puts "error: #{e.message}"
         1
@@ -143,26 +163,44 @@ module Cybertrain
         flags.select { |flag| flag.start_with?("-I") }.map { |flag| flag.delete_prefix("-I").strip }.reject(&:empty?)
       end
 
-      # Why this application cannot have the CRuby preview, or nil. Each
-      # reason here sends `cybertrain server` to the compiled loop rather
-      # than refusing it (fall_back).
+      # Why this application cannot have the CRuby preview, or nil: the
+      # first of the header comment's reasons that holds. Each sends
+      # `cybertrain server` to the compiled loop rather than refusing it
+      # (fall_back). The block answers whether the children's Ruby loads
+      # fiddle; it runs only once the framework has passed, since it starts
+      # a process.
       # @param load_path [Array<String>] the -I directories of `spin flags`
+      # @yieldreturn [Boolean]
       # @return [String, nil]
       def self.no_preview_reason(load_path)
-        return "this application's framework has no CRuby preview" unless framework_file?(load_path, SUPERVISION)
+        [PREVIEW, SUPERVISION].each do |path|
+          next if framework_file?(load_path, path)
+
+          return "this application's cybertrain (#{framework_dir(load_path)}) has no #{path}"
+        end
+        return NO_FIDDLE unless yield
 
         nil
       end
 
-      # Whether one of the framework's directories holds path.
+      # Whether one of the framework's directories holds path (the children
+      # are given all of them, so any one will do).
       def self.framework_file?(load_path, path)
         load_path.any? { |dir| File.file?(File.join(dir, path)) }
+      end
+
+      # The framework's directory as `spin flags` names it: the first -I
+      # directory with a cybertrain/ in it (an application has none).
+      # @return [String]
+      def self.framework_dir(load_path)
+        found = load_path.find { |dir| File.directory?(File.join(dir, "cybertrain")) }
+        found || "not among the -I directories of `spin flags`"
       end
 
       # One line on STDERR, then what `cybertrain server --spinel` runs;
       # its exit code.
       def self.fall_back(argv, reason)
-        $stderr.puts "cybertrain: #{reason}; running the compiled loop (--spinel)"
+        $stderr.puts "preview unavailable: #{reason}; running the compiled loop"
         $stderr.flush
         compiled_loop(argv)
       end
@@ -337,7 +375,8 @@ module Cybertrain
 
       # From the bound socket to the stop: the banner, the first round, the
       # loop. Returns 0 (TERM, HUP), or 130 when INT stopped it.
-      def self.serve(root, name, load_path, host, listener)
+      # @param ruby_version [String] the children's Ruby, for the banner
+      def self.serve(root, name, load_path, host, listener, ruby_version = child_ruby[0])
         stop = nil
         previous = {}
         machine = nil
@@ -353,7 +392,7 @@ module Cybertrain
           previous[:HUP] = trap(:HUP) { stop ||= :HUP }
           port = listener.addr[1]
           puts "=> Booting cybertrain #{Cybertrain::VERSION}"
-          puts "=> preview: CRuby #{child_ruby_version}"
+          puts "=> preview: CRuby #{ruby_version}"
           puts "* Listening on http://#{host}:#{port}"
           $stdout.flush
           runner = new_runner(root: root, name: name, port: port, load_path: load_path,
@@ -405,16 +444,21 @@ module Cybertrain
         nil
       end
 
-      # The version of the `ruby` on PATH, which runs the children (P9),
-      # asked once at start: under a version manager it can differ from the
-      # CRuby that runs this supervisor.
-      # @return [String]
-      def self.child_ruby_version
-        out, status = Open3.capture2("ruby", "-e", "print RUBY_VERSION", stdin_data: "")
-        version = out.strip
-        status.success? && !version.empty? ? version : "(unknown version)"
+      # What the children's Ruby is, asked once at start in one run of the
+      # `ruby` on PATH (P9): under a version manager it can be another CRuby
+      # than the one running this supervisor. Its version (for the banner)
+      # and whether it loads fiddle (no_preview_reason). A Ruby that cannot
+      # be run, or does not answer, gives [UNKNOWN_VERSION, false].
+      # @return [Array(String, Boolean)]
+      def self.child_ruby
+        script = "print RUBY_VERSION; print(begin; require 'fiddle'; ' fiddle'; rescue LoadError, StandardError; ''; end)"
+        out, status = Open3.capture2("ruby", "-e", script, stdin_data: "", err: File::NULL)
+        version, fiddle = out.split
+        return [UNKNOWN_VERSION, false] unless status.success? && version
+
+        [version, fiddle == "fiddle"]
       rescue SystemCallError
-        "(unknown version)"
+        [UNKNOWN_VERSION, false]
       end
 
       # [PORT] after "server": "" or a valid port string. --spinel never
