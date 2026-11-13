@@ -410,10 +410,12 @@ end
 
 # spin removes its compiler's stderr file when the step it waits for fails;
 # KILL to the whole group gave it no chance. The stand-in waits for its
-# compiler (a grandchild), then cleans up, as spin does.
+# compiler (a grandchild), then cleans up, as spin does. The cancel comes
+# once the stand-in compiler is up: a Ruby still booting can let a TERM go
+# by unanswered for longer than BUILD_CLEANUP, which a C compiler never does.
 test "cancel_build lets the build's leader clean up after its children are stopped" do
   spin = <<~RUBY
-    compiler = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "sleep 30")
+    compiler = Process.spawn(#{RbConfig.ruby.inspect}, "-e", "File.write('compiler-up', ''); sleep 30")
     File.write(File.join(Dir.pwd, "pids.txt"), "\#{Process.pid} \#{compiler}")
     Process.wait(compiler)
     File.write(File.join(Dir.pwd, "cleaned"), "")
@@ -424,6 +426,7 @@ test "cancel_build lets the build's leader clean up after its children are stopp
     assert wait_for_file(File.join(root, "pids.txt"))
     sleep 0.05 while File.read(File.join(root, "pids.txt")).split.size < 2
     pids = File.read(File.join(root, "pids.txt")).split.map(&:to_i)
+    assert wait_for_file(File.join(root, "compiler-up"))
     took = elapsed { runner.cancel_build }
     assert File.exist?(File.join(root, "cleaned")), "the leader cleaned up"
     assert took < DevServer::BUILD_CLEANUP, "cancel_build took #{took} s"

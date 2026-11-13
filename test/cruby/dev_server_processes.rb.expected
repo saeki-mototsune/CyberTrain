@@ -26,4 +26,4 @@ ok   a build that succeeds hands the port to the binary
 ok   a save made while the child is slow to stop keeps the binary from starting
 ok   after the machine's stop nothing runs and nothing is reported
 ok   a change runs one round; the files gen rewrites are not a change of their own
-28 tests, 99 assertions, 0 failures
+28 tests, 100 assertions, 0 failures
