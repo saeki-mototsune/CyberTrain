@@ -175,6 +175,17 @@ test "the bundle forces the test environment" do
   assert src.index("ENV.delete") < src.index("require \"cybertrain\"")
 end
 
+test "the bundle hands the shell's CYBERTRAIN_ENV and CYBERTRAIN_DATABASE to the database guard" do
+  src = emitted(app_with_tests)
+  captured = "cybertrain_shell_env = ENV[\"CYBERTRAIN_ENV\"].to_s\ncybertrain_shell_database = ENV[\"CYBERTRAIN_DATABASE\"].to_s\n"
+  assert_includes src, captured
+  assert src.index(captured) < src.index("ENV[\"CYBERTRAIN_ENV\"] = \"test\"")
+  handed = "Cybertrain::Test::Database.use_shell_database(cybertrain_shell_env, cybertrain_shell_database)\n"
+  assert_includes src, handed
+  assert src.index("require \"cybertrain/test/bundle\"") < src.index(handed)
+  assert src.index(handed) < src.index("Cybertrain::Test::Bundle.check_database!")
+end
+
 test "a duplicate top-level helper is refused naming both files" do
   a = "# a\n\n\n\ndef new_client\n  nil\nend\n"
   b = "# b\n\ndef new_client\n  nil\nend\n"

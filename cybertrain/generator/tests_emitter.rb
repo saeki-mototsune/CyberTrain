@@ -40,12 +40,18 @@ module Cybertrain
         return refused_program(problem) unless problem.empty?
 
         out = +HEADER
+        # What the shell exported, before the bundle sets and deletes them:
+        # the file its development (or production) uses is never deleted
+        # (Test::Database.use_shell_database).
+        out << "cybertrain_shell_env = ENV[\"CYBERTRAIN_ENV\"].to_s\n"
+        out << "cybertrain_shell_database = ENV[\"CYBERTRAIN_DATABASE\"].to_s\n"
         out << "ENV[\"CYBERTRAIN_ENV\"] = \"test\"\n"
         out << "ENV.delete(\"CYBERTRAIN_DATABASE\")\n"
         out << "ENV[\"CYBERTRAIN_DATABASE\"] = ENV[\"CYBERTRAIN_TEST_DATABASE\"].to_s unless ENV[\"CYBERTRAIN_TEST_DATABASE\"].to_s.empty?\n"
         out << "require \"cybertrain\"\n"
         out << "require \"cybertrain/test_help\"\n"
         out << "require \"cybertrain/test/bundle\"\n"
+        out << "Cybertrain::Test::Database.use_shell_database(cybertrain_shell_env, cybertrain_shell_database)\n"
         out << "require_relative \"../config/app\"\n"
         # D19's guard before anything of the application's tests loads (a
         # support file may boot at load time).

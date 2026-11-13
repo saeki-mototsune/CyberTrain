@@ -134,8 +134,9 @@ module Cybertrain
       # symlink leads to), or the file one of those environments resolves
       # to: storage/<env>.sqlite3, or the `c.database_path` config/app.rb
       # gives it (Cybertrain.other_database_paths, recorded in
-      # `cybertrain test`), compared as written, as an absolute path and by
-      # real path.
+      # `cybertrain test`), or the file the shell's CYBERTRAIN_DATABASE
+      # names outside a test shell ({shell_other_database}), compared as
+      # written, as an absolute path and by real path.
       # @param path [String]
       # @return [String]
       # @api private
@@ -157,6 +158,11 @@ module Cybertrain
         end
         Cybertrain.other_database_envs.each { |env| envs << env }
         Cybertrain.other_database_paths.each { |other| paths << other }
+        shell = Database.shell_other_database
+        unless shell.empty?
+          envs << (@shell_env.empty? ? "development" : @shell_env)
+          paths << shell
+        end
         i = 0
         while i < paths.length
           return envs[i] if Database.same_file?(file, real, Database.uri_file(paths[i]))
@@ -164,6 +170,45 @@ module Cybertrain
           i += 1
         end
         ""
+      end
+
+      # The CYBERTRAIN_ENV and CYBERTRAIN_DATABASE the shell exported, as
+      # gen/tests.rb found them before it set the one and deleted the other
+      # ({use_shell_database}); "" for unset.
+      @shell_env = ""
+      @shell_database = ""
+
+      # Hands over the CYBERTRAIN_ENV and CYBERTRAIN_DATABASE the shell
+      # exported (gen/tests.rb captures them before its own settings): the
+      # exported file is what development (or that environment) uses in
+      # this shell, so {other_environment} counts it too.
+      # @param env [String] "" when unset
+      # @param path [String] "" when unset
+      # @return [nil]
+      # @api private
+      def self.use_shell_database(env, path)
+        @shell_env = env
+        @shell_database = path
+        nil
+      end
+
+      # The shell's CYBERTRAIN_DATABASE when it names another environment's
+      # file, else "": unset, exported in a test shell (CYBERTRAIN_ENV=test),
+      # or a file named test.sqlite3 (also through a symlink) is the test
+      # database, not another one.
+      # @return [String]
+      # @api private
+      def self.shell_other_database
+        path = @shell_database
+        return "" if path.empty? || @shell_env == "test"
+
+        file = Database.uri_file(path)
+        return "" if file.empty? || File.basename(file) == "test.sqlite3"
+
+        real = Database.real_path(file)
+        return "" if !real.empty? && File.basename(real) == "test.sqlite3"
+
+        file
       end
 
       # Whether `file` (whose real path is `real`, "" when it does not
