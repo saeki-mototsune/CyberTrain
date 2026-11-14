@@ -48,8 +48,10 @@ module Cybertrain
     COMMANDS = Array.new(0) { Command.new("", "", nil) }
 
     # The words Main itself answers to; an application command may not take
-    # one (it would never run, or would hide the built-in).
-    BUILTIN_WORDS = ["server", "worker", "feeds", "migrate", "db", "jobs", "console", "dbconsole", "help", "--help", "-h"].freeze
+    # one (it would never run, or would hide the built-in). dev-address is
+    # `cybertrain server`'s, not listed in the usage.
+    BUILTIN_WORDS = ["server", "worker", "feeds", "migrate", "db", "jobs", "console", "dbconsole", "help", "--help", "-h",
+                     "dev-address"].freeze
 
     # Registers an operational command for the application's binary:
     # `./<name> NAME ARGS...` runs the block instead of the server, and
@@ -133,6 +135,12 @@ module Cybertrain
         run_console
       when "dbconsole"
         run_dbconsole
+      when "dev-address"
+        # `cybertrain server` asks this before it binds the port for the
+        # child it supervises; not in the usage, it is not for people.
+        config = Cybertrain.config
+        puts "#{config.host} #{config.port}"
+        0
       when "help", "--help", "-h"
         puts usage(name)
         0

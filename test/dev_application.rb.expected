@@ -5,7 +5,12 @@ ok   the development stack passes a good page through
 ok   a template error is a 500 page naming the template and line
 ok   a controller exception is a 500 page with the escaped message
 ok   a failed build puts its output on every HTML page but not on JSON
+ok   the development stack leaves conditional GET to the application
 ok   static files still pass through the development stack
 ok   host rejection precedes diagnostics and failed-build output
 ok   the rebuilder targets the app's build/bin/blog
-10 tests, 52 assertions, 0 failures
+ok   supervised, the role serves the state file's failed build on its inherited listener and builds no Rebuilder
+ok   supervised, every response names its runtime, HTML pages carry the indicator and the development paths are not logged
+ok   supervised, conditional GET validates against the child's runtime and generation
+ok   in production the supervision variables are ignored: no development paths, no runtime header, no indicator
+15 tests, 103 assertions, 0 failures

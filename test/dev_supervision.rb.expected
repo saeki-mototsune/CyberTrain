@@ -1,0 +1,6 @@
+ok   inactive without the descriptor, and outside development
+ok   a descriptor that is not a number is none
+ok   mark_ready writes the generation; write_failure writes the message
+ok   without the paths both are no-ops
+ok   runtime names this runtime
+5 tests, 11 assertions, 0 failures

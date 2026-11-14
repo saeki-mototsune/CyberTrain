@@ -1,6 +1,7 @@
 # Cybertrain::Dev::ErrorPage (the development diagnostics middleware) and
 # Cybertrain::Dev::Rebuilder: its command, the cybertrain-build lock, and the
-# last_failed/last_output the page reads. Runs under CRuby too: no
+# last_failed/last_output the page reads; and Dev::BuildStatus, the page's
+# other source of that answer under `cybertrain server`. Runs under CRuby too: no
 # FFI is required here (cybertrain/dev/reexec is left out on purpose).
 require "stringio"
 require "cybertrain/logger"
@@ -8,6 +9,7 @@ require "cybertrain/middleware"
 require "cybertrain/template/ast"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/error_page"
+require "cybertrain/dev/build_status"
 require "cybertrain/http/query"
 require "cybertrain/test"
 
@@ -55,6 +57,17 @@ class Page < Cybertrain::Middleware
       ctx.response.status = 200
     when "/continue"
       ctx.response.status = 100
+    when "/attachment"
+      # An HTML file served for saving.
+      ctx.response.content_type = "text/html; charset=utf-8"
+      ctx.response.set_header("Content-Disposition", "Attachment; filename=export.html")
+      ctx.response.body = "<!DOCTYPE html>\n<html><body><h1>Export</h1></body></html>"
+    when "/encoded"
+      # A body the application says it encoded (left plain here, so that a
+      # write into it shows).
+      ctx.response.content_type = "text/html; charset=utf-8"
+      ctx.response.set_header("Content-Encoding", "gzip")
+      ctx.response.body = "<!DOCTYPE html>\n<html><body><h1>Encoded</h1></body></html>"
     else
       ctx.response.body = "<!DOCTYPE html>\n<html><body class=\"app\"><h1>Posts</h1></body></html>"
     end
@@ -193,6 +206,14 @@ test "the error page replaces every header the failed action had set" do
   assert_includes res.body, "export failed"
 end
 
+# Under `cybertrain server` the answer comes from a Dev::BuildStatus (filled
+# from the supervisor's state file) in the page's second slot.
+def build_status(build, output)
+  status = Cybertrain::Dev::BuildStatus.new
+  status.update(Cybertrain::Dev::StateFile.parse(Cybertrain::Dev::StateFile.format(3, "cruby", build, output)))
+  status
+end
+
 test "a successful response passes through untouched" do
   res = request(plain_app, "/")
   assert_equal 200, res.status
@@ -231,6 +252,14 @@ test "the banner is not injected into bodyless responses" do
   assert_equal 304, request(app, "/not_modified").status
 end
 
+test "the banner is not injected into a download or an encoded body, in either loop" do
+  [Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), failed_rebuilder),
+   Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status("failed", "boom"))].each do |app|
+    assert_equal "<!DOCTYPE html>\n<html><body><h1>Export</h1></body></html>", request(app, "/attachment").body
+    assert_equal "<!DOCTYPE html>\n<html><body><h1>Encoded</h1></body></html>", request(app, "/encoded").body
+  end
+end
+
 test "the error page carries the banner too" do
   res = request(Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), failed_rebuilder), "/boom")
   assert_equal 500, res.status
@@ -243,6 +272,37 @@ test "no banner once a later build succeeds" do
   rebuilder.record_build(true, "")
   res = request(Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), rebuilder), "/")
   assert res.body.index("Build failed").nil?, "no banner expected"
+end
+
+
+test "a failed build status injects the banner with its output into HTML, not JSON" do
+  app = Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status("failed", "app/models/post.rb:4: syntax error <here>\n"))
+  res = request(app, "/")
+  assert_equal 200, res.status
+  assert_includes res.body, "<body class=\"app\"><div id=\"cybertrain-build-failed\""
+  assert_includes res.body, "app/models/post.rb:4: syntax error &lt;here&gt;"
+  assert_includes res.body, "<h1>Posts</h1>"
+  assert_equal "{\"ok\":true}", request(app, "/json").body
+  binary = Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status("binary_failed", "signal 11"))
+  assert_includes request(binary, "/").body, "signal 11"
+end
+
+# The page under `cybertrain server` is the CRuby preview of the current
+# source; the binary's own loop keeps running its previous build.
+test "the banner says what a failed build means in each loop" do
+  supervised = request(Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status("failed", "x")), "/").body
+  assert_includes supervised, "<strong>Build failed</strong>: the compiled binary of the current source could not be built " \
+                              "or did not start; until a build succeeds, pages come from the CRuby preview."
+  assert supervised.index("previous build").nil?, "no previous build under the supervisor"
+  own = request(Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), failed_rebuilder), "/").body
+  assert_includes own, "<strong>Build failed</strong>: the server keeps running the previous build until the next successful one."
+end
+
+test "a build status that is not failed shows no banner" do
+  ["idle", "building", "ready"].each do |build|
+    res = request(Cybertrain::Dev::ErrorPage.new(Raiser.new(Page.new), nil, build_status(build, "")), "/")
+    assert res.body.index("Build failed").nil?, "no banner expected while #{build}"
+  end
 end
 
 test "the rebuild command runs gen then an incremental build in the app root, logging to tmp/rebuild.log" do

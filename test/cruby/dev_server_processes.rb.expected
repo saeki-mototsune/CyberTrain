@@ -1,0 +1,56 @@
+ok   a child that writes its ready file is reported ready once
+ok   a child that dies at boot is reported with its failure file and exit status
+ok   without a failure file the exit carries the STDERR tail, which was copied as it came
+ok   a child killed by a signal is reported with the signal
+ok   a child that does not become ready in time is stopped and reported
+ok   stop_child sends TERM, then KILL after the grace
+ok   a child the runner stopped itself is never reported, nor its replacement's predecessor
+ok   the child inherits the listener and its environment
+ok   the child and the build get the listener but no other descriptor the supervisor inherited
+ok   a child command that cannot be started is reported as the child's exit on the next poll
+ok   a child that cannot be recorded in child.pid is stopped, then reported
+ok   the STDERR tail keeps the last characters of each line; the copy is whole
+ok   while holding the supervisor answers 503; after release_hold a child answers
+ok   a held page larger than the socket's buffers wakes the driver as the client reads it
+ok   a toolchain that refuses --incremental is built again without it, and from then on
+ok   a binary newer than every Ruby file is built with the plain command, so that spin can find it up to date
+ok   a missing binary, or one older than a Ruby file, is built incrementally
+ok   every build after the runner's first is incremental, a fresh binary included
+ok   a build after a cancelled first build is incremental
+ok   a save in the last instant of a plain build is compiled by the next build, not found up to date
+ok   without --incremental, a save in the last instant of a build leaves the binary older than the save
+ok   a build that ends ok leaves the binary at its launch, older than a save made during it; the next session builds incrementally
+ok   after a build of a session that ends ok, an untouched application's next session gets the plain command
+ok   a build that ends ok without writing the binary keeps the binary's time exactly
+ok   a failed build that wrote the binary leaves it at its launch too
+ok   a cancelled build that wrote the binary leaves it at its launch
+ok   a binary whose time cannot be set does not fail the build; one line says so
+ok   a Ruby file of another -I directory newer than the binary makes the build incremental
+ok   the framework's walk passes over an application inside it, its build/ and tmp/ included
+ok   a toolchain that refuses --incremental still builds a fresh binary with the plain command, and a stale one without the flag
+ok   a failed build reports its log
+ok   a spin that cannot be started is a failed build with the reason
+ok   cancel_build lets the build's leader clean up after its children are stopped
+ok   cancel_build kills the build's whole process group
+ok   build.pid names the build's group while it runs: gone at its end, its cancel and close
+ok   close keeps child.pid and build.pid while the process they name still runs
+ok   cancel_build reaps the build's leader only after the group's KILL
+ok   without /proc and a ps that fails, cancel_build still sends TERM before KILL
+ok   ended? reads /proc: a running process is not ended, a zombie is, a reaped one is
+ok   proc_state answers ended only for a process that is gone; other errors and odd text are unknown
+ok   close removes the files' leftover .tmp copies too
+ok   the file watch survives a poll that raises, says so once, and notices later saves
+ok   log loses its line, without raising, once the terminal is gone
+ok   run_gen answers gen's status and its output
+ok   a stop asked while gen runs stops gen's process group within the grace
+ok   run_gen reads gen's output as it comes and stops what gen left in its group
+ok   run_gen keeps a bounded UTF-8 output however much gen's leftover writes
+ok   run_gen keeps the last part of a long output
+ok   owned_run reads its output as UTF-8, characters past ASCII included
+ok   write_state renames a whole file into place
+ok   build_locked? asks the build's flock and never removes its file
+ok   a build that succeeds hands the port to the binary
+ok   a save made while the child is slow to stop keeps the binary from starting
+ok   after the machine's stop nothing runs and nothing is reported
+ok   a change runs one round; the files gen rewrites are not a change of their own
+55 tests, 220 assertions, 0 failures

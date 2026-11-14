@@ -6,8 +6,10 @@ name: CI
 # The exception is the API reference's Markdown source (docs/api/README.md;
 # see .yardopts), which the api-docs job below checks. Nor do the repository scripts and git hooks: the Gate
 # workflow runs them (script/gate and the checks it calls), and nothing below
-# reads them except script/api-docs, script/test-shard, script/ci-changes and
-# script/auth-e2e, script/test-command-e2e and script/generators-e2e, which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
+# reads them except script/api-docs, script/test-shard, script/ci-changes,
+# script/auth-e2e, script/test-command-e2e, script/generators-e2e,
+# script/preview-parity, script/test-cruby and script/preview-e2e, which are
+# brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
@@ -36,6 +38,9 @@ on:
       - "script/auth-e2e"
       - "script/test-command-e2e"
       - "script/generators-e2e"
+      - "script/preview-parity"
+      - "script/test-cruby"
+      - "script/preview-e2e"
   pull_request:
     paths:
       - "**"
@@ -52,6 +57,9 @@ on:
       - "script/auth-e2e"
       - "script/test-command-e2e"
       - "script/generators-e2e"
+      - "script/preview-parity"
+      - "script/test-cruby"
+      - "script/preview-e2e"
   # For a merge queue on main, which is not turned on (docs/design.md, D34,
   # the status of 2026-11-11, has what turning it on takes): the queue waits
   # for the required checks on a `merge_group` event, and a workflow without
@@ -100,13 +108,16 @@ jobs:
   # Whether this run needs the jobs that compile (framework-tests, test,
   # setup-cybertrain): `framework` is false when every changed file is one
   # only the API reference reads, or one `paths` above leaves out
-  # (script/ci-changes). A release run (release.yml passes `ref`) runs
+  # (script/ci-changes); `cruby_preview` and `preview_e2e` decide the
+  # cruby-preview and preview-e2e jobs the same way. A release run (release.yml passes `ref`) runs
   # everything, and so does a run whose changed files cannot be listed.
   changes:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       framework: ${{ steps.decide.outputs.framework }}
+      cruby_preview: ${{ steps.decide.outputs.cruby_preview }}
+      preview_e2e: ${{ steps.decide.outputs.preview_e2e }}
     steps:
       # Two commits: on a pull request the checkout is the merge commit, whose
       # first parent is the base branch; on main, the commit before a merge.
@@ -140,7 +151,11 @@ jobs:
           fi
           if [ -z "$base" ]; then
             echo "no base commit to compare with: every job"
-            echo "framework=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "framework=true"
+              echo "cruby_preview=true"
+              echo "preview_e2e=true"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git diff --name-only "$base" HEAD > "$RUNNER_TEMP/changed"
@@ -171,6 +186,101 @@ jobs:
           gem install --no-document kramdown -v "~> 2.5"
           gem install --no-document kramdown-parser-gfm -v "~> 1.1"
           script/api-docs
+
+  # The CRuby preview (cybertrain/preview/): the CRuby-only tests, then every
+  # framework test under CRuby with the Fiddle shim against the compiled
+  # snapshots (script/preview-parity; the known differences are listed in
+  # test/cruby/parity-gaps.txt). No Spinel: a pass here is no evidence the
+  # code compiles (spikes/NOTES.md, "What CRuby cannot tell you"). Runs when
+  # the framework, the tests or the two scripts change.
+  # macOS runs the CRuby-only tests alone: they are where the supervisor's
+  # paths without /proc (`ps`, the joined argument line), clang's `-shared`
+  # and the `.dylib` lookup run for real; script/preview-parity needs GNU
+  # `timeout`, which macOS does not have, and what it compares does not
+  # depend on the OS the way those paths do. Nothing else of the preview
+  # (the supervisor on a real application) is run on macOS.
+  cruby-preview:
+    needs: changes
+    if: needs.changes.outputs.cruby_preview == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.ref }}
+
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          ruby-version: "3.3"
+
+      # The shim compiles the framework's C units with cc, linked against
+      # SQLite and zlib. macOS has both libraries and their headers in the
+      # SDK that clang uses (the `test` job's macOS leg installs neither).
+      - name: Install SQLite and zlib headers (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev
+
+      - name: CRuby-only tests
+        run: script/test-cruby
+
+      # Some framework tests run the toolchain (test/cli_test_command.rb
+      # calls `spin`), compiled and under CRuby alike.
+      - uses: ./.github/actions/setup-spinel
+        if: runner.os == 'Linux'
+
+      - name: The framework's tests under CRuby
+        if: runner.os == 'Linux'
+        run: script/preview-parity
+
+  # The CRuby preview end to end (script/preview-e2e): `cybertrain server`
+  # on a copy of examples/blog with the real toolchain, driven over HTTP
+  # through its 16 steps (the first answer from CRuby, the handover to the
+  # binary, edits and their timing, a build lock, a killed supervisor, a
+  # SyntaxError, a compile-only error, Ctrl-C, no request refused across
+  # the handovers). It builds the blog with Spinel several times: about 6
+  # minutes on a 4-core development machine (2026-11-13), where the first
+  # build took about 100 s; that build took 100 to 120 s on these runners,
+  # so the limit leaves room for a slower run and a toolchain cache miss
+  # (setup-spinel then builds Spinel). A job of its own, beside the jobs
+  # that compile, so it adds no time to them. Linux only: the script reads
+  # /proc. On a failure the script prints the tails of the supervisor's
+  # output and of tmp/rebuild.log, and the whole logs are uploaded.
+  preview-e2e:
+    needs: changes
+    if: needs.changes.outputs.preview_e2e == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-spinel
+
+      - name: The CRuby preview end to end on a copy of examples/blog
+        env:
+          PREVIEW_E2E_EVIDENCE: ${{ runner.temp }}/preview-e2e-logs
+        run: |
+          spinel --version
+          script/preview-e2e
+
+      # overwrite: a re-run of this job replaces the logs of the attempt
+      # before it.
+      - name: Upload the supervisor's output and the build log
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: preview-e2e-logs
+          path: ${{ runner.temp }}/preview-e2e-logs
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7
 
   # The framework's test programs on Ubuntu, in four parallel jobs: each
   # program is compiled on its own, so the programs split cleanly. A job of

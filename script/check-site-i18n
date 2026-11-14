@@ -69,7 +69,7 @@ def parse(path):
 def strip_shell_comments(h):
     return re.sub(r'<span class="c">.*?</span>', '<span class="c">#</span>', h)
 
-KEEP = re.compile(r'^(CyberTrain|Spinel|Rails|GitHub|API|MIT|RubyGem|Ruby|SQLite|HTTP/1\.1|Linux|macOS|CI|Docker|VS Code|[A-Z]{2}|English|Français|Pre-alpha|dist/blog|examples/blog|ffi_func · ffi_lib|rebuild → stop → execv|.*\.rb|.*/|[\W\d_]+)$')
+KEEP = re.compile(r'^(CyberTrain|Spinel|Rails|GitHub|API|MIT|RubyGem|Ruby|SQLite|HTTP/1\.1|Linux|macOS|CI|Docker|VS Code|[A-Z]{2}|English|Français|Pre-alpha|dist/blog|examples/blog|ffi_func · ffi_lib|.*\.rb|.*/|[\W\d_]+)$')
 ENGLISHY = re.compile(r'\b(the|and|with|you|your|is|are|of|to|in|for|not|on|a)\b', re.I)
 
 def main(lang):

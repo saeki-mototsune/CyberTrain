@@ -8,7 +8,9 @@
 #   - its lock is held: a server this script started is running;
 #   - the port answers: a server started by hand is listening;
 #   - this user runs a `cybertrain server` that does not listen yet: one
-#     started by hand is still compiling (about a minute after a Ruby edit).
+#     started by hand is still starting (it binds the port once it has
+#     asked spin for the load path and the app for its address, a second or
+#     two), or one serves another port.
 set -u
 
 app="${1:-/workspace/blog}"
@@ -37,10 +39,11 @@ if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
   exit 0
 fi
 # A `cybertrain server` started by hand holds neither the lock nor, until it
-# has compiled the app, the port. It is the gem's Ruby script, whose command
-# line is "/usr/bin/ruby3.2 /usr/local/bin/cybertrain server [PORT]";
-# anchoring on the interpreter skips a shell or init whose arguments merely
-# mention it.
+# has bound it, the port. It is the supervisor, the gem's Ruby script, whose
+# command line is "/usr/bin/ruby3.2 /usr/local/bin/cybertrain server [PORT]";
+# its children (`ruby ... bin/blog.rb PORT`, `build/bin/blog PORT`) and its
+# build (`spin build blog ...`) do not match. Anchoring on the interpreter
+# skips a shell or init whose arguments merely mention it.
 if pgrep -u "$(id -u)" -f '^[^ ]*ruby[^ ]* [^ ]*/cybertrain server( |$)' >/dev/null 2>&1; then
   echo "playground-server: a cybertrain server is already starting, so no second server is started: ${url}"
   exit 0
@@ -56,9 +59,10 @@ cat <<EOF
   App    ${url}
   Guide  ${app}/PLAYGROUND.md
 
-  Views reload on the next request. A Ruby change rebuilds the app (about a
-  minute), then the server restarts by itself. Reload the page to see either.
-  Ctrl-C stops the server; run playground-server to start it again.
+  Views reload on the next request. A Ruby change shows at once, served by
+  CRuby; the compiled binary takes over when its build finishes (the corner
+  of the page says which one you are looking at). Reload the page to see
+  either. Ctrl-C stops the server; run playground-server to start it again.
 EOF
 if command -v code >/dev/null 2>&1; then
   cat <<EOF
@@ -80,8 +84,9 @@ fi
 
 # Open the app in a browser tab as soon as it listens, when this terminal has
 # VS Code's `code`: on every start by this script, so also after the
-# codespace was stopped and restarted, but not on the development loop's
-# restarts after a rebuild, which do not run this script. No click leads to
+# codespace was stopped and restarted, but not when the server hands the
+# port from CRuby to the compiled binary after an edit: the supervisor holds
+# the port throughout and this script does not run again. No click leads to
 # that tab, so a pop-up blocker may stop it; devcontainer.json therefore has
 # the port notify too, and the notification's "Open in Browser" is a click.
 # The opener gives up when the server ($$ after the exec below) exits, and

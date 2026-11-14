@@ -177,6 +177,57 @@ class FlakyAcceptServer < Cybertrain::Server
   end
 end
 
+# The TERM trap landing between the accept loop's check of the stop flag
+# and its accept: the connection accepted is one the stopping server took
+# in, so its first request must be answered, not the socket closed unread
+# (a reset for the client). With $hold_accept the first accept also waits
+# until the test has queued a second connection behind it, which is then
+# in the listener's queue when the loop sees the stop.
+$hold_accept = false
+$accept_held = false
+$second_queued = false
+
+class StopOnAcceptServer < Cybertrain::Server
+  private
+
+  def accept_client(listener)
+    sock = super
+    request_stop
+    if $hold_accept
+      $hold_accept = false
+      $accept_held = true
+      sleep 0.01 until $second_queued
+    end
+    sock
+  end
+end
+
+# The first accept requests the stop and waits, as StopOnAcceptServer's
+# with $hold_accept, until the test has queued a second connection; then
+# the first accept of the sweep that follows fails with ECONNABORTED (a
+# queued client that reset before it was taken, as BSD and macOS report
+# it) without taking anything, and the second connection is still queued
+# behind it.
+$sweep_aborts = 0
+
+class AbortInSweepServer < Cybertrain::Server
+  private
+
+  def accept_client(listener)
+    if $accept_held && $sweep_aborts > 0
+      $sweep_aborts -= 1
+      raise Errno::ECONNABORTED, "Software caused connection abort"
+    end
+    sock = super
+    request_stop
+    unless $accept_held
+      $accept_held = true
+      sleep 0.01 until $second_queued
+    end
+    sock
+  end
+end
+
 $log = StringIO.new
 $server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 1,
                                  max_head_bytes: 1024, max_body_bytes: 64,
@@ -683,6 +734,187 @@ test "drain_timeout bounds the wait for a request that takes too long" do
   c.close
 end
 
+# A stop requested just as a connection is accepted (StopOnAcceptServer).
+# Its first request is answered with Connection: close, and a request
+# pipelined behind it is not started: the stopping server finishes the
+# response in flight only.
+test "a connection accepted as the stop is requested gets its first request answered" do
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  c.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\nGET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  res = c.read_response(false)
+  assert_equal "HTTP/1.1 200 OK", res.status_line
+  assert_equal "hi", res.body
+  assert_equal "close", res.header("connection")
+  assert c.closed_by_server?
+  c.close
+  runner.join
+  assert_equal 0, server.open_connections
+end
+
+# The client's request arrives a little after the accept: the connection is
+# still waited on (FIRST_REQUEST_GRACE) rather than closed by the drain.
+# 0.1 s is after the drain's first pass (it starts as soon as the accept
+# has requested the stop) and leaves most of the 0.5 s grace as margin.
+test "a connection accepted as the stop is requested is answered when its request comes a moment later" do
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  sleep 0.1
+  c.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+  res = c.read_response(false)
+  assert_equal "hi", res.body
+  assert_equal "close", res.header("connection")
+  c.close
+  runner.join
+end
+
+# A connection that never sends (a browser's spare, preconnected socket)
+# holds the stop up for FIRST_REQUEST_GRACE at most, not drain_timeout;
+# one accepted longer ago than that is closed at once, as an idle
+# keep-alive connection is.
+test "a connection that sends nothing holds up the stop for the first-request grace at most" do
+  server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 30, drain_timeout: 5.0,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  started = Time.now
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  runner.join
+  elapsed = Time.now - started
+  assert elapsed < Cybertrain::Server::FIRST_REQUEST_GRACE + 0.5, "run took #{elapsed}s with a silent fresh connection"
+  assert c.closed_by_server?
+  c.close
+
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 30, drain_timeout: 5.0,
+                                                                                     logger: Cybertrain::Logger.new($log, :info))
+  runner = Thread.new { server.run }
+  sleep 0.01 while server.port == 0
+  c = RawClient.new(server.port)
+  sleep 0.01 while server.open_connections == 0
+  sleep Cybertrain::Server::FIRST_REQUEST_GRACE + 0.1
+  started = Time.now
+  server.request_stop
+  runner.join
+  elapsed = Time.now - started
+  assert elapsed < 0.5, "run took #{elapsed}s with a connection silent since before the stop"
+  assert c.closed_by_server?
+  c.close
+end
+
+# The server's own listener: closing it would reset what is in its queue,
+# so the connections the kernel has queued when the loop sees the stop are
+# taken in and answered first.
+test "connections still in the accept queue at the stop are answered, not reset" do
+  $hold_accept = true
+  $accept_held = false
+  $second_queued = false
+  begin
+    server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                      logger: Cybertrain::Logger.new($log, :info))
+    runner = Thread.new { server.run }
+    sleep 0.01 while server.port == 0
+    port = server.port
+    first = RawClient.new(port)
+    first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    sleep 0.01 until $accept_held
+    second = RawClient.new(port)
+    second.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    $second_queued = true
+    assert_equal "hi", first.read_response(false).body
+    res = second.read_response(false)
+    assert_equal "hi", res.body
+    assert_equal "close", res.header("connection")
+    first.close
+    second.close
+    runner.join
+    assert port_refused?(port)
+  ensure
+    # a failure before the first accept must not leave it set for later tests
+    $hold_accept = false
+  end
+end
+
+# One failed accept in the sweep (AbortInSweepServer) is logged and the
+# sweep goes on: the connection queued behind it is answered, not reset
+# when the listener closes.
+test "a failed accept in the stop's sweep does not end it: what is queued behind is answered" do
+  $accept_held = false
+  $second_queued = false
+  $sweep_aborts = 1
+  begin
+    log = StringIO.new
+    server = AbortInSweepServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 5, drain_timeout: 5.0,
+                                                                                      logger: Cybertrain::Logger.new(log, :info))
+    runner = Thread.new { server.run }
+    sleep 0.01 while server.port == 0
+    port = server.port
+    first = RawClient.new(port)
+    first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    sleep 0.01 until $accept_held
+    second = RawClient.new(port)
+    second.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    $second_queued = true
+    assert_equal "hi", first.read_response(false).body
+    res = second.read_response(false)
+    assert_equal "hi", res.body
+    assert_equal "close", res.header("connection")
+    first.close
+    second.close
+    runner.join
+    assert_equal 0, $sweep_aborts
+    assert_includes log.string, "[ERROR] accept failed: Errno::ECONNABORTED"
+    assert port_refused?(port)
+  ensure
+    $sweep_aborts = 0
+  end
+end
+
+# Under `cybertrain server` the listener is inherited and the supervisor
+# keeps its own copy (here `supervisor`, a dup): what is queued at the
+# stop stays queued, and the next server on the same socket answers it.
+# The two servers answer differently, so the body says which one did.
+test "with an inherited listener, connections queued at the stop are left for the next server" do
+  $hold_accept = true
+  $accept_held = false
+  $second_queued = false
+  begin
+    held = TCPServer.new("127.0.0.1", 0)
+    held.autoclose = false
+    port = held.addr[1]
+    supervisor = held.dup
+    supervisor.autoclose = false
+    server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
+                                                                                      read_timeout: 5, drain_timeout: 5.0,
+                                                                                      logger: Cybertrain::Logger.new($log, :info))
+    # already listening: a client may connect before the server starts
+    runner = Thread.new { server.run }
+    first = RawClient.new(port)
+    first.send_raw("GET /hello HTTP/1.1\r\nHost: t\r\n\r\n")
+    sleep 0.01 until $accept_held
+    second = RawClient.new(port)
+    second.send_raw("GET /next HTTP/1.1\r\nHost: t\r\n\r\n")
+    $second_queued = true
+    assert_equal "hi", first.read_response(false).body
+    first.close
+    runner.join
+    following = Cybertrain::Server.new(BareHandler.new, port: port, listen_fd: supervisor.fileno, logger: Cybertrain::Logger.new($log, :info))
+    following.start
+    assert_equal "bare /next", second.read_response(false).body
+    second.close
+    following.stop
+    assert port_refused?(port)
+  ensure
+    # a failure before the first accept must not leave it set for later tests
+    $hold_accept = false
+  end
+end
+
 test "start raises Cybertrain::PortInUse when the port is already bound" do
   first = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   first.start
@@ -919,6 +1151,138 @@ end
 test "reuse_port is off unless asked for" do
   server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   refute server.reuse_port
+end
+
+# What a supervised development child does with the descriptor its
+# supervisor hands down: listen on it instead of binding. The Server's
+# listener owns the number from start on and closes it at stop, so the
+# TCPServer that bound it here is never closed (autoclose off), as a
+# supervisor's copy lives in another process.
+test "listen_fd serves on an inherited listener instead of binding the port" do
+  held = TCPServer.new("127.0.0.1", 0)
+  held.autoclose = false
+  port = held.addr[1]
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
+                                                                                     logger: Cybertrain::Logger.new($log, :info))
+  server.start
+  assert_equal port, server.port
+  c = RawClient.new(port)
+  res = c.get("/hello", "Connection: close\r\n")
+  c.close
+  assert_equal "HTTP/1.1 200 OK", res.status_line
+  assert_equal "hi", res.body
+  server.stop
+  assert port_refused?(port)
+end
+
+def inherited_start_message(fd)
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 3000, listen_fd: fd,
+                                                                                     logger: Cybertrain::Logger.new($log, :info))
+  assert_raises("Cybertrain::PortInUse") { server.start }
+end
+
+# A descriptor that is not open, a regular file, or a socket that does not
+# listen: start refuses each with PortInUse, which the server role turns
+# into its `error:` line, rather than raising Errno or accepting forever on
+# something that never yields a connection. One test each, so a failure
+# names its case. The file and the connected socket keep their own
+# descriptors: start leaves them open.
+NOT_LISTENING_MESSAGE = "port 3000 on 127.0.0.1 #{Cybertrain::PortInUse::NOT_LISTENING}"
+
+# Not a number just closed: the runtime opens descriptors of its own (its
+# scheduler's wakeup pipe and poller, created when first needed), and any
+# of them may take a freed number again, even a listener an earlier test
+# kept, and then no error is the right answer. 900 instead: /dev/fd lists
+# this process's open descriptors on Linux and macOS alike, every one is
+# below 900, and the kernel hands out the lowest free number, so 900 stays
+# closed until everything below it is open.
+test "listen_fd naming a descriptor that is not open raises PortInUse" do
+  assert Dir.children("/dev/fd").all? { |name| name.to_i < 900 }
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(900)
+end
+
+test "listen_fd naming a read-only regular file raises PortInUse" do
+  file = File.open(__FILE__)
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(file.fileno)
+  assert_equal "#", file.read(1)
+  file.close
+end
+
+# Read-write: Spinel's for_fd takes it (its fdopen refuses only a
+# descriptor whose access mode does not allow both), and its getsockopt
+# answers -1 for ENOTSOCK instead of raising, so the check must not read
+# "non-zero" as listening. So would a read-write descriptor of the
+# runtime's own, such as a poller, that took a number again.
+test "listen_fd naming a read-write regular file raises PortInUse" do
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/server_listen_fd_test"
+  File.write(path, "#")
+  file = File.open(path, "r+")
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(file.fileno)
+  assert_equal "#", file.read(1)
+  file.close
+  File.delete(path)
+end
+
+test "listen_fd naming a connected socket that does not listen raises PortInUse" do
+  held = TCPServer.new("127.0.0.1", 0)
+  client = TCPSocket.new("127.0.0.1", held.addr[1])
+  assert_equal NOT_LISTENING_MESSAGE, inherited_start_message(client.fileno)
+  client.write("x")
+  client.close
+  held.close
+end
+
+# macOS's kernel does not answer SO_ACCEPTCONN (xnu's sogetoptlock has no
+# case for it: ENOPROTOOPT), so there the option's read fails for a real
+# listener too. This server reads it as failed everywhere, as on macOS:
+# the listener must still be served and every other descriptor still
+# refused.
+class NoAcceptConnServer < Cybertrain::Server
+  private
+
+  def accept_conn_option(listener)
+    -1
+  end
+end
+
+def no_accept_conn_start_message(fd)
+  server = NoAcceptConnServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 3000, listen_fd: fd,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  assert_raises("Cybertrain::PortInUse") { server.start }
+end
+
+test "where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served" do
+  held = TCPServer.new("127.0.0.1", 0)
+  held.autoclose = false
+  port = held.addr[1]
+  server = NoAcceptConnServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, listen_fd: held.fileno,
+                                                                                    logger: Cybertrain::Logger.new($log, :info))
+  server.start
+  c = RawClient.new(port)
+  assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
+  c.close
+  server.stop
+  assert port_refused?(port)
+end
+
+test "where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused" do
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(900)
+  file = File.open(__FILE__)
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(file.fileno)
+  file.close
+  Dir.mkdir("tmp") unless Dir.exist?("tmp")
+  path = "tmp/server_listen_fd_test"
+  File.write(path, "#")
+  file = File.open(path, "r+")
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(file.fileno)
+  file.close
+  File.delete(path)
+  held = TCPServer.new("127.0.0.1", 0)
+  client = TCPSocket.new("127.0.0.1", held.addr[1])
+  assert_equal NOT_LISTENING_MESSAGE, no_accept_conn_start_message(client.fileno)
+  client.close
+  held.close
 end
 
 Cybertrain::Test.run!

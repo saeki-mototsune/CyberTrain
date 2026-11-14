@@ -193,6 +193,59 @@ test "server rejects anything after PORT" do
   assert_equal 1, Cybertrain::CLI.run(["server", "4000", "extra"])
 end
 
+# exe/cybertrain sends `server ... --spinel` here (today's compiled loop);
+# the flag is taken out wherever it stands, so PORT is checked as before.
+test "server --spinel is today's loop: the flag is dropped, PORT and extra words are checked" do
+  assert_equal 1, Cybertrain::CLI.run(["server", "--spinel", "abc"])
+  assert_equal 1, Cybertrain::CLI.run(["server", "4000", "--spinel", "extra"])
+  assert_equal 1, Cybertrain::CLI.run(["server", "--spinel", "4000", "extra"])
+  assert_includes Cybertrain::CLI::USAGE, "cybertrain server [PORT] [--spinel]"
+end
+
+# The checks of the test below, in a method so that the test block holds
+# only the begin/ensure that restores the directory and the environment
+# (NOTES rule 32: the fewer yielding calls inside a block with its own
+# ensure, the better).
+def spinel_port_checks(fake)
+  [["server", "--spinel", "4000"], ["server", "4000", "--spinel"]].each do |argv|
+    File.delete("#{fake}/calls") if File.exist?("#{fake}/calls")
+    assert_equal 0, Cybertrain::CLI.run(argv)
+    assert_equal "run gen\nbuild blog -- --incremental\nrun blog -- 4000\n", File.read("#{fake}/calls")
+  end
+  nil
+end
+
+# Wherever the flag stands, PORT reaches the compiled loop's commands. A fake
+# pinned Spinel (CYBERTRAIN_SPINEL_HOME) satisfies the toolchain check, and
+# its spin records each command instead of running it.
+test "server --spinel passes PORT to the compiled loop, before or after the flag" do
+  fake = "#{ROOT}/spinel_fake"
+  app = "#{ROOT}/spinel_app"
+  Dir.mkdir(fake)
+  Dir.mkdir(app)
+  File.write("#{fake}/spinel", "#!/bin/sh\necho \"spinel #{Cybertrain::SPINEL_TAG} (abc123def) [cc 13.3.0]\"\n")
+  File.write("#{fake}/spin", "#!/bin/sh\necho \"$*\" >> #{fake}/calls\n")
+  File.chmod(0o755, "#{fake}/spinel")
+  File.chmod(0o755, "#{fake}/spin")
+  File.write("#{app}/spin.toml", "[package]\nname = \"blog\"\nversion = \"0.1.0\"\n")
+  saved_home = ENV["CYBERTRAIN_SPINEL_HOME"].to_s
+  saved_path = ENV["PATH"].to_s
+  saved_dir = Dir.pwd
+  ENV["CYBERTRAIN_SPINEL_HOME"] = fake
+  Dir.chdir(app)
+  begin
+    spinel_port_checks(fake)
+  ensure
+    # Restored even when an assertion fails: the rest of the file runs in
+    # the original directory, with the original toolchain.
+    Dir.chdir(saved_dir)
+    ENV["CYBERTRAIN_SPINEL_HOME"] = saved_home
+    ENV["PATH"] = saved_path
+  end
+  # Not the begin/ensure's value (see test/db_transaction.rb).
+  nil
+end
+
 # Stands in for the three spin commands: records each one with whether the
 # build lock (holding this process's PID) was held while it ran, and fails
 # the one named `failing`. With `writes`, a gen step writes that file (a path

@@ -39,6 +39,12 @@ ok   request_stop waits for a request in flight and answers it completely
 ok   an idle keep-alive connection does not hold up shutdown
 ok   many idle keep-alive connections are closed by the drain, not waited out
 ok   drain_timeout bounds the wait for a request that takes too long
+ok   a connection accepted as the stop is requested gets its first request answered
+ok   a connection accepted as the stop is requested is answered when its request comes a moment later
+ok   a connection that sends nothing holds up the stop for the first-request grace at most
+ok   connections still in the accept queue at the stop are answered, not reset
+ok   a failed accept in the stop's sweep does not end it: what is queued behind is answered
+ok   with an inherited listener, connections queued at the stop are left for the next server
 ok   start raises Cybertrain::PortInUse when the port is already bound
 ok   PortInUse names the reason the port could not be bound
 ok   starting a server on port 80 as non-root reports permission denied
@@ -51,4 +57,11 @@ ok   reuse_port on an IPv6 literal binds it or says why not
 ok   reuse_port on a host that does not resolve stops with a message naming the setting
 ok   reuse_port on an address this machine does not have stops with the same message
 ok   reuse_port is off unless asked for
-53 tests, 203 assertions, 0 failures
+ok   listen_fd serves on an inherited listener instead of binding the port
+ok   listen_fd naming a descriptor that is not open raises PortInUse
+ok   listen_fd naming a read-only regular file raises PortInUse
+ok   listen_fd naming a read-write regular file raises PortInUse
+ok   listen_fd naming a connected socket that does not listen raises PortInUse
+ok   where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served
+ok   where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused
+66 tests, 252 assertions, 0 failures

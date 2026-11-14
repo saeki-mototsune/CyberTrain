@@ -16,6 +16,17 @@ error: PORT must be a number
 ok   server rejects a PORT that is not a number
 error: unexpected argument 'extra'
 ok   server rejects anything after PORT
+error: PORT must be a number
+error: unexpected argument 'extra'
+error: unexpected argument 'extra'
+ok   server --spinel is today's loop: the flag is dropped, PORT and extra words are checked
+run    SPIN_DEBUG=1 spin run gen
+run    spin build blog -- --incremental
+run    spin run blog -- 4000
+run    SPIN_DEBUG=1 spin run gen
+run    spin build blog -- --incremental
+run    spin run blog -- 4000
+ok   server --spinel passes PORT to the compiled loop, before or after the flag
 error: spin.toml [package] name 'tmp' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
 error: spin.toml [package] name 'Public' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
 error: spin.toml [package] name '.hidden' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
@@ -63,4 +74,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-37 tests, 269 assertions, 0 failures
+39 tests, 277 assertions, 0 failures

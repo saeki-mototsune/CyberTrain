@@ -80,4 +80,13 @@ test "migrate is db migrate" do
   assert_equal 0, run(["migrate"])
 end
 
+# What `cybertrain server` asks the application before it binds: the
+# configured address, one line (`127.0.0.1 3000` in the snapshot, the
+# defaults). It reads Cybertrain.config, so it comes last: the usage that
+# `help` prints above must not depend on it.
+test "dev-address prints the configured host and port and is not in the usage" do
+  assert_equal 0, run(["dev-address"])
+  refute Cybertrain::Main.usage("blog").include?("dev-address")
+end
+
 Cybertrain::Test.run!

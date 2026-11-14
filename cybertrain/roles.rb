@@ -17,6 +17,9 @@
 require "cybertrain/config"
 require "cybertrain/runtime"
 require "cybertrain/feature"
+# Only this file of cybertrain/dev: fail_boot leaves its message for a
+# supervisor, and production never loads the rest.
+require "cybertrain/dev/supervision"
 
 module Cybertrain
   # @api private
@@ -82,11 +85,17 @@ module Cybertrain
     end
 
     # A boot failure: the message on STDOUT in place of the banner, exit 1.
+    # Under `cybertrain server`'s supervision (development and the
+    # descriptor variable, Dev::Supervision.active?) the same line also goes
+    # to the failure file, where the supervisor reads why the child died.
+    # In any other environment no file is written, whatever the variables
+    # say.
     # @param message [String]
     # @return [nil]
     def self.fail_boot(message)
       puts "error: #{message}"
       STDOUT.flush
+      Dev::Supervision.write_failure("error: #{message}") if Dev::Supervision.active?(Cybertrain.config.env)
       exit(1)
       nil
     end

@@ -1,0 +1,32 @@
+ok   broadcast writes a row and returns increasing ids
+ok   broadcast refuses an invalid stream name
+FAIL sign round-trips through verify: Expected: ["été"]
+  Actual: ["\xC3\xA9t\xC3\xA9"]
+ok   verify refuses a tampered, empty or foreign token
+ok   a stream token is not a session cookie
+ok   verify refuses tokens whose names are invalid, even when signed
+ok   sign refuses what verify would
+ok   name_for gives table:id for a record and passes a String through
+ok   replay filters by stream in SQL and reads one chunk at a time
+ok   a subscriber takes at most 64 waiting control messages
+ok   subscribe names are capped and subscribe_within keeps the limit
+ok   the hub delivers to every matching subscriber in order
+ok   an idle pop returns nil and unsubscribe stops delivery
+ok   a subscriber whose backlog overflows is dropped
+ok   names can be added and removed
+ok   a poller tick delivers only the rows after the last id
+ok   Poller.reset! starts after the rows already written
+ok   the replay-to-live handoff sends every row once, in id order
+ok   a subscriber's cutoff is the poller's position when it subscribes
+ok   a row polled before subscribing is not delivered, one not yet polled is
+ok   a replay that finds nothing leaves the boundary at after
+ok   the poller starts on a database without the messages table
+ok   an after above the head is clamped to the table's head, not below it
+ok   a row broadcast between the head and the subscription is replayed, not lost
+ok   a client ahead of a lagging poller is not sent its rows again
+ok   prune deletes the rows older than the cutoff
+ok   replay returns the backlog of the named streams after an id
+ok   broadcast_replace_to writes the Turbo Stream HTML
+ok   broadcast_replace_to with partial: keeps the partial's markup and escapes its locals
+ok   the other broadcast shortcuts
+30 tests, 110 assertions, 1 failures

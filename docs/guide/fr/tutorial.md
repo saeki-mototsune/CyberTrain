@@ -1,5 +1,5 @@
 ---
-source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
+source_sha256: 2437024ef92acdab8ec374f1249ff0285fe030d24a72de28f582e73d0a0e3f42
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -41,9 +41,10 @@ dossier `dist/` déployable. L’application à laquelle mène ce tutoriel est
 > une gem, il lui faut donc Ruby.
 
 <!-- list: checklist -->
-- Ruby 3.2+ et RubyGems, uniquement pour la commande `cybertrain`&nbsp;; les
-  applications ne tournent jamais sur CRuby. Avec Ruby 3.2, ajoutez aussi
-  `gem install prism`.
+- Ruby 3.2+ et RubyGems, pour la commande `cybertrain` et pour l’aperçu
+  CRuby du serveur de développement (qui demande `fiddle`, la bibliothèque
+  de Ruby)&nbsp;; une application déployée ne tourne jamais sur CRuby. Avec
+  Ruby 3.2, ajoutez aussi `gem install prism`.
 - Spinel, à la version qu’épingle CyberTrain (`cybertrain doctor` l’affiche), du fork
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), qui
   intègre les corrections dont CyberTrain a besoin avant une version
@@ -339,7 +340,7 @@ Le scaffold écrit le contrôleur complet, avec aussi `index`, `show`, `edit`,
 
 ```shell terminal — blog/
 cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen (gen et db en mode debug)
-cybertrain server        # http://127.0.0.1:3000; recompile après une modification Ruby, les vues se rechargent sans recompilation
+cybertrain server        # http://127.0.0.1:3000; une modification Ruby s’affiche tout de suite (CRuby), puis compilée; les vues n’ont besoin ni de l’un ni de l’autre
 ```
 
 `spin run gen` lit `db/schema.rb` et `config/routes.rb`, analyse `app/` et
@@ -348,17 +349,25 @@ réécrit `db/schema.rb`. L’ordre compte&nbsp;: le premier `spin run gen` plac
 la nouvelle migration dans `gen/migrations.rb`, que requiert `bin/db.rb`, et
 le second construit les modèles à partir du `db/schema.rb` réécrit.
 
-`cybertrain server` affiche chaque commande `spin` qu’il lance, puis la
-bannière de démarrage de l’application. Le premier démarrage compile
-l’application, il prend donc un moment&nbsp;:
+`cybertrain server` sert l’application depuis CRuby en moins d’une seconde
+et la compile avec Spinel en arrière-plan. La première compilation compile
+toute l’application, ce qui prend quelques minutes&nbsp;; d’ici là, c’est
+l’aperçu CRuby qui répond, et chaque page le dit dans son coin inférieur
+droit&nbsp;:
 
 ```text sortie — cybertrain server
 => Booting cybertrain X.Y.Z
-=> development environment (1 worker)
-=> Watching app/, config/ and db/schema.rb for changes
+=> preview: CRuby 3.3.6
 * Listening on http://127.0.0.1:3000
-Use Ctrl-C to stop
+=> spinel: building (log: tmp/rebuild.log)
+=> preview: CRuby (0.5s)
 ```
+
+Une fois la compilation terminée, le serveur affiche `=> spinel: ready in …s; serving
+the compiled binary`, et le binaire compilé répond à partir de là. Après une
+modification Ruby, il affiche `Changed` et le fichier, répond de nouveau tout
+de suite depuis CRuby et recompile ([La boucle de développement](how-it-works.md#the-development-loop)).
+Ctrl-C l’arrête.
 
 <!-- list: points -->
 - Relancez `cybertrain spin run gen` et commitez `gen/` après avoir modifié le
@@ -379,8 +388,9 @@ Use Ctrl-C to stop
 > évalue des expressions de template sur les modèles, comme
 > `Article.where(title: "x").count`, et `dbconsole` ouvre `sqlite3`
 > ([La console](background-and-operations.md#the-console)). Les
-> modifications Ruby demandent une recompilation, que `cybertrain server` fait
-> pour vous en développement (recompilation, arrêt, `execv`). En développement,
+> modifications Ruby demandent une recompilation&nbsp;: en développement,
+> `cybertrain server` y répond tout de suite par un aperçu CRuby et passe le
+> port au binaire compilé quand sa compilation se termine. En développement,
 > les vues sont analysées depuis le disque à chaque requête, donc en modifier
 > une ne demande pas de recompilation&nbsp;; `cybertrain build` les intègre pour
 > la production.
@@ -420,10 +430,14 @@ Le scaffold insère une ligne `resources :comments` indépendante, que l’étap
 suivante remplace.
 
 > [!NOTE]
-> Un `cybertrain server` laissé en marche recompile dès que le scaffold écrit
-> ses fichiers, avant que la table n’existe, et journalise `Build failed; still
-> serving the previous build (see tmp/rebuild.log)`. Il recompile de nouveau
-> une fois que `cybertrain db migrate` a réécrit `db/schema.rb`.
+> Un `cybertrain server` laissé en marche prend en compte les fichiers du
+> scaffold dès qu’ils sont écrits, avant que la table n’existe. Le nouveau
+> modèle `Comment` tient ses colonnes de `gen/models/comment.rb`, que gen
+> n’écrit qu’une fois la table présente dans `db/schema.rb`&nbsp;: l’aperçu
+> CRuby ne peut donc pas le charger (une `NoMethodError`), le serveur répond
+> par sa propre page 503 qui nomme l’erreur, et la compilation Spinel échoue
+> aussi. Une fois que `cybertrain db migrate` a réécrit `db/schema.rb`, le
+> serveur répond de nouveau.
 
 > [!EXAMPLE] Supprimer un article qui a des commentaires
 > ### Supprimer un article qui a des commentaires
@@ -1529,10 +1543,10 @@ end
 - `SIGTERM` cesse d’accepter des connexions, laisse se terminer les requêtes
   en cours et quitte quand elles sont terminées, ou après le `drain_timeout`
   du serveur (10&nbsp;s).
-- La surveillance des fichiers et la boucle de recompilation ne tournent
-  jamais en production. Un `cybertrain server` en cours d’exécution saute ses
-  recompilations tant que `cybertrain build` détient
-  `tmp/cybertrain-build.lock`.
+- La surveillance des fichiers, l’aperçu CRuby et la boucle de recompilation
+  ne tournent jamais en production. Un `cybertrain server` en cours
+  d’exécution ne régénère et ne redémarre rien tant que `cybertrain build`
+  détient `tmp/cybertrain-build.lock`.
 
 `cybertrain new` écrit aussi une configuration
 [Kamal 2](https://kamal-deploy.org). Le `Dockerfile` exécute

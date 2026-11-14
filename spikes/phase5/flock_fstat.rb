@@ -28,7 +28,11 @@ rescue StandardError
 end
 puts "a.stat names the #{own} file"
 # Both: IO.for_fd's handle is fstat(2) of the descriptor ("old").
-fd = IO.for_fd(a.fileno, autoclose: false).stat.ino == old ? "old" : "new"
+io = IO.for_fd(a.fileno, autoclose: false)
+fd = io.stat.ino == old ? "old" : "new"
+# Spinel's for_fd IO is a dup of the descriptor that would keep the flock
+# alive after a closes: closed here. CRuby's shares a's descriptor: left.
+io.close unless RUBY_ENGINE == "ruby"
 puts "IO.for_fd(a.fileno).stat names the #{fd} file"
 
 a.close

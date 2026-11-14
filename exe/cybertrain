@@ -7,8 +7,16 @@ require "cybertrain/cli"
 # Ctrl-C reaches the whole process group: the child (`spin run NAME`, a
 # build) stops itself, and CRuby raises Interrupt out of `system` here.
 # Build.run's ensure has restored gen/views.rb by the time it arrives.
+# `cybertrain server` without --spinel is the CRuby supervisor
+# (cybertrain/cli/dev_server.rb), which traps INT itself once its socket is
+# bound and stops its children; before that, Interrupt ends it here too.
 begin
-  status = Cybertrain::CLI.run(ARGV)
+  status = if ARGV[0] == "server" && !ARGV.include?("--spinel")
+             require "cybertrain/cli/dev_server"
+             Cybertrain::CLI::DevServer.run(ARGV)
+           else
+             Cybertrain::CLI.run(ARGV)
+           end
 rescue Interrupt
   status = 130
 end

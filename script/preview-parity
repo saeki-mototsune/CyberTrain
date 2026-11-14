@@ -1,0 +1,185 @@
+#!/bin/sh
+# How close the CRuby preview is to the compiled program, as a checked fact:
+# runs each test/*.rb as `ruby -E UTF-8 -I. -r cybertrain/preview <file>`
+# (PREVIEW_PARITY_TIMEOUT seconds at most, default 60) and compares its stdout
+# and stderr, together, with the snapshot the compiled binary produced
+# (test/<name>.rb.expected). A test that matches must also exit with status 0
+# (none of the framework's tests exits otherwise when it passes).
+#
+# A test that is known to differ is listed in test/cruby/parity-gaps.txt,
+# one `<path><TAB><reason>` a line, `#` starting a comment line. A listed test
+# must still differ: one that now matches fails the script ("no longer a gap:
+# remove it from parity-gaps.txt"). A match is not proof that the code
+# compiles (spikes/NOTES.md, "What CRuby cannot tell you"); it says the
+# preview behaves as the compiled tests expect.
+#
+# A gap must not hide a new failure in the same file, so a listed test's CRuby
+# output is also compared with a snapshot of the gap as it is today,
+# test/cruby/parity/<name>.rb.expected; a difference is "unexpected" too.
+# The checkout's absolute path in that output (a message naming the test's own
+# file, say) is written as <repo> in the snapshot, so it holds in any
+# checkout; nothing else is normalised. The snapshots are not tests:
+# script/test-cruby and the gate's snapshot check glob test/cruby/*.rb and
+# never look into test/cruby/parity/. `--regen-gaps` rewrites them, for the
+# listed tests only (reviewed, never regenerated to make the check pass).
+#
+# The exit status counts too. A run that timed out (status 124) or died by a
+# signal (above 128) is "unexpected" whatever it printed, listed or not (a
+# hang after the right output is not a match), and `--regen-gaps` refuses to
+# record it. Any other status of a listed test is recorded beside its output
+# snapshot, in test/cruby/parity/<name>.rb.status (a file of its own: the
+# snapshot is the program's output and the status is not part of it), and a
+# run that ends with another one is "unexpected", both statuses named.
+#
+# A default run (no file arguments) also keeps the list itself honest: a listed
+# path that is not a test with a snapshot any more ("stale gap: ...") and a
+# file under test/cruby/parity/ that belongs to no listed gap ("orphan gap
+# record: ...") are "unexpected". With file arguments only those files are
+# examined.
+#
+# A test may spawn `ruby` itself (the tests' CRuby branch re-runs $0 in a
+# child). The script sets RUBYOPT for every run, so such a child loads the
+# shim and reads text as UTF-8 too, as the test's own process does through
+# its command line; RUBYOPT is the one way a grandchild inherits them. RUBYOPT
+# is split at spaces and takes no quoting, so a checkout path with a space
+# cannot go into it: the script stops with a message instead.
+#
+# usage: script/preview-parity [test/<name>.rb ...]     (default: every test)
+#        script/preview-parity --regen-gaps [file ...]  rewrite the gap snapshots
+#                                              (default: every listed test)
+#
+# Prints a line for each test that differs unexpectedly, then
+# `N match, M known gaps, K unexpected`. Exit status 1 when K > 0 or a listed
+# test now matches; 2 for a bad argument.
+set -u
+
+cd "$(dirname "$0")/.." || exit 2
+gaps=test/cruby/parity-gaps.txt
+snapdir=test/cruby/parity
+
+regen=false
+if [ "${1:-}" = "--regen-gaps" ]; then
+  regen=true
+  shift
+fi
+
+default_run=false
+if [ "$#" -eq 0 ]; then
+  default_run=true
+  if [ "$regen" = true ]; then
+    set -- $(awk -F '\t' '$0 !~ /^#/ && NF >= 2 { print $1 }' "$gaps" | LC_ALL=C sort)
+  else
+    set -- $(printf '%s\n' test/*.rb | LC_ALL=C sort)
+  fi
+fi
+
+case "$PWD" in
+  *" "*) echo "preview-parity: the checkout path has a space, which RUBYOPT cannot carry: $PWD" >&2; exit 2 ;;
+esac
+
+work=$(mktemp -d) || exit 2
+# The shim compiles each test's FFI libraries into tmp/cybertrain-dev/ffi/ of
+# the current directory, the checkout (tests run from it, for their relative
+# paths): what this run adds there is removed at its end, what was there
+# before is kept.
+ffi=tmp/cybertrain-dev/ffi
+ls "$ffi" > "$work/ffi-before" 2> /dev/null
+cleanup() {
+  for lib in "$ffi"/*; do
+    [ -e "$lib" ] || continue
+    grep -qxF "$(basename "$lib")" "$work/ffi-before" || rm -f "$lib"
+  done
+  rmdir "$ffi" tmp/cybertrain-dev 2> /dev/null
+  rm -rf "$work"
+}
+trap cleanup EXIT
+export RUBYOPT="-E UTF-8 -I$PWD -rcybertrain/preview"
+
+limit=${PREVIEW_PARITY_TIMEOUT:-60}
+match=0
+known=0
+unexpected=0
+if [ "$default_run" = true ] && [ "$regen" = false ]; then
+  listed_paths=$(awk -F '\t' '$0 !~ /^#/ && NF >= 2 { print $1 }' "$gaps")
+  for path in $listed_paths; do
+    if [ ! -f "$path" ] || [ ! -f "$path.expected" ] || [ "$(dirname "$path")" != test ]; then
+      echo "FAIL stale gap: $path is not a test; remove it from parity-gaps.txt"
+      unexpected=$((unexpected + 1))
+    fi
+  done
+  for record in "$snapdir"/*; do
+    [ -e "$record" ] || continue
+    stem=$(basename "$record")
+    stem=${stem%.expected}
+    stem=${stem%.status}
+    if ! printf '%s\n' "$listed_paths" | grep -qxF "test/$stem"; then
+      echo "FAIL orphan gap record: $record belongs to no listed gap"
+      unexpected=$((unexpected + 1))
+    fi
+  done
+fi
+for file in "$@"; do
+  if [ ! -f "$file" ] || [ ! -f "$file.expected" ]; then
+    echo "preview-parity: $file or its .expected does not exist" >&2
+    exit 2
+  fi
+  reason=$(awk -F '\t' -v f="$file" '$0 !~ /^#/ && $1 == f { print $2; found = 1 } END { exit !found }' "$gaps" 2> /dev/null)
+  listed=$?
+  if [ "$regen" = true ] && [ "$listed" -ne 0 ]; then
+    echo "preview-parity: $file is not in $gaps" >&2
+    exit 2
+  fi
+  timeout "$limit" ruby -E UTF-8 -I. -r cybertrain/preview "$file" > "$work/out" 2>&1
+  rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -gt 128 ]; then
+    if [ "$rc" -eq 124 ]; then how="timed out after ${limit} s"; else how="killed by a signal (status $rc)"; fi
+    if [ "$regen" = true ]; then
+      echo "FAIL $file: $how; not recorded as a gap"
+    else
+      echo "FAIL $file: $how, whatever it printed"
+    fi
+    unexpected=$((unexpected + 1))
+    continue
+  fi
+  if cmp -s "$work/out" "$file.expected"; then
+    if [ "$listed" -eq 0 ]; then
+      echo "FAIL $file: no longer a gap: remove it from parity-gaps.txt"
+      unexpected=$((unexpected + 1))
+    elif [ "$rc" -ne 0 ]; then
+      echo "FAIL $file: the output matches but the exit status is $rc, not 0"
+      unexpected=$((unexpected + 1))
+    else
+      match=$((match + 1))
+    fi
+  elif [ "$listed" -eq 0 ]; then
+    snapshot="$snapdir/$(basename "$file").expected"
+    statusfile="$snapdir/$(basename "$file").status"
+    # The path is not a regexp: a literal replacement through awk's index().
+    awk -v root="$PWD" '{ out = ""; while ((i = index($0, root)) > 0) { out = out substr($0, 1, i - 1) "<repo>"; $0 = substr($0, i + length(root)) } print out $0 }' "$work/out" > "$work/norm"
+    if [ "$regen" = true ]; then
+      mkdir -p "$snapdir"
+      cp "$work/norm" "$snapshot"
+      echo "$rc" > "$statusfile"
+      echo "preview-parity: wrote $snapshot"
+      known=$((known + 1))
+    elif [ -f "$snapshot" ] && cmp -s "$work/norm" "$snapshot"; then
+      recorded=$(cat "$statusfile" 2> /dev/null)
+      if [ "$recorded" = "$rc" ]; then
+        known=$((known + 1))
+      else
+        echo "FAIL $file: exit status ${rc}, the recorded gap has ${recorded:-none} ($statusfile; --regen-gaps if the change is understood)"
+        unexpected=$((unexpected + 1))
+      fi
+    else
+      echo "FAIL $file: its CRuby output is not the recorded gap ($snapshot; --regen-gaps if the change is understood)"
+      [ -f "$snapshot" ] && diff -u "$snapshot" "$work/norm" | head -n 20
+      unexpected=$((unexpected + 1))
+    fi
+  else
+    echo "FAIL $file differs from its snapshot"
+    diff -u "$file.expected" "$work/out" | head -n 20
+    unexpected=$((unexpected + 1))
+  fi
+done
+echo "$match match, $known known gaps, $unexpected unexpected"
+[ "$unexpected" -eq 0 ]

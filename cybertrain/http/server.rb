@@ -17,7 +17,8 @@ module Cybertrain
   # apart there) -- its own reason so the operator does not hunt for a
   # process that is not there. With reuse_port a host that does not resolve
   # or is not this machine's is a third reason and a name with several
-  # addresses a fourth, both naming the setting. The message is what
+  # addresses a fourth, both naming the setting; with listen_fd, a
+  # descriptor that is not a listening socket is a fifth. The message is what
   # Application#serve prints before exiting.
   class PortInUse < StandardError
     attr_reader :port
@@ -26,6 +27,7 @@ module Cybertrain
     PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
     REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine (check CYBERTRAIN_HOST)"
     REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses (set CYBERTRAIN_HOST to one of them)"
+    NOT_LISTENING = "cannot be served: the inherited descriptor is not a listening socket"
 
     def initialize(host, port, reason = IN_USE)
       super("port #{port} on #{host} #{reason}")
@@ -46,7 +48,13 @@ module Cybertrain
   # #stop closes the listener; requests already being processed get their
   # response (with Connection: close), idle keep-alive connections are
   # closed, and #run returns once every connection is gone or drain_timeout
-  # seconds have passed.
+  # seconds have passed. A connection the server has taken in but not yet
+  # read a request from is not idle: its first request is answered too
+  # (waited for FIRST_REQUEST_GRACE at most), since closing it unread is a
+  # reset for a client that has already sent it. On its own listener the
+  # server also takes in what is still in the listener's queue before it
+  # closes it (accept_queued); an inherited one's queue is left for the
+  # next process on the socket.
   #
   # reuse_port: true binds with SO_REUSEPORT, so several processes can listen
   # on one port and, on Linux, the kernel splits connections between them
@@ -59,13 +67,19 @@ module Cybertrain
     # misses is caught on its next pass, and one it reads late is harmless
     # because the drain shuts only the read side.
     class Connection
-      attr_reader :sock
-      attr_accessor :id, :idle, :streaming
+      attr_reader :sock, :first_request_grace_end
+      attr_accessor :id, :idle, :streaming, :awaiting_first_request
 
       def initialize(sock)
         @id = 0
         @sock = sock
         @idle = false
+        # Until its first request has been read: a stop does not close it
+        # unread, and the drain leaves it its first request until
+        # first_request_grace_end (Server::FIRST_REQUEST_GRACE after the
+        # accept).
+        @awaiting_first_request = true
+        @first_request_grace_end = Process.clock_gettime(Process::CLOCK_MONOTONIC) + Server::FIRST_REQUEST_GRACE
         # Set while a BodyWriter runs on it: the drain shuts its read side
         # so the writer sees the end (Sink#closed?) and returns.
         @streaming = false
@@ -88,10 +102,24 @@ module Cybertrain
     # called. An idle keep-alive connection does not poll: it waits for its
     # next request for up to read_timeout, and the drain ends that wait.
     ACCEPT_POLL = 0.1
+    # The pause after a failed accept in the stop's sweep (accept_queued):
+    # one that keeps failing (EMFILE until descriptors are freed) is tried
+    # about ten times within the sweep's ACCEPT_POLL, not in a tight loop.
+    SWEEP_RETRY = 0.01
+    # How long after its accept a connection that has sent nothing yet is
+    # left open by a stop for its first request. A client sends its request
+    # right after the connect, so this is ample; a socket opened ahead of
+    # need (a browser's preconnect) holds the stop up no longer than this.
+    FIRST_REQUEST_GRACE = 0.5
 
-    # port is the bound port once #start has run (the ephemeral one with port: 0).
+    # port is the bound port once #start has run (the ephemeral one with port: 0;
+    # the configured one with listen_fd).
     attr_reader :host, :port, :reuse_port
 
+    # listen_fd: a listening descriptor this process inherited (a
+    # supervisor's, in development), listened on instead of binding host and
+    # port; -1, the default, binds. The HTTP layer takes the number only:
+    # deciding whether to use one is the caller's.
     # drain_timeout bounds how long #run and #stop wait for requests in
     # flight; keep it below the process manager's stop timeout (systemd's
     # TimeoutStopSec, 15 s in docs/deploy.md).
@@ -101,8 +129,9 @@ module Cybertrain
     def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
                    max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger,
                    reuse_port: false,
-                   stream_write_timeout: 15)
+                   stream_write_timeout: 15, listen_fd: -1)
       @handler = handler
+      @listen_fd = listen_fd
       @stream_write_timeout = stream_write_timeout
       @host = host
       @port = port
@@ -125,14 +154,18 @@ module Cybertrain
     end
 
     # Binds, listens and spawns the accept thread; returns once listening.
-    # Raises PortInUse when the port cannot be bound.
+    # Raises PortInUse when the port cannot be bound. With listen_fd the
+    # inherited listener is already bound and listening, and port stays the
+    # configured one.
     def start
       # spikes/NOTES.md rule 22: one worker is faster for an I/O-bound server.
       # It must be set before the first Thread.new starts the scheduler.
       ENV["SPINEL_WORKERS"] = "1" unless ENV["SPINEL_WORKERS"]
       listener = bind_listener
-      listener.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, 1)
-      @port = listener.addr[1]
+      if @listen_fd < 0
+        listener.setsockopt(Socket::SOL_SOCKET, Socket::SO_REUSEADDR, 1)
+        @port = listener.addr[1]
+      end
       @running = true
       @accept_thread = spawn_acceptor(listener)
       nil
@@ -196,7 +229,12 @@ module Cybertrain
     # decides from context instead: a port below 1024 refused to a non-root
     # process is a permission problem, not a competing listener, because the
     # kernel checks the capability before it checks whether the port is free.
+    #
+    # An inherited listener is not bound here at all: inherited_listener
+    # takes it over by number.
     def bind_listener
+      return inherited_listener if @listen_fd >= 0
+
       @reuse_port ? reuse_port_listener : TCPServer.new(@host, @port)
     rescue Errno::EACCES
       raise PortInUse.new(@host, @port, PortInUse::PERMISSION_DENIED)
@@ -221,6 +259,77 @@ module Cybertrain
       sock.autoclose = false
       @reuse_socket = sock
       TCPServer.for_fd(sock.fileno)
+    end
+
+    # The descriptor a supervisor handed down, already bound and listening.
+    # The same single-owner rule as reuse_port_listener: the TCPServer made
+    # here owns the number in this process and accept_loop closes it; the
+    # supervisor keeps its own copy open in its own process, so the port
+    # stays bound for the next child.
+    #
+    # A number that is not open, not a socket, or a socket that does not
+    # listen is PortInUse::NOT_LISTENING, not an Errno nor an accept loop
+    # that fails forever. CRuby's for_fd refuses a non-socket (EBADF);
+    # Spinel's refuses a closed number (EBADF) and one its fdopen cannot
+    # open read-write (IOError, "fdopen failed": a read-only file, a pipe)
+    # but takes any other, so accepting? decides the rest. Until the check
+    # passes autoclose is off: a refused number is not this server's, and
+    # the collector must not close what something else holds.
+    def inherited_listener
+      listener = TCPServer.for_fd(@listen_fd)
+      listener.autoclose = false
+      raise PortInUse.new(@host, @port, PortInUse::NOT_LISTENING) unless accepting?(listener)
+
+      listener.autoclose = true
+      listener
+    rescue SystemCallError, IOError
+      raise PortInUse.new(@host, @port, PortInUse::NOT_LISTENING)
+    end
+
+    # Whether the socket listens. Where the kernel answers SO_ACCEPTCONN
+    # its answer decides: positive only for a listener (1 on Linux), 0 for
+    # a socket that does not listen. macOS's kernel does not answer it at
+    # all (xnu's sogetoptlock has no case for the option: ENOPROTOOPT), and
+    # Spinel's getsockopt answers -1 for a descriptor that is not a socket
+    # instead of raising, so a failed read decides nothing and the
+    # addresses do: a socket bound to a port (getsockname) with no peer
+    # (getpeername) is taken for the listener. Under Spinel neither call
+    # raises; a failure reads as port 0, which is what a read-write file
+    # gives, so it is refused; a connected socket has a peer and is
+    # refused too. The one descriptor the fallback cannot tell from a
+    # listener is a socket bound but never listened on, which no supervisor
+    # hands down: on a kernel that does not answer SO_ACCEPTCONN such a
+    # socket passes this check, and accept_loop then logs a failed accept
+    # every ACCEPT_POLL instead of serving.
+    def accepting?(listener)
+      answer = accept_conn_option(listener)
+      return answer > 0 if answer >= 0
+
+      bound_unconnected?(listener)
+    end
+
+    # SO_ACCEPTCONN's value, or -1 when it cannot be read (CRuby raises
+    # ENOPROTOOPT on macOS, ENOTSOCK for a non-socket).
+    def accept_conn_option(listener)
+      listener.getsockopt(Socket::SOL_SOCKET, Socket::SO_ACCEPTCONN).int
+    rescue SystemCallError, IOError
+      -1
+    end
+
+    def bound_unconnected?(listener)
+      return false unless listener.addr[1].to_i > 0
+
+      peer_port(listener) == 0
+    rescue SystemCallError, IOError
+      false
+    end
+
+    # The peer's port, 0 for a socket with no peer (CRuby raises ENOTCONN;
+    # Spinel answers port 0).
+    def peer_port(listener)
+      listener.peeraddr[1].to_i
+    rescue Errno::ENOTCONN
+      0
     end
 
     # A separate method so its rescue stays away from the raw socket calls'
@@ -286,18 +395,24 @@ module Cybertrain
 
     # Ends the wait of every connection whose thread is waiting for its next
     # request and has nothing to read yet, by shutting the socket's read
-    # side: the parked wait_readable wakes at once (CRuby and Spinel alike),
-    # the read that follows sees EOF, and serve ends quietly and closes the
-    # socket itself. Only the read side, because the snapshot can be stale:
-    # a connection that left its wait after the snapshot and has already
-    # read its next request still writes the whole response (with
-    # Connection: close, since the server is stopping) before it ends. A
-    # connection whose next request has arrived is left to read it. Every
-    # step tolerates the connection's own thread closing the socket first.
+    # side (a connection still awaiting its first request only once its
+    # FIRST_REQUEST_GRACE is over): the parked wait_readable wakes at once
+    # (CRuby and Spinel alike), the read that follows sees EOF, and serve
+    # ends quietly and closes the socket itself. Only the read side,
+    # because the snapshot can be stale: a connection that left its wait
+    # after the snapshot and has already read its next request still
+    # writes the whole response (with Connection: close, since the server
+    # is stopping) before it ends. A connection whose next request has
+    # arrived is left to read it. Every step tolerates the connection's own
+    # thread closing the socket first.
     def shut_idle_connections
       idle = []
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       @lock.synchronize do
-        @connections.each_value { |c| idle << c if c.idle || c.streaming }
+        @connections.each_value do |c|
+          idle << c if c.streaming ||
+                       (c.idle && (!c.awaiting_first_request || now >= c.first_request_grace_end))
+        end
       end
       i = 0
       while i < idle.size
@@ -339,8 +454,45 @@ module Cybertrain
           end
         end
       end
+      accept_queued(listener) if @listen_fd < 0
     ensure
       listener.close unless listener.closed?
+    end
+
+    # Takes in the connections still in the queue of the server's own
+    # listener once it stops: the kernel completed their handshake, the
+    # clients may have sent their requests, and closing a listening socket
+    # resets everything in its queue. Each is served like any other (its
+    # first request answered with Connection: close). Bounded by
+    # ACCEPT_POLL, so a steady stream of new clients cannot keep the stop
+    # going. An inherited listener is not swept: the supervisor holds the
+    # socket open, and the next child on it takes in what is queued.
+    #
+    # One failed accept does not end the sweep, or everything queued
+    # behind it would be reset: ECONNABORTED (a queued client that reset
+    # first, as BSD and macOS report it) concerns that client alone, and
+    # EMFILE may pass as connections close. Each failure is logged and
+    # followed by SWEEP_RETRY's pause, within the same bound.
+    def accept_queued(listener)
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      while !listener.closed? && Process.clock_gettime(Process::CLOCK_MONOTONIC) - started < ACCEPT_POLL &&
+            !listener.wait_readable(0).nil?
+        accept_queued_client(listener)
+      end
+      nil
+    end
+
+    # One accept of the sweep. Its own method so the rescue covers a single
+    # accept (it takes no block: NOTES rule 32).
+    def accept_queued_client(listener)
+      spawn_connection(accept_client(listener))
+      nil
+    rescue StandardError => e
+      unless listener.closed?
+        @logger.error("accept failed: #{e.class.name}: #{e.message}")
+        sleep SWEEP_RETRY
+      end
+      nil
     end
 
     def accept_client(listener)
@@ -381,7 +533,8 @@ module Cybertrain
     # wait means the client has been silent for read_timeout seconds.
     # Once the server is stopping, a connection idle between requests closes
     # (head_readable?) and a response ends the loop (respond answers
-    # Connection: close).
+    # Connection: close); one that has not had its first request yet waits
+    # for it, so that request is answered (the drain bounds the wait).
     #
     # `while true` rather than `loop do`: inside a `loop` block Spinel drops
     # the ivars of a raised exception (Rejected#status reads 0) and skips
@@ -429,6 +582,7 @@ module Cybertrain
         buf = rest.byteslice(length, rest.bytesize - length)
 
         request = Request.new(head.method, head.target, head.headers, body, remote_addr, head.http_version)
+        conn.awaiting_first_request = false
         break unless respond(sock, request, conn)
       end
     rescue Rejected => e
@@ -451,13 +605,19 @@ module Cybertrain
     # server stops (shut_idle_connections). It used to wait in ACCEPT_POLL slices
     # to notice the stop itself, which cost a timer and a scheduler turn per
     # idle connection ten times a second (spinel-feedback.md, 4).
+    #
+    # A connection still awaiting its first request waits for it even when
+    # the server is stopping: it was taken in (accepted, perhaps after the
+    # TERM, within ACCEPT_POLL) and its client may already have sent the
+    # request, so closing it unread would reset the client. The drain ends
+    # its wait once its FIRST_REQUEST_GRACE is over.
     def head_readable?(sock, idle, conn)
       return !sock.wait_readable(@read_timeout).nil? unless idle
 
       # marked first, then the flag read: a stop requested before the mark
       # is seen here, and one requested after it finds the mark
       conn.idle = true
-      ready = @running && !sock.wait_readable(@read_timeout).nil?
+      ready = (@running || conn.awaiting_first_request) && !sock.wait_readable(@read_timeout).nil?
       conn.idle = false
       ready
     end

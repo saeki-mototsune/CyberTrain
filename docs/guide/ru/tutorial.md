@@ -1,5 +1,5 @@
 ---
-source_sha256: a6c97cf345f62630191ed3673c8515eacc0aa0c2f47281c2440566d491e82c94
+source_sha256: 2437024ef92acdab8ec374f1249ff0285fe030d24a72de28f582e73d0a0e3f42
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -40,8 +40,9 @@ Linux и macOS.
 > заголовки SQLite; команда `cybertrain` — это гем, поэтому ей нужен Ruby.
 
 <!-- list: checklist -->
-- Ruby 3.2+ и RubyGems — только для команды `cybertrain`; приложения никогда
-  не запускаются на CRuby. На Ruby 3.2 также `gem install prism`.
+- Ruby 3.2+ и RubyGems — для команды `cybertrain` и для CRuby-превью сервера
+  разработки (ему нужна библиотека Ruby `fiddle`); развёрнутое приложение
+  никогда не запускается на CRuby. На Ruby 3.2 также `gem install prism`.
 - Spinel в релизе, который фиксирует CyberTrain (его выводит `cybertrain doctor`), — релиз форка
   [saeki-mototsune/spinel](https://github.com/saeki-mototsune/spinel), в
   котором исправления, нужные CyberTrain, появляются раньше, чем в основном
@@ -328,7 +329,7 @@ end
 
 ```shell терминал — blog/
 cybertrain db migrate    # spin run gen; spin run db -- migrate; spin run gen (gen и db в отладочном режиме)
-cybertrain server        # http://127.0.0.1:3000; пересборка при правках Ruby, представления перезагружаются без пересборки
+cybertrain server        # http://127.0.0.1:3000; правки Ruby видны сразу (CRuby), затем скомпилированными; представлениям не нужно ни то, ни другое
 ```
 
 `spin run gen` читает `db/schema.rb` и `config/routes.rb`, сканирует `app/` и
@@ -337,17 +338,24 @@ cybertrain server        # http://127.0.0.1:3000; пересборка при п
 новую миграцию в `gen/migrations.rb`, который подключает `bin/db.rb`, а второй
 строит модели по перезаписанному `db/schema.rb`.
 
-`cybertrain server` выводит каждую запускаемую команду `spin`, а затем
-стартовый баннер приложения. При первом запуске приложение компилируется, так
-что это займёт некоторое время:
+`cybertrain server` меньше чем за секунду начинает отдавать приложение из
+CRuby и собирает его Spinel в фоне. Первая сборка компилирует всё приложение
+и занимает несколько минут; пока она не закончится, отвечает CRuby-превью, и
+каждая страница сообщает об этом в правом нижнем углу:
 
 ```text вывод — cybertrain server
 => Booting cybertrain X.Y.Z
-=> development environment (1 worker)
-=> Watching app/, config/ and db/schema.rb for changes
+=> preview: CRuby 3.3.6
 * Listening on http://127.0.0.1:3000
-Use Ctrl-C to stop
+=> spinel: building (log: tmp/rebuild.log)
+=> preview: CRuby (0.5s)
 ```
+
+Когда сборка закончится, сервер выведет `=> spinel: ready in …s; serving
+the compiled binary`, и с этого момента отвечает скомпилированный бинарный
+файл. После правки Ruby он выводит `Changed` и имя файла, сразу снова
+отвечает из CRuby и собирает заново ([Цикл разработки](how-it-works.md#the-development-loop)).
+Ctrl-C его останавливает.
 
 <!-- list: points -->
 - Заново запускайте `cybertrain spin run gen` и коммитьте `gen/` после
@@ -368,8 +376,9 @@ Use Ctrl-C to stop
 > вычисляет выражения шаблонов над моделями, например
 > `Article.where(title: "x").count`, а `dbconsole` открывает `sqlite3`
 > ([Консоль](background-and-operations.md#the-console)). Изменения в Ruby требуют
-> пересборки, которую в режиме разработки за вас выполняет `cybertrain server`
-> (пересборка, остановка, `execv`). В режиме разработки представления
+> пересборки: в режиме разработки `cybertrain server` сразу отвечает на них из
+> CRuby-превью и передаёт порт скомпилированному бинарному файлу, когда его
+> сборка завершится. В режиме разработки представления
 > разбираются с диска при каждом запросе, поэтому правка представления не
 > требует пересборки; для продакшена `cybertrain build` встраивает их в бинарный
 > файл.
@@ -408,11 +417,13 @@ cybertrain db migrate    # скаффолд создал миграцию для
 следующий шаг.
 
 > [!NOTE]
-> Оставленный запущенным `cybertrain server` пересобирает приложение, как
-> только скаффолд запишет свои файлы, ещё до появления таблицы, и пишет в лог
-> `Build failed; still serving the previous build (see tmp/rebuild.log)`. Он
-> пересоберёт его снова, когда `cybertrain db migrate` перезапишет
-> `db/schema.rb`.
+> Оставленный запущенным `cybertrain server` подхватывает файлы скаффолда, как
+> только они записаны, ещё до появления таблицы. Новая модель `Comment` берёт
+> свои столбцы из `gen/models/comment.rb`, а gen пишет его только тогда, когда
+> таблица есть в `db/schema.rb`, поэтому CRuby-превью не может её загрузить
+> (`NoMethodError`): сервер отвечает собственной страницей 503 с этой
+> ошибкой, и сборка Spinel тоже не удаётся. Когда `cybertrain db migrate`
+> перезапишет `db/schema.rb`, сервер снова начнёт отвечать.
 
 > [!EXAMPLE] Удаление статьи с комментариями
 > ### Удаление статьи с комментариями
@@ -1494,9 +1505,10 @@ end
 - `SIGTERM` прекращает приём соединений, даёт выполняющимся запросам
   завершиться и выходит, когда они закончатся, или по истечении
   `drain_timeout` сервера (10 с).
-- Слежение за файлами и цикл пересборки никогда не работают в production.
-  Запущенный `cybertrain server` пропускает пересборки, пока
-  `cybertrain build` удерживает `tmp/cybertrain-build.lock`.
+- Слежение за файлами, CRuby-превью и цикл пересборки никогда не работают в
+  production. Запущенный `cybertrain server` ничего не перегенерирует и не
+  перезапускает, пока `cybertrain build` удерживает
+  `tmp/cybertrain-build.lock`.
 
 `cybertrain new` также создаёт конфигурацию для
 [Kamal 2](https://kamal-deploy.org). `Dockerfile` выполняет `cybertrain setup`

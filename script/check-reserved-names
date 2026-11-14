@@ -212,7 +212,10 @@ fixtures_missing = fixture_taken - Cybertrain::Gen::FixtureScan::TAKEN_NAMES
 # none. Rows may name files that do not exist yet. An empty row
 # (remember) means no file may define the name.
 NAME_HOMES = {
-  "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb],
+  # dev/state_file.rb's is Dev::StateFile.format (the state file's text, a
+  # String, as Console::Printer.format's), a module function called on its
+  # module; compiled beside Request#format (a Symbol) in test/main.rb.
+  "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb cybertrain/dev/state_file.rb],
   "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb],
   "select" => %w[cybertrain/template/form_builder.rb],
   # cli/templates.rb's is `def self.layout` (the generated layout's text);
@@ -256,8 +259,12 @@ NAME_HOMES = {
   "xml" => %w[cybertrain/format_collector.rb],
   # template/ast.rb's TextNode#text and template/lexer.rb's Token#text are
   # attr_readers (a String), never compiled next to a FormatCollector or a
-  # Table receiver.
-  "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb cybertrain/template/ast.rb cybertrain/template/lexer.rb],
+  # Table receiver. dev/indicator.rb's is Dev::Indicator.text (the
+  # indicator's line, a String, as theirs), a class method called on its
+  # class; compiled beside FormatCollector#text in examples/blog (its
+  # controllers answer formats, its server role loads cybertrain/dev).
+  "text" => %w[cybertrain/format_collector.rb cybertrain/schema/table.rb cybertrain/template/ast.rb cybertrain/template/lexer.rb
+               cybertrain/dev/indicator.rb],
   # cli/attachment.rb's and cli/scaffold.rb's are the --any option
   # (attr_reader, a Boolean) of the generators' name records.
   "any" => %w[cybertrain/format_collector.rb cybertrain/cli/attachment.rb cybertrain/cli/scaffold.rb],
@@ -347,8 +354,12 @@ NAME_HOMES = {
   # and test/application.rb's program); cli/templates.rb's and
   # cli/authentication.rb's (PasswordsController) are generated controllers'
   # `update` actions, written in template Strings.
+  # dev/build_status.rb's is Dev::BuildStatus#update(snapshot) (nil), only
+  # ever called on a BuildStatus; compiled beside Model#update in
+  # examples/blog (its controllers update records, its server role builds
+  # the status).
   "update" => %w[cybertrain/model.rb cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb cybertrain/cli/templates.rb
-                   cybertrain/cli/authentication.rb],
+                 cybertrain/cli/authentication.rb cybertrain/dev/build_status.rb],
   "replace" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "append" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
   "prepend" => %w[cybertrain/turbo.rb cybertrain/turbo_stream_renderer.rb],
@@ -366,9 +377,12 @@ NAME_HOMES = {
   # over every definer and falls back to the builtin Time's method.
   # Net::Timer.now and Test::Receiver.now answer a monotonic Float,
   # Cache.now an Integer, Flash#now a FlashNow, Clock.now a Time (and
-  # test/time_now.rb's Time.now answers Clock.now).
+  # test/time_now.rb's Time.now answers Clock.now). The CRuby preview's
+  # supervisor (cli/dev_server/holding.rb, cli/dev_server/processes.rb:
+  # the runner's #now that the Machine reads) answers a monotonic Float
+  # too, and runs only under CRuby: Spinel never compiles it.
   "now" => %w[cybertrain/net/socket.rb cybertrain/test/receiver.rb cybertrain/cache.rb cybertrain/flash.rb cybertrain/clock.rb
-              cybertrain/test/time_now.rb],
+              cybertrain/test/time_now.rb cybertrain/cli/dev_server/holding.rb cybertrain/cli/dev_server/processes.rb],
   # Schema.current (the Definition, or nil), Time.current (a Time) and
   # Date.current (a Date), the last two in clock.rb.
   "current" => %w[cybertrain/schema.rb cybertrain/clock.rb],
@@ -412,7 +426,9 @@ NAME_HOMES = {
   # Clock.monotonic and DB::Connection.monotonic (the busy wait's deadline)
   # both answer CLOCK_MONOTONIC seconds as a Float (Task 2; test/clock.rb
   # compiles them with test.rb, test/time_travel.rb with the whole framework).
-  "monotonic" => %w[cybertrain/db/connection.rb cybertrain/clock.rb],
+  # DevServer.monotonic (cli/dev_server.rb, the CRuby preview's supervisor,
+  # never compiled) answers the same Float.
+  "monotonic" => %w[cybertrain/db/connection.rb cybertrain/clock.rb cybertrain/cli/dev_server.rb],
   # CLI::Toolchain.setup (the `cybertrain setup` command); the top-level
   # setup / teardown blocks; Test::Base#setup / #teardown (nil) beside the
   # class methods of the same name that refuse an unrewritten file (D9).

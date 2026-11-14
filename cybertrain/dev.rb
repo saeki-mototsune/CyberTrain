@@ -4,9 +4,19 @@
 # gen && spin build <name> -- --incremental` (the app's package name; without
 # the flag when the toolchain predates it), and replaces itself with the new
 # binary; ErrorPage shows exceptions and failed builds in the browser.
-# Production never loads any of it into the request path.
+# Production never loads any of it into the request path. Dev::Supervision
+# (cybertrain/dev/supervision.rb) reads what `cybertrain server` hands a
+# child it supervises; Roles requires that file on its own. Such a child
+# learns about the background build from the supervisor's state file
+# (Dev::StateFile), which ErrorPage reads through a Dev::BuildStatus, and
+# in front of ErrorPage Dev::Indicator names the runtime on every response
+# and in a corner of every HTML page.
 require "cybertrain/dev/watched"
 require "cybertrain/dev/watcher"
 require "cybertrain/dev/rebuilder"
 require "cybertrain/dev/reexec"
 require "cybertrain/dev/error_page"
+require "cybertrain/dev/supervision"
+require "cybertrain/dev/state_file"
+require "cybertrain/dev/build_status"
+require "cybertrain/dev/indicator"

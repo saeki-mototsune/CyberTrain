@@ -1,0 +1,4 @@
+ok   an uncaught exception is written to the failure file
+ok   exit leaves no failure file
+ok   a syntax error in a required file is written
+3 tests, 4 assertions, 0 failures

@@ -1,6 +1,6 @@
 ---
-source_sha256: 6c7e1b82f90ec965db86de8c2a1471f6d140478ae64670f6b832eca9de062934
-description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
+source_sha256: d5610c649a5f3887d806cfcf265cda6bfd8a31210236e485277521aa6602d39d
+description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
 
@@ -92,11 +92,33 @@ gen が見つけないケースが 2 つあります：`cybertrain/jobs` なし�
 
 ## 開発ループ
 
-`development`（`cybertrain build` で作ったバイナリ以外での `CYBERTRAIN_ENV` のデフォルト）で `cybertrain server`（`SPIN_DEBUG=1 spin run gen`、`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`、次に `spin run NAME`）を実行すると、`app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` とアセットのルート（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）も 0.5 秒ごとに確認します。ビューは除外され（エンジンが自分で再読み込みするためです）、開発環境では空の `gen/views.rb` も同様です。
+`development`（`cybertrain build` で作ったバイナリ以外での `CYBERTRAIN_ENV` のデフォルト）の `cybertrain server` はスーパーバイザーです。`cybertrain` コマンドを動かしている Ruby、つまり CRuby の上で動き、待ち受けソケットを自分で持ち、その上で子プロセスを一度に一つだけ動かします：変更の直後は CRuby 上のアプリケーション、Spinel がバックグラウンドでビルドを終えたらコンパイル済みのバイナリです。Ruby の編集には CRuby のプレビューがすぐに応答し（examples/blog では 1 秒未満）、その後は何もしなくてもコンパイル済みのプログラムがポートを引き継ぎます。
 
-変更があるとバックグラウンドで `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` を実行します：Spinel のインクリメンタルビルドで、編集によって変わった C のユニットだけを再コンパイルします。`--incremental` のない Spinel のリリースはこのフラグを拒否し、その場合ループはフラグなしでビルドします。CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin のデバッグモード（`SPIN_DEBUG=1`、`-O0`）でビルドします：どちらも数ミリ秒しか動かず、gen は `-O2` のときのごく一部の時間でコンパイルできるためです。アプリケーションは常にリリースビルドです。
+起動するとスーパーバイザーは gen を CRuby で実行し（`ruby bin/gen.rb`。`spin run gen` と同じ `gen/` を書きます）、アプリケーションを CRuby で起動し（`ruby -r cybertrain/preview bin/NAME.rb`）、ビルドを始めます。どちらも `PATH` 上の `ruby`、つまり `cybertrain doctor` が `fiddle` を確認する Ruby で動きます。これは `cybertrain` コマンドを動かしている Ruby とは別の Ruby のこともあります。プレビューはフレームワークの FFI（SQLite、zlib）を Ruby の `fiddle` の上のシムで提供します。このシムはバイナリと同じ C を一度だけ `tmp/cybertrain-dev/ffi/` にコンパイルします。最初のビルドは `spin build NAME` なので、バイナリをビルドしてから変わっていないアプリケーションは何もコンパイルせず、バイナリが 1 秒以内に応答を始めます。バイナリより新しい Ruby ファイルがあるときの最初のビルドと、それ以降のすべてのビルドは `spin build NAME -- --incremental` です：Spinel のインクリメンタルビルドで、編集によって変わった C のユニットだけを再コンパイルします。`--incremental` のない Spinel のリリースはこのフラグを拒否し、その場合はフラグなしでビルドします。出力は `tmp/rebuild.log` に書かれます。
 
-成功すると再起動を要求します（外部からの `kill -HUP` が立てるのと同じフラグです）：モニタースレッドがリスナーを止めて処理中のリクエストを捌き切り、その後メインスレッドが同じポートと PID のまま新しいバイナリを `execv` するので、セッションの途中のクライアントからは見えません。ビルドに失敗した場合は古いバイナリで配信を続け、すべての HTML レスポンスにコンパイラの出力をバナーとして表示します。`cybertrain build` が `tmp/cybertrain-build.lock` を保持している間は、再ビルドを行いません。本番環境ではこれらは一切読み込まれません。
+スーパーバイザーは `app/**/*.rb`、`config/**/*.rb`、`db/schema.rb`、`gen/**/*.rb` とアセットのルート（`app/assets/**`、`app/javascript/**`、`vendor/javascript/**`）を 1 秒に 10 回確認します。ビューは除外され（どちらのランタイムもディスクから読み直すためです）、開発環境では空の `gen/views.rb` も同様です。変更があると、実行中のビルドを取り消し、gen を CRuby で実行し、子プロセスを新しい CRuby の子プロセスに置き換えて、新しいビルドを始めます。ビルドが成功し、その間に何も変わっていなければ、スーパーバイザーは CRuby の子プロセスを止めて、同じソケットで `build/bin/NAME` を起動します：止めてから起動し、その間もソケットは開いたままなので、切り替えの最中に来たリクエストは少し待ってから応答されます。拒否されるリクエストはありません。
+
+アプリケーションのすべてのレスポンスには `X-Cybertrain-Runtime: cruby` か `spinel` が付き、すべての HTML ページの右下隅には目立たない 1 行が表示されます：
+
+- `CRuby preview · Spinel building…`：ビルドの実行中に CRuby がこのページを描画しました。
+- `Spinel ready — reload`：いまはコンパイル済みのバイナリが応答しています。リロードするとそのページが見られます。
+- `CRuby preview · Spinel build failed`：CRuby が応答を続け、ページにはコンパイラの出力がバナーとして表示されます。
+- `CRuby preview · Spinel binary failed`：バイナリが起動しなかったか、終了しました。CRuby が再び応答し、バナーにはバイナリが報告した内容が表示され、次の変更でビルドしてもう一度試します。
+- `Spinel`：コンパイル済みのバイナリがこのページを描画しました。
+- `Source changed — reload`：ページの描画の後にファイルが変わりました。
+- `CRuby preview`：CRuby がこのページを描画し、上のどれにも当てはまりません。
+
+この行は自分で最新の状態に保たれます。アプリケーションのページが勝手にリロードすることはないので、入力途中のフォームが失われることはありません。gen が失敗したとき、またはアプリケーションが CRuby で起動できないとき（たとえば `SyntaxError`）は、スーパーバイザー自身がすべてのリクエストに 503 のページで応答し、エラーと何を待っているかを表示します。このスーパーバイザー自身のページは、子プロセスが応答できるようになるまで 2 秒ごとに自分でリロードし、エラーを直して保存すればアプリケーションが戻ってきます。`cybertrain build` が `tmp/cybertrain-build.lock` を保持している間は、再生成も再起動も行わず、ロックがなくなってから追いつきます。スーパーバイザーは自分のファイルを `tmp/cybertrain-dev/` に置き、アプリケーションごとに一つだけ動きます。Ctrl-C でビルド、子プロセス、サーバーが止まります。
+
+プレビューでは分からないこと：
+
+- コードがコンパイルできるかどうか。バックグラウンドのビルドが終わったときに分かります。
+- [spikes/NOTES.md](../../spikes/NOTES.md) に記録されたランタイムの違い（例外の継承関係、ソケット上の String のエンコーディング、狭められた Float の `Float#round` など）。バイナリが応答するようになってから現れます。
+- タイミングと並行性：CRuby には GVL と OS スレッドがあり、`SPINEL_WORKERS` は意味を持ちません。
+
+バックグラウンドの処理（ジョブ、スケジューラー、ストリームのポーラー、WebSocket のフィード）は、応答している方の子プロセスで動きます。そのため一度の編集でこれらは CRuby へ、次にバイナリへと二度再起動し、Server-Sent Events と WebSocket のクライアントは二度再接続します。プレビューで動いたページは、バイナリでも動いて初めて完成です。数に入るのはコンパイルしたテスト（`spin test`）だけです。
+
+`cybertrain server --spinel` は代わりにコンパイル版のループを実行します。直接入力した `spin run NAME` と、`spin install` がビルドするネイティブ CLI も同じです：`SPIN_DEBUG=1 spin run gen`、`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`、次に `spin run NAME`。バイナリ自身が同じファイルを 0.5 秒ごとに確認し、変更があるとバックグラウンドで `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` を実行し、成功するとリスナーを止めて処理中のリクエストを捌き切り、同じポートと PID のまま新しいバイナリを `execv` します。ビルドに失敗した場合は古いバイナリで配信を続け、すべての HTML レスポンスにコンパイラの出力をバナーとして表示します。`cybertrain build` がロックを保持している間は再ビルドを行いません。CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin のデバッグモード（`SPIN_DEBUG=1`、`-O0`）でビルドします：どちらも数ミリ秒しか動かず、gen は `-O2` のときのごく一部の時間でコンパイルできるためです。アプリケーションは常にリリースビルドです。プレビューを動かせないときは、`cybertrain server` は `preview unavailable:` で始まる 1 行を出力し、コンパイル版のループを実行します。それは、`CYBERTRAIN_ENV` に `development` 以外の環境が指定されているとき、アプリケーションのフレームワークがプレビューより古いとき（`cybertrain/preview.rb` か `cybertrain/dev/supervision.rb` がない）、`PATH` 上に `ruby` がないとき、またはその `ruby` が起動できないか、10 秒以内に応答しないか、`fiddle` を読み込めないとき（`cybertrain doctor` が確認します）です。本番環境ではこれらは一切読み込まれません。
 
 ## Rails との違い
 
@@ -106,7 +128,7 @@ gen が見つけないケースが 2 つあります：`cybertrain/jobs` なし�
 | `rails console`、`rails dbconsole` | `./<app> console` はモデルに対してテンプレートの式言語を評価する（Spinel には `eval` がないので Ruby ではない）。`./<app> dbconsole` は `sqlite3` を開く（[コンソール](background-and-operations.md#the-console)） |
 | `config/application.rb` がアプリの使う railtie を require する | `bin/<app>.rb` と `bin/db.rb` が `cybertrain/core` とアプリの使う[サブシステム](#subsystems)を require する。`require "cybertrain"` はそのすべて |
 | `rails runner`、`lib/tasks/*.rake` | `bin/<app>.rb` に `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }`：`./<app> name ARGS` でデータベースに接続した状態で実行される |
-| コードを編集すると、動いているアプリが取り込む | Ruby の変更には再ビルドが必要。開発環境では `cybertrain server` が代わりに行う（再ビルド、停止、`execv`） |
+| コードを編集すると、動いているアプリが取り込む | Ruby の変更は CRuby のプレビューからすぐに反映され、ビルドが終わるとコンパイル済みのバイナリがポートを引き継ぐ（`cybertrain server`） |
 | ビューを編集しても再読み込みは不要 | 同じ — 開発環境ではビューはリクエストごとにディスクからパースされる |
 | `def new` | `def new_action`（`new` は `Klass.new(ctx)` を覆い隠してしまう） |
 | `before_action { do_thing }`（暗黙の `self`） | `before_action { \|c\| c.do_thing }` — 保存したブロックに対する `instance_exec` がないので、コールバックはコントローラーやレコードを明示的に受け取る |
