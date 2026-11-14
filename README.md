@@ -43,7 +43,7 @@ or from a job) and WebSocket feeds, and the tests: Rails' test classes
 `ViewComponent::TestCase`) with `setup` / `teardown`, fixtures,
 `travel_to`, `assert_select`, broadcast, mail and job assertions, all run
 by `cybertrain test` as one compiled program, and the time helpers
-(`5.minutes.ago`, `beginning_of_day`) in a configured time zone; and operations: log lines with the time, the level and tags, a request id on every request and in the jobs it queues, JSON lines for a log collector, and error reporting (`Cybertrain.error`, subscribers, and Sentry or GlitchTip through `require "cybertrain/error_reporter/sentry"`). [examples/blog](examples/blog) is the
+(`5.minutes.ago`, `beginning_of_day`) in a configured time zone. Operations work too: log lines with the time, the level and tags, a request id on every request and in the jobs it queues, JSON lines for a log collector, and error reporting (`Cybertrain.error`, subscribers, and Sentry or GlitchTip through `require "cybertrain/error_reporter/sentry"`). [examples/blog](examples/blog) is the
 Rails "Getting Started" blog built on it, in English and Japanese, with an
 admin user guarding its `/admin` pages. Since 2026-11-05 porting an
 existing Rails application is a goal, in five phases
