@@ -35,6 +35,7 @@ ok   feeds runs only the named subscription and stops it
 => test environment
 => feeds: trades
 ok   worker and feeds wait for the queued error reports when they stop
+ok   the server waits for the queued error reports when it stops
 => test environment
 => worker: 3 job threads, 2 scheduled tasks
 => test environment
@@ -61,4 +62,4 @@ ok   feeds status prints one line per status row and returns 0; with none it say
 => test environment
 => feeds: trades
 ok   a feeds process stopped cleanly deletes its own status rows, not another process's
-15 tests, 65 assertions, 0 failures
+16 tests, 68 assertions, 0 failures
