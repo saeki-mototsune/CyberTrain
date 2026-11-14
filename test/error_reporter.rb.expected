@@ -1,6 +1,7 @@
 ok   report records an exception the application rescued, with the request's fields
 ok   outside a request the request fields and where are empty
 ok   context keys and values become Strings, merged over the Scope's context
+ok   an event keeps the context it was reported with, whatever the caller changes after
 ok   handle answers the block's value, or nil after reporting what it raised
 ok   handle through a forwarding block, with next, and nested in blocks
 ok   report_unhandled and report_message
@@ -17,4 +18,4 @@ ok   a raising sender is logged at warn, the thread goes on, and reset! puts the
 ok   the sender a test installed is gone in the next
 ok   report never raises into its caller: a failure is logged and it answers nil
 ok   Cybertrain.error is one ErrorReporter
-19 tests, 86 assertions, 0 failures
+20 tests, 89 assertions, 0 failures

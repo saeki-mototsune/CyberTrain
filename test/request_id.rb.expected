@@ -19,5 +19,6 @@ ok   a reset link's token and the query never reach a report
 ok   no params, headers, cookies or client address in an event
 ok   RequestIds inside each other report once: the innermost, which saw the exception first
 ok   an exception outside StandardError is reported too
+ok   an exception outside both rescue arms leaves no Scope behind either
 ok   RequestId.where_for is the action, or request when none ran
-22 tests, 186 assertions, 0 failures
+23 tests, 188 assertions, 0 failures
