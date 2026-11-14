@@ -23,6 +23,17 @@
 # Pass: every thread prints its own values under SPINEL_WORKERS=1 and 4,
 # the slot is restored after the raise, each block's value comes back.
 #
+# A record of the run at framework 19668bc: it no longer runs at later
+# revisions as written below. Its CRuby run fails at load, since
+# standins/cruby_framework.rb requires cybertrain/websocket, which now
+# loads cybertrain/http/gzip_ffi.rb (`ffi_lib`, which CRuby has not); and
+# its Spinel build was not tried again beside the framework's own Scope
+# (cybertrain/logger.rb, phase 5b), which this program's stand-ins
+# predate. To run it again, run it over a checkout of 19668bc
+# (`git worktree add <dir> 19668bc`). What it showed is kept by the
+# framework's own programs: test/logger_scope.rb and
+# test/log_tags_background.rb.
+#
 # Run (Spinel 2026.11.04.7026, from the repository root; SQLite and zlib
 # are linked through FFI, so CRuby runs it over standins/cruby_framework.rb,
 # whose transaction holds a stand-in connection under the pool's key):

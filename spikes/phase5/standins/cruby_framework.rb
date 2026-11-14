@@ -6,6 +6,11 @@
 # Job.handle, Lease.release and Stream::Poller.last_id, and marks the files
 # it replaces as loaded so the spike's own requires do nothing. A record,
 # not the framework's code.
+#
+# A record of the run at framework 19668bc: at later revisions it fails at
+# load, since cybertrain/websocket now loads cybertrain/http/gzip_ffi.rb
+# (`ffi_lib`, which CRuby has not). To run the spikes over it again, use a
+# checkout of 19668bc (`git worktree add <dir> 19668bc`).
 require "json"
 require "cybertrain/version"
 require "cybertrain/logger"
