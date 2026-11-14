@@ -31,6 +31,7 @@ require "json"
 require "cybertrain/logger"
 require "cybertrain/clock"
 require "cybertrain/config"
+require "cybertrain/http/stream_failure"
 
 module Cybertrain
   # One error report as a subscriber receives it: Strings (and a Boolean,
@@ -699,7 +700,31 @@ module Cybertrain
     end
   end
 
+  class ErrorReporter
+    # Installed as {Cybertrain.stream_failure} when this file loads: the
+    # Server's report of a streamed or upgraded body whose writer raised
+    # (the client going away aside), `handled` false, with the request's
+    # Scope (the request id, method and path) and `where` the Scope's
+    # (`"ArticlesController#index"`, `"request"` when no action ran) with
+    # ` (stream)` after it: `"ArticlesController#index (stream)"`. Never
+    # raises ({#report_unhandled}).
+    # @api private
+    class StreamReport < StreamFailure
+      # @param error [Exception]
+      # @return [nil]
+      # @api private
+      def stream_failed(error)
+        at = Logger.current_scope.scope_where
+        at = "request" if at.empty?
+        where = "#{at} (stream)"
+        Cybertrain.error.report_unhandled(error, where, NO_CONTEXT)
+        nil
+      end
+    end
+  end
+
   @error_reporter = ErrorReporter.new
+  Cybertrain.stream_failure = ErrorReporter::StreamReport.new
 
   # The process's error reporter.
   # @example

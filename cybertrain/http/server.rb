@@ -6,6 +6,7 @@ require "cybertrain/http/response"
 require "cybertrain/http/handler"
 require "cybertrain/http/body_writer"
 require "cybertrain/http/client_error"
+require "cybertrain/http/stream_failure"
 require "cybertrain/logger"
 
 module Cybertrain
@@ -640,8 +641,9 @@ module Cybertrain
     # `Transfer-Encoding: chunked` (HTTP/1.1) or no framing (HTTP/1.0, and
     # a 101 upgrade), then the writer on this thread, then the terminating
     # chunk; always false, so serve closes the connection. A HEAD request
-    # gets the head only. What the writer raises is logged and ends the
-    # connection without the terminator: nothing can be sent at that point.
+    # gets the head only. What the writer raises is logged (and reported,
+    # unless the client went away: run_writer) and ends the connection
+    # without the terminator: nothing can be sent at that point.
     def respond_streaming(sock, request, response, writer, conn)
       upgrade = response.upgrade?
       response.set_header("Connection", upgrade ? "Upgrade" : "close")
@@ -684,12 +686,21 @@ module Cybertrain
 
     # The writer with its rescue, in a plain method (spikes/NOTES.md rules
     # 32/45); JSON::NestingError named first (rule 61). False when it raised.
+    # Either arm logs the `stream error:` line; a failure is then told to
+    # {Cybertrain.stream_failure} (reported, once cybertrain/error_reporter
+    # is loaded), under the request's Scope (run_writer_scoped). A client
+    # that went away (the closed peer serve rescues) is logged only.
     def run_writer(writer, sink)
       writer.write_body(sink)
       true
+    rescue EOFError, IOError, Errno::ECONNRESET, Errno::EPIPE => e
+      @logger.error("stream error: #{e.class.name}: #{e.message}")
+      sink.sink_close!
+      false
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       @logger.error("stream error: #{e.class.name}: #{e.message}")
       sink.sink_close!
+      Cybertrain.stream_failure.stream_failed(e)
       false
     end
 

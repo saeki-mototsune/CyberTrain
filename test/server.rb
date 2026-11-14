@@ -41,6 +41,11 @@ class ServerTestApp < Cybertrain::Middleware
       res.body_writer = LoggingWriter.new(false)
     when "/stream_boom"
       res.body_writer = LoggingWriter.new(true)
+    when "/stream_gone"
+      res.body_writer = GoneWriter.new(req.query_string)
+    when "/upgrade_boom"
+      res.set_header("Upgrade", "websocket")
+      res.upgrade!(BrokenUpgrade.new)
     when "/upgrade"
       # A 101 answer, as the WebSocket handshake gives one.
       res.set_header("Upgrade", "websocket")
@@ -79,6 +84,56 @@ class LoggingWriter < Cybertrain::BodyWriter
     sink.write("streamed")
     nil
   end
+end
+
+# An upgraded connection (/upgrade_boom) whose writer raises.
+class BrokenUpgrade < Cybertrain::BodyWriter
+  def write_body(sink)
+    raise ArgumentError, "upgrade broke"
+  end
+end
+
+# A streamed body (/stream_gone?<n>) whose client went away: it raises
+# what a write or read on a closed peer raises (n: 0 EPIPE, 1 ECONNRESET,
+# 2 EOFError, 3 IOError), which is logged and not reported.
+class GoneWriter < Cybertrain::BodyWriter
+  def initialize(which)
+    @which = which
+  end
+
+  def write_body(sink)
+    raise Errno::EPIPE, "gone" if @which == "0"
+    raise Errno::ECONNRESET, "gone" if @which == "1"
+    raise EOFError, "gone" if @which == "2"
+
+    raise IOError, "gone"
+  end
+end
+
+# What the reporter delivered while a test of streams ran (a constant:
+# NOTES rule 64).
+def blank_event
+  Cybertrain::ErrorEvent.new("", "", "", "", "", "", "", "", false, Cybertrain::ErrorReporter.empty_context,
+                             Array.new(0) { "" }, Time.at(0).utc)
+end
+
+STREAM_EVENTS = Array.new(0) { blank_event }
+
+class StreamEvents < Cybertrain::ErrorSubscriber
+  def report(event)
+    STREAM_EVENTS << event
+    nil
+  end
+end
+
+Cybertrain.error.subscribe(StreamEvents.new)
+
+# The events delivered so far whose message is `message`.
+def stream_events(message)
+  Cybertrain.error.drain_reports(2.0)
+  found = Array.new(0) { blank_event }
+  STREAM_EVENTS.each { |ev| found << ev if ev.error_message == message }
+  found
 end
 
 # An Array nested n levels deep, for /deep.
@@ -775,6 +830,50 @@ test "a streamed body is written under the request's Scope, the server's stream 
   assert_equal boom_id, $stream_seen
   assert_includes $stream_log.string, " ERROR [#{boom_id}] stream error: RuntimeError: stream broke\n"
   server.stop
+  # Reported once, with the request's id, `where` saying it was a stream.
+  events = stream_events("stream broke")
+  assert_equal 1, events.size
+  ev = events[0]
+  assert_equal ["RuntimeError", "request (stream)", boom_id, "GET", "/stream_boom", "false"],
+               [ev.error_class, ev.error_where, ev.error_request_id, ev.error_request_method, ev.error_request_path,
+                ev.error_handled.to_s]
+end
+
+test "an upgraded connection's writer that raises is reported once, with the request's id" do
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: $stream_logger)
+  server.start
+  c = RawClient.new(server.port)
+  c.send_raw("GET /upgrade_boom HTTP/1.1\r\nHost: t\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+  raw = c.read_to_close
+  c.close
+  server.stop
+  assert raw.start_with?("HTTP/1.1 101 "), raw
+  id = RawResponse.new("", raw, "").header("x-request-id")
+  assert_includes $stream_log.string, " ERROR [#{id}] stream error: ArgumentError: upgrade broke\n"
+  events = stream_events("upgrade broke")
+  assert_equal 1, events.size
+  assert_equal ["ArgumentError", "request (stream)", id], [events[0].error_class, events[0].error_where, events[0].error_request_id]
+end
+
+test "a streamed body whose client went away is logged and not reported" do
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: $stream_logger)
+  server.start
+  ["0", "1", "2", "3"].each do |which|
+    c = RawClient.new(server.port)
+    c.send_raw("GET /stream_gone?#{which} HTTP/1.1\r\nHost: t\r\n\r\n")
+    c.read_to_close
+    c.close
+  end
+  server.stop
+  ["Errno::EPIPE", "Errno::ECONNRESET", "EOFError", "IOError"].each do |name|
+    assert_includes $stream_log.string, " stream error: #{name}: "
+  end
+  Cybertrain.error.drain_reports(2.0)
+  gone = Array.new(0) { blank_event }
+  STREAM_EVENTS.each { |ev| gone << ev if ev.error_request_path == "/stream_gone" }
+  assert_equal 0, gone.size
 end
 
 test "an upgraded (101) connection behind RequestId: the id echoed, the writer under the request's Scope, NO_SCOPE after" do
