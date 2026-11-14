@@ -41,6 +41,10 @@ class ServerTestApp < Cybertrain::Middleware
       res.body_writer = LoggingWriter.new(false)
     when "/stream_boom"
       res.body_writer = LoggingWriter.new(true)
+    when "/upgrade"
+      # A 101 answer, as the WebSocket handshake gives one.
+      res.set_header("Upgrade", "websocket")
+      res.upgrade!(LoggingWriter.new(false))
     when "/slow"
       $slow_started = true
       sleep 1
@@ -207,6 +211,20 @@ $slow_started = false
 # Fails the first accept with EMFILE, as when descriptors run out, then
 # accepts normally: the accept loop must log it and keep going.
 $accept_failures = 1
+
+# Whether the connection thread was back on Logger::NO_SCOPE once a
+# streamed or upgraded writer had run, one entry per writer.
+$after_writer_no_scope = Array.new(0) { false }
+
+class ScopeAfterWriterServer < Cybertrain::Server
+  private
+
+  def run_writer_scoped(writer, sink, scope)
+    ok = super
+    $after_writer_no_scope << Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+    ok
+  end
+end
 
 class FlakyAcceptServer < Cybertrain::Server
   private
@@ -706,6 +724,25 @@ test "a streamed body is written under the request's Scope, the server's stream 
   assert_equal boom_id, $stream_seen
   assert_includes $stream_log.string, " ERROR [#{boom_id}] stream error: RuntimeError: stream broke\n"
   server.stop
+end
+
+test "an upgraded (101) connection behind RequestId: the id echoed, the writer under the request's Scope, NO_SCOPE after" do
+  $after_writer_no_scope = Array.new(0) { false }
+  $stream_seen = ""
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = ScopeAfterWriterServer.new(Cybertrain::ContextHandler.new(app), port: 0, logger: $stream_logger)
+  server.start
+  c = RawClient.new(server.port)
+  c.send_raw("GET /upgrade HTTP/1.1\r\nHost: t\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+  raw = c.read_to_close
+  c.close
+  server.stop
+  assert raw.start_with?("HTTP/1.1 101 "), raw
+  id = RawResponse.new("", raw, "").header("x-request-id")
+  assert LogCapture.uuid?(id), raw
+  assert_equal id, $stream_seen
+  assert_includes $stream_log.string, " INFO [#{id}] streaming\n"
+  assert_equal [true], $after_writer_no_scope
 end
 
 test "run serves until stop is called" do
