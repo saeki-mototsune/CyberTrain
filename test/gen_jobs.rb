@@ -398,7 +398,18 @@ def framework_class_lines(path)
 end
 
 # The files `require "cybertrain/core"` loads, directly or through the files
-# it requires, as "db/error" (cybertrain/ and .rb left out).
+# it requires, as "db/error" (cybertrain/ and .rb left out). The keywords
+# are built from pieces: spinel reads a line that looks like a require of a
+# literal path as one, wherever it stands.
+REQ_LINE = "req" + "uire \"cybertrain/"
+REQ_RELATIVE_LINE = "req" + "uire_relative \""
+
+# The quoted path at the start of text, up to its closing quote ("" without one).
+def quoted_path(text)
+  stop = text.index("\"")
+  stop.nil? ? "" : text[0, stop].to_s
+end
+
 def core_closure
   seen = []
   todo = ["core"]
@@ -408,11 +419,13 @@ def core_closure
 
     seen << file
     File.read("cybertrain/#{file}.rb", encoding: "UTF-8").each_line do |raw|
-      if (m = raw.match(/\A\s*require "cybertrain\/([\w\/]+)"/))
-        todo << m[1]
-      elsif (m = raw.match(/\A\s*require_relative "([\w\/]+)"/))
+      line = raw.strip
+      if line.start_with?(REQ_LINE)
+        todo << quoted_path(line.delete_prefix(REQ_LINE))
+      elsif line.start_with?(REQ_RELATIVE_LINE)
+        path = quoted_path(line.delete_prefix(REQ_RELATIVE_LINE))
         dir = File.dirname(file)
-        todo << (dir == "." ? m[1] : "#{dir}/#{m[1]}")
+        todo << (dir == "." ? path : "#{dir}/#{path}")
       end
     end
   end
@@ -437,7 +450,11 @@ test "FRAMEWORK_ERRORS names every exception class under cybertrain/, and PRELOA
   grew = true
   while grew
     grew = false
-    lines.each do |full, written, scope, file|
+    lines.each do |line|
+      full = line[0]
+      written = line[1]
+      scope = line[2]
+      file = line[3]
       next if written == "" || found.any? { |pair| pair[0] == full }
 
       name = written.delete_prefix("::")
