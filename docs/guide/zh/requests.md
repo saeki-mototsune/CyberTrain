@@ -3,7 +3,7 @@ source_sha256: e9f54a9f55d52674351fe3c7cbf908b9cea71747715df0fbfc08f2bb15e41506
 ---
 # 请求
 
-控制器从请求中得到什么，以及框架在它运行之前检查什么：路由及其格式、`respond_to`、concern 与 `helper_method`、强参数、文件下载与 HTTP 缓存、cookie 与加密的会话、限流与代理背后的客户端地址、Content Security Policy、`force_ssl` 与主机检查、参数化的请求头，以及查询字符串和请求体如何被解析和限制。
+控制器从请求中得到什么，以及框架在它运行之前检查什么：路由及其格式、`respond_to`、concern 与 `helper_method`、强参数、文件下载与 HTTP 缓存、cookie 与加密的会话、限流与代理背后的客户端地址、请求 ID、Content Security Policy、`force_ssl` 与主机检查、参数化的请求头，以及查询字符串和请求体如何被解析和限制。
 
 ## 路由
 
@@ -198,6 +198,20 @@ end
 
 这正是 Kamal 的情形：kamal-proxy 运行在自己的 Docker 容器中，从它在 Docker 网络上的地址发起连接，所以 `cybertrain new` 写出的 `config/deploy.yml` 设置了 `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12`（Docker 的默认地址范围；如果你的网络使用其他范围，请修改它，参见 `docker network inspect kamal`）。不要设置 Kamal 的 `proxy.forward_headers`：在 `ssl: true` 时，kamal-proxy 会自己设置 `X-Forwarded-For`，而不是转发客户端发来的值。只列出客户端无法从中发起连接的网络：位于所列网络内的任何人，都能自选限流所计数的地址。
 
+## 请求 ID
+
+每个请求都有一个 ID，`request.request_id`：框架生成的版本 4 UUID，或受信任的代理发来的 `X-Request-Id`（满足上面的信任条件，且为 1 到 255 个 ASCII 字母、数字和连字符；其他值会被丢弃，从不改写）。响应在 `X-Request-Id` 中把它返回（错误页面和主机检查的 403 也一样），请求运行期间记录的每一行都把它作为标签：
+
+```ruby
+def export
+  ExportJob.perform_later("user_id" => current_user.id)   # 作业的行也带这个 ID
+  Cybertrain.logger.info("export queued for #{request.request_id}")
+  head :accepted
+end
+```
+
+`c.log_tags` 选择每一行显示什么；作业的行和错误报告带有把它加入队列的请求的 ID（[请求 ID](background-and-operations.md#request-ids)）。
+
 ## Content Security Policy、`force_ssl` 与主机
 
 ```ruby
@@ -282,3 +296,4 @@ Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: g
 - 不带 `format:` 或带格式名的 `time_tag` 通过 `I18n.l` 格式化（在英语页面中与以前的英语文本相同）。
 - gen 写出 `gen/locales.rb`（没有 `config/locales/` 时为空）并加载 `app/mailers/**/*.rb`；`cybertrain new` 写出 `config/locales/en.yml`，较早的应用也可以添加它。
 - `allow_unauthenticated_access` 现在是框架的方法；0.4 的生成器写进 `ApplicationController` 的那个仍然有效并优先。再次运行 `cybertrain generate authentication` 会加入密码重置、锁定、保持登录、账户页面和管理员用户，并为 0.4 写的文件打印差异（[从 0.4 升级](authentication.md#upgrading-from-04)）。
+- 每个响应都带 `X-Request-Id`，代理的 `X-Request-Id` 只有在代理受信任时才会采用；每一行日志的形状都变了（[从 0.4 升级日志与错误报告](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。

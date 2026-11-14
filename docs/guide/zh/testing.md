@@ -83,7 +83,7 @@ cybertrain test -n /article/                            # 名称包含 "article"
 
 `cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。由于程序会删除它测试所用的文件，它会给自己创建的每个数据库加上标记（`PRAGMA application_id`，一个专用的值），只有当已有文件带着这个标记、就是本应用自己的 `storage/test.sqlite3`（无论路径怎么写）或是空文件时，才会删除或清空它。其他文件都会以退出状态 2 被拒绝，什么都不删除：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。名为 `development.sqlite3` 或 `production.sqlite3` 的文件（不区分大小写），或与 `storage/development.sqlite3`、`storage/production.sqlite3` 是同一个文件的，会以 `cybertrain test refuses to delete <path>: it is the development database`（或 `production`）被拒绝。名称必须是文件路径：`:memory:` 和 `file:` URI 会被拒绝（`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`）。升级之后，你以前在 `CYBERTRAIN_TEST_DATABASE` 中指定的文件没有标记，会被拒绝一次：删除它（连同 `-wal` 和 `-shm`），`cybertrain test` 就会创建一个带标记的；默认的 `storage/test.sqlite3` 什么都不需要做。在创建数据库期间变成符号链接的路径会以退出状态 2 被拒绝：`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`。每个测试之前的清空只涉及主数据库的表，从不涉及同名的 TEMP 表或附加数据库的表。已知限制：标记在 `cp` 测试数据库之后仍然存在，所以以测试数据库命名的副本（或测试连接的副本）会被清空；在创建文件和加标记之间被终止的运行会在你指定的路径上留下没有标记的文件，下次会被拒绝（请删除它）；`storage/test.sqlite3` 是目录时，程序删除它会抛出异常。
 
-除非 `config/app.rb` 自己设置了同样的东西，程序会像 Rails 那样准备测试环境：关闭防伪造保护，请求日志不输出，邮件保存在 `Mailer.deliveries` 中（`:test`），关闭 `force_ssl`（测试时不读取变量 `CYBERTRAIN_MAIL_DELIVERY_METHOD` 和 `CYBERTRAIN_FORCE_SSL`，即使它们的值无效），上传的文件写入 `tmp/test_uploads/`，每次运行时清空，并且不做主机检查（导出的 `CYBERTRAIN_HOSTS` 不会打开它）。`*_url` 辅助方法的主机 `www.example.com` 始终是允许的主机。
+除非 `config/app.rb` 自己设置了同样的东西，程序会像 Rails 那样准备测试环境：关闭防伪造保护，请求日志不输出（级别 `:none`，仍会写出错误行），日志行为文本（不读取导出的 `CYBERTRAIN_LOG_FORMAT`），不向 Sentry 发送错误报告（导出的 `CYBERTRAIN_SENTRY_DSN` 会被清空），邮件保存在 `Mailer.deliveries` 中（`:test`），关闭 `force_ssl`（测试时不读取变量 `CYBERTRAIN_MAIL_DELIVERY_METHOD` 和 `CYBERTRAIN_FORCE_SSL`，即使它们的值无效），上传的文件写入 `tmp/test_uploads/`，每次运行时清空，并且不做主机检查（导出的 `CYBERTRAIN_HOSTS` 不会打开它）。`*_url` 辅助方法的主机 `www.example.com` 始终是允许的主机。
 
 ```text 输出 — cybertrain test
 test/controllers/articles_controller_test.rb
@@ -181,7 +181,7 @@ assert_includes message, "999"
 
 - `assert_raises` 接受一个类（和 Minitest 一样，子类也匹配）、作为 String 的类名的一部分（`assert_raises("RecordNotFound")`），或什么都不传（任何 StandardError），并返回异常的**消息**，而不是异常：在 Rails 写 `error = assert_raises(X) { }` 再用 `error.message` 的地方，请直接使用它返回的 String。在 Spinel 下一个方法只返回一种类型，而测试读取的正是消息。
 - 块断言返回 nil，而不是块的值。
-- 不提供：`assert_predicate`（它需要计算出的 `send`：请写 `assert article.valid?`）、`assert_difference` 中的 String 表达式（需要 `eval`）、表达式的 Array 或 Hash，以及其他断言的消息参数。
+- 不提供：`assert_predicate`（它需要计算出的 `send`：请写 `assert article.valid?`）、`assert_difference` 中的 String 表达式（需要 `eval`）、表达式的 Array 或 Hash，以及其他断言的消息参数。Minitest 的 `refute_*` 名字中只有 `refute`：请写 `assert_not_equal`、`assert_not_nil` 等 `assert_not_*` 形式；调用 `refute_equal` 会让测试程序的构建停止，因为没有任何地方定义它。
 
 ## 时间旅行
 
@@ -375,6 +375,77 @@ end
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` 让重试间隔变得精确。本仓库的 `test/websocket_integration.rb` 展示了一个完整的测试。
 
+## 测试日志与错误报告
+
+响应的 `X-Request-Id` 就是请求的 ID。要读取日志行，测试在它观察的工作期间把一个 `StringIO` 交给 `Cybertrain.logger`，之后再把日志器放回去，这在一个专门的方法中完成（在 Spinel 下，围绕 `yield` 的 `rescue` 或 `ensure` 要放在普通方法中）：
+
+```ruby test/integration/logging_test.rb
+require "test_helper"
+require "stringio"
+
+class LoggingTest < ActionDispatch::IntegrationTest
+  test "a comment's job logs the request's id" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Ann", body: "Hi" } }
+    rid = response.header("X-Request-Id").to_s
+    log = StringIO.new
+    perform_jobs_logging_to(log)
+    assert_includes log.string, "] [#{rid}] new comment "
+  end
+
+  private
+
+  def perform_jobs_logging_to(io)
+    saved = Cybertrain.logger
+    Cybertrain.logger = Cybertrain::Logger.new(io)
+    perform_enqueued_jobs
+  ensure
+    Cybertrain.logger = saved
+  end
+end
+```
+
+行首的时间每次运行都不同（要比较它，就用 `freeze_time` 冻结），所以比较它之后的部分：级别、标签和消息。应用的请求日志在测试中不输出（`log_level :none`），但失败作业的 `ERROR` 行即使这样也会写出；执行失败作业的测试要像上面那样捕获日志器，否则这一行会出现在测试的行之间。
+
+错误报告送到 `Cybertrain::Test::SentryReceiver`，这是 `cybertrain/test_help` 加载的、位于 `127.0.0.1` 上的 Sentry。`cybertrain test` 忽略导出的 DSN，所以测试自己赋一个 DSN，并在之后恢复：
+
+```ruby test/integration/error_reporting_test.rb
+require "test_helper"
+
+class ErrorReportingTest < ActionDispatch::IntegrationTest
+  setup do
+    @sentry = Cybertrain::Test::SentryReceiver.new
+    @sentry.start
+    @saved_dsn = Cybertrain.config.sentry_dsn
+    Cybertrain.config.sentry_dsn = @sentry.dsn                # http://public@127.0.0.1:<port>/1
+    Cybertrain.config.http_allow_private = true               # 否则 HttpClient 拒绝环回地址
+  end
+
+  teardown do
+    Cybertrain.config.sentry_dsn = @saved_dsn
+    Cybertrain.config.http_allow_private = false
+  end
+
+  test "a failing job is reported" do
+    NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
+    perform_enqueued_jobs                                       # 失败的尝试不会让测试失败
+    event = @sentry.received_events(1)[0]                      # 最多等待 5 秒
+    assert_equal "NotifyCommentJob", event.sentry_field("transaction")
+    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
+  end
+end
+```
+
+`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` 像 Sentry 那样应答每个信封（另一个 `status:`，比如 429，扮演拒绝的 Sentry）；`dsn(project = "1", prefix = "")` 是发往它的 DSN，`received_events(count, wait = 5.0)` 返回已到达的内容。每一个都是 `Cybertrain::Test::SentryEnvelope`：`sentry_path`、`sentry_auth`（`X-Sentry-Auth`）、`sentry_content_type`、`sentry_body`（三行 JSON）、读取事件字段的 `sentry_field("a.b.0.c")`（不存在时为 `""`），以及读取信封头的 `sentry_header_field(name)`。`extra` 中含有点的键（`job.attempt`）无法用按点拆分的 `sentry_field` 读取：请从 `sentry_body` 中读取。在测试中启动的接收器会在测试之后停止，和其他接收器一样。
+
+在测试中添加的订阅者会在下一个测试之前被移除（`config/app.rb` 添加的会保留），每个测试之前，报告器会投递仍在队列中的内容并忘记去重的时间窗口，所以两个测试中的同一个失败都会被报告。对于读取订阅者收到内容的测试，`Cybertrain.error.drain_reports` 会等待（最多 2 秒）队列中的报告：
+
+```ruby
+Cybertrain.error.subscribe(SeenReports.new)   # 测试自己的 Cybertrain::ErrorSubscriber
+get "/articles/999999"
+Cybertrain.error.drain_reports
+assert_equal 0, REPORTS_SEEN.size             # 404 不会被报告
+```
+
 ## gen 在测试类中拒绝的写法
 
 gen 把测试类改写成方法：`test "shows it" do` 变成 `def test_shows_it`（`[A-Za-z0-9_]` 之外的 ASCII 字符变成 `_`，其他字符变成 `_u<hex>_`（小写的码点，以 `_` 结尾），所以 `"ログ"` 是 `test__u30ed__u30b0_`，`"café x"` 是 `test_caf_ue9__x`；`-n` 接受方法名，也接受写出的名称），`setup do` 和 `teardown do` 块变成调用 `super` 的 `setup` 和 `teardown` 方法。凡是改写不能原样搬过去的内容，都会让这个文件被拒绝，绝不会悄悄生成错误的副本或丢掉测试：
@@ -432,6 +503,8 @@ Cybertrain::Test.run!
 - `1.month.ago` 写作 `Time.current.months_ago(1)`。
 - `assert_equal` 以 Minitest 的两行文本失败；通过的测试快照不变。
 - 再次运行 `cybertrain generate authentication` 会写出类形式的测试，并指出它们替代的每个旧文件（`test/authentication.rb`、`test/support/app_test.rb` 等）；`--force` 会删除它们。
+- 以前查找整行日志（以方括号中的级别开头）的测试，改为分别查找级别和消息（`" ERROR "` 和 `"password reset mail not sent: "`）：现在一行以时间开头，可能带有请求的 ID（[日志](background-and-operations.md#logs)）。
+- 导出的 `CYBERTRAIN_LOG_FORMAT` 或 `CYBERTRAIN_SENTRY_DSN` 不再影响测试；要用它们测试，请在 `config/app.rb` 中设置，或在测试中给 DSN 赋值。
 
 ## 持续集成
 
