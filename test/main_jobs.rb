@@ -180,7 +180,19 @@ test "an unknown time zone is refused before jobs runs" do
   refute Cybertrain::DB.connected?
 end
 
+# Puts the log level back to :info once this case ends, also when an
+# assertion fails first: :verbose left set would make every later run
+# answer 1.
+def restore_log_level_after_case
+  Cybertrain::Test.after_this_case(lambda do
+    Cybertrain.config.log_level = :info
+    nil
+  end)
+  nil
+end
+
 test "an unknown log level is refused before jobs runs" do
+  restore_log_level_after_case
   Cybertrain.config.log_level = :verbose
   assert_equal 1, run(["jobs", "list"])
   Cybertrain.config.log_level = :info

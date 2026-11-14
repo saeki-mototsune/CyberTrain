@@ -194,7 +194,25 @@ test "mail_delivery_method from the environment and its check" do
   end
 end
 
+# The callable that deletes the variables `names` (made in a method:
+# spikes/NOTES.md rule 82).
+def env_deleter(names)
+  lambda do
+    names.each { |name| ENV.delete(name) }
+    nil
+  end
+end
+
+# Deletes the variables `names` once this case ends, also when an
+# assertion fails before the case's own cleanup: a variable left set would
+# reach every later Config.new in the program.
+def delete_env_after_case(names)
+  Cybertrain::Test.after_this_case(env_deleter(names))
+  nil
+end
+
 test "log_level from CYBERTRAIN_LOG_LEVEL" do
+  delete_env_after_case(["CYBERTRAIN_LOG_LEVEL"])
   ENV.delete("CYBERTRAIN_LOG_LEVEL")
   assert_equal :info, Cybertrain::Config.new.log_level
   ENV["CYBERTRAIN_LOG_LEVEL"] = "debug"
@@ -208,7 +226,7 @@ test "log_level from CYBERTRAIN_LOG_LEVEL" do
   assert_equal :fatal, Cybertrain::Config.new.log_level
   ENV["CYBERTRAIN_LOG_LEVEL"] = ""
   assert_equal :info, Cybertrain::Config.new.log_level
-  # Not counted as given (plan D14): cybertrain test still silences.
+  # Not counted as given: cybertrain test still silences.
   ENV["CYBERTRAIN_LOG_LEVEL"] = "warn"
   silenced = Cybertrain::Config.new
   silenced.log_level_unless_given(:none)
@@ -228,6 +246,7 @@ test "log_level from CYBERTRAIN_LOG_LEVEL" do
 end
 
 test "log_format from CYBERTRAIN_LOG_FORMAT" do
+  delete_env_after_case(["CYBERTRAIN_LOG_FORMAT"])
   ENV.delete("CYBERTRAIN_LOG_FORMAT")
   assert_equal :text, Cybertrain::Config.new.log_format
   ENV["CYBERTRAIN_LOG_FORMAT"] = "json"
@@ -255,6 +274,7 @@ end
 
 # Empties the reporting variables (they would leak into later tests).
 def clear_reporting_env
+  delete_env_after_case(["CYBERTRAIN_SENTRY_DSN", "CYBERTRAIN_ERROR_SAMPLE_RATE", "CYBERTRAIN_RELEASE"])
   ENV.delete("CYBERTRAIN_SENTRY_DSN")
   ENV.delete("CYBERTRAIN_ERROR_SAMPLE_RATE")
   ENV.delete("CYBERTRAIN_RELEASE")

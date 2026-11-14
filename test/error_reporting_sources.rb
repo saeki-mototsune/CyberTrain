@@ -374,7 +374,19 @@ def await_alive(name, alive, wait)
   WS.thread_alive?(name) == alive
 end
 
+# The callable that stops the feeds (made in a method: spikes/NOTES.md
+# rule 82), registered with Test.after_this_case before they start, so a
+# failed assertion leaves no feed thread running into the next case.
+# WS.stop! does nothing once they are stopped.
+def feeds_stopper
+  lambda do
+    WS.stop!
+    nil
+  end
+end
+
 test "a feed's on_open, on_message and on_tick failures are reported, where feed:<name>" do
+  Cybertrain::Test.after_this_case(feeds_stopper)
   prices = Cybertrain::Test::WebSocketReceiver.new(max: 1, accept_window: 10.0, read_timeout: 5.0)
   prices.ws_script([step("accept"), step("send_text", "1"), step("echo_until_close")])
   prices.start

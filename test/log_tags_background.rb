@@ -371,7 +371,19 @@ def await_ticks(count, wait)
   TICKS.size >= count
 end
 
+# The callable that stops the feeds (made in a method: spikes/NOTES.md
+# rule 82), registered with Test.after_this_case before they start, so a
+# failed assertion leaves no feed thread running into the next case.
+# WS.stop! does nothing once they are stopped.
+def feeds_stopper
+  lambda do
+    WS.stop!
+    nil
+  end
+end
+
 test "a feed thread's lines carry [feed:<name>]" do
+  Cybertrain::Test.after_this_case(feeds_stopper)
   rx = Cybertrain::Test::WebSocketReceiver.new(max: 1, accept_window: 10.0, read_timeout: 5.0)
   rx.ws_script([Cybertrain::Test::WsStep.new("accept", ""), Cybertrain::Test::WsStep.new("send_text", "1"),
                 Cybertrain::Test::WsStep.new("echo_until_close", "")])

@@ -264,7 +264,21 @@ test "a command logs in the configured format" do
   assert_equal "2026-11-11T12:00:00.000Z INFO from a command\n", text
 end
 
+# Puts the log level and format back to :info and :text once this case
+# ends, also when an assertion fails first: an unknown level left set
+# would make every later run answer 1.
+def restore_logging_after_case
+  Cybertrain::Test.after_this_case(lambda do
+    Cybertrain.config.log_level = :info
+    Cybertrain.config.log_format = :text
+    Cybertrain::Logger.json_lines = false
+    nil
+  end)
+  nil
+end
+
 test "a command logs at the configured level" do
+  restore_logging_after_case
   Cybertrain.config.log_level = :warn
   quiet = capture_log { run(["log_line"]) }
   Cybertrain.config.log_level = :info
@@ -274,6 +288,7 @@ end
 
 # `jobs` is refused too: test/main_jobs.rb.
 test "an unknown log level or format is refused before a command or console runs" do
+  restore_logging_after_case
   base = SEEN.size
   Cybertrain.config.log_level = :verbose
   assert_equal 1, run(["user", "y@example.com"])
