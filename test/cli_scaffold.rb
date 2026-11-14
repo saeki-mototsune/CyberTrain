@@ -511,6 +511,61 @@ test "an attachment field expands to five columns and is not a column itself" do
   assert_includes message, "'update' would shadow a method of the generated model"
 end
 
+# A field named like a framework method with one fixed return type
+# (Ident::FRAMEWORK_METHOD_TYPES: request_id, release) is refused when its
+# reader would answer another type, before anything is written, as gen would
+# refuse the schema afterwards; a string or text field of that name is
+# accepted. The message names the field, its type, the method and its type.
+test "a field named like a framework method must answer that method's type" do
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("request_id:integer") }
+  assert_equal "'request_id:integer' would give the model a reader request_id answering Integer or nil, but the " \
+               "framework's Cybertrain::Request#request_id answers String, and one method name answers one type " \
+               "in the program; pick another field name, or make it a string or text field", message
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("release:boolean") }
+  assert_equal "'release:boolean' would give the model a reader release answering true or false or nil, but the " \
+               "framework's Cybertrain::Config#release answers String, and one method name answers one type " \
+               "in the program; pick another field name, or make it a string or text field", message
+  assert_includes assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("release:datetime") }, "answering Time or nil,"
+  assert_includes assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("release:date") }, "answering Date or nil,"
+  assert_includes assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("request_id:float") }, "answering Float or nil,"
+  # A reference whose foreign key column is such a name.
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("request:references") }
+  assert_equal "'request:references' adds the column request_id, an Integer, but the framework's " \
+               "Cybertrain::Request#request_id answers String, and one method name answers one type in the program; " \
+               "name the reference differently: the scaffold cannot point another name at requests, so add an " \
+               "integer field such as source_request_id:integer and write the foreign key and belongs_to " \
+               ":source_request, class_name: \"Request\", foreign_key: :source_request_id by hand", message
+  # Accepted: a string or text field reads as a String (or nil).
+  ["request_id:string", "request_id:text", "release:string", "release:text", "request_id", "release"].each do |arg|
+    assert_equal arg.split(":")[0], Cybertrain::CLI::Field.parse(arg).column_name
+  end
+  # The reader position: a reference named release or request_id has the
+  # column release_id / request_id_id and the belongs_to reader release /
+  # request_id, which answers a record: refused too.
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("release:references") }
+  assert_equal "'release:references' would give the model a belongs_to reader release answering a record, " \
+               "but the framework's Cybertrain::Config#release answers String, and one method name answers one " \
+               "type in the program; name the reference differently", message
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Field.parse("request_id:references") }
+  assert_includes message, "'request_id:references' would give the model a belongs_to reader request_id answering a record"
+  # Nothing is written when a field is refused: no files, no route.
+  routes = read("blog/config/routes.rb")
+  versions = migration_versions.size
+  ["request_id:integer", "request:references", "release:boolean"].each do |arg|
+    status = Dir.chdir("blog") { Cybertrain::CLI.run(["generate", "scaffold", "audit_entry", "note:string", arg]) }
+    assert_equal 1, status
+    refute File.exist?("blog/app/models/audit_entry.rb")
+    refute File.exist?("blog/app/views/audit_entries")
+    assert_equal versions, migration_versions.size
+    assert_equal routes, read("blog/config/routes.rb")
+  end
+  # A compatible field generates as usual.
+  created = Cybertrain::CLI::Scaffold.generate("blog", "audit_entry", ["request_id:string", "release:text"])
+  assert_includes created, "app/models/audit_entry.rb"
+  assert_includes read("blog/" + created[0]), "t.string \"request_id\""
+  assert_includes read("blog/" + created[0]), "t.text \"release\""
+end
+
 test "the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP" do
   assert_equal "20260925120000", Cybertrain::CLI::Scaffold.timestamp
   ENV.delete("CYBERTRAIN_TIMESTAMP")

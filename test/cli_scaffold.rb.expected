@@ -276,5 +276,21 @@ identical test/controllers/widgets_controller_test.rb
 identical route resources :widgets
 ok   a scaffold whose test class another test file defines is refused
 ok   an attachment field expands to five columns and is not a column itself
+error: 'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field
+error: 'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand
+error: 'release:boolean' would give the model a reader release answering true or false or nil, but the framework's Cybertrain::Config#release answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field
+create db/migrate/20260925120009_create_audit_entries.rb
+create app/models/audit_entry.rb
+create test/models/audit_entry_test.rb
+create test/fixtures/audit_entries.yml
+create app/controllers/audit_entries_controller.rb
+create app/views/audit_entries/index.html.erb
+create app/views/audit_entries/show.html.erb
+create app/views/audit_entries/new.html.erb
+create app/views/audit_entries/edit.html.erb
+create app/views/audit_entries/_form.html.erb
+create test/controllers/audit_entries_controller_test.rb
+route resources :audit_entries
+ok   a field named like a framework method must answer that method's type
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-23 tests, 222 assertions, 0 failures
+24 tests, 262 assertions, 0 failures

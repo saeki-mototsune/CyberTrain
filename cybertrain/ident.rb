@@ -90,12 +90,37 @@ module Cybertrain
     # scaffold's refusal (unusable_reason "framework") name these methods
     # instead. A name whose framework method answers one fixed type is not
     # here: gen accepts such a column when its reader answers that type
-    # (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES). script/check-reserved-names
-    # checks that each is in RESERVED_COLUMN_NAMES.
+    # (FRAMEWORK_METHOD_TYPES). script/check-reserved-names checks that each
+    # is in RESERVED_COLUMN_NAMES.
     UNTYPED_FRAMEWORK_NAMES = {
       "handle" => "Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) " \
                   "and the jobs subsystem's handle (nil)"
     }
+
+    # Column names that are also the name of a framework method with one
+    # fixed return type, to that type as reader_type spells it. A column's
+    # reader is a method of that name too, and one method name answers one
+    # type across a program (spikes/NOTES.md rules 10, 34): otherwise the
+    # build stops with a type error in Spinel's output, far from the
+    # schema. So the generator (Gen::ModelValidation.check_framework_type)
+    # accepts such a column when its reader answers this type and refuses
+    # it otherwise, naming the method (FRAMEWORK_METHODS), and the scaffold
+    # (Scaffold.refuse_framework_type!) refuses such a field before it writes
+    # anything; both read this one table and reader_type. A String column
+    # that is nullable reads as "String or nil" and is accepted beside a
+    # String method (type_fits?): under Spinel a String is a nullable
+    # pointer, the same C type with or without nil (rule 109), and
+    # test/framework_names_compiles.rb compiles and runs both beside
+    # Request#request_id and Config#release. A name whose framework methods
+    # have no single type is in UNTYPED_FRAMEWORK_NAMES instead.
+    # script/check-reserved-names reads this table: a framework method added
+    # under one of these names must answer the type here, and a name in
+    # RESERVED_COLUMN_NAMES must not be here.
+    FRAMEWORK_METHOD_TYPES = { "request_id" => "String", "release" => "String" }
+
+    # The framework method behind each FRAMEWORK_METHOD_TYPES name, as the
+    # refusals name it.
+    FRAMEWORK_METHODS = { "request_id" => "Cybertrain::Request#request_id", "release" => "Cybertrain::Config#release" }
 
     # The rest of Object's public instance methods: a column so named shadows
     # them on its model (`record.display`, `record.tap` are the column), but
@@ -181,6 +206,50 @@ module Cybertrain
     # answer different types (UNTYPED_FRAMEWORK_NAMES).
     def self.untyped_framework_name?(name)
       UNTYPED_FRAMEWORK_NAMES.key?(name)
+    end
+
+    # The Ruby type the generated reader of a column of schema type `type`
+    # (a Symbol: :string, :integer, ...) answers, as the refusals spell it:
+    # the type of the Cast helper the model reads it through
+    # (Gen::ModelsEmitter.cast_for), with " or nil" when `null` and for every
+    # datetime column (time_or_nil). A binary column is a String of bytes;
+    # an encrypted one is a string or text column, a String.
+    def self.reader_type(type, null)
+      base = if type == :integer
+               "Integer"
+             elsif type == :float || type == :decimal
+               "Float"
+             elsif type == :boolean
+               "true or false"
+             elsif type == :datetime
+               "Time"
+             elsif type == :date
+               "Date"
+             elsif type == :json
+               "Hash"
+             else
+               "String"
+             end
+      null || type == :datetime ? base + " or nil" : base
+    end
+
+    # The type a reader named `name` must answer because a framework method
+    # has the name (FRAMEWORK_METHOD_TYPES), "" for any other name.
+    def self.framework_type(name)
+      FRAMEWORK_METHOD_TYPES.key?(name) ? FRAMEWORK_METHOD_TYPES[name].to_s : ""
+    end
+
+    # The framework method behind a FRAMEWORK_METHOD_TYPES name, "" for any
+    # other name.
+    def self.framework_method(name)
+      FRAMEWORK_METHODS.key?(name) ? FRAMEWORK_METHODS[name].to_s : ""
+    end
+
+    # Whether a reader answering `got` (reader_type's spelling) may stand
+    # beside a framework method answering `want`: the same type, or a
+    # nullable String beside a String (FRAMEWORK_METHOD_TYPES says why).
+    def self.type_fits?(want, got)
+      got == want || (want == "String" && got == "String or nil")
     end
 
     # The framework methods behind an UNTYPED_FRAMEWORK_NAMES entry, as the

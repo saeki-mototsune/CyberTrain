@@ -9,7 +9,7 @@ require "cybertrain/generator/models_emitter"
 
 # Proves that a model column named like a framework method with one fixed
 # return type builds and runs when gen accepts it
-# (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES): AuditEntry's String reader
+# (Ident::FRAMEWORK_METHOD_TYPES): AuditEntry's String reader
 # request_id beside Cybertrain::Request#request_id, and its nullable String
 # reader release beside Cybertrain::Config#release, and ReleaseNote's text
 # request_id and nullable binary release (the other column types gen accepts

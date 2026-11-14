@@ -1,5 +1,5 @@
 # test/framework_names_compiles.rb's schema: columns named like a framework
-# method with one fixed return type (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES),
+# method with one fixed return type (Cybertrain::Ident::FRAMEWORK_METHOD_TYPES),
 # each read as a String, so gen accepts it: on audit_entries a string
 # request_id NOT NULL (beside Cybertrain::Request#request_id) and a nullable
 # string release (beside Cybertrain::Config#release); on release_notes the

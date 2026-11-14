@@ -27,7 +27,7 @@
 # JobScan::RESERVED_CLASS_METHODS against jobs_emitter.rb (see below), and
 # keeps each method name of NAME_HOMES defined only in the files its row
 # lists, and every framework method named like a typed column name
-# (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES) answering that type (see
+# (Ident::FRAMEWORK_METHOD_TYPES) answering that type (see
 # below). Run by CI.
 #
 # usage: ruby script/check-reserved-names
@@ -574,7 +574,7 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
 end
 
 # A model column named like a framework method with one fixed return type
-# (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES: request_id, release) is accepted
+# (Ident::FRAMEWORK_METHOD_TYPES: request_id, release) is accepted
 # by gen when its reader answers that type, so every framework method of the
 # name must answer it: each instance `def` or attr_* of the name under
 # cybertrain/ carries `@return [<type>]` in the comment block right above it.
@@ -589,17 +589,16 @@ end
 # the homes check too. TYPED_NAME_PENDING lists the definers known to answer
 # another type that a change in flight renames; an entry whose `def` is
 # gone fails, so it is removed when the rename lands.
-require "cybertrain/generator/model_naming"
 # Empty now: BuildLock#release, which answered nil, is BuildLock#release_build_lock.
 TYPED_NAME_PENDING = {}.freeze
-typed = Cybertrain::Gen::ModelNaming::FRAMEWORK_METHOD_TYPES
+typed = Cybertrain::Ident::FRAMEWORK_METHOD_TYPES
 typed_wrong = []
 typed_pending_seen = []
 typed_problems = []
 typed.each_key do |name|
   typed_problems << "#{name} has no NAME_HOMES row" unless NAME_HOMES.key?(name)
   typed_problems << "#{name} is in Ident::RESERVED_COLUMN_NAMES too" if Cybertrain::Ident.reserved_column?(name)
-  typed_problems << "#{name} has no method in ModelNaming::FRAMEWORK_METHODS" unless Cybertrain::Gen::ModelNaming::FRAMEWORK_METHODS.key?(name)
+  typed_problems << "#{name} has no method in Ident::FRAMEWORK_METHODS" unless Cybertrain::Ident::FRAMEWORK_METHODS.key?(name)
 end
 # Ident::UNTYPED_FRAMEWORK_NAMES (handle) is the part of
 # RESERVED_COLUMN_NAMES reserved for framework methods of different types:
@@ -697,8 +696,8 @@ else
   typed_wrong.each do |rel, number, name, returns|
     said = returns.empty? ? "no @return" : "@return [#{returns.join("], [")}]"
     warn "check-reserved-names: #{rel}:#{number} defines `#{name}` with #{said}, but a model column of that name is " \
-         "accepted when its reader answers #{typed[name]} (Cybertrain::Gen::ModelNaming::FRAMEWORK_METHOD_TYPES, " \
-         "cybertrain/generator/model_naming.rb): one return type per method name (spikes/NOTES.md rules 10, 34); " \
+         "accepted when its reader answers #{typed[name]} (Cybertrain::Ident::FRAMEWORK_METHOD_TYPES, " \
+         "cybertrain/ident.rb): one return type per method name (spikes/NOTES.md rules 10, 34); " \
          "rename the method, or document it as @return [#{typed[name]}] if it answers that"
   end
   typed_problems.each { |problem| warn "check-reserved-names: #{problem} (FRAMEWORK_METHOD_TYPES)" }

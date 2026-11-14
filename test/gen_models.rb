@@ -1890,7 +1890,7 @@ test "a reserved column or keyword whose fallback name is taken still fails" do
 end
 
 # Columns named like a method of the framework with one return type
-# (ModelNaming::FRAMEWORK_METHOD_TYPES): the reader is the same method name,
+# (Ident::FRAMEWORK_METHOD_TYPES): the reader is the same method name,
 # and one name answers one type across a program (spikes/NOTES.md rules 10,
 # 34), so the column is accepted when its reader answers that type and
 # refused otherwise.

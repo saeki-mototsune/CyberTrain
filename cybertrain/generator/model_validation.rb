@@ -343,7 +343,7 @@ module Cybertrain
       end
 
       # Raises ArgumentError for a column named like a framework method with
-      # one fixed return type (ModelNaming::FRAMEWORK_METHOD_TYPES:
+      # one fixed return type (Ident::FRAMEWORK_METHOD_TYPES:
       # `request_id`, `release`) whose reader would answer another type: the
       # reader is a second method of that name, and one name answers one type
       # across the program (spikes/NOTES.md rules 10, 34), so the build would
@@ -356,10 +356,10 @@ module Cybertrain
         return nil if want == ""
 
         got = ModelNaming.reader_type(column)
-        return nil if got == want || (want == "String" && got == "String or nil")
+        return nil if Ident.type_fits?(want, got)
 
         model = ModelNaming.model_class_name(table.name)
-        method = ModelNaming::FRAMEWORK_METHODS[column.name].to_s
+        method = Ident.framework_method(column.name)
         raise ArgumentError, "#{places.at(table.name, column.name)}table #{table.name}: column #{column.name.inspect} is " \
                              "#{column.type}, so model #{model}'s reader #{column.name} would answer #{got}, but the " \
                              "framework's #{method} answers #{want}, and a method name answers one type across the " \
