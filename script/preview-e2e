@@ -44,9 +44,10 @@
 #     stream endpoint open on the binary, a save is answered by cruby
 #     within 12 s.
 #  7  (`cybertrain build` running meanwhile) With tmp/cybertrain-build.lock
-#     naming a live PID, two saves change nothing for 2 s (same generation,
-#     the old validation still answers) and the lock line is printed once;
-#     removing the lock applies them (cruby, the new validation).
+#     held as `cybertrain build` holds it (an exclusive flock, the PID in
+#     the file), two saves change nothing for 2 s (same generation, the old
+#     validation still answers) and the lock line is printed once;
+#     releasing the lock applies them (cruby, the new validation).
 #  8  (the supervisor dying uncleanly) Once the build started in step 7 is
 #     over, SIGKILL the supervisor; the child it leaves still holds the port.
 #     `cybertrain server PORT` again stops that child (P14: the line naming
@@ -702,7 +703,12 @@ def main
       before = state(port)
       check(before, "GET /__cybertrain/dev/state did not answer")
       lock = run.path("tmp/cybertrain-build.lock")
-      File.write(lock, Process.pid.to_s)
+      # As CLI::BuildLock takes it: an exclusive flock, the PID written in.
+      held = File.open(lock, File::RDWR | File::CREAT, 0o644)
+      check(held.flock(File::LOCK_EX | File::LOCK_NB) == 0, "could not take the build lock")
+      held.truncate(0)
+      held.write(Process.pid.to_s)
+      held.flush
       offset = run.output_size
       save(run, model(run).sub("minimum: 10 }", "minimum: 3 }"))
       sleep LOCK_QUIET / 2.0
@@ -716,7 +722,9 @@ def main
       locks = run.output_since(offset).scan(LOCK_LINE).size
       check(locks == 1, "two saves under the lock printed the lock line #{locks} times, not once")
       released = now
+      # As CLI::BuildLock releases it: the file removed while still held.
       File.delete(lock)
+      held.close
       res, took = until_true(LOCK_RELEASE, from: released) do
         r = visitor.post_article("sixsix")
         r if r && r.status == 303 && r.runtime == "cruby"

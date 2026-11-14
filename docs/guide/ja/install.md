@@ -1,5 +1,5 @@
 ---
-source_sha256: 51f6d83b98cc6492a729a00526d4e8c115931cbd8e7bbe6a8a9077b596cb0dc1
+source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
 ---
 # インストール
 
@@ -89,7 +89,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 ### `cybertrain new` が書き出すもの
 
 `cybertrain new` はアプリケーションを書き出し、その `spin.toml` は CLI と一致するリリースを指します（`cybertrain = { git =
-"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`。X.Y.Z は `cybertrain version` が表示するもの）。次に Spinel がインストールされていることを確認し、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `SPIN_DEBUG=1 spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなものです。そして次の手順を表示します。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。
+"https://github.com/saeki-mototsune/cybertrain", ref = "vX.Y.Z" }`。X.Y.Z は `cybertrain version` が表示するもの）。次に Spinel がインストールされていることを確認し、`spin lock`（spin がフレームワークをキャッシュ `~/.cache/spin/packages/` に取得し、コミットを `spin.lock` に固定します）と `SPIN_DEBUG=1 spin run gen` を実行します。`rails new` が `bundle install` を実行するのと同じようなものです。そして次の手順を表示します。フレームワークのファイルはアプリに一切コピーされません。`spin.toml` と `spin.lock` をコミットしてください。`bin/<app>.rb` と `bin/db.rb` は、オプションのサブシステムを除いたフレームワーク `cybertrain/core` を require します。サブシステムが必要なジェネレーターは、その行を追加します（[サブシステム](how-it-works.md#subsystems)）。
 
 Spinel のインストールか、2 つの `spin` ステップのいずれかが失敗した場合、ファイルは残したまま `new` は終了コード 1 で終了し、原因を解消した後に実行すべきコマンドを表示します（Spinel の場合：`cybertrain setup` を実行し、続いて新しいディレクトリで `cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen`）。
 

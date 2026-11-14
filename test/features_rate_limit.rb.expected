@@ -1,0 +1,4 @@
+ok   the cache and rate limiting are the registered features
+ok   the cache store lets two requests through, then answers 429
+ok   the memory store lets one request through, then answers 429
+3 tests, 8 assertions, 0 failures

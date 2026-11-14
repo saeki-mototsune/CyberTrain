@@ -48,4 +48,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-50 tests, 300 assertions, 0 failures
+50 tests, 301 assertions, 0 failures

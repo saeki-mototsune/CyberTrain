@@ -2,10 +2,12 @@ module Cybertrain
   module WebSocket
     # Where {WebSocket.publish_status} writes a feed's status row. The
     # default writes nothing; cybertrain/websocket/feed_table.rb registers
-    # the one that writes `cybertrain_feeds` ({FeedTable}), and the
-    # framework entry point (cybertrain.rb) requires it, so every
-    # application publishes while a program that requires only
-    # cybertrain/websocket links no SQLite (and runs under CRuby). The same
+    # the one that writes `cybertrain_feeds` ({FeedTable}), and
+    # cybertrain/feeds requires it. cybertrain/websocket requires
+    # cybertrain/feeds (and so the core, with SQLite), so every program that
+    # subscribes publishes; `require "cybertrain/websocket"` no longer loads
+    # under CRuby or without the database (docs/design.md D85). The
+    # registry keeps the frame and client files free of the table. The same
     # pattern as Background::Service: a base-class registry, a subclass
     # instance added by the file that has the real one.
     # @api public

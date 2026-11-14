@@ -29,8 +29,12 @@ It writes, in the application:
 
 and edits, once each: `include Authentication` in `ApplicationController`,
 the routes, the jobs page's line ([Admin users](#admin-users-and-the-jobs-page)),
-the nav partial in the layout, the user command in `bin/<app>.rb`, and the
-`base_url` setting in `config/app.rb` ([Links in mails](#links-in-mails)).
+the nav partial in the layout, the user command in `bin/<app>.rb`, the
+`base_url` setting in `config/app.rb` ([Links in mails](#links-in-mails)),
+and in `bin/<app>.rb` and `bin/db.rb` the lines of the subsystems the code
+uses, unless `require "cybertrain"` loads them all already:
+`cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` and
+`cybertrain/rate_limit` ([Subsystems](how-it-works.md#subsystems)).
 Running it again with the same options changes nothing: an edit already
 made is found and skipped, and a file already as it would write it is
 left. A file it would write differently (one you edited, or one an older

@@ -74,7 +74,11 @@ the realtime endpoint (`turbo_stream_from @article` on a page,
 `Cybertrain::Stream.broadcast_append_to` from an action or a job),
 `./blog worker` for jobs and scheduled tasks (several may share the
 database; jobs are delivered at least once), `./blog feeds` for WebSocket
-subscriptions, and `./blog console` for a prompt over the models.
+subscriptions, and `./blog console` for a prompt over the models. A new
+app's `bin/blog.rb` requires only the core; jobs, Turbo Streams, feeds, the
+mailer, the cache and rate limiting are one `require` line each, so an app
+compiles only what it uses
+([subsystems](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#subsystems)).
 
 Or try it with nothing installed:
 [open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)

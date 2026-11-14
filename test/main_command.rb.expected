@@ -9,23 +9,15 @@ ok   a database that cannot be opened is a DB::Error too
 ok   a command can render a partial, path helpers included
 ok   in production a command parses embedded templates only when it renders them
 ok   a registered command runs in the configured time zone
-no failed jobs
-ok   jobs installs the configured time zone too
 error: time_zone "Mars/Olympus_Mons" is not a known time zone
 error: time_zone "Mars/Olympus_Mons" is not a known time zone
-error: time_zone "Mars/Olympus_Mons" is not a known time zone
-ok   an unknown time zone is refused before a command, jobs or console runs
+ok   an unknown time zone is refused before a command or console runs
 ok   server? is false for a registered name
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog worker            run jobs and scheduled tasks, without HTTP
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
-  ./blog jobs COMMAND      list [STATE] | retry ID | retry --all | discard ID | delete ID
-                           prune [--before DAYS]
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog user              create a user: EMAIL
@@ -44,14 +36,9 @@ Status  Migration ID    Migration Name
 Unknown command 'frobnicate'
 Usage:
   ./blog [server [PORT]]   start the server
-  ./blog worker            run jobs and scheduled tasks, without HTTP
-  ./blog feeds [NAME...]   run the WebSocket subscriptions (all, or the named ones)
-  ./blog feeds status      print each feed's health from the status rows
   ./blog migrate           apply pending migrations
   ./blog db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create
                            backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize
-  ./blog jobs COMMAND      list [STATE] | retry ID | retry --all | discard ID | delete ID
-                           prune [--before DAYS]
   ./blog console           evaluate expressions over the models (help inside)
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog user              create a user: EMAIL
@@ -64,4 +51,4 @@ Usage:
   ./blog today             record Time.zone and Date.current
   ./blog help
 ok   the built-ins still work next to registered commands
-14 tests, 52 assertions, 0 failures
+13 tests, 49 assertions, 0 failures

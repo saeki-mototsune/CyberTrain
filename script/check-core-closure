@@ -1,0 +1,476 @@
+#!/usr/bin/env ruby
+# The core must not name an optional subsystem (docs/superpowers/specs/
+# 2026-11-13-optional-subsystems-design.md, section 4): Spinel compiles
+# every method of every file a program requires, so one `require
+# "cybertrain/scheduler"` or one `Scheduler.running?` in a core file puts
+# jobs back into every application that requires only `cybertrain/core`.
+# This reads the source, lexically (no Spinel, CRuby's standard library
+# only): it follows the `require "cybertrain/..."` and `require_relative`
+# calls (either quote, anywhere on a line outside a comment or a string)
+# from cybertrain/core.rb to the files under cybertrain/ they name, and
+# fails, listing each, when
+#   (a) a file of a subsystem in SUBSYSTEMS is in that closure (with the
+#       chain of requires that brings it in), or
+#   (b) a core file of the closure names one of a subsystem's constants, or
+#       one of the methods the subsystem adds to a core class by reopening
+#       it (Application#run_worker, Controller#turbo_stream, ...: a core
+#       file calling one compiles only with the subsystem), word boundary,
+#       case-sensitive, outside comments; inside strings too, since a
+#       string is code to this check (a header name such as "Cache-Control"
+#       inside a string literal is the one exception), unless ALLOWED lists
+#       that file and name.
+# A require of `cybertrain` itself from the core is (a) too: it is every
+# subsystem. Run by script/gate, which runs the self-test first.
+#
+# The lexing is per line and approximate, on purpose (no parser): a `#`
+# starts a comment outside a string, a %-literal (%w[] %q{} %r() ...), a
+# regexp literal (a `/` where an operand is expected) and a character
+# literal (`?#`). Limits accepted: a string, %-literal or regexp spanning
+# lines is scanned line by line (a continuation line is read as code, so
+# it can only add failures, never hide a name), a heredoc body is read as
+# code, and a `/` after an identifier and a space followed by a non-space
+# (`split /#/`) is taken for a regexp, as Ruby warns it is ambiguous.
+#
+# usage: script/check-core-closure              self-test, then check
+#        script/check-core-closure --list       also print the closure
+#        script/check-core-closure --self-test  only the lexing's own cases
+ROOT = File.expand_path("..", __dir__)
+ENTRY = "cybertrain/core.rb"
+
+# The subsystems the core must not reach: file patterns (File.fnmatch,
+# relative to the repository root) and the constants that name them, one
+# row per require line of the spec's section 3 (cybertrain/mailer/later is
+# the mailer's). A file may match two rows (cybertrain/websocket/frame.rb is
+# feeds' and serves the stream endpoint too): what matters is that neither
+# is in the core's closure.
+SUBSYSTEMS = {
+  "jobs" => {
+    files: %w[
+      cybertrain/jobs.rb cybertrain/job.rb cybertrain/job/** cybertrain/jobs_page.rb
+      cybertrain/scheduler.rb cybertrain/scheduler/** cybertrain/lease.rb cybertrain/cron.rb
+      cybertrain/roles/worker.rb cybertrain/test/jobs.rb
+    ],
+    constants: %w[Job Scheduler Lease Cron JobsPage JobsFeature WorkerRunner],
+    # Application#run_worker, Main.run_jobs, JobsFeature.every_periodic.
+    methods: %w[run_worker run_jobs every_periodic]
+  },
+  "streams" => {
+    files: %w[
+      cybertrain/streams.rb cybertrain/stream.rb cybertrain/stream/** cybertrain/turbo.rb
+      cybertrain/turbo_stream_renderer.rb cybertrain/template/turbo_stream_builder.rb cybertrain/http/sse.rb
+      cybertrain/test/broadcasts.rb
+    ],
+    constants: %w[Stream Turbo TurboStreams TurboStreamBuilder StreamsFeature SSE SSEWriter WsReader WebSocketWriter StreamRequest],
+    # Controller#turbo_stream (cybertrain/streams.rb) and the helpers
+    # template/stream_helpers.rb adds to Template::Helpers.
+    methods: %w[turbo_stream streams_helper turbo_stream_from signed_stream_name stream_source_path
+                stream_endpoint_path stream_ws_base]
+  },
+  "feeds" => {
+    files: %w[
+      cybertrain/feeds.rb cybertrain/background.rb cybertrain/background/** cybertrain/roles/feeds.rb
+      cybertrain/websocket.rb cybertrain/websocket/**
+    ],
+    constants: %w[Background FeedsFeature FeedsRunner WebSocket FeedTable FeedTableWriter StatusWriter FeedWatch],
+    # Application#run_feeds, #run_feeds_status, .feed_status_line;
+    # HealthCheck.feed_read_warned?, .feed_stale?, .feed_rows.
+    methods: %w[run_feeds run_feeds_status feed_status_line feed_read_warned? feed_stale? feed_rows]
+  },
+  "mailer" => {
+    files: %w[cybertrain/mailer.rb cybertrain/mailer/** cybertrain/net/** cybertrain/mail_message.rb
+              cybertrain/test/mail.rb cybertrain/test/smtp_receiver.rb],
+    constants: %w[Mailer MailMessage Net],
+    # Mailer.deliver_later (cybertrain/mailer/later.rb).
+    methods: %w[deliver_later]
+  },
+  "cache" => {
+    files: %w[cybertrain/cache.rb],
+    constants: %w[Cache CacheFeature],
+    methods: %w[]
+  },
+  "rate_limit" => {
+    files: %w[cybertrain/rate_limit.rb],
+    constants: %w[RateLimit RateLimitFeature],
+    # Controller.rate_limit, .rate_limit_named?, #apply_rate_limit.
+    methods: %w[rate_limit rate_limit_named? apply_rate_limit]
+  }
+}.freeze
+
+# Files of text generated from data, whose string literals are words, not
+# code: script/bundle-locales writes cybertrain/locales/bundled.rb from
+# cybertrain/locales/*.yml, one `h["key"] = "text"` per line, and a
+# translation such as "Job %{id} was deleted." (the jobs page's, kept in
+# the core's dictionary with the rest) names no constant. Outside their
+# literals they are checked as any other file.
+TEXT_FILES = %w[cybertrain/locales/bundled.rb].freeze
+
+# References a later task removes, allowed until then: [file, constant or
+# method, why]. Each entry names the task that removes it; an entry that no longer
+# matches anything fails the check, so the list cannot go stale.
+ALLOWED = [].freeze
+
+def source_path(spec, from)
+  path = File.join(ROOT, "#{spec}.rb")
+  return path if spec.start_with?("cybertrain/") || spec == "cybertrain"
+
+  # require_relative: relative to the requiring file.
+  File.expand_path("#{spec}.rb", File.dirname(from))
+end
+
+# The requires of a file: [spec, absolute path, line number], for the
+# framework's own files only (a stdlib require is not followed).
+def requires_of(path)
+  out = []
+  File.foreach(path, encoding: "UTF-8").with_index(1) do |line, n|
+    requires_in(line.chomp).each { |spec| out << [spec, source_path(spec, path), n] }
+  end
+  out
+end
+
+# The specs of the framework's requires on one line: `require "cybertrain"`
+# or `require "cybertrain/..."` (either quote, with or without
+# parentheses) and any `require_relative`, wherever the call sits on the
+# line, but not inside a comment or a string.
+def requires_in(line)
+  code, mask = lex(line)
+  out = []
+  code.scan(/(?<![A-Za-z0-9_.:@$])require(_relative)?\s*\(?\s*(["'])([^"']+)\2/) do
+    at = Regexp.last_match.begin(0)
+    next if mask[at]
+
+    relative_call = !Regexp.last_match(1).nil?
+    spec = Regexp.last_match(3)
+    out << spec if relative_call || spec == "cybertrain" || spec.start_with?("cybertrain/")
+  end
+  out
+end
+
+def relative(path)
+  path.delete_prefix("#{ROOT}/")
+end
+
+# Ruby's keywords after which an operand comes (so `/` and `%` open a
+# literal there), with the calls that take one without parentheses.
+OPERAND_WORDS = %w[
+  if unless when while until and or not return then elsif else case in do
+  begin yield raise puts print p require require_relative
+].freeze
+
+# The %-literal openers' closers; any other punctuation closes itself.
+PERCENT_CLOSERS = { "(" => ")", "[" => "]", "{" => "}", "<" => ">" }.freeze
+
+# `line` split for the checks: [code, mask], where code is the line up to
+# its comment and mask[i] is true where code[i] is inside a literal (a
+# string, %-literal, regexp or character literal; the delimiters and any
+# interpolation included). The header's "limits accepted" say how
+# approximate it is.
+def lex(line)
+  mask = Array.new(line.size, false)
+  i = 0
+  prev = nil # the last non-space code character ("a" after an identifier or literal)
+  prev_word = ""
+  while i < line.size
+    ch = line[i]
+    operand = prev.nil? || "(,=[{!&|;:?+-*/<>%~^".include?(prev) || OPERAND_WORDS.include?(prev_word)
+    spaced_call = prev == "a" && i.positive? && line[i - 1] == " " && i + 1 < line.size && !" =".include?(line[i + 1])
+    if ch == "#"
+      return [line[0, i], mask[0, i]]
+    elsif ch == '"' || ch == "'" || ch == "`"
+      i = skip_literal(line, i, i + 1, ch, nil, ch != "'", mask)
+    elsif ch == "/" && (operand || spaced_call)
+      i = skip_literal(line, i, i + 1, "/", nil, true, mask)
+    elsif ch == "%" && (operand || spaced_call) && (m = line[i + 1..].match(/\A([qQwWiIrsx]?)([^A-Za-z0-9\s])/))
+      opener = m[2]
+      closer = PERCENT_CLOSERS.fetch(opener, opener)
+      nested = closer == opener ? nil : opener
+      interp = !"qwis".include?(m[1]) || m[1].empty?
+      i = skip_literal(line, i, i + 1 + m[0].size, closer, nested, interp, mask)
+    elsif ch == "?" && operand && i + 1 < line.size && !" \t".include?(line[i + 1])
+      width = line[i + 1] == "\\" ? 3 : 2
+      (i...[i + width, line.size].min).each { |k| mask[k] = true }
+      i += width
+    elsif ch == "$" && i + 1 < line.size && !line[i + 1].match?(/[A-Za-z0-9_{]/)
+      i += 2 # a punctuation global ($', $", $:): not a literal
+    elsif ch.match?(/[A-Za-z0-9_]/)
+      word = line[i..][/\A[A-Za-z0-9_]+/]
+      i += word.size
+      prev = "a"
+      prev_word = word
+      next
+    else
+      prev = ch unless " \t".include?(ch)
+      prev_word = "" unless " \t".include?(ch)
+      i += 1
+      next
+    end
+    prev = "a"
+    prev_word = ""
+  end
+  [line, mask]
+end
+
+# Marks the literal that opens at `from` (its body from `i`) up to its
+# `closer` (`nested`: the opener, for %-literals that nest), skipping
+# escapes and, when `interp`, `#{...}` interpolations with the strings in
+# them. Answers the index after the closer, or the line's end when the
+# literal goes on past it.
+def skip_literal(line, from, i, closer, nested, interp, mask)
+  depth = 0
+  while i < line.size
+    ch = line[i]
+    if ch == "\\"
+      i += 2
+      next
+    elsif interp && ch == "#" && line[i + 1] == "{"
+      j = i + 2
+      braces = 1
+      while j < line.size && braces.positive?
+        c = line[j]
+        if c == '"' || c == "'"
+          j = skip_literal(line, j, j + 1, c, nil, c == '"', mask)
+          next
+        end
+        braces += 1 if c == "{"
+        braces -= 1 if c == "}"
+        j += 1
+      end
+      i = j
+      next
+    elsif !nested.nil? && ch == nested
+      depth += 1
+    elsif ch == closer
+      if depth.zero?
+        (from..i).each { |k| mask[k] = true }
+        return i + 1
+      end
+      depth -= 1
+    end
+    i += 1
+  end
+  (from...line.size).each { |k| mask[k] = true }
+  line.size
+end
+
+# The subsystem names `code` (with its lex mask) uses: [[subsystem, name]],
+# for each constant and reopened method of SUBSYSTEMS at a word boundary.
+# A constant followed by a header name's tail ("Cache-Control") inside a
+# string literal is a header, not the constant; outside a string,
+# `Cache-Control` is a subtraction and counts. A method counts where it
+# can be a call: not inside a literal (`"unknown rate_limit by:"` is a
+# message), not as a symbol (`:turbo_stream`), a keyword or hash key
+# (`turbo_stream:`) or a definition (`def rate_limit`, the concern's
+# no-op of active_support.rb). RECEIVER_ONLY methods count only as
+# `receiver.name` (see there).
+def names_in(code, mask)
+  found = []
+  SUBSYSTEMS.each do |name, row|
+    row[:constants].each do |constant|
+      code.scan(/(?<![A-Za-z0-9_])#{constant}(?![A-Za-z0-9_])/) do
+        m = Regexp.last_match
+        header = code[m.end(0)..].match?(/\A-[A-Z][a-z]/) && mask[m.begin(0)]
+        found << [name, constant] unless header
+      end
+    end
+    row[:methods].each do |meth|
+      tail = meth.end_with?("?") ? "(?![A-Za-z0-9_])" : "(?![A-Za-z0-9_?!])"
+      code.scan(/(?<![A-Za-z0-9_@$])#{Regexp.escape(meth)}#{tail}/) do
+        m = Regexp.last_match
+        at = m.begin(0)
+        before = code[0, at]
+        after = code[m.end(0)..]
+        next if mask[at]
+        next if before.end_with?(":") && !before.end_with?("::")
+        next if after.match?(/\A:(?!:)/)
+        next if before.match?(/\bdef\s+(self\.)?\z/)
+        next if RECEIVER_ONLY.key?(meth) && !before.match?(RECEIVER_ONLY[meth])
+
+        found << [name, meth]
+      end
+    end
+  end
+  found.uniq
+end
+
+# Methods whose name the core uses for something else, so only a call on
+# a receiver counts: `turbo_stream` is also render's keyword and its local
+# (Controller#render) and FormatCollector's own method (`format.turbo_stream`),
+# so Controller#turbo_stream (cybertrain/streams.rb) counts as
+# `x.turbo_stream` for any x but `format`. A bare `turbo_stream` call in a
+# core Controller method is not seen here; the core's own compiled tests
+# (test/features_core.rb) fail on it instead.
+RECEIVER_ONLY = {
+  "turbo_stream" => /(?<![A-Za-z0-9_])(?!format\.\z)[A-Za-z0-9_@]+\.\z/
+}.freeze
+
+# The lexing's own cases, one per false negative or positive the review of
+# the first version found: [line, the requires it has, the names it uses].
+SELF_TEST = [
+  ['require "cybertrain/scheduler"', ["cybertrain/scheduler"], []],
+  ["require 'cybertrain/scheduler'", ["cybertrain/scheduler"], []],
+  ['require("cybertrain/job")', ["cybertrain/job"], []],
+  ['x = 1; require "cybertrain/lease"', ["cybertrain/lease"], []],
+  ['require "cybertrain/cron" if defined?(X)', ["cybertrain/cron"], []],
+  ['require_relative "stream"', ["stream"], []],
+  ['require "json"', [], []],
+  ['# require "cybertrain/job"', [], []],
+  ['x = 1 # require "cybertrain/job" Scheduler', [], []],
+  ['msg = "needs require \"cybertrain/jobs\" in bin/NAME.rb"', [], []],
+  [%q(msg = 'needs require "cybertrain/jobs"'), [], []],
+  ['x = line =~ /#/ ? Scheduler.running? : 0', [], ["jobs:Scheduler"]],
+  ['words = %w[a #b] + [Job]', [], ["jobs:Job"]],
+  ['text = %q{ # } + Mailer.name', [], ["mailer:Mailer"]],
+  ['c = ?# ; Lease.now', [], ["jobs:Lease"]],
+  ['parts = line.split /#/; Cron.parse(parts)', [], ["jobs:Cron"]],
+  ['s = "#{Scheduler.last_tick} # not a comment"', [], ["jobs:Scheduler"]],
+  ['s = "a #{"b"} c" # Job', [], []],
+  ['x = Cache - y', [], ["cache:Cache"]],
+  ['x = Cache-y', [], ["cache:Cache"]],
+  ['x = Cache-Control', [], ["cache:Cache"]],
+  ['x = "Cache-1"', [], ["cache:Cache"]],
+  ['headers["Cache-Control"] = "no-store"', [], []],
+  ["headers['Cache-Control'] = 'no-store'", [], []],
+  ['app.run_worker(argv)', [], ["jobs:run_worker"]],
+  ['Main.run_jobs(args)', [], ["jobs:run_jobs"]],
+  ['run_feeds(names)', [], ["feeds:run_feeds"]],
+  ['return run_feeds_status if x', [], ["feeds:run_feeds_status"]],
+  ['Application.feed_status_line(row, now)', [], ["feeds:feed_status_line"]],
+  ['apply_rate_limit(limit)', [], ["rate_limit:apply_rate_limit"]],
+  ['Controller.rate_limit_named?(k, "x")', [], ["rate_limit:rate_limit_named?"]],
+  ['rate_limit to: 5, within: 60', [], ["rate_limit:rate_limit"]],
+  ['controller.turbo_stream', [], ["streams:turbo_stream"]],
+  ['self.turbo_stream.replace(x)', [], ["streams:turbo_stream"]],
+  ['format.turbo_stream { render turbo_stream: x }', [], []],
+  ['given += 1 unless turbo_stream.nil?', [], []],
+  ['return :turbo_stream if turbo', [], []],
+  ['def rate_limit(to:, within:) = nil', [], []],
+  ['msg = "unknown rate_limit by: :#{name}"', [], []],
+  ['streams_helper(name, args, kwargs, block, interp, env)', [], ["streams:streams_helper"]],
+  ['JobsFeature.every_periodic(i, n, 60)', [], ["jobs:JobsFeature", "jobs:every_periodic"]],
+  ['run_controller_limit(self, limit_id)', [], []],
+  ['turbo_stream_tag = 1; turbo_streams = 2', [], []],
+  ["Background", [], ["feeds:Background"]],
+  ["x = a % b; Job", [], ["jobs:Job"]],
+  ['x = $" + Job.name', [], ["jobs:Job"]]
+].freeze
+
+def self_test
+  failures = []
+  SELF_TEST.each do |line, requires, names|
+    got_requires = requires_in(line)
+    got_names = names_in(*lex(line)).map { |sub, n| "#{sub}:#{n}" }
+    failures << "#{line}: requires #{got_requires.inspect}, expected #{requires.inspect}" unless got_requires == requires
+    failures << "#{line}: names #{got_names.inspect}, expected #{names.inspect}" unless got_names == names
+  end
+  failures
+end
+
+lexing_failures = self_test
+unless lexing_failures.empty?
+  puts "check-core-closure: the self-test fails (#{lexing_failures.size}):"
+  lexing_failures.each { |f| puts "  #{f}" }
+  exit 1
+end
+if ARGV.include?("--self-test")
+  puts "check-core-closure: self-test passed (#{SELF_TEST.size} lines)"
+  exit 0
+end
+
+entry = File.join(ROOT, ENTRY)
+abort "check-core-closure: #{ENTRY} is missing" unless File.file?(entry)
+
+# Breadth first, remembering who required each file (for the chain).
+parent = { entry => nil }
+queue = [entry]
+missing = []
+until queue.empty?
+  file = queue.shift
+  requires_of(file).each do |spec, path, n|
+    unless File.file?(path)
+      missing << "#{relative(file)}:#{n}: requires #{spec.inspect}, which is not a file under the repository"
+      next
+    end
+    next if parent.key?(path)
+
+    parent[path] = file
+    queue << path
+  end
+end
+closure = parent.keys.map { |p| relative(p) }.sort
+
+def chain(parent, path)
+  links = []
+  node = path
+  until node.nil?
+    links.unshift(relative(node))
+    node = parent[node]
+  end
+  links.join(" -> ")
+end
+
+# Whether file (relative) matches one of the patterns ("dir/**" is every
+# file under dir, at any depth).
+def matches?(patterns, file)
+  patterns.any? do |pattern|
+    File.fnmatch(pattern, file, File::FNM_PATHNAME) ||
+      (pattern.end_with?("/**") && file.start_with?(pattern.delete_suffix("**")))
+  end
+end
+
+failures = missing.dup
+
+SUBSYSTEMS.each do |name, row|
+  closure.each do |file|
+    next unless file == "cybertrain.rb" || matches?(row[:files], file)
+
+    failures << "#{file} is a #{name} file in the core's closure: #{chain(parent, File.join(ROOT, file))}"
+  end
+end
+
+used_allowances = []
+closure.each do |file|
+  next if file == "cybertrain.rb" || SUBSYSTEMS.values.any? { |row| matches?(row[:files], file) } # reported above
+
+  in_begin_block = false
+  File.foreach(File.join(ROOT, file), encoding: "UTF-8").with_index(1) do |line, n|
+    if line.start_with?("=begin")
+      in_begin_block = true
+      next
+    end
+    if in_begin_block
+      in_begin_block = false if line.start_with?("=end")
+      next
+    end
+    code, mask = lex(line.chomp)
+    if TEXT_FILES.include?(file)
+      # The literals blanked out (same length, so the mask still lines up).
+      code = code.chars.each_with_index.map { |ch, k| mask[k] ? " " : ch }.join
+    end
+    names_in(code, mask).each do |sub, used|
+      allowance = ALLOWED.find { |f, c, _why| f == file && c == used }
+      if allowance
+        used_allowances << allowance
+      else
+        failures << "#{file}:#{n}: names #{used} (#{sub}): #{line.strip}"
+      end
+    end
+  end
+end
+
+(ALLOWED - used_allowances).each do |f, c, why|
+  failures << "ALLOWED lists #{f} naming #{c} (#{why}), which no longer happens: remove the entry"
+end
+
+if ARGV.include?("--list")
+  puts "the closure of #{ENTRY} (#{closure.size} files):"
+  closure.each { |f| puts "  #{f}" }
+end
+
+if failures.empty?
+  allowed = used_allowances.uniq.size
+  note = allowed.zero? ? "" : ", #{allowed} reference#{allowed == 1 ? "" : "s"} allowed until a later task"
+  puts "check-core-closure: #{closure.size} files from #{ENTRY}; no file, constant or method of #{SUBSYSTEMS.keys.join(", ")}#{note}"
+else
+  puts "check-core-closure: the core reaches an optional subsystem (#{failures.size}):"
+  failures.each { |f| puts "  #{f}" }
+  exit 1
+end

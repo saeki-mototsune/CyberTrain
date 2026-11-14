@@ -1,5 +1,5 @@
 ---
-source_sha256: f3145c830eda9a57eec157b51d12cc95ae3bf37dfc06b4b2e4d7866e7f6b02c5
+source_sha256: 2437024ef92acdab8ec374f1249ff0285fe030d24a72de28f582e73d0a0e3f42
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -160,6 +160,11 @@ blog/
 скомпилируется, пока первая миграция не сгенерирует `gen/models/`). В `gen/`
 уже лежит то, что записал `spin run gen`, в том числе `views.rb` —
 закоммиченная пустая таблица встроенных представлений.
+
+И `bin/blog.rb`, и `bin/db.rb` начинаются с `require "cybertrain/core"`:
+фреймворк без необязательных подсистем (задач, Turbo Streams, почты, кэша
+и остального), что делает каждую сборку короче. Шаги ниже, которым нужна
+подсистема, добавляют её строку ([Подсистемы](how-it-works.md#subsystems)).
 
 Лейаут подключает `app/assets/stylesheets/application.css` через
 `stylesheet_link_tag` и загружает `app/javascript/application.js` через import
@@ -733,6 +738,15 @@ import "@hotwired/turbo"
 `import "application"`, так что теперь Turbo работает на каждой странице
 ([Import map](assets.md#the-import-map)).
 
+Серверная часть Turbo Streams — подсистема: добавьте её строку под строкой
+ядра в `bin/blog.rb` и ту же строку в `bin/db.rb`. Без неё `spin run gen`
+остановится на `turbo_stream_from` ниже и назовёт нужную строку.
+
+```ruby bin/blog.rb (фрагмент)
+require "cybertrain/core"
+require "cybertrain/streams"
+```
+
 ### Подписка страницы
 
 Дайте списку и форме по id и подпишите страницу на поток статьи:
@@ -843,7 +857,8 @@ cybertrain generate job notify_comment --retry StandardError:30:3
 ```
 
 Она пишет `app/jobs/notify_comment_job.rb` — со строкой `retry_on`, которую
-запросила опция, и пустым `perform` — и тест. Заполните `perform`; здесь он
+запросила опция, и пустым `perform` — и тест, а в `bin/blog.rb` и `bin/db.rb`
+добавляет `require "cybertrain/jobs"`. Заполните `perform`; здесь он
 только пишет в лог, а настоящее приложение отправило бы письмо:
 
 ```ruby app/jobs/notify_comment_job.rb
@@ -1139,7 +1154,7 @@ cybertrain generate authentication
 cybertrain db migrate    # создаёт таблицы users и sessions
 ```
 
-Генератор пишет миграции и модели `users` и `sessions`, concern `Authentication`, который он включает в `ApplicationController`, контроллеры и представления для входа, регистрации, сброса пароля и страницы учётной записи, почтовик, команду `./blog user` и тесты. Ещё он добавляет маршруты, partial `sessions/_nav` в начало макета и настройку `base_url` в `config/app.rb`, с которой начинаются ссылки в письмах. Все файлы перечислены в разделе [Аутентификация](authentication.md#generating-it).
+Генератор пишет миграции и модели `users` и `sessions`, concern `Authentication`, который он включает в `ApplicationController`, контроллеры и представления для входа, регистрации, сброса пароля и страницы учётной записи, почтовик, команду `./blog user` и тесты. Ещё он добавляет маршруты, partial `sessions/_nav` в начало макета и настройку `base_url` в `config/app.rb`, с которой начинаются ссылки в письмах. Наконец, он добавляет в `bin/blog.rb` и `bin/db.rb` строки подсистем, которые использует его код: `cybertrain/jobs` (страница заданий и поток, отправляющий письма), `cybertrain/mailer`, `cybertrain/mailer/later` (письма уходят через `deliver_later`) и `cybertrain/rate_limit` (попытки входа ограничены по частоте, см. ниже). Все файлы перечислены в разделе [Аутентификация](authentication.md#generating-it).
 
 ```ruby app/controllers/concerns/authentication.rb (фрагмент)
 module Authentication

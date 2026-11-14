@@ -331,8 +331,9 @@ jobs:
 
       - uses: ./.github/actions/setup-spinel
 
-      # The version pins, script/check-reserved-names, check-client-faults and
-      # check-http-layer run in the Gate workflow (script/gate), on every change.
+      # The version pins, script/check-reserved-names, check-client-faults,
+      # check-http-layer and check-core-closure run in the Gate workflow
+      # (script/gate), on every change.
       # The API reference builds in the api-docs job.
 
       - name: Framework tests

@@ -177,6 +177,10 @@ test "a re-run on a 0.4 application writes the missing files" do
   routes = read("upgraded/config/routes.rb")
   assert_includes routes, "  resource :session, only: [:new, :create, :destroy]\n  resources :passwords, param: :token, only: [:new, :create, :edit, :update]\n  resource :account, only: [:edit, :update, :destroy]\n"
   assert_includes read("upgraded/bin/shop.rb"), "require_relative \"../app/commands/user_command\"\n"
+  # A 0.4 application requires "cybertrain", which loads every subsystem
+  # the generated code needs: no line is added.
+  assert read("upgraded/bin/shop.rb").start_with?("require \"cybertrain\"\nrequire_relative ")
+  assert read("upgraded/bin/db.rb").start_with?("require \"cybertrain\"\nrequire_relative ")
   assert_includes read("upgraded/config/app.rb"), "setting_string :base_url"
 end
 

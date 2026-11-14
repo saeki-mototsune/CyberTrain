@@ -761,11 +761,13 @@ test "the build lock stops the gen check as well" do
   path = fake_spin_app
   r = gen_rebuilder
   Dir.mkdir("#{GEN_ROOT}/tmp")
-  File.write("#{GEN_ROOT}/tmp/cybertrain-build.lock", "")
+  held = Cybertrain::CLI::BuildLock.new(GEN_ROOT)
+  assert held.take
   refute r.rebuild
   assert r.last_skipped
   assert_equal "", gen_calls
   refute File.exist?(GEN_CHECK)
+  held.release
   finish_fake_spin_app(path)
 end
 
@@ -775,7 +777,8 @@ test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
   log = "#{root}/tmp/rebuild.log"
   Dir.mkdir(root) unless File.directory?(root)
   Dir.mkdir("#{root}/tmp") unless File.directory?("#{root}/tmp")
-  File.write("#{root}/tmp/cybertrain-build.lock", Process.pid.to_s)
+  held = Cybertrain::CLI::BuildLock.new(root)
+  assert held.take
   File.delete(log) if File.exist?(log)
   r = Cybertrain::Dev::Rebuilder.new(root, "server", log)
   refute r.rebuild
@@ -785,7 +788,7 @@ test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
                "rebuild skipped — save the file again once it finishes", r.last_output
   refute File.exist?(log)
   # once the build is over the banner says so instead of "in progress"
-  File.delete("#{root}/tmp/cybertrain-build.lock")
+  held.release
   assert r.last_skipped
   assert_equal "cybertrain build finished; save a file to rebuild", r.last_output
   r.record_build(true, "")
@@ -795,7 +798,9 @@ test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
   Dir.rmdir(root)
 end
 
-test "a lock whose build process is gone is stale: removed and ignored" do
+# The lock is cybertrain build's flock on the file (CLI::BuildLock); the PID
+# in it is informational. The Rebuilder only reads it.
+test "a lock file no build holds is ignored and left in place, whatever PID it records" do
   Dir.mkdir("tmp") unless File.directory?("tmp")
   root = File.expand_path("tmp/dev_error_page_stale_root")
   lock = "#{root}/tmp/cybertrain-build.lock"
@@ -803,36 +808,38 @@ test "a lock whose build process is gone is stale: removed and ignored" do
   Dir.mkdir("#{root}/tmp") unless File.directory?("#{root}/tmp")
   r = Cybertrain::Dev::Rebuilder.new(root, "server", "#{root}/tmp/rebuild.log")
   refute r.build_in_progress?
-  File.write(lock, "2147483647")
-  refute r.build_in_progress?
-  refute File.exist?(lock)
-  File.write(lock, Process.pid.to_s)
-  assert r.build_in_progress?
-  assert File.exist?(lock)
-  # a lock that records no PID cannot be told stale, so it counts as held
-  File.write(lock, "")
-  assert r.build_in_progress?
+  # left by a killed build, or by an older cybertrain: nobody holds it
+  ["2147483647", Process.pid.to_s, ""].each do |left|
+    File.write(lock, left)
+    refute r.build_in_progress?
+    assert_equal left, File.read(lock)
+  end
   File.delete(lock)
+  held = Cybertrain::CLI::BuildLock.new(root)
+  assert held.take
+  assert r.build_in_progress?
+  held.release
+  refute r.build_in_progress?
   Dir.rmdir("#{root}/tmp")
   Dir.rmdir(root)
 end
 
-test "a lock older than 30 minutes is stale even with a live PID: age wins over aliveness" do
+test "a held lock stays held however old its file is" do
   Dir.mkdir("tmp") unless File.directory?("tmp")
   root = File.expand_path("tmp/dev_error_page_old_lock_root")
   lock = "#{root}/tmp/cybertrain-build.lock"
   Dir.mkdir(root) unless File.directory?(root)
   Dir.mkdir("#{root}/tmp") unless File.directory?("#{root}/tmp")
   r = Cybertrain::Dev::Rebuilder.new(root, "server", "#{root}/tmp/rebuild.log")
-  # this test's own PID is alive, so without the age bound the lock would
-  # be read as held forever (the failure mode: a reused PID after a
-  # SIGKILLed build)
-  File.write(lock, Process.pid.to_s)
-  assert r.build_in_progress?
+  held = Cybertrain::CLI::BuildLock.new(root)
+  assert held.take
   old = Time.now - 31 * 60
   File.utime(old, old, lock)
+  # a build longer than any age bound is still running
+  assert r.build_in_progress?
+  assert File.exist?(lock)
+  held.release
   refute r.build_in_progress?
-  refute File.exist?(lock)
   Dir.rmdir("#{root}/tmp")
   Dir.rmdir(root)
 end

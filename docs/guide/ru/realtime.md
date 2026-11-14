@@ -1,5 +1,5 @@
 ---
-source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
+source_sha256: 2b56112469f77822eff135a926be5aadaa4c4f8c9e6c75c262213c049b39f367
 ---
 # Реальное время: потоки в браузер
 
@@ -40,7 +40,10 @@ source_sha256: a1e61b2377b5782376ad02ab225ea9d8cce2da5be87a45102829901ec5cab78b
 `<turbo-stream action="append" target="comments">`, как это делают
 приложения на Rails 8. Подключите Turbo в макете (конвейера ресурсов нет:
 CDN или копия в `public/`) и подпишите страницу с помощью
-`turbo_stream_from`:
+`turbo_stream_from`. Широковещательным рассылкам, конечной точке потоков
+и хелперам потоков нужна строка `require "cybertrain/streams"` в
+`bin/<app>.rb` и `bin/db.rb`; без неё `spin run gen` остановится на первом
+`turbo_stream_from` и назовёт строку ([Подсистемы](how-it-works.md#subsystems)):
 
 ```erb app/views/layouts/application.html.erb (фрагмент)
 <head>

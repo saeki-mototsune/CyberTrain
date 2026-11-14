@@ -547,8 +547,13 @@ test "under the build lock, or when gen fails too, the application that does not
     assert File.exist?(File.join(root, "gen-ran")), "gen ran"
     File.delete(File.join(root, "gen-ran"))
     FileUtils.mkdir_p(File.join(root, "tmp"))
-    File.write(Cybertrain::CLI::Build.lock_path(root), Process.pid.to_s)
-    code, out = run_server(root)
+    holder = Cybertrain::CLI::BuildLock.new(root)
+    assert holder.take
+    begin
+      code, out = run_server(root)
+    ensure
+      holder.release
+    end
     assert_equal 1, code
     assert_includes out, "does not load under CRuby"
     refute File.exist?(File.join(root, "gen-ran")), "gen does not run under the lock"

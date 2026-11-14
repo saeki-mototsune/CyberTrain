@@ -69,6 +69,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/shop.rb (./shop user)
 insert config/app.rb (SHOP_BASE_URL)
+insert bin/shop.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 ok   generate authentication writes the migrations, models, controllers, views and tests
 ok   generate authentication leaves the new app's config/locales/en.yml as it was (its screens' keys are the framework's)
 ok   the users migration has the NOT NULL columns, the admin flag, the lockout columns and a unique index
@@ -279,6 +282,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/fourb.rb (./fourb user)
 insert config/app.rb (FOURB_BASE_URL)
+insert bin/fourb.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -322,6 +328,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/fourb.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/fourb.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -365,6 +374,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/fourb.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/fourb.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 manual  test/authentication.rb: replaced by test/controllers/sessions_controller_test.rb; delete it
 manual  test/admin.rb: replaced by test/integration/admin_test.rb; delete it
 manual  test/remember_me.rb: replaced by test/integration/remember_me_test.rb; delete it
@@ -454,6 +466,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/fourbo.rb (./fourbo user)
 insert config/app.rb (FOURBO_BASE_URL)
+insert bin/fourbo.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -498,6 +513,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/fourbo.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/fourbo.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 ok   a test of the application's own that uses AppTest is named before app_test.rb goes
 create spin.toml
 create .gitignore
@@ -570,6 +588,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/fourbf.rb (./fourbf user)
 insert config/app.rb (FOURBF_BASE_URL)
+insert bin/fourbf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -613,6 +634,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/fourbf.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/fourbf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -648,6 +672,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/fourbf.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/fourbf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 ok   --force deletes them
 create spin.toml
 create .gitignore
@@ -721,6 +748,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 note   test/attachment_post_cover.rb: its requests now need a signed-in user; sign one in before them (post "/session" with a user's email_address and password), or move it to the class form (an ActionDispatch::IntegrationTest with `sign_in_as users(:one)` in its setup)
 insert bin/oldatt.rb (./oldatt user)
 insert config/app.rb (OLDATT_BASE_URL)
+insert bin/oldatt.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 ok   an earlier top-level attachment test is named, not rewritten
 create spin.toml
 create .gitignore
@@ -806,6 +836,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert test/controllers/products_controller_test.rb (sign_in_as users(:one))
 insert bin/signs.rb (./signs user)
 insert config/app.rb (SIGNS_BASE_URL)
+insert bin/signs.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 identical db/migrate/20260925120001_create_users.rb
 identical db/migrate/20260925120002_create_sessions.rb
 identical app/models/user.rb
@@ -841,6 +874,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/signs.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/signs.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 create db/migrate/20260925120003_create_orders.rb
 create app/models/order.rb
 create test/models/order_test.rb
@@ -997,6 +1033,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/authusers.rb (./authusers user)
 insert config/app.rb (AUTHUSERS_BASE_URL)
+insert bin/authusers.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120002_create_members.rb
 create app/models/member.rb
 create test/models/member_test.rb
@@ -1010,6 +1049,7 @@ create app/views/members/_form.html.erb
 create test/controllers/members_controller_test.rb
 route resources :members
 ok   a user scaffold without authentication signs nobody in; with authentication it does
+ok   bin/shop.rb and bin/db.rb get the jobs, mailer, mailer/later and rate_limit lines after the core's
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -1045,6 +1085,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/shop.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/shop.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 
 next:
   cybertrain db migrate
@@ -1136,6 +1179,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert test/controllers/products_controller_test.rb (sign_in_as users(:one))
 insert bin/store.rb (./store user)
 insert config/app.rb (STORE_BASE_URL)
+insert bin/store.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 ok   the generator runs after a scaffold, with migration versions that follow
 create spin.toml
 create .gitignore
@@ -1209,6 +1255,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert bin/club.rb (./club user, the first-run warning)
 insert config/app.rb (CLUB_BASE_URL)
 insert config/app.rb (CLUB_SETUP_OPEN)
+insert bin/club.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 
 next:
   cybertrain db migrate
@@ -1218,6 +1267,8 @@ next:
 ok   --invite-only writes the user command and /setup instead of the sign-up page
 ok   --invite-only's screens go through t, with keys the bundled dictionaries have
 ok   --invite-only requires the command in bin/<app>.rb and declares setup_open
+ok   it uncomments config/deploy.yml's worker role, which sends the mails
+ok   --invite-only adds the same four subsystem lines to bin/club.rb and bin/db.rb
 ok   --invite-only's /setup answers only to loopback with the one-time token while no user exists
 ok   --invite-only's user command reads the password from stdin when not given
 ok   the user command clears a lock when it sets a password
@@ -1301,6 +1352,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert bin/flags.rb (./flags user, the first-run warning)
 insert config/app.rb (FLAGS_BASE_URL)
 insert config/app.rb (FLAGS_SETUP_OPEN)
+insert bin/flags.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 
 next:
   cybertrain db migrate
@@ -1344,6 +1398,9 @@ identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/club.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical config/app.rb (setup_open already declared)
+identical bin/club.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 
 next:
   cybertrain db migrate
@@ -1467,6 +1524,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/older.rb (./older user)
 insert config/app.rb (OLDER_BASE_URL)
+insert bin/older.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -1502,6 +1562,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/older.rb (user command already required)
 insert config/app.rb (OLDER_BASE_URL)
+identical bin/older.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 ok   a re-run adds the reset route and the base_url setting to an app generated before them
 ok   account pages: the controller, the view, the route and the nav link in both modes
 ok   account pages: the generated test
@@ -1576,6 +1639,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/del.rb (./del user)
 insert config/app.rb (DEL_BASE_URL)
+insert bin/del.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
 create test/models/post_test.rb
@@ -1660,6 +1726,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert bin/deli.rb (./deli user, the first-run warning)
 insert config/app.rb (DELI_BASE_URL)
 insert config/app.rb (DELI_SETUP_OPEN)
+insert bin/deli.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
 create test/models/post_test.rb
@@ -1748,6 +1817,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/delc.rb (./delc user)
 insert config/app.rb (DELC_BASE_URL)
+insert bin/delc.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
 create test/models/post_test.rb
@@ -1837,6 +1909,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert bin/delic.rb (./delic user, the first-run warning)
 insert config/app.rb (DELIC_BASE_URL)
 insert config/app.rb (DELIC_SETUP_OPEN)
+insert bin/delic.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 create db/migrate/20260925120002_create_posts.rb
 create app/models/post.rb
 create test/models/post_test.rb
@@ -1921,6 +1996,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/prior.rb (./prior user)
 insert config/app.rb (PRIOR_BASE_URL)
+insert bin/prior.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -1956,6 +2034,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/prior.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/prior.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -1991,6 +2072,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/prior.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/prior.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -2026,6 +2110,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/prior.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/prior.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 ok   a re-run adds the account route to an app generated before it
 create spin.toml
 create .gitignore
@@ -2103,6 +2190,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/conf.rb (./conf user)
 insert config/app.rb (CONF_BASE_URL)
+insert bin/conf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 ok   --confirmable writes the confirmation files and columns
 create spin.toml
 create .gitignore
@@ -2181,6 +2271,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert bin/cclub.rb (./cclub user, the first-run warning)
 insert config/app.rb (CCLUB_BASE_URL)
 insert config/app.rb (CCLUB_SETUP_OPEN)
+insert bin/cclub.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 
 next:
   cybertrain db migrate
@@ -2231,6 +2324,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/conf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 
 next:
   cybertrain db migrate
@@ -2277,6 +2373,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/conf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -2317,6 +2416,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/conf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -2357,6 +2459,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/conf.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/conf.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 ok   --confirmable run again writes and edits nothing, and adds its route to routes without it
 create spin.toml
 create .gitignore
@@ -2469,6 +2574,9 @@ insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
 insert test/test_helper.rb (include SessionTestHelper)
 insert bin/later.rb (./later user)
 insert config/app.rb (LATER_BASE_URL)
+insert bin/later.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 exist db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 create db/migrate/20260925120002_add_authentication_columns.rb
@@ -2510,6 +2618,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/later.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/later.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 create spin.toml
 create .gitignore
 create .env.example
@@ -2582,6 +2693,9 @@ insert test/test_helper.rb (include SessionTestHelper)
 insert bin/laterinv.rb (./laterinv user, the first-run warning)
 insert config/app.rb (LATERINV_BASE_URL)
 insert config/app.rb (LATERINV_SETUP_OPEN)
+insert bin/laterinv.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+insert config/deploy.yml (the worker role, uncommented)
 exist db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 create db/migrate/20260925120002_add_authentication_columns.rb
@@ -2624,6 +2738,9 @@ identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/laterinv.rb (user command already required)
 identical config/app.rb (base_url already declared)
 identical config/app.rb (setup_open already declared)
+identical bin/laterinv.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 identical db/migrate/20260925120000_create_users.rb
 identical db/migrate/20260925120001_create_sessions.rb
 identical app/models/user.rb
@@ -2659,6 +2776,9 @@ identical app/views/layouts/application.html.erb (nav already rendered)
 identical test/test_helper.rb (includes SessionTestHelper)
 identical bin/later.rb (user command already required)
 identical config/app.rb (base_url already declared)
+identical bin/later.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical bin/db.rb (require "cybertrain/jobs", require "cybertrain/mailer", require "cybertrain/mailer/later", require "cybertrain/rate_limit")
+identical config/deploy.yml (the worker role)
 ok   a re-run with --confirmable over an app generated without it marks the concern's and setup's diffs IMPORTANT
 create spin.toml
 create .gitignore
@@ -2745,4 +2865,4 @@ create test/fixtures/.keep
 create test/support/.keep
 error: ./app/controllers/application_controller.rb has no `class ApplicationController < Cybertrain::Controller` line
 ok   a tree that is not an app, or whose ApplicationController was rewritten, is refused before anything is written
-56 tests, 1651 assertions, 0 failures
+59 tests, 1662 assertions, 0 failures

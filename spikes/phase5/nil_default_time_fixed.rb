@@ -2,8 +2,8 @@
 # A record, not a test.
 #
 # Run (Spinel 2026.11.04.7026, from the repository root):
-#   spinel spikes/phase5/nil_default_time_fixed.rb -o $TMPDIR/fixed && $TMPDIR/fixed
-# Output (the same under CRuby):
+#   spinel spikes/phase5/nil_default_time_fixed.rb -o "${TMPDIR:-/tmp}/fixed" && "${TMPDIR:-/tmp}/fixed"
+# Output (the same under CRuby; under TZ=UTC, since Time.at(0) is local time):
 #   none
 #   1970
 #   none

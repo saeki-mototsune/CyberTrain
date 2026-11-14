@@ -65,10 +65,6 @@ module Cybertrain
         # runtime leaves C's stderr unbuffered).
         STDERR_LINES = 40
 
-        # Dev::Rebuilder's rule, restated (that file pulls in framework files
-        # the gem does not ship): a lock older than this is abandoned.
-        STALE_LOCK_AGE = 30 * 60
-
         # What spinel says to a flag it does not know
         # (Dev::Rebuilder::UNSUPPORTED_INCREMENTAL).
         UNSUPPORTED_INCREMENTAL = "unknown option '--incremental'"
@@ -325,29 +321,15 @@ module Cybertrain
           Processes.build_locked?(@root)
         end
 
-        # Dev::Rebuilder#build_in_progress?, restated: a lock older than
-        # STALE_LOCK_AGE is stale; a lock without a PID (or with something
-        # else than digits) counts; a lock whose PID is gone is stale. A
-        # stale lock is removed.
+        # Whether `cybertrain build` holds its lock: an exclusive flock on
+        # tmp/cybertrain-build.lock, the one Dev::Rebuilder#build_in_progress?
+        # asks about too (CLI::BuildLock#held?, a shared flock for an
+        # instant). The file itself says nothing: it is never removed here,
+        # whatever PID or age it has, since a held lock's file removed would
+        # let a second build take a fresh one.
         # @param root [String] the application's directory
         def self.build_locked?(root)
-          path = Build.lock_path(root)
-          return false unless File.exist?(path)
-
-          if Time.now - File.mtime(path) >= STALE_LOCK_AGE
-            File.delete(path)
-            return false
-          end
-
-          pid = File.read(path).strip
-          return true if pid.empty? || !pid.match?(/\A[0-9]+\z/)
-          return true if DevServer.alive?(pid.to_i)
-
-          File.delete(path)
-          false
-        rescue SystemCallError
-          # The lock vanished between the checks: the build has finished.
-          false
+          CLI::BuildLock.new(File.expand_path(root)).held?
         end
 
         # P16: a change queued for the machine, or seen by the watcher and

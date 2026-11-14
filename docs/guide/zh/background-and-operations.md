@@ -1,11 +1,11 @@
 ---
-source_sha256: 66329a4e69356e00eec156cd03179a5e587cc9a35a29646fcab43f1db4291e7b
+source_sha256: 59a38ba829e8a8142914927b1b6e1d51aa9494f36f943063ea08ec3a17375ac5
 ---
 # 后台任务与运维
 
 ## 后台任务
 
-需要在请求之外做事情的应用（在响应发出之后发送通知、每晚清理旧行、重试失败的调用），会把这些工作交给框架，由框架在提供服务的进程或单独的 worker 进程的后台线程上运行。作业是 `app/jobs/` 中的一个类，与 Rails 一样：
+需要在请求之外做事情的应用（在响应发出之后发送通知、每晚清理旧行、重试失败的调用），会把这些工作交给框架，由框架在提供服务的进程或单独的 worker 进程的后台线程上运行。作业是 `app/jobs/` 中的一个类，与 Rails 一样。作业和定时任务需要在 `bin/<app>.rb` 和 `bin/db.rb` 中写 `require "cybertrain/jobs"`，`cybertrain generate job` 会添加它（[子系统](how-it-works.md#subsystems)）：
 
 ```ruby
 # app/jobs/welcome_job.rb
@@ -32,7 +32,7 @@ Cybertrain::Scheduler.cron("0 4 * * *", "nightly digest", job: "DigestJob")
 Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 ```
 
-- **在哪里运行。** 作业在 `job_threads` 个作业线程上运行（3 个，`CYBERTRAIN_JOB_THREADS`）；定时任务在它们专属的一个调度器线程上运行，所以耗时的作业永远不会拖延定时任务。两者都在二进制文件提供服务（`./<app>`、`./<app> server`）或作为 worker 运行（`./<app> worker`，参见[进程角色](#process-roles)）时启动，时间是在启动过程连接好数据库并设置 `SPINEL_WORKERS` 之后；`migrate`、`db ...`、`jobs ...`、`console` 和 `Main.command` 命令从不启动它们，`Cybertrain::Test::Client` 也不会。即使应用没有任何作业类，作业线程也会在每个这样的进程中启动：框架注册了它自己的邮件作业（`Mailer.deliver_later`，[发送电子邮件](external-services.md#sending-e-mail)）。
+- **在哪里运行。** 作业在 `job_threads` 个作业线程上运行（3 个，`CYBERTRAIN_JOB_THREADS`）；定时任务在它们专属的一个调度器线程上运行，所以耗时的作业永远不会拖延定时任务。两者都在二进制文件提供服务（`./<app>`、`./<app> server`）或作为 worker 运行（`./<app> worker`，参见[进程角色](#process-roles)）时启动，时间是在启动过程连接好数据库并设置 `SPINEL_WORKERS` 之后；`migrate`、`db ...`、`jobs ...`、`console` 和 `Main.command` 命令从不启动它们，`Cybertrain::Test::Client` 也不会。require 了作业时，即使应用没有任何作业类，作业线程也会在每个这样的进程中启动：框架注册了它自己的邮件作业（`Mailer.deliver_later`，[发送电子邮件](external-services.md#sending-e-mail)）。
 - **数据表。** 作业是 `cybertrain_jobs` 中的行，这张表由框架自己创建（`CREATE TABLE IF NOT EXISTS`，在首次使用时），并且不写入 `db/schema.rb`。在 `DB.transaction` 内部，这一行会与其他内容一起提交或回滚。每个作业线程在一个简短的 `BEGIN IMMEDIATE` 事务中认领最早到期的行，在事务之外运行它，然后寻找下一个；没有到期的行时，它等待 `job_poll_interval` 秒（1 秒），所以由请求入队的作业大约在一秒内开始。一行的状态是 `queued`、`running`、`done`、`failed`（重试已用尽；它会保留下来供你查看）或 `discarded`（被 `discard_on` 终止）。
 
 ### 作业类
@@ -144,10 +144,11 @@ end
 - 典型的拆分方式：代理之后是设置了 `CYBERTRAIN_WORKER=0` 的 `server`，一个或多个 `worker`，有订阅时再加上 `feeds`。`cybertrain new` 会在 `config/deploy.yml` 中写入 `web` 和 `worker` 角色（以及被注释掉的 `feeds`）；systemd 单元见 [docs/deploy.en.md](../deploy.en.md) 第 7 部分 “Splitting the roles”。
 - **从没有心跳的版本升级时**：在启动第一个新进程之前，先停止所有旧进程。旧进程不写心跳，所以新的 worker 会把旧 worker 仍在运行的作业当作被遗弃的作业取走。
 - `Cybertrain::Main.worker?(ARGV)` 和 `Main.feeds?(ARGV)` 与 `Main.server?(ARGV)` 一样，告诉 `bin/<app>.rb` 它正在启动哪种角色。
+- `worker` 需要 `bin/<app>.rb` 中的 `require "cybertrain/jobs"`，`feeds` 需要 `require "cybertrain/feeds"`（`cybertrain/websocket` 会加载它）；缺少时，二进制文件会指出缺少哪一行并以 1 退出。
 
 ## 缓存存储
 
-`Cybertrain::Cache` 把答案在应用自己的数据库中保留一段时间，这样下一个请求就不必再去问那个很慢的 API。它不在 `require "cybertrain"` 之中；请在用到它的地方 require：
+`Cybertrain::Cache` 把答案在应用自己的数据库中保留一段时间，这样下一个请求就不必再去问那个很慢的 API。`require "cybertrain"` 会加载它；使用 `cybertrain/core` 的应用在 `bin/<app>.rb` 和 `bin/db.rb` 中，或在用到它的地方添加 `require "cybertrain/cache"`：
 
 ```ruby
 require "cybertrain/cache"
@@ -163,7 +164,7 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
 - **值是 String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` 返回仍然有效的值，或者运行块并保存它的返回值；`fetch_hash`、`fetch_array` 和 `fetch_int` 保存 JSON 或 Integer 文本，并在取出时解析，所以损坏的单元格会读作 `{}`、`[]` 或 `0`，直到它过期、块再次运行（Spinel 没有 `Marshal`，而且一个方法只返回一种类型）。其余的是 `read(key)`（String 或 nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（一条语句；过期的计数器从 `by` 重新开始，`expires_in:` 只在计数器开始时设定期限，所以一分钟的计数器统计的就是那一分钟）和 `clear`。
 - **过期。** `expires_in:` 以秒计；默认值 `0` 永不过期（负值也一样）。`race_condition_ttl: n`：当某一行已过期时，第一个调用者把它延长 `n` 秒并计算新值，其他调用者在此期间继续读取旧值，与 Rails 一样；没有它时，过期键的每个调用者都会计算。抛出异常的块什么也不写入。
 - **存储。** 这些行位于 `cybertrain_cache` 中，这张表由框架在首次使用时创建，并且不写入 `db/schema.rb`。内存中什么也不保留：每次读取都是一条 SELECT，由 SQLite 从它的页缓存中作答。每次写入都会获取数据库的写锁，写入自己行的请求要等待它：请缓存作业产生的结果，或者读取远多于变化的值，而不要在繁忙的请求路径中写入。
-- **清理。** require 这个文件会注册定时任务 `"cybertrain cache prune"`，它每隔 `cache_prune_interval` 秒（300，`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）删除过期的行，每条语句一千行。这个间隔在 require 文件时读取：请设置该环境变量，或者在 require 之前运行的 `Cybertrain.configure` 块中设置 `c.cache_prune_interval`。`Cache.prune(now)` 是测试的入口。
+- **清理。** 加载了作业时，require 这个文件会注册定时任务 `"cybertrain cache prune"`，它每隔 `cache_prune_interval` 秒（300，`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）删除过期的行，每条语句一千行。没有作业时，缓存自己清理：进程的第一次写入，以及每过 `cache_prune_interval` 后的第一次写入，最多删除一千个过期的行。这个间隔在 require 文件时读取：请设置该环境变量，或者在 require 之前运行的 `Cybertrain.configure` 块中设置 `c.cache_prune_interval`。`Cache.prune(now)` 是测试的入口。
 
 尚未实现：单独的缓存数据库文件、大小上限、内存中的存储。设计说明：`docs/design.md` D54。
 

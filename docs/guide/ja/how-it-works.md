@@ -1,10 +1,10 @@
 ---
-source_sha256: 280ddf05a55a2da0851e82029a434a4c6d0d99cab2daedde07cdcc3a2eba54cf
+source_sha256: 2d356939fc39bce1422b47603486cbede6fceeb913ecf5400af788d4ed1fcb18
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
 
-このページでは、CyberTrain のアプリがどのようにビルドされ、実行されるかを説明します：ビルド時に生成されるコード、リクエスト時に解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ、そして Rails との違いの表です。ホームページの[パフォーマンスのセクション](site:index.html#performance)では、その結果を、同じブログを Rails 8.1 で書いたものと比べています。計測方法、すべての数値、計測をもう一度実行する方法は [docs/benchmark.md](../benchmark.md) にあります。
+このページでは、CyberTrain のアプリがどのようにビルドされ、実行されるかを説明します：ビルド時に生成されるコード、アプリが require するサブシステム、リクエスト時に解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ、そして Rails との違いの表です。ホームページの[パフォーマンスのセクション](site:index.html#performance)では、その結果を、同じブログを Rails 8.1 で書いたものと比べています。計測方法、すべての数値、計測をもう一度実行する方法は [docs/benchmark.md](../benchmark.md) にあります。
 
 ## ビルド時のコード生成
 
@@ -24,6 +24,42 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 - `gen/tests.rb` と `gen/test/**`：`test/` のすべてのテストを 1 つのプログラムにしたもの。各テストクラスはメソッドに書き換えられ、`gen/test/data.rb` にはテーブルとフィクスチャが入る（[アプリをテストする](testing.md#running-the-tests)）
 
 `gen/` は gitignore せずにコミットします：`spin build` と `spin test` には先に生成を行うフックがないため、チェックインされた出力がそのままコンパイルできるものでなければなりません。CI は `spin run gen` を再実行して差分があれば失敗するので、古い生成コードがマージされることはありません。
+
+## サブシステム
+
+Spinel は、プログラムが require したすべてのファイルのすべてのメソッドを、呼ばれるかどうかにかかわらずコンパイルし、プログラム全体の解析がどのビルドでも大部分を占めます。そのため、アプリが使わないかもしれないフレームワークの部分は分かれていて、Rails の `config/application.rb` が railtie を並べるように、`bin/<app>.rb` が使うものを指定します：
+
+| 行 | 読み込むもの |
+| --- | --- |
+| `require "cybertrain/core"` | HTTP、ルーティング、コントローラー、モデル、ビューとヘルパー（`turbo_frame_tag`、`dom_id`、`render turbo_stream:`、`format.turbo_stream` もここ）、アセット、セッション、CSRF、CSP、コンソール、`db` と `migrate` |
+| `require "cybertrain/jobs"` | `Job` とジョブクラス、`Scheduler`（`every`、`cron`）、`worker` ロール、`jobs` コマンド、ジョブページ |
+| `require "cybertrain/streams"` | `Stream.broadcast_*`、ストリームエンドポイント（SSE と WebSocket）、`Controller#turbo_stream`、ヘルパー `turbo_stream_from`、`turbo_stream`、`signed_stream_name`、`stream_source_path` |
+| `require "cybertrain/feeds"` | `Background`、`feeds` ロールとそのヘルスチェック。`require "cybertrain/websocket"`（`WebSocket.subscribe`）がこれを読み込む |
+| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer/later"` | `Mailer.deliver_later`。メーラーとジョブも読み込む |
+| `require "cybertrain/cache"` | `Cache` |
+| `require "cybertrain/rate_limit"` | コントローラーの `rate_limit`。キャッシュも読み込む |
+| `require "cybertrain"` | 上のすべて |
+
+どの行も `require "cybertrain/core"` の後に書きます（`cybertrain/jobs` と `cybertrain/feeds` は自分でコアを読み込みますが、ほかの行は読み込みません）。行の順序は関係ありません：フレームワークはサブシステムを自分の決まった順序で起動・停止します。スキャフォールドしたアプリでは、コアだけなら 2,767 ではなく 2,205 メソッドをコンパイルし、解析は 52 秒ではなく 38 秒です。フルビルドは 108 秒ではなく 83 秒、コントローラーの編集 1 回は約 65 秒ではなく約 47 秒です（[docs/performance-next.md](../performance-next.md)）。
+
+`cybertrain new` は `bin/<app>.rb` と `bin/db.rb`（`config/app.rb` を読み込むので同じ行が必要）に `require "cybertrain/core"` を書きます。`cybertrain generate job` は両方に `require "cybertrain/jobs"` を、`generate authentication` はそのコードが使う 4 行（`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later`、`cybertrain/rate_limit`：ジョブページ、`deliver_later` で送るメール、レート制限つきのサインイン）を追加します。それ以外の行は自分で追加します。分割より前に書かれたアプリには `require "cybertrain"` があり、これは今もすべてを読み込みます：以前と同じようにビルドされ動作します。この行をコアと使う行に置き換えると、ビルドが速くなります。
+
+足りない行は、アプリが動く前に見つかります：
+
+<!-- list: points -->
+- 足りないサブシステムを名指しする Ruby コード（`ReportJob.perform_later`、`Cybertrain::Stream.broadcast_append_to`、`Cybertrain::Mailer.deliver`、`rate_limit to:`）はコンパイルできません。エラーは定数またはメソッドを名指しし、上の表がその行を示します。
+- サブシステムのヘルパーを呼ぶビューは、`spin run gen`（と `spin run gen -- --check`）を終了ステータス 1 で止めます：`app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`。それでもレンダリングされたテンプレートは `undefined helper 'turbo_stream_from'` を発生させます。
+- `./<app> worker`、`./<app> jobs`、`./<app> feeds` は、たとえば `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` と表示して 1 で終了します。
+- `/up` は読み込まれたものについてだけ報告します：ジョブがなければワーカーの停滞を、フィードがなければフィードの停滞を見ません。
+
+gen は `bin/<app>.rb` をテキストとして読み、そこに書かれた `require "cybertrain"` と `require "cybertrain/..."` の行しか見ません。これらを `bin/<app>.rb` が `require_relative` で読み込む別のファイルに移すと、gen は動くはずのヘルパーを拒否します。`bin/<app>.rb` に置いたままにしてください。
+
+ジョブがない場合、キャッシュは期限切れの行を自分で削除します：プロセスの最初の書き込みと、`cache_prune_interval` ごとの最初の書き込みが、最大 1000 行を削除します。ジョブがあれば、これまでどおりスケジュールされたタスク `"cybertrain cache prune"` が行います（[キャッシュストア](background-and-operations.md#the-cache-store)）。
+
+gen が見つけないケースが 2 つあります：`cybertrain/jobs` なしで `config/routes.rb` に書いた `jobs_page` の行は、gen のメッセージではなく生成されたコントローラーのコンパイルエラーになります。また、`retry_on` や `discard_on` が `Cybertrain::Mailer` のエラーを名指しするジョブがあると、生成される `gen/app.rb` が自分で `cybertrain/mailer` を require します。
+
+テストはこれらの行では削られません：`cybertrain test` がコンパイルするプログラム（`gen/tests.rb`）は、`bin/<app>.rb` が何を require していても `cybertrain`、つまりすべてのサブシステムを require します。そのため `perform_enqueued_jobs`、`assert_emails`、`assert_broadcasts` はどのアプリケーションでも使え、`cybertrain/core` のアプリケーションはすべてのサブシステムとともにテストをコンパイルし、行のないサブシステムを名指しするコードはテストを通って `spin build` で止まります（[アプリをテストする](testing.md)）。
 
 ## ビューは解釈される
 
@@ -90,6 +126,7 @@ description: "CyberTrain のアプリがどのようにビルドされ、実行�
 | Rails | CyberTrain |
 | --- | --- |
 | `rails console`、`rails dbconsole` | `./<app> console` はモデルに対してテンプレートの式言語を評価する（Spinel には `eval` がないので Ruby ではない）。`./<app> dbconsole` は `sqlite3` を開く（[コンソール](background-and-operations.md#the-console)） |
+| `config/application.rb` がアプリの使う railtie を require する | `bin/<app>.rb` と `bin/db.rb` が `cybertrain/core` とアプリの使う[サブシステム](#subsystems)を require する。`require "cybertrain"` はそのすべて |
 | `rails runner`、`lib/tasks/*.rake` | `bin/<app>.rb` に `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }`：`./<app> name ARGS` でデータベースに接続した状態で実行される |
 | コードを編集すると、動いているアプリが取り込む | Ruby の変更は CRuby のプレビューからすぐに反映され、ビルドが終わるとコンパイル済みのバイナリがポートを引き継ぐ（`cybertrain server`） |
 | ビューを編集しても再読み込みは不要 | 同じ — 開発環境ではビューはリクエストごとにディスクからパースされる |

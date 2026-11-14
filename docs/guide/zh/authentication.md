@@ -1,5 +1,5 @@
 ---
-source_sha256: 6c75b76447394c247101bf1b94c28ecf957da17689cb78cc96918334c33c61c1
+source_sha256: f91f3179b1b8012bb304301973b9de2d6e153abc889799c6d946d2c35f104605
 ---
 # 认证
 
@@ -27,7 +27,7 @@ cybertrain db migrate
 | `app/views/...` | 各个页面（每段文本都经过 `t()`）以及 `sessions/_nav` 局部模板 |
 | `test/fixtures/users.yml`、`test/support/session_test_helper.rb`、`test/models/`、`test/controllers/`、`test/integration/` | 夹具用户、`sign_in_as`，以及每个部分的测试（[测试](#testing)） |
 
-以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令，以及 `config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)）。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[从 0.4 升级](#upgrading-from-04)、[之后再开启确认](#turning-on-confirmation-later)）。
+以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令、`config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)），以及在 `bin/<app>.rb` 和 `bin/db.rb` 中加入代码用到的子系统的行，除非 `require "cybertrain"` 已经加载了全部：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later` 和 `cybertrain/rate_limit`（[子系统](how-it-works.md#subsystems)）。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[从 0.4 升级](#upgrading-from-04)、[之后再开启确认](#turning-on-confirmation-later)）。
 
 生成的页面上的文本在框架的英语和日语词典中，使用各自的惰性查找键（`sessions.new.title`、`passwords.create.sent`）；应用可以在 `config/locales/` 中覆盖它们或添加一种语言（[国际化](i18n.md#the-bundled-dictionaries)）。
 

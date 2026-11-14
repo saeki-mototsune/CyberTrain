@@ -43,6 +43,10 @@ module Cybertrain
         out << "ENV[\"CYBERTRAIN_ENV\"] = \"test\"\n"
         out << "ENV.delete(\"CYBERTRAIN_DATABASE\")\n"
         out << "ENV[\"CYBERTRAIN_DATABASE\"] = ENV[\"CYBERTRAIN_TEST_DATABASE\"].to_s unless ENV[\"CYBERTRAIN_TEST_DATABASE\"].to_s.empty?\n"
+        # Every subsystem, whatever bin/<app>.rb requires: the test helpers
+        # of jobs, mail and streams (cybertrain/test_help) need theirs, and
+        # an application on cybertrain/core runs its tests unchanged
+        # (docs/design.md D85).
         out << "require \"cybertrain\"\n"
         out << "require \"cybertrain/test_help\"\n"
         out << "require \"cybertrain/test/bundle\"\n"

@@ -724,11 +724,13 @@ attr_accessor :trusted_proxies
     # @api public
     attr_accessor :jobs_page_per_page
 
-    # Seconds between the runs of the scheduled task `"cybertrain cache
-    # prune"`, which deletes expired {Cache} rows, `300`, from
-    # `CYBERTRAIN_CACHE_PRUNE_INTERVAL`. Read once, when
-    # `cybertrain/cache` is required (the task is registered then). At
-    # least 1.
+    # Seconds between two prunes of expired {Cache} rows, `300`, from
+    # `CYBERTRAIN_CACHE_PRUNE_INTERVAL`. With cybertrain/jobs it is the
+    # interval of the scheduled task `"cybertrain cache prune"`, read once,
+    # when the task is registered (requiring cybertrain/cache and
+    # cybertrain/jobs); without jobs a cache write prunes when this long has
+    # passed since the last prune ({Cache.prune_if_due}), reading it each
+    # time. At least 1.
     # @return [Integer]
     # @api public
     attr_accessor :cache_prune_interval

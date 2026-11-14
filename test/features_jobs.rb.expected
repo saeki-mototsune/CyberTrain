@@ -1,0 +1,5 @@
+ok   require "cybertrain" registers the features in a fixed order
+ok   with jobs, the scheduler owns the cache prune and a write does not prune
+ok   the server role's stop request stops the job threads
+ok   boot refuses a cron task whose job kind is not registered
+4 tests, 18 assertions, 0 failures
