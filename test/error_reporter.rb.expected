@@ -17,5 +17,13 @@ ok   a subscriber raising outside StandardError is logged and the thread goes on
 ok   a raising sender is logged at warn, the thread goes on, and reset! puts the boot sender back
 ok   the sender a test installed is gone in the next
 ok   report never raises into its caller: a failure is logged and it answers nil
+ok   inside a job's Scope the dedupe key holds the job's id; a caller's job.id does not count
+ok   a filter changes the message and the context; the subscribers and the sender see the change
+ok   a filter that answers false drops the event: no subscriber, no sender, no drop counted
+ok   filters run in the order added, after the boot filter, and stop at the first that drops
+ok   a filter that raises drops the event and is logged, never reported
+ok   a filter that raises outside StandardError drops the event too
+ok   a filter added in a test is gone in the next; the one added at boot stays
+ok   the base filter keeps every event
 ok   Cybertrain.error is one ErrorReporter
-20 tests, 89 assertions, 0 failures
+28 tests, 122 assertions, 0 failures

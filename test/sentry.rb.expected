@@ -1,4 +1,5 @@
 ok   one envelope per event, with Sentry's auth header
+ok   the envelope carries what a filter left of the event
 ok   an event outside a request has no tags, request, transaction or release
 ok   the item header's length is the event's size in bytes, non-ASCII text included
 ok   the envelope's dsn leaves out a legacy secret
@@ -10,4 +11,4 @@ ok   the sender answers whether Sentry took the event; a refusing Sentry is a wa
 ok   a refusing, a blocked and a malformed DSN never block or raise
 ok   a silent Sentry ends the delivery within the deadline, and the next event goes
 ok   drain_reports gives up after its seconds
-12 tests, 80 assertions, 0 failures
+13 tests, 84 assertions, 0 failures
