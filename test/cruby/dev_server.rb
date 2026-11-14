@@ -552,7 +552,7 @@ test "under the build lock, or when gen fails too, the application that does not
     begin
       code, out = run_server(root)
     ensure
-      holder.unlock
+      holder.release_build_lock
     end
     assert_equal 1, code
     assert_includes out, "does not load under CRuby"

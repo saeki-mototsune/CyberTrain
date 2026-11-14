@@ -1373,7 +1373,7 @@ test "build_locked? asks the build's flock and never removes its file" do
     File.utime(old, old, lock)
     assert runner.build_locked?, "however old its file is"
     assert File.exist?(lock), "and its file is left in place"
-    holder.unlock
+    holder.release_build_lock
     refute runner.build_locked?, "a released lock is free"
   end
 end

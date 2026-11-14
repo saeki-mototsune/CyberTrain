@@ -128,8 +128,9 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
   end
 
   # perform_enqueued_jobs while the comments table is renamed away (the
-  # job's Comment.find_by fails), with Cybertrain.logger writing to `io`;
-  # the table and the logger are back afterwards.
+  # job's Comment.find fails with a Cybertrain::DB::Error), with
+  # Cybertrain.logger writing to `io`; the table and the logger are back
+  # afterwards.
   def perform_jobs_with_comments_hidden(io)
     saved = Cybertrain.logger
     hidden = false
