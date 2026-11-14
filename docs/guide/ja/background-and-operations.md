@@ -1,5 +1,5 @@
 ---
-source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
+source_sha256: f6ee38d77620407de059a4835f0fbd9c580fe7c9f822eaf45274666d6d0a26ba
 ---
 # バックグラウンド処理と運用
 
@@ -385,7 +385,7 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 任意：4 分の 1 を送る
 
 **バックトレース。** `cybertrain build` のバイナリは Spinel のリリースビルドで、その例外はバックトレースを持ちません。報告にはクラス、メッセージ、`where` が入ります。`--debug` ビルドと CRuby では、フレームが付きます。
 
-`cybertrain test` は Sentry に何も送りません。`config/app.rb` が代入していない限り、エクスポートされた `CYBERTRAIN_SENTRY_DSN` を空にします。テストは代わりに DSN を `Test::SentryReceiver` に向けます（[ログとエラー報告のテスト](testing.md#testing-logs-and-error-reports)）。設計：[docs/design.md](../design.md) の D86 と D87。
+`cybertrain test` は Sentry に何も送りません。`config/app.rb` が代入していない限り、エクスポートされた `CYBERTRAIN_SENTRY_DSN` を空にします。テストは代わりに DSN を `Test::SentryReceiver` に向けます（[ログとエラー報告のテスト](testing.md#testing-logs-and-error-reports)）。設計：[docs/design.md](../design.md) の D86 と D88。
 
 ### ログとエラー報告の 0.4 からの更新
 

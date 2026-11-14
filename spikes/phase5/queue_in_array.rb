@@ -1,5 +1,5 @@
 # Phase 5b, found while writing test/logger_scope.rb (spikes/NOTES.md rule
-# 116, docs/spinel-feedback.md AP): `pop(timeout:)` on a Queue that was
+# 117, docs/spinel-feedback.md AP): `pop(timeout:)` on a Queue that was
 # put in an Array is compiled as Array#pop.
 #
 # Run (from the repository root; outputs outside the package, rule 98):

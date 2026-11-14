@@ -3649,12 +3649,12 @@ reporting; section 16's items 7 to 9 ran before the code, in
 spikes/phase5/) met two Spinel bugs, AP and AQ, both reduced on 2026-11-14
 with the pinned 2026.11.04.7026 (a2d06115, gcc 13.3.0, Linux x86_64,
 `spinel prog.rb -o prog`, no flags) and run beside CRuby 3.3.6.
-spikes/NOTES.md has them as rules 116 and 115, and the rest of what the
-phase met as rules 112 to 114 and 117 to 119.
+spikes/NOTES.md has them as rules 117 and 116, and the rest of what the
+phase met as rules 113 to 115 and 118 to 120.
 
 ### AP. `pop(timeout:)` on a Queue that was put in an Array is `Array#pop`
 
-Rule 116.
+Rule 117.
 
 ```ruby
 inboxes = [Queue.new, Queue.new]
@@ -3681,7 +3681,7 @@ method's parameter.
 
 ### AQ. Four threads writing one StringIO with no lock crash the program
 
-Rule 115.
+Rule 116.
 
 ```ruby
 require "stringio"
@@ -3726,19 +3726,19 @@ an application ported from Ruby may rely on it without knowing.
 
 - A rescuing yielder with one `rescue` clause around `value = yield`
   works nested, through a forwarding block, and with `next`, `break` and
-  `return` in its block as under CRuby (rule 112; `Cybertrain.error.handle`
+  `return` in its block as under CRuby (rule 113; `Cybertrain.error.handle`
   is written so).
-- `sleep 0` does not switch green threads at one worker (rule 113), and a
+- `sleep 0` does not switch green threads at one worker (rule 114), and a
   thread test whose handshake relies on the other thread not running yet
-  passes under CRuby and fails compiled (rule 117): how tests are written,
+  passes under CRuby and fails compiled (rule 118): how tests are written,
   not defects.
 - A `Mutex` held only for one write of a prebuilt line cost nothing
-  measurable at two workers (rule 114), unlike item 7's lock on the
+  measurable at two workers (rule 115), unlike item 7's lock on the
   request path; the measurement's limits are in the rule.
 - A write to a frozen Array or Hash raises `FrozenError` compiled
-  (rule 118).
+  (rule 119).
 - `spin test` reuses a test binary newer than its sources, so sources
-  changed while it compiled leave a stale binary (rule 119; a cousin of
+  changed while it compiled leave a stale binary (rule 120; a cousin of
   AL).
 - `refute_equal` in an application's test stops the build of the test
   program: no file of the test framework defines it (it offers

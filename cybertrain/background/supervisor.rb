@@ -89,7 +89,7 @@ module Cybertrain
     SUPERVISOR_JOIN_SECONDS = 2.0
 
     # The class name the supervisor's give-up is reported under
-    # (docs/design.md D87; no such class exists).
+    # (docs/design.md D88; no such class exists).
     FEED_FAILED = "Cybertrain::Background::FeedFailed"
 
     # Whole seconds on the monotonic clock: the backoff, the window and

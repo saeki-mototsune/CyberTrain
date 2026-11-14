@@ -1,5 +1,5 @@
 ---
-source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
+source_sha256: f6ee38d77620407de059a4835f0fbd9c580fe7c9f822eaf45274666d6d0a26ba
 ---
 # 后台任务与运维
 
@@ -385,7 +385,7 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 可选：发送其中四分之
 
 **回溯。** `cybertrain build` 构建的二进制是 Spinel 的发布构建，其异常不带回溯：它的报告包含类、消息和 `where`。在 `--debug` 构建中以及在 CRuby 下，会附带帧。
 
-`cybertrain test` 不向 Sentry 发送任何东西：除非 `config/app.rb` 赋了值，它会清空导出的 `CYBERTRAIN_SENTRY_DSN`，测试改为把 DSN 指向 `Test::SentryReceiver`（[测试日志与错误报告](testing.md#testing-logs-and-error-reports)）。设计：[docs/design.md](../design.md) D86 和 D87。
+`cybertrain test` 不向 Sentry 发送任何东西：除非 `config/app.rb` 赋了值，它会清空导出的 `CYBERTRAIN_SENTRY_DSN`，测试改为把 DSN 指向 `Test::SentryReceiver`（[测试日志与错误报告](testing.md#testing-logs-and-error-reports)）。设计：[docs/design.md](../design.md) D86 和 D88。
 
 ### 从 0.4 升级日志与错误报告
 

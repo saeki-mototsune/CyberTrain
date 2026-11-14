@@ -878,7 +878,7 @@ and `where`. In a `--debug` build, and under CRuby, the frames are attached.
 `CYBERTRAIN_SENTRY_DSN` unless `config/app.rb` assigns one, and a test points
 the DSN at a `Test::SentryReceiver` instead
 ([Testing logs and error reports](testing.md#testing-logs-and-error-reports)).
-The design: [docs/design.md](../design.md) D86 and D87.
+The design: [docs/design.md](../design.md) D86 and D88.
 
 ### Upgrading logs and error reports from 0.4
 

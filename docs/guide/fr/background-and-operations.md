@@ -1,5 +1,5 @@
 ---
-source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
+source_sha256: f6ee38d77620407de059a4835f0fbd9c580fe7c9f822eaf45274666d6d0a26ba
 ---
 # Tâches de fond et exploitation
 
@@ -962,7 +962,7 @@ CRuby, les frames sont jointes.
 `CYBERTRAIN_SENTRY_DSN` exporté sauf si `config/app.rb` en affecte un, et un
 test pointe plutôt le DSN vers un `Test::SentryReceiver`
 ([Tester les journaux et les rapports d’erreur](testing.md#testing-logs-and-error-reports)).
-La conception&nbsp;: [docs/design.md](../design.md) D86 et D87.
+La conception&nbsp;: [docs/design.md](../design.md) D86 et D88.
 
 ### Mettre à jour les journaux et les rapports d’erreur depuis 0.4
 

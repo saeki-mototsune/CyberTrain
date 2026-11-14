@@ -1,5 +1,5 @@
 ---
-source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
+source_sha256: f6ee38d77620407de059a4835f0fbd9c580fe7c9f822eaf45274666d6d0a26ba
 ---
 # Фоновая работа и эксплуатация
 
@@ -919,7 +919,7 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # необязательно: о
 экспортированный `CYBERTRAIN_SENTRY_DSN`, если `config/app.rb` его не
 присваивает, а тест вместо этого направляет DSN на `Test::SentryReceiver`
 ([Тестирование журнала и отчётов об ошибках](testing.md#testing-logs-and-error-reports)).
-Проект: [docs/design.md](../design.md) D86 и D87.
+Проект: [docs/design.md](../design.md) D86 и D88.
 
 ### Обновление журнала и отчётов об ошибках с 0.4
 

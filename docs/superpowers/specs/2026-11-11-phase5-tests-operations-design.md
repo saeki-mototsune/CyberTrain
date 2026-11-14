@@ -1081,8 +1081,8 @@ repository like any credential.
   automatic stop. 5b adds D85 the log line, tags and the request id, and
   D86 error reporting and the Sentry sender (D66 to D71 when this was
   written: main had taken those numbers, pre-flight ruling B3; as built
-  they are D86 and D87, main's optional subsystems having taken D85,
-  section 21, Part 5b). D13 (tests and CI: the
+  they are D86 and D88, main having taken D85 (optional subsystems)
+  and D87 (the CRuby preview), section 21, Part 5b). D13 (tests and CI: the
   rollback it planned is replaced by D82's clear), D14 (logging), D19
   (time zones), D32 (receivers), D34 (T-1: the application side answered,
   the framework's own suite still deferred), D52 (`scheduler_tz`'s
@@ -1543,7 +1543,7 @@ zlib through Spinel's FFI):**
     and a failing job reported to a `Test::HttpReceiver` through
     `CYBERTRAIN_SENTRY_DSN`.
 14. As item 10 for 5b: D85 and D86, the guides, the implementation notes.
-    (As built: D86 and D87; section 21, Part 5b.)
+    (As built: D86 and D88; section 21, Part 5b.)
 
 ## 20. Details chosen while writing
 
@@ -1613,7 +1613,7 @@ phase 4b D79 and D80, so 5a's decisions are design.md D81 (the clock,
 durations, the time helpers and the zone), D82 (test classes and
 isolation), D83 (fixtures and `cybertrain test`) and D84 (the helpers,
 assertions and receivers); 5b takes D85 and D86 (pre-flight ruling B3;
-section 15 is amended), which became D86 and D87 (Part 5b below). The spikes/NOTES.md rules found here are 104 to 110,
+section 15 is amended), which became D86 and D88 (Part 5b below). The spikes/NOTES.md rules found here are 104 to 110,
 and docs/spinel-feedback.md items AJ to AO.
 
 **The spike (section 16).** Items 1 to 5 passed without their fallbacks:
@@ -1830,10 +1830,11 @@ parallel, after main had merged the optional subsystems
 (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md) into the
 branch. What differs from the sections above, or goes beyond them:
 
-**Numbers.** Main's optional subsystems took D85, so 5b's decisions are
-design.md D86 (the log line, tags and the request id) and D87 (error
-reporting and the Sentry sender); sections 15 and 19 are amended. The
-spikes/NOTES.md rules found here are 112 to 119 (and rule 110 is extended
+**Numbers.** Main's optional subsystems took D85 and its CRuby preview
+D87, so 5b's decisions are design.md D86 (the log line, tags and the
+request id) and D88 (error reporting and the Sentry sender); sections 15
+and 19 are amended. The spikes/NOTES.md rules found here are 113 to 120
+(main's rule 112 is `File#flock`; rule 110 is extended
 to every statement `case` on an Integer, `getbyte` values included), and
 docs/spinel-feedback.md items AP and AQ.
 
@@ -1844,7 +1845,7 @@ builds the framework at 19668bc (`FRAMEWORK_REV`), the commit the
 measurement was made on; spikes/phase5/error_names.rb no longer compiles
 beside the framework, which now defines the classes it stood in for, and
 is kept as the record of its run at 19668bc. The lock's measurement has
-limits, recorded in D86 and rule 114: 8 connections from the spike's
+limits, recorded in D86 and rule 115: 8 connections from the spike's
 loader, not wrk; a promptly read pipe, not a slow or blocked reader (a
 write that blocks holds every thread that logs); stand-ins for DB, Job
 and Lease in the CRuby comparisons; and the analysis cost of the Sentry
@@ -1884,7 +1885,7 @@ sender in `require "cybertrain"` programs was not measured.
 - The API (13.1, plan D9 and D12): every `ErrorEvent` reader has the
   `error_` prefix (the maintainer's choice); `handle` also catches
   `JSON::NestingError`, and `break`, `next` and `return` in its block
-  behave as under CRuby (rule 112). The framework's own reports go through
+  behave as under CRuby (rule 113). The framework's own reports go through
   `report_unhandled` and `report_message` (four arguments each).
 - What is reported (13.2, plan D7 and D10): a request's 500 is reported by
   `ErrorPages` in production and otherwise by the innermost `RequestId`
@@ -1953,7 +1954,7 @@ sender in `require "cybertrain"` programs was not measured.
   `logger_threads.rb`, `request_id.rb`, `log_tags_background.rb`, and the
   settings outside boot in `runtime.rb`, `config_validation.rb`,
   `main_command.rb`, `main_jobs.rb`).
-- 12 (error reporting): met; design.md D87's Verification
+- 12 (error reporting): met; design.md D88's Verification
   (`test/error_reporter.rb`, `error_reporting_sources.rb`, `request_id.rb`,
   `error_pages.rb`, `dev_error_page.rb`, `sentry_dsn.rb`, `sentry.rb`,
   `features_core.rb`, `main_roles.rb`), the envelope received by a
@@ -1962,10 +1963,10 @@ sender in `require "cybertrain"` programs was not measured.
   policy; within the dedupe window a like attempt is logged, not reported
   (section 13.2 amended).
 - 13 (the blog), below.
-- 14 (documents): design.md D86 and D87 (D85 amended for the optional
+- 14 (documents): design.md D86 and D88 (D85 amended for the optional
   subsystems), the operations, configuration, requests, testing,
   subsystems and outbound guides in five languages, the deploy pages, the
-  README, spikes/NOTES.md rules 112 to 119, docs/spinel-feedback.md AP and
+  README, spikes/NOTES.md rules 113 to 120, docs/spinel-feedback.md AP and
   AQ, and this section.
 
 **Acceptance 13.** No test-only route (the maintainer's choice): the

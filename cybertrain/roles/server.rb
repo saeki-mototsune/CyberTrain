@@ -130,7 +130,7 @@ module Cybertrain
           Features.stop_features
           # The error reports still queued: up to 2 seconds for them once
           # every service has stopped (what is left is lost; docs/design.md
-          # D87).
+          # D88).
           Cybertrain.error.drain_reports(2.0)
           Runtime.leave_role
         end

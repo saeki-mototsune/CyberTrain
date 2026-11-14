@@ -1,5 +1,5 @@
 # Phase 5b, found while testing the logger's lock (spikes/NOTES.md rule
-# 115, docs/spinel-feedback.md AQ): four threads writing into one StringIO
+# 116, docs/spinel-feedback.md AQ): four threads writing into one StringIO
 # with no lock, at SPINEL_WORKERS=4, abort the program.
 #
 # Run (from the repository root; outputs outside the package, rule 98):
