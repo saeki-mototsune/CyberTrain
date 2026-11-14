@@ -13,6 +13,8 @@ class NotifyCommentJobTest < ActiveSupport::TestCase
     assert_includes log.string, "new comment #{comment.id} on article #{comment.article_id}"
   end; nil; end
 
+  # Comment.find raises Cybertrain::RecordNotFound, which the job's
+  # discard_on names.
   def test_a_comment_deleted_before_the_job_runs_discards_the_job; begin
     comment = comments(:one)
     comment_id = comment.id
@@ -22,8 +24,8 @@ class NotifyCommentJobTest < ActiveSupport::TestCase
     log = StringIO.new
     assert_equal 1, perform_queued_logging_to(log)
     assert_equal "discarded", BlogTestHelper.job_state(id)
-    assert_includes log.string, "job #{id} (NotifyCommentJob) discarded: NotifyCommentJob::CommentGone: " \
-                                "comment #{comment_id} was deleted; nothing to notify\n"
+    assert_includes log.string, "job #{id} (NotifyCommentJob) discarded: Cybertrain::RecordNotFound: " \
+                                "Couldn't find Comment with id=#{comment_id}\n"
     assert_no_enqueued_jobs
   end; nil; end
 

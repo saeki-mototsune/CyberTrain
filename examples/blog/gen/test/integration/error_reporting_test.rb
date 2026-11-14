@@ -87,17 +87,18 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest; def setup; super; se
     log = StringIO.new
     assert_equal 1, perform_jobs_logging_to(log)
     assert_includes log.string, " ERROR [NotifyCommentJob #{job[0]}] [#{rid}] job #{job[0]} (NotifyCommentJob) discarded: " \
-                                "NotifyCommentJob::CommentGone: comment #{comment_id} was deleted; nothing to notify\n"
+                                "Cybertrain::RecordNotFound: Couldn't find Comment with id=#{comment_id}\n"
     assert_nil log.string.index("retrying")
     assert_equal "discarded", BlogTestHelper.job_state(job[0].to_i)
     assert_equal 0, perform_enqueued_jobs
     Cybertrain.error.drain_reports
-    assert_equal ["NotifyCommentJob::CommentGone NotifyCommentJob #{rid}"], REPORTS_SEEN
+    assert_equal ["Cybertrain::RecordNotFound NotifyCommentJob #{rid}"], REPORTS_SEEN
     events = @receiver.received_events(2, 1.0)
     assert_equal 1, events.size
     ev = events[0]
     assert_equal "NotifyCommentJob", ev.sentry_field("transaction")
-    assert_equal "NotifyCommentJob::CommentGone", ev.sentry_field("exception.values.0.type")
+    assert_equal "Cybertrain::RecordNotFound", ev.sentry_field("exception.values.0.type")
+    assert_equal "Couldn't find Comment with id=#{comment_id}", ev.sentry_field("exception.values.0.value")
     assert_equal rid, ev.sentry_field("tags.request_id")
     assert_equal "1", ev.sentry_field("extra.job.attempt")
     assert_equal "1", ev.sentry_field("extra.job.max_attempts")
