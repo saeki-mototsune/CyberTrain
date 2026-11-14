@@ -39,13 +39,16 @@ jobs:
   required:
     runs-on: ubuntu-26.04
     # Longer than the slowest workflow it waits for plus the time that one
-    # may spend queued. The slowest is CI: its macOS job allows itself 120
-    # minutes (65 measured), and the first run on a pull request took 98
-    # minutes from start to finish while this job, then waiting 80, gave up
-    # on it (run 43086752319, 2026-11-11). The wait below is 170 minutes,
-    # and this limit a little more, so that the job reports its own
-    # message rather than being cut off.
-    timeout-minutes: 180
+    # may spend queued. The slowest is CI: its macOS job allows itself 360
+    # minutes (ci.yml, `test`). Measured on 2026-11-14: 154 minutes on main
+    # (run 43566475842), and 172 on the pull request that added phase
+    # 5b's tests while this job, then waiting 170, gave up on it three
+    # minutes early (run 43576220948). An earlier wait of 80 minutes gave up
+    # the same way on a run of 98 (run 43086752319, 2026-11-11). The wait
+    # below is 340 minutes, and this limit a little more, so that the job
+    # reports its own message rather than being cut off; a hosted job
+    # cannot run longer than 360.
+    timeout-minutes: 350
     steps:
       - name: Every other workflow run for this commit has passed
         env:
@@ -53,7 +56,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           set -eu
-          deadline=$(( $(date +%s) + ${WAIT_SECONDS:-10200} ))
+          deadline=$(( $(date +%s) + ${WAIT_SECONDS:-20400} ))
           interval=${POLL_SECONDS:-30}
           list() {
             gh api --paginate \
