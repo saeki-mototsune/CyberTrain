@@ -811,6 +811,7 @@ CLI も同じバージョンにそろえてから（サーバーの `notes` ユ�
 バージョンがずれるとビルドや起動が失敗します）:
 
 ```sh
+rm spin.lock              # spin lock だけでは固定済みのコミットが残る
 cybertrain spin lock      # 新しいタグのコミットを spin.lock に固定する
 cybertrain spin run gen   # 生成コードがフレームワークに合わせて変わることがある
 cybertrain spin test      # テストを書いているなら

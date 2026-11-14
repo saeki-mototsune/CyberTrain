@@ -1,0 +1,6 @@
+ok   a git dependency's lock gives the repository and the commit
+ok   an index version locks in the same shape and reads the same
+ok   another package's table is not the framework's
+ok   a path dependency has no commit: the step fails and names framework-path
+ok   a lock without the framework, or with a ref that is not a commit, fails
+5 tests, 9 assertions, 0 failures

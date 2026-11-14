@@ -7,7 +7,8 @@
 #   spin.toml                     [package] version
 #   .github/workflows/ci.yml      SPINEL_TAG
 #   test/version.rb.expected, test/integration_m1.rb,
-#   test/cli_new.rb.expected, test/cli_toolchain.rb.expected
+#   test/cli_new.rb.expected, test/cli_toolchain.rb.expected,
+#   test/cli_framework_version.rb.expected
 #                                 the numbers the tests expect
 # The site and the guides are not touched: they name no release numbers
 # (script/check-version-mentions). The bump-version workflow
@@ -30,6 +31,7 @@ TESTS = %w[
   test/integration_m1.rb
   test/cli_new.rb.expected
   test/cli_toolchain.rb.expected
+  test/cli_framework_version.rb.expected
 ].freeze
 
 def die(message)

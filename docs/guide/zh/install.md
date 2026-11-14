@@ -1,5 +1,5 @@
 ---
-source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
+source_sha256: 833da4a0dce30786eda2530ad79e7508d974d847037c7f4d608e5d886d11bdbe
 ---
 # 安装
 
@@ -99,17 +99,42 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 - `--path DIR` 改为依赖本地检出的代码
   （开发 CyberTrain 本身时，用 `--path ~/src/cybertrain`，检出代码在哪里就写哪里）。
 - `--git URL [--ref R]` 依赖位于 URL 的框架（分支或标签 R）。
-- `--version V` 在框架进入 `spin-index` 后依赖索引中的版本。
+- `--version V` 在框架进入 `spin-index` 后依赖其中的发布版本 V（`cybertrain = "V"`）：参见[索引中的版本](#an-index-version)。
 
 `--path`、`--version` 和 `--git` 只能给出其中一个；`--ref` 需要配合 `--git`。
+
+### 索引中的版本
+
+`spin-index` 是 spin 按名称查找包的列表。框架目前还不在其中：在此之前，在用 `--version` 创建的应用里运行 `spin lock` 会得到 `not in the index: cybertrain`，依赖某个发布版本的办法是 `new` 默认写入的标签。进入索引之后，`cybertrain new NAME --version X.Y.Z` 写入 `cybertrain = "X.Y.Z"`，spin 在索引中找到该版本的提交，`spin.lock` 固定的内容与使用标签时相同（版本、仓库和提交），因此每条命令以及 `new` 写出的 CI 工作流都和默认情况下一样运行。有三点与 `Gemfile` 给人的预期不同：
+
+- **指定一个发布版本。** 在满足约束的发布版本中，spin 选择最低的，而不是最新的：`"~> X.Y"` 是索引中从 X.Y 起、到下一个主版本之前的最低版本（只有 `"~> X.Y.Z"` 才限定在 X.Y 之内），之后发布了更新的版本也仍然是它。所以请写确切的版本，也就是 `cybertrain version` 打印的那个；V 是其他写法时，`new` 会打印一条提示。
+- **Spinel 仍然由 `cybertrain` 命令提供。** 索引条目不指定 Spinel 的发布版本。框架是针对其中一个版本编写并测试的，即 `cybertrain setup` 构建的那个，同一版本的 `cybertrain` 命令会安装它。在用其他 Spinel 构建的项目里只运行 `spin add cybertrain`，这种用法未经测试。
+- **spin 读取的是它自己的索引副本。** 它只把索引克隆一次，放在 `~/.cache/spin/`，`spin lock` 不会更新这个副本；`spin search cybertrain` 会更新，并打印最新的发布版本。
 
 ### 把应用迁移到新版本
 
 gem 和框架从同一个标签发布，因此版本一致：X.Y.Z 版的 gem 生成的应用依赖框架 `vX.Y.Z`。要把应用迁移到新版本，先更新 gem，把 `spin.toml` 指向新标签，然后在应用中运行：
 
 ```shell 终端 — 应用目录
+rm spin.lock
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+对于 git 依赖，无论 `spin.toml` 中的 `ref` 变成什么，`spin lock` 都会保留它已锁定的提交，所以要先删除锁文件。如果应用还有其他依赖，可以改为只从 `spin.lock` 中删除 `[lock.cybertrain]` 表，保留其他锁定。依赖索引中某个版本（`cybertrain = "X.Y.Z"`）的应用不需要 `rm`：此时 `spin lock` 会移动锁定。
+
+对于依赖[索引中的版本](#an-index-version)的应用，先运行 `cybertrain spin search cybertrain` 更新 spin 的索引副本，再把 `spin.toml` 中 `cybertrain =` 一行的版本改为新的发布版本，然后运行 `cybertrain spin lock` 和 `cybertrain spin run gen`。
+
+两者是否一致由命令来检查。`server`、`build`、`db`、`test` 和 `generate` 在运行 spin 或写出文件之前，会把 spin 将要构建的框架版本，即应用的 `spin.lock` 中锁定的版本，与命令自己的版本（`cybertrain version`）进行比较：决定用哪个 Spinel 版本编译应用的是命令而不是应用，而且命令的模板和生成器是为同一版本的框架编写的。版本不同时，命令以状态码 1 停止：
+
+```text 输出 — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is on
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
+  rm spin.lock && cybertrain spin lock
+```
+
+两种做法任选其一。`cybertrain spin ...` 不做这项检查，因此 `cybertrain spin lock` 总能运行。对于 git 依赖，修改 `spin.toml` 不会改变任何东西，之后再运行 `spin lock` 也一样：在删除该锁定之前，spin 仍然构建 `spin.lock` 中的提交，所以需要 `rm`。对于索引中的版本，消息给出的是 `cybertrain = "A.B.C"` 和单独的 `cybertrain spin lock`；只有在 `spin.toml` 仍然允许时，spin 才构建锁定的版本，因此 `spin.toml` 指定的版本一旦与锁不同，就会用它来比较；如果某个范围（`"~> X.Y"`）不再允许锁定的版本，则在运行 `cybertrain spin lock` 之前命令会拒绝执行。依赖框架本地检出代码（`path = ...`）的应用不做检查。没有 `spin.lock` 的应用，则与其 `spin.toml` 指定的版本（`"X.Y.Z"` 或 `ref = "vX.Y.Z"`）比较；分支、提交或范围不指定任何版本，因此不做检查。
 
 为 0.4 编写的应用需要做一些修改（每个会话都会结束一次、要链接 OpenSSL、含点号的路由段需要 `format: false` 等）：参见[升级为 0.4 编写的应用](requests.md#upgrading-an-application-from-04)。

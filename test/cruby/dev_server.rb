@@ -505,6 +505,22 @@ test "a PORT that is not a number, or a word after it, is refused" do
   end
 end
 
+# docs/design.md D89; test/cli_framework_version.rb has what is compared.
+test "an application on another release of the framework is refused, with the ways out" do
+  with_app do |root|
+    File.write(File.join(root, "spin.toml"), "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\n" \
+      "cybertrain = { git = \"https://github.com/saeki-mototsune/cybertrain\", ref = \"v999.0.0\" }\n")
+    File.write(File.join(root, "spin.lock"), "[lock.cybertrain]\nversion = \"999.0.0\"\n" \
+      "git = \"https://github.com/saeki-mototsune/cybertrain\"\nref = \"#{"0" * 40}\"\n")
+    code, out = run_server(root)
+    assert_equal 1, code
+    assert_includes out, "error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is #{Cybertrain::VERSION}."
+    assert_includes out, "gem install cybertrain -v 999.0.0"
+    assert_includes out, "cybertrain spin lock"
+    refute File.exist?(File.join(root, "child-started"))
+  end
+end
+
 test "an application that does not load under CRuby is refused, naming --spinel" do
   with_app do |root|
     File.write(File.join(root, "bin", "app.rb"), "raise SyntaxError, 'unexpected end'\n")
