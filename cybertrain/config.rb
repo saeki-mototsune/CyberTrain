@@ -1262,8 +1262,8 @@ attr_accessor :trusted_proxies
       @max_render_depth = Template::MAX_RENDER_DEPTH
       @public_root = "public"
       @layout = "layouts/application"
-      # From the variable, not counted as given (plan D14): an exported
-      # level does not unsilence `cybertrain test`; config/app.rb does.
+      # From the variable, not counted as given: an exported level does
+      # not unsilence `cybertrain test`; config/app.rb does.
       @log_level = Config.default_log_level
       @log_level_given = false
       @log_format = Config.default_log_format
@@ -1349,11 +1349,12 @@ end
       @mail_delivery_method = Config.default_mail_delivery_method(@env)
       @mail_delivery_method_given = false
       # Error reporting. The DSN is stripped like the encryption key (a
-      # .env line's newline), not counted as given (plan D14); the rate's
-      # text is kept for reporting_error's message.
+      # .env line's newline), not counted as given (so `cybertrain test`
+      # sends no report to a Sentry the shell exported); the rate is
+      # stripped too, and its text kept for reporting_error's message.
       @sentry_dsn = Config.env_or("CYBERTRAIN_SENTRY_DSN", "").strip
       @sentry_dsn_given = false
-      @error_sample_rate_text = Config.env_or("CYBERTRAIN_ERROR_SAMPLE_RATE", "")
+      @error_sample_rate_text = Config.env_or("CYBERTRAIN_ERROR_SAMPLE_RATE", "").strip
       @error_sample_rate = Config.default_error_sample_rate(@error_sample_rate_text)
       @release = Config.env_or("CYBERTRAIN_RELEASE", "")
       @workers = (ENV["SPINEL_WORKERS"] || "1").to_i

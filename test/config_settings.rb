@@ -381,6 +381,21 @@ test "error_sample_rate from CYBERTRAIN_ERROR_SAMPLE_RATE and its check" do
   clear_reporting_env
 end
 
+test "CYBERTRAIN_ERROR_SAMPLE_RATE is stripped, and a refused one is echoed 20 bytes at most" do
+  clear_reporting_env
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = " 0.5\n"
+  padded = Cybertrain::Config.new
+  assert_equal 0.5, padded.error_sample_rate
+  assert_equal "", padded.reporting_error
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "https://abcdef@o1.ingest.sentry.io/42"
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \"https://abcdef@o1.in...\")",
+               Cybertrain::Config.new.reporting_error
+  ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "12345678901234567890"
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got \"12345678901234567890\")",
+               Cybertrain::Config.new.reporting_error
+  clear_reporting_env
+end
+
 test "release from CYBERTRAIN_RELEASE" do
   clear_reporting_env
   ENV["CYBERTRAIN_RELEASE"] = "abc123"

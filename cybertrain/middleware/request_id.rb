@@ -58,12 +58,12 @@ module Cybertrain
       @log_tags = log_tags
     end
 
-    # The rescue sits in this method's own body, which does not yield
-    # (spikes/NOTES.md rules 32 and 45); each arm puts the Scope back and
-    # re-raises. JSON::NestingError and JSON::ParserError are named
-    # (rules 33 and 61), and the second arm takes what is not a
-    # StandardError, so no exception leaves this request's Scope on the
-    # thread for the next request a keep-alive connection brings.
+    # The header and the Scope found before are put back in this method's
+    # `ensure` (save, work, restore: spikes/NOTES.md rule 103), so no
+    # exception, whatever its class, leaves this request's Scope on the
+    # thread for the next request a keep-alive connection brings. What is
+    # reported is reported by {#call_reporting}, while the request's Scope
+    # is still the thread's.
     # @param ctx [Context]
     # @return [nil]
     def call(ctx)
@@ -79,23 +79,10 @@ module Cybertrain
         request.log_scope = scope
         saved = Logger.swap_scope(scope)
       end
-      begin
-        nxt = @app
-        nxt.call(ctx) unless nxt.nil?
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
-        # What escapes the stack is reported here (plan D7), before the
-        # Scope is put back.
-        report_escaped(ctx, e)
-        finish_request(ctx, own, id, saved)
-        raise e
-      rescue NotImplementedError, SystemStackError, ScriptError => e
-        # Reported here too (plan D7), before the Scope is put back.
-        report_escaped(ctx, e)
-        finish_request(ctx, own, id, saved)
-        raise e
-      end
-      finish_request(ctx, own, id, saved)
+      call_reporting(ctx)
       nil
+    ensure
+      finish_request(ctx, own, id, saved)
     end
 
     # The id for this request: its `X-Request-Id` when the peer is a
@@ -193,6 +180,25 @@ module Cybertrain
     end
 
     private
+
+    # The stack, with what escapes it reported and raised on unchanged.
+    # The rescue sits in this plain method, which does not yield
+    # (spikes/NOTES.md rules 32 and 45). JSON::NestingError and
+    # JSON::ParserError are named (rules 33 and 61); the second arm takes
+    # NotImplementedError, SystemStackError and ScriptError. Any other
+    # Exception (an application's own, outside StandardError) goes on up
+    # unreported; {#call}'s `ensure` still puts the Scope back.
+    def call_reporting(ctx)
+      nxt = @app
+      nxt.call(ctx) unless nxt.nil?
+      nil
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      report_escaped(ctx, e)
+      raise e
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      report_escaped(ctx, e)
+      raise e
+    end
 
     # Reports `e` when it ends the request as a 500, unless a RequestId
     # inside this one already did; never raises

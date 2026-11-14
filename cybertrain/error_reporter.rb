@@ -33,7 +33,8 @@ module Cybertrain
   # One error report as a subscriber receives it: Strings (and a Boolean,
   # a Hash of Strings, an Array of Strings and a Time), so that it is a
   # value that crosses threads (spec section 13.3). Every reader carries
-  # the `error_` prefix (plan D9).
+  # the `error_` prefix, so that no model column or other method of the
+  # same name has another return type (spikes/NOTES.md rules 10 and 34).
   # @api public
   class ErrorEvent
     # The exception's class name, namespaced (`"ActiveRecord::RecordInvalid"`
@@ -191,9 +192,13 @@ module Cybertrain
       end
 
       # The require line's name of the sender this is ("" for the base,
-      # which sends nothing; `"sentry"` for the Sentry sender): the boot
-      # check of a DSN set with no sender linked asks it
-      # (Application#validate_boot), without naming a sender's class.
+      # which sends nothing; `"sentry"` for the Sentry sender): the check
+      # of a DSN set with no sender linked asks it (Application.sender_problem,
+      # at boot and before a command, `jobs` or `console` runs), without
+      # naming a sender's class. A sender of the application's own that
+      # sends the DSN's reports must answer a non-empty name: with
+      # CYBERTRAIN_SENTRY_DSN set, `""` refuses boot ("CYBERTRAIN_SENTRY_DSN
+      # is set, but this program does not link the Sentry sender: ...").
       # @return [String]
       # @api public
       def sender_name
@@ -230,6 +235,10 @@ module Cybertrain
     # false`, one it did not). `context:` keys and values become Strings,
     # merged over the thread's Scope context. Answers nil at once: the
     # event is delivered on the reporter's thread.
+    #
+    # Never raises into its caller: a failure while building or queueing
+    # the event (a context value whose `to_s` raises) is logged at error,
+    # `error report failed: <Class>: <message>`, and it answers nil.
     # @example
     #   begin
     #     charge(order)
@@ -238,9 +247,6 @@ module Cybertrain
     #   end
     # @param error [Exception]
     # @param handled [Boolean]
-    # Never raises into its caller: a failure while building or queueing
-    # the event (a context value whose `to_s` raises) is logged at error,
-    # `error report failed: <Class>: <message>`, and it answers nil.
     # @param context [Hash] keys and values of any type, read with `to_s`
     # @return [nil]
     # @api public
@@ -291,12 +297,11 @@ module Cybertrain
 
     # The framework's report of an exception that ended its work (a 500, a
     # failed job attempt, a task, a feed): `handled` false; `where` `""`
-    # means the Scope's.
+    # means the Scope's. Never raises into its caller ({#report}'s rule).
     # @param error [Exception]
     # @param where [String]
     # @param context [Hash{String => String}] {NO_CONTEXT} for none
     # @return [nil]
-    # Never raises into its caller ({#report}'s rule).
     # @api private
     def report_unhandled(error, where, context)
       return nil unless listened?
@@ -314,13 +319,13 @@ module Cybertrain
 
     # The framework's report of a failure with no exception object (the
     # feed supervisor giving up): `error_class` names it, `handled` false,
-    # no backtrace; `where` `""` means the Scope's.
+    # no backtrace; `where` `""` means the Scope's. Never raises into its
+    # caller ({#report}'s rule).
     # @param error_class [String]
     # @param message [String]
     # @param where [String]
     # @param context [Hash{String => String}] {NO_CONTEXT} for none
     # @return [nil]
-    # Never raises into its caller ({#report}'s rule).
     # @api private
     def report_message(error_class, message, where, context)
       return nil unless listened?
@@ -470,15 +475,18 @@ module Cybertrain
 
     # Builds the event on the caller's thread (the Scope's request fields,
     # its context under the caller's, env, release, the Clock) and queues
-    # it unless a like one was queued within DEDUPE_SECONDS or the queue
+    # it. The context's keys and values are copied, so a caller that
+    # changes one of its Strings after reporting (or a Scope whose context
+    # changes) does not change the queued event. It queues the event
+    # unless a like one was queued within DEDUPE_SECONDS or the queue
     # is full. Not named `enqueue` (Job.enqueue answers an Integer): one
     # return type per method name across the program (spikes/NOTES.md
     # rules 10 and 34).
     def queue_event(name, text, trace, where, handled, given)
       scope = Logger.current_scope
       context = ErrorReporter.empty_context
-      scope.scope_context.each { |k, v| context[k] = v }
-      given.each { |k, v| context[k] = v }
+      scope.scope_context.each { |k, v| context[k.dup] = v.dup }
+      given.each { |k, v| context[k.dup] = v.dup }
       request_id = scope.scope_request_id
       request_method = scope.scope_request_method
       request_path = scope.scope_request_path
@@ -545,9 +553,13 @@ module Cybertrain
     end
 
     # The delivery thread: takes each event off the queue and hands it on;
-    # between events, logs the drop count when it is due. Each step rescues
-    # everything a thread must survive; should the thread end all the same,
-    # the flag goes down, so the next report starts another.
+    # after each event (or each second with none), logs the drop count when
+    # it is due. Each step rescues everything a thread must survive. Should
+    # an exception end the thread all the same, the `ensure` that puts the
+    # flag down, so that the next report starts another thread, is not
+    # sure to run: under Spinel a thread an exception escapes may skip its
+    # `ensure` (spikes/NOTES.md rule 61), and the queued events then wait
+    # for a delivery thread that never comes.
     def delivery_loop
       while true
         delivery_step
@@ -560,8 +572,8 @@ module Cybertrain
     # One step of the loop, in a plain rescuing method.
     def delivery_step
       event = @queue.pop(timeout: 1.0)
-      log_drops
       deliver_counted(event) unless event.nil?
+      log_drops
       nil
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       delivery_failed(e)

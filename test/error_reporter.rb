@@ -214,6 +214,33 @@ test "context keys and values become Strings, merged over the Scope's context" d
   assert_equal({ "job.id" => "5", "order_id" => "from the scope" }, scope.scope_context)
 end
 
+test "an event keeps the context it was reported with, whatever the caller changes after" do
+  Cybertrain.error.subscribe(Collect.new)
+  key = +"note"
+  value = +"before"
+  unhandled_value = +"unhandled before"
+  scoped_value = +"scope before"
+  scoped = { "from" => scoped_value }
+  scope = Cybertrain::Logger::Scope.new("", "", "", "WelcomeJob", Array.new(0) { "" }, -1, scoped)
+  unhandled = { "u" => unhandled_value }
+  with_scope(scope) do
+    begin
+      raise_argument("copied")
+    rescue ArgumentError => e
+      Cybertrain.error.report(e, context: { key => value })
+      Cybertrain.error.report_unhandled(e, "copied:unhandled", unhandled)
+    end
+  end
+  key << "d"
+  value << " after"
+  unhandled_value << " after"
+  scoped_value << " after"
+  Cybertrain.error.drain_reports(2.0)
+  assert_equal 2, EVENTS.size
+  assert_equal({ "from" => "scope before", "note" => "before" }, EVENTS[0].error_context)
+  assert_equal({ "from" => "scope before", "u" => "unhandled before" }, EVENTS[1].error_context)
+end
+
 test "handle answers the block's value, or nil after reporting what it raised" do
   Cybertrain.error.subscribe(Collect.new)
   assert_equal "ok", Cybertrain.error.handle { "ok" }
@@ -334,9 +361,11 @@ test "a full queue drops and counts, logged at most once a minute" do
   end
   assert_equal 0, LogCapture.count(log, "WARN", "error reports dropped:")
   assert_equal 2, Cybertrain.error.dropped_count
-  # ... and logged once the minute has passed.
-  travel 61
+  # ... and logged once the minute has passed: the travel inside the
+  # capture, so that a delivery step the travel lets log the count logs it
+  # into this capture.
   log = capture_log do
+    travel 61
     RELEASE << "go"
     report_runtime("g")
     Cybertrain.error.drain_reports(5.0)

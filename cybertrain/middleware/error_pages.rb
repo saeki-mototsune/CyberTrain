@@ -52,6 +52,11 @@ module Cybertrain
     private
 
     # The 500's report; never raises ({ErrorReporter#report_unhandled}).
+    # It does not set Context#error_reported: the exception is answered
+    # here and goes no further. Should serving the page then raise (an
+    # unreadable public/500.html), that new exception reaches RequestId,
+    # which reports it as well: two reports for the request, each a real
+    # failure.
     def report_failure(ctx, e)
       where = RequestId.where_for(ctx)
       Cybertrain.error.report_unhandled(e, where, ErrorReporter::NO_CONTEXT)

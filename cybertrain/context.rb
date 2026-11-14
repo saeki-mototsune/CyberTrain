@@ -23,9 +23,11 @@ module Cybertrain
     # The controller and action that answered, `"ArticlesController#show"`
     # (Controller#run_action sets it); `""` when no action ran.
     attr_accessor :controller_action
-    # Whether the exception this request raised has been reported
-    # (RequestId and ErrorPages set it): a RequestId outside the one that
-    # reported does not report it again.
+    # Whether the exception this request raised has been reported: the
+    # RequestId that reported it sets it, and a RequestId further out does
+    # not report it again. ErrorPages does not set it: the exception it
+    # reports goes no further, so only a new exception (one its page
+    # raises) can reach a RequestId, which reports that one too.
     attr_accessor :error_reported
 
     def initialize(request)

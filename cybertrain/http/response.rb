@@ -102,6 +102,7 @@ module Cybertrain
     # @api public
     def body=(text)
       @body_writer = nil
+      @body_scope = Logger::NO_SCOPE
       @upgrade = false
       @body = text
     end
@@ -155,7 +156,9 @@ module Cybertrain
     # {#upgrade!}): the request's, whose id and tags the lines logged while
     # the body is written carry (spec section 12.2: the request lasts until
     # its body is written). The Server swaps it in around the writer
-    # ({BodyWriter.write_scoped}) and back after it.
+    # ({BodyWriter.write_scoped}) and back after it. {Logger::NO_SCOPE}
+    # when there is no writer: a body, a redirect or an error reset that
+    # drops the writer drops its Scope too.
     # @return [Logger::Scope]
     # @api private
     attr_reader :body_scope
@@ -303,6 +306,7 @@ module Cybertrain
     def redirect(location, status = 302)
       set_header("Location", location) # raises on CR/LF: the stream stays
       @body_writer = nil
+      @body_scope = Logger::NO_SCOPE
       @upgrade = false
       @status = status
       @performed = true
@@ -407,6 +411,7 @@ module Cybertrain
       # An error after Controller#stream (or an upgrade) is an ordinary
       # response: no writer runs and nothing is sent chunked.
       @body_writer = nil
+      @body_scope = Logger::NO_SCOPE
       @upgrade = false
       @status = status
       self.content_type = "text/plain; charset=utf-8"

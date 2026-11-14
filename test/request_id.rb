@@ -573,13 +573,16 @@ end
 # when the request comes back out through it, raising or not: a
 # RequestId outside it that reported the same exception again would make
 # a second event, not one collapsed by dedupe.
+# One step past the reporter's dedupe window.
+PAST_DEDUPE = Cybertrain::ErrorReporter::DEDUPE_SECONDS + 1
+
 class ClockSkip < Cybertrain::Middleware
   def call(ctx)
     nxt = @app
     nxt.call(ctx) unless nxt.nil?
     nil
   ensure
-    Cybertrain::Clock.travel_to(Cybertrain::Clock.now + 61)
+    Cybertrain::Clock.travel_to(Cybertrain::Clock.now + PAST_DEDUPE)
   end
 end
 
@@ -593,8 +596,9 @@ test "RequestIds inside each other report once: the innermost, which saw the exc
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/reports/boom", { "host" => "www.example.com" }, "", "127.0.0.1"))
   travel_to NESTED_AT
   assert_raises("RuntimeError") { outer.call(ctx) }
-  # Two skips: the outer one reported 122 s on, the middle one 61 s on.
-  assert_equal NESTED_AT.to_i + 122, Time.current.to_i
+  # Two skips: the outer one would have reported two windows on, the
+  # middle one one window on.
+  assert_equal NESTED_AT.to_i + 2 * PAST_DEDUPE, Time.current.to_i
   ev = only_event
   # Reported before either skip: by the innermost RequestId.
   assert_equal NESTED_AT.to_i, ev.error_occurred_at.to_i
@@ -611,6 +615,32 @@ test "an exception outside StandardError is reported too" do
   assert_equal "NotImplementedError", ev.error_class
   assert_equal "request", ev.error_where
   assert_equal "/x", ev.error_request_path
+end
+
+# An Exception neither of RequestId's rescue arms names (an application's
+# own, outside StandardError), and an app that raises it.
+class OutsideArms < Exception
+end
+
+class OutsideArmsApp < Cybertrain::Middleware
+  def call(ctx)
+    message = "stop"
+    raise OutsideArms, message
+  end
+end
+
+# Calls `app` with a new request; answers the class of what escaped it.
+def call_outside_arms(app)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/x", { "host" => "www.example.com" }, "", "127.0.0.1"))
+  app.call(ctx)
+  "nothing"
+rescue OutsideArms => e
+  e.class.name.to_s
+end
+
+test "an exception outside both rescue arms leaves no Scope behind either" do
+  assert_equal "OutsideArms", call_outside_arms(Cybertrain::RequestId.new(OutsideArmsApp.new(nil), [:request_id]))
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
 end
 
 test "RequestId.where_for is the action, or request when none ran" do

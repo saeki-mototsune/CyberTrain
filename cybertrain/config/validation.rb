@@ -107,7 +107,9 @@ module Cybertrain
     # (CYBERTRAIN_SENTRY_DSN) is set and does not parse ({SentryDsn.problem}:
     # the reason, never the key), or error_sample_rate
     # (CYBERTRAIN_ERROR_SAMPLE_RATE) is not a number from 0.0 to 1.0; ""
-    # when both are fine.
+    # when both are fine. A refused variable is echoed by its first 20
+    # bytes at most, followed by `...` when it is longer: a DSN pasted into
+    # the wrong variable is not printed whole.
     # @return [String]
     # @api public
     def reporting_error
@@ -122,7 +124,8 @@ module Cybertrain
       unless text.empty?
         return "" if Config.rate_text?(text) && in_range
 
-        return "error_sample_rate must be a number from 0.0 to 1.0 (got #{text.inspect})"
+        shown = text.bytesize > 20 ? "#{text.byteslice(0, 20).to_s}..." : text
+        return "error_sample_rate must be a number from 0.0 to 1.0 (got #{shown.inspect})"
       end
       return "" if in_range
 
