@@ -883,8 +883,16 @@ so a column named `handle` reads as `handle_column` like the reserved
 names above (the application calls `user.handle_column`; queries keep
 `"handle"`), and `cybertrain generate scaffold` refuses the field:
 `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
-Associations and scopes named `release` or `request_id` are not checked,
-and the scaffold does not check a field's type (gen refuses afterwards).
+`cybertrain generate scaffold` checks these names before it writes
+anything: a string or text field named `request_id` or `release`, or a bare
+one, is accepted, and any other type is refused (exit status 1), as in
+`'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`;
+a `references` field whose column or `belongs_to` reader would take one
+of the names is refused too:
+`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`.
+The names and types are `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`. Not
+checked: a `belongs_to` gen derives from a foreign key such as
+`release_id`, and a scope named `release` or `request_id`.
 
 An association whose plain name a column, another association or a `Model`
 method already owns (Rails lets one shadow `errors`) is emitted under a

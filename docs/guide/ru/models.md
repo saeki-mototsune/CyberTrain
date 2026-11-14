@@ -1,5 +1,5 @@
 ---
-source_sha256: 34be5a0aa1d108d2378f249adbdef2dd13b716f4bf69b2667a16dc12bea4589b
+source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
 ---
 # Модели и база данных
 
@@ -904,8 +904,17 @@ text или binary с этими именами, допускающий null и�
 выше (приложение вызывает `user.handle_column`; запросы сохраняют
 `"handle"`), а `cybertrain generate scaffold` отклоняет такое поле:
 `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
-Ассоциации и скоупы с именами `release` или `request_id` не проверяются, а
-scaffold не проверяет тип поля (gen отклоняет потом).
+`cybertrain generate scaffold` проверяет эти имена до того, как что-либо
+записать: поле string или text с именем `request_id` или `release`, или поле
+без типа, принимается, а любой другой тип отклоняется (статус выхода 1),
+например
+`'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`;
+поле `references`, чей столбец или метод чтения `belongs_to` получил бы одно
+из этих имён, тоже отклоняется:
+`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`.
+Имена и типы — `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`. Не
+проверяются: `belongs_to`, который gen выводит из внешнего ключа вроде
+`release_id`, и скоуп с именем `release` или `request_id`.
 
 Ассоциация, чьё простое имя уже занято столбцом, другой ассоциацией или
 методом `Model` (Rails позволяет затенить `errors`), выдаётся под запасным

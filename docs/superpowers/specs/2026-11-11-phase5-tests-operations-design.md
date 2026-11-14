@@ -2094,9 +2094,12 @@ the branch claude/phase5b-followups carried them out:
     `\r`: one event, one line; a message's one trailing line feed is the
     line's end (design.md D86).
 
-**Still open:** associations and scopes named `release` or `request_id`
-are not checked, and the scaffold does not check a field's type (gen
-refuses afterwards); D85's gap, stated fully: a job macro naming a class
+**Still open:** gen does not check a `belongs_to` it derives from a
+foreign key such as `release_id`, nor a scope named `release` or
+`request_id` (the scaffold checks its fields since 2026-11-14: it refuses
+`request_id:integer`, `release:boolean`, `request:references`,
+`release:references` and their like before writing anything, with the
+table `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`); D85's gap, stated fully: a job macro naming a class
 whose file is outside the core makes `gen/app.rb` require that file
 (`cybertrain/mailer`, `cybertrain/http_client`, `cybertrain/net/socket`,
 counted as the mailer's, or `cybertrain/websocket/frame`, counted as the

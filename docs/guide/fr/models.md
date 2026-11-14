@@ -1,5 +1,5 @@
 ---
-source_sha256: 34be5a0aa1d108d2378f249adbdef2dd13b716f4bf69b2667a16dc12bea4589b
+source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
 ---
 # Modèles et base de données
 
@@ -915,9 +915,17 @@ réservés ci-dessus (l’application appelle `user.handle_column`&nbsp;; les
 requêtes gardent `"handle"`), et `cybertrain generate scaffold` refuse le
 champ&nbsp;:
 `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
-Les associations et les scopes nommés `release` ou `request_id` ne sont pas
-vérifiés, et le scaffold ne vérifie pas le type d’un champ (gen refuse
-ensuite).
+`cybertrain generate scaffold` vérifie ces noms avant d’écrire quoi que ce
+soit&nbsp;: un champ string ou text nommé `request_id` ou `release`, ou un
+champ sans type, est accepté, et tout autre type est refusé (statut de
+sortie 1), comme
+`'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`&nbsp;;
+un champ `references` dont la colonne ou le lecteur `belongs_to` prendrait
+l’un de ces noms est refusé aussi&nbsp;:
+`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`.
+Les noms et les types sont `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`. Non
+vérifiés&nbsp;: un `belongs_to` que gen tire d’une clé étrangère comme
+`release_id`, et un scope nommé `release` ou `request_id`.
 
 Une association dont le nom simple est déjà pris par une colonne, une autre association ou une méthode de `Model` (Rails en laisse une masquer `errors`) est émise sous un nom de repli, avec un commentaire dans le fichier généré&nbsp;: `<table>_as_<column stem>` pour un `has_many` (`comments_as_article`), `<stem>_as_<column>` pour un `belongs_to` (`author_as_author_id`).
 

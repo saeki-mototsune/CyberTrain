@@ -1,5 +1,5 @@
 ---
-source_sha256: 840d972cbc93ed1d3960e5a726d1ddbd85f1ef813b3d836c44d2653c78e52f7a
+source_sha256: 71391d31fa7030f6b9461d0b7aa88c3116b6c6578ecd9a4a2b3ca16a1bf6f2be
 ---
 # バックグラウンド処理と運用
 
@@ -370,7 +370,7 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 
 **送らないもの。** パラメーター、ヘッダー、Cookie、セッション、クライアントのアドレス、クエリ文字列はイベントに入りません。リクエストのパスはリクエストログと同じようにフィルタされます。足されるのはアプリケーションが `context:` に入れたものだけです。例外のメッセージは、フィルターが変えない限りそのまま送られます。個人データを含むメッセージ（宛先を書いた SMTP サーバーの拒否）にはフィルターが要ります。
 
-**フィルター。** フィルターは `filter_event(event)` を定義した `Cybertrain::ErrorReporter::Filter` のサブクラスで、イベントを残すなら true、捨てるなら false を返します。メッセージ（`event.error_message =`）とコンテキスト（`event.set_error_context(key, value)`、`event.delete_error_context(key)`）を変えられます。次の 1 つはメールアドレスを隠し、もう 1 つはアプリケーションが報告したくないクラスを捨てます：
+**フィルター。** フィルターは `filter_event(event)` を定義した `Cybertrain::ErrorReporter::Filter` のサブクラスで、イベントを残すなら true、捨てるなら false を返します。メッセージ（`event.error_message =`）とコンテキスト（`event.set_error_context(key, value)`、`event.delete_error_context(key)`）を変えられます。次の 1 つは ASCII のメールアドレスを隠し、もう 1 つはアプリケーションが報告したくないクラスを捨てます：
 
 ```ruby
 # config/app.rb
@@ -391,6 +391,8 @@ end
 Cybertrain.error.add_filter(MaskAddresses.new)
 Cybertrain.error.add_filter(DropDeclinedCards.new)
 ```
+
+`MaskAddresses` のパターンが見分けるのは ASCII のアドレスだけです。Ruby の `\w` は、Unicode のプロパティを求めない限り ASCII の英字、数字、`_` にしか一致しないので、`alice@例え.テスト` のようにほかの文字を含むアドレスは隠されません。想定するアドレスに合うパターンを書くか、イベントを捨ててください。
 
 フィルターはレポーターのスレッドで、追加した順に、サブスクライバーと送信側より前に動きます。次のフィルター、サブスクライバー、Sentry は、フィルターが変えた内容を見ます。1 つがイベントを捨てると、後のフィルターは動かず、誰もそのイベントを受け取りません（キューの破棄としては数えません）。例外を投げたフィルターはイベントを捨て（フィルターは何かが外に出ないようにするためにあるからです）、error レベルで `error filter failed: <Filter class>: <Class>: <message>` とログに出します。これは報告されません。重複除去はフィルターより前に、フィルター前のクラス、メッセージ、`where` で決まります。フィルターが書き換えても、どの報告がまとめられるかは変わらず、フィルターが捨てたイベントもその 1 分の枠を占めます。フレームワーク自身の `ERROR` のログ行はイベントができる前に書かれ、フィルタされません。フィルターだけでは報告はキューに入りません（サブスクライバーか DSN が要ります）。`config/app.rb` で追加したフィルターはすべてのテストで残り、テストで追加したものは次のテストの前に外れます。
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 840d972cbc93ed1d3960e5a726d1ddbd85f1ef813b3d836c44d2653c78e52f7a
+source_sha256: 71391d31fa7030f6b9461d0b7aa88c3116b6c6578ecd9a4a2b3ca16a1bf6f2be
 ---
 # Tâches de fond et exploitation
 
@@ -923,7 +923,7 @@ d’un serveur SMTP qui nomme le destinataire) en demande un.
 renvoie vrai pour garder l’événement, faux pour l’abandonner. Il peut
 changer le message (`event.error_message =`) et le contexte
 (`event.set_error_context(key, value)`, `event.delete_error_context(key)`).
-Celui-ci masque les adresses électroniques et l’autre abandonne une classe
+Celui-ci masque les adresses électroniques ASCII et l’autre abandonne une classe
 que l’application ne veut pas signaler&nbsp;:
 
 ```ruby
@@ -945,6 +945,12 @@ end
 Cybertrain.error.add_filter(MaskAddresses.new)
 Cybertrain.error.add_filter(DropDeclinedCards.new)
 ```
+
+Le motif de `MaskAddresses` ne reconnaît que les adresses ASCII&nbsp;: le
+`\w` de Ruby ne correspond qu’aux lettres, chiffres ASCII et à `_` sans
+propriété Unicode demandée, donc une adresse avec d’autres caractères, comme
+`alice@例え.テスト`, n’est pas masquée. Écrivez un motif pour les adresses
+que vous attendez, ou abandonnez plutôt l’événement.
 
 Les filtres tournent sur le thread du rapporteur, dans l’ordre d’ajout, avant
 les abonnés et l’envoyeur&nbsp;; le filtre suivant, les abonnés et Sentry
