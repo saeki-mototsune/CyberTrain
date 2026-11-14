@@ -73,7 +73,15 @@ module Cybertrain
       # zero-arity reader), and its alias. No other private Kernel method is
       # reserved: `open`, `format`, `load`, `print`, `select`, `test` are
       # ordinary column names and nothing in the generated class calls them.
-      "raise", "fail"
+      "raise", "fail",
+      # A framework method with no single return type: the reader would be a
+      # second definer of the name, and one name answers one type across a
+      # program (spikes/NOTES.md rules 10, 34), which no column type can
+      # match. ErrorReporter#handle answers its block's value. The names
+      # whose framework method answers one fixed type are not here: gen
+      # accepts such a column when its reader answers that type
+      # (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES).
+      "handle"
     ]
 
     # The rest of Object's public instance methods: a column so named shadows

@@ -319,6 +319,7 @@ module Cybertrain
                                  "a valid attribute name (a column name is an ASCII identifier: ASCII letters, digits and _, " \
                                  "not starting with a digit)"
           end
+          check_framework_type(table, c, places)
           next unless ModelNaming.renamed?(name)
 
           fallback = ModelNaming.reader_name(name)
@@ -333,6 +334,30 @@ module Cybertrain
           end
         end
         nil
+      end
+
+      # Raises ArgumentError for a column named like a framework method with
+      # one fixed return type (ModelNaming::FRAMEWORK_METHOD_TYPES:
+      # `request_id`, `release`) whose reader would answer another type: the
+      # reader is a second method of that name, and one name answers one type
+      # across the program (spikes/NOTES.md rules 10, 34), so the build would
+      # stop in Spinel's output, far from the schema. A nullable String column
+      # beside a String method is accepted (FRAMEWORK_METHOD_TYPES says why).
+      # Refused rather than renamed: the reader keeps the column's name in
+      # the application's code, and a rename would change what it calls.
+      def self.check_framework_type(table, column, places)
+        want = ModelNaming.framework_type(column.name)
+        return nil if want == ""
+
+        got = ModelNaming.reader_type(column)
+        return nil if got == want || (want == "String" && got == "String or nil")
+
+        model = ModelNaming.model_class_name(table.name)
+        method = ModelNaming::FRAMEWORK_METHODS[column.name].to_s
+        raise ArgumentError, "#{places.at(table.name, column.name)}table #{table.name}: column #{column.name.inspect} is " \
+                             "#{column.type}, so model #{model}'s reader #{column.name} would answer #{got}, but the " \
+                             "framework's #{method} answers #{want}, and a method name answers one type across the " \
+                             "program (spikes/NOTES.md rules 10, 34); rename the column"
       end
 
       # A binary column's default would have to be bytes the model writes

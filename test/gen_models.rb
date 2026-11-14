@@ -1889,6 +1889,101 @@ test "a reserved column or keyword whose fallback name is taken still fails" do
   assert_includes msg, "rename a column"
 end
 
+# Columns named like a method of the framework with one return type
+# (ModelNaming::FRAMEWORK_METHOD_TYPES): the reader is the same method name,
+# and one name answers one type across a program (spikes/NOTES.md rules 10,
+# 34), so the column is accepted when its reader answers that type and
+# refused otherwise.
+def framework_name_error(name, type, null)
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "audit_entries" do |t|
+      t.string "note"
+      case type
+      when :string then t.string name, null: null
+      when :text then t.text name, null: null
+      when :integer then t.integer name, null: null
+      when :float then t.float name, null: null
+      when :decimal then t.decimal name, null: null
+      when :boolean then t.boolean name, null: null
+      when :datetime then t.datetime name, null: null
+      when :date then t.date name, null: null
+      when :json then t.json name, null: null
+      when :binary then t.binary name, null: null
+      end
+    end
+  end
+  begin
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("audit_entries"), definition, [], [])
+    ""
+  rescue ArgumentError => e
+    e.message
+  end
+end
+
+test "a column named like a framework method is accepted when its reader answers the method's type" do
+  # String, nullable or not: string and text columns read as String.
+  [[:string, false], [:string, true], [:text, false], [:text, true]].each do |type, null|
+    assert_equal "", framework_name_error("request_id", type, null)
+    assert_equal "", framework_name_error("release", type, null)
+  end
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "audit_entries" do |t|
+      t.string "request_id", null: false
+      t.string "release"
+    end
+  end
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("audit_entries"), definition, [], [])
+  assert_lines(file, [
+    "attr_accessor :request_id, :release",
+    '@request_id = Cybertrain::Cast.str(row["request_id"])',
+    '@release = Cybertrain::Cast.str_or_nil(row["release"])'
+  ])
+  refute file.include?("request_id_column")
+  refute file.include?("release_column")
+end
+
+test "a column named like a framework method is refused when its reader answers another type" do
+  assert_equal "table audit_entries: column \"request_id\" is integer, so model AuditEntry's reader request_id " \
+               "would answer Integer, but the framework's Cybertrain::Request#request_id answers String, and a method " \
+               "name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column",
+               framework_name_error("request_id", :integer, false)
+  assert_equal "table audit_entries: column \"release\" is boolean, so model AuditEntry's reader release " \
+               "would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, " \
+               "and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column",
+               framework_name_error("release", :boolean, true)
+  assert_includes framework_name_error("request_id", :integer, true), "would answer Integer or nil"
+  assert_includes framework_name_error("release", :datetime, false), "would answer Time or nil"
+  assert_includes framework_name_error("release", :date, false), "would answer Date,"
+  assert_includes framework_name_error("release", :float, false), "would answer Float,"
+  assert_includes framework_name_error("release", :decimal, true), "would answer Float or nil"
+  assert_includes framework_name_error("request_id", :json, false), "would answer Hash,"
+  # A binary column reads as a String of raw bytes: the type matches.
+  assert_equal "", framework_name_error("release", :binary, false)
+end
+
+test "a column named handle reads as handle_column: ErrorReporter#handle answers its block's value" do
+  [[:string, false], [:integer, true], [:boolean, false]].each do |type, null|
+    assert_equal "", framework_name_error("handle", type, null)
+  end
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "users" do |t|
+      t.string "handle", null: false
+    end
+  end
+  file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [], [])
+  assert_lines(file, [
+    '# column "handle" reads as handle_column: "handle" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); queries (where, order, find_by) take the SQL name "handle"',
+    "attr_accessor :handle_column",
+    "when :handle, :handle_column then @handle_column"
+  ])
+  refute file.include?("attr_accessor :handle\n")
+  assert_equal "reserved", Cybertrain::Ident.unusable_reason("handle")
+  # The scaffold, which invents names, refuses the typed ones' not at all:
+  # gen decides by the column's type.
+  assert_equal "", Cybertrain::Ident.unusable_reason("request_id")
+  assert_equal "", Cybertrain::Ident.unusable_reason("release")
+end
+
 def keyword_columns_schema
   Cybertrain::Schema.define(version: "1") do |s|
     s.create_table "shifts" do |t|

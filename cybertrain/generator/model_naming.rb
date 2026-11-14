@@ -53,6 +53,60 @@ module Cybertrain
         renamed?(column_name) ? column_name + "_column" : column_name
       end
 
+      # Column names that are also the name of a framework method with one
+      # fixed return type, to that type as reader_type spells it. A column's
+      # reader is a method of that name too, and one method name answers one
+      # type across a program (spikes/NOTES.md rules 10, 34): otherwise the
+      # build stops with a type error in Spinel's output, far from the
+      # schema. So ModelValidation.check_column_names accepts such a column
+      # when its reader answers this type and refuses it otherwise, naming
+      # the method (FRAMEWORK_METHODS). A String column that is nullable
+      # reads as "String or nil" and is accepted beside a String method:
+      # under Spinel a String is a nullable pointer, the same C type with or
+      # without nil (rule 109), and test/framework_names_compiles.rb compiles
+      # and runs both beside Request#request_id and Config#release. A name
+      # whose framework method has no single type (`handle`) is in
+      # Ident::RESERVED_COLUMN_NAMES instead. script/check-reserved-names
+      # reads this table: a framework method added under one of these names
+      # must answer the type here, and a name in RESERVED_COLUMN_NAMES must
+      # not be here.
+      FRAMEWORK_METHOD_TYPES = { "request_id" => "String", "release" => "String" }
+
+      # The framework method behind each FRAMEWORK_METHOD_TYPES name, as the
+      # refusal names it.
+      FRAMEWORK_METHODS = { "request_id" => "Cybertrain::Request#request_id", "release" => "Cybertrain::Config#release" }
+
+      # The Ruby type a column's reader answers, as the refusal spells it:
+      # the type of the Cast helper load_row reads it through
+      # (ModelsEmitter.cast_for), with " or nil" for a nullable column and
+      # for every datetime column (time_or_nil). Encryption does not change
+      # it: an encrypted column is a string or text column, read as a String.
+      def self.reader_type(column)
+        type = column.type
+        base = if type == :integer
+                 "Integer"
+               elsif type == :float || type == :decimal
+                 "Float"
+               elsif type == :boolean
+                 "true or false"
+               elsif type == :datetime
+                 "Time"
+               elsif type == :date
+                 "Date"
+               elsif type == :json
+                 "Hash"
+               else
+                 "String"
+               end
+        column.null || type == :datetime ? base + " or nil" : base
+      end
+
+      # The type a column's reader must answer because a framework method has
+      # its name (FRAMEWORK_METHOD_TYPES), "" for any other name.
+      def self.framework_type(column_name)
+        FRAMEWORK_METHOD_TYPES.key?(column_name) ? FRAMEWORK_METHOD_TYPES[column_name].to_s : ""
+      end
+
       # Whether reader_name renames the column.
       def self.renamed?(column_name)
         Ident.reserved_column?(column_name) || Ident.keyword?(column_name)
