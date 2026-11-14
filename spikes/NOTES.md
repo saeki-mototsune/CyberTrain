@@ -125,6 +125,12 @@ for the evidence needed to change a status.
 | 109 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb). |
 | 110 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/case_nullable_temp.rb does not compile). |
 | 111 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional-subsystems design, not of a defect. |
+| 112, 118 | Work on this build (phase 5b, 2026-11-13): records of forms that compile and behave as under CRuby, not of defects. |
+| 113 | Found on this build (phase 5b spike item 7, 2026-11-13): how green threads are scheduled at one worker, not a defect. |
+| 114 | Performance observation on this build (phase 5b spike item 9, 2026-11-13), with the limits its entry lists; not re-measured with wrk or a slow reader. |
+| 115, 116 | **Still there**: found on this build (phase 5b, 2026-11-13) and reduced on 2026-11-14 (spikes/phase5/stringio_threads.rb, queue_in_array.rb). |
+| 117 | How a thread test is written: CRuby hides the race, not a Spinel defect (phase 5b, 2026-11-13). |
+| 119 | Tool behaviour, seen 2026-11-13: spin's freshness check for a test binary compares modification times. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
@@ -194,7 +200,7 @@ synchronization or repeat side effects just to work around inference.
 The rules are numbered in the order they were found. By topic:
 
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
-  90, 92, 93, 95, 97, 103, 111
+  90, 92, 93, 95, 97, 103, 111, 112
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87, 105, 106
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
@@ -203,15 +209,16 @@ The rules are numbered in the order they were found. By topic:
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93,
   101
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79, 81, 89, 103, 104, 107
+  79, 81, 89, 103, 104, 107, 112, 118
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
 - Memory and GC roots: 58, 64, 65; and 99, a shallow built-in `dup`, which
   is ordinary Ruby
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
-  91, 102
+  91, 102, 113, 114, 115, 116
 - FFI: 15, 59
-- Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98, 105, 107, 108, 110
+- Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98, 105, 107, 108, 110, 113,
+  115, 117, 119
 
 ## Workarounds that shape the design, and what a Spinel update re-checks
 
@@ -264,7 +271,7 @@ follows the rule even where a probe passes.
 | A stored block that must reach a subclass's override is registered through generated code that names the subclass (`FormatCollector`, job and mailer registration, counter caches) | 88, 89 | format_collector.rb, generator/jobs_emitter.rb, mailer/later.rb, controller.rb | test/counter_cache_two_models.rb, test/gen_jobs.rb, test/controller_formats.rb | still there |
 | The generator's scans stay separate passes whose results do not meet in one method (`Gen::Runner`) | 94 | generator/runner.rb | test/gen_runner_models.rb; `cd examples/blog && spin run gen` | still there |
 | Sockets: `wait_readable` before every `readpartial`; a socket reaches its thread through a method parameter; `connect_nonblock` instead of `connect_timeout:` | 20, 21, 72 | http/server.rb, http/body_writer.rb, net/socket.rb, websocket.rb | test/server.rb, test/response_stream.rb, test/main_roles.rb, test/http_client.rb | 20, 21 not re-checked; 72 required (spinel-feedback O) |
-| `SPINEL_WORKERS` is set to `workers + 1` before the first thread; development serves on one worker; no lock on the request path | 22, 57 | application.rb (`spinel_workers_for`), template/engine.rb, http/server.rb | test/dev_application.rb, test/template_embedded.rb, test/db_busy_wait.rb; bench/run's two-core run | required (spinel-feedback L); 57 not re-checked |
+| `SPINEL_WORKERS` is set to `workers + 1` before the first thread; development serves on one worker; no lock on the request path (the logger's one-write `Logger::LOCK` is the measured exception, rule 114) | 22, 57 | application.rb (`spinel_workers_for`), template/engine.rb, http/server.rb | test/dev_application.rb, test/template_embedded.rb, test/db_busy_wait.rb; bench/run's two-core run | required (spinel-feedback L); 57 not re-checked |
 | A large generated table (an application's dictionary, the bundled ones) is a Hash filled at load by methods of at most 50 stores, never one literal | 101 | generator/locales_emitter.rb, locales/bundled.rb | build time only: test/gen_locales.rb compiles it; one literal of 2,000 keys takes some 13 s of cc | still there (spinel-feedback AI) |
 | `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, application.rb | test/feeds_exit.rb | still there |
 | `Logger#log` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_tls.rb, test/logger_flush.rb, test/main_console.rb | still there (spinel-feedback K, M) |
@@ -1644,6 +1651,13 @@ explicitly retires a workaround.
      does not compile, `'_o1' undeclared`, where CRuby prints `amp` and
      `long`; with the methods in the other order it compiles; with both
      cases as return values it compiles; docs/spinel-feedback.md AO).
+     Extended in phase 5b (2026-11-13, pre-flight ruling G2): new
+     framework code writes no statement `case` on any Integer, a
+     `getbyte` value included, since a nullable subject is what leaks the
+     mark and a plain one is what it breaks; the byte scanners of
+     cybertrain/logger.rb, middleware/request_id.rb, sentry_dsn.rb and
+     error_reporter/sentry.rb are `if` chains. A `case` used as a method's
+     value is written only where existing code already does it.
 
 111. A registry of features, an Array of base-class instances whose
     overridable hooks are called on each element, compiles and dispatches
@@ -1714,6 +1728,117 @@ explicitly retires a workaround.
     template_integration.rb pass compiled; and probe features subclassing
     a Feature subclass (`ProbeA < ProbeFeature < Feature`, registered at
     run time) dispatch to their overrides (test/features_order.rb).
+
+112. A rescuing yielder with one `rescue` clause around the yield,
+     `value = nil; begin; value = yield; rescue JSON::NestingError,
+     JSON::ParserError, StandardError => e; ...; value = nil; end; value`,
+     compiles and behaves as under CRuby on Spinel 2026.11.04.7026 in every
+     shape phase 5b tried: called from a method body, from a block nested in
+     a block at the top level and in a method, through a forwarding block
+     (a method whose body is `Cybertrain.error.handle { yield }`), with
+     blocks answering a
+     String, an Integer and nil, a block whose only statement is `raise`,
+     and with `next v` (the block answers `v`), `break v` (the yielder
+     answers `v`) and `return v` (returns from the method around the block)
+     inside the block. A record of a form that works, refining rules 32, 45
+     and 79 for this shape: `Cybertrain.error.handle` is written so
+     (phase 5b spike item 8, spikes/phase5/error_names.rb at framework
+     19668bc, 2026-11-13; test/error_reporter.rb's "handle through a
+     forwarding block, with next, and nested in blocks" since Task 7).
+
+113. Under `SPINEL_WORKERS=1` a `sleep 0` does not switch green threads on
+     Spinel 2026.11.04.7026: four threads started through a method, each
+     calling `sleep 0` between storing and reading its own value, ran one
+     after another, so a test meant to read after another thread wrote saw
+     no other thread run. A timed sleep (2 ms) did switch them (phase 5b
+     spike item 7, spikes/phase5/thread_scope.rb, 2026-11-13). So a test
+     that must interleave threads sleeps for a time, or better meets
+     through Queues (`inbox.pop(timeout: 5)` parks the thread whatever the
+     worker count, rule 85), as test/logger_scope.rb and
+     test/logger_threads.rb do; and a test of a race needs more than one
+     worker to fail at all (rule 115).
+
+114. A performance observation, the contrast to rule 57: a process-wide
+     `Mutex` held only for one `write` (and `flush`) of a line built
+     before it was taken cost nothing measurable on Spinel 2026.11.04.7026.
+     examples/blog built twice at framework 19668bc
+     (spikes/phase5/logger_lock/run.sh, `FRAMEWORK_REV`), once with
+     `Logger::LOCK.synchronize { STDOUT.write(line); STDOUT.flush }` and
+     once without the lock, served under `taskset -c 0,1` with
+     `SPINEL_WORKERS=2`, the request log on and stdout into a pipe, five
+     10-second runs each: medians 1,590 and 1,581 requests a second
+     (100.6%), no request over 1 s, no error (phase 5b spike item 9,
+     2026-11-13; the spec's section 16 has every run). The limits of that
+     measurement: the load was the spike's own CRuby loader with 8
+     keep-alive connections, not wrk (not installed) at its higher rates,
+     where rule 57's stalls showed; stdout was a pipe read promptly, so a
+     slow or blocked reader (a full pipe, journald, `docker logs`) was not
+     tried, and a write that blocks holds every thread that logs until it
+     returns; and the CRuby comparisons of the phase 5b spikes stand DB,
+     Job and Lease in with stand-ins. So `Logger` keeps its lock, held for
+     the one write only, with nothing logged or built inside it (design
+     D86); rule 57 still keeps every other lock off the request path.
+
+115. Four threads writing into one `StringIO` with no lock abort the
+     program on Spinel 2026.11.04.7026 when `SPINEL_WORKERS=4`: "double
+     free or corruption (!prev)" (exit 134) in four runs of five and a
+     SIGSEGV in the fifth, where CRuby (whose lock around each call
+     serializes them) prints the joined size. With one worker the same
+     program finishes (reduced program spikes/phase5/stringio_threads.rb,
+     2026-11-14; docs/spinel-feedback.md AQ). Found when test/logger_threads.rb
+     was run against a logger without its lock (phase 5b Task 2's fix
+     round): the failure there showed as a crash, not as interleaved lines.
+     So a StringIO (or any object) that several threads write is written
+     under a lock (the Logger's `LOCK` covers the test loggers' StringIO
+     too), and a test of a race sets `SPINEL_WORKERS` above 1 before its
+     first thread, or it cannot fail.
+
+116. `pop(timeout:)` on a `Queue` that was put in an Array is compiled as
+     `Array#pop` on Spinel 2026.11.04.7026: `inboxes = [Queue.new,
+     Queue.new]; inboxes[1].pop(timeout: 5)` raises "no implicit
+     conversion of Hash into Integer (TypeError)" (the keyword Hash taken
+     as Array#pop's count). Binding the element to a local first, or
+     passing it to a method that pops its parameter, fails the same way. A
+     Queue that never goes into an Array, kept in a local or a constant and
+     passed as a parameter, pops as under CRuby (reduced program
+     spikes/phase5/queue_in_array.rb, its header has the variants,
+     2026-11-14; docs/spinel-feedback.md AP). Found in phase 5b Task 3
+     (test/logger_scope.rb's concurrent `tagged` test, whose threads each
+     get their two Queues as parameters).
+
+117. Thread tests: a handshake that relies on the other thread not
+     running yet passes under CRuby, where the GVL runs one thread at a
+     time and switches rarely, and fails compiled, where the threads run
+     on several workers at once. Found in phase 5b Task 7 (test/error_reporter.rb):
+     a delivery thread blocked in a subscriber is released by tokens on a
+     Queue; a spare token left from one phase let a later delivery through
+     early compiled, never under CRuby. So a test pushes exactly as many
+     release tokens as deliveries it expects (`101.times { RELEASE << "go" }`
+     for 101 queued events), empties its token Queues between phases and
+     in `setup`, and waits on a Queue (`STARTED.pop(timeout: 5)`) rather
+     than on a flag or a sleep. Like rule 113, a matter of how a test is
+     written, not a defect: CRuby is the runtime that hides it.
+
+118. A write to a frozen Array or Hash raises `FrozenError` compiled, as
+     under CRuby, on Spinel 2026.11.04.7026: `Logger::NO_SCOPE`'s tags and
+     context are frozen, and `scope_tags << "x"` and `scope_context["k"] =
+     "v"` on it raise `FrozenError` in the compiled test/logger_scope.rb
+     (phase 5b Task 3's fix round, 2026-11-13). A record of a form that
+     works: freezing is how the framework keeps a shared constant
+     container from being written (`assert_raises("FrozenError") { ... }`
+     there).
+
+119. Tool behaviour: `spin test FILE` rebuilds a test's binary only when
+     a source is newer than it. A compile that read the sources before
+     they changed writes a binary newer than the changed files, and later
+     runs reuse that stale binary without rebuilding: in phase 5b a commit
+     was cherry-picked into a worktree while `spin test test/error_reporter.rb`
+     compiled it, and the run then reported 14 tests of a file that had 19
+     (2026-11-13, spin of Spinel 2026.11.04.7026). Deleting
+     `build/test/<name>` forces the rebuild. So the sources of a package
+     are not changed while a compile of it runs, and a count that does not
+     match the file is checked against the binary's age first (compare
+     rule 108, spin's freshness check for `bin/gen`).
 
 <a id="numbers-worth-remembering"></a>
 
