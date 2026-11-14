@@ -1,5 +1,5 @@
 ---
-source_sha256: 5bd118da54cdee1636242a1449f5637c3b97e371b37dc4705cd5bc40b307fe5c
+source_sha256: dbe0e7ce732a0b23c498892d0a796a632f34d49648224801432837c07eef8d5f
 ---
 # インストール
 
@@ -107,20 +107,23 @@ Spinel のインストールか、2 つの `spin` ステップのいずれかが
 gem とフレームワークは同じタグからリリースされるため、バージョンは一致します：X.Y.Z の gem は、フレームワーク `vX.Y.Z` に依存するアプリを書き出します。アプリを新しいリリースに移行するには、gem を更新し、`spin.toml` を新しいタグに向けてから、アプリの中で次を実行します：
 
 ```shell ターミナル — アプリのディレクトリ
+rm spin.lock
 cybertrain spin lock
 cybertrain spin run gen
 ```
 
-両者が一致していることは、コマンドが確認します。`server`、`build`、`db`、`test`、`generate` は、spin を実行したりファイルを書き出したりする前に、アプリの `spin.lock` に固定されたフレームワークのバージョンを、コマンド自身のバージョン（`cybertrain version`）と比べます：アプリをコンパイルする Spinel のリリースを決めるのはアプリではなくコマンドであり、コマンドのテンプレートとジェネレーターは、同じリリースのフレームワーク向けに書かれているからです。バージョンが異なると、コマンドは終了コード 1 で止まります：
+`spin lock` は、git の依存について固定済みのコミットを、`spin.toml` の `ref` が何に変わっても保ちます。先にロックを消すのはそのためです。ほかにも依存があるアプリでは、代わりに `spin.lock` から `[lock.cybertrain]` のテーブルだけを消せば、ほかの固定は残ります。インデックスのバージョンに依存するアプリ（`cybertrain = "X.Y.Z"`）に `rm` は要りません：その場合は `spin lock` が固定を動かします。
+
+両者が一致していることは、コマンドが確認します。`server`、`build`、`db`、`test`、`generate` は、spin を実行したりファイルを書き出したりする前に、spin がビルドするフレームワークのバージョン、つまりアプリの `spin.lock` に固定されたバージョンを、コマンド自身のバージョン（`cybertrain version`）と比べます：アプリをコンパイルする Spinel のリリースを決めるのはアプリではなくコマンドであり、コマンドのテンプレートとジェネレーターは、同じリリースのフレームワーク向けに書かれているからです。バージョンが異なると、コマンドは終了コード 1 で止まります：
 
 ```text 出力 — cybertrain build
 error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
-  gem install cybertrain -v X.Y.Z    # the command the application is locked to
-or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then run
-  cybertrain spin lock
+  gem install cybertrain -v X.Y.Z    # the command the application is on
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
+  rm spin.lock && cybertrain spin lock
 ```
 
-どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。`spin.toml` を書き換えただけでは、それまで何も変わりません：spin は `spin.lock` のコミットをビルドし続けます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチやコミットはリリースを指さないので、確認されません。
+どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。git の依存では、`spin.toml` を書き換えても何も変わらず、そのあと `spin lock` を実行しても変わりません：そのロックを消すまで、spin は `spin.lock` のコミットをビルドし続けます。`rm` が要るのはそのためです。インデックスのバージョンに依存している場合、メッセージは `cybertrain = "A.B.C"` と `cybertrain spin lock` だけを示します。spin が固定されたリリースをビルドするのは `spin.toml` がそれを許している間だけなので、`spin.toml` が指すバージョンがロックと違えば、すぐにそのバージョンが比べられます。範囲（`"~> X.Y"`）が固定されたリリースを許さなくなった場合は、`cybertrain spin lock` を実行するまで拒否されます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチ、コミット、範囲はリリースを指さないので、確認されません。
 
 0.4 向けに書いたアプリケーションには、いくつか変更が要ります（どのセッションも一度だけ終わる、OpenSSL をリンクする、ドットを含むルートのセグメントには `format: false` が要る、など）：[0.4 のアプリを更新する](requests.md#upgrading-an-application-from-04)を見てください。

@@ -886,6 +886,7 @@ The CLI and the framework `spin.lock` pins are upgraded together; if their
 versions differ, building or starting fails). Then:
 
 ```sh
+rm spin.lock              # spin lock alone keeps the commit it has locked
 cybertrain spin lock      # pin the new tag's commit in spin.lock
 cybertrain spin run gen   # the generated code may change with the framework
 cybertrain spin test      # if you have written tests

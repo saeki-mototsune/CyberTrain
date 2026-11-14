@@ -67,13 +67,50 @@ test "another locked version is refused, with both versions and both ways out" d
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "command is 1.2.3"
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "gem install cybertrain -v 1.3.0"
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "ref = \"v1.2.3\""
-  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain spin lock"
+  # `spin lock` keeps a locked git commit, so the way out removes the lock.
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "rm spin.lock && cybertrain spin lock"
 end
 
-test "spin.lock decides while spin.toml is ahead of it: spin builds the locked commit" do
+test "a git dependency: spin.lock decides while spin.toml is ahead of it, spin builds the locked commit" do
   app(git_dep("v1.3.0"), git_lock("1.2.3"))
   assert_equal "", FrameworkVersion.problem(".", "1.2.3")
   assert_includes FrameworkVersion.problem(".", "1.3.0"), "cybertrain 1.2.3 (spin.lock)"
+end
+
+test "an index dependency: the lock decides only while spin.toml's constraint allows it" do
+  app("\"~> 1.2\"", git_lock("1.2.9"))
+  assert_equal "", FrameworkVersion.problem(".", "1.2.9")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.2.9 (spin.lock)"
+  app("\">= 1.2\"", git_lock("1.3.0"))
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.lock)"
+  app("\"*\"", git_lock("1.3.0"))
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.lock)"
+  app("{ version = \"~> 1.2.0\", features = [\"a\"] }", git_lock("1.2.9"))
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.2.9 (spin.lock)"
+end
+
+test "an index dependency moved to another exact version, not relocked: spin.toml decides, as spin reselects" do
+  app("\"1.3.0\"", git_lock("1.2.3"))
+  puts FrameworkVersion.problem(".", "1.2.3")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain = \"1.2.3\""
+  refute FrameworkVersion.problem(".", "1.2.3").include?("rm spin.lock")
+  assert_equal "", FrameworkVersion.problem(".", "1.3.0")
+  app("{ version = \"1.3.0\" }", git_lock("1.2.3"))
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
+end
+
+test "an index dependency whose range no longer allows the lock is refused until relocked" do
+  app("\"~> 1.3\"", git_lock("1.2.3"))
+  puts FrameworkVersion.problem(".", "1.2.3")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "spin.lock locks cybertrain 1.2.3"
+  assert_includes FrameworkVersion.problem(".", "1.3.0"), "cybertrain spin lock"
+  app("\">= 1.3.0\"", git_lock("1.2.3"))
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "spin.lock locks cybertrain 1.2.3"
+  app("\"~> 1.2.4\"", git_lock("1.3.0"))
+  assert_includes FrameworkVersion.problem(".", "1.3.0"), "spin.lock locks cybertrain 1.3.0"
+  app("{ features = [\"a\"], version = \"~> 1.3\" }", git_lock("1.2.3"))
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "spin.lock locks cybertrain 1.2.3"
 end
 
 test "a path dependency is not checked, whatever spin.lock holds" do
@@ -122,6 +159,41 @@ test "without a lock, a branch, a commit, a range or no ref names no release: no
   assert_equal "", FrameworkVersion.problem(".", "1.2.3")
   app("\">= 1.3.0\"", "")
   assert_equal "", FrameworkVersion.problem(".", "1.2.3")
+end
+
+# spin.toml as written, with no spin.lock.
+def toml(text)
+  File.write("spin.toml", text)
+  File.delete("spin.lock") if File.exist?("spin.lock")
+end
+
+test "spin.toml is read as spin reads it: comments, spaced headers, the last line for a key" do
+  toml("[dependencies] # what the app needs\ncybertrain = \"1.3.0\"\n")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
+  toml("[ dependencies ]\ncybertrain = \"1.3.0\"\n")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
+  toml("[dependencies]\ncybertrain=\"1.3.0\"   # pinned\n")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
+  toml("[dependencies]\n  cybertrain = #{git_dep("v1.3.0")} # the release\n")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
+  toml("[dependencies]\ncybertrain = \"1.2.3\"\ncybertrain = \"1.3.0\"\n")
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
+  toml("[dependencies]\n# cybertrain = \"1.3.0\"\n[package]\ncybertrain = \"1.3.0\"\n")
+  assert_equal "", FrameworkVersion.problem(".", "1.2.3")
+end
+
+test "an exact version spelled '0.Y.Z' or \"= 0.Y.Z\" is the release spin selects for it" do
+  toml("[dependencies]\ncybertrain = '0.5.0'\n")
+  assert_includes FrameworkVersion.problem(".", "0.4.1"), "cybertrain 0.5.0 (spin.toml)"
+  assert_equal "", FrameworkVersion.problem(".", "0.5.0")
+  toml("[dependencies]\ncybertrain = \"= 0.5.0\"\n")
+  assert_includes FrameworkVersion.problem(".", "0.4.1"), "cybertrain 0.5.0 (spin.toml)"
+  assert_equal "", FrameworkVersion.problem(".", "0.5.0")
+  toml("[dependencies]\ncybertrain = { version = '0.5.0' }\n")
+  assert_includes FrameworkVersion.problem(".", "0.4.1"), "cybertrain 0.5.0 (spin.toml)"
+  # spin reads "= 1" as the number 0: the release it looks for is 0.5.0.
+  toml("[dependencies]\ncybertrain = \"= 1.5.0\"\n")
+  assert_includes FrameworkVersion.problem(".", "1.5.0"), "cybertrain 0.5.0 (spin.toml)"
 end
 
 test "no spin.toml, or no cybertrain dependency: no check" do

@@ -1,5 +1,5 @@
 ---
-source_sha256: 5bd118da54cdee1636242a1449f5637c3b97e371b37dc4705cd5bc40b307fe5c
+source_sha256: dbe0e7ce732a0b23c498892d0a796a632f34d49648224801432837c07eef8d5f
 ---
 # 安装
 
@@ -108,20 +108,23 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 gem 和框架从同一个标签发布，因此版本一致：X.Y.Z 版的 gem 生成的应用依赖框架 `vX.Y.Z`。要把应用迁移到新版本，先更新 gem，把 `spin.toml` 指向新标签，然后在应用中运行：
 
 ```shell 终端 — 应用目录
+rm spin.lock
 cybertrain spin lock
 cybertrain spin run gen
 ```
 
-两者是否一致由命令来检查。`server`、`build`、`db`、`test` 和 `generate` 在运行 spin 或写出文件之前，会把应用的 `spin.lock` 中锁定的框架版本与命令自己的版本（`cybertrain version`）进行比较：决定用哪个 Spinel 版本编译应用的是命令而不是应用，而且命令的模板和生成器是为同一版本的框架编写的。版本不同时，命令以状态码 1 停止：
+对于 git 依赖，无论 `spin.toml` 中的 `ref` 变成什么，`spin lock` 都会保留它已锁定的提交，所以要先删除锁文件。如果应用还有其他依赖，可以改为只从 `spin.lock` 中删除 `[lock.cybertrain]` 表，保留其他锁定。依赖索引中某个版本（`cybertrain = "X.Y.Z"`）的应用不需要 `rm`：此时 `spin lock` 会移动锁定。
+
+两者是否一致由命令来检查。`server`、`build`、`db`、`test` 和 `generate` 在运行 spin 或写出文件之前，会把 spin 将要构建的框架版本，即应用的 `spin.lock` 中锁定的版本，与命令自己的版本（`cybertrain version`）进行比较：决定用哪个 Spinel 版本编译应用的是命令而不是应用，而且命令的模板和生成器是为同一版本的框架编写的。版本不同时，命令以状态码 1 停止：
 
 ```text 输出 — cybertrain build
 error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
-  gem install cybertrain -v X.Y.Z    # the command the application is locked to
-or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then run
-  cybertrain spin lock
+  gem install cybertrain -v X.Y.Z    # the command the application is on
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
+  rm spin.lock && cybertrain spin lock
 ```
 
-两种做法任选其一。`cybertrain spin ...` 不做这项检查，因此 `cybertrain spin lock` 总能运行。在此之前，只修改 `spin.toml` 不会改变任何东西：spin 仍然构建 `spin.lock` 中的提交。依赖框架本地检出代码（`path = ...`）的应用不做检查。没有 `spin.lock` 的应用，则与其 `spin.toml` 指定的版本（`"X.Y.Z"` 或 `ref = "vX.Y.Z"`）比较；分支或提交不指定任何版本，因此不做检查。
+两种做法任选其一。`cybertrain spin ...` 不做这项检查，因此 `cybertrain spin lock` 总能运行。对于 git 依赖，修改 `spin.toml` 不会改变任何东西，之后再运行 `spin lock` 也一样：在删除该锁定之前，spin 仍然构建 `spin.lock` 中的提交，所以需要 `rm`。对于索引中的版本，消息给出的是 `cybertrain = "A.B.C"` 和单独的 `cybertrain spin lock`；只有在 `spin.toml` 仍然允许时，spin 才构建锁定的版本，因此 `spin.toml` 指定的版本一旦与锁不同，就会用它来比较；如果某个范围（`"~> X.Y"`）不再允许锁定的版本，则在运行 `cybertrain spin lock` 之前命令会拒绝执行。依赖框架本地检出代码（`path = ...`）的应用不做检查。没有 `spin.lock` 的应用，则与其 `spin.toml` 指定的版本（`"X.Y.Z"` 或 `ref = "vX.Y.Z"`）比较；分支、提交或范围不指定任何版本，因此不做检查。
 
 为 0.4 编写的应用需要做一些修改（每个会话都会结束一次、要链接 OpenSSL、含点号的路由段需要 `format: false` 等）：参见[升级为 0.4 编写的应用](requests.md#upgrading-an-application-from-04)。
