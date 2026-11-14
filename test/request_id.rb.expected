@@ -21,4 +21,4 @@ ok   RequestIds inside each other report once: the innermost, which saw the exce
 ok   an exception outside StandardError is reported too
 ok   an exception outside both rescue arms leaves no Scope behind either
 ok   RequestId.where_for is the action, or request when none ran
-23 tests, 188 assertions, 0 failures
+23 tests, 139 assertions, 0 failures
