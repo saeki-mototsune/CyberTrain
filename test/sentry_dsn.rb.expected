@@ -1,7 +1,8 @@
 ok   a DSN's key, project and endpoint
+ok   a DSN's public text leaves out the secret and keeps the rest
 ok   a longer path, a bracketed IPv6 host and a port
 ok   what a DSN may not be
 ok   what a DSN may not be, where the brief is silent
 ok   from_text raises ArgumentError with the problem
 ok   no problem names the key
-6 tests, 72 assertions, 0 failures
+7 tests, 75 assertions, 0 failures

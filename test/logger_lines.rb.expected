@@ -9,6 +9,7 @@ ok   a JSON line's message drops the line's own newline
 ok   the byte scan refuses what is not UTF-8: every byte from 0x80 up is replaced
 ok   valid UTF-8 is kept: U+10FFFF, U+2028, a CJK character, an emoji
 ok   messages with control bytes, invalid UTF-8 and non-ASCII are one valid JSON line
+ok   a JSON line's tag holding invalid UTF-8 or a newline stays one valid JSON line
 ok   a long text line is one line, whole
 ok   capture_log answers what Cybertrain.logger wrote, debug included, and puts the logger back
-13 tests, 70 assertions, 0 failures
+14 tests, 71 assertions, 0 failures
