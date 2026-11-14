@@ -265,7 +265,7 @@ module Cybertrain
         ensure
           # Released only once dist/ holds the new binary: assemble reads
           # build/bin/<name>, which a dev rebuild would be writing.
-          lock.release
+          lock.unlock
         end
         return 1 unless code == 0
 

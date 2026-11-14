@@ -784,7 +784,7 @@ test "the build lock stops the gen check as well" do
   assert r.last_skipped
   assert_equal "", gen_calls
   refute File.exist?(GEN_CHECK)
-  held.release
+  held.unlock
   finish_fake_spin_app(path)
 end
 
@@ -805,7 +805,7 @@ test "no rebuild while cybertrain build holds tmp/cybertrain-build.lock" do
                "rebuild skipped — save the file again once it finishes", r.last_output
   refute File.exist?(log)
   # once the build is over the banner says so instead of "in progress"
-  held.release
+  held.unlock
   assert r.last_skipped
   assert_equal "cybertrain build finished; save a file to rebuild", r.last_output
   r.record_build(true, "")
@@ -835,7 +835,7 @@ test "a lock file no build holds is ignored and left in place, whatever PID it r
   held = Cybertrain::CLI::BuildLock.new(root)
   assert held.take
   assert r.build_in_progress?
-  held.release
+  held.unlock
   refute r.build_in_progress?
   Dir.rmdir("#{root}/tmp")
   Dir.rmdir(root)
@@ -855,7 +855,7 @@ test "a held lock stays held however old its file is" do
   # a build longer than any age bound is still running
   assert r.build_in_progress?
   assert File.exist?(lock)
-  held.release
+  held.unlock
   refute r.build_in_progress?
   Dir.rmdir("#{root}/tmp")
   Dir.rmdir(root)

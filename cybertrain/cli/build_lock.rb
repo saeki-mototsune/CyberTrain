@@ -76,8 +76,12 @@ module Cybertrain
       end
 
       # Deletes the file while the flock is still held, if the path still
-      # names it, then closes the descriptor, which drops the flock.
-      def release
+      # names it, then closes the descriptor, which drops the flock. Answers
+      # nil, and does nothing when this object does not hold the lock. Not
+      # named `release`: Config#release answers a String, and one method
+      # name has one return type across a program (spikes/NOTES.md rules 10
+      # and 34).
+      def unlock
         f = @file
         return nil if f.nil?
 

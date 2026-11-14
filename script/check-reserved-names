@@ -486,12 +486,8 @@ NAME_HOMES = {
   "subscribe" => %w[cybertrain/websocket.rb cybertrain/stream/hub.rb cybertrain/error_reporter.rb],
   "tagged" => %w[cybertrain/logger.rb],
   "request_id" => %w[cybertrain/http/request.rb],
-  # Lease.release (nil) beside Config#release (a String), and
-  # CLI::BuildLock#release (nil), only ever called on a BuildLock: every
-  # application loads it (cybertrain/dev's Rebuilder requires cli/build),
-  # and test/dev_error_page.rb compiles it beside Config#release and calls
-  # it.
-  "release" => %w[cybertrain/lease.rb cybertrain/config.rb cybertrain/cli/build_lock.rb],
+  # Lease.release (nil) beside Config#release (a String).
+  "release" => %w[cybertrain/lease.rb cybertrain/config.rb],
   # DB::Connection#error_message(sql), I18n.error_message and
   # ErrorEvent#error_message: all String.
   "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
