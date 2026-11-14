@@ -326,7 +326,7 @@ module Cybertrain
           out.flush
           stop_group(pgid, LEFTOVER_GRACE) { ended?(pgid) }
           deadline = monotonic + 1
-          sleep 0.05 until group_pids(pgid).empty? || monotonic >= deadline
+          sleep 0.05 until !group_member?(pgid) || monotonic >= deadline
         end
         stamp_leftover_binary(root, name, path)
         File.delete(path) if File.exist?(path)
@@ -397,7 +397,7 @@ module Cybertrain
       # @yieldreturn [Boolean] whether the leader has ended (a zombie counts)
       def self.stop_group(pgid, grace)
         started = monotonic
-        group_pids(pgid).each { |pid| signal(pid, :TERM) unless pid == pgid }
+        (group_pids(pgid) || []).each { |pid| signal(pid, :TERM) unless pid == pgid }
         sleep 0.01 until yield || monotonic - started >= [BUILD_CLEANUP, grace].min
         unless yield
           signal(-pgid, :TERM)
@@ -406,21 +406,43 @@ module Cybertrain
         # Not to a group with no member left: a leftover's leader is not
         # this process's child, so nothing keeps its id from going to
         # another group once it is reaped.
-        signal(-pgid, :KILL) unless group_pids(pgid).empty?
+        signal(-pgid, :KILL) if group_member?(pgid)
         nil
       end
 
       # The live (not zombie) processes of group pgid, from
-      # `ps -A -o pid=,pgid=,stat=` (Linux and macOS).
-      # @return [Array<Integer>]
+      # `ps -A -o pid=,pgid=,stat=` (Linux and macOS); nil when ps cannot
+      # list them (busybox's ps rejects -A and -o and prints nothing on
+      # stdout; or there is no ps), which is not a group with no member.
+      # ps -A lists ps itself, so a run that exits 0 without a line of
+      # three fields, the first two numbers, did not list either.
+      # @return [Array<Integer>, nil]
       def self.group_pids(pgid)
         out = IO.popen(["ps", "-A", "-o", "pid=,pgid=,stat="], in: File::NULL, err: File::NULL, &:read)
-        out.lines.filter_map do |line|
-          pid, group, stat = line.split
-          pid.to_i if group.to_i == pgid && !stat.to_s.start_with?("Z")
-        end
+        rows = out.lines.map(&:split).select { |row| row.size == 3 && row[0].match?(/\A[0-9]+\z/) && row[1].match?(/\A[0-9]+\z/) }
+        return nil unless $?.success? && !rows.empty?
+
+        rows.filter_map { |pid, group, stat| pid.to_i if group.to_i == pgid && !stat.start_with?("Z") }
       rescue SystemCallError
-        []
+        nil
+      end
+
+      # Whether group pgid has a member left: from group_pids, or, when ps
+      # cannot list (nil), from signal 0 to the group, which finds any
+      # member (EPERM: one that is someone else's). That probe counts a
+      # zombie too, whose id is still taken, so a KILL it lets through
+      # reaches no other group.
+      # @return [Boolean]
+      def self.group_member?(pgid)
+        pids = group_pids(pgid)
+        return !pids.empty? unless pids.nil?
+
+        Process.kill(0, -pgid)
+        true
+      rescue Errno::ESRCH
+        false
+      rescue Errno::EPERM
+        true
       end
 
       # P10: host and port as the application's config gives them, from

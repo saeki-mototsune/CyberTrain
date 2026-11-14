@@ -275,8 +275,9 @@ itself polls the same files every half second, runs `SPIN_DEBUG=1 spin run
 gen && spin build NAME -- --incremental` in the background on a change,
 and on success stops its listener, drains open requests and `execv`s the
 new binary on the same port and PID; a failed build keeps the old binary
-serving and banners the compiler output on every HTML response, and
-rebuilds are skipped while `cybertrain build` holds its lock. The CLI and
+serving and banners the compiler output on its HTML responses (not on a
+download, `Content-Disposition: attachment`, nor on a body the application
+encoded, `Content-Encoding`), and rebuilds are skipped while `cybertrain build` holds its lock. The CLI and
 this loop build gen, and the CLI `bin/db.rb`, in spin's debug mode
 (`SPIN_DEBUG=1`, `-O0`): they run for milliseconds, and gen compiles in a
 fraction of the time `-O2` takes; the application is always a release

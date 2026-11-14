@@ -1,5 +1,5 @@
 ---
-source_sha256: d5610c649a5f3887d806cfcf265cda6bfd8a31210236e485277521aa6602d39d
+source_sha256: 2d356939fc39bce1422b47603486cbede6fceeb913ecf5400af788d4ed1fcb18
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -118,7 +118,7 @@ gen が見つけないケースが 2 つあります：`cybertrain/jobs` なし�
 
 バックグラウンドの処理（ジョブ、スケジューラー、ストリームのポーラー、WebSocket のフィード）は、応答している方の子プロセスで動きます。そのため一度の編集でこれらは CRuby へ、次にバイナリへと二度再起動し、Server-Sent Events と WebSocket のクライアントは二度再接続します。プレビューで動いたページは、バイナリでも動いて初めて完成です。数に入るのはコンパイルしたテスト（`spin test`）だけです。
 
-`cybertrain server --spinel` は代わりにコンパイル版のループを実行します。直接入力した `spin run NAME` と、`spin install` がビルドするネイティブ CLI も同じです：`SPIN_DEBUG=1 spin run gen`、`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`、次に `spin run NAME`。バイナリ自身が同じファイルを 0.5 秒ごとに確認し、変更があるとバックグラウンドで `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` を実行し、成功するとリスナーを止めて処理中のリクエストを捌き切り、同じポートと PID のまま新しいバイナリを `execv` します。ビルドに失敗した場合は古いバイナリで配信を続け、すべての HTML レスポンスにコンパイラの出力をバナーとして表示します。`cybertrain build` がロックを保持している間は再ビルドを行いません。CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin のデバッグモード（`SPIN_DEBUG=1`、`-O0`）でビルドします：どちらも数ミリ秒しか動かず、gen は `-O2` のときのごく一部の時間でコンパイルできるためです。アプリケーションは常にリリースビルドです。プレビューを動かせないときは、`cybertrain server` は `preview unavailable:` で始まる 1 行を出力し、コンパイル版のループを実行します。それは、`CYBERTRAIN_ENV` に `development` 以外の環境が指定されているとき、アプリケーションのフレームワークがプレビューより古いとき（`cybertrain/preview.rb` か `cybertrain/dev/supervision.rb` がない）、`PATH` 上に `ruby` がないとき、またはその `ruby` が起動できないか、10 秒以内に応答しないか、`fiddle` を読み込めないとき（`cybertrain doctor` が確認します）です。本番環境ではこれらは一切読み込まれません。
+`cybertrain server --spinel` は代わりにコンパイル版のループを実行します。直接入力した `spin run NAME` と、`spin install` がビルドするネイティブ CLI も同じです：`SPIN_DEBUG=1 spin run gen`、`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`、次に `spin run NAME`。バイナリ自身が同じファイルを 0.5 秒ごとに確認し、変更があるとバックグラウンドで `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` を実行し、成功するとリスナーを止めて処理中のリクエストを捌き切り、同じポートと PID のまま新しいバイナリを `execv` します。ビルドに失敗した場合は古いバイナリで配信を続け、HTML レスポンスにコンパイラの出力をバナーとして表示します（ダウンロード（`Content-Disposition: attachment`）と、アプリケーションがエンコードした本文（`Content-Encoding`）には表示しません）。`cybertrain build` がロックを保持している間は再ビルドを行いません。CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin のデバッグモード（`SPIN_DEBUG=1`、`-O0`）でビルドします：どちらも数ミリ秒しか動かず、gen は `-O2` のときのごく一部の時間でコンパイルできるためです。アプリケーションは常にリリースビルドです。プレビューを動かせないときは、`cybertrain server` は `preview unavailable:` で始まる 1 行を出力し、コンパイル版のループを実行します。それは、`CYBERTRAIN_ENV` に `development` 以外の環境が指定されているとき、アプリケーションのフレームワークがプレビューより古いとき（`cybertrain/preview.rb` か `cybertrain/dev/supervision.rb` がない）、`PATH` 上に `ruby` がないとき、またはその `ruby` が起動できないか、10 秒以内に応答しないか、`fiddle` を読み込めないとき（`cybertrain doctor` が確認します）です。本番環境ではこれらは一切読み込まれません。
 
 ## Rails との違い
 

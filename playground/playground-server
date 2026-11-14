@@ -6,7 +6,9 @@
 # it from postAttachCommand on every attach, so a second run must not start a
 # second server: it prints where the app is and exits 0 instead when
 #   - its lock is held: a server this script started is running;
-#   - the port answers: a server started by hand is listening;
+#   - the port answers: a server started by hand is listening (but not
+#     when it is the child of a supervisor that was killed: the server is
+#     then started, and takes the port over);
 #   - this user runs a `cybertrain server` that does not listen yet: one
 #     started by hand is still starting (it binds the port once it has
 #     asked spin for the load path and the app for its address, a second or
@@ -34,9 +36,36 @@ if ! flock -n 9; then
   echo "playground-server: the dev server is already running: ${url}"
   exit 0
 fi
+
+# A supervisor killed outright (SIGKILL, the OOM killer) leaves its child
+# serving on the port it was handed, so the port answers with no server
+# running. `cybertrain server` stops such a leftover before it binds (it
+# reads tmp/cybertrain-dev/child.pid), so it is started to take over when
+# child.pid names a live process working in the app's directory and
+# supervisor.pid names no live process. A running server, started by hand
+# or not, has a live supervisor and is left alone.
+leftover_child() {
+  local dev="${app}/tmp/cybertrain-dev" child supervisor root
+  child=$(cat "${dev}/child.pid" 2>/dev/null) || return 1
+  case "$child" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  kill -0 "$child" 2>/dev/null || return 1
+  supervisor=$(cat "${dev}/supervisor.pid" 2>/dev/null)
+  case "$supervisor" in
+    ''|*[!0-9]*) ;;
+    *) if kill -0 "$supervisor" 2>/dev/null; then return 1; fi ;;
+  esac
+  root=$(cd "$app" 2>/dev/null && pwd -P) || return 1
+  [ "$(readlink "/proc/${child}/cwd" 2>/dev/null)" = "$root" ]
+}
+
 if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
-  echo "playground-server: port ${port} is already in use, so no second server is started: ${url}"
-  exit 0
+  if ! leftover_child; then
+    echo "playground-server: port ${port} is already in use, so no second server is started: ${url}"
+    exit 0
+  fi
+  echo "playground-server: port ${port} is held by the app a stopped server left running; starting one that takes it over"
 fi
 # A `cybertrain server` started by hand holds neither the lock nor, until it
 # has bound it, the port. It is the supervisor, the gem's Ruby script, whose

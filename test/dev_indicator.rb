@@ -25,13 +25,14 @@ end
 
 # The inner application; counts the requests that reach it.
 class IndicatorPage < Cybertrain::Middleware
-  attr_reader :calls, :seen_none_match, :seen_modified_since
+  attr_reader :calls, :seen_none_match, :seen_modified_since, :seen_if_match
 
   def initialize
     super(nil)
     @calls = 0
     @seen_none_match = ""
     @seen_modified_since = ""
+    @seen_if_match = ""
   end
 
   def call(ctx)
@@ -68,6 +69,26 @@ class IndicatorPage < Cybertrain::Middleware
         response.status = 304
       else
         response.body = "<!DOCTYPE html>\n<html><body><h1>Cached</h1></body></html>"
+      end
+    when "/article"
+      # An update guarded by the record's strong ETag, "abc", as an
+      # application checks it: 412 when If-Match lists neither that tag nor
+      # *, or If-None-Match lists it or *. Records the validators it was
+      # sent.
+      request = ctx.request
+      tag = "\"abc\""
+      match = request.header("If-Match")
+      @seen_if_match = match.nil? ? "(none)" : match.to_s
+      none = request.header("If-None-Match")
+      @seen_none_match = none.nil? ? "(none)" : none.to_s
+      response.set_header("ETag", tag)
+      response.content_type = "text/plain"
+      matched = match.nil? || @seen_if_match == "*" || @seen_if_match.split(", ").include?(tag)
+      unmatched = none.nil? || !(@seen_none_match == "*" || @seen_none_match.split(", ").include?(tag))
+      if matched && unmatched
+        response.body = "updated"
+      else
+        response.status = 412
       end
     when "/fragment"
       response.body = "<p>no body tag</p>"
@@ -447,8 +468,9 @@ test "If-Modified-Since never reaches the application under supervision" do
 end
 
 # Only GET and HEAD are validated by the framework (HttpCache), so only they
-# are rewritten; an application's own precondition on another method (a
-# create-only PUT with If-None-Match: *) sees its headers as sent. HEAD is
+# lose If-Modified-Since and a stale If-None-Match; an application's own
+# precondition on another method (a create-only PUT with If-None-Match: *)
+# sees them as sent, but for this child's suffix (the next test). HEAD is
 # rewritten like GET.
 test "the validators of a request other than GET or HEAD reach the application unchanged" do
   reader = state_reader("other_methods", 3, "cruby", "idle", "")
@@ -463,6 +485,50 @@ test "the validators of a request other than GET or HEAD reach the application u
   run_method(app, "HEAD", "/etag", { "if-none-match" => "W/\"abc-dev-cruby-3\"", "if-modified-since" => date })
   assert_equal "W/\"abc\"", page.seen_none_match
   assert_equal "(none)", page.seen_modified_since
+end
+
+# A client sends back on PUT and PATCH the ETag it was given, this child's
+# suffix and all: If-Match and If-None-Match reach the application with
+# that suffix removed from each tag, on every method, so the application
+# compares its own tags; a tag of another runtime or generation is left
+# suffixed and does not match (412 on If-Match: the page was stale).
+test "If-Match and If-None-Match on PUT and PATCH reach the application without this child's suffix" do
+  reader = state_reader("unsafe_methods", 12, "cruby", "idle", "")
+  page = IndicatorPage.new
+  app = indicator(page, reader, "cruby", 12, no_directives)
+  assert_equal "\"abc-dev-cruby-12\"", run_request(app, "/article").response.header("ETag")
+  ["PUT", "PATCH", "POST", "DELETE"].each do |method|
+    ctx = run_method(app, method, "/article", { "If-Match" => "\"abc-dev-cruby-12\"" })
+    assert_equal "\"abc\"", page.seen_if_match
+    assert_equal 200, ctx.response.status
+  end
+  # A list, weak tags kept weak, * and a comma inside a tag kept.
+  run_method(app, "PUT", "/article", { "if-match" => "W/\"x-dev-cruby-12\" ,\"x,y-dev-cruby-12\", *, \"abc-dev-cruby-12\"" })
+  assert_equal "W/\"x\", \"x,y\", *, \"abc\"", page.seen_if_match
+  # Another generation's or runtime's tag, or one without a suffix, is left
+  # as it is: the application's tag does not match, 412.
+  ["\"abc-dev-cruby-11\"", "\"abc-dev-spinel-12\"", "\"abc-dev-cruby-120\""].each do |listed|
+    ctx = run_method(app, "PATCH", "/article", { "If-Match" => listed })
+    assert_equal listed, page.seen_if_match
+    assert_equal 412, ctx.response.status
+  end
+  run_method(app, "PUT", "/article", { "If-Match" => "\"abc\"" })
+  assert_equal "\"abc\"", page.seen_if_match
+  # If-None-Match on PUT: this child's tag is the application's own (412,
+  # the record is the one the client has); another's stays suffixed; * stays.
+  ctx = run_method(app, "PUT", "/article", { "If-None-Match" => "\"abc-dev-cruby-12\"" })
+  assert_equal "\"abc\"", page.seen_none_match
+  assert_equal 412, ctx.response.status
+  ctx = run_method(app, "PUT", "/article", { "If-None-Match" => "W/\"abc-dev-cruby-11\", \"q-dev-cruby-12\"" })
+  assert_equal "W/\"abc-dev-cruby-11\", \"q\"", page.seen_none_match
+  assert_equal 200, ctx.response.status
+  run_method(app, "PUT", "/article", { "If-None-Match" => "*" })
+  assert_equal "*", page.seen_none_match
+  # If-Match on a GET loses the suffix too; If-None-Match there keeps the
+  # GET rule (a tag without this child's suffix drops the header).
+  run_method(app, "GET", "/article", { "If-Match" => "\"abc-dev-cruby-12\"", "If-None-Match" => "\"abc-dev-cruby-11\"" })
+  assert_equal "\"abc\"", page.seen_if_match
+  assert_equal "(none)", page.seen_none_match
 end
 
 # The Indicator is only in the supervised stack (Roles::ServerRunner#front_app):

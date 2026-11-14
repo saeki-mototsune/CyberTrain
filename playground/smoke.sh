@@ -77,6 +77,7 @@ what_D1="a second playground-server exits 0 saying the server is already running
 what_D2="one supervisor and one child run"
 what_D3="after a container restart (Codespaces' idle stop and resume) the server is back, once, with the earlier article"
 what_D4="playground-server leaves a server started by hand alone: it says a server is already starting before it listens and the port is in use once it listens, exits 0 both times, and one supervisor and one child run"
+what_D5="after a server started by hand had its supervisor SIGKILLed, playground-server takes the port over from the child it left: the new supervisor stops that child and serves, and one supervisor and one child run"
 what_C1="with CODESPACES=true the session cookie keeps the default, SameSite=Lax without Secure or Partitioned"
 what_C2="with CODESPACES=true the banner shows https://smoke-3000.app.github.dev/"
 what_C3="with CODESPACES=true and PATH=/usr/bin:/bin, interactive and login bash shells find spin in /opt/cybertrain/bin"
@@ -707,6 +708,64 @@ if start manual "$image" bash -c "$held"; then
   fi
 else
   fail D4 "$what_D4" "docker run failed: $(first_line "$(cat "$work/manual.start")")"
+fi
+
+# A supervisor killed outright (SIGKILL, the OOM killer) leaves its child
+# serving on the port, with no server running: the next playground-server
+# (Codespaces runs it on every attach) must start one, which stops that
+# child and takes the port over, instead of stopping at "already in use".
+# The first server is started with docker exec, not as the container's
+# command, so that its SIGKILL does not end the container.
+takeover="$prefix-takeover"
+if start takeover "$image" sleep infinity; then
+  phase=""
+  docker exec -d "$takeover" bash -c 'cd /workspace/blog && exec cybertrain server > /tmp/first.log 2>&1'
+  if ! up_inside "$takeover" 60; then
+    phase="the first server: $detail"
+  fi
+  old_child=""
+  if [ -z "$phase" ]; then
+    old_child=$(docker exec "$takeover" cat /workspace/blog/tmp/cybertrain-dev/child.pid 2> /dev/null)
+    docker exec "$takeover" pkill -KILL -f "$supervisor_pattern" > /dev/null 2>&1
+    waited=$SECONDS
+    while docker exec "$takeover" pgrep -f "$supervisor_pattern" > /dev/null 2>&1; do
+      if [ $((SECONDS - waited)) -ge 10 ]; then
+        phase="the supervisor still runs 10 s after its SIGKILL"
+        break
+      fi
+      sleep 0.2
+    done
+  fi
+  if [ -z "$phase" ] && ! docker exec "$takeover" bash -c '(exec 3<>/dev/tcp/127.0.0.1/3000) 2> /dev/null'; then
+    phase="after the SIGKILL: the port does not answer (no child left serving)"
+  fi
+  if [ -z "$phase" ]; then
+    docker exec -d "$takeover" bash -c 'playground-server > /tmp/takeover.log 2>&1'
+    waited=$SECONDS
+    until docker exec "$takeover" grep -q "stopping a child left by an earlier cybertrain server" /tmp/takeover.log 2> /dev/null; do
+      if [ $((SECONDS - waited)) -ge 30 ]; then
+        phase="playground-server: $(first_text "$(docker exec "$takeover" cat /tmp/takeover.log 2>&1)")"
+        break
+      fi
+      sleep 0.5
+    done
+  fi
+  if [ -z "$phase" ] && ! up_inside "$takeover" 60; then
+    phase="after the takeover: $detail"
+  fi
+  if [ -z "$phase" ] && [ -n "$old_child" ] && docker exec "$takeover" kill -0 "$old_child" 2> /dev/null; then
+    phase="the leftover child (pid $old_child) still runs"
+  fi
+  if [ -z "$phase" ] && ! servers "$takeover"; then
+    phase="after the takeover: $servers"
+  fi
+  if [ -z "$phase" ]; then
+    pass D5 "$what_D5"
+  else
+    fail D5 "$what_D5" "$phase" "$takeover"
+  fi
+else
+  fail D5 "$what_D5" "docker run failed: $(first_line "$(cat "$work/takeover.start")")"
 fi
 
 # ---- C: a codespace (CODESPACES=true) --------------------------------------

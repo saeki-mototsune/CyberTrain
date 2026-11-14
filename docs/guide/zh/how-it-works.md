@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: d5610c649a5f3887d806cfcf265cda6bfd8a31210236e485277521aa6602d39d
+source_sha256: 2d356939fc39bce1422b47603486cbede6fceeb913ecf5400af788d4ed1fcb18
 ---
 # 工作原理
 
@@ -118,7 +118,7 @@ gen 把 `bin/<app>.rb` 当作文本读取，只看其中字面写出的 `require
 
 后台工作（作业、调度器、流的轮询器、WebSocket 订阅源）在正在响应的那个子进程中运行，所以一次编辑会让它们重启两次，先进入 CRuby，再进入二进制文件，Server-Sent Events 和 WebSocket 客户端也会重连两次。在预览中能用的页面，只有当二进制文件也能提供它时才算完成，并且只有编译后的测试（`spin test`）才算数。
 
-`cybertrain server --spinel` 则运行编译版的循环，直接输入的 `spin run NAME` 和 `spin install` 构建的原生 CLI 也是如此：先 `SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则运行 `spin build NAME -- --incremental`；再 `spin run NAME`。二进制文件自己每半秒轮询同样的文件，发生改动时在后台运行 `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`，成功后停止监听并等待进行中的请求完成，然后在同一端口和 PID 上 `execv` 新的二进制文件；构建失败时继续用旧的二进制文件提供服务，并在每个 HTML 响应上以横幅显示编译器输出，`cybertrain build` 持有它的锁期间会跳过重新构建。CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 gen，CLI 还以同样的模式构建 `bin/db.rb`：它们只运行几毫秒，而 gen 的编译时间只是 `-O2` 时的一小部分；应用本身始终是发布构建。预览无法运行时，`cybertrain server` 会输出一行以 `preview unavailable:` 开头的信息，然后运行编译版的循环。这发生在以下情况：`CYBERTRAIN_ENV` 指定了 `development` 以外的环境；应用的框架比预览旧（缺少 `cybertrain/preview.rb` 或 `cybertrain/dev/supervision.rb`）；`PATH` 上没有 `ruby`；或者那个 `ruby` 无法启动、10 秒内没有响应、无法加载 `fiddle`（`cybertrain doctor` 会检查）。这些在生产环境中都不会加载。
+`cybertrain server --spinel` 则运行编译版的循环，直接输入的 `spin run NAME` 和 `spin install` 构建的原生 CLI 也是如此：先 `SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则运行 `spin build NAME -- --incremental`；再 `spin run NAME`。二进制文件自己每半秒轮询同样的文件，发生改动时在后台运行 `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`，成功后停止监听并等待进行中的请求完成，然后在同一端口和 PID 上 `execv` 新的二进制文件；构建失败时继续用旧的二进制文件提供服务，并在 HTML 响应上以横幅显示编译器输出（下载（`Content-Disposition: attachment`）和应用已编码的响应体（`Content-Encoding`）除外），`cybertrain build` 持有它的锁期间会跳过重新构建。CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 gen，CLI 还以同样的模式构建 `bin/db.rb`：它们只运行几毫秒，而 gen 的编译时间只是 `-O2` 时的一小部分；应用本身始终是发布构建。预览无法运行时，`cybertrain server` 会输出一行以 `preview unavailable:` 开头的信息，然后运行编译版的循环。这发生在以下情况：`CYBERTRAIN_ENV` 指定了 `development` 以外的环境；应用的框架比预览旧（缺少 `cybertrain/preview.rb` 或 `cybertrain/dev/supervision.rb`）；`PATH` 上没有 `ruby`；或者那个 `ruby` 无法启动、10 秒内没有响应、无法加载 `fiddle`（`cybertrain doctor` 会检查）。这些在生产环境中都不会加载。
 
 ## 与 Rails 的差异
 
