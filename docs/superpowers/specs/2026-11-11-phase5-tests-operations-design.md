@@ -1431,7 +1431,9 @@ zlib through Spinel's FFI):**
   parses the log (alerts, greps in scripts) is updated. A test that
   captured log lines in a `StringIO` and compared them exactly compares
   the message part, or freezes time and sets `c.log_tags = []`.
-- **Every response carries `X-Request-Id`.** A proxy that already sets one
+- **Every response carries `X-Request-Id`** (amended: every response the
+  application answers; the server's own 400 and 413 for a request it
+  cannot read carry none). A proxy that already sets one
   has it honoured only when the proxy is trusted.
 - **`scheduler_tz` follows `time_zone`.** An application that sets
   `time_zone` and not `scheduler_tz` has its cron tasks read in that zone
@@ -1998,16 +2000,50 @@ gen takes only core classes, the framework's `...Error` classes
 job (spikes/NOTES.md rule 89), so the job raises its own class.
 
 **Left for later** (recorded in the task reviews, none blocking):
-`SentryEnvelope#sentry_field` cannot address an `extra` key that holds a
-dot (`job.attempt`; the blog reads it with a helper of its own);
 `refute_equal` and Minitest's other `refute_*` names are not defined
 (`assert_not_equal` is); `Logger#level=` maps an unknown level to `:info`
-(boot refuses one first); the server role's wait for the reports has no
-test; a DSN host made only of dots and dashes passes the check; the
-sample rate's message quotes the variable's whole text, which is not
-stripped; the context's String values are not copied when the event is
-built (error_reporter.rb, `report`), so a caller that mutates one later
-changes what is delivered.
+(boot refuses one first); a DSN host made only of dots and dashes passes
+the check; the waits for the queued reports in `console` and before a
+development rebuild's exec have no test.
+
+**Changed by the final fix wave (2026-11-14, b21483f to 4dde550).**
+
+- A registered command, `./NAME jobs` and `./NAME console` refuse a DSN
+  set with no sender linked, before the database is opened (exit status
+  1, boot's message; `Application.sender_problem`), and wait up to 2
+  seconds for the queued reports before they close the database and exit.
+  The server role's wait now has a test (test/main_roles.rb, run in a
+  child process).
+- On a stack with no `ErrorPages` and no `Dev::ErrorPage`, the server's
+  `ERROR <Class>: <message>` line and its `rejected request (<status>
+  <text>): <message>` line carry the request's id.
+- `ErrorPages` does not mark the Context reported: an exception raised
+  while it serves the error page reaches `RequestId` and is reported too
+  (two reports, each a real failure).
+- The envelope header's `dsn` is the DSN without a legacy secret
+  (`SentryDsn#dsn_public_text`).
+- `CYBERTRAIN_ERROR_SAMPLE_RATE` is stripped, a refused value is quoted by
+  its first 20 bytes and `...`, and `c.error_sample_rate = 1` stores 1.0.
+- An event's context keys and values are copies.
+- `SentryEnvelope#sentry_field` takes, in an object, the longest run of
+  the path that is a key: `sentry_field("extra.job.attempt")` reads a
+  dotted key whole (the blog's helper for it is gone).
+- `RequestId` puts the thread's Scope back for any exception; a response
+  whose body, redirect or error reset drops a stream writer drops that
+  writer's Scope.
+- `@api private` now: `RequestId.scope_for` and `.where_for`, the
+  `SentrySender` helpers, `Logger.format_line`, `.json_quote` and
+  `.timestamp`, `Logger::Scope#scope_where=`, `Request#request_id=` (the
+  reader stays public); `Logger::NO_TAGS` is gone.
+
+**When each setting takes effect.** `log_level` and `log_format` are
+installed when the application boots (and when a registered command,
+`jobs` or `console` starts); an assignment after that changes nothing until
+the next boot. `log_tags` is read when the middleware stack is built, at
+boot. `sentry_dsn` is checked at boot (and at a command's start), and the
+sender reads it, with `error_sample_rate`, from `Cybertrain.config` at
+each send, so a test that assigns it is heard at once. `release` and
+`env` are read from `Cybertrain.config` when each event is built.
 
 **Open for the maintainer:**
 
@@ -2028,6 +2064,9 @@ changes what is delivered.
 6. An exception while a streamed body is written is logged (`stream
    error:`) but not reported.
 7. Exception messages are not filtered.
+8. Text log lines write a message's newlines as they are: a message with
+   a newline in it continues on lines that carry no time, level or tags
+   (JSON lines escape it).
 
 **Counts.** `ruby script/gate` counts 234 test programs with snapshots
 (2026-11-14). examples/blog: 157 tests and 1557 assertions in 23
