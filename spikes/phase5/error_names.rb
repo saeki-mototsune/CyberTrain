@@ -19,6 +19,16 @@
 # `DB::Connection#error_message(sql)` and `I18n.error_message`. Pass: it
 # compiles and answers as CRuby does.
 #
+# A record of the run at framework 19668bc: it no longer compiles beside
+# the framework after that. It defines its own ErrorEvent, ErrorSubscriber
+# and ErrorReporter, and since phase 5b's Task 7 (2026-11-13) the framework
+# defines the real ones (cybertrain/error_reporter.rb, loaded by
+# cybertrain/core), so the two definitions meet. To run it again, run it
+# over a checkout of 19668bc (`git worktree add <dir> 19668bc`). What it
+# showed is kept by the framework's own programs: test/error_reporter.rb
+# (`handle` in this shape, with `break`, `return` and `next` in its block)
+# and every program that requires `cybertrain`.
+#
 # Run (Spinel 2026.11.04.7026, from the repository root; SQLite and zlib
 # are linked through FFI, so CRuby runs it over standins/cruby_framework.rb,
 # which loads the framework files CRuby can load and stands in for DB, Job

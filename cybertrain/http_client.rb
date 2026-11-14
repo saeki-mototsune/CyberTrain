@@ -14,7 +14,10 @@
 # is returned as it is), no proxy, no cookies. A body can be streamed to a
 # block or into a file instead of being held in memory. https needs
 # `require "cybertrain/net/tls"` as well (see that file: it links libssl,
-# which a plain-http program need not), and gzip responses
+# which a plain-http program need not). `require "cybertrain"` loads this
+# file and the TLS layer, through the Sentry sender
+# (cybertrain/error_reporter/sentry); `require "cybertrain/core"` loads
+# neither. gzip responses need
 # `require "cybertrain/http/gzip_ffi"` (it links zlib; see
 # {HttpClient.gzip_decoder}). `require "cybertrain"` loads the gzip file
 # already, so only a program that requires this file alone adds it.

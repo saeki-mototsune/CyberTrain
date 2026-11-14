@@ -13,6 +13,7 @@
 #   require "cybertrain/mailer"      # Mailer.deliver ("cybertrain/mailer/later": deliver_later, with jobs)
 #   require "cybertrain/cache"       # Cache
 #   require "cybertrain/rate_limit"  # Controller.rate_limit (with the cache)
+#   require "cybertrain/error_reporter/sentry"  # the Sentry sender (loads HttpClient and TLS); bin/NAME.rb only
 #
 # `require "cybertrain"` is the core and every subsystem. No file this one
 # requires may name a subsystem (script/check-core-closure).
