@@ -5,6 +5,7 @@ require "cybertrain/feeds"
 require "cybertrain/test"
 require "cybertrain/test/client"
 require "cybertrain/websocket"
+require_relative "support/log_capture"
 
 # The core and cybertrain/feeds alone (the optional-subsystems design,
 # docs/superpowers/specs/2026-11-13-optional-subsystems-design.md, section
@@ -111,9 +112,9 @@ test "/up with health_feeds: an unreadable status table is not stale, with one W
   end
   assert_equal "200 ok", up_text
   assert_equal "200 ok", up_text
-  warning = " WARN health: the feed status table cannot be read; feeds are not checked"
-  assert_includes LOG.string, warning
-  assert_equal LOG.string.index(warning), LOG.string.rindex(warning)
+  # Once across the two requests. Compared as level and message: the line
+  # carries the /up request's id tag (LogCapture drops the tags).
+  assert_equal 1, LogCapture.count(LOG.string, "WARN", "health: the feed status table cannot be read; feeds are not checked\n")
 end
 
 Cybertrain::Test.run!

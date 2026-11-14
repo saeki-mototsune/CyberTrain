@@ -6,6 +6,9 @@ ok   log_tags orders the request's tags; [] turns them off
 ok   RequestId.scope_for puts the tags in log_tags order and marks the id's place
 ok   the request path in the Scope is masked as the request log masks it
 ok   the id is echoed on error responses
+ok   the development front_app's nesting makes one id, one header and one Scope
+ok   SslRedirect's redirect carries the id
+ok   a streamed body is written under the request's Scope; nothing is left for the next request
 ok   a raising request leaves no Scope behind on its thread
 ok   a RequestId inside another keeps the outer id and adds no Scope of its own
 ok   the controller and action are the request's where
@@ -17,4 +20,4 @@ ok   no params, headers, cookies or client address in an event
 ok   a RequestId inside another reports once: the inner one, which saw the exception first
 ok   an exception outside StandardError is reported too
 ok   RequestId.where_for is the action, or request when none ran
-19 tests, 160 assertions, 0 failures
+22 tests, 182 assertions, 0 failures

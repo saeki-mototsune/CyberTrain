@@ -76,7 +76,7 @@ test "the stack mounts the stream endpoint after the health check" do
     names << node.class.name
     node = node.app
   end
-  assert_equal "Cybertrain::RequestLogger,Cybertrain::Stream::Endpoint,Cybertrain::HealthCheck,Cybertrain::Static," \
+  assert_equal "Cybertrain::RequestId,Cybertrain::RequestLogger,Cybertrain::Stream::Endpoint,Cybertrain::HealthCheck,Cybertrain::Static," \
                "Cybertrain::MethodOverride,Cybertrain::SessionStore,Cybertrain::CsrfProtection,Cybertrain::Router", names.join(",")
 end
 

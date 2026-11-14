@@ -1,4 +1,5 @@
 require "socket"
+require "cybertrain/logger"
 
 module Cybertrain
   # What a streaming response carries instead of a body (docs/design.md D36):
@@ -18,6 +19,26 @@ module Cybertrain
     # @api public
     def write_body(sink)
       nil
+    end
+
+    # Runs `writer` on `sink` with `scope` (the request's,
+    # {Response#body_scope}) as this thread's log Scope, and puts the
+    # thread's own back after it, also when it raises: a streamed body or
+    # an upgraded connection is written after the middleware that made the
+    # Scope has returned. Save, work, restore in `ensure`; no rescue here
+    # (spikes/NOTES.md rule 103). What Test::Client#get_stream calls; the
+    # Server does the same around its rescuing run_writer.
+    # @param writer [BodyWriter]
+    # @param sink [Sink]
+    # @param scope [Logger::Scope]
+    # @return [nil]
+    # @api private
+    def self.write_scoped(writer, sink, scope)
+      saved = Logger.swap_scope(scope)
+      writer.write_body(sink)
+      nil
+    ensure
+      Logger.swap_scope(saved)
     end
   end
 

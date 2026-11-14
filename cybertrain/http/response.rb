@@ -1,5 +1,6 @@
 require "cybertrain/http/header_name"
 require "cybertrain/http/body_writer"
+require "cybertrain/logger"
 
 module Cybertrain
   # The response a request builds up on its way through the stack; the
@@ -130,6 +131,8 @@ module Cybertrain
       # nil for an ordinary response.
       @body_writer = nil
       @upgrade = false
+      # The log Scope the writer runs under (see #body_scope).
+      @body_scope = Logger::NO_SCOPE
     end
 
     # The writer of a streaming response (docs/design.md D36), nil for an
@@ -145,7 +148,17 @@ module Cybertrain
     # @api public
     def body_writer=(writer)
       @body_writer = writer
+      @body_scope = Logger.current_scope
     end
+
+    # The thread's log Scope when the writer was set ({#body_writer=},
+    # {#upgrade!}): the request's, whose id and tags the lines logged while
+    # the body is written carry (spec section 12.2: the request lasts until
+    # its body is written). The Server swaps it in around the writer
+    # ({BodyWriter.write_scoped}) and back after it.
+    # @return [Logger::Scope]
+    # @api private
+    attr_reader :body_scope
 
     # @return [Boolean] true when a {BodyWriter} is set
     # @api public
@@ -162,6 +175,7 @@ module Cybertrain
       @status = 101
       @upgrade = true
       @body_writer = writer
+      @body_scope = Logger.current_scope
       @performed = true
       nil
     end

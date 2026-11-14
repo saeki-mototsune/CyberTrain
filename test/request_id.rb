@@ -21,6 +21,24 @@ require_relative "support/log_capture"
 # What the actions log stays out of the snapshot unless a test captures it.
 Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
 
+# What ThingsController#scope_probe and #streamed saw, and what the probe
+# outside the stack saw.
+$probe_scope = Cybertrain::Logger::NO_SCOPE
+$outer_scope = Cybertrain::Logger::NO_SCOPE
+$stream_seen = ""
+$same_scope = false
+$probe_id = ""
+$last_page = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/", {}, "", ""))
+
+# Sits between the development front_app's outer RequestId and the rest:
+# records the Scope the outer RequestId installed.
+class ScopeProbe < Cybertrain::Middleware
+  def call(ctx)
+    $outer_scope = Cybertrain::Logger.current_scope
+    super
+  end
+end
+
 class ThingsController < Cybertrain::Controller
   def show
     Cybertrain.logger.info("in action")
@@ -38,12 +56,33 @@ class ThingsController < Cybertrain::Controller
   def scope_where
     render plain: Cybertrain::Logger.current_scope.scope_where
   end
+
+  # Records the Scope the action runs under (the nesting test compares it
+  # with the one an outer probe saw).
+  def scope_probe
+    $probe_scope = Cybertrain::Logger.current_scope
+    render plain: "probed"
+  end
+
+  # A streamed body: written after the stack returned. It logs a line and
+  # reads the request id off the thread's Scope, as Job.enqueue does.
+  def streamed
+    stream(content_type: "text/plain") do |out|
+      Cybertrain.logger.info("in stream")
+      $stream_seen = Cybertrain::Logger.current_scope.scope_request_id
+      out.write("streamed")
+    end
+  end
 end
 
 ROUTER = Cybertrain::Router.new
 ROUTER.get("/things/show", "things_show") { |ctx| ThingsController.new(ctx).process(:show) { |c| c.show } }
 ROUTER.get("/things/boom", "things_boom") { |ctx| ThingsController.new(ctx).process(:boom) { |c| c.boom } }
 ROUTER.get("/things/bad", "things_bad") { |ctx| ThingsController.new(ctx).process(:bad) { |c| c.bad } }
+ROUTER.get("/things/scope_probe", "things_scope_probe") do |ctx|
+  ThingsController.new(ctx).process(:scope_probe) { |c| c.scope_probe }
+end
+ROUTER.get("/things/streamed", "things_streamed") { |ctx| ThingsController.new(ctx).process(:streamed) { |c| c.streamed } }
 ROUTER.get("/things/scope_where", "things_scope_where") do |ctx|
   ThingsController.new(ctx).process(:scope_where) { |c| c.scope_where }
 end
@@ -210,8 +249,9 @@ def production_boom
   $last
 end
 
-# Dev::ErrorPage over the stack, as the development server's front_app
-# puts it; its ERROR line captured.
+# Dev::ErrorPage directly over the stack (no outer RequestId: the stack's
+# own sets the id); its ERROR line captured. The development front_app's
+# whole nesting is the next test's.
 def dev_error_page_boom
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/things/boom", { "host" => "www.example.com" }, "", "127.0.0.1"))
   capture_log { Cybertrain::Dev::ErrorPage.new(APP.stack, nil).call(ctx) }
@@ -237,6 +277,76 @@ test "the id is echoed on error responses" do
   assert_equal 500, page.status
   assert page.body.include?("RuntimeError"), page.body
   assert_uuid page.header("X-Request-Id")
+end
+
+# The development server's front_app (Roles::ServerRunner#front_app,
+# private): RequestId around HostAuthorization around Dev::ErrorPage
+# around the stack, whose own RequestId finds the id set. A ScopeProbe
+# under the outer RequestId records the Scope it installed.
+def front_app_nesting
+  dev = config_for("development")
+  stack = app_for(dev).stack
+  page = Cybertrain::Dev::ErrorPage.new(stack, nil)
+  hosts = Cybertrain::HostAuthorization.new(page, dev.checked_hosts, dev.health_path)
+  Cybertrain::RequestId.new(ScopeProbe.new(hosts), dev.log_tags)
+end
+
+def front_app_get(app, path)
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", path, { "host" => "localhost" }, "", "127.0.0.1"))
+  app.call(ctx)
+  ctx
+end
+
+test "the development front_app's nesting makes one id, one header and one Scope" do
+  log = capture_log do
+    app = front_app_nesting
+    $last = front_app_get(app, "/things/scope_probe").response
+    # the action ran under the outer RequestId's Scope: the inner one made none
+    $same_scope = $probe_scope.equal?($outer_scope)
+    $probe_id = $outer_scope.scope_request_id
+    $last_page = front_app_get(app, "/things/boom")
+  end
+  probed = last_response
+  id = probed.header("X-Request-Id").to_s
+  assert_uuid id
+  assert_equal "probed", probed.body
+  assert_equal 1, probed.headers.keys.count { |k| k.downcase == "x-request-id" }
+  assert $same_scope
+  assert_equal id, $probe_id
+  page = $last_page.response
+  page_id = page.header("X-Request-Id").to_s
+  assert_equal 500, page.status
+  assert_uuid page_id
+  assert_equal page_id, $last_page.request.request_id
+  refute page_id == id
+  # the diagnostics page's ERROR line is logged inside the outer Scope
+  assert log.include?(" ERROR [#{page_id}] RuntimeError: boom"), log
+  assert_equal 1, LogCapture.count(log, "ERROR", "RuntimeError: boom")
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+end
+
+test "SslRedirect's redirect carries the id" do
+  c = config_for("production")
+  c.force_ssl = true
+  c.public_root = "test/fixtures/error_pages"
+  capture_log { $last = Cybertrain::Test::Client.new(app_for(c)).get("/things/show") }
+  assert last_response.header("Location").to_s.start_with?("https://"), last_response.header("Location").to_s
+  assert_uuid last_response.header("X-Request-Id")
+end
+
+test "a streamed body is written under the request's Scope; nothing is left for the next request" do
+  log = capture_log { $last = Cybertrain::Test::Client.new(app_for(config_for("test"))).get_stream("/things/streamed", events: 1, timeout: 1) }
+  id = last_response.header("X-Request-Id").to_s
+  assert_uuid id
+  assert_equal "streamed", last_response.body
+  assert_equal id, $stream_seen
+  assert log.include?(" INFO [#{id}] in stream\n"), log
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+  # a plain request next on this thread: its own id, then nothing again
+  plain = client.get("/things/show")
+  assert_uuid plain.body
+  refute plain.body == id
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
 end
 
 test "a raising request leaves no Scope behind on its thread" do

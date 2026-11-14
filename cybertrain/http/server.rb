@@ -494,8 +494,21 @@ module Cybertrain
       sink = Sink.new(sock, chunked, @stream_write_timeout)
       Server.keep_alive_probes(sock)
       conn.streaming = true
-      sink.sink_finish if run_writer(writer, sink)
+      sink.sink_finish if run_writer_scoped(writer, sink, response.body_scope)
       false
+    end
+
+    # {run_writer} under the request's log Scope ({Response#body_scope}),
+    # so the writer's lines and the `stream error:` line carry the
+    # request's id; this thread's own Scope is back afterwards, also when
+    # the writer raised something run_writer does not rescue. Save, work,
+    # restore in `ensure`, no rescue (spikes/NOTES.md rule 103).
+    def run_writer_scoped(writer, sink, scope)
+      saved = Logger.swap_scope(scope)
+      ok = run_writer(writer, sink)
+      ok
+    ensure
+      Logger.swap_scope(saved)
     end
 
     # TCP keep-alive on a streaming connection, best effort: a peer that

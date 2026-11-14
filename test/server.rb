@@ -37,6 +37,10 @@ class ServerTestApp < Cybertrain::Middleware
       # `rescue JSON::ParserError` does not catch it (NOTES rule 61).
       res.content_type = "application/json"
       res.body = JSON.generate(ServerTestApp.deep(150))
+    when "/stream"
+      res.body_writer = LoggingWriter.new(false)
+    when "/stream_boom"
+      res.body_writer = LoggingWriter.new(true)
     when "/slow"
       $slow_started = true
       sleep 1
@@ -46,6 +50,29 @@ class ServerTestApp < Cybertrain::Middleware
       res.status = 404
       res.body = "Not Found"
     end
+    nil
+  end
+end
+
+# The log the streaming writer and its server write into, and the request
+# id the writer saw on its thread's Scope while it wrote.
+$stream_log = StringIO.new
+$stream_logger = Cybertrain::Logger.new($stream_log, :info)
+$stream_seen = ""
+
+# A streamed body (/stream, /stream_boom) that logs a line and reads the
+# thread's Scope while the Server writes it, after the stack has returned.
+class LoggingWriter < Cybertrain::BodyWriter
+  def initialize(fail)
+    @fail = fail
+  end
+
+  def write_body(sink)
+    $stream_logger.info("streaming")
+    $stream_seen = Cybertrain::Logger.current_scope.scope_request_id
+    raise "stream broke" if @fail
+
+    sink.write("streamed")
     nil
   end
 end
@@ -128,6 +155,20 @@ class RawClient
     body = @buf.byteslice(0, length)
     @buf = @buf.byteslice(length, @buf.bytesize - length)
     RawResponse.new(res.status_line, head, body)
+  end
+
+  # Everything the server sends until it closes the connection.
+  def read_to_close
+    loop do
+      break if @sock.wait_readable(5).nil?
+
+      begin
+        @buf << @sock.readpartial(16384)
+      rescue EOFError, Errno::ECONNRESET
+        break
+      end
+    end
+    @buf
   end
 
   # True once the server has closed its end (EOF with nothing left to read).
@@ -573,6 +614,32 @@ test "the bare path's 500 carries the id a RequestId set; a handler without one 
   assert_equal "", res.header("x-request-id")
   c.close
   bare.stop
+end
+
+test "a streamed body is written under the request's Scope, the server's stream error line included" do
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: $stream_logger)
+  server.start
+  c = RawClient.new(server.port)
+  c.send_raw("GET /stream HTTP/1.1\r\nHost: t\r\n\r\n")
+  raw = c.read_to_close
+  c.close
+  id = RawResponse.new("", raw, "").header("x-request-id")
+  assert LogCapture.uuid?(id), raw
+  assert_includes raw, "streamed"
+  assert_equal id, $stream_seen
+  assert_equal 1, LogCapture.count($stream_log.string, "INFO", "streaming\n")
+  assert_includes $stream_log.string, " INFO [#{id}] streaming\n"
+  c = RawClient.new(server.port)
+  c.send_raw("GET /stream_boom HTTP/1.1\r\nHost: t\r\n\r\n")
+  raw = c.read_to_close
+  c.close
+  boom_id = RawResponse.new("", raw, "").header("x-request-id")
+  assert LogCapture.uuid?(boom_id), raw
+  refute boom_id == id
+  assert_equal boom_id, $stream_seen
+  assert_includes $stream_log.string, " ERROR [#{boom_id}] stream error: RuntimeError: stream broke\n"
+  server.stop
 end
 
 test "run serves until stop is called" do

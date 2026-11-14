@@ -73,11 +73,20 @@ end
 
 
 test "Crypto.uuid is a version 4 UUID, a new one each time" do
-  a = Cybertrain::Crypto.uuid
-  b = Cybertrain::Crypto.uuid
-  assert LogCapture.uuid?(a), a
-  assert LogCapture.uuid?(b), b
-  refute a == b
+  # 200 of them: each has the shape, the version digit (position 14) and a
+  # variant digit (position 19) in place, and no two are the same.
+  seen = {}
+  i = 0
+  while i < 200
+    id = Cybertrain::Crypto.uuid
+    assert LogCapture.uuid?(id), id
+    assert_equal "4", id[14, 1]
+    assert "89ab".include?(id[19, 1]), id
+    refute seen.key?(id), id
+    seen[id] = true
+    i += 1
+  end
+  assert_equal 200, seen.size
   # the shape check itself refuses what is not one
   refute LogCapture.uuid?("")
   refute LogCapture.uuid?("3f2a9c1e-6c1d-3f0b-9a52-0d1e2f3a4b5c")
