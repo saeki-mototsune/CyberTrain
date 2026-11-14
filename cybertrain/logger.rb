@@ -6,8 +6,10 @@
 #   2026-11-11T12:00:00.123Z INFO Completed 200 in 12ms
 #
 # the time in UTC with milliseconds, the level in capitals, each tag in
-# brackets, the message; or, with {Logger.json_lines} on
-# (`c.log_format = :json`), one JSON object per line:
+# brackets, the message, on one line (a line feed or carriage return in a
+# tag or the message is written as `\n` or `\r`); or, with
+# {Logger.json_lines} on (`c.log_format = :json`), one JSON object per
+# line:
 #
 #   {"time":"2026-11-11T12:00:00.123Z","level":"INFO","tags":[],"message":"Completed 200 in 12ms"}
 #
@@ -239,9 +241,15 @@ module Cybertrain
 
     # One whole line, its newline included. Text: the time, the level,
     # each tag in brackets in order, the message, and a newline unless the
-    # message ends in one; the tags' and the message's bytes are written
-    # unchanged, so a text line may hold bytes that are not valid UTF-8
-    # (the String is tagged UTF-8 all the same). JSON ({json_lines}):
+    # message ends in one. One event is one text line (docs/design.md
+    # D86): in the tags and the message a line feed is written as the two
+    # characters `\n` and a carriage return as `\r` ({append_text}); the
+    # message's one last line feed, if it ends in one, is the line's own.
+    # Nothing else is escaped: a backslash stays a backslash (so `\n`
+    # already in a message reads the same as an escaped line feed), and
+    # the other bytes are written unchanged, so a text line may hold bytes
+    # that are not valid UTF-8 (the String is tagged UTF-8 all the same).
+    # JSON ({json_lines}):
     # `time`, `level`, then `request_id` when `id_tag` is the index of the
     # request id among `tags` (-1 when none of them is), `tags` without
     # it, and `message` (without the one newline it may end in); bytes
@@ -258,18 +266,56 @@ module Cybertrain
       return Logger.json_line(time, level_name, tags, id_tag, text) if @json_lines
 
       # Built from the bytes: a UTF-8 tag beside a binary or ISO-8859-1
-      # message would raise Encoding::CompatibilityError under CRuby. The bytes are written as they are.
+      # message would raise Encoding::CompatibilityError under CRuby. The
+      # bytes are written as they are, but for line feeds and carriage
+      # returns ({append_text}).
       out = "#{time} #{level_name}".b
       tags.each do |tag|
         out << " ["
-        out << tag.to_s.b
+        Logger.append_text(out, tag.to_s, false)
         out << "]"
       end
       out << " "
-      out << text.b
-      out << "\n" unless text.end_with?("\n")
+      Logger.append_text(out, text, true)
       out.force_encoding("UTF-8")
       out
+    end
+
+    # Appends `text`'s bytes to the binary String `out`, a line feed as the
+    # two characters `\n` and a carriage return as `\r`, every other byte
+    # as it is. For the `message` (true) one line feed at the very end is
+    # the line's own and is written as it is, and a line feed is added when
+    # the message has none there; a tag (false) gets no line feed. Without
+    # either byte nothing is built beyond the binary copy appended whole.
+    # The bytes are read through a fresh local (spikes/NOTES.md rule 62).
+    # @param out [String] binary
+    # @param text [String]
+    # @param message [Boolean]
+    # @return [nil]
+    # @api private
+    def self.append_text(out, text, message)
+      s = text.to_s.b
+      n = s.bytesize
+      stop = n
+      stop = n - 1 if message && n > 0 && s.getbyte(n - 1).to_i == 10
+      run = 0
+      i = 0
+      while i < stop
+        b = s.getbyte(i).to_i
+        if b == 10 || b == 13
+          out << s.byteslice(run, i - run).to_s if i > run
+          out << (b == 10 ? "\\n" : "\\r")
+          run = i + 1
+        end
+        i += 1
+      end
+      if run == 0
+        out << s
+      elsif n > run
+        out << s.byteslice(run, n - run).to_s
+      end
+      out << "\n" if message && stop == n
+      nil
     end
 
     # {format_line}'s JSON object.
