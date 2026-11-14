@@ -40,9 +40,10 @@ Cybertrain.configure do |c|
   # request enqueues carries the request's id too, after its own tag:
   # `[NotifyCommentJob 12] [<request id>] new comment 7 on article 1`.
   # c.log_tags = [:request_id]
-  # Error reports (a page that fails, every failed job attempt, the
-  # scheduled task) go to Sentry or GlitchTip when CYBERTRAIN_SENTRY_DSN
-  # is set: in config/deploy.yml's secrets, never in a file you commit.
+  # Error reports (a page that fails, a failed or discarded job, a
+  # scheduled task that raises) go to Sentry or GlitchTip when
+  # CYBERTRAIN_SENTRY_DSN is set: in config/deploy.yml's secrets, never
+  # in a file you commit.
   # `require "cybertrain"` (bin/blog.rb) includes the sender.
 
   # Content Security Policy, sent with every response. Scripts come from

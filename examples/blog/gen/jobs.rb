@@ -42,6 +42,8 @@ class NotifyCommentJob < Cybertrain::Job::Base
     job = new
     begin
       job.perform(run.run_args)
+    rescue ::NotifyCommentJob::CommentGone => e
+      Cybertrain::Job.discard(run, e)
     rescue ::StandardError => e
       if Cybertrain::Job.retry_later(run, e, 30, false, 3) == Cybertrain::Job::OUTCOME_FAILED
         job.retries_exhausted(e)
