@@ -260,9 +260,9 @@ end
 test "the server waits for the queued error reports when it stops" do
   result = server_child
   out = result[1]
-  assert_equal "0", result[0], out
   assert_includes out, "reported: before the server stops\n"
   assert_includes out, "returned 0\n"
+  assert_equal "0", result[0]
 end
 
 test "worker and feeds give Spinel the SPINEL_WORKERS serve does" do
