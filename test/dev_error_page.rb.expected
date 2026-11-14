@@ -18,8 +18,12 @@ ok   a failed build injects the banner into an HTML response
 ok   the banner is prepended when the page has no body tag
 ok   the banner is not injected into a JSON response
 ok   the banner is not injected into bodyless responses
+ok   the banner is not injected into a download or an encoded body, in either loop
 ok   the error page carries the banner too
 ok   no banner once a later build succeeds
+ok   a failed build status injects the banner with its output into HTML, not JSON
+ok   the banner says what a failed build means in each loop
+ok   a build status that is not failed shows no banner
 ok   the rebuild command runs gen then an incremental build in the app root, logging to tmp/rebuild.log
 ok   without --incremental the rebuild command is the plain spin build
 ok   only spinel refusing the flag reads as a toolchain without --incremental
@@ -50,11 +54,11 @@ ok   an edit during a failed retry saves nothing, so undoing it does not read as
 ok   a toolchain that starts refusing --incremental still gets the plain build, and the saved C survives
 ok   the build lock stops the gen check as well
 ok   no rebuild while cybertrain build holds tmp/cybertrain-build.lock
-ok   a lock whose build process is gone is stale: removed and ignored
-ok   a lock older than 30 minutes is stale even with a live PID: age wins over aliveness
+ok   a lock file no build holds is ignored and left in place, whatever PID it records
+ok   a held lock stays held however old its file is
 ok   the rebuild command quotes the build target like every other interpolated value
 ok   the Rebuilder refuses a build target that is not usable for spin build
 ok   shell_quote escapes single quotes
 ok   an exception the diagnostics page does not take is reported once, by the stack's RequestId
 ok   development's front_app reports a request's 500 once, and the page still renders
-59 tests, 244 assertions, 0 failures
+63 tests, 267 assertions, 0 failures
