@@ -677,11 +677,12 @@ attr_accessor :trusted_proxies
     # @api public
     attr_reader :error_sample_rate
 
-    # Sets {#error_sample_rate}; CYBERTRAIN_ERROR_SAMPLE_RATE no longer counts.
-    # @param value [Float]
+    # Sets {#error_sample_rate}, as a Float (`1` is `1.0`);
+    # CYBERTRAIN_ERROR_SAMPLE_RATE no longer counts.
+    # @param value [Float, Integer]
     # @api public
     def error_sample_rate=(value)
-      @error_sample_rate = value
+      @error_sample_rate = value.to_f
       @error_sample_rate_text = ""
     end
 

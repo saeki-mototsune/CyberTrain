@@ -37,8 +37,6 @@ module Cybertrain
     # The one lock every Logger writes under: one write of a prebuilt line
     # (and the flush) per hold.
     LOCK = Mutex.new
-    # The tags of a line logged with none (seeded, spikes/NOTES.md rule 9).
-    NO_TAGS = Array.new(0) { "" }
     HEX_DIGITS = %w[0 1 2 3 4 5 6 7 8 9 a b c d e f].freeze
 
     # What the lines logged on one thread carry while a piece of work runs
@@ -88,6 +86,7 @@ module Cybertrain
       # (told apart by identity).
       # @param where [String]
       # @return [nil]
+      # @api private
       def scope_where=(where)
         @scope_where = where unless equal?(Logger::NO_SCOPE)
         nil
@@ -213,7 +212,7 @@ module Cybertrain
     # the Clock pushed ({follow_clock}), else the real time. The digits
     # are formatted by hand.
     # @return [String]
-    # @api public
+    # @api private
     def self.timestamp
       us = @clock_micros
       us = Process.clock_gettime(Process::CLOCK_REALTIME, :microsecond) if us == -1
@@ -251,7 +250,7 @@ module Cybertrain
     # @param id_tag [Integer]
     # @param msg [String]
     # @return [String]
-    # @api public
+    # @api private
     def self.format_line(level_name, tags, id_tag, msg)
       text = msg.to_s
       time = Logger.timestamp
@@ -309,7 +308,7 @@ module Cybertrain
     # Validity is read from the bytes, whatever the String's encoding.
     # @param text [String]
     # @return [String]
-    # @api public
+    # @api private
     def self.json_quote(text)
       s = text.to_s # a fresh local (spikes/NOTES.md rule 62)
       n = s.bytesize

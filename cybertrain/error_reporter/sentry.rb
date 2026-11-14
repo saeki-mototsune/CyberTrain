@@ -85,7 +85,7 @@ module Cybertrain
       # @param rate [Float] {Config#error_sample_rate}
       # @param draw [Float]
       # @return [Boolean]
-      # @api public
+      # @api private
       def self.sampled?(rate, draw)
         draw < rate
       end
@@ -102,7 +102,7 @@ module Cybertrain
       # The `X-Sentry-Auth` header's value for this public key.
       # @param key [String]
       # @return [String]
-      # @api public
+      # @api private
       def self.auth_header(key)
         "Sentry sentry_version=7, sentry_key=#{key}, sentry_client=cybertrain/#{Cybertrain::VERSION}"
       end
@@ -114,7 +114,7 @@ module Cybertrain
       # @param dsn_text [String]
       # @param event_id [String] 32 hex digits
       # @return [String]
-      # @api public
+      # @api private
       def self.envelope(event, dsn_text, event_id)
         body = SentrySender.event_json(event, event_id)
         sent_at = Cast.iso8601(Clock.now)
@@ -206,7 +206,7 @@ module Cybertrain
       # not read so as `{"filename":"<the line>"}`.
       # @param backtrace [Array<String>] newest first, as Exception#backtrace
       # @return [String]
-      # @api public
+      # @api private
       def self.frames_json(backtrace)
         out = +"["
         i = backtrace.size - 1

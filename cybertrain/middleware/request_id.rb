@@ -157,7 +157,7 @@ module Cybertrain
     # @param id [String]
     # @param log_tags [Array<Symbol>]
     # @return [Logger::Scope]
-    # @api public
+    # @api private
     def self.scope_for(request, id, log_tags)
       tags = Array.new(0) { "" }
       id_tag = -1
@@ -186,7 +186,7 @@ module Cybertrain
     # (no route matched, or a middleware raised).
     # @param ctx [Context]
     # @return [String]
-    # @api public
+    # @api private
     def self.where_for(ctx)
       action = ctx.controller_action
       action.empty? ? "request" : action

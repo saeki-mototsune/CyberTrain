@@ -367,6 +367,12 @@ test "error_sample_rate from CYBERTRAIN_ERROR_SAMPLE_RATE and its check" do
   assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got -0.1)", assigned.validation_error
   assigned.error_sample_rate = 0.0
   assert_equal "", assigned.validation_error
+  # An Integer is stored as a Float.
+  assigned.error_sample_rate = 1
+  assert assigned.error_sample_rate.is_a?(Float)
+  assert_equal 1.0, assigned.error_sample_rate
+  assigned.error_sample_rate = 2
+  assert_equal "error_sample_rate must be a number from 0.0 to 1.0 (got 2.0)", assigned.reporting_error
   # An assignment replaces a refused variable.
   ENV["CYBERTRAIN_ERROR_SAMPLE_RATE"] = "x"
   replaced = Cybertrain::Config.new

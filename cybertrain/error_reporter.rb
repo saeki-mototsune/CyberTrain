@@ -331,7 +331,7 @@ module Cybertrain
       at = where == "" ? scope.scope_where : where
       name = error_class.to_s
       text = message.to_s
-      enqueue(name, text, Array.new(0) { "" }, at, false, given)
+      queue_event(name, text, Array.new(0) { "" }, at, false, given)
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       report_failed(e)
     rescue NotImplementedError, SystemStackError, ScriptError => e
@@ -465,14 +465,16 @@ module Cybertrain
       trace = Array.new(0) { "" }
       lines = error.backtrace
       lines.each { |line| trace << line.to_s } unless lines.nil?
-      enqueue(name, text, trace, where, handled, context)
+      queue_event(name, text, trace, where, handled, context)
     end
 
     # Builds the event on the caller's thread (the Scope's request fields,
     # its context under the caller's, env, release, the Clock) and queues
     # it unless a like one was queued within DEDUPE_SECONDS or the queue
-    # is full.
-    def enqueue(name, text, trace, where, handled, given)
+    # is full. Not named `enqueue` (Job.enqueue answers an Integer): one
+    # return type per method name across the program (spikes/NOTES.md
+    # rules 10 and 34).
+    def queue_event(name, text, trace, where, handled, given)
       scope = Logger.current_scope
       context = ErrorReporter.empty_context
       scope.scope_context.each { |k, v| context[k] = v }
@@ -570,7 +572,7 @@ module Cybertrain
     # Hands the event on; the in-flight count comes down whatever happens
     # (save-work-ensure in a plain method).
     def deliver_counted(event)
-      deliver(event)
+      deliver_one(event)
       nil
     ensure
       @lock.synchronize { @pending -= 1 }
@@ -583,7 +585,10 @@ module Cybertrain
       nil
     end
 
-    def deliver(event)
+    # Hands the event to every subscriber, then to the sender. Not named
+    # `deliver` (Mailer#deliver and Stream::Hub#deliver answer other
+    # types; spikes/NOTES.md rules 10 and 34).
+    def deliver_one(event)
       list = Array.new(0) { ErrorSubscriber.new }
       sender = @sender
       @lock.synchronize do
