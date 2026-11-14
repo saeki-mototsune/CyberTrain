@@ -164,10 +164,45 @@ test "an event outside a request has no tags, request, transaction or release" d
   env = receiver.received_events(1)[0]
   assert_equal "plain", env.sentry_field("exception.values.0.value")
   assert_equal "true", env.sentry_field("exception.values.0.mechanism.handled")
-  assert_equal "", env.sentry_field("tags.request_id")
-  assert_equal "", env.sentry_field("request.method")
-  assert_equal "", env.sentry_field("transaction")
-  assert_equal "", env.sentry_field("release")
+  # Absent, not empty: sentry_field answers "" for both, the body tells.
+  event = env.sentry_body.split("\n")[2].to_s
+  refute event.include?("\"tags\""), event
+  refute event.include?("\"request\""), event
+  refute event.include?("\"transaction\""), event
+  refute event.include?("\"release\""), event
+  assert event.include?("\"extra\":{}"), event
+end
+
+test "the item header's length is the event's size in bytes, non-ASCII text included" do
+  receiver = sentry_receiver("11", "")
+  report_runtime("bad 日本")
+  env = receiver.received_events(1)[0]
+  assert_equal "bad 日本", env.sentry_field("exception.values.0.value")
+  lines = env.sentry_body.split("\n")
+  assert_equal 3, lines.size
+  event = lines[2].to_s
+  assert event.include?("bad 日本"), event
+  assert_equal "{\"type\":\"event\",\"content_type\":\"application/json\",\"length\":#{event.bytesize}}", lines[1]
+end
+
+test "the envelope's dsn leaves out a legacy secret" do
+  receiver = sentry_receiver("12", "")
+  base = receiver.dsn("12", "")
+  Cybertrain.config.sentry_dsn = "http://public:s3cret@" + base.byteslice(14, base.bytesize - 14).to_s
+  report_runtime("secret")
+  env = receiver.received_events(1)[0]
+  assert_equal base, env.sentry_header_field("dsn")
+  refute env.sentry_body.include?("s3cret"), env.sentry_body
+end
+
+test "sentry_field reads a dotted key whole before it splits the path" do
+  body = "{}\n{}\n{\"extra\":{\"job.attempt\":\"2\",\"job\":{\"kind\":\"Mail\"},\"a.b\":{\"c\":\"d\"}}}\n"
+  env = Cybertrain::Test::SentryEnvelope.new("", "", "", body)
+  assert_equal "2", env.sentry_field("extra.job.attempt")
+  assert_equal "Mail", env.sentry_field("extra.job.kind")
+  assert_equal "d", env.sentry_field("extra.a.b.c")
+  assert_equal "", env.sentry_field("extra.job.id")
+  assert_equal "", env.sentry_field("extra.a")
 end
 
 test "a DSN with a path prefix" do
@@ -215,6 +250,13 @@ test "the sender answers whether Sentry took the event; a refusing Sentry is a w
   log = capture_log { answered = sender.deliver_event(plain_event("limited")) }
   assert_equal false, answered
   assert_logged log, "WARN", "error report not sent: Sentry answered 429\n"
+  failing = Cybertrain::Test::SentryReceiver.new(status: 500)
+  failing.start
+  Cybertrain.config.sentry_dsn = failing.dsn("9", "")
+  answered = true
+  log = capture_log { answered = sender.deliver_event(plain_event("failing")) }
+  assert_equal false, answered
+  assert_logged log, "WARN", "error report not sent: Sentry answered 500\n"
   Cybertrain.config.sentry_dsn = ""
   refute sender.sends?
   assert_equal false, sender.deliver_event(plain_event("no dsn"))

@@ -52,10 +52,15 @@ module Cybertrain
 
       # A field of the event (the envelope's third line) by its dotted
       # path: `"exception.values.0.type"`, an Array's elements by their
-      # index. A String is itself, a number or a boolean its JSON text;
-      # `""` when the field is absent, null, an object or an array.
+      # index. In an object, the longest run of the path's remaining parts
+      # that is a key is taken first, so a key with dots in it (a job
+      # report's `extra`, `"job.attempt"`) is read whole:
+      # `"extra.job.attempt"`. A String is itself, a number or a boolean
+      # its JSON text; `""` when the field is absent, null, an object or an
+      # array.
       # @example
       #   env.sentry_field("tags.request_id")   # => "4f1c..."
+      #   env.sentry_field("extra.job.attempt") # => "2"
       # @param path [String]
       # @return [String]
       # @api public
@@ -99,16 +104,25 @@ module Cybertrain
         i = 0
         while i < parts.size
           part = parts[i].to_s
+          step = 1
           case value
           when Time then return ""
-          when Hash then value = value[part]
+          when Hash
+            # The longest dotted key that is there, down to one part.
+            step = parts.size - i
+            key = parts[i, step].join(".")
+            while step > 1 && value[key].nil?
+              step -= 1
+              key = parts[i, step].join(".")
+            end
+            value = value[key]
           when Array
             return "" unless SentryEnvelope.index?(part)
 
             value = value[part.to_i]
           else return ""
           end
-          i += 1
+          i += step
         end
         case value
         when nil then ""

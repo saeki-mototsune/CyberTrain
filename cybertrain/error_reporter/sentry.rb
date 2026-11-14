@@ -46,7 +46,7 @@ module Cybertrain
         # setting changes (a test points it at a receiver). Read and written
         # on the delivery thread only.
         @dsn_text = ""
-        @dsn = SentryDsn.new("", "", "")
+        @dsn = SentryDsn.new("", "", "", "")
       end
 
       # Whether a DSN is set.
@@ -111,7 +111,8 @@ module Cybertrain
       # (`event_id`, `sent_at`, `dsn`), the item header (`type` event, its
       # `length` in bytes) and the event, each a JSON object.
       # @param event [ErrorEvent]
-      # @param dsn_text [String]
+      # @param dsn_text [String] the DSN without its secret
+      #   ({SentryDsn#dsn_public_text})
       # @param event_id [String] 32 hex digits
       # @return [String]
       # @api private
@@ -310,7 +311,7 @@ module Cybertrain
       def post_event(text, event)
         dsn = dsn_for(text)
         event_id = Crypto.random_token(16)
-        body = SentrySender.envelope(event, text, event_id)
+        body = SentrySender.envelope(event, dsn.dsn_public_text, event_id)
         headers = { "X-Sentry-Auth" => SentrySender.auth_header(dsn.dsn_public_key) }
         client = HttpClient.new(timeout: 3, deadline: 5)
         res = client.post(dsn.dsn_endpoint, body, content_type: CONTENT_TYPE, headers: headers)

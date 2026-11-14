@@ -66,9 +66,9 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     assert_equal "Cybertrain::DB::Error", ev.sentry_field("exception.values.0.type")
     # The context's keys hold a dot ("job.attempt"), which sentry_field
     # would read as two levels.
-    assert_equal job[0], BlogTestHelper.sentry_extra(ev, "job.id")
-    assert_equal "1", BlogTestHelper.sentry_extra(ev, "job.attempt")
-    assert_equal "3", BlogTestHelper.sentry_extra(ev, "job.max_attempts")
+    assert_equal job[0], ev.sentry_field("extra.job.id")
+    assert_equal "1", ev.sentry_field("extra.job.attempt")
+    assert_equal "3", ev.sentry_field("extra.job.max_attempts")
   end
 
   # A failure no retry changes: the comment was deleted before the job ran.
@@ -99,8 +99,8 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     assert_equal "NotifyCommentJob", ev.sentry_field("transaction")
     assert_equal "NotifyCommentJob::CommentGone", ev.sentry_field("exception.values.0.type")
     assert_equal rid, ev.sentry_field("tags.request_id")
-    assert_equal "1", BlogTestHelper.sentry_extra(ev, "job.attempt")
-    assert_equal "1", BlogTestHelper.sentry_extra(ev, "job.max_attempts")
+    assert_equal "1", ev.sentry_field("extra.job.attempt")
+    assert_equal "1", ev.sentry_field("extra.job.max_attempts")
   end
 
   test "a page that is not found is not reported" do

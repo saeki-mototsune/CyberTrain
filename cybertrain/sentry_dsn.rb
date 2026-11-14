@@ -31,14 +31,23 @@ module Cybertrain
     # @api public
     attr_reader :dsn_endpoint
 
+    # The DSN without its secret:
+    # `<scheme>://<public key>@<host>[:<port>][/<path>]/<project id>`, what
+    # an envelope's header names (the secret never leaves the process).
+    # @return [String]
+    # @api public
+    attr_reader :dsn_public_text
+
     # @param public_key [String]
     # @param project_id [String]
     # @param endpoint [String]
+    # @param public_text [String]
     # @api private
-    def initialize(public_key, project_id, endpoint)
+    def initialize(public_key, project_id, endpoint, public_text)
       @dsn_public_key = public_key
       @dsn_project_id = project_id
       @dsn_endpoint = endpoint
+      @dsn_public_text = public_text
     end
 
     # The parsed DSN; raises ArgumentError with {problem}'s reason when the
@@ -65,7 +74,8 @@ module Cybertrain
       host_and_port = s.byteslice(at + 1, slash - at - 1).to_s
       path = s.byteslice(slash, last_slash - slash).to_s
       endpoint = "#{scheme}#{host_and_port}#{path}/api/#{project}/envelope/"
-      SentryDsn.new(key, project, endpoint)
+      public_text = "#{scheme}#{key}@#{host_and_port}#{path}/#{project}"
+      SentryDsn.new(key, project, endpoint, public_text)
     end
 
     # "" when `text` is a DSN {from_text} accepts, else the reason, which

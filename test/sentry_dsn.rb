@@ -23,6 +23,12 @@ test "a DSN's key, project and endpoint" do
   assert_equal "", Cybertrain::SentryDsn.problem("https://abc@o1.ingest.sentry.io/42")
 end
 
+test "a DSN's public text leaves out the secret and keeps the rest" do
+  assert_equal "https://abc@o1.ingest.sentry.io/42", Cybertrain::SentryDsn.from_text("https://abc@o1.ingest.sentry.io/42").dsn_public_text
+  assert_equal "https://abc@h/1", Cybertrain::SentryDsn.from_text("https://abc:secret@h/1").dsn_public_text
+  assert_equal "http://k@[::1]:8000/a/b.c/7", Cybertrain::SentryDsn.from_text("http://k:s3@[::1]:8000/a/b.c/7").dsn_public_text
+end
+
 test "a longer path, a bracketed IPv6 host and a port" do
   d = Cybertrain::SentryDsn.from_text("http://k-1_x@[::1]:8000/a/b.c/~d/123")
   assert_equal "k-1_x", d.dsn_public_key

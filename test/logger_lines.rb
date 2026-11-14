@@ -195,6 +195,17 @@ test "messages with control bytes, invalid UTF-8 and non-ASCII are one valid JSO
   assert_includes SINK.string, %("message":"title: a\\nb #{long}"}\n)
 end
 
+test "a JSON line's tag holding invalid UTF-8 or a newline stays one valid JSON line" do
+  json_during do
+    travel_to(Time.utc(2026, 11, 11, 12)) { sink_logger.tagged("x\xFF\ny".b) { sink_logger.info("tagged") } }
+  end
+  assert_equal %({"time":"2026-11-11T12:00:00.000Z","level":"INFO","tags":["x\\ufffd\\ny"],"message":"tagged"}\n),
+               SINK.string
+  if RUBY_ENGINE == "ruby"
+    assert_equal ["x�\ny"], JSON.parse(SINK.string)["tags"]
+  end
+end
+
 test "a long text line is one line, whole" do
   long = "y" * 100_000
   sink_logger.info("a\nb #{long}")

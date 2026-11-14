@@ -22,6 +22,12 @@ class NotifyCommentJob < Cybertrain::Job::Base
   class CommentGone < StandardError
   end
 
+  # The order of the next two lines matters. Each becomes a `rescue` arm of
+  # the generated run_job, in the order written, and the first arm that
+  # matches wins, as in a `begin`/`rescue`: CommentGone, a StandardError
+  # too, is discarded before `retry_on StandardError` can retry it. Rails
+  # checks the handler declared last first, so in a Rails app these two
+  # lines go the other way round.
   discard_on CommentGone
   retry_on StandardError, wait: 30, attempts: 3
 

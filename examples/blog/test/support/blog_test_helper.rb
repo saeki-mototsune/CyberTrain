@@ -121,34 +121,6 @@ module BlogTestHelper
     [Cybertrain::Cast.int(rows[0]["id"]).to_s, Cybertrain::Cast.str(rows[0]["kind"]), Cybertrain::Cast.str(rows[0]["request_id"])]
   end
 
-  # The value of `key` in a Sentry envelope's event `extra` object, as
-  # text ("" when absent). The reporter's context keys hold a dot
-  # ("job.attempt"), which SentryEnvelope#sentry_field reads as a path.
-  def self.sentry_extra(envelope, key)
-    lines = envelope.sentry_body.split("\n")
-    return "" if lines.size < 3
-
-    value = Cybertrain::Cast.parse_json(lines[2].to_s)
-    parts = ["extra", key]
-    i = 0
-    while i < parts.size
-      part = parts[i].to_s
-      case value
-      when Time then return ""
-      when Hash then value = value[part]
-      else return ""
-      end
-      i += 1
-    end
-    case value
-    when nil then ""
-    when Time then ""
-    when Hash then ""
-    when Array then ""
-    else Cybertrain::Cast.str(value)
-    end
-  end
-
   # Whether res set the locale cookie (a Set-Cookie for `locale`).
   def self.sets_locale_cookie?(res)
     res.cookies.any? { |c| c.start_with?("locale=") }
