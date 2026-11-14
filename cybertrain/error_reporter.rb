@@ -17,7 +17,10 @@
 #
 # Dedupe: an event with the class, message and `where` of one queued in
 # the last {ErrorReporter::DEDUPE_SECONDS} seconds (by the Clock, so a
-# test travels past it) is not queued again. A full queue drops the event
+# test travels past it) is not queued again; inside a job's attempt the
+# job's id is part of that key too ({ErrorReporter.dedupe_key}), so two
+# jobs of one kind are told apart and two attempts of one job are not.
+# A full queue drops the event
 # and counts it; the delivery thread logs `error reports dropped: <n>` at
 # warn at most once every {ErrorReporter::DROP_LOG_SECONDS} seconds.
 #
@@ -166,6 +169,31 @@ module Cybertrain
       error.class.name.to_s
     rescue NotImplementedError, SystemStackError, ScriptError
       error.class.name.to_s
+    end
+
+    # The context key under which a job's Scope carries the job's id.
+    JOB_ID_KEY = "job.id"
+
+    # The dedupe key of an event: its class name, message and `where`, and
+    # the job's id when the event is reported inside a job's attempt (the
+    # job Scope's context carries `job.id`, Job::Executor.job_scope). So two
+    # jobs of one kind failing alike are two events, and two attempts of
+    # one job inside the window are one. The id is read from the Scope's
+    # context only, never from the caller's `context:`; it is in the key
+    # alone (the event's `where` stays the kind). Outside a job the key is
+    # the class, message and `where`.
+    # @param name [String]
+    # @param text [String]
+    # @param where [String]
+    # @param scoped [Hash{String => String}] the Scope's context
+    # @return [String]
+    # @api private
+    def self.dedupe_key(name, text, where, scoped)
+      key = "#{name}\n#{text}\n#{where}"
+      return key unless scoped.key?(JOB_ID_KEY)
+
+      id = scoped[JOB_ID_KEY].to_s
+      "#{key}\n#{id}"
     end
 
     # The empty `Hash{String => String}`: what a caller with no context
@@ -495,7 +523,7 @@ module Cybertrain
       now = Clock.now
       event = ErrorEvent.new(name, text, where, request_id, request_method, request_path, environment, release,
                              handled, context, trace, now)
-      key = "#{name}\n#{text}\n#{where}"
+      key = ErrorReporter.dedupe_key(name, text, where, scope.scope_context)
       seconds = now.to_f
       @lock.synchronize { queue_locked(event, key, seconds) }
       nil
