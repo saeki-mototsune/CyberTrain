@@ -403,11 +403,17 @@ Usage:
       status, rollback [N] (generates again afterwards), schema,
       schema:dump, create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
-  cybertrain server [PORT]
-      Generate, then start the development server
-      (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
+  cybertrain server [PORT] [--spinel]
+      Start the development server (default port: the application's,
+      3000). Right after a change the application runs under CRuby,
+      while Spinel builds it in the background; the compiled binary
+      takes the port when its build succeeds. The application's
+      responses carry X-Cybertrain-Runtime: cruby or spinel.
+      --spinel: the compiled loop only, every change waiting for its
+      build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
       when a Ruby file is newer than build/bin/NAME; spin run NAME
-      [-- PORT]; default port 3000).
+      [-- PORT]). The native CLI that `spin install` builds always
+      runs this one.
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
@@ -434,7 +440,8 @@ Usage:
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
   cybertrain doctor
-      Check the C toolchain, the SQLite headers and the Spinel install.
+      Check the C toolchain, the SQLite headers, the Spinel install
+      and whether the ruby on PATH loads fiddle (the CRuby preview).
   cybertrain version
   cybertrain help
 Unknown command 'frobnicate'
@@ -512,11 +519,17 @@ Usage:
       status, rollback [N] (generates again afterwards), schema,
       schema:dump, create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
-  cybertrain server [PORT]
-      Generate, then start the development server
-      (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
+  cybertrain server [PORT] [--spinel]
+      Start the development server (default port: the application's,
+      3000). Right after a change the application runs under CRuby,
+      while Spinel builds it in the background; the compiled binary
+      takes the port when its build succeeds. The application's
+      responses carry X-Cybertrain-Runtime: cruby or spinel.
+      --spinel: the compiled loop only, every change waiting for its
+      build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
       when a Ruby file is newer than build/bin/NAME; spin run NAME
-      [-- PORT]; default port 3000).
+      [-- PORT]). The native CLI that `spin install` builds always
+      runs this one.
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
@@ -543,7 +556,8 @@ Usage:
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
   cybertrain doctor
-      Check the C toolchain, the SQLite headers and the Spinel install.
+      Check the C toolchain, the SQLite headers, the Spinel install
+      and whether the ruby on PATH loads fiddle (the CRuby preview).
   cybertrain version
   cybertrain help
 Usage:
@@ -620,11 +634,17 @@ Usage:
       status, rollback [N] (generates again afterwards), schema,
       schema:dump, create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
-  cybertrain server [PORT]
-      Generate, then start the development server
-      (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
+  cybertrain server [PORT] [--spinel]
+      Start the development server (default port: the application's,
+      3000). Right after a change the application runs under CRuby,
+      while Spinel builds it in the background; the compiled binary
+      takes the port when its build succeeds. The application's
+      responses carry X-Cybertrain-Runtime: cruby or spinel.
+      --spinel: the compiled loop only, every change waiting for its
+      build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
       when a Ruby file is newer than build/bin/NAME; spin run NAME
-      [-- PORT]; default port 3000).
+      [-- PORT]). The native CLI that `spin install` builds always
+      runs this one.
   cybertrain build
       Build NAME with app/views embedded and assemble dist/
       (the binary, public/, storage/, tmp/).
@@ -651,7 +671,8 @@ Usage:
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
   cybertrain doctor
-      Check the C toolchain, the SQLite headers and the Spinel install.
+      Check the C toolchain, the SQLite headers, the Spinel install
+      and whether the ruby on PATH loads fiddle (the CRuby preview).
   cybertrain version
   cybertrain help
 ok   CLI version, help and unknown commands

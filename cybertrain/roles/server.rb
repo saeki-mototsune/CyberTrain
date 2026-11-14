@@ -31,6 +31,10 @@ module Cybertrain
     # In development it is also the whole of D12: the rebuilder, the
     # watcher, the HUP trap, the restart monitor and the execv of the new
     # binary. The rebuild is this role's and no other's, so it lives here.
+    # Under `cybertrain server` (Dev::Supervision.active?) it is none of
+    # that: the supervisor watches, builds and replaces this process, which
+    # serves on the inherited listener until TERM and reads the build's
+    # state from the supervisor's state file.
     # @api private
     class ServerRunner
       # @param config [Config] the Application's
@@ -52,13 +56,25 @@ module Cybertrain
         built = @server
         if built.nil?
           config = @config
+          # Under `cybertrain server` in development: the supervisor's
+          # listener, inherited by number, instead of a bind.
+          listen_fd = Dev::Supervision.active?(config.env) ? Dev::Supervision.listen_fd : -1
           built = Server.new(ContextHandler.new(front_app), host: config.host, port: config.port,
                                                             max_body_bytes: config.max_body_bytes,
                                                             reuse_port: reuse_port?,
-                                                            stream_write_timeout: config.stream_ping_interval)
+                                                            stream_write_timeout: config.stream_ping_interval,
+                                                            listen_fd: listen_fd)
           @server = built
         end
         built
+      end
+
+      # Whether this role rebuilds the application on a change (the
+      # development loop the binary runs itself; never under `cybertrain
+      # server`). Known once #run_server has begun.
+      # @return [Boolean]
+      def rebuilding?
+        !@rebuilder.nil?
       end
 
       # Starts the server and blocks until it is stopped. SPINEL_WORKERS
@@ -84,11 +100,20 @@ module Cybertrain
         # refuses it for direct callers (its contract: ArgumentError). The
         # check here is a plain call, not a `rescue ArgumentError` around
         # the Rebuilder (NOTES rule 32: no new rescue clause in a method
-        # that blocks and yields).
-        if config.development?
+        # that blocks and yields). Supervised, the supervisor rebuilds:
+        # there is no Rebuilder here.
+        supervised = Dev::Supervision.active?(config.env)
+        if config.development? && !supervised
           problem = Application.name_problem(@name)
           Roles.fail_boot(problem) unless problem.empty?
           @rebuilder = Dev::Rebuilder.new(Dir.pwd, @name)
+        end
+        # Supervised, the descriptor is the listener: a variable that is
+        # not a number must not fall back to binding the port the
+        # supervisor holds. A number that is no listener fails at
+        # srv.start (PortInUse, below).
+        if supervised && Dev::Supervision.listen_fd < 0
+          Roles.fail_boot("#{Dev::Supervision::LISTEN_FD} is not a descriptor number")
         end
         # A service that would refuse to start (with cybertrain/feeds, a
         # WebSocket subscription without on_message) fails the boot here,
@@ -104,7 +129,10 @@ module Cybertrain
           # subscription; only with the endpoint mounted).
           Features.start_features_early(config)
           srv.start # bind first: a PortInUse error must not come after the banner
-          print_boot_banner
+          # The supervisor waits for this file before it sends traffic here.
+          Dev::Supervision.mark_ready if supervised
+          # The supervisor prints one banner for the whole session.
+          print_boot_banner unless supervised
           # After boot connected the database and SPINEL_WORKERS is set;
           # only here, so `migrate`, `db` and Main.command never start
           # them: the loaded subsystems' threads (with cybertrain/jobs, the
@@ -112,7 +140,9 @@ module Cybertrain
           # cybertrain/feeds, the services files like cybertrain/websocket
           # registered when required).
           Features.start_features(config)
-          if config.development?
+          if supervised
+            serve_supervised(srv)
+          elsif config.development?
             serve_development(srv)
           else
             # Flags only (safe in a trap): the job threads stop claiming
@@ -169,6 +199,18 @@ module Cybertrain
         watch_and_wait(srv, rebuilder, watcher, previous_term, previous_hup)
       end
 
+      # Under `cybertrain server`: no rebuilder, no watcher, no HUP trap, no
+      # restart monitor and no exec. The supervisor stops this process with
+      # TERM (as in production: flags only, the requests drain) and starts
+      # the next one on the same listener.
+      def serve_supervised(srv)
+        previous_term = trap("TERM") do
+          srv.request_stop
+          Features.request_stop_features
+        end
+        wait_for_stop(srv, previous_term)
+      end
+
       # The development server's lifetime. When it ends without an exec
       # (SIGTERM, or an in-process caller's Server#stop) the watcher is
       # stopped, so a later edit does not rebuild an application nobody
@@ -206,9 +248,12 @@ module Cybertrain
         nil
       end
 
-      # Config#reuse_port, except in development: the dev server re-execs
-      # itself, and a stray second process on the port would answer with
-      # stale code. #http_server builds once, so this warns once.
+      # Config#reuse_port, except in development: there every change
+      # replaces the server process (under `cybertrain server` the
+      # supervisor starts a new child on the socket it keeps; the binary's
+      # own loop re-execs itself), and a stray second process on the port
+      # would answer with stale code. #http_server builds once, so this
+      # warns once.
       def reuse_port?
         return false unless @config.reuse_port
         return true unless @config.development?
@@ -243,11 +288,23 @@ module Cybertrain
       # (docs/design.md D86). test/request_id.rb ("the development
       # front_app's nesting makes one id, one header and one Scope")
       # builds this nesting by hand: a change here goes there too.
+      # Supervised, the failed-build banner comes from the supervisor's
+      # state file, reread when it changes, and Dev::Indicator names the
+      # runtime; it sits outside the stack, so the development paths it
+      # answers never reach RequestLogger (front_app's RequestId logs
+      # nothing of its own).
       def front_app
         app = @stack
+        config = @config
+        if Dev::Supervision.active?(config.env)
+          reader = Dev::StateFile::Reader.new(Dev::Supervision.state_file)
+          status = Dev::BuildStatus.new(reader)
+          indicator = Dev::Indicator.new(Dev::ErrorPage.new(app, nil, status), reader, status, Dev::Supervision.runtime,
+                                         Dev::Supervision.generation, config.content_security_policy_nonce_directives)
+          return RequestId.new(HostAuthorization.new(indicator, config.checked_hosts, config.health_path), config.log_tags)
+        end
         rebuilder = @rebuilder
         unless rebuilder.nil?
-          config = @config
           app = Dev::ErrorPage.new(app, rebuilder)
           if config.development?
             app = HostAuthorization.new(app, config.checked_hosts, config.health_path)

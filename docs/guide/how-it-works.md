@@ -193,30 +193,107 @@ How a transaction checks out one of these connections, and what runs on it:
 
 ## The development loop
 
-`cybertrain server` (`SPIN_DEBUG=1 spin run gen`; `spin build NAME --
---incremental` when a Ruby file is newer than `build/bin/NAME`; then `spin
-run NAME`) in `development`
-(the default `CYBERTRAIN_ENV`, except in a binary from `cybertrain build`)
-also polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb`
-and the asset roots (`app/assets/**`, `app/javascript/**`,
-`vendor/javascript/**`) every half second. Views are excluded (the engine reloads those itself), and
-so is `gen/views.rb`, empty in development.
+`cybertrain server` in `development` (the default `CYBERTRAIN_ENV`, except
+in a binary from `cybertrain build`) is a supervisor. It runs under CRuby,
+the Ruby that runs the `cybertrain` command, holds the listening socket
+itself and runs one child on it at a time: the application under CRuby
+right after a change, then the compiled binary once Spinel has built it in
+the background. A Ruby edit is answered at once by the CRuby preview (in
+under a second on examples/blog), and the compiled program takes the port
+over without you doing anything.
 
-A change runs `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental`
-in the background: Spinel's incremental build, which recompiles only the C
-units the edit changed. A Spinel release without `--incremental` rejects the
-flag, and the loop then builds without it. The CLI and the loop build gen, and
-the CLI `bin/db.rb`, in spin's debug mode (`SPIN_DEBUG=1`, `-O0`): they run for
-milliseconds, and gen compiles in a fraction of the time `-O2` takes; the
-application is always a release build.
+At the start the supervisor runs gen under CRuby (`ruby bin/gen.rb`, which
+writes the same `gen/` as `spin run gen`), starts the application under
+CRuby (`ruby -r cybertrain/preview bin/NAME.rb`) and starts the build. Both
+run the `ruby` on `PATH`, the one `cybertrain doctor` checks for `fiddle`,
+which may be another Ruby than the one that runs the `cybertrain` command.
+The preview gives the framework its FFI (SQLite, zlib) through a shim over
+Ruby's `fiddle` that compiles the same C the binary uses, once, into
+`tmp/cybertrain-dev/ffi/`. The first build is `spin build NAME`, so an
+application that has not changed since its binary was built compiles
+nothing and the binary serves within a second. A first build on a binary
+older than a Ruby file, and every later build, is `spin build NAME --
+--incremental`: Spinel's incremental build, which recompiles only the C
+units the edit changed. A Spinel release without `--incremental` rejects
+the flag, and the build then runs without it. The output goes to
+`tmp/rebuild.log`.
 
-Success requests a restart (the same flag an external `kill -HUP` sets): a
-monitor thread stops the listener and drains open requests, then the main
-thread `execv`s the new binary on the same port and PID, invisible to a client
-mid-session. A failed build keeps serving the old binary and banners the
-compiler output on every HTML response. Rebuilds are skipped while
-`cybertrain build` holds `tmp/cybertrain-build.lock`. None of this loads in
-production.
+The supervisor polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`,
+`gen/**/*.rb` and the asset roots (`app/assets/**`, `app/javascript/**`,
+`vendor/javascript/**`) ten times a second. Views are excluded (both
+runtimes reread them from disk), and so is `gen/views.rb`, empty in
+development. A change cancels the running build, runs gen under CRuby,
+replaces the child with a new CRuby child and starts a new build. When a
+build succeeds and nothing has changed since, the supervisor stops the
+CRuby child and starts `build/bin/NAME` on the same socket: stop, then
+start, with the socket held open in between, so a request made during the
+switch waits a moment and is answered. None is refused.
+
+Every response of the application carries `X-Cybertrain-Runtime: cruby` or
+`spinel`, and every HTML page one quiet line in its bottom right corner:
+
+- `CRuby preview · Spinel building…`: CRuby rendered the page while the
+  build runs.
+- `Spinel ready — reload`: the compiled binary serves now; reload to see
+  its page.
+- `CRuby preview · Spinel build failed`: CRuby keeps serving, and the page
+  shows the compiler output in a banner.
+- `CRuby preview · Spinel binary failed`: the binary did not start, or
+  exited; CRuby serves again, the banner shows what the binary reported,
+  and the next change builds and tries it again.
+- `Spinel`: the compiled binary rendered the page.
+- `Source changed — reload`: a file changed after the page was rendered.
+- `CRuby preview`: CRuby rendered the page and none of the above applies.
+
+The line keeps itself current; the application's pages never reload
+themselves, so a form being filled in is not lost. When gen fails, or the
+application cannot boot under CRuby (a `SyntaxError`, say), the supervisor
+answers every request itself with a 503 page that shows the error and what
+it is waiting for; that page, the supervisor's own, refreshes itself every
+2 s until a child can answer, and the save that fixes the error brings the
+application back. While `cybertrain build` holds
+`tmp/cybertrain-build.lock`, nothing is regenerated or restarted; the
+server catches up once the lock is gone. The supervisor keeps its files in
+`tmp/cybertrain-dev/`; one runs per application, and Ctrl-C stops the
+build, the child and the server.
+
+What the preview does not show:
+
+- Whether the code compiles. The background build says so when it ends.
+- The runtime differences recorded in
+  [spikes/NOTES.md](../../spikes/NOTES.md) (exception ancestry, String
+  encodings on sockets, `Float#round` on a narrowed Float, and the rest).
+  They appear once the binary serves.
+- Timing and concurrency: CRuby has a GVL and OS threads, and
+  `SPINEL_WORKERS` means nothing to it.
+
+Background work (jobs, the scheduler, the stream poller, WebSocket feeds)
+runs in whichever child serves, so an edit restarts it twice, into CRuby
+and then into the binary, and Server-Sent Events and WebSocket clients
+reconnect twice. A page that works in the preview is done only once the
+binary serves it too, and only compiled tests (`spin test`) count.
+
+`cybertrain server --spinel` runs the compiled loop instead, as do `spin
+run NAME` typed directly and the native CLI that `spin install` builds:
+`SPIN_DEBUG=1 spin run gen`; `spin build NAME -- --incremental` when a
+Ruby file is newer than `build/bin/NAME`; then `spin run NAME`. The binary
+itself polls the same files every half second, runs `SPIN_DEBUG=1 spin run
+gen && spin build NAME -- --incremental` in the background on a change,
+and on success stops its listener, drains open requests and `execv`s the
+new binary on the same port and PID; a failed build keeps the old binary
+serving and banners the compiler output on every HTML response, and
+rebuilds are skipped while `cybertrain build` holds its lock. The CLI and
+this loop build gen, and the CLI `bin/db.rb`, in spin's debug mode
+(`SPIN_DEBUG=1`, `-O0`): they run for milliseconds, and gen compiles in a
+fraction of the time `-O2` takes; the application is always a release
+build. When the preview cannot run, `cybertrain server` prints one line
+beginning `preview unavailable:` and runs the compiled loop. That happens
+when `CYBERTRAIN_ENV` names another environment than `development`, when
+the application's framework is older than the preview (it lacks
+`cybertrain/preview.rb` or `cybertrain/dev/supervision.rb`), when there is
+no `ruby` on `PATH`, or when that `ruby` cannot be started, does not answer
+within 10 s or cannot load `fiddle` (`cybertrain doctor` checks it). None
+of this loads in production.
 
 ## Differences from Rails
 
@@ -226,7 +303,7 @@ production.
 | `rails console`, `rails dbconsole` | `./<app> console` evaluates the template expression language over the models (Spinel has no `eval`, so not Ruby); `./<app> dbconsole` opens `sqlite3` ([The console](background-and-operations.md#the-console)) |
 | `config/application.rb` requires the railties the app uses | `bin/<app>.rb` and `bin/db.rb` require `cybertrain/core` and the [subsystems](#subsystems) the app uses; `require "cybertrain"` is all of them |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` in `bin/<app>.rb`: `./<app> name ARGS` runs it with the database connected |
-| Edit code, the running app picks it up | Ruby needs a rebuild; `cybertrain server` in development does this for you (rebuild, stop, `execv`) |
+| Edit code, the running app picks it up | Ruby changes show at once from a CRuby preview; the compiled binary takes the port when its build finishes (`cybertrain server`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |
 | `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |

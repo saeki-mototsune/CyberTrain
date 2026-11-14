@@ -5,6 +5,20 @@ require "cybertrain/cli"
 # cybertrain build without spin: the command list and the dist/ assembly
 # from a fake build/bin/<name>. CRuby-portable.
 
+# This program, run again as the holder that "a crashed holder's build lock
+# is taken at once" kills: with LOCK_CHILD set to an application root, it
+# takes that application's build lock and waits to be killed.
+LOCK_CHILD = "CYBERTRAIN_TEST_BUILD_LOCK_CHILD"
+SELF = File.expand_path($0)
+REPO = File.expand_path("..", __dir__)
+if ENV[LOCK_CHILD].to_s != ""
+  child_lock = Cybertrain::CLI::BuildLock.new(ENV[LOCK_CHILD].to_s)
+  child_lock.take
+  sleep 60
+  child_lock.release
+  exit(0)
+end
+
 ROOT = Dir.mktmpdir("cybertrain-cli-build")
 Dir.chdir(ROOT)
 
@@ -179,6 +193,59 @@ test "server rejects anything after PORT" do
   assert_equal 1, Cybertrain::CLI.run(["server", "4000", "extra"])
 end
 
+# exe/cybertrain sends `server ... --spinel` here (today's compiled loop);
+# the flag is taken out wherever it stands, so PORT is checked as before.
+test "server --spinel is today's loop: the flag is dropped, PORT and extra words are checked" do
+  assert_equal 1, Cybertrain::CLI.run(["server", "--spinel", "abc"])
+  assert_equal 1, Cybertrain::CLI.run(["server", "4000", "--spinel", "extra"])
+  assert_equal 1, Cybertrain::CLI.run(["server", "--spinel", "4000", "extra"])
+  assert_includes Cybertrain::CLI::USAGE, "cybertrain server [PORT] [--spinel]"
+end
+
+# The checks of the test below, in a method so that the test block holds
+# only the begin/ensure that restores the directory and the environment
+# (NOTES rule 32: the fewer yielding calls inside a block with its own
+# ensure, the better).
+def spinel_port_checks(fake)
+  [["server", "--spinel", "4000"], ["server", "4000", "--spinel"]].each do |argv|
+    File.delete("#{fake}/calls") if File.exist?("#{fake}/calls")
+    assert_equal 0, Cybertrain::CLI.run(argv)
+    assert_equal "run gen\nbuild blog -- --incremental\nrun blog -- 4000\n", File.read("#{fake}/calls")
+  end
+  nil
+end
+
+# Wherever the flag stands, PORT reaches the compiled loop's commands. A fake
+# pinned Spinel (CYBERTRAIN_SPINEL_HOME) satisfies the toolchain check, and
+# its spin records each command instead of running it.
+test "server --spinel passes PORT to the compiled loop, before or after the flag" do
+  fake = "#{ROOT}/spinel_fake"
+  app = "#{ROOT}/spinel_app"
+  Dir.mkdir(fake)
+  Dir.mkdir(app)
+  File.write("#{fake}/spinel", "#!/bin/sh\necho \"spinel #{Cybertrain::SPINEL_TAG} (abc123def) [cc 13.3.0]\"\n")
+  File.write("#{fake}/spin", "#!/bin/sh\necho \"$*\" >> #{fake}/calls\n")
+  File.chmod(0o755, "#{fake}/spinel")
+  File.chmod(0o755, "#{fake}/spin")
+  File.write("#{app}/spin.toml", "[package]\nname = \"blog\"\nversion = \"0.1.0\"\n")
+  saved_home = ENV["CYBERTRAIN_SPINEL_HOME"].to_s
+  saved_path = ENV["PATH"].to_s
+  saved_dir = Dir.pwd
+  ENV["CYBERTRAIN_SPINEL_HOME"] = fake
+  Dir.chdir(app)
+  begin
+    spinel_port_checks(fake)
+  ensure
+    # Restored even when an assertion fails: the rest of the file runs in
+    # the original directory, with the original toolchain.
+    Dir.chdir(saved_dir)
+    ENV["CYBERTRAIN_SPINEL_HOME"] = saved_home
+    ENV["PATH"] = saved_path
+  end
+  # Not the begin/ensure's value (see test/db_transaction.rb).
+  nil
+end
+
 # Stands in for the three spin commands: records each one with whether the
 # build lock (holding this process's PID) was held while it ran, and fails
 # the one named `failing`. With `writes`, a gen step writes that file (a path
@@ -241,6 +308,337 @@ test "a failed restore exits 1, warns about gen/views.rb and releases the lock" 
   assert_equal 3, runner.log.size
   refute File.exist?("dist")
   refute File.exist?("tmp/cybertrain-build.lock")
+end
+
+# The build lock is the kernel's flock on the file (CLI::BuildLock), which
+# also records the holder's PID. A BuildLock taken on behalf of PID 1 stands
+# for another process holding the lock: flock is per open file description,
+# so a second open in this process conflicts as another process's would.
+# 2147483647 is a PID that has gone.
+LOCK = "tmp/cybertrain-build.lock"
+OTHER_LIVE_PID = "1"
+DEAD_PID = "2147483647"
+
+def clear_lock
+  Dir.mkdir("tmp") unless File.directory?("tmp")
+  File.delete(LOCK) if File.exist?(LOCK)
+end
+
+def other_holder
+  Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i)
+end
+
+# Another taker that wins between this one's open and its lock.
+class RacingLock < Cybertrain::CLI::BuildLock
+  attr_reader :other
+
+  def initialize(root)
+    super(root)
+    @other = Cybertrain::CLI::BuildLock.new(root, OTHER_LIVE_PID.to_i)
+  end
+
+  def before_lock
+    @other.take unless @other.holding?
+    nil
+  end
+end
+
+# A taker that opens the file just before its holder releases it (and
+# unlinks it), then locks what it opened.
+class LateOpenLock < Cybertrain::CLI::BuildLock
+  def initialize(root, holder)
+    super(root)
+    @holder = holder
+  end
+
+  def before_lock
+    @holder.release
+    nil
+  end
+end
+
+# A holder paused before deleting its file, long enough for the lock to be
+# old and another taker to try for it.
+class OvertakenLock < Cybertrain::CLI::BuildLock
+  attr_reader :overtaken
+
+  def initialize(root)
+    super(root)
+    @overtaken = false
+  end
+
+  def before_release_delete
+    return nil if @overtaken
+
+    old = Time.now - 31 * 60
+    File.utime(old, old, lock_path) if File.exist?(lock_path)
+    other = Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i)
+    @overtaken = other.take
+    other.release
+    nil
+  end
+end
+
+# A disk that is full once the lock has been opened.
+class FullDiskLock < Cybertrain::CLI::BuildLock
+  def write_owner(f)
+    raise IOError, "No space left on device"
+  end
+end
+
+# A full disk whose close fails too: CRuby retries the failed flush on
+# close and raises again, after releasing the descriptor.
+class FullDiskCloseLock < FullDiskLock
+  def close_file(f)
+    f.close
+    raise IOError, "close failed too"
+  end
+end
+
+# A build during which another process deletes the lock file and takes a
+# new one (as a reader still on the old PID-and-age rule might delete it).
+class TakeoverRunner < FakeRunner
+  attr_reader :other
+
+  def initialize(failing)
+    super(failing)
+    @other = Cybertrain::CLI::BuildLock.new(".", OTHER_LIVE_PID.to_i)
+  end
+
+  def run_step(root, command)
+    ok = super
+    if command == "spin build blog"
+      File.delete("#{root}/tmp/cybertrain-build.lock")
+      @other.take
+    end
+    ok
+  end
+end
+
+# A build whose lock file ages past the old 30-minute rule during each
+# step; records whether a step ever started with the lock not held.
+class AgingRunner < FakeRunner
+  attr_reader :free_seen
+
+  def initialize(failing)
+    super(failing)
+    @free_seen = false
+  end
+
+  def run_step(root, command)
+    path = "#{root}/tmp/cybertrain-build.lock"
+    @free_seen = true unless Cybertrain::CLI::BuildLock.new(root).held?
+    ok = super
+    old = Time.now - 31 * 60
+    File.utime(old, old, path) if File.exist?(path)
+    ok
+  end
+end
+
+def open_descriptors
+  File.directory?("/dev/fd") ? Dir.children("/dev/fd").size : 0
+end
+
+test "Build.lock_path names the lock BuildLock takes" do
+  assert_equal "/apps/blog/tmp/cybertrain-build.lock", Cybertrain::CLI::Build.lock_path("/apps/blog")
+  assert_equal Cybertrain::CLI::BuildLock.new("/apps/blog").lock_path, Cybertrain::CLI::Build.lock_path("/apps/blog")
+end
+
+test "the build lock is created holding this process's PID when it is free" do
+  clear_lock
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  refute lock.held?
+  assert lock.take
+  assert lock.held?
+  assert Cybertrain::CLI::BuildLock.new(".").held?
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  lock.release
+  refute File.exist?(LOCK)
+  refute Cybertrain::CLI::BuildLock.new(".").held?
+end
+
+test "taking and releasing the build lock leaves no descriptor open" do
+  clear_lock
+  warm = Cybertrain::CLI::BuildLock.new(".")
+  assert warm.take
+  warm.release
+  before = open_descriptors
+  3.times do
+    lock = Cybertrain::CLI::BuildLock.new(".")
+    assert lock.take
+    lock.release
+  end
+  assert_equal before, open_descriptors
+end
+
+test "a held build lock is refused, and cybertrain build stops before any step" do
+  clear_lock
+  other = other_holder
+  assert other.take
+  refute Cybertrain::CLI::BuildLock.new(".").take
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  runner = FakeRunner.new("")
+  assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal 0, runner.log.size
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  refute File.exist?("dist")
+  other.release
+  refute File.exist?(LOCK)
+end
+
+test "a lock file nobody holds is taken at once, whatever PID or age it records" do
+  [DEAD_PID, OTHER_LIVE_PID, ""].each do |left|
+    clear_lock
+    File.write(LOCK, left)
+    old = Time.now - 31 * 60
+    File.utime(old, old, LOCK)
+    refute Cybertrain::CLI::BuildLock.new(".").held?
+    assert_equal left, File.read(LOCK)
+    lock = Cybertrain::CLI::BuildLock.new(".")
+    assert lock.take
+    assert_equal Process.pid.to_s, File.read(LOCK)
+    lock.release
+    refute File.exist?(LOCK)
+  end
+end
+
+test "two takers racing for the build lock leave exactly one holder" do
+  clear_lock
+  File.write(LOCK, DEAD_PID)
+  # the other locks the file after this one opened it
+  racer = RacingLock.new(".")
+  refute racer.take
+  assert racer.other.holding?
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  racer.other.release
+  # two takers in this process: the second finds the first's lock
+  first = Cybertrain::CLI::BuildLock.new(".")
+  second = Cybertrain::CLI::BuildLock.new(".")
+  assert first.take
+  refute second.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  first.release
+  refute File.exist?(LOCK)
+end
+
+test "a taker that opened the file before its holder released it ends up on the path's file" do
+  clear_lock
+  holder = other_holder
+  assert holder.take
+  late = LateOpenLock.new(".", holder)
+  assert late.take
+  # the lock it holds is the one at the path: no third taker gets in
+  assert File.exist?(LOCK)
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  third = other_holder
+  refute third.take
+  late.release
+  refute File.exist?(LOCK)
+end
+
+test "a crashed holder's build lock is taken at once" do
+  clear_lock
+  ENV[LOCK_CHILD] = File.expand_path(".")
+  pid = 0
+  if RUBY_ENGINE == "ruby"
+    pid = Process.spawn("ruby", "-I", REPO, SELF)
+  else
+    pid = Process.spawn(SELF)
+  end
+  ENV.delete(LOCK_CHILD)
+  waited = 0
+  while waited < 200 && !(File.exist?(LOCK) && File.read(LOCK) == pid.to_s)
+    sleep 0.05
+    waited += 1
+  end
+  assert_equal pid.to_s, File.read(LOCK)
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert Cybertrain::CLI::BuildLock.new(".").held?
+  refute lock.take
+  Process.kill(9, pid)
+  Process.wait(pid)
+  # the file still names the dead child; the kernel dropped its lock
+  assert_equal pid.to_s, File.read(LOCK)
+  refute Cybertrain::CLI::BuildLock.new(".").held?
+  assert lock.take
+  assert_equal Process.pid.to_s, File.read(LOCK)
+  lock.release
+  refute File.exist?(LOCK)
+end
+
+test "a holder releasing an old build lock never lets another taker in before it is done" do
+  clear_lock
+  lock = OvertakenLock.new(".")
+  assert lock.take
+  lock.release
+  refute lock.overtaken
+  refute File.exist?(LOCK)
+end
+
+test "releasing the build lock leaves a lock another taker holds at the path" do
+  clear_lock
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  File.delete(LOCK)
+  other = other_holder
+  assert other.take
+  lock.release
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  assert other.held?
+  other.release
+  clear_lock
+  runner = TakeoverRunner.new("")
+  assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal OTHER_LIVE_PID, File.read(LOCK)
+  runner.other.release
+  rm_tree("dist")
+  clear_lock
+end
+
+test "a build lock whose PID cannot be written is closed and removed, and the error goes on" do
+  clear_lock
+  # a first take and release, so that anything the runtime opens once for
+  # them is open before the count
+  warm = Cybertrain::CLI::BuildLock.new(".")
+  assert warm.take
+  warm.release
+  before = open_descriptors
+  assert_raises("IOError") { FullDiskLock.new(".").take }
+  refute File.exist?(LOCK)
+  assert_equal before, open_descriptors
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  lock.release
+end
+
+test "a build lock whose close fails as well still raises the write's error" do
+  clear_lock
+  warm = Cybertrain::CLI::BuildLock.new(".")
+  assert warm.take
+  warm.release
+  before = open_descriptors
+  message = ""
+  begin
+    FullDiskCloseLock.new(".").take
+  rescue IOError => e
+    message = e.message
+  end
+  assert_equal "No space left on device", message
+  refute File.exist?(LOCK)
+  assert_equal before, open_descriptors
+  lock = Cybertrain::CLI::BuildLock.new(".")
+  assert lock.take
+  lock.release
+end
+
+test "a long cybertrain build keeps its lock held however old the file gets" do
+  clear_lock
+  runner = AgingRunner.new("")
+  assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
+  assert_equal 3, runner.log.size
+  refute runner.free_seen
+  refute File.exist?(LOCK)
+  rm_tree("dist")
 end
 
 test "assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/" do

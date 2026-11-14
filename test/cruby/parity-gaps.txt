@@ -1,0 +1,9 @@
+# Tests whose CRuby output differs from the compiled snapshot, one per line:
+# <path><TAB><reason>. Each reason names a cause that was verified; see
+# spikes/NOTES.md, "CRuby preview spike, 2026-11". The CRuby output of each
+# is recorded in test/cruby/parity/ (script/preview-parity --regen-gaps), so a
+# new failure in the same file is caught. A listed test that matches again
+# fails script/preview-parity: remove it here.
+test/stream.rb	Stream.decode64 answers ASCII-8BIT under CRuby (Base64.urlsafe_decode64), not UTF-8 (rule 27); one assertion differs
+test/http_gunzip.rb	the corrupt-member input comes from the runtime's own Zlib.gzip, whose bytes differ from CRuby's zlib; flipping its middle byte still inflates, so no BodyUndecodable (one assertion)
+test/main_console.rb	the test runs $0 as an executable, which only a compiled binary can (Permission denied), and Process.spawn reports a non-executable sqlite3 as ENOENT under CRuby, EACCES compiled

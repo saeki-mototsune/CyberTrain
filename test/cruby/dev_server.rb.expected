@@ -1,0 +1,50 @@
+ok   load_path takes the -I directories of spin flags, in order
+ok   load_path keeps directories whose names have spaces, as spin prints them
+ok   the gem's files alone load the supervisor; the dev files come from the application's framework, after spin flags
+ok   a framework without cybertrain/dev/supervision.rb runs the compiled loop, after one line
+ok   a framework without cybertrain/preview.rb runs the compiled loop, after one line
+ok   a ruby on PATH that cannot load fiddle runs the compiled loop, after one line; the framework is checked first
+ok   CYBERTRAIN_ENV other than development runs the compiled loop, after one line; checked first
+ok   child_ruby asks the ruby on PATH for its version and whether it loads fiddle, in one run
+ok   no ruby on PATH runs the compiled loop, after one line that says so
+ok   child_ruby gives up on a ruby that does not answer, and kills it with what it started
+ok   child_ruby returns once its ruby has exited, and kills what that ruby left holding its output
+ok   child_ruby names a ruby on PATH that cannot be started, and why
+ok   bounded_run answers a pipe it cannot make as a failure, and keeps a bounded part of the output
+ok   a TERM or HUP during the probe of the children's ruby stops the probe's process group too
+ok   a port that is in use is refused with today's wording, before any child
+ok   a port argument overrides the application's port
+ok   a PORT that is not a number, or a word after it, is refused
+ok   an application that does not load under CRuby is refused, naming --spinel
+ok   an application that loads only after gen is not refused: gen runs once and the address is asked again
+ok   under the build lock, or when gen fails too, the application that does not load is refused
+ok   a second supervisor for the same application is refused
+ok   a cybertrain server in another directory is not a refusal
+ok   without the process's directory a cybertrain server's command line is enough
+ok   a supervisor.pid naming a process that is not a cybertrain server is not a refusal
+ok   a leftover child of this application is stopped; another process is left alone
+ok   only this application's bin/app.rb or build/bin/app is taken for a leftover child
+ok   only this application's `spin build NAME` is taken for a leftover build
+ok   a build left by a killed supervisor that has since ended: the binary goes back to its launch, never forward
+ok   a child or build of a live supervisor whose command line is not recognised refuses the start and is left alone
+ok   stop_group sends no KILL to a group with no member left
+ok   program finds a ruby interpreter's script after its options
+ok   without /proc a leftover child is known by the line the supervisor spawned, spaces included
+ok   without /proc a leftover child whose -I directory has a space is stopped
+ok   without the process's directory a relative path must be the one the supervisor spawns
+ok   a leftover child is recognised with COLUMNS=40 exported, through ps as well
+ok   a second supervisor is recognised with COLUMNS=40 exported
+ok   the driver starts the CRuby child, hands the port to the binary, and stops on TERM
+ok   HUP stops it like TERM: exit 0, the files removed, the port free
+ok   INT to the whole process group ends it with 130; the children's deaths are not reported
+ok   TERM while the build runs: the build's group is stopped too
+ok   TERM while a round's gen runs: gen's group and the child are stopped, exit 0, the files removed
+ok   TERM during the start-up gen or dev-address stops the probe's group; the supervisor ends by TERM
+ok   a second signal during a start-up probe's grace still kills the probe's group
+ok   a build left by a killed supervisor is stopped, grandchild included
+ok   a leftover child holding the port is stopped, and the new supervisor serves on it
+ok   a child that dies of the Ctrl-C that stops the driver is not reported as a death
+ok   every cleanup step runs when the machine's stop raises
+ok   the banner's CRuby version is the one the children run
+ok   the gate passes events to the machine until a stop is asked
+49 tests, 298 assertions, 0 failures

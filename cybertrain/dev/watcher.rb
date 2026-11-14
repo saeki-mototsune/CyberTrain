@@ -11,6 +11,17 @@ module Cybertrain
     # rewrites: see #start. ignored lists exact paths the patterns match but
     # that never count as a change (gen/views.rb, which `cybertrain build`
     # rewrites and the development binary does not use).
+    #
+    # A contract beyond this file: the gem's supervisor
+    # (cybertrain/cli/dev_server/watch.rb, `Watch < Dev::Watcher`) subclasses
+    # it from an application's framework, which may be another release than
+    # the gem's. It calls initialize(globs, interval, generated, ignored),
+    # start and the class methods scratch_path? and mtime_stamp; it overrides
+    # snapshot, changed_paths and the private poll(block) and
+    # absorb_generated (calling super in changed_paths and absorb_generated,
+    # and relying on #start running poll on its thread); and it reads @globs,
+    # @ignored, @interval and @previous. A change to any of these is a change
+    # to that contract.
     class Watcher
       def initialize(globs, interval = 0.5, generated = [], ignored = [])
         @globs = globs

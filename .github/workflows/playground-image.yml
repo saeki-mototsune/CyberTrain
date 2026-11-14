@@ -9,9 +9,10 @@
 # without pushing, only when it touches what the image is built with
 # (below): its own files, and the CLI, the toolchain checks, the pins and
 # the gemspec, since the build runs `cybertrain setup && cybertrain doctor`
-# and nothing else runs doctor on this image's package list. A change to the
-# rest of the framework alone is tested by ci.yml and reaches the image at
-# the next release. Pushes to main do not run it. See playground/README.md.
+# and nothing else runs doctor on this image's package list, and the CRuby
+# preview (the shim and the supervision files), which the image warms and
+# the smoke test drives. A change to the rest of the framework alone is
+# tested by ci.yml and reaches the image at the next release. Pushes to main do not run it. See playground/README.md.
 name: Playground image
 
 on:
@@ -39,6 +40,17 @@ on:
       - "cybertrain/ident.rb"
       - "cybertrain/crypto.rb"
       - "cybertrain/generator/inflector.rb"
+      # The CRuby preview, which the image warms (the shim's libraries in
+      # tmp/cybertrain-dev/ffi/, built at image build) and the smoke test
+      # drives through playground-server: the shim, whose cache key and
+      # ownership check decide whether the warmed libraries are used (A11,
+      # A12, E1: nothing is compiled), and the supervision files the
+      # supervisor (cybertrain/cli/dev_server*, above) loads from the
+      # application's framework. Unlike the rest of the framework, a change
+      # here can break the image's first start, which ci.yml does not run.
+      - "cybertrain/preview.rb"
+      - "cybertrain/preview/**"
+      - "cybertrain/dev/**"
   # From release.yml, after every check passed on the release tag.
   workflow_call:
     inputs:

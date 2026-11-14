@@ -30,7 +30,11 @@
 #   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
 #   * the Playground image and Blog image workflows run for a pull request
 #     that changes any of those files, cybertrain.gemspec or spin.toml;
-#   * every test/*.rb has its .expected snapshot, and every snapshot its test.
+#   * every test/*.rb and test/cruby/*.rb has its .expected snapshot, and every snapshot its test
+#     (test/cruby/parity/, the recorded gaps of script/preview-parity, holds
+#     snapshots that are not tests and is not looked into);
+#   * `ruby bin/gen.rb --check` in examples/blog exits 0 under CRuby (the
+#     generator writes the files the compiled one wrote).
 # When docs/deploy.md, docs/deploy.en.md, docs/deploy-kamal.md or the script
 # that compares them is in the set:
 #   * script/check-docs-i18n passes (the English tutorial matches the Japanese).
@@ -346,11 +350,16 @@ else
     uncovered.empty? ? ok("image workflows run for the CLI and the pins", "#{image_inputs.size} files") : fail!("image workflow paths", uncovered)
   end
 
-  tests = Dir["test/*.rb"].map { |f| f.delete_suffix(".rb") }
-  snaps = Dir["test/*.rb.expected"].map { |f| f.delete_suffix(".rb.expected") }
-  orphans = (tests - snaps).map { |t| "#{t}.rb has no #{File.basename(t)}.rb.expected (script/regen-snapshot #{t}.rb)" } +
+  tests = Dir["test/*.rb", "test/cruby/*.rb"].map { |f| f.delete_suffix(".rb") }
+  snaps = Dir["test/*.rb.expected", "test/cruby/*.rb.expected"].map { |f| f.delete_suffix(".rb.expected") }
+  orphans = (tests - snaps).map { |t| "#{t}.rb has no #{File.basename(t)}.rb.expected (#{t.start_with?("test/cruby/") ? "script/test-cruby --regen" : "script/regen-snapshot"} #{t}.rb)" } +
             (snaps - tests).map { |s| "#{s}.rb.expected has no #{File.basename(s)}.rb" }
   orphans.empty? ? ok("every test has its snapshot", "#{tests.size} tests") : fail!("test snapshots", orphans)
+
+  # The generator runs under CRuby as it does compiled: --check writes
+  # nothing and exits 1 when a generated file would change.
+  gen_out, gen_status = Open3.capture2e("ruby", "-E", "UTF-8", "-I", ROOT, "-I", ".", "bin/gen.rb", "--check", chdir: File.join(ROOT, "examples/blog"))
+  gen_status.success? ? ok("gen under CRuby leaves examples/blog unchanged") : fail!("gen under CRuby changes examples/blog", gen_out.lines.first(10).map(&:chomp))
 end
 
 elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - $started

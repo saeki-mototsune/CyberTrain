@@ -7,7 +7,7 @@
 #   cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
-#   cybertrain db migrate | db COMMAND... | server [PORT] | build | spin ARGS...
+#   cybertrain db migrate | db COMMAND... | server [PORT] [--spinel] | build | spin ARGS...
 #   cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
 #   cybertrain secret [--hex] | setup [--force] | doctor | version | help
 #
@@ -104,11 +104,17 @@ module Cybertrain
             status, rollback [N] (generates again afterwards), schema,
             schema:dump, create.
             `cybertrain migration` is the same as `cybertrain db migrate`.
-        cybertrain server [PORT]
-            Generate, then start the development server
-            (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
+        cybertrain server [PORT] [--spinel]
+            Start the development server (default port: the application's,
+            3000). Right after a change the application runs under CRuby,
+            while Spinel builds it in the background; the compiled binary
+            takes the port when its build succeeds. The application's
+            responses carry X-Cybertrain-Runtime: cruby or spinel.
+            --spinel: the compiled loop only, every change waiting for its
+            build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
             when a Ruby file is newer than build/bin/NAME; spin run NAME
-            [-- PORT]; default port 3000).
+            [-- PORT]). The native CLI that `spin install` builds always
+            runs this one.
         cybertrain build
             Build NAME with app/views embedded and assemble dist/
             (the binary, public/, storage/, tmp/).
@@ -135,7 +141,8 @@ module Cybertrain
             the PATH line for ~/.cybertrain/bin. The commands above do the
             install by themselves the first time they need spin.
         cybertrain doctor
-            Check the C toolchain, the SQLite headers and the Spinel install.
+            Check the C toolchain, the SQLite headers, the Spinel install
+            and whether the ruby on PATH loads fiddle (the CRuby preview).
         cybertrain version
         cybertrain help
     TEXT
@@ -317,8 +324,13 @@ module Cybertrain
       run_spin(Build.db_commands(args))
     end
 
-    # `cybertrain server [PORT]`: Build.run_server's steps.
+    # `cybertrain server [PORT] --spinel`, or `cybertrain server [PORT]` in
+    # the native CLI: Build.run_server's steps (gen, the incremental build
+    # when the binary is stale, `spin run NAME`). Under CRuby without
+    # --spinel, exe/cybertrain runs the supervisor (DevServer) instead, which
+    # this file never requires: Spinel compiles it.
     def self.run_server(name, argv)
+      argv = without_flag(argv, "--spinel")
       port = argv.size > 1 ? argv[1] : ""
       unless port == "" || Build.port?(port)
         puts "error: PORT must be a number"

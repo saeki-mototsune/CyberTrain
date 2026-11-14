@@ -255,8 +255,9 @@ cybertrain server
 ```
 
 Open http://127.0.0.1:3000 and check that you can create, edit and delete
-notes. In development, saving Ruby code rebuilds automatically, and saving a
-view shows on the next request. Stop it with `Ctrl-C`.
+notes. In development, a saved Ruby change is answered at once by a CRuby
+preview, and the compiled binary takes over when its background build
+finishes; saving a view shows on the next request. Stop it with `Ctrl-C`.
 
 ### 2-5. (Optional) Using `*_url` helpers
 
@@ -999,8 +1000,10 @@ What to keep in mind:
   check with `systemctl list-units 'notes*' --no-pager`. A process without
   `CYBERTRAIN_REUSE_PORT` cannot share the port: it still fails to boot with
   "already in use".
-- Development ignores the setting, with one warning: the dev
-  server re-execs itself, and a second process would answer with stale code.
+- Development ignores the setting, with one warning: there every change
+  replaces the server process (`cybertrain server` starts a new child on the
+  socket it keeps; the `--spinel` loop re-execs itself), and a second process
+  on the port would answer with stale code.
 - `CYBERTRAIN_HOST` may be an IPv6 address, or a hostname with one address. A
   host that does not resolve, an address this machine does not have, or a name
   with several addresses stops the boot with a message naming `reuse_port`.

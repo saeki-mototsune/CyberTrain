@@ -39,10 +39,30 @@ stopped and restarted.
    validates :body, presence: true, length: { minimum: 10 }
    ```
 
-   Ruby is compiled, so the terminal shows a rebuild. After about a minute the
-   server restarts by itself: an article with a short body now fails with "Body is
-   too short (minimum is 10 characters)". If a change does not compile, the previous
-   build keeps serving and every page shows the compiler's message at the top.
+   Reload the app's tab: an article with a short body now fails with "Body is too
+   short (minimum is 10 characters)". The change shows at once because the server
+   runs your Ruby under CRuby, the standard Ruby, while Spinel compiles the app in
+   the background; when the compiled binary is ready (a minute or two), it takes
+   over. The corner of each page says which one you are looking at:
+
+   - `CRuby preview · Spinel building…`: CRuby served this page; the build runs.
+   - `Spinel ready — reload`: the compiled binary serves now; reload to see it.
+   - `Spinel`: the compiled binary served this page.
+   - `Source changed — reload`: you saved a change after this page was served.
+   - `CRuby preview · Spinel build failed`: the change does not compile; CRuby
+     keeps serving and every page shows the compiler's message at the top.
+   - `CRuby preview · Spinel binary failed`: the binary did not start or stopped;
+     CRuby keeps serving and the page shows what it reported.
+   - `CRuby preview`: CRuby served this page.
+
+   The corner line keeps itself up to date, but the page never reloads by itself:
+   reload it to see what the server now serves. It can say `Spinel ready — reload`
+   before you edit anything: the first page may come from CRuby while the binary
+   of the last build starts.
+
+   A save that does not load under CRuby at all (a typo) gets no corner line and
+   no banner: the server answers with a page of its own that names the error and
+   refreshes itself until a save loads.
 3. **Carry on with the tutorial** from step 08, "Scaffold comments":
    https://saeki-mototsune.github.io/CyberTrain/tutorial.html#scaffold-comment
    Stop the server first (Ctrl-C in its terminal), run the step's commands in a new
@@ -62,7 +82,8 @@ cybertrain server
 ```
 
 Stop the blog's server first: both use port 3000. `cybertrain new` needs no network
-here, and the first `cybertrain server` of a new app compiles it (about a minute).
+here. The first `cybertrain server` of a new app serves it from CRuby at once while
+the first build runs (a few minutes); then the compiled binary takes over.
 The new app has no root route, so `/` shows "Not Found": its pages start at
 `/products`.
 

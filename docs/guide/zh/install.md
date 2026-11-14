@@ -1,5 +1,5 @@
 ---
-source_sha256: 1c841be578fe9abd45361ed92eac5251533f12d6df8f5b8dbbe5c28429edce66
+source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
 ---
 # 安装
 
@@ -16,9 +16,9 @@ source_sha256: 1c841be578fe9abd45361ed92eac5251533f12d6df8f5b8dbbe5c28429edce66
 - zlib 头文件和库（Debian/Ubuntu 上为 `zlib1g-dev`；macOS 上在 SDK 中）——gzip 压缩的请求体（`request.decoded_body`）通过系统的 zlib 解压，绑定方式相同。
 - OpenSSL 头文件和库（Debian/Ubuntu 上为 `libssl-dev`）——每个应用都会链接它们：会话 cookie 和 `cookies.encrypted` 通过 Spinel 的 `openssl` 包使用 AES-256-GCM，而 Spinel 只有在头文件存在时才会构建这个包。在 macOS 上安装 Homebrew 的版本（`brew install openssl@3`），它是 keg-only 的，需要加入编译器的路径：`export LIBRARY_PATH="$(brew --prefix openssl@3)/lib"
   CPATH="$(brew --prefix openssl@3)/include"`。
-- Ruby 3.2+ 和 RubyGems，仅供 `cybertrain` 命令使用（应用从不在 CRuby 上运行）；在 Ruby 3.2 上，构建 Spinel 还需要 `prism` gem（见下文）。
+- Ruby 3.2+ 和 RubyGems，供 `cybertrain` 命令和开发服务器的 CRuby 预览使用；预览还需要 Ruby 的 `fiddle` 库（它需要 libffi），没有 `fiddle` 时 `cybertrain server` 只运行编译版的循环。部署后的应用从不在 CRuby 上运行。在 Ruby 3.2 上，构建 Spinel 还需要 `prism` gem（见下文）。
 
-`cybertrain doctor` 会检查这些工具和头文件以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令。
+`cybertrain doctor` 会检查这些工具和头文件、`PATH` 上的 `ruby` 能否加载 `fiddle`，以及 Spinel 的安装情况；缺少必需项时，它还会打印适用于你的平台的安装命令（缺少 `fiddle` 不算在内：服务器仍会以编译版运行）。
 
 <details><summary>更多软件包 — Ruby 3.2 上的 prism；jemalloc，可选</summary>
 
@@ -49,12 +49,12 @@ cybertrain doctor
 - `cybertrain db migrate` 先生成代码，再执行待处理的迁移，然后再次生成（`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate; SPIN_DEBUG=1 spin run gen`）；`cybertrain migration` 作为别名保留。
 - `cybertrain db COMMAND...` 在 `SPIN_DEBUG=1 spin
   run gen` 之后运行其他任意数据库命令：`status`、`rollback [N]`（之后会再次生成）、`schema:dump`、`create`。
-- `cybertrain server [PORT]` 先生成代码，然后启动开发服务器（`SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则 `spin build NAME -- --incremental`；`spin run NAME`，或 `spin run NAME -- PORT`；默认端口 3000）。
+- `cybertrain server [PORT] [--spinel]` 启动开发服务器（默认端口 3000）。改动之后应用立即在 CRuby 上运行，同时 Spinel 在后台构建它，构建成功后编译好的二进制文件接管端口；应用的响应带有 `X-Cybertrain-Runtime: cruby` 或 `spinel`（[开发循环](how-it-works.md#the-development-loop)）。`--spinel` 只运行编译版的循环，每次改动都要等它的构建（`SPIN_DEBUG=1 spin run gen`；若有 Ruby 文件比 `build/bin/NAME` 新，则 `spin build NAME -- --incremental`；`spin run NAME`，或 `spin run NAME -- PORT`）。
 - `cybertrain build` 构建嵌入了 `app/views/` 的 NAME，并组装 `dist/`（二进制文件、`public/`、`storage/`、`tmp/`）。
 - `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` 先生成，再把 `test/` 下的所有测试编译成一个程序（只在有改动时）并运行，只保留参数指定的测试（见[测试应用](testing.md#running-the-tests)）。
 - `cybertrain spin ARGS...` 在任意目录下用锁定版本的 Spinel 运行 `spin`（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
 - `cybertrain setup [--force]` 把锁定版本的 Spinel 安装到 `~/.cybertrain` 中，除非 `PATH` 上已有该版本的 `spinel`；`--force` 会重新构建 `~/.cybertrain` 下的副本。
-- `cybertrain doctor` 检查 C 工具链、SQLite 头文件和 Spinel 的安装情况。
+- `cybertrain doctor` 检查 C 工具链、SQLite 头文件、Ruby 能否加载 `fiddle`（CRuby 预览需要它）以及 Spinel 的安装情况。
 - `cybertrain version` 打印版本。
 
 `db`、`server` 和 `build` 需在应用目录内运行；NAME 是其 `spin.toml` 中的 `[package] name`。
@@ -84,7 +84,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 ## gem 与框架
 
-`gem install cybertrain` 安装的是一个命令，而不是框架。这个 gem 就是 `cybertrain` 命令，它是纯 Ruby 编写的，在你的机器上运行于 CRuby（3.2 或更新版本）之下，并替你调用 Spinel 的 `spin` 工具；框架和 Spinel 都不在这个 gem 里。框架是一个 Spinel 包，你的应用在其 `spin.toml` 中依赖它：Spinel 把它和你的代码一起进行 AOT 编译，所以它从不在 CRuby 上运行，它是随应用交付的部分。`dist/` 中的二进制文件无需 Ruby、gem 或 Spinel 即可运行。
+`gem install cybertrain` 安装的是一个命令，而不是框架。这个 gem 就是 `cybertrain` 命令，它是纯 Ruby 编写的，在你的机器上运行于 CRuby（3.2 或更新版本）之下，并替你调用 Spinel 的 `spin` 工具；框架和 Spinel 都不在这个 gem 里。框架是一个 Spinel 包，你的应用在其 `spin.toml` 中依赖它：Spinel 把它和你的代码一起进行 AOT 编译，它是随应用交付的部分。`dist/` 中的二进制文件无需 Ruby、gem 或 Spinel 即可运行。只有在开发时，应用的代码（包括框架）才也在 CRuby 上运行：`cybertrain server` 会提供应用的 CRuby 预览，直到编译好的二进制文件接管。
 
 ### `cybertrain new` 写出什么
 

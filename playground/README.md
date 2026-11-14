@@ -36,7 +36,10 @@ docker run --rm -it ghcr.io/saeki-mototsune/cybertrain-playground bash
 
 - `--init` puts a small init process at PID 1 that passes Ctrl-C and
   `docker stop` on and reaps processes: the server runs as `cybertrain
-  server` → `spin run blog` → the app's binary.
+  server`, the supervisor that holds the port, with one child serving it
+  (the blog under CRuby, `ruby … bin/blog.rb 3000`, or its compiled binary,
+  `build/bin/blog 3000`) and, after a Ruby change, a `spin build blog` in
+  the background.
 - `CYBERTRAIN_HOST=0.0.0.0` makes the server listen on every interface,
   which `-p` needs; `-p` publishes it on the host's loopback interface only,
   because it is a development server. The server listens on 127.0.0.1 by
@@ -75,7 +78,11 @@ docker build -f playground/Dockerfile --target playground -t cybertrain-playgrou
   downloads the prism and rbs gems). The `cybertrain` gem itself is built
   from this checkout's `cybertrain.gemspec`, not downloaded.
 - A clean build took 156 s on 10 CPUs (Apple M5, linux/arm64), 41.5 s of it
-  building Spinel.
+  building Spinel, before the CRuby preview. With it, built from commit
+  c04bb23 and this directory as it is now, a clean build took 10 min 26 s on
+  4 CPUs (linux/amd64, 2026-11-13): 204 s building Spinel, 93 s `cybertrain
+  db migrate`, 24 s gen, 108 s the incremental build that fills spinel's
+  object cache, 112 s the release build and 0.7 s the shim's libraries.
 
 Then run the smoke test: `bash playground/smoke.sh cybertrain-playground:local`
 (below).
@@ -86,13 +93,13 @@ Then run the smoke test: `bash playground/smoke.sh cybertrain-playground:local`
 | --- | --- |
 | User | `dev`, uid/gid 1000, home `/home/dev`; nothing the blog needs to start or rebuild lives in the home directory |
 | Spinel | `CYBERTRAIN_HOME=/opt/cybertrain` (its `bin/` first on `PATH`), owned by dev |
-| spin's cache | `XDG_CACHE_HOME=/opt/cybertrain-cache`, owned by dev; `cybertrain new` and rebuilds write it |
+| spin's cache | `XDG_CACHE_HOME=/opt/cybertrain-cache`, owned by dev: the framework's package (`spin/`) and spinel's object cache for incremental builds (`spinel/`, filled by the image's build of the blog); `cybertrain new` and rebuilds write it |
 | Framework mirror | `/opt/cybertrain-mirror/cybertrain.git`, owned by dev, with two `insteadOf` rules in `/etc/gitconfig` |
 | The blog | `/workspace/blog`, owned by dev: a git repository with one commit, already built |
 | Start script | `/usr/local/bin/playground-server [APP_DIR]` |
 | Profile | `/etc/profile.d/cybertrain-playground.sh`, also read by interactive shells through `/etc/bash.bashrc` |
 | Port | 3000, on 127.0.0.1 unless `CYBERTRAIN_HOST` says otherwise |
-| Written at run time outside the app | `/tmp` (spin's temporary files) and `/opt/cybertrain-cache`; inside the app, `tmp/`, `storage/`, `build/` and `gen/` |
+| Written at run time outside the app | `/tmp` (spin's temporary files) and `/opt/cybertrain-cache`; inside the app, `tmp/` (the supervisor's files in `tmp/cybertrain-dev/`), `storage/`, `build/` and `gen/` |
 
 Stages: `cli-src` (internal: exactly the files `cybertrain.gemspec`
 packages, so that a change to the framework alone keeps the gem and Spinel
@@ -101,10 +108,33 @@ mirror) and `playground` (the scripts and the blog).
 
 The blog is the tutorial after steps 02, 03, 04 and 07 (`cybertrain new
 blog`, the article scaffold, the root route, `cybertrain db migrate`) plus
-one full build: `gen/` is current and `build/bin/{gen,db,blog}` exist, so
-the first `cybertrain server` compiles nothing. spin decides what is fresh
-by file times, so copy the blog only with `cp -a` (or `tar`), which keep
-them.
+its build: `gen/` is current and `build/bin/{gen,db,blog}` exist, and the
+CRuby preview's FFI shim has compiled the framework's C into
+`tmp/cybertrain-dev/ffi/` (`Cybertrain::Preview.warm!`), as `dev`, the user
+every container runs as: the shim loads nothing from a cache that another
+user owns or that its group or others may write to (decision P26 of the
+preview's plan), and the build checks that a second `warm!` compiles
+nothing.
+
+- `build/bin/blog` is the release build of a plain `spin build blog`.
+  `spin build blog -- --incremental` runs before it only to fill spinel's
+  object cache, and its binary is removed: it is built from units of 256K
+  at the same `-O2` and flags, about 7% more code (the same speed in a quick
+  test of `GET /articles`), and the release build comes last so that its
+  binary is the newest file.
+- The first `cybertrain server` runs no C compiler. It runs gen under CRuby
+  (`bin/gen.rb`, which rewrites only files whose text changed), then picks
+  its startup build by file times: the binary is newer than every Ruby file
+  of the blog and of the framework (a tie would count as stale), so it runs
+  a plain `spin build blog`, which says `build blog (up to date)` in a
+  fraction of a second, and the binary takes the port over within a second
+  or so of the start. A stale binary would get `spin build blog --
+  --incremental`, which compiles every time. The image build checks both
+  rules in its last step.
+- A CRuby child, which serves after an edit, finds the shim's libraries
+  cached and compiles nothing either.
+- Both spin and the supervisor decide what is fresh by file times, so copy
+  the blog only with `cp -a` (or `tar`), which keep them.
 
 Not baked in: `tmp/secret_key` (each container makes its own on first start,
 so no two visitors share a key), `CYBERTRAIN_HOST` (set at run time), the
@@ -133,13 +163,18 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
   (`/tmp/playground-server-3000.lock`, held by the server until it exits)
   and says "the dev server is already running"; a server started some other
   way, such as `cybertrain server` by hand, is found by connecting to the
-  port, or, while it is still compiling and does not listen yet, by its
-  process (any `cybertrain server` of the same user, whatever its port). In
-  each case it prints the app's URL and exits 0 without starting anything.
+  port, or, in the second or two before it listens (while it asks spin for
+  the load path and the app for its address), by its process (any
+  `cybertrain server` of the same user, whatever its port). In each case it
+  prints the app's URL and exits 0 without starting anything. (Two
+  `cybertrain server` in the same app cannot run anyway: the second stops
+  with "a cybertrain server is already running here".)
   Codespaces runs it on every attach.
 - The banner shows the app's URL (in a codespace the forwarded
   `https://<codespace>-3000.app.github.dev/`, elsewhere
-  `http://localhost:3000/`), where the guide is, and how long edits take.
+  `http://localhost:3000/`), where the guide is, and what an edit does (a
+  Ruby change shows at once from CRuby; the compiled binary takes over when
+  its build finishes, and the corner of the page says which one served it).
 - In Codespaces, the launcher adds that exact forwarded hostname to
   `CYBERTRAIN_ALLOWED_HOSTS`, preserving any explicitly configured names.
 - When VS Code's `code` command works in its terminal, it opens
@@ -150,9 +185,9 @@ GIT_CONFIG_NOSYSTEM=1 git clone https://github.com/saeki-mototsune/cybertrain
   --openExternal`) as soon as the port answers, on every start (so after a
   codespace restart too), and the banner says where to open the app if no
   tab opened. The opener runs in the background, waits at most 300 s, gives
-  up when the server exits and does not hold the lock. The development
-  loop's restarts after a rebuild do not run the script, so they open no
-  second tab.
+  up when the server exits and does not hold the lock. The supervisor holds
+  the port while it hands it from CRuby to the compiled binary and does not
+  run the script again, so an edit opens no second tab.
 - `PORT` changes the port, as it does for `cybertrain server`. While another
   `cybertrain server` of the same user runs, whatever its port, the script
   starts nothing: beside the running blog, `PORT=4000 playground-server`
@@ -174,7 +209,7 @@ repository's default dev container configuration:
 - `postCreateCommand`: empty, so no setup step runs.
 - `postAttachCommand`: `playground-server`, on every attach (it is safe to run again). When the codespace first opens, VS Code asks whether the visitor trusts the authors of the files in this folder; the `server` terminal starts only after "Trust Folder & Continue".
 - `forwardPorts` and `portsAttributes`: port 3000, labelled `cybertrain`, with `onAutoForward: notify`: when the server starts listening, VS Code shows "Your application (cybertrain) running on port 3000 is available." with an "Open in Browser" button. `playground-server` opens the browser tab itself (above). A tab that VS Code opens without a click (`openBrowser`, `openBrowserOnce`, or `code --openExternal`) can be stopped by a pop-up blocker, and in Chrome VS Code then shows nothing (it offers "Retry" only in Safari); allowing pop-ups afterwards does not open it. The notification's button is a click, so it gets through, and `onAutoForward` takes only one action, so the tab comes from the script and the button from `notify`. The editor's preview (`openPreview`) did not load the private forwarded port (see below).
-- `files.autoSave: off`: the development server rebuilds the app on every save of a Ruby file, and delayed auto-save would start a minute-long rebuild at every pause in typing.
+- `files.autoSave: off`: every save of a Ruby file still starts a Spinel build (a minute or two, cancelling the one before) and restarts the CRuby preview, even though the page no longer waits for the build; delayed auto-save would do both at every pause in typing, often on a half-typed file that does not load, so the page would show the error page more often than the change.
 - `workbench.editorAssociations`: `PLAYGROUND.md` opens as a Markdown preview (`vscode.markdown.preview.editor`), the guide's reading view; "Reopen Editor With... → Text Editor" shows its source.
 - No `hostRequirements`: the default 2-core machine, which costs the visitor the least quota.
 
@@ -188,7 +223,7 @@ Code in the browser.
 - The editor's preview needs that sign-in first: once the app's tab has opened, the Ports view's "Preview in Editor" on port 3000 shows the app inside VS Code too (reload a preview that showed the error), but after every restart of the codespace the port signs in again, and inside the preview pop-ups and `confirm()` dialogs do not work, so the guide does not mention it.
 - "Rebuild Container" starts again from the image: edits under `/workspace/blog` are lost, since only `/workspaces` survives a rebuild.
 - A codespace's storage counts against the visitor's quota until it is deleted at https://github.com/codespaces.
-- Measured on the default 2-core machine (the same live check): the editor shows about 20 s after "Create new codespace" and the blog's files after about a minute; the server listens a few seconds after "Trust Folder & Continue"; a Ruby edit is rebuilt and the server restarted about 100 s after the save; a stopped codespace starts the server again about 40 s after "Restart codespace", with the data kept.
+- Measured on the default 2-core machine (the same live check): the editor shows about 20 s after "Create new codespace" and the blog's files after about a minute; the server listens a few seconds after "Trust Folder & Continue"; a Ruby edit was rebuilt and the server restarted about 100 s after the save (the compiled loop, before the CRuby preview: with it the edit answers at once and the binary follows after its build); a stopped codespace starts the server again about 40 s after "Restart codespace", with the data kept.
 
 ## Smoke test
 
@@ -198,18 +233,27 @@ bash playground/smoke.sh IMAGE
 
 It needs bash 3.2 or newer, docker and curl. It prints one PASS or FAIL line
 per check, then `smoke: N passed, M failed`, and exits 0 only when every
-check passes; CI runs it on every build before pushing. Most of its time
-goes to three compiles of up to a minute each: the model edit (A9), the
-server started by hand (D4) and the offline app (B3).
+check passes; CI runs it on every build before pushing. A3's and A9's PASS
+lines also say what they timed. Most of its time goes to two compiles: the
+binary after the model edit (A9) and the offline app (B3, not timed on its
+own). A3, A11 and E1 wait for the startup build to end, which finds the
+binary up to date: the binary serves a fraction of a second after the start.
+Measured on 4 CPUs (linux/amd64, 2026-11-13), twice, on the image built from
+commit c04bb23 and this directory: 33 passed in 3 min 23 s and in 2 min 48 s;
+A3, the binary served 0.2 s after the start of the supervisor's first round
+(its own `=> spinel: ready in` figure, which counts from after `spin flags`,
+the address probe and the bind, not from `docker run`); A9, CRuby answered
+1 s after the save and the binary 56 s after it (whole seconds, polled every
+3 s once CRuby has answered; spinel's object cache is warm).
 
 | ID | Checks |
 | --- | --- |
-| G1-G7 | The image as built: user `dev` (uid 1000); `cybertrain version`; `cybertrain doctor`; `CYBERTRAIN_HOME` and `XDG_CACHE_HOME` set, `CYBERTRAIN_HOST` not; the blog's `spin.toml` points at `v<VERSION>`; the blog is a clean one-commit git repository that tracks `PLAYGROUND.md`; no `tmp/secret_key`, an executable `build/bin/blog` |
-| A1-A10 | The default command with `CYBERTRAIN_HOST=0.0.0.0`, reached from the host: `GET /articles`; the boot banner; nothing compiled at start; `GET /` shows `<h1>Articles</h1>`; a CSRF token and a `SameSite=Lax` cookie; creating an article (303, then its page); 403 without a token; a view edit shows on the next request; a model edit rebuilds and restarts the server (a short body then answers 422); `tmp/secret_key` generated |
-| D1-D4 | `playground-server` again: it exits 0 saying "already running"; one server process; after a container restart (idle stop and resume) the server is back with the data; a server started by hand is left alone, while it is still compiling and once it listens |
+| G1-G8 | The image as built: user `dev` (uid 1000); `cybertrain version`; `cybertrain doctor`; `CYBERTRAIN_HOME` and `XDG_CACHE_HOME` set, `CYBERTRAIN_HOST` not; the blog's `spin.toml` points at `v<VERSION>`; the blog is a clean one-commit git repository that tracks `PLAYGROUND.md`; no `tmp/secret_key`, an executable `build/bin/blog`; `cybertrain doctor`'s `fiddle` line is ok (the CRuby preview needs it) |
+| A1-A12 | The default command with `CYBERTRAIN_HOST=0.0.0.0`, reached from the host: `GET /articles`; the boot banner; nothing compiled at start (`build/bin/blog` keeps the image's mtime once the startup build has ended); `GET /` shows `<h1>Articles</h1>`; a CSRF token and a `SameSite=Lax` cookie; creating an article (303, then its page); 403 without a token; a view edit shows on the next request; a model edit answers 422 for a short body from `X-Cybertrain-Runtime: cruby` within 10 s, then from `spinel`; `tmp/secret_key` generated; A11, no C compiler at the first start (no `cc1`, `collect2` or `ld` in any form, and no `cc` or `gcc` but `--version` probes and lines whose command line could not be read, from the container's start until the startup build has ended, polled by a loop the container's command line starts before `playground-server`, and `build/bin/gen` and the shim's `tmp/cybertrain-dev/ffi/*.so` keep the image's mtimes); A12, the CRuby child that serves the model edit, the first to use the shim, inserts and lists articles and the shim's libraries are still the image's |
+| D1-D4 | `playground-server` again: it exits 0 saying "already running"; one supervisor and one child; after a container restart (idle stop and resume) the server is back, once, with the data; a server started by hand is left alone, before it listens (held there by a `spin` that waits) and once it listens |
 | C1-C4 | `CODESPACES=true`: the cookie keeps the default, `SameSite=Lax` without `Secure` or `Partitioned`; the banner shows the forwarded URL; interactive and login shells started with `PATH=/usr/bin:/bin` find `spin` in `/opt/cybertrain/bin`; with a stand-in for VS Code's `code` on `PATH`, `playground-server` opens `PLAYGROUND.md` and then the forwarded URL with `--openExternal` |
-| F1 | `CYBERTRAIN_SESSION_SAME_SITE=lax` stops the server at boot, naming the valid values |
-| E1 | A `cp -a` copy of the blog starts without compiling |
+| F1 | `CYBERTRAIN_SESSION_SAME_SITE=lax` stops the app at boot, under CRuby and as the compiled binary, which the supervisor tries as soon as the startup build finds it up to date: the log names the valid values and says the binary failed, and the server answers 503 with a page that names them for both (the supervisor outlives its children, so the container does not exit) |
+| E1 | A `cp -a` copy of the blog starts without compiling (its binary and the shim's libraries keep the image's mtimes once the startup build has ended) |
 | B1-B3 | No network: the repository URL reaches the mirror; `cybertrain new` in `/workspace` locks the blog's commit; the new app builds |
 
 ## CI and publishing
@@ -251,19 +295,34 @@ that tag is refused: the Release workflow's `promote-latest` job points
 ## Limitations
 
 - `linux/amd64` only; on arm64, build the image from a checkout.
-- No live reload: reload the page after a change.
-- A Ruby edit is a full rebuild (about a minute; 99 s on the default 2-core
-  codespace); a view edit needs none.
+- No live reload: reload the page after a change (the line in its corner
+  updates itself; the page does not).
+- A Ruby edit is served by CRuby at once, which is not the compiled program:
+  what differs under Spinel shows once the binary takes over, after an
+  incremental build. A view edit needs neither. Measured on the same image
+  (2026-11-13) by saving the model edit A9 makes in a running blog: CRuby
+  answered 0.6 s after the save and the binary 74 s after it on 4 CPUs, and
+  0.7 s and 74 s under `docker run --cpus 2` (most of that build is
+  single-threaded). The smoke's A9 timed the same edit's binary at 56 s on
+  the same machine, in a separate run. A9 polls every 3 s and can only be
+  late, so its 56 s means 53 to 56 s: the same incremental build took 74 s
+  in one run and 53 to 56 s in the other. None of these was measured in a
+  codespace: the 2-CPU figures are `docker run --cpus 2` on the development
+  machine, and a codespace's cores can be slower (the compiled loop's full
+  rebuild took 99 s on the default 2-core codespace), so the texts for
+  visitors say "a minute or two". A new app's first `cybertrain server`
+  serves from CRuby at once, and its binary took over after 112 s on 4 CPUs
+  and 153 s with `docker run --cpus 2`; the texts for visitors say "a few
+  minutes".
 - In a codespace the editor's preview cannot sign in to the private forwarded
   port by itself. The app opens in a browser tab, and the preview shows the
   app only once that tab has signed in; after every restart of the
   codespace, the tab has to sign in again first.
 - In a codespace the server runs in the `server` terminal; stop it with
-  Ctrl-C. Closing that terminal with its trash icon leaves the app answering
-  on port 3000 without a terminal (the development loop treats SIGHUP as a
-  restart request), and `playground-server` then starts nothing because the
-  server is already running. Stopping and restarting the codespace brings the
-  server back in a new terminal.
+  Ctrl-C. Closing that terminal with its trash icon stops it too (the
+  supervisor treats SIGHUP as a stop); run `playground-server` in a new
+  terminal to start it again. Stopping and restarting the codespace also
+  brings the server back in a new terminal.
 - The blog's `spin.lock` pins the commit the image was built from, which for
   an image built from `main` can differ from the commit GitHub's
   `v<VERSION>` tag points at.

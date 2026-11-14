@@ -16,6 +16,17 @@ error: PORT must be a number
 ok   server rejects a PORT that is not a number
 error: unexpected argument 'extra'
 ok   server rejects anything after PORT
+error: PORT must be a number
+error: unexpected argument 'extra'
+error: unexpected argument 'extra'
+ok   server --spinel is today's loop: the flag is dropped, PORT and extra words are checked
+run    SPIN_DEBUG=1 spin run gen
+run    spin build blog -- --incremental
+run    spin run blog -- 4000
+run    SPIN_DEBUG=1 spin run gen
+run    spin build blog -- --incremental
+run    spin run blog -- 4000
+ok   server --spinel passes PORT to the compiled loop, before or after the flag
 error: spin.toml [package] name 'tmp' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
 error: spin.toml [package] name 'Public' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
 error: spin.toml [package] name '.hidden' collides with what `cybertrain build` keeps in dist/ (public, storage, tmp) or its scratch entries: it cannot be one of those names (in any letter case) or start with '.'
@@ -28,6 +39,28 @@ ok   build runs the three steps under tmp/cybertrain-build.lock, then assembles 
 ok   a failed spin build still restores gen/views.rb, skips assemble and exits 1
 warning: gen/views.rb still holds the embedded views; run spin run gen
 ok   a failed restore exits 1, warns about gen/views.rb and releases the lock
+ok   Build.lock_path names the lock BuildLock takes
+ok   the build lock is created holding this process's PID when it is free
+ok   taking and releasing the build lock leaves no descriptor open
+error: another cybertrain build (pid 1) holds tmp/cybertrain-build.lock; wait for it to finish
+ok   a held build lock is refused, and cybertrain build stops before any step
+ok   a lock file nobody holds is taken at once, whatever PID or age it records
+ok   two takers racing for the build lock leave exactly one holder
+ok   a taker that opened the file before its holder released it ends up on the path's file
+ok   a crashed holder's build lock is taken at once
+ok   a holder releasing an old build lock never lets another taker in before it is done
+
+dist/blog       (production by default)
+dist/public/
+run:  cd dist && ./blog migrate && ./blog
+ok   releasing the build lock leaves a lock another taker holds at the path
+ok   a build lock whose PID cannot be written is closed and removed, and the error goes on
+ok   a build lock whose close fails as well still raises the write's error
+
+dist/blog       (production by default)
+dist/public/
+run:  cd dist && ./blog migrate && ./blog
+ok   a long cybertrain build keeps its lock held however old the file gets
 ok   assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/
 ok   assemble removes a symlink in dist/public without following it
 ok   assemble fails clearly when the binary is missing
@@ -41,4 +74,4 @@ error: no spin.toml with a [package] name here; run this inside a cybertrain app
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   the CLI needs spin.toml for migration, db, server and build
-24 tests, 188 assertions, 0 failures
+39 tests, 277 assertions, 0 failures

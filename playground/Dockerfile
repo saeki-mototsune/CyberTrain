@@ -46,12 +46,15 @@ ENV LANG=C.UTF-8 \
 # (no g++). procps: ps/pgrep for terminals and smoke.sh.
 # ruby-dev and the prism gem: Spinel's build runs a Ruby generator that
 # requires prism, which Ruby 3.2 does not bundle (1.9.0 is PRISM_VERSION in
-# Spinel's Makefile at Cybertrain::SPINEL_TAG).
+# Spinel's Makefile at Cybertrain::SPINEL_TAG). fiddle, which the CRuby
+# preview's FFI shim needs, comes with Ubuntu's ruby (libruby3.2 and libffi):
+# the build stops here if it does not load.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         ca-certificates curl git gcc make libc6-dev libsqlite3-dev zlib1g-dev libssl-dev procps ruby ruby-dev \
  && rm -rf /var/lib/apt/lists/* \
- && gem install --no-document prism -v 1.9.0
+ && gem install --no-document prism -v 1.9.0 \
+ && ruby -e 'require "fiddle"'
 
 # User dev, uid/gid 1000 (ubuntu:24.04 ships "ubuntu" with 1000: removed
 # first). Nothing the prebuilt app needs lives in its home directory.
@@ -121,11 +124,43 @@ WORKDIR /workspace/blog
 RUN cybertrain generate scaffold article title:string body:text
 # Step 04: the root route.
 COPY --chown=dev:dev playground/routes.rb config/routes.rb
-# Step 07, then one full build: gen/ is current and build/bin/{gen,db,blog}
-# exist, so the first `cybertrain server` compiles nothing. spin's freshness
-# test compares mtimes: never copy this tree with anything but `cp -a`.
+# Step 07, then the blog's build: gen/ is current and build/bin/{gen,db,blog}
+# exist. The binary shipped is the release build of a plain `spin build
+# blog` (spinel compiles the program's C in a few large parts; with
+# --incremental it compiles units of 256K, at the same -O2 and flags, into a
+# slightly larger binary). The incremental build runs first only to fill
+# spinel's object cache (/opt/cybertrain-cache/spinel), so that the build
+# after a visitor's edit recompiles only the C units whose text changed; its
+# binary is then removed, so that the release build runs and comes last. The
+# first `cybertrain server` picks its startup build by file times (decision
+# P23): a binary newer than every Ruby file of the blog and the framework
+# (a tie counts as stale) gets a plain `spin build blog`, which says "up to
+# date" in a fraction of a second; any other gets `spin build blog --
+# --incremental`, which compiles every time. The last RUN checks both rules.
+# Never copy this tree with anything but `cp -a`, which keeps the times.
 RUN cybertrain db migrate
-RUN cybertrain spin run gen && cybertrain spin build blog
+RUN cybertrain spin run gen \
+ && spin build blog -- --incremental \
+ && rm build/bin/blog \
+ && spin build blog \
+ && spin build blog | grep -F "(up to date)"
+# The CRuby preview's FFI shim compiles the framework's C (SQLite, ...) at
+# its first use and keeps it in tmp/cybertrain-dev/ffi/<sha256>.so: built
+# here, with the image's compiler, so the first CRuby child compiles nothing
+# either. The load path is the -I directories of `spin flags`, as
+# `cybertrain server` gives them to its children. Built as dev, the user
+# every container runs as (devcontainer.json's remoteUser, smoke.sh's
+# docker run and exec): the shim loads nothing from a cache that another
+# user owns or that its group or others may write to (decision P26), so a
+# cache warmed by root would be refused at the first CRuby request. The
+# second run is that check as the visitor's shim makes it: it must find
+# every library and compile none.
+RUN set -eu; \
+    load_path=$(spin flags | tr ' ' '\n' | awk 'take { print "-I" $0; take = 0; next } $0 == "-I" { take = 1; next } /^-I./ { print }'); \
+    test "$(id -un)" = dev; \
+    ruby -E UTF-8 $load_path -r cybertrain/preview -e 'require "cybertrain"; puts "ffi libraries built: #{Cybertrain::Preview.warm!}"'; \
+    ls tmp/cybertrain-dev/ffi/*.so; \
+    ruby -E UTF-8 $load_path -r cybertrain/preview -e 'require "cybertrain"; n = Cybertrain::Preview.warm!; abort "the warmed cache was compiled again (#{n})" unless n.zero?'
 COPY --chown=dev:dev playground/PLAYGROUND.md PLAYGROUND.md
 # One commit, so the Source Control view shows the visitor's own changes.
 RUN git init -q -b main \
@@ -133,6 +168,23 @@ RUN git init -q -b main \
  && git -c user.name="cybertrain playground" -c user.email="playground@cybertrain.invalid" \
         commit -q -m "Tutorial steps 02-04 and 07: new, scaffold article, root route, db migrate" \
  && test -z "$(git status --porcelain)"
+
+# P23's rule as the supervisor reads it, once nothing more is written: the
+# binary is newer than every *.rb of the blog (Build.binary_stale?) and of
+# the other -I directories of `spin flags` (the framework), and spin agrees.
+# No -I directory, or none but the blog's, would check nothing: that fails.
+RUN set -eu; \
+    dirs=$(spin flags | tr ' ' '\n' | awk 'take { print $0; take = 0; next } $0 == "-I" { take = 1; next } /^-I./ { print substr($0, 3) }'); \
+    test -n "$dirs" || { echo "spin flags names no -I directory" >&2; exit 1; }; \
+    ruby -r cybertrain/cli/build -e ' \
+      build = Cybertrain::CLI::Build; \
+      since = build.mtime_ns("build/bin/blog"); \
+      abort "build/bin/blog is stale (Build.binary_stale?)" if build.binary_stale?(Dir.pwd, "blog"); \
+      others = ARGV.reject { |dir| File.expand_path(dir) == Dir.pwd }; \
+      abort "spin flags names no -I directory but the blog: #{ARGV.join(", ")}" if others.empty?; \
+      newer = others.select { |dir| build.newer_ruby?(dir, since, true) }; \
+      abort "a Ruby file is as new as build/bin/blog or newer in #{newer.join(", ")}" unless newer.empty?' $dirs; \
+    spin build blog | grep -F "(up to date)"
 
 EXPOSE 3000
 CMD ["playground-server"]

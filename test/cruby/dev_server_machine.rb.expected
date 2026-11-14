@@ -1,0 +1,46 @@
+ok   start: gen, the CRuby child, the build
+ok   a machine that has not started has nothing
+ok   a change: cancel, gen, stop, CRuby child, build (P12)
+ok   build ok at the current generation hands the port to the binary
+ok   a stale build is discarded
+ok   a change while the binary serves goes back to CRuby
+ok   a failed build keeps CRuby and publishes the output
+ok   gen fails: stop, hold, no build; the next change leaves holding
+ok   gen fails at start: hold, nothing to stop, no build
+ok   the CRuby child dies: hold; a build that then succeeds takes the port
+ok   the binary dies, before or after ready: CRuby again, no retry
+ok   both dead: holding with what is known of each
+ok   locked by cybertrain build: nothing runs, then the pending change is handled once
+ok   a build that finishes while locked is not handed over: a fresh build starts once the lock is gone
+ok   events of another generation are ignored; stop ends everything
+ok   start while the build lock is held: hold, then start on the first tick after it (R4)
+ok   a change that arrives before the locked start has run joins the start
+ok   a binary handover does not start a stale binary after a blocking stop (P16)
+ok   the lock appears while gen runs: the round stops, the old child keeps serving (P17)
+ok   log lines
+ok   a ready child of the wrong kind is ignored
+ok   a state is written whenever one of its four values changes, and only then
+ok   stop from holding releases the hold once
+ok   a build that succeeds while a change waits is discarded, not handed over (A)
+ok   a build that succeeded under the lock is dropped when a change arrives before the tick
+ok   a failed build while a change waits is discarded too
+ok   the binary dies while the lock is held: hold, then CRuby on the first tick after (B)
+ok   the binary dies under the lock with a change pending: the change round runs instead
+ok   the CRuby child dies while the lock is held: hold, nothing started
+ok   the child still serving after an interrupted round is still watched (C)
+ok   the binary serving through an interrupted round is still watched
+ok   the serving child's ready is seen after an interrupted round
+ok   a build success for the current generation while an interrupted round waits is discarded
+ok   the lock appears during the handover's stop: hold, then CRuby and a fresh build, never the old binary
+ok   the lock appears during the handover's stop and a change arrives: the change round runs
+ok   a pending change wins over the lock after the handover's stop
+ok   the CRuby child died under the lock, then a build succeeded: nothing handed over after the lock
+ok   the lock appears in a change round's stop_child: hold, the round runs again from the start (S7)
+ok   the same when the round began from the binary serving
+ok   a change round that started from holding and meets the lock in stop_child holds again
+ok   the first round never stops a child, so the lock cannot appear between its check and its start
+ok   nothing serving and a ready build with no change pending: the tick hands over again
+ok   the same tick under the build lock holds, then CRuby and a fresh build after it
+ok   a change under the build lock while nothing serves puts up the lock's hold
+ok   no child was ever started while the build lock was held, in any test of this file
+45 tests, 142 assertions, 0 failures
