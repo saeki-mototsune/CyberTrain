@@ -2,6 +2,8 @@ require "stringio"
 require "cybertrain/job"
 require "cybertrain/scheduler"
 require "cybertrain/websocket"
+require "cybertrain/context"
+require "cybertrain/middleware/request_id"
 require "cybertrain/test"
 require "cybertrain/test/jobs"
 require "cybertrain/test/websocket_receiver"
@@ -94,8 +96,33 @@ class BoomJob < Cybertrain::Job::Base
   end
 end
 
+# The ids of the jobs ParentJob enqueued.
+CHILDREN = Array.new(0) { 0 }
+
+# A job that enqueues another, as a job's handler would.
+class ParentJob < Cybertrain::Job::Base
+  def self.job_kind
+    "ParentJob"
+  end
+
+  def self.perform_later(args = {})
+    Cybertrain::Job.enqueue(job_kind, JSON.generate(args))
+  end
+
+  def self.run_job(run)
+    new.perform(run.run_args)
+    nil
+  end
+
+  def perform(args)
+    CHILDREN << WelcomeJob.perform_later("user_id" => 5)
+    nil
+  end
+end
+
 Job.register("WelcomeJob") { |run| WelcomeJob.run_job(run) }
 Job.register("BoomJob") { |run| BoomJob.run_job(run) }
+Job.register("ParentJob") { |run| ParentJob.run_job(run) }
 Job.handle("welcome_mail") { |payload| Cybertrain.logger.info("mail #{payload}") }
 
 Cybertrain::Scheduler.every(60, "nightly") { Cybertrain.logger.info("pruned") }
@@ -198,6 +225,47 @@ test "two jobs on one reused thread: the second starts from its own Scope, nothi
   assert_equal "id=#{RID} tags=BoomJob #{failing}|#{RID} at=1 where=BoomJob context=job.attempt=1,job.id=#{failing},job.max_attempts=5", SEEN[0]
   assert_equal "id= tags=WelcomeJob #{quiet} at=-1 where=WelcomeJob context=job.attempt=1,job.id=#{quiet},job.max_attempts=5", SEEN[1]
   assert_equal "id= tags= at=-1 where= context=", after[0]
+  assert no_scope?
+end
+
+test "a job enqueued by a job records the request id its parent carries" do
+  fresh_db
+  CHILDREN.pop until CHILDREN.empty?
+  travel_to(NOON) do
+    parent = 0
+    with_scope(request_scope(RID)) { parent = ParentJob.perform_later }
+    log = capture_log { perform_enqueued_jobs }
+    assert_equal 1, CHILDREN.size
+    child = CHILDREN[0]
+    assert_equal RID, request_id_of(parent)
+    assert_equal RID, request_id_of(child)
+    assert_includes log, "2026-11-11T12:00:00.000Z INFO [WelcomeJob #{child}] [#{RID}] welcome 5\n"
+  end
+  assert no_scope?
+end
+
+# An action's work in a request: enqueues a WelcomeJob and answers its id.
+class EnqueueInRequest < Cybertrain::Middleware
+  def call(ctx)
+    id = WelcomeJob.perform_later("user_id" => 6)
+    ctx.response.body = id.to_s
+    nil
+  end
+end
+
+test "a job enqueued in a request through RequestId records the response's X-Request-Id" do
+  fresh_db
+  travel_to(NOON) do
+    request = Cybertrain::Request.new("POST", "/users", { "host" => "www.example.com" }, "", "127.0.0.1")
+    ctx = Cybertrain::Context.new(request)
+    Cybertrain::RequestId.new(EnqueueInRequest.new(nil), [:request_id]).call(ctx)
+    rid = ctx.response.header("X-Request-Id").to_s
+    id = ctx.response.body.to_i
+    assert LogCapture.uuid?(rid), rid
+    assert_equal rid, request_id_of(id)
+    log = capture_log { perform_enqueued_jobs }
+    assert_includes log, "2026-11-11T12:00:00.000Z INFO [WelcomeJob #{id}] [#{rid}] welcome 6\n"
+  end
   assert no_scope?
 end
 

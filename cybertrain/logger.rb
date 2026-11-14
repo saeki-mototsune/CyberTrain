@@ -40,7 +40,7 @@ module Cybertrain
     HEX_DIGITS = %w[0 1 2 3 4 5 6 7 8 9 a b c d e f].freeze
 
     # What the lines logged on one thread carry while a piece of work runs
-    # there (spec section 12.2, plan D5): the request's id, method, path
+    # there (spec section 12.2, docs/design.md D86): the request's id, method, path
     # and `where` (the controller action, written by the controller), the
     # line's tags in order, the index of the request id among them (-1
     # when it is not shown), and the context an error report adds. One
@@ -110,7 +110,8 @@ module Cybertrain
     # 102: beside I18n's locale and the db pool's Connection).
     SCOPE_KEY = :cybertrain_log_scope
 
-    # The empty Scope, built with fresh locals (pre-flight ruling G1).
+    # The empty Scope, each String bound to a local before `Scope.new`
+    # (spikes/NOTES.md rule 58).
     # @api private
     def self.empty_scope
       id = ""
@@ -256,9 +257,8 @@ module Cybertrain
       time = Logger.timestamp
       return Logger.json_line(time, level_name, tags, id_tag, text) if @json_lines
 
-      # Built from the bytes (Task 2's review, I2): a UTF-8 tag beside a
-      # binary or ISO-8859-1 message would raise Encoding::CompatibilityError
-      # under CRuby. The bytes are written as they are.
+      # Built from the bytes: a UTF-8 tag beside a binary or ISO-8859-1
+      # message would raise Encoding::CompatibilityError under CRuby. The bytes are written as they are.
       out = "#{time} #{level_name}".b
       tags.each do |tag|
         out << " ["

@@ -189,7 +189,7 @@ same_binary refused
 rm "$APP/test/refused_test.rb"
 
 # An exported DSN and log format: `cybertrain test` ignores them unless
-# config/app.rb assigns them (plan D14), so no test reports to a real Sentry
+# config/app.rb assigns them, so no test reports to a real Sentry
 # and captured log lines stay text. A new input, so one more compile.
 cp "$EXTRA/sentry_dsn_test.rb" "$APP/test/sentry_dsn_test.rb"
 CYBERTRAIN_SENTRY_DSN=https://k@sentry.example/1 CYBERTRAIN_LOG_FORMAT=json \

@@ -470,7 +470,7 @@ module Cybertrain
       # redirected, and the redirect's host is one the check accepted.
       app = SslRedirect.new(app, c.health_path) if c.force_ssl
       app = HostAuthorization.new(app, c.checked_hosts, c.health_path) if c.host_check?
-      # Outermost (plan D6): the 403 above, the redirect and the error
+      # Outermost (docs/design.md D86): the 403 above, the redirect and the error
       # pages carry the id, and every line the stack logs has its tags.
       app = RequestId.new(app, c.log_tags)
       app

@@ -88,8 +88,8 @@ module Cybertrain
     # How long stop_supervisor! waits for the supervisor thread.
     SUPERVISOR_JOIN_SECONDS = 2.0
 
-    # The class name the supervisor's give-up is reported under (plan D10;
-    # no such class exists).
+    # The class name the supervisor's give-up is reported under
+    # (docs/design.md D87; no such class exists).
     FEED_FAILED = "Cybertrain::Background::FeedFailed"
 
     # Whole seconds on the monotonic clock: the backoff, the window and

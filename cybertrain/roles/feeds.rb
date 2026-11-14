@@ -106,7 +106,7 @@ module Cybertrain
           Background.stop_all unless stopped
         ensure
           # The error reports still queued (a give-up's among them), up to
-          # 2 seconds (D11).
+          # 2 seconds (docs/design.md D87).
           Cybertrain.error.drain_reports(2.0)
           Background.exit_on_feed_death = false
           Background.reset_supervisor!

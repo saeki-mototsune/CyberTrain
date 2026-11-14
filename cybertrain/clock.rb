@@ -36,8 +36,8 @@ module Cybertrain
   # not locked because {now} is on every request's path and a test needs
   # no more than this.
   #
-  # Each write of the state is followed by {Logger.follow_clock} (plan D2):
-  # the log line's time follows a travel, while cybertrain/logger.rb, in
+  # Each write of the state is followed by {Logger.follow_clock}
+  # (docs/design.md D86): the log line's time follows a travel, while cybertrain/logger.rb, in
   # the HTTP layer, never names the Clock.
   # @api public
   module Clock

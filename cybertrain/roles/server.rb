@@ -129,7 +129,8 @@ module Cybertrain
           # what never started, so nothing this role began outlives it.
           Features.stop_features
           # The error reports still queued: up to 2 seconds for them once
-          # every service has stopped (what is left is lost; D11).
+          # every service has stopped (what is left is lost; docs/design.md
+          # D87).
           Cybertrain.error.drain_reports(2.0)
           Runtime.leave_role
         end
@@ -239,7 +240,9 @@ module Cybertrain
       # serving. In development a RequestId wraps them all, so the
       # diagnostics page and its log line carry the request's id; the
       # stack's own RequestId then finds the id set and adds nothing
-      # (plan D6).
+      # (docs/design.md D86). test/request_id.rb ("the development
+      # front_app's nesting makes one id, one header and one Scope")
+      # builds this nesting by hand: a change here goes there too.
       def front_app
         app = @stack
         rebuilder = @rebuilder

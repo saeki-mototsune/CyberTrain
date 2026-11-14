@@ -115,8 +115,10 @@ module Cybertrain
       # @api public
       attr_reader :run_now
       # @return [String] the id of the request the job was enqueued in
-      #   (recorded in the row's `request_id`), "" when it was enqueued
-      #   outside a request; the job's log lines carry it
+      #   (recorded in the row's `request_id`), or, for a job enqueued by
+      #   another job, the request id that job carries; "" when it was
+      #   enqueued outside both (a scheduled task, a feed, a command); the
+      #   job's log lines carry it
       # @api public
       attr_reader :run_request_id
 
@@ -404,7 +406,9 @@ module Cybertrain
     # A kind registered with a `concurrency_key:` stores the payload's
     # {Job.concurrency_key_for} with the row; its limit then counts per key.
     # Enqueued inside a request, the row records the request's id (this
-    # thread's {Logger.current_scope}), and the job's log lines carry it.
+    # thread's {Logger.current_scope}), and the job's log lines carry it;
+    # enqueued by a job, it records the request id that job carries, so a
+    # chain of jobs keeps the id of the request that started it.
     # @example run in ten minutes
     #   Cybertrain::Job.enqueue("reminder", order.id.to_s, run_at: Time.current + 600)
     # @param kind [String] a kind registered with {Job.handle}

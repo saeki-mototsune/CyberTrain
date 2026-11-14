@@ -29,7 +29,8 @@ module Cybertrain
       # concurrency_key is the row's {Job.concurrency_key_for}, written at
       # enqueue; "" for a kind with no key. request_id is the id of the
       # request the job was enqueued in (the enqueuing thread's log Scope),
-      # "" outside one; the job's log lines carry it. A table made before these columns
+      # the parent's for a job enqueued by a job, "" outside both; the
+      # job's log lines carry it. A table made before these columns
       # existed gets them from install! (ALTER_COLUMNS), last, so an upgraded
       # table lists the same columns in the same order as a new one.
       TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_jobs (" \
@@ -73,8 +74,8 @@ module Cybertrain
       @failing_outcome_writes = 0
 
       # Inserts a `queued` row and returns its id ({Job.enqueue}, which has
-      # checked the kind and derived the key, and passes the enqueuing
-      # request's id, "" outside a request).
+      # checked the kind and derived the key, and passes the request id of
+      # the enqueuing thread's Scope: a request's, a parent job's, or "").
       def self.insert(kind, payload, run_at, key, request_id)
         ensure_installed
         now = Clock.now.to_i

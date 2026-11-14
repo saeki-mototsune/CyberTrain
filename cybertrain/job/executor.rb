@@ -142,7 +142,7 @@ module Cybertrain
       # `where` is the kind; the context holds `job.id`, `job.attempt` and
       # `job.max_attempts`.
       #
-      # `job.max_attempts` in an error report (plan D10) means, by how the
+      # `job.max_attempts` in an error report (docs/design.md D87) means, by how the
       # attempt failed:
       # - the default policy (the exception reached {run_handler}): the
       #   Scope's value here, {Config#job_max_attempts}, whatever the kind's
@@ -257,7 +257,8 @@ module Cybertrain
       # Each run starts at the default locale, as a controller action does:
       # a job thread is long-lived, so a locale one job set (`I18n.locale =
       # user.locale`) would otherwise stay for the next job on the thread.
-      # Either arm reports the failed attempt (spec section 13.2, plan D10):
+      # Either arm reports the failed attempt (spec section 13.2,
+      # docs/design.md D87):
       # `where` the kind, the context the job Scope's.
       def self.run_handler(handler, run)
         I18n.locale = nil

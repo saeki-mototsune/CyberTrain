@@ -65,7 +65,7 @@ module Cybertrain
         # Both stops are no-ops for what never started.
         Job.stop!
         Scheduler.stop!
-        # The error reports still queued, up to 2 seconds (D11).
+        # The error reports still queued, up to 2 seconds (docs/design.md D87).
         Cybertrain.error.drain_reports(2.0)
         Runtime.leave_role
         trap("TERM", previous_term)
