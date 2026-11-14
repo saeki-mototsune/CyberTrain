@@ -605,3 +605,335 @@ routeur comme avant). Un répartiteur de charge, kamal-proxy ou un script de
 déploiement peut l’interroger&nbsp;; `public/up.html`, qu’écrit
 `cybertrain new` et que sa configuration Kamal interroge toujours, montre
 seulement que le processus répond en HTTP.
+
+## Journaux
+
+Le framework et l’application journalisent par `Cybertrain.logger`, une ligne
+par message sur la sortie standard, vidée après chaque ligne, comme le fait une
+application douze facteurs (le journal de systemd, Kamal et Docker la
+recueillent)&nbsp;:
+
+```text sortie — ./blog server
+2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started GET "/articles" for 127.0.0.1
+2026-11-14T09:30:00.132Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Completed 200 in 12ms
+2026-11-14T09:30:01.002Z ERROR [WelcomeJob 42] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] job 42 (WelcomeJob) attempt 1 of 5 failed: RuntimeError: smtp down; retrying in 60 s
+2026-11-14T09:30:02.410Z WARN [feed:prices] WebSocket "prices" silent for 60s; reconnecting
+```
+
+Une ligne est l’heure UTC à la milliseconde (dans un test, elle suit
+`travel_to`), le niveau en majuscules, les étiquettes entre crochets et le
+message. `Cybertrain.logger` a `debug`, `info`, `warn`, `error` et `fatal`,
+qui prennent chacun une String. Les lignes de plusieurs threads ne se mêlent
+jamais&nbsp;: chaque ligne est construite entière, puis écrite en un seul
+write sous un verrou tenu pour cette écriture seulement. Une écriture qui
+échoue (un tube fermé) abandonne la ligne&nbsp;; journaliser ne lève jamais
+d’exception chez l’appelant. Un lecteur qui cesse de lire la sortie standard
+(un tube plein) bloque tous les threads qui journalisent jusqu’à ce qu’il
+lise de nouveau&nbsp;: gardez le collecteur en marche.
+
+**Le niveau.** `c.log_level` dans `config/app.rb`, ou `CYBERTRAIN_LOG_LEVEL`
+(`debug`, `info`, `warn`, `error`, `fatal` ou `none`, en majuscules ou
+minuscules), est le niveau le moins important écrit&nbsp;; `:info` par
+défaut. `:none` coupe aussi le journal des requêtes, et écrit toujours les
+lignes d’erreur. Une affectation dans `config/app.rb` l’emporte sur la
+variable. Toute autre valeur arrête le démarrage&nbsp;:
+`error: log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)`.
+
+**Lignes JSON.** `c.log_format = :json` (ou `CYBERTRAIN_LOG_FORMAT=json`)
+écrit plutôt un objet JSON par ligne, pour un collecteur de journaux&nbsp;:
+
+```json
+{"time":"2026-11-14T09:30:00.132Z","level":"INFO","request_id":"3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c","tags":[],"message":"Completed 200 in 12ms"}
+```
+
+`request_id` n’y est que lorsque la ligne en a un (dans une requête, ou dans
+un job qu’une requête a mis en file) et que `log_tags` le montre&nbsp;; `tags`
+contient les autres étiquettes dans l’ordre. Les octets qui ne sont pas de
+l’UTF-8 valide sont écrits `�` en JSON&nbsp;; une ligne de texte garde
+les octets tels qu’ils ont été journalisés. Un format autre que `:text` ou
+`:json` arrête le démarrage&nbsp;:
+`error: log_format must be :text or :json (got :xml)`. La première ligne du
+démarrage lui-même (l’avertissement sur `mail_delivery_method :test` hors
+des tests) suit le format&nbsp;; les avertissements sur un réglage
+d’application illisible (`setting_int`, `setting_bool`) sont journalisés
+pendant que `config/app.rb` s’exécute, avant que le format soit connu, et sont
+toujours des lignes de texte.
+
+Le niveau et le format s’appliquent à `./<app> server`, `worker` et `feeds`,
+ainsi qu’aux commandes enregistrées, à `jobs` et à `console`, qui refusent une
+valeur inconnue avec le même message et le statut de sortie 1 avant d’ouvrir
+la base. `migrate`, `db` et `dbconsole` ne les appliquent pas&nbsp;: leurs
+lignes sont du texte au niveau `info`.
+
+### Identifiants de requête
+
+Chaque requête reçoit un identifiant, un UUID de version 4, que l’action lit
+dans `request.request_id` et que la réponse renvoie dans `X-Request-Id`, y
+compris sur le 403 du contrôle des hôtes, la redirection https de
+`force_ssl`, les pages d’erreur, la page de diagnostic du développement et le
+500 du serveur lui-même. Les 400 et 413 du serveur pour une requête qu’il ne
+peut pas lire, répondus avant que l’application ne la voie, n’en portent pas.
+Chaque ligne journalisée pendant la requête porte l’identifiant comme
+première étiquette, y compris les propres lignes `Cybertrain.logger.info` de
+l’application, de même qu’un corps diffusé (`stream do ... end`, Server-Sent
+Events) ou une connexion WebSocket ouverte par la requête, tant qu’elle reste
+ouverte.
+
+```ruby
+Cybertrain.logger.info("export #{report.id} for #{request.request_id}")
+```
+
+L’identifiant d’un proxy n’est pris que d’un proxy de confiance&nbsp;: quand
+la connexion vient d’un proxy de confiance (`CYBERTRAIN_TRUSTED_PROXY` ou
+`CYBERTRAIN_TRUSTED_PROXIES`, le contrôle que fait `request.client_ip`&nbsp;;
+[L’adresse du client derrière un proxy](requests.md#the-client-address-behind-a-proxy))
+et que son `X-Request-Id` fait de 1 à 255 lettres ASCII, chiffres et traits
+d’union, la requête prend cet identifiant, si bien que le journal du proxy et
+celui de l’application le partagent. Tout autre `X-Request-Id`, un en-tête
+envoyé deux fois compris, est écarté et un nouvel identifiant créé&nbsp;; il
+n’est jamais modifié.
+
+`c.log_tags` choisit les étiquettes de la requête, dans l’ordre&nbsp;:
+`[:request_id]` par défaut, `[:request_id, :remote_ip]` pour ajouter
+`request.client_ip` (désactivé par défaut&nbsp;: une adresse est une donnée
+personnelle), `[]` pour aucune (l’en-tête est toujours envoyé). Toute autre
+valeur arrête le démarrage&nbsp;:
+`error: log_tags may hold :request_id and :remote_ip (got :user_agent)`.
+
+### Étiquettes
+
+`Cybertrain.logger.tagged` ajoute des étiquettes à chaque ligne journalisée
+sur ce thread pendant le bloc, après celles de la requête, et les retire quand
+le bloc se termine, y compris quand il lève&nbsp;; il renvoie la valeur du
+bloc. Les blocs s’imbriquent. Il n’existe pas de forme sans bloc.
+
+```ruby
+Cybertrain.logger.tagged("billing", "order #{order.id}") do
+  Cybertrain.logger.info("charged 300")
+  # 2026-11-14T09:30:00.140Z INFO [3f2a9c1e-...] [billing] [order 7] charged 300
+end
+```
+
+Les étiquettes appartiennent au thread&nbsp;: un thread que vous lancez
+commence sans, quelles que soient celles du thread qui l’a lancé. Le framework
+étiquette son propre travail de la même façon&nbsp;:
+
+- **Jobs.** Les lignes de chaque tentative portent `[<JobClass> <id>]` (pour
+  un job de bloc de `Job.handle`, son type), puis l’identifiant de la
+  requête qui l’a mis en file&nbsp;: `INFO [WelcomeJob 7] [3f2a9c1e-...]
+  welcome 1`. L’identifiant est enregistré dans la ligne du job
+  (`cybertrain_jobs.request_id`) quoi que dise `log_tags`, et montré quand
+  `log_tags` contient `:request_id`. Un job mis en file par un job enregistre
+  l’identifiant de son parent&nbsp;; un job mis en file par une tâche
+  planifiée, un flux ou une commande n’en enregistre aucun.
+- **Tâches planifiées.** `[schedule:<name>]` pendant qu’une tâche
+  s’exécute, sa ligne d’échec comprise.
+- **Flux.** `[feed:<name>]` sur chaque ligne que journalise le thread d’un
+  flux, celles de ses callbacks comprises. Les lignes de redémarrage et
+  d’abandon du superviseur, journalisées sur son propre thread, n’ont pas
+  d’étiquette.
+
+## Signalement des erreurs
+
+`Cybertrain.error` recueille les exceptions qui mettent fin à une requête, à
+une tentative de job, à une tâche planifiée ou à un flux, ainsi que celles que
+l’application signale elle-même, et remet chacune aux abonnés que
+l’application ajoute et à Sentry (ou GlitchTip) quand un DSN est défini. Il est
+dans le cœur&nbsp;; l’envoi à Sentry est une ligne à part, que charge
+`require "cybertrain"` et qu’une application sur `cybertrain/core` ajoute à
+`bin/<app>.rb` (pas à `bin/db.rb`&nbsp;;
+[Sous-systèmes](how-it-works.md#subsystems))&nbsp;:
+
+```ruby
+require "cybertrain/error_reporter/sentry"   # bin/<app>.rb, après require "cybertrain/core"
+```
+
+```ruby
+# Une exception que l'application a rattrapée, avec ce qu'elle sait :
+begin
+  charge(order)
+rescue PaymentError => e
+  Cybertrain.error.report(e, context: { "order_id" => order.id })
+end
+
+# Exécuter un bloc, signaler ce qu'il lève, continuer avec nil :
+price = Cybertrain.error.handle(context: { "feed" => "prices" }) do
+  parse_price(text)
+end
+```
+
+`report(e, handled: true, context: {})` renvoie nil aussitôt&nbsp;: le
+rapport est livré sur le thread propre du rapporteur. Les clés et les valeurs
+du contexte deviennent des Strings, par-dessus le contexte qu’ajoute le
+framework (l’identifiant et la tentative d’un job). `handle(context: {}) { }`
+renvoie la valeur du bloc, ou nil après avoir signalé une `StandardError` (ou
+`JSON::ParserError`, `JSON::NestingError`) levée par le bloc&nbsp;; `break v`
+dans son bloc fait renvoyer `v` à `handle`, et `return` sort de la méthode qui
+l’entoure. Aucun des deux ne lève jamais d’exception chez l’appelant&nbsp;: si
+le signalement lui-même échoue, le journal dit
+`error report failed: <Class>: <message>` au niveau error.
+
+**Abonnés.** Un abonné est une classe de l’application, une sous-classe de
+`Cybertrain::ErrorSubscriber` qui définit `report(event)`&nbsp;:
+
+```ruby
+# config/app.rb, au-dessus de la ligne qui l'abonne (bin/<app>.rb charge
+# config/app avant app/, donc une classe sous app/ n'est pas encore chargée ici)
+class AuditSubscriber < Cybertrain::ErrorSubscriber
+  def report(event)
+    Cybertrain.logger.warn("reported #{event.error_class}: #{event.error_message} at #{event.error_where}")
+  end
+end
+Cybertrain.error.subscribe(AuditSubscriber.new)
+```
+
+Chaque abonné reçoit chaque rapport, sur le thread du rapporteur, pas dans la
+requête ou le job qui a échoué. Un abonné qui lève est journalisé au niveau
+error, `error subscriber AuditSubscriber failed: <Class>: <message>`, et n’est
+jamais signalé lui-même&nbsp;; les autres reçoivent quand même l’événement.
+L’événement est une valeur faite de Strings&nbsp;:
+
+| Lecteur | Contenu |
+| --- | --- |
+| `error_class` | le nom de classe de l’exception, avec son espace de noms (`"Cybertrain::DB::Error"`) |
+| `error_message` | son message |
+| `error_where` | `"ArticlesController#create"`, `"request"` (aucune action n’a tourné), la classe ou le type d’un job, `"cybertrain mail"`, `"job thread"`, `"schedule:<name>"`, `"feed:<name>"`, ou `""` |
+| `error_request_id`, `error_request_method`, `error_request_path` | ceux de la requête, le chemin sans sa chaîne de requête et filtré comme le filtre le journal des requêtes&nbsp;; dans un job, l’identifiant de la requête qui l’a mis en file&nbsp;; `""` hors d’une requête |
+| `error_environment`, `error_release` | `Cybertrain.config.env` et `c.release` |
+| `error_handled` | vrai pour `report` et `handle`, faux pour ce que le framework a signalé |
+| `error_context` | un `Hash{String => String}`&nbsp;: le contexte de l’application, et `job.id`, `job.attempt`, `job.max_attempts` dans un job |
+| `error_backtrace` | un `Array<String>`, vide dans un binaire de `cybertrain build` (ci-dessous) |
+| `error_occurred_at` | un `Time`, tiré de l’horloge |
+
+**Ce qui est signalé sans une ligne de votre part&nbsp;:**
+
+- Une requête qui se termine en 500, une fois&nbsp;: une exception que
+  `Cybertrain::ClientError.status_for` associe à 500 ou plus. Jamais un 4xx
+  (un paramètre invalide, un échec CSRF, un 404), jamais ce que `rescue_from`
+  a traité.
+- Chaque tentative échouée d’un job (`where` sa classe ou son type&nbsp;;
+  `job.attempt` et `job.max_attempts` dans le contexte), une tentative de
+  `retry_on` et un abandon de `discard_on`. `job.max_attempts` vaut
+  `job_max_attempts` sous la politique par défaut, le `attempts:` de la
+  politique sous `retry_on`, et la tentative à laquelle il s’est arrêté sous
+  `discard_on`. Un courriel `deliver_later` qui échoue relève du job
+  `cybertrain mail`. Une exception qui s’échappe de la boucle d’un thread de
+  jobs, ou une erreur de base de données à cet endroit, a pour `where`
+  `job thread`.
+- Une tâche planifiée dont le bloc lève, ou une tâche `cron` sans exécution
+  suivante dans les cinq ans (`schedule:<name>`).
+- Un `on_open`, `on_message` ou `on_tick` de flux qui lève, un thread de flux
+  qui meurt, et le superviseur qui abandonne un flux
+  (`Cybertrain::Background::FeedFailed`, un nom sans classe derrière, avec le
+  message `feed <name> restarted <n> times in <w> s; exiting`), tous
+  `feed:<name>`.
+
+Non signalés&nbsp;: une exception pendant l’écriture d’un corps diffusé (le
+serveur journalise `stream error:`&nbsp;; la réponse a commencé), et un job
+dont le type n’a pas de handler. Chaque ligne de journal que le framework
+écrivait auparavant reste telle quelle&nbsp;; le rapport vient en plus.
+
+**Ce qui n’est jamais envoyé.** Les paramètres, les en-têtes, les cookies, la
+session, l’adresse du client et la chaîne de requête ne sont pas dans un
+événement&nbsp;; le chemin d’une requête est filtré comme le filtre le
+journal des requêtes. Seul ce que l’application met dans `context:` est
+ajouté. Les messages d’exception ne sont pas filtrés&nbsp;: un message qui
+contient des données personnelles (le refus d’un serveur SMTP qui nomme le
+destinataire) est envoyé tel quel.
+
+**Livraison.** Les rapports vont dans une file de 100 et un thread les livre.
+Une même classe, un même message et un même `where` sont mis en file au plus
+une fois par minute, si bien qu’une page qui échoue pour chaque visiteur fait
+un rapport par minute&nbsp;; quand la file est pleine, un rapport est
+abandonné et compté, et `error reports dropped: <n>` est journalisé au niveau
+warn au plus une fois par minute. Tant qu’il n’y a ni abonné ni DSN, rien
+n’est mis en file et aucun thread ne démarre. Une livraison qui échoue est
+journalisée, `error delivery failed: <Class>: <message>`, et le rapport
+suivant démarre un nouveau thread si l’ancien s’est terminé. Quand le
+serveur, un worker ou un processus feeds s’arrête, il attend jusqu’à 2
+secondes les rapports en file après l’arrêt de ses services&nbsp;; ce qui
+reste est perdu. Une reconstruction en développement attend aussi.
+
+**Envoyer à Sentry ou GlitchTip.** Avec la ligne dans `bin/<app>.rb`, définir
+`CYBERTRAIN_SENTRY_DSN` (ou `c.sentry_dsn`) au DSN du projet envoie chaque
+rapport comme un événement Sentry&nbsp;:
+
+```sh
+CYBERTRAIN_SENTRY_DSN=https://<public key>@o1.ingest.sentry.io/42
+CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # facultatif : envoyé comme release de l'événement
+CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # facultatif : en envoyer un quart
+```
+
+- Le DSN s’écrit `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>`
+  (le secret, l’ancienne seconde moitié de Sentry, est ignoré)&nbsp;; les
+  événements vont à `<scheme>://<host>[:<port>][/<path>]/api/<project id>/envelope/`,
+  que Sentry et GlitchTip acceptent tous deux. Il contient une clé&nbsp;:
+  gardez-le dans les secrets du déploiement, pas dans un fichier versionné.
+  Un DSN illisible arrête le démarrage, en nommant la partie et jamais la
+  clé&nbsp;:
+  `error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`.
+- Un DSN défini dans un programme qui ne lie pas l’envoyeur arrête le
+  démarrage&nbsp;:
+  `error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`.
+  Une classe d’envoyeur à vous (une sous-classe de
+  `Cybertrain::ErrorReporter::Sender`) définit `sender_name` pour renvoyer un
+  nom non vide, ou elle se heurte au même refus.
+- `CYBERTRAIN_ERROR_SAMPLE_RATE` (`c.error_sample_rate`, 1.0) est la part des
+  rapports envoyés, de 0.0 à 1.0&nbsp;; les abonnés voient toujours chaque
+  rapport. La variable doit être des chiffres avec un `.chiffres` facultatif,
+  sinon le démarrage s’arrête&nbsp;:
+  `error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`.
+- `CYBERTRAIN_RELEASE` (`c.release`, vide par défaut) nomme la version ou le
+  commit&nbsp;; il n’est pas vérifié.
+- Chaque envoi attend au plus 5 secondes et n’est jamais retenté. Un refus est
+  journalisé au niveau warn, `error report not sent: Sentry answered 429`, de
+  même qu’un échec de connexion, `error report not sent: <Class>: <message>`.
+- L’événement porte la classe et le message, `where` comme transaction,
+  l’environnement, la release, l’identifiant de requête comme étiquette, la
+  méthode et le chemin de la requête, le contexte comme `extra`, et la pile
+  d’appels comme frames quand il y en a une.
+- L’appel passe par `Cybertrain::HttpClient` et sa garde contre les adresses
+  privées ([HTTP sortant](external-services.md#outbound-http))&nbsp;: un
+  GlitchTip sur un réseau privé ou sur la même machine demande
+  `CYBERTRAIN_HTTP_ALLOW_PRIVATE=1`, qui lève la garde pour chaque appel
+  sortant de l’application.
+
+**Piles d’appels.** Un binaire de `cybertrain build` est une version release
+de Spinel, dont les exceptions n’ont pas de pile d’appels&nbsp;: ses rapports
+ont la classe, le message et `where`. Dans une version `--debug`, et sous
+CRuby, les frames sont jointes.
+
+`cybertrain test` n’envoie rien à Sentry&nbsp;: il vide un
+`CYBERTRAIN_SENTRY_DSN` exporté sauf si `config/app.rb` en affecte un, et un
+test pointe plutôt le DSN vers un `Test::SentryReceiver`
+([Tester les journaux et les rapports d’erreur](testing.md#testing-logs-and-error-reports)).
+La conception&nbsp;: [docs/design.md](../design.md) D86 et D87.
+
+### Mettre à jour les journaux et les rapports d’erreur depuis 0.4
+
+- Chaque ligne de journal change de forme&nbsp;: le niveau entre crochets au
+  début (`[INFO]`) cède la place à l’heure, au niveau et aux étiquettes,
+  `2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`. Ce
+  qui lit le journal (un grep de `[ERROR]` dans un script, une alerte)
+  change avec elle&nbsp;; un test qui comparait une ligne capturée en entier
+  compare le niveau et le message séparément.
+- Chaque réponse porte `X-Request-Id`. Un proxy qui en posait un voit le
+  sien utilisé seulement s’il est de confiance.
+- `cybertrain_jobs` gagne la colonne `request_id`&nbsp;; le premier processus
+  qui touche la table l’ajoute.
+- Le framework définit maintenant des méthodes nommées `request_id` et
+  `release` (chacune renvoie une String) et `handle` (la valeur du bloc).
+  Une colonne de modèle de l’un de ces noms dont le lecteur renvoie un autre
+  type (un `request_id` entier, une clé étrangère) peut arrêter la
+  compilation, car un nom de méthode n’a qu’un type de retour dans tout le
+  programme (règle 34 de spikes/NOTES.md), et gen ne la renomme pas&nbsp;:
+  renommez la colonne.
+- `cybertrain test` ignore un `CYBERTRAIN_LOG_FORMAT` et un
+  `CYBERTRAIN_SENTRY_DSN` exportés (les tests lisent des lignes de texte et
+  n’envoient rien) sauf si `config/app.rb` les fixe. Les tests de mot de passe
+  qu’écrit `generate authentication` coupent les lignes JSON dans leur
+  `with_config`&nbsp;; une application générée plus tôt dont les tests
+  tournent avec `log_format :json` relance le générateur ou recopie ce
+  changement.
+- `require "cybertrain"` lie maintenant `HttpClient` et la couche TLS, à
+  travers l’envoyeur Sentry.
