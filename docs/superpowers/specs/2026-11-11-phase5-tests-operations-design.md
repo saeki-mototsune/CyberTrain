@@ -843,7 +843,10 @@ As Rails' `ActionDispatch::RequestId`:
 
 - A new middleware, `Cybertrain::Middleware::RequestId`, outermost in the
   stack (outside `ErrorPages` and `RequestLogger`), gives every request an
-  id: a UUID v4 (`SecureRandom.uuid`, Rails' choice).
+  id: a UUID v4 (`SecureRandom.uuid`, Rails' choice). (Amended
+  2026-11-13: it is `Cybertrain::RequestId`, outside `HostAuthorization`
+  and `SslRedirect` too, and the UUID comes from `Crypto.uuid`; section
+  21, Part 5b.)
 - **From a proxy.** When the peer is a trusted proxy (`Config#trusted_proxy`
   / `trusted_proxies`, the same check as `request.client_ip`) and the
   request carries `X-Request-Id` made only of `[A-Za-z0-9-]` and at most
@@ -904,7 +907,11 @@ object per line, for log collectors:
 
 `request_id` is present only when the line was logged with one; `tags`
 holds the other tags (job, feed, `tagged`) in order. Generated with
-`JSON.generate`, so the message is escaped.
+`JSON.generate`, so the message is escaped. (Amended 2026-11-13: by the
+Logger's own escaper, `Logger.json_quote`, since `JSON.generate` raises on
+invalid UTF-8 under CRuby; such bytes become `�`. With
+`c.log_tags = []` a request's lines carry no `request_id`. Section 21,
+Part 5b.)
 
 ## 13. Error reporting (O-2)
 
@@ -952,7 +959,10 @@ Cybertrain.error.subscribe(AuditSubscriber.new)    # in config/app.rb
   `Dev::ErrorPage` in development, `Application#call` otherwise (the test
   environment, where the exception reaches the test). 4xx client errors
   (`ClientError.status_for(e) == 400`) are not reported, nor exceptions a
-  controller's `rescue_from` handled (Rails' rules).
+  controller's `rescue_from` handled (Rails' rules). (Amended 2026-11-13:
+  `ErrorPages` in production, otherwise the innermost `RequestId` the
+  exception escapes; `Dev::ErrorPage` reports nothing itself. Reported when
+  `ClientError.status_for(e) >= 500`. Section 21, Part 5b.)
 - **Jobs**: every failed attempt, with the attempt number and the maximum
   (`job.attempt` / `job.max_attempts` in the event's context), from the
   rescue in `Job.run_handler` where the exception object is still at hand;
@@ -1025,7 +1035,14 @@ report carries the class, the message and `where`.
   `request.method` / `request.url` (the path), `extra` (the context). A
   DSN on a private address needs `http_allow_private`, as any
   `HttpClient` call does. A send that fails is logged at `warn` and not
-  retried.
+  retried. (Amended 2026-11-13, rulings Q1 and Q2: the DSN turns the
+  sender on only in a program that links it, through its own line
+  `require "cybertrain/error_reporter/sentry"` or through `require
+  "cybertrain"`, which loads it; since the optional subsystems an
+  application on `cybertrain/core` links neither `HttpClient` nor TLS
+  unless it requires them. A DSN set in a program without it refuses to boot. Each
+  role's stop waits up to 2 seconds, not only the server's. Section 21,
+  Part 5b.)
 
 # Both parts
 
@@ -1057,7 +1074,9 @@ repository like any credential.
   stream, mail and job test helpers, the new assertions and the receivers'
   automatic stop. 5b adds D85 the log line, tags and the request id, and
   D86 error reporting and the Sentry sender (D66 to D71 when this was
-  written: main had taken those numbers, pre-flight ruling B3). D13 (tests and CI: the
+  written: main had taken those numbers, pre-flight ruling B3; as built
+  they are D86 and D87, main's optional subsystems having taken D85,
+  section 21, Part 5b). D13 (tests and CI: the
   rollback it planned is replaced by D82's clear), D14 (logging), D19
   (time zones), D32 (receivers), D34 (T-1: the application side answered,
   the framework's own suite still deferred), D52 (`scheduler_tz`'s
@@ -1516,6 +1535,7 @@ zlib through Spinel's FFI):**
     and a failing job reported to a `Test::HttpReceiver` through
     `CYBERTRAIN_SENTRY_DSN`.
 14. As item 10 for 5b: D85 and D86, the guides, the implementation notes.
+    (As built: D86 and D87; section 21, Part 5b.)
 
 ## 20. Details chosen while writing
 
@@ -1585,7 +1605,7 @@ phase 4b D79 and D80, so 5a's decisions are design.md D81 (the clock,
 durations, the time helpers and the zone), D82 (test classes and
 isolation), D83 (fixtures and `cybertrain test`) and D84 (the helpers,
 assertions and receivers); 5b takes D85 and D86 (pre-flight ruling B3;
-section 15 is amended). The spikes/NOTES.md rules found here are 104 to 110,
+section 15 is amended), which became D86 and D87 (Part 5b below). The spikes/NOTES.md rules found here are 104 to 110,
 and docs/spinel-feedback.md items AJ to AO.
 
 **The spike (section 16).** Items 1 to 5 passed without their fallbacks:
@@ -1792,3 +1812,155 @@ failures; a scratch application made with `cybertrain new`, `generate
 authentication` and `generate scaffold post user:references`, 66 tests and
 822 assertions, 0 failures; the tutorial's blog, 17 tests and 25
 assertions at step 16 and 83 tests and 870 assertions at step 18.
+
+### Part 5b
+
+Implemented on 2026-11-13 and 2026-11-14 on the branch
+claude/phase5b-operations by the plan's twelve tasks
+(docs/superpowers/plans/2026-11-13-phase5b-operations-plan.md), several in
+parallel, after main had merged the optional subsystems
+(docs/superpowers/specs/2026-11-13-optional-subsystems-design.md) into the
+branch. What differs from the sections above, or goes beyond them:
+
+**Numbers.** Main's optional subsystems took D85, so 5b's decisions are
+design.md D86 (the log line, tags and the request id) and D87 (error
+reporting and the Sentry sender); sections 15 and 19 are amended. The
+spikes/NOTES.md rules found here are 112 to 119 (and rule 110 is extended
+to every statement `case` on an Integer, `getbyte` values included), and
+docs/spinel-feedback.md items AP and AQ.
+
+**The spike (section 16).** Items 7 to 9 passed without their fallbacks:
+one Scope object in one `Thread.current` slot, Rails' names for
+`Cybertrain.error`, and the logger's lock. spikes/phase5/logger_lock/run.sh
+builds the framework at 19668bc (`FRAMEWORK_REV`), the commit the
+measurement was made on; spikes/phase5/error_names.rb no longer compiles
+beside the framework, which now defines the classes it stood in for, and
+is kept as the record of its run at 19668bc. The lock's measurement has
+limits, recorded in D86 and rule 114: 8 connections from the spike's
+loader, not wrk; a promptly read pipe, not a slow or blocked reader (a
+write that blocks holds every thread that logs); stand-ins for DB, Job
+and Lease in the CRuby comparisons; and the analysis cost of the Sentry
+sender in `require "cybertrain"` programs was not measured.
+
+**Where the plan's decisions go beyond the spec, or changed in execution.**
+
+- The line (12.1, plan D2 and D3): the Clock pushes its instant into the
+  Logger (`Logger.follow_clock`), because logger.rb is in the HTTP layer
+  and cannot name the Clock. The lock stays (spike item 9); a 100 KB
+  message is one line and one write. A write that fails is dropped.
+  Registered commands, `jobs` and `console` apply the level and the format
+  (`Runtime.apply_logging`) and refuse an unknown one with boot's message
+  and exit 1; `migrate`, `db` and `dbconsole` do not apply them. Boot's
+  first warning (the mail delivery one) follows `log_format`; the
+  `setting_int` / `setting_bool` fallback warnings are logged while
+  `config/app.rb` runs and are always text lines.
+- The request id (12.2, plan D5, D6, D8): `Cybertrain::RequestId` (not
+  `Middleware::RequestId`), outermost, outside `HostAuthorization` and
+  `SslRedirect`; one that finds the id set adds nothing, so development's
+  second one around the diagnostics page makes one id. The id is
+  `Crypto.uuid` (`SecureRandom.uuid` was unused under Spinel). A repeated
+  `X-Request-Id` is refused. The server's own 400 and 413, written before
+  the stack runs, carry no id. **Changed in execution (ruling I2):** plan
+  D6 ended the Scope when the stack returned; a streamed body, an SSE
+  stream and an upgraded WebSocket are now written under the request's
+  Scope (`Response#body_scope`), so their lines, the `stream error:` line
+  and jobs enqueued there carry the id, which stays for a long-lived
+  connection's life.
+- Tags (12.3, 12.4): a block job's tag is its kind; a job enqueued by a
+  job records the parent's request id, one enqueued by a task, a feed or a
+  command records `""`. `c.log_tags` is validated at boot (`log_tags may
+  hold :request_id and :remote_ip (got :user_agent)`); `[]` still sends the
+  header and keeps the id in the Scope.
+- JSON lines (12.5): the Logger's own escaper, not `JSON.generate`
+  (section 12.5 amended); with `log_tags = []` there is no `request_id`.
+- The API (13.1, plan D9 and D12): every `ErrorEvent` reader has the
+  `error_` prefix (the maintainer's choice); `handle` also catches
+  `JSON::NestingError`, and `break`, `next` and `return` in its block
+  behave as under CRuby (rule 112). The framework's own reports go through
+  `report_unhandled` and `report_message` (four arguments each).
+- What is reported (13.2, plan D7 and D10): a request's 500 is reported by
+  `ErrorPages` in production and otherwise by the innermost `RequestId`
+  that sees it escape, once by construction (`Context#error_reported`),
+  not by dedupe; `Dev::ErrorPage` and `Application#call` report nothing
+  (section 13.2 amended). `where` is `request` when no action ran. An
+  exception that escapes a job thread's loop is reported with `where` `job
+  thread`. `job.max_attempts` is the configured limit under the default
+  policy, the policy's `attempts:` under `retry_on`, and the attempt it
+  ended at under `discard_on`. The supervisor's give-up is
+  `report_message` with the class name `Cybertrain::Background::FeedFailed`
+  and no class behind it (the plan's `FeedFailed` class was dropped). Not
+  reported: an exception while a streamed body is written (logged as
+  `stream error:`), and "no handler registered" for a job kind. Exception
+  messages are not filtered.
+- Delivery (13.4, plan D11): a subscriber or sender that raises is logged
+  and the delivery thread survives; if it ends anyway, the next report
+  starts another. The server, worker and feeds roles each wait up to 2 s
+  when they stop, and a development rebuild drains before it re-executes.
+  The test harness drains before each test and puts back the subscribers
+  and the sender of the first test.
+- **The sender's line (changed in execution, rulings Q1 and Q2, replacing
+  plan D4).** The plan had gen/app.rb require the sender in every
+  application; after the optional subsystems that would have compiled
+  `HttpClient` and TLS into every binary, against design D85. The sender
+  is its own line, `require "cybertrain/error_reporter/sentry"`, with a
+  `FeatureCatalog` row and a `script/check-core-closure` row, and `require
+  "cybertrain"` loads it; no gen/app.rb changed. This departs from section
+  13.4's "CYBERTRAIN_SENTRY_DSN turns it on": the DSN turns it on in a
+  program that links it (section 13.4 amended). A DSN set where no sender
+  is linked refuses to boot, instead of D4's warning:
+  `CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry
+  sender: add require "cybertrain/error_reporter/sentry" to bin/<name>.rb`
+  (asked through `ErrorReporter::Sender#sender_name`, which a custom
+  sender overrides). Every `require "cybertrain"` program, the test
+  bundle `cybertrain test` compiles included, now links `HttpClient` and
+  TLS. The error reporter itself is core.
+- Configuration (14, plan D14): `SentryDsn.from_text` (not `parse`, rule
+  34) reads `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>`,
+  the secret ignored, and boot names one of twelve reasons, never the key.
+  `CYBERTRAIN_ERROR_SAMPLE_RATE` must be digits with an optional fraction.
+  `cybertrain test` empties an exported DSN and keeps text lines and the
+  level `:none` unless `config/app.rb` assigns them; with `:none` error
+  lines still print.
+- Generators (11, plan Task 8): `cybertrain new` writes the five variables
+  commented in `.env.example`, `log_format`, `log_tags` and a subscriber
+  example commented in `config/app.rb` (the class is the application's,
+  defined in `config/app.rb` above the line, since `bin/<app>.rb` loads
+  `config/app` before `app/`), the log format and the DSN commented in
+  `config/deploy.yml` and `.kamal/secrets`, and the sender line in
+  `bin/<app>.rb`'s comment. The generated password tests' `with_config`
+  turns JSON lines off for its block.
+- Compatibility (18): beyond its list, an application's tests that assert
+  `"[ERROR] ..."` in a captured log assert the level and the message
+  apart; `cybertrain test` ignores an exported `CYBERTRAIN_LOG_FORMAT` and
+  `CYBERTRAIN_SENTRY_DSN`; an application generated earlier with
+  `log_format :json` regenerates its password tests or copies their
+  `with_config`; `request_id`, `release` and `handle` are names a model's
+  column should not take (a generated reader of another type meets rule
+  34).
+
+**Acceptance 13.** No test-only route (the maintainer's choice): the
+blog's `ErrorReportingTest` makes an article page fail by renaming the
+`articles` table for the request (put back in an `ensure`), so the
+controller's lookup raises `Cybertrain::DB::Error`, and makes `NotifyCommentJob`
+fail with a comment that does not exist (or was deleted after the request
+enqueued it). Both reach a `Test::SentryReceiver` through `sentry_dsn`
+assigned in the test, since `cybertrain test` ignores an exported
+`CYBERTRAIN_SENTRY_DSN` (plan D14). A 404 is not reported.
+
+**Left for later** (recorded in the task reviews, none blocking):
+`SentryEnvelope#sentry_field` cannot address an `extra` key that holds a
+dot (`job.attempt`; the blog reads it with a helper of its own);
+`refute_equal` and Minitest's other `refute_*` names are not defined
+(`assert_not_equal` is); `Logger#level=` maps an unknown level to `:info`
+(boot refuses one first); the server role's wait for the reports has no
+test; a DSN host made only of dots and dashes passes the check; the
+sample rate's message quotes the variable's whole text, which is not
+stripped; a self-hosted GlitchTip on a private network needs
+`http_allow_private` for the whole application, since the sender's call
+goes through `HttpClient`'s guard.
+
+**Counts.** `ruby script/gate` counts 234 test programs with snapshots
+(2026-11-14). examples/blog: 156 tests and 1542 assertions in 23
+class-form files, 0 failures (the blog task's run), its `gen --check`
+clean. The full framework suite (`script/test-shard`) runs in CI's four
+shards; its count is not recorded here.
