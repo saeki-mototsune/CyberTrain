@@ -1,5 +1,5 @@
 ---
-source_sha256: 2b56112469f77822eff135a926be5aadaa4c4f8c9e6c75c262213c049b39f367
+source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
 ---
 # リアルタイム：ブラウザーへのストリーム
 

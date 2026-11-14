@@ -1,5 +1,5 @@
 ---
-source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
+source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
 ---
 # HTTP sortant, flux WebSocket et e-mail
 

@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 6c7e1b82f90ec965db86de8c2a1471f6d140478ae64670f6b832eca9de062934
+source_sha256: 6553ae9330c3e005c79f7e7ddb1262d770fb4872c061d5b0759536971a420a9d
 ---
 # 工作原理
 

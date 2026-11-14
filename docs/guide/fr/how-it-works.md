@@ -1,5 +1,5 @@
 ---
-source_sha256: 6c7e1b82f90ec965db86de8c2a1471f6d140478ae64670f6b832eca9de062934
+source_sha256: 6553ae9330c3e005c79f7e7ddb1262d770fb4872c061d5b0759536971a420a9d
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement

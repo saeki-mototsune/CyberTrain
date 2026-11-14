@@ -1,5 +1,5 @@
 ---
-source_sha256: 6c7e1b82f90ec965db86de8c2a1471f6d140478ae64670f6b832eca9de062934
+source_sha256: 6553ae9330c3e005c79f7e7ddb1262d770fb4872c061d5b0759536971a420a9d
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
