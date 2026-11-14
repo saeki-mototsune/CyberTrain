@@ -860,13 +860,13 @@ module ReportReset
 end
 Cybertrain::Test.on_reset(ReportReset.hook)
 
-# Moves the Clock 61 seconds on (past the reporter's 60-second dedupe)
-# when the request comes back out through it: a second report of the same
-# exception by front_app's RequestId would make a second event rather
-# than one collapsed by dedupe.
 # One step past the reporter's dedupe window.
 PAST_DEDUPE = Cybertrain::ErrorReporter::DEDUPE_SECONDS + 1
 
+# Moves the Clock one step past the reporter's dedupe window
+# when the request comes back out through it: a second report of the same
+# exception by front_app's RequestId would make a second event rather
+# than one collapsed by dedupe.
 class ClockSkip < Cybertrain::Middleware
   def call(ctx)
     nxt = @app

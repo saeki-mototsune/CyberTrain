@@ -572,8 +572,11 @@ module Cybertrain
     # One step of the loop, in a plain rescuing method.
     def delivery_step
       event = @queue.pop(timeout: 1.0)
-      deliver_counted(event) unless event.nil?
-      log_drops
+      if event.nil?
+        log_drops
+      else
+        deliver_counted(event)
+      end
       nil
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       delivery_failed(e)
@@ -581,10 +584,13 @@ module Cybertrain
       delivery_failed(e)
     end
 
-    # Hands the event on; the in-flight count comes down whatever happens
-    # (save-work-ensure in a plain method).
+    # Hands the event on, then logs the drop count when it is due; the
+    # in-flight count comes down whatever happens (save-work-ensure in a
+    # plain method). The drop line is written before the count comes down,
+    # so that drain_reports does not answer before it.
     def deliver_counted(event)
       deliver_one(event)
+      log_drops
       nil
     ensure
       @lock.synchronize { @pending -= 1 }

@@ -64,8 +64,8 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest; def setup; super; se
     ev = @receiver.received_events(1)[0]
     assert_equal "NotifyCommentJob", ev.sentry_field("transaction")
     assert_equal "Cybertrain::DB::Error", ev.sentry_field("exception.values.0.type")
-    # The context's keys hold a dot ("job.attempt"), which sentry_field
-    # would read as two levels.
+    # The context's keys hold a dot ("job.attempt"); sentry_field reads
+    # the longest key that exists first, so the dotted key is read whole.
     assert_equal job[0], ev.sentry_field("extra.job.id")
     assert_equal "1", ev.sentry_field("extra.job.attempt")
     assert_equal "3", ev.sentry_field("extra.job.max_attempts")

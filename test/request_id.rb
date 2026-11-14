@@ -569,13 +569,13 @@ test "no params, headers, cookies or client address in an event" do
   ["s3", "k9", "v7", "203.0.113.9"].each { |secret| refute_anywhere(ev, secret) }
 end
 
-# Moves the Clock 61 seconds on (past the reporter's 60-second dedupe)
-# when the request comes back out through it, raising or not: a
-# RequestId outside it that reported the same exception again would make
-# a second event, not one collapsed by dedupe.
 # One step past the reporter's dedupe window.
 PAST_DEDUPE = Cybertrain::ErrorReporter::DEDUPE_SECONDS + 1
 
+# Moves the Clock one step past the reporter's dedupe window
+# when the request comes back out through it, raising or not: a
+# RequestId outside it that reported the same exception again would make
+# a second event, not one collapsed by dedupe.
 class ClockSkip < Cybertrain::Middleware
   def call(ctx)
     nxt = @app
