@@ -1,5 +1,5 @@
 ---
-source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
+source_sha256: 5bd118da54cdee1636242a1449f5637c3b97e371b37dc4705cd5bc40b307fe5c
 ---
 # Установка
 
@@ -231,6 +231,30 @@ X.Y.Z создаёт приложения, зависящие от фреймв�
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+Команда проверяет, что версии совпадают. Прежде чем `server`, `build`, `db`,
+`test` или `generate` запустит spin или запишет файл, она сравнивает версию
+фреймворка, зафиксированную в `spin.lock` приложения, со своей собственной
+(`cybertrain version`): релиз Spinel, которым компилируется приложение,
+определяет команда, а не приложение, а её шаблоны и генераторы написаны для
+её же релиза фреймворка. Если версии различаются, команда останавливается с
+кодом 1:
+
+```text вывод — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is locked to
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then run
+  cybertrain spin lock
+```
+
+Сделайте одно из двух. `cybertrain spin ...` не проверяется, поэтому
+`cybertrain spin lock` выполняется всегда. До этого одна правка `spin.toml`
+ничего не меняет: spin продолжает собирать коммит из `spin.lock`. Приложение,
+зависящее от локальной копии фреймворка (`path = ...`), не проверяется.
+Приложение без `spin.lock` сверяется с релизом, который назван в его
+`spin.toml` (`"X.Y.Z"` или `ref = "vX.Y.Z"`); ветка или коммит релиза не
+называют, поэтому проверки нет.
 
 Приложению, написанному для 0.4, нужно внести несколько изменений (каждая
 сессия один раз завершается, линкуется OpenSSL, сегменту маршрута с точкой

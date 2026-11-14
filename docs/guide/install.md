@@ -232,6 +232,28 @@ cybertrain spin lock
 cybertrain spin run gen
 ```
 
+The command checks that the two match. Before `server`, `build`, `db`,
+`test` or `generate` runs spin or writes a file, it compares the framework
+version locked in the app's `spin.lock` with its own (`cybertrain version`):
+the command, not the app, decides which Spinel release compiles the app, and
+its templates and generators are written for its own release of the
+framework. When the versions differ, the command stops with exit status 1:
+
+```text output — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is locked to
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then run
+  cybertrain spin lock
+```
+
+Do one or the other. `cybertrain spin ...` is never checked, so `cybertrain
+spin lock` always runs. Editing `spin.toml` alone changes nothing until then:
+spin goes on building the commit in `spin.lock`. An app that depends on a
+checkout of the framework (`path = ...`) is not checked. An app with no
+`spin.lock` is checked against the release its `spin.toml` names (`"X.Y.Z"`
+or `ref = "vX.Y.Z"`); a branch or a commit names none, so it is not checked.
+
 An application written for 0.4 has a few changes to make (every session
 ends once, OpenSSL is linked, a dotted route segment needs `format: false`,
 and more): see [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04).

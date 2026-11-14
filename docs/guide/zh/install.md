@@ -1,5 +1,5 @@
 ---
-source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
+source_sha256: 5bd118da54cdee1636242a1449f5637c3b97e371b37dc4705cd5bc40b307fe5c
 ---
 # 安装
 
@@ -111,5 +111,17 @@ gem 和框架从同一个标签发布，因此版本一致：X.Y.Z 版的 gem �
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+两者是否一致由命令来检查。`server`、`build`、`db`、`test` 和 `generate` 在运行 spin 或写出文件之前，会把应用的 `spin.lock` 中锁定的框架版本与命令自己的版本（`cybertrain version`）进行比较：决定用哪个 Spinel 版本编译应用的是命令而不是应用，而且命令的模板和生成器是为同一版本的框架编写的。版本不同时，命令以状态码 1 停止：
+
+```text 输出 — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is locked to
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then run
+  cybertrain spin lock
+```
+
+两种做法任选其一。`cybertrain spin ...` 不做这项检查，因此 `cybertrain spin lock` 总能运行。在此之前，只修改 `spin.toml` 不会改变任何东西：spin 仍然构建 `spin.lock` 中的提交。依赖框架本地检出代码（`path = ...`）的应用不做检查。没有 `spin.lock` 的应用，则与其 `spin.toml` 指定的版本（`"X.Y.Z"` 或 `ref = "vX.Y.Z"`）比较；分支或提交不指定任何版本，因此不做检查。
 
 为 0.4 编写的应用需要做一些修改（每个会话都会结束一次、要链接 OpenSSL、含点号的路由段需要 `format: false` 等）：参见[升级为 0.4 编写的应用](requests.md#upgrading-an-application-from-04)。

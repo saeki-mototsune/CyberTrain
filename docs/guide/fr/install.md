@@ -1,5 +1,5 @@
 ---
-source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
+source_sha256: 5bd118da54cdee1636242a1449f5637c3b97e371b37dc4705cd5bc40b307fe5c
 ---
 # Installer cybertrain
 
@@ -252,6 +252,30 @@ l’application&nbsp;:
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+La commande vérifie que les deux correspondent. Avant que `server`, `build`,
+`db`, `test` ou `generate` ne lance spin ou n’écrive un fichier, elle compare
+la version du framework verrouillée dans le `spin.lock` de l’application avec
+la sienne (`cybertrain version`)&nbsp;: c’est la commande, et non
+l’application, qui décide de la version de Spinel qui compile l’application,
+et ses modèles et générateurs sont écrits pour sa propre version du framework.
+Quand les versions diffèrent, la commande s’arrête avec le code 1&nbsp;:
+
+```text sortie — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is locked to
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then run
+  cybertrain spin lock
+```
+
+Faites l’un ou l’autre. `cybertrain spin ...` n’est jamais vérifié, donc
+`cybertrain spin lock` s’exécute toujours. D’ici là, modifier `spin.toml` seul
+ne change rien&nbsp;: spin continue de compiler le commit de `spin.lock`. Une
+application qui dépend d’une copie locale du framework (`path = ...`) n’est
+pas vérifiée. Une application sans `spin.lock` est comparée à la version que
+nomme son `spin.toml` (`"X.Y.Z"` ou `ref = "vX.Y.Z"`)&nbsp;; une branche ou un
+commit n’en nomme aucune, elle n’est donc pas vérifiée.
 
 Une application écrite pour 0.4 a quelques changements à faire (chaque session
 prend fin une fois, OpenSSL est lié, un segment de route contenant un point a

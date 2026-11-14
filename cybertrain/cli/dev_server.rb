@@ -148,6 +148,10 @@ module Cybertrain
         root = File.realpath(Dir.pwd)
         name = Build.app_name(root)
         raise Failure, "no spin.toml with a [package] name here; run this inside a cybertrain application" if name == ""
+        # As CLI.run_in_app does for the other commands: this entry point
+        # does not pass through it.
+        problem = FrameworkVersion.problem(root, Cybertrain::VERSION)
+        raise Failure, problem unless problem == ""
         return 1 unless ensure_toolchain
 
         load_path = load_path(spin_flags(root))
