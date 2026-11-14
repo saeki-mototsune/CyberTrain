@@ -6,8 +6,10 @@ source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ## Исходящий HTTP
 
 Приложение, которое обращается к другому серверу (вебхук, входящий вебхук
-Slack, сторонний API), использует `Cybertrain::HttpClient`. Он не входит в
-`require "cybertrain"`; подключайте его там, где он используется, а также слой
+Slack, сторонний API), использует `Cybertrain::HttpClient`. `require
+"cybertrain"` загружает его и слой TLS через
+[отправитель Sentry](background-and-operations.md#error-reporting); приложение
+на `cybertrain/core` подключает его там, где он используется, а также слой
 TLS, если какой-либо URL — https:
 
 ```ruby
@@ -296,14 +298,15 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 - **Перезапуски.** Поток-супервизор каждую секунду проверяет, жив ли поток
   каждого фида. Поток, который всё-таки завершился (исключение, не
   являющееся `StandardError`, или поток, убитый средой выполнения), пишется
-  в лог (`[ERROR] WebSocket "trades" thread ended: ...`) и запускается снова
-  через `min(30, 2 ** restarts)` секунд со строкой `[WARN]`; его открытое
+  в лог (`ERROR [feed:trades] WebSocket "trades" thread ended: ...`) и
+  запускается снова через `min(30, 2 ** restarts)` секунд со строкой `WARN`;
+  его открытое
   соединение сначала закрывается. Счётчик перезапусков никогда не
   сбрасывается, так что после пяти перезапусков ожидание остаётся
   30 секунд. В процессе `feeds` фид, который снова умирает после
   `feed_restart_limit` перезапусков (10, `CYBERTRAIN_FEED_RESTART_LIMIT`) за
   `feed_restart_window` секунд (600, `CYBERTRAIN_FEED_RESTART_WINDOW`),
-  завершает процесс: `[FATAL] feed trades restarted 10 times in 600 s;
+  завершает процесс: `FATAL feed trades restarted 10 times in 600 s;
   exiting`, затем все фиды останавливаются, и процесс завершается со
   статусом 1, чтобы `restart: unless-stopped` в Docker или `Restart=always`
   в systemd запустили новый. `server`, который выполняет фиды, никогда не
@@ -321,7 +324,10 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   | блок возбудил исключение | ERROR | `WebSocket "trades" on_message failed: KeyError: ...` (или `on_open`) |
 
   Путь и строка запроса никогда не пишутся в лог и не попадают в сообщения об
-  ошибках: в них часто содержится токен.
+  ошибках: в них часто содержится токен. Все строки, кроме первой, пишутся
+  в потоке фида и несут тег `[feed:trades]`; блок, который бросил
+  исключение, завершение потока и отказ процесса `feeds` также попадают в
+  [отчёты об ошибках](background-and-operations.md#error-reporting).
 - **Ошибки.** Все они — `Cybertrain::WebSocket::Error`, и в сообщении только
   хост и порт. После рукопожатия потерянное соединение или закрытие сервером —
   это `ClosedError` (`close_code`, `close_reason`; сброс или конец без
@@ -425,7 +431,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   прежде, чем сказано что-либо ещё; байты, которые сервер отправляет после
   своего ответа на STARTTLS, отвергаются. `tls` говорит на TLS с первого байта
   (порт 465). Оба проверяют сертификат по `host`, как HTTP-клиент (указывайте
-  имя хоста, а не IP-адрес), и обоим нужен `require "cybertrain/net/tls"`: без
+  имя хоста, а не IP-адрес), и обоим нужен `require "cybertrain/net/tls"` (его загружает
+  `require "cybertrain"`): без
   него `deliver` ещё до подключения возбуждает `Mailer::TLSError`, который
   говорит об этом. `none` — открытый текст, для ретранслятора на той же машине
   или тестового сервера: при настроенном пользователе он отказывается

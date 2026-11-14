@@ -41,6 +41,7 @@ Spinel compile chaque méthode de chaque fichier qu’un programme requiert, app
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`&nbsp;; charge le mailer et les jobs |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` dans les contrôleurs&nbsp;; charge le cache |
+| `require "cybertrain/error_reporter/sentry"` | l’envoyeur Sentry&nbsp;: `CYBERTRAIN_SENTRY_DSN` envoie chaque rapport d’erreur à Sentry ou GlitchTip ([Signalement des erreurs](background-and-operations.md#error-reporting))&nbsp;; charge `HttpClient` et TLS. Dans `bin/<app>.rb` seulement |
 | `require "cybertrain"` | tout ce qui précède |
 
 Chaque ligne se place après `require "cybertrain/core"` (`cybertrain/jobs` et `cybertrain/feeds` chargent le cœur eux-mêmes, les autres non), et leur ordre n’a pas d’importance&nbsp;: le framework démarre et arrête les sous-systèmes dans un ordre fixe qui lui est propre. Sur une application générée par scaffold, le cœur seul compile 2&nbsp;205 méthodes au lieu de 2&nbsp;767 et s’analyse en 38&nbsp;s au lieu de 52&nbsp;s&nbsp;; un build complet prend 83&nbsp;s au lieu de 108&nbsp;s, et une modification de contrôleur environ 47&nbsp;s au lieu de 65&nbsp;s ([docs/performance-next.md](../performance-next.md)).
@@ -54,6 +55,7 @@ Une ligne manquante est détectée avant que l’application ne tourne&nbsp;:
 - Une vue qui appelle un helper d’un sous-système arrête `spin run gen` (et `spin run gen -- --check`) avec le code de sortie 1&nbsp;: `app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`. Un template rendu malgré tout lève `undefined helper 'turbo_stream_from'`.
 - `./<app> worker`, `./<app> jobs` et `./<app> feeds` affichent par exemple `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` et sortent avec 1.
 - `/up` ne rend compte que de ce qui est chargé&nbsp;: pas de worker figé sans les jobs, pas de flux figé sans les feeds.
+- Un DSN défini sans la ligne de l’envoyeur Sentry fait refuser le démarrage&nbsp;: `error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`. Le rapporteur d’erreurs lui-même, ses abonnés et les identifiants de requête du journal sont dans le cœur.
 
 gen lit `bin/<app>.rb` comme du texte et n’y voit que les lignes littérales `require "cybertrain"` et `require "cybertrain/..."`&nbsp;: déplacez-les dans un fichier que `bin/<app>.rb` charge par `require_relative`, et gen refuse un helper qui aurait fonctionné. Gardez-les dans `bin/<app>.rb`.
 
@@ -61,7 +63,7 @@ Sans les jobs, le cache purge lui-même ses lignes expirées&nbsp;: la première
 
 Deux cas ne sont pas détectés par gen&nbsp;: une ligne `jobs_page` dans `config/routes.rb` sans `cybertrain/jobs` est une erreur de compilation du contrôleur généré plutôt que le message de gen, et un job dont le `retry_on` ou le `discard_on` nomme une erreur de `Cybertrain::Mailer` fait requérir `cybertrain/mailer` par le `gen/app.rb` généré lui-même.
 
-Les tests ne sont pas réduits par ces lignes&nbsp;: le programme que compile `cybertrain test` (`gen/tests.rb`) requiert `cybertrain`, tous les sous-systèmes, quoi que requière `bin/<app>.rb`. Ainsi `perform_enqueued_jobs`, `assert_emails` et `assert_broadcasts` fonctionnent dans toute application, une application sur `cybertrain/core` compile ses tests avec tous les sous-systèmes, et du code qui nomme un sous-système sans sa ligne passe ses tests et s'arrête à `spin build` ([Tester une application](testing.md)).
+Les tests ne sont pas réduits par ces lignes&nbsp;: le programme que compile `cybertrain test` (`gen/tests.rb`) requiert `cybertrain`, tous les sous-systèmes, quoi que requière `bin/<app>.rb`, et l’envoyeur Sentry avec eux. Ainsi `perform_enqueued_jobs`, `assert_emails`, `assert_broadcasts` et `Test::SentryReceiver` fonctionnent dans toute application, une application sur `cybertrain/core` compile ses tests avec tous les sous-systèmes, et du code qui nomme un sous-système sans sa ligne passe ses tests et s'arrête à `spin build` ([Tester une application](testing.md)).
 
 ## Les vues sont interprétées
 

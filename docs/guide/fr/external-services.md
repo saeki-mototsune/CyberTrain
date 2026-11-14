@@ -6,8 +6,10 @@ source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 ## HTTP sortant
 
 Une application qui appelle un autre serveur (un webhook, un webhook entrant
-Slack, une API tierce) utilise `Cybertrain::HttpClient`. Il n’est pas inclus
-dans `require "cybertrain"`&nbsp;; requérez-le là où il est utilisé, ainsi que la
+Slack, une API tierce) utilise `Cybertrain::HttpClient`. `require
+"cybertrain"` le charge, avec la couche TLS, à travers
+l’[envoyeur Sentry](background-and-operations.md#error-reporting)&nbsp;; une
+application sur `cybertrain/core` le requiert là où il est utilisé, ainsi que la
 couche TLS dès qu’une URL est en https&nbsp;:
 
 ```ruby
@@ -311,14 +313,14 @@ d’`instance_eval`).
 - **Redémarrages.** Un thread superviseur vérifie chaque seconde que le
   thread de chaque flux est vivant. Un thread qui s’est terminé malgré tout
   (une exception qui n’est pas une `StandardError`, ou le runtime qui l’a
-  tué) est journalisé (`[ERROR] WebSocket "trades" thread ended: ...`) et
-  redémarré après `min(30, 2 ** restarts)` secondes, avec une ligne
-  `[WARN]`&nbsp;; sa connexion ouverte est d’abord fermée. Le compteur de
+  tué) est journalisé (`ERROR [feed:trades] WebSocket "trades" thread ended:
+  ...`) et redémarré après `min(30, 2 ** restarts)` secondes, avec une ligne
+  `WARN`&nbsp;; sa connexion ouverte est d’abord fermée. Le compteur de
   redémarrages ne se remet jamais à zéro, si bien qu’après cinq redémarrages
   l’attente reste de 30 secondes. Dans un processus `feeds`, un flux qui
   meurt encore après `feed_restart_limit` redémarrages (10,
   `CYBERTRAIN_FEED_RESTART_LIMIT`) en `feed_restart_window` secondes (600,
-  `CYBERTRAIN_FEED_RESTART_WINDOW`) met fin au processus&nbsp;: `[FATAL] feed
+  `CYBERTRAIN_FEED_RESTART_WINDOW`) met fin au processus&nbsp;: `FATAL feed
   trades restarted 10 times in 600 s; exiting`, puis tous les flux sont
   arrêtés et le processus se termine avec le statut 1, pour que le
   `restart: unless-stopped` de Docker ou le `Restart=always` de systemd en
@@ -338,7 +340,11 @@ d’`instance_eval`).
   | un bloc a levé une exception | ERROR | `WebSocket "trades" on_message failed: KeyError: ...` (ou `on_open`) |
 
   Le chemin et la chaîne de requête ne sont jamais journalisés ni placés dans
-  un message d’erreur&nbsp;: ils portent souvent un jeton.
+  un message d’erreur&nbsp;: ils portent souvent un jeton. Toutes les lignes
+  sauf la première sont journalisées sur le thread du flux et portent
+  l’étiquette `[feed:trades]`&nbsp;; un bloc qui lève, la fin du thread et
+  l’abandon du processus `feeds` sont aussi
+  [signalés](background-and-operations.md#error-reporting).
 - **Erreurs.** Toutes sont des `Cybertrain::WebSocket::Error`, avec seulement
   l’hôte et le port dans le message. Une fois la poignée de main faite, une
   connexion perdue ou une fermeture par le serveur est une `ClosedError`
@@ -446,7 +452,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   STARTTLS sont refusés. `tls` parle TLS dès le premier octet (port 465). Les
   deux vérifient le certificat par rapport à `host` comme le fait le client HTTP
   (donnez un nom d’hôte, pas une adresse IP), et les deux demandent
-  `require "cybertrain/net/tls"`&nbsp;: sans lui, `deliver` lève
+  `require "cybertrain/net/tls"` (que `require "cybertrain"` charge)&nbsp;: sans
+  lui, `deliver` lève
   `Mailer::TLSError` qui le signale, avant de se connecter. `none` est du texte
   en clair, pour un relais sur la même machine ou un serveur de test&nbsp;: avec
   un utilisateur configuré, il refuse (`Mailer::InsecureError`, avant de se

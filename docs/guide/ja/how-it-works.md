@@ -39,6 +39,7 @@ Spinel は、プログラムが require したすべてのファイルのすべ�
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`。メーラーとジョブも読み込む |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | コントローラーの `rate_limit`。キャッシュも読み込む |
+| `require "cybertrain/error_reporter/sentry"` | Sentry の送信側：`CYBERTRAIN_SENTRY_DSN` で各エラー報告を Sentry か GlitchTip に送る（[エラー報告](background-and-operations.md#error-reporting)）。`HttpClient` と TLS を読み込む。`bin/<app>.rb` だけに書く |
 | `require "cybertrain"` | 上のすべて |
 
 どの行も `require "cybertrain/core"` の後に書きます（`cybertrain/jobs` と `cybertrain/feeds` は自分でコアを読み込みますが、ほかの行は読み込みません）。行の順序は関係ありません：フレームワークはサブシステムを自分の決まった順序で起動・停止します。スキャフォールドしたアプリでは、コアだけなら 2,767 ではなく 2,205 メソッドをコンパイルし、解析は 52 秒ではなく 38 秒です。フルビルドは 108 秒ではなく 83 秒、コントローラーの編集 1 回は約 65 秒ではなく約 47 秒です（[docs/performance-next.md](../performance-next.md)）。
@@ -52,6 +53,7 @@ Spinel は、プログラムが require したすべてのファイルのすべ�
 - サブシステムのヘルパーを呼ぶビューは、`spin run gen`（と `spin run gen -- --check`）を終了ステータス 1 で止めます：`app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`。それでもレンダリングされたテンプレートは `undefined helper 'turbo_stream_from'` を発生させます。
 - `./<app> worker`、`./<app> jobs`、`./<app> feeds` は、たとえば `the worker role needs require "cybertrain/jobs" in bin/<app>.rb` と表示して 1 で終了します。
 - `/up` は読み込まれたものについてだけ報告します：ジョブがなければワーカーの停滞を、フィードがなければフィードの停滞を見ません。
+- Sentry の送信側の行がないまま DSN を設定すると、起動を拒みます：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。エラーレポーター自体、そのサブスクライバー、ログのリクエスト ID はコアにあります。
 
 gen は `bin/<app>.rb` をテキストとして読み、そこに書かれた `require "cybertrain"` と `require "cybertrain/..."` の行しか見ません。これらを `bin/<app>.rb` が `require_relative` で読み込む別のファイルに移すと、gen は動くはずのヘルパーを拒否します。`bin/<app>.rb` に置いたままにしてください。
 
@@ -59,7 +61,7 @@ gen は `bin/<app>.rb` をテキストとして読み、そこに書かれた `r
 
 gen が見つけないケースが 2 つあります：`cybertrain/jobs` なしで `config/routes.rb` に書いた `jobs_page` の行は、gen のメッセージではなく生成されたコントローラーのコンパイルエラーになります。また、`retry_on` や `discard_on` が `Cybertrain::Mailer` のエラーを名指しするジョブがあると、生成される `gen/app.rb` が自分で `cybertrain/mailer` を require します。
 
-テストはこれらの行では削られません：`cybertrain test` がコンパイルするプログラム（`gen/tests.rb`）は、`bin/<app>.rb` が何を require していても `cybertrain`、つまりすべてのサブシステムを require します。そのため `perform_enqueued_jobs`、`assert_emails`、`assert_broadcasts` はどのアプリケーションでも使え、`cybertrain/core` のアプリケーションはすべてのサブシステムとともにテストをコンパイルし、行のないサブシステムを名指しするコードはテストを通って `spin build` で止まります（[アプリをテストする](testing.md)）。
+テストはこれらの行では削られません：`cybertrain test` がコンパイルするプログラム（`gen/tests.rb`）は、`bin/<app>.rb` が何を require していても `cybertrain`、つまりすべてのサブシステムと Sentry の送信側を require します。そのため `perform_enqueued_jobs`、`assert_emails`、`assert_broadcasts`、`Test::SentryReceiver` はどのアプリケーションでも使え、`cybertrain/core` のアプリケーションはすべてのサブシステムとともにテストをコンパイルし、行のないサブシステムを名指しするコードはテストを通って `spin build` で止まります（[アプリをテストする](testing.md)）。
 
 ## ビューは解釈される
 

@@ -5,7 +5,7 @@ source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
 
 ## 出站 HTTP
 
-调用其他服务器（webhook、Slack 传入 webhook、第三方 API）的应用使用 `Cybertrain::HttpClient`。它不在 `require "cybertrain"` 之中；请在使用它的地方 require 它，如果有任何 URL 是 https，还要 require TLS 层：
+调用其他服务器（webhook、Slack 传入 webhook、第三方 API）的应用使用 `Cybertrain::HttpClient`。`require "cybertrain"` 通过 [Sentry 发送器](background-and-operations.md#error-reporting)加载它和 TLS 层；基于 `cybertrain/core` 的应用请在使用它的地方 require 它，如果有任何 URL 是 https，还要 require TLS 层：
 
 ```ruby
 require "json"
@@ -127,7 +127,7 @@ require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Backgrou
     .on_message { |conn, text| BUFFER << text }
     .on_tick(1) { |conn| Trades.flush(BUFFER) }   # 应用的代码：一次 INSERT 整批数据，然后 BUFFER.clear
   ```
-- **重启。** 一个监督线程每秒检查每个数据流的线程是否还活着。仍然结束了的线程（一个不是 `StandardError` 的异常，或者被运行时杀掉）会被记录（`[ERROR] WebSocket "trades" thread ended: ...`），并在 `min(30, 2 ** restarts)` 秒后重新启动，同时记录一条 `[WARN]`；它打开的连接会先被关闭。重启次数永不清零，所以重启五次之后等待时间一直是 30 秒。在 `feeds` 进程中，一个在 `feed_restart_window` 秒（600，`CYBERTRAIN_FEED_RESTART_WINDOW`）内重启了 `feed_restart_limit` 次（10，`CYBERTRAIN_FEED_RESTART_LIMIT`）之后又死掉的数据流会结束整个进程：记录 `[FATAL] feed trades restarted 10 times in 600 s; exiting`，然后停止所有数据流，进程以状态 1 退出，好让 Docker 的 `restart: unless-stopped` 或 systemd 的 `Restart=always` 启动一个新进程。运行数据流的 `server` 永远不会因为它们而退出：它会持续重启它们，并由 `/up` 报告 `feed stale`。监督线程自身的错误（写状态行时数据库不见了）会被记录，监督继续进行。
+- **重启。** 一个监督线程每秒检查每个数据流的线程是否还活着。仍然结束了的线程（一个不是 `StandardError` 的异常，或者被运行时杀掉）会被记录（`ERROR [feed:trades] WebSocket "trades" thread ended: ...`），并在 `min(30, 2 ** restarts)` 秒后重新启动，同时记录一条 `WARN`；它打开的连接会先被关闭。重启次数永不清零，所以重启五次之后等待时间一直是 30 秒。在 `feeds` 进程中，一个在 `feed_restart_window` 秒（600，`CYBERTRAIN_FEED_RESTART_WINDOW`）内重启了 `feed_restart_limit` 次（10，`CYBERTRAIN_FEED_RESTART_LIMIT`）之后又死掉的数据流会结束整个进程：记录 `FATAL feed trades restarted 10 times in 600 s; exiting`，然后停止所有数据流，进程以状态 1 退出，好让 Docker 的 `restart: unless-stopped` 或 systemd 的 `Restart=always` 启动一个新进程。运行数据流的 `server` 永远不会因为它们而退出：它会持续重启它们，并由 `/up` 报告 `feed stale`。监督线程自身的错误（写状态行时数据库不见了）会被记录，监督继续进行。
 - **记录的内容。**
 
   | 何时 | 级别 | 日志行 |
@@ -138,7 +138,7 @@ require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Backgrou
   | 静默 | WARN | `WebSocket "trades" silent for 45s; reconnecting` |
   | 块抛出了异常 | ERROR | `WebSocket "trades" on_message failed: KeyError: ...`（或 `on_open`） |
 
-  路径和查询字符串从不会被记录，也不会放进错误消息：它们往往带有令牌。
+  路径和查询字符串从不会被记录，也不会放进错误消息：它们往往带有令牌。除第一行外，每一行都在数据流的线程上记录，带有标签 `[feed:trades]`；抛出异常的块、线程的结束以及 `feeds` 进程的放弃也会被[报告](background-and-operations.md#error-reporting)。
 - **错误。** 所有错误都是 `Cybertrain::WebSocket::Error`，消息中只有主机和端口。握手完成后，连接丢失或被服务器关闭是 `ClosedError`（`close_code`、`close_reason`；被重置或没有关闭帧就结束的情况为 1006）；超时或在 TLS 中失败的写入仍然是 `TimeoutError` 或 `TLSError`。在连接期间，错误为 `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（非公网地址，默认被拒绝，与[出站 HTTP](#outbound-http) 中完全相同，使用同样的 `allow_private:` 和 `http_allow_private` 设置）或 `HandshakeError`（不是 101、`Sec-WebSocket-Accept` 不正确，或者服务器以扩展或子协议作答）。`ProtocolError`（服务器破坏了帧格式；客户端会发送 1002）和 `TooLargeError` 随时可能出现。
 - **健康状况。** `Cybertrain::WebSocket.feed_status("trades")` 返回一个 `Status`：`connected?`、`last_message_at`（纪元秒数，收到第一条消息之前为 0）、`reconnects`、`restarts`（由监督线程重启的次数）和 `thread_alive?`，它们是依次读取的，而不是作为一个快照；`connected?` 在连接建立时就变为 true，早于 `on_open` 运行。监督线程还会每隔 `feed_status_interval` 秒（10）把每个数据流的状态写入数据库，本进程或任何其他进程中的 `GET /up` 和 `./<app> feeds status` 会读取它：[数据订阅的健康状况](realtime.md#feed-health)。
 - **让 `on_message` 保持简短。** 线程用 `wait_readable` 或 `sleep` 等待，所以停滞的数据流在等待期间不会占用操作系统工作线程。有两件事会占用：每次连接尝试都用阻塞的 `getaddrinfo` 解析主机名（参见[出站
@@ -192,7 +192,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；`tls` 或 `none` |
 
-- **TLS 模式。** `starttls` 以明文连接，要求服务器提供 STARTTLS（否则为 `Mailer::TLSError`），并在说任何其他内容之前升级连接；服务器在其 STARTTLS 应答之后发送的字节会被拒绝。`tls` 从第一个字节起就使用 TLS（端口 465）。两者都像 HTTP 客户端一样根据 `host` 检查证书（请给出主机名，而不是 IP 地址），并且都需要 `require "cybertrain/net/tls"`：没有它时，`deliver` 会在连接之前抛出 `Mailer::TLSError` 并说明这一点。`none` 是明文，用于同一台机器上的中继或测试服务器：配置了用户时它会拒绝（在连接之前引发 `Mailer::InsecureError`），除非主机解析为环回地址，此时它只拨号该主机的环回地址。
+- **TLS 模式。** `starttls` 以明文连接，要求服务器提供 STARTTLS（否则为 `Mailer::TLSError`），并在说任何其他内容之前升级连接；服务器在其 STARTTLS 应答之后发送的字节会被拒绝。`tls` 从第一个字节起就使用 TLS（端口 465）。两者都像 HTTP 客户端一样根据 `host` 检查证书（请给出主机名，而不是 IP 地址），并且都需要 `require "cybertrain/net/tls"`（`require "cybertrain"` 会加载它）：没有它时，`deliver` 会在连接之前抛出 `Mailer::TLSError` 并说明这一点。`none` 是明文，用于同一台机器上的中继或测试服务器：配置了用户时它会拒绝（在连接之前引发 `Mailer::InsecureError`），除非主机解析为环回地址，此时它只拨号该主机的环回地址。
 - **密码从不会被记录或显示。** 它不在启动横幅、`help`、日志或任何错误消息中；它只在 AUTH PLAIN 命令中通过 TLS 发送（或发往环回地址）。不要对持有密码的 `Mailer` 或 `Config` 使用 `p` 或 `inspect`。
 - **每次等待都有上限**，与[出站 HTTP](#outbound-http) 中一样：连接、TLS 的每一步以及每个应答最多等待 `timeout` 秒（默认 10 秒），整个投递最多 `deadline` 秒（默认 60 秒），否则为 `Mailer::TimeoutError`。域名解析会阻塞调用它的线程。
 - **对话过程**：220 问候、`EHLO`（名称为 `helo:`，默认 `localhost`）、`STARTTLS` 和再次 `EHLO`、设置了用户时的 `AUTH PLAIN`（服务器必须提供 PLAIN）、`MAIL FROM`、每个收件人一条 `RCPT TO`、`DATA`、`QUIT`。代码不符合预期的应答为 `Mailer::RejectedError`，其 `smtp_code` 是服务器给出的代码（421、535、550 等），其消息包含所在步骤和服务器的文本。返回值是服务器对该邮件的应答（`"250 2.0.0 Ok: queued
