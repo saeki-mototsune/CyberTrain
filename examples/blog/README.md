@@ -122,8 +122,9 @@ cybertrain test -n /comment/                     # the tests whose name matches
   (`render_inline` and `assert_select`), `test/jobs/` (NotifyCommentJob and
   the scheduled prune of done jobs) and `test/integration/` (the jobs page,
   the two languages, the assets and the CSP, the live comments with
-  `assert_broadcasts` and `assert_turbo_stream`, the cover image, and the
-  generated first-run, remember-me, lockout and admin tests).
+  `assert_broadcasts` and `assert_turbo_stream`, the cover image, the
+  request ids in the log and the error reports, and the generated
+  first-run, remember-me, lockout and admin tests).
 - Forgery protection is off in tests, as in Rails' test environment; the
   CSRF tests turn it on for their requests with `with_forgery_protection`.
   Time moves with `travel_to`, `travel` and `freeze_time`.
@@ -185,7 +186,8 @@ cybertrain db migrate
   `Cybertrain::Job::Base` subclass; `CommentsController#create` calls
   `NotifyCommentJob.perform_later("comment_id" => @comment.id, "article_id"
   => @article.id)` once the comment is saved, and the process that runs jobs
-  logs `new comment <id> on article <id>`. Its `retry_on StandardError, wait:
+  finds the comment and logs `new comment <id> on article <id>` (a comment
+  deleted in between fails the job, which is reported). Its `retry_on StandardError, wait:
   30, attempts: 3` queues a failed run again 30 seconds later, three
   attempts in all. `spin run gen` writes the class's other half
   (`perform_later`, the retry as a `rescue` arm) into `gen/jobs.rb`.
@@ -319,6 +321,46 @@ to the same page in each language (`/articles/1?locale=ja`), and `<html
 lang>` says which one it is in. The tests run with
 `c.i18n_raise_on_missing`, so a key missing from both dictionaries fails
 them instead of showing "translation missing" on a page.
+
+## Logs and error reports
+
+Every line the blog logs reads `2026-11-11T12:00:00.123Z INFO [<request
+id>] message`: each request gets an id (a UUID), sent back in the
+`X-Request-Id` response header and put on every line the request causes.
+A job a request enqueues keeps that id in its row (`cybertrain_jobs`'
+`request_id`), so `NotifyCommentJob`'s line names its own run and then the
+comment's request:
+
+```
+2026-11-11T12:00:01.020Z INFO [NotifyCommentJob 12] [6f0c...-...] new comment 7 on article 1
+```
+
+The scheduled prune logs `[schedule:prune done jobs]`. Set
+`CYBERTRAIN_LOG_FORMAT=json` (commented out in `config/deploy.yml`) for
+one JSON object per line, for a log collector; `config/app.rb` shows
+`c.log_format` and `c.log_tags` (`:remote_ip` adds the client's address).
+
+A page that fails (a 500, never a 404 or another 4xx) and every failed
+attempt of a job are reported: handed to the subscribers
+(`Cybertrain.error.subscribe`, commented in `config/app.rb`), and sent to
+Sentry or GlitchTip when `CYBERTRAIN_SENTRY_DSN` is set. The DSN holds a
+key: list it under `env: secret:` in `config/deploy.yml` and in
+`.kamal/secrets` (both commented out there), never in a committed file.
+The blog's `require "cybertrain"` includes the Sentry sender; an
+application on `require "cybertrain/core"` adds `require
+"cybertrain/error_reporter/sentry"` to `bin/<app>.rb` and sets
+`CYBERTRAIN_SENTRY_DSN`. `NotifyCommentJob` finds its comment first, so a
+comment deleted before the job runs fails the job, and `retry_on` reports
+each failed attempt.
+
+`test/integration/logging_test.rb` posts a comment and checks the job's
+row and log line carry the response's `X-Request-Id`;
+`test/integration/error_reporting_test.rb` points the DSN at
+`Cybertrain::Test::SentryReceiver` (a Sentry stand-in on 127.0.0.1, with
+`http_allow_private`) and checks what a failing page and a failing job
+send, and what a subscriber receives. `cybertrain test` ignores an
+exported `CYBERTRAIN_SENTRY_DSN`, so the test assigns
+`Cybertrain.config.sentry_dsn` itself.
 
 ## Deploying with Kamal
 

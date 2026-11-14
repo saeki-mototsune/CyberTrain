@@ -70,6 +70,8 @@ env:
     # than the proxy. Change it if your Docker networks use another range.
     CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12
     # SPINEL_WORKERS: 2
+    # One JSON object per log line, for a log collector.
+    # CYBERTRAIN_LOG_FORMAT: json
     # Password reset mails (CHANGE ME, then uncomment): where the blog is
     # served, which links in mails start with (without it, production
     # sends no reset mail), and the SMTP server that sends them.
@@ -86,6 +88,9 @@ env:
   secret:
     - CYBERTRAIN_SECRET_KEY_BASE
     # - CYBERTRAIN_SMTP_PASSWORD
+    # Where error reports are sent (a Sentry DSN); also list it in
+    # .kamal/secrets.
+    # - CYBERTRAIN_SENTRY_DSN
 
 # The SQLite database lives in storage/: keep it on the server across
 # deploys. Back it up from there (docs/deploy.md).

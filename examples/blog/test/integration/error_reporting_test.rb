@@ -1,0 +1,98 @@
+require "test_helper"
+
+# What ErrorReportingTest's subscriber saw: one line per report, "<class>
+# <where> <request id>".
+REPORTS_SEEN = Array.new(0) { "" }
+
+# A subscriber, as an application writes one (a Cybertrain::ErrorSubscriber
+# that defines report(event)): it runs on the reporter's thread for every
+# report. One added in a test is dropped before the next test.
+class SeenReports < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTS_SEEN << "#{event.error_class} #{event.error_where} #{event.error_request_id}"
+    nil
+  end
+end
+
+# The blog's errors reported. A page that fails (a 500) and every failed
+# attempt of a job are reported, to the subscribers and to Sentry when
+# CYBERTRAIN_SENTRY_DSN is set; here the DSN points at a Sentry stand-in
+# on 127.0.0.1 (Cybertrain::Test::SentryReceiver), assigned in the test
+# because `cybertrain test` ignores an exported DSN.
+class ErrorReportingTest < ActionDispatch::IntegrationTest
+  setup do
+    REPORTS_SEEN.clear
+    @receiver = Cybertrain::Test::SentryReceiver.new
+    @receiver.start
+    @saved_dsn = Cybertrain.config.sentry_dsn
+    @saved_private = Cybertrain.config.http_allow_private
+    Cybertrain.config.sentry_dsn = @receiver.dsn("1")
+    Cybertrain.config.http_allow_private = true
+  end
+
+  teardown do
+    Cybertrain.config.sentry_dsn = @saved_dsn
+    Cybertrain.config.http_allow_private = @saved_private
+    @receiver.stop
+  end
+
+  test "an article page that fails is reported" do
+    path = article_path(articles(:one))
+    get_with_articles_hidden(path)
+    ev = @receiver.received_events(1)[0]
+    assert_equal "ArticlesController#show", ev.sentry_field("transaction")
+    assert_equal "Cybertrain::DB::Error", ev.sentry_field("exception.values.0.type")
+    assert_equal "GET", ev.sentry_field("request.method")
+    assert_equal path, ev.sentry_field("request.url")
+  end
+
+  test "a failing job is reported with its attempt" do
+    NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
+    # The block-less form: a failed attempt does not fail the test.
+    assert_equal 1, perform_enqueued_jobs
+    ev = @receiver.received_events(1)[0]
+    assert_equal "NotifyCommentJob", ev.sentry_field("transaction")
+    assert_equal "Cybertrain::RecordNotFound", ev.sentry_field("exception.values.0.type")
+    assert_equal "1", ev.sentry_field("extra.job.attempt")
+    assert_equal "3", ev.sentry_field("extra.job.max_attempts")
+  end
+
+  test "a job whose comment was deleted is reported with the id of the request that enqueued it" do
+    Cybertrain.error.subscribe(SeenReports.new)
+    article = articles(:one)
+    post "/articles/#{article.id}/comments", params: { comment: { commenter: "Ann", body: "Hi" } }
+    rid = response.header("X-Request-Id").to_s
+    Comment.last.destroy
+    assert_equal 1, perform_enqueued_jobs
+    Cybertrain.error.drain_reports
+    assert_equal ["Cybertrain::RecordNotFound NotifyCommentJob #{rid}"], REPORTS_SEEN
+    ev = @receiver.received_events(1)[0]
+    assert_equal rid, ev.sentry_field("tags.request_id")
+  end
+
+  test "a page that is not found is not reported" do
+    Cybertrain.error.subscribe(SeenReports.new)
+    get "/articles/999999"
+    assert_response :not_found
+    Cybertrain.error.drain_reports
+    assert_equal 0, REPORTS_SEEN.size
+  end
+
+  private
+
+  # GET path while the articles table is renamed away, so the controller's
+  # Article.find fails before anything renders; the table is back
+  # afterwards even if the request does not raise (a method that does not
+  # yield: NOTES rules 32/45).
+  def get_with_articles_hidden(path)
+    rename_table("articles", "articles_hidden")
+    assert_raises(Cybertrain::DB::Error) { get path }
+  ensure
+    rename_table("articles_hidden", "articles")
+  end
+
+  def rename_table(from, to)
+    Cybertrain::DB.with { |c| c.execute("ALTER TABLE #{from} RENAME TO #{to}") }
+    nil
+  end
+end

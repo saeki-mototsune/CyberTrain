@@ -88,6 +88,39 @@ module BlogTestHelper
     true
   end
 
+  # Whether text is a request id as the blog makes them: a version 4
+  # UUID in lowercase hex, `xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx`.
+  def self.uuid?(text)
+    return false unless text.size == 36
+
+    i = 0
+    text.each_char do |ch|
+      ok = if i == 8 || i == 13 || i == 18 || i == 23
+             ch == "-"
+           elsif i == 14
+             ch == "4"
+           elsif i == 19
+             "89ab".include?(ch)
+           else
+             "0123456789abcdef".include?(ch)
+           end
+      return false unless ok
+
+      i += 1
+    end
+    true
+  end
+
+  # The newest job row as text: [id, kind, request_id] (["", "", ""] when
+  # there is none). request_id is the id of the request that enqueued it,
+  # "" for a job enqueued outside a request.
+  def self.last_job
+    rows = Cybertrain::DB.with { |c| c.execute("SELECT id, kind, request_id FROM cybertrain_jobs ORDER BY id DESC LIMIT 1") }
+    return ["", "", ""] if rows.empty?
+
+    [Cybertrain::Cast.int(rows[0]["id"]).to_s, Cybertrain::Cast.str(rows[0]["kind"]), Cybertrain::Cast.str(rows[0]["request_id"])]
+  end
+
   # Whether res set the locale cookie (a Set-Cookie for `locale`).
   def self.sets_locale_cookie?(res)
     res.cookies.any? { |c| c.start_with?("locale=") }
