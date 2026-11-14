@@ -166,7 +166,82 @@ create test/test_helper.rb
 create test/integration/health_test.rb
 create test/fixtures/.keep
 create test/support/.keep
+note: spin selects the lowest release that satisfies "~> 0.1" and spin.lock pins it, so a range does not follow new releases; name one release (--version X.Y.Z) to choose it
 ok   CLI new --version writes an index constraint
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/exact.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/ranged.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+note: spin selects the lowest release that satisfies ">= 0.4.1" and spin.lock pins it, so a range does not follow new releases; name one release (--version X.Y.Z) to choose it
+ok   CLI new --version notes that a range selects the lowest matching release
 create spin.toml
 create .gitignore
 create .env.example
@@ -338,7 +413,9 @@ Usage:
         git tag v0.4.1 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
-      --version V: the index version constraint V.
+      --version V: release V from the spin index, once cybertrain is
+      registered there. Name one release (X.Y.Z): of the releases a
+      range matches, spin selects the lowest.
       --git URL [--ref R]: the framework at URL, at branch or tag R.
   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
       Add a resource to the application in the current directory.
@@ -454,7 +531,9 @@ Usage:
         git tag v0.4.1 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
-      --version V: the index version constraint V.
+      --version V: release V from the spin index, once cybertrain is
+      registered there. Name one release (X.Y.Z): of the releases a
+      range matches, spin selects the lowest.
       --git URL [--ref R]: the framework at URL, at branch or tag R.
   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
       Add a resource to the application in the current directory.
@@ -569,7 +648,9 @@ Usage:
         git tag v0.4.1 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
-      --version V: the index version constraint V.
+      --version V: release V from the spin index, once cybertrain is
+      registered there. Name one release (X.Y.Z): of the releases a
+      range matches, spin selects the lowest.
       --git URL [--ref R]: the framework at URL, at branch or tag R.
   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
       Add a resource to the application in the current directory.
@@ -732,4 +813,4 @@ ok   new writes the logging and reporting variables, all commented
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-31 tests, 664 assertions, 0 failures
+32 tests, 683 assertions, 0 failures

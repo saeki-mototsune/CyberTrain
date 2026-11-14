@@ -11,7 +11,8 @@
 #      Linux; Homebrew's keg-only OpenSSL put on the compiler's path on macOS)
 #      and Ruby for the CLI;
 #   2. reads the framework commit the application is locked to out of
-#      spin.lock ([lock.cybertrain] git = / ref =) and fetches the framework
+#      spin.lock ([lock.cybertrain] git = / ref =, which spin writes for a
+#      git dependency and for an index version alike) and fetches the framework
 #      at exactly that commit, so the CLI that installs Spinel is the one the
 #      application compiles against (the `@ref` in `uses:` above only pins
 #      these steps: `uses:` takes no expressions, so it cannot name the
@@ -81,7 +82,10 @@ runs:
     #   version = "X.Y.Z"
     #   git = "https://github.com/saeki-mototsune/cybertrain"
     #   ref = "<40-hex commit>"
-    # (a path dependency has `path = "..."` instead of git/ref).
+    # (a path dependency has `path = "..."` instead of git/ref). An index
+    # dependency (`cybertrain = "X.Y.Z"` in spin.toml) locks in the same
+    # shape as a git one, with the repository the index names.
+    # test/cruby/setup_action_lock.rb runs this step's script on each form.
     - name: Read the framework commit from spin.lock
       id: lock
       if: inputs.framework-path == ''
@@ -100,9 +104,9 @@ runs:
             end
           end
           if found["git"].to_s.empty? || found["ref"].to_s !~ /\A\h{40}\z/
-            where = found["path"] ? "a path dependency (#{found["path"]})" : "no cybertrain git dependency"
+            where = found["path"] ? "a path dependency (#{found["path"]})" : "no cybertrain commit"
             abort "setup-cybertrain: #{ENV["LOCKFILE"]} locks #{where}; " \
-                  "commit a spin.lock for a git dependency, or pass framework-path"
+                  "commit a spin.lock for a git or an index dependency, or pass framework-path"
           end
           File.open(ENV.fetch("GITHUB_OUTPUT"), "a") { |f| f.puts "git=#{found["git"]}", "ref=#{found["ref"]}" }
         '
