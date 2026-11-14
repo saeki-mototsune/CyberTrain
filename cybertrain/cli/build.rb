@@ -2,6 +2,7 @@
 # public/. Also the command lists `cybertrain db` and `server` run. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
 require "cybertrain/app_name"
+require "cybertrain/cli/build_lock"
 require "cybertrain/shell"
 
 module Cybertrain
@@ -219,12 +220,11 @@ module Cybertrain
         end
       end
 
-      # Holds this process's PID while the steps run and dist/ is assembled:
-      # the development server (Dev::Rebuilder) skips its rebuilds
-      # meanwhile, since both write build/bin/<name>, and treats a lock
-      # whose PID is gone (a killed build) as stale.
+      # Where the build lock (BuildLock) lives for the application in root.
+      # Kept for code that only reads the lock, such as the CRuby
+      # development-server supervisor (cybertrain/cli/dev_server/processes.rb).
       def self.lock_path(root)
-        "#{root}/tmp/cybertrain-build.lock"
+        BuildLock.new(root).lock_path
       end
 
       # Runs the build in root and assembles dist/. Returns the exit code.
@@ -236,7 +236,19 @@ module Cybertrain
         restored = false
         code = 1
         Templates.mkdir_p("#{root}/tmp")
-        File.write(lock_path(root), Process.pid.to_s)
+        # Held while the steps run and dist/ is assembled: the development
+        # server (Dev::Rebuilder) skips its rebuilds meanwhile, since both
+        # write build/bin/<name>. A second `cybertrain build` that finds it
+        # held stops before running anything. The kernel drops it should
+        # this process die, so a killed build never blocks the next one.
+        lock = BuildLock.new(root)
+        unless lock.take
+          holder = lock.recorded_pid
+          holder = "unknown" if holder.empty?
+          puts "error: another cybertrain build (pid #{holder}) holds #{BuildLock::RELATIVE_PATH}; " \
+               "wait for it to finish"
+          return 1
+        end
         begin
           begin
             ok = runner.run_step(root, steps[0]) && runner.run_step(root, steps[1])
@@ -253,7 +265,7 @@ module Cybertrain
         ensure
           # Released only once dist/ holds the new binary: assemble reads
           # build/bin/<name>, which a dev rebuild would be writing.
-          File.delete(lock_path(root)) if File.exist?(lock_path(root))
+          lock.release
         end
         return 1 unless code == 0
 

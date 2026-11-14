@@ -1358,24 +1358,23 @@ test "write_state renames a whole file into place" do
   end
 end
 
-test "build_locked? follows the rebuilder's rule for a stale lock" do
+test "build_locked? asks the build's flock and never removes its file" do
   with_runner({}) do |runner, _listener, root|
     FileUtils.mkdir_p(File.join(root, "tmp"))
     lock = File.join(root, "tmp", "cybertrain-build.lock")
     refute runner.build_locked?
     File.write(lock, Process.pid.to_s)
-    assert runner.build_locked?, "a live PID holds the lock"
-    File.write(lock, "")
-    assert runner.build_locked?, "a lock without a PID counts"
-    dead = Process.spawn(RbConfig.ruby, "-e", "exit")
-    Process.wait(dead)
-    File.write(lock, dead.to_s)
-    refute runner.build_locked?, "a dead PID does not count"
-    refute File.exist?(lock), "and its lock is removed"
-    File.write(lock, Process.pid.to_s)
-    old = Time.now - Processes::STALE_LOCK_AGE - 1
+    refute runner.build_locked?, "a file no build holds, a live PID in it, is not a lock"
+    assert File.exist?(lock), "and it is left in place"
+    holder = Cybertrain::CLI::BuildLock.new(root)
+    assert holder.take
+    assert runner.build_locked?, "a held lock is held"
+    old = Time.now - 31 * 60
     File.utime(old, old, lock)
-    refute runner.build_locked?, "a lock older than the stale age does not count"
+    assert runner.build_locked?, "however old its file is"
+    assert File.exist?(lock), "and its file is left in place"
+    holder.release
+    refute runner.build_locked?, "a released lock is free"
   end
 end
 
