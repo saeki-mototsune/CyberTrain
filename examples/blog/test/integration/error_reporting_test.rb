@@ -1,4 +1,5 @@
 require "test_helper"
+require "stringio"
 
 # What ErrorReportingTest's subscriber saw: one line per report, "<class>
 # <where> <request id>".
@@ -48,13 +49,20 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
 
   test "a failing job is reported with its attempt" do
     NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
+    job = BlogTestHelper.last_job
     # The block-less form: a failed attempt does not fail the test.
-    assert_equal 1, perform_enqueued_jobs
+    log = StringIO.new
+    assert_equal 1, perform_jobs_logging_to(log)
+    assert_includes log.string, " ERROR [NotifyCommentJob #{job[0]}] job #{job[0]} (NotifyCommentJob) attempt 1 of 3 failed: " \
+                                "Cybertrain::RecordNotFound: Couldn't find Comment with id=999999; retrying in 30 s\n"
     ev = @receiver.received_events(1)[0]
     assert_equal "NotifyCommentJob", ev.sentry_field("transaction")
     assert_equal "Cybertrain::RecordNotFound", ev.sentry_field("exception.values.0.type")
-    assert_equal "1", ev.sentry_field("extra.job.attempt")
-    assert_equal "3", ev.sentry_field("extra.job.max_attempts")
+    # The context's keys hold a dot ("job.attempt"), which sentry_field
+    # would read as two levels.
+    assert_equal job[0], BlogTestHelper.sentry_extra(ev, "job.id")
+    assert_equal "1", BlogTestHelper.sentry_extra(ev, "job.attempt")
+    assert_equal "3", BlogTestHelper.sentry_extra(ev, "job.max_attempts")
   end
 
   test "a job whose comment was deleted is reported with the id of the request that enqueued it" do
@@ -62,8 +70,11 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     article = articles(:one)
     post "/articles/#{article.id}/comments", params: { comment: { commenter: "Ann", body: "Hi" } }
     rid = response.header("X-Request-Id").to_s
+    job = BlogTestHelper.last_job
     Comment.last.destroy
-    assert_equal 1, perform_enqueued_jobs
+    log = StringIO.new
+    assert_equal 1, perform_jobs_logging_to(log)
+    assert_includes log.string, " ERROR [NotifyCommentJob #{job[0]}] [#{rid}] job #{job[0]} (NotifyCommentJob) attempt 1 of 3 failed: "
     Cybertrain.error.drain_reports
     assert_equal ["Cybertrain::RecordNotFound NotifyCommentJob #{rid}"], REPORTS_SEEN
     ev = @receiver.received_events(1)[0]
@@ -89,6 +100,18 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     assert_raises(Cybertrain::DB::Error) { get path }
   ensure
     rename_table("articles_hidden", "articles")
+  end
+
+  # perform_enqueued_jobs with Cybertrain.logger writing to `io` (the
+  # failed attempt's ERROR line would otherwise print among the test
+  # lines), restored afterwards (a method that does not yield: NOTES
+  # rules 32/45).
+  def perform_jobs_logging_to(io)
+    saved = Cybertrain.logger
+    Cybertrain.logger = Cybertrain::Logger.new(io)
+    perform_enqueued_jobs
+  ensure
+    Cybertrain.logger = saved
   end
 
   def rename_table(from, to)
