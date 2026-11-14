@@ -36,6 +36,7 @@ ok   serves a bare HttpHandler with no Context or Middleware involved
 ok   the bare path's 500 carries the id a RequestId set; a handler without one sends none
 ok   the bare path's 500 and 4xx lines carry the request's id; the thread is back on NO_SCOPE after each
 ok   a streamed body is written under the request's Scope, the server's stream error line included
+ok   an upgraded (101) connection behind RequestId: the id echoed, the writer under the request's Scope, NO_SCOPE after
 ok   run serves until stop is called
 ok   request_stop (what the TERM trap calls) makes run return without joining
 ok   request_stop waits for a request in flight and answers it completely
@@ -54,4 +55,4 @@ ok   reuse_port on an IPv6 literal binds it or says why not
 ok   reuse_port on a host that does not resolve stops with a message naming the setting
 ok   reuse_port on an address this machine does not have stops with the same message
 ok   reuse_port is off unless asked for
-56 tests, 235 assertions, 0 failures
+57 tests, 240 assertions, 0 failures
