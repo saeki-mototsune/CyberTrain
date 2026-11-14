@@ -256,14 +256,52 @@ app to a new release, update the gem, point `spin.toml` at the new tag, then
 run, in the app:
 
 ```shell terminal — the app's directory
+rm spin.lock
 cybertrain spin lock
 cybertrain spin run gen
 ```
 
+`spin lock` keeps the commit it has locked for a git dependency, whatever
+`ref` has become in `spin.toml`, which is why the lock is removed first. In
+an app with other dependencies you can delete only the `[lock.cybertrain]`
+table from `spin.lock` instead, and keep the other pins. An app that depends
+on a version from the index (`cybertrain = "X.Y.Z"`) needs no `rm`: there
+`spin lock` moves the pin.
+
 For an app that depends on [an index version](#an-index-version), run
 `cybertrain spin search cybertrain` first, which updates spin's copy of the
 index, then change the version on the `cybertrain =` line of `spin.toml` to
-the new release and run the same two commands.
+the new release and run `cybertrain spin lock` and `cybertrain spin run gen`.
+
+The command checks that the two match. Before `server`, `build`, `db`,
+`test` or `generate` runs spin or writes a file, it compares the version of
+the framework spin would build, the one locked in the app's `spin.lock`,
+with its own (`cybertrain version`): the command, not the app, decides which
+Spinel release compiles the app, and its templates and generators are
+written for its own release of the framework. When the versions differ, the
+command stops with exit status 1:
+
+```text output — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is on
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
+  rm spin.lock && cybertrain spin lock
+```
+
+Do one or the other. `cybertrain spin ...` is never checked, so `cybertrain
+spin lock` always runs. With a git dependency, editing `spin.toml` changes
+nothing, and neither does `spin lock` after it: spin goes on building the
+commit in `spin.lock` until that lock is removed, hence the `rm`. With a
+version from the index, the message names `cybertrain = "A.B.C"` and
+`cybertrain spin lock` alone; spin builds the locked release only while
+`spin.toml` still allows it, so the version `spin.toml` names is compared
+as soon as it differs from the lock, and a range (`"~> X.Y"`) that no longer
+allows the locked release is refused until `cybertrain spin lock` has run.
+An app that depends on a checkout of the framework (`path = ...`) is not
+checked. An app with no `spin.lock` is checked against the release its
+`spin.toml` names (`"X.Y.Z"` or `ref = "vX.Y.Z"`); a branch, a commit or a
+range names none, so it is not checked.
 
 An application written for 0.4 has a few changes to make (every session
 ends once, OpenSSL is linked, a dotted route segment needs `format: false`,

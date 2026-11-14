@@ -1,5 +1,5 @@
 ---
-source_sha256: fd08b5684869f5b4763d349e0d740778368384b4585f19877ee82955540a685a
+source_sha256: 833da4a0dce30786eda2530ad79e7508d974d847037c7f4d608e5d886d11bdbe
 ---
 # Установка
 
@@ -257,14 +257,53 @@ X.Y.Z создаёт приложения, зависящие от фреймв�
 выполните в приложении:
 
 ```shell терминал — каталог приложения
+rm spin.lock
 cybertrain spin lock
 cybertrain spin run gen
 ```
 
+`spin lock` сохраняет коммит, зафиксированный для git-зависимости, каким бы
+ни стал `ref` в `spin.toml`, поэтому сначала удаляется файл блокировки. В
+приложении с другими зависимостями можно вместо этого удалить из `spin.lock`
+только таблицу `[lock.cybertrain]` и сохранить остальные фиксации.
+Приложению, зависящему от версии из индекса (`cybertrain = "X.Y.Z"`), `rm` не
+нужен: там `spin lock` сам переносит фиксацию.
+
 В приложении, которое зависит от [версии из индекса](#an-index-version),
 сначала выполните `cybertrain spin search cybertrain`, чтобы обновить копию
 индекса у spin, затем замените версию в строке `cybertrain =` файла
-`spin.toml` на новый релиз и выполните те же две команды.
+`spin.toml` на новый релиз и выполните `cybertrain spin lock` и `cybertrain spin run gen`.
+
+Команда проверяет, что версии совпадают. Прежде чем `server`, `build`, `db`,
+`test` или `generate` запустит spin или запишет файл, она сравнивает версию
+фреймворка, которую собрал бы spin, то есть зафиксированную в `spin.lock`
+приложения, со своей собственной (`cybertrain version`): релиз Spinel,
+которым компилируется приложение, определяет команда, а не приложение, а её
+шаблоны и генераторы написаны для её же релиза фреймворка. Если версии
+различаются, команда останавливается с кодом 1:
+
+```text вывод — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is on
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
+  rm spin.lock && cybertrain spin lock
+```
+
+Сделайте одно из двух. `cybertrain spin ...` не проверяется, поэтому
+`cybertrain spin lock` выполняется всегда. С git-зависимостью правка
+`spin.toml` ничего не меняет, и `spin lock` после неё тоже: spin продолжает
+собирать коммит из `spin.lock`, пока эта фиксация не удалена, отсюда `rm`. С
+версией из индекса сообщение называет `cybertrain = "A.B.C"` и один только
+`cybertrain spin lock`; spin собирает зафиксированный релиз, лишь пока
+`spin.toml` его допускает, поэтому версия, названная в `spin.toml`,
+сравнивается сразу, как только она расходится с фиксацией, а диапазон
+(`"~> X.Y"`), который больше не допускает зафиксированный релиз, отклоняется,
+пока не выполнен `cybertrain spin lock`. Приложение, зависящее от локальной
+копии фреймворка (`path = ...`), не проверяется. Приложение без `spin.lock`
+сверяется с релизом, который назван в его `spin.toml` (`"X.Y.Z"` или
+`ref = "vX.Y.Z"`); ветка, коммит или диапазон релиза не называют, поэтому
+проверки нет.
 
 Приложению, написанному для 0.4, нужно внести несколько изменений (каждая
 сессия один раз завершается, линкуется OpenSSL, сегменту маршрута с точкой

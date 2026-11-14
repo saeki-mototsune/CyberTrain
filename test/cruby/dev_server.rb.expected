@@ -15,6 +15,7 @@ ok   a TERM or HUP during the probe of the children's ruby stops the probe's pro
 ok   a port that is in use is refused with today's wording, before any child
 ok   a port argument overrides the application's port
 ok   a PORT that is not a number, or a word after it, is refused
+ok   an application on another release of the framework is refused, with the ways out
 ok   an application that does not load under CRuby is refused, naming --spinel
 ok   an application that loads only after gen is not refused: gen runs once and the address is asked again
 ok   under the build lock, or when gen fails too, the application that does not load is refused
@@ -48,4 +49,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-50 tests, 301 assertions, 0 failures
+51 tests, 306 assertions, 0 failures

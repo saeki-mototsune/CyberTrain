@@ -13,6 +13,9 @@
 #
 # Every command that runs spin first puts a Spinel of the pinned release on
 # PATH (Toolchain.ensure!), installing it under ~/.cybertrain the first time.
+# Those that build, run or generate for an application first check that its
+# framework is this command's release (FrameworkVersion); `new`, `spin` and
+# the commands that need no application do not.
 require "cybertrain/version"
 require "cybertrain/crypto"
 require "cybertrain/cli/templates"
@@ -25,6 +28,7 @@ require "cybertrain/cli/component"
 require "cybertrain/cli/job"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
+require "cybertrain/cli/framework_version"
 require "cybertrain/cli/test_command"
 
 module Cybertrain
@@ -297,14 +301,26 @@ module Cybertrain
       value
     end
 
-    # Commands that need the app: its name comes from ./spin.toml.
+    # Commands that need the app: its name comes from ./spin.toml, and its
+    # framework must be this command's release.
     def self.run_in_app
       name = Build.app_name(".")
       if name == ""
         puts "error: no spin.toml with a [package] name here; run this inside a cybertrain application"
         return 1
       end
+      require_framework_version!
       yield name
+    end
+
+    # Stops a command (CLI.run prints the message and exits 1) before the
+    # toolchain is fetched, spin runs or a generator writes a file, when the
+    # application in the current directory is on another release of the
+    # framework than this command. `cybertrain spin ...` never comes here:
+    # `cybertrain spin lock` is one of the two ways out the message names.
+    def self.require_framework_version!
+      problem = FrameworkVersion.problem(".", Cybertrain::VERSION)
+      raise InvalidArgument, problem unless problem == ""
     end
 
     # `cybertrain build`: the one dist/ name check, made before the toolchain
@@ -395,6 +411,8 @@ module Cybertrain
     end
 
     def self.run_generate(argv)
+      # A generator writes this command's templates into the application.
+      require_framework_version!
       kind = argv.size > 1 ? argv[1] : ""
       case kind
       when "scaffold"
