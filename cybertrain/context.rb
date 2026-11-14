@@ -23,6 +23,10 @@ module Cybertrain
     # The controller and action that answered, `"ArticlesController#show"`
     # (Controller#run_action sets it); `""` when no action ran.
     attr_accessor :controller_action
+    # Whether the exception this request raised has been reported
+    # (RequestId and ErrorPages set it): a RequestId outside the one that
+    # reported does not report it again.
+    attr_accessor :error_reported
 
     def initialize(request)
       @request = request
@@ -36,6 +40,7 @@ module Cybertrain
       @csp_policy = nil
       @csp_nonce = ""
       @controller_action = ""
+      @error_reported = false
     end
 
     # This request's CSP nonce: 16 bytes from SecureRandom, strict Base64,

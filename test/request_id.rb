@@ -543,28 +543,65 @@ test "a reset link's token and the query never reach a report" do
   refute_anywhere(ev, token)
 end
 
+# Runs the block with the cookie c=v7 in report_client's jar, removed
+# again after it, also when it raises (pre-flight ruling G4).
+module ReportCookie
+  def self.during
+    REPORT_CLIENT.cookies["c"] = "v7"
+    _value = yield
+    nil
+  ensure
+    REPORT_CLIENT.cookies.delete("c")
+  end
+end
+
 test "no params, headers, cookies or client address in an event" do
-  report_client.cookies["c"] = "v7"
-  TrustedProxy.during do
-    assert_raises("RuntimeError") do
-      report_client.post("/reports/boom", { "secret" => "s3" }, { "X-Api-Key" => "k9", "X-Forwarded-For" => "203.0.113.9" })
+  ReportCookie.during do
+    TrustedProxy.during do
+      assert_raises("RuntimeError") do
+        report_client.post("/reports/boom", { "secret" => "s3" }, { "X-Api-Key" => "k9", "X-Forwarded-For" => "203.0.113.9" })
+      end
     end
   end
-  report_client.cookies.delete("c")
+  refute report_client.cookies.key?("c")
   ev = only_event
   assert_equal "POST", ev.error_request_method
   ["s3", "k9", "v7", "203.0.113.9"].each { |secret| refute_anywhere(ev, secret) }
 end
 
-test "a RequestId inside another reports once: the inner one, which saw the exception first" do
-  inner = Cybertrain::RequestId.new(REPORT_APP.stack, [:request_id])
-  outer = Cybertrain::RequestId.new(inner, [:request_id])
+# Moves the Clock 61 seconds on (past the reporter's 60-second dedupe)
+# when the request comes back out through it, raising or not: a
+# RequestId outside it that reported the same exception again would make
+# a second event, not one collapsed by dedupe.
+class ClockSkip < Cybertrain::Middleware
+  def call(ctx)
+    nxt = @app
+    nxt.call(ctx) unless nxt.nil?
+    nil
+  ensure
+    Cybertrain::Clock.travel_to(Cybertrain::Clock.now + 61)
+  end
+end
+
+NESTED_AT = Time.utc(2026, 11, 11, 12)
+
+test "RequestIds inside each other report once: the innermost, which saw the exception first" do
+  # outer RequestId -> skip -> middle RequestId -> skip -> the app's stack,
+  # whose own RequestId is innermost; nothing between them catches.
+  middle = Cybertrain::RequestId.new(ClockSkip.new(REPORT_APP.stack), [:request_id])
+  outer = Cybertrain::RequestId.new(ClockSkip.new(middle), [:request_id])
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/reports/boom", { "host" => "www.example.com" }, "", "127.0.0.1"))
+  travel_to NESTED_AT
   assert_raises("RuntimeError") { outer.call(ctx) }
+  # Two skips: the outer one reported 122 s on, the middle one 61 s on.
+  assert_equal NESTED_AT.to_i + 122, Time.current.to_i
   ev = only_event
+  # Reported before either skip: by the innermost RequestId.
+  assert_equal NESTED_AT.to_i, ev.error_occurred_at.to_i
   assert_equal "ReportsController#boom", ev.error_where
   assert_equal ctx.request.request_id, ev.error_request_id
   assert_equal "/reports/boom", ev.error_request_path
+  assert ctx.error_reported
 end
 
 test "an exception outside StandardError is reported too" do

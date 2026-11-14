@@ -152,6 +152,11 @@ Job.register("RetryJob", max_attempts: 3) { |run| RetryJob.run_job(run) }
 Job.register("DiscardJob") { |run| DiscardJob.run_job(run) }
 Job.register("CrashJob") { |run| raise JobCrash, "the job thread caught it" }
 
+def job_attempts(id)
+  rows = DB.with { |c| c.execute("SELECT attempts AS v FROM cybertrain_jobs WHERE id = ?", [id]) }
+  Cybertrain::Cast.int(rows[0]["v"])
+end
+
 def job_state(id)
   rows = DB.with { |c| c.execute("SELECT state AS v FROM cybertrain_jobs WHERE id = ?", [id]) }
   Cybertrain::Cast.str(rows[0]["v"])
@@ -192,8 +197,41 @@ test "every failed job attempt is reported, with the job's context and its reque
   assert_logged LOG.string, "ERROR", "job #{id} (BoomJob) attempt 1 of 5 failed: RuntimeError: boom; retrying in "
 end
 
-test "a retry_on attempt carries the policy's attempts; a discard_on is reported once" do
+# Plan D11: the reporter keeps one event per class, message and `where`
+# for 60 seconds by the Clock, so a test of every attempt travels past
+# the window between attempts. The worked time (`perform_enqueued_jobs`'s
+# argument) only makes the row due; the Clock is what dedupe reads.
+JOB_AT = Time.utc(2026, 11, 11, 12)
+
+test "a job's second attempt past the dedupe window is reported; one inside it is not" do
   clear_enqueued_jobs
+  travel_to JOB_AT
+  id = boom_in_request
+  perform_enqueued_jobs
+  assert_equal 1, events_after_drain.size
+  # 61 s on by the Clock; worked a day on, so the row (due 60 s after
+  # attempt 1) runs once.
+  travel 61
+  perform_enqueued_jobs(Time.current + 86_400)
+  assert_equal 2, job_attempts(id)
+  events = events_after_drain
+  assert_equal 2, events.size
+  ev = events[1]
+  assert_equal ["RuntimeError", "boom", "BoomJob", "req-77"],
+               [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id]
+  assert_equal({ "job.id" => id.to_s, "job.attempt" => "2", "job.max_attempts" => "5" }, ev.error_context)
+  assert_equal JOB_AT.to_i + 61, ev.error_occurred_at.to_i
+  # Attempt 3 inside the window (the Clock has not moved): logged, not
+  # reported again.
+  perform_enqueued_jobs(Time.current + 2 * 86_400)
+  assert_equal 3, job_attempts(id)
+  assert_logged LOG.string, "ERROR", "job #{id} (BoomJob) attempt 3 of 5 failed: RuntimeError: boom; retrying in "
+  assert_equal 2, events_after_drain.size
+end
+
+test "a retry_on attempt carries the policy's attempts, the second one past the window too" do
+  clear_enqueued_jobs
+  travel_to JOB_AT
   retried = RetryJob.perform_later
   perform_enqueued_jobs
   ev = only_event
@@ -201,7 +239,22 @@ test "a retry_on attempt carries the policy's attempts; a discard_on is reported
                [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id]
   assert_equal({ "job.id" => retried.to_s, "job.attempt" => "1", "job.max_attempts" => "3" }, ev.error_context)
   assert_equal "queued", job_state(retried)
-  EVENTS.clear
+  # Due 60 s on; the Clock 61 s on, past the window.
+  travel 61
+  perform_enqueued_jobs
+  assert_equal 2, job_attempts(retried)
+  events = events_after_drain
+  assert_equal 2, events.size
+  assert_equal({ "job.id" => retried.to_s, "job.attempt" => "2", "job.max_attempts" => "3" }, events[1].error_context)
+  # Attempt 3, the policy's last, inside the window: the row fails, and
+  # the report is collapsed into attempt 2's.
+  perform_enqueued_jobs(Time.current + 3600)
+  assert_equal "failed", job_state(retried)
+  assert_equal 2, events_after_drain.size
+end
+
+test "a discard_on is reported once" do
+  clear_enqueued_jobs
   clear_enqueued_jobs
   discarded = DiscardJob.perform_later
   perform_enqueued_jobs

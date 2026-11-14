@@ -33,10 +33,14 @@ module Cybertrain
   # ({ErrorReporter#report_unhandled}) before it goes on up, while the
   # request's Scope is still the thread's, so the event carries the id,
   # the method and the masked path; `where` is the controller and action
-  # ({RequestId.where_for}). Every RequestId reports, the one that found
-  # the id set included: in development the stack's own RequestId sees the
-  # exception first and the diagnostics page outside it takes it, so the
-  # request is reported once. A 4xx is not reported, nor what a
+  # ({RequestId.where_for}). The innermost RequestId that sees it reports
+  # it, the one that found the id set included, and marks the Context
+  # ({Context#error_reported}); one further out does not report it again.
+  # So a request is reported once by construction, not by the reporter's
+  # dedupe: in development the stack's own RequestId reports, and what the
+  # diagnostics page outside it does not take (an exception outside
+  # StandardError) reaches front_app's RequestId already reported. A 4xx
+  # is not reported, nor what a
   # `rescue_from` handled (it never escapes). In production ErrorPages,
   # inside this middleware, reports and answers the 500 itself.
   # @api public
@@ -82,6 +86,7 @@ module Cybertrain
         finish_request(ctx, own, id, saved)
         raise e
       rescue NotImplementedError, SystemStackError, ScriptError => e
+        # Reported here too (plan D7), before the Scope is put back.
         report_escaped(ctx, e)
         finish_request(ctx, own, id, saved)
         raise e
@@ -186,11 +191,14 @@ module Cybertrain
 
     private
 
-    # Reports `e` when it ends the request as a 500; never raises
+    # Reports `e` when it ends the request as a 500, unless a RequestId
+    # inside this one already did; never raises
     # ({ErrorReporter#report_unhandled}).
     def report_escaped(ctx, e)
+      return nil if ctx.error_reported
       return nil if ClientError.status_for(e) < 500
 
+      ctx.error_reported = true
       where = RequestId.where_for(ctx)
       Cybertrain.error.report_unhandled(e, where, ErrorReporter::NO_CONTEXT)
       nil

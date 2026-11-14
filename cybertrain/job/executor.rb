@@ -140,9 +140,18 @@ module Cybertrain
       # `"<kind> <id>"`, then the id of the request that enqueued it when
       # it was enqueued in one and {Config#log_tags} includes :request_id;
       # `where` is the kind; the context holds `job.id`, `job.attempt` and
-      # `job.max_attempts` (the default policy's, {Config#job_max_attempts};
-      # the report of a `retry_on` or `discard_on` outcome replaces it, plan
-      # D10).
+      # `job.max_attempts`.
+      #
+      # `job.max_attempts` in an error report (plan D10) means, by how the
+      # attempt failed:
+      # - the default policy (the exception reached {run_handler}): the
+      #   Scope's value here, {Config#job_max_attempts}, whatever the kind's
+      #   `max_attempts:` or `retry_on` policies (so an application's own
+      #   `Cybertrain.error.report` inside a job also carries this value);
+      # - a `retry_on` ({retry_later}): the policy's `attempts:`, which that
+      #   report puts in place of this one;
+      # - a `discard_on` ({discard}): the attempt it ended at, the last one,
+      #   since no other will run (not the kind's limit).
       # The request id is the Scope's request id whether or not it is
       # shown, so a job this one enqueues records it too.
       # @param run [Run]
@@ -290,8 +299,10 @@ module Cybertrain
       end
 
       # {Job.discard}: the row becomes `discarded`, written once and marked
-      # written on the Run. Reported first, `job.max_attempts` the attempt it
-      # ended at (no other will run).
+      # written on the Run. Reported first. The report's `job.max_attempts`
+      # is the attempt it ended at, equal to its `job.attempt`: the last
+      # attempt, since no other will run; it is not the kind's limit (the
+      # three meanings: {job_scope}).
       def self.discard(run, error)
         limit = { "job.max_attempts" => run.run_attempts.to_s }
         Cybertrain.error.report_unhandled(error, run.run_kind, limit)

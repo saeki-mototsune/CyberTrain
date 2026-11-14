@@ -17,7 +17,7 @@ ok   a request's 500 is reported once, with where, method and path
 ok   no report for a 4xx or a rescue_from
 ok   a reset link's token and the query never reach a report
 ok   no params, headers, cookies or client address in an event
-ok   a RequestId inside another reports once: the inner one, which saw the exception first
+ok   RequestIds inside each other report once: the innermost, which saw the exception first
 ok   an exception outside StandardError is reported too
 ok   RequestId.where_for is the action, or request when none ran
-22 tests, 182 assertions, 0 failures
+22 tests, 186 assertions, 0 failures

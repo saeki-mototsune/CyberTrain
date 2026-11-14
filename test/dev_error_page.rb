@@ -860,17 +860,58 @@ module ReportReset
 end
 Cybertrain::Test.on_reset(ReportReset.hook)
 
+# Moves the Clock 61 seconds on (past the reporter's 60-second dedupe)
+# when the request comes back out through it: a second report of the same
+# exception by front_app's RequestId would make a second event rather
+# than one collapsed by dedupe.
+class ClockSkip < Cybertrain::Middleware
+  def call(ctx)
+    nxt = @app
+    nxt.call(ctx) unless nxt.nil?
+    nil
+  ensure
+    Cybertrain::Clock.travel_to(Cybertrain::Clock.now + 61)
+  end
+end
+
+# Raises what Dev::ErrorPage does not take (a helper not yet written).
+class Unwritten < Cybertrain::Middleware
+  def call(ctx)
+    raise NotImplementedError, "not written" if ctx.request.path == "/unwritten"
+
+    super
+  end
+end
+
 # The development server's front_app (roles/server.rb): a RequestId around
 # HostAuthorization around Dev::ErrorPage around the stack, whose own
-# RequestId is outermost in it.
+# RequestId is outermost in it; a ClockSkip just inside front_app's
+# RequestId.
 def dev_front_app
-  stack = Cybertrain::RequestId.new(Raiser.new(Page.new), [:request_id])
+  stack = Cybertrain::RequestId.new(Unwritten.new(Raiser.new(Page.new)), [:request_id])
   page = Cybertrain::Dev::ErrorPage.new(stack, failed_rebuilder)
   hosts = Cybertrain::HostAuthorization.new(page, ["www.example.com"], "")
-  Cybertrain::RequestId.new(hosts, [:request_id])
+  Cybertrain::RequestId.new(ClockSkip.new(hosts), [:request_id])
+end
+
+DEV_AT = Time.utc(2026, 11, 11, 12)
+
+test "an exception the diagnostics page does not take is reported once, by the stack's RequestId" do
+  travel_to DEV_AT
+  ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/unwritten", { "host" => "www.example.com" }, "", "127.0.0.1"))
+  assert_raises("NotImplementedError") { dev_front_app.call(ctx) }
+  # front_app's RequestId saw it 61 s later and did not report it again.
+  assert_equal DEV_AT.to_i + 61, Time.current.to_i
+  Cybertrain.error.drain_reports(2.0)
+  assert_equal 1, REPORTED.size
+  ev = REPORTED[0]
+  assert_equal ["NotImplementedError", "not written", "request", ctx.request.request_id],
+               [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id]
+  assert_equal DEV_AT.to_i, ev.error_occurred_at.to_i
 end
 
 test "development's front_app reports a request's 500 once, and the page still renders" do
+  travel_to DEV_AT
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/boom", { "host" => "www.example.com" }, "", "127.0.0.1"))
   dev_front_app.call(ctx)
   res = ctx.response
@@ -884,6 +925,8 @@ test "development's front_app reports a request's 500 once, and the page still r
   assert_equal ["RuntimeError", "boom <b>", "request", id, "GET", "/boom"],
                [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id, ev.error_request_method,
                 ev.error_request_path]
+  # Reported before the skip: by the stack's own RequestId.
+  assert_equal DEV_AT.to_i, ev.error_occurred_at.to_i
   # A 400 the page answers is not reported.
   rejected = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/toomany", { "host" => "www.example.com" }, "", "127.0.0.1"))
   dev_front_app.call(rejected)
