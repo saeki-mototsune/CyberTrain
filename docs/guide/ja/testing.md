@@ -1,5 +1,5 @@
 ---
-source_sha256: 175fa29aa618da5fb726c10643e608c4cb47d6d2f1f3bcfb5b24dbe8315c9e35
+source_sha256: 576be65a974bf2dc7726945227d1fc4a732de043c7fd59dc05f1ddd2b342cf17
 ---
 # アプリをテストする
 
@@ -416,21 +416,22 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     @sentry = Cybertrain::Test::SentryReceiver.new
     @sentry.start
     @saved_dsn = Cybertrain.config.sentry_dsn
+    @saved_private = Cybertrain.config.http_allow_private
     Cybertrain.config.sentry_dsn = @sentry.dsn                # http://public@127.0.0.1:<port>/1
     Cybertrain.config.http_allow_private = true               # そうしないと HttpClient はループバックを拒否する
   end
 
   teardown do
     Cybertrain.config.sentry_dsn = @saved_dsn
-    Cybertrain.config.http_allow_private = false
+    Cybertrain.config.http_allow_private = @saved_private
   end
 
-  test "a failing job is reported" do
+  test "a job whose comment is gone is discarded and reported" do
     NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
-    perform_enqueued_jobs                                       # 失敗した試行でテストは失敗しない
+    perform_enqueued_jobs                                       # 破棄でテストは失敗しない
     event = @sentry.received_events(1)[0]                      # 最大 5 秒待つ
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
+    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
   end
 end
 ```
@@ -440,7 +441,17 @@ end
 テストで追加したサブスクライバーは次のテストの前に外れます（`config/app.rb` が追加したものは残ります）。各テストの前に、レポーターはまだキューにあるものを届け、重複除去の時間枠を忘れるので、2 つのテストで同じ失敗が起きればどちらでも報告されます。サブスクライバーが受け取ったものを読むテストのために、`Cybertrain.error.drain_reports` がキューの報告を（最大 2 秒）待ちます：
 
 ```ruby
-Cybertrain.error.subscribe(SeenReports.new)   # テストの Cybertrain::ErrorSubscriber
+# テストファイルの先頭に：
+REPORTS_SEEN = Array.new(0) { "" }
+class SeenReports < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTS_SEEN << event.error_class
+    nil
+  end
+end
+
+# テストの中で：
+Cybertrain.error.subscribe(SeenReports.new)
 get "/articles/999999"
 Cybertrain.error.drain_reports
 assert_equal 0, REPORTS_SEEN.size             # 404 は報告されない

@@ -92,7 +92,28 @@ writes a class file and a test for it.
   `app/models/`, in `app/jobs/application_job.rb` or above the line in the
   job's own file. Anything else stops `spin run gen`: under Spinel a
   `rescue` naming a class the program does not define can swallow every
-  exception (spikes/NOTES.md rule 89).
+  exception (spikes/NOTES.md rule 89). `Cybertrain::RecordNotFound` is not
+  among the framework's classes it takes, so a job whose record may be gone
+  looks it up with `find_by` and raises a class of its own, defined above
+  the line (examples/blog's `NotifyCommentJob`):
+
+  ```ruby
+  class NotifyCommentJob < Cybertrain::Job::Base
+    class CommentGone < StandardError
+    end
+
+    discard_on CommentGone
+
+    def perform(args)
+      comment = Comment.find_by(id: Cybertrain::Cast.int(args["comment_id"]))
+      raise CommentGone, "comment was deleted; nothing to notify" if comment.nil?
+      # ...
+    end
+  end
+  ```
+
+  Its reported and logged name is the nested one,
+  `NotifyCommentJob::CommentGone`.
 - **`ApplicationJob`.** A class `ApplicationJob < Cybertrain::Job::Base` in
   `app/jobs/application_job.rb` is not a job of its own: its `retry_on` and
   `discard_on` lines apply to every job inheriting it, after the job's own,
@@ -134,7 +155,11 @@ writes a class file and a test for it.
   narrower class first. `retry_on StandardError` before `discard_on
   ArgumentError` retries the `ArgumentError`.
 - **`discard_on Klass`** stops at once: the row is `discarded`, with the
-  error in `last_error`, and is never retried.
+  error in `last_error`, and is never retried. The log says
+  `ERROR [<Kind> <id>] [<request id>] job <id> (<Kind>) discarded: <Class>: <message>`
+  (the request id when a request enqueued the job), and the discard is
+  [reported](#error-reporting) once, with `job.max_attempts` equal to
+  `job.attempt`.
 - **`def retries_exhausted(error)`** runs when a `retry_on` line's attempts
   ran out, once the row is really `failed` (never for an attempt another
   worker took over, whose own run may still succeed). It is Rails' `retry_on
@@ -584,13 +609,17 @@ writes one JSON object per line instead, for a log collector:
 
 `request_id` is there only when the line has one (inside a request, or in a
 job a request enqueued) and `log_tags` shows it; `tags` holds the other
-tags in order. Bytes that are not valid UTF-8 are written as `�` in
-JSON; a text line keeps the bytes as they were logged. A format other than
+tags in order. When a message (or a tag) is not valid UTF-8, every byte of
+it from 0x80 up, the bytes of valid characters included, is written as the
+escape `\ufffd` in JSON, so one bad byte turns all of that message's
+non-ASCII text into replacement characters; a valid message is written as
+it is, and a text line keeps the bytes as they were logged. A format other than
 `:text` or `:json` stops the boot:
 `error: log_format must be :text or :json (got :xml)`. Boot's own first
 line (the warning about `mail_delivery_method :test` outside tests)
-follows the format; the warnings about an unreadable application setting
-(`setting_int`, `setting_bool`) are logged while `config/app.rb` runs,
+follows the format; the warnings about an application setting whose value
+is invalid (`setting_int`, `setting_bool` falling back to the default) are
+logged while `config/app.rb` runs,
 before the format is known, and are always text lines.
 
 The level and the format apply to `./<app> server`, `worker` and `feeds`,
@@ -607,7 +636,7 @@ the host check's 403, the https redirect of `force_ssl`, the error pages,
 the development diagnostics page and the server's own 500. The server's 400
 and 413 for a request it cannot read, answered before the application sees
 it, carry none. Every line logged while the request runs carries the id as
-its first tag, the application's own `Cybertrain.logger.info` lines
+a tag (the first, with the default `log_tags`), the application's own `Cybertrain.logger.info` lines
 included, and so does a streamed body (`stream do ... end`, Server-Sent
 Events) or a WebSocket connection the request opened, for as long as it
 stays open.
@@ -670,7 +699,11 @@ itself, and hands each to the subscribers the application adds and to
 Sentry (or GlitchTip) when a DSN is set. It is in the core; sending to
 Sentry is its own line, which `require "cybertrain"` loads and an
 application on `cybertrain/core` adds to `bin/<app>.rb` (not to
-`bin/db.rb`; [Subsystems](how-it-works.md#subsystems)):
+`bin/db.rb`; [Subsystems](how-it-works.md#subsystems)). `cybertrain new`
+writes the lines of this section commented out: the variables in
+`.env.example`, a subscriber in `config/app.rb`, the DSN in
+`config/deploy.yml` and `.kamal/secrets`, and this line in the comment of
+`bin/<app>.rb`:
 
 ```ruby
 require "cybertrain/error_reporter/sentry"   # bin/<app>.rb, after require "cybertrain/core"
@@ -738,9 +771,16 @@ of Strings:
   `Cybertrain::ClientError.status_for` maps to 500 or more. Never a 4xx
   (a bad parameter, a CSRF failure, a 404), never what `rescue_from`
   handled.
-- Every failed attempt of a job (`where` its class or kind; `job.attempt`
-  and `job.max_attempts` in the context), a `retry_on` attempt and a
-  `discard_on` discard. `job.max_attempts` is `job_max_attempts` under the
+- A job's failed attempts (`where` its class or kind; `job.attempt` and
+  `job.max_attempts` in the context), under the default policy, `retry_on`
+  or `discard_on`. An attempt that fails with the class and message of an
+  attempt of the same kind reported less than a minute before is logged but
+  not reported again
+  ([Delivery](#error-reporting), below): under the default policy the first
+  retry waits a minute, so each attempt is reported, while with
+  `retry_on ..., wait: 30` the attempt 30 seconds after a reported one is
+  not. A
+  discard is reported once. `job.max_attempts` is `job_max_attempts` under the
   default policy, the policy's `attempts:` under `retry_on`, and the
   attempt it ended at under `discard_on`. A `deliver_later` mail that fails
   is the `cybertrain mail` job's. An exception that escapes a job thread's
@@ -754,8 +794,9 @@ of Strings:
   all `feed:<name>`.
 
 Not reported: an exception while a streamed body is written (the server
-logs `stream error:`; the response has started), and a job whose kind has
-no handler. Every log line the framework wrote before stays as it was;
+logs `stream error:`; the response has started), a job whose kind has
+no handler, and, in development, an exception the diagnostics page itself
+raises while it shows one that was already reported. Every log line the framework wrote before stays as it was;
 the report comes in addition.
 
 **What is never sent.** The parameters, headers, cookies, the session, the
@@ -767,7 +808,9 @@ sent as it is.
 
 **Delivery.** Reports go on a queue of 100 and one thread delivers them.
 The same class, message and `where` is queued at most once a minute, so a
-page that fails for every visitor makes one report a minute; when the queue
+page that fails for every visitor with the same message makes one report a
+minute (a message that carries an id, `Couldn't find Article with id=5`,
+makes one per distinct message); when the queue
 is full, a report is dropped and counted, and `error reports dropped: <n>`
 is logged at warn at most once a minute. While there is no subscriber and
 no DSN, nothing is queued and no thread starts. A delivery that fails is
@@ -833,8 +876,9 @@ The design: [docs/design.md](../design.md) D86 and D87.
   (`[INFO]`) gives way to the time, the level and the tags,
   `2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`.
   Anything that reads the log (a grep for `[ERROR]` in a script, an alert)
-  changes with it; a test that compared a captured line whole compares
-  the level and the message apart.
+  changes with it; a test that looked for a whole line looks for the level
+  and the message separately (`" ERROR "` and the message;
+  [Upgrading from 0.4](testing.md#upgrading-from-04)).
 - Every response carries `X-Request-Id`. A proxy that set one has it used
   only when the proxy is trusted.
 - `cybertrain_jobs` gains the column `request_id`; the first process that

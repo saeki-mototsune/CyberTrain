@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e896de3ac3ca018498820245a9fc252a601dde546621f740f224404a46d459f
+source_sha256: cfa6f0569935ef285a8ec498ef98568a41931115dffe39d74948822f1ac5c8d3
 ---
 # Tâches de fond et exploitation
 
@@ -105,7 +105,29 @@ de classe et un test pour elle.
   `app/jobs/application_job.rb` ou au-dessus de la ligne dans le fichier du
   job lui-même. Tout le reste arrête `spin run gen`&nbsp;: sous Spinel, un
   `rescue` qui nomme une classe que le programme ne définit pas peut avaler
-  toutes les exceptions (spikes/NOTES.md, règle 89).
+  toutes les exceptions (spikes/NOTES.md, règle 89). `Cybertrain::RecordNotFound`
+  n’est pas parmi les classes du framework qu’il accepte&nbsp;: un job dont
+  l’enregistrement peut avoir disparu le cherche avec `find_by` et lève une
+  classe à lui, définie au-dessus de la ligne (le `NotifyCommentJob`
+  d’examples/blog)&nbsp;:
+
+  ```ruby
+  class NotifyCommentJob < Cybertrain::Job::Base
+    class CommentGone < StandardError
+    end
+
+    discard_on CommentGone
+
+    def perform(args)
+      comment = Comment.find_by(id: Cybertrain::Cast.int(args["comment_id"]))
+      raise CommentGone, "comment was deleted; nothing to notify" if comment.nil?
+      # ...
+    end
+  end
+  ```
+
+  Son nom signalé et journalisé est le nom imbriqué,
+  `NotifyCommentJob::CommentGone`.
 - **`ApplicationJob`.** Une classe `ApplicationJob < Cybertrain::Job::Base`
   dans `app/jobs/application_job.rb` n’est pas un job à part entière&nbsp;:
   ses lignes `retry_on` et `discard_on` s’appliquent à chaque job qui en
@@ -150,7 +172,12 @@ de classe et un test pour elle.
   donc écrivez la classe la plus étroite d’abord. `retry_on StandardError`
   avant `discard_on ArgumentError` réessaie l’`ArgumentError`.
 - **`discard_on Klass`** arrête tout de suite&nbsp;: la ligne passe à
-  `discarded`, avec l’erreur dans `last_error`, et n’est jamais réessayée.
+  `discarded`, avec l’erreur dans `last_error`, et n’est jamais réessayée. Le
+  journal dit
+  `ERROR [<Kind> <id>] [<request id>] job <id> (<Kind>) discarded: <Class>: <message>`
+  (l’identifiant de requête quand une requête a mis le job en file), et
+  l’abandon est [signalé](#error-reporting) une fois, avec `job.max_attempts`
+  égal à `job.attempt`.
 - **`def retries_exhausted(error)`** s’exécute quand les tentatives d’une
   ligne `retry_on` sont épuisées, une fois la ligne réellement `failed`
   (jamais pour une tentative qu’un autre worker a reprise et dont
@@ -648,14 +675,19 @@ variable. Toute autre valeur arrête le démarrage&nbsp;:
 
 `request_id` n’y est que lorsque la ligne en a un (dans une requête, ou dans
 un job qu’une requête a mis en file) et que `log_tags` le montre&nbsp;; `tags`
-contient les autres étiquettes dans l’ordre. Les octets qui ne sont pas de
-l’UTF-8 valide sont écrits `�` en JSON&nbsp;; une ligne de texte garde
-les octets tels qu’ils ont été journalisés. Un format autre que `:text` ou
+contient les autres étiquettes dans l’ordre. Quand un message (ou une
+étiquette) n’est pas de l’UTF-8 valide, chacun de ses octets à partir de
+0x80, ceux des caractères valides compris, est écrit comme l’échappement
+`\ufffd` en JSON, si bien qu’un seul mauvais octet change tout le texte non
+ASCII du message en caractères de remplacement&nbsp;; un message valide est
+écrit tel quel, et une ligne de texte garde les octets tels qu’ils ont été
+journalisés. Un format autre que `:text` ou
 `:json` arrête le démarrage&nbsp;:
 `error: log_format must be :text or :json (got :xml)`. La première ligne du
 démarrage lui-même (l’avertissement sur `mail_delivery_method :test` hors
 des tests) suit le format&nbsp;; les avertissements sur un réglage
-d’application illisible (`setting_int`, `setting_bool`) sont journalisés
+d’application dont la valeur est invalide (`setting_int`, `setting_bool` qui
+reviennent à la valeur par défaut) sont journalisés
 pendant que `config/app.rb` s’exécute, avant que le format soit connu, et sont
 toujours des lignes de texte.
 
@@ -672,9 +704,9 @@ dans `request.request_id` et que la réponse renvoie dans `X-Request-Id`, y
 compris sur le 403 du contrôle des hôtes, la redirection https de
 `force_ssl`, les pages d’erreur, la page de diagnostic du développement et le
 500 du serveur lui-même. Les 400 et 413 du serveur pour une requête qu’il ne
-peut pas lire, répondus avant que l’application ne la voie, n’en portent pas.
-Chaque ligne journalisée pendant la requête porte l’identifiant comme
-première étiquette, y compris les propres lignes `Cybertrain.logger.info` de
+peut pas lire, qu’il renvoie avant que l’application ne la voie, n’en portent
+pas. Chaque ligne journalisée pendant la requête porte l’identifiant comme
+étiquette (la première, avec les `log_tags` par défaut), y compris les propres lignes `Cybertrain.logger.info` de
 l’application, de même qu’un corps diffusé (`stream do ... end`, Server-Sent
 Events) ou une connexion WebSocket ouverte par la requête, tant qu’elle reste
 ouverte.
@@ -742,7 +774,11 @@ l’application ajoute et à Sentry (ou GlitchTip) quand un DSN est défini. Il 
 dans le cœur&nbsp;; l’envoi à Sentry est une ligne à part, que charge
 `require "cybertrain"` et qu’une application sur `cybertrain/core` ajoute à
 `bin/<app>.rb` (pas à `bin/db.rb`&nbsp;;
-[Sous-systèmes](how-it-works.md#subsystems))&nbsp;:
+[Sous-systèmes](how-it-works.md#subsystems)). `cybertrain new` écrit les
+lignes de cette section en commentaire&nbsp;: les variables dans
+`.env.example`, un abonné dans `config/app.rb`, le DSN dans
+`config/deploy.yml` et `.kamal/secrets`, et cette ligne dans le commentaire
+de `bin/<app>.rb`&nbsp;:
 
 ```ruby
 require "cybertrain/error_reporter/sentry"   # bin/<app>.rb, après require "cybertrain/core"
@@ -811,9 +847,16 @@ L’événement est une valeur faite de Strings&nbsp;:
   `Cybertrain::ClientError.status_for` associe à 500 ou plus. Jamais un 4xx
   (un paramètre invalide, un échec CSRF, un 404), jamais ce que `rescue_from`
   a traité.
-- Chaque tentative échouée d’un job (`where` sa classe ou son type&nbsp;;
-  `job.attempt` et `job.max_attempts` dans le contexte), une tentative de
-  `retry_on` et un abandon de `discard_on`. `job.max_attempts` vaut
+- Les tentatives échouées d’un job (`where` sa classe ou son type&nbsp;;
+  `job.attempt` et `job.max_attempts` dans le contexte), sous la politique
+  par défaut, `retry_on` ou `discard_on`. Une tentative qui échoue avec la
+  classe et le message d’une tentative du même type signalée moins d’une
+  minute avant est journalisée mais pas signalée de nouveau
+  ([Livraison](#error-reporting), ci-dessous)&nbsp;: sous la politique par
+  défaut la première reprise attend une minute, donc chaque tentative est
+  signalée, alors qu’avec `retry_on ..., wait: 30` la tentative qui suit de
+  30 secondes une tentative signalée ne l’est pas. Un abandon est signalé une
+  fois. `job.max_attempts` vaut
   `job_max_attempts` sous la politique par défaut, le `attempts:` de la
   politique sous `retry_on`, et la tentative à laquelle il s’est arrêté sous
   `discard_on`. Un courriel `deliver_later` qui échoue relève du job
@@ -829,8 +872,9 @@ L’événement est une valeur faite de Strings&nbsp;:
   `feed:<name>`.
 
 Non signalés&nbsp;: une exception pendant l’écriture d’un corps diffusé (le
-serveur journalise `stream error:`&nbsp;; la réponse a commencé), et un job
-dont le type n’a pas de handler. Chaque ligne de journal que le framework
+serveur journalise `stream error:`&nbsp;; la réponse a commencé), un job
+dont le type n’a pas de handler, et, en développement, une exception que la
+page de diagnostic lève elle-même en montrant une exception déjà signalée. Chaque ligne de journal que le framework
 écrivait auparavant reste telle quelle&nbsp;; le rapport vient en plus.
 
 **Ce qui n’est jamais envoyé.** Les paramètres, les en-têtes, les cookies, la
@@ -843,8 +887,10 @@ destinataire) est envoyé tel quel.
 
 **Livraison.** Les rapports vont dans une file de 100 et un thread les livre.
 Une même classe, un même message et un même `where` sont mis en file au plus
-une fois par minute, si bien qu’une page qui échoue pour chaque visiteur fait
-un rapport par minute&nbsp;; quand la file est pleine, un rapport est
+une fois par minute, si bien qu’une page qui échoue pour chaque visiteur avec le
+même message fait un rapport par minute (un message qui porte un
+identifiant, `Couldn't find Article with id=5`, en fait un par message
+distinct)&nbsp;; quand la file est pleine, un rapport est
 abandonné et compté, et `error reports dropped: <n>` est journalisé au niveau
 warn au plus une fois par minute. Tant qu’il n’y a ni abonné ni DSN, rien
 n’est mis en file et aucun thread ne démarre. Une livraison qui échoue est
@@ -915,8 +961,9 @@ La conception&nbsp;: [docs/design.md](../design.md) D86 et D87.
   début (`[INFO]`) cède la place à l’heure, au niveau et aux étiquettes,
   `2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`. Ce
   qui lit le journal (un grep de `[ERROR]` dans un script, une alerte)
-  change avec elle&nbsp;; un test qui comparait une ligne capturée en entier
-  compare le niveau et le message séparément.
+  change avec elle&nbsp;; un test qui cherchait une ligne entière cherche
+  le niveau et le message séparément (`" ERROR "` et le message&nbsp;;
+  [Mettre à jour depuis 0.4](testing.md#upgrading-from-04)).
 - Chaque réponse porte `X-Request-Id`. Un proxy qui en posait un voit le
   sien utilisé seulement s’il est de confiance.
 - `cybertrain_jobs` gagne la colonne `request_id`&nbsp;; le premier processus

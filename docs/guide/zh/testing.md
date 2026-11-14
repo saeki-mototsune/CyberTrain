@@ -1,5 +1,5 @@
 ---
-source_sha256: 175fa29aa618da5fb726c10643e608c4cb47d6d2f1f3bcfb5b24dbe8315c9e35
+source_sha256: 576be65a974bf2dc7726945227d1fc4a732de043c7fd59dc05f1ddd2b342cf17
 ---
 # 测试应用
 
@@ -416,21 +416,22 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     @sentry = Cybertrain::Test::SentryReceiver.new
     @sentry.start
     @saved_dsn = Cybertrain.config.sentry_dsn
+    @saved_private = Cybertrain.config.http_allow_private
     Cybertrain.config.sentry_dsn = @sentry.dsn                # http://public@127.0.0.1:<port>/1
     Cybertrain.config.http_allow_private = true               # 否则 HttpClient 拒绝环回地址
   end
 
   teardown do
     Cybertrain.config.sentry_dsn = @saved_dsn
-    Cybertrain.config.http_allow_private = false
+    Cybertrain.config.http_allow_private = @saved_private
   end
 
-  test "a failing job is reported" do
+  test "a job whose comment is gone is discarded and reported" do
     NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
-    perform_enqueued_jobs                                       # 失败的尝试不会让测试失败
+    perform_enqueued_jobs                                       # 丢弃不会让测试失败
     event = @sentry.received_events(1)[0]                      # 最多等待 5 秒
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
+    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
   end
 end
 ```
@@ -440,7 +441,17 @@ end
 在测试中添加的订阅者会在下一个测试之前被移除（`config/app.rb` 添加的会保留），每个测试之前，报告器会投递仍在队列中的内容并忘记去重的时间窗口，所以两个测试中的同一个失败都会被报告。对于读取订阅者收到内容的测试，`Cybertrain.error.drain_reports` 会等待（最多 2 秒）队列中的报告：
 
 ```ruby
-Cybertrain.error.subscribe(SeenReports.new)   # 测试自己的 Cybertrain::ErrorSubscriber
+# 在测试文件顶部：
+REPORTS_SEEN = Array.new(0) { "" }
+class SeenReports < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTS_SEEN << event.error_class
+    nil
+  end
+end
+
+# 在测试中：
+Cybertrain.error.subscribe(SeenReports.new)
 get "/articles/999999"
 Cybertrain.error.drain_reports
 assert_equal 0, REPORTS_SEEN.size             # 404 不会被报告

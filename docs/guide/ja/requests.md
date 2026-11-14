@@ -210,7 +210,7 @@ def export
 end
 ```
 
-`c.log_tags` で各行に何を出すかを選びます。ジョブの行とエラー報告は、それを積んだリクエストの ID を持ちます（[リクエスト ID](background-and-operations.md#request-ids)）。
+`c.log_tags` で各行に何を出すかを選びます。ジョブの行とエラー報告は、それをキューに入れたリクエストの ID を持ちます（[リクエスト ID](background-and-operations.md#request-ids)）。
 
 ## Content Security Policy、`force_ssl` とホスト
 

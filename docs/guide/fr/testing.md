@@ -1,5 +1,5 @@
 ---
-source_sha256: 175fa29aa618da5fb726c10643e608c4cb47d6d2f1f3bcfb5b24dbe8315c9e35
+source_sha256: 576be65a974bf2dc7726945227d1fc4a732de043c7fd59dc05f1ddd2b342cf17
 ---
 # Tester une application
 
@@ -769,21 +769,22 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     @sentry = Cybertrain::Test::SentryReceiver.new
     @sentry.start
     @saved_dsn = Cybertrain.config.sentry_dsn
+    @saved_private = Cybertrain.config.http_allow_private
     Cybertrain.config.sentry_dsn = @sentry.dsn                # http://public@127.0.0.1:<port>/1
     Cybertrain.config.http_allow_private = true               # sinon HttpClient refuse le loopback
   end
 
   teardown do
     Cybertrain.config.sentry_dsn = @saved_dsn
-    Cybertrain.config.http_allow_private = false
+    Cybertrain.config.http_allow_private = @saved_private
   end
 
-  test "a failing job is reported" do
+  test "a job whose comment is gone is discarded and reported" do
     NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
-    perform_enqueued_jobs                                       # une tentative échouée ne fait pas échouer le test
+    perform_enqueued_jobs                                       # un abandon ne fait pas échouer le test
     event = @sentry.received_events(1)[0]                      # attend 5 s au plus
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
+    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
   end
 end
 ```
@@ -809,7 +810,17 @@ même échec dans deux tests est signalé dans les deux.
 pour un test qui lit ce qu’un abonné a reçu&nbsp;:
 
 ```ruby
-Cybertrain.error.subscribe(SeenReports.new)   # un Cybertrain::ErrorSubscriber du test
+# En tête du fichier de test :
+REPORTS_SEEN = Array.new(0) { "" }
+class SeenReports < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTS_SEEN << event.error_class
+    nil
+  end
+end
+
+# Dans un test :
+Cybertrain.error.subscribe(SeenReports.new)
 get "/articles/999999"
 Cybertrain.error.drain_reports
 assert_equal 0, REPORTS_SEEN.size             # un 404 n'est pas signalé

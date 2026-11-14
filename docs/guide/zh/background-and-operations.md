@@ -1,5 +1,5 @@
 ---
-source_sha256: 2e896de3ac3ca018498820245a9fc252a601dde546621f740f224404a46d459f
+source_sha256: cfa6f0569935ef285a8ec498ef98568a41931115dffe39d74948822f1ac5c8d3
 ---
 # 后台任务与运维
 
@@ -42,7 +42,24 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 - **`args`** 是传给 `perform_later` 的 Hash，以 JSON 形式保存，读回时是 `Hash<String, Object>`：用 `Cybertrain::Cast.int(args["user_id"])`、`Cast.str`、`Cast.hash`、`Cast.array` 收窄其中的值。一个作业只接收这一个 Hash；请传递 id，而不是记录（这也是 Rails 的建议）。`perform_later` 对任何不是 Hash 的参数抛出 `ArgumentError`，不带参数时发送 `{}`。
 - **入队。** `perform_later(args)`、`perform_at(time, args)` 和 `perform_in(seconds, args)` 返回该行的 id；该行的种类就是类名（`"WelcomeJob"`、`"Admin::ReportJob"`）。`perform_now(args)` 在调用它的线程上运行 `perform`，没有队列、没有重试策略、也没有 rescue，并返回 `nil`：这正是测试需要的形式。
 - **类的主体。** 每个作业类都要定义 `perform(args)`（既没有定义也没有继承它的类会被生成器拒绝）。`retry_on`、`discard_on` 和 `limits_concurrency` 是作为文本读取的，每行一个，使用字面值（`wait:` 用 Integer 或 `:polynomially_longer`，`attempts:` 和 `to:` 用 Integer，`key:` 用带引号的 String）；块、lambda、`5.minutes`、哈希火箭写法或行尾注释都会让 `spin run gen` 停下，并给出文件、行号以及应该改写成什么。
-- **哪些异常类。** `retry_on` 或 `discard_on` 指定的类必须是程序在该作业之前定义的类：核心类（`ArgumentError`、`KeyError` 等）、框架的某个 `...Error` 类（生成器会补上所需的 require），或者在 `app/models/`、`app/jobs/application_job.rb` 中、或在作业自身文件中该行之上定义的应用类。其他任何类都会让 `spin run gen` 停下：在 Spinel 下，一个指定了程序未定义的类的 `rescue` 可能会吞掉所有异常（spikes/NOTES.md 规则 89）。
+- **哪些异常类。** `retry_on` 或 `discard_on` 指定的类必须是程序在该作业之前定义的类：核心类（`ArgumentError`、`KeyError` 等）、框架的某个 `...Error` 类（生成器会补上所需的 require），或者在 `app/models/`、`app/jobs/application_job.rb` 中、或在作业自身文件中该行之上定义的应用类。其他任何类都会让 `spin run gen` 停下：在 Spinel 下，一个指定了程序未定义的类的 `rescue` 可能会吞掉所有异常（spikes/NOTES.md 规则 89）。`Cybertrain::RecordNotFound` 不在它接受的框架类之中，所以记录可能已不存在的作业用 `find_by` 查找，并抛出一个自己的类，定义在那一行之上（examples/blog 的 `NotifyCommentJob`）：
+
+  ```ruby
+  class NotifyCommentJob < Cybertrain::Job::Base
+    class CommentGone < StandardError
+    end
+
+    discard_on CommentGone
+
+    def perform(args)
+      comment = Comment.find_by(id: Cybertrain::Cast.int(args["comment_id"]))
+      raise CommentGone, "comment was deleted; nothing to notify" if comment.nil?
+      # ...
+    end
+  end
+  ```
+
+  报告和日志中它的名字是嵌套的 `NotifyCommentJob::CommentGone`。
 - **`ApplicationJob`。** `app/jobs/application_job.rb` 中的 `ApplicationJob < Cybertrain::Job::Base` 本身不是一个作业：它的 `retry_on` 和 `discard_on` 行适用于每个继承它的作业，排在作业自己的行之后；它的 `limits_concurrency` 适用于没有声明的作业。任何其他作业类都可以作为父类；这时它本身也是一个作业。
 - **简短形式 `Job.handle`。** 以 String 种类注册的块不需要类，也不需要生成器；它接收 String 类型的负载，并遵循下面的默认策略：
 
@@ -60,7 +77,7 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 
 - **默认策略。** 类中没有任何一行匹配的异常（以及 `Job.handle` 块中的任何异常）会依次在 1、5、15 分钟之后，然后在 60 分钟之后重试，并把 `Class: message`（最多 1000 个字符）写入 `last_error`，直到失败次数达到 `job_max_attempts`（5）次；此时这一行变为 `failed`。作业代码抛出的 `NotImplementedError`（尚未编写的辅助方法）、`SystemStackError` 或其他 `ScriptError` 虽然都不是 `StandardError`，也遵循这一策略；`StandardError` 之外的其他异常会被记录（`ERROR Job thread N: ...`）并被[报告](#error-reporting)，作业线程继续运行，这一行保持 `running`，直到恢复（见下文）接手。
 - **`retry_on Klass, wait: 60, attempts: 5`。** `wait:` 是秒数（省略时为 3，即 Rails 的默认值）或 `:polynomially_longer`（`attempts ** 4 + 2` 秒：3、18、83、258……）；`attempts:`（省略时为 5）计算每一次尝试，包括第一次。可以写多行：第一个其类与异常匹配（子类也算匹配）的行胜出，所以请先写范围较窄的类。在 `discard_on ArgumentError` 之前写 `retry_on StandardError`，会让 `ArgumentError` 被重试。
-- **`discard_on Klass`** 立即停止：这一行变为 `discarded`，错误写入 `last_error`，并且永不重试。
+- **`discard_on Klass`** 立即停止：这一行变为 `discarded`，错误写入 `last_error`，并且永不重试。日志写出 `ERROR [<Kind> <id>] [<request id>] job <id> (<Kind>) discarded: <Class>: <message>`（作业由请求加入队列时带请求 ID），这次丢弃会[报告](#error-reporting)一次，`job.max_attempts` 等于 `job.attempt`。
 - **`def retries_exhausted(error)`** 在某个 `retry_on` 行的尝试次数用尽、这一行真正变为 `failed` 之后运行（对于另一个 worker 接手的尝试永远不会运行，因为那次运行仍可能成功）。它对应 Rails 的 `retry_on ... do |job, error|` 块；它抛出的异常会被记录。
 - **回收**（见下文）同样遵循类的设置：一个 `attempts: 20` 的类的行，如果其进程在第 5 次尝试时死掉，会被重新排队，而不会被标为失败。
 
@@ -253,13 +270,13 @@ end
 {"time":"2026-11-14T09:30:00.132Z","level":"INFO","request_id":"3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c","tags":[],"message":"Completed 200 in 12ms"}
 ```
 
-只有当这一行带有请求 ID（在请求中，或在请求加入队列的作业中）并且 `log_tags` 显示它时，才有 `request_id`；`tags` 按顺序包含其他标签。不是合法 UTF-8 的字节在 JSON 中写成 `�`；文本行保留记录时的原始字节。`:text` 和 `:json` 以外的格式会让启动停止：`error: log_format must be :text or :json (got :xml)`。启动自身的第一行（测试之外 `mail_delivery_method :test` 的警告）遵循该格式；关于无法读取的应用设置（`setting_int`、`setting_bool`）的警告是在 `config/app.rb` 运行时、格式确定之前记录的，因此总是文本行。
+只有当这一行带有请求 ID（在请求中，或在请求加入队列的作业中）并且 `log_tags` 显示它时，才有 `request_id`；`tags` 按顺序包含其他标签。当一条消息（或一个标签）不是合法 UTF-8 时，它从 0x80 起的每个字节（包括合法字符的字节）在 JSON 中都写成转义 `\ufffd`，所以一个坏字节会让这条消息的所有非 ASCII 文字都变成替换字符；合法的消息原样写出，文本行保留记录时的原始字节。`:text` 和 `:json` 以外的格式会让启动停止：`error: log_format must be :text or :json (got :xml)`。启动自身的第一行（测试之外 `mail_delivery_method :test` 的警告）遵循该格式；关于值无效的应用设置（`setting_int`、`setting_bool` 退回默认值时）的警告是在 `config/app.rb` 运行时、格式确定之前记录的，因此总是文本行。
 
 级别和格式适用于 `./<app> server`、`worker` 和 `feeds`，也适用于注册的命令、`jobs` 和 `console`；它们以同样的消息拒绝未知的值，并在打开数据库之前以退出状态 1 结束。`migrate`、`db` 和 `dbconsole` 不应用它们：它们的行是 `info` 级别的文本。
 
 ### 请求 ID
 
-每个请求都有一个 ID，即版本 4 的 UUID；动作通过 `request.request_id` 读取它，响应在 `X-Request-Id` 中返回它，主机检查的 403、`force_ssl` 的 https 重定向、错误页面、开发环境的诊断页面和服务器自己的 500 也都带有它。服务器对无法读取的请求、在应用看到之前就返回的 400 和 413 不带它。请求运行期间记录的每一行都把这个 ID 作为第一个标签，应用自己的 `Cybertrain.logger.info` 行也一样；流式响应体（`stream do ... end`、Server-Sent Events）和请求打开的 WebSocket 连接在保持打开期间也是如此。
+每个请求都有一个 ID，即版本 4 的 UUID；动作通过 `request.request_id` 读取它，响应在 `X-Request-Id` 中返回它，主机检查的 403、`force_ssl` 的 https 重定向、错误页面、开发环境的诊断页面和服务器自己的 500 也都带有它。服务器对无法读取的请求、在应用看到之前就返回的 400 和 413 不带它。请求运行期间记录的每一行都把这个 ID 作为标签（默认的 `log_tags` 下是第一个标签），应用自己的 `Cybertrain.logger.info` 行也一样；流式响应体（`stream do ... end`、Server-Sent Events）和请求打开的 WebSocket 连接在保持打开期间也是如此。
 
 ```ruby
 Cybertrain.logger.info("export #{report.id} for #{request.request_id}")
@@ -288,7 +305,7 @@ end
 
 ## 错误报告
 
-`Cybertrain.error` 收集结束了请求、作业的一次尝试、定时任务或数据订阅的异常，以及应用自己报告的异常，把每一个交给应用添加的订阅者，并在设置了 DSN 时发送给 Sentry（或 GlitchTip）。它在核心中；发送给 Sentry 是单独的一行，`require "cybertrain"` 会加载它，基于 `cybertrain/core` 的应用把它加到 `bin/<app>.rb`（不是 `bin/db.rb`；[子系统](how-it-works.md#subsystems)）：
+`Cybertrain.error` 收集结束了请求、作业的一次尝试、定时任务或数据订阅的异常，以及应用自己报告的异常，把每一个交给应用添加的订阅者，并在设置了 DSN 时发送给 Sentry（或 GlitchTip）。它在核心中；发送给 Sentry 是单独的一行，`require "cybertrain"` 会加载它，基于 `cybertrain/core` 的应用把它加到 `bin/<app>.rb`（不是 `bin/db.rb`；[子系统](how-it-works.md#subsystems)）。`cybertrain new` 会把本节的这些行以注释形式写出：`.env.example` 中的变量、`config/app.rb` 中的订阅者、`config/deploy.yml` 和 `.kamal/secrets` 中的 DSN，以及 `bin/<app>.rb` 注释中的这一行：
 
 ```ruby
 require "cybertrain/error_reporter/sentry"   # bin/<app>.rb 中 require "cybertrain/core" 之后
@@ -340,15 +357,15 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 **不用你写一行就会报告的：**
 
 - 以 500 结束的请求，只报告一次：`Cybertrain::ClientError.status_for` 映射为 500 或以上的异常。从不报告 4xx（错误的参数、CSRF 失败、404），也从不报告 `rescue_from` 处理过的异常。
-- 作业的每一次失败尝试（`where` 是它的类或种类；上下文中有 `job.attempt` 和 `job.max_attempts`）、`retry_on` 的尝试和 `discard_on` 的丢弃。`job.max_attempts` 在默认策略下是 `job_max_attempts`，在 `retry_on` 下是策略的 `attempts:`，在 `discard_on` 下是结束时的尝试次数。失败的 `deliver_later` 邮件属于 `cybertrain mail` 作业。从作业线程的循环中逃出的异常，或那里的数据库错误，`where` 为 `job thread`。
+- 作业的失败尝试（`where` 是它的类或种类；上下文中有 `job.attempt` 和 `job.max_attempts`），无论是默认策略、`retry_on` 还是 `discard_on`。如果同一种类的某次尝试在一分钟内以相同的类和消息报告过，这次尝试会被记录但不会再次报告（[投递](#error-reporting)，见下文）：默认策略下第一次重试要等一分钟，所以每次尝试都会报告；而 `retry_on ..., wait: 30` 时，在已报告的尝试 30 秒后的那次尝试不会报告。丢弃报告一次。`job.max_attempts` 在默认策略下是 `job_max_attempts`，在 `retry_on` 下是策略的 `attempts:`，在 `discard_on` 下是结束时的尝试次数。失败的 `deliver_later` 邮件属于 `cybertrain mail` 作业。从作业线程的循环中逃出的异常，或那里的数据库错误，`where` 为 `job thread`。
 - 块抛出异常的定时任务，或五年内没有下一次运行的 `cron` 任务（`schedule:<name>`）。
 - 抛出异常的数据订阅的 `on_open`、`on_message` 或 `on_tick`、死掉的数据订阅线程，以及放弃某个数据订阅的监督线程（`Cybertrain::Background::FeedFailed`，一个背后没有类的名字，消息为 `feed <name> restarted <n> times in <w> s; exiting`），都是 `feed:<name>`。
 
-不报告：写流式响应体期间的异常（服务器记录 `stream error:`；响应已经开始），以及没有处理器的种类的作业。框架以前写的每一行日志都保持原样；报告是额外的。
+不报告：写流式响应体期间的异常（服务器记录 `stream error:`；响应已经开始），没有处理器的种类的作业，以及在开发环境中，诊断页面在显示一个已报告的异常时自身抛出的异常。框架以前写的每一行日志都保持原样；报告是额外的。
 
 **从不发送的。** 参数、请求头、cookie、会话、客户端的地址和查询字符串不在事件中；请求的路径像请求日志那样被过滤。只添加应用放进 `context:` 的内容。异常消息不会被过滤：含有个人数据的消息（SMTP 服务器点名收件人的拒绝）会原样发送。
 
-**投递。** 报告进入一个容量为 100 的队列，由一个线程投递。相同的类、消息和 `where` 每分钟最多入队一次，所以对每个访问者都失败的页面每分钟只产生一个报告；队列满时，报告被丢弃并计数，`error reports dropped: <n>` 以 warn 级别每分钟最多记录一次。没有订阅者也没有 DSN 时，什么都不入队，也不启动线程。投递失败会被记录为 `error delivery failed: <Class>: <message>`，如果旧线程已结束，下一个报告会启动新线程。服务器、worker 或 feeds 进程停止时，会在其服务停止后最多等待 2 秒，让队列中的报告送出；剩下的会丢失。开发中的重新构建也会等待。
+**投递。** 报告进入一个容量为 100 的队列，由一个线程投递。相同的类、消息和 `where` 每分钟最多入队一次，所以对每个访问者都以相同消息失败的页面每分钟只产生一个报告（带有 ID 的消息，如 `Couldn't find Article with id=5`，每个不同的消息各产生一个）；队列满时，报告被丢弃并计数，`error reports dropped: <n>` 以 warn 级别每分钟最多记录一次。没有订阅者也没有 DSN 时，什么都不入队，也不启动线程。投递失败会被记录为 `error delivery failed: <Class>: <message>`，如果旧线程已结束，下一个报告会启动新线程。服务器、worker 或 feeds 进程停止时，会在其服务停止后最多等待 2 秒，让队列中的报告送出；剩下的会丢失。开发中的重新构建也会等待。
 
 **发送到 Sentry 或 GlitchTip。** `bin/<app>.rb` 中有那一行时，把 `CYBERTRAIN_SENTRY_DSN`（或 `c.sentry_dsn`）设为项目的 DSN，就会把每个报告作为 Sentry 事件发送：
 
@@ -372,7 +389,7 @@ CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 可选：发送其中四分之一
 
 ### 从 0.4 升级日志与错误报告
 
-- 每一行日志的形状都变了：行首方括号中的级别（`[INFO]`）换成了时间、级别和标签，`2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`。读取日志的东西（脚本中对 `[ERROR]` 的 grep、告警）也要随之修改；整行比较捕获的日志行的测试，改为分别比较级别和消息。
+- 每一行日志的形状都变了：行首方括号中的级别（`[INFO]`）换成了时间、级别和标签，`2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`。读取日志的东西（脚本中对 `[ERROR]` 的 grep、告警）也要随之修改；查找整行的测试改为分别查找级别和消息（`" ERROR "` 和消息；[从 0.4 升级](testing.md#upgrading-from-04)）。
 - 每个响应都带 `X-Request-Id`。设置了它的代理，只有在受信任时才会采用它的值。
 - `cybertrain_jobs` 增加 `request_id` 列；第一个访问该表的进程会添加它。
 - 框架现在定义了名为 `request_id` 和 `release`（各返回 String）以及 `handle`（块的值）的方法。同名的模型列如果读取方法返回其他类型（整数的 `request_id`、外键），可能让构建停止，因为一个方法名在整个程序中只有一种返回类型（spikes/NOTES.md 规则 34），而 gen 不会改名：请给列改名。

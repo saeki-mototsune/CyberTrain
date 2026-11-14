@@ -670,7 +670,7 @@ end
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-コメントを投稿すると、サーバーのログから、ジョブがレスポンスの後に実行されたことが分かります。ジョブの行には、ジョブのタグと、それを積んだリクエストの ID が付きます：
+コメントを投稿すると、サーバーのログから、ジョブがレスポンスの後に実行されたことが分かります。ジョブの行には、ジョブのタグと、それをキューに入れたリクエストの ID が付きます：
 
 ```text 出力 — cybertrain server
 2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1
