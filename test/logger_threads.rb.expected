@@ -1,0 +1,2 @@
+ok   lines from several threads never interleave
+1 tests, 3 assertions, 0 failures

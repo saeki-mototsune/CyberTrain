@@ -12,4 +12,8 @@ ok   the same three in setup, teardown and an on_reset hook are ERR with the ste
 ok   a class-form test: the three are ERR in the body, setup and teardown; teardown runs
 ok   a case driven inside a case leaves the outer case's travel, hooks and in_case? alone
 ok   the outer case's after_this_case callable ran at its own end
-14 tests, 32 assertions, 0 failures
+ok   a case that swaps in a log scope and never swaps it back
+ok   the next case starts with no log scope
+ok   a case driven inside a case leaves the outer case's log scope alone and drops its own
+ok   and the case after it starts with no log scope again
+18 tests, 39 assertions, 0 failures

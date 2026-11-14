@@ -15,6 +15,7 @@ require "cybertrain"
 require "cybertrain/application"
 require "cybertrain/test"
 require "cybertrain/test/client"
+require_relative "support/log_capture"
 
 # ---- a scratch app root: views, public files, the secret key -------------
 
@@ -421,9 +422,9 @@ def page_token(body)
   body[from, body.index("\"", from).to_i - from].to_s
 end
 
-test "the stack is RequestLogger, Stream::Endpoint, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router" do
-  assert_equal ["Cybertrain::RequestLogger", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
-                "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
+test "the stack is RequestId, RequestLogger, Stream::Endpoint, HealthCheck, Static, MethodOverride, SessionStore, CsrfProtection, Router" do
+  assert_equal ["Cybertrain::RequestId", "Cybertrain::RequestLogger", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static",
+                "Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(APP)
 end
 
 test "log_level :none, static_files and csrf switch their middleware off" do
@@ -433,7 +434,7 @@ test "log_level :none, static_files and csrf switch their middleware off" do
   c.csrf = false
   c.secret_key_base = "bare-secret"
   bare = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/bare/#{name}" }, config: c)
-  assert_equal ["Cybertrain::HostAuthorization", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
+  assert_equal ["Cybertrain::RequestId", "Cybertrain::HostAuthorization", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::Router"], stack_names(bare)
 end
 
@@ -452,10 +453,14 @@ test "the stack's session cookie follows session_same_site and session_partition
 end
 
 test "development rejects hostile hosts before pages, static files, sessions and writes" do
+  # A fixed time for the Blocked host lines this prints (the snapshot).
+  travel_to(Time.utc(2026, 11, 11, 12))
   c = Cybertrain::Config.new
   c.env = "development"
   c.host = "0.0.0.0"
   c.log_level = :none
+  # The Blocked host lines are printed (the snapshot): no request id in them.
+  c.log_tags = []
   c.secret_key_base = "host-test-secret"
   c.public_root = "#{ROOT}/public"
   app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args, options) { "/" }, config: c)
@@ -480,7 +485,7 @@ test "development rejects hostile hosts before pages, static files, sessions and
   assert ctx.session.nil?
 end
 
-test "production puts ErrorPages outermost" do
+test "production puts ErrorPages outermost, inside RequestId" do
   c = Cybertrain::Config.new
   c.env = "production"
   c.log_level = :none
@@ -488,7 +493,7 @@ test "production puts ErrorPages outermost" do
   c.csrf = false
   c.secret_key_base = "production-secret"
   prod = Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/prod/#{name}" }, config: c)
-  assert_equal ["Cybertrain::ErrorPages", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
+  assert_equal ["Cybertrain::RequestId", "Cybertrain::ErrorPages", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::MethodOverride", "Cybertrain::SessionStore",
                 "Cybertrain::Router"], stack_names(prod)
   # Run it once too (spikes/NOTES.md rule 36). There is no public/404.html
   # under the framework root, so the Router's plain text stays.
@@ -828,7 +833,7 @@ test "development warns once and ignores reuse_port" do
   app.server
   Cybertrain.logger = saved
   refute first.reuse_port
-  assert_includes sink.string, "[WARN] reuse_port is ignored in development"
+  assert_logged sink.string, "WARN", "reuse_port is ignored in development"
   assert_equal 1, sink.string.split("reuse_port is ignored").size - 1
 end
 

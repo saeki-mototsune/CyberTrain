@@ -1,6 +1,6 @@
 ---
-description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: 2d356939fc39bce1422b47603486cbede6fceeb913ecf5400af788d4ed1fcb18
+description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, необязательные подсистемы, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
+source_sha256: 1ef9863a32c9cd418e4fc175c5dd157510bb5bf8b5f31cfb9c46e2399287edf9
 ---
 
 # Как это работает
@@ -65,6 +65,7 @@ Spinel компилирует каждый метод каждого файла,
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; загружает почту и задачи |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` в контроллерах; загружает кэш |
+| `require "cybertrain/error_reporter/sentry"` | отправитель Sentry: `CYBERTRAIN_SENTRY_DSN` отправляет каждый отчёт об ошибке в Sentry или GlitchTip ([Отчёты об ошибках](background-and-operations.md#error-reporting)); загружает `HttpClient` и TLS. Только в `bin/<app>.rb` |
 | `require "cybertrain"` | всё перечисленное |
 
 Каждая строка идёт после `require "cybertrain/core"` (`cybertrain/jobs` и
@@ -103,6 +104,10 @@ Spinel компилирует каждый метод каждого файла,
   завершаются с кодом 1.
 - `/up` сообщает только о загруженном: без задач не проверяет, не завис ли
   воркер, без фидов — не зависли ли фиды.
+- DSN, заданный без строки отправителя Sentry, приводит к отказу загрузки:
+  `error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`.
+  Сам репортёр ошибок, его подписчики и идентификаторы запросов в журнале
+  находятся в ядре.
 
 gen читает `bin/<app>.rb` как текст и видит в нём только буквальные строки
 `require "cybertrain"` и `require "cybertrain/..."`: если перенести их в файл,
@@ -122,8 +127,9 @@ prune"` ([Хранилище кэша](background-and-operations.md#the-cache-st
 
 Тесты этими строками не урезаются: программа, которую компилирует
 `cybertrain test` (`gen/tests.rb`), требует `cybertrain`, все подсистемы,
-что бы ни требовал `bin/<app>.rb`. Поэтому `perform_enqueued_jobs`,
-`assert_emails` и `assert_broadcasts` работают в любом приложении,
+что бы ни требовал `bin/<app>.rb`, и с ними отправитель Sentry. Поэтому
+`perform_enqueued_jobs`, `assert_emails`, `assert_broadcasts` и
+`Test::SentryReceiver` работают в любом приложении,
 приложение на `cybertrain/core` компилирует свои тесты со всеми
 подсистемами, а код, который называет подсистему без её строки, проходит
 тесты и останавливается на `spin build` ([Тестирование приложения](testing.md)).

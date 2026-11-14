@@ -1,5 +1,5 @@
 ---
-source_sha256: 2437024ef92acdab8ec374f1249ff0285fe030d24a72de28f582e73d0a0e3f42
+source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -642,7 +642,7 @@ WebSocket や、自分の JavaScript から使うストリームなど、詳し�
 ## バックグラウンドジョブ
 
 > [!WHY]
-> 通知のように、レスポンスを待たせるべきでない処理は、レスポンスの後に実行します。Solid Queue 上の Active Job と同じく、ジョブは `app/jobs/` のクラスであり、アプリケーション自身のデータベースの 1 行です：ほかのサービスは要りません。
+> 通知のように、レスポンスを待たせるべきでない処理は、リクエストとは別に実行します。レスポンスを書く前に始まることも、後に始まることもあります。Solid Queue 上の Active Job と同じく、ジョブは `app/jobs/` のクラスであり、アプリケーション自身のデータベースの 1 行です：ほかのサービスは要りません。
 
 ```shell ターミナル — blog/
 cybertrain generate job notify_comment --retry StandardError:30:3
@@ -672,13 +672,13 @@ end
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-コメントを投稿すると、サーバーのログから、ジョブがレスポンスの後に実行されたことが分かります：
+コメントを投稿すると、サーバーのログにジョブの実行が出ます。ここではレスポンスの後に実行されていますが、ジョブのスレッドがレスポンスを書く前に行を取ることもあるので、行の順序は変わることがあります。ジョブの行には、ジョブのタグと、それをキューに入れたリクエストの ID が付きます：
 
 ```text 出力 — cybertrain server
-[INFO] Started POST "/articles/1/comments" for 127.0.0.1
-[INFO] Completed 200 in 2ms
-[INFO] new comment 1 on article 1
-[INFO] job 1 (NotifyCommentJob) done
+2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1
+2026-11-14T09:30:00.122Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Completed 200 in 2ms
+2026-11-14T09:30:00.950Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] new comment 1 on article 1
+2026-11-14T09:30:00.951Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] job 1 (NotifyCommentJob) done
 ```
 
 <!-- list: points -->

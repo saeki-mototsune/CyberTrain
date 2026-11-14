@@ -18,7 +18,7 @@ class SetupController < ApplicationController
   # program starts and the same until it exits (a restart makes a new
   # one). The address check alone is not enough: a proxy on this host
   # that adds no X-Forwarded-For makes every client a loopback one.
-  # Printed only by the boot [WARN] (UserCommand.warn_if_no_user) and
+  # Printed only by the boot WARN line (UserCommand.warn_if_no_user) and
   # rendered only into the form's hidden field. A constant, which
   # Spinel keeps alive (a class variable it would not).
   SETUP_TOKEN = Cybertrain::Crypto.random_token(16)

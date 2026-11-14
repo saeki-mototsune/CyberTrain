@@ -47,4 +47,10 @@ no failed jobs
 ok   jobs installs the configured time zone too
 error: time_zone "Mars/Olympus_Mons" is not a known time zone
 ok   an unknown time zone is refused before jobs runs
-10 tests, 53 assertions, 0 failures
+error: log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)
+ok   an unknown log level is refused before jobs runs
+no failed jobs
+ok   jobs waits for the queued error reports before it returns
+error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/blog.rb
+ok   a Sentry DSN no linked sender sends is refused before jobs runs
+13 tests, 59 assertions, 0 failures

@@ -1,6 +1,7 @@
 require "stringio"
 require "cybertrain"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Cybertrain::Job's thread pool (Job.start! / Job.stop!), with real
 # threads against a temporary database file: rows a dead process left are
@@ -162,8 +163,8 @@ test "start! requeues a dead process's stale rows, runs them, and starts only on
   assert Job.start!(config)
   assert Job.running?
   refute Job.start!(config)
-  assert_includes LOG.string, "[WARN] Requeued 1 job(s) whose process stopped sending heartbeats"
-  assert_includes LOG.string, "[INFO] Job threads started: 1 (#{Job.process_label})"
+  assert_logged LOG.string, "WARN", "Requeued 1 job(s) whose process stopped sending heartbeats"
+  assert_logged LOG.string, "INFO", "Job threads started: 1 (#{Job.process_label})"
   assert wait_until(2.0) { Job.state_count("done") == 1 }
   assert_equal "left over", events_text
   Job.stop!
@@ -203,7 +204,7 @@ test "a job raising NotImplementedError or another Exception does not end its jo
   assert wait_until(3.0) { LOG.string.include?("JobAbort: abandon ship") }
   assert_equal "queued", job_state(unwritten)
   assert_includes LOG.string, "(unwritten) attempt 1 of 5 failed: NotImplementedError: notify is not written yet"
-  assert_includes LOG.string, "[ERROR] Job thread 0: JobAbort: abandon ship"
+  assert_logged LOG.string, "ERROR", "Job thread 0: JobAbort: abandon ship"
   # Left running for heartbeat recovery.
   assert_equal "running", job_state(aborted)
   # The one job thread is still there and runs the next job.
@@ -236,7 +237,7 @@ test "the scheduler no longer runs jobs as a task" do
   Cybertrain::Scheduler::TASKS.delete_at(prune_index)
   assert Cybertrain::Scheduler.start!(pool_config(1))
   assert_equal(-1, Cybertrain::Scheduler.task_index("cybertrain jobs"))
-  assert_includes LOG.string, "[INFO] Scheduler started: no scheduled tasks (job recovery only)"
+  assert_logged LOG.string, "INFO", "Scheduler started: no scheduled tasks (job recovery only)"
   Cybertrain::Scheduler.stop!
   Cybertrain::Scheduler::TASKS << prune
 end
@@ -336,7 +337,7 @@ test "stop! waits at most job_drain_timeout and leaves an unfinished job running
   refute Job.running?
   assert_equal "running", job_state(long)
   assert_equal 1, Job.live_loops
-  assert_includes LOG.string, "[WARN] 1 job(s) still running at shutdown; left to heartbeat recovery"
+  assert_logged LOG.string, "WARN", "1 job(s) still running at shutdown; left to heartbeat recovery"
   now = Time.now.to_i
   # Its heartbeat is fresh: no other process may take it yet.
   assert_equal 0, Job.recover!(now, 300)
@@ -348,7 +349,7 @@ test "stop! waits at most job_drain_timeout and leaves an unfinished job running
   assert_equal "long", events_text
   # Its outcome is fenced off: the requeued row stays queued.
   assert_equal "queued", job_state(long)
-  assert_includes LOG.string, "[WARN] job #{long} (long) finished after it was reclaimed; outcome discarded"
+  assert_logged LOG.string, "WARN", "job #{long} (long) finished after it was reclaimed; outcome discarded"
 end
 
 # After the test above, on purpose: a stop! that timed out, then a restart.

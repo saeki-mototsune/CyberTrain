@@ -29,4 +29,6 @@ Usage:
   ./blog dbconsole         open the sqlite3 shell on the database
   ./blog help
 ok   an unknown word is still unknown
-10 tests, 22 assertions, 0 failures
+ok   the core links no error sender
+ok   a Sentry DSN without the sender's line refuses boot, naming the line
+12 tests, 26 assertions, 0 failures

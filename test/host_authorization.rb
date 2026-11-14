@@ -1,6 +1,7 @@
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/config"
 require "cybertrain/test"
+require_relative "support/log_capture"
 require "stringio"
 
 # Blocked hosts are logged: collected here and checked by one test.
@@ -153,7 +154,7 @@ test "a blocked host is logged with its path, escaped" do
   before = LOG.string.size
   guarded_request({ "host" => "typo.example\x1b[31m" })
   logged = LOG.string[before, LOG.string.size - before].to_s
-  assert_equal "[WARN] Blocked host: \"typo.example\\e[31m\" for \"/\"\n", logged
+  assert_equal ["WARN Blocked host: \"typo.example\\e[31m\" for \"/\""], LogCapture.entries(logged)
 end
 
 test "a blocked host's line writes a signed token in the path as [FILTERED]" do
@@ -163,7 +164,7 @@ test "a blocked host's line writes a signed token in the path as [FILTERED]" do
   Cybertrain::HostAuthorization.new(ProtectedApp.new, ["localhost"]).call(ctx)
   assert_equal 403, ctx.response.status
   logged = LOG.string[before, LOG.string.size - before].to_s
-  assert_equal "[WARN] Blocked host: \"evil.example\" for \"/passwords/[FILTERED]/edit\"\n", logged
+  assert_equal ["WARN Blocked host: \"evil.example\" for \"/passwords/[FILTERED]/edit\""], LogCapture.entries(logged)
 end
 
 Cybertrain::Test.run!

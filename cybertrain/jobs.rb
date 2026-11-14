@@ -59,11 +59,19 @@ module Cybertrain
     # `./<name> jobs ...`: Job::CLI.run with the database connected as for
     # a registered command (a pool of one; no server, scheduler or job
     # thread), in the configured zone. Returns its exit status, or 1 when
-    # the zone is unknown or the database cannot be opened. The rescue
-    # sits in this plain method (NOTES rules 32/45).
-    def self.run_jobs(args)
+    # the zone is unknown, a Sentry DSN has no sender, or the database
+    # cannot be opened. The rescue sits in this plain method (NOTES rules
+    # 32/45). The error reports queued meanwhile are waited for, up to 2
+    # seconds, before the database is closed.
+    def self.run_jobs(args, name)
+      log_problem = Runtime.apply_logging(Cybertrain.config)
+      return zone_refused(log_problem) unless log_problem.empty?
+
       zone_problem = Runtime.apply_zone(Cybertrain.config)
       return zone_refused(zone_problem) unless zone_problem.empty?
+
+      sender_problem = Application.sender_problem(Cybertrain.config, name)
+      return zone_refused(sender_problem) unless sender_problem.empty?
 
       status = 0
       begin
@@ -73,6 +81,7 @@ module Cybertrain
         puts "jobs failed: #{e.message}"
         status = 1
       ensure
+        Cybertrain.error.drain_reports(2.0)
         DB.disconnect
       end
       status
@@ -133,7 +142,7 @@ module Cybertrain
     def run_feature_command(word, args, name, router, url_resolver, views)
       case word
       when "worker" then Main.role_app(name, router, url_resolver, views).run_worker(args)
-      when "jobs" then Main.run_jobs(args)
+      when "jobs" then Main.run_jobs(args, name)
       else -1
       end
     end

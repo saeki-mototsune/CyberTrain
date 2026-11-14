@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/crypto"
+require_relative "support/log_capture"
 
 test "hmac_hex is deterministic and 64 hex chars" do
   a = Cybertrain::Crypto.hmac_hex("secret", "hello world")
@@ -68,6 +69,30 @@ test "derive_key is the HMAC of a domain-prefixed label, not of the bare label" 
   assert_equal 32, key.bytesize
   assert_equal Cybertrain::Crypto.hmac_digest("s" * 64, "cybertrain key\0cybertrain session"), key
   refute key == Cybertrain::Crypto.hmac_digest("s" * 64, "cybertrain session")
+end
+
+
+test "Crypto.uuid is a version 4 UUID, a new one each time" do
+  # 200 of them: each has the shape, the version digit (position 14) and a
+  # variant digit (position 19) in place, and no two are the same.
+  seen = {}
+  i = 0
+  while i < 200
+    id = Cybertrain::Crypto.uuid
+    assert LogCapture.uuid?(id), id
+    assert_equal "4", id[14, 1]
+    assert "89ab".include?(id[19, 1]), id
+    refute seen.key?(id), id
+    seen[id] = true
+    i += 1
+  end
+  assert_equal 200, seen.size
+  # the shape check itself refuses what is not one
+  refute LogCapture.uuid?("")
+  refute LogCapture.uuid?("3f2a9c1e-6c1d-3f0b-9a52-0d1e2f3a4b5c")
+  refute LogCapture.uuid?("3f2a9c1e-6c1d-4f0b-7a52-0d1e2f3a4b5c")
+  refute LogCapture.uuid?("3F2A9C1E-6C1D-4F0B-9A52-0D1E2F3A4B5C")
+  assert LogCapture.uuid?("3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c")
 end
 
 Cybertrain::Test.run!

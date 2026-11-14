@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/main"
+require_relative "support/log_capture"
 
 # Cybertrain::Main.command: an application's own subcommands on its binary.
 # The blocks below are registered at top level, as bin/<name>.rb does
@@ -116,6 +117,60 @@ Cybertrain::Main.command("today", "record Time.zone and Date.current") do |argv|
   0
 end
 
+# A command that logs one line, as a report command would.
+Cybertrain::Main.command("log_line", "log one line") do |argv|
+  Cybertrain.logger.info("from a command")
+  0
+end
+
+# What CommandSubscriber received: it is slower than a command, so the
+# report a command makes reaches it before the command returns only when
+# the command waits for the reporter (ErrorReporter#drain_reports).
+COMMAND_REPORTED = Array.new(0) { "" }
+
+class CommandSubscriber < Cybertrain::ErrorSubscriber
+  def report(event)
+    text = event.error_message
+    return nil unless text.start_with?("from a command")
+
+    sleep 0.3
+    COMMAND_REPORTED << text
+    nil
+  end
+end
+
+Cybertrain.error.subscribe(CommandSubscriber.new)
+
+# Raises and reports what it rescued, as a command's own rescue would.
+def command_report(message)
+  raise message
+rescue RuntimeError => e
+  Cybertrain.error.report(e)
+end
+
+Cybertrain::Main.command("report", "report an error it rescued") do |argv|
+  command_report("from a command report")
+  0
+end
+
+# Sets a Sentry DSN for this case only (this program does not link the
+# sender).
+def dsn_for_this_case
+  Cybertrain.config.sentry_dsn = "https://key@sentry.example/1"
+  Cybertrain::Test.after_this_case(-> { Cybertrain.config.sentry_dsn = "" })
+  nil
+end
+
+# Runs `argv` with config.log_format = :json, then puts the text format
+# back (a plain method's ensure: pre-flight ruling G4).
+def run_in_json(argv)
+  Cybertrain.config.log_format = :json
+  run(argv)
+ensure
+  Cybertrain.config.log_format = :text
+  Cybertrain::Logger.json_lines = false
+end
+
 def refusal(word)
   Cybertrain::Main.command(word, "never registered") { |argv| 0 }
   "registered"
@@ -196,6 +251,69 @@ test "an unknown time zone is refused before a command or console runs" do
   Cybertrain.config.time_zone = "UTC"
   assert_equal base, SEEN.size
   assert_equal "UTC", Time.zone.zone_name
+  refute Cybertrain::DB.connected?
+end
+
+test "a command logs in the configured format" do
+  status = -1
+  log = capture_log { travel_to(Time.utc(2026, 11, 11, 12)) { status = run_in_json(["log_line"]) } }
+  assert_equal 0, status
+  assert_equal %({"time":"2026-11-11T12:00:00.000Z","level":"INFO","tags":[],"message":"from a command"}\n), log
+  refute Cybertrain::Logger.json_lines
+  text = capture_log { travel_to(Time.utc(2026, 11, 11, 12)) { status = run(["log_line"]) } }
+  assert_equal "2026-11-11T12:00:00.000Z INFO from a command\n", text
+end
+
+# Puts the log level and format back to :info and :text once this case
+# ends, also when an assertion fails first: an unknown level left set
+# would make every later run answer 1.
+def restore_logging_after_case
+  Cybertrain::Test.after_this_case(lambda do
+    Cybertrain.config.log_level = :info
+    Cybertrain.config.log_format = :text
+    Cybertrain::Logger.json_lines = false
+    nil
+  end)
+  nil
+end
+
+test "a command logs at the configured level" do
+  restore_logging_after_case
+  Cybertrain.config.log_level = :warn
+  quiet = capture_log { run(["log_line"]) }
+  Cybertrain.config.log_level = :info
+  assert_equal "", quiet
+  assert_logged capture_log { run(["log_line"]) }, "INFO", "from a command"
+end
+
+# `jobs` is refused too: test/main_jobs.rb.
+test "an unknown log level or format is refused before a command or console runs" do
+  restore_logging_after_case
+  base = SEEN.size
+  Cybertrain.config.log_level = :verbose
+  assert_equal 1, run(["user", "y@example.com"])
+  assert_equal 1, run(["console"])
+  Cybertrain.config.log_level = :info
+  Cybertrain.config.log_format = :xml
+  assert_equal 1, run(["user", "y@example.com"])
+  Cybertrain.config.log_format = :text
+  assert_equal base, SEEN.size
+  refute Cybertrain::Logger.json_lines
+  refute Cybertrain::DB.connected?
+end
+
+test "a command waits for the error reports it made before it returns" do
+  assert_equal 0, run(["report"])
+  assert_equal ["from a command report"], COMMAND_REPORTED
+  refute Cybertrain::DB.connected?
+end
+
+test "a Sentry DSN this program cannot send is refused before a command or console runs" do
+  base = SEEN.size
+  dsn_for_this_case
+  assert_equal 1, run(["user", "w@example.com"])
+  assert_equal 1, run(["console"])
+  assert_equal base, SEEN.size
   refute Cybertrain::DB.connected?
 end
 

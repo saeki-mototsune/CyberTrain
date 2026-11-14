@@ -830,7 +830,8 @@ More, including WebSocket and streams for your own JavaScript:
 
 > [!WHY]
 > Work that should not hold up the response, such as a notification, runs
-> after it. As with Active Job on Solid Queue, a job is a class in
+> on its own, apart from the request: it may start before the response is
+> written or after it. As with Active Job on Solid Queue, a job is a class in
 > `app/jobs/` and a row in the application's own database: no other service.
 
 ```shell terminal — blog/
@@ -864,14 +865,16 @@ Queue it from `create`, once the comment is saved:
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-Post a comment, and the server's log shows the job running after the
-response:
+Post a comment, and the server's log shows the job running, its lines
+tagged with the job and with the id of the request that queued it. Here it
+runs after the response; a job thread may also take the row before the
+response is written, so the order of the lines can differ:
 
 ```text output — cybertrain server
-[INFO] Started POST "/articles/1/comments" for 127.0.0.1
-[INFO] Completed 200 in 2ms
-[INFO] new comment 1 on article 1
-[INFO] job 1 (NotifyCommentJob) done
+2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1
+2026-11-14T09:30:00.122Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Completed 200 in 2ms
+2026-11-14T09:30:00.950Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] new comment 1 on article 1
+2026-11-14T09:30:00.951Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] job 1 (NotifyCommentJob) done
 ```
 
 <!-- list: points -->

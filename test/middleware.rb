@@ -8,6 +8,7 @@ require "cybertrain/router"
 require "cybertrain/app"
 require "cybertrain/config"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 class AppendBefore < Cybertrain::Middleware
   def call(ctx)
@@ -86,10 +87,10 @@ test "RequestLogger logs Started and Completed lines" do
   logger = Cybertrain::Logger.new(sink)
   stack = Cybertrain::RequestLogger.new(endpoint, logger)
   stack.call(build_ctx("GET", "/?page=2"))
-  lines = sink.string.split("\n")
+  lines = LogCapture.entries(sink.string)
   assert_equal 2, lines.size
-  assert_equal "[INFO] Started GET \"/?page=2\" for 127.0.0.1", lines[0]
-  assert lines[1].start_with?("[INFO] Completed 200 in "), lines[1]
+  assert_equal "INFO Started GET \"/?page=2\" for 127.0.0.1", lines[0]
+  assert lines[1].start_with?("INFO Completed 200 in "), lines[1]
   assert lines[1].end_with?("ms"), lines[1]
 end
 
@@ -99,10 +100,10 @@ test "RequestLogger escapes terminal sequences accepted by the HTTP parser" do
   sink = StringIO.new
   stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
   assert_nil stack.call(Cybertrain::Context.new(request))
-  lines = sink.string.split("\n")
+  lines = LogCapture.entries(sink.string)
   assert_equal 2, lines.size
-  assert_equal "[INFO] Started G\\e[2JET \"/\\e[2J?text=\\e[31mforged\" for 127.0.0.1", lines[0]
-  assert lines[1].start_with?("[INFO] Completed 200 in "), lines[1]
+  assert_equal "INFO Started G\\e[2JET \"/\\e[2J?text=\\e[31mforged\" for 127.0.0.1", lines[0]
+  assert lines[1].start_with?("INFO Completed 200 in "), lines[1]
   assert_equal "G\e[2JET", request.method
   assert_equal "/\e[2J", request.path
   assert_equal "text=\e[31mforged", request.query_string
@@ -113,26 +114,26 @@ test "RequestLogger escapes controls and non-ASCII bytes in paths and queries" d
   stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
   controls = "\0\a\b\t\n\v\f\r\e\x1f\x7f\x9b"
   stack.call(build_ctx("GET", "/" + controls + "?q=" + controls + "\u009b\u2028"))
-  lines = sink.string.split("\n")
+  lines = LogCapture.entries(sink.string)
   assert_equal 2, lines.size
-  assert_equal "[INFO] Started GET \"/\\x00\\a\\b\\t\\n\\v\\f\\r\\e\\x1F\\x7F\\x9B?q=\\x00\\a\\b\\t\\n\\v\\f\\r\\e\\x1F\\x7F\\x9B\\xC2\\x9B\\xE2\\x80\\xA8\" for 127.0.0.1", lines[0]
+  assert_equal "INFO Started GET \"/\\x00\\a\\b\\t\\n\\v\\f\\r\\e\\x1F\\x7F\\x9B?q=\\x00\\a\\b\\t\\n\\v\\f\\r\\e\\x1F\\x7F\\x9B\\xC2\\x9B\\xE2\\x80\\xA8\" for 127.0.0.1", lines[0]
 end
 
 test "RequestLogger escapes quotes and literal backslashes without decoding percent escapes" do
   sink = StringIO.new
   stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
   stack.call(build_ctx("GET", "/a\"\\e[2J?q=\"\\n%1B[2J"))
-  lines = sink.string.split("\n")
+  lines = LogCapture.entries(sink.string)
   assert_equal 2, lines.size
-  assert_equal "[INFO] Started GET \"/a\\\"\\\\e[2J?q=\\\"\\\\n%1B[2J\" for 127.0.0.1", lines[0]
+  assert_equal "INFO Started GET \"/a\\\"\\\\e[2J?q=\\\"\\\\n%1B[2J\" for 127.0.0.1", lines[0]
 end
 
 test "RequestLogger writes filtered query values as [FILTERED], other pairs untouched" do
   sink = StringIO.new
   stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
   stack.call(build_ctx("GET", "/login?user%5BPassword%5D=hunter2&page=2&api_key=k%41y&flag&TOKEN=&q=%1B[2J&pass%77ord=x"))
-  lines = sink.string.split("\n")
-  assert_equal "[INFO] Started GET \"/login?user%5BPassword%5D=[FILTERED]&page=2&api_key=[FILTERED]&flag&TOKEN=[FILTERED]&q=%1B[2J&pass%77ord=[FILTERED]\" for 127.0.0.1", lines[0]
+  lines = LogCapture.entries(sink.string)
+  assert_equal "INFO Started GET \"/login?user%5BPassword%5D=[FILTERED]&page=2&api_key=[FILTERED]&flag&TOKEN=[FILTERED]&q=%1B[2J&pass%77ord=[FILTERED]\" for 127.0.0.1", lines[0]
 end
 
 test "RequestLogger filters with the installed list; an empty list filters nothing" do
@@ -143,9 +144,9 @@ test "RequestLogger filters with the installed list; an empty list filters nothi
   Cybertrain::ParameterFilter.names = []
   stack.call(build_ctx("GET", "/v?password=2"))
   Cybertrain::ParameterFilter.names = Cybertrain::ParameterFilter::DEFAULT_NAMES
-  lines = sink.string.split("\n")
-  assert_equal "[INFO] Started GET \"/v?otp_code=[FILTERED]&password=2&user[ssn]=[FILTERED]\" for 127.0.0.1", lines[0]
-  assert_equal "[INFO] Started GET \"/v?password=2\" for 127.0.0.1", lines[2]
+  lines = LogCapture.entries(sink.string)
+  assert_equal "INFO Started GET \"/v?otp_code=[FILTERED]&password=2&user[ssn]=[FILTERED]\" for 127.0.0.1", lines[0]
+  assert_equal "INFO Started GET \"/v?password=2\" for 127.0.0.1", lines[2]
   assert_equal 8, Cybertrain::ParameterFilter.names.size
   assert Cybertrain::ParameterFilter.filter?("user[Secret_Answer]")
   assert !Cybertrain::ParameterFilter.filter?("username")
@@ -164,11 +165,11 @@ test "RequestLogger writes a signed token in the path as [FILTERED]" do
   Cybertrain::ParameterFilter.names = []
   stack.call(build_ctx("GET", "/confirmations/#{PATH_TOKEN.upcase}"))
   Cybertrain::ParameterFilter.names = Cybertrain::ParameterFilter::DEFAULT_NAMES
-  lines = sink.string.split("\n")
-  assert_equal "[INFO] Started GET \"/passwords/[FILTERED]/edit\" for 127.0.0.1", lines[0]
-  assert_equal "[INFO] Started PUT \"/passwords/[FILTERED]\" for 127.0.0.1", lines[2]
-  assert_equal "[INFO] Started GET \"/passwords/[FILTERED].json?token=[FILTERED]&page=2\" for 127.0.0.1", lines[4]
-  assert_equal "[INFO] Started GET \"/confirmations/[FILTERED]\" for 127.0.0.1", lines[6]
+  lines = LogCapture.entries(sink.string)
+  assert_equal "INFO Started GET \"/passwords/[FILTERED]/edit\" for 127.0.0.1", lines[0]
+  assert_equal "INFO Started PUT \"/passwords/[FILTERED]\" for 127.0.0.1", lines[2]
+  assert_equal "INFO Started GET \"/passwords/[FILTERED].json?token=[FILTERED]&page=2\" for 127.0.0.1", lines[4]
+  assert_equal "INFO Started GET \"/confirmations/[FILTERED]\" for 127.0.0.1", lines[6]
   assert_equal 8, lines.size
   assert sink.string.index("0123456789abcdef").nil?
   assert sink.string.index("0123456789ABCDEF").nil?
@@ -206,10 +207,10 @@ test "RequestLogger logs Completed 500 and re-raises when the app raises" do
   stack = Cybertrain::RequestLogger.new(endpoint, Cybertrain::Logger.new(sink))
   message = assert_raises("ArgumentError") { stack.call(build_ctx("GET", "/boom")) }
   assert_equal "kaboom", message
-  lines = sink.string.split("\n")
+  lines = LogCapture.entries(sink.string)
   assert_equal 2, lines.size
-  assert_equal "[INFO] Started GET \"/boom\" for 127.0.0.1", lines[0]
-  assert lines[1].start_with?("[INFO] Completed 500 in "), lines[1]
+  assert_equal "INFO Started GET \"/boom\" for 127.0.0.1", lines[0]
+  assert lines[1].start_with?("INFO Completed 500 in "), lines[1]
   assert lines[1].end_with?("ms"), lines[1]
 end
 
@@ -226,9 +227,9 @@ test "RequestLogger logs the status the client fault gets (400), not 500" do
   stack = Cybertrain::RequestLogger.new(TooManyApp.new, Cybertrain::Logger.new(sink))
   message = assert_raises("QueryTooMany") { stack.call(build_ctx("POST", "/things")) }
   assert_equal "too many parameters (limit 4096)", message
-  lines = sink.string.split("\n")
+  lines = LogCapture.entries(sink.string)
   assert_equal 2, lines.size
-  assert lines[1].start_with?("[INFO] Completed 400 in "), lines[1]
+  assert lines[1].start_with?("INFO Completed 400 in "), lines[1]
 end
 
 test "MethodOverride turns a form POST with _method=delete into DELETE" do

@@ -6,4 +6,5 @@ ok   hex spells raw bytes in lowercase hex
 ok   secure_compare is true only for equal strings of equal length
 ok   random_token returns distinct hex strings of the requested byte length
 ok   derive_key is the HMAC of a domain-prefixed label, not of the bare label
-8 tests, 85 assertions, 0 failures
+ok   Crypto.uuid is a version 4 UUID, a new one each time
+9 tests, 891 assertions, 0 failures

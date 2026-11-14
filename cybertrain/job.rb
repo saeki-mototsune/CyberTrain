@@ -114,6 +114,13 @@ module Cybertrain
       #   `now` of {Job.work_one}); its outcome writes are timed from it
       # @api public
       attr_reader :run_now
+      # @return [String] the id of the request the job was enqueued in
+      #   (recorded in the row's `request_id`), or, for a job enqueued by
+      #   another job, the request id that job carries; "" when it was
+      #   enqueued outside both (a scheduled task, a feed, a command); the
+      #   job's log lines carry it
+      # @api public
+      attr_reader :run_request_id
 
       # @param run_id [Integer]
       # @param run_kind [String]
@@ -121,14 +128,16 @@ module Cybertrain
       # @param run_attempts [Integer]
       # @param run_claimed_by [String]
       # @param run_now [Integer] epoch seconds
+      # @param run_request_id [String] the enqueuing request's id, "" for none
       # @api public
-      def initialize(run_id, run_kind, run_payload, run_attempts, run_claimed_by, run_now)
+      def initialize(run_id, run_kind, run_payload, run_attempts, run_claimed_by, run_now, run_request_id = "")
         @run_id = run_id
         @run_kind = run_kind
         @run_payload = run_payload
         @run_attempts = run_attempts
         @run_claimed_by = run_claimed_by
         @run_now = run_now
+        @run_request_id = run_request_id
         @run_args = Cast.empty_hash
         @run_args_parsed = false
         @run_written = false
@@ -396,6 +405,10 @@ module Cybertrain
     # a job is only enqueued if the work that asked for it commits.
     # A kind registered with a `concurrency_key:` stores the payload's
     # {Job.concurrency_key_for} with the row; its limit then counts per key.
+    # Enqueued inside a request, the row records the request's id (this
+    # thread's {Logger.current_scope}), and the job's log lines carry it;
+    # enqueued by a job, it records the request id that job carries, so a
+    # chain of jobs keeps the id of the request that started it.
     # @example run in ten minutes
     #   Cybertrain::Job.enqueue("reminder", order.id.to_s, run_at: Time.current + 600)
     # @param kind [String] a kind registered with {Job.handle}
@@ -418,7 +431,7 @@ module Cybertrain
         message = "Job.enqueue #{kind.inspect}: the payload has no #{name.inspect} field for limits_concurrency"
         raise ArgumentError, message
       end
-      Store.insert(kind, payload, run_at.to_i, key)
+      Store.insert(kind, payload, run_at.to_i, key, Logger.current_scope.scope_request_id)
     end
 
     # The concurrency key a job of `kind` with `payload` is counted under:

@@ -1,4 +1,4 @@
-[INFO] m1 ok
+2026-11-11T12:00:00.000Z INFO m1 ok
 ok   the entry point exposes every M1 feature
 ok   an App routes a request through the default stack
 ok   the Server serves the same App over a socket

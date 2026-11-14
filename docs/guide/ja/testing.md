@@ -1,5 +1,5 @@
 ---
-source_sha256: 8708d189e270a6ea82cabcd3fcc2f574bb7b99b714678d9820d9a6b7bc315312
+source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
 ---
 # アプリをテストする
 
@@ -83,7 +83,7 @@ cybertrain test -n /article/                            # 名前に "article" �
 
 `cybertrain test` は `SPIN_DEBUG=1 spin run gen` を実行します（CLI のどのコマンドとも同じく、gen は spin のデバッグモードでビルドされます）。これが `gen/tests.rb`（プログラム）と、`gen/test/` 以下に各テストクラスを書き換えたコピーを書き出します。どちらも `gen/` のほかの部分と一緒にコミットします。次に、いずれかの入力がバイナリより新しければ `gen/tests.rb` を `build/test/tests` にコンパイルし（リリースビルド）、実行します。`test/**/*_test.rb` のすべてと、`test/test_helper.rb` 以外の `test/*.rb` のすべてがこれに入ります。`test/support/`（ヘルパーが読み込む）と `test/fixtures/` にはテストはありません。プログラムは最初のテストの前に `storage/test.sqlite3` を削除し、新しいデータベースをマイグレートして、その上でアプリケーションを起動します（ジョブ、スケジューラー、フィードのスレッドはなし：ジョブはテストが自分で実行します）。`CYBERTRAIN_TEST_DATABASE` を設定すると代わりに別のファイルを使います。プログラムはテストに使うファイルを削除するので、自分が作るデータベースすべてに印を付け（`PRAGMA application_id`、専用の値）、既存のファイルを削除したり空にしたりするのは、その印があるとき、このアプリケーション自身の `storage/test.sqlite3`（パスの書き方は問いません）であるとき、空のファイルであるときだけです。それ以外は終了ステータス 2 で何も削除せずに拒否します：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。`development.sqlite3` や `production.sqlite3` という名前のファイル（大文字小文字は問いません）、または `storage/development.sqlite3` や `storage/production.sqlite3` と同じファイルは、`cybertrain test refuses to delete <path>: it is the development database`（または `production`）で拒否されます。名前はファイルのパスでなければなりません：`:memory:` と `file:` の URI は拒否されます（`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`）。アップグレードのあと、以前 `CYBERTRAIN_TEST_DATABASE` で指定していたファイルには印がないので一度拒否されます：そのファイルを（`-wal` と `-shm` も）削除すれば、`cybertrain test` が印の付いたものを作ります。既定の `storage/test.sqlite3` は何もしなくてかまいません。データベースを作っている間にシンボリックリンクに変わったパスは、終了ステータス 2 で拒否されます：`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`。各テストの前に空にするのはメインのデータベースのテーブルだけで、同じ名前の TEMP のテーブルや attach されたテーブルには触れません。既知の制限：印はテスト用データベースを `cp` しても残るので、テスト用データベースの名前を付けたコピー（またはテストが接続したもの）は空にされます。ファイルを作ってから印を付けるまでの間に止められた実行は、指定したパスに印のないファイルを残し、次は拒否されます（削除してください）。`storage/test.sqlite3` がディレクトリだと、プログラムが削除するときに例外になります。
 
-プログラムは、`config/app.rb` が自分で同じことを設定していない限り、Rails と同じようにテスト環境を整えます：リクエスト偽造対策は無効、リクエストのログは出さず、メールは `Mailer.deliveries` に保持し（`:test`）、`force_ssl` は無効（テストでは変数 `CYBERTRAIN_MAIL_DELIVERY_METHOD` と `CYBERTRAIN_FORCE_SSL` は、不正な値でも読まれません）、アップロードは `tmp/test_uploads/` に書かれて実行のたびに空になり、ホストの検査は行いません（`CYBERTRAIN_HOSTS` を export しても有効になりません）。`*_url` ヘルパーのホストである `www.example.com` は常に許可されたホストです。
+プログラムは、`config/app.rb` が自分で同じことを設定していない限り、Rails と同じようにテスト環境を整えます：リクエスト偽造対策は無効、リクエストのログは出さず（レベル `:none`。エラーの行は出ます）、ログの行はテキスト（エクスポートされた `CYBERTRAIN_LOG_FORMAT` は読みません）、エラー報告は Sentry に送らず（エクスポートされた `CYBERTRAIN_SENTRY_DSN` は空にします）、メールは `Mailer.deliveries` に保持し（`:test`）、`force_ssl` は無効（テストでは変数 `CYBERTRAIN_MAIL_DELIVERY_METHOD` と `CYBERTRAIN_FORCE_SSL` は、不正な値でも読まれません）、アップロードは `tmp/test_uploads/` に書かれて実行のたびに空になり、ホストの検査は行いません（`CYBERTRAIN_HOSTS` を export しても有効になりません）。`*_url` ヘルパーのホストである `www.example.com` は常に許可されたホストです。
 
 ```text 出力 — cybertrain test
 test/controllers/articles_controller_test.rb
@@ -181,7 +181,7 @@ assert_includes message, "999"
 
 - `assert_raises` はクラス（Minitest と同じくサブクラスも一致します）、String としてのクラス名の一部（`assert_raises("RecordNotFound")`）、または何も取らず（どの StandardError でも）、例外ではなく例外の**メッセージ**を返します：Rails で `error = assert_raises(X) { }` と書いて `error.message` を使うところでは、返ってくる String を使ってください。Spinel ではメソッドは 1 つの型しか返せず、テストが読むのはメッセージだからです。
 - ブロックのアサーションはブロックの値ではなく nil を返します。
-- 提供しないもの：`assert_predicate`（計算された `send` が要ります：`assert article.valid?` と書いてください）、`assert_difference` の String の式（`eval` が要ります）、式の Array や Hash、ほかのアサーションのメッセージの引数。
+- 提供しないもの：`assert_predicate`（計算された `send` が要ります：`assert article.valid?` と書いてください）、`assert_difference` の String の式（`eval` が要ります）、式の Array や Hash、ほかのアサーションのメッセージの引数。Minitest の `refute_*` の名前のうちあるのは `refute` だけです：`assert_not_equal`、`assert_not_nil` などの `assert_not_*` の形を書いてください。`refute_equal` を呼ぶと、定義しているものがないので、テストプログラムのビルドが止まります。
 
 ## タイムトラベル
 
@@ -375,6 +375,88 @@ end
 
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` で再試行の間隔が正確になります。このリポジトリの `test/websocket_integration.rb` に完全なテストがあります。
 
+## ログとエラー報告のテスト
+
+レスポンスの `X-Request-Id` がリクエストの ID です。ログの行を読むには、テストが見たい処理の間だけ `Cybertrain.logger` に `StringIO` を渡し、後でロガーを戻します。これは専用のメソッドの中で行います（`yield` を囲む `rescue` や `ensure` は、Spinel では素のメソッドに置きます）：
+
+```ruby test/integration/logging_test.rb
+require "test_helper"
+require "stringio"
+
+class LoggingTest < ActionDispatch::IntegrationTest
+  test "a comment's job logs the request's id" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Ann", body: "Hi" } }
+    rid = response.header("X-Request-Id").to_s
+    log = StringIO.new
+    perform_jobs_logging_to(log)
+    assert_includes log.string, "] [#{rid}] new comment "
+  end
+
+  private
+
+  def perform_jobs_logging_to(io)
+    saved = Cybertrain.logger
+    Cybertrain.logger = Cybertrain::Logger.new(io)
+    perform_enqueued_jobs
+  ensure
+    Cybertrain.logger = saved
+  end
+end
+```
+
+行頭の時刻は実行のたびに変わるので（比べるなら `freeze_time` で止めます）、その後ろ、つまりレベル、タグ、メッセージを比べます。アプリケーションのリクエストログはテストでは出ませんが（`log_level :none`）、失敗したジョブの `ERROR` の行はそれでも書かれます。失敗するジョブを実行するテストは上のようにロガーを捕まえます。そうしないと、その行がテストの行の間に出ます。
+
+エラー報告は `Cybertrain::Test::SentryReceiver` に届きます。これは `cybertrain/test_help` が読み込む `127.0.0.1` 上の Sentry です。`cybertrain test` はエクスポートされた DSN を無視するので、テストが DSN を代入し、後で戻します。この例は examples/blog の `NotifyCommentJob` を動かします。これは渡されたコメントがなくなっていると自分の `NotifyCommentJob::CommentGone` を投げて自身を破棄します（[Retries and discards](background-and-operations.md#retries-and-discards)）。チュートリアルのジョブはログを出すだけなので、先にその `find_by`、クラス、`discard_on CommentGone` を足してください：
+
+```ruby test/integration/error_reporting_test.rb
+require "test_helper"
+
+class ErrorReportingTest < ActionDispatch::IntegrationTest
+  setup do
+    @sentry = Cybertrain::Test::SentryReceiver.new
+    @sentry.start
+    @saved_dsn = Cybertrain.config.sentry_dsn
+    @saved_private = Cybertrain.config.http_allow_private
+    Cybertrain.config.sentry_dsn = @sentry.dsn                # http://public@127.0.0.1:<port>/1
+    Cybertrain.config.http_allow_private = true               # そうしないと HttpClient はループバックを拒否する
+  end
+
+  teardown do
+    Cybertrain.config.sentry_dsn = @saved_dsn
+    Cybertrain.config.http_allow_private = @saved_private
+  end
+
+  test "a job whose comment is gone is discarded and reported" do
+    NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
+    perform_enqueued_jobs                                       # 破棄でテストは失敗しない
+    event = @sentry.received_events(1)[0]                      # 最大 5 秒待つ
+    assert_equal "NotifyCommentJob", event.sentry_field("transaction")
+    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
+  end
+end
+```
+
+`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` は各エンベロープに Sentry と同じように応答します（429 など別の `status:` で、拒否する Sentry を演じます）。`dsn(project = "1", prefix = "")` はそこに送る DSN で、`received_events(count, wait = 5.0)` は届いたものを返します。それぞれは `Cybertrain::Test::SentryEnvelope` で、`sentry_path`、`sentry_auth`（`X-Sentry-Auth`）、`sentry_content_type`、`sentry_body`（3 行の JSON）、イベントのフィールドを読む `sentry_field("a.b.0.c")`（ないときは `""`）、エンベロープのヘッダーを読む `sentry_header_field(name)` を持ちます。`extra` のドットを含むキーは丸ごと読めます。オブジェクトの中では、パスのうちキーになる最も長い部分が先に取られるからです：`sentry_field("extra.job.attempt")`。テストの中で起動したレシーバーは、ほかのレシーバーと同じくテストの後に止まります。
+
+テストで追加したサブスクライバーは次のテストの前に外れます（`config/app.rb` が追加したものは残ります）。各テストの前に、レポーターはまだキューにあるものを届け、重複除去の時間枠を忘れるので、2 つのテストで同じ失敗が起きればどちらでも報告されます。サブスクライバーが受け取ったものを読むテストのために、`Cybertrain.error.drain_reports` がキューの報告を（最大 2 秒）待ちます：
+
+```ruby
+# テストファイルの先頭に：
+REPORTS_SEEN = Array.new(0) { "" }
+class SeenReports < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTS_SEEN << event.error_class
+    nil
+  end
+end
+
+# テストの中で：
+Cybertrain.error.subscribe(SeenReports.new)
+get "/articles/999999"
+Cybertrain.error.drain_reports
+assert_equal 0, REPORTS_SEEN.size             # 404 は報告されない
+```
+
 ## テストクラスで gen が拒否するもの
 
 gen はテストクラスをメソッドに書き換えます：`test "shows it" do` は `def test_shows_it` になり（`[A-Za-z0-9_]` 以外の ASCII の文字は `_` に、それ以外の文字は `_u<hex>_`（小文字のコードポイントを `_` で閉じたもの）になるので、`"ログ"` は `test__u30ed__u30b0_`、`"café x"` は `test_caf_ue9__x` です。`-n` にはメソッド名も書いたとおりの名前も渡せます）、`setup do` と `teardown do` のブロックは `super` を呼ぶ `setup` と `teardown` のメソッドになります。書き換えで正確に移せないものがあると、そのファイルは拒否されます。黙って誤ったコピーを作ったり、テストを失ったりはしません：
@@ -432,6 +514,8 @@ Cybertrain::Test.run!
 - `1.month.ago` は `Time.current.months_ago(1)` と書きます。
 - `assert_equal` は Minitest の 2 行のテキストで失敗します。通るテストのスナップショットは変わりません。
 - `cybertrain generate authentication` をもう一度実行すると、クラスの形のテストを書き出し、それらが置き換える古いファイル（`test/authentication.rb`、`test/support/app_test.rb` など）をそれぞれ示します。`--force` でそれらを削除します。
+- 角括弧のレベルで始まるログの行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` と `"password reset mail not sent: "`）。行はいまは時刻で始まり、リクエストの ID を持つことがあります（[ログ](background-and-operations.md#logs)）。
+- エクスポートされた `CYBERTRAIN_LOG_FORMAT` や `CYBERTRAIN_SENTRY_DSN` はテストに届かなくなりました。それらでテストするには、`config/app.rb` で設定するか、テストで DSN を代入します。
 
 ## 継続的インテグレーション
 

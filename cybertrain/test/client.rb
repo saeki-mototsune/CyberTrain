@@ -417,7 +417,8 @@ module Cybertrain
         return response if writer.nil?
 
         sink = MemorySink.new(events, timeout)
-        writer.write_body(sink)
+        # Under the request's log Scope, as the Server writes it.
+        BodyWriter.write_scoped(writer, sink, response.body_scope)
         response.body = sink.memory_text
         response
       end

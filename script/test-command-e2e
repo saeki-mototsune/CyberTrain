@@ -27,6 +27,10 @@
 #              new_client): gen's refusal naming both, no compile        1
 #   refused    test_app_extra/refused_test.rb added (the rewrite refuses
 #              it): gen exits 0, its path:line, no compile                1
+#   sentry     test_app_extra/sentry_dsn_test.rb added, run alone with
+#              CYBERTRAIN_SENTRY_DSN and CYBERTRAIN_LOG_FORMAT=json
+#              exported: the test sees sentry_dsn "" and text log lines
+#              (config/app.rb assigns neither), compiled again           0
 #
 # First the committed gen/ is checked (`spin run gen -- --check`). The
 # runs between the first and `failing` reuse the first compile's
@@ -182,6 +186,16 @@ cp "$EXTRA/refused_test.rb" "$APP/test/refused_test.rb"
   { tail -n 40 "$WORK/refused-gen.log" >&2; fail "refused: spin run gen failed on a refused test file"; }
 run_variant refused 1
 same_binary refused
+rm "$APP/test/refused_test.rb"
+
+# An exported DSN and log format: `cybertrain test` ignores them unless
+# config/app.rb assigns them, so no test reports to a real Sentry
+# and captured log lines stay text. A new input, so one more compile.
+cp "$EXTRA/sentry_dsn_test.rb" "$APP/test/sentry_dsn_test.rb"
+CYBERTRAIN_SENTRY_DSN=https://k@sentry.example/1 CYBERTRAIN_LOG_FORMAT=json \
+  run_variant sentry 0 test/sentry_dsn_test.rb
+[ "$BINARY" -nt "$STAMP" ] || fail "sentry: build/test/tests was not compiled again for test/sentry_dsn_test.rb"
+rm "$APP/test/sentry_dsn_test.rb"
 
 rm -rf "$WORK"
 echo "test-command-e2e: passed"

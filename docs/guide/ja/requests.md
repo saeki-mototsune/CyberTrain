@@ -1,9 +1,9 @@
 ---
-source_sha256: e9f54a9f55d52674351fe3c7cbf908b9cea71747715df0fbfc08f2bb15e41506
+source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
 ---
 # リクエスト
 
-コントローラーがリクエストから受け取るものと、フレームワークがその実行前に確認するもの：ルートとそのフォーマット、`respond_to`、コンサーンと `helper_method`、Strong Parameters、ダウンロードと HTTP キャッシュ、Cookie と暗号化されたセッション、レート制限とプロキシの後ろにいるクライアントのアドレス、Content Security Policy、`force_ssl` とホストの確認、パラメーター付きヘッダー、そしてクエリ文字列とリクエストボディがどうパースされ、どう制限されるかです。
+コントローラーがリクエストから受け取るものと、フレームワークがその実行前に確認するもの：ルートとそのフォーマット、`respond_to`、コンサーンと `helper_method`、Strong Parameters、ダウンロードと HTTP キャッシュ、Cookie と暗号化されたセッション、レート制限とプロキシの後ろにいるクライアントのアドレス、リクエスト ID、Content Security Policy、`force_ssl` とホストの確認、パラメーター付きヘッダー、そしてクエリ文字列とリクエストボディがどうパースされ、どう制限されるかです。
 
 ## ルーティング
 
@@ -198,6 +198,20 @@ end
 
 これは Kamal の場合です：kamal-proxy は自身の Docker コンテナーで動き、Docker ネットワーク上の自分のアドレスから接続するので、`cybertrain new` が書き出す `config/deploy.yml` は `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を設定します（Docker のデフォルトの範囲です。ネットワークが別の範囲を使っている場合は変更してください。`docker network inspect kamal`）。Kamal の `proxy.forward_headers` は設定しないでおきます：`ssl: true` のとき、kamal-proxy はクライアントのものを引き継ぐのではなく、`X-Forwarded-For` を自分で設定します。列挙するのは、クライアントが接続してこられないネットワークだけにしてください：列挙したネットワークの内側にいる人は誰でも、レート制限が数えるアドレスを選べてしまいます。
 
+## リクエスト ID
+
+すべてのリクエストは ID、`request.request_id` を持ちます。フレームワークが作るバージョン 4 の UUID か、信頼するプロキシが送ってきた `X-Request-Id`（上の信頼の条件を満たし、1〜255 文字の ASCII の英字、数字、ハイフンであるもの。それ以外の値は捨て、書き換えることはありません）です。レスポンスは `X-Request-Id` でそれを返し（エラーページやホスト確認の 403 も含む）、リクエストの実行中に出たすべての行がそれをタグとして持ちます：
+
+```ruby
+def export
+  ExportJob.perform_later("user_id" => current_user.id)   # ジョブの行もこの ID を持つ
+  Cybertrain.logger.info("export queued for #{request.request_id}")
+  head :accepted
+end
+```
+
+`c.log_tags` で各行に何を出すかを選びます。ジョブの行とエラー報告は、それをキューに入れたリクエストの ID を持ちます（[リクエスト ID](background-and-operations.md#request-ids)）。
+
 ## Content Security Policy、`force_ssl` とホスト
 
 ```ruby
@@ -282,3 +296,4 @@ Rack は gzip されたリクエストボディをそのままにします。こ
 - `format:` なし、または書式名つきの `time_tag` は `I18n.l` で整形されます（英語のページでは以前と同じ英語の文面です）。
 - gen は `gen/locales.rb`（`config/locales/` がなければ空）を書き、`app/mailers/**/*.rb` を読み込みます。`cybertrain new` は `config/locales/en.yml` を書きます。古いアプリケーションも足せます。
 - `allow_unauthenticated_access` はフレームワークのメソッドになりました。0.4 のジェネレーターが `ApplicationController` に書いたものも動き続け、そちらが優先されます。`cybertrain generate authentication` をもう一度実行すると、パスワードリセット、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザーが加わり、0.4 が書いたファイルの差分が表示されます（[0.4 からのアップグレード](authentication.md#upgrading-from-04)）。
+- アプリケーションが返すすべてのレスポンスが `X-Request-Id` を持ち（サーバーが読めないリクエストに返す 400 と 413 は除きます）、プロキシの `X-Request-Id` はそのプロキシが信頼されているときだけ使われます。ログの行の形もすべて変わります（[ログとエラー報告の 0.4 からの更新](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。

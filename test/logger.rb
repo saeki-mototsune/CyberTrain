@@ -7,12 +7,18 @@ require "stringio"
 # cybertrain/logger does. Cybertrain.logger used to be backed by a
 # `@@logger` class variable, which mis-compiles under Spinel whenever
 # `module Cybertrain` was already open (see cybertrain/logger.rb notes).
+# Each test holds the clock at T, so whole lines compare (the line's
+# shape itself: test/logger_lines.rb).
+
+T = "2026-11-11T12:00:00.000Z"
+
+Cybertrain::Test.on_reset(-> { travel_to(Time.utc(2026, 11, 11, 12)); nil })
 
 test "info logs at the default :info level" do
   sink = StringIO.new
   logger = Cybertrain::Logger.new(sink)
   logger.info("hello")
-  assert_equal "[INFO] hello\n", sink.string
+  assert_equal "#{T} INFO hello\n", sink.string
 end
 
 test "debug is silent at :info level" do
@@ -26,7 +32,7 @@ test "debug prints once the level is lowered to :debug" do
   sink = StringIO.new
   logger = Cybertrain::Logger.new(sink, :debug)
   logger.debug("shown")
-  assert_equal "[DEBUG] shown\n", sink.string
+  assert_equal "#{T} DEBUG shown\n", sink.string
 end
 
 test "warn and error always print" do
@@ -34,7 +40,7 @@ test "warn and error always print" do
   logger = Cybertrain::Logger.new(sink)
   logger.warn("careful")
   logger.error("boom")
-  assert_equal "[WARN] careful\n[ERROR] boom\n", sink.string
+  assert_equal "#{T} WARN careful\n#{T} ERROR boom\n", sink.string
 end
 
 test "raising the level silences lower-severity messages" do
@@ -44,7 +50,7 @@ test "raising the level silences lower-severity messages" do
   logger.info("skip")
   logger.warn("skip too")
   logger.error("kept")
-  assert_equal "[ERROR] kept\n", sink.string
+  assert_equal "#{T} ERROR kept\n", sink.string
 end
 
 test "Cybertrain.logger returns the same object twice" do
@@ -57,7 +63,7 @@ test "Cybertrain.logger= swaps the process-wide logger" do
   Cybertrain.logger = custom
   assert_equal custom, Cybertrain.logger
   Cybertrain.logger.info("via global")
-  assert_equal "[INFO] via global\n", sink.string
+  assert_equal "#{T} INFO via global\n", sink.string
 end
 
 test "an unrecognized level falls back to :info instead of raising" do
@@ -67,7 +73,7 @@ test "an unrecognized level falls back to :info instead of raising" do
   logger.level = :also_bogus
   assert_equal :info, logger.level
   logger.info("still works")
-  assert_equal "[INFO] still works\n", sink.string
+  assert_equal "#{T} INFO still works\n", sink.string
 end
 
 Cybertrain::Test.run!

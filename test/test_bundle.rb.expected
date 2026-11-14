@@ -15,6 +15,6 @@ ok   a symlink found at the path just opened is refused before anything is marke
 ok   storage/test.sqlite3 is taken as it is, unless it is a symlink to another file
 ok   CYBERTRAIN_TEST_DATABASE takes a file path only: :memory: and file: URIs are refused before anything opens
 ok   config/app.rb's configure blocks run exactly once under cybertrain test
-ok   the shell's mail, SSL and host variables do not reach the tests; uploads go to an emptied tmp/test_uploads
+ok   the shell's mail, SSL, host, log format and Sentry variables do not reach the tests; uploads go to an emptied tmp/test_uploads
 ok   every test starts in the configured time zone
-19 tests, 127 assertions, 0 failures
+19 tests, 139 assertions, 0 failures

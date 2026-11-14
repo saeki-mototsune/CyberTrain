@@ -80,6 +80,27 @@ module Cybertrain
       Crypto.hex(SecureRandom.random_bytes(bytes))
     end
 
+    # A random (version 4) UUID in lower-case hex, 8-4-4-4-12: 16 bytes
+    # from SecureRandom with the version (byte 6's high nibble, 4) and the
+    # variant (byte 8's two high bits, 10) set, as RFC 9562 says. A
+    # request's id ({Cybertrain::RequestId}). Built here rather than by
+    # SecureRandom.uuid, which nothing in the framework has compiled.
+    # @example
+    #   Cybertrain::Crypto.uuid   # => "3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c"
+    # @return [String] 36 characters
+    # @api public
+    def self.uuid
+      raw = SecureRandom.random_bytes(16)
+      hex = Crypto.hex(raw)
+      version = (raw.getbyte(6).to_i & 0x0f) | 0x40
+      variant = (raw.getbyte(8).to_i & 0x3f) | 0x80
+      # Only the high nibbles change: the hex digits 12 and 16.
+      hex.setbyte(12, HEX_DIGITS.getbyte(version >> 4))
+      hex.setbyte(16, HEX_DIGITS.getbyte(variant >> 4))
+      "#{hex.byteslice(0, 8)}-#{hex.byteslice(8, 4)}-#{hex.byteslice(12, 4)}-" \
+        "#{hex.byteslice(16, 4)}-#{hex.byteslice(20, 12)}"
+    end
+
     # A fresh key for `CYBERTRAIN_ENCRYPTION_KEY`: 32 random bytes as 64
     # lowercase hex digits (what `cybertrain secret --hex` prints). The
     # encryption itself is cybertrain/encryptor.rb's (AES-256-GCM through

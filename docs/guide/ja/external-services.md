@@ -1,11 +1,11 @@
 ---
-source_sha256: e97ac1211ec4584e1555d08b948c455bc4f01e02aabba8c946641e3b3d947f15
+source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
 ## 外向きの HTTP
 
-別のサーバー（Webhook、Slack の Incoming Webhook、サードパーティの API）を呼び出すアプリケーションは `Cybertrain::HttpClient` を使います。これは `require "cybertrain"` には含まれていません。使う場所で require し、https の URL があれば TLS の層も require してください：
+別のサーバー（Webhook、Slack の Incoming Webhook、サードパーティの API）を呼び出すアプリケーションは `Cybertrain::HttpClient` を使います。`require "cybertrain"` は、[Sentry の送信側](background-and-operations.md#error-reporting)を通じて、これと TLS の層を読み込みます。`cybertrain/core` のアプリケーションは、使う場所で require し、https の URL があれば TLS の層も require してください：
 
 ```ruby
 require "json"
@@ -127,7 +127,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
     .on_message { |conn, text| BUFFER << text }
     .on_tick(1) { |conn| Trades.flush(BUFFER) }   # アプリのコード：まとめて 1 回 INSERT し、BUFFER.clear
   ```
-- **再起動。** 監視スレッドが、各フィードのスレッドが生きているかを毎秒確かめます。それでも終わってしまったスレッド（`StandardError` でない例外、またはランタイムが殺したもの）はログに出され（`[ERROR] WebSocket "trades" thread ended: ...`）、`min(30, 2 ** restarts)` 秒後に `[WARN]` の行とともに再起動されます。開いていた接続は先に閉じられます。再起動の回数は決してリセットされないので、5 回再起動した後は待ちが 30 秒のままです。`feeds` のプロセスでは、`feed_restart_window` 秒（600、`CYBERTRAIN_FEED_RESTART_WINDOW`）のうちに `feed_restart_limit` 回（10、`CYBERTRAIN_FEED_RESTART_LIMIT`）再起動した後でまた死んだフィードは、プロセスを終わらせます。`[FATAL] feed trades restarted 10 times in 600 s; exiting` を出し、すべてのフィードを止めてから、終了ステータス 1 で終わります。Docker の `restart: unless-stopped` や systemd の `Restart=always` が新しいプロセスを起動するためです。フィードを動かす `server` は、フィードのために終了することはありません。再起動を続け、`/up` が `feed stale` を報告します。監視スレッド自身のエラー（状態の行を書いている間にデータベースがなくなった）はログに出され、監視は続きます。
+- **再起動。** 監視スレッドが、各フィードのスレッドが生きているかを毎秒確かめます。それでも終わってしまったスレッド（`StandardError` でない例外、またはランタイムが殺したもの）はログに出され（`ERROR [feed:trades] WebSocket "trades" thread ended: ...`）、`min(30, 2 ** restarts)` 秒後に `WARN` の行とともに再起動されます。開いていた接続は先に閉じられます。再起動の回数は決してリセットされないので、5 回再起動した後は待ちが 30 秒のままです。`feeds` のプロセスでは、`feed_restart_window` 秒（600、`CYBERTRAIN_FEED_RESTART_WINDOW`）のうちに `feed_restart_limit` 回（10、`CYBERTRAIN_FEED_RESTART_LIMIT`）再起動した後でまた死んだフィードは、プロセスを終わらせます。`FATAL feed trades restarted 10 times in 600 s; exiting` を出し、すべてのフィードを止めてから、終了ステータス 1 で終わります。Docker の `restart: unless-stopped` や systemd の `Restart=always` が新しいプロセスを起動するためです。フィードを動かす `server` は、フィードのために終了することはありません。再起動を続け、`/up` が `feed stale` を報告します。監視スレッド自身のエラー（状態の行を書いている間にデータベースがなくなった）はログに出され、監視は続きます。
 - **ログに出るもの。**
 
   | いつ | レベル | 行 |
@@ -138,7 +138,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   | 無音 | WARN | `WebSocket "trades" silent for 45s; reconnecting` |
   | ブロックが例外を出した | ERROR | `WebSocket "trades" on_message failed: KeyError: ...`（または `on_open`） |
 
-  パスとクエリがログやエラーメッセージに出ることは決してありません：トークンを含んでいることが多いからです。
+  パスとクエリがログやエラーメッセージに出ることは決してありません：トークンを含んでいることが多いからです。最初の行以外はフィードのスレッドで出るので、`[feed:trades]` のタグが付きます。例外を投げたブロック、スレッドの終わり、`feeds` プロセスのあきらめは[報告](background-and-operations.md#error-reporting)もされます。
 - **エラー。** すべて `Cybertrain::WebSocket::Error` で、メッセージにはホストとポートだけが含まれます。ハンドシェイクが済んだ後は、失われた接続やサーバーによるクローズは `ClosedError`（`close_code`、`close_reason`。リセットやクローズフレームなしの終了は 1006）です。タイムアウトした書き込みや TLS で失敗した書き込みは、引き続き `TimeoutError` や `TLSError` です。接続中は `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（公開されていないアドレスで、[外向きの HTTP](#outbound-http) とまったく同じくデフォルトで拒否され、同じ `allow_private:` と `http_allow_private` の設定を持ちます）、または `HandshakeError`（101 でない、`Sec-WebSocket-Accept` が誤っている、またはサーバーが拡張やサブプロトコルで応答した）です。`ProtocolError`（サーバーがフレーミングを壊した。クライアントは 1002 を送ります）と `TooLargeError` はいつでも起こりえます。
 - **ヘルス。** `Cybertrain::WebSocket.feed_status("trades")` は `Status` を返します：`connected?`、`last_message_at`（エポック秒。最初のメッセージの前は 0）、`reconnects`、`restarts`（監視スレッドによるもの）、`thread_alive?`。これらは 1 つのスナップショットとしてではなく順に読まれ、`connected?` は接続ができた時点、`on_open` の実行前に true になります。監視スレッドは各フィードの状態を `feed_status_interval` 秒（10）ごとにデータベースにも書き、それをこのプロセスやほかのプロセスの `GET /up` と `./<app> feeds status` が読みます：[フィードのヘルス](realtime.md#feed-health)。
 - **`on_message` は短く保つ。** スレッドは `wait_readable` か `sleep` で待つので、止まったフィードが待っている間 OS のワーカーを占有することはありません。占有するものは 2 つあります：各接続の試行はブロッキングする `getaddrinfo` でホスト名を解決します（[外向きの
@@ -192,7 +192,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`。`tls` または `none` |
 
-- **TLS のモード。** `starttls` は平文で接続し、サーバーが STARTTLS を提供することを求め（なければ `Mailer::TLSError`）、他に何かを話す前にアップグレードします。サーバーが STARTTLS の応答の後に送ってきたバイトは拒否されます。`tls` は最初のバイトから TLS を話します（ポート 465）。どちらも HTTP クライアントと同じく証明書を `host` に対して検証し（IP アドレスではなくホスト名を指定してください）、どちらにも `require "cybertrain/net/tls"` が必要です：それがないと、`deliver` は接続する前に、その旨を伝える `Mailer::TLSError` を出します。`none` は平文で、同じマシン上のリレーやテストサーバー向けです：ユーザーが設定されている場合、ホストがループバックアドレスに解決されない限り拒否し（接続する前に `Mailer::InsecureError`）、解決される場合はそのループバックアドレスにだけ接続します。
+- **TLS のモード。** `starttls` は平文で接続し、サーバーが STARTTLS を提供することを求め（なければ `Mailer::TLSError`）、他に何かを話す前にアップグレードします。サーバーが STARTTLS の応答の後に送ってきたバイトは拒否されます。`tls` は最初のバイトから TLS を話します（ポート 465）。どちらも HTTP クライアントと同じく証明書を `host` に対して検証し（IP アドレスではなくホスト名を指定してください）、どちらにも `require "cybertrain/net/tls"`（`require "cybertrain"` が読み込みます）が必要です：それがないと、`deliver` は接続する前に、その旨を伝える `Mailer::TLSError` を出します。`none` は平文で、同じマシン上のリレーやテストサーバー向けです：ユーザーが設定されている場合、ホストがループバックアドレスに解決されない限り拒否し（接続する前に `Mailer::InsecureError`）、解決される場合はそのループバックアドレスにだけ接続します。
 - **パスワードがログに出たり表示されたりすることはない。** 起動バナー、`help`、ログ、どのエラーメッセージにも含まれず、送られるのは TLS 越しに（またはループバックへ）AUTH PLAIN コマンドの中だけです。パスワードを保持している `Mailer` や `Config` を `p` や `inspect` しないでください。
 - **すべての待ちに上限がある。** [外向きの HTTP](#outbound-http) と同じく：接続、TLS の各手順、各応答は最大 `timeout` 秒（デフォルトは 10）待ち、配信全体では最大 `deadline` 秒（デフォルトは 60）待ちます。それを超えると `Mailer::TimeoutError` です。名前解決は呼び出したスレッドをブロックします。
 - **やり取り：** 220 の挨拶、`EHLO`（名前は `helo:`。デフォルトは `localhost`）、`STARTTLS` と再度の `EHLO`、ユーザーが設定されていれば `AUTH PLAIN`（サーバーが PLAIN を提供する必要があります）、`MAIL FROM`、受信者ごとに 1 つの `RCPT TO`、`DATA`、`QUIT`。それ以外のコードの応答は `Mailer::RejectedError` で、その `smtp_code` はサーバーのもの（421、535、550 など）、メッセージには手順とサーバーのテキストが含まれます。戻り値は、メッセージに対するサーバーの応答です（`"250 2.0.0 Ok: queued

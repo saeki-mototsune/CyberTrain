@@ -3,6 +3,5 @@ ok   the first write of a process prunes, one batch per write
 ok   a write prunes once the interval has passed since the last prune
 ok   an increment prunes too
 ok   a clock that went backwards makes a prune due
-[WARN] cache: pruning the expired rows failed, the write goes on: prune refused (sql: DELETE FROM cybertrain_cache WHERE rowid IN (SELECT rowid FROM cybertrain_cache WHERE expires_at IS NOT NULL AND expires_at < ? LIMIT 1000))
 ok   a failing prune is logged and the write goes on
-6 tests, 30 assertions, 0 failures
+6 tests, 31 assertions, 0 failures

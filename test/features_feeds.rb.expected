@@ -6,4 +6,4 @@ ok   feeds is a known command: with no subscription there is nothing to run
 ok   /up with health_feeds: no status row is not stale
 ok   /up with health_feeds: a stale row of a subscribed feed is 503 feed stale
 ok   /up with health_feeds: an unreadable status table is not stale, with one WARN
-6 tests, 13 assertions, 0 failures
+6 tests, 12 assertions, 0 failures

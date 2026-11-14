@@ -105,7 +105,7 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, perform_enqueued_jobs
     link = last_mail_link
     assert link.start_with?("https://shop.example/passwords/"), link
-    # Production with neither: no mail, an [ERROR] line, the same answer.
+    # Production with neither: no mail, an ERROR line, the same answer.
     log = StringIO.new
     with_config("production", NO_HOSTS, "", log) do
       refute Cybertrain.config.host_check?
@@ -115,7 +115,8 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
       assert_includes response.body, SENT
     end
     assert_no_enqueued_jobs "cybertrain mail"
-    assert_includes log.string, "[ERROR] password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
+    assert_includes log.string, " ERROR "
+    assert_includes log.string, "password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
   end
 
   test "any other environment without base_url sends no mail and answers the same" do
@@ -139,7 +140,8 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
       assert_includes response.body, SENT
     end
     assert_no_enqueued_jobs "cybertrain mail"
-    assert_includes log.string, "[ERROR] password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
+    assert_includes log.string, " ERROR "
+    assert_includes log.string, "password reset mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)\n"
     assert log.string.index("evil.example").nil?
   end
 
@@ -161,7 +163,8 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
       assert_equal refused.body, response.body
     end
     assert_no_enqueued_jobs "cybertrain mail"
-    assert_includes log.string, "[ERROR] password reset mail not sent: the to address contains a space, a control character or a non-ASCII byte\n"
+    assert_includes log.string, " ERROR "
+    assert_includes log.string, "password reset mail not sent: the to address contains a space, a control character or a non-ASCII byte\n"
   end
 
   test "the token expires after 15 minutes" do
@@ -375,25 +378,28 @@ class PasswordsControllerTest < ActionDispatch::IntegrationTest
   end
 
   # Runs the block with Config#env, hosts_from_env and the base_url
-  # setting given (and Cybertrain.logger writing errors to log, unless
-  # it is nil), then puts them back, also when the block fails.
+  # setting given, text log lines (and Cybertrain.logger writing errors to
+  # log, unless it is nil), then puts them back, also when the block fails.
   def with_config(env, hosts, base_url, log = nil)
     c = Cybertrain.config
     saved_env = c.env
     saved_hosts = c.hosts_from_env
     saved_base_url = c.string_setting(:base_url)
     saved_logger = Cybertrain.logger
+    saved_json_lines = Cybertrain::Logger.json_lines
     begin
       c.env = env
       c.hosts_from_env = hosts
       c.set_string_setting(:base_url, base_url)
       Cybertrain.logger = Cybertrain::Logger.new(log, :error) unless log.nil?
+      Cybertrain::Logger.json_lines = false
       yield
     ensure
       c.env = saved_env
       c.hosts_from_env = saved_hosts
       c.set_string_setting(:base_url, saved_base_url)
       Cybertrain.logger = saved_logger
+      Cybertrain::Logger.json_lines = saved_json_lines
     end
     nil
   end

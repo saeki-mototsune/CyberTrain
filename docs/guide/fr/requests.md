@@ -1,9 +1,9 @@
 ---
-source_sha256: e9f54a9f55d52674351fe3c7cbf908b9cea71747715df0fbfc08f2bb15e41506
+source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
 ---
 # Requêtes
 
-Ce qu’un contrôleur reçoit d’une requête et ce que le framework vérifie avant de l’exécuter&nbsp;: les routes et leurs formats, `respond_to`, les concerns et `helper_method`, les paramètres forts, les téléchargements et le cache HTTP, les cookies et la session chiffrée, la limitation du débit et l’adresse du client derrière un proxy, la Content Security Policy, `force_ssl` et le contrôle des hôtes, les en-têtes paramétrés, et la façon dont les chaînes de requête et les corps de requête sont analysés et bornés.
+Ce qu’un contrôleur reçoit d’une requête et ce que le framework vérifie avant de l’exécuter&nbsp;: les routes et leurs formats, `respond_to`, les concerns et `helper_method`, les paramètres forts, les téléchargements et le cache HTTP, les cookies et la session chiffrée, la limitation du débit et l’adresse du client derrière un proxy, l’identifiant de requête, la Content Security Policy, `force_ssl` et le contrôle des hôtes, les en-têtes paramétrés, et la façon dont les chaînes de requête et les corps de requête sont analysés et bornés.
 
 ## Routage
 
@@ -238,6 +238,28 @@ lesquels les clients ne peuvent pas se connecter&nbsp;: toute personne à
 l’intérieur d’un réseau listé peut choisir l’adresse que compte une limite de
 débit.
 
+## L’identifiant de requête
+
+Chaque requête a un identifiant, `request.request_id`&nbsp;: un UUID de
+version 4 que crée le framework, ou le `X-Request-Id` qu’a envoyé un proxy de
+confiance (la confiance ci-dessus, et 1 à 255 lettres ASCII, chiffres et traits
+d’union&nbsp;; toute autre valeur est écartée, jamais modifiée). La réponse le
+renvoie dans `X-Request-Id`, pages d’erreur et 403 du contrôle des hôtes
+compris, et chaque ligne journalisée pendant la requête le porte comme
+étiquette&nbsp;:
+
+```ruby
+def export
+  ExportJob.perform_later("user_id" => current_user.id)   # les lignes du job portent aussi cet identifiant
+  Cybertrain.logger.info("export queued for #{request.request_id}")
+  head :accepted
+end
+```
+
+`c.log_tags` choisit ce que montre chaque ligne, et les lignes et les rapports
+d’erreur d’un job portent l’identifiant de la requête qui l’a mis en file
+([Identifiants de requête](background-and-operations.md#request-ids)).
+
 ## Content Security Policy, `force_ssl` et hôtes
 
 ```ruby
@@ -337,3 +359,4 @@ Ce qui change pour une application écrite pour 0.4 (la liste complète est la s
 - `time_tag` sans `format:`, ou avec un nom de format, formate par `I18n.l` (le même texte anglais qu’avant dans une page en anglais).
 - gen écrit `gen/locales.rb` (vide sans `config/locales/`) et charge `app/mailers/**/*.rb`&nbsp;; `cybertrain new` écrit `config/locales/en.yml`, qu’une application plus ancienne peut ajouter.
 - `allow_unauthenticated_access` est désormais une méthode du framework&nbsp;; celle que le générateur de 0.4 a écrite dans `ApplicationController` fonctionne toujours et l’emporte. Relancer `cybertrain generate authentication` ajoute la réinitialisation du mot de passe, le verrouillage, «&nbsp;rester connecté&nbsp;», la page de compte et les administrateurs, et affiche des diffs pour les fichiers que 0.4 a écrits ([Mettre à jour depuis 0.4](authentication.md#upgrading-from-04)).
+- Chaque réponse de l’application porte `X-Request-Id` (pas les 400 et 413 du serveur pour une requête qu’il ne peut pas lire), et le `X-Request-Id` d’un proxy n’est utilisé que si le proxy est de confiance&nbsp;; chaque ligne de journal change de forme ([Mettre à jour les journaux et les rapports d’erreur depuis 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).

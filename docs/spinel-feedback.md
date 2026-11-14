@@ -148,7 +148,7 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
   way.
 
 Letters are the items of this document (AA to AH are new, written up at
-the end; AI, phase 4b's, and AJ to AO, phase 5a's, were merged in after the inventory); numbers
+the end; AI, phase 4b's, AJ to AO, phase 5a's, and AP and AQ, phase 5b's, were merged in after the inventory); numbers
 after "rule" are spikes/NOTES.md's.
 
 ### 1. What CyberTrain does today because of Spinel
@@ -325,6 +325,8 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AF | `Float#round(n)` on a Float narrowed by a `case` rounds the binary product | 12 lines | No |
 | AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | 9 lines | No |
 | AH | `JSON.generate` writes a Float in another form than CRuby's | 2 lines | No |
+| AP | `pop(timeout:)` on a Queue that was put in an Array is `Array#pop` (phase 5b) | 4 lines | No |
+| AQ | Four threads writing one StringIO with no lock crash the program (phase 5b) | 17 lines | No |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | No |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | No |
 | X | Type inference does not converge in examples/blog's generator | Not reduced | No |
@@ -473,6 +475,10 @@ again since the lock left it).
   are defects with a program each, ready to report; AK and AL are costs (the C compiler's
   memory on a very large program, spin's freshness check), and nothing in
   CyberTrain waits on any of them.
+- **AP and AQ** (phase 5b, 2026-11-13, reduced 2026-11-14): defects with a
+  program each, ready to report; the framework works around both (no
+  Queue in an Array, one lock around every log write), and nothing waits
+  on them.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
   (#10525, #10524), F, G, H (#10415) and I (#10735, #10786); their
   workarounds are dropped where there were any (see each).
@@ -3632,3 +3638,109 @@ build while a third, loading the same file, built.
   method), not per temporary number.
 - Reproduced by spikes/phase5/case_nullable_temp.rb; not reported
   upstream.
+- Phase 5b (2026-11-13) extended the framework's rule: no statement
+  `case` on any Integer in new code, a `getbyte` value included (rule 110's
+  amendment).
+
+## Found in phase 5b of the Rails-gap programme (2026-11-13)
+
+The operations part of the phase 5 design (logs, request ids and error
+reporting; section 16's items 7 to 9 ran before the code, in
+spikes/phase5/) met two Spinel bugs, AP and AQ, both reduced on 2026-11-14
+with the pinned 2026.11.04.7026 (a2d06115, gcc 13.3.0, Linux x86_64,
+`spinel prog.rb -o prog`, no flags) and run beside CRuby 3.3.6.
+spikes/NOTES.md has them as rules 117 and 116, and the rest of what the
+phase met as rules 113 to 115 and 118 to 120.
+
+### AP. `pop(timeout:)` on a Queue that was put in an Array is `Array#pop`
+
+Rule 117.
+
+```ruby
+inboxes = [Queue.new, Queue.new]
+inboxes[1] << "hello"
+got = inboxes[1].pop(timeout: 5)
+puts got.inspect
+```
+
+CRuby prints `"hello"`; the compiled program raises `no implicit
+conversion of Hash into Integer (TypeError)` and exits 1: the call is
+compiled as `Array#pop(n)`, the keyword Hash taken as the count. Binding
+the element to a local first (`q = inboxes[0]; q.pop(timeout: 5)`), or
+passing it to a method that pops its parameter, raises the same. A Queue
+that is never put in an Array pops as under CRuby, from a local and from a
+method's parameter.
+
+- Today: a test that hands Queues to threads keeps each in its own local
+  or constant and passes it as a parameter (test/logger_scope.rb's
+  concurrent `tagged` test); the framework keeps no Queue in an Array.
+- Asked of Spinel: type an Array literal of Queues as an Array of Queue,
+  so its elements' `pop` is `Queue#pop`.
+- Reproduced by spikes/phase5/queue_in_array.rb (its header has the
+  variants); not reported upstream.
+
+### AQ. Four threads writing one StringIO with no lock crash the program
+
+Rule 116.
+
+```ruby
+require "stringio"
+ENV["SPINEL_WORKERS"] = "4"
+SINK = StringIO.new
+
+def spawn_writer(io, n)
+  Thread.new do
+    i = 0
+    while i < 2000
+      io.write("t#{n} #{"x" * 300}\n")
+      i += 1
+    end
+  end
+end
+
+threads = [spawn_writer(SINK, 0), spawn_writer(SINK, 1), spawn_writer(SINK, 2), spawn_writer(SINK, 3)]
+threads.each { |t| t.join }
+puts SINK.string.bytesize
+```
+
+CRuby prints `2432000`. Compiled, five runs: four aborted with `double
+free or corruption (!prev)` (exit 134) and one died with SIGSEGV (exit
+139), printing nothing; earlier runs of the same binary showed `double
+free or corruption (out)` and `malloc(): corrupted top size`. With
+`SPINEL_WORKERS` at 1 the same program printed `2432000` in three runs out
+of three. The C was not read for the cause. Under CRuby the GVL
+serializes the calls, so
+an application ported from Ruby may rely on it without knowing.
+
+- Today: every Logger writes under one process-wide lock
+  (`Logger::LOCK`), which covers a test's StringIO logger as well as
+  STDOUT; the race test, test/logger_threads.rb, runs four workers, since
+  at one it could not fail.
+- Asked of Spinel: either a StringIO (and a String) whose appends are
+  safe across workers, as they are under CRuby's lock, or a statement in
+  docs/thread.md that an object written by several threads needs a
+  `Mutex`, so the crash is the documented consequence of a data race.
+- Reproduced by spikes/phase5/stringio_threads.rb; not reported upstream.
+
+### What the rest of phase 5b met (no new item)
+
+- A rescuing yielder with one `rescue` clause around `value = yield`
+  works nested, through a forwarding block, and with `next`, `break` and
+  `return` in its block as under CRuby (rule 113; `Cybertrain.error.handle`
+  is written so).
+- `sleep 0` does not switch green threads at one worker (rule 114), and a
+  thread test whose handshake relies on the other thread not running yet
+  passes under CRuby and fails compiled (rule 118): how tests are written,
+  not defects.
+- A `Mutex` held only for one write of a prebuilt line cost nothing
+  measurable at two workers (rule 115), unlike item 7's lock on the
+  request path; the measurement's limits are in the rule.
+- A write to a frozen Array or Hash raises `FrozenError` compiled
+  (rule 119).
+- `spin test` reuses a test binary newer than its sources, so sources
+  changed while it compiled leave a stale binary (rule 120; a cousin of
+  AL).
+- `refute_equal` in an application's test stops the build of the test
+  program: no file of the test framework defines it (it offers
+  `assert_not_equal`), so the call is refused at build as rule 105
+  describes. A missing method of CyberTrain's, not a Spinel item.

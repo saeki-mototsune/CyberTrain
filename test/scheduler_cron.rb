@@ -1,6 +1,7 @@
 require "stringio"
 require "cybertrain/scheduler"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Cybertrain::Scheduler's cron tasks and the persisted timetable: a cron
 # task runs at its minute in its zone, a job: task only enqueues, the
@@ -355,8 +356,8 @@ test "a cron task with no next run runs its due slot once, is reported once, the
   assert_equal utc(2096, 2, 29, 0, 0), next_run_of("leap day")
   assert_equal 2, S.run_due(utc(2096, 2, 29, 0, 0))
   assert_equal "leap,minutely", ran_text
-  error = "[ERROR] Scheduled task \"leap day\" failed: ArgumentError: cron \"0 0 29 2 *\": no run in the 5 years after 2096-02-29 00:00 UTC"
-  assert_includes LOG.string, error
+  error = "Scheduled task \"leap day\" failed: ArgumentError: cron \"0 0 29 2 *\": no run in the 5 years after 2096-02-29 00:00 UTC"
+  assert_logged LOG.string, "ERROR", error
   assert_equal(-1, next_run_of("leap day"))
   # The row keeps the slot it ran; no negative next_run_at is written.
   assert_equal [utc(2096, 2, 29, 0, 0), utc(2096, 2, 29, 0, 0)], Timetable.read_all["leap day"]

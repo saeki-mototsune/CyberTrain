@@ -8,4 +8,6 @@ ok   an exception is logged and becomes public/500.html without the action's hea
 ok   parameters past Query's limits are a 400 logged at info, not a 500
 ok   without the page files the plain-text bodies stay
 ok   error answers carry the security defaults on the wire, once
-10 tests, 36 assertions, 0 failures
+ok   production's ErrorPages reports a 500 once, with the request's where, id and path
+ok   ErrorPages reports no 4xx, and where is request when no action ran
+12 tests, 47 assertions, 0 failures

@@ -1,4 +1,5 @@
 ok   an exception from the inner app becomes a 500 HTML page
+ok   the diagnostics page and the plain 400 carry the request's id; no id, no header
 ok   the diagnostics page carries the security defaults on the wire
 ok   parameters past Query's limits are a plain 400, not the diagnostics page
 ok   the error page shows the request line
@@ -58,4 +59,6 @@ ok   a held lock stays held however old its file is
 ok   the rebuild command quotes the build target like every other interpolated value
 ok   the Rebuilder refuses a build target that is not usable for spin build
 ok   shell_quote escapes single quotes
-60 tests, 249 assertions, 0 failures
+ok   an exception the diagnostics page does not take is reported once, by the stack's RequestId
+ok   development's front_app reports a request's 500 once, and the page still renders
+63 tests, 267 assertions, 0 failures

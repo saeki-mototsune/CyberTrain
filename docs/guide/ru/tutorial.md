@@ -1,5 +1,5 @@
 ---
-source_sha256: 2437024ef92acdab8ec374f1249ff0285fe030d24a72de28f582e73d0a0e3f42
+source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -848,7 +848,8 @@ require "cybertrain/streams"
 
 > [!WHY]
 > Работа, которая не должна задерживать ответ, например уведомление,
-> выполняется после него. Как и в Active Job на Solid Queue, задача — это
+> выполняется отдельно от запроса: она может начаться до того, как ответ
+> записан, или после. Как и в Active Job на Solid Queue, задача — это
 > класс в `app/jobs/` и строка в собственной базе данных приложения: никаких
 > других сервисов.
 
@@ -883,14 +884,16 @@ end
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-Отправьте комментарий — и в логе сервера будет видно, что задача выполняется
-после ответа:
+Отправьте комментарий — и в логе сервера будет видно, как выполняется задача,
+здесь после ответа (поток задач может взять строку и до того, как ответ
+записан, так что порядок строк может быть другим); её строки помечены задачей и идентификатором запроса,
+который её поставил в очередь:
 
 ```text вывод — cybertrain server
-[INFO] Started POST "/articles/1/comments" for 127.0.0.1
-[INFO] Completed 200 in 2ms
-[INFO] new comment 1 on article 1
-[INFO] job 1 (NotifyCommentJob) done
+2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1
+2026-11-14T09:30:00.122Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Completed 200 in 2ms
+2026-11-14T09:30:00.950Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] new comment 1 on article 1
+2026-11-14T09:30:00.951Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] job 1 (NotifyCommentJob) done
 ```
 
 <!-- list: points -->

@@ -1,6 +1,7 @@
 require "cybertrain/core"
 require "cybertrain/cache"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Cybertrain::Cache without jobs (the optional-subsystems design, section
 # 4): no scheduler runs its prune, so a write prunes the expired rows itself:
@@ -103,13 +104,16 @@ test "a failing prune is logged and the write goes on" do
   DB.with do |c|
     c.execute("CREATE TRIGGER refuse_prune BEFORE DELETE ON cybertrain_cache BEGIN SELECT RAISE(ABORT, 'prune refused'); END")
   end
-  travel_to(Time.at(1501))
-  assert Cache.write("g", "g")
-  assert_equal "g", Cache.read("g")
-  # The failed prune moved the clock: the next write does not try again
-  # (no second warning).
-  travel_to(Time.at(1502))
-  assert_equal 1, Cache.increment("h")
+  log = capture_log do
+    travel_to(Time.at(1501))
+    assert Cache.write("g", "g")
+    assert_equal "g", Cache.read("g")
+    # The failed prune moved the clock: the next write does not try again
+    # (no second warning).
+    travel_to(Time.at(1502))
+    assert_equal 1, Cache.increment("h")
+  end
+  assert_equal 1, LogCapture.count(log, "WARN", "cache: pruning the expired rows failed, the write goes on: prune refused")
   assert_equal 10, cache_rows
   DB.with { |c| c.execute("DROP TRIGGER refuse_prune") }
 end

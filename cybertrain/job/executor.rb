@@ -1,4 +1,6 @@
 # Required by cybertrain/job.rb, after the registry, RetryPolicy and Store.
+require "cybertrain/error_reporter"
+
 module Cybertrain
   module Job
     # One attempt of one job, on the calling thread: claim a due row
@@ -120,11 +122,58 @@ module Cybertrain
       # else reaches Worker.claim_safely, which logs it, and without this the
       # row would be heartbeated for the life of the process and never
       # recovered.
+      # The job's log Scope ({job_scope}) is this thread's while it runs and
+      # its outcome is written; the one found before is back in the `ensure`
+      # (rule 103's save-yield-ensure, no rescue), so a job thread starts
+      # the next job from its own Scope, never with this job's tags.
       def self.finish_in_flight(run)
+        saved = Logger.current_scope
         in_flight_add(run.run_id, run.run_attempts)
+        Logger.swap_scope(job_scope(run))
         finish(run)
       ensure
+        Logger.swap_scope(saved)
         in_flight_remove(run.run_id, run.run_attempts)
+      end
+
+      # The log Scope of one attempt (spec section 12.3): the tag
+      # `"<kind> <id>"`, then the id of the request that enqueued it when
+      # it was enqueued in one and {Config#log_tags} includes :request_id;
+      # `where` is the kind; the context holds `job.id`, `job.attempt` and
+      # `job.max_attempts`.
+      #
+      # `job.max_attempts` in an error report (docs/design.md D88) means, by how the
+      # attempt failed:
+      # - the default policy (the exception reached {run_handler}): the
+      #   Scope's value here, {Config#job_max_attempts}, whatever the kind's
+      #   `max_attempts:` or `retry_on` policies (so an application's own
+      #   `Cybertrain.error.report` inside a job also carries this value);
+      # - a `retry_on` ({retry_later}): the policy's `attempts:`, which that
+      #   report puts in place of this one;
+      # - a `discard_on` ({discard}): the attempt it ended at, the last one,
+      #   since no other will run (not the kind's limit).
+      # The request id is the Scope's request id whether or not it is
+      # shown, so a job this one enqueues records it too.
+      # @param run [Run]
+      # @return [Logger::Scope]
+      # @api private
+      def self.job_scope(run)
+        id = run.run_id
+        attempts = run.run_attempts
+        request_id = run.run_request_id
+        kind = "#{run.run_kind}"
+        verb = ""
+        path = ""
+        tags = Array.new(0) { "" }
+        tags << "#{kind} #{id}"
+        id_tag = -1
+        if !request_id.empty? && Cybertrain.config.log_tags.include?(:request_id)
+          tags << request_id
+          id_tag = 1
+        end
+        max = Cybertrain.config.job_max_attempts.to_s
+        context = { "job.id" => id.to_s, "job.attempt" => attempts.to_s, "job.max_attempts" => max }
+        Logger::Scope.new(request_id, verb, path, kind, tags, id_tag, context)
       end
 
       # {Job.work_due}.
@@ -208,19 +257,27 @@ module Cybertrain
       # Each run starts at the default locale, as a controller action does:
       # a job thread is long-lived, so a locale one job set (`I18n.locale =
       # user.locale`) would otherwise stay for the next job on the thread.
+      # Either arm reports the failed attempt (spec section 13.2,
+      # docs/design.md D88):
+      # `where` the kind, the context the job Scope's.
       def self.run_handler(handler, run)
         I18n.locale = nil
         handler.handler_run_block.call(run)
         ""
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        Cybertrain.error.report_unhandled(e, run.run_kind, ErrorReporter::NO_CONTEXT)
         RetryPolicy.error_text(e.class.name, e.message)
       rescue NotImplementedError, SystemStackError, ScriptError => e
+        Cybertrain.error.report_unhandled(e, run.run_kind, ErrorReporter::NO_CONTEXT)
         RetryPolicy.error_text(e.class.name, e.message)
       end
 
       # {Job.retry_later}: the outcome of a failed attempt under a
-      # `retry_on` policy, written once and marked written on the Run.
+      # `retry_on` policy, written once and marked written on the Run. The
+      # attempt is reported first, `job.max_attempts` the policy's.
       def self.retry_later(run, error, wait_base, polynomial, attempts_limit)
+        limit = { "job.max_attempts" => attempts_limit.to_s }
+        Cybertrain.error.report_unhandled(error, run.run_kind, limit)
         attempts = run.run_attempts
         wait = RetryPolicy.policy_wait(attempts, wait_base, polynomial)
         message = RetryPolicy.error_text(error.class.name, error.message)
@@ -243,8 +300,13 @@ module Cybertrain
       end
 
       # {Job.discard}: the row becomes `discarded`, written once and marked
-      # written on the Run.
+      # written on the Run. Reported first. The report's `job.max_attempts`
+      # is the attempt it ended at, equal to its `job.attempt`: the last
+      # attempt, since no other will run; it is not the kind's limit (the
+      # three meanings: {job_scope}).
       def self.discard(run, error)
+        limit = { "job.max_attempts" => run.run_attempts.to_s }
+        Cybertrain.error.report_unhandled(error, run.run_kind, limit)
         message = RetryPolicy.error_text(error.class.name, error.message)
         now = run.run_now
         id = run.run_id

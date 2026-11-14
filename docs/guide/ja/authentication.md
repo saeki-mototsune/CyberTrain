@@ -1,5 +1,5 @@
 ---
-source_sha256: f91f3179b1b8012bb304301973b9de2d6e153abc889799c6d946d2c35f104605
+source_sha256: a4339f594b9c9de55b09807da627307deb782afc97659df37c44b27bbc402157
 ---
 # 認証
 
@@ -70,7 +70,7 @@ class ArticlesController < ApplicationController
 <!-- list: points -->
 - 応答するのは、ユーザーがまだいない間だけ、ワンタイムトークンがあるときだけ、そしてソケットの相手がループバックアドレスで `X-Forwarded-For` ヘッダーのない接続にだけです（同じホストのプロキシはすべてのリクエストをループバックにし、そのヘッダーを付けます）。それ以外はすべて 404 です。
 - トークンはプログラムの起動時に作られる 32 文字のランダムな 16 進文字列（`SetupController.setup_token`）で、定数時間で比較されます。`X-Forwarded-For` を付けないプロキシの背後のように、アドレスの検査が効かない場面でもページを閉じたままにします。リクエストログには `[FILTERED]` と出ます。
-- ユーザーがいない間、サーバーは起動前に `[WARN] no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine` をログに出します。トークンが表示されるのはこの行だけです。
+- ユーザーがいない間、サーバーは起動前に `WARN no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine` をログに出します。トークンが表示されるのはこの行だけです。
 - `<APP>_SETUP_OPEN=1`（`config/app.rb` の `setup_open` 設定）は、別のホストのプロキシの背後での初回起動のために、アドレスの検査を外します。トークンの検査は外しません。ユーザーができたら解除してください。
 
 ## ユーザーコマンド
@@ -113,11 +113,11 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ### メール中のリンク
 
-リンクは、ジェネレーターが `config/app.rb` に宣言する `base_url` 設定（`<APP>_BASE_URL` から。`BLOG_BASE_URL=https://blog.example.com`）で始まります。アプリケーションを提供するすべての場所で、https で設定してください。設定がなければ、リンクがリクエストの来たアドレスを使うのは `Host` ヘッダーが検査される場合（開発環境、または `CYBERTRAIN_HOSTS` を設定したとき）かテストのときだけです。それ以外ではメールは送られず、ログに `[ERROR] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)` と出て、ページはいつもどおり答えます。偽の `Host` がリンクに入ることはありません。
+リンクは、ジェネレーターが `config/app.rb` に宣言する `base_url` 設定（`<APP>_BASE_URL` から。`BLOG_BASE_URL=https://blog.example.com`）で始まります。アプリケーションを提供するすべての場所で、https で設定してください。設定がなければ、リンクがリクエストの来たアドレスを使うのは `Host` ヘッダーが検査される場合（開発環境、または `CYBERTRAIN_HOSTS` を設定したとき）かテストのときだけです。それ以外ではメールは送られず、ログに `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)` と出て、ページはいつもどおり答えます。偽の `Host` がリンクに入ることはありません。
 
 ## アドレスの確認
 
-`--confirmable` では、サインアップはアドレスにリンクをメールし、誰もサインインさせません。まだ確認されていないアドレスに正しいパスワードを入れると専用のメッセージで拒否され（間違ったパスワードにはいつものメッセージ）、サインインページはリンクをもう一度送るフォームにリンクしています。リンク（`/confirmations/<token>`、3 日間有効、1 回だけ）を開くとアドレスが確認され、その後ユーザーはサインインします。コンサーンの `start_new_session_for` も、どのコントローラーから呼ばれても未確認のユーザーを拒否し、`[WARN] no session started: user <id> has not confirmed its address` をログに出します。この検査は、ジェネレーターが `--confirmable` で書き出すコンサーンにあります：新しいアプリケーションと、コンサーンが新しいファイルになる 0.4 からのアップグレードではそうです。すでにコンサーンのあるアプリケーションでは、検査は差分として届きます（[あとから確認を有効にする](#turning-on-confirmation-later)）。
+`--confirmable` では、サインアップはアドレスにリンクをメールし、誰もサインインさせません。まだ確認されていないアドレスに正しいパスワードを入れると専用のメッセージで拒否され（間違ったパスワードにはいつものメッセージ）、サインインページはリンクをもう一度送るフォームにリンクしています。リンク（`/confirmations/<token>`、3 日間有効、1 回だけ）を開くとアドレスが確認され、その後ユーザーはサインインします。コンサーンの `start_new_session_for` も、どのコントローラーから呼ばれても未確認のユーザーを拒否し、`WARN [<request id>] no session started: user <id> has not confirmed its address` をログに出します。この検査は、ジェネレーターが `--confirmable` で書き出すコンサーンにあります：新しいアプリケーションと、コンサーンが新しいファイルになる 0.4 からのアップグレードではそうです。すでにコンサーンのあるアプリケーションでは、検査は差分として届きます（[あとから確認を有効にする](#turning-on-confirmation-later)）。
 
 アカウントページで入力した新しいアドレスは `unconfirmed_email` で待ち、そのアドレス宛のリンクが開かれると古いアドレスに置き換わります。ページから取り消すこともでき（`DELETE /account/pending_email`）、そのリンクは使えなくなります。ユーザーコマンドと `/setup` が作るユーザーは確認済みです。パスワードリセットは一度も確認されていないアカウントを確認しますが（リンクがメールボックスを証明したため）、待っている新しいアドレスは確認しません：そのアドレスを取り消し、そのリンクも使えなくします。それを求めたのは、持ち主がアカウントを取り戻そうとしている相手かもしれないからです。持ち主はあとでもう一度求めます。アカウントページでの新しいパスワードは、待っているアドレスをそのままにします（ユーザーはそこにいて、それが見えています）。
 
@@ -238,7 +238,7 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 - 出力を保存し、アプリケーションのディレクトリで `patch -p1` で適用するか（patch は差分でない行を読み飛ばします）、ファイルを変更した箇所では差分を手で適用してください。適用するまでアプリケーションはビルドできないことがあります：新しいファイルが、差分で足されるものを呼ぶからです。
 - `--force` は代わりに新しいファイルを古いファイルの上に書き出します。編集していないファイル向けです。`ApplicationController` の 0.4 のブロックが置き換えられるのは、0.4 が書いたとおりのままのときだけです。
 - 新しいマイグレーションは足りない列だけを足します。`cybertrain db migrate` を実行してください。`--confirmable` では、すでにいるユーザーを（作成時から）確認済みとして扱います。そうしないと誰もサインインできなくなるからです。
-- `--confirmable` では、sessions と registrations のコントローラーの差分に `IMPORTANT:` の行が付きます：適用するまで、未確認のアカウントはサインインできない理由を知らされず、サインアップしてもリンクがメールされません。0.4 のアプリケーションではコンサーンは新しいファイルで、確認の検査とともに書き出されるので、それらの差分が適用されなくても、未確認のアカウントにセッションを始めません（そして `[WARN] no session started: user <id> has not confirmed its address` をログに出します）。
+- `--confirmable` では、sessions と registrations のコントローラーの差分に `IMPORTANT:` の行が付きます：適用するまで、未確認のアカウントはサインインできない理由を知らされず、サインアップしてもリンクがメールされません。0.4 のアプリケーションではコンサーンは新しいファイルで、確認の検査とともに書き出されるので、それらの差分が適用されなくても、未確認のアカウントにセッションを始めません（そして `WARN [<request id>] no session started: user <id> has not confirmed its address` をログに出します）。
 - アップグレードの際、すべてのセッションは一度終わります（クッキーが暗号化されたため）。[0.4 のアプリケーションのアップグレード](requests.md#upgrading-an-application-from-04) の残りも当てはまります。
 
 ### あとから確認を有効にする
