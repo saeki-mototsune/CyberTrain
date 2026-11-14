@@ -74,6 +74,9 @@ module Cybertrain
       if own
         request.request_id = id
         scope = RequestId.scope_for(request, id, @log_tags)
+        # Kept on the request for the Server, which logs what escapes the
+        # stack after this method has put the thread's Scope back.
+        request.log_scope = scope
         saved = Logger.swap_scope(scope)
       end
       begin

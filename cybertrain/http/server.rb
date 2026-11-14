@@ -545,7 +545,7 @@ module Cybertrain
       # and the template Interpreter are the guard against those.
       # ClientError maps and logs (a client's fault is its 4xx at info);
       # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
-      response = error_response(ClientError.classify(e, @logger))
+      response = error_response(classify_scoped(e, request.log_scope))
       # The id a RequestId in the app gave the request, echoed on this
       # answer too (the response the stack had is replaced). The header's
       # name is written out: the HTTP layer loads alone
@@ -553,6 +553,20 @@ module Cybertrain
       id = request.request_id
       response.set_header("X-Request-Id", id) unless id.empty?
       response
+    end
+
+    # {ClientError.classify} (which logs the error or rejection line) under
+    # the request's log Scope ({Request#log_scope}): a RequestId in the app
+    # has already put the thread's own Scope back when the exception gets
+    # here, and the line must carry the request's id all the same (spec
+    # section 12.2). The thread's Scope is back afterwards. Save, work,
+    # restore in `ensure`, no rescue (spikes/NOTES.md rule 103).
+    def classify_scoped(e, scope)
+      saved = Logger.swap_scope(scope)
+      status = ClientError.classify(e, @logger)
+      status
+    ensure
+      Logger.swap_scope(saved)
     end
 
     # Writes an error response; serve closes the socket afterwards.

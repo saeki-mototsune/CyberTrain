@@ -616,6 +616,72 @@ test "the bare path's 500 carries the id a RequestId set; a handler without one 
   bare.stop
 end
 
+# Records, before the stack below it runs, whether the connection thread
+# is on Logger::NO_SCOPE: outside RequestId, so it sees what the previous
+# request on the same keep-alive connection left behind.
+$probe_no_scope = Array.new(0) { false }
+
+class ScopeProbe < Cybertrain::Middleware
+  def call(ctx)
+    $probe_no_scope << Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+    nxt = @app
+    nxt.call(ctx) unless nxt.nil?
+    nil
+  end
+end
+
+# Runs the block with JSON log lines on, and text lines back after it,
+# also when it raises.
+def server_json_lines
+  Cybertrain::Logger.json_lines = true
+  yield
+  nil
+ensure
+  Cybertrain::Logger.json_lines = false
+end
+
+# A 500 and a 4xx on the bare path (no ErrorPages, no Dev::ErrorPage),
+# then a request on the same connection, through ScopeProbe; answers the
+# log and the two ids.
+def bare_path_lines
+  log = StringIO.new
+  $probe_no_scope = Array.new(0) { false }
+  app = ScopeProbe.new(Cybertrain::RequestId.new(ServerTestApp.new, [:request_id]))
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new(log, :info))
+  server.start
+  c = RawClient.new(server.port)
+  boom = c.get("/boom")
+  assert_equal "HTTP/1.1 500 Internal Server Error", boom.status_line
+  rejected = c.get("/reject")
+  assert_equal "HTTP/1.1 400 Bad Request", rejected.status_line
+  assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
+  c.close
+  server.stop
+  [log.string, boom.header("x-request-id"), rejected.header("x-request-id")]
+end
+
+test "the bare path's 500 and 4xx lines carry the request's id; the thread is back on NO_SCOPE after each" do
+  log, boom_id, rejected_id = bare_path_lines
+  assert LogCapture.uuid?(boom_id), log
+  assert LogCapture.uuid?(rejected_id), log
+  assert_includes log, " ERROR [#{boom_id}] RuntimeError: kaboom\n"
+  assert_includes log, " INFO [#{rejected_id}] rejected request (400 Bad Request): nested too deeply (limit 32)\n"
+  assert_equal [true, true, true], $probe_no_scope
+  json = ""
+  server_json_lines { json = bare_path_lines[0] }
+  assert_includes json, "\"level\":\"ERROR\",\"request_id\":\""
+  error_line = ""
+  reject_line = ""
+  json.split("\n").each do |l|
+    error_line = l if l.include?("kaboom")
+    reject_line = l if l.include?("rejected request")
+  end
+  assert error_line.include?("\"request_id\":\""), json
+  assert reject_line.include?("\"request_id\":\""), json
+  assert_equal [true, true, true], $probe_no_scope
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+end
+
 test "a streamed body is written under the request's Scope, the server's stream error line included" do
   app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
   server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: $stream_logger)
