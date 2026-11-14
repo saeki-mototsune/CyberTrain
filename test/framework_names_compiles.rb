@@ -11,26 +11,30 @@ require "cybertrain/generator/models_emitter"
 # return type builds and runs when gen accepts it
 # (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES): AuditEntry's String reader
 # request_id beside Cybertrain::Request#request_id, and its nullable String
-# reader release beside Cybertrain::Config#release, all four called in one
-# program (one return type per method name, spikes/NOTES.md rules 10, 34).
-# The model is the checked-in output of the emitter for
+# reader release beside Cybertrain::Config#release, and ReleaseNote's text
+# request_id and nullable binary release (the other column types gen accepts
+# under those names), all called in one program (one return type per method name, spikes/NOTES.md rules 10, 34).
+# The models are the checked-in output of the emitter for
 # test/fixtures/framework_names/db/schema.rb. SQLite is FFI, so the snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).
 require_relative "fixtures/framework_names/db/schema"
 require_relative "fixtures/framework_names/gen/models/audit_entry"
+require_relative "fixtures/framework_names/gen/models/release_note"
 
 FIXTURE = "test/fixtures/framework_names"
 
 Cybertrain::DB.connect(":memory:", size: 1)
 Cybertrain::DB.with do |c|
   c.exec_script("CREATE TABLE \"audit_entries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, \"request_id\" TEXT NOT NULL, " \
-                "\"release\" TEXT, \"note\" TEXT NOT NULL);")
+                "\"release\" TEXT, \"note\" TEXT NOT NULL);" \
+                "CREATE TABLE \"release_notes\" (id INTEGER PRIMARY KEY AUTOINCREMENT, \"request_id\" TEXT NOT NULL, " \
+                "\"release\" BLOB);")
 end
 
-test "the checked-in gen/models file matches the emitter (fixture stale otherwise)" do
+test "the checked-in gen/models files match the emitter (fixture stale otherwise)" do
   infos = Array.new(0) { Cybertrain::Gen::ModelInfo.empty("", "", Array.new(0) { "" }) }
   outputs = Cybertrain::Gen::ModelsEmitter.outputs(Cybertrain::Schema.current, infos)
-  assert_equal ["gen/models/audit_entry.rb"], outputs.keys
+  assert_equal ["gen/models/audit_entry.rb", "gen/models/release_note.rb"], outputs.keys
   outputs.each do |path, source|
     Cybertrain::Test.count_assertion
     flunk("fixture stale: #{path}") unless File.read(FIXTURE + "/" + path) == source
@@ -68,6 +72,24 @@ test "a nullable String release column reads nil and a String beside Config#rele
   tagged.release = nil
   assert_equal true, tagged.save
   assert_nil AuditEntry.find(tagged.id).release
+end
+
+test "a text request_id and a nullable binary release read as Strings beside the framework's" do
+  request = Cybertrain::Request.new("GET", "/", {}, "")
+  request.request_id = "9d1e-req"
+  Cybertrain.config.release = "v2.0.0"
+  bytes = "v2\x00\xFF".b
+  note = ReleaseNote.create!(request_id: request.request_id, release: bytes)
+  found = ReleaseNote.find(note.id)
+  assert_equal "9d1e-req", found.request_id
+  assert_equal 8, found.request_id.size
+  assert_equal 4, found.release.bytesize
+  assert_equal 255, found.release.getbyte(3)
+  assert_equal 0, found.release.getbyte(2)
+  empty = ReleaseNote.create!(request_id: "r3")
+  assert_nil ReleaseNote.find(empty.id).release
+  assert_equal "9d1e-req", request.request_id
+  assert_equal "v2.0.0", Cybertrain.config.release
 end
 
 Cybertrain::Test.run!

@@ -1961,6 +1961,37 @@ test "a column named like a framework method is refused when its reader answers 
   assert_equal "", framework_name_error("release", :binary, false)
 end
 
+test "a refused column that is the foreign key of a derived belongs_to says to rename the reference" do
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "requests" do |t|
+      t.string "path"
+    end
+    s.create_table "audit_entries" do |t|
+      t.references :request
+    end
+  end
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(definition.table("audit_entries"), definition, [], [])
+  end
+  assert_equal "table audit_entries: column \"request_id\" is integer, so model AuditEntry's reader request_id " \
+               "would answer Integer, but the framework's Cybertrain::Request#request_id answers String, and a method " \
+               "name answers one type across the program (spikes/NOTES.md rules 10, 34); it is the foreign key of " \
+               "the belongs_to request that gen derives from the foreign key to table requests, so rename the " \
+               "reference: in place of t.references :request, write t.integer \"source_request_id\" and " \
+               "s.add_foreign_key \"audit_entries\", \"requests\", column: \"source_request_id\" (the belongs_to " \
+               "then reads as source_request)", msg
+  # Without a foreign key, gen derives no belongs_to: the plain advice.
+  plain = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "audit_entries" do |t|
+      t.references :request, foreign_key: false
+    end
+  end
+  msg = assert_raises("ArgumentError") do
+    Cybertrain::Gen::ModelsEmitter.emit(plain.table("audit_entries"), plain, [], [])
+  end
+  assert msg.end_with?("(spikes/NOTES.md rules 10, 34); rename the column"), msg
+end
+
 test "a column named handle reads as handle_column: ErrorReporter#handle answers its block's value" do
   [[:string, false], [:integer, true], [:boolean, false]].each do |type, null|
     assert_equal "", framework_name_error("handle", type, null)
@@ -1971,13 +2002,33 @@ test "a column named handle reads as handle_column: ErrorReporter#handle answers
     end
   end
   file = Cybertrain::Gen::ModelsEmitter.emit(definition.table("users"), definition, [], [])
+  # The note names the methods (none is Model's or Object's) and tells that
+  # the application's calls of `.handle` on the record must change.
   assert_lines(file, [
-    '# column "handle" reads as handle_column: "handle" is a method of Cybertrain::Model or Object that the framework calls (Ident::RESERVED_COLUMN_NAMES); queries (where, order, find_by) take the SQL name "handle"',
+    '# column "handle" reads as handle_column: "handle" names framework methods that answer different types ' \
+    "(Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and " \
+    "the jobs subsystem's handle (nil)), and a method name answers one type across the program (spikes/NOTES.md rules " \
+    "10, 34), so this model has no handle method: the application calls user.handle_column where it called " \
+    "user.handle (Ident::UNTYPED_FRAMEWORK_NAMES); queries (where, order, find_by) take the SQL name \"handle\"",
     "attr_accessor :handle_column",
     "when :handle, :handle_column then @handle_column"
   ])
   refute file.include?("attr_accessor :handle\n")
-  assert_equal "reserved", Cybertrain::Ident.unusable_reason("handle")
+  refute file.include?('"handle" is a method of Cybertrain::Model')
+  assert_equal "framework", Cybertrain::Ident.unusable_reason("handle")
+  assert Cybertrain::Ident.reserved_column?("handle")
+  # When handle_column is another column, the error says who owns "handle".
+  taken = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "users" do |t|
+      t.string "handle"
+      t.string "handle_column"
+    end
+  end
+  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ModelsEmitter.emit(taken.table("users"), taken, [], []) }
+  assert_equal "table users: column \"handle\" can be neither \"handle\" nor \"handle_column\" (framework methods " \
+               "that answer different types own the first: Cybertrain::ErrorReporter#handle (its block's value), " \
+               "Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil); another column of the table " \
+               "owns the second); rename a column", msg
   # The scaffold, which invents names, refuses the typed ones' not at all:
   # gen decides by the column's type.
   assert_equal "", Cybertrain::Ident.unusable_reason("request_id")

@@ -277,4 +277,4 @@ identical route resources :widgets
 ok   a scaffold whose test class another test file defines is refused
 ok   an attachment field expands to five columns and is not a column itself
 ok   the migration timestamp comes from the clock without CYBERTRAIN_TIMESTAMP
-23 tests, 220 assertions, 0 failures
+23 tests, 222 assertions, 0 failures

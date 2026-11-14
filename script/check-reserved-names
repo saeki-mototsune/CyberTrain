@@ -601,6 +601,13 @@ typed.each_key do |name|
   typed_problems << "#{name} is in Ident::RESERVED_COLUMN_NAMES too" if Cybertrain::Ident.reserved_column?(name)
   typed_problems << "#{name} has no method in ModelNaming::FRAMEWORK_METHODS" unless Cybertrain::Gen::ModelNaming::FRAMEWORK_METHODS.key?(name)
 end
+# Ident::UNTYPED_FRAMEWORK_NAMES (handle) is the part of
+# RESERVED_COLUMN_NAMES reserved for framework methods of different types:
+# each must be reserved, and none may be typed as well.
+Cybertrain::Ident::UNTYPED_FRAMEWORK_NAMES.each_key do |name|
+  typed_problems << "#{name} is in Ident::UNTYPED_FRAMEWORK_NAMES but not RESERVED_COLUMN_NAMES" unless Cybertrain::Ident.reserved_column?(name)
+  typed_problems << "#{name} is in Ident::UNTYPED_FRAMEWORK_NAMES too" if typed.key?(name)
+end
 instance_def = /^\s*(?:(?:private|protected|public)\s+)?def\s+([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=.])/
 Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
   rel = file.delete_prefix("#{root}/")

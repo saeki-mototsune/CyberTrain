@@ -74,15 +74,28 @@ module Cybertrain
       # reserved: `open`, `format`, `load`, `print`, `select`, `test` are
       # ordinary column names and nothing in the generated class calls them.
       "raise", "fail",
-      # A framework method with no single return type: the reader would be a
-      # second definer of the name, and one name answers one type across a
-      # program (spikes/NOTES.md rules 10, 34), which no column type can
-      # match. ErrorReporter#handle answers its block's value. The names
-      # whose framework method answers one fixed type are not here: gen
-      # accepts such a column when its reader answers that type
-      # (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES).
+      # Names of framework methods that answer different types
+      # (UNTYPED_FRAMEWORK_NAMES says why; its wording replaces the
+      # Model-method one in the messages about these).
       "handle"
     ]
+
+    # The RESERVED_COLUMN_NAMES entries that are there because framework
+    # methods of that name answer different types, to those methods: a
+    # reader of the name would be one more definer, and one method name
+    # answers one type across a program (spikes/NOTES.md rules 10, 34), so
+    # no column type can match. They are not methods of Cybertrain::Model
+    # or Object, so the generator's rename note (which also tells that the
+    # application's calls change), its "fallback taken" error and the
+    # scaffold's refusal (unusable_reason "framework") name these methods
+    # instead. A name whose framework method answers one fixed type is not
+    # here: gen accepts such a column when its reader answers that type
+    # (Gen::ModelNaming::FRAMEWORK_METHOD_TYPES). script/check-reserved-names
+    # checks that each is in RESERVED_COLUMN_NAMES.
+    UNTYPED_FRAMEWORK_NAMES = {
+      "handle" => "Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) " \
+                  "and the jobs subsystem's handle (nil)"
+    }
 
     # The rest of Object's public instance methods: a column so named shadows
     # them on its model (`record.display`, `record.tap` are the column), but
@@ -164,9 +177,23 @@ module Cybertrain
       SHADOWING_COLUMN_NAMES.include?(name)
     end
 
+    # Whether `name` is reserved because framework methods of that name
+    # answer different types (UNTYPED_FRAMEWORK_NAMES).
+    def self.untyped_framework_name?(name)
+      UNTYPED_FRAMEWORK_NAMES.key?(name)
+    end
+
+    # The framework methods behind an UNTYPED_FRAMEWORK_NAMES entry, as the
+    # messages name them; "" for any other name.
+    def self.untyped_framework_methods(name)
+      untyped_framework_name?(name) ? UNTYPED_FRAMEWORK_NAMES[name].to_s : ""
+    end
+
     # The one definition of "a name the scaffold must not invent": "" when
-    # `name` may be chosen, otherwise why not -- "keyword" (RUBY_KEYWORDS) or
-    # "reserved" (RESERVED_COLUMN_NAMES): the two kinds the generator RENAMES,
+    # `name` may be chosen, otherwise why not -- "keyword" (RUBY_KEYWORDS),
+    # "framework" (UNTYPED_FRAMEWORK_NAMES, the part of
+    # RESERVED_COLUMN_NAMES with its own message) or "reserved" (the rest
+    # of RESERVED_COLUMN_NAMES): the kinds the generator RENAMES,
     # which the scaffold cannot accept because its views and controller call
     # the reader by the field's name. A SHADOWING_COLUMN_NAMES entry is not
     # refused: the generator keeps its name with a note, and so does the
@@ -179,6 +206,7 @@ module Cybertrain
     # "keyword" first.
     def self.unusable_reason(name)
       return "keyword" if keyword?(name)
+      return "framework" if untyped_framework_name?(name)
       return "reserved" if reserved_column?(name)
 
       ""

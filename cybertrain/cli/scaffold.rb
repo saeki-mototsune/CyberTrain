@@ -171,6 +171,10 @@ module Cybertrain
           raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a #{what}"
         when "reserved"
           raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model); pick another #{what}"
+        when "framework"
+          raise InvalidArgument, "'#{name}' names framework methods that answer different types " \
+                                 "(#{Ident.untyped_framework_methods(name)}), and a model reader of that name would be " \
+                                 "one more; pick another #{what}"
         else
           raise RuntimeError, "Ident.unusable_reason('#{name}') answered a reason Scaffold.refuse_unusable! has no message for"
         end

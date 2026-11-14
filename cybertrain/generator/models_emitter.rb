@@ -559,7 +559,7 @@ module Cybertrain
         # read_attribute / write_attribute keys below take either spelling
         # (attribute_keys).
         names.each do |n|
-          src << "  " << rename_note(n) << "\n" if renamed?(n)
+          src << "  " << rename_note(n, model) << "\n" if renamed?(n)
           next unless Ident.shadowing_column?(n)
 
           src << "  " << shadow_note("column", n) << "\n"
@@ -723,11 +723,26 @@ module Cybertrain
       # read_attribute (Interpreter#model_method), so for those two the plain
       # name never reaches the column from a template and the note says so;
       # every other renamed name falls through to read_attribute and works
-      # under either spelling.
-      def self.rename_note(name)
+      # under either spelling. A name framework methods of different types
+      # share (Ident::UNTYPED_FRAMEWORK_NAMES: `handle`) is no Model method:
+      # its note names those methods and says that the application's calls
+      # of the plain name on the record (`user.handle`, a common column) must
+      # become the renamed reader, since the model has no method of that
+      # name. `model` is the class name, its underscored form the record in
+      # that example.
+      def self.rename_note(name, model)
         if Ident.keyword?(name)
           kw = "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a Ruby keyword"
           return kw + query_note(name)
+        end
+        if Ident.untyped_framework_name?(name)
+          record = Inflector.underscore(model)
+          untyped = "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} names framework methods " \
+                    "that answer different types (#{Ident.untyped_framework_methods(name)}), and a method name answers " \
+                    "one type across the program (spikes/NOTES.md rules 10, 34), so this model has no #{name} method: " \
+                    "the application calls #{record}.#{reader_name(name)} where it called #{record}.#{name} " \
+                    "(Ident::UNTYPED_FRAMEWORK_NAMES)"
+          return untyped + query_note(name)
         end
 
         note = "# column #{name.inspect} reads as #{reader_name(name)}: #{name.inspect} is a method of " \

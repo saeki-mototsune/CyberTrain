@@ -1,4 +1,5 @@
-ok   the checked-in gen/models file matches the emitter (fixture stale otherwise)
+ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
 ok   a String request_id column reads and writes beside Request#request_id
 ok   a nullable String release column reads nil and a String beside Config#release
-3 tests, 19 assertions, 0 failures
+ok   a text request_id and a nullable binary release read as Strings beside the framework's
+4 tests, 28 assertions, 0 failures

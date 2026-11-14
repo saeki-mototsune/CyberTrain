@@ -416,6 +416,11 @@ test "the scaffold refuses a keyword or reserved name with its own message" do
   # Hooks Ruby calls with an argument (dup, `def record.x`) are reserved too.
   assert_equal "'initialize_copy' would shadow a method of the generated model (Cybertrain::Model); pick another field", refuse.call("initialize_copy", "field")
   assert_equal "'singleton_method_added' would shadow a method of the generated model (Cybertrain::Model); pick another field", refuse.call("singleton_method_added", "field")
+  # A name framework methods of different types share is not a Model method:
+  # its own message names them.
+  assert_equal "'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle " \
+               "(its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a " \
+               "model reader of that name would be one more; pick another field", refuse.call("handle", "field")
   # Ident answers no "shadowing" reason any more.
   assert_equal "", Cybertrain::Ident.unusable_reason("method")
   assert_equal "", Cybertrain::Ident.unusable_reason("display")
