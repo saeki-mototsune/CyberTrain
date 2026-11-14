@@ -359,34 +359,108 @@ test "framework errors: those require \"cybertrain\" loads need no require line,
   assert_equal ["mailer"], Cybertrain::Gen::JobScan.framework_files(scan(FIXTURE))
 end
 
-test "FRAMEWORK_ERRORS names every Error class under cybertrain/, and the preloaded files are loaded by cybertrain/core.rb" do
-  found = []
-  Dir.glob("cybertrain/**/*.rb").sort.each do |path|
-    next if path.start_with?("cybertrain/generator/") || path.start_with?("cybertrain/cli/")
+test "a framework exception class not named ...Error: retry_on and discard_on Cybertrain::RecordNotFound" do
+  root = app_tree("app/jobs/touch_jobs.rb" => job_source("RetryTouchJob", "retry_on Cybertrain::RecordNotFound, attempts: 3") + "\n" +
+                                              job_source("TouchJob", "discard_on Cybertrain::RecordNotFound"))
+  infos = scan(root)
+  assert_equal [["Cybertrain::RecordNotFound"], ["Cybertrain::RecordNotFound"]],
+               infos.map { |info| info.policies.map { |p| p.exception_class } }
+  out = emit(root)
+  assert_in_order(out, ["class RetryTouchJob < Cybertrain::Job::Base\n", "rescue ::Cybertrain::RecordNotFound => e\n",
+                        "Cybertrain::Job.retry_later(run, e, 3, false, 3)",
+                        "class TouchJob < Cybertrain::Job::Base\n", "rescue ::Cybertrain::RecordNotFound => e\n",
+                        "Cybertrain::Job.discard(run, e)"])
+  # cybertrain/model is the core's: gen/app.rb writes no require for it.
+  assert_equal [], Cybertrain::Gen::JobScan.framework_files(infos)
+  refute Cybertrain::Gen::Manifest.emit(root).include?("require \"cybertrain/")
+  # The test harness and the CRuby preview are not part of an application's
+  # program: their classes are refused as any undefined one.
+  root = app_tree("app/jobs/x_job.rb" => job_source("XJob", "discard_on Cybertrain::Test::AssertionFailed"))
+  assert_equal "#{root}/app/jobs/x_job.rb:2: Cybertrain::Test::AssertionFailed is not a class this program defines " \
+               "(spikes/NOTES.md rule 89)", refusal(root)
+end
 
-    stack = []
-    File.read(path, encoding: "UTF-8").each_line do |raw|
-      indent = raw[/\A */].size
-      stack.pop while !stack.empty? && raw.strip.start_with?("end") && indent <= stack.last[1] && (raw.strip == "end" || raw.strip.start_with?("end "))
-      if (m = raw.chomp.match(/\A\s*(module|class)\s+([A-Z]\w*)(.*)\z/))
-        one_line = m[3].include?("; end")
-        if m[1] == "class" && (m[2] == "Error" || m[2].end_with?("Error")) && m[3].include?("<")
-          found << [(stack.map(&:first) + [m[2]]).join("::"), path.delete_prefix("cybertrain/").delete_suffix(".rb")]
-        end
-        stack << [m[2], indent] unless one_line
+# The class lines of a framework file: [full name, superclass as written,
+# the enclosing names joined by "::"] each.
+def framework_class_lines(path)
+  out = []
+  stack = []
+  File.read(path, encoding: "UTF-8").each_line do |raw|
+    indent = raw[/\A */].size
+    stack.pop while !stack.empty? && raw.strip.start_with?("end") && indent <= stack.last[1] && (raw.strip == "end" || raw.strip.start_with?("end "))
+    if (m = raw.chomp.match(/\A\s*(module|class)\s+([A-Z]\w*)\s*(?:<\s*([A-Z:][\w:]*))?(.*)\z/))
+      one_line = m[4].include?("; end")
+      out << [(stack.map(&:first) + [m[2]]).join("::"), m[3].to_s, stack.map(&:first).join("::")] if m[1] == "class"
+      stack << [m[2], indent] unless one_line
+    end
+  end
+  out
+end
+
+# The files `require "cybertrain/core"` loads, directly or through the files
+# it requires, as "db/error" (cybertrain/ and .rb left out).
+def core_closure
+  seen = []
+  todo = ["core"]
+  until todo.empty?
+    file = todo.shift
+    next if seen.include?(file) || !File.exist?("cybertrain/#{file}.rb")
+
+    seen << file
+    File.read("cybertrain/#{file}.rb", encoding: "UTF-8").each_line do |raw|
+      if (m = raw.match(/\A\s*require "cybertrain\/([\w\/]+)"/))
+        todo << m[1]
+      elsif (m = raw.match(/\A\s*require_relative "([\w\/]+)"/))
+        dir = File.dirname(file)
+        todo << (dir == "." ? m[1] : "#{dir}/#{m[1]}")
       end
     end
   end
-  assert_equal found.sort, Cybertrain::Gen::JobScan::FRAMEWORK_ERRORS.sort
-  # The core: an application that requires only cybertrain/core loads them
-  # too (cybertrain.rb requires the core first).
-  top = File.read("cybertrain/core.rb")
-  Cybertrain::Gen::JobScan::PRELOADED_FILES.each do |file|
-    direct = top.include?("require \"cybertrain/#{file}\"\n")
-    parent = file.split("/").first
-    through = top.include?("require \"cybertrain/#{parent}\"\n") && File.read("cybertrain/#{parent}.rb").include?("require \"cybertrain/#{file}\"\n")
-    assert(direct || through, "#{file} is not loaded by cybertrain/core.rb")
+  seen
+end
+
+test "FRAMEWORK_ERRORS names every exception class under cybertrain/, and PRELOADED_FILES are those cybertrain/core.rb loads" do
+  # Every class line outside the generator and the CLI (gen and the cybertrain
+  # command), the CRuby preview (never compiled) and the test harness (not
+  # in an application's program); an exception class is one whose
+  # superclass, looked up from the innermost namespace out, is a core
+  # exception class or another one found here.
+  lines = []
+  Dir.glob("cybertrain/**/*.rb").sort.each do |path|
+    next if path.start_with?("cybertrain/generator/") || path.start_with?("cybertrain/cli/") ||
+            path.start_with?("cybertrain/preview/") || path.start_with?("cybertrain/test/") || path == "cybertrain/test.rb"
+
+    framework_class_lines(path).each { |line| lines << (line + [path.delete_prefix("cybertrain/").delete_suffix(".rb")]) }
   end
+  roots = ["Exception", "ScriptError", "NotImplementedError"] + Cybertrain::Gen::JobScan::CORE_ERRORS
+  found = []
+  grew = true
+  while grew
+    grew = false
+    lines.each do |full, written, scope, file|
+      next if written == "" || found.any? { |pair| pair[0] == full }
+
+      name = written.delete_prefix("::")
+      segments = scope == "" ? [] : scope.split("::")
+      hit = roots.include?(name)
+      (0..segments.size).each do |cut|
+        candidate = (segments[0, segments.size - cut] + [name]).join("::")
+        hit = true if found.any? { |pair| pair[0] == candidate }
+      end
+      next unless hit
+
+      found << [full, file]
+      grew = true
+    end
+  end
+  assert_includes found, ["Cybertrain::RecordNotFound", "model"]
+  assert_equal found.sort, Cybertrain::Gen::JobScan::FRAMEWORK_ERRORS.sort
+  # gen/app.rb writes a require for the others: an application that requires
+  # only cybertrain/core loads these already (cybertrain.rb requires the core
+  # first).
+  closure = core_closure
+  files = Cybertrain::Gen::JobScan::FRAMEWORK_ERRORS.map { |pair| pair[1] }.uniq
+  assert_equal files.select { |f| closure.include?(f) }.sort, Cybertrain::Gen::JobScan::PRELOADED_FILES.sort
 end
 
 Cybertrain::Test.run!

@@ -10,18 +10,62 @@ require "cybertrain/generator/jobs_emitter"
 # loads them (cybertrain/mailer first: WelcomeJob names its TimeoutError),
 # worked through Job.work_one with chosen epoch times against an
 # in-memory database. SQLite is FFI, so the snapshot comes from the
-# compiled binary (spikes/NOTES.md rule 23).
+# compiled binary (spikes/NOTES.md rule 23). Then
+# test/fixtures/gen_jobs_models: TouchPostJob over the fixture app's Post
+# model (loaded before it, as gen/app.rb loads app/models before the jobs),
+# whose discard_on names Cybertrain::RecordNotFound. Post encrypts
+# secret_note, so a key is set below.
 require_relative "fixtures/gen_app/app/jobs/admin/report_job"
 require_relative "fixtures/gen_app/app/jobs/digest_job"
 require_relative "fixtures/gen_app/app/jobs/welcome_job"
 require_relative "fixtures/gen_app/gen/jobs"
+require_relative "fixtures/gen_app/db/schema"
+require_relative "fixtures/gen_app/gen/models/comment"
+require_relative "fixtures/gen_app/gen/models/post"
+require_relative "fixtures/gen_app/gen/concerns/models/concerns/visible"
+require_relative "fixtures/gen_app/app/models/comment"
+require_relative "fixtures/gen_app/app/models/post"
+require_relative "fixtures/gen_jobs_models/app/jobs/touch_post_job"
+require_relative "fixtures/gen_jobs_models/gen/jobs"
 
 FIXTURE = "test/fixtures/gen_app"
+MODELS_FIXTURE = "test/fixtures/gen_jobs_models"
 DB = Cybertrain::DB
 Job = Cybertrain::Job
 
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
+Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+
+# CREATE TABLE statements for the fixture schema (as
+# test/gen_models_compiles.rb writes them), for TouchPostJob's Post.
+def sql_type(column)
+  case column.type
+  when :integer, :boolean then "INTEGER"
+  when :float then "REAL"
+  when :decimal then "DECIMAL"
+  else "TEXT"
+  end
+end
+
+def create_tables_sql(definition)
+  sql = +""
+  definition.tables.each do |table|
+    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
+    table.columns.each do |c|
+      part = +"\"#{c.name}\" #{sql_type(c)}"
+      part << " NOT NULL" unless c.null
+      default = c.default
+      part << " DEFAULT #{default}" unless default.nil?
+      parts << part
+    end
+    table.foreign_keys.each do |fk|
+      parts << "FOREIGN KEY (\"#{fk.column}\") REFERENCES \"#{fk.to_table}\"(id)"
+    end
+    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
+  end
+  sql
+end
 
 def fresh_db
   DB.connect(":memory:")
@@ -51,6 +95,12 @@ test "the checked-in gen/jobs.rb matches the emitter (fixture stale otherwise)" 
   source = Cybertrain::Gen::JobsEmitter.emit(Cybertrain::Gen::JobScan.scan_dir(FIXTURE + "/app/jobs"))
   Cybertrain::Test.count_assertion
   flunk("fixture stale: gen/jobs.rb") unless File.read(FIXTURE + "/gen/jobs.rb") == source
+end
+
+test "the checked-in gen/jobs.rb of gen_jobs_models matches the emitter (fixture stale otherwise)" do
+  source = Cybertrain::Gen::JobsEmitter.emit(Cybertrain::Gen::JobScan.scan_dir(MODELS_FIXTURE + "/app/jobs"))
+  Cybertrain::Test.count_assertion
+  flunk("fixture stale: gen_jobs_models/gen/jobs.rb") unless File.read(MODELS_FIXTURE + "/gen/jobs.rb") == source
 end
 
 test "perform_later enqueues the class kind with the JSON args and perform runs it" do
@@ -132,6 +182,24 @@ test "discard_on writes discarded without a retry" do
   assert_equal 1, job_attempts(id)
   assert_equal "ArgumentError: no such user", Cybertrain::Cast.str(job_value(id, "last_error"))
   assert_equal 0, exhausted_count
+  refute Job.work_one(999_999)
+end
+
+test "discard_on Cybertrain::RecordNotFound: a post deleted before the job runs is discarded, not retried" do
+  fresh_db
+  DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+  TOUCH_LOG.pop until TOUCH_LOG.empty?
+  post = Post.create!(title: "Hello", body: "first")
+  kept = TouchPostJob.perform_at(Time.at(1000), { "post_id" => post.id })
+  gone = TouchPostJob.perform_at(Time.at(1000), { "post_id" => post.id + 1 })
+  assert Job.work_one(1000)
+  assert Job.work_one(1000)
+  assert_equal ["touched Hello"], TOUCH_LOG
+  assert_equal "done", job_state(kept)
+  assert_equal "discarded", job_state(gone)
+  assert_equal 1, job_attempts(gone)
+  assert_equal "Cybertrain::RecordNotFound: Couldn't find Post with id=#{post.id + 1}",
+               Cybertrain::Cast.str(job_value(gone, "last_error"))
   refute Job.work_one(999_999)
 end
 
