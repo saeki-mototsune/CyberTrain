@@ -447,7 +447,8 @@ reported yet.
 ### 3. Seen in the framework, not reduced yet
 
 (Since the inventory of 2026-11-13, **AA**, closure cells allocated on
-method entry, belongs here too.)
+method entry, belongs here too, and since 2026-11-14 **AR**, a
+require-shaped line inside a regex literal read as a require.)
 
 Nothing can be sent for these until a program stands on its own: **V**
 (`strftime` with a built pattern returns the pattern; five standalone
@@ -3744,3 +3745,32 @@ an application ported from Ruby may rely on it without knowing.
   program: no file of the test framework defines it (it offers
   `assert_not_equal`), so the call is refused at build as rule 105
   describes. A missing method of CyberTrain's, not a Spinel item.
+
+## Found in the phase 5b follow-ups (2026-11-14)
+
+The follow-ups (docs/superpowers/plans/2026-11-14-phase5b-followups-plan.md)
+met one Spinel item, AR, seen in a build and not yet reduced; spikes/NOTES.md
+has it as rule 122, and a form that works as rule 121.
+
+### AR. A require-shaped line inside a regex literal is read as a require
+
+Rule 122. A test program that scanned source files for their requires
+held this line:
+
+```ruby
+if (m = raw.match(/\A\s*require "cybertrain\/([\w\/]+)"/))
+```
+
+CRuby runs it. The Spinel build stopped with `spinel: cannot load such
+file -- cybertrain\/([\w\/]+)`: the resolution of `require` took the text
+inside the regex literal for a require of a literal path. Not reduced to a
+standalone program yet, and not run again for this entry (the implementer's
+report, test/gen_jobs.rb before 0dac336).
+
+- Today: a program that looks for requires in text builds the keyword from
+  pieces (`"req" + "uire \"cybertrain/"`) and matches with `start_with?`
+  (test/gen_jobs.rb's `core_closure`).
+- Asked of Spinel: resolve only `require` calls, not text that looks like
+  one inside a literal.
+- Not reported upstream; to be reduced first (section 3 of "What is asked
+  of Spinel now").
