@@ -1,0 +1,15 @@
+ok   the line: UTC time with milliseconds, the level in capitals, the message, every level
+ok   real time has milliseconds and follows travel_back
+ok   a travel without a block, freeze_time and travel_back move the line's time
+ok   Logger.timestamp formats the followed instant; -1 is real time
+ok   a level below the logger's is silent; a message ending in a newline gets no second one
+ok   JSON lines: time, level, tags, message
+ok   format_line puts the request id apart from the other tags in JSON, in place in text
+ok   a JSON line's message drops the line's own newline
+ok   the byte scan refuses what is not UTF-8: every byte from 0x80 up is replaced
+ok   valid UTF-8 is kept: U+10FFFF, U+2028, a CJK character, an emoji
+ok   messages with control bytes, invalid UTF-8 and non-ASCII are one valid JSON line
+ok   a JSON line's tag holding invalid UTF-8 or a newline stays one valid JSON line
+ok   a long text line is one line, whole
+ok   capture_log answers what Cybertrain.logger wrote, debug included, and puts the logger back
+14 tests, 102 assertions, 0 failures

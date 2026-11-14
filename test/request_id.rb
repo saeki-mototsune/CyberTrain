@@ -504,8 +504,12 @@ def all_strings(ev)
   out
 end
 
+# One assertion whatever the event holds: a backtrace is empty in a release
+# build (spikes/NOTES.md rule 107) and dozens of lines under CRuby, so an
+# assertion per String would make the count depend on the runtime.
 def refute_anywhere(ev, secret)
-  all_strings(ev).each { |s| refute s.include?(secret), "#{secret.inspect} found in #{s.inspect}" }
+  found = all_strings(ev).select { |s| s.include?(secret) }
+  assert found.empty?, "#{secret.inspect} found in #{found.join("\n")}"
 end
 
 test "a request's 500 is reported once, with where, method and path" do

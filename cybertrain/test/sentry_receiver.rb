@@ -212,6 +212,13 @@ module Cybertrain
           auth = req.http_header("X-Sentry-Auth")
           type = req.http_header("Content-Type")
           body = req.http_body
+          # The bytes as read are binary under CRuby (the preview); the
+          # envelope is UTF-8 JSON text, so compare it as such (the
+          # compiled String is the same bytes either way).
+          unless body.encoding.to_s == "UTF-8"
+            body = body.dup
+            body.force_encoding("UTF-8")
+          end
           out << SentryEnvelope.new(path, auth, type, body)
         end
         out
