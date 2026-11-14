@@ -20,6 +20,15 @@ module Cybertrain
     # (Controller.content_security_policy) or the application's, set by
     # ContentSecurityPolicyHeader and Controller#process; nil without one.
     attr_accessor :csp_policy
+    # The controller and action that answered, `"ArticlesController#show"`
+    # (Controller#run_action sets it); `""` when no action ran.
+    attr_accessor :controller_action
+    # Whether the exception this request raised has been reported: the
+    # RequestId that reported it sets it, and a RequestId further out does
+    # not report it again. ErrorPages does not set it: the exception it
+    # reports goes no further, so only a new exception (one its page
+    # raises) can reach a RequestId, which reports that one too.
+    attr_accessor :error_reported
 
     def initialize(request)
       @request = request
@@ -32,6 +41,8 @@ module Cybertrain
       @cookie_jar = nil
       @csp_policy = nil
       @csp_nonce = ""
+      @controller_action = ""
+      @error_reported = false
     end
 
     # This request's CSP nonce: 16 bytes from SecureRandom, strict Base64,

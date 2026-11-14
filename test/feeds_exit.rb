@@ -3,10 +3,11 @@ require "cybertrain"
 require "cybertrain/websocket"
 require "cybertrain/test/websocket_receiver"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # The exit rule of a `feeds` process (spec section 9): when one feed's
 # thread dies again after Config#feed_restart_limit restarts within
-# Config#feed_restart_window, the supervisor logs `[FATAL] feed NAME
+# Config#feed_restart_window, the supervisor logs, at FATAL, `feed NAME
 # restarted N times in W s; exiting` and the process exits with status 1
 # once the feeds are stopped, so the container's restart policy starts a
 # fresh one. The process exits, so the case runs this program again as a
@@ -97,11 +98,11 @@ test "a feed that keeps dying makes a feeds process exit 1 with the FATAL line" 
   out = result[1]
   assert_equal "1", result[0]
   assert_includes out, "=> feeds: crashy"
-  assert_includes out, "[WARN] feed crashy: its thread ended; restarting in 1s"
-  assert_includes out, "[INFO] WebSocket restarted: crashy (restart 1)"
-  assert_includes out, "[FATAL] feed crashy restarted 2 times in 600 s; exiting"
+  assert_logged out, "WARN", "feed crashy: its thread ended; restarting in 1s"
+  assert_logged out, "INFO", "WebSocket restarted: crashy (restart 1)"
+  assert_logged out, "FATAL", "feed crashy restarted 2 times in 600 s; exiting"
   # The FATAL line comes before the feeds are stopped and the role returns.
-  assert out.index("[FATAL]") < out.index("returned 1")
+  assert out.index("feed crashy restarted 2 times") < out.index("returned 1")
   # A process that gave up keeps its status row, so `/up` reports the feed
   # once the row is stale (a clean stop deletes it: test/main_roles.rb).
   Cybertrain::DB.connect("#{TMP}/feeds.sqlite3")

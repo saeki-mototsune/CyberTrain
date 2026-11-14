@@ -9,6 +9,7 @@
 require "cybertrain"
 require "cybertrain/application"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # What the modules hold before any boot: taken before anything below runs.
 PRISTINE = Cybertrain::Runtime.describe
@@ -36,6 +37,7 @@ def config_a
   c.filter_parameters = ["pin"]
   c.permissions_policy = "camera=()"
   c.log_level = :warn
+  c.log_format = :json
   c.time_zone = "Asia/Tokyo"
   c
 end
@@ -56,7 +58,7 @@ test "before any boot the settings are the modules' own defaults" do
                "max_upload_bytes=5242880 max_parts=128 upload_root=storage/uploads max_page=10000 " \
                "trusted_proxy=false trusted_proxies= " \
                "filter_parameters=password,password_confirmation,token,secret,secret_key_base,session_key,api_key,authorization " \
-               "permissions_policy=camera=(), microphone=(), geolocation=() log_level=info time_zone=UTC", PRISTINE
+               "permissions_policy=camera=(), microphone=(), geolocation=() log_level=info log_format=text time_zone=UTC", PRISTINE
 end
 
 test "a boot installs every setting of its config" do
@@ -68,8 +70,59 @@ test "a boot installs every setting of its config" do
   assert_equal "views=configured layout=layouts/a assets_raise=true assets_kept=0 " \
                "max_upload_bytes=1000 max_parts=7 upload_root=tmp/runtime_test/a/uploads max_page=50 " \
                "trusted_proxy=true trusted_proxies=10.0.0.0/8 filter_parameters=pin " \
-               "permissions_policy=camera=() log_level=warn time_zone=Asia/Tokyo", Cybertrain::Runtime.describe
+               "permissions_policy=camera=() log_level=warn log_format=json time_zone=Asia/Tokyo", Cybertrain::Runtime.describe
   app.shutdown
+end
+
+test "Runtime.apply installs the log format and reset! puts it back" do
+  app_for(config_a).boot.shutdown
+  assert Cybertrain::Logger.json_lines
+  assert Cybertrain::Runtime.describe.end_with?("log_level=warn log_format=json time_zone=Asia/Tokyo")
+  Cybertrain::Runtime.reset!
+  refute Cybertrain::Logger.json_lines
+  assert Cybertrain::Runtime.describe.end_with?("log_level=info log_format=text time_zone=UTC")
+  app_for(config_b).boot.shutdown
+  refute Cybertrain::Logger.json_lines
+  Cybertrain::Runtime.reset!
+end
+
+test "Runtime.apply_logging installs the level and the format alone, or refuses with boot's message" do
+  c = config_a
+  applied = Cybertrain::Runtime.applied
+  assert_equal "", Cybertrain::Runtime.apply_logging(c)
+  assert Cybertrain::Logger.json_lines
+  assert_equal :warn, Cybertrain.logger.level
+  assert_equal "UTC", Cybertrain::Clock.zone.zone_name
+  Cybertrain::Runtime.reset!
+  c.log_level = :none
+  c.log_format = :text
+  assert_equal "", Cybertrain::Runtime.apply_logging(c)
+  assert_equal :error, Cybertrain.logger.level
+  refute Cybertrain::Logger.json_lines
+  Cybertrain::Runtime.reset!
+  c.log_level = :verbose
+  c.log_format = :json
+  assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", Cybertrain::Runtime.apply_logging(c)
+  assert_equal :info, Cybertrain.logger.level
+  refute Cybertrain::Logger.json_lines
+  c.log_level = :info
+  c.log_format = :xml
+  assert_equal "log_format must be :text or :json (got :xml)", Cybertrain::Runtime.apply_logging(c)
+  refute Cybertrain::Logger.json_lines
+  assert_equal applied, Cybertrain::Runtime.applied
+end
+
+test "a boot logs its mail warning in the configured format" do
+  c = config_b
+  c.env = "development"
+  c.mail_delivery_method = :test
+  c.log_format = :json
+  app = app_for(c)
+  log = capture_log { app.boot }
+  app.shutdown
+  Cybertrain::Runtime.reset!
+  assert_includes log, "{\"time\":\""
+  assert_includes log, "\"level\":\"WARN\",\"tags\":[],\"message\":\"mail_delivery_method is :test outside the test environment"
 end
 
 test "Runtime.reset! restores every default" do

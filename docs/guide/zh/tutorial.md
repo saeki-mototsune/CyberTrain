@@ -1,5 +1,5 @@
 ---
-source_sha256: 2437024ef92acdab8ec374f1249ff0285fe030d24a72de28f582e73d0a0e3f42
+source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -642,7 +642,7 @@ require "cybertrain/streams"
 ## 后台作业
 
 > [!WHY]
-> 不应拖住响应的工作（例如发送通知）在响应之后运行。和 Solid Queue 上的 Active Job 一样，作业是 `app/jobs/` 中的一个类，加上应用自己数据库中的一行：不需要其他服务。
+> 不应拖住响应的工作（例如发送通知）独立于请求运行：它可能在响应写出之前开始，也可能在之后。和 Solid Queue 上的 Active Job 一样，作业是 `app/jobs/` 中的一个类，加上应用自己数据库中的一行：不需要其他服务。
 
 ```shell 终端 — blog/
 cybertrain generate job notify_comment --retry StandardError:30:3
@@ -672,13 +672,13 @@ end
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-发表一条评论，服务器的日志会显示作业在响应之后运行：
+发表一条评论，服务器的日志会显示作业的运行：这里它在响应之后运行，但作业线程也可能在响应写出之前取得这一行，所以各行的顺序可能不同；作业的行带有作业的标签和把它加入队列的请求的 ID：
 
 ```text 输出 — cybertrain server
-[INFO] Started POST "/articles/1/comments" for 127.0.0.1
-[INFO] Completed 200 in 2ms
-[INFO] new comment 1 on article 1
-[INFO] job 1 (NotifyCommentJob) done
+2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1
+2026-11-14T09:30:00.122Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Completed 200 in 2ms
+2026-11-14T09:30:00.950Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] new comment 1 on article 1
+2026-11-14T09:30:00.951Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] job 1 (NotifyCommentJob) done
 ```
 
 <!-- list: points -->

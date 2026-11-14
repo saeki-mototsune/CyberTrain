@@ -7,6 +7,7 @@ require "socket"
 require "stringio"
 require "cybertrain/http/server"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Three chunks, one of them multibyte, one holding a NUL byte.
 class ThreeChunks < Cybertrain::BodyWriter
@@ -160,7 +161,7 @@ end
 test "a writer that raises ends the connection and is logged" do
   raw = exchange(SERVER.port, "GET /raise HTTP/1.1\r\nHost: t\r\n\r\n")
   assert_equal "5\r\nfirst\r\n", body_of(raw)
-  assert_includes LOG.string, "[ERROR] stream error: RuntimeError: writer boom"
+  assert_logged LOG.string, "ERROR", "stream error: RuntimeError: writer boom"
   again = exchange(SERVER.port, "GET /plain HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n")
   assert_equal "plain", body_of(again)
 end
@@ -212,6 +213,27 @@ test "a body or a redirect set after a BodyWriter replaces the stream" do
   end
   assert_equal true, raised
   assert_equal true, refused.streaming?
+end
+
+# A Response whose BodyWriter was set under a request's Scope.
+def streamed_under_scope
+  res = Cybertrain::Response.new
+  scope = Cybertrain::Logger::Scope.new("r-9", "GET", "/s", "", ["r-9"], 0, { "k" => "v" })
+  with_scope(scope) { res.body_writer = ThreeChunks.new }
+  assert res.body_scope.equal?(scope)
+  res
+end
+
+test "a body, a redirect or an error reset that drops the writer drops its Scope too" do
+  rendered = streamed_under_scope
+  rendered.body = "rendered"
+  assert rendered.body_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+  redirected = streamed_under_scope
+  redirected.redirect("/next", 303)
+  assert redirected.body_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+  reset = streamed_under_scope
+  reset.reset_to(500)
+  assert reset.body_scope.equal?(Cybertrain::Logger::NO_SCOPE)
 end
 
 test "a client that never reads ends the stream when a write times out" do

@@ -135,11 +135,11 @@ test "cookies are Secure under force_ssl" do
 end
 
 test "the stack: the host check outside the redirect, both off without their settings" do
-  assert_equal ["Cybertrain::SslRedirect", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static",
+  assert_equal ["Cybertrain::RequestId", "Cybertrain::SslRedirect", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static",
                 "Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"],
                stack_names(APP)
   hosted = build_app(build_config("app.example"))
-  assert_equal ["Cybertrain::HostAuthorization", "Cybertrain::SslRedirect", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck",
+  assert_equal ["Cybertrain::RequestId", "Cybertrain::HostAuthorization", "Cybertrain::SslRedirect", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck",
                 "Cybertrain::Static", "Cybertrain::MethodOverride", "Cybertrain::SessionStore", "Cybertrain::CsrfProtection",
                 "Cybertrain::Router"], stack_names(hosted)
   client = Cybertrain::Test::Client.new(hosted)
@@ -149,7 +149,7 @@ test "the stack: the host check outside the redirect, both off without their set
   assert_equal 200, client.get("/up", { "host" => "10.0.0.7" }).status
   plain = build_config("")
   plain.force_ssl = false
-  assert_equal ["Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
+  assert_equal ["Cybertrain::RequestId", "Cybertrain::Stream::Endpoint", "Cybertrain::HealthCheck", "Cybertrain::Static", "Cybertrain::MethodOverride",
                 "Cybertrain::SessionStore", "Cybertrain::CsrfProtection", "Cybertrain::Router"], stack_names(build_app(plain))
 end
 

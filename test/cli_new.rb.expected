@@ -709,8 +709,27 @@ ok   CLI version, help and unknown commands
 # CYBERTRAIN_FORCE_SSL=1
 # The host names the application answers to, comma-separated.
 # CYBERTRAIN_HOSTS=app.example.com
+
+# Logs and error reports: settings, except the DSN, which holds a
+# key and is kept out of the repository like a secret.
+# The least important log line written: debug, info, warn, error,
+# fatal or none (info; none also turns the request log off).
+# CYBERTRAIN_LOG_LEVEL=info
+# How each line is written: text (the default) or json, one JSON
+# object per line, for a log collector.
+# CYBERTRAIN_LOG_FORMAT=json
+# Where error reports are sent, a Sentry DSN; empty sends nothing.
+# It holds a key: set it in the environment (or your deploy's
+# secrets), never in a file you commit. It needs
+# require "cybertrain/error_reporter/sentry" in bin/<app>.rb.
+# CYBERTRAIN_SENTRY_DSN=https://<public key>@<host>/<project id>
+# The share of error reports sent, 0.0 to 1.0 (1.0, all of them).
+# CYBERTRAIN_ERROR_SAMPLE_RATE=1.0
+# The release sent with each error report: a version or a commit.
+# CYBERTRAIN_RELEASE=
 ok   .env.example lists the secrets, commented, with how to make each
+ok   new writes the logging and reporting variables, all commented
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-30 tests, 358 assertions, 0 failures
+31 tests, 664 assertions, 0 failures

@@ -1,6 +1,6 @@
 ---
-description: CyberTrain 应用如何构建和运行（构建时代码生成、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 2d356939fc39bce1422b47603486cbede6fceeb913ecf5400af788d4ed1fcb18
+description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
+source_sha256: 1ef9863a32c9cd418e4fc175c5dd157510bb5bf8b5f31cfb9c46e2399287edf9
 ---
 # 工作原理
 
@@ -39,6 +39,7 @@ Spinel 会编译程序 require 的每个文件里的每个方法，无论是否�
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`；同时加载邮件发送器和作业 |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | 控制器中的 `rate_limit`；同时加载缓存 |
+| `require "cybertrain/error_reporter/sentry"` | Sentry 发送器：`CYBERTRAIN_SENTRY_DSN` 把每个错误报告发送到 Sentry 或 GlitchTip（[错误报告](background-and-operations.md#error-reporting)）；加载 `HttpClient` 和 TLS。只写在 `bin/<app>.rb` 中 |
 | `require "cybertrain"` | 以上全部 |
 
 每一行都写在 `require "cybertrain/core"` 之后（`cybertrain/jobs` 和 `cybertrain/feeds` 会自己加载核心，其他行不会），行的顺序无关紧要：框架按自己的固定顺序启动和停止各子系统。在一个用脚手架生成的应用上，只用核心时编译 2,205 个方法而不是 2,767 个，分析用 38 秒而不是 52 秒；完整构建用 83 秒而不是 108 秒，修改一次控制器约 47 秒而不是约 65 秒（[docs/performance-next.md](../performance-next.md)）。
@@ -52,6 +53,7 @@ Spinel 会编译程序 require 的每个文件里的每个方法，无论是否�
 - 调用子系统辅助方法的视图会让 `spin run gen`（以及 `spin run gen -- --check`）以退出状态 1 停止：`app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb`。如果模板仍被渲染，会抛出 `undefined helper 'turbo_stream_from'`。
 - `./<app> worker`、`./<app> jobs` 和 `./<app> feeds` 会打印例如 `the worker role needs require "cybertrain/jobs" in bin/<app>.rb`，并以 1 退出。
 - `/up` 只报告已加载的部分：没有作业就不检查 worker 是否停滞，没有 feed 就不检查 feed 是否停滞。
+- 设置了 DSN 却没有 Sentry 发送器的那一行，会拒绝启动：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。错误报告器本身、它的订阅者以及日志的请求 ID 都在核心中。
 
 gen 把 `bin/<app>.rb` 当作文本读取，只看其中字面写出的 `require "cybertrain"` 和 `require "cybertrain/..."` 行：把它们移到 `bin/<app>.rb` 用 `require_relative` 加载的文件里，gen 就会拒绝本来能用的辅助方法。请把它们留在 `bin/<app>.rb` 中。
 
@@ -59,7 +61,7 @@ gen 把 `bin/<app>.rb` 当作文本读取，只看其中字面写出的 `require
 
 有两种情况 gen 不会发现：没有 `cybertrain/jobs` 时在 `config/routes.rb` 中写了 `jobs_page` 行，会成为生成的控制器的编译错误，而不是 gen 的提示；`retry_on` 或 `discard_on` 引用了 `Cybertrain::Mailer` 错误的作业，会让生成的 `gen/app.rb` 自己 require `cybertrain/mailer`。
 
-测试不受这些行的裁剪：`cybertrain test` 编译的程序（`gen/tests.rb`）无论 `bin/<app>.rb` require 了什么，都会 require `cybertrain`，即所有子系统。因此 `perform_enqueued_jobs`、`assert_emails` 和 `assert_broadcasts` 在任何应用中都可用，基于 `cybertrain/core` 的应用会连同所有子系统一起编译其测试，而引用了某个子系统却没有其 require 行的代码会通过测试，在 `spin build` 时才停下（[测试应用](testing.md)）。
+测试不受这些行的裁剪：`cybertrain test` 编译的程序（`gen/tests.rb`）无论 `bin/<app>.rb` require 了什么，都会 require `cybertrain`，即所有子系统，以及 Sentry 发送器。因此 `perform_enqueued_jobs`、`assert_emails`、`assert_broadcasts` 和 `Test::SentryReceiver` 在任何应用中都可用，基于 `cybertrain/core` 的应用会连同所有子系统一起编译其测试，而引用了某个子系统却没有其 require 行的代码会通过测试，在 `spin build` 时才停下（[测试应用](testing.md)）。
 
 ## 视图是解释执行的
 

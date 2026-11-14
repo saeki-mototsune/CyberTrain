@@ -1,0 +1,16 @@
+ok   tagged adds tags for the block and restores them, also after a raise
+ok   tagged answers the block's value
+ok   Cybertrain.logger.tagged tags the default logger's lines
+ok   a Scope's request id and tags reach the line; tagged keeps the request id apart in JSON
+ok   a Scope set on one thread is not seen on another
+ok   swap_scope answers the previous Scope and stores nil for NO_SCOPE; reset_scope empties the slot
+ok   scope_where= writes the thread's own Scope
+ok   NO_SCOPE, shared by every thread, is never written: scope_where= on it does nothing
+ok   NO_SCOPE's tags and context cannot be written, nor the context a with_tags copy shares
+ok   with_tags is a copy with the tags appended and the request id's place kept
+ok   tagged on concurrent threads: each sees its own tags, and a raising block restores its thread's
+ok   a non-ASCII tag beside a binary or ISO-8859-1 message is written byte for byte
+ok   JSON lines with a non-ASCII tag and a binary or ISO-8859-1 message stay valid
+ok   a logger whose io is closed drops the line and does not raise; the next logger still writes
+ok   LogCapture.entries drops only a real time and the tags
+15 tests, 52 assertions, 0 failures

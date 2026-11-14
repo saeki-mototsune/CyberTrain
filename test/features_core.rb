@@ -16,6 +16,26 @@ require "cybertrain/test/client"
 # temp directory (boot may write tmp/secret_key there). It links SQLite
 # through FFI, so its snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
+#
+# A boot that is refused exits 1 (fail_boot), so the Sentry DSN case runs
+# this program again as a child (as test/boot_encryption.rb does) and reads
+# its stdout and exit status.
+CHILD_FLAG = "CYBERTRAIN_FEATURES_CORE_CHILD"
+if ENV[CHILD_FLAG] == "1"
+  conf = Cybertrain::Config.new
+  conf.database_path = ":memory:"
+  conf.secret_key_base = "features-core-secret"
+  conf.log_level = :none
+  conf.sentry_dsn = ENV["CT_TEST_DSN"].to_s
+  Cybertrain::Application.new(router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, name: "shop",
+                              config: conf).boot
+  puts "booted"
+  exit(0)
+end
+
+# Read before the chdir below: the child is this program, run again.
+PROGRAM = File.expand_path($0)
+ROOT_DIR = File.expand_path("..", __dir__)
 TMP = Dir.mktmpdir("cybertrain-features-core")
 Dir.chdir(TMP)
 Dir.mkdir("public")
@@ -139,6 +159,38 @@ end
 
 test "an unknown word is still unknown" do
   assert_equal 1, run(["nosuch"])
+end
+
+# Runs this program as the child above with `dsn` assigned; [exit status,
+# stdout]. The child's own working directory is this one (TMP).
+def boot_child(dsn)
+  out_path = File.join(TMP, "child-stdout.log")
+  ENV[CHILD_FLAG] = "1"
+  ENV["CT_TEST_DSN"] = dsn
+  pid = 0
+  if RUBY_ENGINE == "ruby"
+    pid = Process.spawn("ruby", "-I", ROOT_DIR, PROGRAM, out: out_path)
+  else
+    pid = Process.spawn(PROGRAM, out: out_path)
+  end
+  ENV.delete(CHILD_FLAG)
+  ENV.delete("CT_TEST_DSN")
+  status = Process.waitpid2(pid)[1].exitstatus.to_i
+  text = File.read(out_path)
+  File.delete(out_path)
+  [status.to_s, text]
+end
+
+test "the core links no error sender" do
+  assert_equal "", Cybertrain.error.sender.sender_name
+  refute Cybertrain.error.sender.sends?
+end
+
+test "a Sentry DSN without the sender's line refuses boot, naming the line" do
+  message = "error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: " \
+            "add require \"cybertrain/error_reporter/sentry\" to bin/shop.rb\n"
+  assert_equal ["1", message], boot_child("https://k@h/1")
+  assert_equal ["0", "booted\n"], boot_child("")
 end
 
 Cybertrain::Test.run!

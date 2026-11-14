@@ -7,3 +7,4 @@
 test/stream.rb	Stream.decode64 answers ASCII-8BIT under CRuby (Base64.urlsafe_decode64), not UTF-8 (rule 27); one assertion differs
 test/http_gunzip.rb	the corrupt-member input comes from the runtime's own Zlib.gzip, whose bytes differ from CRuby's zlib; flipping its middle byte still inflates, so no BodyUndecodable (one assertion)
 test/main_console.rb	the test runs $0 as an executable, which only a compiled binary can (Permission denied), and Process.spawn reports a non-executable sqlite3 as ENOENT under CRuby, EACCES compiled
+test/logger_lines.rb	counts 31 more assertions under CRuby: its JSON.parse round trips of json_quote run only there (if RUBY_ENGINE == "ruby"; the compiled program has no JSON.parse of that text); every test passes

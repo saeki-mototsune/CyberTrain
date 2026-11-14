@@ -1,4 +1,6 @@
 # Required by cybertrain/job.rb, after Store and Executor.
+require "cybertrain/error_reporter"
+
 module Cybertrain
   module Job
     # The thread pool of a process that runs jobs: Config#job_threads job
@@ -18,6 +20,9 @@ module Cybertrain
 
       # How long an idle wait sleeps between looks at the stop flag.
       WAIT_SLICE = 0.1
+
+      # The `where` of an error a job thread's loop caught ({claim_safely}).
+      THREAD_WHERE = "job thread"
 
       # The thread pool's state (module ivars, not class variables: NOTES
       # rules 18/64). @generation counts start!s: a loop left from before a
@@ -201,13 +206,21 @@ module Cybertrain
       # The generation goes with the claim as its ticket: a claim that
       # waited for the write lock is asked again under it ({Job.claim_open?}),
       # so a stop requested during the wait is seen before a row is taken.
+      #
+      # Both are reported too, `where` "job thread": the job's Scope (its
+      # kind) was put back before the exception got here, and the line runs
+      # outside any, so the `where` is given rather than read from the
+      # Scope. One `where` for every job thread, so a database failing them
+      # all is one report a minute, not one per thread.
       def self.claim_safely(now, index, generation)
         Executor.work_one_under(now, generation)
       rescue JSON::NestingError, JSON::ParserError, StandardError => e
         Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
+        Cybertrain.error.report_unhandled(e, THREAD_WHERE, ErrorReporter::NO_CONTEXT)
         false
       rescue Exception => e
         Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
+        Cybertrain.error.report_unhandled(e, THREAD_WHERE, ErrorReporter::NO_CONTEXT)
         false
       end
 

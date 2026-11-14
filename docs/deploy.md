@@ -443,6 +443,23 @@ sudo chmod 640 /etc/notes/notes.env
 | `PORT` | 待ち受けポート。Caddy の設定と合わせます |
 | `SPINEL_GC_FULL_INTERVAL=8` | Spinel の GC が full collection を 8 回に 1 回にします。既定の自動調整では、Web サーバーの負荷でほぼ毎回 full になり、8 に固定すると 1 CPU で毎秒のリクエスト数が約 16% 増えます。メモリ使用量は変わりません（[spinel-feedback.md](spinel-feedback.md) の 5） |
 
+必要ならログとエラー報告も設定します。エラー報告をすべて Sentry（または GlitchTip）に送るには、
+プロジェクトの DSN を同じファイルに足し、`bin/notes.rb` が `cybertrain` ではなく `cybertrain/core` を
+読み込んでいるなら、送信側をリンクする行も足します（DSN があって行がないと、アプリは起動を拒み、
+足すべき行を表示します）。`CYBERTRAIN_LOG_FORMAT=json` にするとログを 1 行 1 つの JSON
+オブジェクトで書きます（ログ収集ツール向け。journal はどちらでも読めます）。
+
+```sh
+sudo tee -a /etc/notes/notes.env > /dev/null <<EOF
+CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42
+CYBERTRAIN_RELEASE=2026-11-14
+EOF
+```
+
+`CYBERTRAIN_RELEASE` は報告がどのバージョンから来たかを示します。デプロイスクリプトでコミットを
+書き込んでもかまいません。変数と報告される内容は
+[エラー報告](guide/ja/background-and-operations.md#error-reporting)にあります。
+
 ---
 
 ## 第 5 部: systemd とデプロイスクリプト
@@ -703,7 +720,13 @@ sudo -iu notes /srv/notes/deploy.sh v1.2     # タグやコミットを指定す
 ```sh
 sudo journalctl -u notes -f             # アプリ（1 リクエスト 2 行: Started / Completed）
 sudo journalctl -u caddy -f             # Caddy
+sudo journalctl -u notes | grep 3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c   # 1 つのリクエストとそのジョブの行
 ```
+
+各行は UTC の時刻とレベルで始まり、続く角括弧にリクエストの ID が入ります
+（`2026-11-14T09:30:00.120Z INFO [3f2a9c1e-...] Started GET "/" for 127.0.0.1`）。レスポンスの
+`X-Request-Id` ヘッダーにも同じ ID が入り、リクエストがキューに入れたジョブも自分のタグの後にこの ID を
+出すので、1 回の grep でリクエストが起こしたことをすべて拾えます。
 
 リクエストログの接続元 IP は常に `127.0.0.1`（Caddy）になります。実際のクライアント IP が
 必要なら Caddyfile のサイトブロックに `log` を足して Caddy のアクセスログを使ってください。
@@ -950,7 +973,7 @@ sudo systemctl enable --now notes-worker
   購読の名前で起動します（Web 側は `CYBERTRAIN_WORKER=0` にして、同じ購読を二重に開かないように
   します）。そのユニットの `Restart=always` は残してください。feeds プロセスはスレッドが死んだ
   フィードを再起動しますが、同じフィードが死に続けると（600 秒のうちに 10 回の再起動、
-  `CYBERTRAIN_FEED_RESTART_LIMIT` と `CYBERTRAIN_FEED_RESTART_WINDOW`）`[FATAL]` の行を出して
+  `CYBERTRAIN_FEED_RESTART_LIMIT` と `CYBERTRAIN_FEED_RESTART_WINDOW`）`FATAL` の行を出して
   終了ステータス 1 で終わるので、systemd が新しいプロセスを起動します。
 - フィードを別のプロセスで動かしても、Web プロセスの `/up` はそれを見ています。各 feeds
   プロセスが 10 秒ごとにフィードの状態をデータベースに書き、フィードかそのプロセスが 180 秒
@@ -1138,6 +1161,19 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # 初回だけ作�
 
 パスワードマネージャーから直接読む書き方は
 [Kamal のドキュメント](https://kamal-deploy.org/docs/commands/secrets/)にあります。
+
+エラー報告を Sentry（または GlitchTip）に送るための行は、生成されたファイルにコメントで用意して
+あります。`config/deploy.yml` の `env: secret:` の `- CYBERTRAIN_SENTRY_DSN` と、`.kamal/secrets` の
+`CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN` のコメントを外し、`bin/notes.rb` に
+`require "cybertrain/error_reporter/sentry"` を足し（新しいアプリはコアだけを読み込みます。この行が
+ないと、DSN を渡されたコンテナは起動を拒んでそう表示します）、同じシェルで DSN を export します。
+`env: clear:` のコメントになっている `CYBERTRAIN_LOG_FORMAT: json` を有効にすると、ログを 1 行
+1 つの JSON オブジェクトで書きます（ログ収集ツール向け）。`kamal app logs` はどちらでも行を
+そのまま表示します。
+
+```sh
+export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42   # Sentry のプロジェクトの DSN
+```
 
 ### 8-4. 最初のデプロイ
 

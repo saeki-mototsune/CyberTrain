@@ -1,0 +1,11 @@
+ok   every failed job attempt is reported, with the job's context and its request id
+ok   a job's second attempt past the dedupe window is reported; one inside it is not
+ok   a retry_on attempt carries the policy's attempts, the second one past the window too
+ok   a discard_on is reported once
+ok   a deliver_later that fails is reported as cybertrain mail
+ok   an exception that escapes a job is reported by the job thread, where job thread
+ok   a scheduled task that raises is reported, where schedule:<name>
+ok   a cron task with no next run is reported, where schedule:<name>
+ok   a feed's on_open, on_message and on_tick failures are reported, where feed:<name>
+ok   a feed thread's death and the supervisor giving up are reported, where feed:<name>
+10 tests, 64 assertions, 0 failures

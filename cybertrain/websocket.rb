@@ -56,6 +56,7 @@ require "json"
 require "cybertrain/logger"
 require "cybertrain/config"
 require "cybertrain/clock"
+require "cybertrain/error_reporter"
 require "cybertrain/background"
 # The feeds subsystem: the server role starts the services, `./<app> feeds`
 # runs them, `/up` checks them (FeedsFeature).
@@ -792,12 +793,45 @@ module Cybertrain
     # Exception, in a method that takes no block (NOTES rules 32/45).
     # The connection the thread had open is closed before the thread ends,
     # so the restart does not leave a second subscriber on the server.
+    # The feed's log Scope ({feed_scope}) is swapped in first and stays
+    # for the life of the thread (nothing else runs on it): every line of
+    # the feed and of its callbacks carries `[feed:<name>]`.
+    # The thread's death is reported too (spec section 13.2), its `where`
+    # given ({feed_where}), as in the callbacks' rescues.
     def self.run_feed_logged(sub, generation)
+      Logger.swap_scope(feed_scope(sub))
       run_feed(sub, generation)
     rescue Exception => e
       Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} thread ended: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
       sub.sub_drop_client
       nil
+    end
+
+    # A feed's `where` (its log tag and its error reports' `where`):
+    # `feed:<name>`.
+    # @param sub [Subscription]
+    # @return [String]
+    # @api private
+    def self.feed_where(sub)
+      "feed:#{sub.sub_name}"
+    end
+
+    # The log Scope of a feed thread (spec section 12.3): the tag and
+    # `where` `feed:<name>`, no request id, no context.
+    # @param sub [Subscription]
+    # @return [Logger::Scope]
+    # @api private
+    def self.feed_scope(sub)
+      where = feed_where(sub)
+      id = ""
+      verb = ""
+      path = ""
+      tags = Array.new(0) { "" }
+      tags << where
+      context = { "" => "" }
+      context.delete("")
+      Logger::Scope.new(id, verb, path, where, tags, -1, context)
     end
 
     def self.run_feed(sub, generation)
@@ -934,36 +968,41 @@ module Cybertrain
       ""
     end
 
-    # Calls on_open; false (logged) when it raised. Reads the Proc from the
-    # Subscription rather than yielding (NOTES rules 32/45/69).
+    # Calls on_open; false (logged and reported, `where` {feed_where}) when
+    # it raised. Reads the Proc from the Subscription rather than yielding
+    # (NOTES rules 32/45/69).
     def self.run_open(sub, conn)
       block = sub.sub_open_block
       block.call(conn) unless block.nil?
       true
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_open failed: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
       false
     end
 
-    # Calls on_message; false (logged) when it raised. The connection stays.
+    # Calls on_message; false (logged and reported) when it raised. The
+    # connection stays.
     def self.run_message(sub, conn, data)
       block = sub.sub_message_block
       block.call(conn, data) unless block.nil?
       true
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_message failed: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
       false
     end
 
-    # Calls on_tick; false (logged) when it raised a StandardError. `conn`
-    # is nil while the feed is disconnected. Anything else ends the feed's
-    # thread, which the supervisor starts again.
+    # Calls on_tick; false (logged and reported) when it raised a
+    # StandardError. `conn` is nil while the feed is disconnected. Anything
+    # else ends the feed's thread, which the supervisor starts again.
     def self.run_tick(sub, conn)
       block = sub.sub_tick_block
       block.call(conn) unless block.nil?
       true
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_tick failed: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
       false
     end
 

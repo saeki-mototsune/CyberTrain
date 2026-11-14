@@ -1,5 +1,5 @@
 ---
-source_sha256: 43d500f72cb5115e5617bbb39871cda159cd02f790f639088bebeb380a15d587
+source_sha256: 5244c35315abf5c2a969beec2d47d9e2d299b8173f1adcddae995718f901b5dc
 ---
 # Конфигурация
 
@@ -34,6 +34,11 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; разделённые запятыми адреса IPv4/IPv6 или CIDR (`172.16.0.0/12,10.0.0.0/8`), для соединений с которых `request.client_ip` берётся из последнего адреса `X-Forwarded-For`, — для прокси, доступного по сети, например kamal-proxy в его контейнере; неверная запись останавливает сервер при запуске |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: наибольшая страница, которую выдаёт `params.page_number` и принимает `Relation#page` (см. [Постраничный вывод](models.md#pagination)); значение, не являющееся числом не более чем из 18 цифр, или меньше 1 заменяется значением по умолчанию |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; разделённые запятыми имена заменяют список. Значение параметра, имя которого содержит одно из них (без учёта регистра ASCII: `password` совпадает и с `user[password]`), записывается как `[FILTERED]` в лог запросов и на страницу ошибок режима разработки; `[]` в `config/app.rb` это отключает |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: наименее важный записываемый уровень, `debug`, `info`, `warn`, `error`, `fatal` или `none` (в любом регистре; `none` выключает журнал запросов, но строки ошибок пишет); любое другое значение останавливает загрузку (см. [Журнал](background-and-operations.md#logs)). `cybertrain test` использует `:none`, если `config/app.rb` не задаёт его |
+| `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`; `json` пишет по одному объекту JSON на строку, для сборщика логов; любое другое значение останавливает загрузку. `cybertrain test` оставляет текстовые строки, если `config/app.rb` не задаёт формат, что бы ни говорила переменная |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: ничего не отправляется. DSN Sentry или GlitchTip отправляет туда каждый отчёт об ошибке (см. [Отчёты об ошибках](background-and-operations.md#error-reporting)); нужен `require "cybertrain/error_reporter/sentry"` (или `require "cybertrain"`) в `bin/<app>.rb`, иначе загрузка отказывает. Нечитаемый DSN останавливает загрузку, называя неверную часть и никогда ключ. `cybertrain test` опустошает его, если `config/app.rb` его не присваивает |
+| `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`: доля отчётов об ошибках, отправляемых в Sentry, от 0.0 до 1.0, записанная цифрами с необязательной `.цифрами`; подписчики видят каждый отчёт; любое другое значение останавливает загрузку |
+| `CYBERTRAIN_RELEASE` | `release` | `""`: версия или коммит, отправляемые с каждым отчётом об ошибке |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт процессу `server` выполнять задачи по расписанию, фоновые задачи и фиды WebSocket (см. [Роли процессов](background-and-operations.md#process-roles)); `./<app> worker` и `feeds` его игнорируют |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: сколько задач один процесс выполняет одновременно (см. [Фоновая работа](background-and-operations.md#background-work)); не меньше 1 |
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`: пояс приложения, имя IANA вроде `Asia/Tokyo`, для `Time.zone`, границ дней и месяцев, `Date.current`, `l` и `time_tag` (см. [Часовые пояса](#time-zones)); пояс, которого нет в zoneinfo системы, останавливает загрузку |
@@ -54,7 +59,7 @@ end
 | `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`: без AUTH; если задано, мейлер аутентифицируется через AUTH PLAIN |
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; секрет, никогда не пишется в лог, в стартовый баннер и в сообщения об ошибках |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: отправитель, которого использует `Mailer.deliver`, когда ему не передан `from:` |
-| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; также `tls` (неявный TLS) или `none` (открытый текст, учётные данные — только на loopback); обоим режимам TLS нужен `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; также `tls` (неявный TLS) или `none` (открытый текст, учётные данные — только на loopback); обоим режимам TLS нужен `require "cybertrain/net/tls"`, который загружает `require "cybertrain"` |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` в тестовом окружении, `:smtp` во всех остальных: `:test` сохраняет каждое письмо в `Cybertrain::Mailer.deliveries` вместо отправки ([Тестирование почты](testing.md#testing-mail)); вне тестового окружения загрузка идёт с предупреждением, и ничего не отправляется; любое другое значение останавливает загрузку; `cybertrain test` использует `:test`, если `config/app.rb` не задаёт его, что бы ни говорила переменная |
 | `CYBERTRAIN_TEST_DATABASE` | — | `""`: файл, который `cybertrain test` удаляет, мигрирует и на котором запускает тесты вместо `storage/test.sqlite3`; путь к файлу (не `:memory:` и не URI `file:`). Существующий файл удаляется, только если его создал `cybertrain test` (он помечает свои базы), если это `storage/test.sqlite3` самого приложения или если он пуст; любой другой, как и база разработки или продакшена, отклоняется с кодом выхода 2, и ничего не удаляется ([Запуск тестов](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: локаль, с которой начинается каждый запрос, имя вроде `ja` или `pt-BR` (см. [Локали](#locales)); всё остальное останавливает загрузку |
@@ -69,7 +74,10 @@ end
 
 Другие атрибуты с фиксированными переопределяемыми значениями по умолчанию:
 `views_root` (`"app/views"`), `public_root` (`"public"`), `layout`
-(`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
+(`"layouts/application"`), `log_tags` (`[:request_id]`: теги запроса в каждой
+строке журнала; `:remote_ip` добавляет адрес клиента, `[]` не показывает
+ничего, а любое другое значение останавливает загрузку; см.
+[Идентификаторы запросов](background-and-operations.md#request-ids)), `session_cookie_name`,
 `session_max_age` (2 недели), `session_secure` (`true` в production, что
 помечает cookie сессии как `Secure`; `false` в остальных окружениях, хотя
 `SameSite=None` и `Partitioned` всё равно добавляют `Secure`), `pool_size` (4),
@@ -219,7 +227,8 @@ Cybertrain.config.int_setting(:prune_interval)
 Булево значение принимает `1`/`true` или `0`/`false`; целое — десятичные цифры
 (с необязательным ведущим `-`) в пределах `min..max` (обе границы
 необязательны). Любое другое значение заменяется значением по умолчанию, и в
-лог пишется строка `[WARN]` об этом. Чтение необъявленного имени или имени,
+лог пишется строка `WARN` об этом (текстовая при любом `log_format`:
+`config/app.rb` ещё выполняется). Чтение необъявленного имени или имени,
 объявленного с другим типом, возбуждает `ArgumentError`, как и повторное
 объявление имени. Тесты меняют значение через `set_string_setting`,
 `set_int_setting` и `set_bool_setting`. `./NAME help` перечисляет все

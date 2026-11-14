@@ -94,7 +94,8 @@ test "bin/blog.rb is the app's one binary: server, migrate, db; it requires the 
     # cybertrain/mailer/later), cybertrain/cache, cybertrain/rate_limit;
     # or require "cybertrain" for all of them. `generate job` and
     # `generate authentication` add theirs; `spin run gen` names the
-    # line a view's helper needs.
+    # line a view's helper needs. cybertrain/error_reporter/sentry
+    # (error reports to Sentry or GlitchTip) goes here only.
     require "cybertrain/core"
     require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
     require_relative "../config/app"     # so it comes before the config
@@ -423,6 +424,96 @@ test ".env.example lists the secrets, commented, with how to make each" do
   assert_includes text, "# The IANA zone cron expressions are read in; the time zone above\n# when unset.\n# CYBERTRAIN_SCHEDULER_TZ=Asia/Tokyo\n"
   assert_nil text.index("UTC when unset.\n# CYBERTRAIN_SCHEDULER_TZ")
   print text
+end
+
+# The lines `cybertrain new` writes for logs and error reports, block by
+# block, exactly: every one of them a comment (or blank), so a new
+# application behaves as before until a line is uncommented.
+def indented(text, spaces)
+  out = +""
+  text.each_line { |line| out << (line == "\n" ? line : "#{" " * spaces}#{line}") }
+  out
+end
+
+LOGGING_BLOCKS = [
+  ["blog/.env.example", <<~TEXT],
+    # Logs and error reports: settings, except the DSN, which holds a
+    # key and is kept out of the repository like a secret.
+    # The least important log line written: debug, info, warn, error,
+    # fatal or none (info; none also turns the request log off).
+    # CYBERTRAIN_LOG_LEVEL=info
+    # How each line is written: text (the default) or json, one JSON
+    # object per line, for a log collector.
+    # CYBERTRAIN_LOG_FORMAT=json
+    # Where error reports are sent, a Sentry DSN; empty sends nothing.
+    # It holds a key: set it in the environment (or your deploy's
+    # secrets), never in a file you commit. It needs
+    # require "cybertrain/error_reporter/sentry" in bin/<app>.rb.
+    # CYBERTRAIN_SENTRY_DSN=https://<public key>@<host>/<project id>
+    # The share of error reports sent, 0.0 to 1.0 (1.0, all of them).
+    # CYBERTRAIN_ERROR_SAMPLE_RATE=1.0
+    # The release sent with each error report: a version or a commit.
+    # CYBERTRAIN_RELEASE=
+  TEXT
+  ["blog/config/app.rb", indented(<<~TEXT, 2)],
+
+    # Log lines as JSON objects (one per line) in production, for a
+    # log collector; text otherwise. CYBERTRAIN_LOG_FORMAT sets the
+    # format too, but an assignment here wins over the variable.
+    # c.log_format = :json if c.production?
+    # The request's tags on every log line it causes: :request_id (the
+    # default) and :remote_ip (personal data, so off by default).
+    # c.log_tags = [:request_id]
+  TEXT
+  ["blog/config/app.rb", <<~TEXT],
+    # Error reports go to a Sentry DSN (CYBERTRAIN_SENTRY_DSN, with
+    # require "cybertrain/error_reporter/sentry" in bin/<app>.rb) and to
+    # the subscribers added here. A subscriber is a class you write: a
+    # subclass of Cybertrain::ErrorSubscriber that defines report(event),
+    # which receives each Cybertrain::ErrorEvent on the reporter's own
+    # thread. bin/<app>.rb loads this file before app/, so define the
+    # class in this file, above the line that subscribes it (or in a
+    # file this one requires): a class under app/ is not loaded yet here.
+    # Cybertrain.error.subscribe(AuditSubscriber.new)
+
+  TEXT
+  ["blog/config/deploy.yml", indented(<<~TEXT, 4)],
+    # One JSON object per log line, for a log collector.
+    # CYBERTRAIN_LOG_FORMAT: json
+  TEXT
+  ["blog/config/deploy.yml", indented(<<~TEXT, 4)],
+    # Where error reports are sent (a Sentry DSN); also list it in
+    # .kamal/secrets.
+    # - CYBERTRAIN_SENTRY_DSN
+  TEXT
+  ["blog/.kamal/secrets", <<~TEXT]
+
+    # Where error reports are sent (a Sentry DSN, which holds a key). Add
+    # it to env: secret: in config/deploy.yml too.
+    # CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN
+  TEXT
+]
+
+test "new writes the logging and reporting variables, all commented" do
+  LOGGING_BLOCKS.each do |pair|
+    path = pair[0]
+    block = pair[1]
+    assert_includes read(path), block
+    # Every added line: nothing is uncommented.
+    block.each_line do |line|
+      text = line.strip
+      assert text.empty? || text.start_with?("#"), "#{path}: #{line.inspect} is not a comment"
+    end
+  end
+  # Nor anywhere else in those files does a line set one of them.
+  names = ["SENTRY", "CYBERTRAIN_LOG_LEVEL", "CYBERTRAIN_LOG_FORMAT", "ERROR_SAMPLE_RATE", "CYBERTRAIN_RELEASE",
+           "log_format", "log_tags", "error.subscribe"]
+  ["blog/.env.example", "blog/config/app.rb", "blog/config/deploy.yml", "blog/.kamal/secrets"].each do |path|
+    read(path).each_line do |line|
+      named = names.any? { |name| line.include?(name) }
+      refute named && !line.lstrip.start_with?("#"), "#{path}: #{line.inspect} is not a comment"
+    end
+  end
 end
 
 test "CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)" do

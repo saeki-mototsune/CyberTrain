@@ -5,7 +5,9 @@ require "socket"
 require "stringio"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
+require "cybertrain/middleware/request_id"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Dispatches on the path by hand so this test does not depend on the Router
 # (a deviation from the plan's "tiny Router": Task 4 ships in the same wave,
@@ -35,6 +37,14 @@ class ServerTestApp < Cybertrain::Middleware
       # `rescue JSON::ParserError` does not catch it (NOTES rule 61).
       res.content_type = "application/json"
       res.body = JSON.generate(ServerTestApp.deep(150))
+    when "/stream"
+      res.body_writer = LoggingWriter.new(false)
+    when "/stream_boom"
+      res.body_writer = LoggingWriter.new(true)
+    when "/upgrade"
+      # A 101 answer, as the WebSocket handshake gives one.
+      res.set_header("Upgrade", "websocket")
+      res.upgrade!(LoggingWriter.new(false))
     when "/slow"
       $slow_started = true
       sleep 1
@@ -44,6 +54,29 @@ class ServerTestApp < Cybertrain::Middleware
       res.status = 404
       res.body = "Not Found"
     end
+    nil
+  end
+end
+
+# The log the streaming writer and its server write into, and the request
+# id the writer saw on its thread's Scope while it wrote.
+$stream_log = StringIO.new
+$stream_logger = Cybertrain::Logger.new($stream_log, :info)
+$stream_seen = ""
+
+# A streamed body (/stream, /stream_boom) that logs a line and reads the
+# thread's Scope while the Server writes it, after the stack has returned.
+class LoggingWriter < Cybertrain::BodyWriter
+  def initialize(fail)
+    @fail = fail
+  end
+
+  def write_body(sink)
+    $stream_logger.info("streaming")
+    $stream_seen = Cybertrain::Logger.current_scope.scope_request_id
+    raise "stream broke" if @fail
+
+    sink.write("streamed")
     nil
   end
 end
@@ -128,6 +161,20 @@ class RawClient
     RawResponse.new(res.status_line, head, body)
   end
 
+  # Everything the server sends until it closes the connection.
+  def read_to_close
+    loop do
+      break if @sock.wait_readable(5).nil?
+
+      begin
+        @buf << @sock.readpartial(16384)
+      rescue EOFError, Errno::ECONNRESET
+        break
+      end
+    end
+    @buf
+  end
+
   # True once the server has closed its end (EOF with nothing left to read).
   def closed_by_server?
     return false unless @buf.empty?
@@ -164,6 +211,20 @@ $slow_started = false
 # Fails the first accept with EMFILE, as when descriptors run out, then
 # accepts normally: the accept loop must log it and keep going.
 $accept_failures = 1
+
+# Whether the connection thread was back on Logger::NO_SCOPE once a
+# streamed or upgraded writer had run, one entry per writer.
+$after_writer_no_scope = Array.new(0) { false }
+
+class ScopeAfterWriterServer < Cybertrain::Server
+  private
+
+  def run_writer_scoped(writer, sink, scope)
+    ok = super
+    $after_writer_no_scope << Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+    ok
+  end
+end
 
 class FlakyAcceptServer < Cybertrain::Server
   private
@@ -515,7 +576,7 @@ test "an exception in the app gets 500 and the connection stays usable" do
   res = c.get("/boom")
   assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
   assert_equal "Internal Server Error", res.body
-  assert_includes $log.string, "[ERROR] RuntimeError: kaboom"
+  assert_logged $log.string, "ERROR", "RuntimeError: kaboom"
   assert_equal "hi", c.get("/hello").body
   c.close
 end
@@ -568,7 +629,7 @@ test "a failed accept is logged and the server keeps accepting" do
   c = RawClient.new(server.port)
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
   c.close
-  assert_includes $log.string, "[ERROR] accept failed: Errno::EMFILE"
+  assert_logged $log.string, "ERROR", "accept failed: Errno::EMFILE"
   assert_equal 0, $accept_failures
   c = RawClient.new(server.port)
   assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
@@ -598,6 +659,141 @@ test "serves a bare HttpHandler with no Context or Middleware involved" do
   assert_equal "HTTP/1.1 500 Internal Server Error", c.get("/boom", "Connection: close\r\n").status_line
   c.close
   server.stop
+end
+
+test "the bare path's 500 carries the id a RequestId set; a handler without one sends none" do
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new($log, :info))
+  server.start
+  c = RawClient.new(server.port)
+  ok = c.get("/hello")
+  assert_equal "hi", ok.body
+  assert LogCapture.uuid?(ok.header("x-request-id")), ok.head
+  boom = c.get("/boom", "Connection: close\r\n")
+  assert_equal "HTTP/1.1 500 Internal Server Error", boom.status_line
+  assert LogCapture.uuid?(boom.header("x-request-id")), boom.head
+  refute boom.header("x-request-id") == ok.header("x-request-id")
+  c.close
+  server.stop
+  bare = Cybertrain::Server.new(BareHandler.new, port: 0, logger: Cybertrain::Logger.new($log, :info))
+  bare.start
+  c = RawClient.new(bare.port)
+  res = c.get("/boom", "Connection: close\r\n")
+  assert_equal "HTTP/1.1 500 Internal Server Error", res.status_line
+  assert_equal "", res.header("x-request-id")
+  c.close
+  bare.stop
+end
+
+# Records, before the stack below it runs, whether the connection thread
+# is on Logger::NO_SCOPE: outside RequestId, so it sees what the previous
+# request on the same keep-alive connection left behind.
+$probe_no_scope = Array.new(0) { false }
+
+class ScopeProbe < Cybertrain::Middleware
+  def call(ctx)
+    $probe_no_scope << Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+    nxt = @app
+    nxt.call(ctx) unless nxt.nil?
+    nil
+  end
+end
+
+# Runs the block with JSON log lines on, and text lines back after it,
+# also when it raises.
+def server_json_lines
+  Cybertrain::Logger.json_lines = true
+  yield
+  nil
+ensure
+  Cybertrain::Logger.json_lines = false
+end
+
+# A 500 and a 4xx on the bare path (no ErrorPages, no Dev::ErrorPage),
+# then a request on the same connection, through ScopeProbe; answers the
+# log and the two ids.
+def bare_path_lines
+  log = StringIO.new
+  $probe_no_scope = Array.new(0) { false }
+  app = ScopeProbe.new(Cybertrain::RequestId.new(ServerTestApp.new, [:request_id]))
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: Cybertrain::Logger.new(log, :info))
+  server.start
+  c = RawClient.new(server.port)
+  boom = c.get("/boom")
+  assert_equal "HTTP/1.1 500 Internal Server Error", boom.status_line
+  rejected = c.get("/reject")
+  assert_equal "HTTP/1.1 400 Bad Request", rejected.status_line
+  assert_equal "hi", c.get("/hello", "Connection: close\r\n").body
+  c.close
+  server.stop
+  [log.string, boom.header("x-request-id"), rejected.header("x-request-id")]
+end
+
+test "the bare path's 500 and 4xx lines carry the request's id; the thread is back on NO_SCOPE after each" do
+  log, boom_id, rejected_id = bare_path_lines
+  assert LogCapture.uuid?(boom_id), log
+  assert LogCapture.uuid?(rejected_id), log
+  assert_includes log, " ERROR [#{boom_id}] RuntimeError: kaboom\n"
+  assert_includes log, " INFO [#{rejected_id}] rejected request (400 Bad Request): nested too deeply (limit 32)\n"
+  assert_equal [true, true, true], $probe_no_scope
+  json = ""
+  server_json_lines { json = bare_path_lines[0] }
+  assert_includes json, "\"level\":\"ERROR\",\"request_id\":\""
+  error_line = ""
+  reject_line = ""
+  json.split("\n").each do |l|
+    error_line = l if l.include?("kaboom")
+    reject_line = l if l.include?("rejected request")
+  end
+  assert error_line.include?("\"request_id\":\""), json
+  assert reject_line.include?("\"request_id\":\""), json
+  assert_equal [true, true, true], $probe_no_scope
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+end
+
+test "a streamed body is written under the request's Scope, the server's stream error line included" do
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(app), port: 0, logger: $stream_logger)
+  server.start
+  c = RawClient.new(server.port)
+  c.send_raw("GET /stream HTTP/1.1\r\nHost: t\r\n\r\n")
+  raw = c.read_to_close
+  c.close
+  id = RawResponse.new("", raw, "").header("x-request-id")
+  assert LogCapture.uuid?(id), raw
+  assert_includes raw, "streamed"
+  assert_equal id, $stream_seen
+  assert_equal 1, LogCapture.count($stream_log.string, "INFO", "streaming\n")
+  assert_includes $stream_log.string, " INFO [#{id}] streaming\n"
+  c = RawClient.new(server.port)
+  c.send_raw("GET /stream_boom HTTP/1.1\r\nHost: t\r\n\r\n")
+  raw = c.read_to_close
+  c.close
+  boom_id = RawResponse.new("", raw, "").header("x-request-id")
+  assert LogCapture.uuid?(boom_id), raw
+  refute boom_id == id
+  assert_equal boom_id, $stream_seen
+  assert_includes $stream_log.string, " ERROR [#{boom_id}] stream error: RuntimeError: stream broke\n"
+  server.stop
+end
+
+test "an upgraded (101) connection behind RequestId: the id echoed, the writer under the request's Scope, NO_SCOPE after" do
+  $after_writer_no_scope = Array.new(0) { false }
+  $stream_seen = ""
+  app = Cybertrain::RequestId.new(ServerTestApp.new, [:request_id])
+  server = ScopeAfterWriterServer.new(Cybertrain::ContextHandler.new(app), port: 0, logger: $stream_logger)
+  server.start
+  c = RawClient.new(server.port)
+  c.send_raw("GET /upgrade HTTP/1.1\r\nHost: t\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
+  raw = c.read_to_close
+  c.close
+  server.stop
+  assert raw.start_with?("HTTP/1.1 101 "), raw
+  id = RawResponse.new("", raw, "").header("x-request-id")
+  assert LogCapture.uuid?(id), raw
+  assert_equal id, $stream_seen
+  assert_includes $stream_log.string, " INFO [#{id}] streaming\n"
+  assert_equal [true], $after_writer_no_scope
 end
 
 test "run serves until stop is called" do
@@ -727,7 +923,7 @@ test "drain_timeout bounds the wait for a request that takes too long" do
   runner.join
   elapsed = Time.now - started
   assert elapsed < 0.9, "run took #{elapsed}s with drain_timeout 0.3"
-  assert_includes log.string, "[WARN] shutting down with 1 connection(s) still open"
+  assert_logged log.string, "WARN", "shutting down with 1 connection(s) still open"
   # the request still completes on its own thread; wait for it so its
   # response does not outlive the test
   assert_equal "slow done", c.read_response(false).body
@@ -868,7 +1064,7 @@ test "a failed accept in the stop's sweep does not end it: what is queued behind
     second.close
     runner.join
     assert_equal 0, $sweep_aborts
-    assert_includes log.string, "[ERROR] accept failed: Errno::ECONNABORTED"
+    assert_logged log.string, "ERROR", "accept failed: Errno::ECONNABORTED"
     assert port_refused?(port)
   ensure
     $sweep_aborts = 0

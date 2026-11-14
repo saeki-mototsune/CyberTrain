@@ -48,13 +48,37 @@ def logged_while_running(log_path)
   text
 end
 
+# Whether `line` starts with `YYYY-MM-DDTHH:MM:SS.mmmZ ` (by bytes; no
+# regexp, pre-flight ruling G5).
+def timestamp_shape?(line)
+  s = line.to_s
+  return false if s.bytesize < 25
+
+  shape = "dddd-dd-ddTdd:dd:dd.dddZ "
+  i = 0
+  while i < 25
+    want = shape.getbyte(i)
+    got = s.getbyte(i)
+    if want == 100
+      return false unless got >= 48 && got <= 57
+    elsif want != got
+      return false
+    end
+    i += 1
+  end
+  true
+end
+
 test "the default logger's lines reach a redirected stdout while the process runs" do
   log_path = "#{LOG_DIR}/stdout.log"
   pid = spawn_child(log_path)
   text = logged_while_running(log_path)
   Process.kill("KILL", pid)
   Process.waitpid2(pid)
-  assert_equal "[INFO] Started GET \"/\" for 127.0.0.1\n", text
+  assert_equal 1, text.count("\n")
+  assert text.end_with?("Z INFO Started GET \"/\" for 127.0.0.1\n"), text
+  assert timestamp_shape?(text), text
+  assert_equal 24 + " INFO Started GET \"/\" for 127.0.0.1\n".bytesize, text.bytesize
 end
 
 Cybertrain::Test.run!

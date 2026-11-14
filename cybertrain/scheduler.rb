@@ -1,6 +1,7 @@
 require "json"
 require "cybertrain/logger"
 require "cybertrain/config"
+require "cybertrain/error_reporter"
 require "cybertrain/job"
 require "cybertrain/lease"
 require "cybertrain/time_zone"
@@ -30,7 +31,7 @@ module Cybertrain
   # (spikes/NOTES.md rule 22), and only in a process that serves or runs
   # as `./<app> worker`: `./<app> migrate`, `db ...`, `jobs ...` and
   # {Main.command} commands never start it. Each run
-  # is wrapped in a rescue that logs `[ERROR]`, so a failing task does not
+  # is wrapped in a rescue that logs an `ERROR` line, so a failing task does not
   # end the loop. Jobs do not run here: {Job.start!} runs them on threads of
   # their own, so a long job never delays a task (a long task still delays
   # the other tasks: a task with real work to do should {Job.enqueue} it).
@@ -451,7 +452,8 @@ module Cybertrain
     # The run after one at `last`: last plus the interval of an `every`
     # task, Cron.next_after of a `cron` task. -1, logged as the task's
     # failure, when Cron.next_after finds none (the rescue in a plain
-    # method, NOTES rules 32/45).
+    # method, NOTES rules 32/45), and reported, `where` `schedule:<name>`
+    # given (this runs outside the task's Scope).
     def self.schedule_next(task, last)
       expr = task.task_cron
       return last + task.task_interval if expr.nil?
@@ -459,6 +461,7 @@ module Cybertrain
       Cron.next_after(expr, last, task.task_zone)
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("Scheduled task #{task.task_name.inspect} failed: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, task_where(task), ErrorReporter::NO_CONTEXT)
       -1
     end
 
@@ -530,12 +533,52 @@ module Cybertrain
       0
     end
 
-    # Runs one task -- calls its block, or enqueues its `job:` -- with its
-    # rescue in a plain method that reads the Proc from the Task rather
-    # than yielding (NOTES rules 32/45/69); naming JSON::NestingError first
-    # (rule 61). False when it raised. Each run starts at the default
-    # locale, so a locale one task set does not stay for the next.
+    # Runs one task (run_task_body) with the task's log Scope
+    # ({task_scope}) as this thread's, and puts back the one found before
+    # in an `ensure` (rule 103's save-yield-ensure, no rescue): its lines,
+    # and the failure line, carry `[schedule:<name>]`. False when it raised.
     def self.run_task(task)
+      saved = Logger.current_scope
+      Logger.swap_scope(task_scope(task))
+      value = run_task_body(task)
+      value
+    ensure
+      Logger.swap_scope(saved)
+    end
+
+    # The log Scope of a scheduled task's run (spec section 12.3): the tag
+    # and `where` `schedule:<name>`, no request id, no context.
+    # @param task [Task]
+    # @return [Logger::Scope]
+    # @api private
+    def self.task_scope(task)
+      where = task_where(task)
+      id = ""
+      verb = ""
+      path = ""
+      tags = Array.new(0) { "" }
+      tags << where
+      context = { "" => "" }
+      context.delete("")
+      Logger::Scope.new(id, verb, path, where, tags, -1, context)
+    end
+
+    # A task's `where` (its log tag and its error reports' `where`):
+    # `schedule:<name>`.
+    # @param task [Task]
+    # @return [String]
+    # @api private
+    def self.task_where(task)
+      "schedule:#{task.task_name}"
+    end
+
+    # Calls the task's block, or enqueues its `job:`, with its rescue in a
+    # plain method that reads the Proc from the Task rather than yielding
+    # (NOTES rules 32/45/69); naming JSON::NestingError first (rule 61).
+    # False when it raised, logged and reported (spec section 13.2). Each
+    # run starts at the default locale, so a locale one task set does not
+    # stay for the next.
+    def self.run_task_body(task)
       I18n.locale = nil
       kind = task.task_job_kind
       if kind.empty?
@@ -546,6 +589,7 @@ module Cybertrain
       true
     rescue JSON::NestingError, JSON::ParserError, StandardError => e
       Cybertrain.logger.error("Scheduled task #{task.task_name.inspect} failed: #{e.class.name}: #{e.message}")
+      Cybertrain.error.report_unhandled(e, task_where(task), ErrorReporter::NO_CONTEXT)
       false
     end
 

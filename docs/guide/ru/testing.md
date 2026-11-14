@@ -1,5 +1,5 @@
 ---
-source_sha256: 8708d189e270a6ea82cabcd3fcc2f574bb7b99b714678d9820d9a6b7bc315312
+source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
 ---
 # Тестирование приложения
 
@@ -144,7 +144,11 @@ cybertrain test -n /article/                            # тесты, в име�
 
 Программа готовит тестовое окружение, как в Rails, если только
 `config/app.rb` не задаёт то же самое сам: защита от подделки запросов
-выключена, журнал запросов молчит, письма хранятся в `Mailer.deliveries`
+выключена, журнал запросов молчит (уровень `:none`, который всё равно пишет
+строки ошибок), строки лога текстовые (экспортированный
+`CYBERTRAIN_LOG_FORMAT` не читается), отчёты об ошибках в Sentry не
+отправляются (экспортированный `CYBERTRAIN_SENTRY_DSN` опустошается), письма
+хранятся в `Mailer.deliveries`
 (`:test`) и `force_ssl` выключен (переменные
 `CYBERTRAIN_MAIL_DELIVERY_METHOD` и `CYBERTRAIN_FORCE_SSL` для тестов не читаются, даже если
 некорректны), загрузки пишутся в `tmp/test_uploads/`, который очищается при
@@ -378,6 +382,9 @@ assert_includes message, "999"
 - Нет: `assert_predicate` (для него нужен вычисляемый `send`: пишите
   `assert article.valid?`), строковых выражений в `assert_difference` (им
   нужен `eval`), Array или Hash выражений и аргумента-сообщения у остальных проверок.
+  Из имён Minitest `refute_*` есть только `refute`: пишите `assert_not_equal`,
+  `assert_not_nil` и другие формы `assert_not_*`; вызов `refute_equal`
+  останавливает сборку тестовой программы, так как его никто не определяет.
 
 ## Путешествие во времени
 
@@ -686,6 +693,119 @@ end
 переподключения точными. `test/websocket_integration.rb` в этом
 репозитории показывает полный тест.
 
+## Тестирование журнала и отчётов об ошибках
+
+`X-Request-Id` ответа — это идентификатор запроса. Чтобы читать строки лога,
+тест даёт `Cybertrain.logger` объект `StringIO` на время работы, за которой
+наблюдает, и потом возвращает логгер на место, в отдельном методе (под Spinel
+`rescue` или `ensure` вокруг `yield` пишется в простом методе):
+
+```ruby test/integration/logging_test.rb
+require "test_helper"
+require "stringio"
+
+class LoggingTest < ActionDispatch::IntegrationTest
+  test "a comment's job logs the request's id" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Ann", body: "Hi" } }
+    rid = response.header("X-Request-Id").to_s
+    log = StringIO.new
+    perform_jobs_logging_to(log)
+    assert_includes log.string, "] [#{rid}] new comment "
+  end
+
+  private
+
+  def perform_jobs_logging_to(io)
+    saved = Cybertrain.logger
+    Cybertrain.logger = Cybertrain::Logger.new(io)
+    perform_enqueued_jobs
+  ensure
+    Cybertrain.logger = saved
+  end
+end
+```
+
+Время в начале строки меняется от запуска к запуску (заморозьте его через
+`freeze_time`, чтобы сравнить), поэтому сравнивайте то, что после него:
+уровень, теги и сообщение. Журнал запросов приложения в тестах молчит
+(`log_level :none`), но строка `ERROR` упавшей задачи пишется и тогда; тест,
+который выполняет падающую задачу, перехватывает логгер, как выше, иначе
+строка появится среди строк тестов.
+
+Отчёты об ошибках идут в `Cybertrain::Test::SentryReceiver` — Sentry на
+`127.0.0.1`, который загружает `cybertrain/test_help`. `cybertrain test`
+игнорирует экспортированный DSN, поэтому тест присваивает его сам и потом
+возвращает прежний. Пример запускает `NotifyCommentJob` из examples/blog,
+который бросает собственный `NotifyCommentJob::CommentGone`, когда
+переданного комментария больше нет, и отбрасывает себя ([Retries and discards](background-and-operations.md#retries-and-discards)); задача из
+учебника только пишет в лог, поэтому сначала добавьте ей этот `find_by`,
+класс и `discard_on CommentGone`:
+
+```ruby test/integration/error_reporting_test.rb
+require "test_helper"
+
+class ErrorReportingTest < ActionDispatch::IntegrationTest
+  setup do
+    @sentry = Cybertrain::Test::SentryReceiver.new
+    @sentry.start
+    @saved_dsn = Cybertrain.config.sentry_dsn
+    @saved_private = Cybertrain.config.http_allow_private
+    Cybertrain.config.sentry_dsn = @sentry.dsn                # http://public@127.0.0.1:<port>/1
+    Cybertrain.config.http_allow_private = true               # иначе HttpClient отклоняет loopback
+  end
+
+  teardown do
+    Cybertrain.config.sentry_dsn = @saved_dsn
+    Cybertrain.config.http_allow_private = @saved_private
+  end
+
+  test "a job whose comment is gone is discarded and reported" do
+    NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
+    perform_enqueued_jobs                                       # отбрасывание не валит тест
+    event = @sentry.received_events(1)[0]                      # ждёт не более 5 с
+    assert_equal "NotifyCommentJob", event.sentry_field("transaction")
+    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
+  end
+end
+```
+
+`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` отвечает на
+каждый конверт, как Sentry (другой `status:`, например 429, изображает
+отказывающий Sentry); `dsn(project = "1", prefix = "")` — DSN, который
+отправляет на него, а `received_events(count, wait = 5.0)` возвращает то, что
+пришло. Каждый элемент — `Cybertrain::Test::SentryEnvelope`: `sentry_path`,
+`sentry_auth` (`X-Sentry-Auth`), `sentry_content_type`, `sentry_body` (три
+строки JSON), `sentry_field("a.b.0.c")` для поля события (`""`, если его
+нет) и `sentry_header_field(name)` для заголовка конверта. Ключ `extra`, в
+котором есть точка, читается целиком, так как в объекте сначала берётся
+самая длинная часть пути, являющаяся ключом:
+`sentry_field("extra.job.attempt")`. Приёмник,
+запущенный в тесте, останавливается после него, как и остальные.
+
+Подписчик, добавленный в тесте, убирается перед следующим тестом (тот, что
+добавил `config/app.rb`, остаётся), а перед каждым тестом репортёр доставляет
+то, что ещё в очереди, и забывает своё окно устранения дублей, так что один и
+тот же сбой в двух тестах попадает в отчёт в обоих.
+`Cybertrain.error.drain_reports` ждёт (не более 2 с) отчёты из очереди — для
+теста, который читает, что получил подписчик:
+
+```ruby
+# В начале файла теста:
+REPORTS_SEEN = Array.new(0) { "" }
+class SeenReports < Cybertrain::ErrorSubscriber
+  def report(event)
+    REPORTS_SEEN << event.error_class
+    nil
+  end
+end
+
+# В тесте:
+Cybertrain.error.subscribe(SeenReports.new)
+get "/articles/999999"
+Cybertrain.error.drain_reports
+assert_equal 0, REPORTS_SEEN.size             # о 404 не сообщается
+```
+
 ## Что gen отклоняет в тестовом классе
 
 gen переписывает тестовый класс в методы: `test "shows it" do` становится
@@ -827,6 +947,14 @@ headers)`, `client.follow_redirect!`, `client.response` и формы с дву�
   в форме классов и называет каждый старый файл, который они заменяют
   (`test/authentication.rb`, `test/support/app_test.rb`, ...); `--force`
   их удаляет.
+- Тест, который искал строку лога целиком, с уровнем в квадратных скобках
+  в начале, ищет уровень и сообщение по отдельности (`" ERROR "` и
+  `"password reset mail not sent: "`): теперь строка начинается со времени и
+  может нести идентификатор запроса
+  ([Журнал](background-and-operations.md#logs)).
+- Экспортированные `CYBERTRAIN_LOG_FORMAT` или `CYBERTRAIN_SENTRY_DSN` больше
+  не доходят до тестов; чтобы тестировать с ними, задайте их в
+  `config/app.rb` или присвойте DSN в тесте.
 
 ## Непрерывная интеграция
 

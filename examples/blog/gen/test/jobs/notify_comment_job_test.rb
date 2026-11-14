@@ -13,6 +13,20 @@ class NotifyCommentJobTest < ActiveSupport::TestCase
     assert_includes log.string, "new comment #{comment.id} on article #{comment.article_id}"
   end; nil; end
 
+  def test_a_comment_deleted_before_the_job_runs_discards_the_job; begin
+    comment = comments(:one)
+    comment_id = comment.id
+    NotifyCommentJob.perform_later("comment_id" => comment_id, "article_id" => comment.article_id)
+    id = BlogTestHelper.last_job[0].to_i
+    comment.destroy
+    log = StringIO.new
+    assert_equal 1, perform_queued_logging_to(log)
+    assert_equal "discarded", BlogTestHelper.job_state(id)
+    assert_includes log.string, "job #{id} (NotifyCommentJob) discarded: NotifyCommentJob::CommentGone: " \
+                                "comment #{comment_id} was deleted; nothing to notify\n"
+    assert_no_enqueued_jobs
+  end; nil; end
+
   private
 
   # Enqueues the job for comment and performs it with Cybertrain.logger
@@ -22,6 +36,16 @@ class NotifyCommentJobTest < ActiveSupport::TestCase
     saved = Cybertrain.logger
     Cybertrain.logger = Cybertrain::Logger.new(io)
     NotifyCommentJob.perform_later("comment_id" => comment.id, "article_id" => comment.article_id)
+    perform_enqueued_jobs
+  ensure
+    Cybertrain.logger = saved
+  end
+
+  # perform_enqueued_jobs with Cybertrain.logger writing to io, restored
+  # afterwards even if a job raises.
+  def perform_queued_logging_to(io)
+    saved = Cybertrain.logger
+    Cybertrain.logger = Cybertrain::Logger.new(io)
     perform_enqueued_jobs
   ensure
     Cybertrain.logger = saved

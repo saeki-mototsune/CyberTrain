@@ -3,9 +3,11 @@ require "cybertrain/version"
 require "cybertrain/logger"
 require "cybertrain/middleware"
 require "cybertrain/middleware/host_authorization"
+require "cybertrain/middleware/request_id"
 require "cybertrain/context_handler"
 require "cybertrain/http/server"
 require "cybertrain/feature"
+require "cybertrain/error_reporter"
 require "cybertrain/dev"
 
 module Cybertrain
@@ -23,7 +25,8 @@ module Cybertrain
     #   waits    Server#wait (TERM stops the listener and asks the features
     #            to stop: the job claims)
     #   stops    the features, in rank order (with `require
-    #            "cybertrain"`: Job, Scheduler, Background, Stream::Poller)
+    #            "cybertrain"`: Job, Scheduler, Background, Stream::Poller);
+    #            then waits up to 2 s for the queued error reports
     #
     # In development it is also the whole of D12: the rebuilder, the
     # watcher, the HUP trap, the restart monitor and the execv of the new
@@ -155,6 +158,10 @@ module Cybertrain
           # Also when a start above raised (D66): each stop is a no-op for
           # what never started, so nothing this role began outlives it.
           Features.stop_features
+          # The error reports still queued: up to 2 seconds for them once
+          # every service has stopped (what is left is lost; docs/design.md
+          # D88).
+          Cybertrain.error.drain_reports(2.0)
           Runtime.leave_role
         end
         nil
@@ -275,10 +282,17 @@ module Cybertrain
 
       # The stack the server runs: diagnostics must stay inside hostname
       # authorization too, including when the stack was built before
-      # serving. Supervised, the failed-build banner comes from the
-      # supervisor's state file, reread when it changes, and Dev::Indicator
-      # names the runtime; it sits outside the stack, so the development
-      # paths it answers never reach RequestLogger.
+      # serving. In development a RequestId wraps them all, so the
+      # diagnostics page and its log line carry the request's id; the
+      # stack's own RequestId then finds the id set and adds nothing
+      # (docs/design.md D86). test/request_id.rb ("the development
+      # front_app's nesting makes one id, one header and one Scope")
+      # builds this nesting by hand: a change here goes there too.
+      # Supervised, the failed-build banner comes from the supervisor's
+      # state file, reread when it changes, and Dev::Indicator names the
+      # runtime; it sits outside the stack, so the development paths it
+      # answers never reach RequestLogger (front_app's RequestId logs
+      # nothing of its own).
       def front_app
         app = @stack
         config = @config
@@ -287,12 +301,15 @@ module Cybertrain
           status = Dev::BuildStatus.new(reader)
           indicator = Dev::Indicator.new(Dev::ErrorPage.new(app, nil, status), reader, status, Dev::Supervision.runtime,
                                          Dev::Supervision.generation, config.content_security_policy_nonce_directives)
-          return HostAuthorization.new(indicator, config.checked_hosts, config.health_path)
+          return RequestId.new(HostAuthorization.new(indicator, config.checked_hosts, config.health_path), config.log_tags)
         end
         rebuilder = @rebuilder
         unless rebuilder.nil?
           app = Dev::ErrorPage.new(app, rebuilder)
-          app = HostAuthorization.new(app, @config.checked_hosts, @config.health_path) if @config.development?
+          if config.development?
+            app = HostAuthorization.new(app, config.checked_hosts, config.health_path)
+            app = RequestId.new(app, config.log_tags)
+          end
         end
         app
       end
@@ -336,7 +353,10 @@ module Cybertrain
       # closed, so the new process can bind the port again.
       def exec_new_build(srv, rebuilder)
         binary = rebuilder.binary_path
-        STDOUT.flush # exec discards whatever the log has not written yet
+        # exec discards the queued error reports and whatever the log has
+        # not written yet.
+        Cybertrain.error.drain_reports(2.0)
+        STDOUT.flush
         # The new process inherits the environment and reads SPINEL_WORKERS
         # as config.workers again: hand it the configured count, not the one
         # #run_server gave Spinel, or every rebuild would add a worker.

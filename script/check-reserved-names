@@ -467,14 +467,48 @@ NAME_HOMES = {
   "put" => %w[cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb cybertrain/test/integration.rb],
   "delete" => %w[cybertrain/generator/routes_dsl.rb cybertrain/session.rb cybertrain/test/client.rb cybertrain/blob_store.rb
                  cybertrain/cookie_jar.rb cybertrain/cache.rb cybertrain/router.rb cybertrain/test/integration.rb],
-  "head" => %w[cybertrain/controller.rb cybertrain/test/integration.rb]
+  "head" => %w[cybertrain/controller.rb cybertrain/test/integration.rb],
+  # Phase 5b (logs and error reporting; spike items 7 to 9,
+  # spikes/phase5/error_names.rb compiled each beside its namesakes).
+  # Logger#error (nil), Template::Parser's two private #error (raise) and
+  # Cybertrain.error (the ErrorReporter).
+  "error" => %w[cybertrain/logger.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
+  # CLI::Toolchain.report prints; ErrorReporter#report and
+  # ErrorSubscriber#report answer nil (a subscriber's override may answer
+  # anything: the spike's answered an Array).
+  "report" => %w[cybertrain/cli/toolchain.rb cybertrain/error_reporter.rb],
+  # Job.handle (nil), Server#handle, ErrorReporter#handle (the block's value).
+  "handle" => %w[cybertrain/job.rb cybertrain/http/server.rb cybertrain/error_reporter.rb],
+  # WebSocket.subscribe (a Subscription), Stream::Hub#subscribe (a
+  # Subscriber), ErrorReporter#subscribe (nil).
+  "subscribe" => %w[cybertrain/websocket.rb cybertrain/stream/hub.rb cybertrain/error_reporter.rb],
+  "tagged" => %w[cybertrain/logger.rb],
+  "request_id" => %w[cybertrain/http/request.rb],
+  # Lease.release (nil) beside Config#release (a String), and
+  # CLI::BuildLock#release (nil), only ever called on a BuildLock: every
+  # application loads it (cybertrain/dev's Rebuilder requires cli/build),
+  # and test/dev_error_page.rb compiles it beside Config#release and calls
+  # it.
+  "release" => %w[cybertrain/lease.rb cybertrain/config.rb cybertrain/cli/build_lock.rb],
+  # DB::Connection#error_message(sql), I18n.error_message and
+  # ErrorEvent#error_message: all String.
+  "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
+  "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb],
+  # Server#drain; the reporter's is drain_reports. The CRuby preview's
+  # holding desk (cli/dev_server/holding.rb, Desk#drain, nil as Server's)
+  # runs only under CRuby: Spinel never compiles it.
+  "drain" => %w[cybertrain/http/server.rb cybertrain/cli/dev_server/holding.rb],
+  # ErrorReporter::Sender#sender_name ("") and SentrySender's ("sentry"):
+  # one String-typed hook the boot check reads.
+  "sender_name" => %w[cybertrain/error_reporter.rb cybertrain/error_reporter/sentry.rb]
 }.freeze
-# The names the phase 4a, 4b and 5a plans list as the first candidates for
-# a clash must keep a row (Global Constraints of the plans; 4b's `admin?` is
-# left out, see `t` above).
+# The names the phase 4a, 4b, 5a and 5b plans list as the first candidates
+# for a clash must keep a row (Global Constraints of the plans; 4b's
+# `admin?` is left out, see `t` above).
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
                      csv xml text any permit scope t l translate localize locale remember
-                     current zone advance now render_inline setup teardown response travel_to travel_back hour day].freeze
+                     current zone advance now render_inline setup teardown response travel_to travel_back hour day
+                     error report handle subscribe tagged request_id release].freeze
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
 homeless = []

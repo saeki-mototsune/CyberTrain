@@ -54,6 +54,11 @@ module Cybertrain
           else
             ctx.response.reset_to(status, "#{Response.status_text(status)}: #{e.message}")
           end
+          # The answer above replaced the response and its headers: the
+          # request's id (a RequestId inside the stack set it) is echoed
+          # again.
+          id = ctx.request.request_id
+          ctx.response.set_header("X-Request-Id", id) unless id.empty?
         end
         inject_banner(ctx.response)
         nil

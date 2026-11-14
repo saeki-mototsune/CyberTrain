@@ -141,7 +141,11 @@ module Cybertrain
       # `upload_root`, silences the request log unless config/app.rb set
       # `log_level` (its lines, with timings, would print between the test
       # lines; Rails writes them to log/test.log; error-level lines, which
-      # carry no timings, still print), gives mail the sender
+      # carry no timings, still print), keeps text log lines unless
+      # config/app.rb set `log_format` (whatever CYBERTRAIN_LOG_FORMAT says;
+      # tests read captured log text), sends no error report unless
+      # config/app.rb set `sentry_dsn` (whatever CYBERTRAIN_SENTRY_DSN says),
+      # gives mail the sender
       # {DEFAULT_SENDER} unless CYBERTRAIN_SMTP_FROM or config/app.rb set
       # `smtp_from`, deletes the database and its -wal / -shm, creates it
       # marked with Database::TEST_MARKER (`PRAGMA application_id`), migrates
@@ -157,9 +161,11 @@ module Cybertrain
         c = Cybertrain.config
         c.csrf_unless_given(false)
         c.log_level_unless_given(:none)
+        c.log_format_unless_given(:text)
         c.smtp_from_unless_given(DEFAULT_SENDER)
         c.mail_delivery_method_unless_given(:test)
         c.force_ssl_unless_given(false)
+        c.sentry_dsn_unless_given("")
         c.hosts_from_env_unless_given(Array.new(0) { "" })
         c.allowed_hosts << Client::TEST_HOST unless c.allowed_hosts.include?(Client::TEST_HOST)
         unless c.upload_root_given?

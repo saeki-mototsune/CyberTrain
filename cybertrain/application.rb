@@ -6,6 +6,7 @@ require "cybertrain/version"
 require "cybertrain/logger"
 require "cybertrain/middleware"
 require "cybertrain/router"
+require "cybertrain/middleware/request_id"
 require "cybertrain/middleware/request_logger"
 require "cybertrain/middleware/static"
 require "cybertrain/middleware/method_override"
@@ -21,6 +22,8 @@ require "cybertrain/i18n"
 require "cybertrain/http/server"
 require "cybertrain/db"
 require "cybertrain/feature"
+require "cybertrain/feature_catalog"
+require "cybertrain/error_reporter"
 require "cybertrain/views"
 require "cybertrain/runtime"
 require "cybertrain/dev"
@@ -96,6 +99,8 @@ module Cybertrain
       config.production? && views.empty?
     end
 
+    # RequestId (always: the request's id, its X-Request-Id and its log
+    # tags, Config#log_tags) ->
     # HostAuthorization (Config#host_check?: development, or CYBERTRAIN_HOSTS
     # set; the health path exempt) -> SslRedirect (if force_ssl) ->
     # ErrorPages (in production) -> RequestLogger (unless log_level :none) ->
@@ -150,14 +155,49 @@ module Cybertrain
       # assignments are checked together.
       problem = c.validation_error
       fail_boot(problem) unless problem.empty?
+      # The line format for the first line boot logs (the warning below),
+      # and only for it: a boot that fails after this leaves the format as
+      # it found it. Runtime.apply installs it with the level. Only once
+      # validation passed: log_format is known to be :text or :json.
       warning = c.mail_delivery_warning
-      Cybertrain.logger.warn(warning) unless warning.empty?
+      unless warning.empty?
+        json_lines_before = Logger.json_lines
+        Logger.json_lines = c.log_format == :json
+        Cybertrain.logger.warn(warning)
+        Logger.json_lines = json_lines_before
+      end
       # What a loaded subsystem refuses (Feature#boot_problem): with jobs, a
       # cron task's job: kind no Job.handle registered (Scheduler.start!
       # raises the same message; here it is a boot error before the banner).
       feature_problem = Features.boot_problem(c)
       fail_boot(feature_problem) unless feature_problem.empty?
+      sender_problem = Application.sender_problem(c, @name)
+      fail_boot(sender_problem) unless sender_problem.empty?
       nil
+    end
+
+    # A DSN with no sender to send it (the Sentry sender is its own line)
+    # is refused, not ignored: by boot, and by a registered command, `jobs`
+    # and `console`, which run without boot and print it as boot does
+    # (`error: ...`, exit status 1) before the database is opened. The
+    # installed sender is asked its name ({ErrorReporter::Sender#sender_name}),
+    # never named here (the core does not reach it), so a sender of the
+    # application's own that answers "" is refused too.
+    # @param config [Config]
+    # @param name [String] the binary's name, for the line to add to
+    #   bin/<name>.rb
+    # @return [String] "" when there is no DSN or a sender to send it, else
+    #   `CYBERTRAIN_SENTRY_DSN is set, but this program does not link the
+    #   Sentry sender: add require "cybertrain/error_reporter/sentry" to
+    #   bin/<name>.rb`
+    # @api private
+    def self.sender_problem(config, name)
+      return "" if config.sentry_dsn.to_s.empty?
+      return "" unless Cybertrain.error.sender.sender_name.empty?
+
+      line = FeatureCatalog.require_line("sentry")
+      "CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: " \
+        "add require \"#{line}\" to bin/#{name}.rb"
     end
 
     # Stage 2: the secret (the one step that may write a file:
@@ -430,6 +470,9 @@ module Cybertrain
       # redirected, and the redirect's host is one the check accepted.
       app = SslRedirect.new(app, c.health_path) if c.force_ssl
       app = HostAuthorization.new(app, c.checked_hosts, c.health_path) if c.host_check?
+      # Outermost (docs/design.md D86): the 403 above, the redirect and the error
+      # pages carry the id, and every line the stack logs has its tags.
+      app = RequestId.new(app, c.log_tags)
       app
     end
   end

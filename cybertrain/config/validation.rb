@@ -15,15 +15,18 @@ module Cybertrain
   class Config
     # The first problem boot would refuse to start with, "" when the
     # configuration is usable. The areas in the order boot has always
-    # reported them: the session cookie and CSRF, the request and upload
-    # limits, the time zone, the background work, pagination, the
+    # reported them, after the log settings: the session cookie and CSRF,
+    # the request and upload limits, the time zone, the background work, pagination, the
     # proxies, the health check, the feeds, the stream endpoint, the
-    # locales, the authentication limits, the mail delivery method, the
-    # security headers and the encryption keys. Reads only; safe to call from a test or a
+    # locales, the authentication limits, the mail delivery method, error
+    # reporting, the security headers and the encryption keys. Reads only; safe to call from a test or a
     # `--check`-style command with no database and no writable disk.
     # @return [String]
     # @api public
     def validation_error
+      problem = log_error
+      return problem unless problem.empty?
+
       problem = session_same_site_error
       return problem unless problem.empty?
 
@@ -66,10 +69,67 @@ module Cybertrain
       problem = mail_delivery_error
       return problem unless problem.empty?
 
+      problem = reporting_error
+      return problem unless problem.empty?
+
       problem = security_error
       return problem unless problem.empty?
 
       encryption_error
+    end
+
+    # The error Application#boot reports for an unknown log_level
+    # (CYBERTRAIN_LOG_LEVEL), log_format (CYBERTRAIN_LOG_FORMAT) or entry
+    # of log_tags; "" when all are fine.
+    # @return [String]
+    # @api public
+    def log_error
+      level = @log_level
+      unless level == :debug || level == :info || level == :warn || level == :error || level == :fatal || level == :none
+        return "log_level must be :debug, :info, :warn, :error, :fatal or :none (got #{level.inspect})"
+      end
+
+      format = @log_format
+      return "log_format must be :text or :json (got #{format.inspect})" unless format == :text || format == :json
+
+      tags = @log_tags
+      i = 0
+      while i < tags.size
+        tag = tags[i]
+        return "log_tags may hold :request_id and :remote_ip (got #{tag.inspect})" unless tag == :request_id || tag == :remote_ip
+
+        i += 1
+      end
+      ""
+    end
+
+    # The error Application#boot reports when sentry_dsn
+    # (CYBERTRAIN_SENTRY_DSN) is set and does not parse ({SentryDsn.problem}:
+    # the reason, never the key), or error_sample_rate
+    # (CYBERTRAIN_ERROR_SAMPLE_RATE) is not a number from 0.0 to 1.0; ""
+    # when both are fine. A refused variable is echoed by its first 20
+    # bytes at most, followed by `...` when it is longer: a DSN pasted into
+    # the wrong variable is not printed whole.
+    # @return [String]
+    # @api public
+    def reporting_error
+      dsn = @sentry_dsn
+      unless dsn.empty?
+        why = SentryDsn.problem(dsn)
+        return "sentry_dsn must look like https://<public key>@<host>/<project id>: #{why}" unless why.empty?
+      end
+      text = @error_sample_rate_text
+      rate = @error_sample_rate
+      in_range = rate >= 0.0 && rate <= 1.0
+      unless text.empty?
+        return "" if Config.rate_text?(text) && in_range
+
+        shown = text.bytesize > 20 ? "#{text.byteslice(0, 20).to_s}..." : text
+        return "error_sample_rate must be a number from 0.0 to 1.0 (got #{shown.inspect})"
+      end
+      return "" if in_range
+
+      "error_sample_rate must be a number from 0.0 to 1.0 (got #{rate})"
     end
 
     # The error Application#boot reports for CYBERTRAIN_FORCE_SSL,

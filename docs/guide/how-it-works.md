@@ -67,6 +67,7 @@ lists railties:
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; loads the mailer and jobs |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` in controllers; loads the cache |
+| `require "cybertrain/error_reporter/sentry"` | the Sentry sender: `CYBERTRAIN_SENTRY_DSN` sends each error report to Sentry or GlitchTip ([Error reporting](background-and-operations.md#error-reporting)); loads `HttpClient` and TLS. In `bin/<app>.rb` only |
 | `require "cybertrain"` | all of the above |
 
 Each line goes after `require "cybertrain/core"` (`cybertrain/jobs` and
@@ -105,6 +106,10 @@ A missing line is caught before the application runs:
   exit with 1.
 - `/up` reports only on what is loaded: no worker staleness without jobs,
   no feed staleness without feeds.
+- A DSN set without the Sentry sender's line refuses the boot:
+  `error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`.
+  The error reporter itself, its subscribers and the log's request ids are
+  in the core.
 
 gen reads `bin/<app>.rb` as text and sees only the literal
 `require "cybertrain"` and `require "cybertrain/..."` lines in it: move
@@ -124,8 +129,9 @@ require `cybertrain/mailer` itself.
 
 Tests are not cut by these lines: the program `cybertrain test` compiles
 (`gen/tests.rb`) requires `cybertrain`, every subsystem, whatever
-`bin/<app>.rb` requires. So `perform_enqueued_jobs`, `assert_emails` and
-`assert_broadcasts` work in any application, an application on
+`bin/<app>.rb` requires, and the Sentry sender with them. So
+`perform_enqueued_jobs`, `assert_emails`, `assert_broadcasts` and
+`Test::SentryReceiver` work in any application, an application on
 `cybertrain/core` compiles its tests with every subsystem, and code that
 names a subsystem without its line passes its tests and stops at
 `spin build` ([Testing an app](testing.md)).

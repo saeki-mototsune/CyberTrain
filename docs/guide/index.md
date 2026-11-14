@@ -15,8 +15,8 @@ Everything CyberTrain's documentation covers beyond the API reference: the tutor
 - [**Assets**](assets.md) — Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving and retention
 - [**Internationalization**](i18n.md) — Dictionaries in `config/locales`, `t` and `l`, lazy lookup, plural forms, choosing the locale per request, translated validation messages, the bundled English and Japanese
 - [**Configuration**](configuration.md) — `config/app.rb`, environment variables, time zones
-- [**Background work and operations**](background-and-operations.md) — Job classes, retries, `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check
+- [**Background work and operations**](background-and-operations.md) — Job classes, retries, `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check, logs and request ids, error reporting to Sentry
 - [**Realtime**](realtime.md) — Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health
 - [**Outbound HTTP, WebSocket feeds and e-mail**](external-services.md) — `HttpClient` with streaming, gzip and Server-Sent Events, `WebSocket.subscribe` with timers and restarts, `Mailer` with HTML mail and `deliver_later`
-- [**Testing**](testing.md) — Writing tests for an app, outbound calls, jobs, CI
+- [**Testing**](testing.md) — Writing tests for an app, outbound calls, jobs, logs and error reports, CI
 - [**The template language**](template-language.md) — Helpers, components, the form builder and what a template may call in `app/views/**/*.html.erb`

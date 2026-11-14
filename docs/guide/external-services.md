@@ -3,9 +3,11 @@
 ## Outbound HTTP
 
 An application that calls another server (a webhook, a Slack incoming
-webhook, a third-party API) uses `Cybertrain::HttpClient`. It is not in
-`require "cybertrain"`; require it where it is used, and the TLS layer too
-when any URL is https:
+webhook, a third-party API) uses `Cybertrain::HttpClient`. `require
+"cybertrain"` loads it and the TLS layer, through the
+[Sentry sender](background-and-operations.md#error-reporting); an
+application on `cybertrain/core` requires it where it is used, and the TLS
+layer too when any URL is https:
 
 ```ruby
 require "json"
@@ -282,14 +284,15 @@ blocks take their arguments and cannot use `self` (Spinel has no
   ```
 - **Restarts.** A supervisor thread checks every second that each feed's
   thread is alive. A thread that ended anyway (an exception that is not a
-  `StandardError`, or the runtime killing it) is logged (`[ERROR] WebSocket
-  "trades" thread ended: ...`) and started again after `min(30, 2 **
-  restarts)` seconds, with a `[WARN]` line; its open connection is closed
+  `StandardError`, or the runtime killing it) is logged (`ERROR
+  [feed:trades] WebSocket "trades" thread ended: ...`) and started again
+  after `min(30, 2 ** restarts)` seconds, with a `WARN` line; its open
+  connection is closed
   first. The restart count never resets, so after five restarts the wait
   stays at 30 seconds. In a `feeds` process, a feed that dies again after
   `feed_restart_limit` restarts (10, `CYBERTRAIN_FEED_RESTART_LIMIT`) within
   `feed_restart_window` seconds (600, `CYBERTRAIN_FEED_RESTART_WINDOW`) ends
-  the process: `[FATAL] feed trades restarted 10 times in 600 s; exiting`,
+  the process: `FATAL feed trades restarted 10 times in 600 s; exiting`,
   then every feed is stopped and the process exits with status 1, for
   Docker's `restart: unless-stopped` or systemd's `Restart=always` to start
   a fresh one. A `server` that runs feeds never exits for them: it keeps
@@ -307,7 +310,10 @@ blocks take their arguments and cannot use `self` (Spinel has no
   | a block raised | ERROR | `WebSocket "trades" on_message failed: KeyError: ...` (or `on_open`) |
 
   The path and the query are never logged or put in an error message: they
-  often carry a token.
+  often carry a token. Every line but the first is logged on the feed's
+  thread and carries the tag `[feed:trades]`; a block that raises, the
+  thread's end and the `feeds` process giving up are also
+  [reported](background-and-operations.md#error-reporting).
 - **Errors.** All are `Cybertrain::WebSocket::Error`s, with host and port
   only in the message. Once the handshake is done, a lost connection or a
   close by the server is a `ClosedError` (`close_code`, `close_reason`; a
@@ -407,7 +413,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   else is said; bytes the server sends after its STARTTLS reply are
   refused. `tls` speaks TLS from the first byte (port 465). Both check the
   certificate against `host` as the HTTP client does (give a host name, not
-  an IP address), and both need `require "cybertrain/net/tls"`: without
+  an IP address), and both need `require "cybertrain/net/tls"` (which `require "cybertrain"` loads): without
   it, `deliver` raises `Mailer::TLSError` saying so, before connecting.
   `none` is plain text, for a relay on the same machine or a test server:
   with a user configured it refuses (`Mailer::InsecureError`, before

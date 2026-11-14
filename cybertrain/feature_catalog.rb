@@ -22,7 +22,9 @@ module Cybertrain
       ["mailer", "cybertrain/mailer", "", "", "", ""],
       ["mailer/later", "cybertrain/mailer/later", "", "", "", "mailer jobs"],
       ["cache", "cybertrain/cache", "", "", "", ""],
-      ["rate_limit", "cybertrain/rate_limit", "", "", "", "cache"]
+      ["rate_limit", "cybertrain/rate_limit", "", "", "", "cache"],
+      # The error reporter's Sentry sender (loads HttpClient and TLS).
+      ["sentry", "cybertrain/error_reporter/sentry", "", "", "", ""]
     ].freeze
 
     # Other framework files whose require loads a subsystem: [require

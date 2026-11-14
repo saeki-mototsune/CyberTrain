@@ -95,7 +95,7 @@ module UserCommand
     s
   end
 
-  # Called by bin/blog.rb before the server boots: a [WARN] while no
+  # Called by bin/blog.rb before the server boots: a WARN line while no
   # user exists, which is while /setup is open, with the page's
   # one-time token (SetupController.setup_token, this process's own).
   # Says nothing when the users table is not there yet (`./blog

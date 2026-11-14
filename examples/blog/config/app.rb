@@ -31,6 +31,21 @@ Cybertrain.configure do |c|
   # compared with test/*.rb.expected).
   c.log_level = :none if c.test?
 
+  # Log lines as JSON objects (one per line) in production, for a
+  # log collector; text otherwise. CYBERTRAIN_LOG_FORMAT sets the
+  # format too, but an assignment here wins over the variable.
+  # c.log_format = :json if c.production?
+  # The request's tags on every log line it causes: :request_id (the
+  # default) and :remote_ip (personal data, so off by default). A job a
+  # request enqueues carries the request's id too, after its own tag:
+  # `[NotifyCommentJob 12] [<request id>] new comment 7 on article 1`.
+  # c.log_tags = [:request_id]
+  # Error reports (a page that fails, a failed or discarded job, a
+  # scheduled task that raises) go to Sentry or GlitchTip when
+  # CYBERTRAIN_SENTRY_DSN is set: in config/deploy.yml's secrets, never
+  # in a file you commit.
+  # `require "cybertrain"` (bin/blog.rb) includes the sender.
+
   # Content Security Policy, sent with every response. Scripts come from
   # this origin and the one jsDelivr path that holds Turbo (pinned in
   # config/importmap.rb), not the whole CDN;
@@ -46,6 +61,16 @@ Cybertrain.configure do |c|
   end
   c.content_security_policy_nonce_directives = %w[script-src style-src]
 end
+
+# Error reports go to a Sentry DSN (CYBERTRAIN_SENTRY_DSN) and to
+# the subscribers added here. A subscriber is a class you write: a
+# subclass of Cybertrain::ErrorSubscriber that defines report(event),
+# which receives each Cybertrain::ErrorEvent on the reporter's own
+# thread. bin/blog.rb loads this file before app/, so define the
+# class in this file, above the line that subscribes it (or in a
+# file this one requires): a class under app/ is not loaded yet here.
+# test/integration/error_reporting_test.rb subscribes one.
+# Cybertrain.error.subscribe(AuditSubscriber.new)
 
 # Every day at 04:00 (CYBERTRAIN_SCHEDULER_TZ, UTC by default), on the
 # scheduler thread of the process that runs jobs: every comment leaves a

@@ -2,6 +2,7 @@ require "stringio"
 require "cybertrain/db"
 require "cybertrain/logger"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # A pooled connection must come back in autocommit mode (and with
 # @transaction_depth at 0) however a `transaction` block ends: normally, by an
@@ -74,7 +75,7 @@ test "a BEGIN left open inside a checkout is rolled back, and logged, when the c
   # the connection goes back, which is what makes the pool the place to
   # clean up -- and the only place that can say the writes are gone.
   assert_equal 1, DB.with { |c| leave_begin_open(c) }
-  assert_includes log.string, "[WARN] rolled back a transaction left open on a pooled connection"
+  assert_logged log.string, "WARN", "rolled back a transaction left open on a pooled connection"
   assert_equal 0, DB.with { |c| post_count(c) }
   assert DB.with { |c| clean?(c) }
   assert_equal 1, DB.with { |c| insert_after(c) }

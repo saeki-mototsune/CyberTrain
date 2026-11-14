@@ -12,9 +12,12 @@ require "cybertrain/logger"
 require "cybertrain/net/tls"
 require "cybertrain/test"
 
+# A fixed time for the snapshot (the Clock pushes it to the Logger).
+Cybertrain::Clock.travel_to(Time.utc(2026, 11, 11, 12))
 Cybertrain.logger.info("hello")
 Cybertrain.logger.debug("hidden")
 Cybertrain.logger.warn("careful")
+Cybertrain::Clock.travel_back
 
 test "the default logger has no io and logs at :info" do
   assert_equal :info, Cybertrain.logger.level

@@ -133,7 +133,7 @@ signs them in:
   (`SetupController.setup_token`), compared in constant time. It keeps the
   page closed where the address check cannot, behind a proxy that adds no
   `X-Forwarded-For`. The request log shows it as `[FILTERED]`.
-- While no user exists, the server logs `[WARN] no user exists yet: run
+- While no user exists, the server logs `WARN no user exists yet: run
   ./<app> user EMAIL, or open /setup?token=<token> from this machine`
   before it boots; that line is the only place the token is printed.
 - `<APP>_SETUP_OPEN=1` (the `setup_open` setting in `config/app.rb`) lifts
@@ -215,7 +215,7 @@ A link starts with the `base_url` setting the generator declares in
 Set it, with https, wherever the application is served. Unset, the link
 takes the address the request came to only when the `Host` header is
 checked (development, or `CYBERTRAIN_HOSTS` set) or in tests; anywhere
-else no mail is sent, the log says `[ERROR] password reset mail not sent:
+else no mail is sent, the log says `ERROR [<request id>] password reset mail not sent:
 set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`, and the page answers as usual. A
 forged `Host` never reaches a link.
 
@@ -228,7 +228,7 @@ page links to a form that mails the link again. Opening the link
 (`/confirmations/<token>`, valid for three days, once) confirms the
 address; the user then signs in. The concern's `start_new_session_for`
 refuses an unconfirmed user too, whichever controller asks, and logs
-`[WARN] no session started: user <id> has not confirmed its address`. That
+`WARN [<request id>] no session started: user <id> has not confirmed its address`. That
 check is in the concern the generator writes with `--confirmable`: in a
 new application, and in a 0.4 upgrade, where the concern is a new file.
 An application that already has the concern gets the check as a diff
@@ -441,7 +441,7 @@ is the whole output for a sign-up application 0.4 generated.
   unconfirmed account is not told why it cannot sign in, and a sign-up is
   mailed no link. In a 0.4 application the concern is a new file, written
   with its confirmation check, so it still starts no session for an
-  unconfirmed account (and logs `[WARN] no session started: user <id> has
+  unconfirmed account (and logs `WARN [<request id>] no session started: user <id> has
   not confirmed its address`) even if those diffs are never applied.
 - Every session ends once at the upgrade (the cookie is encrypted now), and
   the rest of [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04)

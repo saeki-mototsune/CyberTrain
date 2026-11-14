@@ -1,0 +1,24 @@
+ok   every request gets a UUID, echoed and readable as request.request_id
+ok   X-Request-Id from a trusted proxy is used only when well-formed
+ok   RequestId.accepted? takes 1 to 255 bytes of letters, digits and hyphens
+ok   every line logged in the request carries the id, the application's own included
+ok   log_tags orders the request's tags; [] turns them off
+ok   RequestId.scope_for puts the tags in log_tags order and marks the id's place
+ok   the request path in the Scope is masked as the request log masks it
+ok   the id is echoed on error responses
+ok   the development front_app's nesting makes one id, one header and one Scope
+ok   SslRedirect's redirect carries the id
+ok   a streamed body is written under the request's Scope; nothing is left for the next request
+ok   a raising request leaves no Scope behind on its thread
+ok   a RequestId inside another keeps the outer id and adds no Scope of its own
+ok   the controller and action are the request's where
+ok   a controller run without a RequestId writes nothing to the shared empty Scope
+ok   a request's 500 is reported once, with where, method and path
+ok   no report for a 4xx or a rescue_from
+ok   a reset link's token and the query never reach a report
+ok   no params, headers, cookies or client address in an event
+ok   RequestIds inside each other report once: the innermost, which saw the exception first
+ok   an exception outside StandardError is reported too
+ok   an exception outside both rescue arms leaves no Scope behind either
+ok   RequestId.where_for is the action, or request when none ran
+23 tests, 139 assertions, 0 failures

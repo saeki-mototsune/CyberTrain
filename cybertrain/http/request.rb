@@ -3,6 +3,7 @@ require "cybertrain/http/header_name"
 require "cybertrain/http/parser"
 require "cybertrain/http/multipart"
 require "cybertrain/http/ip_address"
+require "cybertrain/logger"
 
 module Cybertrain
   # The request body cannot be decoded as its Content-Encoding says
@@ -82,6 +83,39 @@ module Cybertrain
 
     attr_reader :http_version
 
+    # The request's id (spec section 12.2): a UUID that
+    # Cybertrain::RequestId made, or the `X-Request-Id` a trusted proxy sent
+    # (1 to 255 letters, digits and hyphens); the response's `X-Request-Id`
+    # echoes it, and every line logged during the request carries it.
+    # `""` until the RequestId middleware has run.
+    # @example
+    #   Cybertrain.logger.info("export for #{request.request_id}")
+    # @return [String]
+    # @api public
+    attr_reader :request_id
+
+    # Sets {#request_id}: the RequestId middleware's, nothing else's.
+    # @param id [String]
+    # @api private
+    def request_id=(id)
+      @request_id = id
+    end
+
+    # The log Scope of the request ({Logger::Scope}), set by the RequestId
+    # middleware that gave it its id; {Logger::NO_SCOPE} until then. The
+    # Server swaps it in around the error line it logs for what escaped
+    # the stack, after RequestId has put the thread's own Scope back, so
+    # that line carries the request's id too.
+    # @return [Logger::Scope]
+    # @api private
+    attr_reader :log_scope
+
+    # @param scope [Logger::Scope]
+    # @api private
+    def log_scope=(scope)
+      @log_scope = scope
+    end
+
     def initialize(method, target, headers, body, remote_addr = "", http_version = "HTTP/1.1")
       @method = method.upcase
       q = target.index("?")
@@ -96,6 +130,8 @@ module Cybertrain
       @body = body
       @remote_addr = remote_addr
       @http_version = http_version
+      @request_id = ""
+      @log_scope = Logger::NO_SCOPE
       @utf8_query_string = nil
       @utf8_body = nil
       @decoded_body = nil

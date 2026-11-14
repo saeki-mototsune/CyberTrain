@@ -330,7 +330,7 @@ than `feed_status_interval`, or every row would be stale between two writes;
 boot refuses it otherwise. `CYBERTRAIN_HEALTH_FEEDS=0` (or `false`) turns
 the check off, for a feed that is legitimately quiet for longer than the
 threshold or a deployment that watches its feeds some other way. A table
-that cannot be read leaves `/up` at 200 and logs one `[WARN]` line until it
+that cannot be read leaves `/up` at 200 and logs one `WARN` line until it
 can be read again.
 
 `./<app> feeds status` prints the rows for an operator, one line per feed:

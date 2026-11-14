@@ -31,6 +31,11 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](models.md#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: the least important level written, `debug`, `info`, `warn`, `error`, `fatal` or `none` (in any case; `none` turns the request log off and still writes error lines); anything else stops the boot (see [Logs](background-and-operations.md#logs)). `cybertrain test` uses `:none` unless `config/app.rb` sets it |
+| `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`; `json` writes one JSON object per line, for a log collector; anything else stops the boot. `cybertrain test` keeps text lines unless `config/app.rb` sets it, whatever the variable says |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: nothing is sent. A Sentry or GlitchTip DSN sends each error report there (see [Error reporting](background-and-operations.md#error-reporting)); it needs `require "cybertrain/error_reporter/sentry"` (or `require "cybertrain"`) in `bin/<app>.rb`, or the boot is refused. One that does not parse stops the boot, naming the part and never the key. `cybertrain test` empties it unless `config/app.rb` assigns it |
+| `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`: the share of error reports sent to Sentry, from 0.0 to 1.0, written as digits with an optional `.digits`; subscribers see every report; anything else stops the boot |
+| `CYBERTRAIN_RELEASE` | `release` | `""`: the version or commit sent with each error report |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps a `server` process from running scheduled tasks, jobs and WebSocket feeds (see [Process roles](background-and-operations.md#process-roles)); `./<app> worker` and `feeds` ignore it |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`: how many jobs one process runs at once (see [Background work](background-and-operations.md#background-work)); at least 1 |
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`: the application's zone, an IANA name such as `Asia/Tokyo`, for `Time.zone`, the day and month boundaries, `Date.current`, `l` and `time_tag` (see [Time zones](#time-zones)); one the system's zoneinfo does not have stops the boot |
@@ -51,7 +56,7 @@ end
 | `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`: no AUTH; set, the mailer authenticates with AUTH PLAIN |
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; a secret, never logged, never in the boot banner or an error message |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: the sender `Mailer.deliver` uses when it is not given `from:` |
-| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"`, which `require "cybertrain"` loads |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in the test environment, `:smtp` in every other: `:test` keeps each mail in `Cybertrain::Mailer.deliveries` instead of sending it ([Testing mail](testing.md#testing-mail)); outside the test environment it boots with a warning and sends nothing; anything else stops the boot. `cybertrain test` uses `:test` unless `config/app.rb` sets it, whatever the variable says |
 | `CYBERTRAIN_TEST_DATABASE` | — | `""`: the file `cybertrain test` deletes, migrates and runs the tests on, instead of `storage/test.sqlite3`; a file path (not `:memory:` or a `file:` URI). An existing file is deleted only when `cybertrain test` created it (it marks its databases), is this application's own `storage/test.sqlite3` or is empty; any other, and the development or production database, is refused with exit status 2 and nothing deleted ([Running the tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: the locale every request starts in, a name such as `ja` or `pt-BR` (see [Locales](#locales)); anything else stops the boot |
@@ -65,7 +70,10 @@ inside another site's frame; the browser must reach the app over HTTPS.
 
 Other attributes with fixed, overridable defaults: `views_root`
 (`"app/views"`), `public_root` (`"public"`), `layout`
-(`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
+(`"layouts/application"`), `log_tags` (`[:request_id]`: the request's tags
+on each log line; `:remote_ip` adds the client's address, `[]` shows none,
+and anything else stops the boot; see
+[Request ids](background-and-operations.md#request-ids)), `session_cookie_name`,
 `session_max_age` (2 weeks), `session_secure` (`true` in production, which
 marks the session cookie `Secure`; `false` elsewhere, though `SameSite=None`
 and `Partitioned` add `Secure` anyway), `pool_size` (4), `static_files`/`csrf`
@@ -207,7 +215,8 @@ Each value is read once, when `config/app.rb` runs at startup. An empty or
 unset variable means the default. A boolean takes `1`/`true` or
 `0`/`false`; an integer takes decimal digits (an optional leading `-`) within
 `min..max` (both optional). Any other value falls back to the default and
-logs a `[WARN]` line saying so. Reading an undeclared name, or one declared
+logs a `WARN` line saying so (a text line, whatever `log_format` says:
+`config/app.rb` is still running). Reading an undeclared name, or one declared
 with another type, raises `ArgumentError`, as does declaring a name twice.
 Tests change a value with `set_string_setting`, `set_int_setting` and
 `set_bool_setting`. `./NAME help` lists every declared setting with its

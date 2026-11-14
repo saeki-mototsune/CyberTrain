@@ -1,0 +1,6 @@
+test/sentry_dsn_test.rb
+sentry_dsn: ""
+log_format: :text
+  ok   SentryDsnTest: an exported DSN and log format are ignored
+
+1 test, 3 assertions, 0 failures

@@ -215,6 +215,24 @@ module Cybertrain
           # CYBERTRAIN_FORCE_SSL=1
           # The host names the application answers to, comma-separated.
           # CYBERTRAIN_HOSTS=app.example.com
+
+          # Logs and error reports: settings, except the DSN, which holds a
+          # key and is kept out of the repository like a secret.
+          # The least important log line written: debug, info, warn, error,
+          # fatal or none (info; none also turns the request log off).
+          # CYBERTRAIN_LOG_LEVEL=info
+          # How each line is written: text (the default) or json, one JSON
+          # object per line, for a log collector.
+          # CYBERTRAIN_LOG_FORMAT=json
+          # Where error reports are sent, a Sentry DSN; empty sends nothing.
+          # It holds a key: set it in the environment (or your deploy's
+          # secrets), never in a file you commit. It needs
+          # require "cybertrain/error_reporter/sentry" in bin/<app>.rb.
+          # CYBERTRAIN_SENTRY_DSN=https://<public key>@<host>/<project id>
+          # The share of error reports sent, 0.0 to 1.0 (1.0, all of them).
+          # CYBERTRAIN_ERROR_SAMPLE_RATE=1.0
+          # The release sent with each error report: a version or a commit.
+          # CYBERTRAIN_RELEASE=
         TEXT
       end
 
@@ -353,7 +371,25 @@ module Cybertrain
             # c.i18n_default_locale = :en
             # c.i18n_available_locales = [:en, :ja]
             # c.i18n_raise_on_missing = true
+
+            # Log lines as JSON objects (one per line) in production, for a
+            # log collector; text otherwise. CYBERTRAIN_LOG_FORMAT sets the
+            # format too, but an assignment here wins over the variable.
+            # c.log_format = :json if c.production?
+            # The request's tags on every log line it causes: :request_id (the
+            # default) and :remote_ip (personal data, so off by default).
+            # c.log_tags = [:request_id]
           end
+
+          # Error reports go to a Sentry DSN (CYBERTRAIN_SENTRY_DSN, with
+          # require "cybertrain/error_reporter/sentry" in bin/<app>.rb) and to
+          # the subscribers added here. A subscriber is a class you write: a
+          # subclass of Cybertrain::ErrorSubscriber that defines report(event),
+          # which receives each Cybertrain::ErrorEvent on the reporter's own
+          # thread. bin/<app>.rb loads this file before app/, so define the
+          # class in this file, above the line that subscribes it (or in a
+          # file this one requires): a class under app/ is not loaded yet here.
+          # Cybertrain.error.subscribe(AuditSubscriber.new)
 
           # A scheduled task: a cron expression (read in c.scheduler_tz, which
           # follows c.time_zone, UTC by default, unless set), a unique name and
@@ -491,7 +527,8 @@ module Cybertrain
           # cybertrain/mailer/later), cybertrain/cache, cybertrain/rate_limit;
           # or require "cybertrain" for all of them. `generate job` and
           # `generate authentication` add theirs; `spin run gen` names the
-          # line a view's helper needs.
+          # line a view's helper needs. cybertrain/error_reporter/sentry
+          # (error reports to Sentry or GlitchTip) goes here only.
           require "cybertrain/core"
           require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
           require_relative "../config/app"     # so it comes before the config
@@ -761,8 +798,13 @@ module Cybertrain
               # than the proxy. Change it if your Docker networks use another range.
               CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12
               # SPINEL_WORKERS: 2
+              # One JSON object per log line, for a log collector.
+              # CYBERTRAIN_LOG_FORMAT: json
             secret:
               - CYBERTRAIN_SECRET_KEY_BASE
+              # Where error reports are sent (a Sentry DSN); also list it in
+              # .kamal/secrets.
+              # - CYBERTRAIN_SENTRY_DSN
 
           # The SQLite database lives in storage/: keep it on the server across
           # deploys. Back it up from there (docs/deploy.md).
@@ -806,6 +848,10 @@ module Cybertrain
           # Signs the session cookie; changing it signs everyone out. Generate it
           # once with `openssl rand -hex 32` and keep it somewhere safe.
           CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE
+
+          # Where error reports are sent (a Sentry DSN, which holds a key). Add
+          # it to env: secret: in config/deploy.yml too.
+          # CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN
         TEXT
       end
 

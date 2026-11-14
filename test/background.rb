@@ -6,6 +6,7 @@ require "cybertrain/websocket"
 require "cybertrain/websocket/feed_table"
 require "cybertrain/test/websocket_receiver"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Cybertrain::Background: a service registered from outside
 # application.rb (as cybertrain/websocket.rb will register itself) is
@@ -171,14 +172,16 @@ def count_of(text, needle)
   n
 end
 
-def await_log(needle, count, wait)
+# Waits up to `wait` seconds for `count` lines at `level` whose message
+# starts with `message`.
+def await_log(level, message, count, wait)
   ends_at = mono_now + wait
   while mono_now < ends_at
-    return true if count_of(LOG.string, needle) >= count
+    return true if LogCapture.count(LOG.string, level, message) >= count
 
     sleep(0.05)
   end
-  count_of(LOG.string, needle) >= count
+  LogCapture.count(LOG.string, level, message) >= count
 end
 
 # Each feed test starts from here, whatever the tests before it left: the
@@ -330,8 +333,8 @@ test "a feed thread that dies is restarted after the backoff and restarts counts
   assert await_alive("crashy", false, 4.0)
   # The first pass sees it dead: a warning, the restart after the backoff.
   B.supervise_pass(config, 1000, 1000)
-  assert_includes LOG.string, "[ERROR] WebSocket \"crashy\" thread ended: FeedCrash: crashy died"
-  assert_includes LOG.string, "[WARN] feed crashy: its thread ended; restarting in #{first}s"
+  assert_logged LOG.string, "ERROR", "WebSocket \"crashy\" thread ended: FeedCrash: crashy died"
+  assert_logged LOG.string, "WARN", "feed crashy: its thread ended; restarting in #{first}s"
   B.supervise_pass(config, 1000, 1000 + first - 1)
   refute WS.thread_alive?("crashy")
   assert_equal base, restarts_of("crashy")
@@ -341,7 +344,7 @@ test "a feed thread that dies is restarted after the backoff and restarts counts
   assert await_alive("crashy", false, 4.0)
   m = 1000 + first + 1
   B.supervise_pass(config, 1000, m)
-  assert_includes LOG.string, "[WARN] feed crashy: its thread ended; restarting in #{second}s"
+  assert_logged LOG.string, "WARN", "feed crashy: its thread ended; restarting in #{second}s"
   B.supervise_pass(config, 1000, m + second - 1)
   assert_equal base + 1, restarts_of("crashy")
   B.supervise_pass(config, 1000, m + second)
@@ -377,7 +380,7 @@ test "a feed that dies while connected closes its connection; restarts leave no 
   end
   assert_equal 2, restarts_of("leaky")
   assert_equal 3, closes_seen(rx)
-  assert_equal 3, count_of(LOG.string, "[ERROR] WebSocket \"leaky\" thread ended: FeedCrash: leaky died")
+  assert_equal 3, LogCapture.count(LOG.string, "ERROR", "WebSocket \"leaky\" thread ended: FeedCrash: leaky died")
   WS.stop!
   rx.stop
 end
@@ -443,12 +446,12 @@ test "a failing status write leaves the supervisor and the feeds running" do
   writer_mode("error")
   assert B.start_all(config) >= 1
   # One error a second: the supervisor goes on after each.
-  assert await_log("[ERROR] feed supervisor: RuntimeError: status write failed", 2, 5.0)
+  assert await_log("ERROR", "feed supervisor: RuntimeError: status write failed", 2, 5.0)
   assert B.supervising?
   assert WS.thread_alive?("steady")
   # Nor does an exception that is not a StandardError stop it.
   writer_mode("crash")
-  assert await_log("[ERROR] feed supervisor: WriterCrash: status write crashed", 2, 5.0)
+  assert await_log("ERROR", "feed supervisor: WriterCrash: status write crashed", 2, 5.0)
   assert B.supervising?
   assert WS.thread_alive?("steady")
   writer_mode("")
@@ -473,7 +476,7 @@ test "a feeds process gives up when a feed dies after feed_restart_limit restart
   # The third death, after two restarts within 600 s.
   B.supervise_pass(config, 4400, 4400)
   assert B.feeds_failed?
-  assert_includes LOG.string, "[FATAL] feed crashy restarted 2 times in 600 s; exiting"
+  assert_logged LOG.string, "FATAL", "feed crashy restarted 2 times in 600 s; exiting"
   B.exit_on_feed_death = false
   B.reset_supervisor!
   refute B.feeds_failed?

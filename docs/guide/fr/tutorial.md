@@ -1,5 +1,5 @@
 ---
-source_sha256: 2437024ef92acdab8ec374f1249ff0285fe030d24a72de28f582e73d0a0e3f42
+source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -869,7 +869,8 @@ JavaScript&nbsp;: [Temps réel](realtime.md#turbo-streams).
 
 > [!WHY]
 > Un travail qui ne doit pas retarder la réponse, une notification par
-> exemple, s’exécute après elle. Comme avec Active Job sur Solid Queue, un job
+> exemple, s’exécute à part de la requête&nbsp;: il peut commencer avant que
+> la réponse soit écrite, ou après. Comme avec Active Job sur Solid Queue, un job
 > est une classe dans `app/jobs/` et une ligne dans la base de données de
 > l’application elle-même&nbsp;: aucun autre service.
 
@@ -905,14 +906,16 @@ Mettez-le en file depuis `create`, une fois le commentaire enregistré&nbsp;:
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-Postez un commentaire&nbsp;: le journal du serveur montre le job qui s’exécute
-après la réponse&nbsp;:
+Postez un commentaire&nbsp;: le journal du serveur montre le job qui s’exécute,
+ici après la réponse (un thread de jobs peut aussi prendre la ligne avant que
+la réponse soit écrite, si bien que l’ordre des lignes peut varier), ses lignes marquées du job et de l’identifiant de la requête
+qui l’a mis en file&nbsp;:
 
 ```text sortie — cybertrain server
-[INFO] Started POST "/articles/1/comments" for 127.0.0.1
-[INFO] Completed 200 in 2ms
-[INFO] new comment 1 on article 1
-[INFO] job 1 (NotifyCommentJob) done
+2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1
+2026-11-14T09:30:00.122Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Completed 200 in 2ms
+2026-11-14T09:30:00.950Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] new comment 1 on article 1
+2026-11-14T09:30:00.951Z INFO [NotifyCommentJob 1] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] job 1 (NotifyCommentJob) done
 ```
 
 <!-- list: points -->

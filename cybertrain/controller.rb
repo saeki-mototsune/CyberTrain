@@ -1267,6 +1267,14 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
+      # The request's `where` (spec section 13): the controller and action,
+      # on the Context and on the thread's log Scope, which a RequestId
+      # made for this request; nothing is written to the shared empty
+      # Scope (a controller run without one: a test, a nested call).
+      where = "#{self.class.name}##{@action_name}"
+      @ctx.controller_action = where
+      scope = Logger.current_scope
+      scope.scope_where = where unless scope.equal?(Logger::NO_SCOPE)
       # Every action starts at the default locale: a keep-alive connection
       # serves its requests on one thread, and I18n.locale is that
       # thread's (Thread.current), so a locale a before_action set for one

@@ -1,0 +1,13 @@
+ok   one envelope per event, with Sentry's auth header
+ok   an event outside a request has no tags, request, transaction or release
+ok   the item header's length is the event's size in bytes, non-ASCII text included
+ok   the envelope's dsn leaves out a legacy secret
+ok   sentry_field reads a dotted key whole before it splits the path
+ok   a DSN with a path prefix
+ok   the sample rate thins what is sent, never what subscribers see
+ok   frames, oldest first, when the build has a backtrace
+ok   the sender answers whether Sentry took the event; a refusing Sentry is a warn line
+ok   a refusing, a blocked and a malformed DSN never block or raise
+ok   a silent Sentry ends the delivery within the deadline, and the next event goes
+ok   drain_reports gives up after its seconds
+12 tests, 80 assertions, 0 failures

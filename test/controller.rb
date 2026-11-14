@@ -4,6 +4,7 @@ require "cybertrain/controller"
 require "cybertrain/router"
 require "cybertrain/app"
 require "cybertrain/test/client"
+require_relative "support/log_capture"
 
 # cybertrain/controller pulls in cybertrain/model and the SQLite FFI bindings
 # (through the template helpers), so this program no longer runs under CRuby:
@@ -735,13 +736,13 @@ test "a client fault answered from an action logs one rejected-request line" do
   controller = PostsController.new(ctx)
   controller.process(:parse_body) { |c| c.parse_body }
   assert_equal 400, ctx.response.status
-  assert_equal "[INFO] rejected request (400 Bad Request): too many parameters (limit 4096)\n", log.string
+  assert_equal ["INFO rejected request (400 Bad Request): too many parameters (limit 4096)"], LogCapture.entries(log.string)
   ctx2 = build_ctx(false)
   ctx2.params.set_value("other", "1")
   PostsController.new(ctx2).process(:require_post) { |c| c.require_post }
   assert_equal 400, ctx2.response.status
   assert_equal 2, log.string.lines.size
-  assert_includes log.string, "[INFO] rejected request (400 Bad Request): param is missing or the value is empty: post"
+  assert_logged log.string, "INFO", "rejected request (400 Bad Request): param is missing or the value is empty: post"
   Cybertrain.logger = previous
 end
 

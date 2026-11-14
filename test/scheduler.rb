@@ -1,6 +1,7 @@
 require "stringio"
 require "cybertrain/scheduler"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Cybertrain::Scheduler: tasks registered with `every` run when due and
 # not before, a raising task is logged and the others (and its own next
@@ -113,7 +114,7 @@ end
 test "a raising task is logged and does not stop the others" do
   # boom is due at 1025, thirty at 1030, ten at 1030.
   assert_equal 1, S.run_due(1025)
-  assert_includes LOG.string, "[ERROR] Scheduled task \"boom\" failed: RuntimeError: it broke"
+  assert_logged LOG.string, "ERROR", "Scheduled task \"boom\" failed: RuntimeError: it broke"
   assert_equal 2, S.run_due(1030)
   assert_equal "ten,ten,ten,thirty", runs_text
   # boom runs (and fails) again at its next time, next to ten (due since
@@ -164,7 +165,7 @@ test "a tick that cannot reach the database runs nothing, logs, and leads again 
   assert_equal 0, S.run_due(3000)
   refute S.leader?
   assert_equal 3000, S.last_tick
-  assert_includes LOG.string, "[ERROR] Scheduler lease: Cybertrain::DB::Error: not connected"
+  assert_logged LOG.string, "ERROR", "Scheduler lease: Cybertrain::DB::Error: not connected"
   DB.connect(":memory:")
   # The failed tick kept the timetable: nothing is due at 3001, ten at 3010.
   assert_equal 0, S.run_due(3001)
@@ -192,7 +193,7 @@ test "while job threads run, every tick (leader or not) recovers stale jobs, at 
   assert_equal "running", job_state(stale_three)
   S.run_due(4061)
   assert_equal "queued", job_state(stale_three)
-  assert_includes LOG.string, "[WARN] Requeued 1 job(s) whose process stopped sending heartbeats"
+  assert_logged LOG.string, "WARN", "Requeued 1 job(s) whose process stopped sending heartbeats"
   # Recovery does not wait for the lease: with another process leading, no
   # task runs, but the tick still recovers.
   assert Lease.acquire("scheduler", "other:1:1", 4100, ttl: 100)
@@ -228,7 +229,7 @@ test "start! does nothing when the worker switch is off" do
   config.worker = false
   refute S.start!(config)
   refute S.running?
-  assert_includes LOG.string, "[INFO] Background worker off (CYBERTRAIN_WORKER=0)"
+  assert_logged LOG.string, "INFO", "Background worker off (CYBERTRAIN_WORKER=0)"
 end
 
 test "config: the worker switch and the intervals have their defaults, and boot checks them" do
@@ -339,8 +340,8 @@ test "start! starts the thread once; stop! asks it to end" do
   # The thread ticks at once (with the real time) when this one yields.
   sleep 0.3
   assert S.last_tick >= started
-  assert_includes LOG.string, "[INFO] Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s, steal every 999999s, after steal every 999999s, " \
-                              "in ja every 999999s, locale every 999999s"
+  assert_logged LOG.string, "INFO", "Scheduler started: tick ten every 10s, boom every 25s, thirty every 30s, steal every 999999s, after steal every 999999s, " \
+                                   "in ja every 999999s, locale every 999999s"
   assert S.leader?
   S.stop!
   refute S.running?

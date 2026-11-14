@@ -12,6 +12,16 @@ ok   a registered command runs in the configured time zone
 error: time_zone "Mars/Olympus_Mons" is not a known time zone
 error: time_zone "Mars/Olympus_Mons" is not a known time zone
 ok   an unknown time zone is refused before a command or console runs
+ok   a command logs in the configured format
+ok   a command logs at the configured level
+error: log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)
+error: log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)
+error: log_format must be :text or :json (got :xml)
+ok   an unknown log level or format is refused before a command or console runs
+ok   a command waits for the error reports it made before it returns
+error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/blog.rb
+error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/blog.rb
+ok   a Sentry DSN this program cannot send is refused before a command or console runs
 ok   server? is false for a registered name
 Usage:
   ./blog [server [PORT]]   start the server
@@ -28,6 +38,8 @@ Usage:
   ./blog embedded_greet    render an embedded partial
   ./blog embedded_broken   render a partial that does not parse
   ./blog today             record Time.zone and Date.current
+  ./blog log_line          log one line
+  ./blog report            report an error it rescued
   ./blog help
 ok   help lists the registered commands after the built-in ones
 ok   built-in, numeric, empty and taken names are refused
@@ -49,6 +61,8 @@ Usage:
   ./blog embedded_greet    render an embedded partial
   ./blog embedded_broken   render a partial that does not parse
   ./blog today             record Time.zone and Date.current
+  ./blog log_line          log one line
+  ./blog report            report an error it rescued
   ./blog help
 ok   the built-ins still work next to registered commands
-13 tests, 49 assertions, 0 failures
+18 tests, 68 assertions, 0 failures

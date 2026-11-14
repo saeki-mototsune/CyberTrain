@@ -193,4 +193,46 @@ test "the outer case's after_this_case callable ran at its own end" do
   refute Cybertrain::Clock.travelling?
 end
 
+# The log scope (spec section 20: "resets ... the log tags"): a Scope a case
+# swapped in and never swapped back is gone before the next case, as a
+# travel is; a case driven inside a case gives the outer case its own back.
+SCOPE_SEEN = Array.new(0) { "" }
+
+def lifecycle_scope(id)
+  tags = Array.new(0) { "" }
+  tags << id
+  context = { "" => "" }
+  context.delete("")
+  Cybertrain::Logger::Scope.new(id, "GET", "/", "", tags, 0, context)
+end
+
+test "a case that swaps in a log scope and never swaps it back" do
+  Cybertrain::Logger.swap_scope(lifecycle_scope("leaked"))
+  assert_equal "leaked", Cybertrain::Logger.current_scope.scope_request_id
+end
+
+test "the next case starts with no log scope" do
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+  assert_nil Thread.current[Cybertrain::Logger::SCOPE_KEY]
+end
+
+test "a case driven inside a case leaves the outer case's log scope alone and drops its own" do
+  outer = lifecycle_scope("outer")
+  Cybertrain::Logger.swap_scope(outer)
+  file = top_level_file([], [])
+  SCOPE_SEEN.clear
+  body = lambda do
+    SCOPE_SEEN << Cybertrain::Logger.current_scope.scope_request_id
+    Cybertrain::Logger.swap_scope(lifecycle_scope("inner"))
+    nil
+  end
+  assert_equal ["ok", ""], run_by_hand(file, body)
+  assert_equal ["outer"], SCOPE_SEEN
+  assert Cybertrain::Logger.current_scope.equal?(outer)
+end
+
+test "and the case after it starts with no log scope again" do
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+end
+
 Cybertrain::Test.run!

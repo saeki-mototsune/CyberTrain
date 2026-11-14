@@ -413,7 +413,7 @@ run_variant() {
   cmp -s page.html missing.html || fail "GET /admin/jobs, signed out: the body differs from a missing page's"
   if [ "$VARIANT" = "invite" ]; then
     expect_equal "GET /sign_up" "404" "$(curl -sS -o /dev/null -w '%{http_code}' "$base/sign_up")"
-    grep -q '\[WARN\] no user exists yet' "$SERVER_LOG" || fail "no first-run warning in the server log"
+    grep -q ' WARN no user exists yet' "$SERVER_LOG" || fail "no first-run warning in the server log"
   else
     expect_contains "GET /sign_up" "<h1>Sign up</h1>" "$(curl -fsS "$base/sign_up")"
   fi

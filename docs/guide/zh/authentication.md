@@ -1,5 +1,5 @@
 ---
-source_sha256: f91f3179b1b8012bb304301973b9de2d6e153abc889799c6d946d2c35f104605
+source_sha256: a4339f594b9c9de55b09807da627307deb782afc97659df37c44b27bbc402157
 ---
 # 认证
 
@@ -70,7 +70,7 @@ class ArticlesController < ApplicationController
 <!-- list: points -->
 - 它只在还没有用户时、只在带有一次性令牌时、并且只对套接字对端是回环地址且不带 `X-Forwarded-For` 头的连接作出响应（同一主机上的代理会让每个请求都来自回环地址，并添加该头）。其他所有人都得到 404。
 - 令牌是程序启动时生成的 32 个随机十六进制字符（`SetupController.setup_token`），以常数时间比较。在地址检查无效的场合，例如在不添加 `X-Forwarded-For` 的代理之后，它让页面保持关闭。请求日志中显示为 `[FILTERED]`。
-- 在没有用户期间，服务器在启动前记录 `[WARN] no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine`；只有这一行会打印令牌。
+- 在没有用户期间，服务器在启动前记录 `WARN no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine`；只有这一行会打印令牌。
 - `<APP>_SETUP_OPEN=1`（`config/app.rb` 中的 `setup_open` 设置）为在另一台主机上的代理之后首次运行而取消地址检查，但从不取消令牌检查。用户创建后请取消它。
 
 ## 用户命令
@@ -113,11 +113,11 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ### 邮件中的链接
 
-链接以生成器在 `config/app.rb` 中声明的 `base_url` 设置开头，取自 `<APP>_BASE_URL`（`BLOG_BASE_URL=https://blog.example.com`）。在提供应用的每个地方都用 https 设置它。未设置时，只有在 `Host` 头受到检查（开发环境，或设置了 `CYBERTRAIN_HOSTS`）或在测试中时，链接才使用请求到达的地址；其他情况下不发送邮件，日志写出 `[ERROR] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`，页面照常回答。伪造的 `Host` 永远不会进入链接。
+链接以生成器在 `config/app.rb` 中声明的 `base_url` 设置开头，取自 `<APP>_BASE_URL`（`BLOG_BASE_URL=https://blog.example.com`）。在提供应用的每个地方都用 https 设置它。未设置时，只有在 `Host` 头受到检查（开发环境，或设置了 `CYBERTRAIN_HOSTS`）或在测试中时，链接才使用请求到达的地址；其他情况下不发送邮件，日志写出 `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`，页面照常回答。伪造的 `Host` 永远不会进入链接。
 
 ## 确认地址
 
-使用 `--confirmable` 时，注册会向该地址发送链接邮件，不让任何人登录。对尚未确认的地址输入正确的密码会以专门的消息拒绝（错误的密码得到通常的消息），登录页面链接到一个重新发送链接的表单。打开链接（`/confirmations/<token>`，有效三天，只能用一次）即确认地址；之后用户再登录。无论哪个控制器调用，关注点的 `start_new_session_for` 也会拒绝未确认的用户，并记录 `[WARN] no session started: user <id> has not confirmed its address`。这项检查位于生成器在 `--confirmable` 下写出的关注点中：新应用里是这样，在 0.4 升级中也是，因为那里的关注点是新文件。已经有关注点的应用会以差异的形式收到这项检查（[之后再开启确认](#turning-on-confirmation-later)）。
+使用 `--confirmable` 时，注册会向该地址发送链接邮件，不让任何人登录。对尚未确认的地址输入正确的密码会以专门的消息拒绝（错误的密码得到通常的消息），登录页面链接到一个重新发送链接的表单。打开链接（`/confirmations/<token>`，有效三天，只能用一次）即确认地址；之后用户再登录。无论哪个控制器调用，关注点的 `start_new_session_for` 也会拒绝未确认的用户，并记录 `WARN [<request id>] no session started: user <id> has not confirmed its address`。这项检查位于生成器在 `--confirmable` 下写出的关注点中：新应用里是这样，在 0.4 升级中也是，因为那里的关注点是新文件。已经有关注点的应用会以差异的形式收到这项检查（[之后再开启确认](#turning-on-confirmation-later)）。
 
 账户页面上的新地址在 `unconfirmed_email` 中等待，打开发往它的链接后才取代旧地址；页面可以撤回它（`DELETE /account/pending_email`），该链接随之失效。用户命令和 `/setup` 创建的用户是已确认的。密码重置会确认从未确认过的账户（链接证明了邮箱），但从不确认等待中的新地址：它会撤回该地址，其链接随之失效，因为请求它的人可能正是所有者要从其手中收回账户的人。所有者之后再重新请求即可。在账户页面上设置新密码则保留等待中的地址（用户就在那里，看得到它）。
 
@@ -238,7 +238,7 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 - 保存输出，在应用目录中用 `patch -p1` 应用（patch 会跳过不属于差异的行），或者在你修改过文件的地方手工应用每个差异。在应用这些差异之前，应用可能无法构建：新文件会调用差异所添加的内容。
 - `--force` 则用新文件覆盖旧文件，适用于你从未编辑过的文件；`ApplicationController` 中 0.4 的代码块只有在与 0.4 所写完全相同时才会被替换。
 - 新迁移只添加缺少的列；运行 `cybertrain db migrate`。使用 `--confirmable` 时，它还把已有用户视为（自创建起）已确认，否则他们都无法登录。
-- 使用 `--confirmable` 时，sessions 和 registrations 控制器的差异带有一行 `IMPORTANT:`：在应用它们之前，未确认的账户不会被告知为何无法登录，注册也不会收到链接邮件。在 0.4 的应用中关注点是新文件，连同确认检查一起写出，所以即使这些差异从未应用，它仍然不会为未确认的账户开始会话（并记录 `[WARN] no session started: user <id> has not confirmed its address`）。
+- 使用 `--confirmable` 时，sessions 和 registrations 控制器的差异带有一行 `IMPORTANT:`：在应用它们之前，未确认的账户不会被告知为何无法登录，注册也不会收到链接邮件。在 0.4 的应用中关注点是新文件，连同确认检查一起写出，所以即使这些差异从未应用，它仍然不会为未确认的账户开始会话（并记录 `WARN [<request id>] no session started: user <id> has not confirmed its address`）。
 - 升级时每个会话都会结束一次（cookie 现在是加密的），[升级 0.4 的应用](requests.md#upgrading-an-application-from-04) 的其余部分也同样适用。
 
 ### 之后再开启确认

@@ -1,5 +1,6 @@
 require "cybertrain/job"
 require "cybertrain/scheduler"
+require "cybertrain/error_reporter"
 
 module Cybertrain
   module Roles
@@ -11,7 +12,8 @@ module Cybertrain
     #
     #   starts   Scheduler, Job
     #   waits    Roles.wait_stop (TERM, INT)
-    #   stops    Job, Scheduler; the TERM and INT handlers given back
+    #   stops    Job, Scheduler; waits up to 2 s for the queued error
+    #            reports; the TERM and INT handlers given back
     # @api private
     class WorkerRunner
       # @param config [Config] the booted Application's
@@ -63,6 +65,8 @@ module Cybertrain
         # Both stops are no-ops for what never started.
         Job.stop!
         Scheduler.stop!
+        # The error reports still queued, up to 2 seconds (docs/design.md D88).
+        Cybertrain.error.drain_reports(2.0)
         Runtime.leave_role
         trap("TERM", previous_term)
         trap("INT", previous_int)

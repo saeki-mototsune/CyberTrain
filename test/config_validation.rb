@@ -57,6 +57,10 @@ test "the first problem in boot's order is the one reported" do
   assert_equal "CYBERTRAIN_ENCRYPTION_KEY must be 64 hex characters; make one with `cybertrain secret --hex`", c.validation_error
   c.permissions_policy = "a\nb"
   assert_equal "permissions_policy must not contain CR or LF", c.validation_error
+  c.sentry_dsn = "https://h/1"
+  assert_equal "sentry_dsn must look like https://<public key>@<host>/<project id>: no public key before the @", c.validation_error
+  c.mail_delivery_method = :letter
+  assert_equal "mail_delivery_method must be :smtp or :test (got :letter)", c.validation_error
   c.stream_poll_ms = 9
   assert_equal "stream_poll_ms must be at least 10 (got 9)", c.validation_error
   c.feed_restart_limit = 0
@@ -79,6 +83,12 @@ test "the first problem in boot's order is the one reported" do
   assert_includes c.validation_error, "csrf_exempt_prefixes entry \"/api\""
   c.session_same_site = "lax"
   assert_includes c.validation_error, "session_same_site must be Lax, Strict or None"
+  c.log_tags = [:user_agent]
+  assert_equal "log_tags may hold :request_id and :remote_ip (got :user_agent)", c.validation_error
+  c.log_format = :xml
+  assert_equal "log_format must be :text or :json (got :xml)", c.validation_error
+  c.log_level = :verbose
+  assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", c.validation_error
 end
 
 # One accepted and one refused value at each area's edge, all through the

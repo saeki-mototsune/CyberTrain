@@ -1,6 +1,7 @@
 require "cybertrain/cast"
 require "cybertrain/clock"
 require "cybertrain/background"
+require "cybertrain/error_reporter"
 
 module Cybertrain
   module Roles
@@ -12,7 +13,8 @@ module Cybertrain
     #   starts   the named feeds, the feed supervisor
     #   waits    Roles.wait_stop (TERM, INT, or a feed that keeps dying)
     #   stops    the supervisor, the feeds; the status rows withdrawn after
-    #            a clean stop; the TERM and INT handlers given back
+    #            a clean stop; waits up to 2 s for the queued error
+    #            reports; the TERM and INT handlers given back
     # @api private
     class FeedsRunner
       # @param config [Config] the booted Application's
@@ -103,6 +105,9 @@ module Cybertrain
         begin
           Background.stop_all unless stopped
         ensure
+          # The error reports still queued (a give-up's among them), up to
+          # 2 seconds (docs/design.md D88).
+          Cybertrain.error.drain_reports(2.0)
           Background.exit_on_feed_death = false
           Background.reset_supervisor!
           Runtime.leave_role

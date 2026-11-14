@@ -18,3 +18,6 @@ require "cybertrain/mailer"
 require "cybertrain/mailer/later"
 require "cybertrain/cache"
 require "cybertrain/rate_limit"
+# The Sentry sender: CYBERTRAIN_SENTRY_DSN sends each error report to
+# Sentry or GlitchTip (it loads HttpClient and TLS).
+require "cybertrain/error_reporter/sentry"

@@ -3,6 +3,7 @@ require "stringio"
 require "cybertrain/test"
 require "cybertrain"
 require "cybertrain/websocket"
+require_relative "support/log_capture"
 
 # Requiring the framework must not create Cybertrain.config: one made then
 # keeps the environment of that moment (development), before the lines
@@ -21,6 +22,10 @@ CONFIG_AT_REQUIRE = Cybertrain.config_loaded?
 # database there). It links SQLite through FFI, so its snapshot comes from
 # the compiled binary (spikes/NOTES.md rule 23). It requires the whole
 # framework, as an application does (boot reaches every part of it).
+# This program and the load path, read before the chdir below (a child
+# runs it again: test "the server waits for ...").
+SELF_PATH = File.expand_path($0)
+LOAD_ROOT = File.expand_path("..", __dir__)
 TMP = Dir.mktmpdir("cybertrain-roles")
 Dir.chdir(TMP)
 ENV["CYBERTRAIN_ENV"] = "test"
@@ -126,8 +131,8 @@ test "worker runs a due job on its job threads and stops them" do
   assert_equal "done", job_state(id)
   refute Cybertrain::Job.running?
   refute Cybertrain::Scheduler.running?
-  assert_includes LOG.string, "[INFO] Job threads started: 3"
-  assert_includes LOG.string, "[INFO] Scheduler started: cybertrain cache prune every 300s, hourly every 3600s"
+  assert_logged LOG.string, "INFO", "Job threads started: 3"
+  assert_logged LOG.string, "INFO", "Scheduler started: cybertrain cache prune every 300s, hourly every 3600s"
 end
 
 test "feeds runs only the named subscription and stops it" do
@@ -140,8 +145,124 @@ test "feeds runs only the named subscription and stops it" do
   spawn_stopper(0.3)
   assert_equal 0, run(["feeds", "trades"])
   refute Cybertrain::WebSocket.running?
-  assert_includes LOG.string, "[INFO] WebSocket started: trades"
+  assert_logged LOG.string, "INFO", "WebSocket started: trades"
   refute LOG.string.include?("WebSocket started: quotes")
+end
+
+# What SlowSubscriber received. It takes the "before the ..." reports
+# only (other reports, a feed's, pass it by at once): it says it has the
+# event (REPORT_STARTED), waits until the role's services have stopped
+# (REPORT_GATE, opened by the stopper below), then takes 0.3 s more. So the
+# report lands before the role returns only when the role waits for the
+# reporter (ErrorReporter#drain_reports, 2 s at most), however long the
+# role's own stop takes.
+REPORTED = Array.new(0) { "" }
+REPORT_STARTED = Queue.new
+REPORT_GATE = Queue.new
+
+class SlowSubscriber < Cybertrain::ErrorSubscriber
+  def report(event)
+    text = event.error_message
+    return nil unless text.start_with?("before the ")
+
+    REPORT_STARTED << text
+    REPORT_GATE.pop(timeout: 10)
+    sleep 0.3
+    REPORTED << text
+    nil
+  end
+end
+
+Cybertrain.error.subscribe(SlowSubscriber.new)
+
+def report_runtime(message)
+  raise message
+rescue RuntimeError => e
+  Cybertrain.error.report(e)
+end
+
+# Whether `role`'s service is running: the Scheduler for worker and
+# server, the feeds for feeds.
+def role_service_running?(role)
+  return Cybertrain::WebSocket.running? if role == "feeds"
+
+  Cybertrain::Scheduler.running?
+end
+
+# Waits up to `wait` seconds for role_service_running?(role) to be
+# `running`; whether it was.
+def await_role_service(role, running, wait)
+  ends_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + wait
+  while Process.clock_gettime(Process::CLOCK_MONOTONIC) < ends_at
+    return true if role_service_running?(role) == running
+
+    sleep 0.01
+  end
+  role_service_running?(role) == running
+end
+
+# The stopper of the drain tests, through a method whose parameter the
+# closure captures (NOTES rule 21): once the report is in the
+# subscriber's hands and the role's service runs, it stops the role (TERM
+# for the server, which traps it, Application.request_stop_roles for the
+# others), waits for the service to stop, then opens the gate.
+def spawn_drain_stopper(role)
+  Thread.new { stop_role_then_open_gate(role) }
+end
+
+def stop_role_then_open_gate(role)
+  REPORT_STARTED.pop(timeout: 10)
+  await_role_service(role, true, 10.0)
+  if role == "server"
+    # The TERM trap is installed just after the services start.
+    sleep 0.2
+    Process.kill("TERM", Process.pid)
+  else
+    Cybertrain::Application.request_stop_roles
+  end
+  await_role_service(role, false, 10.0)
+  REPORT_GATE << "go"
+  nil
+end
+
+# After the feeds test above registered "trades".
+test "worker and feeds wait for the queued error reports when they stop" do
+  report_runtime("before the worker stops")
+  spawn_drain_stopper("worker")
+  assert_equal 0, run(["worker"])
+  assert_equal ["before the worker stops"], REPORTED
+  report_runtime("before the feeds stop")
+  spawn_drain_stopper("feeds")
+  assert_equal 0, run(["feeds", "trades"])
+  assert_equal ["before the worker stops", "before the feeds stop"], REPORTED
+end
+
+# The server role prints its boot banner (the framework's version, the
+# port) on STDOUT, which this program's snapshot must not hold: it runs in
+# a child, this program run again (the pattern of test/feeds_exit.rb),
+# whose output goes to a file. Answers [exit status, stdout].
+SERVER_CHILD_FLAG = "CYBERTRAIN_ROLES_SERVER_CHILD"
+
+def server_child
+  out_path = "#{TMP}/server_child.log"
+  ENV[SERVER_CHILD_FLAG] = "1"
+  pid = 0
+  if RUBY_ENGINE == "ruby"
+    pid = Process.spawn("ruby", "-I", LOAD_ROOT, SELF_PATH, out: out_path, err: out_path)
+  else
+    pid = Process.spawn(SELF_PATH, out: out_path, err: out_path)
+  end
+  ENV.delete(SERVER_CHILD_FLAG)
+  status = Process.waitpid2(pid)[1].exitstatus.to_i
+  [status.to_s, File.read(out_path)]
+end
+
+test "the server waits for the queued error reports when it stops" do
+  result = server_child
+  out = result[1]
+  assert_includes out, "reported: before the server stops\n"
+  assert_includes out, "returned 0\n"
+  assert_equal "0", result[0]
 end
 
 test "worker and feeds give Spinel the SPINEL_WORKERS serve does" do
@@ -261,6 +382,20 @@ test "a feeds process stopped cleanly deletes its own status rows, not another p
   rows = Cybertrain::WebSocket::FeedTable.read_feeds
   assert_equal 1, rows.size
   assert_equal "quotes", Cybertrain::Cast.str(rows[0]["name"])
+end
+
+# The child of test "the server waits for ...": the server role on port 0
+# with a report queued, stopped by TERM once its services run; it prints
+# what the subscriber received by the time the role returned.
+if ENV[SERVER_CHILD_FLAG] == "1"
+  Cybertrain.config.port = 0
+  report_runtime("before the server stops")
+  spawn_drain_stopper("server")
+  status = run(["server"])
+  puts "reported: #{REPORTED.join(",")}"
+  puts "returned #{status}"
+  STDOUT.flush
+  exit(status)
 end
 
 Cybertrain::Test.run!

@@ -20,7 +20,9 @@ module Cybertrain
     # from app/ after them. When a job's retry_on /
     # discard_on names a framework exception class, the file defining it
     # is required first (the job's class body evaluates the constant, and
-    # `require "cybertrain"` does not load the mailer or the HTTP client).
+    # `require "cybertrain/core"` loads neither the mailer nor the HTTP
+    # client; `require "cybertrain"` loads both, the HTTP client through
+    # the Sentry sender, cybertrain/error_reporter/sentry).
     # When a model declares `encrypts`, it
     # first sets Config.encryption_required, so boot fails without
     # CYBERTRAIN_ENCRYPTION_KEY (cybertrain/encryptor, and with it openssl,

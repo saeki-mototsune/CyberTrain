@@ -3,6 +3,7 @@ require "cybertrain/websocket"
 require "cybertrain/net/tls"
 require "cybertrain/test/websocket_receiver"
 require "cybertrain/test"
+require_relative "support/log_capture"
 
 # Cybertrain::WebSocket.subscribe: the long-lived feeds Application#serve
 # runs through Cybertrain::Background. The checks that need no thread come
@@ -293,7 +294,7 @@ test "start! does nothing when the worker is off" do
   refute WS.start!(config)
   refute WS.running?
   assert_equal before + 1, count_of(LOG.string, "\n")
-  assert_includes LOG.string, "[INFO] Background worker off (CYBERTRAIN_WORKER=0): WebSocket subscriptions run elsewhere"
+  assert_logged LOG.string, "INFO", "Background worker off (CYBERTRAIN_WORKER=0): WebSocket subscriptions run elsewhere"
 end
 
 test "stop! when not running does nothing" do
@@ -357,8 +358,8 @@ test "messages reach on_message and status follows" do
   assert status.connected?
   assert status.last_message_at > 0
   assert_equal 0, status.reconnects
-  assert_includes LOG.string, "[INFO] WebSocket started: ticks (ws://127.0.0.1:"
-  assert_includes LOG.string, "[INFO] WebSocket \"ticks\" connected to 127.0.0.1:"
+  assert_logged LOG.string, "INFO", "WebSocket started: ticks (ws://127.0.0.1:"
+  assert_logged LOG.string, "INFO", "WebSocket \"ticks\" connected to 127.0.0.1:"
   refute LOG.string.include?("secret")
   WS.stop!
   refute WS.running?
@@ -382,7 +383,7 @@ test "on_open runs again after every reconnect" do
   assert await_reconnects("feed", 1, 5.0)
   assert_equal 1, WS.feed_status("feed").reconnects
   assert WS.feed_status("feed").connected?
-  assert_includes LOG.string, "[WARN] WebSocket \"feed\" disconnected: Cybertrain::WebSocket::ClosedError: 127.0.0.1:"
+  assert_logged LOG.string, "WARN", "WebSocket \"feed\" disconnected: Cybertrain::WebSocket::ClosedError: 127.0.0.1:"
   assert_includes LOG.string, ": closed by the server (1001) (retry in 1s)"
   assert_equal 2, count_of(LOG.string, "WebSocket \"feed\" connected to")
   WS.stop!
@@ -395,7 +396,7 @@ test "an exception in on_message keeps the connection" do
   assert WS.start!(Cybertrain::Config.new)
   assert await_size(FLAKY, 1, 5.0)
   assert_equal ["2"], FLAKY
-  assert_includes LOG.string, "[ERROR] WebSocket \"flaky\" on_message failed: RuntimeError: cannot parse 1"
+  assert_logged LOG.string, "ERROR", "WebSocket \"flaky\" on_message failed: RuntimeError: cannot parse 1"
   assert_equal 0, WS.feed_status("flaky").reconnects
   assert WS.feed_status("flaky").connected?
   WS.stop!
@@ -413,7 +414,7 @@ test "a silent feed is pinged, then reconnected" do
   subscribe_quiet(rx.url("/quiet"))
   assert WS.start!(Cybertrain::Config.new)
   assert await_log("WebSocket \"quiet\" silent for 2s; reconnecting", 1, 6.0)
-  assert_includes LOG.string, "[WARN] WebSocket \"quiet\" silent for 2s; reconnecting"
+  assert_logged LOG.string, "WARN", "WebSocket \"quiet\" silent for 2s; reconnecting"
   assert await_reconnects("quiet", 1, 10.0)
   assert_equal 2, count_of(LOG.string, "WebSocket \"quiet\" connected to")
   # The first frame of the first connection was the ping.
@@ -487,7 +488,7 @@ test "an exception in on_tick is logged and the loop continues" do
   subscribe_tick_bad(dead_url("/tick_bad"))
   assert WS.start!(Cybertrain::Config.new)
   assert await_size(TICKS_BAD, 3, 6.0)
-  assert_includes LOG.string, "[ERROR] WebSocket \"tick_bad\" on_tick failed: RuntimeError: tick failed 1"
+  assert_logged LOG.string, "ERROR", "WebSocket \"tick_bad\" on_tick failed: RuntimeError: tick failed 1"
   assert_equal 1, count_of(LOG.string, "on_tick failed")
   assert WS.thread_alive?("tick_bad")
   WS.stop!
@@ -501,7 +502,7 @@ test "an exception in on_tick while connected is logged and keeps the connection
   # sends through it.
   assert await_frames(rx, 1, 1, 6.0)
   assert_equal "after the error", frames_of(rx, 1)[0]
-  assert_includes LOG.string, "[ERROR] WebSocket \"tick_conn_bad\" on_tick failed: RuntimeError: tick failed while connected"
+  assert_logged LOG.string, "ERROR", "WebSocket \"tick_conn_bad\" on_tick failed: RuntimeError: tick failed while connected"
   assert_equal 0, WS.feed_status("tick_conn_bad").reconnects
   assert WS.feed_status("tick_conn_bad").connected?
   assert_equal 1, count_of(LOG.string, "WebSocket \"tick_conn_bad\" connected to")

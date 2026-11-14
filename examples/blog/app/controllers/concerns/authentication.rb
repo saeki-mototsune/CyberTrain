@@ -150,7 +150,7 @@ module Authentication
   # safe: the Host is checked (development, or CYBERTRAIN_HOSTS lists
   # the hosts the app answers to, so any other Host is refused before
   # an action runs), or the app runs its tests. In any other
-  # environment (production, staging, ...) "" and an [ERROR] line: the
+  # environment (production, staging, ...) "" and an ERROR line: the
   # mail named `mail` is not sent, as a link built from a Host header
   # anyone can forge would carry its token to their site.
   def mail_link_base(mail)
