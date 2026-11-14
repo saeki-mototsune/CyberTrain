@@ -357,7 +357,7 @@ périmée entre deux écritures&nbsp;; le démarrage le refuse sinon.
 `CYBERTRAIN_HEALTH_FEEDS=0` (ou `false`) désactive
 ce contrôle, pour un flux légitimement calme plus longtemps que le seuil ou
 un déploiement qui surveille ses flux autrement. Une table illisible laisse
-`/up` à 200 et journalise une seule ligne `[WARN]` jusqu’à ce qu’elle soit de
+`/up` à 200 et journalise une seule ligne `WARN` jusqu’à ce qu’elle soit de
 nouveau lisible.
 
 `./<app> feeds status` affiche les lignes pour un opérateur, une ligne par

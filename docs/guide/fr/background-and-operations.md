@@ -138,8 +138,8 @@ de classe et un test pour elle.
   `NotImplementedError` (un helper pas encore écrit), un `SystemStackError`
   ou un autre `ScriptError` levé par le code du job suit cette politique
   aussi, bien qu’aucun ne soit un `StandardError`&nbsp;; toute autre
-  exception hors de `StandardError` est journalisée (`[ERROR] Job thread N:
-  ...`), le thread de jobs continue, et la ligne reste `running` jusqu’à ce
+  exception hors de `StandardError` est journalisée (`ERROR Job thread N:
+  ...`) et [signalée](#error-reporting), le thread de jobs continue, et la ligne reste `running` jusqu’à ce
   que la reprise (ci-dessous) la prenne.
 - **`retry_on Klass, wait: 60, attempts: 5`.** `wait:` est un nombre de
   secondes (3 s’il est omis, la valeur par défaut de Rails) ou
@@ -221,8 +221,8 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
   l’heure).
 - **Comment une tâche s’exécute.** Un bloc s’exécute sur le thread du
   scheduler, une tâche à la fois&nbsp;; chaque exécution est enveloppée dans
-  un rescue qui journalise `[ERROR] Scheduled task "name" failed: ...`, et
-  la boucle continue. Le bloc ne prend pas d’argument (Spinel n’a pas
+  un rescue qui journalise `ERROR [schedule:name] Scheduled task "name"
+  failed: ...` et le signale, et la boucle continue. Le bloc ne prend pas d’argument (Spinel n’a pas
   d’`instance_eval`). Un appel SQLite garde son worker système jusqu’à son
   retour&nbsp;: avec `SPINEL_WORKERS=1` (la valeur par défaut), une longue
   requête bloque toutes les requêtes HTTP, et tous les autres threads,

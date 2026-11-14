@@ -35,6 +35,11 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`&nbsp;; des adresses IPv4/IPv6 ou des CIDR séparés par des virgules (`172.16.0.0/12,10.0.0.0/8`) dont les connexions ont leur `request.client_ip` tiré de la dernière adresse de `X-Forwarded-For`, pour un proxy atteint par un réseau, comme kamal-proxy dans son conteneur&nbsp;; une entrée invalide arrête le serveur au démarrage |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`&nbsp;: la plus grande page que donne `params.page_number` et qu’accepte `Relation#page` (voir [Pagination](models.md#pagination))&nbsp;; une valeur qui n’est pas un nombre d’au plus 18 chiffres, ou inférieure à 1, donne la valeur par défaut |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`&nbsp;; des noms séparés par des virgules remplacent la liste. Un paramètre dont le nom contient l’un d’eux (sans tenir compte de la casse ASCII&nbsp;: `password` correspond aussi à `user[password]`) voit sa valeur écrite `[FILTERED]` dans le journal des requêtes et sur la page d’erreur de développement&nbsp;; `[]` dans `config/app.rb` désactive ce filtrage |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`&nbsp;: le niveau le moins important écrit, `debug`, `info`, `warn`, `error`, `fatal` ou `none` (en majuscules ou minuscules&nbsp;; `none` coupe le journal des requêtes et écrit toujours les lignes d’erreur)&nbsp;; toute autre valeur arrête le démarrage (voir [Journaux](background-and-operations.md#logs)). `cybertrain test` utilise `:none` sauf si `config/app.rb` le fixe |
+| `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`&nbsp;; `json` écrit un objet JSON par ligne, pour un collecteur de journaux&nbsp;; toute autre valeur arrête le démarrage. `cybertrain test` garde des lignes de texte sauf si `config/app.rb` le fixe, quoi que dise la variable |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`&nbsp;: rien n’est envoyé. Un DSN Sentry ou GlitchTip y envoie chaque rapport d’erreur (voir [Signalement des erreurs](background-and-operations.md#error-reporting))&nbsp;; il demande `require "cybertrain/error_reporter/sentry"` (ou `require "cybertrain"`) dans `bin/<app>.rb`, faute de quoi le démarrage est refusé. Un DSN illisible arrête le démarrage en nommant la partie fautive, jamais la clé. `cybertrain test` le vide sauf si `config/app.rb` l’affecte |
+| `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`&nbsp;: la part des rapports d’erreur envoyés à Sentry, de 0.0 à 1.0, écrite en chiffres avec un `.chiffres` facultatif&nbsp;; les abonnés voient chaque rapport&nbsp;; toute autre valeur arrête le démarrage |
+| `CYBERTRAIN_RELEASE` | `release` | `""`&nbsp;: la version ou le commit envoyé avec chaque rapport d’erreur |
 | `CYBERTRAIN_WORKER` | `worker` | `true`&nbsp;; `0` ou `false` empêche un processus `server` d’exécuter les tâches planifiées, les jobs et les flux WebSocket (voir [Rôles des processus](background-and-operations.md#process-roles))&nbsp;; `./<app> worker` et `feeds` l’ignorent |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`&nbsp;: le nombre de jobs qu’un processus exécute en même temps (voir [Tâches de fond](background-and-operations.md#background-work))&nbsp;; au moins 1 |
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`&nbsp;: le fuseau de l’application, un nom IANA comme `Asia/Tokyo`, pour `Time.zone`, les limites des jours et des mois, `Date.current`, `l` et `time_tag` (voir [Fuseaux horaires](#time-zones))&nbsp;; un fuseau absent du zoneinfo du système arrête le démarrage |
@@ -55,7 +60,7 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`&nbsp;: pas d’AUTH&nbsp;; s’il est défini, le mailer s’authentifie avec AUTH PLAIN |
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`&nbsp;; un secret, jamais journalisé, jamais dans la bannière de démarrage ni dans un message d’erreur |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`&nbsp;: l’expéditeur qu’utilise `Mailer.deliver` quand `from:` n’est pas fourni |
-| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"`, que `require "cybertrain"` charge |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` dans l’environnement de test, `:smtp` dans tous les autres&nbsp;: `:test` garde chaque courriel dans `Cybertrain::Mailer.deliveries` au lieu de l’envoyer ([Tester les courriels](testing.md#testing-mail))&nbsp;; hors de l’environnement de test il démarre avec un avertissement et n’envoie rien&nbsp;; toute autre valeur arrête le démarrage&nbsp;; `cybertrain test` utilise `:test` sauf si `config/app.rb` le règle, quoi que dise la variable. |
 | `CYBERTRAIN_TEST_DATABASE` | — | `""`&nbsp;: le fichier que `cybertrain test` supprime, migre et sur lequel il exécute les tests, à la place de `storage/test.sqlite3`&nbsp;; un chemin de fichier (pas `:memory:` ni une URI `file:`). Un fichier existant n’est supprimé que si `cybertrain test` l’a créé (il marque ses bases), s’il est le `storage/test.sqlite3` de cette application ou s’il est vide&nbsp;; tout autre, et la base de développement ou de production, est refusé avec le code de sortie 2 sans rien supprimer ([Exécuter les tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`&nbsp;: la locale dans laquelle commence chaque requête, un nom comme `ja` ou `pt-BR` (voir [Locales](#locales))&nbsp;; toute autre valeur arrête le démarrage |
@@ -70,7 +75,10 @@ atteindre l’application en HTTPS.
 
 Autres attributs aux valeurs par défaut fixes et modifiables&nbsp;: `views_root`
 (`"app/views"`), `public_root` (`"public"`), `layout`
-(`"layouts/application"`), `log_level` (`:info`), `session_cookie_name`,
+(`"layouts/application"`), `log_tags` (`[:request_id]`&nbsp;: les étiquettes de la
+requête sur chaque ligne de journal&nbsp;; `:remote_ip` ajoute l’adresse du client,
+`[]` n’en montre aucune, et toute autre valeur arrête le démarrage&nbsp;; voir
+[Identifiants de requête](background-and-operations.md#request-ids)), `session_cookie_name`,
 `session_max_age` (2 semaines), `session_secure` (`true` en production, ce qui
 marque le cookie de session `Secure`&nbsp;; `false` ailleurs, mais
 `SameSite=None` et `Partitioned` ajoutent `Secure` de toute façon),
@@ -235,7 +243,8 @@ démarrage. Une variable vide ou non définie signifie la valeur par défaut. Un
 booléen accepte `1`/`true` ou `0`/`false`&nbsp;; un entier accepte des chiffres
 décimaux (avec un `-` initial facultatif) compris dans `min..max` (tous deux
 facultatifs). Toute autre valeur se rabat sur la valeur par défaut et
-journalise une ligne `[WARN]` qui le signale. Lire un nom non déclaré, ou
+journalise une ligne `WARN` qui le signale (une ligne de texte quel que soit
+`log_format`&nbsp;: `config/app.rb` est encore en cours). Lire un nom non déclaré, ou
 déclaré avec un autre type, lève `ArgumentError`, tout comme déclarer deux fois
 un même nom. Les tests changent une valeur avec `set_string_setting`,
 `set_int_setting` et `set_bool_setting`. `./NAME help` liste chaque réglage

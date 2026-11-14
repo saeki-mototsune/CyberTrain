@@ -34,6 +34,11 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`；以逗号分隔的 IPv4/IPv6 地址或 CIDR（`172.16.0.0/12,10.0.0.0/8`），来自这些地址的连接的 `request.client_ip` 取自 `X-Forwarded-For` 中的最后一个地址，用于通过网络访问的代理，例如运行在自己容器中的 kamal-proxy；无效的条目会让服务器在启动时停止 |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`：`params.page_number` 给出、`Relation#page` 接受的最大页码（参见[分页](models.md#pagination)）；不是最多 18 位的数字或小于 1 的值按默认值处理 |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`；以逗号分隔的名称会替换这个列表。名称中包含其中任一项的参数（按 ASCII 不区分大小写：`password` 也匹配 `user[password]`），其值在请求日志和开发时的错误页面上会写成 `[FILTERED]`；在 `config/app.rb` 中设为 `[]` 可关闭此功能 |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`：写出的最低级别，`debug`、`info`、`warn`、`error`、`fatal` 或 `none`（不区分大小写；`none` 关闭请求日志，但仍写错误行）；其他值会让启动停止（见[日志](background-and-operations.md#logs)）。除非 `config/app.rb` 设置了它，`cybertrain test` 使用 `:none` |
+| `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`；`json` 为日志收集器每行写一个 JSON 对象；其他值会让启动停止。除非 `config/app.rb` 设置了它，`cybertrain test` 不论变量是什么都保持文本行 |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`：什么都不发送。设为 Sentry 或 GlitchTip 的 DSN，就把每个错误报告发到那里（见[错误报告](background-and-operations.md#error-reporting)）；它需要 `bin/<app>.rb` 中有 `require "cybertrain/error_reporter/sentry"`（或 `require "cybertrain"`），否则拒绝启动。无法解析的 DSN 会让启动停止，指出出错的部分，但从不显示密钥。除非 `config/app.rb` 赋了值，`cybertrain test` 会把它清空 |
+| `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`：发送到 Sentry 的错误报告的比例，0.0 到 1.0，写成数字加可选的 `.数字`；订阅者收到每一个报告；其他值会让启动停止 |
+| `CYBERTRAIN_RELEASE` | `release` | `""`：随每个错误报告发送的版本或提交 |
 | `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让 `server` 进程不运行定时任务、作业和 WebSocket 数据订阅（参见[进程角色](background-and-operations.md#process-roles)）；`./<app> worker` 和 `feeds` 会忽略它 |
 | `CYBERTRAIN_JOB_THREADS` | `job_threads` | `3`：一个进程同时运行的作业数（参见[后台任务](background-and-operations.md#background-work)）；至少为 1 |
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`：应用的时区，`Asia/Tokyo` 这样的 IANA 名称，用于 `Time.zone`、日和月的边界、`Date.current`、`l` 和 `time_tag`（见[时区](#time-zones)）；系统 zoneinfo 中没有的时区会让启动停止 |
@@ -54,7 +59,7 @@ end
 | `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`：不使用 AUTH；设置后，邮件程序使用 AUTH PLAIN 进行身份验证 |
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`；属于机密，从不写入日志，也从不出现在启动横幅或错误消息中 |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`：未给出 `from:` 时 `Mailer.deliver` 使用的发件人 |
-| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；也可以是 `tls`（隐式 TLS）或 `none`（明文，凭据只发往环回地址）；两种 TLS 模式都需要 `require "cybertrain/net/tls"` |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；也可以是 `tls`（隐式 TLS）或 `none`（明文，凭据只发往环回地址）；两种 TLS 模式都需要 `require "cybertrain/net/tls"`（`require "cybertrain"` 会加载它） |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | 测试环境中为 `:test`，其他环境中为 `:smtp`：`:test` 把每封邮件保存在 `Cybertrain::Mailer.deliveries` 中而不发送（[测试邮件](testing.md#testing-mail)）；在测试环境之外它会带着警告启动，什么也不发送；其他值会让启动停止；`cybertrain test` 无论变量怎么写，除非 `config/app.rb` 设置了它，都使用 `:test` |
 | `CYBERTRAIN_TEST_DATABASE` | — | `""`：`cybertrain test` 删除、迁移并在其上运行测试的文件，代替 `storage/test.sqlite3`；必须是文件路径（不能是 `:memory:` 或 `file:` URI）。已有的文件只有在由 `cybertrain test` 创建（它会给数据库加标记）、就是本应用自己的 `storage/test.sqlite3` 或是空文件时才会被删除；其他文件以及开发或生产数据库会以退出状态 2 被拒绝，什么都不删除（[运行测试](testing.md#running-the-tests)） |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`：每个请求开始时的语言区域，`ja` 或 `pt-BR` 这样的名字（见 [语言区域](#locales)）；其他值会使启动停止 |
@@ -65,7 +70,7 @@ end
 
 只有在应用显示于另一个网站的框架内时，才使用 `None`（配合 `CYBERTRAIN_SESSION_PARTITIONED=1`）；浏览器必须通过 HTTPS 访问应用。
 
-其他带有固定且可覆盖默认值的属性：`views_root`（`"app/views"`）、`public_root`（`"public"`）、`layout`（`"layouts/application"`）、`log_level`（`:info`）、`session_cookie_name`、`session_max_age`（两周）、`session_secure`（生产环境中为 `true`，会把会话 cookie 标记为 `Secure`；其他环境中为 `false`，不过 `SameSite=None` 和 `Partitioned` 无论如何都会加上 `Secure`）、`pool_size`（4）、`static_files`/`csrf`（`true`）、`csrf_exempt_prefixes`（`[]`：路径前缀，例如 `"/api/"`，其下的非 GET 请求跳过 CSRF 检查，用于由程序携带自己的凭据调用的端点；每个前缀都必须以 `/` 开头和结尾，且不能只是 `/`，否则启动失败；前缀与发送时的路径进行匹配，所以百分号编码的写法仍会被检查；任何其他路由都不得匹配该前缀下的路径，并且被豁免的控制器不得依赖会话进行身份验证，因为那里仍然会加载会话）、`max_body_bytes`（10 MiB：发送时长度超过此值的请求体，会在读取之前以 413 响应；需要上传大文件时请调高它；gzip 请求体解压后的大小由 `request.decoded_body(limit)` 另行限制）、`max_render_depth`（同时打开的渲染最多 12 层：页面及其局部模板；局部模板确实需要更深的递归时请调高它；它必须至少为 1，否则启动失败）。升级说明：渲染嵌套以前没有限制，现在默认上限为 12（页面是第 1 层，所以局部模板可以嵌套 11 层；布局在页面之后渲染，不算嵌套），树更深的应用（分层评论、分类菜单）在设置 `max_render_depth` 之前会得到模板错误。文件上传：`max_upload_bytes`（每个上传文件 5 MiB；不得超过 `max_body_bytes`）、`max_multipart_parts`（128 个部分，包括文本字段，最多 4096）、`upload_root`（`"storage/uploads"`，`Cybertrain::BlobStore` 写入的位置；在第一次上传时创建，而不是在启动时）。
+其他带有固定且可覆盖默认值的属性：`views_root`（`"app/views"`）、`public_root`（`"public"`）、`layout`（`"layouts/application"`）、`log_tags`（`[:request_id]`：每行日志带的请求标签；`:remote_ip` 加上客户端地址，`[]` 不显示任何标签，其他值会让启动停止；见[请求 ID](background-and-operations.md#request-ids)）、`session_cookie_name`、`session_max_age`（两周）、`session_secure`（生产环境中为 `true`，会把会话 cookie 标记为 `Secure`；其他环境中为 `false`，不过 `SameSite=None` 和 `Partitioned` 无论如何都会加上 `Secure`）、`pool_size`（4）、`static_files`/`csrf`（`true`）、`csrf_exempt_prefixes`（`[]`：路径前缀，例如 `"/api/"`，其下的非 GET 请求跳过 CSRF 检查，用于由程序携带自己的凭据调用的端点；每个前缀都必须以 `/` 开头和结尾，且不能只是 `/`，否则启动失败；前缀与发送时的路径进行匹配，所以百分号编码的写法仍会被检查；任何其他路由都不得匹配该前缀下的路径，并且被豁免的控制器不得依赖会话进行身份验证，因为那里仍然会加载会话）、`max_body_bytes`（10 MiB：发送时长度超过此值的请求体，会在读取之前以 413 响应；需要上传大文件时请调高它；gzip 请求体解压后的大小由 `request.decoded_body(limit)` 另行限制）、`max_render_depth`（同时打开的渲染最多 12 层：页面及其局部模板；局部模板确实需要更深的递归时请调高它；它必须至少为 1，否则启动失败）。升级说明：渲染嵌套以前没有限制，现在默认上限为 12（页面是第 1 层，所以局部模板可以嵌套 11 层；布局在页面之后渲染，不算嵌套），树更深的应用（分层评论、分类菜单）在设置 `max_render_depth` 之前会得到模板错误。文件上传：`max_upload_bytes`（每个上传文件 5 MiB；不得超过 `max_body_bytes`）、`max_multipart_parts`（128 个部分，包括文本字段，最多 4096）、`upload_root`（`"storage/uploads"`，`Cybertrain::BlobStore` 写入的位置；在第一次上传时创建，而不是在启动时）。
 
 **作业与流**：除了上面的变量，`config/app.rb` 还设置 `scheduler_interval`（1 秒，调度器的心跳间隔）、`job_poll_interval`（1 秒，空闲的作业线程等待的时间；在有作业线程之前是 5）、`job_max_attempts`（5）、`job_heartbeat_interval`（30 秒）、`job_heartbeat_stale`（300 秒，必须大于心跳间隔）、`job_drain_timeout`（10 秒，`SIGTERM` 等待运行中作业的时间）和 `scheduler_lease_ttl`（30 秒，至少是 `scheduler_interval` 的两倍），以及流的设置 `stream_poll_ms`、`stream_retention`、`stream_ping_interval`、`stream_max_connections`、`stream_max_message` 和 `stream_max_backlog`（[限制与设置](realtime.md#limits-and-settings)）。超出范围的值会让启动停止，并给出指明该值的消息。
 
@@ -98,7 +103,7 @@ Cybertrain.config.bool_setting(:worker)
 Cybertrain.config.int_setting(:prune_interval)
 ```
 
-每个值只在启动时运行 `config/app.rb` 时读取一次。变量为空或未设置时取默认值。布尔值接受 `1`/`true` 或 `0`/`false`；整数接受 `min..max`（两者都可选）范围内的十进制数字（可带前导 `-`）。其他任何值都会退回默认值，并记录一行 `[WARN]` 加以说明。读取未声明的名称，或以其他类型声明的名称，会抛出 `ArgumentError`，重复声明同一名称也是如此。测试中可以用 `set_string_setting`、`set_int_setting` 和 `set_bool_setting` 修改值。`./NAME help` 会列出每个已声明的设置及其变量和默认值，启动横幅会打印当前值（`=> Settings: base_url="" worker=true ...`）；`secret: true` 的设置在这两处都只显示名称，值为 `[FILTERED]`。没有 `Cybertrain.config.base_url` 这样的访问器：Spinel 没有 `define_method`，所以读取方法是接收名称的带类型方法。
+每个值只在启动时运行 `config/app.rb` 时读取一次。变量为空或未设置时取默认值。布尔值接受 `1`/`true` 或 `0`/`false`；整数接受 `min..max`（两者都可选）范围内的十进制数字（可带前导 `-`）。其他任何值都会退回默认值，并记录一行 `WARN` 加以说明（这时 `config/app.rb` 仍在运行，所以不论 `log_format` 是什么，都是文本行）。读取未声明的名称，或以其他类型声明的名称，会抛出 `ArgumentError`，重复声明同一名称也是如此。测试中可以用 `set_string_setting`、`set_int_setting` 和 `set_bool_setting` 修改值。`./NAME help` 会列出每个已声明的设置及其变量和默认值，启动横幅会打印当前值（`=> Settings: base_url="" worker=true ...`）；`secret: true` 的设置在这两处都只显示名称，值为 `[FILTERED]`。没有 `Cybertrain.config.base_url` 这样的访问器：Spinel 没有 `define_method`，所以读取方法是接收名称的带类型方法。
 
 ### 语言区域
 
