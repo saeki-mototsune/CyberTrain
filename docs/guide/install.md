@@ -234,8 +234,9 @@ every command and the CI workflow `new` writes work as they do by default.
 Three things differ from what a `Gemfile` leads you to expect:
 
 - **Name one release.** Of the releases that satisfy a constraint, spin
-  selects the lowest, not the newest: `"~> X.Y"` is the first X.Y release,
-  and stays the first when later ones are published. So write the exact
+  selects the lowest, not the newest: `"~> X.Y"` is the lowest release in
+  the index from X.Y up to the next major version (only `"~> X.Y.Z"` stays
+  inside X.Y), and stays that one when later ones are published. So write the exact
   version, the one `cybertrain version` prints; `new` prints a note when V
   is anything else.
 - **Spinel still comes from the `cybertrain` command.** An index entry names

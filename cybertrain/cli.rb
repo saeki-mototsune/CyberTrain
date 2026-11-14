@@ -241,8 +241,9 @@ module Cybertrain
 
     # What `new --version V` says when V is not one release. spin's index
     # selection is minimal: of the releases that satisfy a constraint it
-    # takes the lowest, and spin.lock pins it, so "~> 0.4" is the first 0.4
-    # release for good and never a later one (docs/design.md D11). The
+    # takes the lowest, and spin.lock pins it, so "~> 0.4" (at least 0.4,
+    # below 1.0) is the lowest such release in the index for good and never
+    # a later one (docs/design.md D11). The
     # constraint is written as given: spin decides what it accepts.
     def self.version_note(version)
       return "" if version == "" || exact_version?(version)

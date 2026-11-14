@@ -1,5 +1,5 @@
 ---
-source_sha256: 3797a8e3645b38ea33c26ba9b58fb3449d72b63b5a580f041efa6f0713675fd8
+source_sha256: fd08b5684869f5b4763d349e0d740778368384b4585f19877ee82955540a685a
 ---
 # 安装
 
@@ -107,7 +107,7 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 `spin-index` 是 spin 按名称查找包的列表。框架目前还不在其中：在此之前，在用 `--version` 创建的应用里运行 `spin lock` 会得到 `not in the index: cybertrain`，依赖某个发布版本的办法是 `new` 默认写入的标签。进入索引之后，`cybertrain new NAME --version X.Y.Z` 写入 `cybertrain = "X.Y.Z"`，spin 在索引中找到该版本的提交，`spin.lock` 固定的内容与使用标签时相同（版本、仓库和提交），因此每条命令以及 `new` 写出的 CI 工作流都和默认情况下一样运行。有三点与 `Gemfile` 给人的预期不同：
 
-- **指定一个发布版本。** 在满足约束的发布版本中，spin 选择最低的，而不是最新的：`"~> X.Y"` 是第一个 X.Y 版本，之后发布了更新的版本也仍然是第一个。所以请写确切的版本，也就是 `cybertrain version` 打印的那个；V 是其他写法时，`new` 会打印一条提示。
+- **指定一个发布版本。** 在满足约束的发布版本中，spin 选择最低的，而不是最新的：`"~> X.Y"` 是索引中从 X.Y 起、到下一个主版本之前的最低版本（只有 `"~> X.Y.Z"` 才限定在 X.Y 之内），之后发布了更新的版本也仍然是它。所以请写确切的版本，也就是 `cybertrain version` 打印的那个；V 是其他写法时，`new` 会打印一条提示。
 - **Spinel 仍然由 `cybertrain` 命令提供。** 索引条目不指定 Spinel 的发布版本。框架是针对其中一个版本编写并测试的，即 `cybertrain setup` 构建的那个，同一版本的 `cybertrain` 命令会安装它。在用其他 Spinel 构建的项目里只运行 `spin add cybertrain`，这种用法未经测试。
 - **spin 读取的是它自己的索引副本。** 它只把索引克隆一次，放在 `~/.cache/spin/`，`spin lock` 不会更新这个副本；`spin search cybertrain` 会更新，并打印最新的发布版本。
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 3797a8e3645b38ea33c26ba9b58fb3449d72b63b5a580f041efa6f0713675fd8
+source_sha256: fd08b5684869f5b4763d349e0d740778368384b4585f19877ee82955540a685a
 ---
 # Installer cybertrain
 
@@ -256,8 +256,9 @@ attendre&nbsp;:
 
 - **Nommez une seule version.** Parmi les versions qui satisfont une
   contrainte, spin choisit la plus basse, pas la plus récente&nbsp;:
-  `"~> X.Y"` est la première version X.Y, et reste la première quand d’autres
-  sont publiées ensuite. Écrivez donc la version exacte, celle qu’affiche
+  `"~> X.Y"` est la version la plus basse de l’index à partir de X.Y et avant
+  la version majeure suivante (seul `"~> X.Y.Z"` reste dans X.Y), et reste
+  celle-là quand d’autres sont publiées ensuite. Écrivez donc la version exacte, celle qu’affiche
   `cybertrain version`&nbsp;; `new` affiche une remarque quand V est autre
   chose.
 - **Spinel vient toujours de la commande `cybertrain`.** Une entrée de l’index

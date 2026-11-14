@@ -540,7 +540,7 @@ has never been run for this repository, so read its output the first time.
 ```sh
 git clone https://github.com/saeki-mototsune/cybertrain && cd cybertrain
 git checkout vX.Y.Z            # publish records HEAD, not a tag
-spinel --version               # the release Cybertrain::SPINEL_TAG names
+"$(dirname "$(command -v spin)")/spinel" --version   # the compiler spin runs: the release Cybertrain::SPINEL_TAG names
 gh auth status
 spin publish --repo https://github.com/saeki-mototsune/cybertrain
 ```
@@ -555,14 +555,17 @@ What `spin publish` does, in order, stopping at the first that fails:
    count) and takes `git rev-parse HEAD` as the release's commit, which
    must be on a remote branch (`git branch -r --contains`) and whose
    `spin.toml` must carry the same version;
-4. runs the whole of `spin test` with the Spinel on `PATH`: every program
-   must pass (the full suite, a quarter of an hour or more);
+4. runs the whole of `spin test`: every program must pass (the full
+   suite, a quarter of an hour or more). The compiler is the `spinel`
+   executable in the directory of the `spin` binary, and the one on `PATH`
+   only when there is none there, which is why the recipe asks that one,
+   not a bare `spinel`, for its version;
 5. updates its clone of the index (`~/.cache/spin/index`) and refuses if
    `packages/cybertrain.toml` names another repository, or already has
    this version (compared as numbers: `0.5` and `0.5.0` are one version);
 6. appends a `[[release]]` (the version and the full commit) and a
-   `[[probe]]` (the version, the revision in the parentheses of `spinel
-   --version`, `result = "pass"`, the date) to that file;
+   `[[probe]]` (the version, the revision in the parentheses of that
+   compiler's `--version`, `result = "pass"`, the date) to that file;
 7. with `gh` installed and authenticated: forks `matz/spin-index` for the
    `gh` user, pushes a branch `publish-cybertrain-X-Y-Z` there and opens a
    pull request titled `cybertrain X.Y.Z` against the index. Without `gh`

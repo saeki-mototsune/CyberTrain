@@ -1,5 +1,5 @@
 ---
-source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
+source_sha256: 5b60d87552dd1ea4370aeebf33cd278e404c4f2c7a0ce5acccb5edf4a4a5752c
 ---
 # アプリをテストする
 
@@ -519,4 +519,4 @@ Cybertrain::Test.run!
 
 ## 継続的インテグレーション
 
-`cybertrain new` はアプリ用に `.github/workflows/ci.yml` を書き出します。これはこのリポジトリの `setup-cybertrain` アクション（[.github/actions/setup-cybertrain](../../.github/actions/setup-cybertrain/action.yml)）を CLI のリリースタグに固定して呼び出します。アクションは SQLite、zlib、OpenSSL のヘッダーと Ruby をインストールし、アプリが固定しているフレームワークのコミットを `spin.lock` から読み、そのコミットのフレームワークを取得して、その `cybertrain doctor` と `cybertrain setup` を実行します（`~/.cybertrain/spinel` は Spinel のリリースとランナーのイメージごとにキャッシュされます）。そのあとワークフローは `spin.lock` が最新であること（`spin lock && git diff --exit-code spin.lock`）と `gen/` が新しいこと（`SPIN_DEBUG=1 spin run gen -- --check`）を確かめ、`cybertrain test` を実行します。ツールチェーンの手順が変わるときは、各アプリのコピーではなくアクションが変わります。コミットは `spin.lock` から読むので、ワークフローは既定の git 依存を前提にしています。`--path` で作ったアプリは、フレームワークのチェックアウトを `framework-path` としてアクションに渡します。
+`cybertrain new` はアプリ用に `.github/workflows/ci.yml` を書き出します。これはこのリポジトリの `setup-cybertrain` アクション（[.github/actions/setup-cybertrain](../../.github/actions/setup-cybertrain/action.yml)）を CLI のリリースタグに固定して呼び出します。アクションは SQLite、zlib、OpenSSL のヘッダーと Ruby をインストールし、アプリが固定しているフレームワークのコミットを `spin.lock` から読み、そのコミットのフレームワークを取得して、その `cybertrain doctor` と `cybertrain setup` を実行します（`~/.cybertrain/spinel` は Spinel のリリースとランナーのイメージごとにキャッシュされます）。そのあとワークフローは `spin.lock` が最新であること（`spin lock && git diff --exit-code spin.lock`）と `gen/` が新しいこと（`SPIN_DEBUG=1 spin run gen -- --check`）を確かめ、`cybertrain test` を実行します。ツールチェーンの手順が変わるときは、各アプリのコピーではなくアクションが変わります。コミットは `spin.lock` から読みます。既定の git 依存でも、インデックスのバージョン（`--version`）でも、`spin.lock` にはコミットが記録されます。`--path` で作ったアプリは、フレームワークのチェックアウトを `framework-path` としてアクションに渡します。
