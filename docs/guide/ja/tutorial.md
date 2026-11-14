@@ -1,5 +1,5 @@
 ---
-source_sha256: 975d8633057527c9881297b2f138afcb0dc76be0f4b64a0ef3504c01374726f4
+source_sha256: 5b2b87f381188b5c2bfcaa11d389883df089b495e9a2504638baf6d1d0352a14
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -670,7 +670,7 @@ end
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-コメントを投稿すると、サーバーのログから、ジョブがレスポンスの後に実行されたことが分かります。ジョブの行には、ジョブのタグと、それをキューに入れたリクエストの ID が付きます：
+コメントを投稿すると、サーバーのログにジョブの実行が出ます。ここではレスポンスの後に実行されていますが、ジョブのスレッドがレスポンスを書く前に行を取ることもあるので、行の順序は変わることがあります。ジョブの行には、ジョブのタグと、それをキューに入れたリクエストの ID が付きます：
 
 ```text 出力 — cybertrain server
 2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1

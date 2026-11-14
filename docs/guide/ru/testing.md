@@ -1,5 +1,5 @@
 ---
-source_sha256: 576be65a974bf2dc7726945227d1fc4a732de043c7fd59dc05f1ddd2b342cf17
+source_sha256: d98dfd28dfd1249b9c4db726377bcf36bb504e62f2f74284cbab8f3eca23bfd3
 ---
 # Тестирование приложения
 
@@ -735,7 +735,11 @@ end
 Отчёты об ошибках идут в `Cybertrain::Test::SentryReceiver` — Sentry на
 `127.0.0.1`, который загружает `cybertrain/test_help`. `cybertrain test`
 игнорирует экспортированный DSN, поэтому тест присваивает его сам и потом
-возвращает прежний:
+возвращает прежний. Пример запускает `NotifyCommentJob` из examples/blog,
+который бросает собственный `NotifyCommentJob::CommentGone`, когда
+переданного комментария больше нет, и отбрасывает себя ([Retries and discards](background-and-operations.md#retries-and-discards)); задача из
+учебника только пишет в лог, поэтому сначала добавьте ей этот `find_by`,
+класс и `discard_on CommentGone`:
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"

@@ -1,5 +1,5 @@
 ---
-source_sha256: 576be65a974bf2dc7726945227d1fc4a732de043c7fd59dc05f1ddd2b342cf17
+source_sha256: d98dfd28dfd1249b9c4db726377bcf36bb504e62f2f74284cbab8f3eca23bfd3
 ---
 # 测试应用
 
@@ -406,7 +406,7 @@ end
 
 行首的时间每次运行都不同（要比较它，就用 `freeze_time` 冻结），所以比较它之后的部分：级别、标签和消息。应用的请求日志在测试中不输出（`log_level :none`），但失败作业的 `ERROR` 行即使这样也会写出；执行失败作业的测试要像上面那样捕获日志器，否则这一行会出现在测试的行之间。
 
-错误报告送到 `Cybertrain::Test::SentryReceiver`，这是 `cybertrain/test_help` 加载的、位于 `127.0.0.1` 上的 Sentry。`cybertrain test` 忽略导出的 DSN，所以测试自己赋一个 DSN，并在之后恢复：
+错误报告送到 `Cybertrain::Test::SentryReceiver`，这是 `cybertrain/test_help` 加载的、位于 `127.0.0.1` 上的 Sentry。`cybertrain test` 忽略导出的 DSN，所以测试自己赋一个 DSN，并在之后恢复。这个例子运行 examples/blog 的 `NotifyCommentJob`，当给它的评论已不存在时，它抛出自己的 `NotifyCommentJob::CommentGone` 并丢弃自身（[Retries and discards](background-and-operations.md#retries-and-discards)）；教程中的作业只记录日志，所以请先给它加上那个 `find_by`、这个类和 `discard_on CommentGone`：
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"

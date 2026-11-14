@@ -1,5 +1,5 @@
 ---
-source_sha256: 975d8633057527c9881297b2f138afcb0dc76be0f4b64a0ef3504c01374726f4
+source_sha256: 5b2b87f381188b5c2bfcaa11d389883df089b495e9a2504638baf6d1d0352a14
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -891,8 +891,9 @@ Mettez-le en file depuis `create`, une fois le commentaire enregistré&nbsp;:
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-Postez un commentaire&nbsp;: le journal du serveur montre le job qui s’exécute
-après la réponse, ses lignes marquées du job et de l’identifiant de la requête
+Postez un commentaire&nbsp;: le journal du serveur montre le job qui s’exécute,
+ici après la réponse (un thread de jobs peut aussi prendre la ligne avant que
+la réponse soit écrite, si bien que l’ordre des lignes peut varier), ses lignes marquées du job et de l’identifiant de la requête
 qui l’a mis en file&nbsp;:
 
 ```text sortie — cybertrain server

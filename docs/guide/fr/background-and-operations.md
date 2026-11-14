@@ -1,5 +1,5 @@
 ---
-source_sha256: cfa6f0569935ef285a8ec498ef98568a41931115dffe39d74948822f1ac5c8d3
+source_sha256: 98680fc9de1560bab13ec70bdcf7ae168650e58642ea0d0d7bf89fe6366d10a9
 ---
 # Tâches de fond et exploitation
 
@@ -805,8 +805,9 @@ framework (l’identifiant et la tentative d’un job). `handle(context: {}) { }
 renvoie la valeur du bloc, ou nil après avoir signalé une `StandardError` (ou
 `JSON::ParserError`, `JSON::NestingError`) levée par le bloc&nbsp;; `break v`
 dans son bloc fait renvoyer `v` à `handle`, et `return` sort de la méthode qui
-l’entoure. Aucun des deux ne lève jamais d’exception chez l’appelant&nbsp;: si
-le signalement lui-même échoue, le journal dit
+l’entoure. Une exception hors de ces classes levée dans le bloc de `handle`
+va jusqu’à l’appelant. Le signalement lui-même ne lève jamais d’exception
+chez l’appelant&nbsp;: si le signalement échoue, le journal dit
 `error report failed: <Class>: <message>` au niveau error.
 
 **Abonnés.** Un abonné est une classe de l’application, une sous-classe de
@@ -905,9 +906,9 @@ reste est perdu. Une reconstruction en développement attend aussi.
 rapport comme un événement Sentry&nbsp;:
 
 ```sh
-CYBERTRAIN_SENTRY_DSN=https://<public key>@o1.ingest.sentry.io/42
-CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # facultatif : envoyé comme release de l'événement
-CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # facultatif : en envoyer un quart
+export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42
+export CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # facultatif : envoyé comme release de l'événement
+export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # facultatif : en envoyer un quart
 ```
 
 - Le DSN s’écrit `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>`
@@ -931,7 +932,10 @@ CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # facultatif : en envoyer un quart
   `error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`.
 - `CYBERTRAIN_RELEASE` (`c.release`, vide par défaut) nomme la version ou le
   commit&nbsp;; il n’est pas vérifié.
-- Chaque envoi attend au plus 5 secondes et n’est jamais retenté. Un refus est
+- Chaque envoi attend au plus 5 secondes une fois le nom de l’hôte résolu (la
+  résolution bloque le thread de livraison et l’échéance ne peut pas
+  l’interrompre, si bien qu’un résolveur bloqué peut retenir un envoi plus
+  longtemps), et n’est jamais retenté. Un refus est
   journalisé au niveau warn, `error report not sent: Sentry answered 429`, de
   même qu’un échec de connexion, `error report not sent: <Class>: <message>`.
 - L’événement porte la classe et le message, `where` comme transaction,
@@ -964,8 +968,9 @@ La conception&nbsp;: [docs/design.md](../design.md) D86 et D87.
   change avec elle&nbsp;; un test qui cherchait une ligne entière cherche
   le niveau et le message séparément (`" ERROR "` et le message&nbsp;;
   [Mettre à jour depuis 0.4](testing.md#upgrading-from-04)).
-- Chaque réponse porte `X-Request-Id`. Un proxy qui en posait un voit le
-  sien utilisé seulement s’il est de confiance.
+- Chaque réponse de l’application porte `X-Request-Id` (pas les 400 et 413
+  du serveur pour une requête qu’il ne peut pas lire). Un proxy qui en
+  posait un voit le sien utilisé seulement s’il est de confiance.
 - `cybertrain_jobs` gagne la colonne `request_id`&nbsp;; le premier processus
   qui touche la table l’ajoute.
 - Le framework définit maintenant des méthodes nommées `request_id` et

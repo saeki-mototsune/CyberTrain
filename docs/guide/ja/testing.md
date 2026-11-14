@@ -1,5 +1,5 @@
 ---
-source_sha256: 576be65a974bf2dc7726945227d1fc4a732de043c7fd59dc05f1ddd2b342cf17
+source_sha256: d98dfd28dfd1249b9c4db726377bcf36bb504e62f2f74284cbab8f3eca23bfd3
 ---
 # アプリをテストする
 
@@ -406,7 +406,7 @@ end
 
 行頭の時刻は実行のたびに変わるので（比べるなら `freeze_time` で止めます）、その後ろ、つまりレベル、タグ、メッセージを比べます。アプリケーションのリクエストログはテストでは出ませんが（`log_level :none`）、失敗したジョブの `ERROR` の行はそれでも書かれます。失敗するジョブを実行するテストは上のようにロガーを捕まえます。そうしないと、その行がテストの行の間に出ます。
 
-エラー報告は `Cybertrain::Test::SentryReceiver` に届きます。これは `cybertrain/test_help` が読み込む `127.0.0.1` 上の Sentry です。`cybertrain test` はエクスポートされた DSN を無視するので、テストが DSN を代入し、後で戻します：
+エラー報告は `Cybertrain::Test::SentryReceiver` に届きます。これは `cybertrain/test_help` が読み込む `127.0.0.1` 上の Sentry です。`cybertrain test` はエクスポートされた DSN を無視するので、テストが DSN を代入し、後で戻します。この例は examples/blog の `NotifyCommentJob` を動かします。これは渡されたコメントがなくなっていると自分の `NotifyCommentJob::CommentGone` を投げて自身を破棄します（[Retries and discards](background-and-operations.md#retries-and-discards)）。チュートリアルのジョブはログを出すだけなので、先にその `find_by`、クラス、`discard_on CommentGone` を足してください：
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"

@@ -1,5 +1,5 @@
 ---
-source_sha256: 975d8633057527c9881297b2f138afcb0dc76be0f4b64a0ef3504c01374726f4
+source_sha256: 5b2b87f381188b5c2bfcaa11d389883df089b495e9a2504638baf6d1d0352a14
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -670,7 +670,7 @@ end
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-发表一条评论，服务器的日志会显示作业在响应之后运行，作业的行带有作业的标签和把它加入队列的请求的 ID：
+发表一条评论，服务器的日志会显示作业的运行：这里它在响应之后运行，但作业线程也可能在响应写出之前取得这一行，所以各行的顺序可能不同；作业的行带有作业的标签和把它加入队列的请求的 ID：
 
 ```text 输出 — cybertrain server
 2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1

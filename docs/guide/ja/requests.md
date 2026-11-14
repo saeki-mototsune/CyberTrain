@@ -1,5 +1,5 @@
 ---
-source_sha256: 5bf1d1e0eeab5c9b7faf3703795f14e54e91adaaeaf0e54a303f40ec3bb23a59
+source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
 ---
 # リクエスト
 
@@ -296,4 +296,4 @@ Rack は gzip されたリクエストボディをそのままにします。こ
 - `format:` なし、または書式名つきの `time_tag` は `I18n.l` で整形されます（英語のページでは以前と同じ英語の文面です）。
 - gen は `gen/locales.rb`（`config/locales/` がなければ空）を書き、`app/mailers/**/*.rb` を読み込みます。`cybertrain new` は `config/locales/en.yml` を書きます。古いアプリケーションも足せます。
 - `allow_unauthenticated_access` はフレームワークのメソッドになりました。0.4 のジェネレーターが `ApplicationController` に書いたものも動き続け、そちらが優先されます。`cybertrain generate authentication` をもう一度実行すると、パスワードリセット、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザーが加わり、0.4 が書いたファイルの差分が表示されます（[0.4 からのアップグレード](authentication.md#upgrading-from-04)）。
-- すべてのレスポンスが `X-Request-Id` を持ち、プロキシの `X-Request-Id` はそのプロキシが信頼されているときだけ使われます。ログの行の形もすべて変わります（[ログとエラー報告の 0.4 からの更新](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。
+- アプリケーションが返すすべてのレスポンスが `X-Request-Id` を持ち（サーバーが読めないリクエストに返す 400 と 413 は除きます）、プロキシの `X-Request-Id` はそのプロキシが信頼されているときだけ使われます。ログの行の形もすべて変わります（[ログとエラー報告の 0.4 からの更新](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。

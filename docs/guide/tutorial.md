@@ -851,9 +851,10 @@ Queue it from `create`, once the comment is saved:
                                            component: CommentComponent.new(comment: @comment))
 ```
 
-Post a comment, and the server's log shows the job running after the
-response, its lines tagged with the job and with the id of the request that
-queued it:
+Post a comment, and the server's log shows the job running, its lines
+tagged with the job and with the id of the request that queued it. Here it
+runs after the response; a job thread may also take the row before the
+response is written, so the order of the lines can differ:
 
 ```text output — cybertrain server
 2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started POST "/articles/1/comments" for 127.0.0.1

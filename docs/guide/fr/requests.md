@@ -1,5 +1,5 @@
 ---
-source_sha256: 5bf1d1e0eeab5c9b7faf3703795f14e54e91adaaeaf0e54a303f40ec3bb23a59
+source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
 ---
 # Requêtes
 
@@ -359,4 +359,4 @@ Ce qui change pour une application écrite pour 0.4 (la liste complète est la s
 - `time_tag` sans `format:`, ou avec un nom de format, formate par `I18n.l` (le même texte anglais qu’avant dans une page en anglais).
 - gen écrit `gen/locales.rb` (vide sans `config/locales/`) et charge `app/mailers/**/*.rb`&nbsp;; `cybertrain new` écrit `config/locales/en.yml`, qu’une application plus ancienne peut ajouter.
 - `allow_unauthenticated_access` est désormais une méthode du framework&nbsp;; celle que le générateur de 0.4 a écrite dans `ApplicationController` fonctionne toujours et l’emporte. Relancer `cybertrain generate authentication` ajoute la réinitialisation du mot de passe, le verrouillage, «&nbsp;rester connecté&nbsp;», la page de compte et les administrateurs, et affiche des diffs pour les fichiers que 0.4 a écrits ([Mettre à jour depuis 0.4](authentication.md#upgrading-from-04)).
-- Chaque réponse porte `X-Request-Id`, et le `X-Request-Id` d’un proxy n’est utilisé que si le proxy est de confiance&nbsp;; chaque ligne de journal change de forme ([Mettre à jour les journaux et les rapports d’erreur depuis 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).
+- Chaque réponse de l’application porte `X-Request-Id` (pas les 400 et 413 du serveur pour une requête qu’il ne peut pas lire), et le `X-Request-Id` d’un proxy n’est utilisé que si le proxy est de confiance&nbsp;; chaque ligne de journal change de forme ([Mettre à jour les journaux et les rapports d’erreur depuis 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).

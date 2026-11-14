@@ -1,5 +1,5 @@
 ---
-source_sha256: cfa6f0569935ef285a8ec498ef98568a41931115dffe39d74948822f1ac5c8d3
+source_sha256: 98680fc9de1560bab13ec70bdcf7ae168650e58642ea0d0d7bf89fe6366d10a9
 ---
 # 后台任务与运维
 
@@ -325,7 +325,7 @@ price = Cybertrain.error.handle(context: { "feed" => "prices" }) do
 end
 ```
 
-`report(e, handled: true, context: {})` 立即返回 nil：报告在报告器自己的线程上投递。上下文的键和值会变成 String，并覆盖在框架添加的上下文（作业的 ID 和尝试次数）之上。`handle(context: {}) { }` 返回块的值；块抛出 `StandardError`（或 `JSON::ParserError`、`JSON::NestingError`）时，报告它并返回 nil；块中的 `break v` 让 `handle` 返回 `v`，`return` 从外围的方法返回。两者都不会向调用方抛出异常：如果报告本身失败，日志会以 error 级别记录 `error report failed: <Class>: <message>`。
+`report(e, handled: true, context: {})` 立即返回 nil：报告在报告器自己的线程上投递。上下文的键和值会变成 String，并覆盖在框架添加的上下文（作业的 ID 和尝试次数）之上。`handle(context: {}) { }` 返回块的值；块抛出 `StandardError`（或 `JSON::ParserError`、`JSON::NestingError`）时，报告它并返回 nil；块中的 `break v` 让 `handle` 返回 `v`，`return` 从外围的方法返回。块中抛出的其他类的异常会传到调用方。报告本身从不向调用方抛出异常：如果报告失败，日志会以 error 级别记录 `error report failed: <Class>: <message>`。
 
 **订阅者。** 订阅者是应用自己的类，是定义了 `report(event)` 的 `Cybertrain::ErrorSubscriber` 子类：
 
@@ -370,16 +370,16 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 **发送到 Sentry 或 GlitchTip。** `bin/<app>.rb` 中有那一行时，把 `CYBERTRAIN_SENTRY_DSN`（或 `c.sentry_dsn`）设为项目的 DSN，就会把每个报告作为 Sentry 事件发送：
 
 ```sh
-CYBERTRAIN_SENTRY_DSN=https://<public key>@o1.ingest.sentry.io/42
-CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # 可选：作为事件的 release 发送
-CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 可选：发送其中四分之一
+export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42
+export CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # 可选：作为事件的 release 发送
+export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 可选：发送其中四分之一
 ```
 
 - DSN 的形式为 `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>`（secret，即 Sentry 旧的后半部分，会被忽略）；事件发送到 `<scheme>://<host>[:<port>][/<path>]/api/<project id>/envelope/`，Sentry 和 GlitchTip 都接受。它含有密钥：放在部署的机密中，而不是提交的文件中。无法读取的 DSN 会让启动停止，指出出错的部分，从不显示密钥：`error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`。
 - 在没有链接发送器的程序中设置 DSN 会让启动停止：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。你自己的发送器类（`Cybertrain::ErrorReporter::Sender` 的子类）要定义返回非空名字的 `sender_name`，否则会遇到同样的拒绝。
 - `CYBERTRAIN_ERROR_SAMPLE_RATE`（`c.error_sample_rate`，1.0）是发送的报告所占的比例，0.0 到 1.0；订阅者仍然看到每一个报告。变量必须是数字加可选的 `.数字`，否则启动停止：`error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`。
 - `CYBERTRAIN_RELEASE`（`c.release`，默认为空）标明版本或提交；不做检查。
-- 每次发送最多等待 5 秒，从不重试。拒绝会以 warn 级别记录为 `error report not sent: Sentry answered 429`，连接失败也一样：`error report not sent: <Class>: <message>`。
+- 解析主机名之后，每次发送最多等待 5 秒（名称解析会阻塞投递线程，截止时间无法中断它，所以停滞的解析器可能让一次发送等得更久），从不重试。拒绝会以 warn 级别记录为 `error report not sent: Sentry answered 429`，连接失败也一样：`error report not sent: <Class>: <message>`。
 - 事件包含类和消息、作为 transaction 的 `where`、环境、release、作为标签的请求 ID、请求的方法和路径、作为 `extra` 的上下文，以及有回溯时的帧。
 - 调用经过 `Cybertrain::HttpClient` 及其针对私有地址的防护（[出站 HTTP](external-services.md#outbound-http)）：在私有网络或同一台机器上的 GlitchTip 需要 `CYBERTRAIN_HTTP_ALLOW_PRIVATE=1`，这会为应用的每一个出站调用解除防护。
 
@@ -390,7 +390,7 @@ CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 可选：发送其中四分之一
 ### 从 0.4 升级日志与错误报告
 
 - 每一行日志的形状都变了：行首方括号中的级别（`[INFO]`）换成了时间、级别和标签，`2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`。读取日志的东西（脚本中对 `[ERROR]` 的 grep、告警）也要随之修改；查找整行的测试改为分别查找级别和消息（`" ERROR "` 和消息；[从 0.4 升级](testing.md#upgrading-from-04)）。
-- 每个响应都带 `X-Request-Id`。设置了它的代理，只有在受信任时才会采用它的值。
+- 应用返回的每个响应都带 `X-Request-Id`（服务器对无法读取的请求返回的 400 和 413 除外）。设置了它的代理，只有在受信任时才会采用它的值。
 - `cybertrain_jobs` 增加 `request_id` 列；第一个访问该表的进程会添加它。
 - 框架现在定义了名为 `request_id` 和 `release`（各返回 String）以及 `handle`（块的值）的方法。同名的模型列如果读取方法返回其他类型（整数的 `request_id`、外键），可能让构建停止，因为一个方法名在整个程序中只有一种返回类型（spikes/NOTES.md 规则 34），而 gen 不会改名：请给列改名。
 - 除非 `config/app.rb` 设置了它们，`cybertrain test` 忽略导出的 `CYBERTRAIN_LOG_FORMAT` 和 `CYBERTRAIN_SENTRY_DSN`（测试读取文本行，不发送任何东西）。`generate authentication` 写的密码测试会在其 `with_config` 中关闭 JSON 行；以前生成的、测试以 `log_format :json` 运行的应用，请重新运行生成器或照搬这一修改。

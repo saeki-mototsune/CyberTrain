@@ -729,8 +729,9 @@ Strings, over the context the framework adds (a job's id and attempt).
 `handle(context: {}) { }` answers the block's value, or nil after reporting
 a `StandardError` (or `JSON::ParserError`, `JSON::NestingError`) the block
 raised; `break v` in its block makes `handle` answer `v`, and `return`
-returns from the method around it. Neither ever raises into its caller: if
-the report itself fails, the log says
+returns from the method around it. An exception outside those classes raised
+in `handle`'s block goes on to the caller. Reporting itself never raises
+into the caller: if the report fails, the log says
 `error report failed: <Class>: <message>` at error.
 
 **Subscribers.** A subscriber is a class of the application's, a subclass of
@@ -824,9 +825,9 @@ its services stopped; what is left is lost. A development rebuild waits too.
 report as a Sentry event:
 
 ```sh
-CYBERTRAIN_SENTRY_DSN=https://<public key>@o1.ingest.sentry.io/42
-CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # optional: sent as the event's release
-CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # optional: send a quarter of them
+export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42
+export CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # optional: sent as the event's release
+export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # optional: send a quarter of them
 ```
 
 - The DSN reads `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>`
@@ -847,7 +848,10 @@ CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # optional: send a quarter of them
   `error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`.
 - `CYBERTRAIN_RELEASE` (`c.release`, empty by default) names the version or
   commit; it is not checked.
-- Each send waits at most 5 seconds and is never retried. A refusal is
+- Each send waits at most 5 seconds once the host's name is resolved (name
+  resolution blocks the delivery thread and is not cut short by the
+  deadline, so a stalled resolver can hold a send longer), and is never
+  retried. A refusal is
   logged at warn, `error report not sent: Sentry answered 429`, and so is a
   failure to connect, `error report not sent: <Class>: <message>`.
 - The event carries the class and message, `where` as the transaction, the
@@ -879,8 +883,9 @@ The design: [docs/design.md](../design.md) D86 and D87.
   changes with it; a test that looked for a whole line looks for the level
   and the message separately (`" ERROR "` and the message;
   [Upgrading from 0.4](testing.md#upgrading-from-04)).
-- Every response carries `X-Request-Id`. A proxy that set one has it used
-  only when the proxy is trusted.
+- Every response the application answers carries `X-Request-Id` (not the
+  server's own 400 and 413 for a request it cannot read). A proxy that set
+  one has it used only when the proxy is trusted.
 - `cybertrain_jobs` gains the column `request_id`; the first process that
   touches the table adds it.
 - The framework now defines methods named `request_id` and `release`

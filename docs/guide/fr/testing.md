@@ -1,5 +1,5 @@
 ---
-source_sha256: 576be65a974bf2dc7726945227d1fc4a732de043c7fd59dc05f1ddd2b342cf17
+source_sha256: d98dfd28dfd1249b9c4db726377bcf36bb504e62f2f74284cbab8f3eca23bfd3
 ---
 # Tester une application
 
@@ -759,7 +759,12 @@ des tests.
 
 Les rapports d’erreur vont à `Cybertrain::Test::SentryReceiver`, un Sentry sur
 `127.0.0.1` que charge `cybertrain/test_help`. `cybertrain test` ignore un DSN
-exporté&nbsp;: un test en affecte donc un et le remet ensuite&nbsp;:
+exporté&nbsp;: un test en affecte donc un et le remet ensuite. L’exemple
+exécute le `NotifyCommentJob` d’examples/blog, qui lève son propre
+`NotifyCommentJob::CommentGone` quand le commentaire qu’on lui donne a
+disparu et s’abandonne ([Retries and discards](background-and-operations.md#retries-and-discards))&nbsp;; le job du tutoriel ne fait que
+journaliser, donnez-lui d’abord ce `find_by`, la classe et
+`discard_on CommentGone`&nbsp;:
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"

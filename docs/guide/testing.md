@@ -699,7 +699,11 @@ line appears among the test lines.
 
 Error reports go to `Cybertrain::Test::SentryReceiver`, a Sentry on
 `127.0.0.1` that `cybertrain/test_help` loads. `cybertrain test` ignores an
-exported DSN, so a test assigns one and puts it back:
+exported DSN, so a test assigns one and puts it back. The example runs
+examples/blog's `NotifyCommentJob`, which raises its own
+`NotifyCommentJob::CommentGone` when the comment it is given is gone and
+discards itself ([Retries and discards](background-and-operations.md#retries-and-discards)); the tutorial's job only logs, so give it that
+`find_by`, the class and `discard_on CommentGone` first:
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"

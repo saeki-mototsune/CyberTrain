@@ -1,5 +1,5 @@
 ---
-source_sha256: 5bf1d1e0eeab5c9b7faf3703795f14e54e91adaaeaf0e54a303f40ec3bb23a59
+source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
 ---
 # Запросы
 
@@ -368,4 +368,4 @@ zlib с ограничением размера результата: по ум�
 - `time_tag` без `format:` или с именем формата форматирует через `I18n.l` (на английской странице — тот же английский текст, что и раньше).
 - gen пишет `gen/locales.rb` (пустой без `config/locales/`) и загружает `app/mailers/**/*.rb`; `cybertrain new` пишет `config/locales/en.yml`, который старое приложение может добавить.
 - `allow_unauthenticated_access` теперь метод фреймворка; тот, что генератор 0.4 записал в `ApplicationController`, продолжает работать и имеет приоритет. Повторный запуск `cybertrain generate authentication` добавляет сброс пароля, блокировку, «оставаться в системе», страницу учётной записи и администраторов и печатает diff-ы для файлов, записанных 0.4 ([Обновление с 0.4](authentication.md#upgrading-from-04)).
-- Каждый ответ несёт `X-Request-Id`, а `X-Request-Id` прокси используется, только если прокси доверенный; каждая строка лога меняет форму ([Обновление журнала и отчётов об ошибках с 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).
+- Каждый ответ приложения несёт `X-Request-Id` (кроме 400 и 413 сервера для запроса, который он не может прочитать), а `X-Request-Id` прокси используется, только если прокси доверенный; каждая строка лога меняет форму ([Обновление журнала и отчётов об ошибках с 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).

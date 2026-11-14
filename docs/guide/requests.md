@@ -638,6 +638,7 @@ What changes for an application written for 0.4 (the full list is section
   password reset, lockout, remember me, the account page and admin users,
   and prints diffs for the files 0.4 wrote
   ([Upgrading from 0.4](authentication.md#upgrading-from-04)).
-- Every response carries `X-Request-Id`, and a proxy's `X-Request-Id` is
+- Every response the application answers carries `X-Request-Id` (not the
+  server's own 400 and 413 for a request it cannot read), and a proxy's `X-Request-Id` is
   used only when the proxy is trusted; every log line changes shape
   ([Upgrading logs and error reports from 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).

@@ -1,5 +1,5 @@
 ---
-source_sha256: 5bf1d1e0eeab5c9b7faf3703795f14e54e91adaaeaf0e54a303f40ec3bb23a59
+source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
 ---
 # 请求
 
@@ -296,4 +296,4 @@ Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: g
 - 不带 `format:` 或带格式名的 `time_tag` 通过 `I18n.l` 格式化（在英语页面中与以前的英语文本相同）。
 - gen 写出 `gen/locales.rb`（没有 `config/locales/` 时为空）并加载 `app/mailers/**/*.rb`；`cybertrain new` 写出 `config/locales/en.yml`，较早的应用也可以添加它。
 - `allow_unauthenticated_access` 现在是框架的方法；0.4 的生成器写进 `ApplicationController` 的那个仍然有效并优先。再次运行 `cybertrain generate authentication` 会加入密码重置、锁定、保持登录、账户页面和管理员用户，并为 0.4 写的文件打印差异（[从 0.4 升级](authentication.md#upgrading-from-04)）。
-- 每个响应都带 `X-Request-Id`，代理的 `X-Request-Id` 只有在代理受信任时才会采用；每一行日志的形状都变了（[从 0.4 升级日志与错误报告](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。
+- 应用返回的每个响应都带 `X-Request-Id`（服务器对无法读取的请求返回的 400 和 413 除外），代理的 `X-Request-Id` 只有在代理受信任时才会采用；每一行日志的形状都变了（[从 0.4 升级日志与错误报告](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。

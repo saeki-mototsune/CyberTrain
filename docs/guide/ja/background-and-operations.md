@@ -1,5 +1,5 @@
 ---
-source_sha256: cfa6f0569935ef285a8ec498ef98568a41931115dffe39d74948822f1ac5c8d3
+source_sha256: 98680fc9de1560bab13ec70bdcf7ae168650e58642ea0d0d7bf89fe6366d10a9
 ---
 # バックグラウンド処理と運用
 
@@ -325,7 +325,7 @@ price = Cybertrain.error.handle(context: { "feed" => "prices" }) do
 end
 ```
 
-`report(e, handled: true, context: {})` はすぐに nil を返します。報告はレポーター自身のスレッドで届けられます。コンテキストのキーと値は String になり、フレームワークが足すコンテキスト（ジョブの ID と試行回数）の上に重なります。`handle(context: {}) { }` はブロックの値を返します。ブロックが `StandardError`（または `JSON::ParserError`、`JSON::NestingError`）を投げたときは、それを報告して nil を返します。ブロックの中の `break v` で `handle` は `v` を返し、`return` は周りのメソッドから戻ります。どちらも呼び出し元に例外を投げることはありません。報告そのものが失敗したときは、error レベルで `error report failed: <Class>: <message>` とログに出ます。
+`report(e, handled: true, context: {})` はすぐに nil を返します。報告はレポーター自身のスレッドで届けられます。コンテキストのキーと値は String になり、フレームワークが足すコンテキスト（ジョブの ID と試行回数）の上に重なります。`handle(context: {}) { }` はブロックの値を返します。ブロックが `StandardError`（または `JSON::ParserError`、`JSON::NestingError`）を投げたときは、それを報告して nil を返します。ブロックの中の `break v` で `handle` は `v` を返し、`return` は周りのメソッドから戻ります。それ以外のクラスの例外が `handle` のブロックで投げられると、呼び出し元に届きます。報告すること自体は呼び出し元に例外を投げません。報告が失敗したときは、error レベルで `error report failed: <Class>: <message>` とログに出ます。
 
 **サブスクライバー。** サブスクライバーはアプリケーションのクラスで、`report(event)` を定義した `Cybertrain::ErrorSubscriber` のサブクラスです：
 
@@ -370,16 +370,16 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 **Sentry または GlitchTip に送る。** `bin/<app>.rb` にその行があれば、`CYBERTRAIN_SENTRY_DSN`（または `c.sentry_dsn`）をプロジェクトの DSN にすると、各報告を Sentry のイベントとして送ります：
 
 ```sh
-CYBERTRAIN_SENTRY_DSN=https://<public key>@o1.ingest.sentry.io/42
-CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # 任意：イベントの release として送られる
-CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 任意：4 分の 1 を送る
+export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42
+export CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # 任意：イベントの release として送られる
+export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 任意：4 分の 1 を送る
 ```
 
 - DSN は `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>` の形です（secret、Sentry の古い後半部分は無視します）。イベントは `<scheme>://<host>[:<port>][/<path>]/api/<project id>/envelope/` に送られ、Sentry と GlitchTip のどちらも受け付けます。キーを含むので、コミットするファイルではなくデプロイのシークレットに置いてください。読めない DSN では起動が止まり、どの部分かを示しますがキーは示しません：`error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`。
 - 送信側をリンクしていないプログラムで DSN を設定すると、起動が止まります：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。自分で作った送信側のクラス（`Cybertrain::ErrorReporter::Sender` のサブクラス）は、空でない名前を返す `sender_name` を定義します。そうしないと同じ拒否に当たります。
 - `CYBERTRAIN_ERROR_SAMPLE_RATE`（`c.error_sample_rate`、1.0）は送る報告の割合で、0.0〜1.0 です。サブスクライバーはすべての報告を受け取ります。変数は数字に任意の `.数字` が続く形でなければならず、そうでなければ起動が止まります：`error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`。
 - `CYBERTRAIN_RELEASE`（`c.release`。デフォルトは空）はバージョンかコミットを示します。検査はしません。
-- 1 回の送信は最大 5 秒待ち、再試行はしません。拒否は warn レベルで `error report not sent: Sentry answered 429` とログに出し、接続の失敗も `error report not sent: <Class>: <message>` と出します。
+- 1 回の送信は、ホスト名を解決した後は最大 5 秒待ち（名前解決は配送スレッドを止め、締め切りでは打ち切れないので、止まったリゾルバーは送信をそれ以上待たせることがあります）、再試行はしません。拒否は warn レベルで `error report not sent: Sentry answered 429` とログに出し、接続の失敗も `error report not sent: <Class>: <message>` と出します。
 - イベントには、クラスとメッセージ、トランザクションとしての `where`、環境、release、タグとしてのリクエスト ID、リクエストのメソッドとパス、`extra` としてのコンテキスト、そしてバックトレースがあればフレームが入ります。
 - 呼び出しは `Cybertrain::HttpClient` と、そのプライベートアドレスへの防御を通ります（[外向きの HTTP](external-services.md#outbound-http)）。プライベートネットワークや同じマシンの GlitchTip には `CYBERTRAIN_HTTP_ALLOW_PRIVATE=1` が要り、これはアプリケーションのすべての外向きの呼び出しで防御を外します。
 
@@ -390,7 +390,7 @@ CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 任意：4 分の 1 を送る
 ### ログとエラー報告の 0.4 からの更新
 
 - ログの行の形がすべて変わります。行頭の角括弧のレベル（`[INFO]`）が、時刻、レベル、タグに置き換わります：`2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`。ログを読むもの（スクリプトの `[ERROR]` の grep、アラート）も合わせて変えます。行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` とメッセージ。[0.4 からのアップグレード](testing.md#upgrading-from-04)）。
-- すべてのレスポンスが `X-Request-Id` を持ちます。それを付けていたプロキシの値は、プロキシが信頼されているときだけ使われます。
+- アプリケーションが返すすべてのレスポンスが `X-Request-Id` を持ちます（サーバーが読めないリクエストに返す 400 と 413 は除きます）。それを付けていたプロキシの値は、プロキシが信頼されているときだけ使われます。
 - `cybertrain_jobs` に `request_id` の列が増えます。最初にテーブルに触ったプロセスが足します。
 - フレームワークが `request_id` と `release`（どちらも String を返す）、`handle`（ブロックの値）という名前のメソッドを定義するようになりました。リーダーが別の型を返す同名のモデルの列（整数の `request_id`、外部キー）は、ビルドを止めることがあります。メソッド名はプログラム全体で戻り値の型が 1 つだからで（spikes/NOTES.md の規則 34）、gen は名前を変えません。列の名前を変えてください。
 - `cybertrain test` は、`config/app.rb` が設定していない限り、エクスポートされた `CYBERTRAIN_LOG_FORMAT` と `CYBERTRAIN_SENTRY_DSN` を無視します（テストはテキストの行を読み、何も送りません）。`generate authentication` が書くパスワードのテストは、`with_config` の中で JSON の行を止めるようになりました。テストを `log_format :json` で動かしている、以前に生成したアプリケーションは、ジェネレーターを再実行するか、その変更を写してください。
