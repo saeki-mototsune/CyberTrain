@@ -1,5 +1,5 @@
 ---
-source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
+source_sha256: 34be5a0aa1d108d2378f249adbdef2dd13b716f4bf69b2667a16dc12bea4589b
 ---
 # Модели и база данных
 
@@ -889,6 +889,23 @@ ivar) с примечанием в сгенерированном файле. Д
 отвергает ключевые слова и зарезервированные имена (ему пришлось бы вызывать
 переименованный читатель) и принимает затеняющее имя с примечанием, как и
 генератор.
+
+Столбец с именем метода фреймворка, у которого один тип возврата,
+сохраняет своё имя, если его метод чтения возвращает этот тип, и отклоняется
+иначе: `request_id` (`Cybertrain::Request#request_id`) и `release`
+(`Cybertrain::Config#release`) возвращают String, поэтому столбец string,
+text или binary с этими именами, допускающий null или нет, принимается, а
+любой другой тип останавливает `spin run gen`, например
+`table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`.
+Целочисленный `request_id` из `t.references :request` получает совет
+переименовать ссылку: `t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"` (`belongs_to` тогда читается как
+`source_request`). `handle` — имя методов фреймворка разных типов, поэтому
+столбец `handle` читается как `handle_column`, как зарезервированные имена
+выше (приложение вызывает `user.handle_column`; запросы сохраняют
+`"handle"`), а `cybertrain generate scaffold` отклоняет такое поле:
+`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
+Ассоциации и скоупы с именами `release` или `request_id` не проверяются, а
+scaffold не проверяет тип поля (gen отклоняет потом).
 
 Ассоциация, чьё простое имя уже занято столбцом, другой ассоциацией или
 методом `Model` (Rails позволяет затенить `errors`), выдаётся под запасным

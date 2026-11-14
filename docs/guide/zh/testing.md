@@ -1,5 +1,5 @@
 ---
-source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
+source_sha256: c8a500d9b95634bc9207f96497fc7da3c5da57e409cf86de4caa02bc690dbc82
 ---
 # 测试应用
 
@@ -247,7 +247,7 @@ test "a new comment is broadcast and answered with a Turbo Stream" do
 end
 ```
 
-`assert_broadcasts(stream, count) { }` 统计块运行期间（不带块时从测试开始起）向某个流（名称或记录）广播的内容，并返回这些负载；`assert_no_broadcasts(stream)` 要求没有任何广播。`assert_turbo_stream(action:, target:, count: 1)` 读取最后一个响应（必须是 `text/vnd.turbo-stream.html`）或最后一次 `render_inline`。要像浏览器那样读取实时流，`Cybertrain::Test::Client` 的 `client.get_stream(path, events: n)` 会在内存中运行一个流式响应（[实时](realtime.md)）。
+`assert_broadcasts(stream, count) { }` 统计块运行期间（不带块时从测试开始起）向某个流（名称或记录）广播的内容，并返回这些负载；`assert_no_broadcasts(stream)` 要求没有任何广播。`assert_turbo_stream(action:, target:, count: 1)` 读取最后一个响应（必须是 `text/vnd.turbo-stream.html`）或最后一次 `render_inline`。要像浏览器那样读取实时流，`Cybertrain::Test::Client` 的 `client.get_stream(path, events: n)` 会在内存中运行一个流式响应（[实时](realtime.md)）。写入器在那里抛出的异常会传到测试中；它不会像运行中的应用里由服务器报告那样被报告。
 
 ## 测试邮件
 
@@ -406,7 +406,7 @@ end
 
 行首的时间每次运行都不同（要比较它，就用 `freeze_time` 冻结），所以比较它之后的部分：级别、标签和消息。应用的请求日志在测试中不输出（`log_level :none`），但失败作业的 `ERROR` 行即使这样也会写出；执行失败作业的测试要像上面那样捕获日志器，否则这一行会出现在测试的行之间。
 
-错误报告送到 `Cybertrain::Test::SentryReceiver`，这是 `cybertrain/test_help` 加载的、位于 `127.0.0.1` 上的 Sentry。`cybertrain test` 忽略导出的 DSN，所以测试自己赋一个 DSN，并在之后恢复。这个例子运行 examples/blog 的 `NotifyCommentJob`，当给它的评论已不存在时，它抛出自己的 `NotifyCommentJob::CommentGone` 并丢弃自身（[Retries and discards](background-and-operations.md#retries-and-discards)）；教程中的作业只记录日志，所以请先给它加上那个 `find_by`、这个类和 `discard_on CommentGone`：
+错误报告送到 `Cybertrain::Test::SentryReceiver`，这是 `cybertrain/test_help` 加载的、位于 `127.0.0.1` 上的 Sentry。`cybertrain test` 忽略导出的 DSN，所以测试自己赋一个 DSN，并在之后恢复。这个例子运行 examples/blog 的 `NotifyCommentJob`，它用 `Comment.find` 查找评论，评论已不存在时以 `Cybertrain::RecordNotFound` 丢弃作业（[Retries and discards](background-and-operations.md#retries-and-discards)）；教程中的作业只记录日志，所以请先给它加上那个 `Comment.find` 和 `discard_on Cybertrain::RecordNotFound`：
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"
@@ -431,7 +431,7 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     perform_enqueued_jobs                                       # 丢弃不会让测试失败
     event = @sentry.received_events(1)[0]                      # 最多等待 5 秒
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
+    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
   end
 end
 ```

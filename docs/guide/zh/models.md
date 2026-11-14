@@ -1,5 +1,5 @@
 ---
-source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
+source_sha256: 34be5a0aa1d108d2378f249adbdef2dd13b716f4bf69b2667a16dc12bea4589b
 ---
 # 模型与数据库
 
@@ -492,6 +492,8 @@ end
 - 查询 API（`where`、`order`、`find_by`）始终使用 SQL 列名（`Post.where(hash: 1)`）；Ruby 名称只用于读写方法和模板。
 
 与 Object 的其他方法同名的列（`display`、`tap`、`methods`）以原名生成，并附上说明。`cybertrain generate scaffold` 会拒绝关键字和保留名称（否则它就得调用改过名的读方法），对会遮蔽方法的名称则接受并附上说明，与生成器一致。
+
+与只有一种返回类型的框架方法同名的列，如果其读取方法返回该类型，就保留自己的名字，否则被拒绝：`request_id`（`Cybertrain::Request#request_id`）和 `release`（`Cybertrain::Config#release`）返回 String，所以这些名字的 string、text 或 binary 列（无论是否可为空）都被接受，其他类型会让 `spin run gen` 停止，例如 `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`。由 `t.references :request` 得到的 Integer `request_id` 会得到改名引用的建议：`t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`（`belongs_to` 随后读作 `source_request`）。`handle` 是不同类型的框架方法的名字，所以名为 `handle` 的列像上面的保留名一样读作 `handle_column`（应用调用 `user.handle_column`；查询保留 `"handle"`），`cybertrain generate scaffold` 拒绝该字段：`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`。名为 `release` 或 `request_id` 的关联和作用域不受检查，脚手架也不检查字段的类型（之后由 gen 拒绝）。
 
 如果某个关联的普通名称已被某列、另一个关联或 `Model` 的方法占用（Rails 允许关联遮蔽 `errors`），就会以后备名称生成，并在生成的文件中附上注释：`has_many` 用 `<table>_as_<column stem>`（`comments_as_article`），`belongs_to` 用 `<stem>_as_<column>`（`author_as_author_id`）。
 

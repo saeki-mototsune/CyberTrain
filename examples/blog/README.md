@@ -188,9 +188,10 @@ cybertrain db migrate
   => @article.id)` once the comment is saved, and the process that runs jobs
   finds the comment and logs `new comment <id> on article <id>`. Two
   policies cover its failures. A comment deleted before the job runs is
-  gone for good: `discard_on CommentGone` (an exception class defined in
-  the job's file) ends the job at once, the row `discarded`. Anything
-  else may pass: `retry_on StandardError, wait: 30, attempts: 3` queues a
+  gone for good: `Comment.find` raises `Cybertrain::RecordNotFound`, and
+  `discard_on Cybertrain::RecordNotFound`, written before the `retry_on`
+  line (the first arm that matches wins), ends the job at once, the row
+  `discarded`. Anything else may pass: `retry_on StandardError, wait: 30, attempts: 3` queues a
   failed run again 30 seconds later, three attempts in all, then leaves
   the row `failed`. `spin run gen` writes the class's other half
   (`perform_later`, each policy as a `rescue` arm) into `gen/jobs.rb`.
@@ -358,8 +359,8 @@ application on `require "cybertrain/core"` adds `require
 "cybertrain/error_reporter/sentry"` to `bin/<app>.rb` and sets
 `CYBERTRAIN_SENTRY_DSN`. A comment deleted before its `NotifyCommentJob`
 runs discards the job: one ERROR line (`job 12 (NotifyCommentJob)
-discarded: NotifyCommentJob::CommentGone: comment 7 was deleted; nothing
-to notify`) and one report.
+discarded: Cybertrain::RecordNotFound: Couldn't find Comment with id=7`)
+and one report.
 
 `test/integration/logging_test.rb` posts a comment and checks the job's
 row and log line carry the response's `X-Request-Id`;

@@ -1,5 +1,5 @@
 ---
-source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
+source_sha256: c8a500d9b95634bc9207f96497fc7da3c5da57e409cf86de4caa02bc690dbc82
 ---
 # Tester une application
 
@@ -526,6 +526,8 @@ dernière réponse, qui doit être `text/vnd.turbo-stream.html`, ou le dernier
 `render_inline`. Pour lire un flux en direct comme le fait un navigateur,
 `client.get_stream(path, events: n)` d’un `Cybertrain::Test::Client`
 exécute une réponse en streaming en mémoire ([Temps réel](realtime.md)).
+Une exception que l’écrivain y lève remonte dans le test&nbsp;; elle n’est
+pas signalée, comme le serveur la signale dans une application servie.
 
 ## Tester les courriels
 
@@ -760,11 +762,11 @@ des tests.
 Les rapports d’erreur vont à `Cybertrain::Test::SentryReceiver`, un Sentry sur
 `127.0.0.1` que charge `cybertrain/test_help`. `cybertrain test` ignore un DSN
 exporté&nbsp;: un test en affecte donc un et le remet ensuite. L’exemple
-exécute le `NotifyCommentJob` d’examples/blog, qui lève son propre
-`NotifyCommentJob::CommentGone` quand le commentaire qu’on lui donne a
-disparu et s’abandonne ([Retries and discards](background-and-operations.md#retries-and-discards))&nbsp;; le job du tutoriel ne fait que
-journaliser, donnez-lui d’abord ce `find_by`, la classe et
-`discard_on CommentGone`&nbsp;:
+exécute le `NotifyCommentJob` d’examples/blog, qui cherche son commentaire
+avec `Comment.find` et abandonne le job sur `Cybertrain::RecordNotFound`
+quand le commentaire a disparu ([Retries and discards](background-and-operations.md#retries-and-discards))&nbsp;; le job du tutoriel ne fait
+que journaliser, donnez-lui d’abord ce `Comment.find` et
+`discard_on Cybertrain::RecordNotFound`&nbsp;:
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"
@@ -789,7 +791,7 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     perform_enqueued_jobs                                       # un abandon ne fait pas échouer le test
     event = @sentry.received_events(1)[0]                      # attend 5 s au plus
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
+    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
   end
 end
 ```

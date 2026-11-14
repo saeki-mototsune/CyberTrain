@@ -869,6 +869,23 @@ generates under its own name with a note. `cybertrain generate scaffold`
 refuses keywords and reserved names (it would have to call a renamed reader)
 and accepts a shadowing name with a note, like the generator.
 
+A column named like a framework method with one return type is kept
+under its own name when its reader answers that type, and refused
+otherwise: `request_id` (`Cybertrain::Request#request_id`) and `release`
+(`Cybertrain::Config#release`) answer a String, so a string, text or
+binary column of those names, nullable or not, is accepted, and any other
+type stops `spin run gen`, for example
+`table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`.
+An Integer `request_id` from `t.references :request` gets advice to rename
+the reference instead: `t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"` (the `belongs_to` then reads as
+`source_request`). `handle` names framework methods of different types,
+so a column named `handle` reads as `handle_column` like the reserved
+names above (the application calls `user.handle_column`; queries keep
+`"handle"`), and `cybertrain generate scaffold` refuses the field:
+`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
+Associations and scopes named `release` or `request_id` are not checked,
+and the scaffold does not check a field's type (gen refuses afterwards).
+
 An association whose plain name a column, another association or a `Model`
 method already owns (Rails lets one shadow `errors`) is emitted under a
 fallback name, with a comment in the generated file:

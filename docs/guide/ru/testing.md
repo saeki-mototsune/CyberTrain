@@ -1,5 +1,5 @@
 ---
-source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
+source_sha256: c8a500d9b95634bc9207f96497fc7da3c5da57e409cf86de4caa02bc690dbc82
 ---
 # Тестирование приложения
 
@@ -505,6 +505,8 @@ end
 последний `render_inline`. Чтобы прочитать живой поток, как браузер,
 `client.get_stream(path, events: n)` у `Cybertrain::Test::Client`
 выполняет потоковый ответ в памяти ([Реальное время](realtime.md)).
+Исключение, которое там бросает писатель, доходит до теста; в отчёт оно не
+попадает, в отличие от работающего приложения, где о нём сообщает сервер.
 
 ## Тестирование почты
 
@@ -736,10 +738,10 @@ end
 `127.0.0.1`, который загружает `cybertrain/test_help`. `cybertrain test`
 игнорирует экспортированный DSN, поэтому тест присваивает его сам и потом
 возвращает прежний. Пример запускает `NotifyCommentJob` из examples/blog,
-который бросает собственный `NotifyCommentJob::CommentGone`, когда
-переданного комментария больше нет, и отбрасывает себя ([Retries and discards](background-and-operations.md#retries-and-discards)); задача из
-учебника только пишет в лог, поэтому сначала добавьте ей этот `find_by`,
-класс и `discard_on CommentGone`:
+который ищет комментарий через `Comment.find` и отбрасывает задачу по
+`Cybertrain::RecordNotFound`, когда комментария больше нет ([Retries and discards](background-and-operations.md#retries-and-discards)); задача
+из учебника только пишет в лог, поэтому сначала добавьте ей этот
+`Comment.find` и `discard_on Cybertrain::RecordNotFound`:
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"
@@ -764,7 +766,7 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     perform_enqueued_jobs                                       # отбрасывание не валит тест
     event = @sentry.received_events(1)[0]                      # ждёт не более 5 с
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
+    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
   end
 end
 ```

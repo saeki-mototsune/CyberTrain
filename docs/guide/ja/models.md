@@ -1,5 +1,5 @@
 ---
-source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
+source_sha256: 34be5a0aa1d108d2378f249adbdef2dd13b716f4bf69b2667a16dc12bea4589b
 ---
 # モデルとデータベース
 
@@ -492,6 +492,8 @@ Rails の `transaction` と異なる点と、避けるべきこと：
 - クエリ API（`where`、`order`、`find_by`）は常に SQL のカラム名を受け取ります（`Post.where(hash: 1)`）。Ruby の名前はリーダーとライター、テンプレートの名前としてだけ使われます。
 
 その他の Object のメソッド（`display`、`tap`、`methods`）と同じ名前のカラムは、注記付きでその名前のまま生成されます。`cybertrain generate scaffold` はキーワードと予約名を拒否し（名前を変えたリーダーを呼ばなければならなくなるため）、覆い隠す名前はジェネレーターと同じく注記付きで受け付けます。
+
+戻り値の型が 1 つのフレームワークのメソッドと同じ名前のカラムは、リーダーがその型を返すなら自分の名前のまま残り、そうでなければ拒否されます。`request_id`（`Cybertrain::Request#request_id`）と `release`（`Cybertrain::Config#release`）は String を返すので、その名前の string、text、binary のカラムは（null を許すかどうかにかかわらず）受け付けられ、それ以外の型は `spin run gen` を止めます。たとえば `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column` です。`t.references :request` からの Integer の `request_id` には、代わりに参照の名前を変える助言が出ます：`t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`（`belongs_to` は `source_request` と読めます）。`handle` は型の違うフレームワークのメソッドの名前なので、`handle` というカラムは上の予約された名前と同じく `handle_column` として読みます（アプリケーションは `user.handle_column` を呼び、クエリは `"handle"` のままです）。`cybertrain generate scaffold` はそのフィールドを拒否します：`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`。`release` や `request_id` という名前の関連付けとスコープは検査されず、スキャフォールドはフィールドの型を検査しません（後で gen が拒否します）。
 
 素の名前がすでにカラム、別の関連付け、`Model` のメソッドに使われている関連付け（Rails では関連付けが `errors` を覆い隠せます）は、生成ファイルにコメントを付けて代わりの名前で出力されます：`has_many` なら `<table>_as_<column stem>`（`comments_as_article`）、`belongs_to` なら `<stem>_as_<column>`（`author_as_author_id`）。
 
