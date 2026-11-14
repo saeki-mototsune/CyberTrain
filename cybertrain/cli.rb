@@ -39,7 +39,9 @@ module Cybertrain
               git tag v#{Cybertrain::VERSION} of #{Cybertrain::REPOSITORY}
             --path DIR: the framework checkout at DIR (relative to the
             current directory; written as an absolute path).
-            --version V: the index version constraint V.
+            --version V: release V from the spin index, once cybertrain is
+            registered there. Name one release (X.Y.Z): of the releases a
+            range matches, spin selects the lowest.
             --git URL [--ref R]: the framework at URL, at branch or tag R.
         cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
             Add a resource to the application in the current directory.
@@ -196,7 +198,10 @@ module Cybertrain
       raise InvalidArgument, "'#{File.basename(dir)}' is not a valid app name (lowercase letters, digits and _)" unless Templates.identifier?(File.basename(dir))
       raise InvalidArgument, "#{dir} already exists" if File.exist?(dir)
 
-      NewApp.create(dir, framework_dep(argv))
+      dep = framework_dep(argv)
+      note = version_note(option(argv, "--version"))
+      NewApp.create(dir, dep)
+      puts note unless note == ""
       return 0 if argv.include?("--skip-spin")
       return 1 unless NewApp.bootstrap(dir)
 
@@ -232,6 +237,43 @@ module Cybertrain
       return "{ git = #{toml_string(git)}, ref = #{toml_string(ref)} }" unless git == ""
 
       "{ git = \"#{Cybertrain::REPOSITORY}\", ref = \"v#{Cybertrain::VERSION}\" }"
+    end
+
+    # What `new --version V` says when V is not one release. spin's index
+    # selection is minimal: of the releases that satisfy a constraint it
+    # takes the lowest, and spin.lock pins it, so "~> 0.4" (at least 0.4,
+    # below 1.0) is the lowest such release in the index for good and never
+    # a later one (docs/design.md D11). The
+    # constraint is written as given: spin decides what it accepts.
+    def self.version_note(version)
+      return "" if version == "" || exact_version?(version)
+
+      "note: spin selects the lowest release that satisfies \"#{version}\" and spin.lock pins it, " \
+        "so a range does not follow new releases; name one release (--version X.Y.Z) to choose it"
+    end
+
+    # "0.4.1": three dot-separated runs of digits and nothing else. A loop
+    # over the characters rather than a Regexp, as the rest of the CLI does
+    # for what Spinel also compiles.
+    def self.exact_version?(value)
+      dots = 0
+      digits = 0
+      i = 0
+      while i < value.length
+        c = value[i]
+        if c == "."
+          return false if digits == 0
+
+          dots += 1
+          digits = 0
+        elsif c >= "0" && c <= "9"
+          digits += 1
+        else
+          return false
+        end
+        i += 1
+      end
+      dots == 2 && digits > 0
     end
 
     # `value` as a TOML basic string: `\` and `"` escaped. Control

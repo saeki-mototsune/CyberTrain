@@ -215,10 +215,38 @@ Four options change what it writes and runs:
   (`--path ~/src/cybertrain`, wherever the checkout is, when working on
   CyberTrain itself).
 - `--git URL [--ref R]` depends on the framework at URL (at branch or tag R).
-- `--version V` depends on an index version once the framework is on a
-  `spin-index`.
+- `--version V` depends on release V in a `spin-index`
+  (`cybertrain = "V"`), once the framework is on one: see
+  [An index version](#an-index-version).
 
 Give only one of `--path`, `--version` and `--git`; `--ref` needs `--git`.
+
+### An index version
+
+A `spin-index` is the list of packages spin looks a name up in. The
+framework is not on one yet: until it is, `spin lock` in an app created with
+`--version` answers `not in the index: cybertrain`, and the tag that `new`
+writes by default is the way to depend on a release. Once it is,
+`cybertrain new NAME --version X.Y.Z` writes `cybertrain = "X.Y.Z"`, spin
+finds that release's commit in the index, and `spin.lock` pins the same three
+things it pins for the tag (the version, the repository and the commit), so
+every command and the CI workflow `new` writes work as they do by default.
+Three things differ from what a `Gemfile` leads you to expect:
+
+- **Name one release.** Of the releases that satisfy a constraint, spin
+  selects the lowest, not the newest: `"~> X.Y"` is the lowest release in
+  the index from X.Y up to the next major version (only `"~> X.Y.Z"` stays
+  inside X.Y), and stays that one when later ones are published. So write the exact
+  version, the one `cybertrain version` prints; `new` prints a note when V
+  is anything else.
+- **Spinel still comes from the `cybertrain` command.** An index entry names
+  no Spinel release. The framework is written for and tested with one, the
+  release that `cybertrain setup` builds, and the `cybertrain` command of
+  the same version installs it. Plain `spin add cybertrain` in a project
+  built with another Spinel is untested.
+- **spin reads its own copy of the index.** It clones the index once, into
+  `~/.cache/spin/`, and `spin lock` does not update that copy;
+  `spin search cybertrain` does, and prints the newest release.
 
 ### Moving an app to a new release
 
@@ -231,6 +259,11 @@ run, in the app:
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+For an app that depends on [an index version](#an-index-version), run
+`cybertrain spin search cybertrain` first, which updates spin's copy of the
+index, then change the version on the `cybertrain =` line of `spin.toml` to
+the new release and run the same two commands.
 
 An application written for 0.4 has a few changes to make (every session
 ends once, OpenSSL is linked, a dotted route segment needs `format: false`,

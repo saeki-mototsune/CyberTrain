@@ -1,5 +1,5 @@
 ---
-source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
+source_sha256: fd08b5684869f5b4763d349e0d740778368384b4585f19877ee82955540a685a
 ---
 # Installer cybertrain
 
@@ -234,11 +234,42 @@ Quatre options changent ce qu’elle écrit et lance&nbsp;:
   CyberTrain lui-même).
 - `--git URL [--ref R]` fait dépendre l’application du framework situé à URL
   (à la branche ou au tag R).
-- `--version V` fait dépendre l’application d’une version de l’index, une fois
-  que le framework sera sur un `spin-index`.
+- `--version V` fait dépendre l’application de la version V d’un `spin-index`
+  (`cybertrain = "V"`), une fois que le framework y sera&nbsp;: voir
+  [Une version de l’index](#an-index-version).
 
 N’indiquez qu’une seule des options `--path`, `--version` et `--git`&nbsp;;
 `--ref` exige `--git`.
+
+### Une version de l’index
+
+Un `spin-index` est la liste de paquets dans laquelle spin cherche un nom. Le
+framework n’y est pas encore&nbsp;: d’ici là, `spin lock` dans une application
+créée avec `--version` répond `not in the index: cybertrain`, et le tag que
+`new` écrit par défaut est la façon de dépendre d’une version. Une fois qu’il y
+sera, `cybertrain new NAME --version X.Y.Z` écrira `cybertrain = "X.Y.Z"`, spin
+trouvera le commit de cette version dans l’index, et `spin.lock` fixera les
+trois mêmes choses que pour le tag (la version, le dépôt et le commit)&nbsp;:
+toutes les commandes et le workflow de CI que `new` écrit fonctionnent donc
+comme par défaut. Trois choses diffèrent de ce qu’un `Gemfile` laisse
+attendre&nbsp;:
+
+- **Nommez une seule version.** Parmi les versions qui satisfont une
+  contrainte, spin choisit la plus basse, pas la plus récente&nbsp;:
+  `"~> X.Y"` est la version la plus basse de l’index à partir de X.Y et avant
+  la version majeure suivante (seul `"~> X.Y.Z"` reste dans X.Y), et reste
+  celle-là quand d’autres sont publiées ensuite. Écrivez donc la version exacte, celle qu’affiche
+  `cybertrain version`&nbsp;; `new` affiche une remarque quand V est autre
+  chose.
+- **Spinel vient toujours de la commande `cybertrain`.** Une entrée de l’index
+  ne nomme aucune version de Spinel. Le framework est écrit pour une seule
+  version et testé avec elle, celle que `cybertrain setup` compile, et la
+  commande `cybertrain` de la même version l’installe. Un simple
+  `spin add cybertrain` dans un projet compilé avec un autre Spinel n’est pas
+  testé.
+- **spin lit sa propre copie de l’index.** Il clone l’index une seule fois,
+  dans `~/.cache/spin/`, et `spin lock` ne met pas cette copie à jour&nbsp;;
+  `spin search cybertrain` le fait, et affiche la version la plus récente.
 
 ### Passer une application à une nouvelle version
 
@@ -252,6 +283,11 @@ l’application&nbsp;:
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+Pour une application qui dépend d’[une version de l’index](#an-index-version),
+lancez d’abord `cybertrain spin search cybertrain`, qui met à jour la copie de
+l’index de spin, puis remplacez la version sur la ligne `cybertrain =` de
+`spin.toml` par la nouvelle version et lancez les deux mêmes commandes.
 
 Une application écrite pour 0.4 a quelques changements à faire (chaque session
 prend fin une fois, OpenSSL est lié, un segment de route contenant un point a

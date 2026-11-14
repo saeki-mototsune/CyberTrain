@@ -148,7 +148,8 @@ module Cybertrain
 
       # ---- cybertrain new ----------------------------------------------
 
-      # framework_dep is the TOML value: `{ path = "..." }` or `"~> 0.1"`.
+      # framework_dep is the TOML value: `{ git = "...", ref = "..." }`,
+      # `{ path = "..." }` or an index version, `"0.4.1"`.
       def self.spin_toml(package, framework_dep)
         <<~TOML
           [package]
@@ -886,10 +887,10 @@ module Cybertrain
 
                 # SQLite, zlib and OpenSSL headers, Ruby, and Spinel (cached),
                 # installed by the cybertrain CLI of the framework commit in
-                # spin.lock: that commit is read from spin.lock, so the
-                # spin.toml dependency must be a git one (the default). With a
-                # path dependency, check the framework out yourself and pass
-                # `with: { framework-path: ... }`.
+                # spin.lock: that commit is read from spin.lock, which has one
+                # for a git dependency (the default) and for an index version.
+                # With a path dependency, check the framework out yourself and
+                # pass `with: { framework-path: ... }`.
                 - uses: #{action}
                   id: cybertrain
 
