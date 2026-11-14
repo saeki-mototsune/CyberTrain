@@ -858,8 +858,8 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 
 Об исключении, брошенном во время записи потокового тела (`stream do ...
 end`, Server-Sent Events) или соединения WebSocket после апгрейда,
-сообщается один раз, после строки сервера `stream error: <Class>:
-<message>`, с идентификатором, методом и путём запроса и `where`
+сообщается один раз, после строки сервера
+`stream error: <Class>: <message>`, с идентификатором, методом и путём запроса и `where`
 `ArticlesController#index (stream)` (`request (stream)`, если ни одно
 действие не выполнялось). Ушедший клиент (`EOFError`, `IOError`,
 `Errno::ECONNRESET`, `Errno::EPIPE` из писателя) пишется в лог этой строкой,
