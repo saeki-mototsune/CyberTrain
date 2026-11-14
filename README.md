@@ -43,7 +43,7 @@ or from a job) and WebSocket feeds, and the tests: Rails' test classes
 `ViewComponent::TestCase`) with `setup` / `teardown`, fixtures,
 `travel_to`, `assert_select`, broadcast, mail and job assertions, all run
 by `cybertrain test` as one compiled program, and the time helpers
-(`5.minutes.ago`, `beginning_of_day`) in a configured time zone. [examples/blog](examples/blog) is the
+(`5.minutes.ago`, `beginning_of_day`) in a configured time zone; and operations: log lines with the time, the level and tags, a request id on every request and in the jobs it queues, JSON lines for a log collector, and error reporting (`Cybertrain.error`, subscribers, and Sentry or GlitchTip through `require "cybertrain/error_reporter/sentry"`). [examples/blog](examples/blog) is the
 Rails "Getting Started" blog built on it, in English and Japanese, with an
 admin user guarding its `/admin` pages. Since 2026-11-05 porting an
 existing Rails application is a goal, in five phases
@@ -76,7 +76,7 @@ the realtime endpoint (`turbo_stream_from @article` on a page,
 database; jobs are delivered at least once), `./blog feeds` for WebSocket
 subscriptions, and `./blog console` for a prompt over the models. A new
 app's `bin/blog.rb` requires only the core; jobs, Turbo Streams, feeds, the
-mailer, the cache and rate limiting are one `require` line each, so an app
+mailer, the cache, rate limiting and sending error reports to Sentry are one `require` line each, so an app
 compiles only what it uses
 ([subsystems](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#subsystems)).
 
@@ -101,10 +101,10 @@ the same app in Rails 8.1, in about a tenth of the memory
 | [Assets](https://saeki-mototsune.github.io/CyberTrain/guide/assets.html) | Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving |
 | [Internationalization](https://saeki-mototsune.github.io/CyberTrain/guide/i18n.html) | Dictionaries in `config/locales`, `t` and `l`, lazy lookup, plural forms, the locale per request, translated validation messages |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
-| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check |
+| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check, logs and request ids, error reporting to Sentry |
 | [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |
 | [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`) |
-| [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Test classes, fixtures, `cybertrain test`, time travel, components and streams, mail, jobs, outbound calls, CI |
+| [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Test classes, fixtures, `cybertrain test`, time travel, components and streams, mail, jobs, outbound calls, logs and error reports, CI |
 | [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal |
 | [API reference](https://saeki-mototsune.github.io/CyberTrain/api/) | Every class and method an application uses; also [the template language](https://saeki-mototsune.github.io/CyberTrain/guide/template-language.html) |
 | [Design record](docs/design.md) · [benchmark](docs/benchmark.md) · [spikes](spikes/NOTES.md) | Why it is built this way, and the Spinel constraints behind it |

@@ -4,7 +4,7 @@ What a controller gets from a request and what the framework checks before
 it runs: the routes and their formats, `respond_to`, concerns and
 `helper_method`, strong parameters, downloads and HTTP caching, cookies and
 the encrypted session, rate limiting and the client address behind a proxy,
-the Content Security Policy, `force_ssl` and host checks, the parameterised
+the request id, the Content Security Policy, `force_ssl` and host checks, the parameterised
 headers, and how query strings and request bodies are parsed and bounded.
 
 ## Routing
@@ -432,6 +432,27 @@ Kamal's `proxy.forward_headers` unset: with `ssl: true`, kamal-proxy sets
 networks that clients cannot connect from: anyone inside a listed network
 can choose the address a rate limit counts.
 
+## The request id
+
+Every request has an id, `request.request_id`: a version 4 UUID the
+framework makes, or the `X-Request-Id` a trusted proxy sent (the trust
+above, and 1 to 255 ASCII letters, digits and hyphens; any other value is
+discarded, never altered). The response carries it back in `X-Request-Id`,
+error pages and the host check's 403 included, and every line logged while
+the request runs carries it as a tag:
+
+```ruby
+def export
+  ExportJob.perform_later("user_id" => current_user.id)   # the job's lines carry this id too
+  Cybertrain.logger.info("export queued for #{request.request_id}")
+  head :accepted
+end
+```
+
+`c.log_tags` chooses what each line shows, and the job's lines and error
+reports carry the id of the request that enqueued it
+([Request ids](background-and-operations.md#request-ids)).
+
 ## Content Security Policy, `force_ssl` and hosts
 
 ```ruby
@@ -617,3 +638,6 @@ What changes for an application written for 0.4 (the full list is section
   password reset, lockout, remember me, the account page and admin users,
   and prints diffs for the files 0.4 wrote
   ([Upgrading from 0.4](authentication.md#upgrading-from-04)).
+- Every response carries `X-Request-Id`, and a proxy's `X-Request-Id` is
+  used only when the proxy is trusted; every log line changes shape
+  ([Upgrading logs and error reports from 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).

@@ -16,8 +16,8 @@ CyberTrain 文档中 API 参考之外的全部内容：一步步构建博客的�
 - [**资源**](assets.md) — 带摘要的样式表、图片和 JavaScript、CSS 的 `url()`、辅助方法、import map、提供文件与保留
 - [**国际化**](i18n.md) — `config/locales` 中的词典、`t` 和 `l`、惰性查找、复数形式、为每个请求选择语言区域、翻译后的验证消息、捆绑的英语和日语
 - [**配置**](configuration.md) — `config/app.rb`、环境变量、时区
-- [**后台任务与运维**](background-and-operations.md) — 作业类、重试、`every` 与 `cron` 任务、作业页面、`worker` 与 `feeds` 进程角色、缓存存储、控制台、备份、健康检查
+- [**后台任务与运维**](background-and-operations.md) — 作业类、重试、`every` 与 `cron` 任务、作业页面、`worker` 与 `feeds` 进程角色、缓存存储、控制台、备份、健康检查、日志与请求 ID、向 Sentry 报告错误
 - [**实时**](realtime.md) — 基于 Server-Sent Events 或 WebSocket 的 Turbo Streams，来自动作、作业和数据订阅的广播，签名的流名称，数据订阅的健康状况
 - [**出站 HTTP、WebSocket 订阅与电子邮件**](external-services.md) — 支持流式、gzip 和 Server-Sent Events 的 `HttpClient`，带定时器和重启的 `WebSocket.subscribe`，支持 HTML 邮件和 `deliver_later` 的 `Mailer`
-- [**测试**](testing.md) — 为应用编写测试、出站调用、作业、CI
+- [**测试**](testing.md) — 为应用编写测试、出站调用、作业、日志与错误报告、CI
 - [**模板语言**](template-language.md) — 辅助方法、组件、表单构建器，以及模板在 `app/views/**/*.html.erb` 中可以调用的内容

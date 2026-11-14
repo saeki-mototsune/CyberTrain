@@ -493,6 +493,24 @@ sudo chmod 640 /etc/notes/notes.env
 | `PORT` | The port to listen on. Keep it in step with Caddy's configuration |
 | `SPINEL_GC_FULL_INTERVAL=8` | Spinel's collector does a full collection every eighth time. Left to adapt, it falls to nearly every collection full under a web server's load; fixed at 8, a one-CPU server answers about 16% more requests a second at the same memory ([spinel-feedback.md](spinel-feedback.md), 5) |
 
+Optionally, logs and error reports. To send every error report to Sentry
+(or GlitchTip), add the project's DSN to the same file, and the line that
+links the sender to `bin/notes.rb` if it requires `cybertrain/core` rather
+than `cybertrain` (with the DSN set and the line missing, the app refuses
+to start and says which line to add). `CYBERTRAIN_LOG_FORMAT=json` writes
+one JSON object per log line, for a log collector; the journal reads either.
+
+```sh
+sudo tee -a /etc/notes/notes.env > /dev/null <<EOF
+CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42
+CYBERTRAIN_RELEASE=2026-11-14
+EOF
+```
+
+`CYBERTRAIN_RELEASE` names the version each report comes from; the deploy
+script could write the commit there instead. The variables, and what is
+reported: [Error reporting](guide/background-and-operations.md#error-reporting).
+
 ---
 
 ## Part 5: systemd and the deploy script
@@ -769,7 +787,14 @@ During the restart (a few seconds) Caddy answers with 500.html.
 ```sh
 sudo journalctl -u notes -f             # the app (two lines per request: Started / Completed)
 sudo journalctl -u caddy -f             # Caddy
+sudo journalctl -u notes | grep 3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c   # one request's lines, and its jobs'
 ```
+
+Each line starts with the time in UTC and the level, then the request's id
+in brackets (`2026-11-14T09:30:00.120Z INFO [3f2a9c1e-...] Started GET "/"
+for 127.0.0.1`); the response carries the same id in its `X-Request-Id`
+header, and a job the request queued logs it after its own tag, so one grep
+finds everything a request caused.
 
 The client IP in the request log is always `127.0.0.1` (Caddy). If you need
 the real client IP, add `log` to the Caddyfile's site block and use Caddy's
@@ -1049,7 +1074,7 @@ sudo systemctl enable --now notes-worker
   the same subscriptions too). Keep `Restart=always` in that unit: a feeds
   process restarts a feed whose thread died, but when one feed keeps dying
   (10 restarts within 600 seconds, `CYBERTRAIN_FEED_RESTART_LIMIT` and
-  `CYBERTRAIN_FEED_RESTART_WINDOW`) it logs a `[FATAL]` line and exits with
+  `CYBERTRAIN_FEED_RESTART_WINDOW`) it logs a `FATAL` line and exits with
   status 1, so that systemd starts a fresh one.
 - With feeds in their own process, the web process's `/up` still watches
   them: each feeds process writes its feeds' status into the database every

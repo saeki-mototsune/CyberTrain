@@ -37,6 +37,8 @@ generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 | `db/migrate/*.rb` | {Cybertrain::Migration::Base}, {Cybertrain::Schema::TableDef} |
 | `Cybertrain::WebSocket.subscribe("trades", url).on_open { ... }.on_message { ... }` in `config/app.rb` | {Cybertrain::WebSocket} (`require "cybertrain/websocket"`): {Cybertrain::WebSocket.subscribe}, {Cybertrain::WebSocket::Subscription}, {Cybertrain::WebSocket::Connection}, {Cybertrain::WebSocket.feed_status}; one connection: {Cybertrain::WebSocket::Client}; {Cybertrain::Background} |
 | `config/app.rb` | {Cybertrain.configure}, {Cybertrain::Config} |
+| `Cybertrain.logger.info(...)`, `Cybertrain.logger.tagged("billing") { ... }`, `request.request_id` | {Cybertrain::Logger}, {Cybertrain::Logger::Scope}, {Cybertrain::RequestId} |
+| `Cybertrain.error.report(e)`, `Cybertrain.error.subscribe(...)` | {Cybertrain::ErrorReporter}, {Cybertrain::ErrorSubscriber}, {Cybertrain::ErrorEvent}; the Sentry sender {Cybertrain::ErrorReporter::SentrySender} (`require "cybertrain/error_reporter/sentry"`), {Cybertrain::SentryDsn} |
 | `test/*.rb` | {Cybertrain::Test}, {Cybertrain::Test::Client}, and the assertions below |
 | `app/views/**/*.html.erb` | {https://saeki-mototsune.github.io/CyberTrain/guide/template-language.html Template language}: helpers (`link_to`, `form_with`, ...), the form builder and what a template may call |
 | HTML from Ruby | {Cybertrain::Html}, {Cybertrain::SafeString} |
@@ -134,7 +136,9 @@ Webhooks and e-mail the code under test sends are received in-process by
 {Cybertrain::Test::HttpReceiver} (`require "cybertrain/test/http_receiver"`)
 and {Cybertrain::Test::SmtpReceiver} (`require "cybertrain/test/smtp_receiver"`);
 a WebSocket feed it consumes is played by {Cybertrain::Test::WebSocketReceiver}
-(`require "cybertrain/test/websocket_receiver"`).
+(`require "cybertrain/test/websocket_receiver"`), and the error reports it
+sends to Sentry by {Cybertrain::Test::SentryReceiver} (loaded by
+`cybertrain/test_help`), whose envelopes are {Cybertrain::Test::SentryEnvelope}s.
 
 ## Conventions on these pages
 

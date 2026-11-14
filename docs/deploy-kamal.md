@@ -173,6 +173,21 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # generate once, t
 [Kamal's documentation](https://kamal-deploy.org/docs/commands/secrets/)
 shows how to read them straight from a password manager.
 
+To send error reports to Sentry (or GlitchTip), the generated files have
+the lines ready, commented out: uncomment `- CYBERTRAIN_SENTRY_DSN` under
+`env: secret:` in `config/deploy.yml` and
+`CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN` in `.kamal/secrets`, add
+`require "cybertrain/error_reporter/sentry"` to `bin/notes.rb` (a new app
+requires only the core; without the line, a container given the DSN
+refuses to start and says so), and export the DSN in the same shell. The
+commented `CYBERTRAIN_LOG_FORMAT: json` under `env: clear:` writes one JSON
+object per log line, for a log collector; `kamal app logs` shows the lines
+either way.
+
+```sh
+export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42   # the project's DSN, from Sentry
+```
+
 ## 8-4. The first deploy
 
 Kamal builds the image from your local git HEAD. Commit first, `gen/`

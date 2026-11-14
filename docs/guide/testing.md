@@ -138,7 +138,10 @@ program deletes it.
 
 The program sets up the test environment as Rails' does, unless
 `config/app.rb` sets the same thing itself: forgery protection off, the
-request log silent, mail kept in `Mailer.deliveries` (`:test`) and
+request log silent (the level `:none`, which still writes error lines),
+log lines as text (an exported `CYBERTRAIN_LOG_FORMAT` is not read), no
+error report sent to Sentry (an exported `CYBERTRAIN_SENTRY_DSN` is
+emptied), mail kept in `Mailer.deliveries` (`:test`) and
 `force_ssl` off (the variables `CYBERTRAIN_MAIL_DELIVERY_METHOD` and
 `CYBERTRAIN_FORCE_SSL` are not read for the tests, even when invalid),
 uploads written to `tmp/test_uploads/`, emptied at every run, and no host
@@ -358,7 +361,10 @@ assert_includes message, "999"
 - Not offered: `assert_predicate` (it needs a computed `send`: write
   `assert article.valid?`), String expressions in `assert_difference` (they
   need `eval`), an Array or Hash of expressions, and a message argument
-  on the other assertions.
+  on the other assertions. Of Minitest's `refute_*` names only `refute`
+  exists: write `assert_not_equal`, `assert_not_nil` and the other
+  `assert_not_*` forms; a call to `refute_equal` stops the test program's
+  build, since nothing defines it.
 
 ## Time travel
 
@@ -652,6 +658,102 @@ end
 `Cybertrain::WebSocket.random_source = -> { 0.5 }` makes the retry delays exact.
 `test/websocket_integration.rb` in this repository shows a complete test.
 
+## Testing logs and error reports
+
+A response's `X-Request-Id` is the request's id. To read log lines, a test
+gives `Cybertrain.logger` a `StringIO` for the work it watches and puts the
+logger back afterwards, in a method of its own (a `rescue` or `ensure`
+around a `yield` belongs in a plain method under Spinel):
+
+```ruby test/integration/logging_test.rb
+require "test_helper"
+require "stringio"
+
+class LoggingTest < ActionDispatch::IntegrationTest
+  test "a comment's job logs the request's id" do
+    post article_comments_path(articles(:one)), params: { comment: { commenter: "Ann", body: "Hi" } }
+    rid = response.header("X-Request-Id").to_s
+    log = StringIO.new
+    perform_jobs_logging_to(log)
+    assert_includes log.string, "] [#{rid}] new comment "
+  end
+
+  private
+
+  def perform_jobs_logging_to(io)
+    saved = Cybertrain.logger
+    Cybertrain.logger = Cybertrain::Logger.new(io)
+    perform_enqueued_jobs
+  ensure
+    Cybertrain.logger = saved
+  end
+end
+```
+
+The time at the start of a line changes from run to run (freeze it with
+`freeze_time` to compare it), so compare the part after it: the level, the
+tags and the message. An application's request log is silent in tests
+(`log_level :none`), but a failed job's `ERROR` line is written even then;
+a test that performs a failing job captures the logger as above, or the
+line appears among the test lines.
+
+Error reports go to `Cybertrain::Test::SentryReceiver`, a Sentry on
+`127.0.0.1` that `cybertrain/test_help` loads. `cybertrain test` ignores an
+exported DSN, so a test assigns one and puts it back:
+
+```ruby test/integration/error_reporting_test.rb
+require "test_helper"
+
+class ErrorReportingTest < ActionDispatch::IntegrationTest
+  setup do
+    @sentry = Cybertrain::Test::SentryReceiver.new
+    @sentry.start
+    @saved_dsn = Cybertrain.config.sentry_dsn
+    Cybertrain.config.sentry_dsn = @sentry.dsn                # http://public@127.0.0.1:<port>/1
+    Cybertrain.config.http_allow_private = true               # HttpClient refuses loopback otherwise
+  end
+
+  teardown do
+    Cybertrain.config.sentry_dsn = @saved_dsn
+    Cybertrain.config.http_allow_private = false
+  end
+
+  test "a failing job is reported" do
+    NotifyCommentJob.perform_later("comment_id" => 999_999, "article_id" => articles(:one).id)
+    perform_enqueued_jobs                                       # a failed attempt does not fail the test
+    event = @sentry.received_events(1)[0]                      # waits at most 5 s
+    assert_equal "NotifyCommentJob", event.sentry_field("transaction")
+    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
+  end
+end
+```
+
+`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` answers each
+envelope as Sentry does (another `status:`, such as 429, plays a Sentry that
+refuses); `dsn(project = "1", prefix = "")` is a DSN that sends to it, and
+`received_events(count, wait = 5.0)` answers what arrived. Each is a
+`Cybertrain::Test::SentryEnvelope`: `sentry_path`, `sentry_auth`
+(`X-Sentry-Auth`), `sentry_content_type`, `sentry_body` (the three JSON
+lines), `sentry_field("a.b.0.c")` for a field of the event (`""` when it is
+absent) and `sentry_header_field(name)` for the envelope's header. A key of
+`extra` that holds a dot (`job.attempt`) cannot be read with
+`sentry_field`, which splits on dots: read it from `sentry_body`. A
+receiver started in a test is stopped after it, like the others.
+
+A subscriber added in a test is dropped before the next test (one
+`config/app.rb` added stays), and before each test the reporter delivers
+what is still queued and forgets its dedupe window, so the same failure in
+two tests is reported in both. `Cybertrain.error.drain_reports` waits (2 s
+at most) for the queued reports, for a test that reads what a subscriber
+received:
+
+```ruby
+Cybertrain.error.subscribe(SeenReports.new)   # a Cybertrain::ErrorSubscriber of the test's
+get "/articles/999999"
+Cybertrain.error.drain_reports
+assert_equal 0, REPORTS_SEEN.size             # a 404 is not reported
+```
+
 ## What gen refuses in a test class
 
 gen rewrites a test class into methods: `test "shows it" do` becomes `def
@@ -782,6 +884,14 @@ snapshot whose test touches SQLite comes from the compiled binary:
 - `cybertrain generate authentication`, run again, writes the class-form
   tests and names each old file they replace (`test/authentication.rb`,
   `test/support/app_test.rb`, ...); `--force` deletes them.
+- A test that looked for a whole log line, its level in brackets first,
+  looks for the level and the message apart (`" ERROR "` and
+  `"password reset mail not sent: "`): a line now starts with the time and
+  may carry the request's id
+  ([Logs](background-and-operations.md#logs)).
+- An exported `CYBERTRAIN_LOG_FORMAT` or `CYBERTRAIN_SENTRY_DSN` no longer
+  reaches the tests; set them in `config/app.rb`, or assign the DSN in the
+  test, to test with them.
 
 ## Continuous integration
 
