@@ -120,7 +120,7 @@ module Cybertrain
     def self.run(name, argv, router:, url_resolver:, views:)
       unless argv.empty?
         index = command_index(argv[0])
-        return run_command(COMMANDS[index], argv[1, argv.size - 1], views, url_resolver) if index >= 0
+        return run_command(COMMANDS[index], argv[1, argv.size - 1], views, url_resolver, name) if index >= 0
       end
       return serve(name, argv, router, url_resolver, views) if server?(argv)
 
@@ -130,7 +130,7 @@ module Cybertrain
       when "db"
         DB::CLI.run(argv[1, argv.size - 1], ".", name)
       when "console"
-        run_console
+        run_console(name)
       when "dbconsole"
         run_dbconsole
       when "help", "--help", "-h"
@@ -173,8 +173,10 @@ module Cybertrain
     # A registered command, `jobs` and `console` run without
     # Application#boot, so each installs the configured log level and
     # format (Runtime.apply_logging), then the zone (Runtime.apply_zone),
-    # before anything else; an unknown level, format or zone is refused
-    # with boot's line (`error: time_zone "X" is not a known time zone`,
+    # and checks that a Sentry DSN has a sender (Application.sender_problem),
+    # before anything else; an unknown level, format or zone, or a DSN no
+    # linked sender sends, is refused with boot's line
+    # (`error: time_zone "X" is not a known time zone`,
     # `error: log_level must be ...`) and exit status 1, before the
     # database is opened. This prints the line.
     def self.zone_refused(problem)
@@ -189,13 +191,18 @@ module Cybertrain
     # (Application.configure_views), so the block can render a partial or a
     # component; there is no server, scheduler or thread. The begin/rescue
     # sits in this plain method, which calls the stored block rather than
-    # yielding (NOTES rules 32/45).
-    def self.run_command(command, args, views, url_resolver)
+    # yielding (NOTES rules 32/45). The error reports queued while it ran
+    # are waited for, up to 2 seconds, before the database is closed
+    # (a subscriber may read it) and the process exits.
+    def self.run_command(command, args, views, url_resolver, name)
       log_problem = Runtime.apply_logging(Cybertrain.config)
       return zone_refused(log_problem) unless log_problem.empty?
 
       zone_problem = Runtime.apply_zone(Cybertrain.config)
       return zone_refused(zone_problem) unless zone_problem.empty?
+
+      sender_problem = Application.sender_problem(Cybertrain.config, name)
+      return zone_refused(sender_problem) unless sender_problem.empty?
 
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
@@ -205,6 +212,7 @@ module Cybertrain
         puts "#{command.command_name} failed: #{e.message}"
         1
       ensure
+        Cybertrain.error.drain_reports(2.0)
         DB.disconnect
       end
     end
@@ -215,13 +223,17 @@ module Cybertrain
     # through the builders gen/console.rb sets. Returns the console's exit
     # status, or 1 when the zone is unknown or the database cannot be
     # opened. The rescue sits in this plain method (NOTES
-    # rules 32/45).
-    def self.run_console
+    # rules 32/45). The error reports queued in the session are waited
+    # for, up to 2 seconds, before the database is closed.
+    def self.run_console(name)
       log_problem = Runtime.apply_logging(Cybertrain.config)
       return zone_refused(log_problem) unless log_problem.empty?
 
       zone_problem = Runtime.apply_zone(Cybertrain.config)
       return zone_refused(zone_problem) unless zone_problem.empty?
+
+      sender_problem = Application.sender_problem(Cybertrain.config, name)
+      return zone_refused(sender_problem) unless sender_problem.empty?
 
       status = 0
       begin
@@ -231,6 +243,7 @@ module Cybertrain
         puts "console failed: #{e.message}"
         status = 1
       ensure
+        Cybertrain.error.drain_reports(2.0)
         DB.disconnect
       end
       status

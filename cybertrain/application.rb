@@ -171,18 +171,33 @@ module Cybertrain
       # raises the same message; here it is a boot error before the banner).
       feature_problem = Features.boot_problem(c)
       fail_boot(feature_problem) unless feature_problem.empty?
-      # A DSN with no sender to send it (the Sentry sender is its own
-      # line): refused, not ignored. The sender is asked its line's name,
-      # never named here (the core does not reach it).
-      fail_boot(sender_missing_message) if !c.sentry_dsn.to_s.empty? && Cybertrain.error.sender.sender_name.empty?
+      sender_problem = Application.sender_problem(c, @name)
+      fail_boot(sender_problem) unless sender_problem.empty?
       nil
     end
 
-    # What boot says when the DSN is set and no sender is linked.
-    def sender_missing_message
+    # A DSN with no sender to send it (the Sentry sender is its own line)
+    # is refused, not ignored: by boot, and by a registered command, `jobs`
+    # and `console`, which run without boot and print it as boot does
+    # (`error: ...`, exit status 1) before the database is opened. The
+    # installed sender is asked its name ({ErrorReporter::Sender#sender_name}),
+    # never named here (the core does not reach it), so a sender of the
+    # application's own that answers "" is refused too.
+    # @param config [Config]
+    # @param name [String] the binary's name, for the line to add to
+    #   bin/<name>.rb
+    # @return [String] "" when there is no DSN or a sender to send it, else
+    #   `CYBERTRAIN_SENTRY_DSN is set, but this program does not link the
+    #   Sentry sender: add require "cybertrain/error_reporter/sentry" to
+    #   bin/<name>.rb`
+    # @api private
+    def self.sender_problem(config, name)
+      return "" if config.sentry_dsn.to_s.empty?
+      return "" unless Cybertrain.error.sender.sender_name.empty?
+
       line = FeatureCatalog.require_line("sentry")
       "CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: " \
-        "add require \"#{line}\" to bin/#{@name}.rb"
+        "add require \"#{line}\" to bin/#{name}.rb"
     end
 
     # Stage 2: the secret (the one step that may write a file:

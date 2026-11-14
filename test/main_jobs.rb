@@ -187,4 +187,52 @@ test "an unknown log level is refused before jobs runs" do
   refute Cybertrain::DB.connected?
 end
 
+# What JobsSubscriber received: it is slower than `jobs list`, so a report
+# queued before reaches it by the time `jobs` returns only when `jobs`
+# waits for the reporter (ErrorReporter#drain_reports).
+JOBS_REPORTED = Array.new(0) { "" }
+
+class JobsSubscriber < Cybertrain::ErrorSubscriber
+  def report(event)
+    text = event.error_message
+    return nil unless text.start_with?("before jobs")
+
+    sleep 0.3
+    JOBS_REPORTED << text
+    nil
+  end
+end
+
+def report_runtime(message)
+  raise message
+rescue RuntimeError => e
+  Cybertrain.error.report(e)
+end
+
+test "jobs waits for the queued error reports before it returns" do
+  Cybertrain.error.subscribe(JobsSubscriber.new)
+  report_runtime("before jobs list")
+  assert_equal 0, run(["jobs", "list"])
+  assert_equal ["before jobs list"], JOBS_REPORTED
+end
+
+# A sender with no name (the base class: no Sentry sender) and a DSN, for
+# this case only.
+def unsendable_dsn_for_this_case
+  saved = Cybertrain.error.sender
+  Cybertrain.error.sender = Cybertrain::ErrorReporter::Sender.new
+  Cybertrain.config.sentry_dsn = "https://key@sentry.example/1"
+  Cybertrain::Test.after_this_case(lambda do
+    Cybertrain.error.sender = saved
+    Cybertrain.config.sentry_dsn = ""
+  end)
+  nil
+end
+
+test "a Sentry DSN no linked sender sends is refused before jobs runs" do
+  unsendable_dsn_for_this_case
+  assert_equal 1, run(["jobs", "list"])
+  refute Cybertrain::DB.connected?
+end
+
 Cybertrain::Test.run!

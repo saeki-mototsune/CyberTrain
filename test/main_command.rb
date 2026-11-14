@@ -123,6 +123,44 @@ Cybertrain::Main.command("log_line", "log one line") do |argv|
   0
 end
 
+# What CommandSubscriber received: it is slower than a command, so the
+# report a command makes reaches it before the command returns only when
+# the command waits for the reporter (ErrorReporter#drain_reports).
+COMMAND_REPORTED = Array.new(0) { "" }
+
+class CommandSubscriber < Cybertrain::ErrorSubscriber
+  def report(event)
+    text = event.error_message
+    return nil unless text.start_with?("from a command")
+
+    sleep 0.3
+    COMMAND_REPORTED << text
+    nil
+  end
+end
+
+Cybertrain.error.subscribe(CommandSubscriber.new)
+
+# Raises and reports what it rescued, as a command's own rescue would.
+def command_report(message)
+  raise message
+rescue RuntimeError => e
+  Cybertrain.error.report(e)
+end
+
+Cybertrain::Main.command("report", "report an error it rescued") do |argv|
+  command_report("from a command report")
+  0
+end
+
+# Sets a Sentry DSN for this case only (this program does not link the
+# sender).
+def dsn_for_this_case
+  Cybertrain.config.sentry_dsn = "https://key@sentry.example/1"
+  Cybertrain::Test.after_this_case(-> { Cybertrain.config.sentry_dsn = "" })
+  nil
+end
+
 # Runs `argv` with config.log_format = :json, then puts the text format
 # back (a plain method's ensure: pre-flight ruling G4).
 def run_in_json(argv)
@@ -246,6 +284,21 @@ test "an unknown log level or format is refused before a command or console runs
   Cybertrain.config.log_format = :text
   assert_equal base, SEEN.size
   refute Cybertrain::Logger.json_lines
+  refute Cybertrain::DB.connected?
+end
+
+test "a command waits for the error reports it made before it returns" do
+  assert_equal 0, run(["report"])
+  assert_equal ["from a command report"], COMMAND_REPORTED
+  refute Cybertrain::DB.connected?
+end
+
+test "a Sentry DSN this program cannot send is refused before a command or console runs" do
+  base = SEEN.size
+  dsn_for_this_case
+  assert_equal 1, run(["user", "w@example.com"])
+  assert_equal 1, run(["console"])
+  assert_equal base, SEEN.size
   refute Cybertrain::DB.connected?
 end
 
