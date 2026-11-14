@@ -590,11 +590,8 @@ end
 # another type that a change in flight renames; an entry whose `def` is
 # gone fails, so it is removed when the rename lands.
 require "cybertrain/generator/model_naming"
-TYPED_NAME_PENDING = {
-  # BuildLock#release answers nil; it is renamed (the phase 5b follow-ups'
-  # decision 1).
-  "release" => %w[cybertrain/cli/build_lock.rb]
-}.freeze
+# Empty now: BuildLock#release, which answered nil, is BuildLock#unlock.
+TYPED_NAME_PENDING = {}.freeze
 typed = Cybertrain::Gen::ModelNaming::FRAMEWORK_METHOD_TYPES
 typed_wrong = []
 typed_pending_seen = []
