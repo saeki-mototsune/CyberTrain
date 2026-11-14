@@ -22,6 +22,10 @@
 # test travels past it) is not queued again; inside a job's attempt the
 # job's id is part of that key too ({ErrorReporter.dedupe_key}), so two
 # jobs of one kind are told apart and two attempts of one job are not.
+# Dedupe is decided when the report is made, before the filters run, on
+# the unfiltered class, message and `where`: a filter that rewrites the
+# message does not change which reports collapse, and an event a filter
+# drops still holds its dedupe slot for the window.
 # A full queue drops the event
 # and counts it; the delivery thread logs `error reports dropped: <n>` at
 # warn at most once every {ErrorReporter::DROP_LOG_SECONDS} seconds.
@@ -280,6 +284,13 @@ module Cybertrain
     # the subscribers and the sender see the change. Once one drops it,
     # the later ones do not run, and nothing receives the event; it is
     # not counted among the queue's drops.
+    #
+    # Filters run after the dedupe: it was decided when the report was
+    # made, on the unfiltered class, message and `where`. A filter that
+    # rewrites the message does not change which reports collapse, and an
+    # event a filter drops still holds its dedupe slot for
+    # {ErrorReporter::DEDUPE_SECONDS} seconds (a like report in that time
+    # is not queued, so no filter sees it).
     #
     # A filter that raises drops the event (fail closed: a filter exists
     # to keep something from leaving); the failure is logged at error,
