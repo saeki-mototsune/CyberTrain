@@ -1,5 +1,5 @@
 ---
-source_sha256: 5b2b87f381188b5c2bfcaa11d389883df089b495e9a2504638baf6d1d0352a14
+source_sha256: 47ef985aa7c94f7ad017ab8f56f32a735a3c83f67cfba238c663e2bb1aa948f2
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -855,7 +855,8 @@ JavaScript&nbsp;: [Temps réel](realtime.md#turbo-streams).
 
 > [!WHY]
 > Un travail qui ne doit pas retarder la réponse, une notification par
-> exemple, s’exécute après elle. Comme avec Active Job sur Solid Queue, un job
+> exemple, s’exécute à part de la requête&nbsp;: il peut commencer avant que
+> la réponse soit écrite, ou après. Comme avec Active Job sur Solid Queue, un job
 > est une classe dans `app/jobs/` et une ligne dans la base de données de
 > l’application elle-même&nbsp;: aucun autre service.
 

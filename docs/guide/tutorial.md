@@ -817,7 +817,8 @@ More, including WebSocket and streams for your own JavaScript:
 
 > [!WHY]
 > Work that should not hold up the response, such as a notification, runs
-> after it. As with Active Job on Solid Queue, a job is a class in
+> on its own, apart from the request: it may start before the response is
+> written or after it. As with Active Job on Solid Queue, a job is a class in
 > `app/jobs/` and a row in the application's own database: no other service.
 
 ```shell terminal — blog/

@@ -771,7 +771,9 @@ of Strings:
 - A request that ends in a 500, once: an exception
   `Cybertrain::ClientError.status_for` maps to 500 or more. Never a 4xx
   (a bad parameter, a CSRF failure, a 404), never what `rescue_from`
-  handled.
+  handled. Should serving the error page then raise a new exception (an
+  unreadable `public/500.html`), that one is reported too: two reports,
+  each a real failure.
 - A job's failed attempts (`where` its class or kind; `job.attempt` and
   `job.max_attempts` in the context), under the default policy, `retry_on`
   or `discard_on`. An attempt that fails with the class and message of an
@@ -818,7 +820,9 @@ no DSN, nothing is queued and no thread starts. A delivery that fails is
 logged, `error delivery failed: <Class>: <message>`, and the next report
 starts a new thread if the old one ended. When the server, a worker or a
 feeds process stops, it waits up to 2 seconds for the queued reports after
-its services stopped; what is left is lost. A development rebuild waits too.
+its services stopped; what is left is lost. A development rebuild waits
+too, and so do a registered command, `./<app> jobs` and `./<app> console`
+before they close the database and exit.
 
 **Sending to Sentry or GlitchTip.** With the line in `bin/<app>.rb`, setting
 `CYBERTRAIN_SENTRY_DSN` (or `c.sentry_dsn`) to the project's DSN sends each
@@ -837,7 +841,9 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # optional: send a quarter of th
   secrets, not in a committed file. One that does not read stops the boot,
   naming the part and never the key:
   `error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`.
-- A DSN set in a program that does not link the sender stops the boot:
+- A DSN set in a program that does not link the sender stops the boot,
+  and refuses a registered command, `jobs` and `console` before they open
+  the database (exit status 1):
   `error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`.
   A sender class of your own (a subclass of
   `Cybertrain::ErrorReporter::Sender`) defines `sender_name` to answer a

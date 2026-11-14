@@ -1,5 +1,5 @@
 ---
-source_sha256: 98680fc9de1560bab13ec70bdcf7ae168650e58642ea0d0d7bf89fe6366d10a9
+source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
 ---
 # Фоновая работа и эксплуатация
 
@@ -811,7 +811,9 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 - О запросе, который закончился 500, один раз: об исключении, которое
   `Cybertrain::ClientError.status_for` сопоставляет с 500 или выше. Никогда
   о 4xx (неверный параметр, сбой CSRF, 404), никогда о том, что обработал
-  `rescue_from`.
+  `rescue_from`. Если затем отдача страницы ошибки бросит новое исключение
+  (нечитаемый `public/500.html`), о нём тоже сообщается: два отчёта, каждый
+  о настоящем сбое.
 - О неудачных попытках задачи (`where` — её класс или вид; в контексте
   `job.attempt` и `job.max_attempts`) при политике по умолчанию, `retry_on`
   или `discard_on`. Попытка, упавшая с теми же классом и сообщением, что и
@@ -859,7 +861,9 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 `error delivery failed: <Class>: <message>`, и следующий отчёт запускает
 новый поток, если старый завершился. Когда сервер, воркер или процесс feeds
 останавливается, он после остановки своих служб ждёт отчёты из очереди до 2
-секунд; оставшееся теряется. Пересборка в режиме разработки тоже ждёт.
+секунд; оставшееся теряется. Пересборка в режиме разработки тоже ждёт, как
+и зарегистрированная команда, `./<app> jobs` и `./<app> console` перед тем,
+как закрыть базу и завершиться.
 
 **Отправка в Sentry или GlitchTip.** Со строкой в `bin/<app>.rb` установка
 `CYBERTRAIN_SENTRY_DSN` (или `c.sentry_dsn`) в DSN проекта отправляет каждый
@@ -879,7 +883,8 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # необязательно: о
   останавливает загрузку, называя часть и никогда ключ:
   `error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`.
 - DSN, заданный в программе, которая не связывает отправитель, останавливает
-  загрузку:
+  загрузку и приводит к отказу зарегистрированной команды, `jobs` и
+  `console` до открытия базы (статус выхода 1):
   `error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`.
   Ваш собственный класс отправителя (подкласс
   `Cybertrain::ErrorReporter::Sender`) определяет `sender_name`, который

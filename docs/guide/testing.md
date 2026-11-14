@@ -741,8 +741,9 @@ refuses); `dsn(project = "1", prefix = "")` is a DSN that sends to it, and
 (`X-Sentry-Auth`), `sentry_content_type`, `sentry_body` (the three JSON
 lines), `sentry_field("a.b.0.c")` for a field of the event (`""` when it is
 absent) and `sentry_header_field(name)` for the envelope's header. A key of
-`extra` that holds a dot (`job.attempt`) cannot be read with
-`sentry_field`, which splits on dots: read it from `sentry_body`. A
+`extra` that holds a dot is read whole, since in an object the longest
+run of the path that is a key is taken first:
+`sentry_field("extra.job.attempt")`. A
 receiver started in a test is stopped after it, like the others.
 
 A subscriber added in a test is dropped before the next test (one

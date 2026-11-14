@@ -1,5 +1,5 @@
 ---
-source_sha256: 98680fc9de1560bab13ec70bdcf7ae168650e58642ea0d0d7bf89fe6366d10a9
+source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
 ---
 # バックグラウンド処理と運用
 
@@ -356,7 +356,7 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 
 **自分で何も書かなくても報告されるもの：**
 
-- 500 で終わったリクエスト。1 回だけです。`Cybertrain::ClientError.status_for` が 500 以上に対応させる例外です。4xx（不正なパラメーター、CSRF の失敗、404）と、`rescue_from` が処理したものは報告しません。
+- 500 で終わったリクエスト。1 回だけです（その後エラーページを返す処理が新しい例外を投げたとき、たとえば `public/500.html` が読めないときは、それも報告され、報告は 2 件になります。どちらも本当の失敗です）。`Cybertrain::ClientError.status_for` が 500 以上に対応させる例外です。4xx（不正なパラメーター、CSRF の失敗、404）と、`rescue_from` が処理したものは報告しません。
 - ジョブの失敗した試行（`where` はそのクラスか種類。コンテキストに `job.attempt` と `job.max_attempts`）。デフォルトのポリシー、`retry_on`、`discard_on` のどれでも報告されます。同じ種類の試行が 1 分以内に同じクラスとメッセージで報告されていれば、その試行はログに出ますが、もう一度は報告されません（[配送](#error-reporting)、後述）。デフォルトのポリシーでは最初の再試行まで 1 分待つので各試行が報告されますが、`retry_on ..., wait: 30` では報告された試行の 30 秒後の試行は報告されません。破棄は 1 回報告されます。`job.max_attempts` は、デフォルトのポリシーでは `job_max_attempts`、`retry_on` ではポリシーの `attempts:`、`discard_on` では破棄されたときの試行回数です。失敗した `deliver_later` のメールは `cybertrain mail` ジョブのものです。ジョブのスレッドのループから漏れた例外や、そこでのデータベースのエラーは `where` が `job thread` です。
 - ブロックが例外を投げた定期タスク、または 5 年以内に次の実行がない `cron` タスク（`schedule:<name>`）。
 - 例外を投げたフィードの `on_open`、`on_message`、`on_tick`、死んだフィードのスレッド、フィードをあきらめたスーパーバイザー（`Cybertrain::Background::FeedFailed`。裏にクラスのない名前だけで、メッセージは `feed <name> restarted <n> times in <w> s; exiting`）。どれも `feed:<name>` です。
@@ -365,7 +365,7 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 
 **送らないもの。** パラメーター、ヘッダー、Cookie、セッション、クライアントのアドレス、クエリ文字列はイベントに入りません。リクエストのパスはリクエストログと同じようにフィルタされます。足されるのはアプリケーションが `context:` に入れたものだけです。例外のメッセージはフィルタしません。個人データを含むメッセージ（宛先を書いた SMTP サーバーの拒否）はそのまま送られます。
 
-**配送。** 報告は 100 件のキューに入り、1 つのスレッドが届けます。同じクラス、メッセージ、`where` の報告は 1 分に 1 回までしかキューに入らないので、訪問者全員に同じメッセージで失敗するページでも報告は 1 分に 1 件です（ID を含むメッセージ、`Couldn't find Article with id=5` なら、メッセージごとに 1 件です）。キューが満杯のときは報告を捨てて数え、`error reports dropped: <n>` を warn レベルで 1 分に 1 回まで出します。サブスクライバーも DSN もない間は、何もキューに入らず、スレッドも起動しません。失敗した配送は `error delivery failed: <Class>: <message>` とログに出し、前のスレッドが終わっていれば次の報告が新しいスレッドを起動します。サーバー、ワーカー、feeds プロセスは止まるとき、サービスを止めた後、キューの報告を最大 2 秒待ちます。残ったものは失われます。開発中の再ビルドも待ちます。
+**配送。** 報告は 100 件のキューに入り、1 つのスレッドが届けます。同じクラス、メッセージ、`where` の報告は 1 分に 1 回までしかキューに入らないので、訪問者全員に同じメッセージで失敗するページでも報告は 1 分に 1 件です（ID を含むメッセージ、`Couldn't find Article with id=5` なら、メッセージごとに 1 件です）。キューが満杯のときは報告を捨てて数え、`error reports dropped: <n>` を warn レベルで 1 分に 1 回まで出します。サブスクライバーも DSN もない間は、何もキューに入らず、スレッドも起動しません。失敗した配送は `error delivery failed: <Class>: <message>` とログに出し、前のスレッドが終わっていれば次の報告が新しいスレッドを起動します。サーバー、ワーカー、feeds プロセスは止まるとき、サービスを止めた後、キューの報告を最大 2 秒待ちます。残ったものは失われます。開発中の再ビルドも待ちます。登録したコマンド、`./<app> jobs`、`./<app> console` も、データベースを閉じて終了する前に待ちます。
 
 **Sentry または GlitchTip に送る。** `bin/<app>.rb` にその行があれば、`CYBERTRAIN_SENTRY_DSN`（または `c.sentry_dsn`）をプロジェクトの DSN にすると、各報告を Sentry のイベントとして送ります：
 
@@ -376,7 +376,7 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 任意：4 分の 1 を送る
 ```
 
 - DSN は `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>` の形です（secret、Sentry の古い後半部分は無視します）。イベントは `<scheme>://<host>[:<port>][/<path>]/api/<project id>/envelope/` に送られ、Sentry と GlitchTip のどちらも受け付けます。キーを含むので、コミットするファイルではなくデプロイのシークレットに置いてください。読めない DSN では起動が止まり、どの部分かを示しますがキーは示しません：`error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`。
-- 送信側をリンクしていないプログラムで DSN を設定すると、起動が止まります：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。自分で作った送信側のクラス（`Cybertrain::ErrorReporter::Sender` のサブクラス）は、空でない名前を返す `sender_name` を定義します。そうしないと同じ拒否に当たります。
+- 送信側をリンクしていないプログラムで DSN を設定すると、起動が止まり、登録したコマンド、`jobs`、`console` もデータベースを開く前に拒否されます（終了ステータス 1）：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。自分で作った送信側のクラス（`Cybertrain::ErrorReporter::Sender` のサブクラス）は、空でない名前を返す `sender_name` を定義します。そうしないと同じ拒否に当たります。
 - `CYBERTRAIN_ERROR_SAMPLE_RATE`（`c.error_sample_rate`、1.0）は送る報告の割合で、0.0〜1.0 です。サブスクライバーはすべての報告を受け取ります。変数は数字に任意の `.数字` が続く形でなければならず、そうでなければ起動が止まります：`error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`。
 - `CYBERTRAIN_RELEASE`（`c.release`。デフォルトは空）はバージョンかコミットを示します。検査はしません。
 - 1 回の送信は、ホスト名を解決した後は最大 5 秒待ち（名前解決は配送スレッドを止め、締め切りでは打ち切れないので、止まったリゾルバーは送信をそれ以上待たせることがあります）、再試行はしません。拒否は warn レベルで `error report not sent: Sentry answered 429` とログに出し、接続の失敗も `error report not sent: <Class>: <message>` と出します。

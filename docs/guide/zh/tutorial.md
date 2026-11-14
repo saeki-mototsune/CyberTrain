@@ -1,5 +1,5 @@
 ---
-source_sha256: 5b2b87f381188b5c2bfcaa11d389883df089b495e9a2504638baf6d1d0352a14
+source_sha256: 47ef985aa7c94f7ad017ab8f56f32a735a3c83f67cfba238c663e2bb1aa948f2
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -640,7 +640,7 @@ require "cybertrain/streams"
 ## 后台作业
 
 > [!WHY]
-> 不应拖住响应的工作（例如发送通知）在响应之后运行。和 Solid Queue 上的 Active Job 一样，作业是 `app/jobs/` 中的一个类，加上应用自己数据库中的一行：不需要其他服务。
+> 不应拖住响应的工作（例如发送通知）独立于请求运行：它可能在响应写出之前开始，也可能在之后。和 Solid Queue 上的 Active Job 一样，作业是 `app/jobs/` 中的一个类，加上应用自己数据库中的一行：不需要其他服务。
 
 ```shell 终端 — blog/
 cybertrain generate job notify_comment --retry StandardError:30:3

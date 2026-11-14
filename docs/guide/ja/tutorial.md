@@ -1,5 +1,5 @@
 ---
-source_sha256: 5b2b87f381188b5c2bfcaa11d389883df089b495e9a2504638baf6d1d0352a14
+source_sha256: 47ef985aa7c94f7ad017ab8f56f32a735a3c83f67cfba238c663e2bb1aa948f2
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -640,7 +640,7 @@ WebSocket や、自分の JavaScript から使うストリームなど、詳し�
 ## バックグラウンドジョブ
 
 > [!WHY]
-> 通知のように、レスポンスを待たせるべきでない処理は、レスポンスの後に実行します。Solid Queue 上の Active Job と同じく、ジョブは `app/jobs/` のクラスであり、アプリケーション自身のデータベースの 1 行です：ほかのサービスは要りません。
+> 通知のように、レスポンスを待たせるべきでない処理は、リクエストとは別に実行します。レスポンスを書く前に始まることも、後に始まることもあります。Solid Queue 上の Active Job と同じく、ジョブは `app/jobs/` のクラスであり、アプリケーション自身のデータベースの 1 行です：ほかのサービスは要りません。
 
 ```shell ターミナル — blog/
 cybertrain generate job notify_comment --retry StandardError:30:3

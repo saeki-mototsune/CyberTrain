@@ -1,5 +1,5 @@
 ---
-source_sha256: d98dfd28dfd1249b9c4db726377bcf36bb504e62f2f74284cbab8f3eca23bfd3
+source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
 ---
 # Tester une application
 
@@ -802,9 +802,9 @@ Chacun est un `Cybertrain::Test::SentryEnvelope`&nbsp;: `sentry_path`,
 `sentry_auth` (`X-Sentry-Auth`), `sentry_content_type`, `sentry_body` (les
 trois lignes JSON), `sentry_field("a.b.0.c")` pour un champ de l’événement
 (`""` quand il est absent) et `sentry_header_field(name)` pour l’en-tête de
-l’enveloppe. Une clé de `extra` qui contient un point (`job.attempt`) ne peut
-pas se lire avec `sentry_field`, qui découpe aux points&nbsp;: lisez-la dans
-`sentry_body`. Un récepteur démarré dans un test est arrêté après lui, comme
+l’enveloppe. Une clé de `extra` qui contient un point se lit entière, car
+dans un objet la plus longue suite du chemin qui est une clé est prise
+d’abord&nbsp;: `sentry_field("extra.job.attempt")`. Un récepteur démarré dans un test est arrêté après lui, comme
 les autres.
 
 Un abonné ajouté dans un test est retiré avant le test suivant (celui

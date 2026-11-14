@@ -1,5 +1,5 @@
 ---
-source_sha256: d98dfd28dfd1249b9c4db726377bcf36bb504e62f2f74284cbab8f3eca23bfd3
+source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
 ---
 # 测试应用
 
@@ -436,7 +436,7 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
 end
 ```
 
-`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` 像 Sentry 那样应答每个信封（另一个 `status:`，比如 429，扮演拒绝的 Sentry）；`dsn(project = "1", prefix = "")` 是发往它的 DSN，`received_events(count, wait = 5.0)` 返回已到达的内容。每一个都是 `Cybertrain::Test::SentryEnvelope`：`sentry_path`、`sentry_auth`（`X-Sentry-Auth`）、`sentry_content_type`、`sentry_body`（三行 JSON）、读取事件字段的 `sentry_field("a.b.0.c")`（不存在时为 `""`），以及读取信封头的 `sentry_header_field(name)`。`extra` 中含有点的键（`job.attempt`）无法用按点拆分的 `sentry_field` 读取：请从 `sentry_body` 中读取。在测试中启动的接收器会在测试之后停止，和其他接收器一样。
+`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` 像 Sentry 那样应答每个信封（另一个 `status:`，比如 429，扮演拒绝的 Sentry）；`dsn(project = "1", prefix = "")` 是发往它的 DSN，`received_events(count, wait = 5.0)` 返回已到达的内容。每一个都是 `Cybertrain::Test::SentryEnvelope`：`sentry_path`、`sentry_auth`（`X-Sentry-Auth`）、`sentry_content_type`、`sentry_body`（三行 JSON）、读取事件字段的 `sentry_field("a.b.0.c")`（不存在时为 `""`），以及读取信封头的 `sentry_header_field(name)`。`extra` 中含有点的键会被整体读取，因为在对象中会先取路径里构成键的最长部分：`sentry_field("extra.job.attempt")`。在测试中启动的接收器会在测试之后停止，和其他接收器一样。
 
 在测试中添加的订阅者会在下一个测试之前被移除（`config/app.rb` 添加的会保留），每个测试之前，报告器会投递仍在队列中的内容并忘记去重的时间窗口，所以两个测试中的同一个失败都会被报告。对于读取订阅者收到内容的测试，`Cybertrain.error.drain_reports` 会等待（最多 2 秒）队列中的报告：
 

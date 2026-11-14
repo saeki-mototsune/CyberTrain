@@ -1,5 +1,5 @@
 ---
-source_sha256: d98dfd28dfd1249b9c4db726377bcf36bb504e62f2f74284cbab8f3eca23bfd3
+source_sha256: afad0b5f4ec95c128b33a9ffa1a21e091c996842a1fa1e1d893a6e92b6a3e025
 ---
 # アプリをテストする
 
@@ -436,7 +436,7 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
 end
 ```
 
-`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` は各エンベロープに Sentry と同じように応答します（429 など別の `status:` で、拒否する Sentry を演じます）。`dsn(project = "1", prefix = "")` はそこに送る DSN で、`received_events(count, wait = 5.0)` は届いたものを返します。それぞれは `Cybertrain::Test::SentryEnvelope` で、`sentry_path`、`sentry_auth`（`X-Sentry-Auth`）、`sentry_content_type`、`sentry_body`（3 行の JSON）、イベントのフィールドを読む `sentry_field("a.b.0.c")`（ないときは `""`）、エンベロープのヘッダーを読む `sentry_header_field(name)` を持ちます。`extra` のキーにドットを含むもの（`job.attempt`）は、ドットで区切る `sentry_field` では読めません。`sentry_body` から読んでください。テストの中で起動したレシーバーは、ほかのレシーバーと同じくテストの後に止まります。
+`SentryReceiver.new(status: 200, max: 50, accept_window: 10.0)` は各エンベロープに Sentry と同じように応答します（429 など別の `status:` で、拒否する Sentry を演じます）。`dsn(project = "1", prefix = "")` はそこに送る DSN で、`received_events(count, wait = 5.0)` は届いたものを返します。それぞれは `Cybertrain::Test::SentryEnvelope` で、`sentry_path`、`sentry_auth`（`X-Sentry-Auth`）、`sentry_content_type`、`sentry_body`（3 行の JSON）、イベントのフィールドを読む `sentry_field("a.b.0.c")`（ないときは `""`）、エンベロープのヘッダーを読む `sentry_header_field(name)` を持ちます。`extra` のドットを含むキーは丸ごと読めます。オブジェクトの中では、パスのうちキーになる最も長い部分が先に取られるからです：`sentry_field("extra.job.attempt")`。テストの中で起動したレシーバーは、ほかのレシーバーと同じくテストの後に止まります。
 
 テストで追加したサブスクライバーは次のテストの前に外れます（`config/app.rb` が追加したものは残ります）。各テストの前に、レポーターはまだキューにあるものを届け、重複除去の時間枠を忘れるので、2 つのテストで同じ失敗が起きればどちらでも報告されます。サブスクライバーが受け取ったものを読むテストのために、`Cybertrain.error.drain_reports` がキューの報告を（最大 2 秒）待ちます：
 

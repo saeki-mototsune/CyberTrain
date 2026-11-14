@@ -1,5 +1,5 @@
 ---
-source_sha256: 98680fc9de1560bab13ec70bdcf7ae168650e58642ea0d0d7bf89fe6366d10a9
+source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
 ---
 # Tâches de fond et exploitation
 
@@ -847,7 +847,9 @@ L’événement est une valeur faite de Strings&nbsp;:
 - Une requête qui se termine en 500, une fois&nbsp;: une exception que
   `Cybertrain::ClientError.status_for` associe à 500 ou plus. Jamais un 4xx
   (un paramètre invalide, un échec CSRF, un 404), jamais ce que `rescue_from`
-  a traité.
+  a traité. Si servir la page d’erreur lève ensuite une nouvelle exception
+  (un `public/500.html` illisible), celle-ci est signalée aussi&nbsp;: deux
+  rapports, chacun un vrai échec.
 - Les tentatives échouées d’un job (`where` sa classe ou son type&nbsp;;
   `job.attempt` et `job.max_attempts` dans le contexte), sous la politique
   par défaut, `retry_on` ou `discard_on`. Une tentative qui échoue avec la
@@ -899,7 +901,9 @@ journalisée, `error delivery failed: <Class>: <message>`, et le rapport
 suivant démarre un nouveau thread si l’ancien s’est terminé. Quand le
 serveur, un worker ou un processus feeds s’arrête, il attend jusqu’à 2
 secondes les rapports en file après l’arrêt de ses services&nbsp;; ce qui
-reste est perdu. Une reconstruction en développement attend aussi.
+reste est perdu. Une reconstruction en développement attend aussi, de même
+qu’une commande enregistrée, `./<app> jobs` et `./<app> console` avant de
+fermer la base et de se terminer.
 
 **Envoyer à Sentry ou GlitchTip.** Avec la ligne dans `bin/<app>.rb`, définir
 `CYBERTRAIN_SENTRY_DSN` (ou `c.sentry_dsn`) au DSN du projet envoie chaque
@@ -920,7 +924,8 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # facultatif : en envoyer un qua
   clé&nbsp;:
   `error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`.
 - Un DSN défini dans un programme qui ne lie pas l’envoyeur arrête le
-  démarrage&nbsp;:
+  démarrage, et fait refuser une commande enregistrée, `jobs` et `console`
+  avant qu’ils n’ouvrent la base (statut de sortie 1)&nbsp;:
   `error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`.
   Une classe d’envoyeur à vous (une sous-classe de
   `Cybertrain::ErrorReporter::Sender`) définit `sender_name` pour renvoyer un

@@ -1,5 +1,5 @@
 ---
-source_sha256: 98680fc9de1560bab13ec70bdcf7ae168650e58642ea0d0d7bf89fe6366d10a9
+source_sha256: b1b0ef587b31eae2ec05928c11631db60f61cb90aef09c2d2e2917f298a32b4f
 ---
 # 后台任务与运维
 
@@ -356,7 +356,7 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 
 **不用你写一行就会报告的：**
 
-- 以 500 结束的请求，只报告一次：`Cybertrain::ClientError.status_for` 映射为 500 或以上的异常。从不报告 4xx（错误的参数、CSRF 失败、404），也从不报告 `rescue_from` 处理过的异常。
+- 以 500 结束的请求，只报告一次（如果之后返回错误页面时又抛出新的异常，比如 `public/500.html` 无法读取，那个异常也会被报告：两个报告，各自都是真实的失败）：`Cybertrain::ClientError.status_for` 映射为 500 或以上的异常。从不报告 4xx（错误的参数、CSRF 失败、404），也从不报告 `rescue_from` 处理过的异常。
 - 作业的失败尝试（`where` 是它的类或种类；上下文中有 `job.attempt` 和 `job.max_attempts`），无论是默认策略、`retry_on` 还是 `discard_on`。如果同一种类的某次尝试在一分钟内以相同的类和消息报告过，这次尝试会被记录但不会再次报告（[投递](#error-reporting)，见下文）：默认策略下第一次重试要等一分钟，所以每次尝试都会报告；而 `retry_on ..., wait: 30` 时，在已报告的尝试 30 秒后的那次尝试不会报告。丢弃报告一次。`job.max_attempts` 在默认策略下是 `job_max_attempts`，在 `retry_on` 下是策略的 `attempts:`，在 `discard_on` 下是结束时的尝试次数。失败的 `deliver_later` 邮件属于 `cybertrain mail` 作业。从作业线程的循环中逃出的异常，或那里的数据库错误，`where` 为 `job thread`。
 - 块抛出异常的定时任务，或五年内没有下一次运行的 `cron` 任务（`schedule:<name>`）。
 - 抛出异常的数据订阅的 `on_open`、`on_message` 或 `on_tick`、死掉的数据订阅线程，以及放弃某个数据订阅的监督线程（`Cybertrain::Background::FeedFailed`，一个背后没有类的名字，消息为 `feed <name> restarted <n> times in <w> s; exiting`），都是 `feed:<name>`。
@@ -365,7 +365,7 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 
 **从不发送的。** 参数、请求头、cookie、会话、客户端的地址和查询字符串不在事件中；请求的路径像请求日志那样被过滤。只添加应用放进 `context:` 的内容。异常消息不会被过滤：含有个人数据的消息（SMTP 服务器点名收件人的拒绝）会原样发送。
 
-**投递。** 报告进入一个容量为 100 的队列，由一个线程投递。相同的类、消息和 `where` 每分钟最多入队一次，所以对每个访问者都以相同消息失败的页面每分钟只产生一个报告（带有 ID 的消息，如 `Couldn't find Article with id=5`，每个不同的消息各产生一个）；队列满时，报告被丢弃并计数，`error reports dropped: <n>` 以 warn 级别每分钟最多记录一次。没有订阅者也没有 DSN 时，什么都不入队，也不启动线程。投递失败会被记录为 `error delivery failed: <Class>: <message>`，如果旧线程已结束，下一个报告会启动新线程。服务器、worker 或 feeds 进程停止时，会在其服务停止后最多等待 2 秒，让队列中的报告送出；剩下的会丢失。开发中的重新构建也会等待。
+**投递。** 报告进入一个容量为 100 的队列，由一个线程投递。相同的类、消息和 `where` 每分钟最多入队一次，所以对每个访问者都以相同消息失败的页面每分钟只产生一个报告（带有 ID 的消息，如 `Couldn't find Article with id=5`，每个不同的消息各产生一个）；队列满时，报告被丢弃并计数，`error reports dropped: <n>` 以 warn 级别每分钟最多记录一次。没有订阅者也没有 DSN 时，什么都不入队，也不启动线程。投递失败会被记录为 `error delivery failed: <Class>: <message>`，如果旧线程已结束，下一个报告会启动新线程。服务器、worker 或 feeds 进程停止时，会在其服务停止后最多等待 2 秒，让队列中的报告送出；剩下的会丢失。开发中的重新构建也会等待，注册的命令、`./<app> jobs` 和 `./<app> console` 在关闭数据库并退出之前也会等待。
 
 **发送到 Sentry 或 GlitchTip。** `bin/<app>.rb` 中有那一行时，把 `CYBERTRAIN_SENTRY_DSN`（或 `c.sentry_dsn`）设为项目的 DSN，就会把每个报告作为 Sentry 事件发送：
 
@@ -376,7 +376,7 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 可选：发送其中四分之
 ```
 
 - DSN 的形式为 `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>`（secret，即 Sentry 旧的后半部分，会被忽略）；事件发送到 `<scheme>://<host>[:<port>][/<path>]/api/<project id>/envelope/`，Sentry 和 GlitchTip 都接受。它含有密钥：放在部署的机密中，而不是提交的文件中。无法读取的 DSN 会让启动停止，指出出错的部分，从不显示密钥：`error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`。
-- 在没有链接发送器的程序中设置 DSN 会让启动停止：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。你自己的发送器类（`Cybertrain::ErrorReporter::Sender` 的子类）要定义返回非空名字的 `sender_name`，否则会遇到同样的拒绝。
+- 在没有链接发送器的程序中设置 DSN 会让启动停止，注册的命令、`jobs` 和 `console` 也会在打开数据库之前被拒绝（退出状态 1）：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。你自己的发送器类（`Cybertrain::ErrorReporter::Sender` 的子类）要定义返回非空名字的 `sender_name`，否则会遇到同样的拒绝。
 - `CYBERTRAIN_ERROR_SAMPLE_RATE`（`c.error_sample_rate`，1.0）是发送的报告所占的比例，0.0 到 1.0；订阅者仍然看到每一个报告。变量必须是数字加可选的 `.数字`，否则启动停止：`error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`。
 - `CYBERTRAIN_RELEASE`（`c.release`，默认为空）标明版本或提交；不做检查。
 - 解析主机名之后，每次发送最多等待 5 秒（名称解析会阻塞投递线程，截止时间无法中断它，所以停滞的解析器可能让一次发送等得更久），从不重试。拒绝会以 warn 级别记录为 `error report not sent: Sentry answered 429`，连接失败也一样：`error report not sent: <Class>: <message>`。
