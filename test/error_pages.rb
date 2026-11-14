@@ -171,12 +171,29 @@ def events_after_drain
   REPORTED
 end
 
+# One step past the reporter's dedupe window.
+PAST_DEDUPE = Cybertrain::ErrorReporter::DEDUPE_SECONDS + 1
+
+# Moves the Clock past the dedupe window once the layers inside it are
+# done, also when they raise: a second report of the same exception by the
+# RequestId outside it would then be a second event, not one collapsed by
+# the dedupe, so "reported once" holds by construction.
+class ClockSkip < Cybertrain::Middleware
+  def call(ctx)
+    nxt = @app
+    nxt.call(ctx) unless nxt.nil?
+    nil
+  ensure
+    Cybertrain::Clock.travel_to(Cybertrain::Clock.now + PAST_DEDUPE)
+  end
+end
+
 # The production stack's order (Application#build_stack): RequestId
-# outermost, ErrorPages inside it.
+# outermost, ErrorPages inside it (a ClockSkip between them).
 def production_get(path, log)
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", path, { "host" => "www.example.com" }, "", "127.0.0.1"))
   pages = Cybertrain::ErrorPages.new(endpoint, PAGES, Cybertrain::Logger.new(log, :info))
-  Cybertrain::RequestId.new(pages, [:request_id]).call(ctx)
+  Cybertrain::RequestId.new(ClockSkip.new(pages), [:request_id]).call(ctx)
   ctx
 end
 

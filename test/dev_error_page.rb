@@ -864,13 +864,16 @@ Cybertrain::Test.on_reset(ReportReset.hook)
 # when the request comes back out through it: a second report of the same
 # exception by front_app's RequestId would make a second event rather
 # than one collapsed by dedupe.
+# One step past the reporter's dedupe window.
+PAST_DEDUPE = Cybertrain::ErrorReporter::DEDUPE_SECONDS + 1
+
 class ClockSkip < Cybertrain::Middleware
   def call(ctx)
     nxt = @app
     nxt.call(ctx) unless nxt.nil?
     nil
   ensure
-    Cybertrain::Clock.travel_to(Cybertrain::Clock.now + 61)
+    Cybertrain::Clock.travel_to(Cybertrain::Clock.now + PAST_DEDUPE)
   end
 end
 
@@ -900,8 +903,9 @@ test "an exception the diagnostics page does not take is reported once, by the s
   travel_to DEV_AT
   ctx = Cybertrain::Context.new(Cybertrain::Request.new("GET", "/unwritten", { "host" => "www.example.com" }, "", "127.0.0.1"))
   assert_raises("NotImplementedError") { dev_front_app.call(ctx) }
-  # front_app's RequestId saw it 61 s later and did not report it again.
-  assert_equal DEV_AT.to_i + 61, Time.current.to_i
+  # front_app's RequestId saw it past the dedupe window and did not
+  # report it again.
+  assert_equal DEV_AT.to_i + PAST_DEDUPE, Time.current.to_i
   Cybertrain.error.drain_reports(2.0)
   assert_equal 1, REPORTED.size
   ev = REPORTED[0]

@@ -202,6 +202,8 @@ end
 # the window between attempts. The worked time (`perform_enqueued_jobs`'s
 # argument) only makes the row due; the Clock is what dedupe reads.
 JOB_AT = Time.utc(2026, 11, 11, 12)
+# One step past the reporter's dedupe window.
+PAST_DEDUPE = Cybertrain::ErrorReporter::DEDUPE_SECONDS + 1
 
 test "a job's second attempt past the dedupe window is reported; one inside it is not" do
   clear_enqueued_jobs
@@ -209,9 +211,9 @@ test "a job's second attempt past the dedupe window is reported; one inside it i
   id = boom_in_request
   perform_enqueued_jobs
   assert_equal 1, events_after_drain.size
-  # 61 s on by the Clock; worked a day on, so the row (due 60 s after
-  # attempt 1) runs once.
-  travel 61
+  # Past the dedupe window by the Clock; worked a day on, so the row (due
+  # 60 s after attempt 1) runs once.
+  travel PAST_DEDUPE
   perform_enqueued_jobs(Time.current + 86_400)
   assert_equal 2, job_attempts(id)
   events = events_after_drain
@@ -220,7 +222,7 @@ test "a job's second attempt past the dedupe window is reported; one inside it i
   assert_equal ["RuntimeError", "boom", "BoomJob", "req-77"],
                [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id]
   assert_equal({ "job.id" => id.to_s, "job.attempt" => "2", "job.max_attempts" => "5" }, ev.error_context)
-  assert_equal JOB_AT.to_i + 61, ev.error_occurred_at.to_i
+  assert_equal JOB_AT.to_i + PAST_DEDUPE, ev.error_occurred_at.to_i
   # Attempt 3 inside the window (the Clock has not moved): logged, not
   # reported again.
   perform_enqueued_jobs(Time.current + 2 * 86_400)
@@ -239,8 +241,8 @@ test "a retry_on attempt carries the policy's attempts, the second one past the 
                [ev.error_class, ev.error_message, ev.error_where, ev.error_request_id]
   assert_equal({ "job.id" => retried.to_s, "job.attempt" => "1", "job.max_attempts" => "3" }, ev.error_context)
   assert_equal "queued", job_state(retried)
-  # Due 60 s on; the Clock 61 s on, past the window.
-  travel 61
+  # Due 60 s on; the Clock past the window.
+  travel PAST_DEDUPE
   perform_enqueued_jobs
   assert_equal 2, job_attempts(retried)
   events = events_after_drain
@@ -254,7 +256,6 @@ test "a retry_on attempt carries the policy's attempts, the second one past the 
 end
 
 test "a discard_on is reported once" do
-  clear_enqueued_jobs
   clear_enqueued_jobs
   discarded = DiscardJob.perform_later
   perform_enqueued_jobs
