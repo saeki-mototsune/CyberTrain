@@ -909,7 +909,9 @@ object per line, for log collectors:
 holds the other tags (job, feed, `tagged`) in order. Generated with
 `JSON.generate`, so the message is escaped. (Amended 2026-11-13: by the
 Logger's own escaper, `Logger.json_quote`, since `JSON.generate` raises on
-invalid UTF-8 under CRuby; such bytes become `�`. With
+invalid UTF-8 under CRuby; when a message or a tag is not valid UTF-8,
+every byte of it from 0x80 up, those of valid characters included, becomes
+the escape `\ufffd`. With
 `c.log_tags = []` a request's lines carry no `request_id`. Section 21,
 Part 5b.)
 
@@ -966,7 +968,11 @@ Cybertrain.error.subscribe(AuditSubscriber.new)    # in config/app.rb
 - **Jobs**: every failed attempt, with the attempt number and the maximum
   (`job.attempt` / `job.max_attempts` in the event's context), from the
   rescue in `Job.run_handler` where the exception object is still at hand;
-  also a discarded job (`discard_on`).
+  also a discarded job (`discard_on`). (Amended 2026-11-13: the dedupe of
+  13.4 applies, `where` being the kind, so an attempt that fails like one
+  of its kind reported less than a minute before is logged and not
+  reported; under the default policy the first retry waits a minute, so
+  each attempt is reported there. Section 21, Part 5b.)
 - **Scheduled tasks**: a task block that raises (scheduler.rb's two rescue
   sites).
 - **Feeds**: an exception in `on_open`, `on_message` or `on_tick`, a feed
@@ -1938,14 +1944,58 @@ sender in `require "cybertrain"` programs was not measured.
   column should not take (a generated reader of another type meets rule
   34).
 
+**Acceptance.**
+
+- 11 (logs): met; the test programs are listed in design.md D86's
+  Verification (`test/logger_lines.rb`, `logger_scope.rb`,
+  `logger_threads.rb`, `request_id.rb`, `log_tags_background.rb`, and the
+  settings outside boot in `runtime.rb`, `config_validation.rb`,
+  `main_command.rb`, `main_jobs.rb`).
+- 12 (error reporting): met; design.md D87's Verification
+  (`test/error_reporter.rb`, `error_reporting_sources.rb`, `request_id.rb`,
+  `error_pages.rb`, `dev_error_page.rb`, `sentry_dsn.rb`, `sentry.rb`,
+  `features_core.rb`, `main_roles.rb`), the envelope received by a
+  `Test::SentryReceiver` (an `HttpReceiver`) rather than a bare
+  `Test::HttpReceiver`. "Each failed attempt" holds under the default
+  policy; within the dedupe window a like attempt is logged, not reported
+  (section 13.2 amended).
+- 13 (the blog), below.
+- 14 (documents): design.md D86 and D87 (D85 amended for the optional
+  subsystems), the operations, configuration, requests, testing,
+  subsystems and outbound guides in five languages, the deploy pages, the
+  README, spikes/NOTES.md rules 112 to 119, docs/spinel-feedback.md AP and
+  AQ, and this section.
+
 **Acceptance 13.** No test-only route (the maintainer's choice): the
 blog's `ErrorReportingTest` makes an article page fail by renaming the
 `articles` table for the request (put back in an `ensure`), so the
-controller's lookup raises `Cybertrain::DB::Error`, and makes `NotifyCommentJob`
-fail with a comment that does not exist (or was deleted after the request
-enqueued it). Both reach a `Test::SentryReceiver` through `sentry_dsn`
-assigned in the test, since `cybertrain test` ignores an exported
-`CYBERTRAIN_SENTRY_DSN` (plan D14). A 404 is not reported.
+controller's lookup raises `Cybertrain::DB::Error`. For the job it shows
+both policies. A failure that may pass is retried: the `comments` table is
+renamed away while `NotifyCommentJob` runs, so attempt 1 of 3 fails, is
+logged (`... attempt 1 of 3 failed: ...; retrying in 30 s`) and reported,
+and the row is `queued` again. A comment deleted before its job runs
+discards the job: `NotifyCommentJob` looks the comment up with `find_by`
+and raises `NotifyCommentJob::CommentGone`, a class defined in the job's
+file above `discard_on CommentGone`; the log line is `ERROR
+[NotifyCommentJob <id>] [<rid>] job <id> (NotifyCommentJob) discarded:
+NotifyCommentJob::CommentGone: comment <n> was deleted; nothing to
+notify`, the row is `discarded`, and one report reaches the subscriber and
+the receiver, with `job.attempt` and `job.max_attempts` both 1 and the
+request id of the request that enqueued it. Each reaches a
+`Test::SentryReceiver` through `sentry_dsn` assigned in the test, since
+`cybertrain test` ignores an exported `CYBERTRAIN_SENTRY_DSN` (plan D14). A
+404 is not reported.
+
+**The blog's discard (ruling, departing from the plan's Task 11 text).**
+The plan had the deleted comment fail the job, retried to `failed` like
+any other error. A deleted comment is permanent and expected, so no retry
+can change it, and a `failed` row, which the jobs page offers to retry,
+would teach retrying what can never succeed; the job discards it instead
+and keeps `retry_on StandardError, wait: 30, attempts: 3` for failures
+that may pass. `discard_on Cybertrain::RecordNotFound` is not accepted:
+gen takes only core classes, the framework's `...Error` classes
+(`JobScan::FRAMEWORK_ERRORS`) and application classes defined before the
+job (spikes/NOTES.md rule 89), so the job raises its own class.
 
 **Left for later** (recorded in the task reviews, none blocking):
 `SentryEnvelope#sentry_field` cannot address an `extra` key that holds a
@@ -1955,12 +2005,32 @@ dot (`job.attempt`; the blog reads it with a helper of its own);
 (boot refuses one first); the server role's wait for the reports has no
 test; a DSN host made only of dots and dashes passes the check; the
 sample rate's message quotes the variable's whole text, which is not
-stripped; a self-hosted GlitchTip on a private network needs
-`http_allow_private` for the whole application, since the sender's call
-goes through `HttpClient`'s guard.
+stripped; the context's String values are not copied when the event is
+built (error_reporter.rb, `report`), so a caller that mutates one later
+changes what is delivered.
+
+**Open for the maintainer:**
+
+1. The dedupe key (class, message and `where`, as section 13.4 decided):
+   the review thread on the plan that asked for the job id and attempt in
+   it is still open.
+2. `Application.new(config:)` given a Config other than `Cybertrain.config`:
+   boot validates that Config's DSN, while the sender reads
+   `Cybertrain.config` at each send, as the job executor and the mailer
+   read theirs. Not changed.
+3. A Sentry host on a private network needs `http_allow_private`, which
+   lifts the guard for every outbound call of the application.
+4. Model columns named `request_id`, `release` or `handle` are not
+   reserved names (`Ident::RESERVED_COLUMN_NAMES`); one whose reader
+   answers another type can stop the build (rule 34).
+5. `discard_on` cannot name `Cybertrain::RecordNotFound`; a job raises a
+   class of its own.
+6. An exception while a streamed body is written is logged (`stream
+   error:`) but not reported.
+7. Exception messages are not filtered.
 
 **Counts.** `ruby script/gate` counts 234 test programs with snapshots
-(2026-11-14). examples/blog: 156 tests and 1542 assertions in 23
-class-form files, 0 failures (the blog task's run), its `gen --check`
-clean. The full framework suite (`script/test-shard`) runs in CI's four
+(2026-11-14). examples/blog: 157 tests and 1557 assertions in 23
+class-form files, 0 failures (the blog's fix round, 4c314d5), its
+`gen --check` clean. The full framework suite (`script/test-shard`) runs in CI's four
 shards; its count is not recorded here.
