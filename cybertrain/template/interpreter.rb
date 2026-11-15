@@ -218,7 +218,7 @@ module Cybertrain
         if k == INode::K_CALL then eval_call(n, env)
         elsif k == INode::K_LVAR
           v = env[n.istr]
-          return v unless v.nil? && !key_in?(env, n.istr)
+          return v unless v.nil? && !env.key?(n.istr)
 
           call_helper(n.istr, eval_args(n, env), eval_kwargs(n, env), nil, n, env)
         elsif k == INode::K_IVAR then env[n.istr]
@@ -502,7 +502,7 @@ module Cybertrain
         i = 0
         while i < names.size
           name = names[i]
-          saved[name] = env[name] if key_in?(env, name)
+          saved[name] = env[name] if env.key?(name)
           i += 1
         end
         saved
@@ -530,7 +530,7 @@ module Cybertrain
       def fresh_locals(env, names)
         return names if names.empty?
 
-        names.reject { |name| key_in?(env, name) }
+        names.reject { |name| env.key?(name) }
       end
 
       def reset_locals(env, fresh)
@@ -719,17 +719,6 @@ module Cybertrain
         0
       end
 
-      # Hash#key? on a polymorphic receiver mis-dispatches under Spinel once
-      # a user class (Errors, Params) defines key?: it consults only user
-      # classes and answers false for every Hash. Look the key up instead.
-      def key_in?(hash, key)
-        return true unless hash[key].nil?
-
-        found = false
-        hash.each_key { |k| found = true if k == key }
-        found
-      end
-
       # --- operators --------------------------------------------------------
 
       def arithmetic(kind, op, l, r, node)
@@ -865,9 +854,7 @@ module Cybertrain
         when :to_i then s.to_i
         when :html_safe then SafeString.of(s.to_s)
         when :html_safe? then false
-        # String#include? with a polymorphic argument mis-dispatches once
-        # SafeString exists (spikes/NOTES.md rule 29): go through #index.
-        when :include? then !s.index(string_arg(args, 0, node, name)).nil?
+        when :include? then s.include?(string_arg(args, 0, node, name))
         when :start_with? then s.start_with?(string_arg(args, 0, node, name))
         when :end_with? then s.end_with?(string_arg(args, 0, node, name))
         else undefined(node, name, "String")
@@ -1385,11 +1372,11 @@ module Cybertrain
           h[hash_key(args[0])]
         when :key?
           fail_at(node, "wrong number of arguments for 'key?'") if args.empty?
-          key_in?(h, hash_key(args[0]))
+          h.key?(hash_key(args[0]))
         when :fetch
           fail_at(node, "wrong number of arguments for 'fetch'") if args.empty?
           key = hash_key(args[0])
-          return h[key] if key_in?(h, key)
+          return h[key] if h.key?(key)
           return args[1] if args.size > 1
           fail_at(node, "key not found: #{inspect_value(args[0])}")
         when :size, :length, :count then h.size
