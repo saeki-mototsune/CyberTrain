@@ -1072,7 +1072,11 @@ end
 # A connection that never sends (a browser's spare, preconnected socket)
 # holds the stop up for FIRST_REQUEST_GRACE at most, not drain_timeout;
 # one accepted longer ago than that is closed at once, as an idle
-# keep-alive connection is.
+# keep-alive connection is. The first measurement starts before the server
+# listens, so it holds the start-up and the connect as well as the grace:
+# its bound is half of drain_timeout (5 s), far from the 5 s a stop that
+# waited for the drain would take, and wide enough for a loaded machine
+# (a macOS runner measured 1.0097 s against a bound of 1.0, 2026-11-15).
 test "a connection that sends nothing holds up the stop for the first-request grace at most" do
   server = StopOnAcceptServer.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, read_timeout: 30, drain_timeout: 5.0,
                                                                                     logger: Cybertrain::Logger.new($log, :info))
@@ -1082,7 +1086,7 @@ test "a connection that sends nothing holds up the stop for the first-request gr
   c = RawClient.new(server.port)
   runner.join
   elapsed = Time.now - started
-  assert elapsed < Cybertrain::Server::FIRST_REQUEST_GRACE + 0.5, "run took #{elapsed}s with a silent fresh connection"
+  assert elapsed < 2.5, "run took #{elapsed}s with a silent fresh connection"
   assert c.closed_by_server?
   c.close
 
