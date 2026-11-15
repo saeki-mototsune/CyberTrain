@@ -162,10 +162,12 @@ framework-wide equivalence is claimed.
 The spike of the CRuby preview design
 ([docs/superpowers/specs/2026-11-12-cruby-preview-design.md](../docs/superpowers/specs/2026-11-12-cruby-preview-design.md),
 sections 7 and 13): can the unmodified framework serve examples/blog under
-CRuby, with a Fiddle shim for the `ffi_*` DSL? Throwaway programs:
-[preview/shim.rb](preview/shim.rb) (the DSL on `Module`) and
-[preview/run.sh](preview/run.sh) (copies the blog outside the tree,
-migrates, serves, times the first 200, posts a form). Measured on
+CRuby, with a Fiddle shim for the `ffi_*` DSL? Throwaway programs,
+deleted once `cybertrain/preview/` replaced them
+(`git log --diff-filter=D -- spikes/preview` in a full clone):
+`spikes/preview/shim.rb` (the DSL on `Module`) and
+`spikes/preview/run.sh` (copied the blog outside the tree, migrated,
+served, timed the first 200, posted a form). Measured on
 2026-11-12, Linux x86_64 (4 vCPU, cloud), CRuby 3.3.6, fiddle 1.1.2,
 GCC 13.3.0, the system libsqlite3 and libz; no Spinel build was made.
 
