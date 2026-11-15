@@ -128,13 +128,7 @@ module Cybertrain
         i += 1
       end
       kwargs.each_key do |key|
-        found = false
-        j = 0
-        while j < known.size
-          found = true if known[j] == key
-          j += 1
-        end
-        raise ArgumentError, "unknown keyword '#{key}' for component '#{name}' (known: #{known.join(", ")})" unless found
+        raise ArgumentError, "unknown keyword '#{key}' for component '#{name}' (known: #{known.join(", ")})" unless known.include?(key)
       end
       nil
     end

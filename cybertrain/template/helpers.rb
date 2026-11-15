@@ -257,7 +257,7 @@ module Cybertrain
           i += 1
         end
         kwargs.each_key do |key|
-          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless Helpers.name_in?(known, key)
+          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless known.include?(key)
         end
         nil
       end
@@ -367,31 +367,16 @@ module Cybertrain
         i = 0
         while i < locals.size
           name = locals[i]
-          raise ArgumentError, "missing local '#{name}' for #{template.name}" unless Helpers.name_in?(given, name)
+          raise ArgumentError, "missing local '#{name}' for #{template.name}" unless given.include?(name)
           i += 1
         end
         i = 0
         while i < given.size
           name = given[i]
-          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless Helpers.name_in?(locals, name)
+          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless locals.include?(name)
           i += 1
         end
         nil
-      end
-
-      # Array#include? with String arguments mis-dispatches once the whole
-      # framework (SafeString's to_str) is in the program (spikes/NOTES.md
-      # rules 14 and 29); compare explicitly.
-      # A while loop: `each` with a `return` in the block costs a setjmp and
-      # a Proc per call under Spinel, and this runs for every partial.
-      def self.name_in?(names, name)
-        i = 0
-        n = names.size
-        while i < n
-          return true if names[i] == name
-          i += 1
-        end
-        false
       end
 
       # The current flash messages as a Hash ("notice" => "Saved"), so that
@@ -1093,7 +1078,7 @@ module Cybertrain
         scoped.delete("")
         locals.each_key { |key| scoped[key] = locals[key] }
         scoped[as_name] = item
-        scoped[counter] = index if index >= 0 && (!template.strict_locals? || Helpers.name_in?(template.locals, counter))
+        scoped[counter] = index if index >= 0 && (!template.strict_locals? || template.locals.include?(counter))
         names = Array.new(0) { "" }
         scoped.each_key { |key| names << key }
         render_partial_scope(template, scoped, names, interp, env)
