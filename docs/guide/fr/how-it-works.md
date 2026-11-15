@@ -1,5 +1,5 @@
 ---
-source_sha256: 1ef9863a32c9cd418e4fc175c5dd157510bb5bf8b5f31cfb9c46e2399287edf9
+source_sha256: abae35cfe6cfc3936e28c27ff0ca005a8a11a40acb3faef55ffefd41b4eca8ba
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -8,7 +8,7 @@ Cette page explique comment une application CyberTrain est construite et exécut
 
 ## Génération de code à la compilation
 
-`spin run gen` (`bin/gen.rb`) exécute le DSL `create_table` de `db/schema.rb` et le DSL `Routes.draw` de `config/routes.rb` pour obtenir les *données* des tables et des routes. Il fait séparément un **balayage lexical** (des regex, pas un parseur — Spinel n’en expose aucun à l’exécution) de `app/controllers/**/*.rb` et `app/models/**/*.rb` à la recherche des affectations `@ivar =`, des noms `before_action`/`after_action`/`rescue_from ... with:`, des lignes `helper_method`, `layout` et `rate_limit`, des `include` de concerns et des `def` sans argument. Il met une empreinte sur les fichiers de `app/assets/`, `app/javascript/` et `vendor/javascript/` lit `config/importmap.rb` comme du texte, et lit les dictionnaires de `config/locales/` avec un lecteur YAML à lui.
+`spin run gen` (`bin/gen.rb`) exécute le DSL `create_table` de `db/schema.rb` et le DSL `Routes.draw` de `config/routes.rb` pour obtenir les *données* des tables et des routes. Il fait séparément un **balayage lexical** (des regex, pas un parseur — Spinel n’en expose aucun à l’exécution) de `app/controllers/**/*.rb` et `app/models/**/*.rb` à la recherche des affectations `@ivar =`, des noms `before_action`/`after_action`/`rescue_from ... with:`, des lignes `helper_method`, `layout` et `rate_limit`, des `include` de concerns et des `def` sans argument. Il balaie de la même façon `app/helpers`, `app/components`, `app/jobs` et `test/`, et lit les lignes `require "cybertrain/..."` de `bin/<app>.rb` ([Sous-systèmes](#subsystems)). Il met une empreinte sur les fichiers de `app/assets/`, `app/javascript/` et `vendor/javascript/`, lit `config/importmap.rb` comme du texte, et lit les dictionnaires de `config/locales/` avec un lecteur YAML à lui.
 
 À partir de cela, il écrit du Ruby simple et lisible sous `gen/`&nbsp;:
 
@@ -16,6 +16,10 @@ Cette page explique comment une application CyberTrain est construite et exécut
 - `gen/routes.rb`&nbsp;: la table des routes, le dispatcher, les helpers `*_path`/`*_url`&nbsp;;
 - `gen/controllers.rb`&nbsp;: `view_assigns`, `run_callback`, la table de `helper_method` et `controller_layout` par contrôleur&nbsp;;
 - `gen/concerns.rb` et `gen/concerns/**`&nbsp;: les blocs `included` des concerns insérés dans chaque classe qui les inclut, et les modules des concerns avec ces blocs vidés ([Concerns](requests.md#concerns-and-helper_method))&nbsp;;
+- `gen/helpers.rb`&nbsp;: le dispatch d’un appel fait dans un template vers les modules de helpers de l’application ([Helpers de l’application](template-language.md#application-helpers))&nbsp;;
+- `gen/components.rb`&nbsp;: le `view_assigns` et la table des méthodes de chaque composant, et la table qui va du nom d’un composant à sa classe ([Composants](template-language.md#components))&nbsp;;
+- `gen/jobs.rb`&nbsp;: `perform_later` et les branches de reprise de chaque classe de job&nbsp;;
+- `gen/console.rb`&nbsp;: les modèles que la console peut nommer ([La console](background-and-operations.md#the-console))&nbsp;;
 - `gen/assets.rb`&nbsp;: les chemins des assets avec empreinte et l’import map ([Assets](assets.md)), avec les fichiers à empreinte dans `public/assets/`&nbsp;;
 - `gen/locales.rb`&nbsp;: les dictionnaires de l’application en deux Hash, que lit `I18n.t` ([Internationalisation](i18n.md#dictionaries))&nbsp;;
 - `gen/migrations.rb`&nbsp;;
@@ -25,7 +29,7 @@ Cette page explique comment une application CyberTrain est construite et exécut
   chaque classe de test réécrite en méthodes, et `gen/test/data.rb`, les
   tables et les fixtures ([Tester une application](testing.md#running-the-tests)).
 
-`gen/` est versionné, pas ignoré par git&nbsp;: `spin build` et `spin test` n’ont pas de hook pour générer d’abord, donc la sortie versionnée doit déjà être ce qui compile. La CI relance `spin run gen` et échoue s’il y a un diff&nbsp;: du code généré périmé ne peut donc pas être fusionné.
+`gen/` est versionné, pas ignoré par git&nbsp;: `spin build` et `spin test` n’ont pas de hook pour générer d’abord, donc la sortie versionnée doit déjà être ce qui compile. Le workflow de CI qu’écrit `cybertrain new` lance `spin run gen -- --check`, qui n’écrit rien et échoue en nommant chaque fichier périmé&nbsp;: du code généré périmé ne peut donc pas être fusionné.
 
 ## Sous-systèmes
 
@@ -37,16 +41,18 @@ Spinel compile chaque méthode de chaque fichier qu’un programme requiert, app
 | `require "cybertrain/jobs"` | `Job` et les classes de jobs, `Scheduler` (`every`, `cron`), le rôle `worker`, la commande `jobs` et la page des jobs |
 | `require "cybertrain/streams"` | `Stream.broadcast_*`, le point d’accès des flux (SSE et WebSocket), `Controller#turbo_stream`, les helpers `turbo_stream_from`, `turbo_stream`, `signed_stream_name` et `stream_source_path` |
 | `require "cybertrain/feeds"` | `Background`, le rôle `feeds` et son contrôle de santé&nbsp;; `require "cybertrain/websocket"` (`WebSocket.subscribe`) le charge |
-| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer"` | `Mailer.deliver`&nbsp;; l’envoi en `starttls` (par défaut) ou en `tls` demande aussi `require "cybertrain/net/tls"` |
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`&nbsp;; charge le mailer et les jobs |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` dans les contrôleurs&nbsp;; charge le cache |
 | `require "cybertrain/error_reporter/sentry"` | l’envoyeur Sentry&nbsp;: `CYBERTRAIN_SENTRY_DSN` envoie chaque rapport d’erreur à Sentry ou GlitchTip ([Signalement des erreurs](background-and-operations.md#error-reporting))&nbsp;; charge `HttpClient` et TLS. Dans `bin/<app>.rb` seulement |
-| `require "cybertrain"` | tout ce qui précède |
+| `require "cybertrain"` | toutes les lignes ci-dessus (donc aussi `HttpClient` et TLS, par l’envoyeur Sentry)&nbsp;; `cybertrain/websocket` et `cybertrain/sse` restent des lignes à part |
 
 Chaque ligne se place après `require "cybertrain/core"` (`cybertrain/jobs` et `cybertrain/feeds` chargent le cœur eux-mêmes, les autres non), et leur ordre n’a pas d’importance&nbsp;: le framework démarre et arrête les sous-systèmes dans un ordre fixe qui lui est propre. Sur une application générée par scaffold, le cœur seul compile 2&nbsp;205 méthodes au lieu de 2&nbsp;767 et s’analyse en 38&nbsp;s au lieu de 52&nbsp;s&nbsp;; un build complet prend 83&nbsp;s au lieu de 108&nbsp;s, et une modification de contrôleur environ 47&nbsp;s au lieu de 65&nbsp;s ([docs/performance-next.md](../performance-next.md)).
 
 `cybertrain new` écrit `require "cybertrain/core"` dans `bin/<app>.rb` et `bin/db.rb` (qui charge `config/app.rb` et a donc besoin des mêmes lignes). `cybertrain generate job` ajoute `require "cybertrain/jobs"` aux deux, et `generate authentication` les quatre que son code utilise (`cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit`&nbsp;: la page des jobs, les courriels envoyés avec `deliver_later`, la connexion à débit limité)&nbsp;; les autres lignes sont à ajouter vous-même. Une application écrite avant la séparation contient `require "cybertrain"`, qui charge toujours tout&nbsp;: elle se construit et se comporte comme avant, et c’est en remplaçant cette ligne par le cœur et les lignes qu’elle utilise qu’elle se construit plus vite.
+
+`cybertrain/net/tls`, la couche TLS du mailer, de `HttpClient` et de `WebSocket`, n’est pas dans le tableau, et aucun générateur ne l’ajoute. `require "cybertrain"` la charge&nbsp;; une application sur `cybertrain/core` qui envoie des e-mails en `starttls` ou en `tls`, ou qui ouvre une URL `https://` ou `wss://`, ajoute elle-même la ligne à `bin/<app>.rb` ([Envoyer des e-mails](external-services.md#sending-e-mail)).
 
 Une ligne manquante est détectée avant que l’application ne tourne&nbsp;:
 
@@ -67,7 +73,7 @@ Les tests ne sont pas réduits par ces lignes&nbsp;: le programme que compile `c
 
 ## Les vues sont interprétées
 
-Les fichiers `app/views/**/*.html.erb` ressemblent à de l’ERB de Rails, mais sont analysés en un AST au moment de la requête, puis parcourus par un interpréteur qui parcourt l’arbre. Spinel n’a pas d’`eval`, il s’agit donc d’une grammaire fermée (littéraux, lectures de `@ivar`/variables locales, appels via des tables de dispatch fixes par type, `if`/`unless`, `each`/`each_with_index`/un bloc de helper), pas de vrai Ruby. La grammaire complète, les helpers et les lacunes se trouvent dans la [référence du langage de templates](template-language.md).
+Les fichiers `app/views/**/*.html.erb` ressemblent à de l’ERB de Rails, mais sont analysés en un AST au moment de la requête, puis parcourus par un interpréteur qui parcourt l’arbre. Spinel n’a pas d’`eval`, il s’agit donc d’une grammaire fermée (littéraux, lectures de `@ivar`/variables locales, affectation d’une variable locale, appels via des tables de dispatch fixes par type, `if`/`unless`/`case`, boucles `each`/`each_with_index`/`each_slice`, blocs sur un ensemble fixe de méthodes d’Array et de Hash, sur le constructeur `tag` et sur des helpers), pas de vrai Ruby. La grammaire complète, les helpers et les lacunes se trouvent dans la [référence du langage de templates](template-language.md).
 
 L’origine du source dépend du mode&nbsp;:
 
@@ -100,7 +106,7 @@ Comment une transaction emprunte l’une de ces connexions, et ce qui s’exécu
 
 Au démarrage, le superviseur lance gen sous CRuby (`ruby bin/gen.rb`, qui écrit le même `gen/` que `spin run gen`), démarre l’application sous CRuby (`ruby -r cybertrain/preview bin/NAME.rb`) et lance la compilation. Les deux tournent avec le `ruby` du `PATH`, celui dont `cybertrain doctor` vérifie qu’il charge `fiddle`, qui peut être un autre Ruby que celui qui exécute la commande `cybertrain`. L’aperçu fournit au framework son FFI (SQLite, zlib) par une couche au-dessus de `fiddle`, la bibliothèque de Ruby, qui compile une seule fois dans `tmp/cybertrain-dev/ffi/` le même C que celui du binaire. La première compilation est `spin build NAME`&nbsp;: une application qui n’a pas changé depuis la construction de son binaire ne compile rien, et le binaire répond en moins d’une seconde. Une première compilation sur un binaire plus ancien qu’un fichier Ruby, et toutes les suivantes, sont `spin build NAME -- --incremental`&nbsp;: la compilation incrémentale de Spinel, qui ne recompile que les unités C touchées par la modification. Une version de Spinel sans `--incremental` rejette l’option, et la compilation se fait alors sans elle. La sortie va dans `tmp/rebuild.log`.
 
-Le superviseur surveille `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb` et les racines des assets (`app/assets/**`, `app/javascript/**`, `vendor/javascript/**`) dix fois par seconde. Les vues sont exclues (les deux environnements d’exécution les relisent sur le disque), tout comme `gen/views.rb`, vide en développement. Un changement annule la compilation en cours, lance gen sous CRuby, remplace l’enfant par un nouvel enfant CRuby et lance une nouvelle compilation. Quand une compilation réussit et que rien n’a changé entre-temps, le superviseur arrête l’enfant CRuby et démarre `build/bin/NAME` sur la même socket&nbsp;: d’abord l’arrêt, puis le démarrage, la socket restant ouverte entre les deux, si bien qu’une requête arrivée pendant le changement attend un instant puis reçoit sa réponse. Aucune n’est refusée.
+Le superviseur surveille `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`, `gen/**/*.rb`, les dictionnaires (`config/locales/**/*.yml`) et les racines des assets (`app/assets/**`, `app/javascript/**`, `vendor/javascript/**`) dix fois par seconde. Les vues sont exclues (les deux environnements d’exécution les relisent sur le disque), tout comme `gen/views.rb`, vide en développement. Un changement annule la compilation en cours, lance gen sous CRuby, remplace l’enfant par un nouvel enfant CRuby et lance une nouvelle compilation. Quand une compilation réussit et que rien n’a changé entre-temps, le superviseur arrête l’enfant CRuby et démarre `build/bin/NAME` sur la même socket&nbsp;: d’abord l’arrêt, puis le démarrage, la socket restant ouverte entre les deux, si bien qu’une requête arrivée pendant le changement attend un instant puis reçoit sa réponse. Aucune n’est refusée.
 
 Chaque réponse de l’application porte `X-Cybertrain-Runtime: cruby` ou `spinel`, et chaque page HTML une ligne discrète dans son coin inférieur droit&nbsp;:
 
@@ -122,7 +128,18 @@ Ce que l’aperçu ne montre pas&nbsp;:
 
 Le travail en arrière-plan (les jobs, le planificateur, le poller des flux, les flux WebSocket) tourne dans l’enfant qui répond, si bien qu’une modification le redémarre deux fois, sous CRuby puis dans le binaire, et que les clients Server-Sent Events et WebSocket se reconnectent deux fois. Une page qui fonctionne dans l’aperçu n’est terminée qu’une fois que le binaire la sert aussi, et seuls les tests compilés (`spin test`) comptent.
 
-`cybertrain server --spinel` lance à la place la boucle compilée, comme le font `spin run NAME` tapé directement et la CLI native que construit `spin install`&nbsp;: `SPIN_DEBUG=1 spin run gen`&nbsp;; `spin build NAME -- --incremental` si un fichier Ruby est plus récent que `build/bin/NAME`&nbsp;; puis `spin run NAME`. Le binaire surveille lui-même les mêmes fichiers toutes les demi-secondes, lance `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` en arrière-plan à chaque changement et, en cas de succès, arrête l’écoute, laisse se terminer les requêtes ouvertes et fait `execv` du nouveau binaire sur le même port et le même PID&nbsp;; une compilation échouée continue de servir l’ancien binaire et affiche la sortie du compilateur en bannière sur ses réponses HTML (pas sur un téléchargement, `Content-Disposition: attachment`, ni sur un corps que l’application a encodé, `Content-Encoding`), et les recompilations sont suspendues tant que `cybertrain build` détient son verrou. La CLI et cette boucle compilent gen, et la CLI `bin/db.rb`, dans le mode debug de spin (`SPIN_DEBUG=1`, `-O0`)&nbsp;: ils ne tournent que quelques millisecondes, et gen se compile en une fraction du temps que prend `-O2`&nbsp;; l’application est toujours compilée en mode release. Quand l’aperçu ne peut pas tourner, `cybertrain server` affiche une ligne commençant par `preview unavailable:` et lance la boucle compilée. C’est le cas quand `CYBERTRAIN_ENV` désigne un autre environnement que `development`, quand le framework de l’application est plus ancien que l’aperçu (il n’a pas `cybertrain/preview.rb` ou `cybertrain/dev/supervision.rb`), quand il n’y a pas de `ruby` dans le `PATH`, ou quand ce `ruby` ne peut pas être lancé, ne répond pas en 10&nbsp;s ou ne peut pas charger `fiddle` (`cybertrain doctor` le vérifie). Rien de tout cela n’est chargé en production.
+`cybertrain server --spinel` lance à la place la boucle compilée, comme le font `spin run NAME` tapé directement et la CLI native que construit `spin install`&nbsp;: `SPIN_DEBUG=1 spin run gen`&nbsp;; `spin build NAME -- --incremental` si un fichier Ruby est plus récent que `build/bin/NAME`&nbsp;; puis `spin run NAME`. Le binaire surveille lui-même les mêmes fichiers toutes les demi-secondes, lance `SPIN_DEBUG=1 spin run gen && spin build NAME -- --incremental` en arrière-plan à chaque changement et, en cas de succès, arrête l’écoute, laisse se terminer les requêtes ouvertes et fait `execv` du nouveau binaire sur le même port et le même PID. Une compilation échouée continue de servir l’ancien binaire et affiche la sortie du compilateur en bannière sur ses réponses HTML (pas sur un téléchargement, `Content-Disposition: attachment`, ni sur un corps que l’application a encodé, `Content-Encoding`), et les recompilations sont suspendues tant que `cybertrain build` détient son verrou.
+
+La CLI et cette boucle compilent gen, et la CLI `bin/db.rb`, dans le mode debug de spin (`SPIN_DEBUG=1`, `-O0`)&nbsp;: ils ne tournent que quelques millisecondes, et gen se compile en une fraction du temps que prend `-O2`. L’application est toujours compilée en mode release.
+
+Quand l’aperçu ne peut pas tourner, `cybertrain server` affiche une ligne commençant par `preview unavailable:` et lance la boucle compilée. La ligne nomme la première de ces raisons qui s’applique&nbsp;:
+
+- `CYBERTRAIN_ENV` désigne un autre environnement que `development`&nbsp;;
+- le framework de l’application est plus ancien que l’aperçu (il n’a pas `cybertrain/preview.rb` ou `cybertrain/dev/supervision.rb`)&nbsp;;
+- il n’y a pas de `ruby` dans le `PATH`&nbsp;;
+- ce `ruby` ne peut pas être lancé, ne répond pas en 10&nbsp;s ou ne peut pas charger `fiddle` (`cybertrain doctor` le vérifie).
+
+Rien de tout cela n’est chargé en production.
 
 ## Différences avec Rails
 
@@ -134,7 +151,7 @@ Le travail en arrière-plan (les jobs, le planificateur, le poller des flux, les
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` dans `bin/<app>.rb`&nbsp;: `./<app> name ARGS` la lance avec la base de données connectée |
 | Modifiez le code, l’application en cours d’exécution le prend en compte | Les modifications Ruby apparaissent tout de suite grâce à un aperçu CRuby&nbsp;; le binaire compilé reprend le port quand sa compilation se termine (`cybertrain server`) |
 | Modifiez une vue, aucun rechargement nécessaire | Pareil — en développement, les vues sont analysées depuis le disque à chaque requête |
-| `def new` | `def new_action` (`new` masquerait `Klass.new(ctx)`) |
+| `def new` | `def new_action`&nbsp;: la route `GET /posts/new` et la vue `new.html.erb` gardent leur nom, seule la méthode est renommée |
 | `before_action { do_thing }` (`self` implicite) | `before_action { \|c\| c.do_thing }` — pas d’`instance_exec` sur un bloc stocké, donc les callbacks reçoivent explicitement le contrôleur/l’enregistrement |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — les blocs imbriqués reçoivent le mapper explicitement |
 | ERB est compilé en méthode&nbsp;; n’importe quel objet, n’importe quelle méthode | Interprété selon une grammaire/table de dispatch fixe ([Langage de templates](template-language.md)) |
@@ -147,7 +164,6 @@ Le travail en arrière-plan (les jobs, le planificateur, le poller des flux, les
 | `namespace`, `scope`, formats et `respond_to` | Pareil ([Routage](requests.md#routing), [Formats](requests.md#formats-and-respond_to))&nbsp;; on répond en JSON avec `render json:` (pas de templates jbuilder) |
 | `constraints`, `mount`, segments glob | Non implémenté |
 | `ActiveSupport::Concern` inclus à l’exécution | Concerns dans `app/controllers/concerns` et `app/models/concerns`, développés par `spin run gen` dans les classes qui les incluent&nbsp;; un `include` nomme un concern, et une méthode de `class_methods` ne peut pas porter le nom d’une méthode d’instance ([Concerns](requests.md#concerns-and-helper_method)) |
-| `rescue StandardError` attrape un `JSON.parse` qui échoue | Sous Spinel, `JSON::ParserError` n’est pas une `StandardError`&nbsp;: le code de l’application doit faire `rescue JSON::ParserError, StandardError`. Le serveur l’attrape en dernier recours et répond 500 |
 | `skip_forgery_protection` dans un contrôleur d’API | Le CSRF s’exécute avant le routage, donc une API est exemptée par chemin, `c.csrf_exempt_prefixes = ["/api/"]`, et authentifie elle-même ses appelants ([Configuration](configuration.md#configuration-and-environment-variables)) |
 | Rack laisse un corps de requête gzip tel quel | Un corps `Content-Encoding: gzip` est `request.decoded_body`, décompressé sous un plafond de 10&nbsp;Mio&nbsp;; un corps corrompu ou trop gros donne une 400&nbsp;; `request.body` reste tel qu’envoyé ([Chaînes de requête et corps](requests.md#query-strings-and-bodies)) |
 | `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` n’accepte que des listes `column [ASC\|DESC]`&nbsp;; les données de la requête passent par une liste blanche, le SQL brut par `order_sql` ([Tri](models.md#ordering)). Des paramètres mal formés ou trop imbriqués donnent une 400 ([Chaînes de requête et corps](requests.md#query-strings-and-bodies)) |
@@ -157,7 +173,7 @@ Le travail en arrière-plan (les jobs, le planificateur, le poller des flux, les
 | `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` écrit la même structure plus une page d’inscription&nbsp;; les mots de passe utilisent PBKDF2-HMAC-SHA256 (bcrypt demanderait une bibliothèque C&nbsp;; le `String#crypt` de macOS n’a pas bcrypt)&nbsp;; la réinitialisation du mot de passe, la confirmation, le verrouillage et «&nbsp;rester connecté&nbsp;» sont générés aussi, comme les ajouterait Devise ([Authentification](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` écrit cinq colonnes `cover_*` et les méthodes de modèle&nbsp;; les fichiers résident sur le disque local sous `storage/uploads/` et sont servis par `send_blob`&nbsp;; un fichier par champ, ni variantes ni envois directs ([Ajouter une image de couverture](tutorial.md#attachments)) |
 | `skip_before_action :x` | Pareil, pour les callbacks before nommés (un callback sous forme de bloc n’a pas de nom à sauter)&nbsp;; pas de `skip_after_action` |
-| `resource :session` | Les mêmes six routes vers `SessionsController`&nbsp;; pas d’imbrication en dessous |
+| `resource :session` | Les mêmes six actions de `SessionsController`&nbsp;; un bloc (`do \|session\| ... end`) ajoute des routes membres et des ressources imbriquées ([Routage](requests.md#routing)) |
 | `get "/x"` puis `post "/x"` | Les deux sont acceptés&nbsp;: le nom déduit de la seconde route est déjà pris, elle reste donc sans nom, comme dans Rails&nbsp;; un `as:` en double reste une erreur |
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, les données de fuseaux fournies avec ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` lit les fichiers TZif du système (`/usr/share/zoneinfo`, ou `TZDIR`) et convertit des secondes epoch Integer (`utc_offset_at`, `utc_to_local`, `local_to_utc`)&nbsp;; `c.time_zone` fixe `Time.zone` pour toute l’application, `in_time_zone` renvoie une petite valeur avec les champs muraux, et un Time reste un instant UTC (pas de TimeWithZone, `time.hour` est en UTC) ([Fuseaux horaires](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` pour les webhooks et les API&nbsp;: chaque attente est bornée, les destinations non publiques sont refusées par défaut, redirections seulement sur demande, réponses en flux et gzip, un parseur de Server-Sent Events, pas de keep-alive (voir [HTTP sortant](external-services.md#outbound-http))&nbsp;; le `Net::HTTP` de Spinel bloque tout le serveur quand un pair ne répond plus |

@@ -19,7 +19,10 @@ Separately it does a **lexical scan** (regexes, not a parser — Spinel exposes
 none at run time) of `app/controllers/**/*.rb` and `app/models/**/*.rb` for
 `@ivar =` assignments, `before_action`/`after_action`/`rescue_from ... with:`
 names, `helper_method`, `layout` and `rate_limit` lines, `include`s of
-concerns and zero-argument `def`s. It digests the files under `app/assets/`,
+concerns and zero-argument `def`s. It scans `app/helpers`,
+`app/components`, `app/jobs` and `test/` the same way, and reads the
+`require "cybertrain/..."` lines of `bin/<app>.rb`
+([Subsystems](#subsystems)). It digests the files under `app/assets/`,
 `app/javascript/` and `vendor/javascript/`, reads `config/importmap.rb`
 as text, and reads the dictionaries in `config/locales/` with a YAML reader
 of its own.
@@ -33,6 +36,14 @@ From that it writes plain, readable Ruby under `gen/`:
 - `gen/concerns.rb` and `gen/concerns/**`: the concerns' `included` blocks
   spliced into each including class, and the concern modules with those
   blocks blanked ([Concerns](requests.md#concerns-and-helper_method));
+- `gen/helpers.rb`: the dispatch from a template's call to the application's
+  helper modules ([Application helpers](template-language.md#application-helpers));
+- `gen/components.rb`: each component's `view_assigns` and method table, and
+  the table from a component's name to its class
+  ([Components](template-language.md#components));
+- `gen/jobs.rb`: `perform_later` and the retry arms of each job class;
+- `gen/console.rb`: the models the console can name
+  ([The console](background-and-operations.md#the-console));
 - `gen/assets.rb`: the digested asset paths and the import map
   ([Assets](assets.md)), with the digested files in `public/assets/`;
 - `gen/locales.rb`: the application's dictionaries as two Hashes, which
@@ -46,8 +57,9 @@ From that it writes plain, readable Ruby under `gen/`:
 
 `gen/` is committed, not gitignored: `spin build` and `spin test` have no hook
 to generate first, so the checked-in output has to already be what compiles.
-CI re-runs `spin run gen` and fails on a diff, so stale generated code can't
-merge.
+The CI workflow `cybertrain new` writes runs `spin run gen -- --check`, which
+writes nothing and fails naming each file that is out of date, so stale
+generated code can't merge.
 
 ## Subsystems
 
@@ -63,12 +75,12 @@ lists railties:
 | `require "cybertrain/jobs"` | `Job` and job classes, `Scheduler` (`every`, `cron`), the `worker` role, the `jobs` command and the jobs page |
 | `require "cybertrain/streams"` | `Stream.broadcast_*`, the stream endpoint (SSE and WebSocket), `Controller#turbo_stream`, the helpers `turbo_stream_from`, `turbo_stream`, `signed_stream_name` and `stream_source_path` |
 | `require "cybertrain/feeds"` | `Background`, the `feeds` role and its health check; `require "cybertrain/websocket"` (`WebSocket.subscribe`) loads it |
-| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer"` | `Mailer.deliver`; sending over `starttls` (the default) or `tls` also needs `require "cybertrain/net/tls"` |
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; loads the mailer and jobs |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` in controllers; loads the cache |
 | `require "cybertrain/error_reporter/sentry"` | the Sentry sender: `CYBERTRAIN_SENTRY_DSN` sends each error report to Sentry or GlitchTip ([Error reporting](background-and-operations.md#error-reporting)); loads `HttpClient` and TLS. In `bin/<app>.rb` only |
-| `require "cybertrain"` | all of the above |
+| `require "cybertrain"` | every line above (so `HttpClient` and TLS too, through the Sentry sender); `cybertrain/websocket` and `cybertrain/sse` stay lines of their own |
 
 Each line goes after `require "cybertrain/core"` (`cybertrain/jobs` and
 `cybertrain/feeds` load the core themselves, the others do not), and their
@@ -89,6 +101,13 @@ other lines are yours to add. An application written before the split has
 `require "cybertrain"`, which still loads everything: it builds and behaves
 as before, and replacing that line with the core and the lines it uses is
 what makes it build faster.
+
+`cybertrain/net/tls`, the TLS layer of the mailer, `HttpClient` and
+`WebSocket`, is not in the table, and no generator adds it.
+`require "cybertrain"` loads it; an application on `cybertrain/core` that
+sends mail over `starttls` or `tls`, or opens an `https://` or `wss://` URL,
+adds the line to `bin/<app>.rb` itself
+([Sending e-mail](external-services.md#sending-e-mail)).
 
 A missing line is caught before the application runs:
 
@@ -140,9 +159,11 @@ names a subsystem without its line passes its tests and stops at
 
 `app/views/**/*.html.erb` files look like Rails ERB but are parsed into an AST
 at request time, then walked by a tree-walking interpreter. Spinel has no
-`eval`, so this is a closed grammar (literals, `@ivar`/local lookups, calls
-through fixed per-type dispatch tables, `if`/`unless`,
-`each`/`each_with_index`/one helper block), not real Ruby. The full grammar,
+`eval`, so this is a closed grammar (literals, `@ivar` and local lookups,
+assignment to a local, calls through fixed per-type dispatch tables,
+`if`/`unless`/`case`, `each`/`each_with_index`/`each_slice` loops, blocks on
+a fixed set of Array and Hash methods, on the `tag` builder and on helpers),
+not real Ruby. The full grammar,
 the helpers and the gaps are in the
 [template language reference](template-language.md).
 
@@ -219,8 +240,9 @@ the flag, and the build then runs without it. The output goes to
 `tmp/rebuild.log`.
 
 The supervisor polls `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`,
-`gen/**/*.rb` and the asset roots (`app/assets/**`, `app/javascript/**`,
-`vendor/javascript/**`) ten times a second. Views are excluded (both
+`gen/**/*.rb`, the dictionaries (`config/locales/**/*.yml`) and the asset
+roots (`app/assets/**`, `app/javascript/**`, `vendor/javascript/**`) ten
+times a second. Views are excluded (both
 runtimes reread them from disk), and so is `gen/views.rb`, empty in
 development. A change cancels the running build, runs gen under CRuby,
 replaces the child with a new CRuby child and starts a new build. When a
@@ -280,21 +302,29 @@ Ruby file is newer than `build/bin/NAME`; then `spin run NAME`. The binary
 itself polls the same files every half second, runs `SPIN_DEBUG=1 spin run
 gen && spin build NAME -- --incremental` in the background on a change,
 and on success stops its listener, drains open requests and `execv`s the
-new binary on the same port and PID; a failed build keeps the old binary
+new binary on the same port and PID. A failed build keeps the old binary
 serving and banners the compiler output on its HTML responses (not on a
 download, `Content-Disposition: attachment`, nor on a body the application
-encoded, `Content-Encoding`), and rebuilds are skipped while `cybertrain build` holds its lock. The CLI and
-this loop build gen, and the CLI `bin/db.rb`, in spin's debug mode
-(`SPIN_DEBUG=1`, `-O0`): they run for milliseconds, and gen compiles in a
-fraction of the time `-O2` takes; the application is always a release
-build. When the preview cannot run, `cybertrain server` prints one line
-beginning `preview unavailable:` and runs the compiled loop. That happens
-when `CYBERTRAIN_ENV` names another environment than `development`, when
-the application's framework is older than the preview (it lacks
-`cybertrain/preview.rb` or `cybertrain/dev/supervision.rb`), when there is
-no `ruby` on `PATH`, or when that `ruby` cannot be started, does not answer
-within 10 s or cannot load `fiddle` (`cybertrain doctor` checks it). None
-of this loads in production.
+encoded, `Content-Encoding`), and rebuilds are skipped while
+`cybertrain build` holds its lock.
+
+The CLI and this loop build gen, and the CLI `bin/db.rb`, in spin's debug
+mode (`SPIN_DEBUG=1`, `-O0`): they run for milliseconds, and gen compiles in
+a fraction of the time `-O2` takes. The application is always a release
+build.
+
+When the preview cannot run, `cybertrain server` prints one line beginning
+`preview unavailable:` and runs the compiled loop. The line names the first
+of these that holds:
+
+- `CYBERTRAIN_ENV` names another environment than `development`;
+- the application's framework is older than the preview (it lacks
+  `cybertrain/preview.rb` or `cybertrain/dev/supervision.rb`);
+- there is no `ruby` on `PATH`;
+- that `ruby` cannot be started, does not answer within 10 s or cannot load
+  `fiddle` (`cybertrain doctor` checks it).
+
+None of this loads in production.
 
 ## Differences from Rails
 
@@ -306,7 +336,7 @@ of this loads in production.
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` in `bin/<app>.rb`: `./<app> name ARGS` runs it with the database connected |
 | Edit code, the running app picks it up | Ruby changes show at once from a CRuby preview; the compiled binary takes the port when its build finishes (`cybertrain server`) |
 | Edit a view, no reload needed | Same — views are parsed from disk per request in development |
-| `def new` | `def new_action` (`new` would shadow `Klass.new(ctx)`) |
+| `def new` | `def new_action`: the route `GET /posts/new` and the view `new.html.erb` keep their names, only the method is renamed |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — nested blocks take the mapper explicitly |
 | ERB compiles to a method; any object, any method | Interpreted against a fixed grammar/dispatch table ([Template language](template-language.md)) |
@@ -319,7 +349,6 @@ of this loads in production.
 | `namespace`, `scope`, formats and `respond_to` | The same ([Routing](requests.md#routing), [Formats](requests.md#formats-and-respond_to)); JSON is answered with `render json:` (no jbuilder templates) |
 | `constraints`, `mount`, glob segments | Not implemented |
 | `ActiveSupport::Concern` included at run time | Concerns in `app/controllers/concerns` and `app/models/concerns`, expanded by `spin run gen` into the including classes; an `include` names a concern, and a `class_methods` method may not share an instance method's name ([Concerns](requests.md#concerns-and-helper_method)) |
-| `rescue StandardError` catches a bad `JSON.parse` | Under Spinel `JSON::ParserError` is not a `StandardError`: app code must `rescue JSON::ParserError, StandardError`. The server catches it as a last resort and answers 500 |
 | `skip_forgery_protection` in an API controller | CSRF runs before routing, so an API is exempted by path, `c.csrf_exempt_prefixes = ["/api/"]`, and authenticates its callers itself ([Configuration](configuration.md#configuration-and-environment-variables)) |
 | Rack leaves a gzip request body as it is | A `Content-Encoding: gzip` body is `request.decoded_body`, inflated under a 10 MiB ceiling; a corrupt or oversize one is a 400; `request.body` stays as sent ([Query strings and bodies](requests.md#query-strings-and-bodies)) |
 | `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` takes only `column [ASC\|DESC]` lists; request data goes through an allowlist, raw SQL through `order_sql` ([Ordering](models.md#ordering)). Malformed or deeply nested parameters are a 400 ([Query strings and bodies](requests.md#query-strings-and-bodies)) |
@@ -329,7 +358,7 @@ of this loads in production.
 | `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` writes the same shape plus a sign-up page; passwords use PBKDF2-HMAC-SHA256 (bcrypt needs a C library; macOS `String#crypt` has no bcrypt); password reset, confirmation, lockout and remember me are generated too, as Devise would add them ([Authentication](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` writes five `cover_*` columns and model methods; files stay on local disk under `storage/uploads/`, served by `send_blob`; one per field, no variants or direct uploads ([Add a cover image](tutorial.md#attachments)) |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
-| `resource :session` | The same six routes to `SessionsController`; no nesting under it |
+| `resource :session` | The same six actions on `SessionsController`; a block (`do \|session\| ... end`) adds member routes and nested resources ([Routing](requests.md#routing)) |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |
 | `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, ActiveSupport's bundled zone data | `Cybertrain::TimeZone.find("Asia/Tokyo")` reads the system's TZif files (`/usr/share/zoneinfo`, or `TZDIR`) and converts Integer epoch seconds (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `c.time_zone` sets `Time.zone` for the whole application, `in_time_zone` answers a small value with the wall fields, and a Time stays a UTC instant (no TimeWithZone, `time.hour` is UTC) ([Time zones](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` for webhooks and APIs: every wait bounded, non-public destinations refused by default, redirects only when asked for, streamed and gzip responses, a Server-Sent Events parser, no keep-alive (see [Outbound HTTP](external-services.md#outbound-http)); Spinel's `Net::HTTP` blocks the whole server on a stalled peer |
