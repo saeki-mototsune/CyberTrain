@@ -924,6 +924,6 @@ release and runner image). The workflow then checks that `spin.lock` is
 current (`spin lock && git diff --exit-code spin.lock`) and `gen/` is fresh
 (`SPIN_DEBUG=1 spin run gen -- --check`), and runs `cybertrain test`. When the toolchain
 steps change, the action changes, not every app's copy. The commit is read
-from `spin.lock`, so the workflow assumes the default git dependency; an app
-made with `--path` passes the framework checkout to the action as
-`framework-path`.
+from `spin.lock`, which has one for the default git dependency and for an
+index version (`--version`) alike; an app made with `--path` passes the
+framework checkout to the action as `framework-path`.

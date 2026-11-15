@@ -13,6 +13,9 @@
 #
 # Every command that runs spin first puts a Spinel of the pinned release on
 # PATH (Toolchain.ensure!), installing it under ~/.cybertrain the first time.
+# Those that build, run or generate for an application first check that its
+# framework is this command's release (FrameworkVersion); `new`, `spin` and
+# the commands that need no application do not.
 require "cybertrain/version"
 require "cybertrain/crypto"
 require "cybertrain/cli/templates"
@@ -25,6 +28,7 @@ require "cybertrain/cli/component"
 require "cybertrain/cli/job"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
+require "cybertrain/cli/framework_version"
 require "cybertrain/cli/test_command"
 
 module Cybertrain
@@ -39,7 +43,9 @@ module Cybertrain
               git tag v#{Cybertrain::VERSION} of #{Cybertrain::REPOSITORY}
             --path DIR: the framework checkout at DIR (relative to the
             current directory; written as an absolute path).
-            --version V: the index version constraint V.
+            --version V: release V from the spin index, once cybertrain is
+            registered there. Name one release (X.Y.Z): of the releases a
+            range matches, spin selects the lowest.
             --git URL [--ref R]: the framework at URL, at branch or tag R.
         cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
             Add a resource to the application in the current directory.
@@ -196,7 +202,10 @@ module Cybertrain
       raise InvalidArgument, "'#{File.basename(dir)}' is not a valid app name (lowercase letters, digits and _)" unless Templates.identifier?(File.basename(dir))
       raise InvalidArgument, "#{dir} already exists" if File.exist?(dir)
 
-      NewApp.create(dir, framework_dep(argv))
+      dep = framework_dep(argv)
+      note = version_note(option(argv, "--version"))
+      NewApp.create(dir, dep)
+      puts note unless note == ""
       return 0 if argv.include?("--skip-spin")
       return 1 unless NewApp.bootstrap(dir)
 
@@ -234,6 +243,43 @@ module Cybertrain
       "{ git = \"#{Cybertrain::REPOSITORY}\", ref = \"v#{Cybertrain::VERSION}\" }"
     end
 
+    # What `new --version V` says when V is not one release. spin's index
+    # selection is minimal: of the releases that satisfy a constraint it
+    # takes the lowest, and spin.lock pins it, so "~> 0.4" (at least 0.4,
+    # below 1.0) is the lowest such release in the index for good and never
+    # a later one (docs/design.md D11). The
+    # constraint is written as given: spin decides what it accepts.
+    def self.version_note(version)
+      return "" if version == "" || exact_version?(version)
+
+      "note: spin selects the lowest release that satisfies \"#{version}\" and spin.lock pins it, " \
+        "so a range does not follow new releases; name one release (--version X.Y.Z) to choose it"
+    end
+
+    # "0.4.1": three dot-separated runs of digits and nothing else. A loop
+    # over the characters rather than a Regexp, as the rest of the CLI does
+    # for what Spinel also compiles.
+    def self.exact_version?(value)
+      dots = 0
+      digits = 0
+      i = 0
+      while i < value.length
+        c = value[i]
+        if c == "."
+          return false if digits == 0
+
+          dots += 1
+          digits = 0
+        elsif c >= "0" && c <= "9"
+          digits += 1
+        else
+          return false
+        end
+        i += 1
+      end
+      dots == 2 && digits > 0
+    end
+
     # `value` as a TOML basic string: `\` and `"` escaped. Control
     # characters are refused rather than encoded: no path, URL or git ref
     # needs one, and spin.toml stays readable.
@@ -255,14 +301,26 @@ module Cybertrain
       value
     end
 
-    # Commands that need the app: its name comes from ./spin.toml.
+    # Commands that need the app: its name comes from ./spin.toml, and its
+    # framework must be this command's release.
     def self.run_in_app
       name = Build.app_name(".")
       if name == ""
         puts "error: no spin.toml with a [package] name here; run this inside a cybertrain application"
         return 1
       end
+      require_framework_version!
       yield name
+    end
+
+    # Stops a command (CLI.run prints the message and exits 1) before the
+    # toolchain is fetched, spin runs or a generator writes a file, when the
+    # application in the current directory is on another release of the
+    # framework than this command. `cybertrain spin ...` never comes here:
+    # `cybertrain spin lock` is one of the two ways out the message names.
+    def self.require_framework_version!
+      problem = FrameworkVersion.problem(".", Cybertrain::VERSION)
+      raise InvalidArgument, problem unless problem == ""
     end
 
     # `cybertrain build`: the one dist/ name check, made before the toolchain
@@ -353,6 +411,8 @@ module Cybertrain
     end
 
     def self.run_generate(argv)
+      # A generator writes this command's templates into the application.
+      require_framework_version!
       kind = argv.size > 1 ? argv[1] : ""
       case kind
       when "scaffold"

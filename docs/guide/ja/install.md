@@ -1,5 +1,5 @@
 ---
-source_sha256: 78dddbe79a7800c3ca79eabbcecab07a7abe160a9750c26ebbbabbc5bd30c72c
+source_sha256: 833da4a0dce30786eda2530ad79e7508d974d847037c7f4d608e5d886d11bdbe
 ---
 # インストール
 
@@ -98,17 +98,42 @@ Spinel のインストールか、2 つの `spin` ステップのいずれかが
 - `--skip-spin` はファイルを書き出すだけです：Spinel のインストールも、`spin lock` も、`spin run gen` も行いません。
 - `--path DIR` は代わりにローカルのチェックアウトに依存します（CyberTrain 自体を開発するときは、チェックアウトのある場所に合わせて `--path ~/src/cybertrain`）。
 - `--git URL [--ref R]` は URL にあるフレームワーク（ブランチまたはタグ R）に依存します。
-- `--version V` は、フレームワークが `spin-index` に登録された後、インデックスのバージョンに依存します。
+- `--version V` は、フレームワークが `spin-index` に登録された後、そこにあるリリース V に依存します（`cybertrain = "V"`）：[インデックスのバージョン](#an-index-version)を見てください。
 
 `--path`、`--version`、`--git` はひとつだけ指定してください。`--ref` には `--git` が必要です。
+
+### インデックスのバージョン
+
+`spin-index` は、spin がパッケージの名前を引く一覧です。フレームワークはまだ登録されていません：登録されるまでは、`--version` で作ったアプリで `spin lock` を実行すると `not in the index: cybertrain` と返り、リリースに依存する方法は `new` が既定で書き出すタグです。登録された後は、`cybertrain new NAME --version X.Y.Z` が `cybertrain = "X.Y.Z"` を書き出し、spin がそのリリースのコミットをインデックスから見つけ、`spin.lock` はタグの場合と同じ 3 つ（バージョン、リポジトリ、コミット）を固定します。そのため、どのコマンドも、`new` が書き出す CI のワークフローも、既定の場合と同じように動きます。`Gemfile` から想像するものと違う点が 3 つあります：
+
+- **リリースをひとつ指定します。** 制約を満たすリリースのうち、spin が選ぶのは最新ではなく最も低いものです：`"~> X.Y"` は、X.Y 以上で次のメジャーバージョン未満のリリースのうち、インデックスにある最も低いものです（X.Y の範囲にとどまるのは `"~> X.Y.Z"` だけです）。後のリリースが公開されても、それは変わりません。ですから、正確なバージョン、つまり `cybertrain version` が表示するものを書いてください。V がそれ以外のとき、`new` は注意を表示します。
+- **Spinel は引き続き `cybertrain` コマンドが用意します。** インデックスの項目は Spinel のリリースを指定しません。フレームワークはひとつのリリース、つまり `cybertrain setup` がビルドするものに向けて書かれ、それでテストされていて、同じバージョンの `cybertrain` コマンドがそれをインストールします。別の Spinel でビルドするプロジェクトで `spin add cybertrain` だけを実行する使い方は、テストされていません。
+- **spin はインデックスの手元のコピーを読みます。** spin はインデックスを一度だけ `~/.cache/spin/` にクローンし、`spin lock` はそのコピーを更新しません。`spin search cybertrain` は更新し、最新のリリースを表示します。
 
 ### アプリを新しいリリースに移行する
 
 gem とフレームワークは同じタグからリリースされるため、バージョンは一致します：X.Y.Z の gem は、フレームワーク `vX.Y.Z` に依存するアプリを書き出します。アプリを新しいリリースに移行するには、gem を更新し、`spin.toml` を新しいタグに向けてから、アプリの中で次を実行します：
 
 ```shell ターミナル — アプリのディレクトリ
+rm spin.lock
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+`spin lock` は、git の依存について固定済みのコミットを、`spin.toml` の `ref` が何に変わっても保ちます。先にロックを消すのはそのためです。ほかにも依存があるアプリでは、代わりに `spin.lock` から `[lock.cybertrain]` のテーブルだけを消せば、ほかの固定は残ります。インデックスのバージョンに依存するアプリ（`cybertrain = "X.Y.Z"`）に `rm` は要りません：その場合は `spin lock` が固定を動かします。
+
+[インデックスのバージョン](#an-index-version)に依存するアプリでは、まず `cybertrain spin search cybertrain` を実行して spin のインデックスのコピーを更新し、`spin.toml` の `cybertrain =` の行のバージョンを新しいリリースに変えてから、`cybertrain spin lock` と `cybertrain spin run gen` を実行します。
+
+両者が一致していることは、コマンドが確認します。`server`、`build`、`db`、`test`、`generate` は、spin を実行したりファイルを書き出したりする前に、spin がビルドするフレームワークのバージョン、つまりアプリの `spin.lock` に固定されたバージョンを、コマンド自身のバージョン（`cybertrain version`）と比べます：アプリをコンパイルする Spinel のリリースを決めるのはアプリではなくコマンドであり、コマンドのテンプレートとジェネレーターは、同じリリースのフレームワーク向けに書かれているからです。バージョンが異なると、コマンドは終了コード 1 で止まります：
+
+```text 出力 — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is on
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
+  rm spin.lock && cybertrain spin lock
+```
+
+どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。git の依存では、`spin.toml` を書き換えても何も変わらず、そのあと `spin lock` を実行しても変わりません：そのロックを消すまで、spin は `spin.lock` のコミットをビルドし続けます。`rm` が要るのはそのためです。インデックスのバージョンに依存している場合、メッセージは `cybertrain = "A.B.C"` と `cybertrain spin lock` だけを示します。spin が固定されたリリースをビルドするのは `spin.toml` がそれを許している間だけなので、`spin.toml` が指すバージョンがロックと違えば、すぐにそのバージョンが比べられます。範囲（`"~> X.Y"`）が固定されたリリースを許さなくなった場合は、`cybertrain spin lock` を実行するまで拒否されます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチ、コミット、範囲はリリースを指さないので、確認されません。
 
 0.4 向けに書いたアプリケーションには、いくつか変更が要ります（どのセッションも一度だけ終わる、OpenSSL をリンクする、ドットを含むルートのセグメントには `format: false` が要る、など）：[0.4 のアプリを更新する](requests.md#upgrading-an-application-from-04)を見てください。

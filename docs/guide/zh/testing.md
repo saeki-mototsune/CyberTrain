@@ -1,5 +1,5 @@
 ---
-source_sha256: c8a500d9b95634bc9207f96497fc7da3c5da57e409cf86de4caa02bc690dbc82
+source_sha256: b82aa50dc1d5b3b82ef82755517e518f5a198f17dd722dfc6ed4bdf66210d16e
 ---
 # 测试应用
 
@@ -519,4 +519,4 @@ Cybertrain::Test.run!
 
 ## 持续集成
 
-`cybertrain new` 会为应用写出 `.github/workflows/ci.yml`。它调用本仓库的 `setup-cybertrain` 动作（[.github/actions/setup-cybertrain](../../.github/actions/setup-cybertrain/action.yml)），并固定在 CLI 的发布标签上；该动作安装 SQLite、zlib 和 OpenSSL 的头文件以及 Ruby，从 `spin.lock` 中读取应用锁定的框架提交，取得该提交的框架并运行它的 `cybertrain doctor` 和 `cybertrain setup`（`~/.cybertrain/spinel` 按 Spinel 版本和 runner 镜像缓存）。然后工作流检查 `spin.lock` 是最新的（`spin lock && git diff --exit-code spin.lock`）、`gen/` 是新鲜的（`SPIN_DEBUG=1 spin run gen -- --check`），并运行 `cybertrain test`。工具链的步骤变化时，变化的是这个动作，而不是每个应用的副本。提交是从 `spin.lock` 读取的，所以工作流假定使用默认的 git 依赖；用 `--path` 创建的应用把框架的检出作为 `framework-path` 传给动作。
+`cybertrain new` 会为应用写出 `.github/workflows/ci.yml`。它调用本仓库的 `setup-cybertrain` 动作（[.github/actions/setup-cybertrain](../../.github/actions/setup-cybertrain/action.yml)），并固定在 CLI 的发布标签上；该动作安装 SQLite、zlib 和 OpenSSL 的头文件以及 Ruby，从 `spin.lock` 中读取应用锁定的框架提交，取得该提交的框架并运行它的 `cybertrain doctor` 和 `cybertrain setup`（`~/.cybertrain/spinel` 按 Spinel 版本和 runner 镜像缓存）。然后工作流检查 `spin.lock` 是最新的（`spin lock && git diff --exit-code spin.lock`）、`gen/` 是新鲜的（`SPIN_DEBUG=1 spin run gen -- --check`），并运行 `cybertrain test`。工具链的步骤变化时，变化的是这个动作，而不是每个应用的副本。提交是从 `spin.lock` 读取的：无论是默认的 git 依赖还是索引中的版本（`--version`），`spin.lock` 里都记有提交；用 `--path` 创建的应用把框架的检出作为 `framework-path` 传给动作。

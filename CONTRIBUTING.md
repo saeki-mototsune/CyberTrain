@@ -515,6 +515,101 @@ before the gem is pushed:
    created, the same run attaches a Linux build of the fork's latest Spinel
    release (`spinel-<tag>-linux-x86_64.tar.gz`, for Claude Code cloud
    sessions; see below); check that its `spinel-prebuilt` job passed.
+6. Once the framework is on the spin index, and to put it there the first
+   time: publish the release to it, by hand, after the Release workflow has
+   passed. See [Publishing to the spin index](#publishing-to-the-spin-index).
+   No workflow does this, and none should: it opens a pull request in
+   someone else's repository under the name of whoever runs it.
+
+### Publishing to the spin index
+
+The framework is not on [spin-index](https://github.com/matz/spin-index)
+yet, and nothing depends on it being there: `cybertrain new` writes the git
+tag. Registering it is a decision for the maintainer (the first three
+points under "Check first" are what it turns on). From the first accepted
+release on, every release is published: spin selects the *lowest* release
+that satisfies a constraint, so `cybertrain new --version X.Y.Z` of a new
+gem finds nothing until X.Y.Z is in the index.
+
+What follows was read from spin's source (`tools/spin.rb`, `cmd_publish`,
+and `docs/spin.md`, `docs/internals/spin.md` in the Spinel release
+`Cybertrain::SPINEL_TAG` names) and checked against a local index
+(`SPIN_INDEX=file://...`) as far as resolving goes; `spin publish` itself
+has never been run for this repository, so read its output the first time.
+
+```sh
+git clone https://github.com/saeki-mototsune/cybertrain && cd cybertrain
+git checkout vX.Y.Z            # publish records HEAD, not a tag
+"$(dirname "$(command -v spin)")/spinel" --version   # the compiler spin runs: the release Cybertrain::SPINEL_TAG names
+gh auth status
+spin publish --repo https://github.com/saeki-mototsune/cybertrain
+```
+
+What `spin publish` does, in order, stopping at the first that fails:
+
+1. reads `[package] name` and `version` from `spin.toml`;
+2. takes the repository from `--repo`, or else from `git remote get-url
+   origin` (an ssh GitHub URL becomes https, a trailing `.git` is dropped;
+   a `file://` or local path is refused);
+3. requires `git status --porcelain` to print nothing (untracked files
+   count) and takes `git rev-parse HEAD` as the release's commit, which
+   must be on a remote branch (`git branch -r --contains`) and whose
+   `spin.toml` must carry the same version;
+4. runs the whole of `spin test`: every program must pass (the full
+   suite, a quarter of an hour or more). The compiler is the `spinel`
+   executable in the directory of the `spin` binary, and the one on `PATH`
+   only when there is none there, which is why the recipe asks that one,
+   not a bare `spinel`, for its version;
+5. updates its clone of the index (`~/.cache/spin/index`) and refuses if
+   `packages/cybertrain.toml` names another repository, or already has
+   this version (compared as numbers: `0.5` and `0.5.0` are one version);
+6. appends a `[[release]]` (the version and the full commit) and a
+   `[[probe]]` (the version, the revision in the parentheses of that
+   compiler's `--version`, `result = "pass"`, the date) to that file;
+7. with `gh` installed and authenticated: forks `matz/spin-index` for the
+   `gh` user, pushes a branch `publish-cybertrain-X-Y-Z` there and opens a
+   pull request titled `cybertrain X.Y.Z` against the index. Without `gh`
+   it prints the entry to submit by hand. `--direct` commits to the index
+   and pushes instead, which needs write access to it.
+
+The release exists for users when that pull request is merged. Then check
+it: `spin search cybertrain` prints X.Y.Z, and `cybertrain new probe
+--version X.Y.Z` in a temporary directory locks the tag's commit (`ref` in
+its `spin.lock` equals `git rev-parse 'vX.Y.Z^{commit}'`).
+
+Check first:
+
+- **The name.** An index name belongs to the first repository whose
+  publish pull request is accepted, and the index's rule is that a name
+  shared with a rubygems.org gem means the same library. `cybertrain` on
+  rubygems.org is this project's own CLI gem, so the name is ours to ask
+  for; whether the index's maintainers agree is their review. Published
+  repositories are "conventionally" named `spinel-<name>`: that is a
+  comment `spin new --lib` writes, and `spin publish` does not check it.
+- **The repository URL, once and for all.** Later publishes are refused
+  unless the repository is, character for character, the one in the index
+  entry, and this repository answers to two spellings (`CyberTrain`, as
+  in [Setting up a checkout](#setting-up-a-checkout), and `cybertrain`,
+  as in `Cybertrain::REPOSITORY`). Always pass `--repo` with
+  `Cybertrain::REPOSITORY`, the URL `cybertrain new` writes, so that an
+  index dependency and a tag dependency lock the same `git =`.
+- **The probe is the fork's.** The index has no field for the Spinel a
+  package needs (a `spinel =` constraint in `spin.toml` is planned
+  upstream, not implemented). All it records is the probe: the build
+  revision of the compiler that ran the tests when publishing, which here
+  is a commit of the
+  [saeki-mototsune fork](https://github.com/saeki-mototsune/spinel), not
+  one of matz/spinel. Someone who runs `spin add cybertrain` with upstream
+  Spinel gets no warning from that, and upstream's rule is that a name is
+  held while its probes pass "at current engine revisions", with failures
+  appended by re-probe sweeps. So before the first publish, run the suite
+  with the upstream Spinel release nearest the pinned one and say in the
+  pull request what it did; if it fails there, the framework is not ready
+  for the index, whatever `spin publish` says.
+- **The tag is released.** The Release workflow passed for `vX.Y.Z`, the
+  gem is pushed, and the checkout is the tag with nothing else in it.
+- **`SPIN_INDEX` is unset**, or it names the index you mean: spin
+  publishes to whatever it names.
 
 The pages a reader follows, the site (`site/`), the guides (`docs/guide/`),
 the deployment tutorial (`docs/deploy.md`, `docs/deploy.en.md`,

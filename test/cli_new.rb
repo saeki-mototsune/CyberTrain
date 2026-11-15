@@ -355,6 +355,27 @@ test "CLI new --version writes an index constraint" do
   assert_includes read("wiki/spin.toml"), "cybertrain = \"~> 0.1\""
 end
 
+# spin selects the lowest release a constraint matches (docs/design.md
+# D11): one release is the form to write, and anything else gets a note.
+# The note is printed after the files (the snapshot shows it once per `new`
+# below that is not exact) and the value is written as given either way.
+test "CLI new --version notes that a range selects the lowest matching release" do
+  assert_equal "", Cybertrain::CLI.version_note("")
+  assert_equal "", Cybertrain::CLI.version_note("0.4.1")
+  assert_equal "", Cybertrain::CLI.version_note("10.20.30")
+  note = "note: spin selects the lowest release that satisfies \"~> 0.4\" and spin.lock pins it, " \
+         "so a range does not follow new releases; name one release (--version X.Y.Z) to choose it"
+  assert_equal note, Cybertrain::CLI.version_note("~> 0.4")
+  ["~> 0.4.1", ">= 0.4.1", "*", "0.4", "0.4.1.2", "v0.4.1", "0..1", ".4.1", "0.4.", "0.4.x", " 0.4.1"].each do |v|
+    refute Cybertrain::CLI.version_note(v) == "", v
+  end
+
+  assert_equal 0, Cybertrain::CLI.run(["new", "exact", "--version", "0.4.1", "--skip-spin"])
+  assert_includes read("exact/spin.toml"), "cybertrain = \"0.4.1\""
+  assert_equal 0, Cybertrain::CLI.run(["new", "ranged", "--version", ">= 0.4.1", "--skip-spin"])
+  assert_includes read("ranged/spin.toml"), "cybertrain = \">= 0.4.1\""
+end
+
 test "CLI new --git writes a git dependency, with or without --ref" do
   assert_equal 0, Cybertrain::CLI.run(["new", "fork", "--git", "https://example.com/x/cybertrain", "--skip-spin"])
   assert_includes read("fork/spin.toml"), "cybertrain = { git = \"https://example.com/x/cybertrain\" }"

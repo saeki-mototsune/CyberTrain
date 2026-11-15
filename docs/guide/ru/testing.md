@@ -1,5 +1,5 @@
 ---
-source_sha256: c8a500d9b95634bc9207f96497fc7da3c5da57e409cf86de4caa02bc690dbc82
+source_sha256: b82aa50dc1d5b3b82ef82755517e518f5a198f17dd722dfc6ed4bdf66210d16e
 ---
 # Тестирование приложения
 
@@ -971,6 +971,7 @@ zlib и OpenSSL и Ruby, читает из `spin.lock` коммит фреймв
 что `spin.lock` актуален (`spin lock && git diff --exit-code spin.lock`) и
 `gen/` свеж (`SPIN_DEBUG=1 spin run gen -- --check`), и запускает
 `cybertrain test`. Когда шаги тулчейна меняются, меняется действие, а не
-копия каждого приложения. Коммит читается из `spin.lock`, поэтому workflow
-предполагает git-зависимость по умолчанию; приложение, созданное с
-`--path`, передаёт действию checkout фреймворка как `framework-path`.
+копия каждого приложения. Коммит читается из `spin.lock`: он записан там и
+для git-зависимости по умолчанию, и для версии из индекса (`--version`);
+приложение, созданное с `--path`, передаёт действию checkout фреймворка как
+`framework-path`.

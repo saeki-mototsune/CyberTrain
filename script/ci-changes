@@ -23,9 +23,11 @@
 #
 # cruby_preview (the framework's tests and the generator under CRuby, no
 # Spinel): true for cybertrain/**, cybertrain.rb, test/**,
-# script/preview-parity, script/test-cruby, .github/workflows/ci.yml and
-# script/ci-changes (and a quoted path); false for everything else. For the
-# two scripts it is the only job that runs: `framework` stays false.
+# script/preview-parity, script/test-cruby, .github/workflows/ci.yml,
+# script/ci-changes and .github/actions/setup-cybertrain/** (whose lock
+# step test/cruby/setup_action_lock.rb runs) (and a quoted path); false for
+# everything else. For the two scripts it is the only job that runs:
+# `framework` stays false.
 #
 # preview_e2e (script/preview-e2e: `cybertrain server` on a copy of
 # examples/blog, built with Spinel): true for what that run reads, which
@@ -49,7 +51,7 @@ decide() {
   e2e=false
   while IFS= read -r path; do
     case "$path" in
-      cybertrain/* | cybertrain.rb | test/* | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | \"*) cruby=true ;;
+      cybertrain/* | cybertrain.rb | test/* | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | .github/actions/setup-cybertrain/* | \"*) cruby=true ;;
     esac
     case "$path" in
       cybertrain/* | cybertrain.rb | exe/* | examples/blog/* | spin.toml | script/preview-e2e | .github/actions/setup-spinel/* | .github/workflows/ci.yml | script/ci-changes | \"*) e2e=true ;;
@@ -132,6 +134,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_cruby true script/preview-parity
   expect_cruby true script/test-cruby
   expect_cruby true .github/workflows/ci.yml
+  expect_cruby true .github/actions/setup-cybertrain/action.yml
   expect_cruby true '"docs/api/caf\303\251.rb"'
   expect_cruby false docs/api/README.md site/index.html README.md script/gate script/api-docs examples/blog/app/models/post.rb
   expect_cruby true docs/api/README.md test/router.rb

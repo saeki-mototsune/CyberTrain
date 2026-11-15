@@ -1,5 +1,5 @@
 ---
-source_sha256: c8a500d9b95634bc9207f96497fc7da3c5da57e409cf86de4caa02bc690dbc82
+source_sha256: b82aa50dc1d5b3b82ef82755517e518f5a198f17dd722dfc6ed4bdf66210d16e
 ---
 # Tester une application
 
@@ -1000,7 +1000,7 @@ runner). Le workflow vérifie ensuite que `spin.lock` est à jour
 (`spin lock && git diff --exit-code spin.lock`) et que `gen/` est frais
 (`SPIN_DEBUG=1 spin run gen -- --check`), et lance `cybertrain test`. Quand
 les étapes de la chaîne d’outils changent, c’est l’action qui change, pas
-la copie de chaque application. Le commit est lu dans `spin.lock`, donc le
-workflow suppose la dépendance git par défaut&nbsp;; une application créée avec
-`--path` passe le dépôt du framework à l’action en tant que
-`framework-path`.
+la copie de chaque application. Le commit est lu dans `spin.lock`, qui en
+contient un pour la dépendance git par défaut comme pour une version de
+l’index (`--version`)&nbsp;; une application créée avec `--path` passe le
+dépôt du framework à l’action en tant que `framework-path`.

@@ -215,10 +215,38 @@ Four options change what it writes and runs:
   (`--path ~/src/cybertrain`, wherever the checkout is, when working on
   CyberTrain itself).
 - `--git URL [--ref R]` depends on the framework at URL (at branch or tag R).
-- `--version V` depends on an index version once the framework is on a
-  `spin-index`.
+- `--version V` depends on release V in a `spin-index`
+  (`cybertrain = "V"`), once the framework is on one: see
+  [An index version](#an-index-version).
 
 Give only one of `--path`, `--version` and `--git`; `--ref` needs `--git`.
+
+### An index version
+
+A `spin-index` is the list of packages spin looks a name up in. The
+framework is not on one yet: until it is, `spin lock` in an app created with
+`--version` answers `not in the index: cybertrain`, and the tag that `new`
+writes by default is the way to depend on a release. Once it is,
+`cybertrain new NAME --version X.Y.Z` writes `cybertrain = "X.Y.Z"`, spin
+finds that release's commit in the index, and `spin.lock` pins the same three
+things it pins for the tag (the version, the repository and the commit), so
+every command and the CI workflow `new` writes work as they do by default.
+Three things differ from what a `Gemfile` leads you to expect:
+
+- **Name one release.** Of the releases that satisfy a constraint, spin
+  selects the lowest, not the newest: `"~> X.Y"` is the lowest release in
+  the index from X.Y up to the next major version (only `"~> X.Y.Z"` stays
+  inside X.Y), and stays that one when later ones are published. So write the exact
+  version, the one `cybertrain version` prints; `new` prints a note when V
+  is anything else.
+- **Spinel still comes from the `cybertrain` command.** An index entry names
+  no Spinel release. The framework is written for and tested with one, the
+  release that `cybertrain setup` builds, and the `cybertrain` command of
+  the same version installs it. Plain `spin add cybertrain` in a project
+  built with another Spinel is untested.
+- **spin reads its own copy of the index.** It clones the index once, into
+  `~/.cache/spin/`, and `spin lock` does not update that copy;
+  `spin search cybertrain` does, and prints the newest release.
 
 ### Moving an app to a new release
 
@@ -228,9 +256,52 @@ app to a new release, update the gem, point `spin.toml` at the new tag, then
 run, in the app:
 
 ```shell terminal — the app's directory
+rm spin.lock
 cybertrain spin lock
 cybertrain spin run gen
 ```
+
+`spin lock` keeps the commit it has locked for a git dependency, whatever
+`ref` has become in `spin.toml`, which is why the lock is removed first. In
+an app with other dependencies you can delete only the `[lock.cybertrain]`
+table from `spin.lock` instead, and keep the other pins. An app that depends
+on a version from the index (`cybertrain = "X.Y.Z"`) needs no `rm`: there
+`spin lock` moves the pin.
+
+For an app that depends on [an index version](#an-index-version), run
+`cybertrain spin search cybertrain` first, which updates spin's copy of the
+index, then change the version on the `cybertrain =` line of `spin.toml` to
+the new release and run `cybertrain spin lock` and `cybertrain spin run gen`.
+
+The command checks that the two match. Before `server`, `build`, `db`,
+`test` or `generate` runs spin or writes a file, it compares the version of
+the framework spin would build, the one locked in the app's `spin.lock`,
+with its own (`cybertrain version`): the command, not the app, decides which
+Spinel release compiles the app, and its templates and generators are
+written for its own release of the framework. When the versions differ, the
+command stops with exit status 1:
+
+```text output — cybertrain build
+error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C.
+The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
+  gem install cybertrain -v X.Y.Z    # the command the application is on
+or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
+  rm spin.lock && cybertrain spin lock
+```
+
+Do one or the other. `cybertrain spin ...` is never checked, so `cybertrain
+spin lock` always runs. With a git dependency, editing `spin.toml` changes
+nothing, and neither does `spin lock` after it: spin goes on building the
+commit in `spin.lock` until that lock is removed, hence the `rm`. With a
+version from the index, the message names `cybertrain = "A.B.C"` and
+`cybertrain spin lock` alone; spin builds the locked release only while
+`spin.toml` still allows it, so the version `spin.toml` names is compared
+as soon as it differs from the lock, and a range (`"~> X.Y"`) that no longer
+allows the locked release is refused until `cybertrain spin lock` has run.
+An app that depends on a checkout of the framework (`path = ...`) is not
+checked. An app with no `spin.lock` is checked against the release its
+`spin.toml` names (`"X.Y.Z"` or `ref = "vX.Y.Z"`); a branch, a commit or a
+range names none, so it is not checked.
 
 An application written for 0.4 has a few changes to make (every session
 ends once, OpenSSL is linked, a dotted route segment needs `format: false`,
