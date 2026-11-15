@@ -341,14 +341,6 @@ test "a job that fails and then succeeds ends done" do
   assert_equal "", job_error(id)
 end
 
-test "the backoff list is 1, 5, 15 and then 60 minutes" do
-  assert_equal 60, Job.backoff(1)
-  assert_equal 300, Job.backoff(2)
-  assert_equal 900, Job.backoff(3)
-  assert_equal 3600, Job.backoff(4)
-  assert_equal 3600, Job.backoff(9)
-end
-
 test "a job of a kind with no handler is failed at once, with last_error" do
   fresh_db
   Job.install!

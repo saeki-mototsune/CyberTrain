@@ -189,10 +189,6 @@ module Cybertrain
     # @api public
     OUTCOME_STALE = :stale
 
-    # Seconds to wait before the retry after the 1st, 2nd, 3rd and every
-    # later failed attempt.
-    BACKOFF = RetryPolicy::BACKOFF
-
     # last_error keeps at most this many characters of the message.
     MAX_ERROR_LENGTH = RetryPolicy::MAX_ERROR_LENGTH
 
@@ -604,7 +600,7 @@ module Cybertrain
     end
 
     # Claims and runs the oldest due job, if there is one, and records the
-    # outcome: `done`; `queued` again with `run_at` pushed back by {BACKOFF}
+    # outcome: `done`; `queued` again with `run_at` pushed back by {RetryPolicy::BACKOFF}
     # after a failure; `failed` once {Config#job_max_attempts} attempts have
     # failed, or at once when no handler is registered for its kind. The
     # worker calls it; tests call it with a fixed `now` instead of waiting.
@@ -683,13 +679,6 @@ module Cybertrain
     # @api public
     def self.prune_finished(before)
       Store.prune_finished(before)
-    end
-
-    # Seconds to wait after the attempts-th failed attempt (1-based).
-    # @param attempts [Integer]
-    # @return [Integer]
-    def self.backoff(attempts)
-      RetryPolicy.default_wait(attempts)
     end
 
     # Writes the outcome of a failed attempt for a retry policy (the code
