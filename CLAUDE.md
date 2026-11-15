@@ -15,11 +15,12 @@ many agents:
   (searching, reviewing, verifying, proposing): give each workflow a subset
   of the areas, three or four areas each. Do this from the start, not after
   noticing agents waiting.
-- **Split any stage whose agents touch disjoint files** the same way.
 - **Keep stages that write to the shared working tree in one workflow, run
-  one agent after another.** Agents that edit, commit, or run `spin test`
-  share the git index and `build/`; two at once corrupt each other's
-  results. Finish and commit one area before the next starts.
+  one agent after another**, even when the agents touch disjoint files.
+  Agents that edit, commit, or run `spin test` share the git index and
+  `build/`; two at once corrupt each other's results. Finish and commit one
+  area before the next starts. Writing agents may run in parallel only when
+  each has its own worktree and build directory.
 - **A read-only workflow may run beside a writing one**, as long as its
   agents build only outside the repository (a scratch directory) and are
   told which code is about to change.
