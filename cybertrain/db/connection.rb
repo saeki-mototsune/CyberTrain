@@ -22,8 +22,6 @@ module Cybertrain
       BUSY_MAX_PAUSE = 0.001
       BUSY_WAIT_LIMIT = 5.0
 
-      attr_reader :path
-
       # True for a path whose database lives only in its connection, so no
       # other connection can see it: ":memory:", "" (a private temporary
       # database) and, since Connection opens with OPEN_URI, a `file:` URI
@@ -49,7 +47,6 @@ module Cybertrain
       # with SQLITE_USE_URI). With create: false a missing file is refused
       # by SQLite itself (SQLITE_CANTOPEN -> DB::Error) instead of created.
       def initialize(path, create: true)
-        @path = path
         @closed = false
         @transaction_depth = 0
         # SQLITE_LIMIT_VARIABLE_NUMBER, read on the first #variable_limit.
