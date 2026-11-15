@@ -165,7 +165,7 @@ module Cybertrain
     # names and no #call (NOTES rules 10/34/40).
     # @api public
     class Subscription
-      attr_reader :sub_url, :sub_target, :sub_headers, :sub_timeout, :sub_max_message,
+      attr_reader :sub_url, :sub_headers, :sub_timeout, :sub_max_message,
                   :sub_ping_interval, :sub_stale_after, :sub_allow_private,
                   :sub_open_block, :sub_message_block, :sub_thread, :sub_tick_block, :sub_tick_seconds
 
@@ -893,29 +893,12 @@ module Cybertrain
     # One connection, from connect to its end. Answers "" when it ended
     # without an error (stop!, silence, a failed on_open: logged where they
     # happen), else "Class: message" for the disconnect line. The rescue
-    # ladder is in a method that takes no block and tells the classes apart
-    # by clause, with their full names (NOTES rules 32/45/47/70).
+    # is in a method that takes no block (NOTES rules 32/45).
     def self.feed_session(sub, generation)
       client = Client.connect(sub.sub_url, headers: sub.sub_headers, timeout: sub.sub_timeout,
                                            max_message: sub.sub_max_message, allow_private: sub.sub_allow_private)
       sub.sub_client!(client)
       feed_connected(sub, client, generation)
-    rescue Cybertrain::WebSocket::ClosedError => e
-      "Cybertrain::WebSocket::ClosedError: #{e.message}"
-    rescue Cybertrain::WebSocket::TimeoutError => e
-      "Cybertrain::WebSocket::TimeoutError: #{e.message}"
-    rescue Cybertrain::WebSocket::RefusedError => e
-      "Cybertrain::WebSocket::RefusedError: #{e.message}"
-    rescue Cybertrain::WebSocket::TLSError => e
-      "Cybertrain::WebSocket::TLSError: #{e.message}"
-    rescue Cybertrain::WebSocket::BlockedAddressError => e
-      "Cybertrain::WebSocket::BlockedAddressError: #{e.message}"
-    rescue Cybertrain::WebSocket::HandshakeError => e
-      "Cybertrain::WebSocket::HandshakeError: #{e.message}"
-    rescue Cybertrain::WebSocket::ProtocolError => e
-      "Cybertrain::WebSocket::ProtocolError: #{e.message}"
-    rescue Cybertrain::WebSocket::TooLargeError => e
-      "Cybertrain::WebSocket::TooLargeError: #{e.message}"
     rescue StandardError => e
       "#{e.class.name}: #{e.message}"
     end
