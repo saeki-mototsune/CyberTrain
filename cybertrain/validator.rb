@@ -22,13 +22,13 @@ module Cybertrain
     COMPARISONS = [:greater_than, :greater_than_or_equal_to, :equal_to, :less_than, :less_than_or_equal_to,
                    :other_than]
 
-    attr_reader :attr, :kind, :minimum, :maximum, :allow_blank
+    attr_reader :attr, :kind
 
-    def initialize(attr, kind, minimum = -1, maximum = -1, allow_blank = false)
+    def initialize(attr, kind)
       @attr = attr
       @kind = kind
-      @minimum = minimum
-      @maximum = maximum
+      @minimum = -1
+      @maximum = -1
       @exact_length = -1
       # Strings or Integers, seeded with both (spikes/NOTES.md rule 9).
       @in_list = Array.new(0) { [0, ""][0] }
@@ -57,7 +57,7 @@ module Cybertrain
       @scope_attr = nil
       @case_sensitive = true
       @allow_nil = false
-      @allow_blank = allow_blank
+      @allow_blank = false
       @on = nil
       @message = ""
       @condition_if = nil
