@@ -1,5 +1,5 @@
 ---
-source_sha256: 833da4a0dce30786eda2530ad79e7508d974d847037c7f4d608e5d886d11bdbe
+source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
 ---
 # Installer cybertrain
 
@@ -90,24 +90,38 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   [--skip-spin]` crée une application dans NAME, puis y lance `spin lock` et
   `SPIN_DEBUG=1 spin run gen`, en installant d’abord Spinel si nécessaire (la
   CLI compile gen et `bin/db.rb` dans le mode debug de spin).
-- `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`)
-  ajoute une ressource à l’application du répertoire courant.
-- `cybertrain generate authentication` y ajoute la connexion par adresse e-mail
-  et mot de passe&nbsp;: les tables users et sessions, les modèles `User` et
-  `Session`, les contrôleurs et vues de connexion et d’inscription, les routes,
-  un `before_action` dans `ApplicationController` et un test (voir
-  [Ajouter la connexion](tutorial.md#authentication)). Avec `--invite-only`, il
-  n’y a pas de page d’inscription&nbsp;: les utilisateurs sont créés avec
-  `./NAME user EMAIL`, et le premier aussi sur une page `/setup` qui ne répond
-  qu’à la machine du serveur elle-même, avec le jeton à usage unique
-  qu’affiche son avertissement de démarrage, tant qu’aucun utilisateur
-  n’existe.
+- `cybertrain generate scaffold NAME field:type ... [parent:references] [--any]`
+  (alias `g scaffold`) ajoute une ressource à l’application du répertoire
+  courant&nbsp;; un champ `parent:references` est la colonne `parent_id`, et
+  `--any` concerne un champ de pièce jointe (plus bas).
+- `cybertrain generate authentication [--invite-only] [--confirmable] [--force]`
+  y ajoute la connexion par adresse e-mail et mot de passe&nbsp;: les tables
+  users et sessions, les modèles `User` et `Session`, le concern
+  `Authentication` qu’inclut `ApplicationController`, les contrôleurs et vues
+  de connexion, d’inscription, de réinitialisation du mot de passe et de
+  compte, les routes, la page des jobs derrière `require_admin`, les lignes
+  de sous-systèmes dont il a besoin dans `bin/<app>.rb` et `bin/db.rb`, et
+  des tests. `--invite-only` omet la page d’inscription, `--confirmable` fait
+  confirmer son adresse par e-mail à un nouveau compte avant qu’il puisse se
+  connecter, et `--force` écrase les fichiers pour lesquels une seconde
+  exécution n’affiche sinon qu’un diff ([Authentification](authentication.md)).
 - `cybertrain generate attachment MODEL FIELD [--any]` ajoute l’envoi d’un
   fichier à un modèle généré par scaffold&nbsp;: cinq colonnes de métadonnées,
   des méthodes et callbacks de modèle, une action de téléchargement, la route,
   le champ de formulaire et un test (voir
   [Ajouter une image de couverture](tutorial.md#attachments)). Un champ de scaffold
   `cover:attachment` fait la même chose.
+- `cybertrain generate helper NAME [--force]` ajoute
+  `app/helpers/NAME_helper.rb`, un module dont tout template peut appeler
+  les méthodes une fois `spin run gen` lancé, et un test
+  ([Helpers de l’application](template-language.md#application-helpers)).
+- `cybertrain generate component NAME [attr[:type] ...] [--force]` ajoute un
+  composant de vue&nbsp;: `app/components/NAME_component.rb`, son template et
+  un test ([Composants](template-language.md#components)).
+- `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]`
+  ajoute `app/jobs/NAME_job.rb` et un test, et `require "cybertrain/jobs"` à
+  `bin/<app>.rb` et `bin/db.rb`
+  ([Tâches de fond](background-and-operations.md#background-work)).
 - `cybertrain db migrate` génère, applique les migrations en attente, puis
   génère à nouveau (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
   migrate; SPIN_DEBUG=1 spin run gen`)&nbsp;;
@@ -115,9 +129,14 @@ partir de là, de `cybertrain new` à `cybertrain build`.
 - `cybertrain db COMMAND...` lance toute autre commande de base de données
   après `SPIN_DEBUG=1 spin
   run gen`&nbsp;: `status`, `rollback [N]` (qui génère à nouveau ensuite),
-  `schema:dump`, `create`.
+  `schema` (écrit `db/schema.rb` d’après la base telle qu’elle est, sans
+  migrer), `schema:dump`, `create`, `backup` et `vacuum`
+  ([Exploitation](background-and-operations.md#operations-backups-vacuum-health-check))
+  et `normalize`
+  ([Dates-heures et `db normalize`](models.md#datetimes-and-db-normalize)).
 - `cybertrain server [PORT] [--spinel]` démarre le serveur de développement
-  (port 3000 par défaut). Juste après un changement, l’application tourne
+  (par défaut le port de l’application, `PORT` ou `c.port`, 3000 s’ils ne
+  sont pas définis). Juste après un changement, l’application tourne
   sous CRuby pendant que Spinel la compile en arrière-plan, et le binaire
   compilé reprend le port quand sa compilation réussit&nbsp;; les réponses
   de l’application portent `X-Cybertrain-Runtime: cruby` ou `spinel`
@@ -135,20 +154,26 @@ partir de là, de `cybertrain new` à `cybertrain build`.
 - `cybertrain spin ARGS...` lance `spin` avec le Spinel épinglé, depuis
   n’importe quel répertoire (`cybertrain spin test`,
   `cybertrain spin run gen -- --check`).
+- `cybertrain secret [--hex]` affiche un nouveau secret aléatoire pour
+  `CYBERTRAIN_SECRET_KEY_BASE`&nbsp;; avec `--hex`, une nouvelle clé pour
+  `CYBERTRAIN_ENCRYPTION_KEY`. Les deux font 64 chiffres hexadécimaux.
 - `cybertrain setup [--force]` installe la version épinglée de Spinel dans
   `~/.cybertrain`, sauf si un `spinel` de cette version est déjà dans le
   `PATH`&nbsp;; `--force` recompile la copie sous `~/.cybertrain`.
-- `cybertrain doctor` vérifie la chaîne de compilation C, les en-têtes SQLite,
-  si Ruby charge `fiddle` (l’aperçu CRuby en a besoin) et l’installation de
-  Spinel.
-- `cybertrain version` affiche la version.
+- `cybertrain doctor` vérifie tous les [prérequis](#requirements)&nbsp;:
+  `git`, `make`, `curl`, le compilateur C, les en-têtes SQLite, zlib et
+  OpenSSL, la gem `prism`, si Ruby charge `fiddle` (l’aperçu CRuby en a
+  besoin) et l’installation de Spinel.
+- `cybertrain version` affiche la version&nbsp;; `cybertrain help` affiche
+  cette liste.
 
-`db`, `server` et `build` s’exécutent dans une application&nbsp;; NAME est le
-`[package] name` de son `spin.toml`.
+`generate`, `db`, `server`, `build` et `test` s’exécutent dans une
+application&nbsp;; NAME est le `[package] name` de son `spin.toml`.
 
 ## Comment Spinel est installé
 
-Chaque commande qui lance `spin` (`new`, `db`, `server`, `build`, `spin`)
+Chaque commande qui lance `spin` (`new`, `db`, `server`, `build`, `test`,
+`spin`)
 s’assure d’abord qu’un Spinel de la version de `Cybertrain::SPINEL_TAG` est
 disponible. Un `spinel` du `PATH` (accompagné d’un `spin`) dont
 `spinel --version` indique cette version est utilisé tel quel&nbsp;; sinon, la
@@ -189,6 +214,10 @@ Deux variables d’environnement remplacent tout cela&nbsp;:
   `cybertrain` utilise alors le `spinel` et le `spin` de `PREFIX/bin` (ou de
   `PREFIX` lui-même, si `spinel` s’y trouve directement) et s’arrête sur une
   erreur s’ils ne sont pas de cette version.
+
+Une troisième, `CYBERTRAIN_KEEP_SRC=1`, garde le source de Spinel cloné pour
+la compilation (`~/.cybertrain/src/spinel-<SPINEL_TAG>/`) au lieu de le
+supprimer après la compilation.
 
 </details>
 
@@ -289,11 +318,10 @@ cybertrain spin run gen
 que soit le `ref` désormais écrit dans `spin.toml`&nbsp;: c’est pourquoi le
 verrou est supprimé d’abord. Dans une application qui a d’autres dépendances,
 vous pouvez à la place supprimer de `spin.lock` la seule table
-`[lock.cybertrain]` et garder les autres verrous. Une application qui dépend
-d’une version de l’index (`cybertrain = "X.Y.Z"`) n’a pas besoin du `rm`&nbsp;:
-là, `spin lock` déplace le verrou.
+`[lock.cybertrain]` et garder les autres verrous.
 
-Pour une application qui dépend d’[une version de l’index](#an-index-version),
+Une application qui dépend d’[une version de l’index](#an-index-version) n’a
+pas besoin du `rm`, puisque là `spin lock` déplace le verrou&nbsp;:
 lancez d’abord `cybertrain spin search cybertrain`, qui met à jour la copie de
 l’index de spin, puis remplacez la version sur la ligne `cybertrain =` de
 `spin.toml` par la nouvelle version et lancez `cybertrain spin lock` puis `cybertrain spin run gen`.
@@ -316,10 +344,7 @@ or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then 
 ```
 
 Faites l’un ou l’autre. `cybertrain spin ...` n’est jamais vérifié, donc
-`cybertrain spin lock` s’exécute toujours. Avec une dépendance git, modifier
-`spin.toml` ne change rien, et `spin lock` ensuite non plus&nbsp;: spin
-continue de compiler le commit de `spin.lock` tant que ce verrou n’est pas
-supprimé, d’où le `rm`. Avec une version de l’index, le message nomme
+`cybertrain spin lock` s’exécute toujours. Avec une version de l’index, le message nomme
 `cybertrain = "A.B.C"` et `cybertrain spin lock` seul&nbsp;; spin ne compile
 la version verrouillée que tant que `spin.toml` l’autorise encore&nbsp;: la
 version que nomme `spin.toml` est donc comparée dès qu’elle diffère du
