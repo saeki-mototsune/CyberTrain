@@ -957,8 +957,6 @@ module Cybertrain
         else
           first = args[0]
           case first
-          # Time before Array (spikes/NOTES.md rule 8).
-          when Time then nil
           when Array, Cybertrain::Model
             helper_arity!("render", args, 1, 1)
             helper_no_keywords!("render", kwargs)
@@ -979,7 +977,6 @@ module Cybertrain
       def render_collection(name, kwargs, locals, interp, env)
         items = kwargs["collection"]
         case items
-        when Time then nil
         when Array
           return SafeString.of("") if items.empty?
 
@@ -1015,7 +1012,6 @@ module Cybertrain
           while i < value.size
             record = value[i]
             case record
-            when Time then record_expected!(record)
             when Cybertrain::Model
               key = record_partial_local(record)
               # One item at a time: the records may be of different models.

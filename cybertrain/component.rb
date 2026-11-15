@@ -173,8 +173,6 @@ module Cybertrain
       # Typed Array of polymorphic values (spikes/NOTES.md rule 9).
       @items = Array.new(0) { [nil, 0, 0.0, "", true][0] }
       case items
-      # Time before Array (spikes/NOTES.md rule 8).
-      when Time then ComponentCollection.not_an_array!(items)
       when Array then items.each { |item| @items << item }
       else ComponentCollection.not_an_array!(items)
       end

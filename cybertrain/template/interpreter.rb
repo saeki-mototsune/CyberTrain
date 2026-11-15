@@ -1119,11 +1119,7 @@ module Cybertrain
       def block_value(block, env, fresh, item, name, node)
         names = block.inames
         if names.size > 1
-          # Time before Array (spikes/NOTES.md rule 8).
           case item
-          when Time
-            env[names[0]] = item
-            env[names[1]] = nil
           when Array
             env[names[0]] = item[0]
             env[names[1]] = item[1]
