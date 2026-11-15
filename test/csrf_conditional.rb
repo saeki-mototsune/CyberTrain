@@ -5,8 +5,9 @@ require "cybertrain/router"
 
 # Task 7 review, issue 3 (compile fragility): several program shapes the
 # framework itself produces failed to compile under Spinel before this fix
-# (CsrfProtection.token_for took a bare `session` parameter that widened to
-# an untyped poly value across call sites -- see Session#csrf_token!).
+# (a CsrfProtection.token_for helper, since removed, took a bare `session`
+# parameter that widened to an untyped poly value across call sites -- see
+# Session#csrf_token!).
 # Documented here is which of those shapes now compile.
 #
 # COMPILES (covered below and by test/csrf_chain.rb):
@@ -17,7 +18,7 @@ require "cybertrain/router"
 #     instantiation where the `false` branch is the one actually taken at
 #     run time, so `CsrfProtection.new` is never *executed*, only present
 #     as a reachable call site in the source.
-#   - `CsrfProtection.token_for(ctx.session)` called from inside a Router
+#   - `ctx.session.csrf_token!` called from inside a Router
 #     block, i.e. from a route handler (the shape the form helpers in
 #     cybertrain/template/helpers.rb use) -- see test/csrf_chain.rb.
 #   - The real production stack, SessionStore -> CsrfProtection -> Router,

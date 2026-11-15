@@ -196,7 +196,7 @@ class NotesController < Cybertrain::Controller
   end
 
   def token
-    render plain: Cybertrain::CsrfProtection.token_for(session)
+    render plain: session.csrf_token!
   end
 
   def missing

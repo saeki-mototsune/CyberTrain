@@ -24,13 +24,6 @@ module Cybertrain
       @exempt_prefixes = exempt_prefixes
     end
 
-    # Returns the session's CSRF token, minting and storing one the first
-    # time it is asked for. Delegates to the typed Session instance method
-    # -- see Session#csrf_token! for why this isn't done inline here.
-    def self.token_for(session)
-      session.csrf_token!
-    end
-
     def call(ctx)
       req = ctx.request
       return super if req.get? || req.head? || req.method == "OPTIONS"

@@ -78,7 +78,7 @@ class NotesController < Cybertrain::Controller
   def index
     seen = session["visits"]
     notice = flash[:notice]
-    render plain: "visits=#{seen.nil? ? "0" : seen} notice=#{notice.nil? ? "-" : notice} token=#{Cybertrain::CsrfProtection.token_for(session)}"
+    render plain: "visits=#{seen.nil? ? "0" : seen} notice=#{notice.nil? ? "-" : notice} token=#{session.csrf_token!}"
   end
 
   def create

@@ -10,8 +10,7 @@ require "cybertrain/router"
 # Cybertrain::Test::Client the way a real form POST arrives, with the token
 # minted through a route handler block (the shape the form helpers in
 # cybertrain/template/helpers.rb mint it from: Helpers#csrf_token ->
-# Session#csrf_token!, which token_for delegates to) rather than a
-# hand-built Context.
+# Session#csrf_token!) rather than a hand-built Context.
 #
 # This also stands in as the "does the shape the framework actually
 # produces compile" check the review asked for: a conditionally-included
@@ -21,7 +20,7 @@ require "cybertrain/router"
 SECRET = "chain-secret"
 
 router = Cybertrain::Router.new
-router.get("/token") { |ctx| ctx.response.body = Cybertrain::CsrfProtection.token_for(ctx.session) }
+router.get("/token") { |ctx| ctx.response.body = ctx.session.csrf_token! }
 router.post("/comments") { |ctx| ctx.response.body = "created" }
 
 stack = Cybertrain::CsrfProtection.new(router)
