@@ -325,17 +325,9 @@ module Cybertrain
     # no incremental digest. Written with `while` loops: each back-edge is a
     # safepoint, so the scheduler can preempt a hash in progress.
     def self.pbkdf2_sha256(password, salt, iterations)
-      key = password.bytesize > Crypto::BLOCK_SIZE ? Digest::SHA256.digest(password) : password
-      ipad = ("6" * Crypto::BLOCK_SIZE).b
-      opad = ("\\" * Crypto::BLOCK_SIZE).b
-      n = key.bytesize
-      i = 0
-      while i < n
-        b = key.getbyte(i)
-        ipad.setbyte(i, b ^ 0x36)
-        opad.setbyte(i, b ^ 0x5c)
-        i += 1
-      end
+      key = Crypto.hmac_key(password)
+      ipad = Crypto.hmac_pad(key, 0x36)
+      opad = Crypto.hmac_pad(key, 0x5c)
       # U_1 = PRF(password, salt || INT_32_BE(1))
       u = Digest::SHA256.digest(opad + Digest::SHA256.digest(ipad + salt.b + "\x00\x00\x00\x01".b))
       out = u.dup
