@@ -224,13 +224,10 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .fact-k { font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
 .part-fact p + p { margin-top: 6px; font-size: 15px; line-height: 1.6; color: var(--ink-2); max-width: 58ch; }
 .part code { color: var(--ink); }
-/* Whether the part ends up in the deployed binary: gold when it does. */
-.pill { display: inline-block; margin-right: 8px; padding: 3px 8px; border: 1px solid var(--line-2); font-family: var(--mono); font-size: 11px; line-height: 1.4; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); vertical-align: 1px; }
-.pill-on { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 767px) {
   .parts { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; border-bottom: 0; }
   .part, .part:first-child, .part:last-child { display: block; padding: 24px 0 28px; border-left: 0; border-bottom: 1px solid var(--line); }
-  .part-k, .fact-k, .pill { font-size: 14px; letter-spacing: .04em; }
+  .part-k, .fact-k { font-size: 14px; letter-spacing: .04em; }
 }
 
 /* ---------- 04 how it works ---------- */
@@ -357,14 +354,6 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .perf-stats li, .perf-stats li:nth-child(3) { padding: 20px 0; border-left: 0; border-bottom: 1px solid var(--line); }
 }
 
-/* ---------- 07 requirements ---------- */
-.reqs { margin-top: 40px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); }
-.reqs > div { padding: 22px 24px 8px; border-left: 1px solid var(--line); }
-.reqs > div:first-child { border-left: 0; padding-left: 0; }
-.reqs dt { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
-.reqs dd { margin-top: 12px; font-size: 15.5px; color: var(--ink-2); line-height: 1.6; }
-.reqs dd code { color: var(--ink); }
-
 /* ---------- closer ---------- */
 .closer { margin-top: clamp(96px, 12vw, 176px); border-top: 1px solid var(--line); background: var(--bg-raise); }
 .closer-inner { padding-block: clamp(72px, 9vw, 128px); display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px clamp(32px, 6vw, 96px); align-items: start; }
@@ -446,7 +435,7 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 .step-num { font-size: .9em; font-weight: 200; color: var(--ink-3); letter-spacing: -.02em; font-variant-numeric: tabular-nums; min-width: 1.6em; }
 .step > p, .step > ul, .step .sub { max-width: 68ch; }
 .step > p { margin-top: 20px; color: var(--ink-2); }
-.step > p code, .points code, .checklist code, .callout code, .ship-list code, .env code { color: var(--ink); }
+.step > p code, .points code, .checklist code, .callout code, .env code { color: var(--ink); }
 .why { display: flex; gap: 14px; align-items: flex-start; margin-top: 18px !important; font-size: 18px; color: var(--ink) !important; line-height: 1.55; }
 .why-t { min-width: 0; }
 .why-k { flex: none; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); border: 1px solid var(--line-2); padding: 3px 7px 2px; position: relative; top: 3px; }
@@ -524,10 +513,6 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .feature:nth-child(2n+1) { border-left: 0; padding-left: 0; }
   .sec-body-wide { grid-column: 1 / -1; }
   .steps li { grid-template-columns: 48px minmax(0, 1fr) minmax(0, 2fr); }
-  .reqs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .reqs > div:nth-child(3) { border-left: 0; padding-left: 0; }
-  .reqs > div { padding-bottom: 24px; }
-  .reqs > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
 }
 @media (max-width: 1099px) {
   .dg-h { display: none; }
@@ -575,7 +560,6 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .look-notes { order: 2; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
   .steps li { grid-template-columns: 40px minmax(0, 1fr); }
   .steps li p { grid-column: 2; margin-top: 10px; }
-  .reqs { margin-top: 32px; }
   /* comparison: stack each row */
   .cmp, .cmp tbody, .cmp tr, .cmp td, .cmp tbody th { display: block; width: 100%; }
   .cmp thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -606,8 +590,6 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
   .feat-idx { margin-bottom: 14px; }
   .feature .feat-ref { padding-top: 14px; }
   .look-notes { grid-template-columns: minmax(0, 1fr); }
-  .reqs { grid-template-columns: minmax(0, 1fr); }
-  .reqs > div, .reqs > div:nth-child(3) { border-left: 0; padding: 20px 0; border-bottom: 1px solid var(--line); }
   .code pre { font-size: 12.5px; margin-inline: 8px; padding: 16px 28px 16px 8px; }
   .code figcaption { padding-left: 16px; }
   .code-lang { display: none; }
@@ -693,7 +675,7 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 @supports (animation-timeline: view()) {
   .sec-grid { view-timeline: --sec block; }
   .sec-grid::before { animation: marker-draw linear both; animation-timeline: --sec; animation-range: entry 40px entry 280px; }
-  .sec .sec-head, .sec .sec-body > h2, .sec .sec-body > .lead, .sec .look, .sec .feature, .sec .part, .sec .diagram, .sec .steps > li, .sec .cmp-wrap, .sec .reqs > div {
+  .sec .sec-head, .sec .sec-body > h2, .sec .sec-body > .lead, .sec .look, .sec .feature, .sec .part, .sec .diagram, .sec .steps > li, .sec .cmp-wrap {
     animation: rise cubic-bezier(.2, .7, .2, 1) both;
     animation-timeline: view();
     animation-range: entry 0% entry 100%;
@@ -770,12 +752,12 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
 @media (max-width: 767px) {
   code { font-size: max(14px, .86em); }
   .code pre, .code-term pre, .env code { font-size: 14px; }
-  .status, .term-k, .term-note, .sec-label, .look-k, .spec-k, .feat-idx, .feat-ref, .cmp .cmp-rails, .cmp-n, .reqs dt, .outline-k, .ol-n,
+  .status, .term-k, .term-note, .sec-label, .look-k, .spec-k, .feat-idx, .feat-ref, .cmp .cmp-rails, .cmp-n, .outline-k, .ol-n,
   .foot-h, .foot-base, .crumb, .meta-link, .doc-meta dt, .toc-title, .toc-count, .toc-n, .stage, .stage-k, .why-k, .callout-k,
   .env th, .code figcaption, .code-lang, .copy, .tab-list button, .cmp td::before, .dg-key, .step-n, .not-title, .term-note a, .ext {
     font-size: 14px;
   }
-  .status, .term-k, .spec-k, .look-k, .cmp .cmp-rails, .cmp-n, .reqs dt, .outline-k, .foot-h, .crumb, .doc-meta dt, .toc-title,
+  .status, .term-k, .spec-k, .look-k, .cmp .cmp-rails, .cmp-n, .outline-k, .foot-h, .crumb, .doc-meta dt, .toc-title,
   .stage-k, .why-k, .callout-k, .env th, .cmp td::before, .not-title, .code-lang, .copy { letter-spacing: .04em; }
   .feature .feat-ref code, .feat-ref code { font-size: 14px; }
   .step-n { width: 30px; height: 30px; }
@@ -821,9 +803,9 @@ h2 { font-size: clamp(28px, 3.3vw, 48px); line-height: 1.08; font-weight: 500; f
    way those languages do. */
 :lang(ja) body, :lang(zh) body { word-spacing: 0; line-break: strict; }
 :lang(ja) h1, :lang(ja) h2, :lang(ja) h3, :lang(zh) h1, :lang(zh) h2, :lang(zh) h3 { letter-spacing: 0; word-break: auto-phrase; }
-:lang(ja) .sec-label, :lang(ja) .spec-k, :lang(ja) .part-k, :lang(ja) .fact-k, :lang(ja) .look-k, :lang(ja) .reqs dt, :lang(ja) .outline-k, :lang(ja) .foot-h,
+:lang(ja) .sec-label, :lang(ja) .spec-k, :lang(ja) .part-k, :lang(ja) .fact-k, :lang(ja) .look-k, :lang(ja) .outline-k, :lang(ja) .foot-h,
 :lang(ja) .doc-meta dt, :lang(ja) .toc-title, :lang(ja) .stage-k, :lang(ja) .why-k, :lang(ja) .callout-k, :lang(ja) .crumb, :lang(ja) .term-k, :lang(ja) .status,
-:lang(zh) .sec-label, :lang(zh) .spec-k, :lang(zh) .part-k, :lang(zh) .fact-k, :lang(zh) .look-k, :lang(zh) .reqs dt, :lang(zh) .outline-k, :lang(zh) .foot-h,
+:lang(zh) .sec-label, :lang(zh) .spec-k, :lang(zh) .part-k, :lang(zh) .fact-k, :lang(zh) .look-k, :lang(zh) .outline-k, :lang(zh) .foot-h,
 :lang(zh) .doc-meta dt, :lang(zh) .toc-title, :lang(zh) .stage-k, :lang(zh) .why-k, :lang(zh) .callout-k, :lang(zh) .crumb, :lang(zh) .term-k, :lang(zh) .status,
 :lang(ja) .perf-k, :lang(ja) .perf-xk, :lang(ja) .perf-ck, :lang(ja) .perf-head, :lang(zh) .perf-k, :lang(zh) .perf-xk, :lang(zh) .perf-ck, :lang(zh) .perf-head { letter-spacing: .04em; }
 /* French and Russian words run long: on a phone a heading word or a button
