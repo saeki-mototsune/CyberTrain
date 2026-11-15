@@ -48,7 +48,6 @@ module Cybertrain
     # The defaults Runtime.reset! restores: what each module holds before
     # any boot. They repeat the modules' own literals, and test/runtime.rb
     # compares the two, so a default changed in one place fails there.
-    DEFAULT_LAYOUT = "layouts/application"
     DEFAULT_MAX_UPLOAD_BYTES = 5_242_880
     DEFAULT_MAX_PARTS = 128
     DEFAULT_UPLOAD_ROOT = "storage/uploads"
