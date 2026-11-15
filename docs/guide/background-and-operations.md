@@ -838,7 +838,7 @@ rejection naming the recipient) needs one.
 that defines `filter_event(event)`, answering true to keep the event and
 false to drop it. It may change the message (`event.error_message =`) and
 the context (`event.set_error_context(key, value)`,
-`event.delete_error_context(key)`). This one masks ASCII e-mail addresses and the
+`event.delete_error_context(key)`). This one masks simple unquoted ASCII e-mail addresses and the
 other drops a class the application does not want reported:
 
 ```ruby
@@ -861,10 +861,13 @@ Cybertrain.error.add_filter(MaskAddresses.new)
 Cybertrain.error.add_filter(DropDeclinedCards.new)
 ```
 
-The pattern in `MaskAddresses` recognises ASCII addresses only: Ruby's
-`\w` matches ASCII letters, digits and `_` unless a Unicode property is
-asked for, so an address with other characters, such as `alice@例え.テスト`,
-is not masked. Write a pattern for the addresses you expect, or drop the
+The pattern in `MaskAddresses` misses two kinds of address. One with
+characters outside ASCII, such as `alice@例え.テスト`: Ruby's `\w` matches
+ASCII letters, digits and `_` unless a Unicode property is asked for. And
+one with a quoted local part, such as `"alice smith"@example.com`: the pattern needs a
+letter, digit, `.`, `+`, `-` or `_` right before the `@`, finds none after
+the closing quote, and matches nothing in it, so the whole address stays in
+the message. Write a pattern for the addresses you expect, or drop the
 event instead.
 
 Filters run on the reporter's thread, in the order added, before the

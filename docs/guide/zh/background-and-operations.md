@@ -1,5 +1,5 @@
 ---
-source_sha256: 71391d31fa7030f6b9461d0b7aa88c3116b6c6578ecd9a4a2b3ca16a1bf6f2be
+source_sha256: 7352ab5630a6ce2fdcd80864869365d02d3ffb12e944d4f616a4a29a3a3e3cb1
 ---
 # 后台任务与运维
 
@@ -370,7 +370,7 @@ Cybertrain.error.subscribe(AuditSubscriber.new)
 
 **从不发送的。** 参数、请求头、cookie、会话、客户端的地址和查询字符串不在事件中；请求的路径像请求日志那样被过滤。只添加应用放进 `context:` 的内容。异常消息原样发送，除非过滤器修改它们：含有个人数据的消息（SMTP 服务器点名收件人的拒绝）需要一个过滤器。
 
-**过滤器。** 过滤器是定义了 `filter_event(event)` 的 `Cybertrain::ErrorReporter::Filter` 子类，返回 true 保留事件，返回 false 丢弃它。它可以修改消息（`event.error_message =`）和上下文（`event.set_error_context(key, value)`、`event.delete_error_context(key)`）。下面一个遮盖 ASCII 电子邮件地址，另一个丢弃应用不想报告的类：
+**过滤器。** 过滤器是定义了 `filter_event(event)` 的 `Cybertrain::ErrorReporter::Filter` 子类，返回 true 保留事件，返回 false 丢弃它。它可以修改消息（`event.error_message =`）和上下文（`event.set_error_context(key, value)`、`event.delete_error_context(key)`）。下面一个遮盖不带引号的简单 ASCII 电子邮件地址，另一个丢弃应用不想报告的类：
 
 ```ruby
 # config/app.rb
@@ -392,7 +392,7 @@ Cybertrain.error.add_filter(MaskAddresses.new)
 Cybertrain.error.add_filter(DropDeclinedCards.new)
 ```
 
-`MaskAddresses` 中的模式只识别 ASCII 地址：除非要求 Unicode 属性，Ruby 的 `\w` 只匹配 ASCII 字母、数字和 `_`，所以含有其他字符的地址，例如 `alice@例え.テスト`，不会被遮盖。请为你预期的地址编写模式，或者改为丢弃事件。
+`MaskAddresses` 中的模式会漏掉两种地址。一种含有 ASCII 以外的字符，例如 `alice@例え.テスト`：除非要求 Unicode 属性，Ruby 的 `\w` 只匹配 ASCII 字母、数字和 `_`。另一种的本地部分带引号，例如 `"alice smith"@example.com`：模式要求 `@` 前面紧挨着一个字母、数字、`.`、`+`、`-` 或 `_`，而右引号之后没有，它在其中什么也匹配不到，所以整个地址都留在消息中。请为你预期的地址编写模式，或者改为丢弃事件。
 
 过滤器在报告器的线程上按添加顺序运行，在订阅者和发送器之前；下一个过滤器、订阅者和 Sentry 看到过滤器所做的修改。一旦某个过滤器丢弃了事件，后面的过滤器不再运行，也没有人收到它（它不计入队列的丢弃数）。抛出异常的过滤器会丢弃事件，因为过滤器的存在就是为了不让某些东西发出去，并以 error 级别记录 `error filter failed: <Filter class>: <Class>: <message>`；它从不被报告。去重在过滤器之前、按未经过滤的类、消息和 `where` 决定：过滤器的改写不改变哪些报告被合并，过滤器丢弃的事件仍在这一分钟内占着它的位置。框架自己的 `ERROR` 日志行在事件产生之前写出，不经过滤。仅有过滤器不会让报告入队（需要订阅者或 DSN）。在 `config/app.rb` 中添加的过滤器在每个测试中保留；在测试中添加的会在下一个测试之前移除。
 

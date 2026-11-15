@@ -1,5 +1,5 @@
 ---
-source_sha256: 71391d31fa7030f6b9461d0b7aa88c3116b6c6578ecd9a4a2b3ca16a1bf6f2be
+source_sha256: 7352ab5630a6ce2fdcd80864869365d02d3ffb12e944d4f616a4a29a3a3e3cb1
 ---
 # Tâches de fond et exploitation
 
@@ -923,7 +923,7 @@ d’un serveur SMTP qui nomme le destinataire) en demande un.
 renvoie vrai pour garder l’événement, faux pour l’abandonner. Il peut
 changer le message (`event.error_message =`) et le contexte
 (`event.set_error_context(key, value)`, `event.delete_error_context(key)`).
-Celui-ci masque les adresses électroniques ASCII et l’autre abandonne une classe
+Celui-ci masque les adresses électroniques ASCII simples, sans guillemets, et l’autre abandonne une classe
 que l’application ne veut pas signaler&nbsp;:
 
 ```ruby
@@ -946,10 +946,14 @@ Cybertrain.error.add_filter(MaskAddresses.new)
 Cybertrain.error.add_filter(DropDeclinedCards.new)
 ```
 
-Le motif de `MaskAddresses` ne reconnaît que les adresses ASCII&nbsp;: le
-`\w` de Ruby ne correspond qu’aux lettres, chiffres ASCII et à `_` sans
-propriété Unicode demandée, donc une adresse avec d’autres caractères, comme
-`alice@例え.テスト`, n’est pas masquée. Écrivez un motif pour les adresses
+Le motif de `MaskAddresses` laisse passer deux sortes d’adresses. Celles qui
+ont des caractères hors ASCII, comme `alice@例え.テスト`&nbsp;: le `\w` de
+Ruby ne correspond qu’aux lettres, chiffres ASCII et à `_` sans propriété
+Unicode demandée. Et celles dont la partie locale est entre guillemets, comme
+`"alice smith"@example.com`&nbsp;: le motif veut une lettre, un chiffre, `.`, `+`, `-`
+ou `_` juste avant le `@`, n’en trouve pas après le guillemet fermant et ne
+correspond à rien dedans, si bien que l’adresse entière reste dans le
+message. Écrivez un motif pour les adresses
 que vous attendez, ou abandonnez plutôt l’événement.
 
 Les filtres tournent sur le thread du rapporteur, dans l’ordre d’ajout, avant
