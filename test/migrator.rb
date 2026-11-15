@@ -240,12 +240,6 @@ test "SqliteDDL.statements for :add_index" do
   assert_equal ["CREATE UNIQUE INDEX index_posts_on_title ON posts(title)"], DDL.statements(migration.operations[0])
 end
 
-test "SqliteDDL.statements for :remove_index" do
-  migration = CreatePosts.new
-  migration.remove_index("posts", ["title"])
-  assert_equal ["DROP INDEX index_posts_on_title"], DDL.statements(migration.operations[0])
-end
-
 test "SqliteDDL.statements for :add_reference adds the column and its index" do
   migration = CreatePosts.new
   migration.add_reference("comments", "author", foreign_key: false)

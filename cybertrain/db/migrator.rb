@@ -321,7 +321,7 @@ module Cybertrain
       # - an :add_reference directly followed by its :add_foreign_key
       #   (Base#add_reference's default) runs as one ADD COLUMN ... REFERENCES,
       #   since SQLite cannot add a foreign key on its own;
-      # - a :remove_index without a name drops the index `forward` (the
+      # - a :remove_index drops the index `forward` (the
       #   migration's forward operations, when rolling back) created on those
       #   columns, else the derived index_<table>_on_<cols> when it exists,
       #   else the one index on exactly those columns.
@@ -339,7 +339,7 @@ module Cybertrain
               nil
             elsif op.rebuilds?
               run_rebuild(op)
-            elsif op.kind == :remove_index && op.name == ""
+            elsif op.kind == :remove_index
               @connection.exec_script(Cybertrain::DB::SqliteDDL.drop_index_sql(index_to_remove(op, forward)))
             else
               run_sql(Cybertrain::DB::SqliteDDL.statements(op))

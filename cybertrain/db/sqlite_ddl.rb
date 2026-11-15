@@ -52,8 +52,6 @@ module Cybertrain
           [rename_column_sql(op)]
         when :add_index
           [add_index_sql(op)]
-        when :remove_index
-          [remove_index_sql(op)]
         when :add_reference
           add_reference_statements(op)
         when :add_foreign_key
@@ -380,12 +378,6 @@ module Cybertrain
       def self.add_index_sql(op)
         table = Cybertrain::Migration::Operation.table_name(op.table)
         index_sql(table, op.columns, op.unique, op.name, op.where, "")
-      end
-
-      def self.remove_index_sql(op)
-        table = Cybertrain::Migration::Operation.table_name(op.table)
-        name = op.name == "" ? derived_index_name(table, op.columns) : op.name
-        drop_index_sql(name)
       end
 
       # `to_table` non-empty adds the foreign key inline: SQLite cannot add a
