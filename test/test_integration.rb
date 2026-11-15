@@ -478,17 +478,14 @@ end
 
 test "the bundle's boot silences the request log and turns forgery protection off unless config gives them" do
   assert_equal :none, CONFIG.log_level
-  refute CONFIG.log_level_given?
   refute CONFIG.csrf
   c = Cybertrain::Config.new
   c.log_level = :debug
   c.log_level_unless_given(:none)
   assert_equal :debug, c.log_level
-  assert c.log_level_given?
   d = Cybertrain::Config.new
   d.log_level_unless_given(:none)
   assert_equal :none, d.log_level
-  refute d.log_level_given?
 end
 
 test "with_forgery_protection turns it on for its block only" do

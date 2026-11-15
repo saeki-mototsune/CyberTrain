@@ -128,19 +128,13 @@ module Cybertrain
     # @api public
     attr_reader :log_level
 
-    # Sets {#log_level}, and records that it was given ({#log_level_given?}).
+    # Sets {#log_level}, and records that it was given.
     # @param value [Symbol]
     # @api public
     def log_level=(value)
       @log_level = value
       @log_level_given = true
     end
-
-    # Whether {#log_level} was assigned (by config/app.rb or later), rather
-    # than left at its default: what `cybertrain test`'s boot asks.
-    # @return [Boolean]
-    # @api private
-    def log_level_given? = @log_level_given
 
     # Sets {#log_level} to `value` unless it was given, without counting as
     # given: `cybertrain test`'s default (`:none`, no request log between
@@ -164,19 +158,13 @@ module Cybertrain
     # @api public
     attr_reader :log_format
 
-    # Sets {#log_format}, and records that it was given ({#log_format_given?}).
+    # Sets {#log_format}, and records that it was given.
     # @param value [Symbol]
     # @api public
     def log_format=(value)
       @log_format = value
       @log_format_given = true
     end
-
-    # Whether {#log_format} was assigned (by config/app.rb or later), rather
-    # than read from CYBERTRAIN_LOG_FORMAT.
-    # @return [Boolean]
-    # @api private
-    def log_format_given? = @log_format_given
 
     # Sets {#log_format} to `value` unless it was given, without counting as
     # given: `cybertrain test`'s default (`:text`).
@@ -650,12 +638,6 @@ attr_accessor :trusted_proxies
       @sentry_dsn = value
       @sentry_dsn_given = true
     end
-
-    # Whether {#sentry_dsn} was assigned (by config/app.rb or later), rather
-    # than read from CYBERTRAIN_SENTRY_DSN.
-    # @return [Boolean]
-    # @api private
-    def sentry_dsn_given? = @sentry_dsn_given
 
     # Sets {#sentry_dsn} to `value` unless an assignment gave it, without
     # counting as given: `cybertrain test`'s default (`""`, nothing sent).
