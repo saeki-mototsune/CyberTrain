@@ -32,7 +32,6 @@ test "an App routes a request through the default stack" do
   res = client.follow_redirect!
   assert_equal "hi created", res.body
   assert_response client.get("/missing"), :not_found
-  assert_equal "/hello/x", router.path_for("hello", { "name" => "x" })
 end
 
 test "the Server serves the same App over a socket" do

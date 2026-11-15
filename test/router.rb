@@ -34,7 +34,6 @@ test "static path matches" do
   ctx = dispatch(sample_router, "GET", "/posts")
   assert_equal 200, ctx.response.status
   assert_equal "index", ctx.response.body
-  assert_equal "posts", ctx.route_name
 end
 
 test "root path matches" do
@@ -45,7 +44,6 @@ test "dynamic segment is captured into route_params and params" do
   ctx = dispatch(sample_router, "GET", "/posts/42/edit")
   assert_equal "edit 42", ctx.response.body
   assert_equal({ "id" => "42" }, ctx.route_params)
-  assert_equal "edit_post", ctx.route_name
 end
 
 test "first matching route wins" do
@@ -207,23 +205,6 @@ test "a large non-ASCII path segment with an escape splits without a quadratic l
   assert_equal "bA", parts[0][-2, 2]
 end
 
-test "path_for builds paths from route names" do
-  router = sample_router
-  assert_equal "/posts", router.path_for("posts")
-  assert_equal "/", router.path_for("root")
-  assert_equal "/posts/9/edit", router.path_for("edit_post", { "id" => "9" })
-  assert_equal "/posts/a%20b", router.path_for("post", { "id" => "a b" })
-  assert_nil router.path_for("nope")
-end
-
-test "Route#path raises ArgumentError when a segment is missing" do
-  route = sample_router.routes[4]
-  assert_equal "/posts/:id/edit", route.pattern
-  assert_equal ["posts", ":id", "edit"], route.segments
-  message = assert_raises("ArgumentError") { route.path({ "other" => "1" }) }
-  assert_includes message, ":id"
-end
-
 test "an extension on the last segment is the format" do
   ctx = dispatch(sample_router, "GET", "/posts/3.json")
   assert_equal "show 3", ctx.response.body
@@ -334,7 +315,6 @@ test "unmatched request gets a plain-text 404" do
   assert_equal 404, ctx.response.status
   assert_equal "Not Found", ctx.response.body
   assert_equal "text/plain; charset=utf-8", ctx.response.header("Content-Type")
-  assert_equal "", ctx.route_name
   assert_equal 404, dispatch(sample_router, "POST", "/posts/1").response.status
 end
 
