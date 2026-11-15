@@ -261,6 +261,21 @@ test "Time methods (Time before Array)" do
   assert_equal "posts/show:1: undefined method 'first' for Time", runtime_error("<%= t.first %>", env)
 end
 
+# spikes/NOTES.md rule 8: a Time in a polymorphic slot once matched
+# `when Array`. each, [], zip, flatten and blank? test Array with no Time
+# arm before it.
+test "a Time takes no Array arm in each, [], zip, flatten and blank?" do
+  env = with(with(new_env, "t", T0), "mixed", [T0, [1, 2], "s"])
+  assert_equal "false true false", render("<%= t.blank? %> <%= [].blank? %> <%= [1].blank? %>", env)
+  assert_equal "posts/show:1: undefined method 'each' for Time", runtime_error("<% t.each do |x| %>x<% end %>", env)
+  assert_equal "[2026-09-25 14:30:05 UTC|][1|2][s|]", render("<% mixed.each do |a, b| %>[<%= a %>|<%= b %>]<% end %>", env)
+  assert_equal "posts/show:1: undefined method '[]' for Time", runtime_error("<%= t[0] %>", env)
+  assert_equal "1", render("<%= mixed[1][0] %>", env)
+  assert_equal "posts/show:1: 'zip' expects an Array, got Time", runtime_error("<%= [1, 2].zip(t) %>", env)
+  assert_equal "2", render("<%= [1, 2].zip(mixed[1]).size %>", env)
+  assert_equal "4 3 2026", render("<%= mixed.flatten.size %> <%= [t, [t, [3]]].flatten.size %> <%= mixed.flatten.first.year %>", env)
+end
+
 test "String, Integer, Float, Array and Hash methods" do
   env = with(with(new_env, "s", "  Hi There "), "list", [3, 1, 2])
   env = with(with(env, "h", { "k" => "v" }), "e", [])

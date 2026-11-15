@@ -924,7 +924,6 @@ module Cybertrain
         items = arg(args, 0, "safe_join")
         sep = args.size > 1 ? args[1] : ""
         case items
-        when Time then nil
         when Array then return Html.safe_join(items, sep)
         end
         raise ArgumentError, "safe_join expects an Array, got #{FormBuilder.value_text(items)}"

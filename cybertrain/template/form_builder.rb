@@ -140,7 +140,6 @@ module Cybertrain
       out = Array.new(0) { "" }
       case v
       when nil then nil
-      when Time then out << FormBuilder.value_text(v)
       when Array
         i = 0
         while i < v.size
@@ -164,7 +163,6 @@ module Cybertrain
     # One choice: a value (its own text) or a [text, value] pair.
     def self.choice_option(el, selected, disabled)
       case el
-      when Time then FormBuilder.option_tag(el, el, selected, disabled)
       when Array
         n = el.size
         text = n > 0 ? el[0] : nil
@@ -176,7 +174,6 @@ module Cybertrain
 
     def self.group_choices?(v)
       case v
-      when Time then false
       when Array then true
       else false
       end
@@ -218,7 +215,6 @@ module Cybertrain
           el = choices[i]
           group = false
           case el
-          when Time then nil
           when Array
             if el.size == 2 && FormBuilder.group_choices?(el[1])
               group = true
@@ -290,7 +286,6 @@ module Cybertrain
     def self.collection_options(records, value_sym, text_sym, selected, disabled, helper)
       out = +""
       case records
-      when Time then nil
       when Array
         i = 0
         while i < records.size

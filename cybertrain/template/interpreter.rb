@@ -448,7 +448,6 @@ module Cybertrain
         saved = save_locals(env, names)
         fresh = fresh_locals(env, n.ipairs)
         case coll
-        when Time then undefined(n, "each", "Time")
         when Array
           i = 0
           while i < coll.size
@@ -687,7 +686,6 @@ module Cybertrain
         when false then true
         when SafeString then v.to_s.strip.empty?
         when String then v.strip.empty?
-        when Time then false
         when Array then v.empty?
         when Hash then v.empty?
         when Cybertrain::Errors then v.empty?
@@ -808,7 +806,6 @@ module Cybertrain
 
       def index(recv, key, node)
         case recv
-        when Time then undefined(node, "[]", "Time")
         when Array
           case key
           when Integer then return recv[key]
@@ -996,7 +993,6 @@ module Cybertrain
           fail_at(node, "wrong number of arguments for 'zip'") if args.empty?
           other = args[0]
           case other
-          when Time then fail_at(node, "'zip' expects an Array, got Time")
           when Array then return zip_values(a, other)
           end
           fail_at(node, "'zip' expects an Array, got #{type_name(other)}")
@@ -1338,7 +1334,6 @@ module Cybertrain
       def flatten_into(out, a)
         a.each do |x|
           case x
-          when Time then out << x
           when Array then flatten_into(out, x)
           else out << x
           end

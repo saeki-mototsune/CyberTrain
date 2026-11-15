@@ -126,4 +126,40 @@ test "the tag helpers check their arguments" do
   assert_equal "search/index:1: wrong number of arguments for 'submit_tag' (given 2, expected 0..1)", msg
 end
 
+T0 = Time.utc(2026, 9, 25, 14, 30, 5)
+
+def render_time(src)
+  env = {}
+  env["authors"] = [Author.new(1, "Ann"), Author.new(2, "Bo <3>")]
+  env["t"] = T0
+  env["mixed"] = [T0, [1, 2], "s"]
+  template = Cybertrain::Template::Template.parse(src, "search/index")
+  Cybertrain::Template::Interpreter.new(helpers).render(template, env)
+end
+
+# spikes/NOTES.md rule 8: a Time in a polymorphic slot once matched
+# `when Array` and `when Hash`. The tag attributes, class_names, safe_join
+# and the option helpers test those classes with no Time arm before them.
+test "a Time takes no Array or Hash arm in attributes, class names, safe_join and options" do
+  stamp = "2026-09-25 14:30:05 UTC"
+  assert_equal "<p class=\"#{stamp}\" title=\"#{stamp}\" data-at=\"#{stamp}\">x</p>",
+               render_time("<%= tag.p 'x', class: t, title: t, data: { at: t } %>")
+  assert_equal "<p class=\"a #{stamp}\" title=\"b c\">x</p>", render_time("<%= tag.p 'x', class: ['a', t], title: ['b', 'c'] %>")
+  assert_equal "#{stamp} a b", render_time("<%= class_names(t, 'a', ['b', t]) %>")
+  msg = assert_raises("RuntimeError") { render_time("<%= safe_join(t) %>") }
+  assert_equal "search/index:1: safe_join expects an Array, got #{stamp}", msg
+  assert_equal "#{stamp}-1-2-s", render_time("<%= safe_join(mixed.flatten, '-') %>")
+  assert_equal "<option value=\"#{stamp}\">#{stamp}</option>", render_time("<%= options_for_select(t) %>")
+  assert_equal "<option selected=\"selected\" value=\"#{stamp}\">#{stamp}</option>\n<option value=\"b\">a</option>\n<option value=\"c\">c</option>",
+               render_time("<%= options_for_select([t, ['a', 'b'], 'c'], t) %>")
+  assert_equal "<option selected=\"selected\" value=\"a\">a</option>\n<option value=\"b\">b</option>",
+               render_time("<%= options_for_select(['a', 'b'], ['a', t]) %>")
+  assert_equal "<optgroup label=\"G\"><option value=\"a\">a</option>\n<option value=\"b\">b</option></optgroup><option value=\"#{stamp}\">H</option>",
+               render_time("<%= options_for_select([['G', ['a', 'b']], ['H', t]]) %>")
+  msg = assert_raises("RuntimeError") { render_time("<%= options_from_collection_for_select(t, :id, :name) %>") }
+  assert_equal "search/index:1: options_from_collection_for_select expects an Array of records, got #{stamp}", msg
+  assert_equal "<input type=\"text\" name=\"a\" id=\"a\" value=\"#{stamp}\" data-at=\"#{stamp}\" title=\"#{stamp}\">",
+               render_time("<%= text_field_tag 'a', t, data: { at: t }, title: t %>")
+end
+
 Cybertrain::Test.run!
