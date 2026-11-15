@@ -351,13 +351,12 @@ module Cybertrain
 
     # {Cast.date} for a nullable column: a Date as is, `YYYY-MM-DD` text
     # (strict: no other shape, valid month and day) as that Date, nil for
-    # anything else. `when Time` first (NOTES rule 8): a Time is not a Date.
+    # anything else (a Time is not a Date).
     # @param v [Date, String, nil]
     # @return [Date, nil]
     # @api public
     def self.date_or_nil(v)
       case v
-      when Time then nil
       when Date then v
       when String then parse_date(v.to_s)
       else nil
@@ -496,8 +495,7 @@ module Cybertrain
     # that empty Hash when `v` is not a Hash. A copy, not `v` itself: the
     # copy is typed `Hash[String, untyped]` for the compiler, where handing
     # back the boxed `v` leaves every later call on it on the slow path.
-    # It is shallow (nested containers are shared). `when Time` comes
-    # before the container branches (NOTES rule 8).
+    # It is shallow (nested containers are shared).
     # @example
     #   doc = Cybertrain::Cast.hash(JSON.parse(body))
     #   tags = Cybertrain::Cast.array(doc["tags"])
@@ -507,7 +505,6 @@ module Cybertrain
     def self.hash(v)
       out = empty_hash
       case v
-      when Time then nil
       when Hash then v.each { |k, x| out[k.to_s] = x }
       end
       out
@@ -525,7 +522,6 @@ module Cybertrain
     def self.hash_or_nil(v)
       case v
       when nil then nil
-      when Time then hash(v)
       when String
         text = v.to_s
         text.empty? ? nil : hash(parse_json(text))
@@ -551,7 +547,6 @@ module Cybertrain
     def self.json_text(v)
       case v
       when nil then nil
-      when Time then JSON.generate(hash(v))
       when Hash then JSON.generate(v)
       else JSON.generate(hash(v))
       end
@@ -612,7 +607,6 @@ module Cybertrain
     # its Hash and an array or scalar root, invalid JSON or `""` is `{}`
     # (a corrupt cell does not take the row down); anything else is `{}`.
     # {Cast.hash} alone would read the stored text as `{}`.
-    # `when Time` first (NOTES rule 8).
     # @example
     #   meta = Cybertrain::Cast.json_hash(row["meta"])
     # @param v [String, Hash, nil]
@@ -620,7 +614,6 @@ module Cybertrain
     # @api public
     def self.json_hash(v)
       case v
-      when Time then empty_hash
       when String
         text = v.to_s
         text.empty? ? empty_hash : hash(parse_json(text))
@@ -636,7 +629,6 @@ module Cybertrain
     def self.array(v)
       out = empty_array
       case v
-      when Time then nil
       when Array then v.each { |x| out << x }
       end
       out

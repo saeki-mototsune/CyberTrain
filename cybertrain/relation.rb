@@ -267,7 +267,6 @@ module Cybertrain
       @having = @having == "" ? "(#{sql})" : "#{@having} AND (#{sql})"
       binds.each do |v|
         case v
-        when Time then @having_binds << Cast.to_sql(v) # before `when Array` (rule 8)
         when Array
           raise ArgumentError, "having_sql: an Array bind is not expanded"
         else @having_binds << Cast.to_sql(v)
@@ -377,7 +376,6 @@ module Cybertrain
       drop_preloaded
       binds.each do |v|
         case v
-        when Time then nil # before `when Array` (rule 8)
         when Array
           raise ArgumentError, "where: an Array bind is not expanded; use where(column: [...])"
         end
@@ -833,7 +831,6 @@ module Cybertrain
       all.clear
       binds.each do |v|
         case v
-        when Time then nil # before `when Array` (rule 8)
         when Array
           raise ArgumentError, "update_all_sql: an Array bind is not expanded"
         end

@@ -200,7 +200,6 @@ module Cybertrain
       end
 
       case value
-      when Time then raise ArgumentError, "validates: #{@kind}: in: takes an Array or an Integer Range"
       when Range
         from = value.begin
         to = value.end
@@ -419,7 +418,6 @@ module Cybertrain
       if @has_range
         number = 0.0
         case value
-        when Time then return false
         when Integer then number = value.to_f
         when Float then number = value
         else return false
@@ -505,7 +503,6 @@ module Cybertrain
 
     def self.numeric?(value)
       case value
-      when Time then false
       when Integer then true
       when Float then true
       when String then Validator.number_text?(value.strip)
@@ -515,7 +512,6 @@ module Cybertrain
 
     def self.integer_value?(value)
       case value
-      when Time then false
       when Integer then true
       when String then Validator.integer_text?(value)
       else false
@@ -524,7 +520,6 @@ module Cybertrain
 
     def self.number_of(value)
       case value
-      when Time then 0.0
       when Integer then value.to_f
       when Float then value
       when String then value.strip.to_f

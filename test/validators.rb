@@ -419,6 +419,24 @@ test "an unknown option, a lambda condition and an on: other than :create or :up
   assert_equal ["can't be blank", "is too short (minimum is 2 characters)"], messages_for(:name, { name: "" })
 end
 
+# apply_list and listed? had a `when Time` arm first (spikes/NOTES.md rule
+# 8); without it a Time, here one read from a Hash of mixed values, is
+# still neither a Range, an Array nor a number.
+test "a Time is neither a list for in: nor a member of one" do
+  mixed = { "at" => Time.utc(2026, 1, 1), "n" => 2, "list" => [1, 2] }
+  msg = assert_raises("ArgumentError") { Cybertrain::Validator.new(:rating, :inclusion).apply_list(:in, mixed["at"]) }
+  assert_equal "validates: inclusion: in: takes an Array or an Integer Range", msg
+  ranged = Cybertrain::Validator.new(:rating, :inclusion)
+  ranged.apply_list(:in, 1..5)
+  assert ranged.listed?(mixed["n"])
+  refute ranged.listed?(mixed["at"])
+  refute ranged.listed?(mixed["list"])
+  listed = Cybertrain::Validator.new(:rating, :inclusion)
+  listed.apply_list(:in, mixed["list"])
+  assert listed.listed?(mixed["n"])
+  refute listed.listed?(mixed["at"])
+end
+
 # Last: it adds rules to Thing. What gen/concerns.rb writes for a model
 # concern (spec 4.2): the index counts the model's own `validates` calls
 # above the `include`, however many rules each call made.
