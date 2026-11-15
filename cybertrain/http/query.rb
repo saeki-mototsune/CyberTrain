@@ -7,12 +7,9 @@ module Cybertrain
   # decodable (QueryMalformed). StandardErrors on purpose: ClientError turns
   # them into a 400 at info level instead of a 500 at error level, so a
   # scanner's junk does not fill the error log or kill the connection
-  # thread. In Cybertrain (like Rejected, RecordNotFound, MissingTemplate)
-  # and prefixed Query, not Query::Invalid / Query::TooMany: Class#name
-  # carries no namespace under Spinel (NOTES rule 46), so a bare "Invalid" or
-  # "TooMany" there is indistinguishable from an app's own Billing::Invalid or
-  # RateLimiter::TooMany. The bare names here are unique, which is what lets
-  # ClientError tell a framework client fault from an app class by name alone.
+  # thread. In Cybertrain (like Rejected, RecordNotFound, MissingTemplate);
+  # ClientError tells a framework client fault from an app class by its full
+  # name.
   # Not called Rejected: Cybertrain::Rejected is the Server's own
   # status-carrying error.
   class QueryInvalid < StandardError

@@ -6,8 +6,7 @@ module Cybertrain
   # invalid boundary, a part without its headers or its closing delimiter,
   # a Content-Disposition that is not form-data, a bad name, ...). A client
   # fault: ClientError answers 400 (listed in CLIENT_FAULTS). The four
-  # Multipart classes are QueryInvalid subclasses with unique bare names,
-  # because Class#name has no namespace under Spinel (NOTES rule 46).
+  # Multipart classes are QueryInvalid subclasses.
   # @api public
   class MultipartMalformed < QueryInvalid
   end
