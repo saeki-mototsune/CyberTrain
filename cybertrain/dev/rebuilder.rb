@@ -182,12 +182,6 @@ module Cybertrain
         nil
       end
 
-      # Created by `cybertrain build` (CLI::BuildLock), holding its PID,
-      # until dist/ is assembled.
-      def lock_path
-        File.expand_path(CLI::BuildLock::RELATIVE_PATH, @root)
-      end
-
       # True while a `cybertrain build` holds the lock (CLI::BuildLock#held?:
       # the kernel's flock, which a killed build drops with its process).
       # Only reads: a lock file nobody holds is left where it is, as its

@@ -94,7 +94,7 @@ module Cybertrain
         Job = Struct.new(:pid, :generation, :incremental, :launched)
 
         attr_accessor :ready_timeout, :stop_grace, :watch_interval
-        attr_reader :root, :name, :port, :out, :err
+        attr_reader :out, :err
 
         # @param root [String] the application's directory, absolute
         # @param name [String] the spin.toml package name (bin/NAME.rb)
