@@ -97,7 +97,7 @@ env:
   # The cache key (.github/actions/setup-spinel) reads the tag from the checked-out
   # cybertrain/version.rb instead, so that a release run testing a tag with
   # another branch's copy of this file still keys the toolchain it builds.
-  SPINEL_TAG: "2026.11.04.7026"
+  SPINEL_TAG: "2026.11.15.7033"
 
 # Every job has a timeout-minutes, so that a hung compile or a server that
 # never answers ends the job instead of running to GitHub's limit of six
