@@ -10,7 +10,6 @@
 # `define` builds a Definition and remembers it as `Schema.current` for the
 # generator (Gen::Runner, cybertrain/generator/runner.rb) to read back later
 # in the same process.
-require "cybertrain/generator/inflector"
 require "cybertrain/schema/table"
 require "cybertrain/schema/definition"
 
