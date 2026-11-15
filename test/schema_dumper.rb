@@ -98,15 +98,15 @@ test "dump reproduces indexes and foreign keys" do
   assert_equal "index_comments_on_post_id", comments.indexes[0].name
   assert_equal ["post_id"], comments.indexes[0].columns
   refute comments.indexes[0].unique
-  assert_equal 1, comments.references.size
-  assert_equal "post_id", comments.references[0].column
-  assert_equal "posts", comments.references[0].to_table
+  assert_equal 1, comments.foreign_keys.size
+  assert_equal "post_id", comments.foreign_keys[0].column
+  assert_equal "posts", comments.foreign_keys[0].to_table
 
   posts = definition.table("posts")
   assert_equal 1, posts.indexes.size
   assert posts.indexes[0].unique
   assert_equal ["slug"], posts.indexes[0].columns
-  assert_equal 0, posts.references.size
+  assert_equal 0, posts.foreign_keys.size
   connection.close
 end
 

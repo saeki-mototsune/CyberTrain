@@ -68,7 +68,7 @@ test "dump reads precision, scale, limit, where, expression and on_delete" do
   assert_equal "active = 1", views.where
   assert_equal ["views"], views.columns
   assert_equal "", views.expression
-  fk = definition.table("entries").references[0]
+  fk = definition.table("entries").foreign_keys[0]
   assert_equal :cascade, fk.on_delete
   assert_equal "accounts", fk.to_table
   connection.close
@@ -85,7 +85,7 @@ test "the other ON DELETE actions read back as their Symbols" do
       FOREIGN KEY ("c_id") REFERENCES "parents" ("id"),
       FOREIGN KEY ("d_id") REFERENCES "parents" ("id") ON DELETE SET DEFAULT);
   SQL
-  refs = Cybertrain::DB::SchemaDumper.dump(connection).table("kids").references
+  refs = Cybertrain::DB::SchemaDumper.dump(connection).table("kids").foreign_keys
   by_column = { "" => "" }
   by_column.delete("")
   refs.each { |fk| by_column[fk.column] = fk.on_delete.to_s }
