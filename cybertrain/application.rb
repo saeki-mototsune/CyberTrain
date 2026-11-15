@@ -340,16 +340,6 @@ module Cybertrain
       Roles.request_stop
     end
 
-    def self.reset_roles_stop
-      Roles.reset_stop
-    end
-
-    # Waits for a stop, or for a loaded subsystem failing for good
-    # (Roles.wait_stop).
-    def self.wait_roles_stop
-      Roles.wait_stop
-    end
-
     # "" when name works as the development build target, else the
     # `application name "<name>" <reason>` text serve prints after "error: ".
     # AppName.problem is the one predicate (Rebuilder.new and the CLI ask it
