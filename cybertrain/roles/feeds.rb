@@ -1,4 +1,3 @@
-require "cybertrain/cast"
 require "cybertrain/clock"
 require "cybertrain/background"
 require "cybertrain/error_reporter"

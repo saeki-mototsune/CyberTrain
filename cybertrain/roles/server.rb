@@ -1,4 +1,3 @@
-require "cybertrain/app_name"
 require "cybertrain/version"
 require "cybertrain/logger"
 require "cybertrain/middleware"

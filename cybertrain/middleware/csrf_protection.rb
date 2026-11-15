@@ -1,7 +1,6 @@
 require "cybertrain/middleware"
 require "cybertrain/crypto"
 require "cybertrain/session"
-require "cybertrain/http/query"
 
 module Cybertrain
   # Verifies a per-session CSRF token on every state-changing request.
