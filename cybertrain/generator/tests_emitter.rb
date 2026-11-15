@@ -1,4 +1,3 @@
-require "cybertrain/test_files"
 require "cybertrain/generator/code_view"
 require "cybertrain/generator/test_scan"
 require "cybertrain/generator/models_emitter"
