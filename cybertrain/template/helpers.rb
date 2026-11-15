@@ -547,7 +547,9 @@ module Cybertrain
       # _method for verbs HTML forms cannot send, then the CSRF token for
       # anything but GET (omitted without a session to take it from). Tag
       # builders append what these return rather than passing their buffer
-      # down (see FormBuilder.html_attr).
+      # down: a method that appends to a String it was given (`buf << ...`
+      # on a parameter) makes Spinel run the GC write barrier on the
+      # caller's stack slot, which later crashes a minor collection.
       # Interpolations, not a `+""` buffer (see button_to).
       def hidden_fields(verb)
         return "" if verb == "get"

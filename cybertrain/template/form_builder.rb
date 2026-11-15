@@ -70,17 +70,6 @@ module Cybertrain
       end
     end
 
-    # ` name="value"`, escaped. Tag builders append what this returns: a
-    # method that appends to a String it was given (`buf << ...` on a
-    # parameter) makes Spinel run the GC write barrier on the caller's
-    # stack slot, which later crashes a minor collection. Where the name is
-    # a literal, the builders write `buf << " name=\"" << Html.escape(v) <<
-    # "\""` instead: the literals are static and Html.escape returns its
-    # argument when nothing needs escaping, so that allocates nothing.
-    def self.html_attr(name, value)
-      " #{name}=\"#{Html.escape(value)}\"" # one String, sized up front
-    end
-
     # ` name="value"` for any value: a SafeString as is (it is HTML
     # already, as in Rails' tag_option), anything else as text, escaped.
     def self.text_attr(name, value)
