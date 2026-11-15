@@ -409,7 +409,7 @@ exit    # notes ユーザーを抜けて、sudo できるユーザーに戻る
 
 - `~/releases/<日時>/` … デプロイごとのチェックアウト（ビルド結果の `dist/` もここ）
 - `~/current` … 動かすリリースへのシンボリックリンク
-- `~/shared/` … リリースをまたいで残すもの（SQLite の DB）
+- `~/shared/` … リリースをまたいで残すもの（SQLite の DB、アップロードされたファイル）
 
 ---
 
@@ -428,6 +428,7 @@ CYBERTRAIN_ENV=production
 CYBERTRAIN_SECRET_KEY_BASE=$SECRET
 CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3
 PORT=3000
+CYBERTRAIN_TRUSTED_PROXY=1
 SPINEL_GC_FULL_INTERVAL=8
 EOF
 unset SECRET
@@ -441,6 +442,7 @@ sudo chmod 640 /etc/notes/notes.env
 | `CYBERTRAIN_SECRET_KEY_BASE` | **必須**。変えると全員のセッションが切れます |
 | `CYBERTRAIN_DATABASE` | DB ファイル。リリースをまたいで残るよう `shared/` に置きます |
 | `PORT` | 待ち受けポート。Caddy の設定と合わせます |
+| `CYBERTRAIN_TRUSTED_PROXY=1` | Caddy は 127.0.0.1 から接続し、訪問者のアドレスを `X-Forwarded-For` に書きます。これを指定するとアプリは `request.client_ip` をそのヘッダから取るので、`rate_limit`（`cybertrain generate authentication` が書くサインインの制限）が Caddy ではなく訪問者ごとに数え、`request.base_url` も https になります |
 | `SPINEL_GC_FULL_INTERVAL=8` | Spinel の GC が full collection を 8 回に 1 回にします。既定の自動調整では、Web サーバーの負荷でほぼ毎回 full になり、8 に固定すると 1 CPU で毎秒のリクエスト数が約 16% 増えます。メモリ使用量は変わりません（[spinel-feedback.md](spinel-feedback.md) の 5） |
 
 必要ならログとエラー報告も設定します。エラー報告をすべて Sentry（または GlitchTip）に送るには、
@@ -505,6 +507,12 @@ sudo systemctl enable notes
   バイナリに埋め込まれているので、ディスクからは読みません。ここでは DB を
   `CYBERTRAIN_DATABASE` で `/srv/notes/shared/` に置くので、書き込みが要るのは
   `ReadWritePaths` のそこだけです。
+- ファイルのアップロード（`cybertrain generate attachment`）があるアプリは、作業ディレクトリの
+  `storage/uploads/` にファイルを置きます。この構成ではそこはリリースの中なので、サービスからは
+  書き込めず、デプロイのたびに新しくなります。`config/app.rb` に
+  `c.upload_root = "/srv/notes/shared/uploads" if c.production?` と書いて `shared/` に置き、
+  データベースと一緒にバックアップしてください（「バックアップ」）。2-6 のリハーサルも本番モードで
+  動くので、この行があると、`/srv/notes/shared/` のないマシンではアップロードを保存できません。
 - ログは標準出力に出るので、journald（`sudo journalctl -u notes`）に集まります。
 - 停止は SIGTERM で、受け付けを止め、処理中のリクエストに応答し終えてから終了します（最大 10 秒。
   `TimeoutStopSec=15` はこれより長くしてあります）。
@@ -781,7 +789,9 @@ crontab -e
 ```
 
 サーバーが壊れたときのために、`/srv/notes/backups/` は別の場所（別サーバーやオブジェクト
-ストレージ）にも定期的にコピーしてください。
+ストレージ）にも定期的にコピーしてください。アップロードされたファイル
+（`/srv/notes/shared/uploads/`、5-1）はデータベースの中にはありません。このディレクトリも
+バックアップと一緒にコピーしてください。
 
 `sqlite3` の代わりに、アプリのバイナリ自身でもバックアップを取れます（`db backup` のある
 フレームワークで作ったアプリ。README の「Operations」）。
@@ -1024,8 +1034,8 @@ dist/notes feeds status                       # 各フィードが最後に報�
 | ファイル | 中身 |
 | --- | --- |
 | `Dockerfile` | 2 段のビルド。1 段目（Ubuntu 24.04）で `gem install cybertrain`・`cybertrain setup`（Spinel）・`cybertrain build` を実行し、2 段目（同じ Ubuntu）に `dist/` と実行時に要るライブラリ（SQLite・zlib・jemalloc・OpenSSL）だけを入れる。起動時に `./notes migrate` してから `./notes` を `exec` する |
-| `.dockerignore` | `build/`・`dist/`・`storage/` の DB・`tmp/`・`.git/`・`.kamal/` をビルドに渡さない |
-| `config/deploy.yml` | Kamal の設定。kamal-proxy が HTTPS（Let's Encrypt）を受けてアプリの 3000 番に渡し、`/up.html` でヘルスチェックする。DB はボリューム `notes_storage`（コンテナの `/app/storage`）に置き、`asset_path: /app/public/assets` で前のリリースのダイジェスト付きアセットを引き継ぐ |
+| `.dockerignore` | `build/`・`dist/`・`log/`・`storage/` と `tmp/` の中身すべて・`.git/`・`.kamal/` をビルドに渡さない |
+| `config/deploy.yml` | Kamal の設定。kamal-proxy が HTTPS（Let's Encrypt）を受けてアプリの 3000 番に渡し、`/up.html` でヘルスチェックする。DB とアップロードされたファイル（`storage/uploads/`）はボリューム `notes_storage`（コンテナの `/app/storage`）に置き、`asset_path: /app/public/assets` で前のリリースのダイジェスト付きアセットを引き継ぐ |
 | `.kamal/secrets` | `KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を、kamal を実行するシェルの環境変数から読む。値そのものは書かない（コミットするファイル） |
 | `public/up.html` | ヘルスチェック用のページ。アプリ自身が静的ファイルとして返す |
 
@@ -1215,6 +1225,9 @@ https://notes.example.com を開いて確かめます。
   sudo sqlite3 /var/lib/docker/volumes/notes_storage/_data/production.sqlite3 ".backup /root/notes-$(date +%Y%m%d).sqlite3"
   ```
 
+  アップロードのあるアプリは、DB の隣の `/var/lib/docker/volumes/notes_storage/_data/uploads/` に
+  ファイルがあります。バックアップのたびにこのディレクトリもコピーしてください。
+
 - `kamal deploy` は新しいコンテナがヘルスチェックに通ってから古いコンテナを止めるので、第 7 部の
   systemd の再起動と違い、デプロイ中も接続は拒否されません。ただし新旧のコンテナが短い間同じ
   SQLite ファイルを開き、新しいコンテナのマイグレーションは古いコンテナが動いている間に流れます。
@@ -1255,8 +1268,8 @@ https://notes.example.com を開いて確かめます。
   `header Strict-Transport-Security "max-age=31536000"` を足してください（セッション Cookie は
   本番では `Secure` 付きです）。アプリにさせることもできます。`/etc/notes/notes.env` に
   `CYBERTRAIN_FORCE_SSL=1` を書くと、HSTS を送り、`X-Forwarded-Proto` を見て http を https に
-  リダイレクトします。そのときは `CYBERTRAIN_TRUSTED_PROXY=1` も書いてください。書かないと、アプリが
-  組み立てる URL（`request.base_url`）は http のままです。このときはデプロイスクリプトの確認も
+  リダイレクトします（アプリが組み立てる URL を https にするのは、第 4 部で書いた
+  `CYBERTRAIN_TRUSTED_PROXY=1` です）。`CYBERTRAIN_FORCE_SSL=1` にしたときはデプロイスクリプトの確認も
   `http://127.0.0.1:$PORT/up` に変えてください。リダイレクトされないのはヘルスチェックのパスだけで、
   素の http での `/up.html` はリダイレクトされ、確認がアプリの応答を証明しなくなります。
 - `CYBERTRAIN_HOSTS=notes.example.com` を書くと、それ以外の `Host` へのリクエストは 403 になります。
@@ -1276,6 +1289,8 @@ https://notes.example.com を開いて確かめます。
   `public/assets/` にはそのリリースのダイジェストしかありません。また、アプリは `public/` の外へ
   向かうシンボリックリンク越しにはファイルを返しません。`public/assets/` を `shared/` に置くなら、
   リンクではなくマウントしてください。
-- 認証（ログイン）機能はフレームワークにありません。公開前に、誰が書き込めるべきかを考えてください。
+- scaffold だけのアプリにはログインがなく、サイトに届く人は誰でも書き込めます。公開前に
+  `cybertrain generate authentication`（[認証](guide/ja/authentication.md)）で足すか、
+  誰が書き込めるべきかを決めてください。
 - ビューはビルド時にバイナリへ埋め込まれます。ビューだけの変更でも、本番ではデプロイ
   （再ビルドと再起動）が必要です。

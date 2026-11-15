@@ -20,8 +20,8 @@ files:
 | File | What it holds |
 | --- | --- |
 | `Dockerfile` | A two-stage build. The first stage (Ubuntu 24.04) runs `gem install cybertrain`, `cybertrain setup` (Spinel) and `cybertrain build`; the second (the same Ubuntu) gets only `dist/` and the libraries it needs at run time (SQLite, zlib, jemalloc, OpenSSL). On start it runs `./notes migrate`, then `exec`s `./notes` |
-| `.dockerignore` | Keeps `build/`, `dist/`, the databases in `storage/`, `tmp/`, `.git/` and `.kamal/` out of the build |
-| `config/deploy.yml` | Kamal's configuration. kamal-proxy takes HTTPS (Let's Encrypt) and forwards to the app's port 3000, and health-checks `/up.html`. The database lives on the volume `notes_storage` (`/app/storage` in the container), and `asset_path: /app/public/assets` carries the previous release's digested assets over |
+| `.dockerignore` | Keeps `build/`, `dist/`, `log/`, everything in `storage/` and `tmp/`, `.git/` and `.kamal/` out of the build |
+| `config/deploy.yml` | Kamal's configuration. kamal-proxy takes HTTPS (Let's Encrypt) and forwards to the app's port 3000, and health-checks `/up.html`. The database, and uploaded files (`storage/uploads/`), live on the volume `notes_storage` (`/app/storage` in the container), and `asset_path: /app/public/assets` carries the previous release's digested assets over |
 | `.kamal/secrets` | Reads `KAMAL_REGISTRY_PASSWORD` and `CYBERTRAIN_SECRET_KEY_BASE` from the environment of the shell that runs kamal. It never holds the values themselves (the file is committed) |
 | `public/up.html` | The health check page, served by the app itself as a static file |
 
@@ -229,6 +229,10 @@ to check.
   ```sh
   sudo sqlite3 /var/lib/docker/volumes/notes_storage/_data/production.sqlite3 ".backup /root/notes-$(date +%Y%m%d).sqlite3"
   ```
+
+  An app with file uploads keeps them beside the database, in
+  `/var/lib/docker/volumes/notes_storage/_data/uploads/`: copy that directory
+  with each backup.
 
 - `kamal deploy` stops the old container only after the new one passes the
   health check, so unlike a systemd restart, no connection is refused during

@@ -458,7 +458,7 @@ exit    # leave the notes user, back to the user who can sudo
 - `~/releases/<timestamp>/` … one checkout per deploy (the built `dist/` is
   here too)
 - `~/current` … a symbolic link to the release that runs
-- `~/shared/` … what outlives releases (the SQLite database)
+- `~/shared/` … what outlives releases (the SQLite database, uploaded files)
 
 ---
 
@@ -479,6 +479,7 @@ CYBERTRAIN_ENV=production
 CYBERTRAIN_SECRET_KEY_BASE=$SECRET
 CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3
 PORT=3000
+CYBERTRAIN_TRUSTED_PROXY=1
 SPINEL_GC_FULL_INTERVAL=8
 EOF
 unset SECRET
@@ -492,6 +493,7 @@ sudo chmod 640 /etc/notes/notes.env
 | `CYBERTRAIN_SECRET_KEY_BASE` | **Required**. Changing it ends everyone's session |
 | `CYBERTRAIN_DATABASE` | The database file. It goes in `shared/` so it outlives releases |
 | `PORT` | The port to listen on. Keep it in step with Caddy's configuration |
+| `CYBERTRAIN_TRUSTED_PROXY=1` | Caddy connects from 127.0.0.1 and names the visitor in `X-Forwarded-For`. With this the app takes `request.client_ip` from that header, so `rate_limit` (the sign-in limit `cybertrain generate authentication` writes) counts each visitor rather than Caddy, and `request.base_url` says https |
 | `SPINEL_GC_FULL_INTERVAL=8` | Spinel's collector does a full collection every eighth time. Left to adapt, it falls to nearly every collection full under a web server's load; fixed at 8, a one-CPU server answers about 16% more requests a second at the same memory ([spinel-feedback.md](spinel-feedback.md), 5) |
 
 Optionally, logs and error reports. To send every error report to Sentry
@@ -559,6 +561,15 @@ deploy starts it.
   are not read from disk. Here `CYBERTRAIN_DATABASE` puts the database in
   `/srv/notes/shared/`, so that is the only place that needs to be writable
   (`ReadWritePaths`).
+- An app with file uploads (`cybertrain generate attachment`) keeps them in
+  `storage/uploads/` under the working directory, which here is inside the
+  release: the service cannot write there, and every deploy starts a new
+  one. Put them in `shared/` instead, with
+  `c.upload_root = "/srv/notes/shared/uploads" if c.production?` in
+  `config/app.rb`, and back that directory up with the database
+  ("Backups"). The rehearsal of 2-6 also runs in production mode, so with
+  this line it cannot store an upload on a machine that has no
+  `/srv/notes/shared/`.
 - Logs go to standard output, so journald collects them
   (`sudo journalctl -u notes`).
 - It stops on SIGTERM: it stops accepting, finishes answering the requests in
@@ -854,7 +865,9 @@ crontab -e
 ```
 
 In case the server is lost, also copy `/srv/notes/backups/` somewhere else
-regularly (another server, or object storage).
+regularly (another server, or object storage). Uploaded files
+(`/srv/notes/shared/uploads/`, 5-1) are not in the database: copy that
+directory along with the backups.
 
 Instead of `sqlite3`, the app's binary can take the backup itself (an app
 made with a framework that has `db backup`; README, "Operations"):
@@ -1167,9 +1180,9 @@ day-to-day operation.
   `header Strict-Transport-Security "max-age=31536000"` to the Caddyfile's
   site block (the session cookie is `Secure` in production). The app can
   do it instead: `CYBERTRAIN_FORCE_SSL=1` in `/etc/notes/notes.env` sends
-  HSTS and redirects http to https by `X-Forwarded-Proto`. Set
-  `CYBERTRAIN_TRUSTED_PROXY=1` with it, or the URLs the app builds
-  (`request.base_url`) still say http. With it, change the deploy script's
+  HSTS and redirects http to https by `X-Forwarded-Proto`
+  (`CYBERTRAIN_TRUSTED_PROXY=1`, from Part 4, is what makes the URLs the app
+  builds say https). With `CYBERTRAIN_FORCE_SSL=1`, change the deploy script's
   check to `http://127.0.0.1:$PORT/up`: only the health path is exempt from
   the redirect, so `/up.html` over plain http is redirected and the check
   would no longer prove the app answered.
@@ -1194,7 +1207,9 @@ day-to-day operation.
   `public/assets/` holds that release's digests only. And the app does not
   serve a file through a symlink that leads out of `public/`: if you keep
   `public/assets/` in `shared/`, mount it there rather than linking it.
-- The framework has no authentication (login). Before going public, think
-  about who should be able to write.
+- A scaffold has no sign-in: anyone who reaches the site can write. Before
+  going public, add it with `cybertrain generate authentication`
+  ([Authentication](guide/authentication.md)), or decide who should be able
+  to write.
 - The views are embedded into the binary at build time. Even a view-only
   change needs a deploy (a rebuild and a restart) to reach production.
