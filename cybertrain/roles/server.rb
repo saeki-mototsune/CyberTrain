@@ -305,10 +305,8 @@ module Cybertrain
         rebuilder = @rebuilder
         unless rebuilder.nil?
           app = Dev::ErrorPage.new(app, rebuilder)
-          if config.development?
-            app = HostAuthorization.new(app, config.checked_hosts, config.health_path)
-            app = RequestId.new(app, config.log_tags)
-          end
+          app = HostAuthorization.new(app, config.checked_hosts, config.health_path)
+          app = RequestId.new(app, config.log_tags)
         end
         app
       end
