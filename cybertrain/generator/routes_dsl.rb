@@ -12,8 +12,7 @@ module Cybertrain
 
       # helper_args: the *_path helper's parameter names, one per dynamic
       # segment in order (`["indicator"]` for `/indicators/:key`); empty
-      # when the pattern has none, or for a spec built outside the Mapper,
-      # whose names RoutesEmitter derives from the pattern.
+      # when the pattern has none.
       attr_reader :verb, :pattern, :controller, :action, :name, :helper_args
       # Whether the route matches an optional `.:format` suffix (true unless
       # the route says otherwise).
