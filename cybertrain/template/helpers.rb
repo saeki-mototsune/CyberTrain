@@ -290,10 +290,7 @@ module Cybertrain
       # the template's turbo_stream builder renders for `partial:`.
       # @return [SafeString]
       def partial_html(name, locals, interp, env)
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = Array.new(0) { "" }
         locals.each_key { |key| names << key }
         render_partial_scope(template, locals, names, interp, env)
@@ -964,10 +961,7 @@ module Cybertrain
           end
           name = text_arg(args, 0, "render")
         end
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
         render_partial_scope(template, locals, names, interp, env)
@@ -1065,10 +1059,7 @@ module Cybertrain
       # (index; none when it is -1) unless the partial's strict locals leave
       # it out.
       def render_item(name, as_name, item, index, locals, interp, env)
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         counter = "#{as_name}_counter"
         scoped = { "" => [nil, 0, 0.0, "", true][0] }
         scoped.delete("")

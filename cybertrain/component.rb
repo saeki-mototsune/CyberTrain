@@ -87,9 +87,7 @@ module Cybertrain
     # toward max_render_depth, as a partial's does), without a layout.
     # While it renders, helpers answer the component's view methods by name.
     def render_with(helpers, content, interp)
-      engine = Views.engine
-      raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
+      engine = Views.configured_engine
       self.content = content
       env = { "__template_dir" => [nil, 0, 0.0, "", true][3] }
       env["__template_dir"] = "__components"
