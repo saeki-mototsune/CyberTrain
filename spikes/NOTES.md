@@ -1421,8 +1421,8 @@ explicitly retires a workaround.
     naming `Cybertrain::Mailer::TimeoutError`
     in such a program swallowed every exception its method raised, another
     framework `TimeoutError` supplying the last segment
-    (spikes/phase3/rescue_arms.rb). Reduced repro: `module Outer; module
-    Net; class TimeoutError < StandardError; end; end; end`, `class AppError
+    (spikes/phase3/rescue_arms.rb, deleted since). Reduced repro:
+    `module Outer; module Net; class TimeoutError < StandardError; end; end; end`, `class AppError
     < StandardError; end`, a method with `begin; raise AppError, "boom";
     rescue Outer::Mailer::TimeoutError => e; ...; rescue AppError => e; log
     << "arm"; end` called inside `begin ... rescue StandardError => e; log
@@ -1490,7 +1490,7 @@ explicitly retires a workaround.
     parameters; with `before_action`, `helper_method` and `rescue_from`
     stubbed the program builds and the declarations gen splices into the
     including class work. Found in the phase 4a spike (2026-11-10,
-    spikes/phase4/concern_class_methods.rb).
+    spikes/phase4/concern_class_methods.rb, deleted since).
     Stubs are not enough for a call no stub covers: Task 7 of phase 4a
     found `included do; scope :visible, -> { where(hidden: 0) }; end` in a
     model concern refused at the bare `where` inside the lambda, with

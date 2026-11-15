@@ -2648,8 +2648,8 @@ ended (checked again on 2026-11-10 with `spinel exit_thread.rb`).
 
 The web-layer design (docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md,
 section 12) ran five checks against 2026.11.04.7026 before any code was
-written (spikes/phase4/); all five passed, one with a stub, and these were
-found while writing the third.
+written (spikes/phase4/, deleted since); all five passed, one with a stub,
+and these were found while writing the third.
 
 ### U. A `def` inside a block that never runs defines the method anyway
 
