@@ -49,8 +49,6 @@ module Cybertrain
     # plus the wall-clock time of day it takes effect at, in seconds (can be
     # negative or past 24 hours, RFC 8536 section 3.3.1).
     class TzDate
-      attr_reader :rd_kind, :rd_month, :rd_week, :rd_wday, :rd_day, :rd_secs
-
       def initialize(kind, month, week, wday, day, secs)
         @rd_kind = kind
         @rd_month = month
@@ -90,7 +88,7 @@ module Cybertrain
     # (the POSIX sign is the other way round). `rule_valid` is false for an
     # empty or malformed string.
     class PosixTz
-      attr_reader :rule_valid, :rule_has_dst, :std_utoff, :dst_utoff, :std_abbr, :dst_abbr, :dst_start, :dst_end
+      attr_reader :rule_valid, :std_utoff, :dst_utoff, :std_abbr, :dst_abbr
 
       def initialize(valid, has_dst, std_off, dst_off, std_abbr, dst_abbr, dst_start, dst_end)
         @rule_valid = valid

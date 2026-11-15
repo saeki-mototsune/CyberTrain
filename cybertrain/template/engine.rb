@@ -56,8 +56,6 @@ module Cybertrain
       # templates under it (Gen::ViewsEmitter), next to the views.
       COMPONENTS_PREFIX = "__components/"
 
-      attr_reader :root, :components_root
-
       # components_root: where names under COMPONENTS_PREFIX are read from
       # (app/components beside app/views, spec 3.2); "" derives it from root.
       def initialize(root, cache: true, max_render_depth: MAX_RENDER_DEPTH, components_root: "")
