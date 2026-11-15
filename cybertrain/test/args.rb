@@ -24,7 +24,7 @@ module Cybertrain
       # The digits of a method name's `_u<hex>_` ({method_for}).
       HEX = "0123456789abcdef".freeze
 
-      attr_reader :arg_files, :arg_name, :arg_pattern, :arg_error
+      attr_reader :arg_files, :arg_pattern, :arg_error
 
       def initialize(arg_files, arg_name, arg_pattern, arg_error)
         @arg_files = arg_files
