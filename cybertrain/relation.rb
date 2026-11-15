@@ -44,16 +44,13 @@ module Cybertrain
   class Relation
     attr_reader :binds
 
-    # NOTE: blocks passed to Cybertrain::DB.with below read locals, never
-    # ivars: an ivar inside such a block compiles to C with no receiver.
-
     def initialize(table)
       @table = table
       @wheres = Array.new(0) { "" }
-      # Binds hold nil/Integer/Float/String/DB::Blob: seed with more than
-      # one type so the Array is polymorphic from the start (rule 9).
-      @binds = [nil, 0, 0.0, "", DB::Blob.new("")]
-      @binds.clear
+      # Binds hold nil/Integer/Float/String/DB::Blob: Cast.empty_binds is
+      # seeded with one of each, so the Array is polymorphic from the start
+      # (rule 9).
+      @binds = Cast.empty_binds
       @order = ""
       @limit = -1
       @offset = 0
@@ -61,8 +58,7 @@ module Cybertrain
       @none = false
       # HAVING text for the grouped readers (having_sql) and its binds.
       @having = ""
-      @having_binds = [nil, 0, 0.0, "", DB::Blob.new("")]
-      @having_binds.clear
+      @having_binds = Cast.empty_binds
       # includes / preload (spec section 8): the association names `to_a`
       # preloads, and whether the subclass's `preloaded` records answer the
       # record readers (true from `preloaded` until the next chain method).
@@ -224,14 +220,8 @@ module Cybertrain
       end
 
       @wheres << "((#{mine}) OR (#{theirs}))"
-      # By index up to the size read first: `a.or(a)` hands in @binds itself.
-      extra = other.binds
-      n = extra.size
-      i = 0
-      while i < n
-        @binds << extra[i]
-        i += 1
-      end
+      # `a.or(a)` hands in @binds itself: append_binds reads the size first.
+      Relation.append_binds(@binds, other.binds)
       nil
     end
 
@@ -537,11 +527,7 @@ module Cybertrain
         i += 1
       end
       @binds.clear
-      i = 0
-      while i < binds.size
-        @binds << binds[i]
-        i += 1
-      end
+      Relation.append_binds(@binds, binds)
       @order = order
       @limit = limit
       @offset = offset
@@ -555,11 +541,7 @@ module Cybertrain
     def take_having(having, having_binds, includes)
       @having = having
       @having_binds.clear
-      i = 0
-      while i < having_binds.size
-        @having_binds << having_binds[i]
-        i += 1
-      end
+      Relation.append_binds(@having_binds, having_binds)
       @includes.clear
       i = 0
       while i < includes.size
@@ -589,8 +571,7 @@ module Cybertrain
     # Cast.time_or_nil takes either.
     def rows
       sql = to_sql
-      binds = @binds
-      Cybertrain::DB.with { |c| c.execute_models(sql, binds) }
+      Relation.select_models(sql, @binds)
     end
 
     # Counts the rows the relation would return: with a limit or offset the
@@ -607,13 +588,12 @@ module Cybertrain
               # `*` every row is distinct, so this equals the plain count.
               inner = select_sql("*", "", @limit, @offset)
               "SELECT COUNT(*) AS n FROM (#{inner})"
-            elsif @limit >= 0 || @offset > 0
+            elsif windowed?
               "SELECT COUNT(*) AS n FROM (#{select_sql("1", "", @limit, @offset)})"
             else
               select_sql("COUNT(*) AS n", "", -1, 0)
             end
-      binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found = Relation.select_rows(sql, @binds)
       Cast.int(found[0]["n"])
     end
 
@@ -628,8 +608,7 @@ module Cybertrain
       # skip past every match: probe whole rows, as page does.
       probe = @distinct ? "*" : "1 AS one"
       sql = select_sql(probe, "", 1, @offset)
-      binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found = Relation.select_rows(sql, @binds)
       !found.empty?
     end
 
@@ -648,11 +627,7 @@ module Cybertrain
 
       sql = +"DELETE FROM #{Relation.quote_ident(@table)}"
       sql << write_scope_sql
-      binds = @binds
-      Cybertrain::DB.with do |c|
-        c.execute(sql, binds)
-        c.changes
-      end
+      Relation.execute_write(sql, @binds)
     end
 
     # The first row by the relation's order (by id when it has none), from
@@ -670,10 +645,9 @@ module Cybertrain
     # third), which means loading that window.
     def last_row
       order = order_or_id
-      if @limit >= 0 || @offset > 0
+      if windowed?
         sql = select_sql("*", order, @limit, @offset)
-        binds = @binds
-        found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+        found = Relation.select_rows(sql, @binds)
         return found.empty? ? nil : found[found.size - 1]
       end
       pick_row(Relation.reverse_order(order), 0)
@@ -710,11 +684,43 @@ module Cybertrain
       # Under distinct, `SELECT DISTINCT 1` would be one row.
       probe = @distinct ? "*" : "1 AS one"
       sql = select_sql(probe, "", per + 1, skip)
-      binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found = Relation.select_rows(sql, @binds)
       @limit = per
       @offset = skip
       Page.new(n, per, found.size > per)
+    end
+
+    # Appends the binds of `source` to `target`, both bind Arrays
+    # (Cast.empty_binds): by index up to the size read first, so handing in
+    # the same Array twice doubles it rather than never ending. For bind
+    # Arrays only: the where terms and included names are copied where they
+    # are, so the parameters keep one type.
+    def self.append_binds(target, source)
+      n = source.size
+      i = 0
+      while i < n
+        target << source[i]
+        i += 1
+      end
+      nil
+    end
+
+    # The rows of a SELECT as Hashes of raw cells.
+    def self.select_rows(sql, binds)
+      Cybertrain::DB.with { |c| c.execute(sql, binds) }
+    end
+
+    # The rows of a SELECT for Model.from_row (Connection#execute_models).
+    def self.select_models(sql, binds)
+      Cybertrain::DB.with { |c| c.execute_models(sql, binds) }
+    end
+
+    # Runs an UPDATE, DELETE or INSERT and answers how many rows it changed.
+    def self.execute_write(sql, binds)
+      Cybertrain::DB.with do |c|
+        c.execute(sql, binds)
+        c.changes
+      end
     end
 
     # "posts" -> "`posts`" (an embedded backtick is doubled).
@@ -791,19 +797,11 @@ module Cybertrain
       check_not_encrypted("increment", column.to_s)
       table = Relation.quote_ident(@table)
       sql = +"UPDATE #{table} SET #{quoted} = #{quoted} + ?"
-      binds = [nil, 0, 0.0, ""]
-      binds.clear
+      binds = Cast.empty_binds
       binds << Cast.to_sql(by)
       sql << write_scope_sql
-      i = 0
-      while i < @binds.size
-        binds << @binds[i]
-        i += 1
-      end
-      Cybertrain::DB.with do |c|
-        c.execute(sql, binds)
-        c.changes
-      end
+      Relation.append_binds(binds, @binds)
+      Relation.execute_write(sql, binds)
     end
 
     # Sets columns by SQL in every matching row with one
@@ -827,8 +825,7 @@ module Cybertrain
     def update_all_sql(sql, binds = [])
       raise ArgumentError, "update_all_sql: no SET list" if sql.strip.empty?
 
-      all = [nil, 0, 0.0, "", DB::Blob.new("")]
-      all.clear
+      all = Cast.empty_binds
       binds.each do |v|
         case v
         when Array
@@ -841,15 +838,8 @@ module Cybertrain
       table = Relation.quote_ident(@table)
       text = +"UPDATE #{table} SET #{sql}"
       text << write_scope_sql
-      i = 0
-      while i < @binds.size
-        all << @binds[i]
-        i += 1
-      end
-      Cybertrain::DB.with do |c|
-        c.execute(text, all)
-        c.changes
-      end
+      Relation.append_binds(all, @binds)
+      Relation.execute_write(text, all)
     end
 
     # Sets each column to its value in every matching row with one
@@ -878,8 +868,7 @@ module Cybertrain
       return 0 if @none
 
       sets = Array.new(0) { "" }
-      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
-      binds.clear
+      binds = Cast.empty_binds
       hash.each do |key, value|
         quoted = Relation.checked_column("update_all", key)
         sets << "#{quoted} = ?"
@@ -898,15 +887,8 @@ module Cybertrain
       set_list = sets.join(", ")
       sql = +"UPDATE #{table} SET #{set_list}"
       sql << write_scope_sql
-      i = 0
-      while i < @binds.size
-        binds << @binds[i]
-        i += 1
-      end
-      Cybertrain::DB.with do |c|
-        c.execute(sql, binds)
-        c.changes
-      end
+      Relation.append_binds(binds, @binds)
+      Relation.execute_write(sql, binds)
     end
 
     # The ids of the matching rows, in the relation's order (by id when it
@@ -919,8 +901,7 @@ module Cybertrain
       id = Relation.quote_ident("id")
       columns = "#{id} AS v"
       sql = select_sql(columns, order_or_id, @limit, @offset)
-      binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found = Relation.select_rows(sql, @binds)
       out = Array.new(0) { 0 }
       i = 0
       while i < found.size
@@ -942,15 +923,10 @@ module Cybertrain
       table = Relation.quote_ident(@table)
       size = batch.to_s
       sql = "#{head} FROM #{table} WHERE #{clause} ORDER BY #{id} LIMIT #{size}"
-      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
-      binds.clear
-      i = 0
-      while i < @binds.size
-        binds << @binds[i]
-        i += 1
-      end
+      binds = Cast.empty_binds
+      Relation.append_binds(binds, @binds)
       binds << after_id
-      Cybertrain::DB.with { |c| c.execute_models(sql, binds) }
+      Relation.select_models(sql, binds)
     end
 
     private
@@ -962,10 +938,14 @@ module Cybertrain
       @order == "" ? Relation.quote_ident("id") : @order
     end
 
+    # Whether a limit or offset narrows the relation to a window of rows.
+    def windowed?
+      @limit >= 0 || @offset > 0
+    end
+
     def pick_row(order, offset)
       sql = select_sql("*", order, 1, offset)
-      binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute_models(sql, binds) }
+      found = Relation.select_models(sql, @binds)
       found.empty? ? nil : found[0]
     end
 
@@ -976,7 +956,7 @@ module Cybertrain
     # rather than whichever row SQLite scans first). "" for every row.
     def write_scope_sql
       refuse_having
-      if @limit >= 0 || @offset > 0
+      if windowed?
         id = Relation.quote_ident("id")
         window = select_sql(id, order_or_id, @limit, @offset)
         return " WHERE #{id} IN (#{window})"

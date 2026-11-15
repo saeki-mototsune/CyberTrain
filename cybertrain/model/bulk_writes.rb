@@ -56,8 +56,7 @@ module Cybertrain
       raise ArgumentError, "upsert: no conflict columns" if conflict.empty?
 
       columns = Array.new(0) { "" }
-      binds = [nil, 0, 0.0, "", Cybertrain::DB::Blob.new("")]
-      binds.clear
+      binds = Cybertrain::Cast.empty_binds
       attrs.each do |key, value|
         columns << Relation.checked_column("upsert", key)
         name = key.to_s
@@ -103,10 +102,7 @@ module Cybertrain
       else
         sql << " DO UPDATE SET " << sets.join(", ")
       end
-      Cybertrain::DB.with do |c|
-        c.execute(sql, binds)
-        c.changes
-      end
+      Relation.execute_write(sql, binds)
     end
 
     # --- bulk writes (insert_all, insert_all!, upsert_all) ------------------
@@ -241,8 +237,7 @@ module Cybertrain
         column_scales << (scales.key?(name) ? scales[name].to_i : -1)
       end
 
-      binds = [nil, 0, 0.0, "", Cybertrain::DB::Blob.new("")]
-      binds.clear
+      binds = Cybertrain::Cast.empty_binds
       i = 0
       while i < rows.size
         cells = Model.bulk_cells(rows[i])

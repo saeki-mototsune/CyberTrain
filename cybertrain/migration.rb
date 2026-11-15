@@ -63,7 +63,7 @@ module Cybertrain
         @unique = unique
         @new_name = new_name.to_s
         @exec_sql = ""
-        @exec_binds = Operation.no_binds
+        @exec_binds = Cybertrain::Cast.empty_binds
         @precision = 0
         @scale = -1
         @where = ""
@@ -87,15 +87,6 @@ module Cybertrain
       def self.no_default
         values = ["", nil]
         values[1]
-      end
-
-      # An empty bind list typed for the values Cast.to_sql returns (nil,
-      # Integer, Float, String), seeded per spikes/NOTES.md rule 9 the way
-      # Relation seeds its own.
-      def self.no_binds
-        binds = [nil, 0, 0.0, ""]
-        binds.clear
-        binds
       end
 
       # `binds` is already converted (Cast.to_sql). The SQL and binds are
@@ -505,7 +496,7 @@ module Cybertrain
       # @return [nil]
       # @api public
       def execute(sql, binds = [])
-        values = Operation.no_binds
+        values = Cybertrain::Cast.empty_binds
         binds.each { |v| values << Cybertrain::Cast.to_sql(v) }
         @operations << Operation.for_execute(sql.to_s, values)
         nil
@@ -589,7 +580,7 @@ module Cybertrain
       #   rebuild would drop (see the class notes); the version rolls back
       # @api public
       def change_column_null(table, column, null, default = nil)
-        values = Operation.no_binds
+        values = Cybertrain::Cast.empty_binds
         values << Cybertrain::Cast.to_sql(default) unless default.nil?
         @operations << Operation.for_change_column_null(table.to_s, column.to_s, null, values)
         nil

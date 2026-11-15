@@ -677,8 +677,7 @@ module Cybertrain
       # scale rounding, read off the values just written.
       row = to_row
       sets = Array.new(0) { "" }
-      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
-      binds.clear
+      binds = Cast.empty_binds
       names.each do |name|
         sets << "#{Relation.quote_ident(name)} = ?"
         binds << row[name]

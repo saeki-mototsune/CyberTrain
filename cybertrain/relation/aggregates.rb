@@ -372,8 +372,7 @@ module Cybertrain
       quoted = Relation.checked_column(method, column)
       columns = "#{quoted} AS v"
       sql = select_sql(columns, @order, @limit, @offset)
-      binds = @binds
-      Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      Relation.select_rows(sql, @binds)
     end
 
     # One aggregate over one column: SUM(`col`), MIN(`col`), ... (see
@@ -388,7 +387,7 @@ module Cybertrain
     # col)`): `SELECT DISTINCT SUM(col)` is one row, deduping nothing. A
     # windowed distinct relation dedupes in its subquery instead.
     def aggregate_expr(func, expr)
-      sql = if @limit >= 0 || @offset > 0
+      sql = if windowed?
               columns = "#{expr} AS v"
               inner = select_sql(columns, @order, @limit, @offset)
               "SELECT #{func}(v) AS n FROM (#{inner})"
@@ -396,8 +395,7 @@ module Cybertrain
               arg = aggregate_arg(expr)
               select_sql("#{func}(#{arg}) AS n", "", -1, 0)
             end
-      binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found = Relation.select_rows(sql, @binds)
       found[0]["n"]
     end
 
@@ -419,7 +417,7 @@ module Cybertrain
     # column), not the alias: a table column named `k` would win over an
     # alias in GROUP BY. `expr` is `*` for COUNT(*).
     def grouped_cell(func, group, expr)
-      windowed = @limit >= 0 || @offset > 0
+      windowed = windowed?
       if windowed && @having != ""
         raise ArgumentError, "having_sql with a limit or offset is not supported (the window is grouped, not the groups limited)"
       end
@@ -435,19 +433,10 @@ module Cybertrain
               having = @having == "" ? "" : " HAVING #{@having}"
               "#{grouped} GROUP BY 1#{having} ORDER BY 1"
             end
-      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
-      binds.clear
-      i = 0
-      while i < @binds.size
-        binds << @binds[i]
-        i += 1
-      end
-      i = 0
-      while i < @having_binds.size
-        binds << @having_binds[i]
-        i += 1
-      end
-      Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      binds = Cast.empty_binds
+      Relation.append_binds(binds, @binds)
+      Relation.append_binds(binds, @having_binds)
+      Relation.select_rows(sql, binds)
     end
 
     # Grouped rows as Integers through Cast.int; the NULL and `""` groups,
@@ -537,8 +526,7 @@ module Cybertrain
       end
       list = parts.join(", ")
       sql = select_sql(list, @order, limit, @offset)
-      binds = @binds
-      found = Cybertrain::DB.with { |c| c.execute(sql, binds) }
+      found = Relation.select_rows(sql, @binds)
       # Seeded with a row (rule 9) so the outer Array holds polymorphic rows.
       out = [Relation.empty_cells]
       out.clear
