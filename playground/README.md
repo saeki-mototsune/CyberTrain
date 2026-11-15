@@ -112,8 +112,9 @@ its build: `gen/` is current and `build/bin/{gen,db,blog}` exist, and the
 CRuby preview's FFI shim has compiled the framework's C into
 `tmp/cybertrain-dev/ffi/` (`Cybertrain::Preview.warm!`), as `dev`, the user
 every container runs as: the shim loads nothing from a cache that another
-user owns or that its group or others may write to (decision P26 of the
-preview's plan), and the build checks that a second `warm!` compiles
+user owns or that its group or others may write to (decision P26 of
+[the preview's plan](../docs/superpowers/plans/2026-11-12-cruby-preview-plan.md)),
+and the build checks that a second `warm!` compiles
 nothing.
 
 - `build/bin/blog` is the release build of a plain `spin build blog`.
@@ -245,7 +246,8 @@ binary after the model edit (A9) and the offline app (B3, not timed on its
 own). A3, A11 and E1 wait for the startup build to end, which finds the
 binary up to date: the binary serves a fraction of a second after the start.
 Measured on 4 CPUs (linux/amd64, 2026-11-13), twice, on the image built from
-commit c04bb23 and this directory: 33 passed in 3 min 23 s and in 2 min 48 s;
+commit c04bb23, with the 33 checks the script then had (D5 was added
+afterwards): 33 passed in 3 min 23 s and in 2 min 48 s;
 A3, the binary served 0.2 s after the start of the supervisor's first round
 (its own `=> spinel: ready in` figure, which counts from after `spin flags`,
 the address probe and the bind, not from `docker run`); A9, CRuby answered
@@ -266,11 +268,13 @@ the address probe and the bind, not from `docker run`); A9, CRuby answered
 
 [.github/workflows/playground-image.yml](../.github/workflows/playground-image.yml)
 ("Playground image") runs on pull requests that touch `playground/` (except
-this README), `.devcontainer/`, the workflow itself, or what the image's
-toolchain is built from (the CLI's files, `cybertrain.gemspec`,
-`cybertrain/version.rb` and `spin.toml`: the build runs `cybertrain setup`
-and `cybertrain doctor`), without pushing; a change to the rest of the
-framework alone does not run it. Pushes to `main` do not run it. It
+this README), `.devcontainer/`, the workflow itself, or what the image is
+built with: the CLI's files, `cybertrain.gemspec`, `cybertrain/version.rb`
+and `spin.toml` (the build runs `cybertrain setup` and `cybertrain doctor`),
+and the CRuby preview (`cybertrain/preview.rb`, `cybertrain/preview/`,
+`cybertrain/dev/`), which the image warms and the smoke test drives. It
+does not push there. A change to the rest of the framework alone does not
+run it. Pushes to `main` do not run it. It
 also runs from the Release workflow
 ([.github/workflows/release.yml](../.github/workflows/release.yml)), which
 calls it for a tag `vX.Y.Z` after the Gate, CI and the blog image have
