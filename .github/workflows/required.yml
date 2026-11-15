@@ -56,8 +56,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           set -eu
-          deadline=$(( $(date +%s) + ${WAIT_SECONDS:-20400} ))
-          interval=${POLL_SECONDS:-30}
+          deadline=$(( $(date +%s) + 20400 ))
+          interval=30
           list() {
             gh api --paginate \
               "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=$GITHUB_EVENT_NAME&per_page=100" \
