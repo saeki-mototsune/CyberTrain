@@ -253,7 +253,7 @@ test "Poller.reset! starts after the rows already written" do
   hub = Stream::Hub.new(1000)
   sub = hub.subscribe(["a"])
   Stream.broadcast("a", "before")
-  Stream::Poller.reset!(hub)
+  Stream::Poller.reset!
   assert_equal 0, Stream::Poller.run_once(hub)
   Stream.broadcast("a", "after")
   assert_equal 1, Stream::Poller.run_once(hub)
@@ -264,7 +264,7 @@ test "the replay-to-live handoff sends every row once, in id order" do
   fresh_db
   hub = Stream::Hub.new(1000)
   Stream.broadcast("a", "1")
-  Stream::Poller.reset!(hub)
+  Stream::Poller.reset!
   # subscribe first; a row written before the replay is both replayed and
   # delivered live
   head = Stream.replay_head(0)
@@ -314,7 +314,7 @@ test "a replay that finds nothing leaves the boundary at after" do
   fresh_db
   hub = Stream::Hub.new(1000)
   head = Stream.broadcast("a", "head")
-  Stream::Poller.reset!(hub)
+  Stream::Poller.reset!
   sub = hub.subscribe(["a"])
   assert_equal 0, Stream.replay(["a"], head).size
   sub.skip_through!(head)
