@@ -180,15 +180,6 @@ module Cybertrain
         interp.render(frame, env)
       end
 
-      def clear_cache!
-        # A fresh Array rather than clear: Array#clear anywhere in the
-        # program makes Spinel box that Array's elements (Spinel 2026.09.12).
-        @template_list = Engine.no_templates
-        @template_index.clear
-        @stamps.clear
-        nil
-      end
-
       private
 
       # Embedded sources never change while the process runs: parsed once,
