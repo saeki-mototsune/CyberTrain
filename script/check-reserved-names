@@ -219,7 +219,7 @@ NAME_HOMES = {
   # module; compiled beside Request#format (a Symbol) in test/main.rb.
   "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb cybertrain/dev/state_file.rb],
   "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb],
-  "select" => %w[cybertrain/template/form_builder.rb],
+  "select" => %w[],
   # cli/templates.rb's is `def self.layout` (the generated layout's text);
   # active_support.rb's, like the other declarations below, is the no-op
   # that lets a concern's never-run `included` block compile
@@ -317,7 +317,7 @@ NAME_HOMES = {
   "remember" => %w[],
   # Mailer.deliver_later and MailMessage#deliver_later both answer the
   # job's id (an Integer).
-  "deliver_later" => %w[cybertrain/mailer/later.rb cybertrain/mail_message.rb],
+  "deliver_later" => %w[cybertrain/mailer/later.rb],
   # The Controller class method, and the 0.4 block's own copy inside
   # cli/authentication.rb's ApplicationController text.
   "allow_unauthenticated_access" => %w[cybertrain/controller.rb cybertrain/cli/authentication.rb],
@@ -421,10 +421,10 @@ NAME_HOMES = {
   "utc_offset" => %w[cybertrain/zoned_time.rb],
   "to_time" => %w[cybertrain/zoned_time.rb],
   "to_date" => %w[cybertrain/zoned_time.rb],
-  "travel" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  "travel" => %w[cybertrain/test/time_helpers.rb],
   "travel_to" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
   "travel_back" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
-  "freeze_time" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  "freeze_time" => %w[cybertrain/test/time_helpers.rb],
   # Clock.monotonic and DB::Connection.monotonic (the busy wait's deadline)
   # both answer CLOCK_MONOTONIC seconds as a Float (Task 2; test/clock.rb
   # compiles them with test.rb, test/time_travel.rb with the whole framework).
@@ -435,7 +435,7 @@ NAME_HOMES = {
   # setup / teardown blocks; Test::Base#setup / #teardown (nil) beside the
   # class methods of the same name that refuse an unrewritten file (D9).
   "setup" => %w[cybertrain/cli/toolchain.rb cybertrain/test.rb cybertrain/test/test_case.rb],
-  "teardown" => %w[cybertrain/cli/toolchain.rb cybertrain/test.rb cybertrain/test/test_case.rb],
+  "teardown" => %w[cybertrain/test.rb cybertrain/test/test_case.rb],
   "test" => %w[cybertrain/test.rb cybertrain/test/test_case.rb],
   "fixtures" => %w[cybertrain/test/test_case.rb],
   # One method for the component and the partial form (rule 34); the
