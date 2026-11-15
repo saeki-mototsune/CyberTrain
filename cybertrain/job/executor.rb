@@ -37,13 +37,6 @@ module Cybertrain
       OUTCOME_TRIES = 3
       OUTCOME_RETRY_PAUSE = 0.05
 
-      # A copy of IN_FLIGHT.
-      def self.in_flight_ids
-        out = Array.new(0) { 0 }
-        FLIGHT_LOCK.synchronize { IN_FLIGHT.each { |id| out << id } }
-        out
-      end
-
       # The claims in flight, read under one lock: the id and then the
       # attempt number of each, one after the other.
       def self.in_flight_claims

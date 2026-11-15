@@ -574,11 +574,6 @@ module Cybertrain
       ticket < 0 || Worker.pool_live?(ticket)
     end
 
-    # A copy of the ids of the jobs in flight in this process.
-    def self.in_flight_ids
-      Executor.in_flight_ids
-    end
-
     # How many jobs of `kind` are `running` now, in every process sharing
     # the database.
     # @param kind [String]

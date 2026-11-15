@@ -413,7 +413,7 @@ test "a claim writes claimed_by and heartbeat_at; heartbeat! touches only the jo
   assert_equal 1000, job_heartbeat(mine)
   assert_equal 1000, job_heartbeat(theirs)
   assert_equal 1000, job_heartbeat(done)
-  assert_equal 0, Job.in_flight_ids.size
+  assert_equal 0, Job::Executor.in_flight_claims.size
 end
 
 test "an outcome write that keeps failing leaves the row to staleness recovery" do
