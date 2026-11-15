@@ -471,7 +471,8 @@ NAME_HOMES = {
                  cybertrain/cookie_jar.rb cybertrain/cache.rb cybertrain/router.rb cybertrain/test/integration.rb],
   "head" => %w[cybertrain/controller.rb cybertrain/test/integration.rb],
   # Phase 5b (logs and error reporting; spike items 7 to 9,
-  # spikes/phase5/error_names.rb compiled each beside its namesakes).
+  # spikes/phase5/error_names.rb, deleted since, compiled each beside its
+  # namesakes).
   # Logger#error (nil), Template::Parser's two private #error (raise) and
   # Cybertrain.error (the ErrorReporter).
   "error" => %w[cybertrain/logger.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],

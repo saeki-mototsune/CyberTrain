@@ -1904,8 +1904,9 @@ explicitly retires a workaround.
      inside the block. A record of a form that works, refining rules 32, 45
      and 79 for this shape: `Cybertrain.error.handle` is written so
      (phase 5b spike item 8, spikes/phase5/error_names.rb at framework
-     19668bc, 2026-11-13; test/error_reporter.rb's "handle through a
-     forwarding block, with next, and nested in blocks" since Task 7).
+     19668bc, 2026-11-13, deleted since; test/error_reporter.rb's "handle
+     through a forwarding block, with next, and nested in blocks" since
+     Task 7).
 
 114. Under `SPINEL_WORKERS=1` a `sleep 0` does not switch green threads on
      Spinel 2026.11.04.7026: four threads started through a method, each
