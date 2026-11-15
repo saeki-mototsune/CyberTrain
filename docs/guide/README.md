@@ -126,7 +126,7 @@ optional for a preview, needs `yard` as well:
 gem install kramdown -v "~> 2.5"
 gem install kramdown-parser-gfm -v "~> 1.1"
 gem install rouge -v "~> 5.1"
-gem install yard                      # optional, for script/api-docs
+gem install yard -v "~> 0.9"          # optional, for script/api-docs
 ```
 
 ```sh

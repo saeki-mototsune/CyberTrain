@@ -13,8 +13,8 @@ to be done before the next run.
   `results/<date>.json`.
 - `report` prints the Markdown tables of docs/benchmark.md from a result.
 - `rails_blog/` is the blog in Rails 8.1, as examples/blog was at the last
-  recorded run ([its README](rails_blog/README.md) lists every change from
-  `rails new`).
+  recorded run plus the cover image added to both since
+  ([its README](rails_blog/README.md) lists every change from `rails new`).
 - `results/` holds the recorded runs; `tmp/` (ignored) the scratch copies,
   server logs and the pages each app served.
 
