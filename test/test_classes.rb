@@ -51,11 +51,6 @@ class ThingTest < AppBase
     nil
   end
 
-  def test_tears_down_badly
-    LOG << "body"
-    nil
-  end
-
   private def helper = "h"
 end
 

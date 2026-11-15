@@ -35,12 +35,6 @@ require "cybertrain/router"
 #     calls a real SessionStore chain, which is always true of a real app
 #     (Application#stack always instantiates and calls SessionStore) and of
 #     every test here.
-class Page < Cybertrain::Middleware
-  def call(ctx)
-    ctx.response.body = "page"
-    nil
-  end
-end
 
 # Mirrors Application#stack: `CsrfProtection (if csrf)`.
 def build_stack(router, csrf)

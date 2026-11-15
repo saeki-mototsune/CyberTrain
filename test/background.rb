@@ -162,16 +162,6 @@ def writer_mode(mode)
   nil
 end
 
-def count_of(text, needle)
-  n = 0
-  at = text.index(needle)
-  until at.nil?
-    n += 1
-    at = text.index(needle, at + needle.size)
-  end
-  n
-end
-
 # Waits up to `wait` seconds for `count` lines at `level` whose message
 # starts with `message`.
 def await_log(level, message, count, wait)
