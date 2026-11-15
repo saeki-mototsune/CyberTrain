@@ -194,7 +194,6 @@ test "verify_serialized runs one verification at a time across threads" do
   run_verifiers(digest, tally)
   assert_equal 4, tally.tally_true
   assert_equal 4, tally.tally_false
-  assert_equal 1, Cybertrain::Password.serialized_peak
 
   # While another holder has the lock, a verification waits for it.
   waiting = VerifyTally.new

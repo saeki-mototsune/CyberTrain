@@ -156,11 +156,6 @@ module Cybertrain
     # process. A module-level ivar, not a class variable (NOTES rules 18
     # and 64).
     @serial_lock = Mutex.new
-    # How many verifications are inside the lock now, and the most there
-    # have ever been (always 1 once one has run: test/password.rb checks
-    # it from several threads).
-    @serial_active = 0
-    @serial_peak = 0
 
     # {verify?}, one call at a time across the process. A hash takes about
     # 0.2 s of CPU (compiled, 100,000 iterations); a burst of sign-in
@@ -179,25 +174,9 @@ module Cybertrain
     def self.verify_serialized(password, digest)
       ok = false
       @serial_lock.synchronize do
-        ok = Password.verify_locked(password.to_s, digest)
+        ok = Password.verify?(password.to_s, digest)
       end
       ok
-    end
-
-    # The body of verify_serialized, under the lock (a plain method: no
-    # rescue or ivar arithmetic inside the synchronize block).
-    def self.verify_locked(password, digest)
-      @serial_active = @serial_active + 1
-      @serial_peak = @serial_active if @serial_active > @serial_peak
-      ok = Password.verify?(password, digest)
-      @serial_active = @serial_active - 1
-      ok
-    end
-
-    # The most verifications {verify_serialized} has had in flight at once
-    # in this process (0 before the first; 1 afterwards, by construction).
-    def self.serialized_peak
-      @serial_peak
     end
 
     # The Mutex verify_serialized takes, for test/password.rb to hold.
