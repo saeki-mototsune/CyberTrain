@@ -103,11 +103,6 @@ module Cybertrain
         commands
       end
 
-      # `cybertrain migration`: the same as `cybertrain db migrate`.
-      def self.migration_commands
-        db_commands(["migrate"])
-      end
-
       # A word sh reads as itself stays bare; anything else is single-quoted.
       def self.quote_arg(text)
         return text if !text.empty? && text.match(/\A[A-Za-z0-9_:.\/-]+\z/)
@@ -218,13 +213,6 @@ module Cybertrain
         def run_step(root, command)
           Build.run_in(root, command)
         end
-      end
-
-      # Where the build lock (BuildLock) lives for the application in root.
-      # Kept for code that only reads the lock, such as the CRuby
-      # development-server supervisor (cybertrain/cli/dev_server/processes.rb).
-      def self.lock_path(root)
-        BuildLock.new(root).lock_path
       end
 
       # Runs the build in root and assembles dist/. Returns the exit code.
