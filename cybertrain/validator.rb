@@ -8,15 +8,11 @@ module Cybertrain
   # belongs_to's foreign key gets one from Model.validates_foreign_key.
   #
   # kind is :presence, :length, :inclusion, :exclusion, :format,
-  # :numericality, :uniqueness or :foreign_key. (:custom is not used: a
-  # `validate :method` line is generated into run_custom_validations, which
-  # calls the method itself.) Unset options keep a sentinel or nil:
-  # minimum / maximum / exact_length are -1, the Regexps and the
+  # :numericality, :uniqueness or :foreign_key. Unset options keep a
+  # sentinel or nil: minimum / maximum / exact_length are -1, the Regexps and the
   # numericality limits nil (each read is guarded), message "" (the Rails
   # default then), on / condition_if / condition_unless / scope_attr nil.
   class Validator
-    KINDS = [:presence, :length, :inclusion, :exclusion, :format, :numericality, :uniqueness, :custom, :foreign_key]
-
     # The keys Model.validates takes beside the rules, applied to each rule
     # of the line.
     COMMON_OPTIONS = [:allow_nil, :allow_blank, :on, :message, :if, :unless]
