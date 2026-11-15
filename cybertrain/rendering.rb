@@ -53,7 +53,6 @@ module Cybertrain
       env["flash"] = Template::Helpers.flash_messages(flash)
       env["params"] = params
       env["__template_dir"] = dir
-      env["__controller_path"] = dir
       env
     end
 
