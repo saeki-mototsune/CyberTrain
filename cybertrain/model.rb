@@ -611,7 +611,7 @@ module Cybertrain
         # count (after_create) in one transaction too.
         begin
           Cybertrain::DB.transaction { |_c| create_with_callbacks }
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           # Rolled back: the record is new again.
           @persisted = false
           @id = 0
@@ -710,7 +710,7 @@ module Cybertrain
         else
           Cybertrain::DB.transaction { |_c| destroy_with_callbacks }
         end
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         @persisted = true
         raise e
       end

@@ -145,7 +145,7 @@ module Cybertrain
         conn.begin!(immediate: immediate)
         begin
           block.call(conn)
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           conn.rollback!
           raise e
         end
