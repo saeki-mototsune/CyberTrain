@@ -6,8 +6,6 @@ require "cybertrain/test"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 
 class CreatePosts < Cybertrain::Migration::Base
-  version "20260101000000"
-
   def change
     create_table "posts" do |t|
       t.string "title", null: false
@@ -18,8 +16,6 @@ class CreatePosts < Cybertrain::Migration::Base
 end
 
 class CreateComments < Cybertrain::Migration::Base
-  version "20260101000100"
-
   def change
     create_table "comments" do |t|
       t.references :post
@@ -115,8 +111,6 @@ test "rollback(steps: 2) reverts both migrations back to empty" do
 end
 
 class AddSlugToPosts < Cybertrain::Migration::Base
-  version "20260101000200"
-
   def up
     add_column "posts", "slug", :string
   end
@@ -127,8 +121,6 @@ class AddSlugToPosts < Cybertrain::Migration::Base
 end
 
 class BrokenMigration < Cybertrain::Migration::Base
-  version "20260101000300"
-
   def change
     create_table "widgets" do |t|
       t.string "name"
@@ -276,8 +268,6 @@ end
 # into the ADD COLUMN (SQLite accepts REFERENCES inline there).
 
 class CreateNotes < Cybertrain::Migration::Base
-  version "20260101000400"
-
   def change
     create_table "notes" do |t|
       t.string "text"
@@ -286,16 +276,12 @@ class CreateNotes < Cybertrain::Migration::Base
 end
 
 class AddPostToNotes < Cybertrain::Migration::Base
-  version "20260101000500"
-
   def change
     add_reference "notes", :post
   end
 end
 
 class AddStandaloneForeignKey < Cybertrain::Migration::Base
-  version "20260101000600"
-
   def change
     add_foreign_key "notes", "posts"
   end
@@ -357,24 +343,18 @@ end
 # --- Rolling back a named index drops that index, not the derived name.
 
 class IndexPostsByTitle < Cybertrain::Migration::Base
-  version "20260101000700"
-
   def change
     add_index "posts", ["title"], name: "by_title"
   end
 end
 
 class IndexPostsByViews < Cybertrain::Migration::Base
-  version "20260101000800"
-
   def change
     add_index "posts", ["views"], name: "by_views"
   end
 end
 
 class DropViewsIndex < Cybertrain::Migration::Base
-  version "20260101000900"
-
   def up
     remove_index "posts", ["views"]
   end

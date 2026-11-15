@@ -257,8 +257,6 @@ test "a non-integer id primary key dumps as id: false with the id column kept" d
 end
 
 class StampNoteNotNull < Cybertrain::Migration::Base
-  version "20260301000000"
-
   def change
     change_column_null :stamps, :note, false, "n"
   end

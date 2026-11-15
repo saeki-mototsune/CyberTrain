@@ -293,21 +293,9 @@ module Cybertrain
     #   end
     # @api public
     class Base
-      # Migration version strings ("20260924120000") declared per subclass
-      # via `self.version(v)`. Keyed by class name (a String) rather than a
-      # per-subclass class ivar, per spikes/NOTES.md rule 4.
-      # Seeded with its element type per spikes/NOTES.md rule 9 (h = { "" =>
-      # "" }; h.delete("")), so a program that never declares a migration
-      # version still compiles.
       # change_column_default's `from:` when it is not given (the previous
       # default is then unknown). Not a default anyone writes.
       UNKNOWN_DEFAULT = "<unknown default>"
-
-      VERSIONS = begin
-        h = { "" => "" }
-        h.delete("")
-        h
-      end
 
       def initialize
         @operations = empty_operations
@@ -694,14 +682,6 @@ module Cybertrain
 
       def operations
         @operations
-      end
-
-      def self.version(v)
-        VERSIONS[self.name] = v.to_s
-      end
-
-      def self.version_string
-        VERSIONS[self.name] || ""
       end
 
       # The `down` counterpart of one `change`-recorded operation. Only the

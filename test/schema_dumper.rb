@@ -7,8 +7,6 @@ require "cybertrain/test"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 
 class CreatePosts < Cybertrain::Migration::Base
-  version "20260101000000"
-
   def change
     create_table "posts" do |t|
       t.string "title", null: false, limit: 120
@@ -25,8 +23,6 @@ class CreatePosts < Cybertrain::Migration::Base
 end
 
 class CreateComments < Cybertrain::Migration::Base
-  version "20260101000100"
-
   def change
     create_table "comments" do |t|
       t.references :post
@@ -190,8 +186,6 @@ test "the dumped schema loads back into an identical dump" do
 end
 
 class CreateTrades < Cybertrain::Migration::Base
-  version "20260101000200"
-
   def change
     create_table "trades" do |t|
       t.decimal "price", precision: 18, scale: 8, null: false, default: "0"

@@ -15,8 +15,6 @@ require "cybertrain/test"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 
 class CreateBlog < Cybertrain::Migration::Base
-  version "20260301000000"
-
   def change
     create_table "posts" do |t|
       t.string "title"
@@ -32,8 +30,6 @@ class CreateBlog < Cybertrain::Migration::Base
 end
 
 class ChangeViewsToString < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def up
     change_column :posts, :views, :string, null: false, default: "'none'", limit: 20
   end
@@ -44,80 +40,60 @@ class ChangeViewsToString < Cybertrain::Migration::Base
 end
 
 class ChangeViewsInChange < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column :posts, :views, :string
   end
 end
 
 class ChangeViewsDefault < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_default :posts, :views, from: "0", to: "10"
   end
 end
 
 class ChangeViewsDefaultBlind < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_default :posts, :views, to: "10"
   end
 end
 
 class TitleNotNull < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_null :posts, :title, false, "untitled"
   end
 end
 
 class TitleNotNullPlain < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_null :posts, :title, false
   end
 end
 
 class CommentBodyNullable < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_null :comments, :body, true
   end
 end
 
 class RemovePostReference < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     remove_reference :comments, :post
   end
 end
 
 class RemovePostForeignKey < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     remove_foreign_key :comments, :posts
   end
 end
 
 class RenamePosts < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     rename_table :posts, :articles
   end
 end
 
 class FillSlugs < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     add_column "posts", "slug", :string
     reversible do |dir|
@@ -130,8 +106,6 @@ end
 # A rebuild in a version that also leaves an orphan behind: the foreign key
 # check before the commit finds it and the version rolls back.
 class OrphanAndRebuild < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def up
     execute "INSERT INTO comments (post_id, body) VALUES (999, 'orphan')"
     change_column_default :posts, :views, from: "0", to: "1"
@@ -144,8 +118,6 @@ end
 # Dependent statements in each block: each must run in the order written,
 # both ways.
 class OrderedSteps < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     reversible do |dir|
       dir.up do
@@ -161,24 +133,18 @@ class OrderedSteps < Cybertrain::Migration::Base
 end
 
 class DropViewsDefault < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_default :posts, :views, from: "0", to: nil
   end
 end
 
 class AddViewsDefault < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_default :posts, :body, from: nil, to: "'empty'"
   end
 end
 
 class RemoveAuthorForeignKey < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     remove_foreign_key :comments, :people, column: "author_id"
   end
@@ -187,8 +153,6 @@ end
 # The one rebuild the refusal tests run, on a `things` table each test
 # creates its own way.
 class RebuildThings < Cybertrain::Migration::Base
-  version "20260301000200"
-
   def change
     change_column_default :things, :note, from: nil, to: "'n'"
   end
@@ -458,8 +422,6 @@ test "a table Rails created rebuilds with its expression and partial indexes" do
 end
 
 class TagNoteNotNull < Cybertrain::Migration::Base
-  version "20260301000100"
-
   def change
     change_column_null :posts_tags, :note, false, "none"
   end

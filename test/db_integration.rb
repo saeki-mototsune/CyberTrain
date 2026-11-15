@@ -18,8 +18,6 @@ require "cybertrain/test"
 require "cybertrain/test/client"
 
 class CreateNotes < Cybertrain::Migration::Base
-  version "20260101000000"
-
   def change
     create_table "notes" do |t|
       t.string "title", null: false
