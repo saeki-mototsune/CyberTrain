@@ -31,14 +31,6 @@ module Cybertrain
       def self.ivar_name(column_name) = ModelNaming.ivar_name(column_name)
       def self.shadow_note(what, name) = ModelNaming.shadow_note(what, name)
 
-      # The view methods ModelScan found for `class_name` (empty when its
-      # app/models file is missing or defines none).
-      def self.view_methods_for(class_name, infos) = ModelValidation.view_methods_for(class_name, infos)
-
-      # The scopes ModelScan found for `class_name` (empty when its
-      # app/models file is missing or declares none).
-      def self.scopes_for(class_name, infos) = ModelValidation.scopes_for(class_name, infos)
-
       # { "gen/models/post.rb" => source, ... } for every modelled table, by
       # table name.
       def self.outputs(definition, infos)
@@ -51,21 +43,6 @@ module Cybertrain
         out.delete("")
         validated.each { |v| out["gen/models/" + file_name(v.source_table.name)] = emit_validated(v) }
         out
-      end
-
-      # Writes every gen/models file under `root`; returns the relative paths.
-      # (Gen::Runner does not use this: it goes through `outputs` + sync_file
-      # so unchanged files keep their mtime and --check works. Kept for
-      # test/gen_models_compiles.rb.)
-      def self.write_all(root, definition, infos)
-        Dir.mkdir(root + "/gen") unless Dir.exist?(root + "/gen")
-        Dir.mkdir(root + "/gen/models") unless Dir.exist?(root + "/gen/models")
-        written = Array.new(0) { "" }
-        outputs(definition, infos).each do |path, source|
-          File.write(root + "/" + path, source)
-          written << path
-        end
-        written
       end
 
       # emit_model without any app/models declarations: the associations

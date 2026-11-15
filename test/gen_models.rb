@@ -2485,8 +2485,8 @@ test "view_methods_for picks the scanned methods of one model" do
     Cybertrain::Gen::ModelInfo.empty("comment.rb", "Comment", ["short"]),
     Cybertrain::Gen::ModelInfo.empty("post.rb", "Post", ["summary"])
   ]
-  assert_equal ["summary"], Cybertrain::Gen::ModelsEmitter.view_methods_for("Post", list)
-  assert_equal [], Cybertrain::Gen::ModelsEmitter.view_methods_for("Tag", list)
+  assert_equal ["summary"], Cybertrain::Gen::ModelValidation.view_methods_for("Post", list)
+  assert_equal [], Cybertrain::Gen::ModelValidation.view_methods_for("Tag", list)
 end
 
 test "outputs maps gen/models paths to sources for every table" do
@@ -2583,8 +2583,8 @@ end
 
 test "scopes_for picks the scopes of one model" do
   infos = scoped_infos
-  assert_equal ["recent", "min_views", "window", "titled"], Cybertrain::Gen::ModelsEmitter.scopes_for("Post", infos).map { |s| s.name }
-  assert_equal [], Cybertrain::Gen::ModelsEmitter.scopes_for("Comment", infos)
+  assert_equal ["recent", "min_views", "window", "titled"], Cybertrain::Gen::ModelValidation.scopes_for("Post", infos).map { |s| s.name }
+  assert_equal [], Cybertrain::Gen::ModelValidation.scopes_for("Comment", infos)
   outputs = Cybertrain::Gen::ModelsEmitter.outputs(model_spec_schema, infos)
   assert_includes outputs["gen/models/post.rb"], "  def self.recent = all.recent\n"
   assert_equal EXPECTED_COMMENT, outputs["gen/models/comment.rb"]

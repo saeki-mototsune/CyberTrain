@@ -86,22 +86,6 @@ test "scan_dir finds Comment and Post, Post's summary view method and both decla
   assert_equal [true], infos[0].associations.map { |a| a.counter_cache }
 end
 
-test "write_all writes every model file under gen/models" do
-  Dir.mkdir("tmp") unless Dir.exist?("tmp")
-  root = "tmp/gen_models_test"
-  Dir.mkdir(root) unless Dir.exist?(root)
-  infos = Cybertrain::Gen::ModelScan.scan_dir(FIXTURE + "/app/models")
-  written = Cybertrain::Gen::ModelsEmitter.write_all(root, Cybertrain::Schema.current, infos)
-  assert_equal ["gen/models/comment.rb", "gen/models/post.rb"], written
-  written.each do |path|
-    assert_equal File.read(FIXTURE + "/" + path), File.read(root + "/" + path)
-    File.delete(root + "/" + path)
-  end
-  Dir.rmdir(root + "/gen/models")
-  Dir.rmdir(root + "/gen")
-  Dir.rmdir(root)
-end
-
 test "create and find through the generated classes" do
   reset_tables
   post = Post.create(title: "Generated", body: "works")
