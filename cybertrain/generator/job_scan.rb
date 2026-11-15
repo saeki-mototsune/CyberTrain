@@ -9,17 +9,16 @@ module Cybertrain
     # `NestedJob` is "NestedJob::Stuck"); wait_base the seconds of `wait:`
     # (3 when not given, Rails' default), or 0 with polynomial true for
     # `wait: :polynomially_longer`; attempts the `attempts:` (5 when not
-    # given); a discard line has 0, false, 0. line places error messages.
+    # given); a discard line has 0, false, 0.
     class PolicyInfo
-      attr_reader :policy_kind, :exception_class, :wait_base, :polynomial, :attempts, :line
+      attr_reader :policy_kind, :exception_class, :wait_base, :polynomial, :attempts
 
-      def initialize(policy_kind, exception_class, wait_base, polynomial, attempts, line)
+      def initialize(policy_kind, exception_class, wait_base, polynomial, attempts)
         @policy_kind = policy_kind
         @exception_class = exception_class
         @wait_base = wait_base
         @polynomial = polynomial
         @attempts = attempts
-        @line = line
       end
     end
 
@@ -28,15 +27,15 @@ module Cybertrain
     # another job class: `LeafJob < MidJob`), its policies in declaration
     # order (retry and discard interleaved), its `limits_concurrency`
     # (`to:`, 0 without the line; `key:`, "" without one), whether it
-    # defines `perform` and `retries_exhausted`, and the keyword ("module"
+    # defines `perform`, and the keyword ("module"
     # or "class") of each enclosing name segment, outermost first
     # (["module"] for Admin::ReportJob), which the emitter reopens.
     class JobInfo
       attr_reader :file, :class_name, :superclass_name, :policies, :concurrency_to, :concurrency_key,
-                  :has_perform, :has_exhausted_hook, :scope_keywords
+                  :has_perform, :scope_keywords
 
       def initialize(file, class_name, superclass_name, policies, concurrency_to, concurrency_key, has_perform,
-                     has_exhausted_hook, scope_keywords)
+                     scope_keywords)
         @file = file
         @class_name = class_name
         @superclass_name = superclass_name
@@ -44,7 +43,6 @@ module Cybertrain
         @concurrency_to = concurrency_to
         @concurrency_key = concurrency_key
         @has_perform = has_perform
-        @has_exhausted_hook = has_exhausted_hook
         @scope_keywords = scope_keywords
       end
     end
@@ -74,7 +72,7 @@ module Cybertrain
     # another job class: `LeafJob < MidJob`), wherever it sits in a file
     # (several per file, nested in a module or a class), with one
     # `retry_on` / `discard_on` / `limits_concurrency` macro per line with
-    # literal values, and the `def perform` / `def retries_exhausted`
+    # literal values, and the `def perform`
     # lines. A class that descends from none of these is skipped (a helper
     # may live there). A job inherits its ancestors' policies (its own
     # arms first, then each ancestor's outward) and the nearest limit; a
@@ -223,7 +221,7 @@ module Cybertrain
 
       # A JobInfo with nothing in it (class_name ""): a typed placeholder.
       def self.empty_info
-        JobInfo.new("", "", "", Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }, 0, "", false, false, Array.new(0) { "" })
+        JobInfo.new("", "", "", Array.new(0) { PolicyInfo.new("", "", 0, false, 0) }, 0, "", false, Array.new(0) { "" })
       end
 
       # Every job class under dir (app/jobs), in load order:
@@ -391,12 +389,11 @@ module Cybertrain
         class_indent = d.defined_indent
         skip_indent = -1
         def_indent = -1
-        policies = Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }
+        policies = Array.new(0) { PolicyInfo.new("", "", 0, false, 0) }
         concurrency_to = 0
         concurrency_key = ""
         concurrency_line = 0
         has_perform = false
-        has_hook = false
         lineno = d.defined_line
         while !d.defined_one_line && lineno < lines.size
           raw = lines[lineno]
@@ -445,11 +442,10 @@ module Cybertrain
             reserved_class_method!(file, line, lineno)
             name = ModelScan.def_name(line)
             has_perform = true if name == "perform"
-            has_hook = true if name == "retries_exhausted"
           end
           def_indent = indent if ModelScan.def_opens_body?(line)
         end
-        JobInfo.new(file, class_name, parent, policies, concurrency_to, concurrency_key, has_perform, has_hook, d.defined_scopes)
+        JobInfo.new(file, class_name, parent, policies, concurrency_to, concurrency_key, has_perform, d.defined_scopes)
       end
 
       # "retry_on", "discard_on" or "limits_concurrency" when the line calls
@@ -507,7 +503,7 @@ module Cybertrain
         values = Array.new(0) { "" }
         klass = macro_options(file, line, lineno, macro, names, values)
         resolved = resolve_class(file, lineno, klass, class_name, defined, models, base_file)
-        return PolicyInfo.new("discard", resolved, 0, false, 0, lineno) if macro == "discard_on" && names.empty?
+        return PolicyInfo.new("discard", resolved, 0, false, 0) if macro == "discard_on" && names.empty?
         raise Error, shape(file, line, lineno) if macro == "discard_on"
 
         wait = 3
@@ -526,7 +522,7 @@ module Cybertrain
             raise Error, shape(file, line, lineno)
           end
         end
-        PolicyInfo.new("retry", resolved, wait, polynomial, attempts, lineno)
+        PolicyInfo.new("retry", resolved, wait, polynomial, attempts)
       end
 
       # Reads `macro Klass, name: value, ...` (or `macro(...)`;

@@ -87,14 +87,12 @@ test "the fixture's jobs: WelcomeJob and Admin::ReportJob with their policies in
   assert_equal 1, welcome.concurrency_to
   assert_equal "user_id", welcome.concurrency_key
   assert welcome.has_perform
-  assert welcome.has_exhausted_hook
   report = infos[0]
   assert_equal ["retry", "discard"], report.policies.map { |p| p.policy_kind }
   assert_equal ["StandardError", "ArgumentError"], report.policies.map { |p| p.exception_class }
   assert_equal [0, true, 20], [report.policies[0].wait_base, report.policies[0].polynomial, report.policies[0].attempts]
   assert_equal 0, report.concurrency_to
   assert_equal "", report.concurrency_key
-  refute report.has_exhausted_hook
 end
 
 test "WelcomeJob's run_job: the retry arm with the hook behind OUTCOME_FAILED, then the discard arm" do

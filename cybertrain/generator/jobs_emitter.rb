@@ -36,7 +36,7 @@ module Cybertrain
 
       # A job's own policies, then each ancestor's, nearest first.
       def self.policies_of(info, infos)
-        out = Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }
+        out = Array.new(0) { PolicyInfo.new("", "", 0, false, 0) }
         info.policies.each { |p| out << p }
         JobScan.ancestors(info, infos).each { |a| a.policies.each { |p| out << p } }
         out
