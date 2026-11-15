@@ -586,14 +586,9 @@ end
 # methods). A name with no single type is reserved outright instead
 # (Ident::RESERVED_COLUMN_NAMES: handle), so a name may not be in both, and
 # each typed name keeps a NAME_HOMES row, so a new file defining it fails
-# the homes check too. TYPED_NAME_PENDING lists the definers known to answer
-# another type that a change in flight renames; an entry whose `def` is
-# gone fails, so it is removed when the rename lands.
-# Empty now: BuildLock#release, which answered nil, is BuildLock#release_build_lock.
-TYPED_NAME_PENDING = {}.freeze
+# the homes check too.
 typed = Cybertrain::Ident::FRAMEWORK_METHOD_TYPES
 typed_wrong = []
-typed_pending_seen = []
 typed_problems = []
 typed.each_key do |name|
   typed_problems << "#{name} has no NAME_HOMES row" unless NAME_HOMES.key?(name)
@@ -621,10 +616,6 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
     found.uniq.each do |name|
       next unless typed.key?(name)
 
-      if TYPED_NAME_PENDING.fetch(name, []).include?(rel)
-        typed_pending_seen << [name, rel]
-        next
-      end
       block = []
       k = index - 1
       while k >= 0 && lines[k].lstrip.start_with?("#")
@@ -634,13 +625,6 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
       returns = block.join.scan(/@return \[([^\]]*)\]/).flatten
       typed_wrong << [rel, index + 1, name, returns] unless returns == [typed[name]]
     end
-  end
-end
-TYPED_NAME_PENDING.each do |name, files|
-  files.each do |rel|
-    next if typed_pending_seen.include?([name, rel])
-
-    typed_problems << "TYPED_NAME_PENDING lists #{rel} for #{name}, which no longer defines it; remove the entry"
   end
 end
 
