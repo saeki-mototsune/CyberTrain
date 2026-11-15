@@ -189,13 +189,6 @@ module Cybertrain
     # @api public
     OUTCOME_STALE = :stale
 
-    # last_error keeps at most this many characters of the message.
-    MAX_ERROR_LENGTH = RetryPolicy::MAX_ERROR_LENGTH
-
-    # How many times an outcome write is tried before the row is left to
-    # staleness recovery.
-    OUTCOME_TRIES = Executor::OUTCOME_TRIES
-
     # Job.work_due's default bound: a SQLite call holds its OS worker until
     # it returns, so an unbounded drain could keep requests waiting.
     JOBS_PER_POLL = 20

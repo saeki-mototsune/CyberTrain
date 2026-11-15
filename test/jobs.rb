@@ -355,7 +355,7 @@ test "last_error is bounded" do
   fresh_db
   id = Job.enqueue("long", "", run_at: Time.at(1000))
   assert Job.work_one(1000)
-  assert_equal Job::MAX_ERROR_LENGTH, job_error(id).size
+  assert_equal Job::RetryPolicy::MAX_ERROR_LENGTH, job_error(id).size
 end
 
 test "recover! requeues rows a dead process left running once their heartbeat is stale" do
@@ -421,7 +421,7 @@ test "an outcome write that keeps failing leaves the row to staleness recovery" 
   id = Job.enqueue("record", "lost", run_at: Time.at(1000))
   # Every try of the outcome write raises (a database locked past its busy
   # timeout).
-  Job.fail_outcome_writes(Job::OUTCOME_TRIES)
+  Job.fail_outcome_writes(Job::Executor::OUTCOME_TRIES)
   assert Job.work_one(1000)
   assert_equal "lost", SEEN.join(",")
   assert_equal "running", job_state(id)
