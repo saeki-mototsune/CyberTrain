@@ -6,10 +6,9 @@ require "rbconfig"
 module Cybertrain
   module Preview
     # The C compiler failed on an ffi_source; the message is its output.
-    # Assigned, not a `class ... Error <` line: test/gen_jobs.rb lists the
-    # Error classes under cybertrain/ by reading the sources, and
-    # Gen::JobScan::FRAMEWORK_ERRORS names the ones a compiled program has.
-    # This one exists only under CRuby.
+    # This one exists only under CRuby, so Gen::JobScan::FRAMEWORK_ERRORS
+    # (the exception classes a job macro may name, which test/gen_jobs.rb
+    # lists by reading the sources) leaves cybertrain/preview out.
     CompileError = Class.new(StandardError)
 
     # The cache of compiled libraries is not safe to load from: another

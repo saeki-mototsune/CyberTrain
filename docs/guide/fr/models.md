@@ -1,5 +1,5 @@
 ---
-source_sha256: fbb67f10c05136bc459e5ee0ee29685be84a0247861c738f3c39704e1ed2fb35
+source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
 ---
 # Modèles et base de données
 
@@ -899,6 +899,33 @@ Une colonne nommée comme une méthode que la classe générée ou le framework 
 - L’API de requête (`where`, `order`, `find_by`) prend toujours le nom de colonne SQL (`Post.where(hash: 1)`)&nbsp;; le nom Ruby n’est que celui du lecteur/écrivain et du template.
 
 Une colonne nommée comme une autre méthode d’Object (`display`, `tap`, `methods`) est générée sous son propre nom avec une note. `cybertrain generate scaffold` refuse les mots-clés et les noms réservés (il devrait appeler un lecteur renommé) et accepte un nom masquant avec une note, comme le générateur.
+
+Une colonne nommée comme une méthode du framework qui n’a qu’un type de
+retour garde son nom quand son lecteur renvoie ce type, et est refusée
+sinon&nbsp;: `request_id` (`Cybertrain::Request#request_id`) et `release`
+(`Cybertrain::Config#release`) renvoient une String, donc une colonne
+string, text ou binary de ces noms, nullable ou non, est acceptée, et tout
+autre type arrête `spin run gen`, par exemple
+`table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`.
+Un `request_id` entier issu de `t.references :request` reçoit plutôt le
+conseil de renommer la référence&nbsp;: `t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"` (le `belongs_to` se lit
+alors `source_request`). `handle` nomme des méthodes du framework de types
+différents, donc une colonne `handle` se lit `handle_column` comme les noms
+réservés ci-dessus (l’application appelle `user.handle_column`&nbsp;; les
+requêtes gardent `"handle"`), et `cybertrain generate scaffold` refuse le
+champ&nbsp;:
+`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
+`cybertrain generate scaffold` vérifie ces noms avant d’écrire quoi que ce
+soit&nbsp;: un champ string ou text nommé `request_id` ou `release`, ou un
+champ sans type, est accepté, et tout autre type est refusé (statut de
+sortie 1), comme
+`'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`&nbsp;;
+un champ `references` dont la colonne ou le lecteur `belongs_to` prendrait
+l’un de ces noms est refusé aussi&nbsp;:
+`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`.
+Les noms et les types sont `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`. Non
+vérifiés&nbsp;: un `belongs_to` que gen tire d’une clé étrangère comme
+`release_id`, et un scope nommé `release` ou `request_id`.
 
 Une association dont le nom simple est déjà pris par une colonne, une autre association ou une méthode de `Model` (Rails en laisse une masquer `errors`) est émise sous un nom de repli, avec un commentaire dans le fichier généré&nbsp;: `<table>_as_<column stem>` pour un `has_many` (`comments_as_article`), `<stem>_as_<column>` pour un `belongs_to` (`author_as_author_id`).
 

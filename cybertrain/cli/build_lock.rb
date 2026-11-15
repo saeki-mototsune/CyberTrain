@@ -76,8 +76,15 @@ module Cybertrain
       end
 
       # Deletes the file while the flock is still held, if the path still
-      # names it, then closes the descriptor, which drops the flock.
-      def release
+      # names it, then closes the descriptor, which drops the flock. Answers
+      # nil, and does nothing when this object does not hold the lock. Not
+      # named `release`: Config#release answers a String, and one method
+      # name has one return type across a program (spikes/NOTES.md rules 10
+      # and 34). Not `unlock`: Mutex#unlock is a builtin, and every
+      # application compiles this class, so a call on a loosely typed Mutex
+      # could dispatch over it (rule 62). Not `release_lock`: CLI::Toolchain
+      # defines that.
+      def release_build_lock
         f = @file
         return nil if f.nil?
 

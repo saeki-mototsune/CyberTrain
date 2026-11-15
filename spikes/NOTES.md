@@ -132,6 +132,8 @@ for the evidence needed to change a status.
 | 116, 117 | **Still there**: found on this build (phase 5b, 2026-11-13) and reduced on 2026-11-14 (spikes/phase5/stringio_threads.rb, queue_in_array.rb). |
 | 118 | How a thread test is written: CRuby hides the race, not a Spinel defect (phase 5b, 2026-11-13). |
 | 120 | Tool behaviour, seen 2026-11-13: spin's freshness check for a test binary compares modification times. |
+| 121 | Works on this build: a record of a form that compiles and runs (phase 5b follow-ups, 2026-11-14; test/framework_names_compiles.rb), not of a defect. |
+| 122 | Seen on this build (phase 5b follow-ups, 2026-11-14), not reduced: the require resolution reads a require-shaped line inside a regex literal. |
 | 3 to 6, 11, 15, 19 to 22, 27, 30, 33, 35 to 37, 39, 41, 45, 50, 57 to 59, 63, 69, 71 | Not re-checked. 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
 | 13, 16, 17, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99) have their own rows. |
 
@@ -324,7 +326,7 @@ The rules are numbered in the order they were found. By topic:
 - Dynamic dispatch and blocks: 1, 2, 6, 30, 31, 40, 42, 67, 68, 69, 77, 82, 88,
   90, 92, 93, 95, 97, 103, 111, 113
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
-  43, 51, 62, 66 (second paragraph), 87, 105, 106
+  43, 51, 62, 66 (second paragraph), 87, 105, 106, 121
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
   37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97, 109, 110
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100, 109
@@ -340,7 +342,7 @@ The rules are numbered in the order they were found. By topic:
   91, 102, 112, 114, 115, 116, 117
 - FFI: 15, 59
 - Tests and tools: 23, 24, 36, 41, 63, 84, 92, 98, 105, 107, 108, 110, 114,
-  116, 118, 120
+  116, 118, 120, 122
 
 ## Workarounds that shape the design, and what a Spinel update re-checks
 
@@ -1995,6 +1997,32 @@ explicitly retires a workaround.
      are not changed while a compile of it runs, and a count that does not
      match the file is checked against the binary's age first (compare
      rule 108, spin's freshness check for `bin/gen`).
+
+121. A reader typed `String or nil` and a method of the same name typed
+     `String`, in two unrelated classes of one program, compile and run on
+     Spinel 2026.11.04.7026: a nullable String is the same String pointer
+     (rule 109 says so of a parameter), so rules 10 and 34's "one return
+     type per method name" holds for the pair. A record of a form that
+     works: a generated model's nullable `release` reader (a text or binary
+     column) beside `Cybertrain::Config#release`, and its `request_id`
+     beside `Cybertrain::Request#request_id`, are called in one compiled
+     program in test/framework_names_compiles.rb (phase 5b follow-ups,
+     2026-11-14), which is why gen accepts those columns when they are
+     String-typed (design D10's addendum). Other types under one name were
+     not tried here: gen refuses them, as rule 34 asks.
+
+122. Tool behaviour, observed and not reduced: Spinel's resolution of
+     `require` reads a line that looks like a require of a literal path
+     wherever it stands, inside a regex literal included. In the phase 5b
+     follow-ups (2026-11-14) a test program holding
+     `raw.match(/\A\s*require "cybertrain\/([\w\/]+)"/)` stopped the build
+     with `spinel: cannot load such file -- cybertrain\/([\w\/]+)`, where
+     CRuby ran it (test/gen_jobs.rb; reported by the implementer, not run
+     again here). So a program that scans source text for requires builds
+     the keyword from pieces (`"req" + "uire \"cybertrain/"`) and matches it
+     with `start_with?`, as test/gen_jobs.rb's `core_closure` does since
+     0dac336. A standalone reduced program is still to be written
+     (docs/spinel-feedback.md AR).
 
 <a id="numbers-worth-remembering"></a>
 

@@ -1,7 +1,8 @@
 # Cybertrain.error -- error reporting shaped like Rails.error (spec section
 # 13): `report` records an exception the application rescued, `handle`
 # runs a block and reports what it raised, `subscribe` adds a
-# Cybertrain::ErrorSubscriber. The framework reports what ends a request,
+# Cybertrain::ErrorSubscriber, `add_filter` an ErrorReporter::Filter that
+# may change or drop an event before it is handed on. The framework reports what ends a request,
 # a job's attempt, a scheduled task or a feed through the same reporter.
 #
 # The event (Cybertrain::ErrorEvent) is a value of Strings built on the
@@ -10,24 +11,34 @@
 # `where` and context) and the configuration (env, release), so that it
 # can cross threads (spec section 13.1). It is put on a bounded queue
 # ({ErrorReporter::QUEUE_LIMIT}); one delivery thread, started on the
-# first queued event, hands each event to every subscriber and then to
-# the sender (the Sentry sender, cybertrain/error_reporter/sentry.rb).
+# first queued event, runs the filters over each event, then hands it to
+# every subscriber and then to the sender (the Sentry sender,
+# cybertrain/error_reporter/sentry.rb).
 # Nothing is queued, and no thread starts, while there is no subscriber
 # and the sender does not send.
 #
 # Dedupe: an event with the class, message and `where` of one queued in
 # the last {ErrorReporter::DEDUPE_SECONDS} seconds (by the Clock, so a
-# test travels past it) is not queued again. A full queue drops the event
+# test travels past it) is not queued again; inside a job's attempt the
+# job's id is part of that key too ({ErrorReporter.dedupe_key}), so two
+# jobs of one kind are told apart and two attempts of one job are not.
+# Dedupe is decided when the report is made, before the filters run, on
+# the unfiltered class, message and `where`: a filter that rewrites the
+# message does not change which reports collapse, and an event a filter
+# drops still holds its dedupe slot for the window.
+# A full queue drops the event
 # and counts it; the delivery thread logs `error reports dropped: <n>` at
 # warn at most once every {ErrorReporter::DROP_LOG_SECONDS} seconds.
 #
 # One Mutex covers the dedupe table, the drop count, the queue's size
-# check, the in-flight count and the subscriber list; it is taken on the
-# error path only, and nothing logs or calls a subscriber inside it.
+# check, the in-flight count and the filter and subscriber lists; it is
+# taken on the error path only, and nothing logs or calls a filter or a
+# subscriber inside it.
 require "json"
 require "cybertrain/logger"
 require "cybertrain/clock"
 require "cybertrain/config"
+require "cybertrain/http/stream_failure"
 
 module Cybertrain
   # One error report as a subscriber receives it: Strings (and a Boolean,
@@ -107,6 +118,38 @@ module Cybertrain
       @error_backtrace = backtrace
       @error_occurred_at = occurred_at
     end
+
+    # Replaces the message: what an {ErrorReporter::Filter} calls to
+    # redact it. The class name, `where`, the request's fields and the
+    # backtrace have no setter.
+    # @param text [String]
+    # @return [nil]
+    # @api public
+    def error_message=(text)
+      @error_message = text.to_s
+      nil
+    end
+
+    # Sets one context entry (key and value as Strings), adding it or
+    # replacing its value: for an {ErrorReporter::Filter}.
+    # @param key [String]
+    # @param value [String]
+    # @return [nil]
+    # @api public
+    def set_error_context(key, value)
+      @error_context[key.to_s] = value.to_s
+      nil
+    end
+
+    # Removes one context entry; nothing happens when there is none. For
+    # an {ErrorReporter::Filter}.
+    # @param key [String]
+    # @return [nil]
+    # @api public
+    def delete_error_context(key)
+      @error_context.delete(key.to_s)
+      nil
+    end
   end
 
   # The base of an error subscriber: override {#report}. Subscribers run
@@ -168,6 +211,31 @@ module Cybertrain
       error.class.name.to_s
     end
 
+    # The context key under which a job's Scope carries the job's id.
+    JOB_ID_KEY = "job.id"
+
+    # The dedupe key of an event: its class name, message and `where`, and
+    # the job's id when the event is reported inside a job's attempt (the
+    # job Scope's context carries `job.id`, Job::Executor.job_scope). So two
+    # jobs of one kind failing alike are two events, and two attempts of
+    # one job inside the window are one. The id is read from the Scope's
+    # context only, never from the caller's `context:`; it is in the key
+    # alone (the event's `where` stays the kind). Outside a job the key is
+    # the class, message and `where`.
+    # @param name [String]
+    # @param text [String]
+    # @param where [String]
+    # @param scoped [Hash{String => String}] the Scope's context
+    # @return [String]
+    # @api private
+    def self.dedupe_key(name, text, where, scoped)
+      key = "#{name}\n#{text}\n#{where}"
+      return key unless scoped.key?(JOB_ID_KEY)
+
+      id = scoped[JOB_ID_KEY].to_s
+      "#{key}\n#{id}"
+    end
+
     # The empty `Hash{String => String}`: what a caller with no context
     # passes to {#report_unhandled} and {#report_message}.
     NO_CONTEXT = ErrorReporter.empty_context
@@ -206,10 +274,63 @@ module Cybertrain
       end
     end
 
+    # The base of an error filter: override {#filter_event}. Filters run on
+    # the reporter's delivery thread, in the order they were added
+    # ({ErrorReporter#add_filter}), before every subscriber and the sender.
+    # Each takes the event and answers true to keep it or false to drop
+    # it; it may change the event's message ({ErrorEvent#error_message=})
+    # and its context ({ErrorEvent#set_error_context},
+    # {ErrorEvent#delete_error_context}) on the way, and the next filter,
+    # the subscribers and the sender see the change. Once one drops it,
+    # the later ones do not run, and nothing receives the event; it is
+    # not counted among the queue's drops.
+    #
+    # Filters run after the dedupe: it was decided when the report was
+    # made, on the unfiltered class, message and `where`. A filter that
+    # rewrites the message does not change which reports collapse, and an
+    # event a filter drops still holds its dedupe slot for
+    # {ErrorReporter::DEDUPE_SECONDS} seconds (a like report in that time
+    # is not queued, so no filter sees it).
+    #
+    # A filter that raises drops the event (fail closed: a filter exists
+    # to keep something from leaving); the failure is logged at error,
+    # `error filter failed: <Filter class>: <Class>: <message>`, and is
+    # never reported.
+    #
+    # What a filter does not reach: the framework's own ERROR log line of
+    # the failure (`job 3 (MailJob) failed: ...`, the 500's line) is
+    # written by the caller before the event exists, unfiltered; so is
+    # anything the application logs itself.
+    # @example config/app.rb
+    #   class RedactSecrets < Cybertrain::ErrorReporter::Filter
+    #     def filter_event(event)
+    #       return false if event.error_class == "PaymentGateway::Declined"
+    #
+    #       event.error_message = event.error_message.sub(ENV.fetch("API_TOKEN", "-"), "[token]")
+    #       event.set_error_context("card", "[filtered]") if event.error_context.key?("card")
+    #       event.delete_error_context("password")
+    #       true
+    #     end
+    #   end
+    #   Cybertrain.error.add_filter(RedactSecrets.new)
+    # @api public
+    class Filter
+      # Keeps or drops one event; the base keeps every event.
+      # @param event [ErrorEvent]
+      # @return [Boolean] true to keep it, false to drop it
+      # @api public
+      def filter_event(event)
+        true
+      end
+    end
+
     # @api public
     def initialize
       @lock = Mutex.new
       # Seeded with the element type, then emptied (rule 9).
+      @filters = Array.new(0) { Filter.new }
+      # How many filters there were when the first test began ({reset!}).
+      @boot_filters = 0
       @subscribers = Array.new(0) { ErrorSubscriber.new }
       # How many subscribers were there when the first test began (-1:
       # none has): {reset!} keeps those, the ones config/app.rb added.
@@ -292,6 +413,18 @@ module Cybertrain
     # @api public
     def subscribe(subscriber)
       @lock.synchronize { @subscribers << subscriber }
+      nil
+    end
+
+    # Adds a filter after those already added; it sees every event
+    # delivered from now on ({Filter}). A filter alone does not make an
+    # event go anywhere: with no subscriber and a sender that does not
+    # send, nothing is queued and no filter runs.
+    # @param filter [Filter]
+    # @return [nil]
+    # @api public
+    def add_filter(filter)
+      @lock.synchronize { @filters << filter }
       nil
     end
 
@@ -378,11 +511,11 @@ module Cybertrain
 
     # The test harness's reset before every test: waits for the queue (up
     # to `seconds`), then empties the dedupe table and the drop count,
-    # drops the subscribers added since the first test began (those added
-    # at boot, by config/app.rb, stay) and puts back the sender that was in
-    # place then. The first call fixes that baseline: a subscriber added
-    # later (an application booted inside the first test) counts as a
-    # test's. It also runs for a case driven by hand inside a running case
+    # drops the subscribers and the filters added since the first test
+    # began (those added at boot, by config/app.rb, stay) and puts back the
+    # sender that was in place then. The first call fixes that baseline: a
+    # subscriber or filter added later (an application booted inside the
+    # first test) counts as a test's. It also runs for a case driven by hand inside a running case
     # (Test.case_begin), which then loses the outer case's subscribers.
     #
     # When the wait runs out (a subscriber or a send still blocked), it
@@ -495,7 +628,7 @@ module Cybertrain
       now = Clock.now
       event = ErrorEvent.new(name, text, where, request_id, request_method, request_path, environment, release,
                              handled, context, trace, now)
-      key = "#{name}\n#{text}\n#{where}"
+      key = ErrorReporter.dedupe_key(name, text, where, scope.scope_context)
       seconds = now.to_f
       @lock.synchronize { queue_locked(event, key, seconds) }
       nil
@@ -535,9 +668,11 @@ module Cybertrain
     def reset_locked
       if @boot_subscribers < 0
         @boot_subscribers = @subscribers.size
+        @boot_filters = @filters.size
         @boot_sender = @sender
       else
         @subscribers.pop while @subscribers.size > @boot_subscribers
+        @filters.pop while @filters.size > @boot_filters
         @sender = @boot_sender
       end
       @recent.clear
@@ -603,19 +738,53 @@ module Cybertrain
       nil
     end
 
-    # Hands the event to every subscriber, then to the sender. Not named
+    # Runs the filters over the event, then (unless one dropped it) hands
+    # it to every subscriber, then to the sender. Not named
     # `deliver` (Mailer#deliver and Stream::Hub#deliver answer other
     # types; spikes/NOTES.md rules 10 and 34).
     def deliver_one(event)
+      filters = Array.new(0) { Filter.new }
       list = Array.new(0) { ErrorSubscriber.new }
       sender = @sender
       @lock.synchronize do
+        @filters.each { |f| filters << f }
         @subscribers.each { |s| list << s }
         sender = @sender
       end
+      return nil unless kept_by_filters?(filters, event)
+
       list.each { |s| deliver_to(s, event) }
       send_to(sender, event)
       nil
+    end
+
+    # Runs the filters in order; false at the first that drops the event
+    # or raises.
+    def kept_by_filters?(filters, event)
+      i = 0
+      while i < filters.size
+        return false unless filter_kept?(filters[i], event)
+
+        i += 1
+      end
+      true
+    end
+
+    # One filter, in a plain rescuing method: a raise drops the event
+    # (fail closed) and is logged.
+    def filter_kept?(filter, event)
+      filter.filter_event(event) ? true : false
+    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      filter_failed(filter, e)
+    rescue NotImplementedError, SystemStackError, ScriptError => e
+      filter_failed(filter, e)
+    end
+
+    def filter_failed(filter, error)
+      text = ErrorReporter.failure_text(error)
+      line = "error filter failed: #{filter.class.name}: #{text}"
+      Cybertrain.logger.error(line)
+      false
     end
 
     # One subscriber, in a plain rescuing method: its failure is logged.
@@ -671,7 +840,31 @@ module Cybertrain
     end
   end
 
+  class ErrorReporter
+    # Installed as {Cybertrain.stream_failure} when this file loads: the
+    # Server's report of a streamed or upgraded body whose writer raised
+    # (the client going away aside), `handled` false, with the request's
+    # Scope (the request id, method and path) and `where` the Scope's
+    # (`"ArticlesController#index"`, `"request"` when no action ran) with
+    # ` (stream)` after it: `"ArticlesController#index (stream)"`. Never
+    # raises ({#report_unhandled}).
+    # @api private
+    class StreamReport < StreamFailure
+      # @param error [Exception]
+      # @return [nil]
+      # @api private
+      def stream_failed(error)
+        at = Logger.current_scope.scope_where
+        at = "request" if at.empty?
+        where = "#{at} (stream)"
+        Cybertrain.error.report_unhandled(error, where, NO_CONTEXT)
+        nil
+      end
+    end
+  end
+
   @error_reporter = ErrorReporter.new
+  Cybertrain.stream_failure = ErrorReporter::StreamReport.new
 
   # The process's error reporter.
   # @example

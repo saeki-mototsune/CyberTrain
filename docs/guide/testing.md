@@ -480,7 +480,9 @@ wants none. `assert_turbo_stream(action:, target:, count: 1)` reads the
 last response, which must be `text/vnd.turbo-stream.html`, or the last
 `render_inline`. To read a live stream as a browser does,
 `client.get_stream(path, events: n)` of a `Cybertrain::Test::Client` runs a
-streaming response in memory ([Realtime](realtime.md)).
+streaming response in memory ([Realtime](realtime.md)). An exception the
+writer raises there goes up into the test; it is not reported, as the server
+reports it in a served application.
 
 ## Testing mail
 
@@ -700,10 +702,10 @@ line appears among the test lines.
 Error reports go to `Cybertrain::Test::SentryReceiver`, a Sentry on
 `127.0.0.1` that `cybertrain/test_help` loads. `cybertrain test` ignores an
 exported DSN, so a test assigns one and puts it back. The example runs
-examples/blog's `NotifyCommentJob`, which raises its own
-`NotifyCommentJob::CommentGone` when the comment it is given is gone and
-discards itself ([Retries and discards](background-and-operations.md#retries-and-discards)); the tutorial's job only logs, so give it that
-`find_by`, the class and `discard_on CommentGone` first:
+examples/blog's `NotifyCommentJob`, which looks its comment up with
+`Comment.find` and discards the job on `Cybertrain::RecordNotFound` when the
+comment is gone ([Retries and discards](background-and-operations.md#retries-and-discards)); the tutorial's job only logs, so give it that
+`Comment.find` and `discard_on Cybertrain::RecordNotFound` first:
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"
@@ -728,7 +730,7 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     perform_enqueued_jobs                                       # a discard does not fail the test
     event = @sentry.received_events(1)[0]                      # waits at most 5 s
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
+    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
   end
 end
 ```

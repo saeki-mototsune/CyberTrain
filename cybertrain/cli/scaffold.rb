@@ -57,6 +57,10 @@ module Cybertrain
         # A references field also defines the reader `def <name>` (post:references
         # -> def post), which answers to the same rules as a column.
         Scaffold.refuse_unusable!(name, "reference") if field.reference?
+        # A column or reader named like a framework method with one fixed
+        # type (Ident::FRAMEWORK_METHOD_TYPES) must answer that type, as gen
+        # demands of the schema afterwards.
+        Scaffold.refuse_framework_type!(field)
 
         field
       end
@@ -171,10 +175,81 @@ module Cybertrain
           raise InvalidArgument, "'#{name}' is a Ruby keyword and cannot name a #{what}"
         when "reserved"
           raise InvalidArgument, "'#{name}' would shadow a method of the generated model (Cybertrain::Model); pick another #{what}"
+        when "framework"
+          raise InvalidArgument, "'#{name}' names framework methods that answer different types " \
+                                 "(#{Ident.untyped_framework_methods(name)}), and a model reader of that name would be " \
+                                 "one more; pick another #{what}"
         else
           raise RuntimeError, "Ident.unusable_reason('#{name}') answered a reason Scaffold.refuse_unusable! has no message for"
         end
         nil
+      end
+
+      # Raises InvalidArgument when `field` would give the model a reader
+      # named like a framework method with one fixed return type
+      # (Ident::FRAMEWORK_METHOD_TYPES: request_id, release) that answers
+      # another type: gen refuses such a column (one method name answers one
+      # type across the program, spikes/NOTES.md rules 10, 34), so the
+      # scaffold refuses the field before it writes anything, with the same
+      # table and type mapping (Ident.reader_type, Ident.type_fits?). The
+      # column of a plain field is nullable (its migration line has no
+      # null: false); a references field's column is a NOT NULL Integer
+      # (t.references), and its reader `def <name>` answers a record, which
+      # never fits. An attachment's columns end in _key, _filename, ... and
+      # cannot be such a name. Returns nil.
+      def self.refuse_framework_type!(field)
+        name = field.field_name
+        return nil if field.attachment?
+
+        if field.reference?
+          column = field.column_name
+          want = Ident.framework_type(column)
+          if want != "" && !Ident.type_fits?(want, Ident.reader_type(:integer, false))
+            raise InvalidArgument, "'#{name}:references' adds the column #{column}, an Integer, but the framework's " \
+                                   "#{Ident.framework_method(column)} answers #{want}, and one method name answers one " \
+                                   "type in the program; name the reference differently: the scaffold cannot point " \
+                                   "another name at #{Inflector.pluralize(name)}, so add an integer field such as " \
+                                   "source_#{column}:integer and write the foreign key and belongs_to :source_#{name}, " \
+                                   "class_name: \"#{Inflector.camelize(name)}\", foreign_key: :source_#{column} by hand"
+          end
+          want = Ident.framework_type(name)
+          if want != ""
+            raise InvalidArgument, "'#{name}:references' would give the model a belongs_to reader #{name} answering " \
+                                   "a record, but the framework's #{Ident.framework_method(name)} answers #{want}, and " \
+                                   "one method name answers one type in the program; name the reference differently"
+          end
+          return nil
+        end
+
+        want = Ident.framework_type(name)
+        return nil if want == ""
+
+        got = Ident.reader_type(Scaffold.schema_type(field.field_type), true)
+        return nil if Ident.type_fits?(want, got)
+
+        raise InvalidArgument, "'#{name}:#{field.field_type}' would give the model a reader #{name} answering #{got}, " \
+                               "but the framework's #{Ident.framework_method(name)} answers #{want}, and one method name " \
+                               "answers one type in the program; pick another field name, or make it a string or text field"
+      end
+
+      # The schema type (Schema::Table's column type Symbol) of a plain
+      # scaffold field type (Field::TYPES but references and attachment).
+      def self.schema_type(field_type)
+        if field_type == "text"
+          :text
+        elsif field_type == "integer"
+          :integer
+        elsif field_type == "float"
+          :float
+        elsif field_type == "boolean"
+          :boolean
+        elsif field_type == "date"
+          :date
+        elsif field_type == "datetime"
+          :datetime
+        else
+          :string
+        end
       end
 
       # Returns the paths it created (files that already exist are reported

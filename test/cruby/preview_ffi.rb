@@ -1,5 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/preview"
+require "cybertrain/generator/job_scan"
 require "tmpdir"
 
 # The CRuby preview's Fiddle shim for the ffi_* DSL (cybertrain/preview/).
@@ -244,17 +245,12 @@ test "a C error carries the compiler's output" do
   assert message.include?("error"), message
 end
 
-test "no file under cybertrain/preview/ declares an Error class by a `class` line (test/gen_jobs.rb scans for them)" do
+test "a job macro may not name a preview class: FRAMEWORK_ERRORS has no Cybertrain::Preview entry" do
   assert_equal "Cybertrain::Preview::CompileError", Cybertrain::Preview::CompileError.name
-  # gen_jobs matches `class <Name>Error <` with a plain name; this also
-  # catches a namespaced `class Foo::BarError <`, so it is the wider check.
-  offenders = []
-  Dir.glob("cybertrain/preview/**/*.rb").sort.each do |path|
-    File.read(path, encoding: "UTF-8").each_line do |line|
-      offenders << "#{path}: #{line.chomp}" if line.match?(/\A\s*class\s+[\w:]*Error\b.*</)
-    end
-  end
-  assert_equal [], offenders
+  # The preview runs only under CRuby; test/gen_jobs.rb leaves
+  # cybertrain/preview/ out of the classes it checks the list against.
+  assert_equal [], Cybertrain::Gen::JobScan::FRAMEWORK_ERRORS.select { |pair| pair[0].start_with?("Cybertrain::Preview::") }
+  assert_equal [], Cybertrain::Gen::JobScan::FRAMEWORK_ERRORS.select { |pair| pair[1].start_with?("preview/") }
 end
 
 Cybertrain::Test.run!

@@ -26,6 +26,10 @@ ok   emit rejects column names that are invalid; reserved ones and keywords are 
 ok   a reserved column name generates under <column>_column with a note; read_attribute and write_attribute take either spelling
 ok   a column named like a hook Ruby calls with an argument reads as <column>_column
 ok   a reserved column or keyword whose fallback name is taken still fails
+ok   a column named like a framework method is accepted when its reader answers the method's type
+ok   a column named like a framework method is refused when its reader answers another type
+ok   a refused column that is the foreign key of a derived belongs_to says to rename the reference
+ok   a column named handle reads as handle_column: ErrorReporter#handle answers its block's value
 ok   a keyword column generates under <column>_column with a note that says keyword; a column named defined keeps its name
 ok   a keyword column whose fallback name is a column fails, naming the keyword
 ok   an association cannot land on the renamed reader of a reserved column
@@ -99,4 +103,4 @@ ok   a model without encrypts keeps the plain casts and the base encrypted_colum
 ok   encrypts of a missing or non-text column, an option or another shape raises with the file and line
 ok   uniqueness on a column the model encrypts is refused at generation, with the file and line
 ok   unique_value_taken? of a model with encrypted columns raises on one before either branch
-101 tests, 953 assertions, 0 failures
+105 tests, 993 assertions, 0 failures

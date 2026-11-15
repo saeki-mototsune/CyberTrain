@@ -1,5 +1,5 @@
 ---
-source_sha256: f6ee38d77620407de059a4835f0fbd9c580fe7c9f822eaf45274666d6d0a26ba
+source_sha256: 7352ab5630a6ce2fdcd80864869365d02d3ffb12e944d4f616a4a29a3a3e3cb1
 ---
 # Tâches de fond et exploitation
 
@@ -97,37 +97,40 @@ de classe et un test pour elle.
   `5.minutes`, une flèche `=>` ou un commentaire en fin de ligne arrête
   `spin run gen` avec le fichier, la ligne et ce qu’il faut écrire à la
   place.
-- **Quelles classes d’exception.** Un `retry_on` ou un `discard_on` nomme une
-  classe que le programme définit avant le job&nbsp;: une classe du cœur
-  (`ArgumentError`, `KeyError`, ...), l’une des classes `...Error` du
-  framework (le générateur ajoute le require nécessaire), ou une classe de
-  l’application définie dans `app/models/`, dans
-  `app/jobs/application_job.rb` ou au-dessus de la ligne dans le fichier du
-  job lui-même. Tout le reste arrête `spin run gen`&nbsp;: sous Spinel, un
-  `rescue` qui nomme une classe que le programme ne définit pas peut avaler
-  toutes les exceptions (spikes/NOTES.md, règle 89). `Cybertrain::RecordNotFound`
-  n’est pas parmi les classes du framework qu’il accepte&nbsp;: un job dont
-  l’enregistrement peut avoir disparu le cherche avec `find_by` et lève une
-  classe à lui, définie au-dessus de la ligne (le `NotifyCommentJob`
-  d’examples/blog)&nbsp;:
+- **Quelles classes d’exception.** Un `retry_on` ou un `discard_on` nomme
+  une classe que le programme définit avant le job&nbsp;: une classe du cœur
+  de Ruby (`ArgumentError`, `KeyError`, ...), toute classe d’exception du
+  framework, quel que soit son nom (`Cybertrain::RecordNotFound`,
+  `Cybertrain::RecordInvalid`, `Cybertrain::DB::Error`, ...&nbsp;; la liste
+  est `Gen::JobScan::FRAMEWORK_ERRORS`, et le générateur ajoute le require
+  dont a besoin une classe hors du cœur), ou une classe de l’application
+  définie dans `app/models/`, dans `app/jobs/application_job.rb` ou
+  au-dessus de la ligne dans le fichier du job lui-même. Tout le reste, une
+  classe du harnais de test comprise, arrête `spin run gen`, comme
+  `PATH:LINE: Cybertrain::Test::AssertionFailed is not a class this program defines (spikes/NOTES.md rule 89)`&nbsp;:
+  sous Spinel, un `rescue` qui nomme une classe que le programme ne définit
+  pas peut avaler toutes les exceptions. Le `NotifyCommentJob`
+  d’examples/blog abandonne un job dont le commentaire a été supprimé et
+  retente tout le reste&nbsp;:
 
   ```ruby
   class NotifyCommentJob < Cybertrain::Job::Base
-    class CommentGone < StandardError
-    end
-
-    discard_on CommentGone
+    discard_on Cybertrain::RecordNotFound
+    retry_on StandardError, wait: 30, attempts: 3
 
     def perform(args)
-      comment = Comment.find_by(id: Cybertrain::Cast.int(args["comment_id"]))
-      raise CommentGone, "comment was deleted; nothing to notify" if comment.nil?
+      comment = Comment.find(Cybertrain::Cast.int(args["comment_id"]))
       # ...
     end
   end
   ```
 
-  Son nom signalé et journalisé est le nom imbriqué,
-  `NotifyCommentJob::CommentGone`.
+  Les bras sont essayés dans l’ordre écrit et le premier qui correspond
+  l’emporte, donc la classe la plus étroite vient d’abord&nbsp;; Rails
+  examine d’abord le gestionnaire déclaré en dernier, si bien que dans une
+  application Rails ces deux lignes vont dans l’autre sens. L’abandon est
+  journalisé
+  `job 12 (NotifyCommentJob) discarded: Cybertrain::RecordNotFound: Couldn't find Comment with id=7`.
 - **`ApplicationJob`.** Une classe `ApplicationJob < Cybertrain::Job::Base`
   dans `app/jobs/application_job.rb` n’est pas un job à part entière&nbsp;:
   ses lignes `retry_on` et `discard_on` s’appliquent à chaque job qui en
@@ -658,6 +661,24 @@ d’exception chez l’appelant. Un lecteur qui cesse de lire la sortie standard
 (un tube plein) bloque tous les threads qui journalisent jusqu’à ce qu’il
 lise de nouveau&nbsp;: gardez le collecteur en marche.
 
+**Un événement, une ligne.** Un saut de ligne dans un message ou dans une
+étiquette s’écrit comme les deux caractères `\n`, un retour chariot comme
+`\r`, si bien qu’un message de plusieurs lignes, ou un faux, ne peut pas
+commencer une ligne à lui&nbsp;:
+`Cybertrain.logger.info("ok\n2026-11-11T12:00:00.000Z ERROR fake")` écrit
+une ligne&nbsp;:
+
+```text sortie — un événement, une ligne
+2026-11-14T09:30:00.120Z INFO ok\n2026-11-11T12:00:00.000Z ERROR fake
+```
+
+Le seul saut de ligne tout à la fin d’un message est la fin de la ligne
+elle-même et n’est pas échappé (`info("done\n")` écrit `done`)&nbsp;; un
+second l’est. Rien d’autre n’est échappé&nbsp;: une barre oblique inverse
+reste telle quelle, et les tabulations, les autres octets de contrôle et
+l’UTF-8 invalide sont écrits tels quels. Les lignes JSON échappent comme
+avant.
+
 **Le niveau.** `c.log_level` dans `config/app.rb`, ou `CYBERTRAIN_LOG_LEVEL`
 (`debug`, `info`, `warn`, `error`, `fatal` ou `none`, en majuscules ou
 minuscules), est le niveau le moins important écrit&nbsp;; `:info` par
@@ -852,14 +873,16 @@ L’événement est une valeur faite de Strings&nbsp;:
   rapports, chacun un vrai échec.
 - Les tentatives échouées d’un job (`where` sa classe ou son type&nbsp;;
   `job.attempt` et `job.max_attempts` dans le contexte), sous la politique
-  par défaut, `retry_on` ou `discard_on`. Une tentative qui échoue avec la
-  classe et le message d’une tentative du même type signalée moins d’une
-  minute avant est journalisée mais pas signalée de nouveau
-  ([Livraison](#error-reporting), ci-dessous)&nbsp;: sous la politique par
-  défaut la première reprise attend une minute, donc chaque tentative est
-  signalée, alors qu’avec `retry_on ..., wait: 30` la tentative qui suit de
-  30 secondes une tentative signalée ne l’est pas. Un abandon est signalé une
-  fois. `job.max_attempts` vaut
+  par défaut, `retry_on` ou `discard_on`. Dans un job, la clé de
+  dédoublonnage contient aussi l’identifiant du job
+  ([Livraison](#error-reporting), ci-dessous)&nbsp;: deux jobs d’un même
+  type qui échouent pareil font deux rapports, et une tentative d’un job qui
+  échoue avec la classe et le message de sa propre tentative signalée moins
+  d’une minute avant est journalisée mais pas signalée de nouveau (sous la
+  politique par défaut la première reprise attend une minute, donc chaque
+  tentative est signalée&nbsp;; avec `retry_on ..., wait: 30` la tentative
+  qui suit de 30 secondes une tentative signalée ne l’est pas). Un abandon
+  est signalé une fois. `job.max_attempts` vaut
   `job_max_attempts` sous la politique par défaut, le `attempts:` de la
   politique sous `retry_on`, et la tentative à laquelle il s’est arrêté sous
   `discard_on`. Un courriel `deliver_later` qui échoue relève du job
@@ -874,22 +897,84 @@ L’événement est une valeur faite de Strings&nbsp;:
   message `feed <name> restarted <n> times in <w> s; exiting`), tous
   `feed:<name>`.
 
-Non signalés&nbsp;: une exception pendant l’écriture d’un corps diffusé (le
-serveur journalise `stream error:`&nbsp;; la réponse a commencé), un job
-dont le type n’a pas de handler, et, en développement, une exception que la
-page de diagnostic lève elle-même en montrant une exception déjà signalée. Chaque ligne de journal que le framework
-écrivait auparavant reste telle quelle&nbsp;; le rapport vient en plus.
+Une exception levée pendant l’écriture d’un corps diffusé (`stream do ...
+end`, Server-Sent Events) ou d’une connexion WebSocket mise à niveau est
+signalée une fois, après la ligne `stream error: <Class>: <message>` du
+serveur, avec l’identifiant, la méthode et le chemin de la requête et le
+`where` `ArticlesController#index (stream)` (`request (stream)` quand
+aucune action n’a tourné). Un client parti (`EOFError`, `IOError`,
+`Errno::ECONNRESET`, `Errno::EPIPE` sortis de l’écrivain) est journalisé
+par cette ligne et non signalé. Non signalés&nbsp;: un job dont le type n’a
+pas de handler, et, en développement, une exception que la page de
+diagnostic lève elle-même en montrant une exception déjà signalée. Chaque
+ligne de journal que le framework écrivait auparavant reste telle
+quelle&nbsp;; le rapport vient en plus.
 
-**Ce qui n’est jamais envoyé.** Les paramètres, les en-têtes, les cookies, la
-session, l’adresse du client et la chaîne de requête ne sont pas dans un
+**Ce qui n’est jamais envoyé.** Les paramètres, les en-têtes, les cookies,
+la session, l’adresse du client et la chaîne de requête ne sont pas dans un
 événement&nbsp;; le chemin d’une requête est filtré comme le filtre le
 journal des requêtes. Seul ce que l’application met dans `context:` est
-ajouté. Les messages d’exception ne sont pas filtrés&nbsp;: un message qui
-contient des données personnelles (le refus d’un serveur SMTP qui nomme le
-destinataire) est envoyé tel quel.
+ajouté. Les messages d’exception sont envoyés tels quels, sauf si un filtre
+les change&nbsp;: un message qui contient des données personnelles (le refus
+d’un serveur SMTP qui nomme le destinataire) en demande un.
+
+**Filtres.** Un filtre est une sous-classe de
+`Cybertrain::ErrorReporter::Filter` qui définit `filter_event(event)`, et
+renvoie vrai pour garder l’événement, faux pour l’abandonner. Il peut
+changer le message (`event.error_message =`) et le contexte
+(`event.set_error_context(key, value)`, `event.delete_error_context(key)`).
+Celui-ci masque les adresses électroniques ASCII simples, sans guillemets, et l’autre abandonne une classe
+que l’application ne veut pas signaler&nbsp;:
+
+```ruby
+# config/app.rb
+class MaskAddresses < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    event.error_message = event.error_message.gsub(/[\w.+-]+@[\w-]+(\.[\w-]+)+/, "[email]")
+    event.delete_error_context("email")
+    true
+  end
+end
+
+class DropDeclinedCards < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    event.error_class != "PaymentGateway::Declined"
+  end
+end
+
+Cybertrain.error.add_filter(MaskAddresses.new)
+Cybertrain.error.add_filter(DropDeclinedCards.new)
+```
+
+Le motif de `MaskAddresses` laisse passer deux sortes d’adresses. Celles qui
+ont des caractères hors ASCII, comme `alice@例え.テスト`&nbsp;: le `\w` de
+Ruby ne correspond qu’aux lettres, chiffres ASCII et à `_` sans propriété
+Unicode demandée. Et celles dont la partie locale est entre guillemets, comme
+`"alice smith"@example.com`&nbsp;: le motif veut une lettre, un chiffre, `.`, `+`, `-`
+ou `_` juste avant le `@`, n’en trouve pas après le guillemet fermant et ne
+correspond à rien dedans, si bien que l’adresse entière reste dans le
+message. Écrivez un motif pour les adresses
+que vous attendez, ou abandonnez plutôt l’événement.
+
+Les filtres tournent sur le thread du rapporteur, dans l’ordre d’ajout, avant
+les abonnés et l’envoyeur&nbsp;; le filtre suivant, les abonnés et Sentry
+voient ce qu’un filtre a changé. Dès qu’un filtre abandonne l’événement, les
+suivants ne tournent pas et personne ne le reçoit (il n’est pas compté parmi
+les abandons de la file). Un filtre qui lève abandonne l’événement, car un
+filtre existe pour empêcher quelque chose de sortir, et journalise
+`error filter failed: <Filter class>: <Class>: <message>` au niveau
+error&nbsp;; il n’est jamais signalé. Le dédoublonnage est décidé avant les
+filtres, sur la classe, le message et le `where` non filtrés&nbsp;: une
+réécriture par un filtre ne change pas les rapports regroupés, et un
+événement qu’un filtre abandonne garde sa place pour la minute. La ligne de
+journal `ERROR` du framework est écrite avant que l’événement existe et
+n’est pas filtrée. Un filtre seul ne met pas les rapports en file (il faut un
+abonné ou un DSN). Les filtres ajoutés dans `config/app.rb` restent pour
+chaque test&nbsp;; un filtre ajouté dans un test est retiré avant le suivant.
 
 **Livraison.** Les rapports vont dans une file de 100 et un thread les livre.
-Une même classe, un même message et un même `where` sont mis en file au plus
+Une même classe, un même message et un même `where` (et, dans un job,
+l’identifiant du job) sont mis en file au plus
 une fois par minute, si bien qu’une page qui échoue pour chaque visiteur avec le
 même message fait un rapport par minute (un message qui porte un
 identifiant, `Couldn't find Article with id=5`, en fait un par message
@@ -978,13 +1063,15 @@ La conception&nbsp;: [docs/design.md](../design.md) D86 et D88.
   posait un voit le sien utilisé seulement s’il est de confiance.
 - `cybertrain_jobs` gagne la colonne `request_id`&nbsp;; le premier processus
   qui touche la table l’ajoute.
-- Le framework définit maintenant des méthodes nommées `request_id` et
-  `release` (chacune renvoie une String) et `handle` (la valeur du bloc).
-  Une colonne de modèle de l’un de ces noms dont le lecteur renvoie un autre
-  type (un `request_id` entier, une clé étrangère) peut arrêter la
-  compilation, car un nom de méthode n’a qu’un type de retour dans tout le
-  programme (règle 34 de spikes/NOTES.md), et gen ne la renomme pas&nbsp;:
-  renommez la colonne.
+- Une ligne de journal en texte ne continue plus sur les lignes
+  suivantes&nbsp;: un saut de ligne ou un retour chariot dans un message ou
+  une étiquette s’écrit `\n` ou `\r`. Ce qui lisait un message sur
+  plusieurs lignes lit les échappements.
+- Une colonne de modèle nommée `handle` se lit maintenant `handle_column`&nbsp;:
+  une application qui a une colonne `users.handle` change ses appels
+  `user.handle` en `user.handle_column` (les requêtes gardent le nom SQL).
+  Les colonnes `request_id` ou `release` qui ne sont pas du texte sont
+  refusées par gen ([Noms de colonnes](models.md#column-names)).
 - `cybertrain test` ignore un `CYBERTRAIN_LOG_FORMAT` et un
   `CYBERTRAIN_SENTRY_DSN` exportés (les tests lisent des lignes de texte et
   n’envoient rien) sauf si `config/app.rb` les fixe. Les tests de mot de passe

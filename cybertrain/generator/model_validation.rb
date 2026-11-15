@@ -319,12 +319,19 @@ module Cybertrain
                                  "a valid attribute name (a column name is an ASCII identifier: ASCII letters, digits and _, " \
                                  "not starting with a digit)"
           end
+          check_framework_type(table, c, places)
           next unless ModelNaming.renamed?(name)
 
           fallback = ModelNaming.reader_name(name)
           # The fallback is `<column>_column`, which no RESERVED_COLUMN_NAMES
           # entry or keyword ends in, so the only way it is taken is by
           # another column of the table.
+          if names.include?(fallback) && Ident.untyped_framework_name?(name)
+            raise ArgumentError, "#{places.at(table.name, name)}table #{table.name}: column #{name.inspect} can be " \
+                                 "neither #{name.inspect} nor #{fallback.inspect} (framework methods that answer " \
+                                 "different types own the first: #{Ident.untyped_framework_methods(name)}; another " \
+                                 "column of the table owns the second); rename a column"
+          end
           if names.include?(fallback)
             raise ArgumentError, "#{places.at(table.name, name)}table #{table.name}: column #{name.inspect} can be " \
                                  "neither #{name.inspect} nor #{fallback.inspect} (a Ruby keyword or a Cybertrain::Model " \
@@ -333,6 +340,52 @@ module Cybertrain
           end
         end
         nil
+      end
+
+      # Raises ArgumentError for a column named like a framework method with
+      # one fixed return type (Ident::FRAMEWORK_METHOD_TYPES:
+      # `request_id`, `release`) whose reader would answer another type: the
+      # reader is a second method of that name, and one name answers one type
+      # across the program (spikes/NOTES.md rules 10, 34), so the build would
+      # stop in Spinel's output, far from the schema. A nullable String column
+      # beside a String method is accepted (FRAMEWORK_METHOD_TYPES says why).
+      # Refused rather than renamed: the reader keeps the column's name in
+      # the application's code, and a rename would change what it calls.
+      def self.check_framework_type(table, column, places)
+        want = ModelNaming.framework_type(column.name)
+        return nil if want == ""
+
+        got = ModelNaming.reader_type(column)
+        return nil if Ident.type_fits?(want, got)
+
+        model = ModelNaming.model_class_name(table.name)
+        method = Ident.framework_method(column.name)
+        raise ArgumentError, "#{places.at(table.name, column.name)}table #{table.name}: column #{column.name.inspect} is " \
+                             "#{column.type}, so model #{model}'s reader #{column.name} would answer #{got}, but the " \
+                             "framework's #{method} answers #{want}, and a method name answers one type across the " \
+                             "program (spikes/NOTES.md rules 10, 34); #{framework_type_advice(table, column.name)}"
+      end
+
+      # What check_framework_type's refusal tells to do: "rename the column",
+      # or, when the column is the foreign key of a belongs_to that
+      # association_plans derives from the schema (`t.references :request`
+      # gives request_id with a foreign key to requests), how to rename the
+      # reference: the column only exists for the association, whose name
+      # follows the column's.
+      def self.framework_type_advice(table, name)
+        return "rename the column" unless name.end_with?("_id")
+
+        table.foreign_keys.each do |fk|
+          next unless fk.column == name
+
+          stem = name[0, name.size - 3]
+          to = fk.to_table.to_s
+          return "it is the foreign key of the belongs_to #{stem} that gen derives from the foreign key to table " \
+                 "#{to}, so rename the reference: in place of t.references :#{stem}, write t.integer " \
+                 "\"source_#{name}\" and s.add_foreign_key \"#{table.name}\", \"#{to}\", column: \"source_#{name}\" " \
+                 "(the belongs_to then reads as source_#{stem})"
+        end
+        "rename the column"
       end
 
       # A binary column's default would have to be bytes the model writes

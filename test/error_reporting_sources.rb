@@ -198,7 +198,7 @@ test "every failed job attempt is reported, with the job's context and its reque
 end
 
 # Plan D11: the reporter keeps one event per class, message and `where`
-# for 60 seconds by the Clock, so a test of every attempt travels past
+# (and, for a job, the job's id) for 60 seconds by the Clock, so a test of every attempt travels past
 # the window between attempts. The worked time (`perform_enqueued_jobs`'s
 # argument) only makes the row due; the Clock is what dedupe reads.
 JOB_AT = Time.utc(2026, 11, 11, 12)
@@ -229,6 +229,21 @@ test "a job's second attempt past the dedupe window is reported; one inside it i
   assert_equal 3, job_attempts(id)
   assert_logged LOG.string, "ERROR", "job #{id} (BoomJob) attempt 3 of 5 failed: RuntimeError: boom; retrying in "
   assert_equal 2, events_after_drain.size
+end
+
+# The dedupe key of a job's failure holds the job's id besides its class,
+# message and `where` (the kind): two jobs of one kind failing alike inside
+# the window are two events; the event's `where` stays the kind.
+test "two jobs of one kind failing alike inside the window are two events" do
+  clear_enqueued_jobs
+  travel_to JOB_AT
+  first = BoomJob.perform_later
+  second = BoomJob.perform_later
+  perform_enqueued_jobs
+  events = events_after_drain
+  assert_equal 2, events.size
+  assert_equal [["RuntimeError", "boom", "BoomJob", first.to_s], ["RuntimeError", "boom", "BoomJob", second.to_s]],
+               events.map { |ev| [ev.error_class, ev.error_message, ev.error_where, ev.error_context["job.id"]] }
 end
 
 test "a retry_on attempt carries the policy's attempts, the second one past the window too" do
@@ -276,6 +291,20 @@ test "a deliver_later that fails is reported as cybertrain mail" do
   assert_equal ["ArgumentError", "cybertrain mail"], [ev.error_class, ev.error_where]
   assert_equal "discarded", job_state(id)
   refute ev.error_message.empty?
+end
+
+test "two deliver_later jobs failing alike inside the window are two events, where cybertrain mail" do
+  clear_enqueued_jobs
+  travel_to JOB_AT
+  payload = JSON.generate({ "to" => "a b@example.com", "subject" => "S", "body" => "b" })
+  first = Job.enqueue("cybertrain mail", payload)
+  second = Job.enqueue("cybertrain mail", payload)
+  perform_enqueued_jobs
+  events = events_after_drain
+  assert_equal 2, events.size
+  assert_equal [["cybertrain mail", first.to_s], ["cybertrain mail", second.to_s]],
+               events.map { |ev| [ev.error_where, ev.error_context["job.id"]] }
+  assert_equal events[0].error_message, events[1].error_message
 end
 
 test "an exception that escapes a job is reported by the job thread, where job thread" do

@@ -11,5 +11,12 @@ ok   valid UTF-8 is kept: U+10FFFF, U+2028, a CJK character, an emoji
 ok   messages with control bytes, invalid UTF-8 and non-ASCII are one valid JSON line
 ok   a JSON line's tag holding invalid UTF-8 or a newline stays one valid JSON line
 ok   a long text line is one line, whole
+ok   a text message with LF, CR and CRLF is one line, each written as backslash-n or backslash-r
+ok   a text message's own last line feed ends the line; any other is escaped
+ok   a tag with a line feed or a carriage return stays inside its brackets on one line
+ok   nothing else is escaped: a backslash, a tab, other control bytes and non-UTF-8 bytes stay as they are
+ok   a text message without a line feed or a carriage return is written byte for byte as before
+ok   a forged line in a text message stays inside the one line
+ok   JSON lines do not change: a newline in the message or a tag is JSON's own escape
 ok   capture_log answers what Cybertrain.logger wrote, debug included, and puts the logger back
-14 tests, 102 assertions, 0 failures
+21 tests, 117 assertions, 0 failures

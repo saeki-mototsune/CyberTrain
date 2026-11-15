@@ -140,7 +140,10 @@ module Cybertrain
       # `"<kind> <id>"`, then the id of the request that enqueued it when
       # it was enqueued in one and {Config#log_tags} includes :request_id;
       # `where` is the kind; the context holds `job.id`, `job.attempt` and
-      # `job.max_attempts`.
+      # `job.max_attempts`. The reporter's dedupe key reads `job.id` from
+      # this context ({ErrorReporter.dedupe_key}): two jobs of one kind
+      # failing alike are two reports, two attempts of one job inside the
+      # window one.
       #
       # `job.max_attempts` in an error report (docs/design.md D88) means, by how the
       # attempt failed:

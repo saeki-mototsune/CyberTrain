@@ -158,6 +158,35 @@ test "one envelope per event, with Sentry's auth header" do
   assert_equal trace_size > 0, !frame.empty?
 end
 
+# Rewrites the message and the context, as an application's redaction.
+class RedactToken < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    event.error_message = event.error_message.sub("tok-123", "[token]")
+    event.set_error_context("order_id", "[filtered]")
+    true
+  end
+end
+
+test "the envelope carries what a filter left of the event" do
+  receiver = sentry_receiver("43", "")
+  Cybertrain.error.add_filter(RedactToken.new)
+  scope = Cybertrain::Logger::Scope.new("r-2", "GET", "/things", "ThingsController#index", ["r-2"], 0, no_context)
+  context = no_context
+  context["order_id"] = "7"
+  with_scope(scope) do
+    begin
+      raise "bad token tok-123"
+    rescue RuntimeError => e
+      Cybertrain.error.report_unhandled(e, "", context)
+    end
+  end
+  env = receiver.received_events(1)[0]
+  assert_equal "bad token [token]", env.sentry_field("exception.values.0.value")
+  assert_equal "[filtered]", env.sentry_field("extra.order_id")
+  assert_equal "ThingsController#index", env.sentry_field("transaction")
+  refute env.sentry_body.include?("tok-123"), env.sentry_body
+end
+
 test "an event outside a request has no tags, request, transaction or release" do
   receiver = sentry_receiver("5", "")
   report_runtime("plain")

@@ -209,8 +209,83 @@ end
 test "a long text line is one line, whole" do
   long = "y" * 100_000
   sink_logger.info("a\nb #{long}")
-  assert_equal 2, SINK.string.count("\n")
-  assert SINK.string.end_with?("Z INFO a\nb #{long}\n")
+  assert_equal 1, SINK.string.count("\n")
+  assert SINK.string.end_with?("Z INFO a\\nb #{long}\n")
+end
+
+# Decision 10 (docs/design.md D86): one event, one text line. A line feed
+# in the message or in a tag is written as the two characters `\n`, a
+# carriage return as `\r`; nothing else is escaped.
+test "a text message with LF, CR and CRLF is one line, each written as backslash-n or backslash-r" do
+  travel_to(Time.utc(2026, 11, 11, 12)) do
+    sink_logger.info("a\nb\rc\r\nd")
+  end
+  assert_equal "2026-11-11T12:00:00.000Z INFO a\\nb\\rc\\r\\nd\n", SINK.string
+  assert_equal 1, SINK.string.count("\n")
+  assert_equal 0, SINK.string.count("\r")
+end
+
+test "a text message's own last line feed ends the line; any other is escaped" do
+  travel_to(Time.utc(2026, 11, 11, 12)) do
+    sink_logger.info("one\n")
+    sink_logger.info("two\n\n")
+    sink_logger.info("three\r\n")
+    sink_logger.info("\n")
+    sink_logger.info("")
+  end
+  assert_equal "2026-11-11T12:00:00.000Z INFO one\n2026-11-11T12:00:00.000Z INFO two\\n\n" \
+               "2026-11-11T12:00:00.000Z INFO three\\r\n2026-11-11T12:00:00.000Z INFO \n" \
+               "2026-11-11T12:00:00.000Z INFO \n", SINK.string
+end
+
+test "a tag with a line feed or a carriage return stays inside its brackets on one line" do
+  travel_to(Time.utc(2026, 11, 11, 12)) do
+    sink_logger.tagged("x\ny", "p\rq\n") { sink_logger.info("tagged") }
+  end
+  assert_equal "2026-11-11T12:00:00.000Z INFO [x\\ny] [p\\rq\\n] tagged\n", SINK.string
+  line = Cybertrain::Logger.format_line("WARN", ["a\nb"], -1, "m\nn")
+  assert line.end_with?(" WARN [a\\nb] m\\nn\n"), line
+  assert_equal 1, line.count("\n")
+end
+
+test "nothing else is escaped: a backslash, a tab, other control bytes and non-UTF-8 bytes stay as they are" do
+  travel_to(Time.utc(2026, 11, 11, 12)) do
+    sink_logger.info("back\\slash \\n tab\there \e[31m \x01 caf\xC3\xA9 \xFF".b)
+  end
+  assert_equal "2026-11-11T12:00:00.000Z INFO back\\slash \\n tab\there \e[31m \x01 caf\xC3\xA9 \xFF\n".b, SINK.string.b
+end
+
+test "a text message without a line feed or a carriage return is written byte for byte as before" do
+  msg = "Completed 200 in 12ms caf\xC3\xA9 [x] \\ \t"
+  line = ""
+  travel_to(Time.utc(2026, 11, 11, 12)) do
+    line = Cybertrain::Logger.format_line("INFO", ["r1", "billing"], 0, msg)
+  end
+  assert_equal "2026-11-11T12:00:00.000Z INFO [r1] [billing] #{msg}\n".b, line.b
+  assert_equal "UTF-8", line.encoding.name
+end
+
+test "a forged line in a text message stays inside the one line" do
+  travel_to(Time.utc(2026, 11, 11, 12)) do
+    sink_logger.info("ok\n2026-11-11T12:00:00.000Z ERROR fake")
+    sink_logger.info("ok\r\n2026-11-11T12:00:00.000Z ERROR fake\n")
+  end
+  lines = SINK.string.split("\n")
+  assert_equal 2, lines.size
+  assert_equal "2026-11-11T12:00:00.000Z INFO ok\\n2026-11-11T12:00:00.000Z ERROR fake", lines[0]
+  assert_equal "2026-11-11T12:00:00.000Z INFO ok\\r\\n2026-11-11T12:00:00.000Z ERROR fake", lines[1]
+  assert_equal ["INFO ok\\n2026-11-11T12:00:00.000Z ERROR fake", "INFO ok\\r\\n2026-11-11T12:00:00.000Z ERROR fake"],
+               LogCapture.entries(SINK.string)
+end
+
+test "JSON lines do not change: a newline in the message or a tag is JSON's own escape" do
+  json_during do
+    travel_to(Time.utc(2026, 11, 11, 12)) do
+      sink_logger.tagged("t\nu") { sink_logger.info("a\nb\r\nc\n") }
+    end
+  end
+  assert_equal %({"time":"2026-11-11T12:00:00.000Z","level":"INFO","tags":["t\\nu"],"message":"a\\nb\\r\\nc"}\n),
+               SINK.string
 end
 
 test "capture_log answers what Cybertrain.logger wrote, debug included, and puts the logger back" do

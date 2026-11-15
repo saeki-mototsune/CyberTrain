@@ -87,33 +87,36 @@ writes a class file and a test for it.
   gen` with the file, the line and what to write instead.
 - **Which exception classes.** A `retry_on` or `discard_on` names a class
   the program defines before the job: a core class (`ArgumentError`,
-  `KeyError`, ...), one of the framework's `...Error` classes (the
-  generator adds the require it needs), or an application class defined in
-  `app/models/`, in `app/jobs/application_job.rb` or above the line in the
-  job's own file. Anything else stops `spin run gen`: under Spinel a
-  `rescue` naming a class the program does not define can swallow every
-  exception (spikes/NOTES.md rule 89). `Cybertrain::RecordNotFound` is not
-  among the framework's classes it takes, so a job whose record may be gone
-  looks it up with `find_by` and raises a class of its own, defined above
-  the line (examples/blog's `NotifyCommentJob`):
+  `KeyError`, ...), any exception class of the framework, whatever its name
+  (`Cybertrain::RecordNotFound`, `Cybertrain::RecordInvalid`,
+  `Cybertrain::DB::Error`, ...; the list is `Gen::JobScan::FRAMEWORK_ERRORS`,
+  and the generator adds the require one outside the core needs), or an
+  application class defined in `app/models/`, in
+  `app/jobs/application_job.rb` or above the line in the job's own file.
+  Anything else, a class of the test harness included, stops `spin run
+  gen`, as in
+  `PATH:LINE: Cybertrain::Test::AssertionFailed is not a class this program defines (spikes/NOTES.md rule 89)`:
+  under Spinel a `rescue` naming a class the program does not define can
+  swallow every exception. examples/blog's `NotifyCommentJob` discards a
+  job whose comment was deleted and retries anything else:
 
   ```ruby
   class NotifyCommentJob < Cybertrain::Job::Base
-    class CommentGone < StandardError
-    end
-
-    discard_on CommentGone
+    discard_on Cybertrain::RecordNotFound
+    retry_on StandardError, wait: 30, attempts: 3
 
     def perform(args)
-      comment = Comment.find_by(id: Cybertrain::Cast.int(args["comment_id"]))
-      raise CommentGone, "comment was deleted; nothing to notify" if comment.nil?
+      comment = Comment.find(Cybertrain::Cast.int(args["comment_id"]))
       # ...
     end
   end
   ```
 
-  Its reported and logged name is the nested one,
-  `NotifyCommentJob::CommentGone`.
+  The arms are tried in the order written and the first that matches wins,
+  so the narrower class comes first; Rails checks the handler declared last
+  first, so in a Rails application these two lines go the other way round.
+  The discard is logged as
+  `job 12 (NotifyCommentJob) discarded: Cybertrain::RecordNotFound: Couldn't find Comment with id=7`.
 - **`ApplicationJob`.** A class `ApplicationJob < Cybertrain::Job::Base` in
   `app/jobs/application_job.rb` is not a job of its own: its `retry_on` and
   `discard_on` lines apply to every job inheriting it, after the job's own,
@@ -593,6 +596,22 @@ raises into its caller. A reader that stops reading standard output (a full
 pipe) blocks every thread that logs until it reads again, so keep the
 collector running.
 
+**One event, one line.** A line feed in a message or in a tag is written
+as the two characters `\n`, a carriage return as `\r`, so a message of
+several lines, or a forged one, cannot start a line of its own:
+`Cybertrain.logger.info("ok\n2026-11-11T12:00:00.000Z ERROR fake")` writes
+one line:
+
+```text output — one event, one line
+2026-11-14T09:30:00.120Z INFO ok\n2026-11-11T12:00:00.000Z ERROR fake
+```
+
+A message's one line feed at its very end is the line's own end and is not
+escaped (`info("done\n")` writes `done`); a second one is. Nothing else is
+escaped: a backslash stays a backslash, and tabs, other control bytes and
+invalid UTF-8 are written as they are. JSON lines escape as they always
+did.
+
 **The level.** `c.log_level` in `config/app.rb`, or `CYBERTRAIN_LOG_LEVEL`
 (`debug`, `info`, `warn`, `error`, `fatal` or `none`, in any case), is the
 least important level written; `:info` by default. `:none` also turns off
@@ -776,14 +795,14 @@ of Strings:
   each a real failure.
 - A job's failed attempts (`where` its class or kind; `job.attempt` and
   `job.max_attempts` in the context), under the default policy, `retry_on`
-  or `discard_on`. An attempt that fails with the class and message of an
-  attempt of the same kind reported less than a minute before is logged but
-  not reported again
-  ([Delivery](#error-reporting), below): under the default policy the first
-  retry waits a minute, so each attempt is reported, while with
-  `retry_on ..., wait: 30` the attempt 30 seconds after a reported one is
-  not. A
-  discard is reported once. `job.max_attempts` is `job_max_attempts` under the
+  or `discard_on`. Inside a job the dedupe key holds the job's id as well
+  ([Delivery](#error-reporting), below): two jobs of one kind failing alike
+  are two reports, and an attempt of one job that fails with the class and
+  message of its own attempt reported less than a minute before is logged
+  but not reported again (under the default policy the first retry waits a
+  minute, so each attempt is reported; with `retry_on ..., wait: 30` the
+  attempt 30 seconds after a reported one is not). A discard is reported
+  once. `job.max_attempts` is `job_max_attempts` under the
   default policy, the policy's `attempts:` under `retry_on`, and the
   attempt it ended at under `discard_on`. A `deliver_later` mail that fails
   is the `cybertrain mail` job's. An exception that escapes a job thread's
@@ -796,21 +815,79 @@ of Strings:
   with the message `feed <name> restarted <n> times in <w> s; exiting`),
   all `feed:<name>`.
 
-Not reported: an exception while a streamed body is written (the server
-logs `stream error:`; the response has started), a job whose kind has
-no handler, and, in development, an exception the diagnostics page itself
-raises while it shows one that was already reported. Every log line the framework wrote before stays as it was;
-the report comes in addition.
+An exception raised while a streamed body (`stream do ... end`,
+Server-Sent Events) or an upgraded WebSocket connection is written is
+reported once, after the server's `stream error: <Class>: <message>` line,
+with the request's id, method and path and the `where`
+`ArticlesController#index (stream)` (`request (stream)` when no action
+ran). A client that went away (`EOFError`, `IOError`, `Errno::ECONNRESET`,
+`Errno::EPIPE` out of the writer) is logged with that line and not
+reported. Not reported: a job whose kind has no handler, and, in
+development, an exception the diagnostics page itself raises while it
+shows one that was already reported. Every log line the framework wrote
+before stays as it was; the report comes in addition.
 
 **What is never sent.** The parameters, headers, cookies, the session, the
 client's address and the query string are not in an event; a request's path
 is filtered as the request log filters it. Only what the application puts
-in `context:` is added. Exception messages are not filtered: a message that
-holds personal data (an SMTP server's rejection naming the recipient) is
-sent as it is.
+in `context:` is added. Exception messages are sent as they are, unless a
+filter changes them: a message that holds personal data (an SMTP server's
+rejection naming the recipient) needs one.
+
+**Filters.** A filter is a subclass of `Cybertrain::ErrorReporter::Filter`
+that defines `filter_event(event)`, answering true to keep the event and
+false to drop it. It may change the message (`event.error_message =`) and
+the context (`event.set_error_context(key, value)`,
+`event.delete_error_context(key)`). This one masks simple unquoted ASCII e-mail addresses and the
+other drops a class the application does not want reported:
+
+```ruby
+# config/app.rb
+class MaskAddresses < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    event.error_message = event.error_message.gsub(/[\w.+-]+@[\w-]+(\.[\w-]+)+/, "[email]")
+    event.delete_error_context("email")
+    true
+  end
+end
+
+class DropDeclinedCards < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    event.error_class != "PaymentGateway::Declined"
+  end
+end
+
+Cybertrain.error.add_filter(MaskAddresses.new)
+Cybertrain.error.add_filter(DropDeclinedCards.new)
+```
+
+The pattern in `MaskAddresses` misses two kinds of address. One with
+characters outside ASCII, such as `alice@例え.テスト`: Ruby's `\w` matches
+ASCII letters, digits and `_` unless a Unicode property is asked for. And
+one with a quoted local part, such as `"alice smith"@example.com`: the pattern needs a
+letter, digit, `.`, `+`, `-` or `_` right before the `@`, finds none after
+the closing quote, and matches nothing in it, so the whole address stays in
+the message. Write a pattern for the addresses you expect, or drop the
+event instead.
+
+Filters run on the reporter's thread, in the order added, before the
+subscribers and the sender; the next filter, the subscribers and Sentry see
+what a filter changed. Once one drops the event, the later ones do not run
+and nothing receives it (it is not counted among the queue's drops). A
+filter that raises drops the event, since a filter exists to keep
+something from leaving, and logs
+`error filter failed: <Filter class>: <Class>: <message>` at error; it is
+never reported. The dedupe is decided before the filters, on the
+unfiltered class, message and `where`: a filter's rewrite does not change
+which reports collapse, and an event a filter drops still holds its slot
+for the minute. The framework's own `ERROR` log line is written before the
+event exists and is not filtered. A filter alone does not make reports
+queue (a subscriber or a DSN does). Filters added in `config/app.rb` stay
+for every test; one added in a test is removed before the next.
 
 **Delivery.** Reports go on a queue of 100 and one thread delivers them.
-The same class, message and `where` is queued at most once a minute, so a
+The same class, message and `where` (and, inside a job, the job's id) is
+queued at most once a minute, so a
 page that fails for every visitor with the same message makes one report a
 minute (a message that carries an id, `Couldn't find Article with id=5`,
 makes one per distinct message); when the queue
@@ -894,12 +971,15 @@ The design: [docs/design.md](../design.md) D86 and D88.
   one has it used only when the proxy is trusted.
 - `cybertrain_jobs` gains the column `request_id`; the first process that
   touches the table adds it.
-- The framework now defines methods named `request_id` and `release`
-  (each answering a String) and `handle` (the block's value). A model
-  column of one of those names whose reader answers another type (an
-  integer `request_id`, a foreign key) can stop the build, since a method
-  name has one return type across the program (spikes/NOTES.md rule 34),
-  and gen does not rename it: rename the column.
+- A text log line no longer continues on the next lines: a line feed or
+  carriage return in a message or a tag is written as `\n` or `\r`.
+  Anything that read a multi-line message from several lines reads the
+  escapes instead.
+- A model column named `handle` now reads as `handle_column`: an
+  application with a `users.handle` column changes its `user.handle` calls
+  to `user.handle_column` (queries keep the SQL name). Columns named
+  `request_id` or `release` that are not text are refused by gen
+  ([Column names](models.md#column-names)).
 - `cybertrain test` ignores an exported `CYBERTRAIN_LOG_FORMAT` and
   `CYBERTRAIN_SENTRY_DSN` (tests read text lines and send nothing) unless
   `config/app.rb` sets them. The password tests `generate authentication`

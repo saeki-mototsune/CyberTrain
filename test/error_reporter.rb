@@ -95,9 +95,85 @@ class BootSubscriber < Cybertrain::ErrorSubscriber
   end
 end
 
+# ---- filters -------------------------------------------------------------------
+
+# What the filters saw, in order, as "<filter> <message>".
+FILTERED = Array.new(0) { "" }
+# What the recording sender was handed, as "<message> <context>".
+SENT = Array.new(0) { "" }
+
+def context_text(event)
+  event.error_context.map { |k, v| "#{k}=#{v}" }.join(",")
+end
+
+# Rewrites the message and the context: what a redaction does.
+class Redact < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    FILTERED << "Redact #{event.error_message}"
+    event.error_message = event.error_message.sub("4111-1111", "[card]")
+    event.set_error_context("card", "[filtered]") if event.error_context.key?("card")
+    event.delete_error_context("password")
+    true
+  end
+end
+
+# Drops what mentions "noise".
+class DropNoise < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    FILTERED << "DropNoise #{event.error_message}"
+    !event.error_message.include?("noise")
+  end
+end
+
+# Appends its tag to the message, to show the order filters run in.
+class Tag < Cybertrain::ErrorReporter::Filter
+  def initialize(tag)
+    @tag = tag
+  end
+
+  def filter_event(event)
+    event.error_message = "#{event.error_message} #{@tag}"
+    true
+  end
+end
+
+class FilterBug < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    FILTERED << "FilterBug #{event.error_message}"
+    raise "filter bug"
+  end
+end
+
+class FilterNotWritten < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    raise NotImplementedError, "todo"
+  end
+end
+
+# Drops "dropped at boot": added before the first test, as config/app.rb
+# would, so every reset keeps it.
+class BootFilter < Cybertrain::ErrorReporter::Filter
+  def filter_event(event)
+    event.error_message != "dropped at boot"
+  end
+end
+
+# A sender that sends and records what it was handed.
+class RecordingSender < Cybertrain::ErrorReporter::Sender
+  def sends?
+    true
+  end
+
+  def deliver_event(event)
+    SENT << "#{event.error_message} #{context_text(event)}"
+    true
+  end
+end
+
 # Added before the first test, as config/app.rb would: kept by every reset
 # (pre-flight ruling B8).
 Cybertrain.error.subscribe(BootSubscriber.new)
+Cybertrain.error.add_filter(BootFilter.new)
 
 # Reports a RuntimeError with `message`, rescued here.
 def report_runtime(message)
@@ -152,6 +228,8 @@ end
 
 setup do
   EVENTS.clear
+  FILTERED.clear
+  SENT.clear
   BOOT_SEEN.clear
   STARTED.clear
   RELEASE.clear
@@ -488,6 +566,124 @@ test "report never raises into its caller: a failure is logged and it answers ni
   report_runtime("still works")
   Cybertrain.error.drain_reports(2.0)
   assert_equal ["still works"], EVENTS.map(&:error_message)
+end
+
+test "inside a job's Scope the dedupe key holds the job's id; a caller's job.id does not count" do
+  Cybertrain.error.subscribe(Collect.new)
+  freeze_time
+  job_seven = Cybertrain::Logger::Scope.new("", "", "", "MailJob", Array.new(0) { "" }, -1, { "job.id" => "7" })
+  job_eight = Cybertrain::Logger::Scope.new("", "", "", "MailJob", Array.new(0) { "" }, -1, { "job.id" => "8" })
+  with_scope(job_seven) do
+    report_runtime("alike")
+    report_runtime("alike")
+  end
+  with_scope(job_eight) { report_runtime("alike") }
+  2.times do |i|
+    begin
+      raise "outside"
+    rescue RuntimeError => e
+      Cybertrain.error.report(e, context: { "job.id" => i.to_s })
+    end
+  end
+  Cybertrain.error.drain_reports(2.0)
+  assert_equal [["alike", "MailJob", "7"], ["alike", "MailJob", "8"], ["outside", "", "0"]],
+               EVENTS.map { |e| [e.error_message, e.error_where, e.error_context["job.id"].to_s] }
+end
+
+test "a filter changes the message and the context; the subscribers and the sender see the change" do
+  Cybertrain.error.subscribe(Collect.new)
+  Cybertrain.error.sender = RecordingSender.new
+  Cybertrain.error.add_filter(Redact.new)
+  begin
+    raise ArgumentError, "card 4111-1111 declined"
+  rescue ArgumentError => e
+    Cybertrain.error.report(e, context: { "card" => "4111-1111", "password" => "hunter2", "order" => "7" })
+  end
+  assert Cybertrain.error.drain_reports(2.0)
+  assert_equal ["Redact card 4111-1111 declined"], FILTERED
+  ev = EVENTS.last
+  assert_equal ["ArgumentError", "card [card] declined"], [ev.error_class, ev.error_message]
+  assert_equal({ "card" => "[filtered]", "order" => "7" }, ev.error_context)
+  assert_equal ["card [card] declined"], BOOT_SEEN
+  assert_equal ["card [card] declined card=[filtered],order=7"], SENT
+end
+
+test "a filter that answers false drops the event: no subscriber, no sender, no drop counted" do
+  Cybertrain.error.subscribe(Collect.new)
+  Cybertrain.error.sender = RecordingSender.new
+  Cybertrain.error.add_filter(DropNoise.new)
+  report_runtime("noise")
+  report_runtime("signal")
+  assert Cybertrain.error.drain_reports(2.0)
+  assert_equal ["DropNoise noise", "DropNoise signal"], FILTERED
+  assert_equal ["signal"], EVENTS.map(&:error_message)
+  assert_equal ["signal"], BOOT_SEEN
+  assert_equal ["signal "], SENT
+  assert_equal 0, Cybertrain.error.dropped_count
+end
+
+test "filters run in the order added, after the boot filter, and stop at the first that drops" do
+  Cybertrain.error.subscribe(Collect.new)
+  Cybertrain.error.add_filter(Tag.new("a"))
+  Cybertrain.error.add_filter(DropNoise.new)
+  Cybertrain.error.add_filter(Tag.new("b"))
+  report_runtime("x")
+  report_runtime("noise")
+  report_runtime("dropped at boot")
+  assert Cybertrain.error.drain_reports(2.0)
+  assert_equal ["x a b"], EVENTS.map(&:error_message)
+  # The boot filter dropped the third before DropNoise saw it.
+  assert_equal ["DropNoise x a", "DropNoise noise a"], FILTERED
+end
+
+test "a filter that raises drops the event and is logged, never reported" do
+  Cybertrain.error.subscribe(Collect.new)
+  Cybertrain.error.sender = RecordingSender.new
+  Cybertrain.error.add_filter(FilterBug.new)
+  Cybertrain.error.add_filter(Redact.new)
+  log = capture_log do
+    report_runtime("kept from leaving")
+    assert Cybertrain.error.drain_reports(2.0)
+  end
+  assert_logged log, "ERROR", "error filter failed: FilterBug: RuntimeError: filter bug\n"
+  assert_equal ["FilterBug kept from leaving"], FILTERED
+  assert_equal 0, EVENTS.size
+  assert_equal 0, BOOT_SEEN.size
+  assert_equal 0, SENT.size
+  assert_equal 0, Cybertrain.error.dropped_count
+  # The next event goes through the filters again.
+  log = capture_log do
+    report_runtime("again")
+    assert Cybertrain.error.drain_reports(2.0)
+  end
+  assert_equal 1, LogCapture.count(log, "ERROR", "error filter failed: FilterBug: RuntimeError: filter bug\n")
+  assert_equal ["FilterBug kept from leaving", "FilterBug again"], FILTERED
+end
+
+test "a filter that raises outside StandardError drops the event too" do
+  Cybertrain.error.subscribe(Collect.new)
+  Cybertrain.error.add_filter(FilterNotWritten.new)
+  log = capture_log do
+    report_runtime("todo")
+    assert Cybertrain.error.drain_reports(2.0)
+  end
+  assert_logged log, "ERROR", "error filter failed: FilterNotWritten: NotImplementedError: todo\n"
+  assert_equal 0, EVENTS.size
+end
+
+test "a filter added in a test is gone in the next; the one added at boot stays" do
+  Cybertrain.error.subscribe(Collect.new)
+  report_runtime("noise")
+  report_runtime("dropped at boot")
+  assert Cybertrain.error.drain_reports(2.0)
+  assert_equal ["noise"], EVENTS.map(&:error_message)
+  assert_equal 0, FILTERED.size
+end
+
+test "the base filter keeps every event" do
+  base = Cybertrain::ErrorReporter::Filter.new
+  ev = Cybertrain::ErrorEvent.new("E", "m", "", "", "", "", "", "", false, no_context, Array.new(0) { "" }, NOON)
+  assert_equal true, base.filter_event(ev)
 end
 
 test "Cybertrain.error is one ErrorReporter" do

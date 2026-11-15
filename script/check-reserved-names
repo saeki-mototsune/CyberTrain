@@ -26,7 +26,9 @@
 # and HelperBase growing (see below), and the job generator's
 # JobScan::RESERVED_CLASS_METHODS against jobs_emitter.rb (see below), and
 # keeps each method name of NAME_HOMES defined only in the files its row
-# lists (see below). Run by CI.
+# lists, and every framework method named like a typed column name
+# (Ident::FRAMEWORK_METHOD_TYPES) answering that type (see
+# below). Run by CI.
 #
 # usage: ruby script/check-reserved-names
 require File.expand_path("../cybertrain/ident", __dir__)
@@ -484,12 +486,8 @@ NAME_HOMES = {
   "subscribe" => %w[cybertrain/websocket.rb cybertrain/stream/hub.rb cybertrain/error_reporter.rb],
   "tagged" => %w[cybertrain/logger.rb],
   "request_id" => %w[cybertrain/http/request.rb],
-  # Lease.release (nil) beside Config#release (a String), and
-  # CLI::BuildLock#release (nil), only ever called on a BuildLock: every
-  # application loads it (cybertrain/dev's Rebuilder requires cli/build),
-  # and test/dev_error_page.rb compiles it beside Config#release and calls
-  # it.
-  "release" => %w[cybertrain/lease.rb cybertrain/config.rb cybertrain/cli/build_lock.rb],
+  # Lease.release (nil) beside Config#release (a String).
+  "release" => %w[cybertrain/lease.rb cybertrain/config.rb],
   # DB::Connection#error_message(sql), I18n.error_message and
   # ErrorEvent#error_message: all String.
   "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
@@ -575,9 +573,80 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
   end
 end
 
-if missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty? && scopes_missing.empty? &&
+# A model column named like a framework method with one fixed return type
+# (Ident::FRAMEWORK_METHOD_TYPES: request_id, release) is accepted
+# by gen when its reader answers that type, so every framework method of the
+# name must answer it: each instance `def` or attr_* of the name under
+# cybertrain/ carries `@return [<type>]` in the comment block right above it.
+# A method added later under one of these names with another type fails
+# here instead of in an application's build (one return type per method
+# name, spikes/NOTES.md rules 10, 34). Class methods (`def self.x`,
+# Lease.release) are not counted: a column reader is an instance method,
+# and the class method's receiver is its class (Ident's comment on class
+# methods). A name with no single type is reserved outright instead
+# (Ident::RESERVED_COLUMN_NAMES: handle), so a name may not be in both, and
+# each typed name keeps a NAME_HOMES row, so a new file defining it fails
+# the homes check too. TYPED_NAME_PENDING lists the definers known to answer
+# another type that a change in flight renames; an entry whose `def` is
+# gone fails, so it is removed when the rename lands.
+# Empty now: BuildLock#release, which answered nil, is BuildLock#release_build_lock.
+TYPED_NAME_PENDING = {}.freeze
+typed = Cybertrain::Ident::FRAMEWORK_METHOD_TYPES
+typed_wrong = []
+typed_pending_seen = []
+typed_problems = []
+typed.each_key do |name|
+  typed_problems << "#{name} has no NAME_HOMES row" unless NAME_HOMES.key?(name)
+  typed_problems << "#{name} is in Ident::RESERVED_COLUMN_NAMES too" if Cybertrain::Ident.reserved_column?(name)
+  typed_problems << "#{name} has no method in Ident::FRAMEWORK_METHODS" unless Cybertrain::Ident::FRAMEWORK_METHODS.key?(name)
+end
+# Ident::UNTYPED_FRAMEWORK_NAMES (handle) is the part of
+# RESERVED_COLUMN_NAMES reserved for framework methods of different types:
+# each must be reserved, and none may be typed as well.
+Cybertrain::Ident::UNTYPED_FRAMEWORK_NAMES.each_key do |name|
+  typed_problems << "#{name} is in Ident::UNTYPED_FRAMEWORK_NAMES but not RESERVED_COLUMN_NAMES" unless Cybertrain::Ident.reserved_column?(name)
+  typed_problems << "#{name} is in Ident::UNTYPED_FRAMEWORK_NAMES too" if typed.key?(name)
+end
+instance_def = /^\s*(?:(?:private|protected|public)\s+)?def\s+([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=.])/
+Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
+  rel = file.delete_prefix("#{root}/")
+  lines = File.readlines(file, encoding: "UTF-8")
+  lines.each_with_index do |line, index|
+    next if line.lstrip.start_with?("#")
+
+    found = []
+    m = line.match(instance_def)
+    found << m[1] unless m.nil?
+    attr_names.call(lines, index).each { |name| found << name }
+    found.uniq.each do |name|
+      next unless typed.key?(name)
+
+      if TYPED_NAME_PENDING.fetch(name, []).include?(rel)
+        typed_pending_seen << [name, rel]
+        next
+      end
+      block = []
+      k = index - 1
+      while k >= 0 && lines[k].lstrip.start_with?("#")
+        block << lines[k]
+        k -= 1
+      end
+      returns = block.join.scan(/@return \[([^\]]*)\]/).flatten
+      typed_wrong << [rel, index + 1, name, returns] unless returns == [typed[name]]
+    end
+  end
+end
+TYPED_NAME_PENDING.each do |name, files|
+  files.each do |rel|
+    next if typed_pending_seen.include?([name, rel])
+
+    typed_problems << "TYPED_NAME_PENDING lists #{rel} for #{name}, which no longer defines it; remove the entry"
+  end
+end
+
+if typed_wrong.empty? && typed_problems.empty? && missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty? && scopes_missing.empty? &&
    jobs_missing.empty? && homeless.empty? && home_rows_missing.empty? && fixtures_missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods; #{NAME_HOMES.size} shared method names defined only in their homes; #{fixture_taken.size} test harness names refused as fixture accessors"
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods; #{NAME_HOMES.size} shared method names defined only in their homes; #{fixture_taken.size} test harness names refused as fixture accessors; #{typed.size} column names typed like their framework methods"
 else
   homeless.each do |rel, number, name, homes|
     where = homes.empty? ? "no file may define it yet" : "its homes are #{homes.join(", ")}"
@@ -624,5 +693,13 @@ else
          "(cybertrain/ident.rb), not SHADOWING_COLUMN_NAMES, or a column so named raises ArgumentError at Ruby's call"
   end
   warn "check-reserved-names: #{twice.map(&:inspect).join(", ")} listed twice (reserved, shadowing or keyword)" unless twice.empty?
+  typed_wrong.each do |rel, number, name, returns|
+    said = returns.empty? ? "no @return" : "@return [#{returns.join("], [")}]"
+    warn "check-reserved-names: #{rel}:#{number} defines `#{name}` with #{said}, but a model column of that name is " \
+         "accepted when its reader answers #{typed[name]} (Cybertrain::Ident::FRAMEWORK_METHOD_TYPES, " \
+         "cybertrain/ident.rb): one return type per method name (spikes/NOTES.md rules 10, 34); " \
+         "rename the method, or document it as @return [#{typed[name]}] if it answers that"
+  end
+  typed_problems.each { |problem| warn "check-reserved-names: #{problem} (FRAMEWORK_METHOD_TYPES)" }
   exit 1
 end

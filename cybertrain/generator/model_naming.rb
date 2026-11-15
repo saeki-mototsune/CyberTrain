@@ -53,6 +53,21 @@ module Cybertrain
         renamed?(column_name) ? column_name + "_column" : column_name
       end
 
+      # The Ruby type a column's reader answers, as the refusal spells it
+      # (Ident.reader_type: the Cast helper load_row reads it through,
+      # ModelsEmitter.cast_for). The table of column names typed like a
+      # framework method is Ident::FRAMEWORK_METHOD_TYPES, which the
+      # scaffold reads too.
+      def self.reader_type(column)
+        Ident.reader_type(column.type, column.null)
+      end
+
+      # The type a column's reader must answer because a framework method has
+      # its name (Ident::FRAMEWORK_METHOD_TYPES), "" for any other name.
+      def self.framework_type(column_name)
+        Ident.framework_type(column_name)
+      end
+
       # Whether reader_name renames the column.
       def self.renamed?(column_name)
         Ident.reserved_column?(column_name) || Ident.keyword?(column_name)

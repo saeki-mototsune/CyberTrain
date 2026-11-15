@@ -86,9 +86,10 @@ module Cybertrain
     # `rescue` arm naming an undefined qualified class is matched by its
     # last segment under Spinel and can swallow every exception): a core
     # class (CORE_ERRORS), a framework one (FRAMEWORK_ERRORS, whose file
-    # gen/app.rb requires before the jobs), or an application class defined
-    # under app/models, in app/jobs/application_job.rb, or in the job's own
-    # file above the macro. Anything else raises Error.
+    # the core loads or gen/app.rb requires before the jobs), or an
+    # application class defined under app/models, in
+    # app/jobs/application_job.rb, or in the job's own file above the
+    # macro. Anything else raises Error.
     module JobScan
       class Error < StandardError
       end
@@ -108,11 +109,21 @@ module Cybertrain
                      "IndexError", "IOError", "KeyError", "NameError", "NoMethodError", "RangeError", "RegexpError",
                      "RuntimeError", "StopIteration", "ThreadError", "TypeError", "ZeroDivisionError"]
 
-      # The framework's exception classes (every `class <Name>Error < ...`
-      # under cybertrain/ outside the generator and the CLI), each with the
-      # file under cybertrain/ that defines it. test/gen_jobs.rb checks the
-      # list against the source.
+      # The framework's exception classes, whatever their names
+      # (`Cybertrain::RecordNotFound` as `Cybertrain::Net::TimeoutError`): every
+      # class under cybertrain/ whose ancestry reaches StandardError or
+      # Exception, outside the generator and the CLI (gen and the `cybertrain`
+      # command), the CRuby preview (cybertrain/preview, never compiled) and
+      # the test harness (cybertrain/test.rb and cybertrain/test/, not part of
+      # an application's program), each with the file under cybertrain/ that
+      # defines it. test/gen_jobs.rb checks the list against the source.
       FRAMEWORK_ERRORS = [
+        ["Cybertrain::Assets::UnknownAsset", "assets"],
+        ["Cybertrain::BlobKeyInvalid", "blob_store"],
+        ["Cybertrain::BodyTooLarge", "http/request"],
+        ["Cybertrain::BodyUndecodable", "http/request"],
+        ["Cybertrain::Component::Unknown", "template/interpreter"],
+        ["Cybertrain::Console::UnknownModel", "console"],
         ["Cybertrain::DB::Error", "db/error"],
         ["Cybertrain::Encryptor::Error", "encryptor"],
         ["Cybertrain::HttpClient::Error", "http_client"],
@@ -131,6 +142,12 @@ module Cybertrain
         ["Cybertrain::Mailer::ProtocolError", "mailer"],
         ["Cybertrain::Mailer::InsecureError", "mailer"],
         ["Cybertrain::Mailer::RejectedError", "mailer"],
+        ["Cybertrain::Migration::IrreversibleMigration", "migration"],
+        ["Cybertrain::MissingTemplate", "rendering"],
+        ["Cybertrain::MultipartHeaderTooLarge", "http/multipart"],
+        ["Cybertrain::MultipartMalformed", "http/multipart"],
+        ["Cybertrain::MultipartPartTooLarge", "http/multipart"],
+        ["Cybertrain::MultipartTooManyParts", "http/multipart"],
         ["Cybertrain::Net::Error", "net/socket"],
         ["Cybertrain::Net::TimeoutError", "net/socket"],
         ["Cybertrain::Net::ConnectError", "net/socket"],
@@ -138,9 +155,24 @@ module Cybertrain
         ["Cybertrain::Net::BlockedError", "net/socket"],
         ["Cybertrain::Net::LimitError", "net/socket"],
         ["Cybertrain::Net::ProtocolError", "net/socket"],
+        ["Cybertrain::Params::ParameterMissing", "params"],
+        ["Cybertrain::PortInUse", "http/server"],
+        ["Cybertrain::QueryInvalid", "http/query"],
+        ["Cybertrain::QueryLimitExceeded", "http/query"],
+        ["Cybertrain::QueryMalformed", "http/query"],
+        ["Cybertrain::QueryTooDeep", "http/query"],
+        ["Cybertrain::QueryTooMany", "http/query"],
+        ["Cybertrain::RecordInvalid", "model"],
+        ["Cybertrain::RecordNotFound", "model"],
+        ["Cybertrain::Server::Rejected", "http/server"],
+        ["Cybertrain::Session::CookieOverflow", "session"],
         ["Cybertrain::Template::SyntaxError", "template/ast"],
         ["Cybertrain::Template::RuntimeError", "template/ast"],
         ["Cybertrain::Template::CallSyntaxError", "template/ast"],
+        ["Cybertrain::Template::MissingTemplate", "template/engine"],
+        ["Cybertrain::UnknownCallback", "controller"],
+        ["Cybertrain::Views::NoRoutes", "views"],
+        ["Cybertrain::Views::OutsideRequest", "template/interpreter"],
         ["Cybertrain::WebSocket::Error", "websocket/frame"],
         ["Cybertrain::WebSocket::TimeoutError", "websocket/frame"],
         ["Cybertrain::WebSocket::RefusedError", "websocket/frame"],
@@ -149,15 +181,23 @@ module Cybertrain
         ["Cybertrain::WebSocket::HandshakeError", "websocket/frame"],
         ["Cybertrain::WebSocket::ProtocolError", "websocket/frame"],
         ["Cybertrain::WebSocket::TooLargeError", "websocket/frame"],
-        ["Cybertrain::WebSocket::ClosedError", "websocket/frame"]
+        ["Cybertrain::WebSocket::ClosedError", "websocket/frame"],
+        ["I18n::InvalidLocale", "i18n"],
+        ["I18n::MissingInterpolationArgument", "i18n"],
+        ["I18n::MissingTranslationData", "i18n"]
       ]
 
-      # The files of FRAMEWORK_ERRORS that `require "cybertrain/core"` (and
-      # so `require "cybertrain"`) already loads (core.rb requires
-      # cybertrain/db, which requires db/error; http/parser;
-      # cybertrain/template, which requires template/ast): gen/app.rb
-      # writes no require for them.
-      PRELOADED_FILES = ["db/error", "http/parser", "template/ast"]
+      # The files of FRAMEWORK_ERRORS that `require "cybertrain/core"` (and so
+      # `require "cybertrain"`) already loads, directly or through the files it
+      # requires: gen/app.rb writes no require for them. The others (the
+      # mailer, HttpClient, Net, the WebSocket frame) gen/app.rb requires
+      # before the jobs. test/gen_jobs.rb checks this against core.rb.
+      PRELOADED_FILES = [
+        "assets", "blob_store", "console", "controller", "db/error", "encryptor",
+        "http/multipart", "http/parser", "http/query", "http/request", "http/server", "i18n",
+        "migration", "model", "params", "rendering", "session", "template/ast",
+        "template/engine", "template/interpreter", "views"
+      ]
 
       # The file (under cybertrain/, without .rb) defining a framework
       # exception class; "" for any other name.

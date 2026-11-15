@@ -1900,7 +1900,9 @@ sender in `require "cybertrain"` programs was not measured.
   and no class behind it (the plan's `FeedFailed` class was dropped). Not
   reported: an exception while a streamed body is written (logged as
   `stream error:`), and "no handler registered" for a job kind. Exception
-  messages are not filtered.
+  messages are not filtered. (Both changed on 2026-11-14: a streamed
+  body's exception is reported, and filters may change a message; see
+  "Decided on 2026-11-14" below.)
 - Delivery (13.4, plan D11): a subscriber or sender that raises is logged
   and the delivery thread survives; if it ends anyway, the next report
   starts another. The server, worker and feeds roles each wait up to 2 s
@@ -1984,7 +1986,11 @@ file above `discard_on CommentGone`; the log line is `ERROR
 NotifyCommentJob::CommentGone: comment <n> was deleted; nothing to
 notify`, the row is `discarded`, and one report reaches the subscriber and
 the receiver, with `job.attempt` and `job.max_attempts` both 1 and the
-request id of the request that enqueued it. Each reaches a
+request id of the request that enqueued it. (Since 2026-11-14 the job
+finds the comment with `Comment.find` and writes `discard_on
+Cybertrain::RecordNotFound`, and the line reads `... discarded:
+Cybertrain::RecordNotFound: Couldn't find Comment with id=<n>`; see
+"Decided on 2026-11-14", item 7.) Each reaches a
 `Test::SentryReceiver` through `sentry_dsn` assigned in the test, since
 `cybertrain test` ignores an exported `CYBERTRAIN_SENTRY_DSN` (plan D14). A
 404 is not reported.
@@ -1998,7 +2004,8 @@ and keeps `retry_on StandardError, wait: 30, attempts: 3` for failures
 that may pass. `discard_on Cybertrain::RecordNotFound` is not accepted:
 gen takes only core classes, the framework's `...Error` classes
 (`JobScan::FRAMEWORK_ERRORS`) and application classes defined before the
-job (spikes/NOTES.md rule 89), so the job raises its own class.
+job (spikes/NOTES.md rule 89), so the job raises its own class. (Item 7 of
+"Decided on 2026-11-14" lifted that: the discard itself stands.)
 
 **Left for later** (recorded in the task reviews, none blocking):
 `refute_equal` and Minitest's other `refute_*` names are not defined
@@ -2046,31 +2053,64 @@ sender reads it, with `error_sample_rate`, from `Cybertrain.config` at
 each send, so a test that assigns it is heard at once. `release` and
 `env` are read from `Cybertrain.config` when each event is built.
 
-**Open for the maintainer:**
+**Decided on 2026-11-14.** The maintainer decided each point of the open
+list (docs/superpowers/plans/2026-11-14-phase5b-followups-plan.md), and
+the branch claude/phase5b-followups carried them out:
 
-1. The dedupe key (class, message and `where`, as section 13.4 decided):
-   the review thread on the plan that asked for the job id and attempt in
-   it is still open.
-2. `Application.new(config:)` given a Config other than `Cybertrain.config`:
-   boot validates that Config's DSN, while the sender reads
-   `Cybertrain.config` at each send, as the job executor and the mailer
-   read theirs. Not changed.
-3. A Sentry host on a private network needs `http_allow_private`, which
-   lifts the guard for every outbound call of the application.
-4. Model columns named `request_id`, `release` or `handle` are not
-   reserved names (`Ident::RESERVED_COLUMN_NAMES`); one whose reader
-   answers another type can stop the build (rule 34).
-5. `discard_on` cannot name `Cybertrain::RecordNotFound`; a job raises a
-   class of its own.
-6. An exception while a streamed body is written is logged (`stream
-   error:`) but not reported.
-7. Exception messages are not filtered.
-8. Text log lines write a message's newlines as they are: a message with
-   a newline in it continues on lines that carry no time, level or tags
-   (JSON lines escape it).
+1. The CLI build lock's `release`, which answered nil beside
+   `Config#release` (a String), is renamed `release_build_lock`, so one name keeps one return
+   type.
+2. `RequestId` stays outermost in the supervised development stack.
+3. A job failure's dedupe key holds the job's id (not the attempt): two
+   jobs of one kind failing alike within the window are two reports, two
+   attempts of one job are one. The id is read from the job's Scope, never
+   from the caller's `context:` (design.md D88).
+4. `Application.new(config:)` given a Config other than
+   `Cybertrain.config` stays as it is: boot validates that Config's DSN,
+   the sender reads `Cybertrain.config` at each send.
+5. A Sentry host on a private network still needs `http_allow_private`
+   for the whole application.
+6. Model columns named `request_id` and `release` are accepted when their
+   reader answers a String (string, text or binary, nullable or not) and
+   refused by gen otherwise, with a message naming the column, its type
+   and the method; `handle`, which framework methods of different types
+   share, is reserved and reads as `handle_column`, and the scaffold
+   refuses it (design.md D10).
+7. `retry_on` and `discard_on` name any exception class the framework
+   defines, `Cybertrain::RecordNotFound` included
+   (`Gen::JobScan::FRAMEWORK_ERRORS`, checked by ancestry); the test
+   harness's and the CRuby preview's classes are refused. The blog's
+   `NotifyCommentJob` uses `Comment.find` and `discard_on
+   Cybertrain::RecordNotFound` (design.md D51).
+8. An exception while a streamed or upgraded body is written is
+   reported once, `where` the action with ` (stream)`; a client that went
+   away is logged and not reported (design.md D88).
+9. `Cybertrain.error.add_filter` takes `ErrorReporter::Filter`s that run
+   on the delivery thread before the subscribers and the sender and may
+   change an event's message and context or drop it; a filter that raises
+   drops the event; the dedupe is decided before the filters (design.md
+   D88).
+10. Text log lines escape a line feed and a carriage return as `\n` and
+    `\r`: one event, one line; a message's one trailing line feed is the
+    line's end (design.md D86).
+
+**Still open:** gen does not check a `belongs_to` it derives from a
+foreign key such as `release_id`, nor a scope named `release` or
+`request_id` (the scaffold checks its fields since 2026-11-14: it refuses
+`request_id:integer`, `release:boolean`, `request:references`,
+`release:references` and their like before writing anything, with the
+table `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`); D85's gap, stated fully: a job macro naming a class
+whose file is outside the core makes `gen/app.rb` require that file
+(`cybertrain/mailer`, `cybertrain/http_client`, `cybertrain/net/socket`,
+counted as the mailer's, or `cybertrain/websocket/frame`, counted as the
+feeds') with no line in `bin/NAME.rb`, not widened by this work; the waits
+for the queued reports in `console` and before a development rebuild's
+exec have no test; a test's `Test::Client#get_stream` raises a writer's
+exception into the test instead of reporting it.
 
 **Counts.** `ruby script/gate` counts 234 test programs with snapshots
 (2026-11-14). examples/blog: 157 tests and 1557 assertions in 23
-class-form files, 0 failures (the blog's fix round, 4c314d5), its
+class-form files, 0 failures (the blog's fix round, 4c314d5; 1558
+assertions after the follow-ups, the follow-ups' blog task's run), its
 `gen --check` clean. The full framework suite (`script/test-shard`) runs in CI's four
 shards; its count is not recorded here.

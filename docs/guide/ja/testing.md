@@ -1,5 +1,5 @@
 ---
-source_sha256: 5b60d87552dd1ea4370aeebf33cd278e404c4f2c7a0ce5acccb5edf4a4a5752c
+source_sha256: b82aa50dc1d5b3b82ef82755517e518f5a198f17dd722dfc6ed4bdf66210d16e
 ---
 # アプリをテストする
 
@@ -247,7 +247,7 @@ test "a new comment is broadcast and answered with a Turbo Stream" do
 end
 ```
 
-`assert_broadcasts(stream, count) { }` は、ブロックの間に（ブロックがなければテストの始まりから）ストリーム（名前かレコード）へブロードキャストされたものを数え、その内容を返します。`assert_no_broadcasts(stream)` は 1 つもないことを求めます。`assert_turbo_stream(action:, target:, count: 1)` は最後のレスポンス（`text/vnd.turbo-stream.html` でなければなりません）か、最後の `render_inline` を読みます。ブラウザーのようにライブのストリームを読むには、`Cybertrain::Test::Client` の `client.get_stream(path, events: n)` がストリーミングのレスポンスをメモリ上で動かします（[リアルタイム](realtime.md)）。
+`assert_broadcasts(stream, count) { }` は、ブロックの間に（ブロックがなければテストの始まりから）ストリーム（名前かレコード）へブロードキャストされたものを数え、その内容を返します。`assert_no_broadcasts(stream)` は 1 つもないことを求めます。`assert_turbo_stream(action:, target:, count: 1)` は最後のレスポンス（`text/vnd.turbo-stream.html` でなければなりません）か、最後の `render_inline` を読みます。ブラウザーのようにライブのストリームを読むには、`Cybertrain::Test::Client` の `client.get_stream(path, events: n)` がストリーミングのレスポンスをメモリ上で動かします（[リアルタイム](realtime.md)）。そこでライターが投げた例外はテストに届きます。動いているアプリケーションでサーバーが報告するようには報告されません。
 
 ## メールのテスト
 
@@ -406,7 +406,7 @@ end
 
 行頭の時刻は実行のたびに変わるので（比べるなら `freeze_time` で止めます）、その後ろ、つまりレベル、タグ、メッセージを比べます。アプリケーションのリクエストログはテストでは出ませんが（`log_level :none`）、失敗したジョブの `ERROR` の行はそれでも書かれます。失敗するジョブを実行するテストは上のようにロガーを捕まえます。そうしないと、その行がテストの行の間に出ます。
 
-エラー報告は `Cybertrain::Test::SentryReceiver` に届きます。これは `cybertrain/test_help` が読み込む `127.0.0.1` 上の Sentry です。`cybertrain test` はエクスポートされた DSN を無視するので、テストが DSN を代入し、後で戻します。この例は examples/blog の `NotifyCommentJob` を動かします。これは渡されたコメントがなくなっていると自分の `NotifyCommentJob::CommentGone` を投げて自身を破棄します（[Retries and discards](background-and-operations.md#retries-and-discards)）。チュートリアルのジョブはログを出すだけなので、先にその `find_by`、クラス、`discard_on CommentGone` を足してください：
+エラー報告は `Cybertrain::Test::SentryReceiver` に届きます。これは `cybertrain/test_help` が読み込む `127.0.0.1` 上の Sentry です。`cybertrain test` はエクスポートされた DSN を無視するので、テストが DSN を代入し、後で戻します。この例は examples/blog の `NotifyCommentJob` を動かします。これはコメントを `Comment.find` で探し、コメントがなくなっていると `Cybertrain::RecordNotFound` でジョブを破棄します（[Retries and discards](background-and-operations.md#retries-and-discards)）。チュートリアルのジョブはログを出すだけなので、先にその `Comment.find` と `discard_on Cybertrain::RecordNotFound` を足してください：
 
 ```ruby test/integration/error_reporting_test.rb
 require "test_helper"
@@ -431,7 +431,7 @@ class ErrorReportingTest < ActionDispatch::IntegrationTest
     perform_enqueued_jobs                                       # 破棄でテストは失敗しない
     event = @sentry.received_events(1)[0]                      # 最大 5 秒待つ
     assert_equal "NotifyCommentJob", event.sentry_field("transaction")
-    assert_equal "NotifyCommentJob::CommentGone", event.sentry_field("exception.values.0.type")
+    assert_equal "Cybertrain::RecordNotFound", event.sentry_field("exception.values.0.type")
   end
 end
 ```
