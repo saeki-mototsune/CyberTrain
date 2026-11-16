@@ -34,6 +34,88 @@ or performance targets. The M0 question numbers are **not** the rule IDs below.
 
 The verdicts are 2026.09.12's; row 2 is revisited under "Status on 2026.11.04.7026".
 
+## Status on 2026.11.15.7033
+
+Checked on 2026-11-14 with Spinel 2026.11.14.7031 (2e505bd45), repeated
+on 2026-11-15 with 2026.11.15.7032 (3203cff1a) and again with
+2026.11.15.7033 (a2f3bfaaf), the pinned `Cybertrain::SPINEL_TAG`, built
+from source, by compiling each re-checked
+rule's reduced program (or, where the rule has none, a small probe of the
+shape it describes) and comparing its output with CRuby 4.0.7's
+(`LANG=en_US.UTF-8`, `TZ=UTC`; the 2026.11.04.7026 section compared with
+CRuby 3.3). Each program was also compiled with 2026.11.04.7026
+(a2d06115f), the previous pin, as a control, so that a pass on this pin is
+a change of the compiler and not of the program. All on macOS arm64
+(Darwin 27.2, Apple clang 21.0.0), `spinel prog.rb -o prog` with no flags
+unless the row says so, with the new reduced programs kept in
+`spikes/rechecks/2026.11.15.7033/` and their binaries and outputs outside
+the package (rule 98). A concurrent `spin test` kept
+the load average between 75 and 87, so the timings below are under load.
+On 2026.11.15.7032 and on 2026.11.15.7033 every program was compiled and
+run again and printed what it printed on 2026.11.14.7031, line for line
+(rule 49's timings and rule 116's runs vary from run to run, within what
+the rows give); the rows give the 2026.11.14.7031 run. 2026.11.14.7031 was
+not pinned: it refused `Date.new` with an Array element (`Date.current`,
+cybertrain/clock.rb) and resolved `Time.utc` beside test/cron.rb's
+top-level `utc` to that method, both fixed upstream (matz/spinel#11895,
+#11896). 2026.11.15.7032 was not pinned either: a method that a class
+inherits, called through a dispatch over several classes, ran the parent's
+first definition after the parent redefined it, so test/command_e2e.rb's
+`failing` app ran `Cybertrain::TestCase#setup` in place of the test's own;
+fixed upstream (matz/spinel#11919) and in 2026.11.15.7033.
+Only the rows that were **Still there** on 2026.11.04.7026, and rule 112,
+were re-checked; the rules that were seen only in the whole framework (94,
+96, 97) are left to that pin's `spin test` and examples/blog run.
+
+- **Still there**: the program still differs from CRuby or does not compile.
+- **Reduced program passes**: the rule's own reduced program prints Ruby's
+  result. The failure was not reproduced in that shape; this does not prove
+  its cause is gone in every program.
+- **Probe passes**: a small program of the shape the rule describes prints
+  Ruby's result, but the rule was seen in a larger program and never
+  reduced, so this does not show that it is gone.
+- **Not re-checked**: no one has tried it on this build. That is not a
+  claim either way.
+
+Compiler evidence and project policy are separate. A passing probe is not
+a licence to drop an active workaround: keep it until a dedicated change
+removes it with a test of the affected framework shape. Every workaround
+of "Tied to a build" stays in place on this pin.
+
+| Rule | On 2026.11.15.7033 |
+| --- | --- |
+| 2 | **Still there**, as on 2026.11.04.7026. A block stored in a module's Array and run with `C.new.instance_exec(&b)` compiles on both pins and raises "instance_exec of a proc whose self spinel cannot rebind (NotImplementedError)" when reached; CRuby prints `7`. A proc held in a local and passed straight to `instance_exec` prints `7` on both pins. |
+| 25 | **Still there**, by design (docs/spinel-feedback.md D): `"99999999999999999999".to_i` raises "RangeError: integer overflow parsing "99999999999999999999"" on both pins; CRuby 4.0.7 returns the Bignum. |
+| 49 | Reduced program passes (docs/spinel-feedback.md AC): decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes `0 0 0` ms (`0 0 1` in one run of three), against `76 384 2435`, `84 447 2470` and `88 389 2513` on 2026.11.04.7026; CRuby prints `0 0 0`. |
+| 52 | Reduced program passes (docs/spinel-feedback.md AD): `"a=1&\x81b=2".byteindex("b", 4)` raises IndexError, as under CRuby; 2026.11.04.7026 prints `5`. |
+| 54 | Reduced program passes for the half that failed (docs/spinel-feedback.md AE): `e.class.superclass.name` for a rescued `JSON::ParserError` prints `JSON::JSONError`, as under CRuby; 2026.11.04.7026 raises "undefined method 'superclass' for module JSON::ParserError (NoMethodError)". The user-class half still matches: rechecks/exception_shapes.rb prints its `.expected` on both pins. |
+| 78 | Reduced program passes (docs/spinel-feedback.md K): `@io.puts(line)` on a nil-only `@io` with `require "openssl"` builds and prints `ok`; on 2026.11.04.7026 cc stops with "incompatible pointer types passing 'sp_String *' ... to parameter of type 'const char *'" (sp_io.h). |
+| 79 | Reduced program passes (docs/spinel-feedback.md, "Rule 79"): `out << g { raise "b" }` builds and prints `["b"]`; on 2026.11.04.7026 cc stops with "variable has incomplete type 'void'" (spinel_rt.h, `SP_STR_HDL`). |
+| 80 | **Still there** for `blocking: true` and for no option (docs/spinel-feedback.md AB, the 600 ms `nanosleep` program, three runs each): at `SPINEL_WORKERS=1` it prints `ticks=1` on both pins, at `SPINEL_WORKERS=2` `ticks=10` (once `ticks=9`). The pin adds `ffi_func ... offload: true` (docs/FFI.md, "`offload: true` (Spinel's own)": the C function runs on a pool thread while the caller waits as for I/O; it implies `blocking: true`, and is refused for a variadic function or in a program with an `ffi_callback`). With `offload: true` the same program prints `ticks=10` (once `ticks=9`) at one worker and at two, and still takes 0.61 s, so the call ran its full 600 ms while the worker ran main. 2026.11.04.7026 accepts `offload: true` without a word and prints `ticks=1` at one worker. |
+| 81 | Reduced program passes (docs/spinel-feedback.md R, the third program): `rescue Inner::Oops` inside `Outer::User` prints `oops` with no warning; 2026.11.04.7026 warns "uninitialized constant Inner: defined nowhere in the program" and prints `none`. |
+| 82 | Reduced program passes (docs/spinel-feedback.md Y): a lambda literal in a module-body ivar, called through a reader with a `Ctl`, prints `sess`; 2026.11.04.7026 raises "undefined method 'session' for an instance of Integer (NoMethodError)". docs/spinel-feedback.md recorded the same failure on matz/spinel master 1c0cc5e35, so the fix is later than that commit. |
+| 83 | Reduced program passes (docs/spinel-feedback.md M), run under a pty from CRuby's `PTY.spawn`: `A> ` is shown before a line is typed and `got hi` after it, as under CRuby; 2026.11.04.7026 shows nothing until the line is typed and then `A> got hi`. |
+| 86 | Reduced program passes (docs/spinel-feedback.md Q, both programs, with a small `check` / `eq` in place of `test` / `assert_equal`): all six cases pass, as under CRuby; on 2026.11.04.7026 the boxed Float Range answers `[]`, and `t1..t2` in a Hash value and `Range.new(t1, t2)` raise "TypeError: no implicit conversion of Time into Integer". A probe of a Range of Dates (`d1..d2`, `begin`, `end`, `cover?`) prints CRuby's `2026-01-01 2026-02-01 true false`; 2026.11.04.7026 raises "no implicit conversion of Date into Integer (TypeError)". |
+| 88 | Reduced program passes (docs/spinel-feedback.md Z): a block registered in `Sub`'s body and called with `self` from `Base#run` reaches `Sub#hook` and prints `"sub"`; 2026.11.04.7026 prints `""`. docs/spinel-feedback.md recorded `""` on master 1c0cc5e35 too. Rule 111's narrowing (the block before the override's `def`) is the shape of this program. |
+| 89 | Reduced programs pass (docs/spinel-feedback.md R, the first two): `rescue Outer::Missing` beside a top-level `Missing` raises NameError from the arm (`outer NameError: uninitialized constant Outer::Missing` when wrapped), where 2026.11.04.7026 prints `rescued by Outer::Missing`; `rescue Outer::Mailer::TimeoutError` beside `Outer::Net::TimeoutError` lets the caller see `["NameError"]`, where 2026.11.04.7026 prints `[]`. Both pins still warn "uninitialized constant Outer::Mailer: defined nowhere in the program" for the second. |
+| 90 | Reduced program passes (docs/spinel-feedback.md S): `C.str(yield)` with a String block and an Integer block prints `one 42 a`; 2026.11.04.7026 prints `one 42 a,a`. |
+| 91 | Reduced program passes (docs/spinel-feedback.md T): `exit(1)` on a thread spawned through a method ends the process with status 1 and no output, as under CRuby; 2026.11.04.7026 prints `main still alive` and exits 0. |
+| 92 | **Split.** The program of the rule (`included do before_action :require_admin, only: [:index] end`, with `ActiveSupport::Concern#included(base = nil, &block)` doing nothing) builds and prints `built`; 2026.11.04.7026 refuses it ("unsupported call: ... (CallNode `before_action`) recv=-/ty-1", 1 refusal). This follows from U's fix (rule 93): a block handed to a method that never uses its block is left out. **Still there**, by design, when `included` keeps its block (`@included = block`): both pins refuse the same call. gen's blanked copies in `gen/concerns/` are unaffected either way. |
+| 93 | Reduced program passes (docs/spinel-feedback.md U): prints `false false`, as under CRuby; 2026.11.04.7026 prints `true false`. |
+| 94 | Not reduced: covered by the suite/blog run on this pin, which passes (`spin test` 239 of 239; examples/blog regenerates with no change and `cybertrain test` passes 157 tests) (examples/blog's `spin run gen`, with `Gen::Runner`'s separate scans still in place). |
+| 96 | Not reduced: covered by the suite/blog run on this pin. The framework still walks the pattern itself (`Cybertrain::Strftime.walk`), so that run does not exercise `strftime` with a built pattern. |
+| 97 | Not reduced: covered by the suite/blog run on this pin. `Component` still passes `"#{@name}"`, so that run does not exercise the ivar form. |
+| 100 | Reduced program passes (docs/spinel-feedback.md AF): `round_scale` prints `1.01`, `1.01`, `0.29`, as under CRuby; 2026.11.04.7026 prints `1.01`, `1.0`, `0.28`. spikes/decimal/float_round.rb prints CRuby 4.0.7's output line for line ("through a case/when: 1.01 1.01"); 2026.11.04.7026 still prints "1.0 1.0". CRuby 4.0.7's `JSON.generate` now writes `0.00000001` and `1e+20`, as Spinel does (AH, which CRuby 3.3 wrote `1.0e-08` and `1.0e+20`). |
+| 101 | **Still there** in the generated C: spikes/phase4b/locale_hash.rb's 1,980 pairs are still 1,980 `sp_StrStrHash_set_e` calls in one function, `_sp_main_body`. The cost was not reproduced on this machine on either pin, so it is not shown here either way: `spinel --timing` puts cc_total at 1.4 to 1.5 s (three builds) against 3.3 to 6.7 s on 2026.11.04.7026, and locale_hash_split.rb at 4.0 s and 5.0 s. The rule's 12.5 to 15.2 s were gcc on Linux; re-measure there. The binary's lookups print what CRuby prints. |
+| 104 | Reduced program passes. spikes/phase5/assert_raises.rb with `matches?` walking `superclass` to the top and no `BUILTIN_PARENTS` (the spike's first version, `--strict-require -I .`) prints CRuby's 14 lines; 2026.11.04.7026 raises "undefined method 'superclass' for module RuntimeError (NoMethodError)" after three. The spike as saved prints CRuby's lines on both pins. The six lines of docs/spinel-feedback.md AJ print `StandardError` on both pins on this machine, so they are not a control. |
+| 107 | **Still there**: with spikes/phase5/backtrace.rb (`--strict-require -I .`), a release build answers 0 frames for both raises. `-g` answers one `<main>` frame and `--debug` four for the raise three methods deep, as before, but `<main>` now carries its line (`backtrace.rb:60`, `:66`) where 2026.11.04.7026 says line 1; CRuby 4.0.7 also gives `Kernel#Integer` a frame, quotes with `'` and not a backtick. |
+| 109 | Reduced program passes (spikes/phase5/nil_default_time.rb): prints `none` and `1970`, as under CRuby; 2026.11.04.7026 dies with SIGSEGV (exit 139). nil_default_time_fixed.rb prints CRuby's three lines on both pins. |
+| 110 | **Still there**: spikes/phase5/case_nullable_temp.rb does not compile on either pin ("use of undeclared identifier '_o1'; did you mean '_t1'?" at line 65); CRuby prints `amp` and `long`. |
+| 112 | **Still there**: spikes/phase5/flock_fstat.rb prints the same lines on both pins; they differ from CRuby's only in "a.stat names the new file" (CRuby: "old"). `flock` and `IO.for_fd(...).stat` agree with CRuby. |
+| 116 | **Still there**: spikes/phase5/stringio_threads.rb (`SPINEL_WORKERS=4` set by the program) printed nothing in fourteen runs of fifteen on this pin (of the ten whose status was kept, nine exited 134 and one 133); one run printed `2432000`, CRuby's answer. 2026.11.04.7026 printed nothing in fifteen runs of fifteen (exit 134 in all ten whose status was kept). |
+| 117 | Reduced program passes (spikes/phase5/queue_in_array.rb): prints `"hello"` and `"direct"`, as under CRuby; 2026.11.04.7026 raises "no implicit conversion of Hash into Integer (TypeError)". |
+| 1, 3 to 24, 26 to 48, 50, 51, 53, 55 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 122 | Not re-checked on this pin. Their status on 2026.11.04.7026 is in the section above; it is not carried over. |
+
 ## Status on 2026.11.04.7026
 
 Checked on 2026-11-04 with Spinel 2026.11.04.7026 (a2d06115f), the pinned
