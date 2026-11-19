@@ -1,0 +1,17 @@
+outer bad
+outer only raise
+begin;work11;commit;begin;work12;commit;begin;boom;rollback(bad);begin;rollback(only raise);
+begin1;begin2;inner;commit2;outer;commit1;
+false
+begin1;begin2;rollback2(inner fails);inner rescued;outer continues;commit1;
+false
+broke at 1
+ensure ran
+broke ensured
+returned from user at 1
+broke forwarded 1
+QueryTooDeep limit=true index=false std=true
+KeyError limit=false index=true std=true
+ArgumentError limit=false index=false std=true
+body1;ensure1;body2;ensure2;
+6

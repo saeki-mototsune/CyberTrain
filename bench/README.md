@@ -3,8 +3,8 @@
 The CyberTrain-vs-Rails benchmark: [docs/benchmark.md](../docs/benchmark.md)
 has the method, the recorded results and how to run it.
 
-The two apps are out of step at the moment, and `run` stops at its static
-request: [The apps today](../docs/benchmark.md#the-apps-today) says what has
+The two apps are out of step at the moment, and `run` stops while seeding
+examples/blog: [The apps today](../docs/benchmark.md#the-apps-today) says what has
 to be done before the next run.
 
 - `run` builds [examples/blog](../examples/blog) (`cybertrain build`) and

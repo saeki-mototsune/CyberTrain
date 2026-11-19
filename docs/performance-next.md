@@ -2,10 +2,14 @@
 
 Where CyberTrain's request path stands after the work in
 [benchmark.md](benchmark.md), and what could still be done, with the
-measurement behind each item so nobody has to repeat it. Last reviewed on
+measurement behind each item so nobody has to repeat it. The request-path
+sections ("Where it stands now", the candidates) were last reviewed on
 2026-11-05 against cybertrain 0.4.1 (dade561) and the pinned Spinel
-2026.11.04.7026; every number says which build it is from, and a number
-from an older build has not been re-measured unless it says so.
+2026.11.04.7026, before phases 1 to 5b changed the framework and
+examples/blog's pages ([benchmark.md](benchmark.md#the-apps-today)); the
+development-flow section is of 2026-11-12 and 2026-11-13. Every number says
+which build it is from, and a number from an older build has not been
+re-measured unless it says so.
 
 Requests per second are for [examples/blog](../examples/blog), one core, 16
 connections, on the cloud VM described in benchmark.md; that VM runs the
@@ -112,6 +116,9 @@ marked 2026.09.12 are from 2026-10-09 and were not re-derived; counts
 marked 2026.11.04.7026 are from the reports of 2026-11-05, by the function
 that allocates. The code each item names was checked against dade561.
 
+Still open: 1 to 5 and 7. Done: 8, 9, 12, 13 and 14. Overtaken by a later
+change: 6. Explained and worked around: 10. Held: 11.
+
 1. **Partial output buffers, about 22 objects on 2026.09.12 (4%).**
    `Interpreter#render` makes a `String.new` per partial and its result is
    converted to an immutable String on return (a second copy). Rendering a
@@ -166,6 +173,10 @@ that allocates. The code each item names was checked against dade561.
    digest is asked for (packages/digest/digest.rb), so it saves nothing
    here: this needs the runtime's SHA-256 state exposed, or a C helper. On
    2026.11.04.7026: 7 in `Session.load`, 5 in `Crypto.hmac_digest`.
+   Overtaken on 2026-11-11 (design.md D61): the session cookie is now sealed
+   with AES-256-GCM through `Encryptor` (OpenSSL), so `Crypto.hmac_digest`
+   is off the session path and the counts above describe 0.4.1. What the
+   encrypted cookie allocates per request has not been counted.
 7. **Rows, about 30 on 2026.09.12.** `read_row` makes one String per text
    column (an FFI `:str` return copies). Reading text columns lazily would
    need the statement to stay open, or a C helper that copies into a
@@ -220,12 +231,17 @@ that allocates. The code each item names was checked against dade561.
    request path: a block that captures locals costs its method a cell per
    captured local on every call, so write a `while` loop, or keep the
    block in a method that is called only when it is needed.
-10. **A second worker adds nothing to the pages on 2026.11.04.7026 (not
-    objects).** In the run of 2026-11-05 `SPINEL_WORKERS=2` on two cores
+10. **A second worker added nothing to the pages on 2026.11.04.7026 (not
+    objects): explained and worked around 2026-11-05.** In the run of 2026-11-05 `SPINEL_WORKERS=2` on two cores
     gives 0 to 2% more requests a second on the pages and 19% on the POST,
-    against 9 to 25% and 58% on 2026-10-09. A check after that run found
-    one CPU's worth of time used out of two, so the second worker mostly
-    waits. The cause has not been looked for
+    against 9 to 25% and 58% on 2026-10-09. The cause is in how this Spinel
+    counts workers, not in the framework: an explicit `SPINEL_WORKERS=N`
+    counts the main thread, which in a server only waits, so N=2 served
+    every request from one OS thread (spinel-feedback.md L). Done
+    2026-11-05: `Application.spinel_workers` asks Spinel for one more worker
+    than `config.workers` when it is above 1 (pull request #128); in one
+    later session two workers then gave +24%, +44%, +22% and +44% (list,
+    article, static file, POST). The recorded two-core rows predate that
     ([benchmark.md](benchmark.md), "Reading the results").
 11. **Compiling templates to Ruby methods for production (held, not
     objects).** The interpreter's own work was at most 11.6% of the profile
@@ -237,17 +253,16 @@ that allocates. The code each item names was checked against dade561.
     add a second way of running a template beside the one development uses.
     Reopen it if a new profile puts the interpreter's own share well above
     what candidates 1 to 7 could recover.
-12. **`includes`, a bulk `WHERE fk IN (...)` load (held, not objects).** The
-    article page runs 2 queries, not one per comment, so examples/blog does
-    not have the N+1 this would remove. It is a feature for applications
-    that do. Reopen it when one does, with its query count; generated models
-    would need a typed place to keep the preloaded records. Done
-    2026-11-06 as a feature, not for examples/blog: `includes` / `preload`
-    on the generated Relation (phase 2 data layer spec, section 8), the
-    records kept in the per-model Relation and the readers' cache ivars.
+12. **`includes`, a bulk `WHERE fk IN (...)` load (not objects): done
+    2026-11-06 as a feature.** The article page ran 2 queries, not one per
+    comment, so examples/blog did not have the N+1 this removes, and it was
+    held as a performance item. It shipped as a feature: `includes` /
+    `preload` on the generated Relation (phase 2 data layer spec, section 8;
+    design.md D47), the records kept in the per-model Relation and the
+    readers' cache ivars.
 13. **Several processes on one port (not objects): done 2026-11-05.**
-    `SPINEL_WORKERS=2` adds nothing to the pages (candidate 10), and processes
-    do. `CYBERTRAIN_REUSE_PORT` lets N processes share a port on Linux
+    In the run of 2026-11-05 `SPINEL_WORKERS=2` added nothing to the pages
+    (candidate 10, since explained), and processes did. `CYBERTRAIN_REUSE_PORT` lets N processes share a port on Linux
     ([design.md](design.md) D35, [deploy.en.md](deploy.en.md)). Linux arm64 in
     Docker on a Mac, wrk with 32 connections, `GET /articles/1`, without
     `SPINEL_GC_FULL_INTERVAL`: 9,100 req/s with one process, 15,200 to 16,900
@@ -357,9 +372,10 @@ nothing else running.
 - `require "cybertrain"` is unchanged, so an existing application and
   examples/blog build as before. The playground image runs `cybertrain new`,
   so its blog now starts on `cybertrain/core` like any new application and
-  builds faster; the tutorial steps that need a subsystem add its line. The test files the generators write
-  (`generate job`, `helper`, `authentication`) still require `cybertrain`,
-  so each test program keeps compiling the whole framework.
+  builds faster; the tutorial steps that need a subsystem add its line. The application's
+  tests are not cut: `cybertrain test` compiles them as one program with
+  `require "cybertrain"` (design.md D83, D85), so the test build still
+  compiles the whole framework.
 
 ## Things that are not worth doing again
 
