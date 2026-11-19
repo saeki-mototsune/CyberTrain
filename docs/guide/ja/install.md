@@ -1,5 +1,5 @@
 ---
-source_sha256: 833da4a0dce30786eda2530ad79e7508d974d847037c7f4d608e5d886d11bdbe
+source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
 ---
 # インストール
 
@@ -43,25 +43,29 @@ cybertrain doctor
 
 - `cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]]
   [--skip-spin]` は NAME にアプリケーションを作成し、その中で `spin lock` と `SPIN_DEBUG=1 spin run gen` を実行します。必要なら先に Spinel をインストールします（CLI は gen と `bin/db.rb` を spin のデバッグモードでビルドします）。
-- `cybertrain generate scaffold NAME field:type ...`（エイリアスは `g scaffold`）は、カレントディレクトリのアプリケーションにリソースを追加します。
-- `cybertrain generate authentication` は、そのアプリケーションにメールアドレスとパスワードによるサインインを追加します：users と sessions のテーブル、`User` と `Session` のモデル、サインインとサインアップのコントローラーとビュー、ルート、`ApplicationController` の `before_action`、そしてテストです（[サインインを追加する](tutorial.md#authentication)を参照）。`--invite-only` を付けるとサインアップのページはありません：ユーザーは `./NAME user EMAIL` で作成し、ユーザーがまだいない間は、最初のユーザーを `/setup` ページでも作成できます。このページはサーバー自身のマシンにだけ応答し、起動時の警告が表示するワンタイムトークンを必要とします。
+- `cybertrain generate scaffold NAME field:type ... [parent:references] [--any]`（エイリアスは `g scaffold`）は、カレントディレクトリのアプリケーションにリソースを追加します。`parent:references` のフィールドは `parent_id` カラムになり、`--any` は添付ファイルのフィールド（後述）に対するものです。
+- `cybertrain generate authentication [--invite-only] [--confirmable] [--force]` は、そのアプリケーションにメールアドレスとパスワードによるサインインを追加します：users と sessions のテーブル、`User` と `Session` のモデル、`ApplicationController` が include する `Authentication` コンサーン、サインイン、サインアップ、パスワードリセット、アカウントのコントローラーとビュー、ルート、`require_admin` で保護されたジョブページ、`bin/<app>.rb` と `bin/db.rb` に必要なサブシステムの行、そしてテストです。`--invite-only` はサインアップのページを省き、`--confirmable` は新しいアカウントに、サインインの前にメールでアドレスを確認させます。もう一度実行したとき、変更されるファイルについては差分を表示するだけですが、`--force` を付けると上書きします（[認証](authentication.md)）。
 - `cybertrain generate attachment MODEL FIELD [--any]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[カバー画像を追加する](tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。
+- `cybertrain generate helper NAME [--force]` は `app/helpers/NAME_helper.rb` とテストを追加します。このモジュールのメソッドは、`spin run gen` を実行すればどのテンプレートからも呼べます（[アプリケーションのヘルパー](template-language.md#application-helpers)）。
+- `cybertrain generate component NAME [attr[:type] ...] [--force]` はビューコンポーネントを追加します：`app/components/NAME_component.rb`、そのテンプレート、そしてテストです（[コンポーネント](template-language.md#components)）。
+- `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]` は `app/jobs/NAME_job.rb` とテストを追加し、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/jobs"` を加えます（[バックグラウンド処理](background-and-operations.md#background-work)）。
 - `cybertrain db migrate` は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate; SPIN_DEBUG=1 spin run gen`）。`cybertrain migration` もエイリアスとして残されています。
 - `cybertrain db COMMAND...` は `SPIN_DEBUG=1 spin
-  run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema:dump`、`create`。
-- `cybertrain server [PORT] [--spinel]` は開発サーバーを起動します（デフォルトのポートは 3000）。変更の直後はアプリケーションが CRuby で動き、その間に Spinel がバックグラウンドでビルドし、ビルドが成功するとコンパイル済みのバイナリがポートを引き継ぎます。アプリケーションのレスポンスには `X-Cybertrain-Runtime: cruby` か `spinel` が付きます（[開発ループ](how-it-works.md#the-development-loop)）。`--spinel` はコンパイル版のループだけを実行し、変更のたびにビルドを待ちます（`SPIN_DEBUG=1 spin run gen`。`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`。`spin run NAME`、または `spin run NAME -- PORT`）。
+  run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema`（マイグレーションを行わず、いまのデータベースから `db/schema.rb` を書き出します）、`schema:dump`、`create`、`backup` と `vacuum`（[運用](background-and-operations.md#operations-backups-vacuum-health-check)）、`normalize`（[日時と `db normalize`](models.md#datetimes-and-db-normalize)）。
+- `cybertrain server [PORT] [--spinel]` は開発サーバーを起動します（デフォルトはアプリケーションのポート、つまり `PORT` か `c.port`。どちらも設定していなければ 3000）。変更の直後はアプリケーションが CRuby で動き、その間に Spinel がバックグラウンドでビルドし、ビルドが成功するとコンパイル済みのバイナリがポートを引き継ぎます。アプリケーションのレスポンスには `X-Cybertrain-Runtime: cruby` か `spinel` が付きます（[開発ループ](how-it-works.md#the-development-loop)）。`--spinel` はコンパイル版のループだけを実行し、変更のたびにビルドを待ちます（`SPIN_DEBUG=1 spin run gen`。`build/bin/NAME` より新しい Ruby ファイルがあれば `spin build NAME -- --incremental`。`spin run NAME`、または `spin run NAME -- PORT`）。
 - `cybertrain build` は `app/views/` を埋め込んで NAME をビルドし、`dist/`（バイナリ、`public/`、`storage/`、`tmp/`）を組み立てます。
 - `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` は生成し、`test/` 以下のすべてのテストを 1 つのプログラムにコンパイルして（何かが変わったときだけ）実行し、引数が指定したテストだけを残します（[アプリをテストする](testing.md#running-the-tests)を参照）。
 - `cybertrain spin ARGS...` は、固定された Spinel で `spin` を任意のディレクトリから実行します（`cybertrain spin test`、`cybertrain spin run gen -- --check`）。
+- `cybertrain secret [--hex]` は `CYBERTRAIN_SECRET_KEY_BASE` 用の新しいランダムなシークレットを表示します。`--hex` を付けると `CYBERTRAIN_ENCRYPTION_KEY` 用の新しい鍵を表示します。どちらも 16 進数 64 桁です。
 - `cybertrain setup [--force]` は固定された Spinel のリリースを `~/.cybertrain` にインストールします（そのリリースの `spinel` がすでに `PATH` 上にある場合を除く）。`--force` は `~/.cybertrain` 以下のコピーを再ビルドします。
-- `cybertrain doctor` は C ツールチェーン、SQLite のヘッダー、Ruby が `fiddle` を読み込めるかどうか（CRuby プレビューに必要です）、Spinel のインストールを確認します。
-- `cybertrain version` はバージョンを表示します。
+- `cybertrain doctor` は[必要なもの](#requirements)にあるものをすべて確認します：`git`、`make`、`curl`、C コンパイラ、SQLite・zlib・OpenSSL のヘッダー、`prism` gem、Ruby が `fiddle` を読み込めるかどうか（CRuby プレビューに必要です）、Spinel のインストールです。
+- `cybertrain version` はバージョンを、`cybertrain help` はこの一覧を表示します。
 
-`db`、`server`、`build` はアプリケーションの中で実行します。NAME はそのアプリケーションの `spin.toml` にある `[package] name` です。
+`generate`、`db`、`server`、`build`、`test` はアプリケーションの中で実行します。NAME はそのアプリケーションの `spin.toml` にある `[package] name` です。
 
 ## Spinel のインストールの仕組み
 
-`spin` を実行するすべてのコマンド（`new`、`db`、`server`、`build`、`spin`）は、まず `Cybertrain::SPINEL_TAG` のリリースの Spinel が使えることを確かめます。`PATH` 上の `spinel`（`spin` を伴うもの）の `spinel --version` がそのリリースを報告すれば、それをそのまま使います。そうでなければ、`cybertrain` が `~/.cybertrain/spinel/<SPINEL_TAG>/` 以下に置いているコピーを使います。それもなければ、`cybertrain` が `Cybertrain::SPINEL_REPOSITORY` のリリースタグからそのコピーをビルドします（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`）。ビルドは一度だけで、数分かかります。ビルドのログは `~/.cybertrain/log/spinel-<SPINEL_TAG>-build.log` です（手順が失敗すると、その最後の数行が表示されます）。
+`spin` を実行するすべてのコマンド（`new`、`db`、`server`、`build`、`test`、`spin`）は、まず `Cybertrain::SPINEL_TAG` のリリースの Spinel が使えることを確かめます。`PATH` 上の `spinel`（`spin` を伴うもの）の `spinel --version` がそのリリースを報告すれば、それをそのまま使います。そうでなければ、`cybertrain` が `~/.cybertrain/spinel/<SPINEL_TAG>/` 以下に置いているコピーを使います。それもなければ、`cybertrain` が `Cybertrain::SPINEL_REPOSITORY` のリリースタグからそのコピーをビルドします（`git clone`、`make deps`、`make -j`、`make install PREFIX=...`）。ビルドは一度だけで、数分かかります。ビルドのログは `~/.cybertrain/log/spinel-<SPINEL_TAG>-build.log` です（手順が失敗すると、その最後の数行が表示されます）。
 
 ビルドに必要なツールが欠けている場合、`cybertrain` はビルドを始める前に、どれが足りないかを伝え、プラットフォームに応じたインストールコマンドを表示します。`PATH` 上にある別リリースの `spinel` が使われたり変更されたりすることはありません：`cybertrain` は自前のコピーを持ちます（そしてインストールするときにそう伝えます）。
 
@@ -79,6 +83,8 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 - `CYBERTRAIN_HOME` は `~/.cybertrain` の代わりになります（スペース、引用符、`$`、`:` を含まないパスにします。Spinel の Makefile と `PATH` がこれらを扱えないためです）。
 - `CYBERTRAIN_SPINEL_HOME=PREFIX` は既存のインストールを強制します：そのとき `cybertrain` は `PREFIX/bin` にある（`spinel` が `PREFIX` の直下にあれば `PREFIX` 自体にある）`spinel` と `spin` を使い、それらがそのリリースでなければエラーで停止します。
+
+3 つ目の `CYBERTRAIN_KEEP_SRC=1` は、ビルドがクローンした Spinel のソース（`~/.cybertrain/src/spinel-<SPINEL_TAG>/`）を、ビルド後に削除せずに残します。
 
 </details>
 
@@ -120,9 +126,9 @@ cybertrain spin lock
 cybertrain spin run gen
 ```
 
-`spin lock` は、git の依存について固定済みのコミットを、`spin.toml` の `ref` が何に変わっても保ちます。先にロックを消すのはそのためです。ほかにも依存があるアプリでは、代わりに `spin.lock` から `[lock.cybertrain]` のテーブルだけを消せば、ほかの固定は残ります。インデックスのバージョンに依存するアプリ（`cybertrain = "X.Y.Z"`）に `rm` は要りません：その場合は `spin lock` が固定を動かします。
+`spin lock` は、git の依存について固定済みのコミットを、`spin.toml` の `ref` が何に変わっても保ちます。先にロックを消すのはそのためです。ほかにも依存があるアプリでは、代わりに `spin.lock` から `[lock.cybertrain]` のテーブルだけを消せば、ほかの固定は残ります。
 
-[インデックスのバージョン](#an-index-version)に依存するアプリでは、まず `cybertrain spin search cybertrain` を実行して spin のインデックスのコピーを更新し、`spin.toml` の `cybertrain =` の行のバージョンを新しいリリースに変えてから、`cybertrain spin lock` と `cybertrain spin run gen` を実行します。
+[インデックスのバージョン](#an-index-version)に依存するアプリに `rm` は要りません。その場合は `spin lock` が固定を動かすからです。まず `cybertrain spin search cybertrain` を実行して spin のインデックスのコピーを更新し、`spin.toml` の `cybertrain =` の行のバージョンを新しいリリースに変えてから、`cybertrain spin lock` と `cybertrain spin run gen` を実行します。
 
 両者が一致していることは、コマンドが確認します。`server`、`build`、`db`、`test`、`generate` は、spin を実行したりファイルを書き出したりする前に、spin がビルドするフレームワークのバージョン、つまりアプリの `spin.lock` に固定されたバージョンを、コマンド自身のバージョン（`cybertrain version`）と比べます：アプリをコンパイルする Spinel のリリースを決めるのはアプリではなくコマンドであり、コマンドのテンプレートとジェネレーターは、同じリリースのフレームワーク向けに書かれているからです。バージョンが異なると、コマンドは終了コード 1 で止まります：
 
@@ -134,6 +140,6 @@ or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then 
   rm spin.lock && cybertrain spin lock
 ```
 
-どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。git の依存では、`spin.toml` を書き換えても何も変わらず、そのあと `spin lock` を実行しても変わりません：そのロックを消すまで、spin は `spin.lock` のコミットをビルドし続けます。`rm` が要るのはそのためです。インデックスのバージョンに依存している場合、メッセージは `cybertrain = "A.B.C"` と `cybertrain spin lock` だけを示します。spin が固定されたリリースをビルドするのは `spin.toml` がそれを許している間だけなので、`spin.toml` が指すバージョンがロックと違えば、すぐにそのバージョンが比べられます。範囲（`"~> X.Y"`）が固定されたリリースを許さなくなった場合は、`cybertrain spin lock` を実行するまで拒否されます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチ、コミット、範囲はリリースを指さないので、確認されません。
+どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。インデックスのバージョンに依存している場合、メッセージは `cybertrain = "A.B.C"` と `cybertrain spin lock` だけを示します。spin が固定されたリリースをビルドするのは `spin.toml` がそれを許している間だけなので、`spin.toml` が指すバージョンがロックと違えば、すぐにそのバージョンが比べられます。範囲（`"~> X.Y"`）が固定されたリリースを許さなくなった場合は、`cybertrain spin lock` を実行するまで拒否されます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチ、コミット、範囲はリリースを指さないので、確認されません。
 
 0.4 向けに書いたアプリケーションには、いくつか変更が要ります（どのセッションも一度だけ終わる、OpenSSL をリンクする、ドットを含むルートのセグメントには `format: false` が要る、など）：[0.4 のアプリを更新する](requests.md#upgrading-an-application-from-04)を見てください。

@@ -1,5 +1,5 @@
 ---
-source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
+source_sha256: 681c0c56292faa833d075a15bf5a613dd7445b19901fd654fe35f4145c959f79
 path: tutorial.html
 title: "Начало работы: блог"
 description: "Соберите блог из Rails Getting Started — статьи с комментариями — на CyberTrain: скаффолды, миграции, вложенные маршруты, живые комментарии через Turbo, фоновая задача, тесты на Cybertrain::Test и сборка для развёртывания командой cybertrain build."
@@ -269,7 +269,7 @@ been taken» и «Body is too short (minimum is 10 characters)». Остальн
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
 
-  def new_action   # a `new` method would shadow ArticlesController.new
+  def new_action   # the `new` action: the generated routes call new_action
     @article = Article.new
   end
 
@@ -295,11 +295,14 @@ class ArticlesController < ApplicationController
 end
 ```
 
-> [!RULE] Правило Spinel: new_action
+> [!RULE] new_action
 > ### `new_action`, а не `new`
 >
-> Метод, буквально названный `new`, затенил бы `ArticlesController.new(ctx)`, с
-> помощью которого фреймворк создаёт контроллер. Маршрут `GET /articles/new`
+> Действие `new` пишется как `new_action`: сгенерированные маршруты вызывают
+> его под этим именем. Метод переименовали, когда за Spinel было записано, что
+> он не компилирует метод экземпляра с именем `new` рядом с
+> `ArticlesController.new(ctx)`; сокращённые программы такого вида на
+> закреплённом выпуске компилируются, а имя осталось как API. Маршрут `GET /articles/new`
 > по-прежнему ведёт к нему; вы лишь переименовываете метод. Представление
 > по-прежнему называется `new.html.erb`, а `render :new` не меняется.
 
@@ -447,8 +450,8 @@ cybertrain db migrate    # скаффолд создал миграцию для
 Cybertrain::Routes.draw do
   root "articles#index"
 
-  # A nested block takes the mapper explicitly (Spinel's instance_eval
-  # trampoline only rewires `self` for the outermost block): `articles.resources`.
+  # A nested block takes the mapper as its argument: `articles.resources`,
+  # not Rails' bare `resources`.
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
@@ -456,12 +459,15 @@ Cybertrain::Routes.draw do
 end
 ```
 
-> [!RULE] Правило Spinel: явный маппер
+> [!RULE] Явный маппер
 > ### Вложенные блоки получают маппер явно
 >
 > Пишите `resources :articles do |articles|` и `articles.resources :comments`, а
-> не просто `resources :comments`. Трамплин `instance_eval` в Spinel
-> переназначает `self` только для самого внешнего блока.
+> не просто `resources :comments`. Эту форму ввели, когда за Spinel было
+> записано, что он не компилирует вызов без получателя в блоке, вложенном в
+> `instance_eval`; сокращённая программа такого вида на закреплённом выпуске
+> компилируется, а явный маппер остаётся документированной формой: её пишут
+> и генераторы, и тесты.
 
 <!-- step 10 #comments-controller stage: Вы пишете · `app/controllers/` -->
 ## CommentsController
@@ -504,18 +510,18 @@ class CommentsController < ApplicationController
 end
 ```
 
-Затем добавьте валидации в модель комментария:
+Скаффолд записал модель комментария с `belongs_to :article` и проверкой
+наличия `commenter`, её первого строкового поля; добавьте такую же для текста:
 
 ```ruby app/models/comment.rb
 class Comment
+  belongs_to :article
   validates :commenter, presence: true
   validates :body, presence: true
-
-  belongs_to :article
 end
 ```
 
-Объявленный `belongs_to` к тому же делает комментарий без статьи
+`belongs_to`, который объявил скаффолд, к тому же делает комментарий без статьи
 невалидным («Article can't be blank») раньше, чем его отвергнет база.
 
 > [!NOTE]
@@ -859,7 +865,8 @@ cybertrain generate job notify_comment --retry StandardError:30:3
 
 Она пишет `app/jobs/notify_comment_job.rb` — со строкой `retry_on`, которую
 запросила опция, и пустым `perform` — и тест, а в `bin/blog.rb` и `bin/db.rb`
-добавляет `require "cybertrain/jobs"`. Заполните `perform`; здесь он
+добавляет `require "cybertrain/jobs"`, а в `config/deploy.yml` раскомментирует
+роль `worker` ([шаг 19](#ship)). Заполните `perform`; здесь он
 только пишет в лог, а настоящее приложение отправило бы письмо:
 
 ```ruby app/jobs/notify_comment_job.rb
@@ -913,9 +920,10 @@ end
   задачи, она запускается снова), поэтому пишите `perform` так, чтобы его
   можно было безопасно повторить.
 - Неудавшиеся задачи просматривают, повторяют и отбрасывают командой
-  `./blog jobs` или на странице, которую подключает строка
-  `jobs_page` в `config/routes.rb`, если её раскомментировать (маршруты шагов
-  04 и 09 её сохраняют)
+  `./blog jobs` или на странице задач по адресу `/admin/jobs`:
+  закомментированная строка `jobs_page` в `config/routes.rb` называет
+  `require_admin`, метод, который пишет генератор [шага 17](#authentication),
+  и страницу подключает тот же генератор
   ([Страница задач](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
 
 > [!RULE] Правило Spinel: политики задач читаются как текст
@@ -1008,8 +1016,9 @@ $ curl http://127.0.0.1:3000/articles.json
 `test/helpers/comments_helper_test.rb`, шаг 14 —
 `test/jobs/notify_comment_job_test.rb`, а `cybertrain new` —
 `test/test_helper.rb`, который подключает каждый файл, и
-`test/integration/health_test.rb`, запрос к `/up`. Трём из них нужно
-догнать блог, каким он стал с тех пор.
+`test/integration/health_test.rb`, запрос к `/up`. Четырём из них нужно
+догнать блог, каким он стал с тех пор: фикстуре статей, двум тестам
+контроллеров и тесту компонента.
 
 ### Фикстуры, проходящие валидации
 
@@ -1127,8 +1136,8 @@ cybertrain test -n /comment/
 ```
 
 Первый запуск компилирует все тесты в одну программу, что занимает
-минуты (149 тестов examples/blog — около девяти на облачной машине с
-4 vCPU); запуск без изменений не компилирует тестовую программу заново: он
+минуты (тесты examples/blog, которых при измерении 2026-11-13 было 149, — около
+девяти на облачной машине с 4 vCPU); запуск без изменений не компилирует тестовую программу заново: он
 может один раз пересобрать gen (`build gen`, несколько секунд), а затем
 начинается меньше чем за секунду. Файл или `-n` выбирают,
 какие тесты запускать, а не что компилировать: правка любого теста
@@ -1157,7 +1166,7 @@ cybertrain generate authentication
 cybertrain db migrate    # создаёт таблицы users и sessions
 ```
 
-Генератор пишет миграции и модели `users` и `sessions`, concern `Authentication`, который он включает в `ApplicationController`, контроллеры и представления для входа, регистрации, сброса пароля и страницы учётной записи, почтовик, команду `./blog user` и тесты. Ещё он добавляет маршруты, partial `sessions/_nav` в начало макета и настройку `base_url` в `config/app.rb`, с которой начинаются ссылки в письмах. Наконец, он добавляет в `bin/blog.rb` и `bin/db.rb` строки подсистем, которые использует его код: `cybertrain/jobs` (страница заданий и поток, отправляющий письма), `cybertrain/mailer`, `cybertrain/mailer/later` (письма уходят через `deliver_later`) и `cybertrain/rate_limit` (попытки входа ограничены по частоте, см. ниже). Все файлы перечислены в разделе [Аутентификация](authentication.md#generating-it).
+Генератор пишет миграции и модели `users` и `sessions`, concern `Authentication`, который он включает в `ApplicationController`, контроллеры и представления для входа, регистрации, сброса пароля и страницы учётной записи, почтовик, команду `./blog user` и тесты. Ещё он добавляет маршруты (среди них страница заданий по адресу `/admin/jobs`, для администраторов), partial `sessions/_nav` в начало макета и настройку `base_url` в `config/app.rb`, с которой начинаются ссылки в письмах. Наконец, он добавляет в `bin/blog.rb` и `bin/db.rb` строки подсистем, которые использует его код: `cybertrain/jobs` (страница заданий и поток, отправляющий письма), `cybertrain/mailer`, `cybertrain/mailer/later` (письма уходят через `deliver_later`) и `cybertrain/rate_limit` (попытки входа ограничены по частоте, см. ниже). Все файлы перечислены в разделе [Аутентификация](authentication.md#generating-it).
 
 ```ruby app/controllers/concerns/authentication.rb (фрагмент)
 module Authentication
@@ -1209,12 +1218,13 @@ class ArticlesController < ApplicationController
 
 Страница входа также ссылается на сброс пароля по почте, а навигация — на страницу учётной записи; о них, а также о блокировке, «оставаться в системе», `--confirmable` и администраторах рассказывает руководство [Аутентификация](authentication.md). Письму сброса нужны настройки SMTP, а в продакшене — `BLOG_BASE_URL` ([Ссылки в письмах](authentication.md#links-in-mails)).
 
-> [!RULE] Правило Spinel: has_secure_password
+> [!RULE] has_secure_password расписан явно
 > ### `has_secure_password` расписан явно
 >
-> Spinel не умеет определять методы во время выполнения, поэтому модель `User`
-> явно содержит то, что определил бы `has_secure_password`: `password=`,
-> `authenticate` и `User.authenticate_by(email_address:, password:)`. Пароли
+> Макроса `has_secure_password` в CyberTrain нет. То, что он определил бы,
+> генератор записывает в модель `User` как код, которым владеет приложение:
+> `password=`, `authenticate` и
+> `User.authenticate_by(email_address:, password:)`. Пароли
 > хеширует `Cybertrain::Password` — PBKDF2-HMAC-SHA256 на Ruby, по умолчанию 100
 > 000 итераций (около 0,2 с в скомпилированном виде): для bcrypt бинарнику
 > пришлось бы линковать C-библиотеку. Стоимость повышается строкой
@@ -1365,12 +1375,12 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 > есть код, он эту строку не трогает, а без `:cover` в ней изображение требует
 > входа.
 
-> [!RULE] Правило Spinel: has_one_attached
+> [!RULE] has_one_attached расписан явно
 > ### `has_one_attached` расписан явно
 >
-> Spinel не умеет определять методы во время выполнения (нет `define_method`),
-> поэтому нет ни `has_one_attached`, ни общей таблицы вложений. Генератор
-> расписывает то, что она определила бы, методами с именем по полю в `Article`,
+> Нет ни `has_one_attached`, ни общей таблицы вложений: допустимые типы,
+> размеры и то, кому можно скачивать, в каждом приложении свои, поэтому
+> генератор расписывает методы с именем по полю в `Article`,
 > а метаданные кладёт в пять столбцов `articles`. Они объявлены `NOT NULL`, а
 > `""` и `0` означают &ldquo;ничего не прикреплено&rdquo;: из-за столбцов,
 > допускающих NULL, Spinel теряет вывод типов. В SQLite лежат только метаданные
@@ -1519,7 +1529,9 @@ end
 этап того же выпуска; при запуске образ применяет миграции, а затем слушает
 `0.0.0.0:3000`. Рядом лежат `.dockerignore`, `config/deploy.yml` (kamal-proxy
 с Let&rsquo;s Encrypt перед приложением, проверка работоспособности по
-`public/up.html`, файл SQLite на томе в `/app/storage`) и `.kamal/secrets`,
+`public/up.html`, файл SQLite на томе в `/app/storage` и роль `worker`, которую раскомментировал
+шаг 14: второй контейнер того же образа, выполняющий `./blog worker`; роль web
+тоже выполняет задачи, если `CYBERTRAIN_WORKER` не равен 0) и `.kamal/secrets`,
 который читает `KAMAL_REGISTRY_PASSWORD` и `CYBERTRAIN_SECRET_KEY_BASE` из
 окружения. Заполните значения, помеченные `CHANGE ME`, в `config/deploy.yml`,
 сделайте коммит и выполните:

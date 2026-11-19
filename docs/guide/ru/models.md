@@ -1,5 +1,5 @@
 ---
-source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
+source_sha256: bdd93406515ea0423e255fb7a519b654ed9a56bc10cb7d18940a78ca0d3a9f35
 ---
 # Модели и база данных
 
@@ -17,8 +17,11 @@ source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
 [Изменение таблицы](#changing-a-table)); `cybertrain db migrate`
 применяет каждую ожидающую версию в собственной транзакции и перезаписывает
 `db/schema.rb` по базе данных, а `cybertrain db rollback [N]` выполняет
-обратное к `change`. Когда в `change` есть операция без автоматической обратной,
-напишите `down` (и `up`).
+обратное к `change`. `create_table`, `add_column`, `add_index` и
+`rename_column` обращаются сами; `change`, в котором есть `add_reference`,
+`remove_column`, `remove_index` или `drop_table`, останавливает откат с
+`version N is irreversible: no automatic inverse for <operation>`,
+поэтому для них напишите `up` и `down`.
 
 Изменение схемы, которому для безопасности нужен шаг с данными, использует
 `execute(sql, binds = [])`. Он выполняется на своём месте в миграции, на
@@ -175,7 +178,7 @@ Rails](#taking-over-a-database-rails-created)).
 | --- | --- | --- |
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
-| `t.float` | `FLOAT` | Float |
+| `t.float` | `REAL` | Float |
 | `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, округлённый до scale при записи, точный до 15 значащих цифр |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time (UTC, микросекунды) |
@@ -342,8 +345,8 @@ Time.current.in_time_zone.hour       # => час в Time.zone
 ## Условия и поиск
 
 Методы запроса сгенерированного relation есть и как методы класса (все,
-кроме `or`, `not`, `page` и `to_sql`, и похожих на Array `to_a`, `each`,
-`size`, `empty?`), так что запись из Rails работает как есть:
+кроме `or`, `not`, `page`, `to_sql` и `update_all_sql`, и похожих на Array
+`to_a`, `each`, `size`, `empty?`), так что запись из Rails работает как есть:
 `Article.where.not(body: nil)`, `Article.find_each { }`,
 `Article.pluck(:id, :title)`, `Article.pluck_int(:id)`.
 
@@ -359,11 +362,14 @@ Time.current.in_time_zone.hour       # => час в Time.zone
 | `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | То же |
 
-- Range в Hash для `where` принимает концы Integer: под Spinel нельзя
-  построить Range из Time или Date, а Range из Float или String не
-  распознаётся как Range, поэтому такие границы идут через `where_between`,
-  чьи границы Time и Date сравниваются как хранимый текст (который
-  упорядочен так же, как моменты времени).
+- Range в Hash для `where` принимает концы Integer. При компиляции
+  закреплённой версией Spinel Range из Time или Date вызывает `TypeError`
+  там, где он строится, а Range из Float не распознаётся как Range
+  (сокращённые программы; spikes/NOTES.md, правило 86), поэтому такие
+  границы идут через `where_between`, чьи границы Time и Date сравниваются
+  как хранимый текст (который упорядочен так же, как моменты времени).
+  Range из String в тех же программах распознаётся, но `where` написан для
+  концов Integer: границы String тоже передавайте в `where_between`.
 - Строковое условие заключается в скобки, так что `OR` в нём остаётся
   внутри. Его binds — скаляры: `where("id IN (?)", ids)` выбрасывает
   исключение; пишите `where(id: ids)`.
@@ -462,9 +468,8 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
   datetime, Date — как `YYYY-MM-DD`, логические значения — как 1/0):
   `Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`.
 - `Cybertrain::Cast.hash(v)` / `Cast.array(v)` сужают разобранное значение JSON
-  до Hash / Array или до нового пустого, если оно им не является (Time
-  проверяется первым, spikes/NOTES.md, правило 8). Они возвращают
-  типизированную поверхностную копию, а не сам `v`; `Cast.empty_hash` /
+  до Hash / Array или до нового пустого, если оно им не является. Они
+  возвращают типизированную поверхностную копию, а не сам `v`; `Cast.empty_hash` /
   `Cast.empty_array` — это пустые контейнеры с заранее заданным типом.
 
 ### Несколько столбцов: `pluck` и `pick`
@@ -673,8 +678,9 @@ integer», «must be greater than or equal to 0», «has already been taken»,
 сообщение на `:base` пишет отдельно.
 
 - `length` принимает `minimum`, `maximum`, `is` и `in` (Range из Integer).
-- `inclusion` и `exclusion` принимают Array или Range из Integer (других
-  Range Spinel не строит); `1...5` пропускает 4.5 в столбце float, как в
+- `inclusion` и `exclusion` принимают Array или Range из Integer (любой
+  другой Range отклоняется: `in: takes a Range of Integers only`);
+  `1...5` пропускает 4.5 в столбце float, как в
   Rails.
 - `numericality` сначала разбирает String (`"12"` проходит); Float не
   проходит `only_integer`, как в Rails.
@@ -704,8 +710,9 @@ end
 
 Строки `validate :method` выполняются после правил `validates`, по порядку.
 `if:` и `unless:` (у обеих) принимают Symbol с именем метода модели,
-столбца или ассоциации; генератор пишет таблицу, которая его вызывает,
-потому что в Spinel нет `send`. Лямбда, `:if => :x` и `"if": :x`
+столбца или ассоциации; генератор не использует `send`, а пишет таблицу
+`case`, которая его вызывает, и отклоняет имя, не относящееся ни к одному
+из трёх. Лямбда, `:if => :x` и `"if": :x`
 останавливают генератор с сообщением, что нужно назвать метод, как и имя в
 `validate`, которое файл модели не определяет. `validates_with`,
 `validates_each`, `confirmation`, `acceptance` и `valid?(context)`
@@ -740,9 +747,8 @@ end
 
 ### Ключи и их смена
 
-Модель с `encrypts` заставляет приложение подключить openssl, и запуск
-завершается ошибкой, если в `CYBERTRAIN_ENCRYPTION_KEY` нет 64
-шестнадцатеричных символов (создайте ключ командой
+С моделью, в которой есть `encrypts`, запуск завершается ошибкой, если в
+`CYBERTRAIN_ENCRYPTION_KEY` нет 64 шестнадцатеричных символов (создайте ключ командой
 `cybertrain secret --hex`; [переменные](configuration.md#configuration-and-environment-variables)).
 Ключ не выводится из `CYBERTRAIN_SECRET_KEY_BASE`, так что смена секрета
 сессий оставляет данные читаемыми; потеряете ключ шифрования — потеряете
@@ -754,9 +760,10 @@ end
 Account.find_each { |account| account.update_columns(api_key: account.api_key) }
 ```
 
-Код, который сам вызывает `Cybertrain::Crypto.encrypt(text)` /
-`Crypto.decrypt(payload)` в приложении без `encrypts`, добавляет
-`require "cybertrain/encryptor"` в `bin/<app>.rb` и задаёт ключ.
+Код в приложении без `encrypts` может сам вызывать
+`Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)`, если ключ
+задан: при запуске ключ там не требуется, а вызов без него вызывает
+`Cybertrain::Encryptor::Error`.
 
 ### Шифрование столбца, в котором уже есть текст
 
@@ -869,9 +876,9 @@ end
 ## Имена столбцов
 
 Имя столбца должно быть идентификатором ASCII (`[A-Za-z_][A-Za-z0-9_]*`), тогда
-как Rails принимает любое. Схема с не-ASCII именем столбца (`名前`, `prénom`)
-генерировалась под CRuby до PR #10, а теперь `spin run gen` её отвергает, поэтому
-при обновлении переименуйте столбец (имя вроде `first-name` никогда не было
+как Rails принимает любое. `spin run gen` отвергает схему с не-ASCII именем
+столбца (`名前`, `prénom`), которую ранний генератор принимал, когда работал
+под CRuby: переименуйте столбец (имя вроде `first-name` никогда не было
 именем метода).
 
 Столбец, названный как метод, который сгенерированный класс или фреймворк
@@ -892,26 +899,38 @@ ivar) с примечанием в сгенерированном файле. Д
 
 Столбец с именем метода фреймворка, у которого один тип возврата,
 сохраняет своё имя, если его метод чтения возвращает этот тип, и отклоняется
-иначе: `request_id` (`Cybertrain::Request#request_id`) и `release`
+иначе. `request_id` (`Cybertrain::Request#request_id`) и `release`
 (`Cybertrain::Config#release`) возвращают String, поэтому столбец string,
 text или binary с этими именами, допускающий null или нет, принимается, а
-любой другой тип останавливает `spin run gen`, например
-`table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`.
-Целочисленный `request_id` из `t.references :request` получает совет
-переименовать ссылку: `t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"` (`belongs_to` тогда читается как
-`source_request`). `handle` — имя методов фреймворка разных типов, поэтому
-столбец `handle` читается как `handle_column`, как зарезервированные имена
-выше (приложение вызывает `user.handle_column`; запросы сохраняют
-`"handle"`), а `cybertrain generate scaffold` отклоняет такое поле:
-`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
+любой другой тип останавливает `spin run gen`. Целочисленный `request_id`
+из `t.references :request` получает совет переименовать ссылку:
+`t.integer "source_request_id"` и
+`s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`
+(`belongs_to` тогда читается как `source_request`).
+
+`handle` — имя методов фреймворка разных типов, поэтому столбец `handle`
+читается как `handle_column`, как зарезервированные имена выше (приложение
+вызывает `user.handle_column`; запросы сохраняют `"handle"`).
+
 `cybertrain generate scaffold` проверяет эти имена до того, как что-либо
-записать: поле string или text с именем `request_id` или `release`, или поле
-без типа, принимается, а любой другой тип отклоняется (статус выхода 1),
-например
-`'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`;
-поле `references`, чей столбец или метод чтения `belongs_to` получил бы одно
-из этих имён, тоже отклоняется:
-`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`.
+записать. Поле string или text с именем `request_id` или `release`, или поле
+без типа, принимается, а любой другой тип отклоняется (статус выхода 1);
+отклоняются также поле `references`, чей столбец или метод чтения
+`belongs_to` получил бы одно из этих имён, и поле с именем `handle`.
+
+<details><summary>Точные сообщения — что печатают gen и генератор скаффолда для этих имён</summary>
+
+- `spin run gen`, столбец boolean с именем `release`:
+  `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`
+- `generate scaffold`, `request_id:integer`:
+  `'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`
+- `generate scaffold`, `request:references`:
+  `'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`
+- `generate scaffold`, поле с именем `handle`:
+  `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`
+
+</details>
+
 Имена и типы — `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`. Не
 проверяются: `belongs_to`, который gen выводит из внешнего ключа вроде
 `release_id`, и скоуп с именем `release` или `request_id`.
@@ -957,8 +976,8 @@ Photo.find(photo.id).thumbnail.bytesize   # те же байты обратно
   привязке никогда не равен сохранённому BLOB).
 - `db/schema.rb` записывает столбец обратно как `t.binary`, а консоль
   печатает двоичное значение как `<N bytes>`.
-- Большие файлы держите вне базы: загрузка ([Добавить загрузку
-  файла](tutorial.md#attachments)) — это файл в `storage/uploads/`, а BLOB
+- Большие файлы держите вне базы: загрузка
+  ([Добавление обложки](tutorial.md#attachments)) — это файл в `storage/uploads/`, а BLOB
   читается в память целиком вместе со строкой и увеличивает каждую
   резервную копию и WAL.
 
@@ -1005,8 +1024,9 @@ Post.order(SORTS.fetch(params[:sort].to_s, "id"))
    действия `ON DELETE` тоже выгружаются.
 5. Ограничения: таблица, чей первичный ключ — не столбец `id` (таблица
    связей), выгружается как `create_table "articles_tags", id: false` и не
-   получает модели (`spin run gen` печатает `skipped articles_tags: no id
-   column`); обращайтесь к ней через `DB.with`; первичный ключ `id`, который
+   получает модели (`spin run gen` печатает
+   `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)`);
+   первичный ключ `id`, который
    не целое число (`id: :uuid` или `id: :string` в Rails), выгружается так
    же, а `id` остаётся обычным столбцом без PRIMARY KEY; `ar_internal_metadata`
    остаётся как есть; таблицу, в `CREATE TABLE` которой есть то, чего схема

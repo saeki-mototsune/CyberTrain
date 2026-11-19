@@ -1,5 +1,5 @@
 ---
-source_sha256: f33d41101fb56e6a4ccb2fd65374062a590ba781adb2baf79d57aef2a6aefb2c
+source_sha256: a77a19e2278cd27bc36e8e45fce99f4e163be63214923bc644316b2566560c97
 ---
 # Ассеты
 
@@ -46,7 +46,7 @@ vendor/javascript/chart.js                chart.js
 <%= asset_path "logo.svg" %>                    <%# /assets/logo-8177afd7.svg %>
 ```
 
-`stylesheet_link_tag` добавляет `.css`, а `javascript_include_tag` — `.js`, когда в имени его нет; оба принимают `nonce: true`, а `stylesheet_link_tag` принимает `media:`. URL со схемой (или `//`, `data:`) пишется как есть, как и путь, начинающийся с `/`. Неизвестное логическое имя в разработке и тестах вызывает `Cybertrain::Assets::UnknownAsset` (`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`); production один раз пишет его в лог и выводит `/assets/<имя>`. Полные сигнатуры — в [языке шаблонов](template-language.md#helpers-and-the-form-builder).
+`stylesheet_link_tag` добавляет `.css`, а `javascript_include_tag` — `.js`, когда в имени его нет; оба принимают `nonce: true`, а `stylesheet_link_tag` принимает `media:`. URL со схемой (или `//`, `data:`) пишется как есть, как и путь, начинающийся с `/`. Неизвестное логическое имя вне production вызывает `Cybertrain::Assets::UnknownAsset` (`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`); production один раз пишет его в лог и выводит `/assets/<имя>`. Полные сигнатуры — в [языке шаблонов](template-language.md#helpers-and-the-form-builder).
 
 ## Import map
 

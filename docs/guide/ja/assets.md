@@ -1,5 +1,5 @@
 ---
-source_sha256: f33d41101fb56e6a4ccb2fd65374062a590ba781adb2baf79d57aef2a6aefb2c
+source_sha256: a77a19e2278cd27bc36e8e45fce99f4e163be63214923bc644316b2566560c97
 ---
 # アセット
 
@@ -46,7 +46,7 @@ vendor/javascript/chart.js                chart.js
 <%= asset_path "logo.svg" %>                    <%# /assets/logo-8177afd7.svg %>
 ```
 
-名前に拡張子がなければ、`stylesheet_link_tag` は `.css` を、`javascript_include_tag` は `.js` を付けます。どちらも `nonce: true` を取り、`stylesheet_link_tag` は `media:` も取ります。スキーム付きの URL（または `//`、`data:`）はそのまま書き、`/` で始まるパスも同じです。知らない論理名は、開発とテストでは `Cybertrain::Assets::UnknownAsset` を発生させ（`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`）、本番では一度だけログに書いて `/assets/<name>` を出力します。すべてのシグネチャは[テンプレート言語](template-language.md#helpers-and-the-form-builder)にあります。
+名前に拡張子がなければ、`stylesheet_link_tag` は `.css` を、`javascript_include_tag` は `.js` を付けます。どちらも `nonce: true` を取り、`stylesheet_link_tag` は `media:` も取ります。スキーム付きの URL（または `//`、`data:`）はそのまま書き、`/` で始まるパスも同じです。知らない論理名は、本番以外では `Cybertrain::Assets::UnknownAsset` を発生させ（`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`）、本番では一度だけログに書いて `/assets/<name>` を出力します。すべてのシグネチャは[テンプレート言語](template-language.md#helpers-and-the-form-builder)にあります。
 
 ## インポートマップ
 

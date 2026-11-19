@@ -1,5 +1,5 @@
 ---
-source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
+source_sha256: 27de4452d886e56f5942567c0bb28d918a424a7e66c5b0b46e78f8ddaba9326a
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
@@ -73,7 +73,7 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 
 ### gzip
 
-gzip のサポートが読み込まれていれば、クライアントは gzip の本文を求め、展開します。`require "cybertrain"` がそれを読み込むので、アプリケーションではどのリクエストも `Accept-Encoding: gzip` を送り（自分で `Accept-Encoding` ヘッダーを送った場合を除く）、`Content-Encoding: gzip` の本文は展開されて返ります。`cybertrain/http_client` だけを require するプログラムは `require "cybertrain/http/gzip_ffi"` を足します（zlib をリンクします）。それがなければ、gzip のレスポンスはそのファイルを挙げる `BadResponseError` になります。保持する本文は、通信路の上でも展開後も `max_body` で制限されます（超えれば `TooLargeError`）。ストリーミングの本文は 1 回に最大 64 KiB ずつ展開され、圧縮していないストリーミングの本文と同じく全体の上限はありません。`Response` のヘッダーは受け取ったままです。`body` は展開したテキストでも、`Content-Encoding: gzip` と通信路の `Content-Length` は残ります。ほかの `Content-Encoding`（`br`、`deflate`）は `BadResponseError` で、途中で切れた gzip や壊れた gzip の本文もそうです。
+gzip のサポートが読み込まれていれば、クライアントは gzip の本文を求め、展開します。`require "cybertrain/core"` がそれを読み込むので（サーバーは gzip のリクエスト本文をこれで展開します）、アプリケーションではどのリクエストも `Accept-Encoding: gzip` を送り（自分で `Accept-Encoding` ヘッダーを送った場合を除く）、`Content-Encoding: gzip` の本文は展開されて返ります。`cybertrain/http_client` だけを require するプログラムは `require "cybertrain/http/gzip_ffi"` を足します（zlib をリンクします）。それがなければ、gzip のレスポンスはそのファイルを挙げる `BadResponseError` になります。保持する本文は、通信路の上でも展開後も `max_body` で制限されます（超えれば `TooLargeError`）。ストリーミングの本文は 1 回に最大 64 KiB ずつ展開され、圧縮していないストリーミングの本文と同じく全体の上限はありません。`Response` のヘッダーは受け取ったままです。`body` は展開したテキストでも、`Content-Encoding: gzip` と通信路の `Content-Length` は残ります。ほかの `Content-Encoding`（`br`、`deflate`）は `BadResponseError` で、途中で切れた gzip や壊れた gzip の本文もそうです。
 
 ### Server-Sent Events
 
@@ -96,7 +96,7 @@ parser.finish { |event| Answer.append(event.event_data) }   # ストリームが
 
 ## WebSocket フィードを購読する
 
-サーバーの動作中に外部のフィード（市場のティック、デバイスのテレメトリー、イベントストリーム）を受信するアプリケーションは、`Cybertrain::WebSocket.subscribe` でそれを購読します。HTTP クライアントと同じく `require "cybertrain"` には含まれていません。購読を書く場所で require し、`wss://` には TLS の層も require してください。これはフィードのサブシステム（`feeds` ロール、フィードのヘルスチェック）を読み込むので、`cybertrain/core` のアプリケーションにほかの行は要りません：
+サーバーの動作中に外部のフィード（市場のティック、デバイスのテレメトリー、イベントストリーム）を受信するアプリケーションは、`Cybertrain::WebSocket.subscribe` でそれを購読します。`require "cybertrain"` はこれを読み込みません（読み込むのはフィードのサブシステムと HTTP クライアントで、`cybertrain/websocket` は含まれません）。購読を書く場所で require し、`wss://` には TLS の層も require してください。これはフィードのサブシステム（`feeds` ロール、フィードのヘルスチェック）を読み込むので、`cybertrain/core` のアプリケーションにほかの行は要りません：
 
 ```ruby
 # config/app.rb（または bin/<app>.rb が Cybertrain::Main.run の前に require するファイル）
@@ -111,7 +111,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   .on_message { |conn, text| Cybertrain::DB.with { |c| c.execute("INSERT INTO trades(raw) VALUES (?)", [text]) } }
 ```
 
-`cybertrain/websocket` を require すると、フィードが `Cybertrain::Background` に登録されます。`Application#serve` がスケジューラーの後にこれを開始し、シャットダウン時に停止するので、呼び出すものは何もありません。購読ごとに 1 本のスレッドが付きます。スレッドは接続し、`on_open` を実行し（購読のメッセージはここで送ってください：再接続のたびに再び実行されます）、その後、各メッセージを `Connection`（`send_text`、`send_binary`、`close`、そして `:text` か `:binary` の `last_opcode`）とともに `on_message` に渡します。ブロックは引数を受け取り、`self` は使えません（Spinel には `instance_eval` がありません）。
+`cybertrain/websocket` を require すると、フィードが `Cybertrain::Background` に登録されます。`Application#serve` がスケジューラーの後にこれを開始し、シャットダウン時に停止するので、呼び出すものは何もありません。購読ごとに 1 本のスレッドが付きます。スレッドは接続し、`on_open` を実行し（購読のメッセージはここで送ってください：再接続のたびに再び実行されます）、その後、各メッセージを `Connection`（`send_text`、`send_binary`、`close`、そして `:text` か `:binary` の `last_opcode`）とともに `on_message` に渡します。ブロックは引数を受け取り、`self` を購読として使うことはできません。フィードは保存しておいたブロックを呼び出しますが、Spinel は保存したブロックの `instance_exec` を拒むためです（spikes/NOTES.md のルール 2）。
 
 - **いつ実行されるか。** フィードは、スケジューラーと同じく、バイナリが配信を行うときに始まります（[バックグラウンド処理](background-and-operations.md#background-work)）。`migrate`、`db ...`、`Main.command` のコマンドと `Cybertrain::Test::Client` では決して始まりません。`./<app> feeds [NAME...]` は、それらのすべて、または名前を挙げたものを専用のプロセスで動かします（[プロセスの役割](background-and-operations.md#process-roles)）。`CYBERTRAIN_WORKER=0`（`config.worker = false`）では、そのプロセスでは動きません（単に始まらないだけです。唯一の知らせはスケジューラーの「run elsewhere」の行で、`WebSocket.start!` を直接呼んだ場合は自分でログを出します）：複数のプロセスが配信する場合は、1 つを除いてすべてで無効にしてください。そうしないと、それぞれがフィード全体を受信します。`subscribe` はサーバーが始まる前に呼ぶ必要があります。動作中にフィードを追加したり削除したりすることはできません。名前は一意で（`ArgumentError`）、`on_message` のないフィードは、ポートをバインドする前に起動を失敗させます（`error: WebSocket subscription "trades" has no on_message`、終了コード 1）。
 - **オプション。** `headers:`（ハンドシェイクに追加するヘッダー）、`timeout:`（接続中の各待ちと各書き込みに 5 秒）、`max_message:`（1 MiB。それより大きいメッセージは 1009 で接続を閉じます）、`ping_interval:`（15）と `stale_after:`（45）、そして `allow_private:`（下記の `HttpClient` と同じ）。

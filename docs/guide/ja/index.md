@@ -1,5 +1,5 @@
 ---
-source_sha256: 374b8ba0c4bb2332191335290295150f202b174c2aef2b9543363b27ccbeccd0
+source_sha256: 1f9d6e1d7fae3507b67378cdf2d9745969a7d6c6641cee52f4c03cd6e59df7af
 title: ガイド
 ---
 # ガイド
@@ -9,7 +9,7 @@ API リファレンス以外に CyberTrain のドキュメントが扱うすべ�
 <!-- list: next-list -->
 - [**チュートリアル**](tutorial.md) — ブログを一歩ずつ作る：スキャフォールド、コメント、Turbo によるライブ更新、バックグラウンドジョブ、認証、アップロード、デプロイ
 - [**インストール**](install.md) — 必要なもの、`cybertrain` コマンド、Spinel とフレームワークのインストールの仕組み
-- [**仕組み**](how-it-works.md) — ビルド時のコード生成、インタプリタで動くビュー、サーバー、開発ループ、Rails との違いの表
+- [**仕組み**](how-it-works.md) — ビルド時のコード生成、アプリが require する任意のサブシステム、インタプリタで動くビュー、サーバー、FFI 経由の SQLite、開発ループ、Rails との違いの表
 - [**モデルとデータベース**](models.md) — マイグレーション、カラムの型、クエリ、関連付け、バリデーション、暗号化されたカラム、トランザクション、Rails のデータベースの引き継ぎ
 - [**リクエスト**](requests.md) — ルーティング、フォーマットと `respond_to`、コンサーン、Strong Parameters、HTTP キャッシュ、Cookie と暗号化されたセッション、レート制限、Content Security Policy、`force_ssl` とホストの確認、ヘッダー、クエリ文字列とリクエストボディ
 - [**認証**](authentication.md) — `generate authentication`：サインイン、サインアップか招待制、パスワードリセット、確認、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザー、0.4 からのアップグレード

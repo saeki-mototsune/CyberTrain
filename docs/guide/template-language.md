@@ -8,7 +8,7 @@ This document describes exactly what that pipeline accepts and executes. Where i
 
 Templates are **not** Ruby. Spinel (the Matz-Ruby AOT compiler cybertrain targets) has no `eval`, so "interpret the view's own Ruby at request time" was never on the table (D9 in `docs/design.md`); what runs instead is a small, closed grammar that only wears ERB/Ruby-looking syntax. There is no arbitrary Ruby inside a tag — only what `ExprParser` (`parser.rb`) recognizes as a statement or expression. There is no `eval`, `send`, `instance_eval`, method/class/module definitions, `require`, exceptions (`begin/rescue`), ranges, regexes, or multiple assignment. Blocks exist only where this document lists them: `each`/`each_with_index`/`each_slice` loops, a fixed set of Array and Hash methods (`map`, `select`, `sum`, `group_by` ... — see [Blocks](#blocks)), helper calls (`form_with(...) do |f| ... end`) and the `tag` builder. Every method call (`recv.name`) is resolved by hand-written `case` dispatch tables in `interpreter.rb`, keyed on the receiver's runtime Ruby class; a name missing from that type's table fails with a `RuntimeError` — there is no `method_missing`, no reflection, and (per `Interpreter#call_method`) Spinel's lack of `send` is exactly why this is a `case`, not a metaprogrammed lookup. A template can only do what this document describes.
 
-<details><summary>Where this lives in the source — the eight files of the template pipeline</summary>
+<details><summary>Where this lives in the source — the files of the template pipeline</summary>
 
 The pipeline lives in `cybertrain/template/`:
 
@@ -22,6 +22,9 @@ The pipeline lives in `cybertrain/template/`:
 | `helpers.rb` | `link_to`, `form_with`, `render`, `pluralize`, ... — everything a template calls without a receiver |
 | `form_builder.rb` | The `f` yielded by `form_with(...) do \|f\| ... end` |
 | `engine.rb` | Loads `.html.erb` sources — from disk under a root, or from the embedded `gen/views.rb` table (`Engine.embedded`) — parses (and optionally caches) them, renders with a layout |
+| `limits.rb` | `MAX_RENDER_DEPTH`, the default limit on nested renders |
+| `helper_object.rb` | `HelperObject`, the base of a subsystem's helper object (the `turbo_stream` builder) |
+| `turbo_stream_builder.rb`, `stream_helpers.rb` | Loaded by `cybertrain/streams`: the `turbo_stream` builder, and `turbo_stream_from`, `signed_stream_name`, `stream_source_path` |
 
 </details>
 
@@ -241,7 +244,7 @@ A `Cybertrain::Model` subclass (a generated `Post`, `Note`, ...) resolves a bare
 
 1. Five built-ins, always available: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (an `Errors`, [Per-type method table](#per-type-method-table)).
 2. `read_attribute(:name)` — a generated column.
-3. `read_association(:name)` — a generated `has_many`/`belongs_to`.
+3. `read_association(:name)` — a generated `has_many`, `has_one` or `belongs_to`.
 4. `call_view_method(:name)` — a hand-written, argument-less `def` the model generator found in `app/models/**/*.rb` (no arity, ever).
 
 ```erb
@@ -259,7 +262,7 @@ Two models compare with `==` by class and `id` (`Model#==`), reachable as the or
 
 ## Helpers and the form builder
 
-Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matches one of the built-ins below; inside a [component's](#components) template, then tries that component's view methods; treats a name ending in `_path`/`_url` as a generated route helper (via `Cybertrain::Views.url_resolver`, raising `"no routes"` until the app installs one); then tries the [application's helpers](#application-helpers); or raises `"undefined helper 'name'"`.
+Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which tries, in order: the built-ins below; the helpers of a loaded subsystem (`turbo_stream_from`, `turbo_stream`, `signed_stream_name` and `stream_source_path` exist with `require "cybertrain/streams"`); inside a [component's](#components) template, that component's view methods (for a call without arguments or a block); in a request, the controller's `helper_method` methods ([Concerns and `helper_method`](requests.md#concerns-and-helper_method)); a name ending in `_path`/`_url` as a generated route helper (via `Cybertrain::Views.url_resolver`, raising `"no routes"` until the app installs one); the [application's helpers](#application-helpers); or it raises `"undefined helper 'name'"`.
 
 | Helper | Signature | Notes / example |
 | --- | --- | --- |
@@ -285,6 +288,7 @@ Every receiverless call goes to `Helpers#helper_call` (`helpers.rb`), which matc
 | `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`; a negative number writes `-` before the format |
 | `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (base 1024); `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails-style buckets, no seconds precision: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"`, from the locale's `datetime.distance_in_words` (ja `"2分"`) |
+| `distance_of_time_in_words` | `distance_of_time_in_words(from_time, to_time)` (no keyword arguments) | the same buckets between two Times, in either order: two hours apart → `"about 2 hours"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | see [Layouts, `yield`, `content_for`, partials](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | empty / absent with no controller session |
 | `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / the nonce alone, this request's [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) nonce; `""` when no policy applies |
@@ -416,7 +420,7 @@ end
 - The template sees the component's instance variables as locals (`title`), its public methods without parameters by name (`value_text`), and `content`, what the `do` block printed (`""` without one). It renders without a layout, can render partials and other components, and counts toward `max_render_depth` like a partial. A partial it renders does not see the component's methods. A bare partial name in a component template (`render "chip"`) is looked up under `app/components/` (`app/components/_chip.html.erb`); a name with a directory (`render "shared/note"`) under `app/views/` as usual.
 - A component is named by its snake-case name without `_component`, as a partial is named by its path: `"card"` for `CardComponent`, `"admin/user_row"` for `Admin::UserRowComponent` (`app/components/admin/user_row_component.rb`). Templates cannot name constants.
 - `spin run gen` writes `gen/components.rb` from a lexical scan, as for helpers: the class line, the `@x =` assignments, the parameterless `def`s and the `initialize` keywords. `initialize` takes keywords only (at most three of them optional), and its template must exist; a missing keyword or an unknown one is an `ArgumentError` at render time. An unknown component is `Cybertrain::Component::Unknown`: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``. `content` is reserved: an `initialize` keyword or an `@content` instance variable of that name would be overwritten by the block's output, so `spin run gen` refuses it, naming the file and line. `app/views/components/` stays a view directory like any other (a `ComponentsController`'s); only `app/views/__components/` is reserved, the names component templates are kept under.
-- `cybertrain generate component card title value:integer` writes the class, its template and a test that renders it with `Cybertrain::Test.render_component`.
+- `cybertrain generate component card title value:integer` writes the class, its template and a test that renders it with `render_inline` and checks it with `assert_select` ([Testing streams and components](testing.md#testing-streams-and-components)).
 
 ### Rendering outside a request
 
@@ -533,7 +537,7 @@ Any plain `StandardError` from a helper or `FormBuilder`/custom-object method ca
 | Strict locals accept `name: default_expr` (Rails 7.1) | Only bare `name:` (required); a default-value entry is a `SyntaxError` |
 | Undefined ivar/local resolves via Ruby / the view context's methods | `@x` is a plain, never-failing env lookup; a bare undefined local is an explicit, closed helper-call attempt (`"undefined helper"` if no match) |
 | `case/when` with `===` (ranges, classes, regexes) | `case/when` with `==` only (numbers by value) |
-| `and`/`or`/`not`, ranges, regexes, multiple assignment all work | None exist; the reserved words fail with a specific "not supported in templates" message, not a generic parse error |
+| `and`/`or`/`not`, ranges, regexes, multiple assignment all work | None exist; a reserved word where an expression starts fails with a specific "not supported in templates" message (`<%= not x %>`), and one after an expression with the parser's `unexpected 'and' in 'a and b'` |
 | Numeric literals: hex, octal, binary, exponents, rationals | Only decimal integers/floats with optional `_` separators |
 | `:"quoted symbol"`, `:+` operator symbols | Symbols are identifier characters only |
 | `foo (x)`, `foo [x]` (space tolerated, sometimes with a warning) | Both are hard `SyntaxError`s — no space before a call's `(` or an index's `[` |

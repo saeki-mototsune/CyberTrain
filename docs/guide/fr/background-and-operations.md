@@ -1,5 +1,5 @@
 ---
-source_sha256: 7352ab5630a6ce2fdcd80864869365d02d3ffb12e944d4f616a4a29a3a3e3cb1
+source_sha256: 143689fc040acc9ab32433666e2c11366c85ef784370269c43a7237378ec0156
 ---
 # Tâches de fond et exploitation
 
@@ -47,11 +47,13 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
   [Rôles des processus](#process-roles)), après que le démarrage a connecté
   la base de données et défini `SPINEL_WORKERS`&nbsp;; les commandes
   `migrate`, `db ...`, `jobs ...`, `console` et `Main.command` ne les
-  démarrent jamais, pas plus que `Cybertrain::Test::Client`. Avec les jobs
-  requis, les threads de jobs démarrent dans chacun de ces processus, même
-  dans une application sans classe de job&nbsp;: le framework enregistre son propre job de mail
-  (`Mailer.deliver_later`,
-  [Envoyer des e-mails](external-services.md#sending-e-mail)).
+  démarrent jamais, pas plus que `Cybertrain::Test::Client`. Les threads de
+  jobs ne démarrent que si un type de job est enregistré&nbsp;: une classe de
+  job, un bloc `Job.handle`, ou le job de mail du framework, qu’enregistre
+  `require "cybertrain/mailer/later"` (et donc `require "cybertrain"`)
+  ([Envoyer des e-mails](external-services.md#sending-e-mail)). Sans aucun,
+  le journal dit `No job handler registered; job threads not started`, et les
+  tâches planifiées s’exécutent quand même.
 - **La table.** Les jobs sont des lignes de `cybertrain_jobs`, que le
   framework crée lui-même (`CREATE TABLE IF NOT EXISTS`, à la première
   utilisation) et laisse hors de `db/schema.rb`. Dans une `DB.transaction`,
@@ -252,8 +254,10 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - **Comment une tâche s’exécute.** Un bloc s’exécute sur le thread du
   scheduler, une tâche à la fois&nbsp;; chaque exécution est enveloppée dans
   un rescue qui journalise `ERROR [schedule:name] Scheduled task "name"
-  failed: ...` et le signale, et la boucle continue. Le bloc ne prend pas d’argument (Spinel n’a pas
-  d’`instance_eval`). Un appel SQLite garde son worker système jusqu’à son
+  failed: ...` et le signale, et la boucle continue. Le bloc ne prend pas d’argument, et `self` n’y est pas
+  le planificateur&nbsp;: le planificateur appelle le bloc qu’il a conservé,
+  et Spinel refuse l’`instance_exec` d’un bloc conservé (spikes/NOTES.md,
+  règle 2). Un appel SQLite garde son worker système jusqu’à son
   retour&nbsp;: avec `SPINEL_WORKERS=1` (la valeur par défaut), une longue
   requête bloque toutes les requêtes HTTP, et tous les autres threads,
   aussi longtemps. Confiez à un job une tâche qui a du vrai travail (`job:`,
@@ -419,8 +423,10 @@ des conteneurs, tous à partir de la même image et de la même base&nbsp;:
   par chaque flux.
 - Un découpage typique&nbsp;: `server` avec `CYBERTRAIN_WORKER=0` derrière le
   proxy, un ou plusieurs `worker`, et `feeds` s’il y a des abonnements.
-  `cybertrain new` écrit un rôle `web` et un rôle `worker` dans
-  `config/deploy.yml` (et un `feeds` en commentaire)&nbsp;;
+  `cybertrain new` écrit un rôle `web` dans `config/deploy.yml`, avec un
+  rôle `worker` et un rôle `feeds` en commentaire&nbsp;;
+  `cybertrain generate job` et `generate authentication`, qui ajoutent
+  `require "cybertrain/jobs"`, décommentent le rôle worker&nbsp;;
   [docs/deploy.en.md](../deploy.en.md), partie 7, «&nbsp;Splitting the
   roles&nbsp;», donne les unités systemd.
 - **Mise à jour depuis une version sans battements de cœur**&nbsp;: arrêtez
@@ -457,8 +463,9 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   bloc et stocke ce qu’il renvoie&nbsp;; `fetch_hash`, `fetch_array` et
   `fetch_int` stockent du texte JSON ou Integer et le relisent en sortie, si
   bien qu’une cellule corrompue se lit `{}`, `[]` ou `0` jusqu’à ce qu’elle
-  expire et que le bloc s’exécute à nouveau (Spinel n’a pas de `Marshal`, et
-  une méthode renvoie un seul type). `read(key)` (une String, ou nil),
+  expire et que le bloc s’exécute à nouveau (une cellule contient du texte, pas un
+  dump `Marshal`, et chaque type que le cache renvoie a une méthode à son
+  nom). `read(key)` (une String, ou nil),
   `write(key, value, expires_in:, unless_exist:)`, `delete`, `exist?`,
   `increment(key, by: 1, expires_in:)` (une seule instruction&nbsp;; un
   compteur expiré repart de `by`, et `expires_in:` ne fixe l’expiration
@@ -547,7 +554,7 @@ application a besoin. Une application avec des envois de fichiers garde aussi
 leurs octets sous sa racine d’envoi (`upload_root`, `storage/uploads/` par
 défaut)&nbsp;: sauvegardez ce répertoire et restaurez-le en même temps que la
 base de données, sinon les enregistrements restaurés pointent vers des fichiers
-absents ([Ajouter un envoi de fichier](tutorial.md#attachments)).
+absents ([Ajouter une image de couverture](tutorial.md#attachments)).
 
 **Sauvegardes.** `./<app> db backup PATH` écrit une copie cohérente de la base
 de données configurée (`CYBERTRAIN_DATABASE`) pendant que le serveur continue de
