@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/helper_scan"
 
@@ -96,7 +97,7 @@ module Cybertrain
       def self.scan_dir(dir)
         infos = Array.new(0) { ConcernInfo.new("", "", 0) }
         concerns_dir = "#{dir}/concerns/"
-        files = ControllerScan.ruby_files(dir)
+        files = SourceText.ruby_files(dir)
         files.each do |path|
           next unless path.start_with?(concerns_dir)
 
@@ -214,8 +215,8 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ControllerScan.indent_of(raw)
-          if !indents.empty? && indent <= indents.last && ControllerScan.closing_end?(line)
+          indent = SourceText.indent_of(raw)
+          if !indents.empty? && indent <= indents.last && SourceText.closing_end?(line)
             modules.pop
             indents.pop
             module_lines.pop
@@ -297,7 +298,7 @@ module Cybertrain
           j += 1
           line = raw.strip
           next if line == "" || line.start_with?("#")
-          return j if ControllerScan.indent_of(raw) <= indent && ControllerScan.closing_end?(line)
+          return j if SourceText.indent_of(raw) <= indent && SourceText.closing_end?(line)
         end
         j
       end
@@ -340,7 +341,7 @@ module Cybertrain
           raw = lines[j]
           j += 1
           line = raw.strip
-          return j if ControllerScan.indent_of(raw) <= indent && ControllerScan.closing_end?(line)
+          return j if SourceText.indent_of(raw) <= indent && SourceText.closing_end?(line)
 
           if raw.match?(AROUND)
             msg = "#{ControllerScan.app_path(file)}:#{j}: around_action is not supported (no around callbacks in Cybertrain::Controller)"
@@ -371,7 +372,7 @@ module Cybertrain
           raw = lines[j]
           j += 1
           line = raw.strip
-          return j if ControllerScan.indent_of(raw) <= indent && ControllerScan.closing_end?(line)
+          return j if SourceText.indent_of(raw) <= indent && SourceText.closing_end?(line)
 
           info.class_method_lines << raw
           dm = raw.match(ControllerScan::DEF_NAME)

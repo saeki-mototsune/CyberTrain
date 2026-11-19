@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/concern_scan"
 require "cybertrain/generator/controllers_emitter"
 require "cybertrain/generator/model_scan"
@@ -237,7 +238,7 @@ module Cybertrain
         lines.each do |line|
           next if line.strip == ""
 
-          n = ControllerScan.indent_of(line)
+          n = SourceText.indent_of(line)
           min = n if min < 0 || n < min
         end
         out = Array.new(0) { "" }

@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/ident"
 require "cybertrain/generator/concern_scan"
 
@@ -261,7 +262,7 @@ module Cybertrain
           # A line back at the call's own indent (or left of it) that does
           # not close a bracket is the next statement: an unbalanced
           # bracket inside a Regexp literal cannot swallow the class.
-          if pending != "" && line != "" && indent_of(raw) <= pending_indent && !line.start_with?(")") &&
+          if pending != "" && line != "" && SourceText.indent_of(raw) <= pending_indent && !line.start_with?(")") &&
              !line.start_with?("}") && !line.start_with?("]")
             collect_validates(file, pending, pending_line, conditions, condition_lines, unique, unique_lines)
             pending = +""
@@ -276,18 +277,18 @@ module Cybertrain
           end
           next if line == ""
 
-          indent = indent_of(raw)
+          indent = SourceText.indent_of(raw)
           if class_name == ""
             class_name = class_name_in(line)
             class_indent = indent if class_name != ""
           elsif skip_indent >= 0
-            skip_indent = -1 if indent == skip_indent && closing_end?(line)
-          elsif indent <= class_indent && closing_end?(line)
+            skip_indent = -1 if indent == skip_indent && SourceText.closing_end?(line)
+          elsif indent <= class_indent && SourceText.closing_end?(line)
             break
-          elsif def_indent >= 0 && indent == def_indent && closing_end?(line)
+          elsif def_indent >= 0 && indent == def_indent && SourceText.closing_end?(line)
             def_indent = -1
-          elsif opens_block?(line)
-            skip_indent = indent unless one_line_block?(line)
+          elsif SourceText.opens_block?(line)
+            skip_indent = indent unless SourceText.one_line_block?(line)
           elsif def_indent < 0 && scope_line?(line)
             scopes << scope_on(file, line, lineno, scopes)
           elsif def_indent < 0 && association_kind(line) != ""
@@ -419,7 +420,7 @@ module Cybertrain
             keep = false if n == start || n == stop || !lines[start - 1].to_s.match?(ConcernScan::INCLUDED_OPEN)
           end
           if n == concern.concern_line
-            out << (" " * indent_of(raw)) << "class " << concern.concern_name.split("::").last.to_s << "\n"
+            out << (" " * SourceText.indent_of(raw)) << "class " << concern.concern_name.split("::").last.to_s << "\n"
           elsif keep
             out << raw
           else
@@ -605,7 +606,7 @@ module Cybertrain
             end
           elsif ch == "\"" || ch == "'"
             quote = ch
-          elsif (i == 0 || !word_char?(text[i - 1, 1])) && text[i, 11] == "uniqueness:"
+          elsif (i == 0 || !SourceText.word_char?(text[i - 1, 1])) && text[i, 11] == "uniqueness:"
             found = true
           end
           i += 1
@@ -647,10 +648,10 @@ module Cybertrain
           elsif ch == "\"" || ch == "'"
             refuse_condition_spelling(file, lineno, text[i + 1, text.size - i - 1], ch)
             quote = ch
-          elsif ch == ":" && (i == 0 || !word_char?(text[i - 1, 1]))
+          elsif ch == ":" && (i == 0 || !SourceText.word_char?(text[i - 1, 1]))
             refuse_condition_spelling(file, lineno, text[i + 1, text.size - i - 1], "")
             i += 1
-          elsif (i == 0 || !word_char?(text[i - 1, 1])) &&
+          elsif (i == 0 || !SourceText.word_char?(text[i - 1, 1])) &&
                 (text[i, 3] == "if:" || text[i, 7] == "unless:")
             key_size = text[i, 3] == "if:" ? 3 : 7
             rest = text[i + key_size, text.size - i - key_size].lstrip
@@ -677,7 +678,7 @@ module Cybertrain
 
           tail = rest[key.size, rest.size - key.size]
           if quote == ""
-            next if tail != "" && (word_char?(tail[0, 1]) || tail[0, 1] == "?" || tail[0, 1] == "!")
+            next if tail != "" && (SourceText.word_char?(tail[0, 1]) || tail[0, 1] == "?" || tail[0, 1] == "!")
             next unless tail.lstrip.start_with?("=>")
           else
             next unless tail.start_with?(quote + ":")
@@ -902,7 +903,7 @@ module Cybertrain
         i = from
         while i < text.size
           ch = text[i, 1]
-          break unless word_char?(ch)
+          break unless SourceText.word_char?(ch)
 
           name << ch
           i += 1
@@ -950,7 +951,7 @@ module Cybertrain
       def self.constant_name?(text)
         return false if text == "" || !(text[0] >= "A" && text[0] <= "Z")
 
-        text.each_char { |ch| return false unless word_char?(ch) }
+        text.each_char { |ch| return false unless SourceText.word_char?(ch) }
         true
       end
 
@@ -969,7 +970,7 @@ module Cybertrain
       # endless `def x = ...` / `def x(a) = ...`, nor `def x; ...; end`.
       def self.def_opens_body?(line)
         return false unless line.start_with?("def ")
-        return false if one_line_block?(line)
+        return false if SourceText.one_line_block?(line)
 
         rest = line[4, line.size - 4].lstrip
         i = 0
@@ -977,7 +978,7 @@ module Cybertrain
         # starts with "=", so "=" ends a name only after its first char).
         while i < rest.size
           ch = rest[i, 1]
-          break if ch == " " || ch == "(" || (ch == "=" && i > 0 && word_char?(rest[i - 1, 1]))
+          break if ch == " " || ch == "(" || (ch == "=" && i > 0 && SourceText.word_char?(rest[i - 1, 1]))
           i += 1
         end
         tail = rest[i, rest.size - i].lstrip
@@ -1032,7 +1033,7 @@ module Cybertrain
 
         name = +""
         rest[1, rest.size - 1].each_char do |ch|
-          break unless word_char?(ch)
+          break unless SourceText.word_char?(ch)
           name << ch
         end
         rest = rest[name.size + 1, rest.size - name.size - 1].lstrip
@@ -1086,7 +1087,7 @@ module Cybertrain
           text = part.strip
           name = +""
           text.each_char do |ch|
-            break unless word_char?(ch)
+            break unless SourceText.word_char?(ch)
             name << ch
           end
           return "!" if name == "" || (name[0] >= "0" && name[0] <= "9")
@@ -1097,35 +1098,6 @@ module Cybertrain
           names << name
         end
         names.join(", ")
-      end
-
-      # Leading spaces of a raw line (a tab counts as one column).
-      def self.indent_of(raw)
-        n = 0
-        raw.each_char do |ch|
-          break unless ch == " " || ch == "\t"
-          n += 1
-        end
-        n
-      end
-
-      # "end", "end # comment" or "end." chains are block closers.
-      def self.closing_end?(line)
-        return false unless line.start_with?("end")
-        return true if line == "end"
-
-        nxt = line[3, 1]
-        nxt == " " || nxt == "#" || nxt == ";" || nxt == "."
-      end
-
-      # A nested `class << self`, `class X` or `module X` inside the model.
-      def self.opens_block?(line)
-        line.start_with?("class ") || line.start_with?("class<<") || line.start_with?("module ")
-      end
-
-      # `class << self; def x = 1; end` or `class Error < StandardError; end`.
-      def self.one_line_block?(line)
-        !line.index(";").nil? && (line.end_with?(" end") || line.end_with?(";end"))
       end
 
       # Every app/models/*.rb under `dir` that defines a class, sorted by
@@ -1147,7 +1119,7 @@ module Cybertrain
 
         name = +""
         line[6, line.size - 6].lstrip.each_char do |ch|
-          break unless word_char?(ch) || ch == ":"
+          break unless SourceText.word_char?(ch) || ch == ":"
           name << ch
         end
         name
@@ -1161,7 +1133,7 @@ module Cybertrain
         rest = line[4, line.size - 4].lstrip
         name = +""
         rest.each_char do |ch|
-          break unless word_char?(ch)
+          break unless SourceText.word_char?(ch)
           name << ch
         end
         return "" if name == "" || name == "initialize"
@@ -1179,9 +1151,6 @@ module Cybertrain
         ""
       end
 
-      def self.word_char?(ch)
-        (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch == "_"
-      end
     end
   end
 end

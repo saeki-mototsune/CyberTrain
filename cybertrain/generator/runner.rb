@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/routes_dsl"
 require "cybertrain/generator/routes_emitter"
 require "cybertrain/generator/controller_scan"
@@ -308,15 +309,6 @@ module Cybertrain
         nil
       end
 
-      # Creates dir and any missing parent.
-      def self.make_dirs(dir)
-        return nil if File.directory?(dir)
-
-        make_dirs(File.dirname(dir))
-        Dir.mkdir(dir)
-        nil
-      end
-
       # Writes (or with `check`, compares) one generated file; returns 1 when stale.
       def self.sync_file(root, rel, source, check)
         path = "#{root}/#{rel}"
@@ -328,7 +320,7 @@ module Cybertrain
           puts "stale: #{rel}"
           1
         else
-          make_dirs(File.dirname(path))
+          SourceText.make_dirs(File.dirname(path))
           File.write(path, source)
           puts "wrote #{rel}"
           0

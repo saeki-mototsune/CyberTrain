@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/schema"
 require "cybertrain/generator/inflector"
 require "cybertrain/ident"
@@ -99,7 +100,7 @@ module Cybertrain
         return false if at.nil?
 
         after = at + name.size + 1
-        after >= text.size || !ModelScan.word_char?(text[after, 1])
+        after >= text.size || !SourceText.word_char?(text[after, 1])
       end
     end
 

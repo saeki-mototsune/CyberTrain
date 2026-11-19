@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/helper_scan"
 
@@ -182,13 +183,13 @@ module Cybertrain
           stripped = line.strip
           next if stripped.start_with?("#")
 
-          indent = indent_of(line)
-          if class_indent >= 0 && indent <= class_indent && closing_end?(stripped)
+          indent = SourceText.indent_of(line)
+          if class_indent >= 0 && indent <= class_indent && SourceText.closing_end?(stripped)
             class_indent = -1
             def_indent = -1
             next
           end
-          if class_indent < 0 && !module_indents.empty? && indent <= module_indents.last && closing_end?(stripped)
+          if class_indent < 0 && !module_indents.empty? && indent <= module_indents.last && SourceText.closing_end?(stripped)
             modules.pop
             module_indents.pop
             next
@@ -252,7 +253,7 @@ module Cybertrain
             # Declarations are class-body lines: not a method's (a local
             # named layout is no declaration).
             if def_indent >= 0
-              def_indent = -1 if indent <= def_indent && closing_end?(stripped)
+              def_indent = -1 if indent <= def_indent && SourceText.closing_end?(stripped)
             elsif stripped.match?(DEF_OPEN)
               def_indent = indent unless one_line_def?(lines, number)
             else
@@ -455,7 +456,7 @@ module Cybertrain
       def self.scan_dir(dir)
         infos = []
         concerns_dir = "#{dir}/concerns/"
-        ruby_files(dir).each do |path|
+        SourceText.ruby_files(dir).each do |path|
           next if path.start_with?(concerns_dir)
 
           info = scan_source(path, File.read(path))
@@ -488,41 +489,6 @@ module Cybertrain
           end
         end
         nil
-      end
-
-      # Sorted "<dir>/<rel>.rb" paths under dir ([] when dir is missing).
-      def self.ruby_files(dir)
-        files = []
-        return files unless File.directory?(dir)
-
-        Dir.children(dir).sort.each do |entry|
-          path = "#{dir}/#{entry}"
-          if File.directory?(path)
-            ruby_files(path).each { |f| files << f }
-          elsif entry.end_with?(".rb")
-            files << path
-          end
-        end
-        files.sort
-      end
-
-      def self.indent_of(raw)
-        n = 0
-        raw.each_char do |ch|
-          break unless ch == " " || ch == "\t"
-
-          n += 1
-        end
-        n
-      end
-
-      # "end", "end # comment", "end;" or an "end." chain.
-      def self.closing_end?(line)
-        return false unless line.start_with?("end")
-        return true if line == "end"
-
-        nxt = line[3, 1]
-        nxt == " " || nxt == "#" || nxt == ";" || nxt == "."
       end
 
       # "app/controllers/x.rb" for a path under the project root (messages

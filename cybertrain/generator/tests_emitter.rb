@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/code_view"
 require "cybertrain/generator/test_scan"
 require "cybertrain/generator/models_emitter"
@@ -373,7 +374,7 @@ module Cybertrain
 
           before = at.zero? ? " " : code[at - 1].to_s
           after = code[at + word.length].to_s
-          return at if !TestScan.word_char?(before) && before != "." && before != ":" && (after == " " || after == "(")
+          return at if !SourceText.word_char?(before) && before != "." && before != ":" && (after == " " || after == "(")
 
           from = at + word.length
         end
