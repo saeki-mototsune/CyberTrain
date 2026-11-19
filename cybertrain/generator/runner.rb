@@ -75,16 +75,25 @@ module Cybertrain
           ["gen/routes.rb", RoutesEmitter.emit(Cybertrain::Routes.specs)],
           # An embedded build's views go into its build digest (the ETags).
           ["gen/assets.rb", assets_output(root, check, embed ? views : "")],
-          ["gen/locales.rb", Runner.locales_source(root)],
-          ["gen/controllers.rb", controllers_source(root, jobs_page)],
-          ["gen/concerns.rb", concerns_source(root)],
-          ["gen/views.rb", views],
-          ["gen/helpers.rb", HelpersEmitter.emit(HelperScan.scan_dir("#{root}/app/helpers"))],
-          ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))],
-          ["gen/jobs.rb", JobsEmitter.emit(JobScan.scan_dir("#{root}/app/jobs"))]
+          ["gen/locales.rb", Runner.locales_source(root)]
         ]
+        # Each tree is scanned once, right before the first emitter that
+        # reads it, so a refusal is reported at the point it always was
+        # (after public/assets is brought up to date). The helper modules go
+        # to the controllers too: a helper_method may not shadow one.
+        controllers = ControllerScan.scan_dir("#{root}/app/controllers")
+        controller_concerns = ConcernScan.scan_dir("#{root}/app/controllers")
+        helper_modules = HelperScan.scan_dir("#{root}/app/helpers")
+        outputs << ["gen/controllers.rb", ControllersEmitter.emit(controllers, jobs_page, controller_concerns, helper_modules)]
+        infos = ModelScan.scan_dir("#{root}/app/models")
+        model_concerns = ConcernScan.scan_dir("#{root}/app/models")
+        outputs << ["gen/concerns.rb", ConcernsEmitter.emit(controllers, controller_concerns, infos, model_concerns)]
+        outputs << ["gen/views.rb", views]
+        outputs << ["gen/helpers.rb", HelpersEmitter.emit(helper_modules)]
+        outputs << ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))]
+        outputs << ["gen/jobs.rb", JobsEmitter.emit(JobScan.scan_dir("#{root}/app/jobs"))]
         concern_files = Array.new(0) { "" }
-        concern_modules(root).each do |rel, source|
+        concern_files_of(controller_concerns, model_concerns).each do |rel, source|
           outputs << [rel, source]
           concern_files << rel
         end
@@ -105,10 +114,9 @@ module Cybertrain
         fixture_problem = ""
         test_problem = ""
         test_copies = Array.new(0) { "" }
-        # The rows of test/fixtures/*.yml (none while they are refused) and
-        # the models, each scanned once here and used again below.
+        # The rows of test/fixtures/*.yml (none while they are refused),
+        # scanned once here and used again below, as the models' infos are.
         fixture_rows = Array.new(0) { FixtureScan.empty_row }
-        infos = ModelScan.scan_dir("#{root}/app/models")
         if File.directory?("#{root}/test")
           copy_sources = Array.new(0) { "" }
           test_files = Array.new(0) { TestFile.new("", :top_level, [], [], [], "") }
@@ -227,17 +235,11 @@ module Cybertrain
         problem
       end
 
-      # gen/controllers.rb and gen/concerns.rb, each from its own scan of
-      # app/controllers: with the two scans' results held in locals of run
-      # and handed to both emitters, Spinel 2026.11.04.7026 warns that type
-      # inference did not converge when it compiles bin/gen.rb. The app's
-      # helper modules come too: a helper_method may not shadow one.
-      def self.controllers_source(root, jobs_page)
-        ControllerScan.use_root(root)
-        ControllersEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), jobs_page, ConcernScan.scan_dir("#{root}/app/controllers"),
-                                HelperScan.scan_dir("#{root}/app/helpers"))
-      end
-
+      # gen/concerns.rb from root's own scans. run does not go through
+      # here: it scans app/controllers, their concerns, app/helpers and
+      # app/models once each and hands the results to every emitter that
+      # reads them. This and concern_modules are what the tests call for
+      # one output.
       def self.concerns_source(root)
         ControllerScan.use_root(root)
         ConcernsEmitter.emit(ControllerScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/controllers"),
@@ -273,11 +275,16 @@ module Cybertrain
 
       # gen/concerns/<path under app/> => source, for the concerns of
       # app/controllers then those of app/models.
+      def self.concern_files_of(controller_concerns, model_concerns)
+        out = ConcernsEmitter.module_files(controller_concerns)
+        ConcernsEmitter.module_files(model_concerns).each { |rel, source| out[rel] = source }
+        out
+      end
+
+      # concern_files_of from root's own scans (see concerns_source).
       def self.concern_modules(root)
         ControllerScan.use_root(root)
-        out = ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/controllers"))
-        ConcernsEmitter.module_files(ConcernScan.scan_dir("#{root}/app/models")).each { |rel, source| out[rel] = source }
-        out
+        concern_files_of(ConcernScan.scan_dir("#{root}/app/controllers"), ConcernScan.scan_dir("#{root}/app/models"))
       end
 
       # Deletes a generated file that should no longer exist (with `check`,
