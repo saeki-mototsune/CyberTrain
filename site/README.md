@@ -71,6 +71,16 @@ generated ones too, through their Markdown) comes from
 The home page carries summaries and links to the guides for detail: when a
 guide becomes the canonical place for a fact, the home page keeps at most a
 sentence about it.
+The one exception is the quick start: its seven commands are printed in full
+in the home page's hero and again in step 01 of the tutorial
+([docs/guide/tutorial.md](../docs/guide/tutorial.md)), because a landing
+page's command block and a tutorial's first step are each what the page is
+for. Both follow [README.md](../README.md)'s quick start (the commands and
+their order; the trailing comments are worded per page), and nothing checks
+the three against each other: when a command changes, change all three, the
+four translations of each page, and the `COMMANDS` table in
+`script/og-cards`, which prints one of them on the home, tutorial and
+playground social cards (then regenerate the cards, below).
 The home page's Performance section (06) shows the run recorded in
 [docs/benchmark.md](../docs/benchmark.md) (`bench/results/<date>.json`,
 printed by `bench/report`): after a new recorded run, update its numbers in
