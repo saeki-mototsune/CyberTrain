@@ -34,7 +34,12 @@ the nav partial in the layout, the user command in `bin/<app>.rb`, the
 and in `bin/<app>.rb` and `bin/db.rb` the lines of the subsystems the code
 uses, unless `require "cybertrain"` loads them all already:
 `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` and
-`cybertrain/rate_limit` ([Subsystems](how-it-works.md#subsystems)).
+`cybertrain/rate_limit` ([Subsystems](how-it-works.md#subsystems)). It
+also includes `SessionTestHelper` in `test/test_helper.rb`, signs
+`users(:one)` in at the top of the scaffold and attachment tests already
+there ([Testing](#testing)), and uncomments the worker role that
+`cybertrain new` left commented in `config/deploy.yml`, since a job thread
+sends the mails.
 Running it again with the same options changes nothing: an edit already
 made is found and skipped, and a file already as it would write it is
 left. A file it would write differently (one you edited, or one an older
@@ -93,8 +98,9 @@ is no `Current` object.
 
 By default the generator writes `RegistrationsController` (`/sign_up`),
 which creates a user and signs them in. Rails' generator has no sign-up
-page and leaves the first user to the console; CyberTrain has no Ruby
-console, so it writes one. Sign-ups are limited to ten per client address
+page and leaves the first user to `rails console`; CyberTrain's console is
+not a Ruby prompt ([The console](background-and-operations.md#the-console)),
+so the generator writes one. Sign-ups are limited to ten per client address
 every three minutes, as sign-ins are: each one hashes a password, may mail
 a link, and its "has already been taken" tells whether an address is
 registered.
@@ -381,9 +387,11 @@ runs ([Testing an app](testing.md)):
 Time moves with `travel_to` and `travel` (no row is moved back in time),
 and mail is read from `Cybertrain::Mailer.deliveries` with `assert_emails`
 and `perform_enqueued_jobs`. A scaffold generated after authentication
-signs `users(:one)` in at the top of its controller test; one generated
-before it does not, so add `sign_in_as users(:one)` to its `setup`. Run
-again over an application whose tests an earlier generator wrote
+signs `users(:one)` in at the top of its controller test. For one generated
+before it, the generator inserts `sign_in_as users(:one)` into the test's
+`setup` (and into the `setup` of a `generate attachment` integration
+test); a `setup` you rewrote is left alone, so add the line there yourself.
+Run again over an application whose tests an earlier generator wrote
 (`test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`,
 `passwords.rb`, `accounts.rb`, `confirmations.rb`,
 `test/support/app_test.rb`, `test/support/authentication_helpers.rb`), the
