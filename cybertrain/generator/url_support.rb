@@ -148,7 +148,7 @@ module Cybertrain
       end
     end
 
-    # Plan decision 14: a Hash value has no query form here.
+    # A Hash value has no query form here.
     def self.hash_option!(name)
       msg = "path helper option :#{name} must be a String, Symbol, number, boolean or Array (got Hash)"
       raise ArgumentError, msg

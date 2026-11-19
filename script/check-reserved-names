@@ -205,7 +205,7 @@ fixtures_missing = fixture_taken - Cybertrain::Gen::FixtureScan::TAKEN_NAMES
 # later phase gives a new home, has a row here naming every file allowed to
 # `def` it (instance or `def self.`), today's definers and the homes
 # phases 4a and 4b gave it (seeded once per phase, so tasks running in
-# parallel never edit the table; a name the plan did not foresee is added
+# parallel never edit the table; a name the seeding did not foresee is added
 # by its task). A
 # `def` of a listed name in any other file under cybertrain/ fails the
 # check, as does an emitted `def` line (a String in

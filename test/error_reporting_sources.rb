@@ -197,7 +197,7 @@ test "every failed job attempt is reported, with the job's context and its reque
   assert_logged LOG.string, "ERROR", "job #{id} (BoomJob) attempt 1 of 5 failed: RuntimeError: boom; retrying in "
 end
 
-# Plan D11: the reporter keeps one event per class, message and `where`
+# The reporter keeps one event per class, message and `where`
 # (and, for a job, the job's id) for 60 seconds by the Clock, so a test of every attempt travels past
 # the window between attempts. The worked time (`perform_enqueued_jobs`'s
 # argument) only makes the row due; the Clock is what dedupe reads.

@@ -7,7 +7,7 @@ require "cybertrain/params"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 #
 # Post/PostRelation and Comment/CommentRelation below are hand-written in
-# exactly the shape the model generator (Task 11b) emits into gen/models/:
+# exactly the shape the model generator emits into gen/models/:
 # this file is the executable specification of that shape.
 
 # ---- gen/models/post.rb -------------------------------------------------

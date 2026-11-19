@@ -2784,7 +2784,7 @@ method on the concern would give those names a second return type (rule
 34). So gen does not let Spinel see the blocks at all: it loads each
 concern from a copy in `gen/concerns/` with its `included` and
 `class_methods` blocks blanked, and splices their bodies into the
-including classes (phase 4a Task 7, 2026-11-10; docs/design.md D60).
+including classes (phase 4a, 2026-11-10; docs/design.md D60).
 
 ### V. `strftime` with a built pattern on a Time or Date returns the pattern
 
@@ -2798,7 +2798,7 @@ polymorphic dispatch (`sp_pd_*`) reads the pattern with
 `_sp_ret_strbuf`, which still holds the pattern. The variant that takes a
 `const char*` (a literal pattern) formats correctly.
 
-- What CyberTrain does with it (phase 4a Task 17): `Strftime.walk`
+- What CyberTrain does with it (phase 4a): `Strftime.walk`
   (cybertrain/strftime.rb; reached from
   `Template::Helpers.time_tag_strftime` and `I18n.l`) parses the pattern
   and calls `strftime` with a literal for each directive it supports,
@@ -2834,7 +2834,7 @@ the `Views` module and `@name` a String ivar; the same call with a fresh
 local (`name = "#{@name}"`) builds. It showed only in the blog's
 program, so the trigger needs more of a program than that line.
 
-- What CyberTrain does with it (phase 4a Task 17): `Component` passes the
+- What CyberTrain does with it (phase 4a): `Component` passes the
   interpolated local (spikes/NOTES.md rule 97).
 - Not reduced; not reported upstream.
 
@@ -2846,7 +2846,7 @@ with "type inference did not converge in 128 rounds" after one change to
 `app/controllers` in locals and passing both to two emitters. Bisected to
 that change.
 
-- What CyberTrain does with it (phase 4a Task 5): each emitter scans
+- What CyberTrain does with it (phase 4a): each emitter scans
   `app/controllers` for itself (`Runner.controllers_source`,
   `concerns_source`), so the directory is read twice (spikes/NOTES.md rule
   94).
@@ -3578,7 +3578,7 @@ and one report.
 
 ### AK. The C of a very large program needs more memory to compile than its front end
 
-Spike item 6 (spikes/phase5/bundle_suite.sh) bundled 196 of the
+A phase 5a spike (spikes/phase5/bundle_suite.sh) bundled 196 of the
 framework's test programs (61,000 lines of Ruby) into one. Spinel's front end, every rule included, passed in about
 6.5 minutes at about 1.65 GB resident and wrote 87.6 MB of C (1.17 million
 lines). Compiling that C at the default -O2, split into units compiled in

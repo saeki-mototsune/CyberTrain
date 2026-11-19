@@ -3,7 +3,7 @@ require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/session_store"
 require "cybertrain/router"
 
-# Task 7 review, issue 3 (compile fragility): several program shapes the
+# Compile fragility a review found: several program shapes the
 # framework itself produces failed to compile under Spinel before this fix
 # (a CsrfProtection.token_for helper, since removed, took a bare `session`
 # parameter that widened to an untyped poly value across call sites -- see

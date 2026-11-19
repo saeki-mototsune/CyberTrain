@@ -1744,7 +1744,7 @@ from CRuby that is still there (the status table classifies each); record
     stubbed the program builds and the declarations gen splices into the
     including class work. Found in the phase 4a spike (2026-11-10,
     spikes/phase4/concern_class_methods.rb, deleted since).
-    Stubs are not enough for a call no stub covers: Task 7 of phase 4a
+    Stubs are not enough for a call no stub covers: phase 4a
     found `included do; scope :visible, -> { where(hidden: 0) }; end` in a
     model concern refused at the bare `where` inside the lambda, with
     `scope` stubbed and `method_missing` defined (stubbing Relation's
@@ -1781,7 +1781,7 @@ from CRuby that is still there (the status table classifies each); record
     converge in 128 rounds" once `Gen::Runner.run` held the results of two
     lexical scans of `app/controllers` (the controllers' and the
     concerns') in locals and passed both to two emitters; bisected to that
-    change (phase 4a Task 5, 2026-11-10), not reduced further. Each emitter
+    change (phase 4a, 2026-11-10), not reduced further. Each emitter
     now scans for itself (`Runner.controllers_source`,
     `concerns_source`), so `app/controllers` is read twice. When the
     message appears after a change that threads one value through several
@@ -1808,7 +1808,7 @@ from CRuby that is still there (the status table classifies each); record
     buffer. The literal-pattern form works. So `time_tag`'s `format:`
     (`Template::Helpers.time_tag_strftime`) walks the pattern itself and
     calls `strftime` with a literal for each directive it supports,
-    raising for an unknown one (phase 4a Task 17, 2026-11-11). Since
+    raising for an unknown one (phase 4a, 2026-11-11). Since
     phase 4b the walk is `Cybertrain::Strftime.walk(time, pattern, label, zone)`
     (cybertrain/strftime.rb; `zone`, the TimeZone a Time at offset 0 is
     rendered in, since phase 5a), which `time_tag_strftime` and `I18n.l`'s
@@ -1824,7 +1824,7 @@ from CRuby that is still there (the status table classifies each); record
     lambda shape, use an independently owned local copy and preserve the
     caller's mutation semantics; a plain local alias is not evidence that
     the same workaround works. Do not generalize this to every ivar/type
-    passed to a stored lambda (phase 4a Task 17,
+    passed to a stored lambda (phase 4a,
     2026-11-11; compare rule 82).
 
 98. A C file that Spinel wrote (`spinel prog.rb -c -o x.c`, such as the
@@ -1961,7 +1961,7 @@ from CRuby that is still there (the status table classifies each); record
      `Test::BUILTIN_PARENTS` and the `Errno::` prefix
      (cybertrain/test/assertions.rb), and fails naming a built-in class it
      does not know rather than ending in that NoMethodError (phase 5a
-     spike item 4, 2026-11-12; spikes/phase5/assert_raises.rb,
+     spike, 2026-11-12; spikes/phase5/assert_raises.rb,
      test/assertions.rb; docs/spinel-feedback.md AJ). `rescue Exception
      => e` in a yielding method catches every class probed, ScriptError
      and NotImplementedError included.
@@ -1986,8 +1986,8 @@ from CRuby that is still there (the status table classifies each); record
      default arm calls the builtin Time's method before raising (the C has
      one `sp_raise_nomethod` per name, each in that default arm). A record
      of a form that works, refining rule 62 (whose reduced program also
-     passes): `ZonedTime` keeps Rails' reader names (phase 5a spike item
-     2, 2026-11-12; spikes/phase5/durations.rb's header has the greps).
+     passes): `ZonedTime` keeps Rails' reader names (phase 5a spike,
+     2026-11-12; spikes/phase5/durations.rb's header has the greps).
 
 107. What `e.backtrace` answers depends on the build on Spinel
      2026.11.04.7026: a release build answers an empty Array, `-g` one
@@ -2046,7 +2046,7 @@ from CRuby that is still there (the status table classifies each); record
      depends on whole-program type inference: test/test_render_inline.rb
      and test/test_classes.rb failed (`'_o24' undeclared` in
      `HtmlReader.parse`, at `case kind`) while test/test_html.rb, loading
-     the same file, built (phase 5a, CI after the fix wave, 2026-11-13).
+     the same file, built (phase 5a, in CI, 2026-11-13).
      Commit 50bbcb8 reshuffled the code before that case, which only moved
      the number: it fixed one program and not the others. So shared
      framework code does not use a statement `case` on a plain Integer

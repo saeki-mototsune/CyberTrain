@@ -10,8 +10,7 @@ require "cybertrain/test"
 require_relative "support/log_capture"
 
 # Dispatches on the path by hand so this test does not depend on the Router
-# (a deviation from the plan's "tiny Router": Task 4 ships in the same wave,
-# and a Router bug must not show up as a server failure).
+# (a Router bug must not show up as a server failure).
 class ServerTestApp < Cybertrain::Middleware
   def call(ctx)
     req = ctx.request

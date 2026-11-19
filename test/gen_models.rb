@@ -1350,7 +1350,7 @@ test "flags emits exactly the Flag shape of test/model.rb" do
   assert_equal EXPECTED_FLAG, emit_for("flags")
 end
 
-# ---- the lines named by the plan ----------------------------------------
+# ---- the emitted lines, one by one --------------------------------------
 
 test "model_name and column_names lines" do
   post = emit_for("posts", ["summary"])

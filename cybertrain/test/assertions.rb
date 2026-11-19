@@ -21,7 +21,7 @@ module Cybertrain
 
     # Ruby's own exception classes answer no `superclass` under Spinel
     # ("undefined method 'superclass' for module RuntimeError"; phase 5a
-    # spike item 4, spikes/phase5/assert_raises.rb; spikes/NOTES.md rule
+    # spike, spikes/phase5/assert_raises.rb; spikes/NOTES.md rule
     # 104), so above the first
     # builtin the chain `assert_raises` walks is read from their parents
     # (checked against CRuby 3.3's `superclass`); every `Errno::` class's

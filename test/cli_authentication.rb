@@ -1768,7 +1768,7 @@ test "password reset: the generated tests and their helpers" do
   assert spec.index("noreply").nil?
   assert spec.index("SmtpReceiver").nil?
   assert_includes spec, "  def last_mail_link\n    mail = Cybertrain::Mailer.deliveries.last\n"
-  # Review Focus 4: a forged Host, both addresses, one mail, base_url.
+  # A forged Host, both addresses, one mail, base_url.
   assert_includes spec, "      request_reset(\"One@Example.com\", \"evil.example\")\n      known = response\n"
   assert_includes spec, "      request_reset(\"nobody@example.com\", \"evil.example\")\n      unknown = response\n"
   assert_includes spec, "      assert_equal known.body, unknown.body\n"

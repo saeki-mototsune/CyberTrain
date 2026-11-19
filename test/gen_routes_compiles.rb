@@ -9,7 +9,7 @@ require_relative "fixtures/gen_app/config/routes"
 # The checked-in generator output for the fixture app, loaded the way an
 # app's binary loads it: gen/models, routes, controllers, then app/models
 # and app/controllers. The fixture is shared with the model generator
-# (Task 11b), so gen/app.rb pulls in the generated models and this program
+# too, so gen/app.rb pulls in the generated models and this program
 # needs the model runtime; it also loads the fixture's jobs and gen/jobs.rb
 # (Job.register), so the job runtime too. That runtime links SQLite through FFI, which
 # CRuby cannot load: the snapshot comes from the compiled binary
