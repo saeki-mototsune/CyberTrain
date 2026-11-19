@@ -440,36 +440,7 @@ module Cybertrain
         invite_only = argv.include?("--invite-only")
         confirmable = argv.include?("--confirmable")
         result = Authentication.generate_with_result(".", invite_only, confirmable, argv.include?("--force"))
-        result.manual.each { |diff| puts diff }
-        puts ""
-        puts "next:"
-        puts "  cybertrain db migrate"
-        if invite_only
-          app = Build.app_name(".")
-          puts "  cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run #{app} -- user EMAIL)"
-        else
-          puts "  cybertrain server      # then open /sign_up"
-        end
-        puts "  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others"
-        base_url_env = Authentication.base_url_env(Build.app_name("."))
-        mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
-        puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
-        unless result.manual.empty?
-          # The warnings above a diff (with --confirmable, what the sessions
-          # and registrations controllers leave out until theirs is
-          # applied), once more at the end.
-          result.manual.each do |diff|
-            lines = diff.lines
-            next if lines.size < 2 || !lines[1].start_with?("IMPORTANT: ")
-
-            path = lines[0].delete_prefix("manual  ")
-            path = path[0, path.index(":").to_i].to_s
-            puts "IMPORTANT: #{path}: #{lines[1].strip.delete_prefix("IMPORTANT: ")}"
-          end
-          puts ""
-          puts "next: apply the diffs above, or re-run with --force for files you never edited"
-          puts "  # the app may not build until these diffs are applied: the files written now need them"
-        end
+        report_authentication(result, invite_only, confirmable)
       when "helper"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate helper NAME [--force]" unless args.size == 1
@@ -502,6 +473,42 @@ module Cybertrain
         raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported"
       end
       0
+    end
+
+    # What `generate authentication` prints after its files: the diffs it
+    # did not apply, the next steps, and the diffs' warnings once more.
+    def self.report_authentication(result, invite_only, confirmable)
+      result.manual.each { |diff| puts diff }
+      puts ""
+      puts "next:"
+      puts "  cybertrain db migrate"
+      if invite_only
+        app = Build.app_name(".")
+        puts "  cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run #{app} -- user EMAIL)"
+      else
+        puts "  cybertrain server      # then open /sign_up"
+      end
+      puts "  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others"
+      base_url_env = Authentication.base_url_env(Build.app_name("."))
+      mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
+      puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
+      unless result.manual.empty?
+        # The warnings above a diff (with --confirmable, what the sessions
+        # and registrations controllers leave out until theirs is
+        # applied), once more at the end.
+        result.manual.each do |diff|
+          lines = diff.lines
+          next if lines.size < 2 || !lines[1].start_with?("IMPORTANT: ")
+
+          path = lines[0].delete_prefix("manual  ")
+          path = path[0, path.index(":").to_i].to_s
+          puts "IMPORTANT: #{path}: #{lines[1].strip.delete_prefix("IMPORTANT: ")}"
+        end
+        puts ""
+        puts "next: apply the diffs above, or re-run with --force for files you never edited"
+        puts "  # the app may not build until these diffs are applied: the files written now need them"
+      end
+      nil
     end
   end
 end
