@@ -873,7 +873,7 @@ class CommentRelation < Cybertrain::Relation
 end
 
 # What `spin run gen` writes into `gen/jobs.rb` for a job class in
-# app/jobs, here the spec's example:
+# app/jobs, here Cybertrain::Job::Base's example:
 #
 #     class WelcomeJob < Cybertrain::Job::Base
 #       retry_on Cybertrain::Mailer::TimeoutError, wait: 60, attempts: 5

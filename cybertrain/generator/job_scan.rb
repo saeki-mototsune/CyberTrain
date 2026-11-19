@@ -3,7 +3,7 @@ require "cybertrain/generator/model_scan"
 
 module Cybertrain
   module Gen
-    # One `retry_on` / `discard_on` line of a job class (spec section 3).
+    # One `retry_on` / `discard_on` line of a job class (docs/design.md D51).
     # policy_kind is "retry" or "discard"; exception_class the class the
     # generated `rescue` arm names, in full (`Stuck` written inside
     # `NestedJob` is "NestedJob::Stuck"); wait_base the seconds of `wait:`
@@ -66,7 +66,7 @@ module Cybertrain
       end
     end
 
-    # Reads app/jobs/**/*.rb as text (spec section 2.2), as ComponentScan
+    # Reads app/jobs/**/*.rb as text (docs/design.md D51), as ComponentScan
     # reads app/components: every class that descends from
     # Cybertrain::Job::Base (directly, through ApplicationJob, or through
     # another job class: `LeafJob < MidJob`), wherever it sits in a file

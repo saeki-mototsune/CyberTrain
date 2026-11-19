@@ -465,7 +465,7 @@ module Cybertrain
     # once at warn with its id. {Job.start!} calls it after {Job.recover!};
     # a second call finds nothing to key.
     # @param now [Integer] epoch seconds (the start's clock; the rows'
-    #   updated_at is left as it is, as the spec's UPDATE writes only the key)
+    #   updated_at is left as it is: the backfill's UPDATE writes only the key)
     # @return [Integer] how many rows were keyed
     # @api public
     def self.backfill_keys(now)

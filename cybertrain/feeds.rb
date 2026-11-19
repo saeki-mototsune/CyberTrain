@@ -92,7 +92,8 @@ module Cybertrain
       @feed_read_warned
     end
 
-    # Spec section 9's two independent conditions over every status row:
+    # The feed health check's two independent conditions over every status
+    # row (docs/design.md D56):
     # the publishing process stopped writing (updated_at old), or the feed
     # is silent under a live publisher (COALESCE(last_activity_at,
     # started_at) old: a feed never active counts from its start). No rows,

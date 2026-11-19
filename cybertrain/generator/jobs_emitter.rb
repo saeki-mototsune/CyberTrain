@@ -2,7 +2,7 @@ require "cybertrain/generator/job_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/jobs.rb (spec sections 2.2 and 3): per job class the
+    # Writes gen/jobs.rb (docs/design.md D51): per job class the
     # reopened class with `self.job_kind`, `perform_later`, `perform_at`,
     # `perform_in`, `perform_now` and `self.run_job(run)`, whose policies are
     # literal `rescue` arms in declaration order (Spinel has no computed

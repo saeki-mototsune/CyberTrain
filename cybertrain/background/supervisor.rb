@@ -1,4 +1,4 @@
-# Cybertrain::Background's feed supervisor (spec section 9): one thread
+# Cybertrain::Background's feed supervisor (docs/design.md D56): one thread
 # per process that runs feeds, started by Background.start_all /
 # start_only when a service with feeds (cybertrain/websocket.rb) started,
 # and stopped first by Background.stop_all, so a feed that is being
