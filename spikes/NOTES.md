@@ -1771,7 +1771,7 @@ from CRuby that is still there (the status table classifies each); record
     `x` under Spinel: a `class_methods` name must not be the name of an
     instance method of the concern or of an including class (gen refuses
     it), and the class method itself comes from gen's `def self.x` on the
-    concern and forwarder in the class (plan decision 12). Found in the
+    concern and forwarder in the class (docs/design.md D60). Found in the
     phase 4a spike (2026-11-10; docs/spinel-feedback.md U). The final
     generated concern copies blank these blocks before compilation (rule
     92); the phantom instance-method description applies to compiling the

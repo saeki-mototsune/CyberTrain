@@ -2697,9 +2697,9 @@ ended (checked again on 2026-11-10 with `spinel exit_thread.rb`).
 
 ## Found in phase 4a of the Rails-gap programme (2026-11-10)
 
-The web-layer design (docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md,
-section 12) ran five checks against 2026.11.04.7026 before any code was
-written (spikes/phase4/, deleted since); all five passed, one with a stub,
+The web-layer work (docs/design.md D58 to D63) ran five checks against
+2026.11.04.7026 before any code was written (spikes/phase4/, deleted
+since); all five passed, one with a stub,
 and these were found while writing the third.
 
 ### U. A `def` inside a block that never runs defines the method anyway
@@ -2727,8 +2727,8 @@ around the block, and `C` has it through the include.
 
 - What CyberTrain does with it (phase 4a): a concern's `class_methods do
   def x ... end end` is written by gen as `def self.x` on the concern and
-  a forwarding `def self.x(...)` in each including class (plan decision
-  12); since `x` is also an instance method of every including class
+  a forwarding `def self.x(...)` in each including class (docs/design.md
+  D60); since `x` is also an instance method of every including class
   under Spinel, gen refuses a `class_methods` name that an instance method
   of the concern or of an including class has (spikes/NOTES.md rule 93).
   Since the final fixes of phase 4a (2026-11-11) the refusal also covers
@@ -3463,9 +3463,8 @@ by design.
 
 ## Found in phase 4b of the Rails-gap programme (2026-11-11)
 
-The i18n and authentication part of the web-layer design
-(docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md, section 12,
-item 6) ran four checks against 2026.11.04.7026 before any code was
+The i18n and authentication part of the web-layer work (docs/design.md
+D79) ran four checks against 2026.11.04.7026 before any code was
 written (spikes/phase4b/; the YAML reader's programs deleted since, the
 generator's own reader and test/locale_yaml.rb having replaced them); all
 four passed, and this was found while

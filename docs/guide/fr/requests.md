@@ -1,5 +1,5 @@
 ---
-source_sha256: 2b5fded6e781bd7858eecd4087a657f9a3942325ea7b3d7be3ac8a684a924643
+source_sha256: 7d20c1d676f0c2252ce9c6e5066373d67c01cf27c716496a63adc1b628df3f81
 ---
 # Requêtes
 
@@ -342,7 +342,7 @@ Rack laisse un corps de requête gzip tel quel. Ici, un corps envoyé avec `Cont
 
 ## Mettre à jour une application écrite pour 0.4
 
-Ce qui change pour une application écrite pour 0.4 (la liste complète est la section 14 de [la conception](../superpowers/specs/2026-11-10-phase4-web-layer-design.md))&nbsp;:
+Ce qui change pour une application écrite pour 0.4&nbsp;:
 
 - Les modèles et la base de données ont leur propre liste, qui comprend l’exécution de `db normalize` une fois ([Mettre à jour depuis 0.4](models.md#upgrading-from-04))&nbsp;; les tests ([Mettre à niveau depuis 0.4](testing.md#upgrading-from-04)) et les jobs ([Mise à jour depuis 0.4](background-and-operations.md#upgrading-from-04)) ont la leur.
 - Chaque session prend fin une fois&nbsp;: le cookie chiffré ne lit pas l’ancien cookie signé, donc les utilisateurs se reconnectent. Le code qui appelle `Session.load` ou `Session.dump` passe la clé dérivée, `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)`&nbsp;; le secret brut lève `Encryptor::Error`.
