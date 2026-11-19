@@ -200,11 +200,13 @@ gen expands them itself instead: it writes each concern to
 `gen/concerns/<path under app/>` with the two blocks blanked (the
 application's files load those copies), and `gen/concerns.rb` reopens every
 including class with the spliced declarations and a forwarder per
-`class_methods` method. Two rules follow. A `class_methods` method may not
-share its name with an instance method of the concern, of an including
-class or of its ancestors (Spinel would define both as instance methods,
-spikes/NOTES.md rule 93); gen refuses it, naming both places (`file:line`
-of the instance method). And an `include` of a module that is not a concern
+`class_methods` method. Two rules follow. gen refuses a `class_methods` method
+that shares its name with an instance method of the concern, of an
+including class or of its ancestors, naming both places (`file:line` of the
+instance method). The check comes from the original source: compiled as
+written, a `def` inside the never-run `class_methods` block is an instance
+method of the including class as well (a reduced program shows it;
+spikes/NOTES.md rule 93), and gen keeps the two names apart. And an `include` of a module that is not a concern
 (`include Comparable`, a name with no file under `app/*/concerns`) is left
 to Ruby as it is, so a misspelt concern name is a `NameError` when the
 application loads, not a gen message. gen looks a name up as Ruby does, the
@@ -217,8 +219,8 @@ would be lost.
 Model concerns live in `app/models/concerns/` and work the same way: their
 `included` block may hold any of the model's class-level declarations
 (`validates`, `validate`, `scope`, `belongs_to`, `has_many`, `has_one`,
-`encrypts`, callbacks, `normalizes`), treated as written in the model at
-the `include`. A concern's callbacks run after the model's own of the same
+`encrypts`, the callbacks), treated as written in the model at the
+`include`. A concern's callbacks run after the model's own of the same
 kind, and an `include` inside a model concern's `included` block brings that
 concern in. A model concern's `class_methods` name may not be a scope of
 the model or a class method every model has (`recent` beside `scope :recent`,
@@ -583,6 +585,11 @@ past the limit `Cybertrain::BodyTooLarge`, both `QueryInvalid`s answered 400.
 What changes for an application written for 0.4 (the full list is section
 14 of [the design](../superpowers/specs/2026-11-10-phase4-web-layer-design.md)):
 
+- Models and the database have a list of their own, which includes running
+  `db normalize` once ([Upgrading from 0.4](models.md#upgrading-from-04));
+  so do the tests ([Upgrading from 0.4](testing.md#upgrading-from-04)) and
+  the jobs
+  ([Upgrading from 0.4](background-and-operations.md#upgrading-from-04)).
 - Every session ends once: the encrypted cookie does not read the old
   signed one, so users sign in again. Code that calls `Session.load` or
   `Session.dump` passes the derived key, `Crypto.derive_key(secret,
