@@ -4,7 +4,11 @@ Original throwaway programs under `spikes/` answered the design questions in
 `docs/design.md` section 9, on Spinel 2026.09.12. This file is the durable
 record; the M0 programs themselves were deleted once the framework covered
 them (828e220, 2026-09-27; `git log --diff-filter=D -- spikes/` in a full
-clone).
+clone). What is under `spikes/` today is later and kept on purpose: the
+saved rechecks (`rechecks/`) and the phase programs that a rule below or
+docs/spinel-feedback.md cites as its reproduction or measurement
+(`decimal/`, `phase4b/`, `phase5/`, `phase6/`). "Maintaining this
+inventory" says when one of them may go.
 
 The rules below grew from those spikes and from everything found since,
 most of it on 2026.09.12. A rule says which build it was seen on; where it
@@ -141,7 +145,7 @@ for the evidence needed to change a status.
 | 120 | Tool behaviour, seen 2026-11-13: spin's freshness check for a test binary compares modification times. |
 | 121 | Works on this build: a record of a form that compiles and runs (phase 5b follow-ups, 2026-11-14; test/framework_names_compiles.rb), not of a defect. |
 | 122 | **Still there**, reduced on 2026-11-15 to three lines (in the rule; rechecks/differing/require_in_regex.rb): a require-shaped line inside a regex literal stops a `--strict-require` build, and without that flag the build passes with a warning and the match fails where CRuby's succeeds. |
-| 123 | **Still there**: found on this build (2026-11-15; rechecks/differing/env_nonliteral_key.rb, again 2026-11-19), in a program that requires two framework files; correct once cybertrain/core is required first. Not reduced. |
+| 123 | **Still there**: found on this build (2026-11-15; rechecks/differing/env_nonliteral_key.rb, again 2026-11-19), in a program that requires two framework files; correct once cybertrain/core is required first. Not reduced (docs/spinel-feedback.md AS). |
 | 3, 19, 20, 21, 30, 33, 45, 50 | Probe passes (2026-11-13, docs/spinel-feedback.md 1.2; again on 2026-11-15, saved in rechecks/dispatch_shapes.rb (3, 30), io_shapes.rb (19), socket_bare_readpartial.rb (20), socket_shapes.rb (21), json_error_shapes.rb (33) and rescue_shapes.rb (45, 50)). 20: at `SPINEL_WORKERS=1` another green thread keeps running while one sits in a bare `readpartial` on an idle connection; the `wait_readable` stays, since its nil return is the idle timeout. 33: `rescue StandardError` and a bare `rescue` catch `JSON::ParserError`, and `rescue StandardError` catches `JSON.generate`'s `JSON::NestingError`. 33 and 61 are **retired in part**: the change "DB: rescue StandardError alone in the data layer's rollback arms" (2026-11-15) took the three-class clause out of db.rb, db/cli.rb, db/connection.rb, db/pool.rb and model.rb, checked there with a whole-framework compiled program and the transaction tests it names; the clause stays in the other files (`git grep -l 'rescue JSON::NestingError' cybertrain`). The other workarounds of this row stay until a change removes each with a test of the framework's own shape. |
 | 4, 5, 6, 35, 39, 41 | Probe passes (2026-11-15; rechecks/dispatch_shapes.rb for 4, 5 and 6, rechecks/type_shapes.rb for 35, 39 and 41): an inherited class method called as `self.class.foo`, a base chain method returning `self` with a subclass's typed `first`, `Method` objects in an Array and a Hash, `obj[k] = v` on a parameter behind a chain of `call(env)` objects, `SafeString#+` with a constructing `case`, and an Array-valued `attr_accessor :target` beside a String `target`. 35 and 41 were seen in the whole framework and never reduced, so this is not conclusive. |
 | 11, 37 | Cost rules, not wrong results. Probe output matches CRuby (2026-11-15, rechecks/type_shapes.rb), and for 11's probe, alone and inside that program, the generated C (`spinel -c`) keeps the two nil-initialised locals typed (`sp_String *`, `sp_oint`), not boxed. 37's generated C was not read. |
@@ -241,6 +245,10 @@ deleted once `cybertrain/preview/` replaced them
 served, timed the first 200, posted a form). Measured on
 2026-11-12, Linux x86_64 (4 vCPU, cloud), CRuby 3.3.6, fiddle 1.1.2,
 GCC 13.3.0, the system libsqlite3 and libz; no Spinel build was made.
+The figures below are the spike's, of that day. What differs between the
+preview and the compiled tests today is checked by `script/preview-parity`
+and listed in [test/cruby/parity-gaps.txt](../test/cruby/parity-gaps.txt)
+("What CRuby cannot tell you" below).
 
 **Result: it serves.** With the shim and no change to any file under
 `cybertrain/`, `ruby -I<repo> -I. -r <repo>/spikes/preview/shim
