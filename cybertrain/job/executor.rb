@@ -101,7 +101,7 @@ module Cybertrain
       # `now`), runs it at `now` and has its outcome written. Its id, -1 when
       # none was claimed.
       def self.work_one_after_id(floor, kind, now)
-        run = Store.claim_after(floor, kind, now, Job.process_label, NO_TICKET)
+        run = Store.claim_after(floor, kind, now, Job.process_label)
         return -1 if run.run_id < 0
 
         finish_in_flight(run)
