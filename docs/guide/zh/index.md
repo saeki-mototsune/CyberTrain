@@ -1,5 +1,5 @@
 ---
-source_sha256: 374b8ba0c4bb2332191335290295150f202b174c2aef2b9543363b27ccbeccd0
+source_sha256: 1f9d6e1d7fae3507b67378cdf2d9745969a7d6c6641cee52f4c03cd6e59df7af
 title: 指南
 ---
 # 指南
@@ -9,7 +9,7 @@ CyberTrain 文档中 API 参考之外的全部内容：一步步构建博客的�
 <!-- list: next-list -->
 - [**教程**](tutorial.md) — 一步步构建博客：脚手架、评论、用 Turbo 实时更新、后台作业、登录、上传、部署
 - [**安装**](install.md) — 环境要求、`cybertrain` 命令、Spinel 与框架的安装方式
-- [**工作原理**](how-it-works.md) — 构建时代码生成、解释执行的视图、服务器、开发循环，以及与 Rails 的差异表
+- [**工作原理**](how-it-works.md) — 构建时代码生成、应用按需 require 的可选子系统、解释执行的视图、服务器、通过 FFI 使用的 SQLite、开发循环，以及与 Rails 的差异表
 - [**模型与数据库**](models.md) — 迁移、列类型、查询、关联、校验、加密列、事务、接管 Rails 数据库
 - [**请求**](requests.md) — 路由、格式与 `respond_to`、concern、强参数、HTTP 缓存、cookie 与加密的会话、限流、Content Security Policy、`force_ssl` 与主机检查、请求头、查询字符串与请求体
 - [**认证**](authentication.md) — `generate authentication`：登录、开放注册或仅限邀请、密码重置、确认、锁定、保持登录、账户页面、管理员用户、从 0.4 升级
