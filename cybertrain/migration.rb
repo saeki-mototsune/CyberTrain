@@ -22,7 +22,7 @@ module Cybertrain
     # every kind except :create_table, where it holds the actual
     # Cybertrain::Schema::Table built by the block (there is no separate
     # table name to carry -- the Table already has one). Callers that need
-    # a name from either shape use `Operation.table_name`.
+    # a name from either shape use `table_text`.
     #
     # An :execute operation (Base#execute) carries its SQL in `exec_sql` and
     # its binds in `exec_binds` instead; every other kind leaves them "" and
@@ -81,6 +81,20 @@ module Cybertrain
         else
           false
         end
+      end
+
+      # The table's name, whichever shape `table` holds (see the class
+      # notes). Not called table_name: Model.table_name is another method
+      # (spikes/NOTES.md rules 10/34).
+      def table_text
+        Operation.table_name(@table)
+      end
+
+      # An empty list of operations. Seeded with its element type per
+      # spikes/NOTES.md rule 9, so a migration whose `change`/`up`/`down`
+      # never records anything still compiles.
+      def self.empty_list
+        Array.new(0) { for_drop_table("") }
       end
 
       # nil typed as the String-or-nil a default holds.
@@ -289,7 +303,7 @@ module Cybertrain
       UNKNOWN_DEFAULT = "<unknown default>"
 
       def initialize
-        @operations = empty_operations
+        @operations = Operation.empty_list
       end
 
       # Override with the migration's operations; `cybertrain db migrate`
@@ -311,7 +325,7 @@ module Cybertrain
       # @return [void]
       # @api public
       def up
-        @operations = empty_operations
+        @operations = Operation.empty_list
         change
         nil
       end
@@ -329,7 +343,7 @@ module Cybertrain
       # @raise [IrreversibleMigration]
       # @api public
       def down
-        @operations = empty_operations
+        @operations = Operation.empty_list
         change
         @operations = @operations.reverse.map { |op| inverse(op) }
         nil
@@ -643,7 +657,7 @@ module Cybertrain
       # stay as written: they run forward, and a rollback turns them into
       # skipped :reversible_down operations.
       def mark_reversible(start, kind)
-        segment = Array.new(0) { Operation.for_drop_table("") }
+        segment = Operation.empty_list
         i = start
         while i < @operations.size
           op = @operations[i]
@@ -683,7 +697,7 @@ module Cybertrain
       def inverse(op)
         case op.kind
         when :create_table
-          Operation.for_drop_table(Operation.table_name(op.table))
+          Operation.for_drop_table(op.table_text)
         when :add_column
           Operation.for_remove_column(op.table, op.name)
         when :add_index
@@ -691,7 +705,7 @@ module Cybertrain
         when :rename_column
           Operation.for_rename_column(op.table, op.new_name, op.name)
         when :rename_table
-          Operation.for_rename_table(op.new_name, Operation.table_name(op.table))
+          Operation.for_rename_table(op.new_name, op.table_text)
         when :change_column_default
           unless op.from_given
             raise IrreversibleMigration, "change_column_default without from: has no automatic inverse; pass from: or write down"
@@ -713,15 +727,6 @@ module Cybertrain
         else
           raise IrreversibleMigration, "no automatic inverse for #{op.kind}"
         end
-      end
-
-      private
-
-      # Seeded with its element type per spikes/NOTES.md rule 9, so a
-      # migration whose `change`/`up`/`down` never records anything still
-      # compiles.
-      def empty_operations
-        Array.new(0) { Operation.for_create_table(Cybertrain::Schema::Table.new("")) }
       end
     end
 
