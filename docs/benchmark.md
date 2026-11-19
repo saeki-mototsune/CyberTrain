@@ -12,6 +12,12 @@ recorded run is [bench/results/2026-11-05.json](../bench/results/2026-11-05.json
 [2026-10-09.json](../bench/results/2026-10-09.json) (cybertrain 0.2.1, Spinel
 2026.09.12), is the "after" of the speedups described below, and the first,
 before them, is [2026-10-07.json](../bench/results/2026-10-07.json).
+bench/results also holds an earlier run of the same framework version,
+[2026-10-08.json](../bench/results/2026-10-08.json), and the results of a
+check of the Spinel package 2026.10.09-7009 (edb9dd0) made on 2026-10-13
+(`2026-10-13-spinel-ab.txt`, `2026-10-13-spinel-edb9dd0.json`;
+[spinel-feedback.md](spinel-feedback.md) mentions that check); none of them
+is tabulated here.
 
 On one CPU core, CyberTrain serves 2.2 to 8.8 times the requests per second
 of Rails 8.1 (YJIT, Puma) for the same pages, answers a single request in 0.3
@@ -69,7 +75,11 @@ interpreter. An article page allocated about 1,100 Strings. What changed:
   met on the lock all the time, and a comment POST on two cores was slower
   than on one (1,222 against 1,625 req/s, p99 52 ms). A busy handler written
   in C (`ffi_source`) retries every 100 us instead: the same POST on two cores
-  went to 2,214 req/s, 1.5 times the one-core rate, p99 22 ms.
+  went to 2,214 req/s, 1.5 times the one-core rate, p99 22 ms. (Since
+  saeki-mototsune/CyberTrain#134 the wait for a statement is a green-thread
+  `sleep` in Ruby, 100 us growing to 1 ms, so the lock holder can run on the
+  same worker; the C handler only reports that SQLite asked to wait.
+  design.md D10.)
 - **Less per record.** `Model#errors` is made on first use instead of in
   `initialize` (an `Errors`, a Hash and an Array for every loaded row), and
   generated models skip `assign_attributes`, and the Proc it allocates, for
@@ -149,7 +159,7 @@ spread, so neither was built.
 
 Measured back to back on the same data, 16 connections, the averages of two
 runs (`before` is a binary built from the commit before these changes, `after`
-the final one, on the 2.80 GHz host of the recorded run; the VM runs the same
+the final one, on the 2.80 GHz host of the run of 2026-10-09; the VM runs the same
 binary 10 to 15% apart from one run to the next):
 
 | req/s | `GET /articles` | `GET /articles/1` | `POST` comment | `POST`, 2 cores, `SPINEL_WORKERS=2` |
@@ -206,8 +216,8 @@ numbers include that: Rails encrypts the session cookie (AES-256-GCM), signs a
 separate CSRF token for each form (`per_form_csrf_tokens`) and computes an
 `ETag` for every response (`Rack::ETag`), behind a longer middleware stack
 (request id, remote IP, security headers, content security policy).
-CyberTrain signs its session cookie (HMAC-SHA256) without encrypting it and
-puts one CSRF token per session in every form.
+At the time of the run CyberTrain signed its session cookie (HMAC-SHA256)
+without encrypting it; it puts one CSRF token per session in every form.
 
 ### The apps today
 
@@ -216,13 +226,24 @@ framework gained, and `bench/rails_blog` has not followed, the cover image
 aside. On the measured requests examples/blog now does work the Rails app
 does not, so a run made now would not compare like with like:
 
+- **Signing in.** examples/blog has users since 2026-11-12
+  (`cybertrain generate authentication`): creating, editing and deleting an
+  article need a signed-in user, and every request first looks for a sign-in
+  in the session (a query only when there is one). `bench/rails_blog` has no
+  users. `bench/run` seeds both apps by posting articles as a visitor, so
+  against examples/blog it stops there, before any measured request:
+  `GET /articles/new` answers a redirect to the sign-in page.
+- **Every request.** The session cookie is now encrypted and authenticated
+  (AES-256-GCM, as in Rails) instead of only signed, and examples/blog picks
+  English or Japanese from `?locale=`, a `locale` cookie or `Accept-Language`
+  and renders its texts through the dictionary.
 - **The article list** preloads each article's comments for a count column,
   reads the number of articles from the cache table, renders a date and order
   filter, and answers JSON as well.
 - **The article page** renders each comment as a component through an
   application helper, subscribes to the article's Turbo Stream (a signed
-  stream name per page), dates the article with `time_tag`, checks for an
-  admin (an HMAC comparison) and loads Turbo through an import map; every
+  stream name per page), dates the article with `time_tag`, checks whether a
+  signed-in admin made the request and loads Turbo through an import map; every
   response carries a Content Security Policy with a fresh nonce.
 - **Posting a comment** also enqueues a job and broadcasts the comment (two
   more inserts and a component rendered) before it redirects.
@@ -231,8 +252,8 @@ does not, so a run made now would not compare like with like:
   the Rails app has neither (`dependent: :delete_all`).
 - **The stylesheet.** examples/blog serves a digested
   `/assets/application-<digest>.css` and has no `public/style.css` any more.
-  `bench/run` still requests `GET /style.css` from both apps: examples/blog
-  answers 404, and `bench/run` stops on a response that is not 2xx or 3xx.
+  `bench/run` still requests `GET /style.css` from both apps; examples/blog
+  would answer 404, which `bench/run` treats as a failure.
 - **A cover image in both, since 2026-11-12.** examples/blog attaches an
   article's picture with the code `cybertrain generate attachment` writes;
   `bench/rails_blog` with Active Storage (`has_one_attached :cover`), which
@@ -243,10 +264,13 @@ does not, so a run made now would not compare like with like:
 Only in examples/blog, and on no measured request: the admin namespace, the
 jobs page and the scheduled task.
 
-So `bench/run` cannot be run as it stands, and its figures would not mean
-what the ones below mean. Before the next run, `bench/rails_blog` has to be
-brought up to examples/blog (or the comparison narrowed to what both have),
-and the static request pointed at a file both apps serve.
+So `bench/run` cannot be run as it stands (it stops while seeding
+examples/blog), and its figures would not mean what the ones below mean.
+Before the next run, `bench/rails_blog` has to be brought up to examples/blog
+(or the comparison narrowed to what both have), the seeding has to sign in
+where the app asks for it, and the static request pointed at a file both apps
+serve. This is read from `bench/run` and the two apps; the run itself was not
+tried.
 
 ## Method
 
@@ -395,6 +419,10 @@ Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 C
 
 ## Reading the results
 
+These notes read the recorded run of 2026-11-05 and describe the framework
+and the apps as they were then; what has changed since is under
+[The apps today](#the-apps-today).
+
 - **One core: 2.2 to 8.8 times the requests** (2.1 to 8.5 with jemalloc in
   both). The gap is widest on the article page, the request with the most view
   work: 10 partials and 12 forms, each with a CSRF token (a separately signed one
@@ -451,8 +479,10 @@ Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 C
   50 s on this machine (173 s on 2026-10-09, with an older Spinel on another
   host), and every Ruby change needs a rebuild (`cybertrain server` does it
   for you in development), where Rails runs its source as it is. And the
-  comparison covers only the slice of Rails both apps use: CyberTrain has no
-  Action Cable, asset pipeline or i18n, and its ORM and router are smaller (see
+  comparison covers only the slice of Rails both apps used: at the time of
+  the run CyberTrain had no counterpart of Action Cable, the asset pipeline or
+  i18n (it has since: design.md D36, D37, D63, D79), and its ORM and router
+  are smaller (see
   [Differences from Rails](guide/how-it-works.md#differences-from-rails)).
 - **The machine.** It is a shared cloud VM and not the same host from day to
   day: the runs of 2026-10-07 and 2026-10-08 were on a 2.10 GHz Xeon, the run
@@ -466,7 +496,7 @@ Recorded 2026-11-05 at commit 0d8a942: Intel(R) Xeon(R) Processor @ 2.30GHz, 4 C
 
 ## Running it
 
-As the two apps stand, the run stops at the static request and would not
+As the two apps stand, the run stops while seeding examples/blog and would not
 compare like with like: see [The apps today](#the-apps-today). Once they are
 in step again, on Linux with at least 4 CPUs, from a checkout:
 
