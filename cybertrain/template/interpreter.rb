@@ -1061,9 +1061,8 @@ module Cybertrain
       # The block's value for every item, in order. Block parameters shadow
       # outer names for the call and are restored after it, as each's are.
       # A block that raises still restores them (and the output buffer):
-      # the console keeps one environment from line to line. Plain methods,
-      # not yielding ones, so the rescue is allowed (spikes/NOTES.md rules
-      # 32 and 45).
+      # the console keeps one environment from line to line. The cleanup is
+      # an `ensure` in a plain method, not a yielding one, as in render.
       def block_values(block, env, items, name, node)
         names = block.inames
         saved = save_locals(env, names)
@@ -1076,14 +1075,11 @@ module Cybertrain
             out << block_value(block, env, fresh, items[i], name, node)
             i += 1
           end
-        rescue StandardError => e
+        ensure
           @out = saved_out
           restore_locals(env, names, saved)
           drop_locals(env, fresh)
-          raise e
         end
-        restore_locals(env, names, saved)
-        drop_locals(env, fresh)
         out
       end
 
@@ -1101,14 +1097,11 @@ module Cybertrain
             found = i if truthy?(block_value(block, env, fresh, items[i], name, node)) == want
             i += 1
           end
-        rescue StandardError => e
+        ensure
           @out = saved_out
           restore_locals(env, names, saved)
           drop_locals(env, fresh)
-          raise e
         end
-        restore_locals(env, names, saved)
-        drop_locals(env, fresh)
         found
       end
 
