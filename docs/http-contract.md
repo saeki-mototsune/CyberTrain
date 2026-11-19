@@ -71,7 +71,7 @@ or half-sent request is closed silently at `read_timeout` (15 s).
 | Defaults on every response | `Content-Type: text/html; charset=utf-8` unless set, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, the configured `Permissions-Policy`; an upgrade carries none of them | test/server.rb ("every response the server writes carries the security defaults") |
 | Keep-alive | HTTP/1.1 stays open unless the request said `Connection: close`; HTTP/1.0 closes unless it said `keep-alive`; tokens are compared whole, and `close` wins. The response always names the outcome (`Connection: keep-alive` or `close`) | test/http_request.rb (`keep_alive?`), test/server.rb ("two keep-alive requests ...", "Connection: close ...", "HTTP/1.0 without keep-alive ...", "HTTP/1.0 with Connection: keep-alive ...") |
 | Pipelining | requests already in the buffer are answered in order, one at a time | test/server.rb ("pipelined requests are answered in order") |
-| An exception in the application | 500 and the connection stays usable; a client's fault (`ClientError`) is its 4xx. `JSON::ParserError` and `JSON::NestingError` are caught by name | test/server.rb, test/client_error.rb |
+| An exception in the application | 500 and the connection stays usable; a client's fault (`ClientError`) is its 4xx. `JSON::ParserError` and `JSON::NestingError` are still named in the server's rescue lists beside `StandardError` (a holdover of NOTES rules 33 and 61; on the pinned Spinel `StandardError` alone catches them) | test/server.rb, test/client_error.rb |
 
 ## When a connection ends
 
