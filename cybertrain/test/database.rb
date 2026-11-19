@@ -1,5 +1,5 @@
-# Cybertrain::Test::Database -- steps 1 and 2 of one bundled test (spec
-# sections 5.3, 6 and 7; plan decision D8): the database is emptied, then
+# Cybertrain::Test::Database -- steps 1 and 2 of one bundled test
+# (docs/design.md D82 and D83): the database is emptied, then
 # the fixtures are inserted. `cybertrain test`'s program (gen/tests.rb)
 # registers both through Test.before_each_bundled:
 #
@@ -12,11 +12,12 @@
 #   Cybertrain::Test.before_each_bundled(Gen::Tests.fixtures_hook)
 #
 # gen/tests.rb registers both in one call, Database.clear_and_load!, one
-# transaction for the clear and the inserts together (plan decision D8);
+# transaction for the clear and the inserts together;
 # clear! and load_fixtures! are the same steps as a transaction each.
 #
 # Not Rails' transactional tests: every table's rows are deleted instead
-# (spec section 6 says why). Each transaction is on one connection, with
+# (docs/design.md D82 says why: no savepoints, other connections, and the
+# framework's CREATE TABLE IF NOT EXISTS would roll back). Each transaction is on one connection, with
 # `PRAGMA foreign_keys = OFF` around it (a no-op inside a transaction, so
 # it brackets the BEGIN and the COMMIT).
 #
@@ -293,7 +294,7 @@ module Cybertrain
       # deletes of `tables`, of the framework tables present and of
       # sqlite_sequence; then the inserts, and `PRAGMA foreign_key_check`
       # before the COMMIT (a belongs_to label or id that names no row:
-      # spec section 7's foreign-key failure, which turning foreign keys on
+      # a foreign-key failure, which turning foreign keys on
       # again would not report). On a failure it rolls back, turns foreign
       # keys on again and re-raises. Refused inside an open transaction,
       # whose rows the deletes would join.

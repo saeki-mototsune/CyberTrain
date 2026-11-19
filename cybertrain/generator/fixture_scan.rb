@@ -1,5 +1,5 @@
-# Gen::FixtureScan -- reads test/fixtures/*.yml at build time (spec section
-# 7, plan decision D8) into one FixtureRow per label: the table, Rails' id
+# Gen::FixtureScan -- reads test/fixtures/*.yml at build time
+# (docs/design.md D83) into one FixtureRow per label: the table, Rails' id
 # for the label (or its `id:`), and the INSERT's columns and SQL literals.
 #
 #   rows = Gen::FixtureScan.scan(root, Cybertrain::Schema.current, ModelScan.scan_dir("#{root}/app/models"))

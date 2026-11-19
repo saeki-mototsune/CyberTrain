@@ -1,5 +1,5 @@
-# Gen::TestDataEmitter -- gen/test/data.rb (spec sections 6 and 7, plan
-# decision D8): what `cybertrain test` clears and loads before each test.
+# Gen::TestDataEmitter -- gen/test/data.rb (docs/design.md D82 and
+# D83): what `cybertrain test` clears and loads before each test.
 #
 # - Gen::TestData::TABLES, every table of db/schema.rb (the clear's list);
 # - FIXTURE_SQL, one `INSERT INTO "<table>" (...) VALUES (...)` per fixture

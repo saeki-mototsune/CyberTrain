@@ -1523,7 +1523,7 @@ module Cybertrain
       # `Tue, 10 Nov 2026 12:00:00 +0000` for a Time, `2026-11-10` for a
       # Date). class:, id:, title: and data: are attributes.
       #
-      # A Time is rendered in Time.zone (spec section 4): the datetime is
+      # A Time is rendered in Time.zone (docs/design.md D81): the datetime is
       # ISO 8601 at the zone's offset (`2026-11-12T05:00:00+09:00`, `Z`
       # only when the zone is UTC) and the text's fields, `%z` and `%Z` are
       # the zone's. `zone: "America/New_York"` renders this one call in

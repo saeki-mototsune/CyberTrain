@@ -222,7 +222,7 @@ class Time
 
   private_class_method :strptime_digits, :strptime_word, :strptime_name, :strptime_name_length
 
-  # --- the calendar in Time.zone (spec sections 3.2 and 4) ---------------
+  # --- the calendar in Time.zone (docs/design.md D81) --------------------
   #
   # Each method below answers a UTC Time. Boundaries and calendar steps are
   # taken in `Time.zone` ({Cybertrain::Clock.zone}, UTC by default): the
@@ -369,7 +369,7 @@ class Time
   # @api public
   def tomorrow = advance(days: 1)
 
-  # This instant's wall fields in `zone` (spec section 4): a
+  # This instant's wall fields in `zone`: a
   # {Cybertrain::ZonedTime} with `year`, `month`, `day`, `hour`, `min`,
   # `sec`, `wday`, `yday`, `utc_offset`, `zone` (the abbreviation),
   # `to_time` and `to_date`. The Time itself stays a UTC instant.

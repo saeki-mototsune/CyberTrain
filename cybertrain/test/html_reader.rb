@@ -1,5 +1,5 @@
 # Cybertrain::Test::HtmlReader -- the test-only reader of the HTML the
-# framework writes, behind `assert_select` (spec section 9.2) and
+# framework writes, behind `assert_select` (docs/design.md D84) and
 # `assert_turbo_stream`.
 #
 #   nodes = Cybertrain::Test::HtmlReader.parse(%(<ul><li class="a">x</li></ul>))

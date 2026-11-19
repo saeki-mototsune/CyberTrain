@@ -914,7 +914,7 @@ module Cybertrain
         YAML
       end
 
-      # test/test_helper.rb (spec 5.1): what every test file's `require
+      # test/test_helper.rb: what every test file's `require
       # "test_helper"` loads. `cybertrain test` requires it before the test
       # files; the generators that add helpers (authentication) insert them
       # after TEST_HELPER_MARKER.

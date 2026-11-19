@@ -4,23 +4,23 @@ require "cybertrain/generator/models_emitter"
 
 module Cybertrain
   module Gen
-    # gen/tests.rb, the one program `cybertrain test` compiles (spec
-    # sections 5.2 and 8): the test environment forced (plan decision 19),
+    # gen/tests.rb, the one program `cybertrain test` compiles
+    # (docs/design.md D83): the test environment forced (see emit),
     # the framework, the application and gen's outputs, the helper and
     # test/support/** (or their class-form copies under gen/test/), then
     # every test file in path order, each after `Test.begin_file` (its
-    # literal test names and lines, plan decision 10); then Gen::Tests,
-    # the table of class-form tests with one `case` arm per test (spec
-    # 5.2's four lines; the dispatch lambda is made in a method, rule 82);
+    # literal test names and lines); then Gen::Tests, the table of
+    # class-form tests with one `case` arm per test (before_case, run_body,
+    # after_case; the dispatch lambda is made in a method, rule 82);
     # last the boot, the table handed over, and the runner's exit status.
     #
-    # A bundle that cannot be built is refused (pre-flight ruling B2) by a
+    # A bundle that cannot be built is refused by a
     # gen/tests.rb that only aborts with the reason, so `spin run gen` and
     # `spin test` keep working and `cybertrain test` fails with it: a
     # top-level `def` or constant defined in two bundled files (they would
     # merge into one in one program), a top-level `def render_inline` that
     # would replace the framework's, and the block forms that are not
-    # offered (plan decision 14).
+    # offered.
     module TestsEmitter
       PATH = "gen/tests.rb".freeze
       HEADER = "# gen/tests.rb: every test of the application in one program, compiled and run by\n" \
@@ -39,6 +39,13 @@ module Cybertrain
         return refused_program(problem) unless problem.empty?
 
         out = +HEADER
+        # Assigned, never `||=`: an exported CYBERTRAIN_ENV=development or
+        # =production must not survive into a program that deletes the
+        # database it tests on. An inherited CYBERTRAIN_DATABASE names some
+        # other environment's file, so it is dropped; CYBERTRAIN_TEST_DATABASE
+        # is the only variable that names the file (Test::Bundle checks it
+        # before it deletes anything). These lines come before the framework
+        # is required.
         out << "ENV[\"CYBERTRAIN_ENV\"] = \"test\"\n"
         out << "ENV.delete(\"CYBERTRAIN_DATABASE\")\n"
         out << "ENV[\"CYBERTRAIN_DATABASE\"] = ENV[\"CYBERTRAIN_TEST_DATABASE\"].to_s unless ENV[\"CYBERTRAIN_TEST_DATABASE\"].to_s.empty?\n"
@@ -147,7 +154,7 @@ module Cybertrain
         out << "    CASE_NAME = #{list(c_name, "\"\"")}.freeze\n"
         out << "    CASE_METHOD = #{list(c_method, "\"\"")}.freeze\n"
         out << "\n"
-        out << "    # Runs the class-form test i: spec 5.2's four lines per arm.\n"
+        out << "    # Runs the class-form test i: before_case, run_body, after_case.\n"
         out << "    def self.run_case(i)\n"
         unless arms.empty?
           out << "      case i\n"
@@ -276,7 +283,7 @@ module Cybertrain
       end
 
       # The first `assert_select ... do` / `{ }` or `render_inline(...) do`
-      # / `{ }` of text (plan decision 14), as the refusal; "" for none. A
+      # / `{ }` of text, as the refusal; "" for none. A
       # call whose arguments go on over several lines (a trailing `,`, an
       # open bracket) is read to where they end; one that never ends is
       # refused too, since gen cannot tell whether it takes a block.

@@ -1,5 +1,5 @@
 # Cybertrain::Test::Args -- the run-time arguments of `cybertrain test`
-# and of the bundle it compiles (spec section 8, plan decision 11): file or
+# and of the bundle it compiles (docs/design.md D83): file or
 # directory arguments keep the tests of those files, `-n NAME` keeps a test
 # whose name or method name is NAME, `-n /TEXT/` one whose name or method
 # name contains TEXT; both combine. No requires beyond the standard
@@ -19,7 +19,7 @@ module Cybertrain
       # The characters `-n /TEXT/` refuses in TEXT ({pattern_problem}).
       REGEXP_CHARACTERS = ["^", "$", "\\", "*", "+", "[", "]", "{", "}", "|"].freeze
       # The line a run prints when a filter kept no test (the run still
-      # exits 0: 0 tests is not a failure, spec section 8).
+      # exits 0: 0 tests is not a failure).
       NOTHING_MATCHED = "no test matched the filter".freeze
       # The digits of a method name's `_u<hex>_` ({method_for}).
       HEX = "0123456789abcdef".freeze
@@ -178,7 +178,7 @@ module Cybertrain
         base.end_with?("/") ? "#{base}#{File.basename(path)}" : "#{base}/#{File.basename(path)}"
       end
 
-      # The method name of a test (spec 5.2; gen's rewrite uses this one):
+      # The method name of a test (gen's rewrite uses this one):
       # `test_` and the name with every ASCII character outside
       # [A-Za-z0-9_] turned into `_` and every other character into
       # `_u<hex>_`, the lowercase hex of its code point closed by `_`

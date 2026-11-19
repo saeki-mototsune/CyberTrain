@@ -30,7 +30,7 @@ module Cybertrain
     # directives (multibyte included) is copied as it is.
     #
     # A Time at offset 0 (every Time the framework hands out is a UTC
-    # instant) is rendered in zone (spec section 4): the wall fields, `%z`
+    # instant) is rendered in zone (docs/design.md D81): the wall fields, `%z`
     # and `%Z` are the zone's (zoned_time). A Time that carries another
     # offset of its own (`getlocal("+09:00")`) keeps it, as Rails renders
     # a plain Time; a caller that wants it in the zone passes `getutc`. A

@@ -1,8 +1,8 @@
-# The assertions of spec section 10 beyond the first few, and the checks
+# The assertions (docs/design.md D84) beyond the first few, and the checks
 # behind every assertion, with Minitest's (or Rails') failure text.
 # Required by cybertrain/test at its end; it reopens Cybertrain::Test.
 #
-# The pattern every assertion follows (pre-flight R17): the check and its
+# The pattern every assertion follows: the check and its
 # message live in one module function, `Cybertrain::Test.check_<name>`,
 # which counts the assertion, compares, builds the message into a local
 # (rule 58) and raises AssertionFailed through {Cybertrain::Test.fail_with};
@@ -21,7 +21,8 @@ module Cybertrain
 
     # Ruby's own exception classes answer no `superclass` under Spinel
     # ("undefined method 'superclass' for module RuntimeError"; phase 5a
-    # spike item 4, spikes/phase5/assert_raises.rb), so above the first
+    # spike item 4, spikes/phase5/assert_raises.rb; spikes/NOTES.md rule
+    # 104), so above the first
     # builtin the chain `assert_raises` walks is read from their parents
     # (checked against CRuby 3.3's `superclass`); every `Errno::` class's
     # parent is SystemCallError (see {builtin_parent}).

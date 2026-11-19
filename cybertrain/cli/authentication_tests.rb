@@ -21,7 +21,7 @@
 # time), and mail is read from Cybertrain::Mailer.deliveries (the test
 # environment stores it) with assert_emails and perform_enqueued_jobs.
 # Phase 4b's top-level test files these replace (TEST_FILES_REPLACED) are
-# named on a re-run, and deleted with --force (plan decision D15).
+# named on a re-run, and deleted with --force.
 require "digest"
 require "base64"
 

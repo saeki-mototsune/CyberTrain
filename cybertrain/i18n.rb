@@ -348,7 +348,7 @@ module I18n
   # "" for a Date), `%^a` and the like upper-case the name; every other
   # directive is strftime's.
   #
-  # A Time is rendered in `Time.zone` (spec section 4): its wall fields,
+  # A Time is rendered in `Time.zone` (docs/design.md D81): its wall fields,
   # `%z` and `%Z` are the zone's, and so are the day and month names and
   # `%p`. `zone:` (an IANA name) renders this one call in another zone. A
   # Time that carries an offset of its own (`getlocal("+09:00")`) keeps it
