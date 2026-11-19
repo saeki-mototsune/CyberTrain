@@ -52,6 +52,8 @@ Gem::Specification.new do |spec|
     "cybertrain/cli/framework_version.rb",
     "cybertrain/cli/dev_server.rb",
     "cybertrain/cli/dev_server/machine.rb",
+    "cybertrain/cli/dev_server/process_table.rb",
+    "cybertrain/cli/dev_server/owned_run.rb",
     "cybertrain/cli/dev_server/processes.rb",
     "cybertrain/cli/dev_server/holding.rb",
     "cybertrain/cli/dev_server/watch.rb",
