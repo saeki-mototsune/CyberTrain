@@ -154,7 +154,7 @@ module Cybertrain
 
     # The thread's log Scope when the writer was set ({#body_writer=},
     # {#upgrade!}): the request's, whose id and tags the lines logged while
-    # the body is written carry (spec section 12.2: the request lasts until
+    # the body is written carry (docs/design.md D86: the request lasts until
     # its body is written). The Server swaps it in around the writer
     # ({BodyWriter.write_scoped}) and back after it. {Logger::NO_SCOPE}
     # when there is no writer: a body, a redirect or an error reset that

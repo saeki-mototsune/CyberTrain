@@ -796,7 +796,7 @@ module Cybertrain
     # The feed's log Scope ({feed_scope}) is swapped in first and stays
     # for the life of the thread (nothing else runs on it): every line of
     # the feed and of its callbacks carries `[feed:<name>]`.
-    # The thread's death is reported too (spec section 13.2), its `where`
+    # The thread's death is reported too (docs/design.md D88), its `where`
     # given ({feed_where}), as in the callbacks' rescues.
     def self.run_feed_logged(sub, generation)
       Logger.swap_scope(feed_scope(sub))
@@ -817,7 +817,7 @@ module Cybertrain
       "feed:#{sub.sub_name}"
     end
 
-    # The log Scope of a feed thread (spec section 12.3): the tag and
+    # The log Scope of a feed thread (docs/design.md D86): the tag and
     # `where` `feed:<name>`, no request id, no context.
     # @param sub [Subscription]
     # @return [Logger::Scope]

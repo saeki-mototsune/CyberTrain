@@ -9,7 +9,7 @@ require "cybertrain/http/client_error"
 require "cybertrain/error_reporter"
 
 module Cybertrain
-  # Gives every request an id (spec section 12.2, Rails'
+  # Gives every request an id (docs/design.md D86; Rails'
   # ActionDispatch::RequestId), outermost in the stack: a version 4 UUID
   # ({Crypto.uuid}), or the request's `X-Request-Id` when a trusted proxy
   # sent it ({Request.trusted_peer?}, the check {Request#client_ip} makes)

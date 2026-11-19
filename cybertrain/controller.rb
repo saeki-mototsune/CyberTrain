@@ -1265,7 +1265,7 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
-      # The request's `where` (spec section 13): the controller and action,
+      # The request's `where` (docs/design.md D88): the controller and action,
       # on the Context and on the thread's log Scope, which a RequestId
       # made for this request; nothing is written to the shared empty
       # Scope (a controller run without one: a test, a nested call).

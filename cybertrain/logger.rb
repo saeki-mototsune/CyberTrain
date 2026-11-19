@@ -1,7 +1,7 @@
 # Cybertrain::Logger -- a small leveled logger, and Cybertrain.logger, the
 # process-wide default every framework component logs through.
 #
-# A line (spec sections 12.1 and 12.5):
+# A line (docs/design.md D86):
 #
 #   2026-11-11T12:00:00.123Z INFO Completed 200 in 12ms
 #
@@ -42,7 +42,7 @@ module Cybertrain
     HEX_DIGITS = %w[0 1 2 3 4 5 6 7 8 9 a b c d e f].freeze
 
     # What the lines logged on one thread carry while a piece of work runs
-    # there (spec section 12.2, docs/design.md D86): the request's id, method, path
+    # there (docs/design.md D86): the request's id, method, path
     # and `where` (the controller action, written by the controller), the
     # line's tags in order, the index of the request id among them (-1
     # when it is not shown), and the context an error report adds. One
@@ -155,7 +155,7 @@ module Cybertrain
     end
 
     # Empties this thread's slot: the thread is back to {NO_SCOPE}. The
-    # test harness calls it around every case (spec section 20).
+    # test harness calls it around every case.
     # @return [nil]
     # @api public
     def self.reset_scope
@@ -498,7 +498,7 @@ module Cybertrain
 
     # Adds `tags` to every line logged on this thread while the block
     # runs, after the request's own, and restores the previous tags when
-    # it ends, also when it raises (spec section 12.4). Every Logger on
+    # it ends, also when it raises. Every Logger on
     # the thread sees them: they live in the thread's {Logger::Scope}.
     # Answers the block's value. There is no block-less form.
     # @example

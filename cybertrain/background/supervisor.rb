@@ -263,7 +263,7 @@ module Cybertrain
 
     # A dead feed: its first sighting schedules the restart (or gives up),
     # a later one past the due time restarts it. True when the process
-    # gives up. The give-up is reported too (spec section 13.2), with no
+    # gives up. The give-up is reported too (docs/design.md D88), with no
     # exception object: its class is named
     # "Cybertrain::Background::FeedFailed" (a name only, never raised), its
     # message is the FATAL line's, and its `where` `feed:<name>` is given,
