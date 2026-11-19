@@ -5,7 +5,7 @@
 #
 # Everything: the core and every optional subsystem. An application that
 # uses only some of them requires "cybertrain/core" and their lines instead,
-# and compiles less (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md).
+# and compiles less (docs/design.md D85).
 require "cybertrain/core"
 require "cybertrain/jobs"
 # The order of these lines does not matter: the features run in their

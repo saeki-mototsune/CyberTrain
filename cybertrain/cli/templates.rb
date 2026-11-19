@@ -47,8 +47,8 @@ module Cybertrain
       # ---- the subsystem lines of bin/<app>.rb ----------------------------
       #
       # `cybertrain new` writes `require "cybertrain/core"`: the framework
-      # without its optional subsystems (docs/superpowers/specs/
-      # 2026-11-13-optional-subsystems-design.md). A generator whose files
+      # without its optional subsystems (docs/design.md D85). A generator
+      # whose files
       # need one adds its line: `generate job` cybertrain/jobs,
       # `generate authentication` cybertrain/jobs, cybertrain/mailer,
       # cybertrain/mailer/later and cybertrain/rate_limit

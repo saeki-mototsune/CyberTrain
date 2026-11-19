@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
-# The core must not name an optional subsystem (docs/superpowers/specs/
-# 2026-11-13-optional-subsystems-design.md, section 4): Spinel compiles
+# The core must not name an optional subsystem (docs/design.md D85):
+# Spinel compiles
 # every method of every file a program requires, so one `require
 # "cybertrain/scheduler"` or one `Scheduler.running?` in a core file puts
 # jobs back into every application that requires only `cybertrain/core`.
@@ -38,7 +38,7 @@ ENTRY = "cybertrain/core.rb"
 
 # The subsystems the core must not reach: file patterns (File.fnmatch,
 # relative to the repository root) and the constants that name them, one
-# row per require line of the spec's section 3 (cybertrain/mailer/later is
+# row per subsystem require line (docs/design.md D85; cybertrain/mailer/later is
 # the mailer's). A file may match two rows (cybertrain/websocket/frame.rb is
 # feeds' and serves the stream endpoint too): what matters is that neither
 # is in the core's closure.

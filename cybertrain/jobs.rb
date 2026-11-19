@@ -1,7 +1,6 @@
 # cybertrain/jobs: background jobs and scheduled tasks, an optional
 # subsystem (require "cybertrain/jobs" in bin/NAME.rb, after or instead of
-# require "cybertrain"; docs/superpowers/specs/
-# 2026-11-13-optional-subsystems-design.md):
+# require "cybertrain"; docs/design.md D85):
 #
 #   Job, job classes and their retries      cybertrain/job.rb
 #   Scheduler, `every` and `cron`           cybertrain/scheduler.rb, cron.rb

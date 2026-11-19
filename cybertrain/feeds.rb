@@ -1,7 +1,6 @@
 # cybertrain/feeds: WebSocket feeds and the Background services they run
 # on, an optional subsystem (require "cybertrain/feeds" in bin/NAME.rb, or
-# require "cybertrain"; docs/superpowers/specs/
-# 2026-11-13-optional-subsystems-design.md):
+# require "cybertrain"; docs/design.md D85):
 #
 #   Background services and the feed supervisor  cybertrain/background.rb, background/*.rb
 #   the feed status table                        cybertrain/websocket/feed_table.rb

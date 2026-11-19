@@ -1,6 +1,6 @@
 # cybertrain/rate_limit: Controller.rate_limit, an optional subsystem
 # (require "cybertrain/rate_limit" in bin/NAME.rb, or require "cybertrain";
-# docs/superpowers/specs/2026-11-13-optional-subsystems-design.md). It
+# docs/design.md D85). It
 # counts through the cache (cybertrain/cache), so sign-in throttling across
 # processes is the same whichever lines an application has.
 #
