@@ -1,7 +1,7 @@
 require "cybertrain/test"
 
-# Cybertrain::Clock (spec section 2.2), Time.current, Date.current and the
-# test helpers travel_to, travel, freeze_time and travel_back (section 2.1).
+# Cybertrain::Clock (docs/design.md D81), Time.current, Date.current and the
+# test helpers travel_to, travel, freeze_time and travel_back.
 # Plain Ruby, no FFI: the snapshot comes from CRuby or the compiled binary
 # alike. Time.now itself is overridden only where cybertrain/test/time_now
 # is required (test/time_travel.rb).
@@ -102,7 +102,7 @@ test "the clock is real after the case that raised mid-travel" do
   refute Cybertrain::Clock.travelling?
 end
 
-# Spec section 2.3: the framework's runtime, and the code its emitters
+# The removed seams (docs/design.md D81): the framework's runtime, and the code its emitters
 # write into an application, read the time through Cybertrain::Clock
 # (Time.current), never Time.now, Time.new without arguments, Date.today,
 # DateTime.now or the realtime clock itself; the five clock seams it
@@ -113,7 +113,7 @@ end
 # which the upgrade must match as 0.4 wrote it. clock.rb and
 # test/time_now.rb are the clock itself. logger.rb reads the realtime
 # clock in one place, Logger.timestamp, when the Clock has pushed no
-# travelled instant (plan D2: the HTTP layer cannot name the Clock); the
+# travelled instant (docs/design.md D86: the HTTP layer cannot name the Clock); the
 # test counts that one read. Comment lines are not counted.
 # Run from the repository root: from anywhere else the globs find nothing
 # and the test fails instead of passing on no files.
@@ -166,9 +166,8 @@ def clock_hits(path)
 end
 
 # The files a removed seam may not appear in: the framework, the tests and
-# the examples, but not the frozen 0.4 application and its upgrade diff
-# (preflight ruling R5), not this file (which names the seams), and not
-# build output.
+# the examples, but not the frozen 0.4 application and its upgrade diff,
+# not this file (which names the seams), and not build output.
 def seam_scanned?(path)
   return false if path.start_with?("test/fixtures/auth_04_app")
   return false if path == "test/clock.rb"

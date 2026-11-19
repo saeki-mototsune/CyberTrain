@@ -1,4 +1,4 @@
-# The top-level form's lifecycle (spec sections 5.3 and 5.4): the file's
+# The top-level form's lifecycle (docs/design.md D82): the file's
 # `setup` blocks in order and its `teardown` blocks in reverse around every
 # case, after the reset hooks; the clock real again after each case.
 # CRuby-runnable: it requires the harness alone.
@@ -193,7 +193,7 @@ test "the outer case's after_this_case callable ran at its own end" do
   refute Cybertrain::Clock.travelling?
 end
 
-# The log scope (spec section 20: "resets ... the log tags"): a Scope a case
+# The log scope: a Scope a case
 # swapped in and never swapped back is gone before the next case, as a
 # travel is; a case driven inside a case gives the outer case its own back.
 SCOPE_SEEN = Array.new(0) { "" }

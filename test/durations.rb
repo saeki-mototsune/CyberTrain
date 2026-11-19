@@ -3,8 +3,8 @@ require "cybertrain/durations"
 require "cybertrain/time_ext"
 require_relative "support/zone_swap"
 
-# Durations on Integer and the calendar methods on Time (spec section 3,
-# acceptance 2): Integer seconds, `ago` / `from_now` on the Clock,
+# Durations on Integer and the calendar methods on Time (docs/design.md
+# D81): Integer seconds, `ago` / `from_now` on the Clock,
 # month-end clamping as Rails does, `beginning_of_*` / `end_of_*` and
 # `Date.current` in `Time.zone`, Asia/Tokyo and a DST transition in
 # America/New_York. Plain Ruby, no FFI: the snapshot comes from CRuby or the

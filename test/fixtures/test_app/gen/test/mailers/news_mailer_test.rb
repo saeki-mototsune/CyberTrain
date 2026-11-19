@@ -1,6 +1,6 @@
 
 
-# Mail in tests (spec section 10): stored in Mailer.deliveries, counted by
+# Mail in tests: stored in Mailer.deliveries, counted by
 # assert_emails, and jobs run inline by perform_enqueued_jobs with a block.
 class NewsMailerTest < ApplicationTest
   def test_mail_is_stored__not_sent; begin

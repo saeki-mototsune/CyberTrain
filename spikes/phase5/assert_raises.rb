@@ -1,4 +1,4 @@
-# Phase 5a spike, item 4 (spec section 16): assert_raises given a class,
+# Phase 5a spike, item 4: assert_raises given a class,
 # beside today's String form, matched by class name (rules 46, 47); and a
 # top-level method called both with a block and without one (the shape of
 # perform_enqueued_jobs and assert_broadcasts). A record, not a test.

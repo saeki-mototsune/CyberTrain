@@ -371,8 +371,8 @@ NAME_HOMES = {
   # Interpreter#call_helper answers a template value; the feature registry's
   # dispatch to a subsystem's helper is Features.feature_helper_call.
   "call_helper" => %w[cybertrain/template/interpreter.rb],
-  # Phase 5a (plan Task 1; spike results in spec section 16, programs in
-  # spikes/phase5/): the clock, durations, the zoned time and the test
+  # Phase 5a (docs/design.md D81 to D84; the spike programs and their
+  # results are in spikes/phase5/): the clock, durations, the zoned time and the test
   # classes. Each name below was compiled beside its existing namesakes in
   # one program with the whole framework (spikes/phase5/durations.rb,
   # class_app/tests.rb) and answered correctly; a boxed receiver dispatches
@@ -392,12 +392,12 @@ NAME_HOMES = {
   # abbreviation (a String, as the builtin Time#zone).
   "zone" => %w[cybertrain/clock.rb cybertrain/zoned_time.rb],
   # Template::Parser#advance (the token cursor) and Time#advance(months: 1)
-  # (a Time). Stream::Poller's was renamed advance_to (pre-flight B1).
+  # (a Time). Stream::Poller's was renamed advance_to.
   "advance" => %w[cybertrain/template/parser.rb cybertrain/time_ext.rb],
   # Integer#seconds and the rest answer an Integer; Net::Timer's
-  # formatter was renamed format_seconds (pre-flight B1). Cron::Expression's
+  # formatter was renamed format_seconds. Cron::Expression's
   # public readers minutes / hours / days answer Array<Integer>, kept apart
-  # from Integer's by their receivers (spike item 2 compiled both).
+  # from Integer's by their receivers (spikes/phase5/durations.rb compiled both).
   "seconds" => %w[cybertrain/durations.rb],
   "minutes" => %w[cybertrain/durations.rb cybertrain/cron.rb],
   "hours" => %w[cybertrain/durations.rb cybertrain/cron.rb],
@@ -426,7 +426,7 @@ NAME_HOMES = {
   "travel_back" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
   "freeze_time" => %w[cybertrain/test/time_helpers.rb],
   # Clock.monotonic and DB::Connection.monotonic (the busy wait's deadline)
-  # both answer CLOCK_MONOTONIC seconds as a Float (Task 2; test/clock.rb
+  # both answer CLOCK_MONOTONIC seconds as a Float (test/clock.rb
   # compiles them with test.rb, test/time_travel.rb with the whole framework).
   # DevServer.monotonic (cli/dev_server.rb, the CRuby preview's supervisor,
   # never compiled) answers the same Float.
@@ -451,16 +451,15 @@ NAME_HOMES = {
   # Controller's and IntegrationTest's.
   "response" => %w[cybertrain/test/client.rb cybertrain/context.rb cybertrain/controller.rb cybertrain/test/integration.rb],
   # The top-level assert_response(response, expected) beside
-  # IntegrationTest#assert_response(expected): both nil, one shared helper
-  # (pre-flight R17).
+  # IntegrationTest#assert_response(expected): both nil, one shared helper.
   "assert_response" => %w[cybertrain/test/client.rb cybertrain/test/integration.rb],
   "assert_redirected_to" => %w[cybertrain/test/client.rb cybertrain/test/integration.rb],
   # The requests: HttpClient's, the routes DSL's (gen only), Test::Client's
   # and the Router's, plus IntegrationTest's (each answers the Response).
   # delete: Session#delete, CookieJar#delete and its subclasses,
   # BlobStore.delete and Cache.delete too. head: Controller#head(status)
-  # beside IntegrationTest#head(path). Spike item 3 compiled the
-  # IntegrationTest methods beside all of them.
+  # beside IntegrationTest#head(path). spikes/phase5/class_app/tests.rb
+  # compiled the IntegrationTest methods beside all of them.
   "get" => %w[cybertrain/http_client.rb cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb
               cybertrain/test/integration.rb],
   "post" => %w[cybertrain/http_client.rb cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb

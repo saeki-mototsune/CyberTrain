@@ -2,12 +2,12 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 
-# Fixtures at build time (spec section 7, plan decision D8): gen reads
+# Fixtures at build time (docs/design.md D83): gen reads
 # test/fixtures/*.yml against db/schema.rb and the model scan into one
 # INSERT per label with Rails' ids, and writes gen/test/data.rb with the
 # tables, the statements and the accessors. Run against copies of
-# test/fixtures/gen_app (posts and comments, Comment belongs_to :post:
-# pre-flight ruling B5). Text only: CRuby-portable.
+# test/fixtures/gen_app (posts and comments, Comment belongs_to
+# :post). Text only: CRuby-portable.
 require_relative "fixtures/gen_app/config/routes"
 require_relative "fixtures/gen_app/db/schema"
 
@@ -246,8 +246,8 @@ test "an accessor that would replace a harness, Kernel or test-helper method is 
   Cybertrain::Gen::FixtureScan.refuse_accessor_clashes(rows, Array.new(0) { file })
   root = app_copy("posts.yml" => "one:\n  title: x\n")
   File.write("#{root}/test/test_helper.rb", "def posts = 1\n")
-  # gen succeeds; the bundle is refused with the reason (pre-flight ruling
-  # B2), so `cybertrain test` fails with it.
+  # gen succeeds; the bundle is refused with the reason, so `cybertrain
+  # test` fails with it.
   assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
   bundle = File.read("#{root}/gen/tests.rb")
   assert_includes bundle, "abort(\"test/fixtures/posts.yml:1: the fixture accessor posts(label) would replace the top-level def posts at test/test_helper.rb:1"

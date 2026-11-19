@@ -1,5 +1,5 @@
-# Broadcast assertions and assert_turbo_stream (spec section 9.3,
-# acceptance 6): assert_broadcasts with a record and a name, with and
+# Broadcast assertions and assert_turbo_stream (docs/design.md
+# D84): assert_broadcasts with a record and a name, with and
 # without a block (since the test began: the floor the reset hook reads),
 # answering the payloads; assert_no_broadcasts; their failure text; the
 # floor hook with no database and with no messages table (nothing read,
