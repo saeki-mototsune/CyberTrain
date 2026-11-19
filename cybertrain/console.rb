@@ -206,9 +206,8 @@ module Cybertrain
       names = Console.env_names(env)
       shown = ""
       failed = true
-      # Every class the console prints is named exactly, from the top: a
-      # rescue clause does not see an exception's superclass under Spinel
-      # (NOTES rule 54) and a relative path can miss (rule 81).
+      # A template SyntaxError is printed without its class path; every
+      # other error goes through failure_text.
       begin
         value = evaluate(text, lineno, interp, env)
         env["_"] = value
@@ -216,12 +215,6 @@ module Cybertrain
         failed = false
       rescue Cybertrain::Template::SyntaxError => e
         shown = "SyntaxError: #{e.message}\n"
-      rescue Cybertrain::Template::RuntimeError => e
-        shown = "#{failure_text(helpers, e, lineno)}\n"
-      rescue Cybertrain::Console::UnknownModel => e
-        shown = "#{failure_text(helpers, e, lineno)}\n"
-      rescue Cybertrain::RecordNotFound => e
-        shown = "#{failure_text(helpers, e, lineno)}\n"
       rescue StandardError => e
         shown = "#{failure_text(helpers, e, lineno)}\n"
       end

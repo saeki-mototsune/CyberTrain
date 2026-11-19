@@ -351,7 +351,6 @@ module Cybertrain
 
         a = args[i]
         case a
-        when Time then out << a
         when Array then a.each { |x| out << x }
         else out << a
         end
