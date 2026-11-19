@@ -1,5 +1,5 @@
 # Cybertrain::Encryptor: AES-256-GCM, for column encryption (`encrypts
-# :api_key` in a model, spec section 10), the session cookie and
+# :api_key` in a model, docs/design.md D49), the session cookie and
 # `cookies.encrypted` (spec section 5.1).
 #
 # Loaded by every program: `require "cybertrain"` requires it, because the

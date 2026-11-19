@@ -4,7 +4,7 @@ require "cybertrain/model"
 require "cybertrain/schema"
 require "cybertrain/encryptor"
 
-# includes / preload (spec section 8) on the compiled fixture models, loaded
+# includes / preload (docs/design.md D47) on the compiled fixture models, loaded
 # as test/gen_models_compiles.rb loads them: Post has_many :comments,
 # Comment belongs_to :post. Every claim about queries is a delta of
 # Connection#statements_run. test/associations.rb covers has_one and a

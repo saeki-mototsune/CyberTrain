@@ -189,8 +189,8 @@ module Cybertrain
     # @api public
     def self.validate(*args) = nil
 
-    # Encrypts columns at rest: `encrypts :api_key, :notes` (spec section
-    # 10). The generator reads the line as text: the generated load_row
+    # Encrypts columns at rest: `encrypts :api_key, :notes`
+    # (docs/design.md D49). The generator reads the line as text: the generated load_row
     # decrypts each column ({Crypto.decrypt}) and to_row encrypts it with a
     # fresh nonce, so the record holds the text and the table the payload
     # (`"1:..."`, AES-256-GCM). Each must be a string or text column, named
@@ -486,7 +486,7 @@ module Cybertrain
     # Cybertrain::Model, so a stub here would be the method they call.
     def destroy_dependents = nil
     def reset_association_caches = nil
-    # Validations (spec section 9): the generated model answers uniqueness
+    # Validations (docs/design.md D48): the generated model answers uniqueness
     # with a query, if: / unless: through a `case` over the names the model
     # file gives, and `validate :method` lines by calling each method. A
     # hand-written model has no uniqueness conflicts, every condition true

@@ -359,8 +359,8 @@ test "reversible runs the up block forward and the down block on rollback" do
   connection.close
 end
 
-# Review Focus 5: with foreign keys left on, DROP TABLE posts would cascade
-# to the comments.
+# With foreign keys left on, DROP TABLE posts would cascade to the comments
+# (docs/design.md D50).
 test "rebuilding a parent keeps the children an ON DELETE CASCADE points at" do
   connection = Cybertrain::DB::Connection.new(":memory:")
   Cybertrain::DB::Migrator.new(connection).migrate([["20260301000000", CreateBlog.new]])

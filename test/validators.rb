@@ -2,8 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# Task 13 of phase 2: the validators of spec section 9.1
-# (docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md) --
+# The validators (docs/design.md D48) --
 # inclusion, exclusion, format, numericality, uniqueness, length's is:/in:,
 # and allow_nil:, allow_blank:, on:, message:, if:/unless: on every rule --
 # each with Rails' default English message. SQLite is FFI, so the snapshot
