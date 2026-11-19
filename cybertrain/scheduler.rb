@@ -459,7 +459,7 @@ module Cybertrain
       return last + task.task_interval if expr.nil?
 
       Cron.next_after(expr, last, task.task_zone)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduled task #{task.task_name.inspect} failed: #{e.class.name}: #{e.message}")
       Cybertrain.error.report_unhandled(e, task_where(task), ErrorReporter::NO_CONTEXT)
       -1
@@ -470,7 +470,7 @@ module Cybertrain
     def self.record_safely(task, next_run, now)
       Timetable.write(task.task_name, task.task_last_run, next_run, now)
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduler timetable: #{e.class.name}: #{e.message}")
       nil
     end
@@ -480,7 +480,7 @@ module Cybertrain
     def self.record_missing_safely(task, now)
       Timetable.write_missing(task.task_name, task.task_next_run, now)
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduler timetable: #{e.class.name}: #{e.message}")
       nil
     end
@@ -489,7 +489,7 @@ module Cybertrain
     # cannot be reached.
     def self.timetable_safely
       Timetable.read_all
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduler timetable: #{e.class.name}: #{e.message}")
       rows = { "" => [0, 0] }
       rows.delete("")
@@ -499,7 +499,7 @@ module Cybertrain
     # prune_schedules for start!, the error logged.
     def self.prune_safely
       prune_schedules
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduler timetable: #{e.class.name}: #{e.message}")
       0
     end
@@ -508,7 +508,7 @@ module Cybertrain
     # false, and the error logged, when the database cannot be reached.
     def self.acquire_safely(now)
       Lease.acquire(LEASE_NAME, holder, now, ttl: @lease_ttl)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduler lease: #{e.class.name}: #{e.message}")
       false
     end
@@ -517,7 +517,7 @@ module Cybertrain
       Lease.release(LEASE_NAME, holder)
       @leader = false
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduler lease release: #{e.class.name}: #{e.message}")
       nil
     end
@@ -528,7 +528,7 @@ module Cybertrain
       requeued = Job.recover!(now)
       Cybertrain.logger.warn("Requeued #{requeued} job(s) whose process stopped sending heartbeats") if requeued > 0
       requeued
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Job recovery: #{e.class.name}: #{e.message}")
       0
     end
@@ -574,7 +574,7 @@ module Cybertrain
 
     # Calls the task's block, or enqueues its `job:`, with its rescue in a
     # plain method that reads the Proc from the Task rather than yielding
-    # (NOTES rules 32/45/69); naming JSON::NestingError first (rule 61).
+    # (NOTES rules 32/45/69).
     # False when it raised, logged and reported (spec section 13.2). Each
     # run starts at the default locale, so a locale one task set does not
     # stay for the next.
@@ -587,7 +587,7 @@ module Cybertrain
         Job.enqueue(kind, task.task_job_args)
       end
       true
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       Cybertrain.logger.error("Scheduled task #{task.task_name.inspect} failed: #{e.class.name}: #{e.message}")
       Cybertrain.error.report_unhandled(e, task_where(task), ErrorReporter::NO_CONTEXT)
       false

@@ -260,8 +260,8 @@ module Cybertrain
       end
 
       # The handler call with its rescue in a plain method that receives the
-      # Proc as a parameter (NOTES rules 32/45/69); JSON::NestingError named
-      # first (rule 61). "" when the handler returned, else the bounded error.
+      # Proc as a parameter (NOTES rules 32/45/69). "" when the handler
+      # returned, else the bounded error.
       # The exceptions outside StandardError that a job's own code raises
       # (`raise NotImplementedError` in a helper not yet written, a recursion
       # too deep, a `require` that fails) take the default policy as a
@@ -276,7 +276,7 @@ module Cybertrain
         I18n.locale = nil
         handler.handler_run_block.call(run)
         ""
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         Cybertrain.error.report_unhandled(e, run.run_kind, ErrorReporter::NO_CONTEXT)
         RetryPolicy.error_text(e.class.name, e.message)
       rescue NotImplementedError, SystemStackError, ScriptError => e
@@ -332,7 +332,7 @@ module Cybertrain
       # One try, its rescue in a plain method (NOTES rules 32/45).
       def self.write_outcome_safely(id, state, run_at, error, now, label, attempts, try)
         Store.write_outcome(id, state, run_at, error, now, label, attempts)
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         Cybertrain.logger.error("job #{id}: outcome write #{try} of #{OUTCOME_TRIES} failed: #{e.class.name}: #{e.message}")
         -1
       end

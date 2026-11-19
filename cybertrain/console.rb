@@ -197,9 +197,8 @@ module Cybertrain
     end
 
     # One line's output: its value, or the error it raised, newline-ended.
-    # The rescue sits in this plain method (NOTES rules 32/45); JSON's
-    # errors are named because they are not StandardErrors under Spinel
-    # (rules 33 and 61). The rescued class is spelt from the top
+    # The rescue sits in this plain method (NOTES rules 32/45). The
+    # rescued class is spelt from the top
     # (`Cybertrain::Template::...`): a relative `Template::SyntaxError` in a
     # rescue clause is not found (NOTES rule 81).
     def self.evaluate_line(text, lineno, helpers, interp, env)
@@ -223,7 +222,7 @@ module Cybertrain
         shown = "#{failure_text(helpers, e, lineno)}\n"
       rescue Cybertrain::RecordNotFound => e
         shown = "#{failure_text(helpers, e, lineno)}\n"
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         shown = "#{failure_text(helpers, e, lineno)}\n"
       end
       Console.drop_new_names(env, names) if failed
