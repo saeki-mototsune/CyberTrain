@@ -259,8 +259,7 @@ module Cybertrain
       DB.with { |c| c.exec_script(TABLE_SQL) }
       # As Job.install!: a CREATE inside a transaction that rolls back is
       # gone again, so only one outside a transaction is remembered.
-      pool = DB.pool
-      @installed_generation = DB.generation if !pool.nil? && pool.held_index < 0
+      @installed_generation = DB.generation if DB.outside_transaction?
       nil
     end
 

@@ -156,11 +156,10 @@ module Cybertrain
         DB.with { |c| c.exec_script(TABLE_SQL) }
         add_missing_columns
         DB.with { |c| c.execute(KEY_INDEX_SQL) }
-        # SQLite's DDL is transactional: a table created inside a
-        # DB.transaction that later rolls back is gone again, so only a
-        # CREATE outside one is remembered.
-        pool = DB.pool
-        @installed_generation = DB.generation if !pool.nil? && pool.held_index < 0
+        # Only a CREATE outside a transaction is remembered: one inside a
+        # transaction that rolls back is gone again
+        # ({DB.outside_transaction?}).
+        @installed_generation = DB.generation if DB.outside_transaction?
         nil
       end
 
@@ -179,8 +178,7 @@ module Cybertrain
       end
 
       def self.add_columns_once
-        pool = DB.pool
-        if !pool.nil? && pool.held_index < 0
+        if DB.outside_transaction?
           DB.transaction(immediate: true) { |c| alter_missing(c) }
         else
           DB.with { |c| alter_missing(c) }
