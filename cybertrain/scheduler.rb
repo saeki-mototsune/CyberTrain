@@ -390,7 +390,7 @@ module Cybertrain
     # @return [Integer] how many tasks ran (including ones that raised)
     # @api public
     def self.run_due(now)
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      started = Clock.monotonic
       was_leader = @leader
       leader = acquire_safely(now)
       @leader = leader
@@ -415,7 +415,7 @@ module Cybertrain
             # Renewed before each task (the tick's own `now` plus the time
             # the tick has taken): a leader that lost the lease while a
             # task ran stops running tasks in this tick.
-            elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to_i
+            elapsed = (Clock.monotonic - started).to_i
             leader = acquire_safely(now + elapsed)
             @leader = leader
           end
