@@ -1,5 +1,5 @@
 ---
-source_sha256: b82aa50dc1d5b3b82ef82755517e518f5a198f17dd722dfc6ed4bdf66210d16e
+source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
 ---
 # 测试应用
 
@@ -81,7 +81,9 @@ cybertrain test -n test_creates_an_article              # 或按方法名
 cybertrain test -n /article/                            # 名称包含 "article" 的测试
 ```
 
-`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。由于程序会删除它测试所用的文件，它会给自己创建的每个数据库加上标记（`PRAGMA application_id`，一个专用的值），只有当已有文件带着这个标记、就是本应用自己的 `storage/test.sqlite3`（无论路径怎么写）或是空文件时，才会删除或清空它。其他文件都会以退出状态 2 被拒绝，什么都不删除：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。名为 `development.sqlite3` 或 `production.sqlite3` 的文件（不区分大小写），或与 `storage/development.sqlite3`、`storage/production.sqlite3` 是同一个文件的，会以 `cybertrain test refuses to delete <path>: it is the development database`（或 `production`）被拒绝。名称必须是文件路径：`:memory:` 和 `file:` URI 会被拒绝（`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`）。升级之后，你以前在 `CYBERTRAIN_TEST_DATABASE` 中指定的文件没有标记，会被拒绝一次：删除它（连同 `-wal` 和 `-shm`），`cybertrain test` 就会创建一个带标记的；默认的 `storage/test.sqlite3` 什么都不需要做。在创建数据库期间变成符号链接的路径会以退出状态 2 被拒绝：`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`。每个测试之前的清空只涉及主数据库的表，从不涉及同名的 TEMP 表或附加数据库的表。已知限制：标记在 `cp` 测试数据库之后仍然存在，所以以测试数据库命名的副本（或测试连接的副本）会被清空；在创建文件和加标记之间被终止的运行会在你指定的路径上留下没有标记的文件，下次会被拒绝（请删除它）；`storage/test.sqlite3` 是目录时，程序删除它会抛出异常。
+`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。这个文件的规则见[测试数据库](#the-test-database)。
+
+无论 `bin/<app>.rb` require 了什么，测试程序都会 require `cybertrain`，也就是所有子系统：`perform_enqueued_jobs`、`assert_emails`、`assert_broadcasts` 和 `Test::SentryReceiver` 在使用 `cybertrain/core` 的应用中同样可用；而提到某个子系统却没有写它那一行的代码，测试能通过，到 `spin build` 才会停下（[子系统](how-it-works.md#subsystems)）。
 
 除非 `config/app.rb` 自己设置了同样的东西，程序会像 Rails 那样准备测试环境：关闭防伪造保护，请求日志不输出（级别 `:none`，仍会写出错误行），日志行为文本（不读取导出的 `CYBERTRAIN_LOG_FORMAT`），不向 Sentry 发送错误报告（导出的 `CYBERTRAIN_SENTRY_DSN` 会被清空），邮件保存在 `Mailer.deliveries` 中（`:test`），关闭 `force_ssl`（测试时不读取变量 `CYBERTRAIN_MAIL_DELIVERY_METHOD` 和 `CYBERTRAIN_FORCE_SSL`，即使它们的值无效），上传的文件写入 `tmp/test_uploads/`，每次运行时清空，并且不做主机检查（导出的 `CYBERTRAIN_HOSTS` 不会打开它）。`*_url` 辅助方法的主机 `www.example.com` 始终是允许的主机。
 
@@ -103,6 +105,20 @@ test/models/article_test.rb
 **一次修改的代价。** 文件参数和 `-n` 选择运行哪些测试，而不是编译什么：程序总是包含所有测试，所以改变筛选会复用二进制文件；而修改任何一个测试（或构建程序所用的任何其他东西）都会先重新构建 `bin/gen`，再重新编译整个程序。以下是 2026-11-12 和 2026-11-13 在一台共享的 4 vCPU 云机器上测得的数字（你自己的机器会不同）：examples/blog 的 21 个文件、149 个测试第一次编译用了约 527 秒（第一次运行总共 656 秒，二进制文件 10.2 MB），之后不做改动运行 `cybertrain test test/controllers`，复用了二进制文件，约 1 秒就开始（博客自己的运行，2026-11-13）；博客的应用加上三个测试文件（八个测试）编译用了 162 到 233 秒，内存峰值约 2.2 GB，生成 8.1 MB 的二进制文件（2026-11-12）。先写好几个测试再一起运行；专注于某一个测试时，缩小的是运行范围，而不是构建。
 
 当两个测试文件或支持文件定义了同一个顶层方法或常量时（在一个程序中它们会变成一个：把共享的辅助方法移到 `test/support/`，或移进类里），`gen/tests.rb` 会被拒绝，`cybertrain test` 不编译，给出原因并以 1 退出；[gen 在测试类中拒绝的写法](#what-gen-refuses-in-a-test-class)中的其他情况也一样。
+
+### 测试数据库
+
+测试在 `storage/test.sqlite3` 上运行，程序每次运行都会删除它并重新迁移；`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。由于程序会删除它测试所用的文件，它会给自己创建的每个数据库加上标记（`PRAGMA application_id`，一个专用的值），只有当已有文件带着这个标记、就是本应用自己的 `storage/test.sqlite3`（无论路径怎么写）或是空文件时，才会删除或清空它。其他文件都会以退出状态 2 被拒绝，什么都不删除：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。
+
+另外三种情况也会被拒绝：
+
+- 名为 `development.sqlite3` 或 `production.sqlite3` 的文件（不区分大小写），或与 `storage/development.sqlite3`、`storage/production.sqlite3` 是同一个文件的，会以 `cybertrain test refuses to delete <path>: it is the development database`（或 `production`）被拒绝。
+- 名称必须是文件路径：`:memory:` 和 `file:` URI 会被拒绝（`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`）。
+- 在创建数据库期间变成符号链接的路径会以退出状态 2 被拒绝：`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`。
+
+升级之后，你以前在 `CYBERTRAIN_TEST_DATABASE` 中指定的文件没有标记，会被拒绝一次：删除它（连同 `-wal` 和 `-shm`），`cybertrain test` 就会创建一个带标记的；默认的 `storage/test.sqlite3` 什么都不需要做。
+
+每个测试之前的清空只涉及主数据库的表，从不涉及同名的 TEMP 表或附加数据库的表。已知限制：标记在 `cp` 测试数据库之后仍然存在，所以以测试数据库命名的副本（或测试连接的副本）会被清空；在创建文件和加标记之间被终止的运行会在你指定的路径上留下没有标记的文件，下次会被拒绝（请删除它）；`storage/test.sqlite3` 是目录时，程序删除它会抛出异常。
 
 ## 夹具
 
@@ -339,7 +355,7 @@ class SignupHookTest < ActiveSupport::TestCase
 end
 ```
 
-`HttpReceiver.new` 接受预设的 `status:`、`headers:`、`body:` 和 `chunked:`（`respond_with` 可在请求之间修改它们）；请求以 `ReceivedRequest` 返回（`http_method`、`http_target`、`http_path`、名称为小写的 `http_headers`、`http_header(name)`、已解码 chunked 正文的 `http_body`）。`SmtpReceiver` 扮演 220、EHLO（除非 `eight_bit_mime: false` 否则带 8BITMIME，`auth: true` 时带 AUTH PLAIN）、MAIL、RCPT、DATA 和 QUIT；`reject:` 可以让 `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data` 或 `:message` 中的任意一个以给定的回复失败。`ReceivedMessage` 有 `envelope_from`、`envelope_recipients`、`message_data`（已撤销点填充）、`message_header(name)`、`message_body` 和命令的 `transcript`；对 HTML 消息，`message_parts` 会把它解码为 `"subject"`、`"text"` 和 `"html"`。两者都只接受一个连接，除非 `max:` 指定更多（`received_requests` / `received_messages` 返回全部）。每次等待都有上限：接收器在 `accept_window:`（10 秒）内没有连接就放弃，沉默的客户端在 `read_timeout:`（5 秒）后被断开，`stop`（调用两次也安全）结束它的线程并关闭端口，所以接收器永远不会抢走后面测试的连接。在测试之外（文件顶部）启动的接收器不会被自动停止。
+`HttpReceiver.new` 接受预设的 `status:`、`headers:`、`body:`、`chunked:` 和 `gzip:`（响应体以 gzip 编码发送，并带上 `Content-Encoding: gzip`；`respond_with` 可在请求之间修改它们）；请求以 `ReceivedRequest` 返回（`http_method`、`http_target`、`http_path`、名称为小写的 `http_headers`、`http_header(name)`、已解码 chunked 正文的 `http_body`）。`SmtpReceiver` 扮演 220、EHLO（除非 `eight_bit_mime: false` 否则带 8BITMIME，`auth: true` 时带 AUTH PLAIN）、MAIL、RCPT、DATA 和 QUIT；`reject:` 可以让 `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data` 或 `:message` 中的任意一个以给定的回复失败。`ReceivedMessage` 有 `envelope_from`、`envelope_recipients`、`message_data`（已撤销点填充）、`message_header(name)`、`message_body` 和命令的 `transcript`；对 HTML 消息，`message_parts` 会把它解码为 `"subject"`、`"text"` 和 `"html"`。两者都只接受一个连接，除非 `max:` 指定更多（`received_requests` / `received_messages` 返回全部）。每次等待都有上限：接收器在 `accept_window:`（10 秒）内没有连接就放弃，沉默的客户端在 `read_timeout:`（5 秒）后被断开，`stop`（调用两次也安全）结束它的线程并关闭端口，所以接收器永远不会抢走后面测试的连接。在测试之外（文件顶部）启动的接收器不会被自动停止。
 
 订阅也用同样的方式测试，使用 `Cybertrain::Test::WebSocketReceiver`，它是 `127.0.0.1` 上按脚本运行的 WebSocket 服务器：每个连接执行一组 `Cybertrain::Test::WsStep`（`"accept"`、`"send_text"`、`"expect"`、`"silent"`、`"close"`、`"drop"`、`"echo_until_close"` 等），客户端发送的帧去掉掩码后从 `ws_received` 返回。
 
@@ -377,7 +393,7 @@ end
 
 ## 测试日志与错误报告
 
-响应的 `X-Request-Id` 就是请求的 ID。要读取日志行，测试在它观察的工作期间把一个 `StringIO` 交给 `Cybertrain.logger`，之后再把日志器放回去，这在一个专门的方法中完成（在 Spinel 下，围绕 `yield` 的 `rescue` 或 `ensure` 要放在普通方法中）：
+响应的 `X-Request-Id` 就是请求的 ID。要读取日志行，测试在它观察的工作期间把一个 `StringIO` 交给 `Cybertrain.logger`，之后在 `ensure` 中把日志器放回去，这在一个不接收块的专门辅助方法中完成（框架不把 `rescue` 和 `ensure` 写进会 yield 的方法：spikes/NOTES.md 规则 45 和 50，记录于较早的 Spinel，在固定的发行版上没有重新检查）：
 
 ```ruby test/integration/logging_test.rb
 require "test_helper"
