@@ -91,11 +91,13 @@ server build it.
 Do not turn `proxy.ssl` off. The session cookie is `Secure` in production, so
 over plain HTTP every form submission gets a 403.
 
+### Roles
+
 Every role under `servers` runs the same image. `web` serves HTTP (and, unless
 `CYBERTRAIN_WORKER=0`, the jobs and scheduled tasks); `worker` runs only the
 jobs and scheduled tasks, with `./notes worker`. They share the database on
 the volume, and only the one holding the lease runs the scheduled tasks
-([deploy.en.md](deploy.en.md), part 7, "Splitting the roles"). To run the
+([deploy.en.md](deploy.en.md), part 9, "Splitting the roles"). To run the
 WebSocket subscriptions in a container of their own, turn on the `feeds` role
 that the generated file has commented out (`cmd: ./notes feeds trades`) and
 give `web` `env: clear: CYBERTRAIN_WORKER: 0` (the `feeds` role needs
@@ -127,6 +129,8 @@ so neither holds up the next web deploy; a crashed one leaves them to go
 stale. Set `CYBERTRAIN_HEALTH_FEEDS: 0` under `env.clear` if the proxy's health
 check points at `/up` and a quiet feed should not hold up a deploy.
 
+### The health check
+
 With a framework that has the built-in health check (`GET /up`;
 [Operations](guide/background-and-operations.md#operations-backups-vacuum-health-check)),
 you can change the `healthcheck` `path` from `/up.html` to
@@ -134,6 +138,16 @@ you can change the `healthcheck` `path` from `/up.html` to
 when it cannot, so traffic never moves to a release whose volume or database
 is broken; `/up.html` is a static file and only shows that the process
 answers HTTP. Keep `/up.html` for an app made with an older cybertrain.
+
+kamal-proxy already redirects http to https and the app sees
+`X-Forwarded-Proto: https`. If you turn on `CYBERTRAIN_FORCE_SSL: 1` as well
+(for the HSTS header), or `CYBERTRAIN_HOSTS: notes.example.com` (which refuses
+other `Host` values), point the `healthcheck` at `/up`. The proxy's check is
+plain http to the container, by address: only the health path (`/up`) is
+exempt from the redirect and from the Host check, so `/up.html` would be
+redirected or get a 403 and the new container would never turn healthy.
+
+### The proxy's address
 
 The generated `config/deploy.yml` sets `CYBERTRAIN_TRUSTED_PROXIES:
 172.16.0.0/12` under `env.clear`. kamal-proxy runs in a container of its own
@@ -147,21 +161,15 @@ shows it). Leave `proxy.forward_headers` unset: kamal-proxy terminating TLS
 sets `X-Forwarded-For` itself and does not pass on what the client sent,
 which is what you want.
 
-The generated `config/deploy.yml` also has `asset_path: /app/public/assets`.
+### Assets across a deploy
+
+The generated `config/deploy.yml` has `asset_path: /app/public/assets`.
 Each image carries only its own digested stylesheets and scripts, so Kamal
 bridges the previous release's files into the new container for the
 switch-over, and a page loaded before the deploy still finds the files its
 HTML names. Add the line to a `config/deploy.yml` from an older cybertrain;
 its `Dockerfile` also needs `libssl-dev` in the build stage and `libssl3t64`
 in the runtime stage, since every app now links OpenSSL.
-
-kamal-proxy already redirects http to https and the app sees
-`X-Forwarded-Proto: https`. If you turn on `CYBERTRAIN_FORCE_SSL: 1` as well
-(for the HSTS header), or `CYBERTRAIN_HOSTS: notes.example.com` (which refuses
-other `Host` values), point the `healthcheck` at `/up`. The proxy's check is
-plain http to the container, by address: only the health path (`/up`) is
-exempt from the redirect and from the Host check, so `/up.html` would be
-redirected or get a 403 and the new container would never turn healthy.
 
 ## 8-3. Prepare the secrets
 

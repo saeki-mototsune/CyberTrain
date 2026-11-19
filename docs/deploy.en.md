@@ -424,13 +424,10 @@ cybertrain setup
 ```
 
 It does what 1-3 does and takes a few minutes, once (longer on a server with
-fewer CPUs). Spinel goes into the `notes` user's
-`~/.cybertrain/spinel/SPINEL_TAG/` (here
-`/srv/notes/.cybertrain/spinel/SPINEL_TAG/`, about 50 MB), and the log stays
-in `~/.cybertrain/log/spinel-SPINEL_TAG-build.log`. During the build only,
-the source and intermediate files take about 220 MB in `~/.cybertrain/src/`
-(deleted when it succeeds). The packages from 3-2 cover the prerequisites;
-if it says something is missing, check with `cybertrain doctor`.
+fewer CPUs); `~` is now `/srv/notes`, so Spinel goes into
+`/srv/notes/.cybertrain/spinel/SPINEL_TAG/`. The packages from 3-2 cover the
+prerequisites; if it says something is missing, check with
+`cybertrain doctor`.
 
 ### 3-5. A deploy key
 
@@ -792,6 +789,45 @@ curl -sI https://notes.example.com/
 and create, edit and delete a note. If something is wrong, look at
 `sudo journalctl -u caddy -n 50 --no-pager`.
 
+### 6-4. Hardening (optional)
+
+Four changes you can make once the site works. Each one edits the Caddyfile's
+site block (then `sudo systemctl reload caddy`) or `/etc/notes/notes.env`
+(then `sudo systemctl restart notes`).
+
+- **HTTPS only.** To pin the site to HTTPS, once you have checked it works,
+  add `header Strict-Transport-Security "max-age=31536000"` to the
+  Caddyfile's site block (the session cookie is `Secure` in production). The app can
+  do it instead: `CYBERTRAIN_FORCE_SSL=1` in `/etc/notes/notes.env` sends
+  HSTS and redirects http to https by `X-Forwarded-Proto`
+  (`CYBERTRAIN_TRUSTED_PROXY=1`, from Part 4, is what makes the URLs the app
+  builds say https). With `CYBERTRAIN_FORCE_SSL=1`, change the deploy script's
+  check to `http://127.0.0.1:$PORT/up`: only the health path is exempt from
+  the redirect, so `/up.html` over plain http is redirected and the check
+  would no longer prove the app answered.
+- **One host name.** `CYBERTRAIN_HOSTS=notes.example.com` refuses requests
+  for any other `Host` with a 403. The loopback names (`localhost`, `127.0.0.1`, `[::1]`) stay
+  accepted, so the deploy script's `curl http://127.0.0.1:...` still works.
+- **Security headers on static files.** The app adds
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` and
+  `Permissions-Policy` to every response (the app's responses, error
+  responses and the `public/` files the `Static` middleware serves). But with
+  the Caddyfile of 6-2, Caddy serves the files in `public/` itself, without
+  going through the app, so those headers are missing there. To add them,
+  put `header ?X-Content-Type-Options nosniff` and
+  `header ?X-Frame-Options SAMEORIGIN` in the site block (`?` means "do not
+  overwrite a value the app already set", so a page meant for embedding that
+  changes the value in the app keeps it).
+- **Caching of `/assets/`.** The same goes for the digested files in
+  `public/assets/`: the app sends them with
+  `Cache-Control: public, max-age=31536000, immutable`, Caddy with
+  its own headers. A site block line such as
+  `header /assets/* Cache-Control "public, max-age=31536000, immutable"` gives
+  them the app's caching. Each release is a fresh clone, so its
+  `public/assets/` holds that release's digests only. And the app does not
+  serve a file through a symlink that leads out of `public/`: if you keep
+  `public/assets/` in `shared/`, mount it there rather than linking it.
+
 ---
 
 ## Part 7: Day-to-day operation
@@ -967,6 +1003,23 @@ can stay; they find nothing to rewrite.
 Change `CYBERTRAIN_SECRET_KEY_BASE` in `/etc/notes/notes.env` to a new value
 (`openssl rand -hex 32`) and `sudo systemctl restart notes`. Everyone's
 session and flash are gone, and forms left open get a CSRF error.
+
+---
+
+## Part 8: Deploying with Kamal
+
+Shipping the app as a Docker image with [Kamal 2](https://kamal-deploy.org),
+instead of parts 3 to 6, has its own page:
+[deploy-kamal.md](deploy-kamal.md). It covers the files `cybertrain new`
+writes for it, editing `config/deploy.yml`, the secrets, the first deploy and
+day-to-day operation.
+
+## Part 9: More processes (optional)
+
+A first deploy needs none of this. It is for a server with more than one CPU,
+and for an app whose jobs or WebSocket subscriptions should run outside the
+web process. The units below extend the systemd setup of parts 3 to 6; for
+Kamal the same roles are in [deploy-kamal.md](deploy-kamal.md), 8-2.
 
 ### Running several processes
 
@@ -1166,16 +1219,6 @@ dist/notes feeds status                       # each feed's last reported status
   the process, how long ago it last received something, its restarts and
   how old the row is.
 
----
-
-## Part 8: Deploying with Kamal
-
-Shipping the app as a Docker image with [Kamal 2](https://kamal-deploy.org),
-instead of parts 3 to 6, has its own page:
-[deploy-kamal.md](deploy-kamal.md). It covers the files `cybertrain new`
-writes for it, editing `config/deploy.yml`, the secrets, the first deploy and
-day-to-day operation.
-
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -1200,45 +1243,13 @@ day-to-day operation.
 ## cybertrain's current limits (what to keep in mind in production)
 
 - **SQLite is the only database.** It is meant to run on one server; it cannot
-  be scaled out (for more processes on that server, see "Running several
-  processes").
+  be scaled out (for more processes on that server, see part 9).
 - **Connections fail for a few seconds during a restart (a deploy).** On
   SIGTERM the server stops accepting new connections and finishes answering
   the requests in flight before it exits, but connections that arrive before
   the new process listens are refused (Caddy answers 502). It waits at most
   10 seconds for requests in flight; a request that takes longer is cut off
   there.
-- To pin the site to HTTPS, once you have checked it works, add
-  `header Strict-Transport-Security "max-age=31536000"` to the Caddyfile's
-  site block (the session cookie is `Secure` in production). The app can
-  do it instead: `CYBERTRAIN_FORCE_SSL=1` in `/etc/notes/notes.env` sends
-  HSTS and redirects http to https by `X-Forwarded-Proto`
-  (`CYBERTRAIN_TRUSTED_PROXY=1`, from Part 4, is what makes the URLs the app
-  builds say https). With `CYBERTRAIN_FORCE_SSL=1`, change the deploy script's
-  check to `http://127.0.0.1:$PORT/up`: only the health path is exempt from
-  the redirect, so `/up.html` over plain http is redirected and the check
-  would no longer prove the app answered.
-- `CYBERTRAIN_HOSTS=notes.example.com` refuses requests for any other `Host`
-  with a 403. The loopback names (`localhost`, `127.0.0.1`, `[::1]`) stay
-  accepted, so the deploy script's `curl http://127.0.0.1:...` still works.
-- The app adds `X-Content-Type-Options: nosniff`,
-  `X-Frame-Options: SAMEORIGIN` and `Permissions-Policy` to every response
-  (the app's responses, error
-  responses and the `public/` files the `Static` middleware serves). But with
-  the Caddyfile of 6-2, Caddy serves the files in `public/` itself, without
-  going through the app, so those headers are missing there. To add them,
-  put `header ?X-Content-Type-Options nosniff` and
-  `header ?X-Frame-Options SAMEORIGIN` in the site block (`?` means "do not
-  overwrite a value the app already set", so a page meant for embedding that
-  changes the value in the app keeps it).
-- The same goes for the digested files in `public/assets/`: the app sends
-  them with `Cache-Control: public, max-age=31536000, immutable`, Caddy with
-  its own headers. A site block line such as
-  `header /assets/* Cache-Control "public, max-age=31536000, immutable"` gives
-  them the app's caching. Each release is a fresh clone, so its
-  `public/assets/` holds that release's digests only. And the app does not
-  serve a file through a symlink that leads out of `public/`: if you keep
-  `public/assets/` in `shared/`, mount it there rather than linking it.
 - A scaffold has no sign-in: anyone who reaches the site can write. Before
   going public, add it with `cybertrain generate authentication`
   ([Authentication](guide/authentication.md)), or decide who should be able
