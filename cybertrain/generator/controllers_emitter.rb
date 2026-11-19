@@ -397,7 +397,7 @@ module Cybertrain
       # The RateLimitRefs of the class's `rate_limit` lines, then those of
       # the `included` blocks of the concerns it brings in.
       def self.rate_limit_refs_with_concerns(info, infos, concerns)
-        refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        refs = ControllerScan.no_rate_limit_refs
         info.rate_limit_refs.each { |r| refs << r }
         ConcernScan.own_concerns(info, infos, concerns).each do |c|
           c.concern_rate_limit_refs.each { |r| refs << r }

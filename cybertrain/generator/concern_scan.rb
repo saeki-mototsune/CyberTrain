@@ -67,7 +67,7 @@ module Cybertrain
         @block_starts = Array.new(0) { 0 }
         @block_ends = Array.new(0) { 0 }
         @concern_layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        @concern_rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        @concern_rate_limit_refs = ControllerScan.no_rate_limit_refs
       end
 
       def count_callback

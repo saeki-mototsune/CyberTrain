@@ -84,7 +84,7 @@ module Cybertrain
         @defs = HelperScan.no_helper_defs
         @def_errors = Array.new(0) { "" }
         @layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        @rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        @rate_limit_refs = ControllerScan.no_rate_limit_refs
       end
 
       # A superclass written bare inside a module, once every controller is
@@ -147,6 +147,12 @@ module Cybertrain
       LAYOUT_OPTION = /\A,\s*(only|except):\s*(\[[^\]]*\]|%i\[[^\]]*\]|:\w+[?!]?)\s*/
       LAYOUT_UNREADABLE = "layout takes a name (layout \"admin\"), false, or a method's name (layout :choose_layout), then only: or except:"
 
+      # An empty list of rate_limit references (a new Array each call):
+      # the one place that spells the element type out for the compiler.
+      def self.no_rate_limit_refs
+        Array.new(0) { RateLimitRef.new("", "", "") }
+      end
+
       # nil when the source has no `class X < Y` line. When a file defines
       # several classes, the one named after the file wins
       # (posts_controller.rb -> PostsController).
@@ -167,7 +173,7 @@ module Cybertrain
         defs = HelperScan.no_helper_defs
         def_errors = Array.new(0) { "" }
         layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        rate_limit_refs = ControllerScan.no_rate_limit_refs
         lines = source.lines
         # The open modules (full names) and their indentation.
         modules = Array.new(0) { "" }
@@ -220,7 +226,7 @@ module Cybertrain
               defs = HelperScan.no_helper_defs
               def_errors = Array.new(0) { "" }
               layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-              rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+              rate_limit_refs = ControllerScan.no_rate_limit_refs
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
@@ -342,7 +348,7 @@ module Cybertrain
       # ArgumentError, naming the line, for one of those options given
       # anything but a Symbol or nil (a lambda, a String).
       def self.rate_limit_refs_at(file, lines, number)
-        refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        refs = ControllerScan.no_rate_limit_refs
         line = lines[number - 1].to_s
         return refs unless line.match?(RATE_LIMIT_CALL)
 
