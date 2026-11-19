@@ -1,5 +1,5 @@
 ---
-source_sha256: 7352ab5630a6ce2fdcd80864869365d02d3ffb12e944d4f616a4a29a3a3e3cb1
+source_sha256: 143689fc040acc9ab32433666e2c11366c85ef784370269c43a7237378ec0156
 ---
 # バックグラウンド処理と運用
 
@@ -32,7 +32,7 @@ Cybertrain::Scheduler.cron("0 4 * * *", "nightly digest", job: "DigestJob")
 Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 ```
 
-- **どこで実行されるか。** ジョブは `job_threads` 本のジョブスレッド（3、`CYBERTRAIN_JOB_THREADS`）で、定期タスクはそれ専用の 1 本のスケジューラーのスレッドで実行されるので、長いジョブがタスクを遅らせることはありません。どちらも、バイナリが配信を行うとき（`./<app>`、`./<app> server`）か、ワーカーとして動くとき（`./<app> worker`。[プロセスの役割](#process-roles)を参照）に、起動処理がデータベースに接続し `SPINEL_WORKERS` を設定した後で始まります。`migrate`、`db ...`、`jobs ...`、`console`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。ジョブを require していれば、ジョブスレッドは、ジョブクラスのないアプリケーションでも、こうしたプロセスのすべてで始まります。フレームワークが自分のメールのジョブ（`Mailer.deliver_later`、[メールを送る](external-services.md#sending-e-mail)）を登録するからです。
+- **どこで実行されるか。** ジョブは `job_threads` 本のジョブスレッド（3、`CYBERTRAIN_JOB_THREADS`）で、定期タスクはそれ専用の 1 本のスケジューラーのスレッドで実行されるので、長いジョブがタスクを遅らせることはありません。どちらも、バイナリが配信を行うとき（`./<app>`、`./<app> server`）か、ワーカーとして動くとき（`./<app> worker`。[プロセスの役割](#process-roles)を参照）に、起動処理がデータベースに接続し `SPINEL_WORKERS` を設定した後で始まります。`migrate`、`db ...`、`jobs ...`、`console`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。ジョブスレッドが始まるのは、ジョブの種類が 1 つでも登録されているときだけです：ジョブクラス、`Job.handle` のブロック、またはフレームワーク自身のメールのジョブで、これは `require "cybertrain/mailer/later"`（したがって `require "cybertrain"` も）が登録します（[メールを送る](external-services.md#sending-e-mail)）。1 つもなければ、ログに `No job handler registered; job threads not started` と出て、定期タスクはそのまま実行されます。
 - **テーブル。** ジョブは `cybertrain_jobs` の行です。このテーブルはフレームワークが自分で作り（最初の使用時に `CREATE TABLE IF NOT EXISTS`）、`db/schema.rb` には含めません。`DB.transaction` の中では、行は他のものと一緒にコミットまたはロールバックされます。各ジョブスレッドは、期限の来た最も古い行を短い `BEGIN IMMEDIATE` トランザクションで確保し、トランザクションの外で実行して、次を探します。期限の来たものがなければ `job_poll_interval` 秒（1）待つので、リクエストがキューに入れたジョブは 1 秒ほどで始まります。行の状態は `queued`、`running`、`done`、`failed`（再試行を使い切ったもの。調べられるように残ります）、`discarded`（`discard_on` が止めたもの）のどれかです。
 
 ### ジョブクラス
@@ -97,7 +97,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - **タイムゾーン。** `tz:` は IANA のゾーンを指定します（[タイムゾーン](configuration.md#time-zones)）。指定がなければ、タスクは `scheduler_tz`（`CYBERTRAIN_SCHEDULER_TZ`。設定しなければアプリケーションの `time_zone` に従います）で読まれます。夏時間で飛ばされる時刻は、その日は実行されません。秋の切り替えで繰り返される 1 時間では、時のフィールドが `*` で始まる式は両方の回に実行され、時が固定された式は 1 回だけ実行されます。Vixie cron と同じです。
 - **`job:`** はジョブの種類（String のクラス名か、`Job.handle` の種類）を、`args:` はその引数を指定します。このときタスクはジョブをキューに入れるだけです。本格的な作業のあるタスクはこうすべきです。未知の種類は、登録された種類の一覧を出して起動を止めます。
 - **時刻表** はデータベースに保存されます（`cybertrain_schedules`。`db/schema.rb` には含めません）。各タスクが最後に実行された時刻と、次に実行される時刻です。再起動しても、別のプロセスが主導権を取っても、そこから続きます。何も動いていない間に時刻が過ぎた `every` のタスクは、起動時に 1 回実行されます。何も動いていない間に過ぎた `cron` の枠は飛ばされます（cron の決まり）。ただしタスクが `catch_up: true` なら、起動時に 1 回実行されます。プロセスは動いていたのに、どのリーダーも実行しなかった枠（リースが持ち主を変えたとき）は、引き継いだときに 1 回実行されます。名前を変えたり消したりしたタスクの行は、次の起動まで残ります。まだ一度も実行されていないタスクは、前のリリースが保存した次の実行時刻より今のスケジュールのほうが早ければ、今のスケジュールに従います（初回の前に毎週から毎時に変えたタスクは、1 時間以内に実行されます）。
-- **タスクの実行のされ方。** ブロックはスケジューラーのスレッドで、一度に 1 つずつ実行されます。各実行は rescue で包まれており、`ERROR [schedule:name] Scheduled task "name" failed: ...` をログに出して報告し、ループは続きます。ブロックは引数を取りません（Spinel には `instance_eval` がありません）。SQLite の呼び出しは戻るまで OS のワーカーを占有します。`SPINEL_WORKERS=1`（デフォルト）では、長いクエリはその間すべてのリクエストとほかのすべてのスレッドを止めてしまいます。本格的な作業のあるタスクはジョブに任せ（`job:`、またはブロックから `Job.enqueue`）、大きな作業は分割してください（1 回の実行で 1000 行、項目ごとにジョブを 1 つ）。`Cybertrain::Scheduler.last_tick` は最後のティックのエポック秒で、自前のヘルスチェックに使えます。
+- **タスクの実行のされ方。** ブロックはスケジューラーのスレッドで、一度に 1 つずつ実行されます。各実行は rescue で包まれており、`ERROR [schedule:name] Scheduled task "name" failed: ...` をログに出して報告し、ループは続きます。ブロックは引数を取らず、その中の `self` はスケジューラーではありません。スケジューラーは保存しておいたブロックを呼び出しますが、Spinel は保存したブロックの `instance_exec` を拒むためです（spikes/NOTES.md のルール 2）。SQLite の呼び出しは戻るまで OS のワーカーを占有します。`SPINEL_WORKERS=1`（デフォルト）では、長いクエリはその間すべてのリクエストとほかのすべてのスレッドを止めてしまいます。本格的な作業のあるタスクはジョブに任せ（`job:`、またはブロックから `Job.enqueue`）、大きな作業は分割してください（1 回の実行で 1000 行、項目ごとにジョブを 1 つ）。`Cybertrain::Scheduler.last_tick` は最後のティックのエポック秒で、自前のヘルスチェックに使えます。
 
 ### ジョブページと `jobs` コマンド
 
@@ -155,7 +155,7 @@ end
 - `worker` と `feeds` はバナー（`=> worker: 3 job threads, 2 scheduled tasks`）を出し、`SIGTERM` か `SIGINT`（Ctrl-C）まで動き、それからサーバーと同じように止まります。これらは常に自分の作業を行います：Web の役割のために設定した `CYBERTRAIN_WORKER=0` では止まりません。
 - 名前を付けた `feeds` はその購読だけを動かし（フィードごとに 1 つのコンテナー）、未知の名前は、登録された名前の一覧を出して起動を止めます。フィードを専用のプロセスで動かすときは、サーバーに `CYBERTRAIN_WORKER=0` を設定してください。そうしないと、どのプロセスもすべてのフィードを受信します。
 - `feeds` のプロセスはスレッドが死んだフィードを再起動し、同じフィードが死に続けると（`feed_restart_window` のうちに `feed_restart_limit` 回の再起動）終了ステータス 1 で終わります。なので再起動ポリシーの下で動かしてください（Docker の `restart: unless-stopped`、systemd の `Restart=always`）。詳しくは[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)にあります。`./<app> feeds status` は、各フィードが最後に報告した状態を表示します。
-- よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` と `worker` の役割（とコメントにした `feeds`）を書きます。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 7「Splitting the roles」にあります。
+- よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` の役割を書き、`worker` と `feeds` の役割はコメントにしておきます。`require "cybertrain/jobs"` を追加する `cybertrain generate job` と `generate authentication` が、worker の役割のコメントを外します。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 7「Splitting the roles」にあります。
 - **ハートビートのないリリースから上げるとき**：最初の新しいプロセスを起動する前に、古いプロセスをすべて止めてください。古いプロセスはハートビートを書かないので、新しいワーカーは、古いワーカーがまだ実行しているジョブを放棄されたものとして取ってしまいます。
 - `Cybertrain::Main.worker?(ARGV)` と `Main.feeds?(ARGV)` は、`Main.server?(ARGV)` と同じく、`bin/<app>.rb` にどの役割を起動しているかを教えます。
 - `worker` には `bin/<app>.rb` に `require "cybertrain/jobs"` が、`feeds` には `require "cybertrain/feeds"`（`cybertrain/websocket` が読み込みます）が必要です。ないと、バイナリはどの行が足りないかを表示して 1 で終了します。
@@ -175,7 +175,7 @@ count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.
 Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)   # 書いたときに true
 ```
 
-- **値は String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` は有効な値を返すか、ブロックを実行してその戻り値を保存します。`fetch_hash`、`fetch_array`、`fetch_int` は JSON か Integer のテキストを保存し、取り出すときに解釈するので、壊れたセルは期限が切れてブロックがもう一度実行されるまで `{}`、`[]`、`0` として読まれます（Spinel には `Marshal` がなく、1 つのメソッドは 1 つの型しか返せません）。残りは `read(key)`（String か nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（1 つの文。期限の切れたカウンターは `by` からやり直します。`expires_in:` はカウンターの開始時にだけ期限を決めるので、1 分間のカウンターはその 1 分を数えます）、`clear` です。
+- **値は String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` は有効な値を返すか、ブロックを実行してその戻り値を保存します。`fetch_hash`、`fetch_array`、`fetch_int` は JSON か Integer のテキストを保存し、取り出すときに解釈するので、壊れたセルは期限が切れてブロックがもう一度実行されるまで `{}`、`[]`、`0` として読まれます（セルに入るのはテキストで、`Marshal` のダンプではありません。キャッシュが返す型ごとに、別の名前のメソッドがあります）。残りは `read(key)`（String か nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（1 つの文。期限の切れたカウンターは `by` からやり直します。`expires_in:` はカウンターの開始時にだけ期限を決めるので、1 分間のカウンターはその 1 分を数えます）、`clear` です。
 - **期限。** `expires_in:` は秒数です。デフォルトの `0` は期限切れになりません（負の値も同じです）。`race_condition_ttl: n`：行の期限が切れていると、最初の呼び出し元がそれを `n` 秒延ばして新しい値を計算し、その間ほかの呼び出し元は古い値を読み続けます。Rails と同じです。これがなければ、期限の切れたキーの呼び出し元が全員計算します。例外を出したブロックは何も書きません。
 - **保存先。** 行は `cybertrain_cache` にあります。このテーブルはフレームワークが最初の使用時に作り、`db/schema.rb` には含めません。メモリには何も保持しません。読み出しはどれも SELECT で、SQLite はそのページキャッシュから答えます。書き込みはどれもデータベースの書き込みロックを取り、自分の行を書くリクエストはそれを待ちます。忙しいリクエストの経路で書くのではなく、ジョブが作るものや、変わるよりはるかに頻繁に読まれる値をキャッシュしてください。
 - **掃除。** ジョブが読み込まれていれば、このファイルを require すると、定期タスク `"cybertrain cache prune"` が登録されます。これは `cache_prune_interval` 秒（300、`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）ごとに、期限の切れた行を 1 文あたり 1000 行ずつ消します。ジョブがなければキャッシュが自分で掃除します：プロセスの最初の書き込みと、`cache_prune_interval` ごとの最初の書き込みが、期限の切れた行を最大 1000 行消します。間隔はファイルを require したときに読まれます。環境変数を設定するか、require より前に実行される `Cybertrain.configure` のブロックで `c.cache_prune_interval` を設定してください。`Cache.prune(now)` はテスト用の入り口です。
@@ -206,7 +206,7 @@ true
 
 ## 運用：バックアップ、VACUUM、ヘルスチェック
 
-デプロイしたアプリケーションのデータは 1 つの SQLite ファイルなので、バイナリはそうしたアプリケーションに必要な 3 つの運用ツールを備えています。ファイルアップロードのあるアプリケーションは、そのバイト列もアップロードのルート（`upload_root`。デフォルトは `storage/uploads/`）の下に置きます：このディレクトリもデータベースと一緒にバックアップ・復元してください。そうしないと、復元したレコードが存在しないファイルを指すことになります（[ファイルアップロードを追加する](tutorial.md#attachments)）。
+デプロイしたアプリケーションのデータは 1 つの SQLite ファイルなので、バイナリはそうしたアプリケーションに必要な 3 つの運用ツールを備えています。ファイルアップロードのあるアプリケーションは、そのバイト列もアップロードのルート（`upload_root`。デフォルトは `storage/uploads/`）の下に置きます：このディレクトリもデータベースと一緒にバックアップ・復元してください。そうしないと、復元したレコードが存在しないファイルを指すことになります（[カバー画像を追加する](tutorial.md#attachments)）。
 
 **バックアップ。** `./<app> db backup PATH` は、サーバーを動かしたまま、設定されたデータベース（`CYBERTRAIN_DATABASE`）の一貫したコピーを書き出します：SQLite の `VACUUM INTO`（3.27 以降。バイナリが確認します）が 1 つのスナップショットを読み、WAL のもとでは、その間もサーバーの書き込みは続きます。コピーは `PATH` の隣の一時ファイルに書き込まれ、そのファイルはモード 0600 で排他的に作成され（ファイルにはパスワードのダイジェストとセッションのトークンが含まれます）、fsync された後にはじめて `PATH` にリネームされます。そのため、失敗したり中断したりしたコピーが本来の名前で不完全なファイルを残すことはありません（一時ファイルは削除されます）。既存の `PATH` は、`--force` を渡さない限り拒否されます。データベース自体が書き込み先になることは決してなく、`:memory:` のデータベースがコピー元になることもありません。
 
