@@ -32,8 +32,7 @@ module Cybertrain
       # build is never reported. After the machine's stop (which cancels the
       # build and stops the child) nothing is owned and nothing is reported.
       #
-      # The files (docs/superpowers/specs/2026-11-12-cruby-preview-design.md
-      # section 6), all under tmp/cybertrain-dev/: state (the only channel
+      # The files, all under tmp/cybertrain-dev/: state (the only channel
       # to the child), ready and failure (the child's answers), child.pid,
       # build.pid (the build's process group, while it runs) and
       # supervisor.pid (so that the next `cybertrain server` can find what a
@@ -48,7 +47,7 @@ module Cybertrain
         # The files of FILES that name a process this runner started.
         PROCESS_FILES = ["child.pid", "build.pid"].freeze
 
-        # The bounds (P11): a child must write its ready file within
+        # The bounds: a child must write its ready file within
         # READY_TIMEOUT seconds; a stopped child gets STOP_GRACE seconds after
         # TERM before KILL; the file watch polls every WATCH_INTERVAL.
         READY_TIMEOUT = 30
@@ -122,7 +121,7 @@ module Cybertrain
           @build = nil
           @build_failure = nil
           @incremental = true
-          # Whether this runner has launched a build (R24: only the first
+          # Whether this runner has launched a build (only the first
           # may be plain).
           @launched = false
           @hold = nil
@@ -332,7 +331,7 @@ module Cybertrain
           CLI::BuildLock.new(File.expand_path(root)).held?
         end
 
-        # P16: a change queued for the machine, or seen by the watcher and
+        # A change queued for the machine, or seen by the watcher and
         # not yet queued, or a watched file that differs from the watcher's
         # baseline right now (Watch#pending?).
         def change_pending?
@@ -398,7 +397,7 @@ module Cybertrain
         end
 
         # Stops the file watch, closes held connections and removes the
-        # files of P2 (the build and the child are the machine's to stop).
+        # supervisor's files, FILES (the build and the child are the machine's to stop).
         # child.pid and build.pid stay while the process they name still
         # runs (a stop that failed half-way): the next `cybertrain server`
         # stops it through them (DevServer.stop_leftover_child and
@@ -435,7 +434,7 @@ module Cybertrain
           DevServer.child_env
         end
 
-        # The five variables of Dev::Supervision (P9).
+        # The five variables of Dev::Supervision.
         def supervised_env(generation)
           child_env.merge(
             Dev::Supervision::LISTEN_FD => @listener.fileno.to_s,
@@ -478,7 +477,7 @@ module Cybertrain
           [pid, launched]
         end
 
-        # Whether this build is the incremental one (P23, P24). Never once
+        # Whether this build is the incremental one. Never once
         # the toolchain has refused the flag. Always after the runner's first
         # build: a save in the last instant of a build can be missing from
         # the binary it writes, and only an incremental build ignores the
@@ -494,7 +493,7 @@ module Cybertrain
           Build.binary_stale?(@root, @name) || dependency_newer?
         end
 
-        # P25: when a build has ended (ok, failed or cancelled) and
+        # When a build has ended (ok, failed or cancelled) and
         # build/bin/NAME is newer than its launch, i.e. that build wrote it,
         # the binary is set back to the launch. The compiler read the sources
         # after the launch, so a save made while the build ran is then newer

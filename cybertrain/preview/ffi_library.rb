@@ -22,8 +22,7 @@ module Cybertrain
     # A cached library is loaded into the developer's process with
     # Fiddle.dlopen, which runs its code, so nothing is loaded from the
     # cache unless the directory and the file belong to this process's
-    # effective user and neither is writable by its group or others
-    # (decision P26 of docs/superpowers/plans/2026-11-12-cruby-preview-plan.md).
+    # effective user and neither is writable by its group or others.
     # A missing directory is made 0700, a new library is written 0700 (read
     # for dlopen, and the execute bit cc gives a shared object). A directory
     # that fails the check is an error that names it and what is wrong, and
