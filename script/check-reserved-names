@@ -469,9 +469,9 @@ NAME_HOMES = {
   "delete" => %w[cybertrain/generator/routes_dsl.rb cybertrain/session.rb cybertrain/test/client.rb cybertrain/blob_store.rb
                  cybertrain/cookie_jar.rb cybertrain/cache.rb cybertrain/router.rb cybertrain/test/integration.rb],
   "head" => %w[cybertrain/controller.rb cybertrain/test/integration.rb],
-  # Phase 5b (logs and error reporting; spike items 7 to 9,
-  # spikes/phase5/error_names.rb, deleted since, compiled each beside its
-  # namesakes).
+  # Phase 5b (logs and error reporting): each name was compiled beside its
+  # namesakes in one program with the whole framework on 2026-11-13
+  # (spikes/phase5/error_names.rb, deleted since).
   # Logger#error (nil), Template::Parser's two private #error (raise) and
   # Cybertrain.error (the ErrorReporter).
   "error" => %w[cybertrain/logger.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
@@ -500,9 +500,8 @@ NAME_HOMES = {
   # one String-typed hook the boot check reads.
   "sender_name" => %w[cybertrain/error_reporter.rb cybertrain/error_reporter/sentry.rb]
 }.freeze
-# The names the phase 4a, 4b, 5a and 5b plans list as the first candidates
-# for a clash must keep a row (Global Constraints of the plans; 4b's
-# `admin?` is left out, see `t` above).
+# The names phases 4a, 4b, 5a and 5b found most likely to clash must keep
+# a row (4b's `admin?` is left out, see `t` above).
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
                      csv xml text any permit scope t l translate localize locale remember
                      current zone advance now render_inline setup teardown response travel_to travel_back hour day

@@ -1,6 +1,7 @@
 #!/bin/bash
-# Phase 5b spike, item 9 (spec section 16; plan D3): the logger's lock
-# under two workers. A record, not a test.
+# Phase 5b spike (2026-11-13; the result is in docs/design.md D86 and
+# spikes/NOTES.md rule 115): the logger's lock under two workers. A record,
+# not a test.
 #
 # What it asks: does a Logger whose `log` builds the line and does one
 # `STDOUT.write` + `flush` inside `Logger::LOCK.synchronize`
@@ -10,7 +11,7 @@
 # stalling requests for seconds in this configuration.
 # Pass: all five locked runs complete with no stall (a request over 1 s)
 # and no dead server, and their median requests per second is at least 95%
-# of the unlocked median. Fallback (D3): no lock, each line one write cut
+# of the unlocked median. Fallback: no lock, each line one write cut
 # to 4,096 bytes.
 #
 # What it does: extracts the framework at FRAMEWORK_REV (git archive:
@@ -59,7 +60,7 @@
 # request.) Medians: locked 1,590 rps, unlocked 1,581 rps (100.6%); no
 # stall, no error, no dead server; the server used its two cores (184 to
 # 185%), so the load was server-bound, not client-bound.
-# Verdict: PASS, no fallback: D3's Logger::LOCK around the one write and
+# Verdict: PASS, no fallback: Logger::LOCK around the one write and
 # flush stays. A likely difference from rule 57 (not measured apart): the
 # lock is held only for the write of a line already built, not around
 # other work. Not measured: wrk's higher request rates, where rule 57's

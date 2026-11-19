@@ -1,6 +1,7 @@
-# Phase 5b spike, item 7 (spec section 16; plan D5): a per-thread log scope
-# under Spinel, in a program with the whole framework, the db pool holding
-# a Connection under its Thread.current key (a transaction) and
+# Phase 5b spike (2026-11-13; docs/design.md D86, spikes/NOTES.md rules 102
+# and 114): a per-thread log scope under Spinel, in a program with the
+# whole framework, the db pool holding a Connection under its
+# Thread.current key (a transaction) and
 # I18n.locale set per thread (spikes/phase4b/thread_locale.rb's program
 # extended, NOTES rule 102). A record, not a test.
 #
@@ -80,8 +81,8 @@
 # which proves nothing; the timed `sleep 0.002` makes them interleave under
 # both worker counts (3 of 4, the most possible: the last to store has no
 # later store before its read).
-# Verdict: PASS, no fallback. One Scope object in one Thread.current slot
-# (D5), beside I18n's Symbol and the pool's Connection; `swap_scope` /
+# Verdict: PASS, no fallback. One Scope object in one Thread.current slot,
+# beside I18n's Symbol and the pool's Connection; `swap_scope` /
 # `current_scope` with NO_SCOPE stored as nil; a reader's writer
 # (`scope_where=`) on the thread's own Scope; and `tagged` as an instance
 # method forwarding `{ yield }` to a save-yield-ensure module function,
@@ -94,7 +95,7 @@ module LogScope
   ID_KEY = :cybertrain_log_request_id
   TAGS_KEY = :cybertrain_log_tags
 
-  # D5's Scope.
+  # The Scope (docs/design.md D86).
   class Scope
     attr_reader :scope_request_id, :scope_request_method, :scope_request_path, :scope_where,
                 :scope_tags, :scope_id_tag, :scope_context

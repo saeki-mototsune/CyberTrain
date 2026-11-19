@@ -1,4 +1,4 @@
-# Phase 5b spike, item 9: the load generator run.sh uses when `wrk` is not
+# Phase 5b spike: the load generator run.sh uses when `wrk` is not
 # installed (CRuby). Keep-alive connections over 127.0.0.1, one per thread,
 # each sending GET / and GET /articles/1 in turn for SECONDS seconds; a
 # request slower than 1 s is a stall, a request that fails (a closed
