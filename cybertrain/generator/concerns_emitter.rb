@@ -52,13 +52,13 @@ module Cybertrain
           next if c.class_method_names.empty?
 
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(c.concern_name, class_methods_source(c))
+          out << SourceText.wrap_in_scopes(c.concern_name, Array.new(0) { "" }, class_methods_source(c))
         end
         model_concern_infos.each do |c|
           next if c.class_method_names.empty?
 
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(c.concern_name, class_methods_source(c))
+          out << SourceText.wrap_in_scopes(c.concern_name, Array.new(0) { "" }, class_methods_source(c))
         end
         ControllersEmitter.parents_first(controller_infos).each do |info|
           from = Array.new(0) { 0 }
@@ -74,7 +74,7 @@ module Cybertrain
           body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
           source << "end\n"
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(info.class_name, source)
+          out << SourceText.wrap_in_scopes(info.class_name, Array.new(0) { "" }, source)
         end
         out << emit_models(model_infos, model_concern_infos)
         out
@@ -124,7 +124,7 @@ module Cybertrain
           body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
           source << "end\n"
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(info.class_name, source)
+          out << SourceText.wrap_in_scopes(info.class_name, Array.new(0) { "" }, source)
         end
         out
       end

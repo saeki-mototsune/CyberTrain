@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/concern_scan"
 require "cybertrain/generator/helper_scan"
@@ -130,7 +131,7 @@ module Cybertrain
 
         superclass = info.superclass_name
         superclass = "::#{superclass}" unless superclass.start_with?("::")
-        wrap_in_modules(info.class_name, plain_class_source(parts.last.to_s, superclass, callbacks, ivars, helpers))
+        SourceText.wrap_in_scopes(info.class_name, Array.new(0) { "" }, plain_class_source(parts.last.to_s, superclass, callbacks, ivars, helpers))
       end
 
       # The controller's controller_layout ("" when neither it nor the
@@ -413,29 +414,6 @@ module Cybertrain
           c.concern_callbacks.each { |n| names << n unless names.include?(n) }
         end
         names
-      end
-
-      # `body` (the source of `class X` or `module X`, X the last part of
-      # full_name) inside `module A` ... for the parts before it, indented.
-      def self.wrap_in_modules(full_name, body)
-        parts = full_name.split("::")
-        out = +""
-        depth = 0
-        parts.each_with_index do |mod, i|
-          next if i == parts.size - 1
-
-          out << ("  " * depth) << "module #{mod}\n"
-          depth += 1
-        end
-        body.each_line do |line|
-          out << ("  " * depth) unless line == "\n"
-          out << line
-        end
-        while depth > 0
-          depth -= 1
-          out << ("  " * depth) << "end\n"
-        end
-        out
       end
 
       def self.plain_class_source(class_name, superclass_name, callbacks, ivars, helpers = "")

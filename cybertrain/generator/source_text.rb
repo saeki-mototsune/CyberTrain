@@ -2,7 +2,8 @@ module Cybertrain
   module Gen
     # What the generator's lexical scanners and emitters share, whatever
     # they scan: the Ruby files of a tree, creating a directory, and the
-    # shape of one source line.
+    # shape of one source line, and writing a class inside its enclosing
+    # modules.
     module SourceText
       # Sorted "<dir>/<rel>.rb" paths under dir ([] when dir is missing).
       def self.ruby_files(dir)
@@ -61,6 +62,32 @@ module Cybertrain
 
       def self.word_char?(ch)
         (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch == "_"
+      end
+
+      # `body` (the source of `class X` or `module X`, X the last part of
+      # full_name) inside the parts before it, indented: part i is opened
+      # with keywords[i] ("module" or "class"), with "module" when keywords
+      # is shorter (callers whose enclosing parts are all modules pass an
+      # empty Array; JobInfo#scope_keywords has one keyword per part).
+      def self.wrap_in_scopes(full_name, keywords, body)
+        parts = full_name.split("::")
+        out = +""
+        depth = 0
+        parts.each_with_index do |mod, i|
+          next if i == parts.size - 1
+
+          out << ("  " * depth) << (i < keywords.size ? keywords[i] : "module") << " #{mod}\n"
+          depth += 1
+        end
+        body.each_line do |line|
+          out << ("  " * depth) unless line == "\n"
+          out << line
+        end
+        while depth > 0
+          depth -= 1
+          out << ("  " * depth) << "end\n"
+        end
+        out
       end
     end
   end
