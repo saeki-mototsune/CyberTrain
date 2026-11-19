@@ -516,7 +516,7 @@ test "the first round never stops a child, so the lock cannot appear between its
   assert_equal [[:run_gen], [:start_child, :cruby, 1], [:start_build, 1]], calls_after(r)
 end
 
-# A handover that gave way to a change (P16) leaves nothing serving; the
+# A handover that gave way to a change leaves nothing serving; the
 # change's round normally follows. A change that never comes (a temporary
 # file under a watched glob, gone by the watcher's next poll) must not leave
 # the port unanswered: the next tick hands over again.
