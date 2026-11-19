@@ -56,7 +56,7 @@ module Cybertrain
           puts "== #{version} #{migration.class.name}: migrating" unless @quiet
           record(migration, true)
           ops = migration.operations
-          apply_version(version, ops, empty_operations, "INSERT INTO schema_migrations (version) VALUES (?)")
+          apply_version(version, ops, Cybertrain::Migration::Operation.empty_list, "INSERT INTO schema_migrations (version) VALUES (?)")
           count += 1
         end
         count
@@ -80,21 +80,23 @@ module Cybertrain
           break if targets.size >= steps
           targets << version
         end
+        # Each target's [version, migration] entry, looked up once: every
+        # one is found, then every one checked, before any is reverted.
+        chosen = Cybertrain::Migration.empty_entries
         targets.each do |version|
-          if find_migration(migrations, version).nil?
+          at = entry_index(migrations, version)
+          if at < 0
             message = "no migration for applied version #{version} (was its file in db/migrate deleted or renamed, " \
                       "or was it applied by Rails before the takeover?)"
             raise Error, message
           end
+          chosen << migrations[at]
         end
-        targets.each do |version|
-          migration = find_migration(migrations, version)
-          check_reversible(version, migration) unless migration.nil?
-        end
+        chosen.each { |entry| check_reversible(entry[0], entry[1]) }
         count = 0
-        targets.each do |version|
-          migration = find_migration(migrations, version)
-          next if migration.nil?
+        chosen.each do |entry|
+          version = entry[0]
+          migration = entry[1]
           puts "== #{version} #{migration.class.name}: reverting" unless @quiet
           # The forward operations name the indexes the inverse drops
           # (Base#inverse turns add_index into a remove_index that keeps only
@@ -195,7 +197,7 @@ module Cybertrain
         names = Array.new(0) { "" }
         ops.each do |op|
           next unless op.rebuilds?
-          name = Cybertrain::Migration::Operation.table_name(op.table)
+          name = op.table_text
           names << name unless names.include?(name)
         end
         names.join(", ")
@@ -216,7 +218,7 @@ module Cybertrain
       # its sqlite_sequence value as they were. A change_column_null to NOT
       # NULL with a default first backfills the NULL cells.
       def run_rebuild(op)
-        table_name = Cybertrain::Migration::Operation.table_name(op.table)
+        table_name = op.table_text
         definition = Cybertrain::DB::SchemaDumper.dump(@connection)
         table = definition.table(table_name)
         if table.nil?
@@ -365,10 +367,10 @@ module Cybertrain
       end
 
       def index_to_remove(op, forward)
-        table = Cybertrain::Migration::Operation.table_name(op.table)
+        table = op.table_text
         forward.each do |f|
           next unless f.kind == :add_index && f.name != ""
-          return f.name if Cybertrain::Migration::Operation.table_name(f.table) == table && f.columns == op.columns
+          return f.name if f.table_text == table && f.columns == op.columns
         end
         derived = Cybertrain::DB::SqliteDDL.derived_index_name(table, op.columns)
         names = index_names_on(table, op.columns)
@@ -387,15 +389,14 @@ module Cybertrain
         result
       end
 
-      def empty_operations
-        Array.new(0) { Cybertrain::Migration::Operation.for_drop_table("") }
-      end
-
-      def find_migration(migrations, version)
-        migrations.each do |entry|
-          return entry[1] if entry[0] == version
+      # The index in `migrations` of the entry for `version`, or -1.
+      def entry_index(migrations, version)
+        i = 0
+        while i < migrations.size
+          return i if migrations[i][0] == version
+          i += 1
         end
-        nil
+        -1
       end
     end
   end

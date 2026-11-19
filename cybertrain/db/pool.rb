@@ -43,15 +43,14 @@ module Cybertrain
         # A failure while opening slot k (SQLITE_BUSY on the WAL switch, EMFILE,
         # a file that is not a database) must not leak slots 0..k-1: the Pool
         # never reaches the caller, so close_all cannot. Close what is open
-        # and re-raise (a rescue, not an ensure: NOTES rule 50; JSON::ParserError
-        # named too, rule 33).
+        # and re-raise (a rescue, not an ensure: NOTES rule 50).
         begin
           @size.times do
             conn = Connection.new(path)
             @connections << conn
             @available << conn
           end
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           @connections.each(&:close)
           raise e
         end
@@ -112,7 +111,7 @@ module Cybertrain
         conn = @available.pop
         begin
           conn = reopen(conn) if conn.closed?
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           # The slot goes back, as `with`'s ensure puts it back.
           @available << conn
           raise e

@@ -102,8 +102,8 @@ module Cybertrain
         # object, so nobody else can. A Pool slot in quarantine reopens on
         # every checkout (Pool#reopen), and a handle leaked per request is a
         # file descriptor and a WAL/shm lock per request until EMFILE. A
-        # rescue, not an ensure, as everywhere in this file (NOTES rules 33,
-        # 50); `close` is the same path a user close takes.
+        # rescue, not an ensure, as everywhere in this file (NOTES rule 50);
+        # `close` is the same path a user close takes.
         begin
           # Lock waits through the busy handler's slot instead of PRAGMA
           # busy_timeout (see SQLite3): in Ruby for a statement, in C for a
@@ -117,7 +117,7 @@ module Cybertrain
           # the PRAGMA: SQLite answers "memory" for it and keeps that mode.
           exec_script("PRAGMA journal_mode=WAL") unless Connection.private_database?(path)
           exec_script("PRAGMA foreign_keys=ON")
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           close
           raise e
         end
@@ -286,9 +286,8 @@ module Cybertrain
         SQLite3.sqlite3_get_autocommit(@db) == 0
       end
 
-      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises
-      # (JSON::ParserError named too: not a StandardError under Spinel, NOTES
-      # rule 33). A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
+      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises.
+      # A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
       # SQLite inside the transaction, so it is rolled back too before the
       # COMMIT error is re-raised. A nested call just runs its block inside
       # the outer transaction. Do not break or return out of a transaction
@@ -315,7 +314,7 @@ module Cybertrain
         begin!
         begin
           yield
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           rollback!
           raise e
         end
@@ -339,7 +338,7 @@ module Cybertrain
       #   begin
       #     c.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", [n, from])
       #     c.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", [n, to])
-      #   rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      #   rescue StandardError => e
       #     c.rollback!
       #     raise e
       #   end

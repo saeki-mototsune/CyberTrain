@@ -37,9 +37,6 @@ module Cybertrain
         case value
         when Text then value.console_text
         when Cybertrain::Model then record_text(value)
-        # Time before Array: a Time in a polymorphic slot also matches Array
-        # (NOTES rule 8).
-        when Time then value.to_s
         when Array then list_text(value)
         when Cybertrain::Relation then relation_text(value)
         else inline(value)

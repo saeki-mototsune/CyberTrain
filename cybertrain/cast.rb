@@ -432,9 +432,21 @@ module Cybertrain
     # @return [Array<Object>]
     # @api public
     def self.binds(*values)
+      out = empty_binds
+      values.each { |v| out << to_sql(v) }
+      out
+    end
+
+    # A fresh empty bind Array, typed for every value a bind holds (nil,
+    # Integer, Float, String, DB::Blob): seeded with one of each and
+    # cleared, so it is the polymorphic Array even when every value pushed
+    # later has the same type (NOTES rule 9). What Relation, Model and the
+    # migration DSL start their bind lists from.
+    # @return [Array<Object>]
+    # @api private
+    def self.empty_binds
       out = [nil, 0, 0.0, "", DB::Blob.new("")]
       out.clear
-      values.each { |v| out << to_sql(v) }
       out
     end
 

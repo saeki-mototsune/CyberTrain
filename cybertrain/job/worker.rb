@@ -202,6 +202,7 @@ module Cybertrain
       # run_handler does not survive, raised by a job) is logged too, so a
       # job thread never ends while the pool is live: the row is left
       # `running` for heartbeat recovery, which fails it at recovery_limit.
+      # One `rescue Exception` arm takes both.
       #
       # The generation goes with the claim as its ticket: a claim that
       # waited for the write lock is asked again under it ({Job.claim_open?}),
@@ -214,10 +215,6 @@ module Cybertrain
       # all is one report a minute, not one per thread.
       def self.claim_safely(now, index, generation)
         Executor.work_one_under(now, generation)
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
-        Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
-        Cybertrain.error.report_unhandled(e, THREAD_WHERE, ErrorReporter::NO_CONTEXT)
-        false
       rescue Exception => e
         Cybertrain.logger.error("Job thread #{index}: #{e.class.name}: #{e.message}")
         Cybertrain.error.report_unhandled(e, THREAD_WHERE, ErrorReporter::NO_CONTEXT)
@@ -253,7 +250,7 @@ module Cybertrain
 
       def self.beat_safely(now)
         Job.heartbeat!(now)
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         Cybertrain.logger.error("Job heartbeat: #{e.class.name}: #{e.message}")
         0
       end

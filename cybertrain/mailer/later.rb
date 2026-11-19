@@ -110,9 +110,7 @@ module Cybertrain
       begin
         mailer = Mailer.new(timeout: timeout)
         mailer.deliver(to: to, subject: subject, body: body, html: html, from: from)
-      rescue ::Cybertrain::Mailer::TimeoutError => e
-        Cybertrain::Job.retry_later(run, e, 60, false, 5)
-      rescue ::Cybertrain::Mailer::ConnectError => e
+      rescue ::Cybertrain::Mailer::TimeoutError, ::Cybertrain::Mailer::ConnectError => e
         Cybertrain::Job.retry_later(run, e, 60, false, 5)
       rescue ::Cybertrain::Mailer::RejectedError => e
         # 5xx is permanent, 4xx transient (RFC 5321 4.2.1).

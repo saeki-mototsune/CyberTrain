@@ -410,9 +410,7 @@ module Cybertrain
         raise TLSError, e.message
       rescue Net::ConnectError => e
         raise ConnectError, e.message
-      rescue Net::LimitError => e
-        raise ProtocolError, e.message
-      rescue Net::ProtocolError => e
+      rescue Net::LimitError, Net::ProtocolError => e
         raise ProtocolError, e.message
       end
     end

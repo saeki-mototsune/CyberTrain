@@ -101,7 +101,7 @@ module Cybertrain
       # `now`), runs it at `now` and has its outcome written. Its id, -1 when
       # none was claimed.
       def self.work_one_after_id(floor, kind, now)
-        run = Store.claim_after(floor, kind, now, Job.process_label, NO_TICKET)
+        run = Store.claim_after(floor, kind, now, Job.process_label)
         return -1 if run.run_id < 0
 
         finish_in_flight(run)
@@ -193,15 +193,11 @@ module Cybertrain
         logger = Cybertrain.logger
         id = run.run_id
         kind = run.run_kind
-        attempts = run.run_attempts
         now = run.run_now
-        label = run.run_claimed_by
         index = Job.handler_index(kind)
         if index < 0
           message = "no handler registered for kind #{kind.inspect}"
-          return nil unless outcome_written?(id, kind, record_outcome(id, "failed", now, message, now, label, attempts))
-
-          logger.error("job #{id} (#{kind}) failed: #{message}")
+          logger.error("job #{id} (#{kind}) failed: #{message}") if settle(run, "failed", now, message)
           return nil
         end
         error = run_handler(HANDLERS[index], run)
@@ -210,23 +206,43 @@ module Cybertrain
           return nil
         end
         if error.empty?
-          return nil unless outcome_written?(id, kind, record_outcome(id, "done", now, "", now, label, attempts))
-
-          logger.info("job #{id} (#{kind}) done")
+          logger.info("job #{id} (#{kind}) done") if settle(run, "done", now, "")
           return nil
         end
-        max = Cybertrain.config.job_max_attempts
-        if RetryPolicy.exhausted?(attempts, max)
-          return nil unless outcome_written?(id, kind, record_outcome(id, "failed", now, error, now, label, attempts))
-
-          logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{error}")
-        else
-          wait = RetryPolicy.default_wait(attempts)
-          return nil unless outcome_written?(id, kind, record_outcome(id, "queued", now + wait, error, now, label, attempts))
-
-          logger.error("job #{id} (#{kind}) attempt #{attempts} of #{max} failed: #{error}; retrying in #{wait} s")
-        end
+        settle_failure(run, error, RetryPolicy.default_wait(run.run_attempts), Cybertrain.config.job_max_attempts)
         nil
+      end
+
+      # Has the outcome of `run`'s claim written ({record_outcome}) and says
+      # what became of the write ({outcome_written?}): true when the row now
+      # holds `state`, false when the claim was lost or the write failed
+      # every try (logged either way).
+      def self.settle(run, state, run_at, error)
+        code = record_outcome(run.run_id, state, run_at, error, run.run_now, run.run_claimed_by, run.run_attempts)
+        outcome_written?(run.run_id, run.run_kind, code)
+      end
+
+      # The outcome of a failed attempt under a limit of `attempts_limit`:
+      # `failed` when this attempt was the last one allowed, else `queued`
+      # again in `wait` seconds; logged. OUTCOME_FAILED or OUTCOME_REQUEUED
+      # for what was written, OUTCOME_STALE when nothing was ({settle}). It
+      # neither reports the error nor marks the Run written: its callers do
+      # what their policy needs first.
+      def self.settle_failure(run, message, wait, attempts_limit)
+        id = run.run_id
+        kind = run.run_kind
+        attempts = run.run_attempts
+        now = run.run_now
+        if RetryPolicy.exhausted?(attempts, attempts_limit)
+          return OUTCOME_STALE unless settle(run, "failed", now, message)
+
+          Cybertrain.logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{message}")
+          return OUTCOME_FAILED
+        end
+        return OUTCOME_STALE unless settle(run, "queued", now + wait, message)
+
+        Cybertrain.logger.error("job #{id} (#{kind}) attempt #{attempts} of #{attempts_limit} failed: #{message}; retrying in #{wait} s")
+        OUTCOME_REQUEUED
       end
 
       # Logs what record_outcome's code means unless the outcome was written
@@ -244,8 +260,8 @@ module Cybertrain
       end
 
       # The handler call with its rescue in a plain method that receives the
-      # Proc as a parameter (NOTES rules 32/45/69); JSON::NestingError named
-      # first (rule 61). "" when the handler returned, else the bounded error.
+      # Proc as a parameter (NOTES rules 32/45/69). "" when the handler
+      # returned, else the bounded error.
       # The exceptions outside StandardError that a job's own code raises
       # (`raise NotImplementedError` in a helper not yet written, a recursion
       # too deep, a `require` that fails) take the default policy as a
@@ -259,7 +275,7 @@ module Cybertrain
         I18n.locale = nil
         handler.handler_run_block.call(run)
         ""
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         Cybertrain.error.report_unhandled(e, run.run_kind, ErrorReporter::NO_CONTEXT)
         RetryPolicy.error_text(e.class.name, e.message)
       rescue NotImplementedError, SystemStackError, ScriptError => e
@@ -273,25 +289,10 @@ module Cybertrain
       def self.retry_later(run, error, wait_base, polynomial, attempts_limit)
         limit = { "job.max_attempts" => attempts_limit.to_s }
         Cybertrain.error.report_unhandled(error, run.run_kind, limit)
-        attempts = run.run_attempts
-        wait = RetryPolicy.policy_wait(attempts, wait_base, polynomial)
+        wait = RetryPolicy.policy_wait(run.run_attempts, wait_base, polynomial)
         message = RetryPolicy.error_text(error.class.name, error.message)
-        now = run.run_now
-        id = run.run_id
-        kind = run.run_kind
         run.run_outcome_written!
-        unless RetryPolicy.exhausted?(attempts, attempts_limit)
-          code = record_outcome(id, "queued", now + wait, message, now, run.run_claimed_by, attempts)
-          return OUTCOME_STALE unless outcome_written?(id, kind, code)
-
-          Cybertrain.logger.error("job #{id} (#{kind}) attempt #{attempts} of #{attempts_limit} failed: #{message}; retrying in #{wait} s")
-          return OUTCOME_REQUEUED
-        end
-        code = record_outcome(id, "failed", now, message, now, run.run_claimed_by, attempts)
-        return OUTCOME_STALE unless outcome_written?(id, kind, code)
-
-        Cybertrain.logger.error("job #{id} (#{kind}) failed after #{attempts} attempts: #{message}")
-        OUTCOME_FAILED
+        settle_failure(run, message, wait, attempts_limit)
       end
 
       # {Job.discard}: the row becomes `discarded`, written once and marked
@@ -303,14 +304,10 @@ module Cybertrain
         limit = { "job.max_attempts" => run.run_attempts.to_s }
         Cybertrain.error.report_unhandled(error, run.run_kind, limit)
         message = RetryPolicy.error_text(error.class.name, error.message)
-        now = run.run_now
-        id = run.run_id
-        kind = run.run_kind
         run.run_outcome_written!
-        code = record_outcome(id, "discarded", now, message, now, run.run_claimed_by, run.run_attempts)
-        return OUTCOME_STALE unless outcome_written?(id, kind, code)
+        return OUTCOME_STALE unless settle(run, "discarded", run.run_now, message)
 
-        Cybertrain.logger.error("job #{id} (#{kind}) discarded: #{message}")
+        Cybertrain.logger.error("job #{run.run_id} (#{run.run_kind}) discarded: #{message}")
         OUTCOME_FAILED
       end
 
@@ -334,7 +331,7 @@ module Cybertrain
       # One try, its rescue in a plain method (NOTES rules 32/45).
       def self.write_outcome_safely(id, state, run_at, error, now, label, attempts, try)
         Store.write_outcome(id, state, run_at, error, now, label, attempts)
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         Cybertrain.logger.error("job #{id}: outcome write #{try} of #{OUTCOME_TRIES} failed: #{e.class.name}: #{e.message}")
         -1
       end

@@ -156,11 +156,10 @@ module Cybertrain
         DB.with { |c| c.exec_script(TABLE_SQL) }
         add_missing_columns
         DB.with { |c| c.execute(KEY_INDEX_SQL) }
-        # SQLite's DDL is transactional: a table created inside a
-        # DB.transaction that later rolls back is gone again, so only a
-        # CREATE outside one is remembered.
-        pool = DB.pool
-        @installed_generation = DB.generation if !pool.nil? && pool.held_index < 0
+        # Only a CREATE outside a transaction is remembered: one inside a
+        # transaction that rolls back is gone again
+        # ({DB.outside_transaction?}).
+        @installed_generation = DB.generation if DB.outside_transaction?
         nil
       end
 
@@ -179,8 +178,7 @@ module Cybertrain
       end
 
       def self.add_columns_once
-        pool = DB.pool
-        if !pool.nil? && pool.held_index < 0
+        if DB.outside_transaction?
           DB.transaction(immediate: true) { |c| alter_missing(c) }
         else
           DB.with { |c| alter_missing(c) }
@@ -401,30 +399,6 @@ module Cybertrain
         full
       end
 
-      # The claim's SELECT, leaving out the `excluded` kinds (one bound `?`
-      # each, after run_at's) and then each (kind, key) of `pairs` (two bound
-      # `?`s each).
-      def self.claim_sql(excluded, pairs)
-        sql = +"SELECT id, kind, payload, attempts, request_id FROM cybertrain_jobs WHERE state = 'queued' AND run_at <= ?"
-        unless excluded.empty?
-          sql << " AND kind NOT IN ("
-          i = 0
-          while i < excluded.size
-            sql << ", " if i > 0
-            sql << "?"
-            i += 1
-          end
-          sql << ")"
-        end
-        j = 0
-        while j < pairs.size
-          sql << " AND NOT (kind = ? AND concurrency_key = ?)"
-          j += 2
-        end
-        sql << " ORDER BY run_at, id LIMIT 1"
-        sql
-      end
-
       # Claims the oldest row due at `now` for `label`: the row becomes
       # `running` with one more attempt, `claimed_by` and a first
       # heartbeat, and comes back as the {Job::Run} of that attempt. When
@@ -442,13 +416,9 @@ module Cybertrain
         # write lock (three BEGIN IMMEDIATEs a second per process otherwise,
         # each able to hold an OS worker in the busy handler while another
         # process writes).
-        return Run.new(-1, "", "", 0, label, now, "") unless due_exists?(now)
+        return no_run(label, now) unless due_exists?(now)
 
-        id = -1
-        kind = ""
-        payload = ""
-        attempts = 0
-        request_id = ""
+        run = no_run(label, now)
         # The claim is its own short BEGIN IMMEDIATE transaction: the SELECT
         # and the UPDATE run under the write lock, and the `state = 'queued'`
         # guard with the changes check refuses a row another claimer took.
@@ -462,29 +432,24 @@ module Cybertrain
           if Job.claim_open?(ticket)
             pairs = Array.new(0) { "" }
             excluded = limited ? kinds_at_limit(c, pairs) : Array.new(0) { "" }
+            # The SELECT leaves out the `excluded` kinds (one bound `?`
+            # each, after run_at's) and then each (kind, key) of `pairs`
+            # (two bound `?`s each).
             binds = Cast.binds(now)
-            excluded.each { |k| binds << k }
-            pairs.each { |k| binds << k }
-            rows = c.execute(claim_sql(excluded, pairs), binds)
-            unless rows.empty?
-              row = rows[0]
-              found = Cast.int(row["id"])
-              claim = Cast.binds(label, now, now, found)
-              # (attempts is counted here; the outcome write and the
-              # heartbeat are fenced by it.)
-              c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
-                        "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", claim)
-              if c.changes == 1
-                id = found
-                kind = Cast.str(row["kind"])
-                payload = Cast.str(row["payload"])
-                attempts = Cast.int(row["attempts"]) + 1
-                request_id = Cast.str(row["request_id"])
-              end
+            sql = +"SELECT id, kind, payload, attempts, request_id FROM cybertrain_jobs WHERE state = 'queued' AND run_at <= ?"
+            append_kind_list(sql, binds, " AND kind NOT IN (", excluded)
+            j = 0
+            while j < pairs.size
+              sql << " AND NOT (kind = ? AND concurrency_key = ?)"
+              binds << pairs[j]
+              binds << pairs[j + 1]
+              j += 2
             end
+            sql << " ORDER BY run_at, id LIMIT 1"
+            run = take_first(c, c.execute(sql, binds), label, now)
           end
         end
-        Run.new(id, kind, payload, attempts, label, now, request_id)
+        run
       end
 
       # Claims the queued row with the lowest id above `floor`, of `kind`
@@ -494,42 +459,47 @@ module Cybertrain
       # more attempt, `claimed_by`, a first heartbeat at `now`. The Run's
       # run_id is -1 when there is none. Ordered by id (enqueue order), not
       # by run_at as a worker claims. Concurrency limits are not consulted:
-      # the caller runs one job at a time on its own thread.
-      def self.claim_after(floor, kind, now, label, ticket)
+      # the caller runs one job at a time on its own thread, and its claim
+      # is never withdrawn, so it carries no ticket.
+      def self.claim_after(floor, kind, now, label)
         ensure_installed
-        id = -1
-        found_kind = ""
-        payload = ""
-        attempts = 0
-        request_id = ""
+        run = no_run(label, now)
         DB.transaction(immediate: true) do |c|
-          if Job.claim_open?(ticket)
-            sql = +"SELECT id, kind, payload, attempts, request_id FROM cybertrain_jobs WHERE state = 'queued' AND id > ? " \
-                   "AND (attempts = 0 OR run_at <= ?)"
-            binds = Cast.binds(floor, now)
-            unless kind.empty?
-              sql << " AND kind = ?"
-              binds << kind
-            end
-            sql << " ORDER BY id LIMIT 1"
-            rows = c.execute(sql, binds)
-            unless rows.empty?
-              row = rows[0]
-              found = Cast.int(row["id"])
-              claim = Cast.binds(label, now, now, found)
-              c.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
-                        "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", claim)
-              if c.changes == 1
-                id = found
-                found_kind = Cast.str(row["kind"])
-                payload = Cast.str(row["payload"])
-                attempts = Cast.int(row["attempts"]) + 1
-                request_id = Cast.str(row["request_id"])
-              end
-            end
+          sql = +"SELECT id, kind, payload, attempts, request_id FROM cybertrain_jobs WHERE state = 'queued' AND id > ? " \
+                 "AND (attempts = 0 OR run_at <= ?)"
+          binds = Cast.binds(floor, now)
+          unless kind.empty?
+            sql << " AND kind = ?"
+            binds << kind
           end
+          sql << " ORDER BY id LIMIT 1"
+          run = take_first(c, c.execute(sql, binds), label, now)
         end
-        Run.new(id, found_kind, payload, attempts, label, now, request_id)
+        run
+      end
+
+      # The Run that says nothing was claimed: run_id -1.
+      def self.no_run(label, now)
+        Run.new(-1, "", "", 0, label, now, "")
+      end
+
+      # Claims the first of `rows` (a claim SELECT's result) for `label` and
+      # answers its Run, or {no_run} when there is no row or another claimer
+      # took it. Must be called inside the caller's BEGIN IMMEDIATE, on its
+      # connection: the SELECT and this UPDATE are one claim.
+      def self.take_first(conn, rows, label, now)
+        return no_run(label, now) if rows.empty?
+
+        row = rows[0]
+        id = Cast.int(row["id"])
+        # (attempts is counted here; the outcome write and the heartbeat
+        # are fenced by it.)
+        conn.execute("UPDATE cybertrain_jobs SET state = 'running', attempts = attempts + 1, claimed_by = ?, " \
+                     "heartbeat_at = ?, updated_at = ? WHERE id = ? AND state = 'queued'", Cast.binds(label, now, now, id))
+        return no_run(label, now) unless conn.changes == 1
+
+        Run.new(id, Cast.str(row["kind"]), Cast.str(row["payload"]), Cast.int(row["attempts"]) + 1, label, now,
+                Cast.str(row["request_id"]))
       end
 
       # Whether some queued row is due at `now` (a plain read).

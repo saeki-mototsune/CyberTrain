@@ -32,6 +32,20 @@ module Cybertrain
       @pool
     end
 
+    # Whether the calling thread is connected and not inside a
+    # {DB.transaction}: what a module asks before it remembers that it
+    # created its table for this {generation}. SQLite's DDL is
+    # transactional: a table created inside a DB.transaction that later
+    # rolls back is gone again, so only a CREATE outside one is remembered.
+    # Not {in_transaction?}, which asks the connection (a BEGIN run by hand
+    # counts there) and raises when not connected.
+    # @return [Boolean]
+    # @api private
+    def self.outside_transaction?
+      current = @pool
+      !current.nil? && current.held_index < 0
+    end
+
     def self.connected?
       !@pool.nil?
     end
@@ -145,7 +159,7 @@ module Cybertrain
         conn.begin!(immediate: immediate)
         begin
           block.call(conn)
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           conn.rollback!
           raise e
         end

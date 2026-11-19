@@ -59,7 +59,7 @@ module Cybertrain
                 "SQLite cannot add a foreign key to an existing table; declare it in create_table " \
                 "(or use add_reference, which adds it with the column)"
         when :rename_table
-          ["ALTER TABLE #{Cybertrain::Migration::Operation.table_name(op.table)} RENAME TO #{op.new_name}"]
+          ["ALTER TABLE #{op.table_text} RENAME TO #{op.new_name}"]
         when :change_column, :change_column_default, :change_column_null, :remove_reference, :remove_foreign_key
           message = "#{op.kind} rebuilds the table from the live schema (SqliteDDL.rebuild_table)"
           raise ArgumentError, message
@@ -357,26 +357,26 @@ module Cybertrain
       end
 
       def self.drop_table_sql(op)
-        "DROP TABLE #{Cybertrain::Migration::Operation.table_name(op.table)}"
+        "DROP TABLE #{op.table_text}"
       end
 
       def self.add_column_sql(op)
-        table = Cybertrain::Migration::Operation.table_name(op.table)
+        table = op.table_text
         "ALTER TABLE #{table} ADD COLUMN #{column_def(op.name, op.type, op.null, op.default, op.limit, op.precision, op.scale)}"
       end
 
       def self.remove_column_sql(op)
-        table = Cybertrain::Migration::Operation.table_name(op.table)
+        table = op.table_text
         "ALTER TABLE #{table} DROP COLUMN #{op.name}"
       end
 
       def self.rename_column_sql(op)
-        table = Cybertrain::Migration::Operation.table_name(op.table)
+        table = op.table_text
         "ALTER TABLE #{table} RENAME COLUMN #{op.name} TO #{op.new_name}"
       end
 
       def self.add_index_sql(op)
-        table = Cybertrain::Migration::Operation.table_name(op.table)
+        table = op.table_text
         index_sql(table, op.columns, op.unique, op.name, op.where, "")
       end
 
@@ -386,7 +386,7 @@ module Cybertrain
       # is the reference's own `on_delete` (Base#add_reference records the
       # same action on both operations).
       def self.add_reference_statements(op, to_table = "")
-        table = Cybertrain::Migration::Operation.table_name(op.table)
+        table = op.table_text
         column = add_column_sql(op)
         column = "#{column} REFERENCES #{to_table}(id)#{on_delete_clause(op.on_delete)}" if to_table != ""
         [column, index_sql(table, [op.name], false, "")]
@@ -398,8 +398,8 @@ module Cybertrain
       # both through add_reference_statements(ref_op, fk_op.to_table).
       def self.folds_foreign_key?(ref_op, fk_op)
         return false unless ref_op.kind == :add_reference && fk_op.kind == :add_foreign_key
-        ref_table = Cybertrain::Migration::Operation.table_name(ref_op.table)
-        fk_table = Cybertrain::Migration::Operation.table_name(fk_op.table)
+        ref_table = ref_op.table_text
+        fk_table = fk_op.table_text
         ref_table == fk_table && ref_op.name == fk_op.name
       end
 

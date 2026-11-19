@@ -60,7 +60,7 @@ module Cybertrain
           when "help" then return help_command
           when "_" then return env["_"]
           end
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           remember_failure(e)
           raise e
         end
@@ -68,8 +68,7 @@ module Cybertrain
       end
 
       # The 5-argument signature of HelperBase#call_object_method on this
-      # branch. The rescue sits in this plain method (NOTES rules 32/45);
-      # JSON's errors are named (rules 33/61).
+      # branch. The rescue sits in this plain method (NOTES rules 32/45).
       def call_object_method(recv, name_sym, name_str, args, kwargs, block, interp, env)
         raise Cybertrain::Template::RuntimeError, "#{name_str}: blocks are not supported in the console" unless block.nil?
 
@@ -78,7 +77,7 @@ module Cybertrain
           when Cybertrain::Relation then return relation_call(recv, name_sym, name_str, args, kwargs)
           when Cybertrain::Model then return record_call(recv, name_sym, name_str, kwargs)
           end
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           remember_failure(e)
           raise e
         end
@@ -352,7 +351,6 @@ module Cybertrain
 
         a = args[i]
         case a
-        when Time then out << a
         when Array then a.each { |x| out << x }
         else out << a
         end

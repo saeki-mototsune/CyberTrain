@@ -330,8 +330,7 @@ module Cybertrain
       # renames it over target, so target is either what it was or the whole
       # new copy, never a partial one. On any failure the temporary
       # directory and its contents go and the error is re-raised. The rescue
-      # sits in this plain method (NOTES rules 32/45); JSON::NestingError is
-      # named first (rule 61).
+      # sits in this plain method (NOTES rules 32/45).
       def self.backup_to(source, target, force)
         raise Error, "#{target} is a directory" if File.directory?(target)
         parent = File.dirname(target)
@@ -357,7 +356,7 @@ module Cybertrain
           File.chmod(0o600, tmp)
           sync_file(tmp)
           File.rename(tmp, target)
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           remove_temporary(holder, tmp)
           raise e
         end
