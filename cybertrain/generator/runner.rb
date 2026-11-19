@@ -98,6 +98,9 @@ module Cybertrain
           concern_files << rel
         end
         stale = 0
+        # The schema db/schema.rb loaded, nil without one: gen/test/data.rb
+        # and gen/models/<model>.rb per table are written only with it.
+        schema = Cybertrain::Schema.current
         # gen/tests.rb, the program `cybertrain test` compiles, whenever
         # test/ exists (a refused bundle is a program that only aborts with
         # the reason: gen itself still succeeds, pre-flight ruling B2).
@@ -122,11 +125,11 @@ module Cybertrain
           test_files = Array.new(0) { TestFile.new("", :top_level, [], [], [], "") }
           test_problem = Runner.test_problem(root, test_copies, copy_sources, test_files)
           test_copies.each_with_index { |rel, k| outputs << [rel, copy_sources[k]] }
-          fixture_problem = Runner.fixture_problem(root, infos, test_files, fixture_rows) unless Cybertrain::Schema.current.nil?
+          fixture_problem = Runner.fixture_problem(root, infos, test_files, fixture_rows) unless schema.nil?
           bundle = if !test_problem.empty?
                      TestsEmitter.refused_program(test_problem)
                    elsif fixture_problem.empty?
-                     TestsEmitter.emit(root, test_files, !Cybertrain::Schema.current.nil?)
+                     TestsEmitter.emit(root, test_files, !schema.nil?)
                    else
                      TestsEmitter.refused_program(fixture_problem)
                    end
@@ -137,28 +140,8 @@ module Cybertrain
         # gen/migrations.rb only once an app has a db/migrate directory (a
         # fixture or test tree with no db/ at all skips it entirely).
         outputs << ["gen/migrations.rb", MigrationsEmitter.emit(root)] if File.directory?("#{root}/db/migrate")
-        # gen/models/<model>.rb per table once db/schema.rb has been loaded.
-        schema = Cybertrain::Schema.current
-        # A gen/concerns file whose concern is gone, and the directories
-        # that leaves empty.
-        Manifest.rb_files(root, "gen/concerns").each do |f|
-          next if concern_files.include?(f + ".rb")
-
-          stale += remove_file(root, f + ".rb", check)
-          remove_empty_dirs(root, File.dirname(f), "gen/concerns") unless check
-        end
-        Manifest.rb_files(root, "gen/test").each do |f|
-          next unless test_problem.empty?
-          next if test_copies.include?(f + ".rb") || f + ".rb" == TestScan::DATA_FILE
-          next unless File.read("#{root}/#{f}.rb").include?("#{TestScan::FOOTER}test/")
-
-          stale += remove_file(root, f + ".rb", check)
-          remove_empty_dirs(root, File.dirname(f), "gen/test") unless check
-        end
-        if !File.directory?("#{root}/test") && File.exist?("#{root}/#{TestScan::DATA_FILE}")
-          stale += remove_file(root, TestScan::DATA_FILE, check)
-          remove_empty_dirs(root, "gen/test", "gen/test") unless check
-        end
+        stale += sweep_concerns(root, concern_files, check)
+        stale += sweep_test_copies(root, test_copies, test_problem, check)
         if schema.nil?
           outputs << ["gen/console.rb", ConsoleEmitter.emit(Array.new(0) { "" })]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
@@ -184,15 +167,56 @@ module Cybertrain
           end
           outputs << ["gen/console.rb", ConsoleEmitter.emit(names.sort)]
           outputs.each { |pair| stale += sync_file(root, pair[0], pair[1], check) }
-          # A gen/models file whose table is gone from the schema.
-          Manifest.rb_files(root, "gen/models").each do |f|
-            stale += remove_file(root, f + ".rb", check) unless models.include?(f)
-          end
+          stale += sweep_models(root, models, check)
           # The manifest lists the models the schema calls for, not the
           # files on disk, so --check reports it stale alongside them.
           stale += sync_file(root, "gen/app.rb", Manifest.emit_with_models(root, models), check)
         end
         stale > 0 ? 1 : 0
+      end
+
+      # A gen/concerns file whose concern is gone, and the directories
+      # that leaves empty; returns the stale count.
+      def self.sweep_concerns(root, concern_files, check)
+        stale = 0
+        Manifest.rb_files(root, "gen/concerns").each do |f|
+          next if concern_files.include?(f + ".rb")
+
+          stale += remove_file(root, f + ".rb", check)
+          remove_empty_dirs(root, File.dirname(f), "gen/concerns") unless check
+        end
+        stale
+      end
+
+      # A gen/test copy whose test file is gone or no longer class form
+      # (none is swept while the rewrite refuses test/, and only gen's own
+      # copies are), then gen/test/data.rb once test/ itself is gone;
+      # returns the stale count.
+      def self.sweep_test_copies(root, test_copies, test_problem, check)
+        stale = 0
+        Manifest.rb_files(root, "gen/test").each do |f|
+          next unless test_problem.empty?
+          next if test_copies.include?(f + ".rb") || f + ".rb" == TestScan::DATA_FILE
+          next unless File.read("#{root}/#{f}.rb").include?("#{TestScan::FOOTER}test/")
+
+          stale += remove_file(root, f + ".rb", check)
+          remove_empty_dirs(root, File.dirname(f), "gen/test") unless check
+        end
+        if !File.directory?("#{root}/test") && File.exist?("#{root}/#{TestScan::DATA_FILE}")
+          stale += remove_file(root, TestScan::DATA_FILE, check)
+          remove_empty_dirs(root, "gen/test", "gen/test") unless check
+        end
+        stale
+      end
+
+      # A gen/models file whose table is gone from the schema; returns the
+      # stale count.
+      def self.sweep_models(root, models, check)
+        stale = 0
+        Manifest.rb_files(root, "gen/models").each do |f|
+          stale += remove_file(root, f + ".rb", check) unless models.include?(f)
+        end
+        stale
       end
 
       # Why the class-form rewrite refuses root's test/ ("<path>:<line>:
