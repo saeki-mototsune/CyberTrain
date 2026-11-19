@@ -3012,7 +3012,7 @@ the top either way.
 ## Build time, measured on 2026-11-12
 
 Measured for the development flow of an application
-([the spec](superpowers/specs/2026-11-12-dev-flow-bottlenecks-design.md)):
+([performance-next.md](performance-next.md), "The development flow"):
 CyberTrain 34c9b7e, Spinel 2026.11.04.7026, a 4-core x86-64 Linux VM
 (Ubuntu 24.04, gcc 13.3). Nothing here is a wrong result. It is the time a
 developer waits after each edit, and most of it is not CyberTrain's to
