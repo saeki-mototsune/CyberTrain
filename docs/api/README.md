@@ -6,8 +6,11 @@ the [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html).
 The guides cover the rest: {https://saeki-mototsune.github.io/CyberTrain/guide/install.html installing and the CLI},
 {https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html how it works and the differences from Rails},
 {https://saeki-mototsune.github.io/CyberTrain/guide/models.html models}, {https://saeki-mototsune.github.io/CyberTrain/guide/requests.html requests},
+{https://saeki-mototsune.github.io/CyberTrain/guide/authentication.html authentication}, {https://saeki-mototsune.github.io/CyberTrain/guide/assets.html assets},
+{https://saeki-mototsune.github.io/CyberTrain/guide/i18n.html internationalization},
 {https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html configuration},
 {https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html background work and operations},
+{https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html realtime},
 {https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html outbound HTTP, WebSocket feeds and e-mail}
 and {https://saeki-mototsune.github.io/CyberTrain/guide/testing.html testing}.
 
@@ -37,6 +40,13 @@ generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 | `db/migrate/*.rb` | {Cybertrain::Migration::Base}, {Cybertrain::Schema::TableDef} |
 | `Cybertrain::WebSocket.subscribe("trades", url).on_open { ... }.on_message { ... }` in `config/app.rb` | {Cybertrain::WebSocket} (`require "cybertrain/websocket"`): {Cybertrain::WebSocket.subscribe}, {Cybertrain::WebSocket::Subscription}, {Cybertrain::WebSocket::Connection}, {Cybertrain::WebSocket.feed_status}; one connection: {Cybertrain::WebSocket::Client}; {Cybertrain::Background} |
 | `config/app.rb` | {Cybertrain.configure}, {Cybertrain::Config} |
+| `class NotifyJob < Cybertrain::Job::Base`, `NotifyJob.perform_later(...)`, `Cybertrain::Scheduler.cron(...)` | {Cybertrain::Job::Base}, {Cybertrain::Job}, {Cybertrain::Scheduler} (`require "cybertrain/jobs"`) |
+| `Cybertrain::Cache.fetch(key, expires_in: 60) { ... }` | {Cybertrain::Cache} (`require "cybertrain/cache"`) |
+| `turbo_stream_from @article`, `Cybertrain::Stream.broadcast_append_to(...)` | {Cybertrain::Stream} (`require "cybertrain/streams"`) |
+| `Cybertrain::Mailer.deliver(to:, subject:, body:)`, `deliver_later` | {Cybertrain::Mailer} (`require "cybertrain/mailer"`, `"cybertrain/mailer/later"`) |
+| `Cybertrain::HttpClient.new.get(url)` | {Cybertrain::HttpClient} (`require "cybertrain/http_client"`) |
+| `t(".title")`, `I18n.t(...)`, `l(time)` | {I18n} |
+| `app/components/*_component.rb` | {Cybertrain::Component} |
 | `Cybertrain.logger.info(...)`, `Cybertrain.logger.tagged("billing") { ... }`, `request.request_id` | {Cybertrain::Logger}, {Cybertrain::Logger::Scope}, {Cybertrain::RequestId} |
 | `Cybertrain.error.report(e)`, `Cybertrain.error.subscribe(...)` | {Cybertrain::ErrorReporter}, {Cybertrain::ErrorSubscriber}, {Cybertrain::ErrorEvent}; the Sentry sender {Cybertrain::ErrorReporter::SentrySender} (`require "cybertrain/error_reporter/sentry"`), {Cybertrain::SentryDsn} |
 | `test/*.rb` | {Cybertrain::Test}, {Cybertrain::Test::Client}, and the assertions below |
