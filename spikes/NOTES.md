@@ -234,9 +234,8 @@ programs too: small programs, `-O 0`, Linux, no GC stress.
 
 ## CRuby preview spike, 2026-11
 
-The spike of the CRuby preview design
-([docs/superpowers/specs/2026-11-12-cruby-preview-design.md](../docs/superpowers/specs/2026-11-12-cruby-preview-design.md),
-sections 7 and 13): can the unmodified framework serve examples/blog under
+The spike of the CRuby preview ([docs/design.md](../docs/design.md), D87):
+can the unmodified framework serve examples/blog under
 CRuby, with a Fiddle shim for the `ffi_*` DSL? Throwaway programs,
 deleted once `cybertrain/preview/` replaced them
 (`git log --diff-filter=D -- spikes/preview` in a full clone):
@@ -282,9 +281,9 @@ the title; the row in SQLite holds the title's UTF-8 bytes.
   symbol" error, and all 44 `ffi_func` symbols of the three files resolve
   (the compiled unit first, then the `ffi_lib`, then the process). The
   counts are 33 `ffi_func` and 4 `ffi_source` in sqlite_ffi.rb, not the
-  34 and 5 of the design's section 2.
-- **When to compile**: not at a module's first `ffi_func`, as the design
-  said: sqlite_ffi.rb declares three of its four `ffi_source` blocks after
+  34 and 5 the design first counted.
+- **When to compile**: not at a module's first `ffi_func`, as first
+  designed: sqlite_ffi.rb declares three of its four `ffi_source` blocks after
   its first `ffi_func`. The shim binds lazily, at the first call of any of
   the module's functions, when every source has been read.
 - **Encodings**: a `:str` result is a copy up to the NUL tagged UTF-8, a
@@ -350,8 +349,8 @@ the title; the row in SQLite holds the title's UTF-8 bytes.
   | The test's input comes from the runtime's own `Zlib.gzip`, whose bytes differ: flipping its middle byte still inflates to the same 2000 bytes (CRuby's zlib agrees), so no BodyUndecodable | 1 | 1 | http_gunzip |
   | The test runs `$0` as an executable (only a binary can), and `Process.spawn` reports a non-executable `sqlite3` on PATH as ENOENT under CRuby, EACCES compiled | 1 | 1 | main_console |
 
-  None is a shim defect; the last two are the documented gap between the
-  runtimes the plan's first step expects to list. The suite took 184 s
+  None is a shim defect; the last two are among the gaps between the
+  runtimes that test/cruby/parity-gaps.txt lists. The suite took 184 s
   under CRuby, one test at a time (websocket_subscription 33 s,
   background 21 s, job_threads 20 s).
 - **Not covered**: under CRuby the server boots in development with the
