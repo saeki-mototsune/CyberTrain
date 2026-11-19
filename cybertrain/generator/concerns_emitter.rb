@@ -45,7 +45,7 @@ module Cybertrain
                "# application's classes.\n"
 
       def self.emit(controller_infos, concern_infos, model_infos = Array.new(0) { ModelInfo.empty("", "", Array.new(0) { "" }) },
-                    model_concern_infos = Array.new(0) { ConcernInfo.new("", "", 0) })
+                    model_concern_infos = ConcernScan.no_concern_infos)
         out = +""
         out << HEADER
         out << class_methods_modules(concern_infos)
@@ -100,7 +100,7 @@ module Cybertrain
         model_infos.each do |info|
           next if info.concern_names.empty?
 
-          own = Array.new(0) { ConcernInfo.new("", "", 0) }
+          own = ConcernScan.no_concern_infos
           info.concern_names.each do |name|
             c = ConcernScan.find(concern_infos, name)
             own << c unless c.nil?

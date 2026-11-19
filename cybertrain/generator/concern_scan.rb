@@ -91,11 +91,17 @@ module Cybertrain
       AROUND = /\A\s*around_action\b/
       RULE_93 = "Spinel compiles a def inside class_methods as an instance method too (spikes/NOTES.md rule 93), so rename one"
 
+      # An empty list of concerns (a new Array each call): the one place
+      # that spells the element type out for the compiler.
+      def self.no_concern_infos
+        Array.new(0) { ConcernInfo.new("", "", 0) }
+      end
+
       # Every concern under dir (an app/controllers): the files of
       # dir/concerns, then each other file under dir that defines no
       # controller class, sorted by file within each group.
       def self.scan_dir(dir)
-        infos = Array.new(0) { ConcernInfo.new("", "", 0) }
+        infos = ConcernScan.no_concern_infos
         concerns_dir = "#{dir}/concerns/"
         files = SourceText.ruby_files(dir)
         files.each do |path|
@@ -413,7 +419,7 @@ module Cybertrain
       # `include` stays plain Ruby. Names are full names (resolve_include);
       # one that is not but ends in a concern's name is refused.
       def self.expand(names, concerns)
-        out = Array.new(0) { ConcernInfo.new("", "", 0) }
+        out = ConcernScan.no_concern_infos
         names.each { |name| visit(name, concerns, Array.new(0) { "" }, out) }
         out
       end
@@ -453,7 +459,7 @@ module Cybertrain
       # cycle; a name that is not a concern brings in nothing.
       def self.own_concerns(info, infos, concerns, from_include = Array.new(0) { 0 })
         inherited = inherited_concerns(info, infos, concerns)
-        out = Array.new(0) { ConcernInfo.new("", "", 0) }
+        out = ConcernScan.no_concern_infos
         info.includes.each_with_index do |name, k|
           expand([name], concerns).each do |c|
             next if inherited.include?(c.concern_name)

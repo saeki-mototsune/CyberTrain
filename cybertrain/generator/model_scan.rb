@@ -223,7 +223,7 @@ module Cybertrain
       # `include A, B` brings in B, then A, as Module#include does. within
       # names the concerns whose `included` body is being read (an
       # `include` in one is expanded too; a cycle through them raises).
-      def self.scan_source(file, source, concerns = Array.new(0) { ConcernInfo.new("", "", 0) }, within = Array.new(0) { "" })
+      def self.scan_source(file, source, concerns = ConcernScan.no_concern_infos, within = Array.new(0) { "" })
         class_name = ""
         class_indent = -1
         skip_indent = -1
