@@ -48,18 +48,8 @@ module Cybertrain
                     model_concern_infos = Array.new(0) { ConcernInfo.new("", "", 0) })
         out = +""
         out << HEADER
-        concern_infos.each do |c|
-          next if c.class_method_names.empty?
-
-          out << "\n"
-          out << SourceText.wrap_in_scopes(c.concern_name, Array.new(0) { "" }, class_methods_source(c))
-        end
-        model_concern_infos.each do |c|
-          next if c.class_method_names.empty?
-
-          out << "\n"
-          out << SourceText.wrap_in_scopes(c.concern_name, Array.new(0) { "" }, class_methods_source(c))
-        end
+        out << class_methods_modules(concern_infos)
+        out << class_methods_modules(model_concern_infos)
         ControllersEmitter.parents_first(controller_infos).each do |info|
           from = Array.new(0) { 0 }
           own = ConcernScan.own_concerns(info, controller_infos, concern_infos, from)
@@ -69,15 +59,33 @@ module Cybertrain
           body = class_body(info, own, from)
           next if body.empty?
 
-          last = info.class_name.split("::").last.to_s
-          source = +"class #{last}\n"
-          body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
-          source << "end\n"
           out << "\n"
-          out << SourceText.wrap_in_scopes(info.class_name, Array.new(0) { "" }, source)
+          out << reopened_class(info.class_name, body)
         end
         out << emit_models(model_infos, model_concern_infos)
         out
+      end
+
+      # The module holding each concern's class methods, for the concerns
+      # that have any.
+      def self.class_methods_modules(concerns)
+        out = +""
+        concerns.each do |c|
+          next if c.class_method_names.empty?
+
+          out << "\n"
+          out << SourceText.wrap_in_scopes(c.concern_name, Array.new(0) { "" }, class_methods_source(c))
+        end
+        out
+      end
+
+      # `class X` reopened around body, inside X's modules.
+      def self.reopened_class(class_name, body)
+        last = class_name.split("::").last.to_s
+        source = +"class #{last}\n"
+        body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
+        source << "end\n"
+        SourceText.wrap_in_scopes(class_name, Array.new(0) { "" }, source)
       end
 
       # The reopening of every model that includes concerns: a forwarder
@@ -119,12 +127,8 @@ module Cybertrain
           body << spliced
           next if body.empty?
 
-          last = info.class_name.split("::").last.to_s
-          source = +"class #{last}\n"
-          body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
-          source << "end\n"
           out << "\n"
-          out << SourceText.wrap_in_scopes(info.class_name, Array.new(0) { "" }, source)
+          out << reopened_class(info.class_name, body)
         end
         out
       end
