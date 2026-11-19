@@ -13,8 +13,12 @@ subclass. Its `change` records schema operations (`create_table`,
 `remove_index`, `drop_table`, and the ones under [Changing a
 table](#changing-a-table)); `cybertrain db migrate` applies each pending
 version in its own transaction and rewrites `db/schema.rb` from the database,
-and `cybertrain db rollback [N]` runs the inverse of `change`. When `change`
-holds an operation with no automatic inverse, write `down` (and `up`).
+and `cybertrain db rollback [N]` runs the inverse of `change`.
+`create_table`, `add_column`, `add_index` and `rename_column` reverse
+themselves; a `change` holding `add_reference`, `remove_column`,
+`remove_index` or `drop_table` stops a rollback with
+`version N is irreversible: no automatic inverse for <operation>`,
+so write `up` and `down` for those.
 
 A schema change that needs a data step to be safe uses `execute(sql, binds =
 [])`. It runs at its place in the migration, on the migrator's own
@@ -165,7 +169,7 @@ schema` writes `db/schema.rb` from the database without migrating
 | --- | --- | --- |
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
-| `t.float` | `FLOAT` | Float |
+| `t.float` | `REAL` | Float |
 | `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, rounded to the scale when stored, exact to 15 significant digits |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time (UTC, microseconds) |
@@ -325,10 +329,10 @@ Time.current.in_time_zone.hour       # => the hour in Time.zone
 ## Conditions and finders
 
 The query methods of the generated relation are class methods too (all but
-`or`, `not`, `page` and `to_sql`, and the Array-like `to_a`, `each`, `size`,
-`empty?`), so the Rails spelling works as written: `Article.where.not(body:
-nil)`, `Article.find_each { }`, `Article.pluck(:id, :title)`,
-`Article.pluck_int(:id)`.
+`or`, `not`, `page`, `to_sql` and `update_all_sql`, and the Array-like
+`to_a`, `each`, `size`, `empty?`), so the Rails spelling works as written:
+`Article.where.not(body: nil)`, `Article.find_each { }`,
+`Article.pluck(:id, :title)`, `Article.pluck_int(:id)`.
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -342,10 +346,14 @@ nil)`, `Article.find_each { }`, `Article.pluck(:id, :title)`,
 | `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | The same |
 
-- A Range in a `where` Hash takes Integer ends: under Spinel a Range of
-  Times or Dates cannot be built, and a Float or String Range is not matched
-  as one, so those bounds go through `where_between`, whose Time and Date
-  bounds are compared as the stored text (which orders as the instant does).
+- A Range in a `where` Hash takes Integer ends. Compiled with the pinned
+  Spinel, a Range of Times or Dates raises `TypeError` where it is built and
+  a Float Range is not recognized as a Range (reduced programs;
+  spikes/NOTES.md rule 86), so those bounds go through `where_between`,
+  whose Time and Date bounds are compared as the stored text (which orders
+  as the instant does). A String Range is recognized in the same programs,
+  but `where` is written for Integer ends: give String bounds to
+  `where_between` too.
 - A String condition is wrapped in parentheses, so an `OR` in it stays inside.
   Its binds are scalars: `where("id IN (?)", ids)` raises; write
   `where(id: ids)`.
@@ -438,10 +446,9 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
   `YYYY-MM-DD`, booleans as 1/0):
   `Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`.
 - `Cybertrain::Cast.hash(v)` / `Cast.array(v)` narrow a parsed JSON value to
-  a Hash / Array, or a fresh empty one when it is not one (a Time is checked
-  first, spikes/NOTES.md rule 8). They return a typed shallow copy, not `v`
-  itself; `Cast.empty_hash` / `Cast.empty_array` are the seeded empty
-  containers.
+  a Hash / Array, or a fresh empty one when it is not one. They return a
+  typed shallow copy, not `v` itself; `Cast.empty_hash` / `Cast.empty_array`
+  are the seeded empty containers.
 
 ### Several columns: `pluck` and `pick`
 
@@ -642,8 +649,9 @@ Hash; `config/locales/` can replace them for every model or for one
 and writes a message on `:base` alone.
 
 - `length` takes `minimum`, `maximum`, `is` and `in` (an Integer Range).
-- `inclusion` and `exclusion` take an Array, or a Range of Integers (Spinel
-  builds no other Range); `1...5` takes 4.5 on a float column, as in Rails.
+- `inclusion` and `exclusion` take an Array, or a Range of Integers (any
+  other Range is refused: `in: takes a Range of Integers only`); `1...5`
+  takes 4.5 on a float column, as in Rails.
 - `numericality` parses a String first (`"12"` passes); a Float fails
   `only_integer`, as in Rails.
 - `uniqueness` asks the database for another row with the value
@@ -671,11 +679,12 @@ end
 
 `validate :method` lines run after the `validates` rules, in order. `if:` and
 `unless:` (on both) take a Symbol naming a method of the model, a column or
-an association; the generator writes the table that calls it, since Spinel
-has no `send`. A lambda, `:if => :x` and `"if": :x` stop the generator with a
-message saying to name a method, and so does a `validate` name the model
-file does not define. `validates_with`, `validates_each`, `confirmation`,
-`acceptance` and `valid?(context)` are not available.
+an association; the generator writes the `case` table that calls it rather
+than using `send`, and refuses a name that is none of the three. A lambda,
+`:if => :x` and `"if": :x` stop the generator with a message saying to name
+a method, and so does a `validate` name the model file does not define.
+`validates_with`, `validates_each`, `confirmation`, `acceptance` and
+`valid?(context)` are not available.
 
 ## Encrypted columns
 
@@ -705,9 +714,9 @@ value store different payloads, so the column cannot be searched:
 
 ### Keys and rotation
 
-A model with `encrypts` makes the application require openssl and makes boot
-fail unless `CYBERTRAIN_ENCRYPTION_KEY` holds 64 hex characters (make one
-with `cybertrain secret --hex`; [the variables](configuration.md#configuration-and-environment-variables)).
+A model with `encrypts` makes boot fail unless `CYBERTRAIN_ENCRYPTION_KEY`
+holds 64 hex characters (make one with `cybertrain secret --hex`;
+[the variables](configuration.md#configuration-and-environment-variables)).
 The key is not derived from `CYBERTRAIN_SECRET_KEY_BASE`, so rotating the
 session secret leaves the data readable; lose the encryption key and the
 data is gone. To rotate it, put the new key in `CYBERTRAIN_ENCRYPTION_KEY` and
@@ -718,9 +727,10 @@ for reading only), then write every record again:
 Account.find_each { |account| account.update_columns(api_key: account.api_key) }
 ```
 
-Code that calls `Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)`
-itself, in an application with no `encrypts`, adds
-`require "cybertrain/encryptor"` to `bin/<app>.rb` and sets the key.
+Code in an application with no `encrypts` can call
+`Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)` itself once
+the key is set: boot does not ask for the key there, and a call without it
+raises `Cybertrain::Encryptor::Error`.
 
 ### Encrypting a column that already holds text
 
@@ -844,9 +854,9 @@ Code that must keep its `rescue` in a plain method uses the block-free form,
 ## Column names
 
 A column name must be an ASCII identifier (`[A-Za-z_][A-Za-z0-9_]*`), where
-Rails takes any. A schema with a non-ASCII column name (`名前`, `prénom`)
-generated under CRuby before PR #10, and `spin run gen` refuses it now, so
-rename the column when upgrading (a name like `first-name` was never a method
+Rails takes any. `spin run gen` refuses a schema with a non-ASCII column
+name (`名前`, `prénom`), which an early generator accepted when it ran under
+CRuby: rename the column (a name like `first-name` was never a method
 name).
 
 A column named like a method the generated class or the framework calls on a
@@ -869,27 +879,39 @@ generates under its own name with a note. `cybertrain generate scaffold`
 refuses keywords and reserved names (it would have to call a renamed reader)
 and accepts a shadowing name with a note, like the generator.
 
-A column named like a framework method with one return type is kept
-under its own name when its reader answers that type, and refused
-otherwise: `request_id` (`Cybertrain::Request#request_id`) and `release`
-(`Cybertrain::Config#release`) answer a String, so a string, text or
-binary column of those names, nullable or not, is accepted, and any other
-type stops `spin run gen`, for example
-`table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`.
-An Integer `request_id` from `t.references :request` gets advice to rename
-the reference instead: `t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"` (the `belongs_to` then reads as
-`source_request`). `handle` names framework methods of different types,
-so a column named `handle` reads as `handle_column` like the reserved
-names above (the application calls `user.handle_column`; queries keep
-`"handle"`), and `cybertrain generate scaffold` refuses the field:
-`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
+A column named like a framework method with one return type is kept under
+its own name when its reader answers that type, and refused otherwise.
+`request_id` (`Cybertrain::Request#request_id`) and `release`
+(`Cybertrain::Config#release`) answer a String, so a string, text or binary
+column of those names, nullable or not, is accepted, and any other type
+stops `spin run gen`. An Integer `request_id` from `t.references :request`
+gets advice to rename the reference instead: `t.integer "source_request_id"`
+and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`
+(the `belongs_to` then reads as `source_request`).
+
+`handle` names framework methods of different types, so a column named
+`handle` reads as `handle_column` like the reserved names above (the
+application calls `user.handle_column`; queries keep `"handle"`).
+
 `cybertrain generate scaffold` checks these names before it writes
-anything: a string or text field named `request_id` or `release`, or a bare
-one, is accepted, and any other type is refused (exit status 1), as in
-`'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`;
-a `references` field whose column or `belongs_to` reader would take one
-of the names is refused too:
-`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`.
+anything. A string or text field named `request_id` or `release`, or a bare
+one, is accepted, and any other type is refused (exit status 1); so are a
+`references` field whose column or `belongs_to` reader would take one of
+the names, and a field named `handle`.
+
+<details><summary>The exact messages — what gen and the scaffold generator print for these names</summary>
+
+- `spin run gen`, for a boolean column named `release`:
+  `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`
+- `generate scaffold`, for `request_id:integer`:
+  `'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`
+- `generate scaffold`, for `request:references`:
+  `'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`
+- `generate scaffold`, for a field named `handle`:
+  `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`
+
+</details>
+
 The names and types are `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`. Not
 checked: a `belongs_to` gen derives from a foreign key such as
 `release_id`, and a scope named `release` or `request_id`.
@@ -934,8 +956,8 @@ Photo.find(photo.id).thumbnail.bytesize   # the same bytes back
   `Cybertrain::Cast.binary(value)` narrows it (`""` for `NULL`).
 - `db/schema.rb` dumps the column back as `t.binary`, and the console prints
   a binary value as `<N bytes>`.
-- Keep large files out of the database: an upload ([Add a file
-  upload](tutorial.md#attachments)) is a file under `storage/uploads/`, while
+- Keep large files out of the database: an upload ([Add a cover
+  image](tutorial.md#attachments)) is a file under `storage/uploads/`, while
   a BLOB is read into memory whole with its row and makes every backup and
   the WAL larger.
 
@@ -982,12 +1004,12 @@ A SQLite file that a Rails 8 application created can be read as it is:
    too.
 5. Limits: a table whose primary key is not an `id` column (a join table) is
    dumped as `create_table "articles_tags", id: false` and gets no model
-   (`spin run gen` prints `skipped articles_tags: no id column`); reach it
-   with `DB.with`. An `id` primary key that is not an integer (Rails'
-   `id: :uuid` or `id: :string`) is dumped the same way, its `id` kept as a
-   plain column without the PRIMARY KEY. `ar_internal_metadata` is left
-   alone; a table whose `CREATE TABLE` holds what the schema does not model
-   cannot be changed with the rebuilding helpers ([Changing a
+   (`spin run gen` prints
+   `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)`).
+   An `id` primary key that is not an integer (Rails' `id: :uuid` or
+   `id: :string`) is dumped the same way, its `id` kept as a plain column
+   without the PRIMARY KEY. `ar_internal_metadata` is left alone; a table
+   whose `CREATE TABLE` holds what the schema does not model cannot be changed with the rebuilding helpers ([Changing a
    table](#changing-a-table)); columns Rails encrypted are re-encrypted
    ([Encrypting a column that already holds text](#encrypting-a-column-that-already-holds-text)).
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
+source_sha256: 2b5fded6e781bd7858eecd4087a657f9a3942325ea7b3d7be3ac8a684a924643
 ---
 # リクエスト
 
@@ -113,9 +113,9 @@ end
 
 `include AdminGate` と書いたコントローラーは、`included` ブロックが宣言するもの（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`）を、`include` の位置に、書いた順で受け取り、アクションの中で `self.class.per_page` が使えます。コンサーンはコンサーンを include できます：gen はそれらを深さ優先で、それぞれ一度だけ展開し、循環は名前を挙げて拒否します（`concern cycle: A includes B includes A`）。`include A, B` は Ruby と同じく B を先に include するので、B の `included` ブロックとコールバックが A のものより先に来ます。`around_action` は拒否されます（around コールバックはありません）。コンサーンのメソッドの中の `@x =` の代入は、コントローラーのビュー変数になります。
 
-Spinel は実行されることのない `included` と `class_methods` のブロックもコンパイルするので、gen が代わりに展開します：各コンサーンを、その二つのブロックを空行にして `gen/concerns/<app/ 以下のパス>` に書き（アプリのファイルはこのコピーを読み込みます）、`gen/concerns.rb` で include する各クラスを開き直して、差し込んだ宣言と、`class_methods` のメソッドごとの転送メソッドを書きます。ここから二つの規則が出てきます。`class_methods` のメソッドは、コンサーン、include するクラス、その祖先のインスタンスメソッドと同じ名前にはできません（Spinel はどちらもインスタンスメソッドとして定義してしまいます。spikes/NOTES.md のルール 93）。gen は両方の場所（インスタンスメソッドの `ファイル:行`）を挙げて拒否します。また、コンサーンでないモジュール（`include Comparable` や、`app/*/concerns` の下にファイルのない名前）の `include` は、そのまま Ruby に任されます。そのためコンサーン名の綴り間違いは、gen のメッセージではなく、アプリの読み込み時の `NameError` になります。gen は名前を Ruby と同じように、クラス自身のモジュールから先に探すので、`module Admin` の中の `include Gate` は `Admin::Gate` を取り込みます。どのコンサーンにも届かないのに最後の部分がコンサーンの名前と同じ名前（`Admin::Gate` しかないときの `include Gate`）では gen が止まります。Ruby は別のモジュールを include するか例外を出し、コンサーンの `included` ブロックが失われるからです。
+Spinel は実行されることのない `included` と `class_methods` のブロックもコンパイルするので、gen が代わりに展開します：各コンサーンを、その二つのブロックを空行にして `gen/concerns/<app/ 以下のパス>` に書き（アプリのファイルはこのコピーを読み込みます）、`gen/concerns.rb` で include する各クラスを開き直して、差し込んだ宣言と、`class_methods` のメソッドごとの転送メソッドを書きます。ここから二つの規則が出てきます。gen は、コンサーン、include するクラス、その祖先のインスタンスメソッドと同じ名前の `class_methods` のメソッドを、両方の場所（インスタンスメソッドの `ファイル:行`）を挙げて拒否します。この検査は元のソースに由来します：書かれたままコンパイルすると、実行されることのない `class_methods` ブロックの中の `def` は、include するクラスのインスタンスメソッドにもなります（縮小したプログラムで確かめられます。spikes/NOTES.md のルール 93）。gen はこの二つの名前を分けたままにします。また、コンサーンでないモジュール（`include Comparable` や、`app/*/concerns` の下にファイルのない名前）の `include` は、そのまま Ruby に任されます。そのためコンサーン名の綴り間違いは、gen のメッセージではなく、アプリの読み込み時の `NameError` になります。gen は名前を Ruby と同じように、クラス自身のモジュールから先に探すので、`module Admin` の中の `include Gate` は `Admin::Gate` を取り込みます。どのコンサーンにも届かないのに最後の部分がコンサーンの名前と同じ名前（`Admin::Gate` しかないときの `include Gate`）では gen が止まります。Ruby は別のモジュールを include するか例外を出し、コンサーンの `included` ブロックが失われるからです。
 
-モデルのコンサーンは `app/models/concerns/` に置き、同じように働きます：`included` ブロックには、モデルのクラスレベルの宣言（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、コールバック、`normalizes`）をどれでも書け、`include` の位置でモデルに書いたものとして扱われます。コンサーンのコールバックは、同じ種類のモデル自身のコールバックの後に実行され、モデルのコンサーンの `included` ブロックの中の `include` は、そのコンサーンを取り込みます。モデルのコンサーンの `class_methods` のメソッド名は、そのモデルのスコープや、どのモデルにもあるクラスメソッドと同じにはできません（`scope :recent` と並べた `recent` や `where`）。gen はそれを拒否します。
+モデルのコンサーンは `app/models/concerns/` に置き、同じように働きます：`included` ブロックには、モデルのクラスレベルの宣言（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、コールバック）をどれでも書け、`include` の位置でモデルに書いたものとして扱われます。コンサーンのコールバックは、同じ種類のモデル自身のコールバックの後に実行され、モデルのコンサーンの `included` ブロックの中の `include` は、そのコンサーンを取り込みます。モデルのコンサーンの `class_methods` のメソッド名は、そのモデルのスコープや、どのモデルにもあるクラスメソッドと同じにはできません（`scope :recent` と並べた `recent` や `where`）。gen はそれを拒否します。
 
 コントローラー、またはコンサーンの `included` ブロックに `helper_method :current_user, :admin?` と書くと、そのコントローラーのメソッドを、そのコントローラーのテンプレートと、そこから描画するコンポーネントとパーシャルから、引数付きで呼べるようになります。フレームワークのヘルパーの名前、`_path` や `_url` で終わる名前、`app/helpers` のモジュールが定義する名前、コントローラー・その親・そのコンサーンに `def` がない名前、テンプレートから引数を渡せない（`*rest`、`**opts`、`...`）名前は、gen が拒否します。
 
@@ -281,6 +281,7 @@ Rack は gzip されたリクエストボディをそのままにします。こ
 
 0.4 向けに書いたアプリで変わること（全体は [設計](../superpowers/specs/2026-11-10-phase4-web-layer-design.md) の 14 節にあります）：
 
+- モデルとデータベースには別の一覧があり、`db normalize` を一度実行することもそこに含まれます（[0.4 からの更新](models.md#upgrading-from-04)）。テスト（[0.4 からのアップグレード](testing.md#upgrading-from-04)）とジョブ（[0.4 からの更新](background-and-operations.md#upgrading-from-04)）にも、それぞれ一覧があります。
 - どのセッションも一度だけ終わります：暗号化した Cookie は以前の署名付きのものを読めないので、ユーザーはもう一度サインインします。`Session.load` や `Session.dump` を呼ぶコードは、導いた鍵 `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)` を渡します。生の秘密鍵を渡すと `Encryptor::Error` になります。
 - どのアプリも OpenSSL をリンクします（[インストール](install.md#requirements)）。以前の `cybertrain new` が書いた Dockerfile には、ビルド段に `libssl-dev`、実行段に `libssl3t64` が要ります。
 - フォーマットを取るルートでは、動的セグメントが `.` を取り込まなくなりました：ドットを含む id のルートには `format: false` が要ります。

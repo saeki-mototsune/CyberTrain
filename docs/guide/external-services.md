@@ -157,7 +157,8 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 ### gzip
 
 The client asks for and inflates gzip bodies when the gzip support is
-loaded: `require "cybertrain"` loads it, so in an application every request
+loaded: `require "cybertrain/core"` loads it (the server inflates gzip
+request bodies with it), so in an application every request
 sends `Accept-Encoding: gzip` (unless you send an `Accept-Encoding` header of
 your own) and a `Content-Encoding: gzip` body comes back inflated. A program
 that requires only `cybertrain/http_client` adds `require
@@ -202,8 +203,9 @@ parser.finish { |event| Answer.append(event.event_data) }   # a last event the s
 
 An application that listens to an outside feed (market ticks, device
 telemetry, an event stream) while the server runs subscribes to it with
-`Cybertrain::WebSocket.subscribe`. Like the HTTP client it is not in
-`require "cybertrain"`; require it where the subscription is written, and the
+`Cybertrain::WebSocket.subscribe`. `require "cybertrain"` does not load it
+(it loads the feeds subsystem and the HTTP client, not
+`cybertrain/websocket`): require it where the subscription is written, and the
 TLS layer too for `wss://`. It loads the feeds subsystem (the `feeds` role,
 the feed health check), so an application on `cybertrain/core` needs no
 other line:
@@ -228,8 +230,9 @@ subscription gets one thread. It connects, runs `on_open` (send your
 subscribe message there: it runs again after every reconnect), then hands
 each message to `on_message` with the `Connection` (`send_text`,
 `send_binary`, `close`, and `last_opcode`, `:text` or `:binary`). The
-blocks take their arguments and cannot use `self` (Spinel has no
-`instance_eval`).
+blocks take their arguments, and `self` in them is not the subscription: the
+feed calls the blocks it stored, and Spinel refuses `instance_exec` of a
+stored block (spikes/NOTES.md rule 2).
 
 - **When it runs.** The feeds start when the binary serves, like the
   scheduler ([Background work](background-and-operations.md#background-work)); `migrate`, `db ...`,

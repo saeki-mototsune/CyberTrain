@@ -1,5 +1,5 @@
 ---
-source_sha256: b82aa50dc1d5b3b82ef82755517e518f5a198f17dd722dfc6ed4bdf66210d16e
+source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
 ---
 # Тестирование приложения
 
@@ -109,38 +109,23 @@ cybertrain test -n /article/                            # тесты, в име�
 
 `cybertrain test` выполняет `SPIN_DEBUG=1 spin run gen` (gen собирается в
 отладочном режиме spin, как его собирает любая команда CLI), который
-записывает `gen/tests.rb` (программу) и переписанную копию каждого
-тестового класса в `gen/test/`; обе коммитятся вместе с остальным `gen/`.
-Затем он компилирует `gen/tests.rb` в `build/test/tests` (релизная
-сборка), если какой-либо вход новее этого бинарника, и запускает его. В
-программу входят все `test/**/*_test.rb` и все остальные `test/*.rb`,
-кроме `test/test_helper.rb`; в `test/support/` (его подключает хелпер) и
-`test/fixtures/` тестов нет. Перед первым тестом программа удаляет
-`storage/test.sqlite3`, мигрирует новую базу и загружает на ней приложение
-(без потоков задач, планировщика и фидов: задачи тест выполняет сам).
-`CYBERTRAIN_TEST_DATABASE` указывает вместо неё другой файл. Поскольку
-программа удаляет файл, на котором тестирует, она помечает каждую
-созданную ею базу (`PRAGMA application_id`, собственное значение) и удаляет
-или очищает существующий файл, только если на нём есть эта метка, если это
-`storage/test.sqlite3` самого приложения (как бы ни был записан путь) или если файл пуст. Всё остальное отклоняется с
-кодом выхода 2, ничего не удаляя: `cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`. Файл с именем
-`development.sqlite3` или `production.sqlite3` (в любом регистре) или тот
-же файл, что `storage/development.sqlite3` или `storage/production.sqlite3`,
-отклоняется как `cybertrain test refuses to delete <path>: it is the development database` (или `production`). Имя должно быть путём к
-файлу: `:memory:` и URI `file:` отклоняются (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`). После обновления
-файл, который вы раньше указывали в `CYBERTRAIN_TEST_DATABASE`, не имеет
-метки и отклоняется один раз: удалите его (вместе с `-wal` и `-shm`), и
-`cybertrain test` создаст помеченный; стандартному `storage/test.sqlite3`
-ничего не нужно. Путь, который становится символической ссылкой, пока база
-создаётся, отклоняется с кодом выхода 2: `cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`. Очистка перед каждым тестом
-затрагивает только таблицы основной базы, никогда — TEMP- или
-присоединённую таблицу с тем же именем. Известные ограничения: метка
-переживает `cp` тестовой базы, поэтому копия, названная как тестовая база
-(или к которой подключается тест), очищается; прогон, убитый между
-созданием файла и его пометкой, оставляет непомеченный файл по указанному
-вами пути, который в следующий раз отклоняется (удалите его); каталог на
-месте `storage/test.sqlite3` вызывает исключение, когда программа его
-удаляет.
+записывает `gen/tests.rb` (программу) и переписанную копию каждого тестового
+класса в `gen/test/`; обе коммитятся вместе с остальным `gen/`. Затем он
+компилирует `gen/tests.rb` в `build/test/tests` (релизная сборка), если
+какой-либо вход новее этого бинарника, и запускает его. В программу входят все
+`test/**/*_test.rb` и все остальные `test/*.rb`, кроме `test/test_helper.rb`;
+в `test/support/` (его подключает хелпер) и `test/fixtures/` тестов нет. Перед
+первым тестом программа удаляет `storage/test.sqlite3`, мигрирует новую базу и
+загружает на ней приложение (без потоков задач, планировщика и фидов: задачи
+тест выполняет сам). Правила для этого файла — в разделе
+[Тестовая база данных](#the-test-database).
+
+Тестовая программа подключает `cybertrain`, то есть все подсистемы, что бы ни
+подключал `bin/<app>.rb`: `perform_enqueued_jobs`, `assert_emails`,
+`assert_broadcasts` и `Test::SentryReceiver` работают и в приложении на
+`cybertrain/core`, а код, который называет подсистему без её строки, проходит
+тесты и останавливается на `spin build`
+([Подсистемы](how-it-works.md#subsystems)).
 
 Программа готовит тестовое окружение, как в Rails, если только
 `config/app.rb` не задаёт то же самое сам: защита от подделки запросов
@@ -214,6 +199,44 @@ filter` перед итогами и завершается с кодом 0. Д�
 программе они слились бы в одно: перенесите общий хелпер в
 `test/support/` или внутрь класса), а также в остальных случаях из раздела
 [Что gen отклоняет в тестовом классе](#what-gen-refuses-in-a-test-class).
+
+### Тестовая база данных
+
+Тесты работают на `storage/test.sqlite3`; программа удаляет этот файл и
+мигрирует его заново при каждом запуске. `CYBERTRAIN_TEST_DATABASE` указывает
+вместо него другой файл. Поскольку программа удаляет файл, на котором
+тестирует, она помечает каждую созданную ею базу (`PRAGMA application_id`,
+собственное значение) и удаляет или очищает существующий файл, только если на
+нём есть эта метка, если это `storage/test.sqlite3` самого приложения (как бы
+ни был записан путь) или если файл пуст. Всё остальное отклоняется с кодом
+выхода 2, ничего не удаляя:
+`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`.
+
+Отклоняются ещё три случая:
+
+- Файл с именем `development.sqlite3` или `production.sqlite3` (в любом
+  регистре) или тот же файл, что `storage/development.sqlite3` или
+  `storage/production.sqlite3`, отклоняется как
+  `cybertrain test refuses to delete <path>: it is the development database`
+  (или `production`).
+- Имя должно быть путём к файлу: `:memory:` и URI `file:` отклоняются
+  (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`).
+- Путь, который становится символической ссылкой, пока база создаётся,
+  отклоняется с кодом выхода 2:
+  `cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`.
+
+После обновления файл, который вы раньше указывали в
+`CYBERTRAIN_TEST_DATABASE`, не имеет метки и отклоняется один раз: удалите его
+(вместе с `-wal` и `-shm`), и `cybertrain test` создаст помеченный;
+стандартному `storage/test.sqlite3` ничего не нужно.
+
+Очистка перед каждым тестом затрагивает только таблицы основной базы, никогда
+— TEMP- или присоединённую таблицу с тем же именем. Известные ограничения:
+метка переживает `cp` тестовой базы, поэтому копия, названная как тестовая
+база (или к которой подключается тест), очищается; прогон, убитый между
+созданием файла и его пометкой, оставляет непомеченный файл по указанному вами
+пути, который в следующий раз отклоняется (удалите его); каталог на месте
+`storage/test.sqlite3` вызывает исключение, когда программа его удаляет.
 
 ## Фикстуры
 
@@ -634,8 +657,9 @@ class SignupHookTest < ActiveSupport::TestCase
 end
 ```
 
-`HttpReceiver.new` принимает заготовленные `status:`, `headers:`, `body:` и
-`chunked:` (`respond_with` меняет их между запросами); запрос возвращается
+`HttpReceiver.new` принимает заготовленные `status:`, `headers:`, `body:`,
+`chunked:` и `gzip:` (тело отправляется в кодировке gzip, с
+`Content-Encoding: gzip`; `respond_with` меняет их между запросами); запрос возвращается
 как `ReceivedRequest` (`http_method`, `http_target`, `http_path`,
 `http_headers` с именами в нижнем регистре, `http_header(name)`,
 `http_body` с декодированным chunked-телом). `SmtpReceiver` разыгрывает 220,
@@ -699,8 +723,10 @@ end
 
 `X-Request-Id` ответа — это идентификатор запроса. Чтобы читать строки лога,
 тест даёт `Cybertrain.logger` объект `StringIO` на время работы, за которой
-наблюдает, и потом возвращает логгер на место, в отдельном методе (под Spinel
-`rescue` или `ensure` вокруг `yield` пишется в простом методе):
+наблюдает, и потом возвращает логгер на место в `ensure`, в отдельном вспомогательном
+методе, который не принимает блок (фреймворк не пишет `rescue` и `ensure` в
+методах с `yield`: spikes/NOTES.md, правила 45 и 50, записанные на более
+раннем Spinel и не перепроверенные на закреплённом выпуске):
 
 ```ruby test/integration/logging_test.rb
 require "test_helper"

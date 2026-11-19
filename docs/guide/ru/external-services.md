@@ -1,5 +1,5 @@
 ---
-source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
+source_sha256: 27de4452d886e56f5942567c0bb28d918a424a7e66c5b0b46e78f8ddaba9326a
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -163,7 +163,8 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 ### gzip
 
 Клиент запрашивает и распаковывает тела gzip, когда загружена поддержка
-gzip: `require "cybertrain"` её загружает, так что в приложении каждый запрос
+gzip: `require "cybertrain/core"` её загружает (сервер распаковывает ею
+gzip-тела запросов), так что в приложении каждый запрос
 отправляет `Accept-Encoding: gzip` (если только вы не отправляете свой
 заголовок `Accept-Encoding`), а тело с `Content-Encoding: gzip` приходит
 распакованным. Программа, которая подключает только `cybertrain/http_client`,
@@ -211,8 +212,9 @@ parser.finish { |event| Answer.append(event.event_data) }   # последнее
 
 Приложение, которое слушает внешний поток (биржевые тики, телеметрию
 устройств, поток событий), пока работает сервер, подписывается на него через
-`Cybertrain::WebSocket.subscribe`. Как и HTTP-клиент, он не входит в
-`require "cybertrain"`; подключайте его там, где пишется подписка, а для
+`Cybertrain::WebSocket.subscribe`. `require "cybertrain"` его не загружает
+(он загружает подсистему фидов и HTTP-клиент, но не `cybertrain/websocket`);
+подключайте его там, где пишется подписка, а для
 `wss://` — также слой TLS. Он загружает подсистему фидов (роль `feeds`,
 проверку здоровья фидов), так что приложению на `cybertrain/core` другая
 строка не нужна:
@@ -238,7 +240,9 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 выполняется снова после каждого переподключения), а затем передаёт каждое
 сообщение в `on_message` вместе с `Connection` (`send_text`, `send_binary`,
 `close` и `last_opcode` — `:text` или `:binary`). Блоки получают свои аргументы
-и не могут использовать `self` (в Spinel нет `instance_eval`).
+и не могут использовать `self` как подписку: фид вызывает сохранённые блоки, а
+`instance_exec` сохранённого блока Spinel отвергает (spikes/NOTES.md,
+правило 2).
 
 - **Когда это выполняется.** Потоки запускаются, когда бинарный файл
   обслуживает запросы, как и планировщик

@@ -1,5 +1,5 @@
 ---
-source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
+source_sha256: c6a6fbebb6ac3e6e10a08124e20ba6b77fa34985f1f6601156f5e32b5f2ae280
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -11,7 +11,7 @@ Cybertrain のビュー（`app/views/**/*.html.erb`）は Rails の ERB のよ�
 
 テンプレートは Ruby **ではありません**。Spinel（cybertrain が対象とする、Matz の Ruby の AOT コンパイラ）には `eval` がないので、「リクエスト時にビュー自身の Ruby を解釈する」ことは最初から選択肢にありませんでした（`docs/design.md` の D9）。代わりに動くのは、ERB や Ruby のような見た目の構文をまとっただけの、小さな閉じた文法です。タグの中に任意の Ruby を書くことはできません — 書けるのは、`ExprParser`（`parser.rb`）が文または式として認識するものだけです。`eval`、`send`、`instance_eval`、メソッド・クラス・モジュールの定義、`require`、例外（`begin/rescue`）、範囲、正規表現、多重代入はありません。ブロックがあるのは、この文書が挙げる場所だけです：`each`/`each_with_index`/`each_slice` のループ、Array と Hash の決まったメソッド（`map`、`select`、`sum`、`group_by` など — [ブロック](#blocks)を参照）、ヘルパーの呼び出し（`form_with(...) do |f| ... end`）、そして `tag` ビルダーです。すべてのメソッド呼び出し（`recv.name`）は、`interpreter.rb` に手書きされた `case` のディスパッチテーブルで、レシーバーの実行時の Ruby のクラスをキーにして解決されます。その型のテーブルにない名前は `RuntimeError` で失敗します — `method_missing` もリフレクションもなく、（`Interpreter#call_method` にあるとおり）これがメタプログラミングによる検索ではなく `case` になっているのは、まさに Spinel に `send` がないためです。テンプレートにできるのは、この文書に書かれていることだけです。
 
-<details><summary>ソースのどこにあるか — テンプレートのパイプラインを成す 8 つのファイル</summary>
+<details><summary>ソースのどこにあるか — テンプレートのパイプラインを成すファイル</summary>
 
 このパイプラインは `cybertrain/template/` にあります：
 
@@ -25,6 +25,9 @@ Cybertrain のビュー（`app/views/**/*.html.erb`）は Rails の ERB のよ�
 | `helpers.rb` | `link_to`、`form_with`、`render`、`pluralize` など — テンプレートがレシーバーなしで呼ぶものすべて |
 | `form_builder.rb` | `form_with(...) do \|f\| ... end` が渡す `f` |
 | `engine.rb` | `.html.erb` のソースを読み込み — ルート以下のディスクから、または埋め込まれた `gen/views.rb` のテーブル（`Engine.embedded`）から — パースし（必要ならキャッシュし）、レイアウト付きでレンダリングする |
+| `limits.rb` | `MAX_RENDER_DEPTH`。レンダリングの入れ子の既定の上限 |
+| `helper_object.rb` | `HelperObject`。サブシステムのヘルパーオブジェクト（`turbo_stream` ビルダー）の基底 |
+| `turbo_stream_builder.rb`、`stream_helpers.rb` | `cybertrain/streams` が読み込む：`turbo_stream` ビルダーと、`turbo_stream_from`、`signed_stream_name`、`stream_source_path` |
 
 </details>
 
@@ -244,7 +247,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 1. 常に使える 5 つの組み込み：`id`、`persisted?`、`new_record?`、`to_param`（`id.to_s`）、`errors`（`Errors`。[型ごとのメソッドテーブル](#per-type-method-table)）。
 2. `read_attribute(:name)` — 生成されたカラム。
-3. `read_association(:name)` — 生成された `has_many`/`belongs_to`。
+3. `read_association(:name)` — 生成された `has_many`、`has_one`、`belongs_to`。
 4. `call_view_method(:name)` — モデルのジェネレーターが `app/models/**/*.rb` で見つけた、手書きの引数なしの `def`（引数を取ることは決してありません）。
 
 ```erb
@@ -262,7 +265,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 
 ## ヘルパーとフォームビルダー
 
-レシーバーのない呼び出しはすべて `Helpers#helper_call`（`helpers.rb`）に行きます。これは以下の組み込みのいずれかに一致させ、[コンポーネント](#components)のテンプレートの中ならそのコンポーネントのビューメソッドを試し、`_path`/`_url` で終わる名前を生成されたルートヘルパーとして扱い（`Cybertrain::Views.url_resolver` 経由。アプリがリゾルバーを設定するまでは `"no routes"` を出します）、次に[アプリケーションのヘルパー](#application-helpers)を試し、それでもなければ `"undefined helper 'name'"` を出します。
+レシーバーのない呼び出しはすべて `Helpers#helper_call`（`helpers.rb`）に行きます。これは次の順に試します：以下の組み込み。読み込まれたサブシステムのヘルパー（`turbo_stream_from`、`turbo_stream`、`signed_stream_name`、`stream_source_path` は `require "cybertrain/streams"` があるときに存在します）。[コンポーネント](#components)のテンプレートの中なら、そのコンポーネントのビューメソッド（引数もブロックもない呼び出しのとき）。リクエストの中なら、コントローラーの `helper_method` のメソッド（[コンサーンと `helper_method`](requests.md#concerns-and-helper_method)）。`_path`/`_url` で終わる名前は、生成されたルートヘルパー（`Cybertrain::Views.url_resolver` 経由。アプリがリゾルバーを設定するまでは `"no routes"` を出します）。[アプリケーションのヘルパー](#application-helpers)。どれでもなければ `"undefined helper 'name'"` を出します。
 
 | ヘルパー | シグネチャ | 注記と例 |
 | --- | --- | --- |
@@ -288,6 +291,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`、 負の数は書式の前に `-` を書く |
 | `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (1024 進)、 `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails 風の区分で、秒単位の精度はない：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"`。ロケールの `datetime.distance_in_words` から（日本語なら `"2分"`） |
+| `distance_of_time_in_words` | `distance_of_time_in_words(from_time, to_time)`（キーワード引数なし） | 2 つの Time の間を同じ区分で表す。順序は問わない：2 時間離れていれば `"about 2 hours"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | [レイアウト、`yield`、`content_for`、パーシャル](#layouts-yield-content_for-partials)を参照 |
 | `csrf_meta_tags` / `csrf_token` | | コントローラーのセッションがなければ空 / なし |
 | `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / nonce だけ。このリクエストの [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) の nonce。ポリシーがなければ `""` |
@@ -419,7 +423,7 @@ end
 - テンプレートからは、コンポーネントのインスタンス変数がローカル変数（`title`）として、パラメーターのない公開メソッドが名前（`value_text`）で、そして `do` のブロックが出力したもの `content`（ブロックがなければ `""`）が見えます。レイアウトなしでレンダリングされ、パーシャルやほかのコンポーネントをレンダリングでき、パーシャルと同じく `max_render_depth` に数えられます。コンポーネントがレンダリングしたパーシャルからは、コンポーネントのメソッドは見えません。コンポーネントのテンプレート内でディレクトリのないパーシャル名（`render "chip"`）は `app/components/` の下（`app/components/_chip.html.erb`）から探され、ディレクトリ付きの名前（`render "shared/note"`）は通常どおり `app/views/` の下から探されます。
 - コンポーネントは、パーシャルがパスで指定されるのと同じく、`_component` を除いたスネークケースの名前で指定します：`CardComponent` なら `"card"`、`Admin::UserRowComponent`（`app/components/admin/user_row_component.rb`）なら `"admin/user_row"` です。テンプレートは定数を名指しできません。
 - `spin run gen` は、ヘルパーと同じく字句的な走査から `gen/components.rb` を書きます：クラスの行、`@x =` の代入、パラメーターのない `def`、`initialize` のキーワードです。`initialize` はキーワードだけを取り（省略可能なものは 3 つまで）、テンプレートがなければなりません。キーワードの不足や未知のキーワードはレンダリング時の `ArgumentError` です。未知のコンポーネントは `Cybertrain::Component::Unknown` です：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。`content` は予約されています：その名前の `initialize` のキーワードや `@content` インスタンス変数はブロックの出力で上書きされてしまうので、`spin run gen` はファイルと行を示して拒否します。`app/views/components/` はほかと同じビューのディレクトリのままです（`ComponentsController` のもの）。予約されているのは、コンポーネントのテンプレートが置かれる名前の `app/views/__components/` だけです。
-- `cybertrain generate component card title value:integer` は、クラス、そのテンプレート、そして `Cybertrain::Test.render_component` でそれをレンダリングするテストを書きます。
+- `cybertrain generate component card title value:integer` は、クラス、そのテンプレート、そして `render_inline` でそれをレンダリングし `assert_select` で確かめるテストを書きます（[ストリームとコンポーネントのテスト](testing.md#testing-streams-and-components)）。
 
 ### リクエストの外でのレンダリング
 
@@ -522,7 +526,7 @@ end
 | strict locals は `name: default_expr` を受け付ける（Rails 7.1） | 素の `name:`（必須）だけ。デフォルト値付きのエントリーは `SyntaxError` |
 | 未定義のインスタンス変数やローカル変数は Ruby やビューコンテキストのメソッドで解決される | `@x` は決して失敗しない単純な環境の参照。未定義の素のローカル変数は、明示的で閉じたヘルパー呼び出しの試み（一致しなければ `"undefined helper"`） |
 | `===` による `case/when`（範囲、クラス、正規表現） | `==` だけによる `case/when`（数値は値で比較） |
-| `and`/`or`/`not`、範囲、正規表現、多重代入がすべて動く | どれも存在しない。予約語は、一般的なパースエラーではなく、「not supported in templates」という専用のメッセージで失敗する |
+| `and`/`or`/`not`、範囲、正規表現、多重代入がすべて動く | どれも存在しない。式の先頭にある予約語は「not supported in templates」という専用のメッセージで失敗し（`<%= not x %>`）、式の後ろにある予約語はパーサーの `unexpected 'and' in 'a and b'` で失敗する |
 | 数値リテラル：16 進、8 進、2 進、指数、有理数 | `_` の区切りを使える 10 進の整数と浮動小数点数だけ |
 | `:"quoted symbol"`、`:+` の演算子シンボル | シンボルは識別子の文字だけ |
 | `foo (x)`、`foo [x]`（空白は許容され、警告が出ることもある） | どちらも厳格な `SyntaxError` — 呼び出しの `(` やインデックスの `[` の前に空白は置けない |

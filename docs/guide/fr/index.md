@@ -1,5 +1,5 @@
 ---
-source_sha256: 374b8ba0c4bb2332191335290295150f202b174c2aef2b9543363b27ccbeccd0
+source_sha256: 1f9d6e1d7fae3507b67378cdf2d9745969a7d6c6641cee52f4c03cd6e59df7af
 title: Guides
 ---
 # Guides
@@ -9,7 +9,7 @@ Tout ce que la documentation de CyberTrain couvre au-delà de la référence de 
 <!-- list: next-list -->
 - [**Tutoriel**](tutorial.md) — Construire le blog pas à pas&nbsp;: scaffold, commentaires, mises à jour en direct avec Turbo, un job d’arrière-plan, authentification, envois de fichiers, déploiement
 - [**Installation**](install.md) — Prérequis, la commande `cybertrain`, comment Spinel et le framework sont installés
-- [**Fonctionnement**](how-it-works.md) — Génération de code à la compilation, vues interprétées, le serveur, la boucle de développement et un tableau des différences avec Rails
+- [**Fonctionnement**](how-it-works.md) — Génération de code à la compilation, les sous-systèmes optionnels qu’une application charge, vues interprétées, le serveur, SQLite via FFI, la boucle de développement et un tableau des différences avec Rails
 - [**Modèles et base de données**](models.md) — Migrations, types de colonnes, requêtes, associations, validations, colonnes chiffrées, transactions, reprise d’une base Rails
 - [**Requêtes**](requests.md) — Routage, formats et `respond_to`, concerns, paramètres forts, cache HTTP, cookies et session chiffrée, limitation du débit, Content Security Policy, `force_ssl` et contrôle des hôtes, en-têtes, chaînes de requête et corps de requête
 - [**Authentification**](authentication.md) — `generate authentication`&nbsp;: connexion, inscription ou sur invitation, réinitialisation du mot de passe, confirmation, verrouillage, rester connecté, page de compte, administrateurs, mise à jour depuis 0.4

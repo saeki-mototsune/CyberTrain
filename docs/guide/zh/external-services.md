@@ -1,5 +1,5 @@
 ---
-source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
+source_sha256: 27de4452d886e56f5942567c0bb28d918a424a7e66c5b0b46e78f8ddaba9326a
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
@@ -73,7 +73,7 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 
 ### gzip
 
-加载了 gzip 支持时，客户端会请求并解压 gzip 响应体：`require "cybertrain"` 会加载它，所以在应用中每个请求都会发送 `Accept-Encoding: gzip`（除非你自己发送了 `Accept-Encoding` 头），而 `Content-Encoding: gzip` 的响应体会以解压后的形式返回。只 require 了 `cybertrain/http_client` 的程序要加上 `require "cybertrain/http/gzip_ffi"`（它会链接 zlib）；没有它时，gzip 响应是一个指明该文件的 `BadResponseError`。保留的响应体在传输时和解压后都受 `max_body` 限制（超出则 `TooLargeError`）；流式响应体逐段解压，每段最多 64 KiB，与未压缩的流式响应体一样没有总上限。`Response` 的头就是收到的头：`body` 是解压后的文本，而 `Content-Encoding: gzip` 和传输时的 `Content-Length` 仍然保留。其他任何 `Content-Encoding`（`br`、`deflate`）都是 `BadResponseError`；被截断或损坏的 gzip 响应体也是。
+加载了 gzip 支持时，客户端会请求并解压 gzip 响应体：`require "cybertrain/core"` 会加载它（服务器用它解压 gzip 请求体），所以在应用中每个请求都会发送 `Accept-Encoding: gzip`（除非你自己发送了 `Accept-Encoding` 头），而 `Content-Encoding: gzip` 的响应体会以解压后的形式返回。只 require 了 `cybertrain/http_client` 的程序要加上 `require "cybertrain/http/gzip_ffi"`（它会链接 zlib）；没有它时，gzip 响应是一个指明该文件的 `BadResponseError`。保留的响应体在传输时和解压后都受 `max_body` 限制（超出则 `TooLargeError`）；流式响应体逐段解压，每段最多 64 KiB，与未压缩的流式响应体一样没有总上限。`Response` 的头就是收到的头：`body` 是解压后的文本，而 `Content-Encoding: gzip` 和传输时的 `Content-Length` 仍然保留。其他任何 `Content-Encoding`（`br`、`deflate`）都是 `BadResponseError`；被截断或损坏的 gzip 响应体也是。
 
 ### Server-Sent Events
 
@@ -96,7 +96,7 @@ parser.finish { |event| Answer.append(event.event_data) }   # 流没有以空行
 
 ## 订阅 WebSocket 数据流
 
-在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。与 HTTP 客户端一样，它不在 `require "cybertrain"` 之中；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层。它会加载 feed 子系统（`feeds` 角色、feed 健康检查），所以使用 `cybertrain/core` 的应用不需要别的行：
+在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。`require "cybertrain"` 不会加载它（它加载的是 feed 子系统和 HTTP 客户端，不包括 `cybertrain/websocket`）；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层。它会加载 feed 子系统（`feeds` 角色、feed 健康检查），所以使用 `cybertrain/core` 的应用不需要别的行：
 
 ```ruby
 # config/app.rb（或 bin/<app>.rb 在 Cybertrain::Main.run 之前 require 的某个文件）
@@ -111,7 +111,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   .on_message { |conn, text| Cybertrain::DB.with { |c| c.execute("INSERT INTO trades(raw) VALUES (?)", [text]) } }
 ```
 
-require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Background`，`Application#serve` 在调度器之后启动它，并在关闭时停止它，所以无需调用任何东西。每个订阅有一个线程。它会建立连接，运行 `on_open`（在那里发送你的订阅消息：每次重连之后它都会再次运行），然后把每条消息连同 `Connection`（`send_text`、`send_binary`、`close`，以及 `last_opcode`，值为 `:text` 或 `:binary`）交给 `on_message`。这些块接收参数，不能使用 `self`（Spinel 没有 `instance_eval`）。
+require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Background`，`Application#serve` 在调度器之后启动它，并在关闭时停止它，所以无需调用任何东西。每个订阅有一个线程。它会建立连接，运行 `on_open`（在那里发送你的订阅消息：每次重连之后它都会再次运行），然后把每条消息连同 `Connection`（`send_text`、`send_binary`、`close`，以及 `last_opcode`，值为 `:text` 或 `:binary`）交给 `on_message`。这些块接收参数，不能把 `self` 当作订阅来用：订阅调用的是它保存下来的块，而 Spinel 拒绝对保存下来的块做 `instance_exec`（spikes/NOTES.md 规则 2）。
 
 - **运行时机。** 与调度器一样，订阅在二进制文件提供服务时启动（[后台任务](background-and-operations.md#background-work)）；`migrate`、`db ...`、`Main.command` 命令和 `Cybertrain::Test::Client` 从不启动它们。`./<app> feeds [NAME...]` 在单独的进程中运行它们，全部或指定名称的订阅（[进程角色](background-and-operations.md#process-roles)）。在 `CYBERTRAIN_WORKER=0`（`config.worker = false`）时，它们不会在该进程中运行（只是不启动；唯一的提示是调度器的 “run elsewhere” 那一行，直接调用的 `WebSocket.start!` 则会记录自己的提示）：当多个进程提供服务时，请在除一个之外的所有进程中关闭它，否则每个进程都会接收完整的数据流。`subscribe` 必须在服务器启动之前调用；服务器运行期间无法添加或移除订阅。名称必须唯一（否则引发 `ArgumentError`），没有 `on_message` 的订阅会在绑定端口之前让启动失败（`error: WebSocket subscription "trades" has no on_message`，退出码 1）。
 - **选项。** `headers:`（额外的握手请求头）、`timeout:`（连接时每次等待以及每次写入 5 秒）、`max_message:`（1 MiB；更大的消息会以 1009 关闭连接）、`ping_interval:`（15）和 `stale_after:`（45），以及 `allow_private:`（与下文的 `HttpClient` 相同）。

@@ -1,5 +1,5 @@
 ---
-source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
+source_sha256: bdd93406515ea0423e255fb7a519b654ed9a56bc10cb7d18940a78ca0d3a9f35
 ---
 # 模型与数据库
 
@@ -7,7 +7,7 @@ source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
 
 ## 迁移
 
-位于 `db/migrate/<version>_<name>.rb` 的迁移是 `Cybertrain::Migration::Base` 的子类。它的 `change` 记录 schema 操作（`create_table`、`add_column`、`add_index`、`rename_column`、`add_reference`、`remove_column`、`remove_index`、`drop_table`，以及[修改表](#changing-a-table)中的操作）；`cybertrain db migrate` 在各自的事务中执行每个待处理的版本，并根据数据库重写 `db/schema.rb`，`cybertrain db rollback [N]` 则运行 `change` 的逆操作。当 `change` 中包含没有自动逆操作的操作时，请编写 `down`（以及 `up`）。
+位于 `db/migrate/<version>_<name>.rb` 的迁移是 `Cybertrain::Migration::Base` 的子类。它的 `change` 记录 schema 操作（`create_table`、`add_column`、`add_index`、`rename_column`、`add_reference`、`remove_column`、`remove_index`、`drop_table`，以及[修改表](#changing-a-table)中的操作）；`cybertrain db migrate` 在各自的事务中执行每个待处理的版本，并根据数据库重写 `db/schema.rb`，`cybertrain db rollback [N]` 则运行 `change` 的逆操作。`create_table`、`add_column`、`add_index` 和 `rename_column` 会自行反转；含有 `add_reference`、`remove_column`、`remove_index` 或 `drop_table` 的 `change` 会让回滚停在 `version N is irreversible: no automatic inverse for <operation>`，所以请为它们编写 `up` 和 `down`。
 
 需要数据步骤才能安全进行的 schema 变更使用 `execute(sql, binds =
 [])`。它在迁移中自己所在的位置运行，使用迁移器自己的连接，并与该版本的 schema 操作处于同一个事务中，所以在它之前添加的列在它运行时已经存在，而一旦失败，整个版本都会撤销：
@@ -103,7 +103,7 @@ end
 | --- | --- | --- |
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
-| `t.float` | `FLOAT` | Float |
+| `t.float` | `REAL` | Float |
 | `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float，存储时按 scale 舍入，精确到 15 位有效数字 |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time（UTC，微秒） |
@@ -183,7 +183,7 @@ Time.current.in_time_zone.hour       # => Time.zone 中的小时
 
 ## 条件与查找
 
-生成的 relation 的查询方法也都是类方法（除了 `or`、`not`、`page`、`to_sql`，以及类似 Array 的 `to_a`、`each`、`size`、`empty?`），所以 Rails 的写法照样可用：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`、`Article.pluck_int(:id)`。
+生成的 relation 的查询方法也都是类方法（除了 `or`、`not`、`page`、`to_sql`、`update_all_sql`，以及类似 Array 的 `to_a`、`each`、`size`、`empty?`），所以 Rails 的写法照样可用：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`、`Article.pluck_int(:id)`。
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -197,7 +197,7 @@ Time.current.in_time_zone.hour       # => Time.zone 中的小时
 | `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | 相同 |
 
-- `where` 的 Hash 中的 Range 只接受 Integer 端点：在 Spinel 下无法构造 Time 或 Date 的 Range，Float 或 String 的 Range 也不会被识别为 Range，所以这些边界走 `where_between`，其 Time 和 Date 边界按存储文本比较（文本的顺序与时刻的顺序一致）。
+- `where` 的 Hash 中的 Range 只接受 Integer 端点。用固定的 Spinel 版本编译时，Time 或 Date 的 Range 在构造处抛出 `TypeError`，Float 的 Range 不会被识别为 Range（精简程序的结果；spikes/NOTES.md 规则 86），所以这些边界走 `where_between`，其 Time 和 Date 边界按存储文本比较（文本的顺序与时刻的顺序一致）。String 的 Range 在同样的程序中能被识别，但 `where` 是为 Integer 端点写的：String 边界也请交给 `where_between`。
 - String 条件会被加上括弧，所以其中的 `OR` 不会外溢。它的绑定值是标量：`where("id IN (?)", ids)` 会抛出异常；请写 `where(id: ids)`。
 - `a.or(b)` 是 `((a) OR (b))`；两者的排序、limit、offset 和 `distinct` 必须一致。
 - 对 json 列或加密列用 `where` 会抛出 `ArgumentError`。
@@ -247,7 +247,7 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
 - `count_by` 的键是 String（经由 `Cast.str`），按升序排列；NULL 和 `""` 共用键 `""`。带有 `limit` / `offset` 时，`count_by`、`sum_*` 和 `increment` 作用于那个窗口，与 `count` 和 `delete_all`（通过子查询）一样。
 - `where_like` 会替你转义文本中的 `\`、`%` 和 `_`，并且是子串匹配（对 ASCII 不区分大小写，与 SQLite 的 LIKE 相同）。前缀搜索需要自己写模式：`Article.all.where_sql("title LIKE ? ESCAPE '\\'", [Cybertrain::Cast.like_escape(q) + "%"])`。
 - 对于手写的 SQL，`Cybertrain::Cast.binds(a, b, c)` 会构造 `execute` 所需的绑定 Array（Time 用存储的 datetime 格式，Date 用 `YYYY-MM-DD`，布尔值为 1/0）：`Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`。
-- `Cybertrain::Cast.hash(v)` / `Cast.array(v)` 把解析得到的 JSON 值收窄为 Hash / Array；如果它不是，则返回一个新的空 Hash / Array（会先检查 Time，spikes/NOTES.md 规则 8）。它们返回带类型的浅拷贝，而不是 `v` 本身；`Cast.empty_hash` / `Cast.empty_array` 是预置类型的空容器。
+- `Cybertrain::Cast.hash(v)` / `Cast.array(v)` 把解析得到的 JSON 值收窄为 Hash / Array；如果它不是，则返回一个新的空 Hash / Array。它们返回带类型的浅拷贝，而不是 `v` 本身；`Cast.empty_hash` / `Cast.empty_array` 是预置类型的空容器。
 
 ### 多列：`pluck` 与 `pick`
 
@@ -363,7 +363,7 @@ end
 消息是 Rails 的默认值，来自请求语言区域的捆绑词典：英语为 “can't be blank”、“is too short (minimum is 3 characters)”、“is the wrong length (should be 5 characters)”、“is not included in the list”、“is reserved”、“is invalid”、“is not a number”、“must be an integer”、“must be greater than or equal to 0”、“has already been taken”，日语为 “を入力してください” 等。上限为 1 时显示 “1 character”。`message:` 可在行上或规则的 Hash 中替换消息；`config/locales/` 也可以为所有模型或某一个模型替换它们（[模型和验证消息](i18n.md#models-and-validation-messages)）。`errors.full_messages` 用 `Post.human_attribute_name(:title)`（“Title”；`author_id` 为 “Author”）称呼每个属性，`:base` 上的消息单独写出。
 
 - `length` 接受 `minimum`、`maximum`、`is` 和 `in`（Integer 的 Range）。
-- `inclusion` 和 `exclusion` 接受 Array 或 Integer 的 Range（Spinel 无法构造其他 Range）；与 Rails 一样，`1...5` 接受 float 列上的 4.5。
+- `inclusion` 和 `exclusion` 接受 Array 或 Integer 的 Range（其他 Range 会被拒绝：`in: takes a Range of Integers only`）；与 Rails 一样，`1...5` 接受 float 列上的 4.5。
 - `numericality` 先解析 String（`"12"` 通过）；Float 不通过 `only_integer`，与 Rails 相同。
 - `uniqueness` 向数据库查询是否有另一行具有该值（`case_sensitive: false` 时为 `LOWER(col) = LOWER(?)`，nil 时为 `IS NULL`），并按 `scope:` 限定范围。不能用于加密列。
 - `allow_nil:` 和 `allow_blank:` 对其所在行的每条规则（包括 `presence`）跳过 nil 或空白值；`on: :create` 或 `on: :update`（一个 Symbol）只对新记录或已保存的记录运行该行。
@@ -383,7 +383,7 @@ class Booking
 end
 ```
 
-`validate :method` 行在 `validates` 规则之后按顺序运行。`if:` 和 `unless:`（两种行都可用）接受一个 Symbol，指向模型的方法、列或关联；由于 Spinel 没有 `send`，生成器会写出调用它的表。lambda、`:if => :x` 和 `"if": :x` 会让生成器停下，并提示改为指定方法名；模型文件中未定义的 `validate` 名字也一样。不提供 `validates_with`、`validates_each`、`confirmation`、`acceptance` 和 `valid?(context)`。
+`validate :method` 行在 `validates` 规则之后按顺序运行。`if:` 和 `unless:`（两种行都可用）接受一个 Symbol，指向模型的方法、列或关联；生成器不使用 `send`，而是写出调用它的 `case` 表，并拒绝不属于这三者的名字。lambda、`:if => :x` 和 `"if": :x` 会让生成器停下，并提示改为指定方法名；模型文件中未定义的 `validate` 名字也一样。不提供 `validates_with`、`validates_each`、`confirmation`、`acceptance` 和 `valid?(context)`。
 
 ## 加密列
 
@@ -403,13 +403,13 @@ end
 
 ### 密钥与轮换
 
-有 `encrypts` 的模型会让应用需要 openssl，并且 `CYBERTRAIN_ENCRYPTION_KEY` 不是 64 个十六进制字符时启动失败（用 `cybertrain secret --hex` 生成；[环境变量](configuration.md#configuration-and-environment-variables)）。该密钥不由 `CYBERTRAIN_SECRET_KEY_BASE` 派生，所以轮换会话密钥后数据仍可读取；丢失加密密钥，数据也就丢失了。要轮换它，把新密钥放进 `CYBERTRAIN_ENCRYPTION_KEY`，旧密钥放进 `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS`（逗号分隔；只用于读取），然后重写每一条记录：
+有 `encrypts` 的模型会让应用在 `CYBERTRAIN_ENCRYPTION_KEY` 不是 64 个十六进制字符时启动失败（用 `cybertrain secret --hex` 生成；[环境变量](configuration.md#configuration-and-environment-variables)）。该密钥不由 `CYBERTRAIN_SECRET_KEY_BASE` 派生，所以轮换会话密钥后数据仍可读取；丢失加密密钥，数据也就丢失了。要轮换它，把新密钥放进 `CYBERTRAIN_ENCRYPTION_KEY`，旧密钥放进 `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS`（逗号分隔；只用于读取），然后重写每一条记录：
 
 ```ruby
 Account.find_each { |account| account.update_columns(api_key: account.api_key) }
 ```
 
-在没有 `encrypts` 的应用中自行调用 `Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)` 的代码，需要在 `bin/<app>.rb` 中加上 `require "cybertrain/encryptor"` 并设置密钥。
+没有 `encrypts` 的应用中的代码，只要设置了密钥，也可以自行调用 `Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)`：这种应用启动时不要求密钥，没有密钥时调用会抛出 `Cybertrain::Encryptor::Error`。
 
 ### 加密已有文本的列
 
@@ -483,7 +483,7 @@ end
 
 ## 列名
 
-列名必须是 ASCII 标识符（`[A-Za-z_][A-Za-z0-9_]*`），而 Rails 接受任何列名。带有非 ASCII 列名（`名前`、`prénom`）的 schema 在 PR #10 之前可以在 CRuby 下生成，现在 `spin run gen` 会拒绝它，所以升级时请重命名该列（像 `first-name` 这样的名字从来都不是合法的方法名）。
+列名必须是 ASCII 标识符（`[A-Za-z_][A-Za-z0-9_]*`），而 Rails 接受任何列名。`spin run gen` 会拒绝带有非 ASCII 列名（`名前`、`prénom`）的 schema，而早期的生成器在 CRuby 下运行时接受它：请重命名该列（像 `first-name` 这样的名字从来都不是合法的方法名）。
 
 如果列名与生成的类或框架在记录上调用的方法同名（`errors`、`save`、`attributes`、`hash`、`to_s`、`to_ary`、`raise` 等），或与 Ruby 关键字同名（`end`、`class`、`begin`），就会以 `<column>_column` 的名字生成（`hash_column`：读方法、写方法和实例变量），并在生成的文件中附上说明。它的两个名称这样使用：
 
@@ -493,7 +493,26 @@ end
 
 与 Object 的其他方法同名的列（`display`、`tap`、`methods`）以原名生成，并附上说明。`cybertrain generate scaffold` 会拒绝关键字和保留名称（否则它就得调用改过名的读方法），对会遮蔽方法的名称则接受并附上说明，与生成器一致。
 
-与只有一种返回类型的框架方法同名的列，如果其读取方法返回该类型，就保留自己的名字，否则被拒绝：`request_id`（`Cybertrain::Request#request_id`）和 `release`（`Cybertrain::Config#release`）返回 String，所以这些名字的 string、text 或 binary 列（无论是否可为空）都被接受，其他类型会让 `spin run gen` 停止，例如 `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`。由 `t.references :request` 得到的 Integer `request_id` 会得到改名引用的建议：`t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`（`belongs_to` 随后读作 `source_request`）。`handle` 是不同类型的框架方法的名字，所以名为 `handle` 的列像上面的保留名一样读作 `handle_column`（应用调用 `user.handle_column`；查询保留 `"handle"`），`cybertrain generate scaffold` 拒绝该字段：`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`。`cybertrain generate scaffold` 在写入任何东西之前检查这些名字：名为 `request_id` 或 `release` 的 string 或 text 字段，或不带类型的字段，会被接受，其他类型会被拒绝（退出状态 1），例如 `'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`；其列或 `belongs_to` 读取方法会用到这些名字的 `references` 字段也会被拒绝：`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`。名字和类型的表是 `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`。不受检查的：gen 从 `release_id` 之类的外键推导出的 `belongs_to`，以及名为 `release` 或 `request_id` 的作用域。
+与只有一种返回类型的框架方法同名的列，如果其读取方法返回该类型，就保留自己的名字，否则被拒绝。`request_id`（`Cybertrain::Request#request_id`）和 `release`（`Cybertrain::Config#release`）返回 String，所以这些名字的 string、text 或 binary 列（无论是否可为空）都被接受，其他类型会让 `spin run gen` 停止。由 `t.references :request` 得到的 Integer `request_id` 会得到改名引用的建议：`t.integer "source_request_id"` 和 `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`（`belongs_to` 随后读作 `source_request`）。
+
+`handle` 是不同类型的框架方法的名字，所以名为 `handle` 的列像上面的保留名一样读作 `handle_column`（应用调用 `user.handle_column`；查询保留 `"handle"`）。
+
+`cybertrain generate scaffold` 在写入任何东西之前检查这些名字。名为 `request_id` 或 `release` 的 string 或 text 字段，或不带类型的字段，会被接受，其他类型会被拒绝（退出状态 1）；其列或 `belongs_to` 读取方法会用到这些名字的 `references` 字段，以及名为 `handle` 的字段，也会被拒绝。
+
+<details><summary>确切的消息 — gen 和脚手架生成器针对这些名字打印的内容</summary>
+
+- `spin run gen`，名为 `release` 的 boolean 列：
+  `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`
+- `generate scaffold`，`request_id:integer`：
+  `'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`
+- `generate scaffold`，`request:references`：
+  `'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`
+- `generate scaffold`，名为 `handle` 的字段：
+  `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`
+
+</details>
+
+名字和类型的表是 `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`。不受检查的：gen 从 `release_id` 之类的外键推导出的 `belongs_to`，以及名为 `release` 或 `request_id` 的作用域。
 
 如果某个关联的普通名称已被某列、另一个关联或 `Model` 的方法占用（Rails 允许关联遮蔽 `errors`），就会以后备名称生成，并在生成的文件中附上注释：`has_many` 用 `<table>_as_<column stem>`（`comments_as_article`），`belongs_to` 用 `<stem>_as_<column>`（`author_as_author_id`）。
 
@@ -520,7 +539,7 @@ Photo.find(photo.id).thumbnail.bytesize   # 读回的是同样的字节
 - `Photo.where(thumbnail: bytes)` 同样把字节绑定为 BLOB（TEXT 绑定永远不等于已存储的 BLOB）。
 - 用原始 SQL 读出的 BLOB 单元格是由其字节组成的 String；`Cybertrain::Cast.binary(value)` 用于收窄它（`NULL` 时为 `""`）。
 - `db/schema.rb` 会把该列重新写成 `t.binary`，控制台把二进制值打印为 `<N bytes>`。
-- 不要把大文件放进数据库：上传的文件（[添加文件上传](tutorial.md#attachments)）是 `storage/uploads/` 下的一个文件，而 BLOB 会连同所在的行一起被整个读入内存，并让每次备份和 WAL 都变大。
+- 不要把大文件放进数据库：上传的文件（[添加封面图片](tutorial.md#attachments)）是 `storage/uploads/` 下的一个文件，而 BLOB 会连同所在的行一起被整个读入内存，并让每次备份和 WAL 都变大。
 
 ## 排序
 
@@ -543,7 +562,7 @@ Rails 8 应用创建的 SQLite 文件可以直接读取：
 2. 运行 `cybertrain db schema`（对构建好的二进制为 `./<app> db schema`）。它用 `db migrate` 所用的导出器根据数据库写出 `db/schema.rb`，打印 `wrote .../db/schema.rb from <path>`，此外什么都不做。之后 `cybertrain db migrate` 找不到需要应用的内容，并生成模型。
 3. 不要复制 Rails 的 `db/migrate/*.rb`：新的迁移从这里开始。`schema_migrations`（两边是同一张表）中已有的 Rails 版本在这里没有文件，所以迁移器既不运行也不回滚它们，`db status` 把它们列为 `applied (no file)`。
 4. 不需要转换的：日期时间（Rails 的格式就是存储格式）、布尔值（`1` / `0`，以及旧的 `t` / `f`）、decimal（Rails 写的是 REAL 值，读作 Float）、json（TEXT，读作 Hash），以及 Rails 写的类型名（`datetime(6)`、`decimal(18,8)`、`varchar`、`bigint`、`json`）。部分索引、表达式索引和 `ON DELETE` 动作也会导出。
-5. 限制：主键不是 `id` 列的表（连接表）会导出为 `create_table "articles_tags", id: false`，没有模型（`spin run gen` 会打印 `skipped articles_tags: no id column`），通过 `DB.with` 访问；不是整数的 `id` 主键（Rails 的 `id: :uuid` 或 `id: :string`）也同样导出，`id` 保留为没有 PRIMARY KEY 的普通列；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
+5. 限制：主键不是 `id` 列的表（连接表）会导出为 `create_table "articles_tags", id: false`，没有模型（`spin run gen` 会打印 `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)`）；不是整数的 `id` 主键（Rails 的 `id: :uuid` 或 `id: :string`）也同样导出，`id` 保留为没有 PRIMARY KEY 的普通列；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
 
 然后按本页所示的形式，在 `app/models/*.rb` 中写出 Rails 模型原有的校验、关联和 scope。
 

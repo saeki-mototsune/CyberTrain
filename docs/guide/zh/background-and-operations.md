@@ -1,5 +1,5 @@
 ---
-source_sha256: 7352ab5630a6ce2fdcd80864869365d02d3ffb12e944d4f616a4a29a3a3e3cb1
+source_sha256: 143689fc040acc9ab32433666e2c11366c85ef784370269c43a7237378ec0156
 ---
 # 后台任务与运维
 
@@ -32,7 +32,7 @@ Cybertrain::Scheduler.cron("0 4 * * *", "nightly digest", job: "DigestJob")
 Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 ```
 
-- **在哪里运行。** 作业在 `job_threads` 个作业线程上运行（3 个，`CYBERTRAIN_JOB_THREADS`）；定时任务在它们专属的一个调度器线程上运行，所以耗时的作业永远不会拖延定时任务。两者都在二进制文件提供服务（`./<app>`、`./<app> server`）或作为 worker 运行（`./<app> worker`，参见[进程角色](#process-roles)）时启动，时间是在启动过程连接好数据库并设置 `SPINEL_WORKERS` 之后；`migrate`、`db ...`、`jobs ...`、`console` 和 `Main.command` 命令从不启动它们，`Cybertrain::Test::Client` 也不会。require 了作业时，即使应用没有任何作业类，作业线程也会在每个这样的进程中启动：框架注册了它自己的邮件作业（`Mailer.deliver_later`，[发送电子邮件](external-services.md#sending-e-mail)）。
+- **在哪里运行。** 作业在 `job_threads` 个作业线程上运行（3 个，`CYBERTRAIN_JOB_THREADS`）；定时任务在它们专属的一个调度器线程上运行，所以耗时的作业永远不会拖延定时任务。两者都在二进制文件提供服务（`./<app>`、`./<app> server`）或作为 worker 运行（`./<app> worker`，参见[进程角色](#process-roles)）时启动，时间是在启动过程连接好数据库并设置 `SPINEL_WORKERS` 之后；`migrate`、`db ...`、`jobs ...`、`console` 和 `Main.command` 命令从不启动它们，`Cybertrain::Test::Client` 也不会。只有注册了某种作业时，作业线程才会启动：一个作业类、一个 `Job.handle` 块，或者框架自己的邮件作业，后者由 `require "cybertrain/mailer/later"`（因此也由 `require "cybertrain"`）注册（[发送电子邮件](external-services.md#sending-e-mail)）。一种都没有时，日志会写 `No job handler registered; job threads not started`，定时任务照常运行。
 - **数据表。** 作业是 `cybertrain_jobs` 中的行，这张表由框架自己创建（`CREATE TABLE IF NOT EXISTS`，在首次使用时），并且不写入 `db/schema.rb`。在 `DB.transaction` 内部，这一行会与其他内容一起提交或回滚。每个作业线程在一个简短的 `BEGIN IMMEDIATE` 事务中认领最早到期的行，在事务之外运行它，然后寻找下一个；没有到期的行时，它等待 `job_poll_interval` 秒（1 秒），所以由请求入队的作业大约在一秒内开始。一行的状态是 `queued`、`running`、`done`、`failed`（重试已用尽；它会保留下来供你查看）或 `discarded`（被 `discard_on` 终止）。
 
 ### 作业类
@@ -97,7 +97,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - **时区。** `tz:` 指定一个 IANA 时区（[时区](configuration.md#time-zones)）；没有它时，任务按 `scheduler_tz`（`CYBERTRAIN_SCHEDULER_TZ`，未设置时跟随应用的 `time_zone`）读取。夏令时跳过的墙上时间当天不会运行。在秋季切换时重复的那一小时里，时字段以 `*` 开头的表达式在两次出现时都会运行，固定小时的表达式只运行一次，与 Vixie cron 一样。
 - **`job:`** 指定一个作业种类（String 形式的类名，或 `Job.handle` 的种类），`args:` 指定它的参数：此时任务只负责把它入队，有实际工作的任务就应该这样做。未知的种类会让启动停止，并列出已注册的种类。
 - **时间表**保存在数据库中（`cybertrain_schedules`，不写入 `db/schema.rb`）：每个任务上次运行和下次运行的时间。重启，或者另一个进程接过领导权，都会从它继续。一个 `every` 任务的时间如果在没有任何进程运行时过去了，会在启动时运行一次；在没有任何进程运行时错过的 `cron` 时段会被跳过（cron 的规则），除非任务写了 `catch_up: true`，这时它会在启动时运行一次。在进程都在运行、但没有领导者运行它的期间到期的时段（租约易手时），会在接手时运行一次。你改名或删除的任务会保留它的行，直到下次启动。一个还没有运行过的任务，如果它当前的计划比之前的版本保存的下次运行时间更早，就按当前的计划运行（在第一次运行之前从每周改为每小时的任务，会在一小时之内运行）。
-- **任务如何运行。** 块在调度器线程上运行，一次一个任务；每次运行都包在一个 rescue 中，它会记录 `ERROR [schedule:name] Scheduled task "name" failed: ...` 并报告，然后循环继续。块不接收参数（Spinel 没有 `instance_eval`）。一次 SQLite 调用会占用它的操作系统工作线程直到返回：在 `SPINEL_WORKERS=1`（默认值）时，一个耗时的查询会让所有请求和所有其他线程停顿同样长的时间。把有实际工作的任务交给作业（`job:`，或在块中 `Job.enqueue`），并把大量工作分批进行（每次运行一千行，每个条目一个作业）。`Cybertrain::Scheduler.last_tick` 是最后一次心跳的纪元秒数，可用于你自己的健康检查。
+- **任务如何运行。** 块在调度器线程上运行，一次一个任务；每次运行都包在一个 rescue 中，它会记录 `ERROR [schedule:name] Scheduled task "name" failed: ...` 并报告，然后循环继续。块不接收参数，块中的 `self` 也不是调度器：调度器调用的是它保存下来的块，而 Spinel 拒绝对保存下来的块做 `instance_exec`（spikes/NOTES.md 规则 2）。一次 SQLite 调用会占用它的操作系统工作线程直到返回：在 `SPINEL_WORKERS=1`（默认值）时，一个耗时的查询会让所有请求和所有其他线程停顿同样长的时间。把有实际工作的任务交给作业（`job:`，或在块中 `Job.enqueue`），并把大量工作分批进行（每次运行一千行，每个条目一个作业）。`Cybertrain::Scheduler.last_tick` 是最后一次心跳的纪元秒数，可用于你自己的健康检查。
 
 ### 作业页面和 `jobs` 命令
 
@@ -155,7 +155,7 @@ end
 - `worker` 和 `feeds` 会打印一条横幅（`=> worker: 3 job threads, 2 scheduled tasks`），一直运行到收到 `SIGTERM` 或 `SIGINT`（Ctrl-C），然后像服务器一样停止。它们总是执行自己的工作：为 Web 角色设置的 `CYBERTRAIN_WORKER=0` 不会关闭它们。
 - 带名称的 `feeds` 只运行这些订阅（每个订阅一个容器），未知的名称会让启动停止，并列出已注册的名称。当数据订阅在自己的进程中运行时，请在服务器上设置 `CYBERTRAIN_WORKER=0`，否则每个进程都会接收每个订阅。
 - `feeds` 进程会重启线程已死掉的数据订阅，而当某一个订阅不断死掉时（在 `feed_restart_window` 内重启了 `feed_restart_limit` 次），它会以状态 1 退出；所以请在重启策略之下运行它（Docker 的 `restart: unless-stopped`、systemd 的 `Restart=always`）；详情见[订阅 WebSocket 数据流](external-services.md#consuming-websocket-feeds)。`./<app> feeds status` 打印每个数据订阅最后报告的状态。
-- 典型的拆分方式：代理之后是设置了 `CYBERTRAIN_WORKER=0` 的 `server`，一个或多个 `worker`，有订阅时再加上 `feeds`。`cybertrain new` 会在 `config/deploy.yml` 中写入 `web` 和 `worker` 角色（以及被注释掉的 `feeds`）；systemd 单元见 [docs/deploy.en.md](../deploy.en.md) 第 7 部分 “Splitting the roles”。
+- 典型的拆分方式：代理之后是设置了 `CYBERTRAIN_WORKER=0` 的 `server`，一个或多个 `worker`，有订阅时再加上 `feeds`。`cybertrain new` 会在 `config/deploy.yml` 中写入 `web` 角色，`worker` 和 `feeds` 角色则是注释掉的；`cybertrain generate job` 和 `generate authentication` 会添加 `require "cybertrain/jobs"`，并取消 worker 角色的注释；systemd 单元见 [docs/deploy.en.md](../deploy.en.md) 第 7 部分 “Splitting the roles”。
 - **从没有心跳的版本升级时**：在启动第一个新进程之前，先停止所有旧进程。旧进程不写心跳，所以新的 worker 会把旧 worker 仍在运行的作业当作被遗弃的作业取走。
 - `Cybertrain::Main.worker?(ARGV)` 和 `Main.feeds?(ARGV)` 与 `Main.server?(ARGV)` 一样，告诉 `bin/<app>.rb` 它正在启动哪种角色。
 - `worker` 需要 `bin/<app>.rb` 中的 `require "cybertrain/jobs"`，`feeds` 需要 `require "cybertrain/feeds"`（`cybertrain/websocket` 会加载它）；缺少时，二进制文件会指出缺少哪一行并以 1 退出。
@@ -175,7 +175,7 @@ count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.
 Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)   # 写入时为 true
 ```
 
-- **值是 String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` 返回仍然有效的值，或者运行块并保存它的返回值；`fetch_hash`、`fetch_array` 和 `fetch_int` 保存 JSON 或 Integer 文本，并在取出时解析，所以损坏的单元格会读作 `{}`、`[]` 或 `0`，直到它过期、块再次运行（Spinel 没有 `Marshal`，而且一个方法只返回一种类型）。其余的是 `read(key)`（String 或 nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（一条语句；过期的计数器从 `by` 重新开始，`expires_in:` 只在计数器开始时设定期限，所以一分钟的计数器统计的就是那一分钟）和 `clear`。
+- **值是 String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` 返回仍然有效的值，或者运行块并保存它的返回值；`fetch_hash`、`fetch_array` 和 `fetch_int` 保存 JSON 或 Integer 文本，并在取出时解析，所以损坏的单元格会读作 `{}`、`[]` 或 `0`，直到它过期、块再次运行（单元格里保存的是文本，不是 `Marshal` 的转储，缓存返回的每种类型各有一个名字不同的方法）。其余的是 `read(key)`（String 或 nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（一条语句；过期的计数器从 `by` 重新开始，`expires_in:` 只在计数器开始时设定期限，所以一分钟的计数器统计的就是那一分钟）和 `clear`。
 - **过期。** `expires_in:` 以秒计；默认值 `0` 永不过期（负值也一样）。`race_condition_ttl: n`：当某一行已过期时，第一个调用者把它延长 `n` 秒并计算新值，其他调用者在此期间继续读取旧值，与 Rails 一样；没有它时，过期键的每个调用者都会计算。抛出异常的块什么也不写入。
 - **存储。** 这些行位于 `cybertrain_cache` 中，这张表由框架在首次使用时创建，并且不写入 `db/schema.rb`。内存中什么也不保留：每次读取都是一条 SELECT，由 SQLite 从它的页缓存中作答。每次写入都会获取数据库的写锁，写入自己行的请求要等待它：请缓存作业产生的结果，或者读取远多于变化的值，而不要在繁忙的请求路径中写入。
 - **清理。** 加载了作业时，require 这个文件会注册定时任务 `"cybertrain cache prune"`，它每隔 `cache_prune_interval` 秒（300，`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）删除过期的行，每条语句一千行。没有作业时，缓存自己清理：进程的第一次写入，以及每过 `cache_prune_interval` 后的第一次写入，最多删除一千个过期的行。这个间隔在 require 文件时读取：请设置该环境变量，或者在 require 之前运行的 `Cybertrain.configure` 块中设置 `c.cache_prune_interval`。`Cache.prune(now)` 是测试的入口。
@@ -206,7 +206,7 @@ true
 
 ## 运维：备份、VACUUM、健康检查
 
-已部署应用的数据就是一个 SQLite 文件，所以二进制文件自带这类应用所需的三种运维工具。带有文件上传的应用还会把上传文件的字节保存在其上传根目录下（`upload_root`，默认为 `storage/uploads/`）：请把这个目录与数据库一起备份和恢复，否则恢复后的记录会指向不存在的文件（[添加文件上传](tutorial.md#attachments)）。
+已部署应用的数据就是一个 SQLite 文件，所以二进制文件自带这类应用所需的三种运维工具。带有文件上传的应用还会把上传文件的字节保存在其上传根目录下（`upload_root`，默认为 `storage/uploads/`）：请把这个目录与数据库一起备份和恢复，否则恢复后的记录会指向不存在的文件（[添加封面图片](tutorial.md#attachments)）。
 
 **备份。** `./<app> db backup PATH` 在服务器继续运行的同时写出所配置数据库（`CYBERTRAIN_DATABASE`）的一致副本：SQLite 的 `VACUUM INTO`（3.27 或更新版本；二进制文件会检查）读取一个快照，而在 WAL 模式下，服务器的写入在此期间照常进行。副本先写入 `PATH` 旁边的一个临时文件，该文件以独占方式、权限 0600 创建（文件中含有密码摘要和会话令牌），经过 fsync，然后才重命名为 `PATH`，所以失败或中断的复制永远不会在真实名称下留下不完整的文件（临时文件会被删除）。已存在的 `PATH` 会被拒绝，除非你传入 `--force`；数据库本身永远不能作为目标，`:memory:` 数据库也不能作为来源。
 

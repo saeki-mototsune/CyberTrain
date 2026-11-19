@@ -1,5 +1,5 @@
 ---
-source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
+source_sha256: 2b5fded6e781bd7858eecd4087a657f9a3942325ea7b3d7be3ac8a684a924643
 ---
 # 请求
 
@@ -113,9 +113,9 @@ end
 
 写了 `include AdminGate` 的控制器会得到 `included` 块所声明的内容（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`），位置就在 `include` 处，顺序与书写一致，并且在它的动作中可以使用 `self.class.per_page`。concern 可以包含 concern：gen 以深度优先展开它们，每个只展开一次，并点名拒绝循环（`concern cycle: A includes B includes A`）。`include A, B` 与 Ruby 一样先包含 B，所以 B 的 `included` 块和回调排在 A 之前。`around_action` 会被拒绝（没有 around 回调）。concern 方法中的 `@x =` 赋值属于控制器的视图变量。
 
-Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。由此产生两条规则。`class_methods` 的方法不能与 concern、包含它的类或其祖先的实例方法同名（Spinel 会把两者都定义为实例方法，spikes/NOTES.md 规则 93）；gen 会拒绝它并指出两个位置（实例方法所在的 `文件:行`）。另外，`include` 一个不是 concern 的模块（`include Comparable`，或在 `app/*/concerns` 下没有对应文件的名字）会原样留给 Ruby，所以 concern 名字拼错时，是应用加载时的 `NameError`，而不是 gen 的提示。gen 像 Ruby 一样查找名字，先查类自己所在的模块，所以 `module Admin` 里的 `include Gate` 会引入 `Admin::Gate`。一个名字如果找不到任何 concern，但最后一段与某个 concern 的名字相同（只有 `Admin::Gate` 时写 `include Gate`），gen 会停止：Ruby 会 include 别的模块或抛出异常，而这个 concern 的 `included` 块就会丢失。
+Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。由此产生两条规则。`class_methods` 的方法如果与 concern、包含它的类或其祖先的实例方法同名，gen 会拒绝它并指出两个位置（实例方法所在的 `文件:行`）。这项检查源自原始源码：照原样编译时，从不运行的 `class_methods` 块里的 `def` 也会成为包含它的类的实例方法（一个精简的程序可以重现，spikes/NOTES.md 规则 93），gen 让这两个名字保持分开。另外，`include` 一个不是 concern 的模块（`include Comparable`，或在 `app/*/concerns` 下没有对应文件的名字）会原样留给 Ruby，所以 concern 名字拼错时，是应用加载时的 `NameError`，而不是 gen 的提示。gen 像 Ruby 一样查找名字，先查类自己所在的模块，所以 `module Admin` 里的 `include Gate` 会引入 `Admin::Gate`。一个名字如果找不到任何 concern，但最后一段与某个 concern 的名字相同（只有 `Admin::Gate` 时写 `include Gate`），gen 会停止：Ruby 会 include 别的模块或抛出异常，而这个 concern 的 `included` 块就会丢失。
 
-模型的 concern 放在 `app/models/concerns/`，工作方式相同：它们的 `included` 块可以包含模型的任何类级声明（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、回调、`normalizes`），视同在 `include` 处写在模型中。concern 的回调在模型自己的同类回调之后运行，模型 concern 的 `included` 块中的 `include` 会把那个 concern 引入。模型 concern 的 `class_methods` 方法名不能是该模型的 scope，也不能是每个模型都有的类方法（与 `scope :recent` 并列的 `recent`，或 `where`）；gen 会拒绝。
+模型的 concern 放在 `app/models/concerns/`，工作方式相同：它们的 `included` 块可以包含模型的任何类级声明（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、回调），视同在 `include` 处写在模型中。concern 的回调在模型自己的同类回调之后运行，模型 concern 的 `included` 块中的 `include` 会把那个 concern 引入。模型 concern 的 `class_methods` 方法名不能是该模型的 scope，也不能是每个模型都有的类方法（与 `scope :recent` 并列的 `recent`，或 `where`）；gen 会拒绝。
 
 在控制器或 concern 的 `included` 块中写 `helper_method :current_user, :admin?`，就可以在该控制器的模板以及它们渲染的组件和局部模板中，带参数调用这些控制器方法。gen 会拒绝以下名称：框架辅助方法的名称、以 `_path` 或 `_url` 结尾的名称、由 `app/helpers` 中的模块定义的名称、在控制器及其父类或 concern 中没有 `def` 的名称，以及模板无法传入其参数（`*rest`、`**opts`、`...`）的名称。
 
@@ -281,6 +281,7 @@ Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: g
 
 为 0.4 编写的应用需要注意的变化（完整列表见[设计文档](../superpowers/specs/2026-11-10-phase4-web-layer-design.md)第 14 节）：
 
+- 模型和数据库有自己的一份列表，其中包括运行一次 `db normalize`（[从 0.4 升级](models.md#upgrading-from-04)）；测试（[从 0.4 升级](testing.md#upgrading-from-04)）和任务（[从 0.4 升级](background-and-operations.md#upgrading-from-04)）也各有一份。
 - 每个会话都会结束一次：加密的 cookie 不读取旧的签名 cookie，所以用户需要重新登录。调用 `Session.load` 或 `Session.dump` 的代码要传入派生的密钥 `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)`；传入原始密钥会抛出 `Encryptor::Error`。
 - 每个应用都链接 OpenSSL（[安装](install.md#requirements)）；以前由 `cybertrain new` 写出的 Dockerfile 需要在构建阶段加入 `libssl-dev`，在运行阶段加入 `libssl3t64`。
 - 在接受格式的路由中，动态段不再捕获 `.`：含点号的 id 需要在其路由上写 `format: false`。

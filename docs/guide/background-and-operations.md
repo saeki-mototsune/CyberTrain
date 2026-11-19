@@ -42,11 +42,13 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
   (`./<app> worker`, see [Process roles](#process-roles)), after boot has
   connected the database and set `SPINEL_WORKERS`; `migrate`, `db ...`,
   `jobs ...`, `console` and `Main.command` commands never start them, and
-  neither does `Cybertrain::Test::Client`. With jobs required, the job
-  threads start in every such process, even in an application with no job
-  class: the framework
-  registers its own mail job (`Mailer.deliver_later`,
-  [Sending e-mail](external-services.md#sending-e-mail)).
+  neither does `Cybertrain::Test::Client`. The job threads start only
+  when a job kind is registered: a job class, a `Job.handle` block, or the
+  framework's own mail job, which `require "cybertrain/mailer/later"` (and
+  so `require "cybertrain"`) registers
+  ([Sending e-mail](external-services.md#sending-e-mail)). With none the log
+  says `No job handler registered; job threads not started`, and the
+  scheduled tasks still run.
 - **The table.** Jobs are rows of `cybertrain_jobs`, which the framework
   creates itself (`CREATE TABLE IF NOT EXISTS`, on first use) and leaves out
   of `db/schema.rb`. Inside a `DB.transaction` the row commits or rolls back
@@ -226,8 +228,9 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - **How a task runs.** A block runs on the scheduler thread, one task at a
   time; each run is wrapped in a rescue that logs `ERROR [schedule:name]
   Scheduled task "name" failed: ...`, reports it, and the loop goes on. The
-  block takes no arguments
-  (Spinel has no `instance_eval`). A SQLite call holds its OS worker until it
+  block takes no arguments, and `self` in it is not the scheduler: the
+  scheduler calls the block it stored, and Spinel refuses `instance_exec` of
+  a stored block (spikes/NOTES.md rule 2). A SQLite call holds its OS worker until it
   returns: with `SPINEL_WORKERS=1` (the default) a long query stalls every
   request, and every other thread, for as long. Give a task with real work a
   job (`job:`, or `Job.enqueue` from the block), and batch big work (a
@@ -376,8 +379,10 @@ image and the same database:
   status.
 - A typical split: `server` with `CYBERTRAIN_WORKER=0` behind the proxy, one
   or more `worker`s, and `feeds` if there are subscriptions. `cybertrain new`
-  writes a `web` and a `worker` role into `config/deploy.yml` (and a
-  commented `feeds`); [docs/deploy.en.md](../deploy.en.md) part 7,
+  writes a `web` role into `config/deploy.yml`, with a `worker` and a `feeds`
+  role commented out; `cybertrain generate job` and `generate authentication`,
+  which add `require "cybertrain/jobs"`, uncomment the worker role;
+  [docs/deploy.en.md](../deploy.en.md) part 7,
   "Splitting the roles", has the systemd units.
 - **Upgrading from a release without heartbeats**: stop every old process
   before starting the first new one. A new worker would take the jobs an
@@ -412,8 +417,9 @@ Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)
   String }` answers the live value or runs the block and stores what it
   returns; `fetch_hash`, `fetch_array` and `fetch_int` store JSON or Integer
   text and parse it on the way out, so a corrupt cell reads as `{}`, `[]` or
-  `0` until it expires and the block runs again (Spinel has no `Marshal`, and
-  one method answers one type). `read(key)` (a String, or nil),
+  `0` until it expires and the block runs again (a cell holds text, not a
+  `Marshal` dump, and each type the cache answers has a method of its own
+  name). `read(key)` (a String, or nil),
   `write(key, value, expires_in:, unless_exist:)`, `delete`, `exist?`,
   `increment(key, by: 1, expires_in:)` (one statement; an expired counter
   starts again from `by`, and `expires_in:` sets the expiry only when the
@@ -492,7 +498,7 @@ the three operational tools such an application needs. An application with
 file uploads also keeps their bytes under its upload root
 (`upload_root`, `storage/uploads/` by default): back that directory up and
 restore it together with the database, or restored records point at missing
-files ([Add a file upload](tutorial.md#attachments)).
+files ([Add a cover image](tutorial.md#attachments)).
 
 **Backups.** `./<app> db backup PATH` writes a consistent copy of the
 configured database (`CYBERTRAIN_DATABASE`) while the server keeps running:

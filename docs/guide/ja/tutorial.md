@@ -1,5 +1,5 @@
 ---
-source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
+source_sha256: 681c0c56292faa833d075a15bf5a613dd7445b19901fd654fe35f4145c959f79
 path: tutorial.html
 title: "はじめよう：ブログを作る"
 description: "Rails の Getting Started のブログ（コメント付きの記事）を CyberTrain で作ります：スキャフォールド、マイグレーション、ルーティングのネスト、Turbo によるコメントのライブ更新、ジョブ、Cybertrain::Test によるテスト、cybertrain build によるデプロイ用ビルド。"
@@ -185,7 +185,7 @@ end
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
 
-  def new_action   # a `new` method would shadow ArticlesController.new
+  def new_action   # the `new` action: the generated routes call new_action
     @article = Article.new
   end
 
@@ -211,10 +211,10 @@ class ArticlesController < ApplicationController
 end
 ```
 
-> [!RULE] Spinel のルール：new_action
+> [!RULE] new_action
 > ### `new` ではなく `new_action`
 >
-> 文字どおり `new` という名前のメソッドは、フレームワークがコントローラーの生成に使う `ArticlesController.new(ctx)` を覆い隠してしまいます。ルート `GET /articles/new` は引き続きこのメソッドに対応し、変えるのはメソッド名だけです。ビューは `new.html.erb` のままで、`render :new` も変わりません。
+> `new` アクションは `new_action` と書きます。生成されたルートがこの名前で呼び出すからです。この名前は、`ArticlesController.new(ctx)` と並ぶ `new` という名前のインスタンスメソッドを Spinel がコンパイルできないと記録されていた時期に付けられました。同じ形の小さなプログラムは、ピン留めされたリリースではコンパイルできますが、名前は API としてそのまま残っています。ルート `GET /articles/new` は引き続きこのメソッドに対応し、変えるのはメソッド名だけです。ビューは `new.html.erb` のままで、`render :new` も変わりません。
 
 > [!RULE] Spinel のルール：コールバック
 > ### コールバックはコントローラーを明示的に受け取る
@@ -313,8 +313,8 @@ cybertrain db migrate    # スキャフォールドが comments テーブルの�
 Cybertrain::Routes.draw do
   root "articles#index"
 
-  # A nested block takes the mapper explicitly (Spinel's instance_eval
-  # trampoline only rewires `self` for the outermost block): `articles.resources`.
+  # A nested block takes the mapper as its argument: `articles.resources`,
+  # not Rails' bare `resources`.
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
@@ -322,10 +322,10 @@ Cybertrain::Routes.draw do
 end
 ```
 
-> [!RULE] Spinel のルール：明示的なマッパー
+> [!RULE] 明示的なマッパー
 > ### ネストしたブロックはマッパーを明示的に受け取る
 >
-> `resources :articles do |articles|` と `articles.resources :comments` のように書き、裸の `resources :comments` とは書きません。Spinel の `instance_eval` トランポリンが `self` を差し替えるのは、最も外側のブロックだけだからです。
+> `resources :articles do |articles|` と `articles.resources :comments` のように書き、裸の `resources :comments` とは書きません。この書き方は、`instance_eval` の中にネストしたブロックでのレシーバーなしの呼び出しを Spinel がコンパイルできないと記録されていた時期に導入されました。同じ形の小さなプログラムは、ピン留めされたリリースではコンパイルできますが、マッパーを明示する書き方が、ジェネレーターもテストも使う正式な書き方として残っています。
 
 <!-- step 10 #comments-controller stage: 自分で書く · `app/controllers/` -->
 ## CommentsController
@@ -367,18 +367,17 @@ class CommentsController < ApplicationController
 end
 ```
 
-次に、コメントのモデルにバリデーションを追加します：
+スキャフォールドは、`belongs_to :article` と、最初の文字列フィールドである `commenter` の存在チェックを持つコメントのモデルを書き出しています。本文のチェックを 1 行追加します：
 
 ```ruby app/models/comment.rb
 class Comment
+  belongs_to :article
   validates :commenter, presence: true
   validates :body, presence: true
-
-  belongs_to :article
 end
 ```
 
-宣言した `belongs_to` は、記事のないコメントも、データベースが拒む前に無効にします（「Article can't be blank」）。
+スキャフォールドが宣言した `belongs_to` は、記事のないコメントも、データベースが拒む前に無効にします（「Article can't be blank」）。
 
 > [!NOTE]
 > `Article#comments` はコメントのリレーションなので、Rails の `@article.comments.find(params[:id])` が `destroy` でそのまま使えます。別の記事に属するコメントを指定すると 404 が返ります。
@@ -648,7 +647,7 @@ WebSocket や、自分の JavaScript から使うストリームなど、詳し�
 cybertrain generate job notify_comment --retry StandardError:30:3
 ```
 
-オプションで指定した `retry_on` の行と空の `perform` を持つ `app/jobs/notify_comment_job.rb` と、テストを書き出し、`bin/blog.rb` と `bin/db.rb` に `require "cybertrain/jobs"` を追加します。`perform` の中身を書いてください。ここではログを出すだけですが、実際のアプリケーションならメールを送るところです：
+オプションで指定した `retry_on` の行と空の `perform` を持つ `app/jobs/notify_comment_job.rb` と、テストを書き出し、`bin/blog.rb` と `bin/db.rb` に `require "cybertrain/jobs"` を追加し、`config/deploy.yml` の `worker` ロールのコメントを外します（[ステップ 19](#ship)）。`perform` の中身を書いてください。ここではログを出すだけですが、実際のアプリケーションならメールを送るところです：
 
 ```ruby app/jobs/notify_comment_job.rb
 class NotifyCommentJob < Cybertrain::Job::Base
@@ -686,7 +685,7 @@ end
 - ジョブは `cybertrain_jobs` の行で、サーバーのプロセスの 3 本のジョブスレッドが実行します。`./blog worker` で起動した別のプロセスに実行させることもできます（[プロセスの役割](background-and-operations.md#process-roles)）。
 - `retry_on StandardError, wait: 30, attempts: 3` は、失敗した実行を 30 秒後にもう一度キューに入れ、試行は全部で 3 回です。それでも失敗した行は `failed` になり、残されます（[再試行と破棄](background-and-operations.md#retries-and-discards)）。
 - ジョブは 2 回以上実行されることがあります（実行の途中でプロセスが落ちると、そのジョブはもう一度実行されます）。`perform` は繰り返しても安全なように書いてください。
-- 失敗したジョブの一覧・再試行・破棄は、`./blog jobs` か、`config/routes.rb` にコメントアウトされている `jobs_page` の行を有効にするとマウントされるページ（ステップ 04 と 09 のルートはこの行を残しています）で行います（[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
+- 失敗したジョブの一覧・再試行・破棄は、`./blog jobs` か、`/admin/jobs` のジョブページで行います。`config/routes.rb` にコメントアウトされている `jobs_page` の行は `require_admin` を指定していますが、このメソッドは[ステップ 17](#authentication) のジェネレーターが書き出すもので、ページのマウントもそのジェネレーターが行います（[ジョブページ](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
 
 > [!RULE] Spinel のルール：ジョブのポリシーはテキストとして読まれる
 > ### ジョブのポリシーはテキストとして読まれる
@@ -751,7 +750,7 @@ $ curl http://127.0.0.1:3000/articles.json
 
 ### ジェネレーターが書いたもの
 
-ステップ 03 と 08 のスキャフォールドは Rails のスキャフォールドのテストを書き出しました：`test/fixtures/articles.yml` と `comments.yml`（各テストが最初に持つ `one` と `two` の行）、`test/models/article_test.rb` と `comment_test.rb`（「the fixture is valid」）、そして `test/controllers/articles_controller_test.rb` と `comments_controller_test.rb`（アクションごとに 1 つのリクエスト）。ステップ 12 は `test/components/comment_component_test.rb` と `test/helpers/comments_helper_test.rb` を、ステップ 14 は `test/jobs/notify_comment_job_test.rb` を書き出し、`cybertrain new` は各ファイルが読み込む `test/test_helper.rb` と、`/up` へのリクエストである `test/integration/health_test.rb` を書き出しました。そのうち 3 つは、その後に育ったブログに合わせる必要があります。
+ステップ 03 と 08 のスキャフォールドは Rails のスキャフォールドのテストを書き出しました：`test/fixtures/articles.yml` と `comments.yml`（各テストが最初に持つ `one` と `two` の行）、`test/models/article_test.rb` と `comment_test.rb`（「the fixture is valid」）、そして `test/controllers/articles_controller_test.rb` と `comments_controller_test.rb`（アクションごとに 1 つのリクエスト）。ステップ 12 は `test/components/comment_component_test.rb` と `test/helpers/comments_helper_test.rb` を、ステップ 14 は `test/jobs/notify_comment_job_test.rb` を書き出し、`cybertrain new` は各ファイルが読み込む `test/test_helper.rb` と、`/up` へのリクエストである `test/integration/health_test.rb` を書き出しました。そのうち 4 つは、その後に育ったブログに合わせる必要があります：記事のフィクスチャ、2 つのコントローラーテスト、コンポーネントテストです。
 
 ### バリデーションを通るフィクスチャ
 
@@ -851,7 +850,7 @@ cybertrain test test/controllers/comments_controller_test.rb
 cybertrain test -n /comment/
 ```
 
-最初の実行はすべてのテストを 1 つのプログラムにコンパイルするので、数分かかります（examples/blog の 149 テストは 4 vCPU のクラウドマシンで約 9 分）。何も変えていなければ、次の実行でテストのプログラムはコンパイルし直されません。gen を 1 回ビルドし直すことはあり（`build gen`、数秒）、そのあとは 1 秒よりずっと短い時間で始まります。ファイルや `-n` はどのテストを実行するかを選ぶもので、何をコンパイルするかは変えません：どのテストを編集しても、プログラムはコンパイルし直されます。ファイルごとに見出し、テストごとに 1 行（`ok`、または `FAIL` と `ERR` にテストの行とメッセージ）、最後に合計が出ます。その間には、テスト対象のコードが自分で出力したもの（たとえばコマンドの出力行）も混じります。失敗したテストがあれば終了ステータスは 1 です。2026-11-13 に測ったところ、このステップのチュートリアルのブログは 17 テスト、25 アサーションです。
+最初の実行はすべてのテストを 1 つのプログラムにコンパイルするので、数分かかります（examples/blog のテストは、2026-11-13 の計測時点で 149 個あり、4 vCPU のクラウドマシンで約 9 分）。何も変えていなければ、次の実行でテストのプログラムはコンパイルし直されません。gen を 1 回ビルドし直すことはあり（`build gen`、数秒）、そのあとは 1 秒よりずっと短い時間で始まります。ファイルや `-n` はどのテストを実行するかを選ぶもので、何をコンパイルするかは変えません：どのテストを編集しても、プログラムはコンパイルし直されます。ファイルごとに見出し、テストごとに 1 行（`ok`、または `FAIL` と `ERR` にテストの行とメッセージ）、最後に合計が出ます。その間には、テスト対象のコードが自分で出力したもの（たとえばコマンドの出力行）も混じります。失敗したテストがあれば終了ステータスは 1 です。2026-11-13 に測ったところ、このステップのチュートリアルのブログは 17 テスト、25 アサーションです。
 
 > [!NOTE]
 > 各テストの前にすべてのテーブルが空になり、フィクスチャが入れ直されるので、テストはお互いに依存しません。`gen/tests.rb` と `gen/test/` は生成されるもので、`gen/` のほかの部分と一緒にコミットします。
@@ -867,7 +866,7 @@ cybertrain generate authentication
 cybertrain db migrate    # users と sessions のテーブルを作る
 ```
 
-`users` と `sessions` のマイグレーションとモデル、`ApplicationController` にインクルードする `Authentication` コンサーン、サインイン・サインアップ・パスワードリセット・アカウントページのコントローラーとビュー、メーラー、`./blog user` コマンド、そしてテストを書き出します。さらにルート、レイアウトの先頭の `sessions/_nav` パーシャル、メール中のリンクの始まりになる `config/app.rb` の `base_url` 設定を加えます。最後に、そのコードが使うサブシステムの行を `bin/blog.rb` と `bin/db.rb` に加えます：`cybertrain/jobs`（ジョブページとメールを送るスレッド）、`cybertrain/mailer`、`cybertrain/mailer/later`（メールは `deliver_later` で送られます）、`cybertrain/rate_limit`（サインインの試行にはレート制限がかかります。後述）。すべてのファイルは [認証](authentication.md#generating-it) に一覧があります。
+`users` と `sessions` のマイグレーションとモデル、`ApplicationController` にインクルードする `Authentication` コンサーン、サインイン・サインアップ・パスワードリセット・アカウントページのコントローラーとビュー、メーラー、`./blog user` コマンド、そしてテストを書き出します。さらにルート（管理者向けの `/admin/jobs` のジョブページもその 1 つです）、レイアウトの先頭の `sessions/_nav` パーシャル、メール中のリンクの始まりになる `config/app.rb` の `base_url` 設定を加えます。最後に、そのコードが使うサブシステムの行を `bin/blog.rb` と `bin/db.rb` に加えます：`cybertrain/jobs`（ジョブページとメールを送るスレッド）、`cybertrain/mailer`、`cybertrain/mailer/later`（メールは `deliver_later` で送られます）、`cybertrain/rate_limit`（サインインの試行にはレート制限がかかります。後述）。すべてのファイルは [認証](authentication.md#generating-it) に一覧があります。
 
 ```ruby app/controllers/concerns/authentication.rb（抜粋）
 module Authentication
@@ -910,10 +909,10 @@ class ArticlesController < ApplicationController
 
 サインインページはメールによるパスワードリセットにも、nav はアカウントページにもリンクしています。[認証](authentication.md) のガイドが、ロックアウト、「ログインしたままにする」、`--confirmable`、管理者ユーザーとあわせて説明しています。リセットのメールには SMTP の設定と、本番では `BLOG_BASE_URL` が必要です（[メール中のリンク](authentication.md#links-in-mails)）。
 
-> [!RULE] Spinel のルール：has_secure_password
+> [!RULE] has_secure_password は書き下される
 > ### `has_secure_password` は書き下される
 >
-> Spinel は実行時にメソッドを定義できないため、`User` モデルには `has_secure_password` が定義するはずのもの、つまり `password=`、`authenticate`、`User.authenticate_by(email_address:, password:)` がそのまま書かれています。パスワードは `Cybertrain::Password` でハッシュ化されます。Ruby で書かれた PBKDF2-HMAC-SHA256 で、既定は 10 万回反復（コンパイル後で約 0.2 秒）です。bcrypt を使うと、バイナリが C ライブラリをリンクする必要があるためです。コストは `config/app.rb` に `Cybertrain::Password.iterations = 600_000` と書いて引き上げられ、`User#authenticate` が各ユーザーのサインイン時にハッシュを作り直します。
+> CyberTrain に `has_secure_password` マクロはありません。ジェネレーターは、それが定義するはずのもの、つまり `password=`、`authenticate`、`User.authenticate_by(email_address:, password:)` を、アプリケーションが所有するコードとして `User` モデルに書き出します。パスワードは `Cybertrain::Password` でハッシュ化されます。Ruby で書かれた PBKDF2-HMAC-SHA256 で、既定は 10 万回反復（コンパイル後で約 0.2 秒）です。bcrypt を使うと、バイナリが C ライブラリをリンクする必要があるためです。コストは `config/app.rb` に `Cybertrain::Password.iterations = 600_000` と書いて引き上げられ、`User#authenticate` が各ユーザーのサインイン時にハッシュを作り直します。
 
 ### テストを更新する
 
@@ -1014,10 +1013,10 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 > [!NOTE]
 > ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、写すのは読み取れるもの、つまりコールバックだけです。`set_article` 以外の `before_action` が、新しいアクションを含まずに `:show` を挙げていると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。`def show` の中のコードは、何を確かめているのかを読み取れません。警告が出るのはそのためです。`show` が空なら、`:show` が挙がっている `allow_unauthenticated_access` にジェネレーターが自分で `:cover` を加えます。`show` にコードがあるとその行には手を付けず、そこに `:cover` がなければ画像にはサインインが必要になります。
 
-> [!RULE] Spinel のルール：has_one_attached
+> [!RULE] has_one_attached は書き下される
 > ### `has_one_attached` は書き下される
 >
-> Spinel は実行時にメソッドを定義できない（`define_method` がない）ため、`has_one_attached` も、共有の添付テーブルもありません。ジェネレーターは、それが定義するはずのものを、フィールド名にちなんだメソッドとして `Article` に書き下し、メタデータは `articles` の 5 つのカラムに入れます。これらは `NOT NULL` で、`""` と `0` が「添付なし」を表します。NULL を許すカラムでは Spinel の型推論が効かなくなるためです。SQLite に入るのはメタデータだけ（テキスト値は NUL バイトで途切れます）で、バイト列はファイルとして保存されます。
+> `has_one_attached` も、共有の添付テーブルもありません。許可する種類、サイズ、誰がダウンロードできるかはアプリケーションごとに違うので、ジェネレーターはフィールド名にちなんだメソッドを `Article` に書き下し、メタデータは `articles` の 5 つのカラムに入れます。これらは `NOT NULL` で、`""` と `0` が「添付なし」を表します。NULL を許すカラムでは Spinel の型推論が効かなくなるためです。SQLite に入るのはメタデータだけ（テキスト値は NUL バイトで途切れます）で、バイト列はファイルとして保存されます。
 
 ### ファイルの配信方法
 
@@ -1095,7 +1094,7 @@ end
 - `SIGTERM` を受けると新たな受け付けを止め、処理中のリクエストを完了させ、それらが終わった時点か、サーバーの `drain_timeout`（10 秒）が過ぎた時点で終了します。
 - ファイル監視、CRuby プレビュー、再ビルドのループが本番環境で動くことはありません。実行中の `cybertrain server` は、`cybertrain build` が `tmp/cybertrain-build.lock` を保持している間、再生成も再起動も行いません。
 
-`cybertrain new` は [Kamal 2](https://kamal-deploy.org) 用の設定も書き出します。`Dockerfile` は Ubuntu のビルドステージで `cybertrain setup` と `cybertrain build` を実行し、`dist/` を同じリリースの軽量なステージにコピーします。このイメージは起動時にマイグレーションを流してから `0.0.0.0:3000` で待ち受けます。ほかに `.dockerignore`、`config/deploy.yml`（前段に Let&rsquo;s Encrypt 付きの kamal-proxy、ヘルスチェックは `public/up.html`、SQLite のファイルは `/app/storage` のボリューム）、`KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を環境変数から読む `.kamal/secrets` が作られます。`config/deploy.yml` の `CHANGE ME` の値を書き換えてコミットし、次を実行します：
+`cybertrain new` は [Kamal 2](https://kamal-deploy.org) 用の設定も書き出します。`Dockerfile` は Ubuntu のビルドステージで `cybertrain setup` と `cybertrain build` を実行し、`dist/` を同じリリースの軽量なステージにコピーします。このイメージは起動時にマイグレーションを流してから `0.0.0.0:3000` で待ち受けます。ほかに `.dockerignore`、`config/deploy.yml`（前段に Let&rsquo;s Encrypt 付きの kamal-proxy、ヘルスチェックは `public/up.html`、SQLite のファイルは `/app/storage` のボリューム、そしてステップ 14 でコメントを外した `worker` ロール：同じイメージで `./blog worker` を実行する 2 つ目のコンテナです。`CYBERTRAIN_WORKER` が 0 でなければ web ロールもジョブを実行します）、`KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を環境変数から読む `.kamal/secrets` が作られます。`config/deploy.yml` の `CHANGE ME` の値を書き換えてコミットし、次を実行します：
 
 ```shell ターミナル — blog/
 kamal setup    # 初回：サーバーに Docker と kamal-proxy を入れ、ビルド・push・起動する
