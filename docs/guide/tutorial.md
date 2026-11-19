@@ -259,7 +259,7 @@ messages such as "Title can't be blank", "Title has already been taken" and
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
 
-  def new_action   # a `new` method would shadow ArticlesController.new
+  def new_action   # the `new` action: the generated routes call new_action
     @article = Article.new
   end
 
@@ -285,13 +285,15 @@ class ArticlesController < ApplicationController
 end
 ```
 
-> [!RULE] Spinel rule: new_action
+> [!RULE] new_action
 > ### `new_action`, not `new`
 >
-> A method literally named `new` would shadow `ArticlesController.new(ctx)`,
-> which the framework uses to construct the controller. The route
-> `GET /articles/new` still maps to it; you only rename the method. The view is
-> still `new.html.erb` and `render :new` is unchanged.
+> The `new` action is written `new_action`: the generated routes call it by
+> that name. The rename was made when Spinel was recorded as unable to compile
+> an instance method named `new` beside `ArticlesController.new(ctx)`; reduced
+> programs of that shape compile on the pinned release, and the name stays as
+> the API. The route `GET /articles/new` still maps to it; you only rename the
+> method. The view is still `new.html.erb` and `render :new` is unchanged.
 
 > [!RULE] Spinel rule: callbacks
 > ### Callbacks take the controller explicitly
@@ -435,8 +437,8 @@ step replaces.
 Cybertrain::Routes.draw do
   root "articles#index"
 
-  # A nested block takes the mapper explicitly (Spinel's instance_eval
-  # trampoline only rewires `self` for the outermost block): `articles.resources`.
+  # A nested block takes the mapper as its argument: `articles.resources`,
+  # not Rails' bare `resources`.
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
@@ -444,12 +446,15 @@ Cybertrain::Routes.draw do
 end
 ```
 
-> [!RULE] Spinel rule: explicit mapper
+> [!RULE] Explicit mapper
 > ### Nested blocks take the mapper explicitly
 >
 > Write `resources :articles do |articles|` and `articles.resources :comments`,
-> not a bare `resources :comments`. Spinel's `instance_eval` trampoline only
-> rewires `self` for the outermost block.
+> not a bare `resources :comments`. The form was introduced when Spinel was
+> recorded as unable to compile a receiverless call in a block nested inside
+> `instance_eval`; a reduced program of that shape compiles on the pinned
+> release, and the explicit mapper stays the documented form, the one the
+> generators and the tests write.
 
 <!-- step 10 #comments-controller stage: You write · `app/controllers/` -->
 ## The CommentsController
@@ -492,18 +497,18 @@ class CommentsController < ApplicationController
 end
 ```
 
-Then add validations to the comment model:
+The scaffold wrote the comment model with `belongs_to :article` and a
+presence check on `commenter`, its first string field; add one for the body:
 
 ```ruby app/models/comment.rb
 class Comment
+  belongs_to :article
   validates :commenter, presence: true
   validates :body, presence: true
-
-  belongs_to :article
 end
 ```
 
-The declared `belongs_to` also makes a comment without an article invalid
+The `belongs_to` the scaffold declared also makes a comment without an article invalid
 ("Article can't be blank"), before the database would refuse it.
 
 > [!NOTE]
@@ -840,7 +845,8 @@ cybertrain generate job notify_comment --retry StandardError:30:3
 
 It writes `app/jobs/notify_comment_job.rb`, with the `retry_on` line the
 option asked for and an empty `perform`, and a test, and adds
-`require "cybertrain/jobs"` to `bin/blog.rb` and `bin/db.rb`. Fill `perform` in; this
+`require "cybertrain/jobs"` to `bin/blog.rb` and `bin/db.rb`, and uncomments
+the `worker` role in `config/deploy.yml` ([step 19](#ship)). Fill `perform` in; this
 one only logs, where a real application would send a mail:
 
 ```ruby app/jobs/notify_comment_job.rb
@@ -891,8 +897,10 @@ response is written, so the order of the lines can differ:
 - A job can run more than once (a process that dies in the middle of one has
   it run again), so write `perform` to be safe to repeat.
 - Failed jobs are listed, retried and discarded with `./blog jobs`, or on the
-  page the commented `jobs_page` line in `config/routes.rb` mounts once
-  uncommented (the routes of steps 04 and 09 keep it)
+  jobs page at `/admin/jobs`: the commented `jobs_page` line in
+  `config/routes.rb` names `require_admin`, a method
+  [step 17](#authentication)'s generator writes, and that generator mounts
+  the page for you
   ([The jobs page](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
 
 > [!RULE] Spinel rule: job policies are read as text
@@ -982,8 +990,9 @@ every test starts with), `test/models/article_test.rb` and
 `test/helpers/comments_helper_test.rb`, step 14
 `test/jobs/notify_comment_job_test.rb`, and `cybertrain new` wrote
 `test/test_helper.rb`, which each file requires, and
-`test/integration/health_test.rb`, a request to `/up`. Three of them need the
-blog as it has grown since.
+`test/integration/health_test.rb`, a request to `/up`. Four of them need the
+blog as it has grown since: the articles fixture, the two controller tests
+and the component test.
 
 ### Fixtures that pass the validations
 
@@ -1101,7 +1110,8 @@ cybertrain test -n /comment/
 ```
 
 The first run compiles every test into one program, which takes minutes
-(examples/blog's 149 tests took about nine on a 4-vCPU cloud machine). A
+(examples/blog's tests, 149 of them when measured on 2026-11-13, took about
+nine on a 4-vCPU cloud machine). A
 run with nothing changed does not compile the test program again: it may
 rebuild gen once (`build gen`, some seconds), and then starts in well
 under a second. A file or `-n` picks which tests run, not what is
@@ -1134,7 +1144,7 @@ It writes the `users` and `sessions` migrations and models, the
 `Authentication` concern, which it includes into `ApplicationController`,
 controllers and views for signing in, signing up, resetting a password and
 the account page, a mailer, the `./blog user` command, and tests. It also
-adds the routes, a `sessions/_nav` partial at the top of the layout, and a
+adds the routes (the jobs page at `/admin/jobs`, for admins, among them), a `sessions/_nav` partial at the top of the layout, and a
 `base_url` setting in `config/app.rb`, where links in mails start, and the
 lines of the subsystems its code uses to `bin/blog.rb` and `bin/db.rb`:
 `cybertrain/jobs` (the jobs page and the thread that sends mail),
@@ -1202,11 +1212,12 @@ with lockout, "keep me signed in", `--confirmable` and admin users. A reset
 mail needs the SMTP settings and, in production, `BLOG_BASE_URL`
 ([Links in mails](authentication.md#links-in-mails)).
 
-> [!RULE] Spinel rule: has_secure_password
+> [!RULE] has_secure_password is written out
 > ### `has_secure_password` is written out
 >
-> Spinel cannot define methods at run time, so the `User` model spells out what
-> `has_secure_password` would define: `password=`, `authenticate` and
+> CyberTrain has no `has_secure_password` macro. The generator writes what it
+> would define into the `User` model, as code the application owns:
+> `password=`, `authenticate` and
 > `User.authenticate_by(email_address:, password:)`. Passwords are hashed by
 > `Cybertrain::Password`, PBKDF2-HMAC-SHA256 in Ruby, 100,000 iterations by
 > default (about 0.2 s compiled): bcrypt would need a C library the binary
@@ -1355,12 +1366,12 @@ the image to the show page, right after the `<h1>`:
 > where `:show` is listed; with code in `show` it leaves the line alone, and
 > without `:cover` there the image needs a sign-in.
 
-> [!RULE] Spinel rule: has_one_attached
+> [!RULE] has_one_attached is written out
 > ### `has_one_attached` is written out
 >
-> Spinel cannot define methods at run time (no `define_method`), so there is no
-> `has_one_attached` and no shared attachments table. The generator spells out
-> what it would define as methods named after the field, in `Article`, and puts
+> There is no `has_one_attached` and no shared attachments table: allowed
+> types, sizes and who may download differ per application, so the generator
+> spells the methods out, named after the field, in `Article`, and puts
 > the metadata in five columns of `articles`. They are `NOT NULL`, with `""` and
 > `0` meaning &ldquo;nothing attached&rdquo;: nullable columns cost Spinel its
 > type inference. SQLite holds the metadata only (a text value stops at a NUL
@@ -1500,7 +1511,10 @@ end
 stage and copies `dist/` into a slim stage of the same release, which migrates
 on boot and then serves on `0.0.0.0:3000`. Beside it are `.dockerignore`,
 `config/deploy.yml` (kamal-proxy with Let&rsquo;s Encrypt in front, the health
-check on `public/up.html`, the SQLite file on a volume at `/app/storage`) and
+check on `public/up.html`, the SQLite file on a volume at `/app/storage`, and
+the `worker` role step 14 uncommented: a second container of the same image
+running `./blog worker`; the web role runs jobs too unless
+`CYBERTRAIN_WORKER` is 0) and
 `.kamal/secrets`, which reads `KAMAL_REGISTRY_PASSWORD` and
 `CYBERTRAIN_SECRET_KEY_BASE` from the environment. Fill in the values marked
 `CHANGE ME` in `config/deploy.yml`, commit, then:
