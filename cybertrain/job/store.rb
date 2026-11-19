@@ -326,7 +326,7 @@ module Cybertrain
       # (write_outcome): a row recovered and claimed again by the same
       # label is another claim, and an older attempt still running does
       # not keep it alive (D78). Returns how many rows it touched.
-      # (Judgement call: the spec's statement was `WHERE state = 'running'
+      # (The first design's statement was `WHERE state = 'running'
       # AND claimed_by = ?`; this adds the claims the caller has in flight.)
       def self.touch_heartbeats(now, label, claims)
         ensure_installed

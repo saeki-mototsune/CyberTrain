@@ -1,6 +1,6 @@
 # Cybertrain::Component -- a view component in ViewComponent's shape: a
 # class under app/components with keyword arguments, and a template beside
-# it (spec 3.2).
+# it (docs/design.md D38).
 #
 #   class CardComponent < Cybertrain::Component
 #     def initialize(title:, value: 0)

@@ -1,6 +1,6 @@
 module Cybertrain
   module Gen
-    # Writes gen/console.rb (spec 7): the tables `./app console` reaches the
+    # Writes gen/console.rb (docs/design.md D41): the tables `./app console` reaches the
     # generated models through, since a console line names a model by a
     # String and Spinel has no `const_get` (spikes/NOTES.md rule 1).
     # Gen::Console.scope / records / create are `case`s over the model

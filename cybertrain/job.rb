@@ -549,9 +549,10 @@ module Cybertrain
     # process lives. And only the attempts in flight here: a row recovered
     # and claimed again by this process is kept alive by its new attempt,
     # not by an older one that is still running (the heartbeat is fenced
-    # by the attempt number, as the outcome is). Judgement call: the spec's
+    # by the attempt number, as the outcome is). The first design's
     # statement was `WHERE state = 'running' AND claimed_by = ?`; this adds
-    # the (id, attempts) of each claim in flight.
+    # the (id, attempts) of each claim in flight (docs/design.md D28's
+    # revision, D78).
     # @param now [Integer] epoch seconds
     # @return [Integer] how many rows it touched
     # @api public

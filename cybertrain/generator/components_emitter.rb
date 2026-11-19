@@ -2,7 +2,7 @@ require "cybertrain/generator/component_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/components.rb (spec 3.2): per component class its
+    # Writes gen/components.rb (docs/design.md D38): per component class its
     # view_assigns, call_view_method / view_method? case tables,
     # component_name and component_template, then Gen::Components.build,
     # the `case` from a template's component name to the class's `new`
