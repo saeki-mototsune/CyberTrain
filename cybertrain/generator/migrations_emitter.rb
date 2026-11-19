@@ -1,5 +1,4 @@
 require "cybertrain/generator/source_text"
-require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/inflector"
 
 module Cybertrain

@@ -1,6 +1,4 @@
 require "cybertrain/generator/source_text"
-require "cybertrain/generator/controller_scan"
-require "cybertrain/generator/model_scan"
 
 module Cybertrain
   module Gen

@@ -2,7 +2,6 @@ require "cybertrain/generator/source_text"
 require "cybertrain/test_files"
 require "cybertrain/test/args"
 require "cybertrain/generator/inflector"
-require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/code_view"
 
 module Cybertrain

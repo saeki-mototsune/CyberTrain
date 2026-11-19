@@ -1,6 +1,7 @@
 require "cybertrain/generator/source_text"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/helper_scan"
+require "cybertrain/generator/concern_scan"
 
 module Cybertrain
   module Gen
