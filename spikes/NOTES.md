@@ -135,7 +135,7 @@ for the evidence needed to change a status.
 | 108 | Tool behaviour, checked 2026-11-12: spin's freshness check for `bin/gen` counts test files and gen's outputs as inputs. |
 | 109 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb). |
 | 110 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/case_nullable_temp.rb does not compile). |
-| 111 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional-subsystems design, not of a defect. |
+| 111 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional subsystems (docs/design.md D85, cybertrain/feature.rb), not of a defect. |
 | 112 | Runtime behaviour, checked 2026-11-13 on this pin (spikes/phase5/flock_fstat.rb): `File#flock` matches CRuby; `File#stat` and `IO.for_fd` do not. |
 | 113, 119 | Work on this build (phase 5b, 2026-11-13): records of forms that compile and behave as under CRuby, not of defects. |
 | 114 | Found on this build (phase 5b spike, 2026-11-13): how green threads are scheduled at one worker, not a defect. |
@@ -2071,9 +2071,9 @@ from CRuby that is still there (the status table classifies each); record
 111. A registry of features, an Array of base-class instances whose
     overridable hooks are called on each element, compiles and dispatches
     to each subclass's override under Spinel 2026.11.04.7026 (a2d06115,
-    GCC 13.3.0, Linux x86_64, no flags), as the optional-subsystems design
-    needs (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md
-    section 4, plan Task 1). Checked on 2026-11-13 at 6876ae6 with
+    GCC 13.3.0, Linux x86_64, no flags), as the optional subsystems
+    need (docs/design.md D85; cybertrain/feature.rb). Checked on
+    2026-11-13 at 6876ae6 with
     spikes/phase6/feature_registry.rb and feature_registry_ba.rb (the same
     checks with the two feature files required in the other order),
     standalone programs with no framework: each compiled (4 s), exited 0
@@ -2124,7 +2124,7 @@ from CRuby that is still there (the status table classifies each); record
     not dispatched. Rule 88's `add { |r| r.hook }` is that shape. Which
     module stores the block, and whether `add` is called on implicit self
     or on another module, does not matter (reductions with a separate
-    `Store` module fail the same way). The design's
+    `Store` module fail the same way). The framework's
     `Features.run_periodic(i, now)` is clear of it either way; a feature
     file must still not write a block that calls a hook inside its class
     body ahead of the hook's `def` (registering at the end of the file,

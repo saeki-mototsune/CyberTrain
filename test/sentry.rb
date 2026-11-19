@@ -10,8 +10,8 @@ require_relative "support/log_capture"
 # auth header, the DSN's path prefix, the sample rate, the frames of a
 # backtrace, and a refusing, rate-limiting, silent or blocked Sentry that
 # never blocks the caller nor raises. The program is the core plus the
-# sender's line alone (the optional-subsystems spec, section 7: the line
-# compiles on its own). It links TLS (openssl) and SQLite through FFI, so
+# sender's line alone (as test/features_*.rb do for each subsystem line,
+# docs/design.md D85: the line compiles on its own). It links TLS (openssl) and SQLite through FFI, so
 # its snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 # Restores go through teardown and plain helpers.
 

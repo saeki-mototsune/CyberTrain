@@ -5,9 +5,8 @@ require "cybertrain/rate_limit"
 require "cybertrain/test"
 require "cybertrain/test/client"
 
-# The core and cybertrain/rate_limit alone (the optional-subsystems design,
-# docs/superpowers/specs/2026-11-13-optional-subsystems-design.md, section
-# 3), which loads the cache: it compiles without jobs, streams, feeds or
+# The core and cybertrain/rate_limit alone (docs/design.md D85), which
+# loads the cache: it compiles without jobs, streams, feeds or
 # the mailer; the cache and rate limiting are the registered features; a
 # limited action refuses past its limit, counted in the cache (the
 # default store) and in memory. Runs from a fresh temp directory. It links

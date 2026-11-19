@@ -11,8 +11,8 @@ require "cybertrain/jobs"
 require "cybertrain/test"
 
 # The order the features run in does not follow the order of bin/NAME.rb's
-# requires (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md,
-# section 3: "requires are order-insensitive"): `help`, `/up` and the
+# requires (docs/design.md D85: the features are ranked,
+# Feature#feature_rank): `help`, `/up` and the
 # server role's starts and stops follow the features' ranks. Probe
 # features, ranked between the real ones, record what is running when
 # Features calls them, in the sequence Roles::ServerRunner#run_server
