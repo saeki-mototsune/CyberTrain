@@ -85,7 +85,7 @@ gen. A cycle of stylesheets naming each other stops gen
 the name lacks it; both take `nonce: true`, and `stylesheet_link_tag` takes
 `media:`. A URL with a scheme (or `//`, `data:`) is written as given, and so
 is a path starting with `/`. An unknown logical name raises
-`Cybertrain::Assets::UnknownAsset` in development and test (`asset
+`Cybertrain::Assets::UnknownAsset` outside production (`asset
 "logo.png" is not in app/assets, app/javascript or vendor/javascript (run
 spin run gen)`); production logs it once and writes `/assets/<name>`. The
 full signatures are in [the template language](template-language.md#helpers-and-the-form-builder).
