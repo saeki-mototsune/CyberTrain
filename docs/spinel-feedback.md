@@ -3521,13 +3521,12 @@ compares with generated UTF-8 through `LineDiff.as_utf8`.
 
 ## Found in phase 5a of the Rails-gap programme (2026-11-12)
 
-The tests part of the phase 5 design
-(docs/superpowers/specs/2026-11-11-phase5-tests-operations-design.md,
-section 16) ran six checks against 2026.11.04.7026 before the code
-(spikes/phase5/), and the eighteen tasks after them met the rest. Six
-items are new: AJ to AM from the spike and the tasks (spikes/NOTES.md
-rules 104, 107 and 108, and the measurement behind AK), and AN and AO,
-found on 2026-11-13 (rules 109 and 110).
+Phase 5a (docs/design.md D81 to D84) ran six checks against
+2026.11.04.7026 before the code (spikes/phase5/; each program's header
+holds its command, output and verdict), and the work after them met the
+rest. Six items are new: AJ to AM from the spike and that work
+(spikes/NOTES.md rules 104, 107 and 108, and the measurement behind AK),
+and AN and AO, found on 2026-11-13 (rules 109 and 110).
 
 ### AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError
 
@@ -3579,8 +3578,8 @@ and one report.
 
 ### AK. The C of a very large program needs more memory to compile than its front end
 
-Spike item 6 bundled 196 of the framework's test programs (61,000 lines of
-Ruby) into one. Spinel's front end, every rule included, passed in about
+Spike item 6 (spikes/phase5/bundle_suite.sh) bundled 196 of the
+framework's test programs (61,000 lines of Ruby) into one. Spinel's front end, every rule included, passed in about
 6.5 minutes at about 1.65 GB resident and wrote 87.6 MB of C (1.17 million
 lines). Compiling that C at the default -O2, split into units compiled in
 parallel, ran for about 21 minutes and was killed by the memory cgroup's
@@ -3631,9 +3630,9 @@ rate.
   (rule 105). Not a defect: rule 84's refusal by design has no
   instance-method counterpart to rely on.
 - A Ruby-source `def self.now` on `Time` overrides the builtin at every
-  call site, framework files included (spike item 1), and methods named
-  like builtin Time methods on another class leave a boxed Time working
-  (rule 106).
+  call site, framework files included (spikes/phase5/time_now.rb), and
+  methods named like builtin Time methods on another class leave a boxed
+  Time working (rule 106).
 - `rescue Exception => e` in a yielding method catches ScriptError and
   NotImplementedError as CRuby does; rule 47's `is_a?` half did not
   reproduce for its own example (its status row).

@@ -1,5 +1,5 @@
 ---
-source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
+source_sha256: 8ba2e62d2c362f35699ce82fb776cd00bb7db9b0a602c62f2116c8bfffb91dee
 ---
 # Tester une application
 
@@ -209,8 +209,10 @@ feraient qu’une dans un seul programme&nbsp;: déplacez une aide partagée dan
 
 Les tests tournent sur `storage/test.sqlite3`, que le programme supprime et
 migre à nouveau à chaque exécution&nbsp;; `CYBERTRAIN_TEST_DATABASE` désigne
-un autre fichier à la place. Comme le programme supprime le fichier sur lequel
-il teste, il marque chaque base qu’il crée (`PRAGMA application_id`, une
+un autre fichier à la place. Un `CYBERTRAIN_ENV` ou un `CYBERTRAIN_DATABASE`
+exporté n’est pas lu&nbsp;: le programme tourne toujours dans l’environnement
+de test, et `CYBERTRAIN_DATABASE` ne choisit pas le fichier. Comme le
+programme supprime le fichier sur lequel il teste, il marque chaque base qu’il crée (`PRAGMA application_id`, une
 valeur à lui) et ne supprime ou ne vide un fichier existant que s’il porte
 cette marque, s’il est le `storage/test.sqlite3` de cette application (quelle
 que soit l’écriture du chemin) ou s’il est vide. Tout autre fichier est refusé

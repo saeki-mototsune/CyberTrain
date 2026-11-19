@@ -1962,7 +1962,7 @@ from CRuby that is still there (the status table classifies each); record
      `Test::BUILTIN_PARENTS` and the `Errno::` prefix
      (cybertrain/test/assertions.rb), and fails naming a built-in class it
      does not know rather than ending in that NoMethodError (phase 5a
-     spike item 4 and Task 7, 2026-11-12; spikes/phase5/assert_raises.rb,
+     spike item 4, 2026-11-12; spikes/phase5/assert_raises.rb,
      test/assertions.rb; docs/spinel-feedback.md AJ). `rescue Exception
      => e` in a yielding method catches every class probed, ScriptError
      and NotImplementedError included.
@@ -1976,7 +1976,7 @@ from CRuby that is still there (the status table classifies each); record
      a yielding method catches. Rule 84's refusal is for class methods;
      this instance-method counterpart is not a guard an API can rely on,
      so `1.month` is documented as failing when it runs (phase 5a spike
-     item 2 and Task 4, 2026-11-12, Spinel 2026.11.04.7026;
+     item 2, 2026-11-12, Spinel 2026.11.04.7026;
      spikes/phase5/durations_month.rb, test/durations_refused.rb).
 
 106. A method named like a builtin `Time` instance method (`hour`, `day`,
