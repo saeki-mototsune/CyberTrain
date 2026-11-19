@@ -6,7 +6,7 @@
 # was written that way when the `openssl` package was linked only into
 # programs that asked for it; `require "cybertrain"` now loads
 # cybertrain/encryptor.rb, and so openssl, in every program (the encrypted
-# session, spec section 5.1), but this file needs neither and stays usable
+# session, docs/design.md D61), but this file needs neither and stays usable
 # on its own. {Crypto.derive_key} turns `secret_key_base` into one 32-byte
 # key per purpose (the session, signed cookies, encrypted cookies), so no
 # two uses share a key. The derivation input carries a fixed prefix

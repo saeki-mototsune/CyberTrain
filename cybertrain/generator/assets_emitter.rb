@@ -4,7 +4,7 @@ require "cybertrain/generator/views_emitter"
 
 module Cybertrain
   module Gen
-    # Writes gen/assets.rb (spec sections 7.1 and 7.3): Gen::Assets with
+    # Writes gen/assets.rb (docs/design.md D63): Gen::Assets with
     # digest_path (a `case` from logical to digested path, "" for an
     # unknown name), the import map as compact JSON, the preloaded paths,
     # and the resolver handed to Cybertrain::Assets.install. And

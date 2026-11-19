@@ -233,7 +233,7 @@ module Cybertrain
     end
 
     # Makes controller methods callable from this controller's templates
-    # (spec 4.3). A declaration only: `spin run gen` reads the names.
+    # (docs/design.md D60). A declaration only: `spin run gen` reads the names.
     # @example
     #   helper_method :current_user, :admin?
     # @param names [Array<Symbol>]
@@ -258,7 +258,7 @@ module Cybertrain
       nil
     end
 
-    # This controller's own Content Security Policy (spec C-5): a copy of
+    # This controller's own Content Security Policy: a copy of
     # the nearest ancestor's, or of the application's
     # (Config#content_security_policy, declared in config/app.rb, which
     # loads first), yielded at once to the block and kept for this class
@@ -629,7 +629,7 @@ module Cybertrain
       raise UnknownCallback, msg
     end
 
-    # Whether `name` is one of this controller's helper methods (spec 4.3):
+    # Whether `name` is one of this controller's helper methods:
     # gen/controllers.rb overrides it with a `case` over the names of the
     # controller's `helper_method` lines and its concerns', then `super`.
     # Called on self, never through a stored block.

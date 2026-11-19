@@ -145,7 +145,7 @@ module Cybertrain
     end
 
     # Written by gen/concerns.rb (`spin run gen`) around the `included`
-    # body of a model concern it splices into this class (spec 4.2):
+    # body of a model concern it splices into this class (docs/design.md D60):
     # until {.model_concern_insert_done}, the rules its `validates` calls
     # declare go before the model's own call number `validators_index`
     # (the count of the model's `validates` calls above the `include`
@@ -512,7 +512,7 @@ module Cybertrain
       return e unless e.nil?
 
       # The dictionary key full_messages and the validators look names
-      # and messages up by ("post", "admin/post"; plan decision D9).
+      # and messages up by ("post", "admin/post").
       e = Errors.new(Inflector.underscore(model_name))
       @errors = e
       e

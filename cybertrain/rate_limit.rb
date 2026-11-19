@@ -29,7 +29,7 @@ module Cybertrain
   # being the client's address or the value of the `by:` method, and
   # `now` {Cache.now}; the `to`-th request of a window is the last one let
   # through, and an exhausted client's `Retry-After` is the rest of the
-  # window, `within - now % within` (plan decision 17). Only the part
+  # window, `within - now % within` (docs/design.md D61). Only the part
   # after the name can come from a client, and a name holds no `:`, so a
   # client cannot pick a key that counts against another limit or
   # controller.
@@ -437,7 +437,7 @@ module Cybertrain
     # redirect), which halts the chain. The key carries the controller's
     # path, so a limit inherited from a parent counts each controller
     # apart, and the declaration's name, so two limits of one controller
-    # count apart (plan decision 17). Public: RateLimitFeature calls it.
+    # count apart. Public: RateLimitFeature calls it.
     # @api private
     def apply_rate_limit(limit)
       condition = limit.if_method

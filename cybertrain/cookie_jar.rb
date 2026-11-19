@@ -1,4 +1,4 @@
-# Cybertrain::CookieJar -- `cookies` in a controller (spec section 5, C-7):
+# Cybertrain::CookieJar -- `cookies` in a controller (docs/design.md D61):
 # plain, permanent, signed and encrypted cookies, as Rails' cookie jar.
 #
 # SessionStore builds one per request (Context#cookie_jar) over the cookies

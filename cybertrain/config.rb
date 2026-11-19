@@ -1437,8 +1437,8 @@ end
       names
     end
 
-    # Declares the application's Content Security Policy (spec section 5,
-    # C-5): yields it to the block, made on the first call. Off by
+    # Declares the application's Content Security Policy (docs/design.md
+    # D61): yields it to the block, made on the first call. Off by
     # default; {ContentSecurityPolicyHeader} writes it on every response,
     # and a controller adjusts its own copy with
     # {Controller.content_security_policy}.
@@ -1471,7 +1471,7 @@ end
 
     # Whether HostAuthorization checks the Host header: always in
     # development, elsewhere only when `CYBERTRAIN_HOSTS` named hosts
-    # (spec C-11; empty means no check, as Rails' production default).
+    # (docs/design.md D61; empty means no check, as Rails' production default).
     # @return [Boolean]
     # @api public
     def host_check?

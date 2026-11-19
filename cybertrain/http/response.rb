@@ -60,8 +60,8 @@ module Cybertrain
     DEFAULT_NOSNIFF = "nosniff"
     DEFAULT_FRAME_OPTIONS = "SAMEORIGIN"
 
-    # The Permissions-Policy every response carries unless it sets its own
-    # (spec C-11): camera, microphone and geolocation off. Application#boot
+    # The Permissions-Policy every response carries unless it sets its own:
+    # camera, microphone and geolocation off. Application#boot
     # installs Config#permissions_policy here; "" sends none.
     @default_permissions_policy = "camera=(), microphone=(), geolocation=()"
 

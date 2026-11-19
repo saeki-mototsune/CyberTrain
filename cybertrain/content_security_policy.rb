@@ -1,5 +1,5 @@
 module Cybertrain
-  # A Content Security Policy (spec section 5, C-5), declared in
+  # A Content Security Policy (docs/design.md D61), declared in
   # `config/app.rb` and, per controller, with `content_security_policy do
   # |p| ... end`. One method per directive, each taking its sources:
   #

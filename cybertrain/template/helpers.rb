@@ -42,7 +42,7 @@ module Cybertrain
       # The keywords turbo_frame_tag and time_tag take.
       TURBO_FRAME_KEYWORDS = %w[src loading target class data]
       TIME_TAG_KEYWORDS = %w[format zone class id title data]
-      # The keywords of the asset tag helpers (spec 7.2).
+      # The keywords of the asset tag helpers (docs/design.md D63).
       STYLESHEET_KEYWORDS = %w[media nonce]
       JAVASCRIPT_INCLUDE_KEYWORDS = %w[nonce]
       IMAGE_TAG_KEYWORDS = %w[alt size class]
@@ -195,7 +195,7 @@ module Cybertrain
             component = @components[depth - 1]
             return component.call_view_method(name.to_sym) if component.view_method?(name)
           end
-          # The controller's helper methods (`helper_method :x`, spec 4.3),
+          # The controller's helper methods (`helper_method :x`),
           # in its templates and the components they render. Outside a
           # request there is no controller, so the name is undefined.
           controller = @controller
@@ -233,7 +233,7 @@ module Cybertrain
       end
 
       # The three checks as class methods too: a controller's generated
-      # call_helper_method (helper_method, spec 4.3) runs them outside
+      # call_helper_method (helper_method) runs them outside
       # these helpers.
       def self.helper_arity!(name, args, min, max)
         n = args.size
@@ -1161,11 +1161,11 @@ module Cybertrain
         ""
       end
 
-      # --- i18n (spec 8) ------------------------------------------------------
+      # --- i18n (docs/design.md D79) -----------------------------------------
 
       # t(key, **options), as Rails' view helper: I18n.t, with a key
       # starting with "." looked up under the rendering template's name
-      # (lazy lookup, plan decision D8: "posts/_form.html.erb" ->
+      # (lazy lookup: "posts/_form.html.erb" ->
       # "posts.form.title"). A key ending in `_html` or `.html` answers
       # its text as HTML, every interpolated value escaped (a SafeString
       # value as it is); any other text is escaped. A missing key answers
@@ -1247,7 +1247,7 @@ module Cybertrain
         out
       end
 
-      # The lazy-lookup scope of a template name (D8, Rails' virtual path):
+      # The lazy-lookup scope of a template name (Rails' virtual path):
       # "posts/index.html.erb" -> "posts.index", "posts/_form.html.erb" ->
       # "posts.form", "__components/card_component.html.erb" ->
       # "card_component", "admin/posts/show" -> "admin.posts.show".
@@ -1291,7 +1291,7 @@ module Cybertrain
         end
         return "#{n} #{word}" if n == 1
         return "#{n} #{text_arg(args, 2, "pluralize")}" if args.size > 2
-        # The English inflector only in English (D11); Rails has no rules
+        # The English inflector only in English; Rails has no rules
         # for other languages either, so the word stays as it is.
         return "#{n} #{word}" unless I18n.base_language(I18n.locale.to_s) == "en"
 
@@ -1312,8 +1312,8 @@ module Cybertrain
 
       # The number helpers are Cybertrain::NumberHelper's, with Rails'
       # keywords: 1234567 -> "1,234,567"; 1234.5 -> "1,234.5". A keyword not
-      # given is the current locale's setting, as Rails' helpers read it
-      # (D11): number.<namespace>.format.<name>, else number.format.<name>
+      # given is the current locale's setting, as Rails' helpers read it:
+      # number.<namespace>.format.<name>, else number.format.<name>
       # (number_to_currency 1234 in ja is "1,234" and the yen sign); the
       # human units and formats are number.human.decimal_units /
       # storage_units.
@@ -1729,7 +1729,7 @@ module Cybertrain
         Html.build_tag("script", attrs, content, true)
       end
 
-      # --- assets (spec 7.2, 7.3) -------------------------------------------
+      # --- assets (docs/design.md D63) ---------------------------------------
 
       # asset_path("logo.svg") -> "/assets/logo-1a2b3c4d.svg" (Assets.path:
       # an unknown name raises in development and test). A URL or a path
@@ -1866,7 +1866,7 @@ module Cybertrain
 
       # javascript_importmap_tags("application"): the import map, a
       # modulepreload link per preloaded pin and the entry point's import,
-      # each with this request's nonce when a policy applies (spec C-5).
+      # each with this request's nonce when a policy applies.
       def javascript_importmap_tags(entry)
         request_bound!("javascript_importmap_tags")
         nonce = nonce_attr(true)

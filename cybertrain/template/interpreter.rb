@@ -129,7 +129,7 @@ module Cybertrain
 
       # The name of the template rendering now ("posts/_form.html.erb",
       # "__components/card_component.html.erb"; "" outside a render): the
-      # template `t` helper's lazy lookup scope (plan decision D8).
+      # template `t` helper's lazy lookup scope.
       # @return [String]
       def current_template_name = @name
 

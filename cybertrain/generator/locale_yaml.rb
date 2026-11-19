@@ -1,8 +1,8 @@
-# The reader of the YAML subset of spec section 8, which gen uses for
+# The reader of a YAML subset (docs/design.md D79), which gen uses for
 # config/locales/**/*.yml (Gen::LocaleYaml.parse(text, path) ->
 # Array<LocaleEntry>, one entry per leaf key, in file order). Hand-written:
-# ruling F1 of the phase 4b pre-flight dropped Psych, and spike item 6a
-# measured this reader on rails-i18n's en.yml and ja.yml.
+# Psych types scalars, which a dictionary must keep as text, and
+# YAML.safe_load refuses rails-i18n's `:year`.
 #
 # What it reads: a leading `---`, a BOM, CRLF, comments, nested block
 # mappings, plain / single-quoted ('' escape) / double-quoted (\n \t \" \\
@@ -10,7 +10,7 @@
 # `-` / `+` chomping, block sequences of scalars (also at the parent key's
 # indentation, as rails-i18n writes them), flow `[a, b]` of scalars, and
 # `~` / `null` / an empty value as "". Every scalar is kept as its text
-# (D4: `3` -> "3", `no` -> "no", `:year` -> ":year"); entry_null tells a
+# (`3` -> "3", `no` -> "no", `:year` -> ":year"); entry_null tells a
 # `~` / `null` / `Null` / `NULL` / empty value from a quoted "". The top-level key must be a
 # locale unless parse's locale_root is false (test/fixtures/*.yml, whose
 # top-level keys are fixture labels).
@@ -59,7 +59,7 @@ module Cybertrain
 
       # parse, also filling `mappings` with each key that holds a nested
       # mapping ("ja.posts") => its line: LocaleScan names that line when
-      # another file gives the key a value (plan decision D4).
+      # another file gives the key a value.
       def self.parse_recording(text, path, mappings, locale_root = true)
         # File.read answers the locale's encoding (US-ASCII under LANG=C):
         # the text is read as UTF-8, as http/query.rb does.

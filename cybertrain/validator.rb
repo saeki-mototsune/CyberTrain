@@ -357,7 +357,7 @@ module Cybertrain
         add_message(record, :blank) if blank
       when :foreign_key
         # 0 is the id of no saved record (Model#id before the first save).
-        # The key stays blank, not Rails' required (plan decision D10).
+        # The key stays blank, not Rails' required.
         add_message(record, :blank) if blank || value == 0
       when :length
         # nil is left to a presence rule, as `length` alone allows it.
@@ -383,8 +383,8 @@ module Cybertrain
     end
 
     # The message: message: when the line gives one, else type's text in
-    # the dictionaries (I18n.error_message, Rails' key chain, plan decision
-    # D10), looked up now, in the current locale. options carry the limit:
+    # the dictionaries (I18n.error_message, Rails' key chain),
+    # looked up now, in the current locale. options carry the limit:
     # count: an Integer (length, which picks the plural form), count_text:
     # numericality's limit as written ("1.5": no plural form). A text's
     # %{value} is the attribute's value, as Rails passes it.

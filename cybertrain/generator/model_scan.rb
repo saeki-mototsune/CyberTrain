@@ -15,7 +15,7 @@ module Cybertrain
     # the attributes of its `validates ..., uniqueness:` calls, with their
     # lines in unique_lines (the emitter refuses an encrypted one).
     #
-    # A model concern (spec 4.2) counts as written at its `include`: the
+    # A model concern counts as written at its `include`: the
     # declarations of its `included` body join the lists above in that
     # place, and its instance methods join defined_methods and
     # view_methods. includes / include_lines / include_validates: the

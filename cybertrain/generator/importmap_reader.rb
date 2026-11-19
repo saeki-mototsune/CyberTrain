@@ -20,7 +20,7 @@ module Cybertrain
       end
     end
 
-    # Reads config/importmap.rb lexically (spec section 7.3), never running
+    # Reads config/importmap.rb lexically (docs/design.md D63), never running
     # it:
     #
     #   pin "application"                                  # application.js

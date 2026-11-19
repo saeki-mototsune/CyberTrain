@@ -3,7 +3,7 @@ require "cybertrain/generator/helper_scan"
 
 module Cybertrain
   module Gen
-    # What the lexical scan found in one concern (spec 4.1): a module of
+    # What the lexical scan found in one concern: a module of
     # app/controllers/concerns (or a module-only file elsewhere under
     # app/controllers) written the Rails way,
     #

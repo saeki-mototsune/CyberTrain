@@ -1,6 +1,6 @@
-# The tests `cybertrain generate authentication` writes (spec section 11,
-# third bullet): Rails-shaped classes that `cybertrain test` runs in one
-# program, on the fixtures of test/fixtures/users.yml, signing in with
+# The tests `cybertrain generate authentication` writes: Rails-shaped
+# classes that `cybertrain test` runs in one program, on the fixtures of
+# test/fixtures/users.yml, signing in with
 # SessionTestHelper#sign_in_as (test/support/session_test_helper.rb, which
 # test/test_helper.rb includes into ActionDispatch::IntegrationTest).
 #

@@ -40,7 +40,7 @@ module Cybertrain
       Router.escape_segment(param(value))
     end
 
-    # A helper's path with its options (spec 2.6, plan decision 14):
+    # A helper's path with its options (docs/design.md D58):
     # `format:` appended as an extension, every other key a query
     # parameter in the order given, then `anchor:` as the fragment.
     #
