@@ -19,6 +19,7 @@
 # Gen::Components.build, which `render component: "card", title: "x"`
 # reaches through Views.component_builder (Spinel has no `send` or
 # `const_get`, spikes/NOTES.md rule 1).
+require "cybertrain/cast"
 require "cybertrain/html"
 require "cybertrain/views"
 require "cybertrain/template/interpreter"
@@ -36,8 +37,7 @@ module Cybertrain
     # overrides it.
     # @api public
     def view_assigns
-      out = { "" => [nil, 0, 0.0, "", true][0] }
-      out.delete("")
+      out = Cast.empty_hash
       out
     end
 
@@ -89,7 +89,7 @@ module Cybertrain
     def render_with(helpers, content, interp)
       engine = Views.configured_engine
       self.content = content
-      env = { "__template_dir" => [nil, 0, 0.0, "", true][3] }
+      env = Cast.empty_hash
       env["__template_dir"] = "__components"
       assigns = view_assigns
       keys = assigns.keys
@@ -192,8 +192,7 @@ module Cybertrain
       out = +""
       i = 0
       while i < @items.size
-        kwargs = { "" => [nil, 0, 0.0, "", true][0] }
-        kwargs.delete("")
+        kwargs = Cast.empty_hash
         kwargs[@keyword] = @items[i]
         kwargs["#{@keyword}_counter"] = i if @counter
         # A fresh local, not the ivar: Spinel refuses an ivar's String
