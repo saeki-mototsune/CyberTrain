@@ -23,6 +23,32 @@ x86_64, Spinel `2026.11.04.7026` (`a2d06115`, GCC 13.3.0), `-O 0` and CRuby
 | `openssl_dispatch.rb` | Rule 62: one boxed String builtin call with OpenSSL |
 | `decimal.rb` | Design D42: exact decimal comparisons and rounding, and Float precision loss |
 
+## Programs added on 2026-11-19
+
+The document review of 2026-11-15 ran one small program per shape for most
+of rules 1 to 50 of NOTES. Those that match CRuby are kept here, grouped
+into eight programs with one commented section per shape; each section says
+which rule it is a shape of and what it leaves out. They were run with
+`run.sh` beside the four above on 2026-11-19, on Linux x86_64, Spinel
+`2026.11.04.7026` (`a2d06115`, GCC 13.3.0), `-O 0` and CRuby 3.3.6, and all
+twelve matched. The `.expected` files are CRuby's output from that run.
+The shapes of one file are compiled as one program, so a mismatch in a
+grouped file may need its section run alone before it says anything about
+its rule.
+
+| Program | Evidence |
+| --- | --- |
+| `dispatch_shapes.rb` | Rules 1 to 6, 30, 31, 40, 42: reflection with non-literal names over two methods, two ivars and two constants; `instance_eval(&blk)` of a block parameter and `instance_exec` with a literal block; a base method calling a subclass-only method; `self.class.foo`; base chain methods returning `self`; `Method` objects in an Array and a Hash; a Symbol passed from a stored block; `yield self` in a base class; `call` with another arity; a lambda as a keyword argument |
+| `type_shapes.rb` | Rules 7 to 11, 14, 26, 29, 34, 35, 37, 39, 41, 43, 46: a Time in an ivar that starts as nil; `when Array` and `when Hash` before `when Time`; unseeded containers; one method name on unrelated classes; `include?` with polymorphic receiver and argument; `obj.attr += x` in a block; `obj[k] = v` behind a chain of `call(env)` objects; a constructing `case` in `+`; an Array `target` beside a String one; `def body=` beside `attr_accessor :body` and a writer calling a cast helper; a String Hash literal given other types and 5,000 small frames on a Thread. For 11 and 37 only the output is compared, not the cost those rules are about |
+| `constant_order.rb` | Rule 17: a constant read before its assignment raises NameError at top level, in a module body and in a class body |
+| `io_shapes.rb` | Rules 19 and 28: STDOUT, STDERR and a StringIO behind one call site; `URI.decode_www_form_component` on malformed escapes |
+| `socket_shapes.rb` | Rules 21 and 27: a socket as a `Thread.new` argument; the encoding of what `readpartial`, `read(n)` and `read_nonblock` return |
+| `socket_bare_readpartial.rb` | Rule 20: a bare `readpartial` at `SPINEL_WORKERS=1` while another thread ticks, decided by a 0.35 s timing window |
+| `rescue_shapes.rb` | Rules 32, 44, 45, 47, 50: `rescue => e` and `ensure` in a yielding method called from nested blocks; `break` and `return` in blocks of yielding methods; `is_a?` after `rescue StandardError` |
+| `json_error_shapes.rb` | Rules 33, 48, 61: JSON's errors against `rescue StandardError`; `JSON::ParserError` as a value and as an argument in a class body |
+
+## Running
+
 Run them with the pinned toolchain, CRuby and the documented OpenSSL
 development libraries configured:
 
@@ -31,8 +57,8 @@ spikes/rechecks/run.sh
 ```
 
 The script prints its output directory first, then runs every probe even
-after one fails, and exits 1 if any did. Each failure names the file that
-holds its output. Each compile and each run is bounded at 180 seconds
+after one fails, and exits 1 if any did. With the twelve programs here it
+takes under a minute. Each failure names the file that holds its output. Each compile and each run is bounded at 180 seconds
 (`RECHECK_TIMEOUT`; `gtimeout` on macOS, unbounded with a note when
 neither exists). Compiler output other than the usual `src -> bin` line is
 flagged as `warn`. A timeout or missing native library
@@ -51,4 +77,8 @@ a passing framework test.
 A failing reduction does not belong in this directory as a `.rb` file,
 because `run.sh` expects every program here to match CRuby. Record it in the
 NOTES status table with its source inline instead, as rule 54's
-`JSON::ParserError` superclass walk is.
+`JSON::ParserError` superclass walk is, and the stored block of rule 2, the
+class used above its definition of rule 17 and the `IO#gets` of rule 27.
+A program that needs the framework on the load path does not belong here
+either, since `run.sh` compiles each file on its own: rule 36's probe is
+inline in its status row for that reason.

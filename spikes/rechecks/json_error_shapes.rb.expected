@@ -1,0 +1,9 @@
+caught by StandardError: JSON::ParserError
+caught by bare rescue: JSON::ParserError
+generate caught by StandardError: JSON::NestingError
+JSON::ParserError
+true
+rescued via value
+true
+handler for JSON::ParserError
+3
