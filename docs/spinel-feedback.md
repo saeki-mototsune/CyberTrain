@@ -2331,9 +2331,9 @@ converting" is the right shape in either mode.
 
 ## Found in phase 2 of the Rails-gap programme (2026-11-06)
 
-The data-layer design (docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md,
-section 14) ran seven checks against 2026.11.04.7026 before any code was
-written; six passed, and this is the one that did not.
+Before the data-layer work (docs/design.md D42 to D50) seven checks were
+compiled against 2026.11.04.7026; six passed, and this is the one that did
+not.
 
 ### Q. A Range of Time or Date raises at construction; a Float Range is not a Range once boxed
 
@@ -2408,8 +2408,7 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 `TypeError` as the literal `t1..t2`, and so does a Range of `Date` ends.
 
 - What CyberTrain does with it (phase 2 of the Rails-gap programme,
-  docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md 3.1 and
-  9.1, delivered 2026-11-07): `where(col: a..b)` (cybertrain/relation.rb)
+  docs/design.md D43 and D48, delivered 2026-11-07): `where(col: a..b)` (cybertrain/relation.rb)
   accepts Integer ends only; any other bound goes through
   `where_between(col, from, to)`, and the validator options
   `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an
