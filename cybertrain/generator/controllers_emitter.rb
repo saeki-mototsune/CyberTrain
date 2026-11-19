@@ -182,7 +182,7 @@ module Cybertrain
       # the concerns it brings in (its ancestors' are reached through
       # `super`), each concern's at its `include` line, in line order.
       def self.layout_decls(info, infos, concerns)
-        decls = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+        decls = ControllerScan.no_layout_decls
         positions = Array.new(0) { 0 }
         info.layouts.each do |d|
           decls << d

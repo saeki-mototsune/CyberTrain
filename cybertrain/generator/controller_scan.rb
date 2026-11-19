@@ -83,7 +83,7 @@ module Cybertrain
         @helper_methods = Array.new(0) { "" }
         @defs = HelperScan.no_helper_defs
         @def_errors = Array.new(0) { "" }
-        @layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+        @layouts = ControllerScan.no_layout_decls
         @rate_limit_refs = ControllerScan.no_rate_limit_refs
       end
 
@@ -153,6 +153,11 @@ module Cybertrain
         Array.new(0) { RateLimitRef.new("", "", "") }
       end
 
+      # An empty list of layout declarations, likewise.
+      def self.no_layout_decls
+        Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+      end
+
       # nil when the source has no `class X < Y` line. When a file defines
       # several classes, the one named after the file wins
       # (posts_controller.rb -> PostsController).
@@ -172,7 +177,7 @@ module Cybertrain
         helper_methods = Array.new(0) { "" }
         defs = HelperScan.no_helper_defs
         def_errors = Array.new(0) { "" }
-        layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+        layouts = ControllerScan.no_layout_decls
         rate_limit_refs = ControllerScan.no_rate_limit_refs
         lines = source.lines
         # The open modules (full names) and their indentation.
@@ -225,7 +230,7 @@ module Cybertrain
               helper_methods = Array.new(0) { "" }
               defs = HelperScan.no_helper_defs
               def_errors = Array.new(0) { "" }
-              layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+              layouts = ControllerScan.no_layout_decls
               rate_limit_refs = ControllerScan.no_rate_limit_refs
               callbacks_above = 0
               rescues_above = 0

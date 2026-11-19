@@ -66,7 +66,7 @@ module Cybertrain
         @rescue_count = 0
         @block_starts = Array.new(0) { 0 }
         @block_ends = Array.new(0) { 0 }
-        @concern_layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+        @concern_layouts = ControllerScan.no_layout_decls
         @concern_rate_limit_refs = ControllerScan.no_rate_limit_refs
       end
 
