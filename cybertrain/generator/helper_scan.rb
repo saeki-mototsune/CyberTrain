@@ -105,10 +105,16 @@ module Cybertrain
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/
       DEF_LINE = /\A\s*def\s+([a-z_]\w*[?!]?)(.*)\z/m
 
+      # An empty list of helper definitions (a new Array each call): the
+      # one place that spells the element type out for the compiler.
+      def self.no_helper_defs
+        Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+      end
+
       # Every module under dir (recursively, sorted by file), checked for a
       # helper name defined twice.
       def self.scan_dir(dir)
-        modules = Array.new(0) { HelperModule.new("", "", Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }) }
+        modules = Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
         SourceText.ruby_files(dir).each do |path|
           scan_source(path, File.read(path)).each { |m| modules << m }
         end
@@ -126,7 +132,7 @@ module Cybertrain
         # whether each one holds another module.
         names = Array.new(0) { "" }
         indents = Array.new(0) { 0 }
-        found = Array.new(0) { HelperModule.new("", "", Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }) }
+        found = Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
         wraps = Array.new(0) { false }
         skip_indent = -1
         in_private = false
@@ -160,13 +166,13 @@ module Cybertrain
             wraps[wraps.size - 1] = true unless wraps.empty?
             full = names.empty? ? m[1].to_s : "#{names.last}::#{m[1]}"
             if SourceText.one_line_block?(line)
-              found << HelperModule.new(full, file, Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") })
+              found << HelperModule.new(full, file, HelperScan.no_helper_defs)
               wraps << false
               next
             end
             names << full
             indents << indent
-            found << HelperModule.new(full, file, Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") })
+            found << HelperModule.new(full, file, HelperScan.no_helper_defs)
             wraps << false
             in_private = false
             next
@@ -213,7 +219,7 @@ module Cybertrain
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
         end
-        kept = Array.new(0) { HelperModule.new("", "", Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }) }
+        kept = Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
         found.each_with_index do |mod, j|
           kept << mod if !wraps[j] || !mod.defs.empty?
         end

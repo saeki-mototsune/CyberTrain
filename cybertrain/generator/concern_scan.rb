@@ -60,7 +60,7 @@ module Cybertrain
         @include_line_numbers = Array.new(0) { 0 }
         @concern_ivars = Array.new(0) { "" }
         @concern_callbacks = Array.new(0) { "" }
-        @concern_defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        @concern_defs = HelperScan.no_helper_defs
         @concern_def_errors = Array.new(0) { "" }
         @callback_count = 0
         @rescue_count = 0

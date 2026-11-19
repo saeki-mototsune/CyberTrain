@@ -81,7 +81,7 @@ module Cybertrain
         @method_lines = method_lines
         @module_prefix = module_prefix
         @helper_methods = Array.new(0) { "" }
-        @defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        @defs = HelperScan.no_helper_defs
         @def_errors = Array.new(0) { "" }
         @layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
         @rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
@@ -164,7 +164,7 @@ module Cybertrain
         method_names = Array.new(0) { "" }
         method_lines = Array.new(0) { 0 }
         helper_methods = Array.new(0) { "" }
-        defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        defs = HelperScan.no_helper_defs
         def_errors = Array.new(0) { "" }
         layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
         rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
@@ -217,7 +217,7 @@ module Cybertrain
               method_names = Array.new(0) { "" }
               method_lines = Array.new(0) { 0 }
               helper_methods = Array.new(0) { "" }
-              defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+              defs = HelperScan.no_helper_defs
               def_errors = Array.new(0) { "" }
               layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
               rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
