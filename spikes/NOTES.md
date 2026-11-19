@@ -798,7 +798,19 @@ from CRuby that is still there (the status table classifies each); record
     (both nil) and a class-method `setup` that only raises compiled beside
     `CLI::Toolchain.setup` (an Integer), all called, and a test file's
     top-level `last_message` answering an Array beside `Test.last_message`
-    answering a String. The rule stands for new code; these are records.
+    answering a String. In phase 3 (2026-11-09, same build) a spike
+    compiled and ran stand-ins of the cache's class methods beside the
+    framework's existing methods of the same names with other return
+    types, in one program that required the whole framework: `Cache.read`
+    (String or nil) beside `BlobStore.read` (String), `Cache.write`
+    (Boolean) beside `BlobStore.write` (nil), `Cache.delete` (Boolean)
+    beside `Session#delete` (String or nil), and `HttpClient#request`
+    beside `Test::Client#request`, each answering its own Response class.
+    The framework ships them that way: every program that requires
+    `cybertrain` holds the first three pairs, and an application's test
+    program the fourth. If a compiler update refuses one, the remedy is a
+    prefixed name (`cache_read`), as `Sse::Event`'s readers already are
+    (`event_data`). The rule stands for new code; these are records.
 35. Mutating an object received as a plain parameter through `obj[k] = v` can
     silently do nothing once the caller sits behind a middleware chain (the
     parameter widened); put the mutation in a typed instance method on the
@@ -1710,7 +1722,7 @@ from CRuby that is still there (the status table classifies each); record
     returns the status (`Roles::FeedsRunner#run_feeds_threads`,
     cybertrain/roles/feeds.rb; the flag is in
     cybertrain/background/supervisor.rb). `Thread#join` on a thread that
-    died of an exception re-raises it, as under CRuby (spike 3 of phase 3),
+    died of an exception re-raises it, as under CRuby (checked in phase 3, 2026-11-09),
     so the framework joins feed and supervisor threads in plain methods
     that rescue `Exception` (rules 32 / 45).
 

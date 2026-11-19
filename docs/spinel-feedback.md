@@ -2444,9 +2444,11 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 
 ## Found in phase 3 of the Rails-gap programme (2026-11-09)
 
-The jobs-and-outbound design (docs/superpowers/specs/2026-11-07-phase3-jobs-outbound-design.md,
-section 14) ran six checks against 2026.11.04.7026 before any code was
-written; all six passed, and this was found while writing the second.
+Before the jobs-and-outbound work (docs/design.md D51 to D57) six checks
+were run against 2026.11.04.7026 (cron over a DST change, `rescue` arms
+for application classes, respawning a dead thread, the HTTP client with
+zlib linked, a multipart mail, and same-named methods on distinct
+receivers); all six passed, and this was found while writing the second.
 
 ### R. A `rescue` arm naming a qualified class the program does not define
 
