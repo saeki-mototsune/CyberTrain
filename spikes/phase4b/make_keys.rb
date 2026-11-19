@@ -1,4 +1,4 @@
-# Phase 4b spike, item 6 (spec section 12): writes the 2,000-key data the
+# Phase 4b spike, item 6: writes the 2,000-key data the
 # other programs read, so they can be regenerated. CRuby only; a record,
 # not a test.
 #

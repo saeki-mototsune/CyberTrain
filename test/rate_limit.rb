@@ -9,8 +9,8 @@ require "cybertrain/test/client"
 # Controller.rate_limit and Cybertrain::RateLimit (issue #70), through
 # Cybertrain::Test::Client: the per-process counter of `store: :memory`
 # (the first controllers), then the default store, counts kept in
-# Cybertrain::Cache in fixed windows aligned to the epoch (plan decision
-# 17), with by:, with:, if:/unless: and name:. The controllers write by
+# Cybertrain::Cache in fixed windows aligned to the epoch (docs/design.md
+# D61), with by:, with:, if:/unless: and name:. The controllers write by
 # hand the rate_limit_key / rate_limit_condition? / run_callback tables
 # `spin run gen` writes for an application. cybertrain/controller pulls in
 # the SQLite FFI bindings, so the snapshot comes from the compiled binary

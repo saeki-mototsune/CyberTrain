@@ -203,8 +203,8 @@ fixtures_missing = fixture_taken - Cybertrain::Gen::FixtureScan::TAKEN_NAMES
 # One return type per method name across the program (spikes/NOTES.md
 # rules 10, 34 and 41): a name that more than one class defines, or that a
 # later phase gives a new home, has a row here naming every file allowed to
-# `def` it (instance or `def self.`), today's definers and the homes the
-# phase 4a and 4b plans give it (seeded once per phase, so tasks running in
+# `def` it (instance or `def self.`), today's definers and the homes
+# phases 4a and 4b gave it (seeded once per phase, so tasks running in
 # parallel never edit the table; a name the plan did not foresee is added
 # by its task). A
 # `def` of a listed name in any other file under cybertrain/ fails the
@@ -235,7 +235,7 @@ NAME_HOMES = {
   "rescue_from" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "helper_method" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   # What gen/concerns.rb calls around a model concern's spliced `included`
-  # body (spec 4.2); both return nil.
+  # body; both return nil.
   "model_concern_insert_at" => %w[cybertrain/model.rb],
   "model_concern_insert_done" => %w[cybertrain/model.rb],
   # Controller#cookies is the CookieJar; Response#cookies the Set-Cookie
@@ -288,14 +288,14 @@ NAME_HOMES = {
   # Controller#send_data(data, filename:, ...) answers a download; the
   # Mailer's SMTP connection writes raw bytes with its own send_data(data).
   "send_data" => %w[cybertrain/controller.rb cybertrain/mailer.rb],
-  # Phase 4b (plan decision R5): i18n. A String lookup and an Array lookup
+  # Phase 4b: i18n. A String lookup and an Array lookup
   # are separate names (I18n.t / translate -> String, translate_list ->
   # Array<String>; Gen::Locales.lookup -> String or nil, lookup_list ->
   # Array<String>). I18n.t and Controller#t both answer a String.
   # `locale_available?` (and `admin?` below) have no row: the `def` line
-  # pattern stops before a `?` name, so a row would check nothing (phase
-  # 4b pre-flight finding 21). If Task 4 takes spike 6c's fallback
-  # (Controller#locale), it adds cybertrain/controller.rb to `locale`.
+  # pattern stops before a `?` name, so a row would check nothing. The
+  # locale is a thread-local, not a Controller method (docs/design.md
+  # D79), so `locale` needs no cybertrain/controller.rb.
   "t" => %w[cybertrain/i18n.rb cybertrain/controller.rb],
   "translate" => %w[cybertrain/i18n.rb cybertrain/controller.rb],
   "l" => %w[cybertrain/i18n.rb],
@@ -342,7 +342,7 @@ NAME_HOMES = {
   "reset" => %w[cybertrain/cli/authentication.rb],
   # Every CLI generator's `generate` answers the paths it created
   # (Array<String>). A generator that needs to answer more takes a new
-  # name, as phase 4b's do (pre-flight finding 3): the signed token is
+  # name, as phase 4b's do: the signed token is
   # Token.issue (cybertrain/token.rb), and the authentication generator's
   # GenerateResult comes from Authentication.generate_with_result, which
   # cli.rb calls, beside Authentication.generate.

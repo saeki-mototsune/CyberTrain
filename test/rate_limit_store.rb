@@ -8,7 +8,7 @@ require "cybertrain/middleware/session_store"
 require "cybertrain/test/client"
 
 # A rate_limit's default store keeps its counts in Cybertrain::Cache, so
-# two processes on one database count together (plan decision 17). This
+# two processes on one database count together (docs/design.md D61). This
 # program runs itself again as a child (RATE_LIMIT_CHILD=1), which makes
 # two requests to the limited action and exits; then the parent, on the
 # same SQLite file, has only the rest of the window's allowance. Both

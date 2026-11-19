@@ -3,7 +3,7 @@ require "cybertrain/cli"
 require "cybertrain/test"
 
 # `cybertrain generate authentication` run again over an application an
-# older generator wrote (spec §14, D19): test/fixtures/auth_04_app, a
+# older generator wrote (docs/design.md D80): test/fixtures/auth_04_app, a
 # sign-up application v0.4.1 generated (its SOURCE says how), copied to a
 # temporary directory per test. The missing files and the add-columns
 # migration are written; each file the generator writes whole that exists

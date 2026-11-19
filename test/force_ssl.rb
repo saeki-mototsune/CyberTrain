@@ -1,4 +1,4 @@
-# Config#force_ssl (spec C-11, plan decision 21): SslRedirect sends http
+# Config#force_ssl (docs/design.md D61): SslRedirect sends http
 # to https (301 for GET and HEAD, 307 otherwise) with the path and query
 # kept and the host taken from a valid Host only; an https request (by
 # X-Forwarded-Proto) gets Strict-Transport-Security; the health path is

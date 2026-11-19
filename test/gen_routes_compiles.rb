@@ -147,8 +147,8 @@ test "path_for resolves helpers by name" do
   assert_equal "missing route parameter", assert_raises("ArgumentError") { Gen::Routes.path_for("post_path", []) }
 end
 
-# The generated helpers, called the way a controller calls them (plan
-# decisions 13 and 14, spec 2.6).
+# The generated helpers, called the way a controller calls them
+# (docs/design.md D58).
 class HelperProbe
   include ::Gen::UrlHelpers
 end

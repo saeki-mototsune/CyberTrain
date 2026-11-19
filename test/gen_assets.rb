@@ -4,7 +4,7 @@ require "cybertrain/test"
 require "cybertrain/generator"
 require_relative "fixtures/assets_app/gen/assets"
 
-# Assets at gen time (spec section 7.1, 7.3): digests, CSS url() rewriting,
+# Assets at gen time (docs/design.md D63): digests, CSS url() rewriting,
 # three kept versions under public/assets, the import map and gen/assets.rb.
 # Runs on a copy of test/fixtures/assets_app in a temporary directory, so
 # public/assets and the edited sources never touch the checked-in fixture.
@@ -105,8 +105,8 @@ test "a logical path under two roots is refused" do
   assert_equal "asset application.js is both app/javascript/application.js and vendor/javascript/application.js", message
 end
 
-# url() resolves against the CSS file's logical directory (Propshaft; ruling
-# F28): from application.css, "logo.svg" and "/logo.svg" are the image, and
+# url() resolves against the CSS file's logical directory (Propshaft):
+# from application.css, "logo.svg" and "/logo.svg" are the image, and
 # "../images/logo.svg" climbs out of the logical root, so it is not an asset.
 test "url() suffixes, quotes and non-asset references" do
   css, warnings = rewrite(%(a{b:url("logo.svg")} c{d:url(x.woff2?v=3#iefix)} e{f:url(data:image/png;base64,AA)} g{h:url(https://cdn/x.png)} i{j:url(#clip)} k{l:url(missing.png)} m{n:url( '/logo.svg' )} o{p:url(%23x)} q{r:url(//cdn/y.png)}))

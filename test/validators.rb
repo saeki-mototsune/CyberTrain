@@ -437,7 +437,7 @@ test "a Time is neither a list for in: nor a member of one" do
 end
 
 # Last: it adds rules to Thing. What gen/concerns.rb writes for a model
-# concern (spec 4.2): the index counts the model's own `validates` calls
+# concern: the index counts the model's own `validates` calls
 # above the `include`, however many rules each call made.
 def thing_rules
   Cybertrain::Model.validators_for("Thing").map { |v| "#{v.attr}:#{v.kind}" }
