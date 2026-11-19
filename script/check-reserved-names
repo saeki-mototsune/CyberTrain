@@ -638,8 +638,7 @@ else
          "or add the file to the row if it returns the same type"
   end
   unless home_rows_missing.empty?
-    warn "check-reserved-names: NAME_HOMES has no row for #{home_rows_missing.map(&:inspect).join(", ")} " \
-         "(a candidate name of the phase 4a or 4b plan); add one"
+    warn "check-reserved-names: NAME_HOMES has no row for #{home_rows_missing.map(&:inspect).join(", ")}; add one"
   end
   unless fixtures_missing.empty?
     warn "check-reserved-names: the test harness defines #{fixtures_missing.map(&:inspect).join(", ")} " \

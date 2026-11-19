@@ -2410,7 +2410,7 @@ test "--confirmable writes the confirmation files and columns" do
   same.each { |f| assert_equal read("shop/#{f}").gsub("SHOP_", "CONF_").gsub("./shop ", "./conf "), read("conf/#{f}") }
 end
 
-test "--confirmable confirms the users nothing mails: the user command's and /setup's (pre-flight finding 6)" do
+test "--confirmable confirms the users nothing mails: the user command's and /setup's" do
   # The user command, in sign-up mode too.
   command = read("conf/app/commands/user_command.rb")
   assert_includes command, "    user.password = password\n    # A user made here gets no mail with a link: the address counts as\n" \

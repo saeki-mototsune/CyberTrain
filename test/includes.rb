@@ -172,7 +172,7 @@ test "includes with no names, or a name twice, changes nothing" do
   assert_equal 3, statements - before
 end
 
-test "an empty result runs only its own statement (Review Focus 4)" do
+test "an empty result runs only its own statement" do
   seed_posts
   before = statements
   assert_equal 0, Post.where(id: -1).includes(:comments).to_a.size

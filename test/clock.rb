@@ -175,7 +175,7 @@ def seam_scanned?(path)
   !path.include?("/build/") && !path.include?("/tmp/")
 end
 
-test "the log line's time follows each write of the clock (plan D2)" do
+test "the log line's time follows each write of the clock" do
   Cybertrain::Clock.travel_to(Time.utc(2026, 11, 11, 12, 0, 5))
   assert_equal "2026-11-11T12:00:05.000Z", Cybertrain::Logger.timestamp
   Cybertrain::Clock.travel_during(Time.utc(2030, 1, 1)) do

@@ -6,7 +6,7 @@ require "cybertrain/blob_store"
 # Cybertrain::BlobStore against a temporary root: a binary round-trip, file
 # modes, the shard directory, key validation and the symlink rule. Data is
 # compared by bytesize, getbyte and SHA-256, never with == (the bytes are
-# binary; spikes/NOTES.md rule 60 and docs/design.md D16).
+# binary; spikes/NOTES.md rule 60).
 
 ROOT = Dir.mktmpdir("cybertrain-blob-store")
 Cybertrain::BlobStore.root = "#{ROOT}/uploads/nested"
