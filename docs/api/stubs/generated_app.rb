@@ -1150,7 +1150,7 @@ module Admin
     end
 
     # Whether a template's receiverless call `name` is one of this
-    # controller's helper methods (`helper_method :admin?`, spec 4.3);
+    # controller's helper methods (`helper_method :admin?`);
     # a name it does not declare goes to the parent's table.
     # @param name [String]
     # @return [Boolean]
@@ -1181,7 +1181,7 @@ module Admin
     end
 
     # The key of a `rate_limit ..., by: :account_key` line of this
-    # controller or of its concerns' `included` blocks (spec C-4): the
+    # controller or of its concerns' `included` blocks: the
     # method's value as a String; a name it does not know goes to the
     # parent's table. A `rate_limit` line's `with:` method is an arm of
     # `run_callback`.
@@ -1228,7 +1228,7 @@ module Gen
   # percent-encoded as one segment. nil raises `ArgumentError "missing route
   # parameter"`. `*_url` prepends {Cybertrain.url_root}.
   #
-  # Keywords after them land in the trailing `options` Hash (spec 2.6):
+  # Keywords after them land in the trailing `options` Hash:
   # `format:` adds an extension, `anchor:` a fragment, and every other key
   # becomes a query parameter, in the order given, escaped. A nil value
   # leaves its key out, an Array gives `key[]=v` per element, a Hash raises
