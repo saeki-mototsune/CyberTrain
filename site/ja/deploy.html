@@ -118,9 +118,9 @@
 <span class="ln">                                       └─ storage/production.sqlite3</span></code></pre>
 </figure>
     <ul class="points">
-      <li><strong>システムの SQLite と libc にリンクします。</strong>そのため、動かすマシンと同じ OS・CPU でビルドします。Kamal の構成のように Docker イメージの中でビルドすれば、これは自動的に満たされます。</li>
+      <li><strong>システムの SQLite・zlib・OpenSSL と libc にリンクします。</strong>そのため、動かすマシンと同じ OS・CPU でビルドします。Kamal の構成のように Docker イメージの中でビルドすれば、これは自動的に満たされます。</li>
       <li><strong>話すのは素の HTTP/1.1 だけです。</strong>TLS と HTTP/2 はリバースプロキシの役目です。本番ではセッション cookie が <code>Secure</code> なので、HTTPS で配信しないとフォームが <code>Invalid authenticity token</code> で失敗します。</li>
-      <li><strong>データベースは SQLite のファイル 1 つです。</strong>1 台のサーバーで 1 プロセスとして動かし、ファイルはデプロイをまたいで残る場所に置きます。</li>
+      <li><strong>データベースは SQLite のファイル 1 つです。</strong>1 台のサーバーで動かし、ファイルはデプロイをまたいで残る場所に置きます。そのサーバーの中では複数のプロセスがファイルを共有できます。ジョブ用の <code>worker</code> や、Linux なら同じポートで待ち受けるサーバープロセスの追加です。</li>
       <li><strong>既定で本番モードです。</strong><code>CYBERTRAIN_SECRET_KEY_BASE</code> がないと起動しません。<code>./blog migrate</code> はバイナリに組み込まれたマイグレーションを適用します。</li>
     </ul>
   </section>
@@ -137,11 +137,11 @@
         <tr><td data-label="">静的ファイル</td><td data-label="Kamal">アプリが <code>public/</code> を返す</td><td data-label="systemd と Caddy">Caddy が <code>dist/public/</code> を直接返す</td></tr>
         <tr><td data-label="">デプロイ</td><td data-label="Kamal">新しいコンテナはヘルスチェックに通ってからトラフィックを受ける：接続は拒否されない</td><td data-label="systemd と Caddy">再起動：数秒間 Caddy の 500.html が出る</td></tr>
         <tr><td data-label="">ロールバック</td><td data-label="Kamal"><code>kamal rollback VERSION</code></td><td data-label="systemd と Caddy"><code>current</code> を前のリリースに向けて再起動</td></tr>
-        <tr><td data-label="">サーバーに必要なもの</td><td data-label="Kamal">SSH と Docker（<code>kamal setup</code> が入れる）、それにイメージのレジストリ</td><td data-label="systemd と Caddy">Ruby、C ツールチェーン、SQLite のヘッダ、<code>cybertrain</code> CLI、Spinel</td></tr>
+        <tr><td data-label="">サーバーに必要なもの</td><td data-label="Kamal">SSH と Docker（<code>kamal setup</code> が入れる）、それにイメージのレジストリ</td><td data-label="systemd と Caddy">Ruby、C ツールチェーン、SQLite・zlib・OpenSSL のヘッダ、<code>cybertrain</code> CLI、Spinel</td></tr>
       </tbody>
     </table>
     </div>
-    <p class="note">どちらでも、アプリは 1 台のサーバー上の 1 プロセスと、その SQLite ファイルです。</p>
+    <p class="note">どちらでも、アプリとその SQLite ファイルは 1 台のサーバーにあります。</p>
   </section>
 
   <section class="step" id="kamal" aria-labelledby="h-kamal">
@@ -164,7 +164,7 @@
     <ul class="points">
       <li>デプロイのたびにイメージをビルドして（Spinel は初回のあと Docker のレイヤーキャッシュに残ります）push し、コンテナを起動します。コンテナは <code>./blog migrate</code> を実行してから、<code>exec ./blog</code> で <code>0.0.0.0:3000</code> を待ち受けます。</li>
       <li>kamal-proxy は <code>/up.html</code> が 200 を返すまで待ってからトラフィックを新しいコンテナに切り替え、古いコンテナを止めます。古いコンテナは <code>SIGTERM</code> を受けて、処理中のリクエストを終えてから終了します。</li>
-      <li>データベースは <code>/app/storage</code> にマウントされたボリューム <code>blog_storage</code> にあるので、デプロイしても残ります。</li>
+      <li>データベースとアップロードされたファイルは <code>/app/storage</code> にマウントされたボリューム <code>blog_storage</code> にあるので、デプロイしても残ります。</li>
       <li><code>builder.arch</code> はサーバーの CPU に合わせます。Spinel はイメージの中でコンパイルされるので、別のアーキテクチャ向けにエミュレーションでビルドすると遅くなります。その場合は <code>builder.remote</code> でサーバー上でビルドします。</li>
     </ul>
     <p class="note">ボリュームのバックアップまで含めた手順は <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a> にあります。<a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> にも同じ設定が入っていて、CI がそのイメージをビルドして動作を確かめています。</p>
@@ -210,7 +210,7 @@
     <table class="env">
       <thead><tr><th scope="col">変数</th><th scope="col">本番では</th></tr></thead>
       <tbody>
-        <tr><td data-label="変数"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="本番では">必須。セッション cookie に署名します。変えると全員がログアウトされます。<code>openssl rand -hex 32</code> で一度だけ作ります</td></tr>
+        <tr><td data-label="変数"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="本番では">必須。セッション cookie を暗号化します。変えると全員がログアウトされます。<code>openssl rand -hex 32</code>（または <code>cybertrain secret</code>）で一度だけ作ります</td></tr>
         <tr><td data-label="変数"><code>CYBERTRAIN_DATABASE</code></td><td data-label="本番では">SQLite のファイル。既定は作業ディレクトリの <code>storage/production.sqlite3</code>。リリースの外に置きます</td></tr>
         <tr><td data-label="変数"><code>CYBERTRAIN_HOST</code></td><td data-label="本番では">既定は <code>127.0.0.1</code> で、同じマシンのプロキシの後ろならこれで正しい。コンテナでは <code>0.0.0.0</code></td></tr>
         <tr><td data-label="変数"><code>PORT</code></td><td data-label="本番では">既定は <code>3000</code>。プロキシの転送先</td></tr>
@@ -218,7 +218,7 @@
       </tbody>
     </table>
     </div>
-    <p class="note">チュートリアルの<a href="tutorial.html#ship">デプロイ用にビルドする</a>ステップに、すべての変数と対応する <code>config/app.rb</code> の属性があります。</p>
+    <p class="note">すべての変数と対応する <code>config/app.rb</code> の属性は、<a href="guide/configuration.html#configuration-and-environment-variables">設定</a>のガイドにあります。</p>
   </section>
 
   <section class="step" id="operate" aria-labelledby="h-operate">
@@ -229,6 +229,7 @@
       <li><strong>バックアップは SQLite の <code>.backup</code> で取ります。</strong>ファイルのコピーではなく：アプリが書き込んでいる間でも一貫したコピーが取れます。</li>
       <li><strong>マイグレーションをまたいでロールバックする</strong>ときは、切り替える前に、新しい方のリリースから <code>db rollback</code> でデータベースも戻します。</li>
       <li><strong>停止は丁寧です：</strong><code>SIGTERM</code> を受けると新しい受け付けを止め、処理中のリクエストを終えて終了します。長くても 10 秒です。</li>
+      <li><strong>1 つのバイナリに複数の役割。</strong>ジョブのサブシステムを読み込んでいれば、<code>./blog worker</code> が HTTP なしでジョブと定期タスクを動かします。フィードのサブシステムがあれば、<code>./blog feeds</code> が WebSocket の購読を動かします。<code>GET /up</code> は、データベース、ワーカー、フィードのどれかが正常でないときに 503 を返します。<a href="guide/background-and-operations.html#process-roles">プロセスの役割</a>。</li>
     </ul>
   </section>
 
