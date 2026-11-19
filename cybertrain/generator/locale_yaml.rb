@@ -48,6 +48,12 @@ module Cybertrain
     end
 
     module LocaleYaml
+      # An empty list of entries (a new Array each call): the one place
+      # that spells the element type out for the compiler.
+      def self.no_locale_entries
+        Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
+      end
+
       # The entries of one dictionary file, in file order. With
       # locale_root false any plain key may be at the top (a fixture file's
       # labels).

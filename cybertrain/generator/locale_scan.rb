@@ -22,7 +22,7 @@ module Cybertrain
       # given), which name themselves relative to root in entries and
       # refusals.
       def self.merge_files(root, files)
-        out = Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
+        out = LocaleYaml.no_locale_entries
         at = { "" => 0 }
         at.delete("")
         mapping_at = { "" => "" }
