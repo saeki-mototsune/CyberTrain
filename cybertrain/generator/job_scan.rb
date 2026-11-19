@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/model_scan"
 
@@ -229,14 +230,14 @@ module Cybertrain
       # file's classes in line order.
       def self.scan_dir(dir)
         infos = Array.new(0) { empty_info }
-        jobs = ControllerScan.ruby_files(dir)
+        jobs = SourceText.ruby_files(dir)
         return infos if jobs.empty?
 
         app = File.dirname(dir)
         base_file = "#{dir}/application_job.rb"
-        models = ControllerScan.ruby_files("#{app}/models")
+        models = SourceText.ruby_files("#{app}/models")
         defined = Array.new(0) { empty_class }
-        ControllerScan.ruby_files(app).each do |path|
+        SourceText.ruby_files(app).each do |path|
           class_definitions(path, File.read(path)).each { |d| defined << d }
         end
         ordered = Array.new(0) { "" }
@@ -401,19 +402,19 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ModelScan.indent_of(raw)
+          indent = SourceText.indent_of(raw)
           if skip_indent >= 0
-            skip_indent = -1 if indent == skip_indent && ModelScan.closing_end?(line)
+            skip_indent = -1 if indent == skip_indent && SourceText.closing_end?(line)
             next
           end
-          break if indent <= class_indent && ModelScan.closing_end?(line)
+          break if indent <= class_indent && SourceText.closing_end?(line)
 
           if def_indent >= 0
-            def_indent = -1 if indent == def_indent && ModelScan.closing_end?(line)
+            def_indent = -1 if indent == def_indent && SourceText.closing_end?(line)
             next
           end
-          if ModelScan.opens_block?(line)
-            skip_indent = indent unless ModelScan.one_line_block?(line)
+          if SourceText.opens_block?(line)
+            skip_indent = indent unless SourceText.one_line_block?(line)
             next
           end
           macro = macro_name(line)
@@ -589,7 +590,7 @@ module Cybertrain
       def self.constant_path_at(text)
         out = +""
         text.each_char do |ch|
-          break unless ModelScan.word_char?(ch) || ch == ":"
+          break unless SourceText.word_char?(ch) || ch == ":"
 
           out << ch
         end
@@ -659,14 +660,14 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ModelScan.indent_of(raw)
-          if !indents.empty? && indent <= indents.last && ModelScan.closing_end?(line)
+          indent = SourceText.indent_of(raw)
+          if !indents.empty? && indent <= indents.last && SourceText.closing_end?(line)
             names.pop
             keywords.pop
             indents.pop
             next
           end
-          one_line = ModelScan.one_line_block?(line)
+          one_line = SourceText.one_line_block?(line)
           if line.start_with?("class <<") || line.start_with?("class<<")
             unless one_line
               names << "<<"

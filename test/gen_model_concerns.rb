@@ -177,7 +177,7 @@ TMP_SOURCES = {
   "looped.rb" => "module Looped\n  extend ActiveSupport::Concern\n\n  included do\n    include Looped\n  end\nend\n",
   "paged.rb" => "module Paged\n  extend ActiveSupport::Concern\n\n  class_methods do\n    def recent = 1\n    def where = 2\n    def per_page = 3\n  end\nend\n"
 }
-Cybertrain::Gen::Runner.make_dirs("#{TMP_APP}/app/models/concerns")
+Cybertrain::Gen::SourceText.make_dirs("#{TMP_APP}/app/models/concerns")
 TMP_SOURCES.each { |name, source| File.write("#{TMP_APP}/app/models/concerns/#{name}", source) }
 at_exit do
   TMP_SOURCES.keys.each { |name| File.delete("#{TMP_APP}/app/models/concerns/#{name}") }
@@ -245,7 +245,7 @@ end
 
 test "a model concern named relative to its module is resolved as Ruby resolves it; an unreached one is refused" do
   root = Dir.mktmpdir("cybertrain-model-concerns-nested")
-  Cybertrain::Gen::Runner.make_dirs("#{root}/app/models/concerns/shop")
+  Cybertrain::Gen::SourceText.make_dirs("#{root}/app/models/concerns/shop")
   File.write("#{root}/app/models/concerns/shop/priced.rb",
              "module Shop\n  module Priced\n    extend ActiveSupport::Concern\n\n    included do\n      scope :cheap, -> { where(price: 1) }\n    end\n  end\nend\n")
   File.write("#{root}/app/models/concerns/shop/bundle.rb",

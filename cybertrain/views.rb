@@ -8,6 +8,7 @@
 # Module-level instance variables rather than @@class_variables: the latter
 # miscompile once an earlier file has opened `module Cybertrain`
 # (spikes/NOTES.md rule 18).
+require "cybertrain/cast"
 require "cybertrain/template/engine"
 
 module Cybertrain
@@ -154,7 +155,7 @@ module Cybertrain
       slash = name.rindex("/")
       dir = slash.nil? ? "" : name[0, slash].to_s
       path = slash.nil? ? "_#{name}" : Template::Helpers.partial_path(dir, name)
-      env = { "__template_dir" => [nil, 0, 0.0, "", true][3] }
+      env = Cast.empty_hash
       env["__template_dir"] = dir
       given = Array.new(0) { "" }
       keys = locals.keys

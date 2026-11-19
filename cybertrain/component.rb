@@ -19,6 +19,7 @@
 # Gen::Components.build, which `render component: "card", title: "x"`
 # reaches through Views.component_builder (Spinel has no `send` or
 # `const_get`, spikes/NOTES.md rule 1).
+require "cybertrain/cast"
 require "cybertrain/html"
 require "cybertrain/views"
 require "cybertrain/template/interpreter"
@@ -36,8 +37,7 @@ module Cybertrain
     # overrides it.
     # @api public
     def view_assigns
-      out = { "" => [nil, 0, 0.0, "", true][0] }
-      out.delete("")
+      out = Cast.empty_hash
       out
     end
 
@@ -87,11 +87,9 @@ module Cybertrain
     # toward max_render_depth, as a partial's does), without a layout.
     # While it renders, helpers answer the component's view methods by name.
     def render_with(helpers, content, interp)
-      engine = Views.engine
-      raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
+      engine = Views.configured_engine
       self.content = content
-      env = { "__template_dir" => [nil, 0, 0.0, "", true][3] }
+      env = Cast.empty_hash
       env["__template_dir"] = "__components"
       assigns = view_assigns
       keys = assigns.keys
@@ -128,13 +126,7 @@ module Cybertrain
         i += 1
       end
       kwargs.each_key do |key|
-        found = false
-        j = 0
-        while j < known.size
-          found = true if known[j] == key
-          j += 1
-        end
-        raise ArgumentError, "unknown keyword '#{key}' for component '#{name}' (known: #{known.join(", ")})" unless found
+        raise ArgumentError, "unknown keyword '#{key}' for component '#{name}' (known: #{known.join(", ")})" unless known.include?(key)
       end
       nil
     end
@@ -179,8 +171,6 @@ module Cybertrain
       # Typed Array of polymorphic values (spikes/NOTES.md rule 9).
       @items = Array.new(0) { [nil, 0, 0.0, "", true][0] }
       case items
-      # Time before Array (spikes/NOTES.md rule 8).
-      when Time then ComponentCollection.not_an_array!(items)
       when Array then items.each { |item| @items << item }
       else ComponentCollection.not_an_array!(items)
       end
@@ -202,8 +192,7 @@ module Cybertrain
       out = +""
       i = 0
       while i < @items.size
-        kwargs = { "" => [nil, 0, 0.0, "", true][0] }
-        kwargs.delete("")
+        kwargs = Cast.empty_hash
         kwargs[@keyword] = @items[i]
         kwargs["#{@keyword}_counter"] = i if @counter
         # A fresh local, not the ivar: Spinel refuses an ivar's String

@@ -197,7 +197,7 @@ end
 test "a project root with an app/ directory in its path still keys gen/concerns and the manifest by the path under it" do
   base = Dir.mktmpdir("cybertrain-gen-concerns")
   root = "#{base}/app/proj"
-  Cybertrain::Gen::Runner.make_dirs("#{root}/app/controllers/concerns")
+  Cybertrain::Gen::SourceText.make_dirs("#{root}/app/controllers/concerns")
   File.write("#{root}/app/controllers/concerns/same.rb",
              "module Same\n  extend ActiveSupport::Concern\n\n  def ==(other)\n    true\n  end\n\n  def <=>(other) = 0\n\n  def tag\n    1\n  end\nend\n")
   assert_equal ["gen/concerns/controllers/concerns/same.rb"], Cybertrain::Gen::Runner.concern_modules(root).keys
@@ -222,7 +222,7 @@ def scratch_app(files)
   root = Dir.mktmpdir("cybertrain-gen-concerns-include")
   files.each do |rel, source|
     path = "#{root}/app/controllers/#{rel}"
-    Cybertrain::Gen::Runner.make_dirs(File.dirname(path))
+    Cybertrain::Gen::SourceText.make_dirs(File.dirname(path))
     File.write(path, source)
   end
   root

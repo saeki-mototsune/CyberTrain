@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/model_scan"
@@ -56,7 +57,7 @@ module Cybertrain
 
       def self.scan_dir(dir)
         infos = Array.new(0) { ComponentInfo.new("", "", "", [], [], [], [], "") }
-        ControllerScan.ruby_files(dir).each do |path|
+        SourceText.ruby_files(dir).each do |path|
           rel = path.start_with?("#{dir}/") ? path[dir.size + 1, path.size - dir.size - 1].to_s : File.basename(path)
           info = scan_source(path, rel, File.read(path))
           next if info.nil?
@@ -113,15 +114,15 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ModelScan.indent_of(raw)
+          indent = SourceText.indent_of(raw)
           if class_name == ""
-            if !module_indents.empty? && indent <= module_indents.last && ModelScan.closing_end?(line)
+            if !module_indents.empty? && indent <= module_indents.last && SourceText.closing_end?(line)
               modules.pop
               module_indents.pop
               next
             end
             mm = raw.match(MODULE_LINE)
-            if mm && !ModelScan.one_line_block?(line)
+            if mm && !SourceText.one_line_block?(line)
               modules << mm[1].to_s
               module_indents << indent
               next
@@ -144,10 +145,10 @@ module Cybertrain
             next
           end
           if skip_indent >= 0
-            skip_indent = -1 if indent == skip_indent && ModelScan.closing_end?(line)
+            skip_indent = -1 if indent == skip_indent && SourceText.closing_end?(line)
             next
           end
-          break if indent <= class_indent && ModelScan.closing_end?(line)
+          break if indent <= class_indent && SourceText.closing_end?(line)
 
           if line.match?(WITH_COLLECTION_DEF)
             raise Error, "#{file}:#{i}: 'self.with_collection' is written by `spin run gen` (gen/components.rb) for a component whose only required keyword is named after it; remove this definition (render component: \"x\", collection: items, or X.with_collection(items))"
@@ -155,8 +156,8 @@ module Cybertrain
           names = ControllerScan.ivar_names(line)
           reserved_ivar!(file, i, line)
           names.each { |n| ivars << n unless ivars.include?(n) }
-          if ModelScan.opens_block?(line)
-            skip_indent = indent unless ModelScan.one_line_block?(line)
+          if SourceText.opens_block?(line)
+            skip_indent = indent unless SourceText.one_line_block?(line)
           elsif line == "private" || line == "protected"
             in_private = true
           elsif line == "public"

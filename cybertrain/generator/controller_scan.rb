@@ -1,5 +1,7 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/helper_scan"
+require "cybertrain/generator/concern_scan"
 
 module Cybertrain
   module Gen
@@ -79,10 +81,10 @@ module Cybertrain
         @method_lines = method_lines
         @module_prefix = module_prefix
         @helper_methods = Array.new(0) { "" }
-        @defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        @defs = HelperScan.no_helper_defs
         @def_errors = Array.new(0) { "" }
-        @layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        @rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        @layouts = ControllerScan.no_layout_decls
+        @rate_limit_refs = ControllerScan.no_rate_limit_refs
       end
 
       # A superclass written bare inside a module, once every controller is
@@ -145,6 +147,17 @@ module Cybertrain
       LAYOUT_OPTION = /\A,\s*(only|except):\s*(\[[^\]]*\]|%i\[[^\]]*\]|:\w+[?!]?)\s*/
       LAYOUT_UNREADABLE = "layout takes a name (layout \"admin\"), false, or a method's name (layout :choose_layout), then only: or except:"
 
+      # An empty list of rate_limit references (a new Array each call):
+      # the one place that spells the element type out for the compiler.
+      def self.no_rate_limit_refs
+        Array.new(0) { RateLimitRef.new("", "", "") }
+      end
+
+      # An empty list of layout declarations, likewise.
+      def self.no_layout_decls
+        Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+      end
+
       # nil when the source has no `class X < Y` line. When a file defines
       # several classes, the one named after the file wins
       # (posts_controller.rb -> PostsController).
@@ -162,10 +175,10 @@ module Cybertrain
         method_names = Array.new(0) { "" }
         method_lines = Array.new(0) { 0 }
         helper_methods = Array.new(0) { "" }
-        defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        defs = HelperScan.no_helper_defs
         def_errors = Array.new(0) { "" }
-        layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        layouts = ControllerScan.no_layout_decls
+        rate_limit_refs = ControllerScan.no_rate_limit_refs
         lines = source.lines
         # The open modules (full names) and their indentation.
         modules = Array.new(0) { "" }
@@ -182,13 +195,13 @@ module Cybertrain
           stripped = line.strip
           next if stripped.start_with?("#")
 
-          indent = indent_of(line)
-          if class_indent >= 0 && indent <= class_indent && closing_end?(stripped)
+          indent = SourceText.indent_of(line)
+          if class_indent >= 0 && indent <= class_indent && SourceText.closing_end?(stripped)
             class_indent = -1
             def_indent = -1
             next
           end
-          if class_indent < 0 && !module_indents.empty? && indent <= module_indents.last && closing_end?(stripped)
+          if class_indent < 0 && !module_indents.empty? && indent <= module_indents.last && SourceText.closing_end?(stripped)
             modules.pop
             module_indents.pop
             next
@@ -215,10 +228,10 @@ module Cybertrain
               method_names = Array.new(0) { "" }
               method_lines = Array.new(0) { 0 }
               helper_methods = Array.new(0) { "" }
-              defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+              defs = HelperScan.no_helper_defs
               def_errors = Array.new(0) { "" }
-              layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-              rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+              layouts = ControllerScan.no_layout_decls
+              rate_limit_refs = ControllerScan.no_rate_limit_refs
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
@@ -252,7 +265,7 @@ module Cybertrain
             # Declarations are class-body lines: not a method's (a local
             # named layout is no declaration).
             if def_indent >= 0
-              def_indent = -1 if indent <= def_indent && closing_end?(stripped)
+              def_indent = -1 if indent <= def_indent && SourceText.closing_end?(stripped)
             elsif stripped.match?(DEF_OPEN)
               def_indent = indent unless one_line_def?(lines, number)
             else
@@ -340,7 +353,7 @@ module Cybertrain
       # ArgumentError, naming the line, for one of those options given
       # anything but a Symbol or nil (a lambda, a String).
       def self.rate_limit_refs_at(file, lines, number)
-        refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        refs = ControllerScan.no_rate_limit_refs
         line = lines[number - 1].to_s
         return refs unless line.match?(RATE_LIMIT_CALL)
 
@@ -455,7 +468,7 @@ module Cybertrain
       def self.scan_dir(dir)
         infos = []
         concerns_dir = "#{dir}/concerns/"
-        ruby_files(dir).each do |path|
+        SourceText.ruby_files(dir).each do |path|
           next if path.start_with?(concerns_dir)
 
           info = scan_source(path, File.read(path))
@@ -488,41 +501,6 @@ module Cybertrain
           end
         end
         nil
-      end
-
-      # Sorted "<dir>/<rel>.rb" paths under dir ([] when dir is missing).
-      def self.ruby_files(dir)
-        files = []
-        return files unless File.directory?(dir)
-
-        Dir.children(dir).sort.each do |entry|
-          path = "#{dir}/#{entry}"
-          if File.directory?(path)
-            ruby_files(path).each { |f| files << f }
-          elsif entry.end_with?(".rb")
-            files << path
-          end
-        end
-        files.sort
-      end
-
-      def self.indent_of(raw)
-        n = 0
-        raw.each_char do |ch|
-          break unless ch == " " || ch == "\t"
-
-          n += 1
-        end
-        n
-      end
-
-      # "end", "end # comment", "end;" or an "end." chain.
-      def self.closing_end?(line)
-        return false unless line.start_with?("end")
-        return true if line == "end"
-
-        nxt = line[3, 1]
-        nxt == " " || nxt == "#" || nxt == ";" || nxt == "."
       end
 
       # "app/controllers/x.rb" for a path under the project root (messages

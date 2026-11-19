@@ -17,8 +17,8 @@ module Cybertrain
       FILL_SIZE = 50
 
       def self.emit(entries, module_name = "Gen::Locales", install = true)
-        texts = Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
-        lists = Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
+        texts = LocaleYaml.no_locale_entries
+        lists = LocaleYaml.no_locale_entries
         entries.sort_by { |e| e.entry_key }.each do |e|
           if e.entry_is_list
             lists << e
