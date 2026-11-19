@@ -150,13 +150,20 @@ module Cybertrain
         binary = "#{root}/build/bin/#{name}"
         return true unless File.file?(binary)
 
-        newer_ruby?(root, mtime_ns(binary), true)
+        newer_ruby?(root, mtime_ns(binary), true, "")
       rescue StandardError
         true
       end
 
       # True when a *.rb file under dir is no older than since (nanoseconds).
-      def self.newer_ruby?(dir, since, top)
+      # The entry whose path is except, at any depth, is passed over ("" for
+      # none): the development server walks the other -I directories with
+      # the application's root there, for an application inside one of them
+      # (examples/blog in the framework's checkout). binary_stale? reads
+      # that tree with its build/ and tmp/ skipped, which this walk would
+      # not skip below its top level, and a Ruby file the application keeps
+      # there (a cache) would make every build incremental.
+      def self.newer_ruby?(dir, since, top, except)
         children = listing(dir)
         i = 0
         while i < children.size
@@ -165,9 +172,11 @@ module Cybertrain
           next if top && (STALE_SKIPPED.include?(child) || child.start_with?("."))
 
           path = "#{dir}/#{child}"
+          next if path == except
+
           if File.directory?(path)
             next if File.symlink?(path)
-            return true if newer_ruby?(path, since, false)
+            return true if newer_ruby?(path, since, false, except)
           elsif child.end_with?(".rb") && File.file?(path)
             return true if mtime_ns(path) >= since
           end
