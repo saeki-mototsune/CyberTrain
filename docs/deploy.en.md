@@ -111,27 +111,33 @@ job per CPU, so fewer CPUs take longer). CI installs Spinel with the same
 `cybertrain setup`.
 
 - If a tool is missing (git, make, curl, a Ruby that loads the `prism` gem,
-  a C compiler, the SQLite headers or library), it stops before building and prints what is missing and the
-  command that installs it.
+  a C compiler, or the SQLite, zlib or OpenSSL headers and libraries), it
+  stops before building and prints what is missing and the command that
+  installs it.
 - Each step's output goes to the log
   `~/.cybertrain/log/spinel-SPINEL_TAG-build.log`. When a step fails, the end
   of the log is printed.
 - If it is already installed (in `~/.cybertrain`, or a `spinel` of the same
   release is on PATH), it prints `nothing to install` and does nothing. To
   rebuild the one in `~/.cybertrain`, run `cybertrain setup --force`.
-- The install, `~/.cybertrain/spinel/SPINEL_TAG/`, is about 41 MB (measured
+- The install, `~/.cybertrain/spinel/SPINEL_TAG/`, is about 50 MB (measured
   on Linux x86-64). During the build only, the source and intermediate files
   take about 220 MB in `~/.cybertrain/src/spinel-SPINEL_TAG/`; they are deleted
   when the build succeeds.
 
 `cybertrain doctor` checks the prerequisites (one line each for git, make,
-curl, prism, cc, SQLite, OpenSSL and Spinel; anything missing says `MISSING`,
-followed by the command that installs it).
+curl, prism, fiddle, cc, SQLite, zlib, OpenSSL and Spinel; anything missing
+says `MISSING`, followed by the command that installs it). `fiddle` matters
+only on the development machine: `cybertrain server`'s CRuby preview needs
+it, and without it the server runs the compiled binary only. The production
+server does not need it.
 
 `cybertrain new`, `db`, `server` and `build` find and use this Spinel by
 themselves, so you need no PATH setting. To run `spin` directly,
-`cybertrain spin ...` works too (for example `cybertrain spin run gen --
---check`). Only if you want to type `spin` as is, put `~/.cybertrain/bin` on
+`cybertrain spin ...` works too (for example
+`SPIN_DEBUG=1 cybertrain spin run gen -- --check`; `SPIN_DEBUG=1` is the mode
+the CLI builds the generator in, so the generator is not compiled a second
+time). Only if you want to type `spin` as is, put `~/.cybertrain/bin` on
 your PATH (`~/.zshrc` for zsh). `~/.cybertrain/bin` holds `spinel` and `spin`
 links to the release in use, so nothing needs changing when the release moves
 on. When `cybertrain setup` installs Spinel itself, it prints the same
@@ -209,9 +215,11 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 
 Remove the `#` in front of `# allocator = "jemalloc"` and the app is built
 linking jemalloc instead of glibc's malloc. The server makes a great many
-small allocations per request, and on examples/blog this gave 1.1 to 1.4 times
-the requests per second ([benchmark.md](benchmark.md)). It is recommended for
-production. Both your machine and the server then need `libjemalloc-dev`
+small allocations per request. On examples/blog the gain differed between the
+two recorded runs: 1.3 to 1.4 times the requests per second on the dynamic
+pages on 2026-10-09, and within a few percent (the POST 18% faster on one
+core) in the latest one ([benchmark.md](benchmark.md)). Measure it on your
+own app before relying on it. Both your machine and the server then need `libjemalloc-dev`
 (installed in 1-1 and 3-2); without it the build stops with
 `cannot find -ljemalloc`.
 
@@ -328,7 +336,7 @@ committed.
 current already). Check that it is fresh before committing.
 
 ```sh
-cybertrain spin run gen -- --check   # no output and exit status 0 means fresh
+SPIN_DEBUG=1 cybertrain spin run gen -- --check   # no output and exit status 0 means fresh
 git add -A
 git commit -m "Create notes"
 ```
@@ -404,8 +412,10 @@ cybertrain version
 
 Make `-v` the same version as the `ref` in the app's `spin.toml` (the tag
 `vX.Y.Z`). The CLI and the framework `spin.lock` pins (`spin run gen` runs
-that framework's own generator) are upgraded together; if their versions
-differ, building or starting fails.
+that framework's own generator) are upgraded together: when their versions
+differ, `cybertrain build` stops before it builds anything and says which two
+versions it found
+([Moving an app to a new release](guide/install.md#moving-an-app-to-a-new-release)).
 
 Then, as the same `notes` user, install Spinel.
 
@@ -416,7 +426,7 @@ cybertrain setup
 It does what 1-3 does and takes a few minutes, once (longer on a server with
 fewer CPUs). Spinel goes into the `notes` user's
 `~/.cybertrain/spinel/SPINEL_TAG/` (here
-`/srv/notes/.cybertrain/spinel/SPINEL_TAG/`, about 41 MB), and the log stays
+`/srv/notes/.cybertrain/spinel/SPINEL_TAG/`, about 50 MB), and the log stays
 in `~/.cybertrain/log/spinel-SPINEL_TAG-build.log`. During the build only,
 the source and intermediate files take about 220 MB in `~/.cybertrain/src/`
 (deleted when it succeeds). The packages from 3-2 cover the prerequisites;
@@ -465,8 +475,8 @@ exit    # leave the notes user, back to the user who can sudo
 ## Part 4: The secret and environment variables
 
 Production settings are passed as environment variables.
-`CYBERTRAIN_SECRET_KEY_BASE` is the key that signs the session cookie; in
-production the app does not start without it. Keep it out of the repository,
+`CYBERTRAIN_SECRET_KEY_BASE` is the secret the session cookie is encrypted
+with; in production the app does not start without it. Keep it out of the repository,
 in a file on the server only.
 
 As the user who can sudo:
@@ -497,10 +507,11 @@ sudo chmod 640 /etc/notes/notes.env
 | `SPINEL_GC_FULL_INTERVAL=8` | Spinel's collector does a full collection every eighth time. Left to adapt, it falls to nearly every collection full under a web server's load; fixed at 8, a one-CPU server answers about 16% more requests a second at the same memory ([spinel-feedback.md](spinel-feedback.md), 5) |
 
 Optionally, logs and error reports. To send every error report to Sentry
-(or GlitchTip), add the project's DSN to the same file, and the line that
-links the sender to `bin/notes.rb` if it requires `cybertrain/core` rather
-than `cybertrain` (with the DSN set and the line missing, the app refuses
-to start and says which line to add). `CYBERTRAIN_LOG_FORMAT=json` writes
+(or GlitchTip), add the project's DSN to the same file, add
+`require "cybertrain/error_reporter/sentry"` to `bin/notes.rb`, and deploy (a
+new app requires only `cybertrain/core`; with the DSN set and the line
+missing, the app refuses to start and names the line).
+`CYBERTRAIN_LOG_FORMAT=json` writes
 one JSON object per log line, for a log collector; the journal reads either.
 
 ```sh
@@ -513,6 +524,13 @@ EOF
 `CYBERTRAIN_RELEASE` names the version each report comes from; the deploy
 script could write the commit there instead. The variables, and what is
 reported: [Error reporting](guide/background-and-operations.md#error-reporting).
+
+The `.env.example` that `cybertrain new` writes lists the other variables an
+app reads, each commented out. One of them is required as soon as a model
+declares `encrypts`: without `CYBERTRAIN_ENCRYPTION_KEY` such an app does not
+start. Make the key on your development machine with `cybertrain secret --hex`
+and add it to `/etc/notes/notes.env`; keep a copy, since the encrypted
+columns cannot be read without it.
 
 ---
 
@@ -613,7 +631,7 @@ cd "$release"
 git checkout --quiet "$REF"
 
 echo "==> Checking that gen/ is fresh"
-spin run gen -- --check
+SPIN_DEBUG=1 spin run gen -- --check
 
 echo "==> Building (dist/notes with the views embedded, and dist/public/)"
 cybertrain build
@@ -654,8 +672,9 @@ chmod 700 ~/deploy.sh
 ```
 
 `~/.cybertrain/bin` comes first on `PATH` because the `gen/` check calls
-`spin` directly (`cybertrain build` finds Spinel by itself).
-`~/.cybertrain/bin` holds links that `cybertrain setup` points at the current
+`spin` directly (`cybertrain build` finds Spinel by itself). `SPIN_DEBUG=1`
+is the mode `cybertrain build` builds the generator in, so the generator is
+compiled once. `~/.cybertrain/bin` holds links that `cybertrain setup` points at the current
 release, so nothing needs changing when the Spinel release moves on.
 
 If any step fails (`gen/` is stale, a compile error, a failed migration), the
@@ -789,7 +808,7 @@ sudo -iu notes /srv/notes/deploy.sh v1.2     # a tag or a commit works too
 
 The local workflow is the same as in development. After changing the schema,
 the routes, or a controller's callbacks or instance variables, run
-`cybertrain spin run gen` and commit `gen/` with the change (forget it and
+`SPIN_DEBUG=1 cybertrain spin run gen` and commit `gen/` with the change (forget it and
 the deploy stops at `Checking that gen/ is fresh`).
 
 During the restart (a few seconds) Caddy answers with 500.html.
@@ -870,7 +889,8 @@ regularly (another server, or object storage). Uploaded files
 directory along with the backups.
 
 Instead of `sqlite3`, the app's binary can take the backup itself (an app
-made with a framework that has `db backup`; README, "Operations"):
+made with a framework that has `db backup`;
+[Operations](guide/background-and-operations.md#operations-backups-vacuum-health-check)):
 `CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3 /srv/notes/current/dist/notes db backup /srv/notes/backups/ --keep 14`
 writes `notes-<UTC date and time>.sqlite3` with mode 0600 through a
 temporary file and keeps the newest 14 files of that shape. It can replace
@@ -889,20 +909,21 @@ sudo systemctl start notes
 
 ### Upgrading the framework
 
-Locally:
+In this order:
 
-Change the `ref` in `spin.toml` to the new tag (`"vX.Y.Z"`) and
-bring the CLI to the same version with `gem install cybertrain` (on the
-server too, as the `notes` user, update the CLI naming the same version as
-`spin.toml`'s tag, as in `gem install --user-install cybertrain -v X.Y.Z`.
-The CLI and the framework `spin.lock` pins are upgraded together; if their
-versions differ, building or starting fails). Then:
+1. Locally, change the `ref` in `spin.toml` to the new tag (`"vX.Y.Z"`).
+2. Locally, bring the CLI to the same version with `gem install cybertrain`.
+3. On the server, as the `notes` user, install the same version of the CLI:
+   `gem install --user-install cybertrain -v X.Y.Z`. The deploy stops when
+   the two differ (3-4).
+
+Then, locally:
 
 ```sh
 rm spin.lock              # spin lock alone keeps the commit it has locked
 cybertrain spin lock      # pin the new tag's commit in spin.lock
-cybertrain spin run gen   # the generated code may change with the framework
-cybertrain spin test      # if you have written tests
+SPIN_DEBUG=1 cybertrain spin run gen   # the generated code may change with the framework
+cybertrain test           # the application's tests
 cybertrain server         # check that it works
 git add -A && git commit -m "Update cybertrain"
 git push
@@ -1034,6 +1055,16 @@ WebSocket subscriptions. `./notes worker` opens no port and runs only the jobs
 scheduled tasks. `./notes feeds [NAME...]` runs only the WebSocket
 subscriptions (only the named ones when you list names).
 
+The `worker` role and the `jobs` command need the jobs subsystem
+(`require "cybertrain/jobs"` in `bin/notes.rb` and `bin/db.rb`;
+`cybertrain generate job` and `generate authentication` add it), and the
+`feeds` role needs `require "cybertrain/feeds"`
+([Subsystems](guide/how-it-works.md#subsystems)). A new app requires only the
+core, and this tutorial's `notes` is such an app. Without the line the binary
+prints `the worker role needs require "cybertrain/jobs" in bin/notes.rb` and
+exits 1, which `Restart=always` repeats for ever: add the unit below only to
+an app that has jobs.
+
 To take the jobs out of the web process, add a second unit shaped like
 `notes.service`:
 
@@ -1155,7 +1186,8 @@ day-to-day operation.
 | `error: views are not embedded in this binary` in the startup log | A binary built without embedded views (such as `build/bin/notes` from `spin build notes`) is running in production mode. Use the `dist/notes` that `cybertrain build` makes |
 | A 500, with `Missing template ...` in the log | A template that was not in `app/views/` at build time. Run `cybertrain build` again |
 | `attempt to write a readonly database` / `unable to open database file` | The database path is outside `ReadWritePaths=`, or `/srv/notes/shared` is not owned by `notes` |
-| The deploy stops at `stale: gen/...` | You forgot to run `cybertrain spin run gen` locally and commit `gen/` |
+| The deploy stops at `stale: gen/...` | You forgot to run `SPIN_DEBUG=1 cybertrain spin run gen` locally and commit `gen/` |
+| The deploy stops with `this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C` | The `notes` user's CLI is not the release the app is on. Install the one the message names, `gem install --user-install cybertrain -v X.Y.Z` (3-4), then run `cybertrain setup` |
 | The deploy ends with `The new release does not answer` | The new release did not answer `/up.html` within about 30 seconds (the script has gone back to the previous release). Look at `sudo journalctl -u notes -n 50` for why. If it did start but does not answer, the app has no `public/up.html` (5-3) |
 | `spin: command not found` (while deploying) | Spinel is not installed for the `notes` user (`cybertrain setup` in 3-4), or `~/deploy.sh`'s `PATH` lacks `~/.cybertrain/bin` (5-3) |
 | `cybertrain: command not found` (while deploying) | The cybertrain CLI is not installed for the `notes` user (`gem install --user-install cybertrain -v X.Y.Z` in 3-4) |

@@ -49,7 +49,9 @@ the same OS as the machine that runs it". The CPU still has to match
 
 ## 8-2. Edit `config/deploy.yml`
 
-Replace the values marked `CHANGE ME` with yours.
+Replace the values marked `CHANGE ME` with yours. These are the parts you
+edit, shown for an app that has jobs (in a new app the `worker` role is
+commented out, as explained below):
 
 ```yaml
 service: notes
@@ -96,7 +98,8 @@ the volume, and only the one holding the lease runs the scheduled tasks
 ([deploy.en.md](deploy.en.md), part 7, "Splitting the roles"). To run the
 WebSocket subscriptions in a container of their own, turn on the `feeds` role
 that the generated file has commented out (`cmd: ./notes feeds trades`) and
-give `web` `env: clear: CYBERTRAIN_WORKER: 0`. The first time you upgrade from
+give `web` `env: clear: CYBERTRAIN_WORKER: 0` (the `feeds` role needs
+`require "cybertrain/feeds"` in `bin/notes.rb`). The first time you upgrade from
 a cybertrain release without heartbeats, stop every old container with `kamal
 app stop` before `kamal deploy`, so that a new worker does not run an old
 worker's running job a second time.
@@ -124,8 +127,9 @@ so neither holds up the next web deploy; a crashed one leaves them to go
 stale. Set `CYBERTRAIN_HEALTH_FEEDS: 0` under `env.clear` if the proxy's health
 check points at `/up` and a quiet feed should not hold up a deploy.
 
-With a framework that has the built-in health check (`GET /up`, README
-"Operations"), you can change the `healthcheck` `path` from `/up.html` to
+With a framework that has the built-in health check (`GET /up`;
+[Operations](guide/background-and-operations.md#operations-backups-vacuum-health-check)),
+you can change the `healthcheck` `path` from `/up.html` to
 `/up`. `/up` runs a query that reads the database's schema and answers 503
 when it cannot, so traffic never moves to a release whose volume or database
 is broken; `/up.html` is a static file and only shows that the process
@@ -173,6 +177,15 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # generate once, t
 [Kamal's documentation](https://kamal-deploy.org/docs/commands/secrets/)
 shows how to read them straight from a password manager.
 
+The `.env.example` that `cybertrain new` writes lists the other variables an
+app reads. One of them is required as soon as a model declares `encrypts`:
+without `CYBERTRAIN_ENCRYPTION_KEY` such an app does not start. Make the key
+with `cybertrain secret --hex`, keep it with the other secret, and pass it
+the way the Sentry DSN below is passed: `- CYBERTRAIN_ENCRYPTION_KEY` under
+`env: secret:` in `config/deploy.yml`,
+`CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY` in `.kamal/secrets`,
+and an `export` in the shell.
+
 To send error reports to Sentry (or GlitchTip), the generated files have
 the lines ready, commented out: uncomment `- CYBERTRAIN_SENTRY_DSN` under
 `env: secret:` in `config/deploy.yml` and
@@ -194,7 +207,7 @@ Kamal builds the image from your local git HEAD. Commit first, `gen/`
 included (`gen/` is generated code, and the build expects it to be current):
 
 ```sh
-cybertrain spin run gen -- --check
+SPIN_DEBUG=1 cybertrain spin run gen -- --check
 git add -A && git commit -m "Configure Kamal"
 kamal setup
 ```

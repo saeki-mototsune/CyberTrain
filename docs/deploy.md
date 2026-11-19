@@ -99,22 +99,27 @@ CyberTrain が必要とする修正を本家より先に取り込んだ matz/spi
 `make install`）。初回だけで、数分かかります（4 コアのマシンで 5 分前後でした。`make -j` は CPU の数だけ
 並列に動くので、CPU が少ないほど長くかかります）。CI も Spinel を同じ `cybertrain setup` で入れています。
 
-- 足りない道具（git・make・curl・`prism` gem を読み込める Ruby・C コンパイラ・SQLite のヘッダ／ライブラリ）があると、ビルドを始める前に
-  何が足りないかとインストールのコマンドを表示して止まります。
+- 足りない道具（git・make・curl・`prism` gem を読み込める Ruby・C コンパイラ・SQLite／zlib／OpenSSL の
+  ヘッダとライブラリ）があると、ビルドを始める前に何が足りないかとインストールのコマンドを表示して
+  止まります。
 - 各手順の出力はログ `~/.cybertrain/log/spinel-SPINEL_TAG-build.log` に書かれます。途中で失敗したときは
   ログの末尾が表示されます。
 - すでに入っている場合（`~/.cybertrain` にある、または同じリリースの `spinel` が PATH にある）は、
   `nothing to install` と表示して何もしません。`~/.cybertrain` のものを作り直したいときは
   `cybertrain setup --force` です。
-- 入れ先 `~/.cybertrain/spinel/SPINEL_TAG/` は約 41 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
+- 入れ先 `~/.cybertrain/spinel/SPINEL_TAG/` は約 50 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
   ソースと中間ファイルが `~/.cybertrain/src/spinel-SPINEL_TAG/` に 220 MB ほどでき、成功すると削除されます。
 
-前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・prism・cc・SQLite・OpenSSL と
-Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールのコマンドが続きます）。
+前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・prism・fiddle・cc・SQLite・
+zlib・OpenSSL と Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールの
+コマンドが続きます）。`fiddle` が関係するのは開発マシンだけです。`cybertrain server` の CRuby
+プレビューに必要で、無ければサーバーはコンパイル済みのバイナリだけで動きます。本番サーバーには
+要りません。
 
 `cybertrain new`・`db`・`server`・`build` は、この Spinel を自分で見つけて使うので、PATH の設定は要りません。
-`spin` を直接実行したいときは `cybertrain spin ...`（例: `cybertrain spin run gen -- --check`）でも
-動きます。それでも `spin` をそのまま打ちたい場合だけ、`~/.cybertrain/bin` を PATH に通します（zsh なら
+`spin` を直接実行したいときは `cybertrain spin ...`（例:
+`SPIN_DEBUG=1 cybertrain spin run gen -- --check`。`SPIN_DEBUG=1` は CLI が generator をビルドする
+モードで、付けておくと generator をもう一度コンパイルせずに済みます）でも動きます。それでも `spin` をそのまま打ちたい場合だけ、`~/.cybertrain/bin` を PATH に通します（zsh なら
 `~/.zshrc`）。`~/.cybertrain/bin` には現在使っているリリースへの `spinel`・`spin` のリンクが置かれるので、
 リリースが上がっても書き換えは要りません。`cybertrain setup` は、自分が入れた Spinel を使う場合に、
 同じ内容の `export PATH=...` の行を表示します。
@@ -184,9 +189,10 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 ```
 
 `# allocator = "jemalloc"` の行の `#` を外すと、アプリが glibc の malloc の代わりに jemalloc を
-リンクしてビルドされます。サーバーはリクエストごとに大量の小さなメモリ確保をするので、
-examples/blog では 1 秒あたりのリクエスト数が 1.1〜1.4 倍になりました（[benchmark.md](benchmark.md)）。
-本番ではおすすめです。手元とサーバーの両方に `libjemalloc-dev` が要ります（1-1 と 3-2 で入れています）。
+リンクしてビルドされます。サーバーはリクエストごとに大量の小さなメモリ確保をします。
+examples/blog での効果は、記録のある 2 回の計測で違いました。2026-10-09 の計測では動的なページで
+1 秒あたりのリクエスト数が 1.3〜1.4 倍、最新の計測では数 % の差（1 コアで POST は 18% 増）です
+（[benchmark.md](benchmark.md)）。頼る前に自分のアプリで測ってください。手元とサーバーの両方に `libjemalloc-dev` が要ります（1-1 と 3-2 で入れています）。
 入っていないと `cannot find -ljemalloc` でビルドが止まります。
 
 続けて `new` が `spin lock` と `spin run gen` を実行しています。フレームワークは spin の
@@ -292,7 +298,7 @@ rm -f dist/storage/rehearsal.sqlite3*
 コミット前に鮮度を確認します。
 
 ```sh
-cybertrain spin run gen -- --check   # 何も出ず終了コード 0 なら最新
+SPIN_DEBUG=1 cybertrain spin run gen -- --check   # 何も出ず終了コード 0 なら最新
 git add -A
 git commit -m "Create notes"
 ```
@@ -363,7 +369,9 @@ cybertrain version
 
 `-v` はアプリの `spin.toml` の `ref`（タグ `vX.Y.Z`）と同じバージョンにそろえてください。CLI と
 `spin.lock` が固定するフレームワーク（`spin run gen` はそのフレームワーク自身の generator を
-実行します）は対で更新するものなので、バージョンがずれるとビルドや起動が失敗します。
+実行します）は対で更新するものです。バージョンがずれていると、`cybertrain build` は何もビルドせずに
+止まり、見つけた二つのバージョンを表示します
+（[アプリを新しいリリースに移す](guide/ja/install.md#moving-an-app-to-a-new-release)）。
 
 続けて、同じ `notes` ユーザーで Spinel を入れます。
 
@@ -373,7 +381,7 @@ cybertrain setup
 
 1-3 と同じ処理で、初回だけ数分かかります（CPU が少ないサーバーほど長くかかります）。Spinel は `notes`
 ユーザーの `~/.cybertrain/spinel/SPINEL_TAG/`（ここでは `/srv/notes/.cybertrain/spinel/SPINEL_TAG/`。
-約 41 MB）に入り、ログは `~/.cybertrain/log/spinel-SPINEL_TAG-build.log` に残ります。ビルド中だけ、
+約 50 MB）に入り、ログは `~/.cybertrain/log/spinel-SPINEL_TAG-build.log` に残ります。ビルド中だけ、
 ソースと中間ファイルが `~/.cybertrain/src/` に 220 MB ほどできます（成功すると削除されます）。3-2 で
 入れたパッケージで前提はそろっていますが、足りないと言われたら `cybertrain doctor` で確認してください。
 
@@ -415,7 +423,7 @@ exit    # notes ユーザーを抜けて、sudo できるユーザーに戻る
 
 ## 第 4 部: 秘密鍵と環境変数
 
-本番の設定は環境変数で渡します。`CYBERTRAIN_SECRET_KEY_BASE` はセッション Cookie の署名鍵で、
+本番の設定は環境変数で渡します。`CYBERTRAIN_SECRET_KEY_BASE` はセッション Cookie を暗号化する秘密鍵で、
 本番では未設定だと起動しません。リポジトリには入れず、サーバーのファイルにだけ置きます。
 
 sudo できるユーザーで:
@@ -446,9 +454,10 @@ sudo chmod 640 /etc/notes/notes.env
 | `SPINEL_GC_FULL_INTERVAL=8` | Spinel の GC が full collection を 8 回に 1 回にします。既定の自動調整では、Web サーバーの負荷でほぼ毎回 full になり、8 に固定すると 1 CPU で毎秒のリクエスト数が約 16% 増えます。メモリ使用量は変わりません（[spinel-feedback.md](spinel-feedback.md) の 5） |
 
 必要ならログとエラー報告も設定します。エラー報告をすべて Sentry（または GlitchTip）に送るには、
-プロジェクトの DSN を同じファイルに足し、`bin/notes.rb` が `cybertrain` ではなく `cybertrain/core` を
-読み込んでいるなら、送信側をリンクする行も足します（DSN があって行がないと、アプリは起動を拒み、
-足すべき行を表示します）。`CYBERTRAIN_LOG_FORMAT=json` にするとログを 1 行 1 つの JSON
+プロジェクトの DSN を同じファイルに足し、`bin/notes.rb` に
+`require "cybertrain/error_reporter/sentry"` を足してデプロイします（新しいアプリは
+`cybertrain/core` だけを読み込みます。DSN があってこの行がないと、アプリは起動を拒み、足すべき行を
+表示します）。`CYBERTRAIN_LOG_FORMAT=json` にするとログを 1 行 1 つの JSON
 オブジェクトで書きます（ログ収集ツール向け。journal はどちらでも読めます）。
 
 ```sh
@@ -461,6 +470,12 @@ EOF
 `CYBERTRAIN_RELEASE` は報告がどのバージョンから来たかを示します。デプロイスクリプトでコミットを
 書き込んでもかまいません。変数と報告される内容は
 [エラー報告](guide/ja/background-and-operations.md#error-reporting)にあります。
+
+`cybertrain new` が書く `.env.example` には、アプリが読むほかの変数がコメントで並んでいます。
+そのうち一つは、モデルが `encrypts` を宣言したときから必須になります。`CYBERTRAIN_ENCRYPTION_KEY` が
+ないと、そういうアプリは起動しません。鍵は開発マシンで `cybertrain secret --hex` で作り、
+`/etc/notes/notes.env` に足してください。暗号化したカラムはこの鍵がないと読めないので、控えも
+保管します。
 
 ---
 
@@ -553,7 +568,7 @@ cd "$release"
 git checkout --quiet "$REF"
 
 echo "==> gen/ が最新か確認"
-spin run gen -- --check
+SPIN_DEBUG=1 spin run gen -- --check
 
 echo "==> ビルド（ビューを埋め込んだ dist/notes と dist/public/）"
 cybertrain build
@@ -594,7 +609,9 @@ chmod 700 ~/deploy.sh
 ```
 
 `PATH` の先頭に `~/.cybertrain/bin` を入れているのは、`gen/` の確認で `spin` を直接呼ぶためです
-（`cybertrain build` は Spinel を自分で見つけます）。`~/.cybertrain/bin` は `cybertrain setup` が
+（`cybertrain build` は Spinel を自分で見つけます）。`SPIN_DEBUG=1` は `cybertrain build` が
+generator をビルドするモードで、こうしておくと generator のコンパイルは 1 回で済みます。
+`~/.cybertrain/bin` は `cybertrain setup` が
 現在のリリースに向けて張り直すリンクなので、Spinel のリリースが上がっても書き換えは要りません。
 
 途中のどこかで失敗した場合（`gen/` が古い、コンパイルエラー、マイグレーション失敗）は、
@@ -718,7 +735,7 @@ sudo -iu notes /srv/notes/deploy.sh v1.2     # タグやコミットを指定す
 ```
 
 手元での変更の流れは開発時と同じです。スキーマ・ルート・コントローラのコールバックやインスタンス
-変数を変えたら `cybertrain spin run gen` をしてから `gen/` ごとコミットしてください（忘れるとデプロイが
+変数を変えたら `SPIN_DEBUG=1 cybertrain spin run gen` をしてから `gen/` ごとコミットしてください（忘れるとデプロイが
 `gen/ が最新か確認` で止まります）。
 
 再起動の間（数秒）は Caddy が 500.html を返します。
@@ -794,7 +811,8 @@ crontab -e
 バックアップと一緒にコピーしてください。
 
 `sqlite3` の代わりに、アプリのバイナリ自身でもバックアップを取れます（`db backup` のある
-フレームワークで作ったアプリ。README の「Operations」）。
+フレームワークで作ったアプリ。
+[運用](guide/ja/background-and-operations.md#operations-backups-vacuum-health-check)）。
 `CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3 /srv/notes/current/dist/notes db backup /srv/notes/backups/ --keep 14`
 は `notes-<UTC の日時>.sqlite3` を一時ファイル経由でモード 0600 で書き、その形のファイルを新しい
 14 個だけ残します。crontab の `sqlite3 ... && find ...` をこの 1 コマンドに置き換えられます。行を
@@ -812,19 +830,21 @@ sudo systemctl start notes
 
 ### フレームワークを更新する
 
-手元で:
+次の順に更新します。
 
-`spin.toml` の `ref` を新しいタグ（`"vX.Y.Z"`）に書き換え、`gem install cybertrain` で
-CLI も同じバージョンにそろえてから（サーバーの `notes` ユーザーでも
-`gem install --user-install cybertrain -v X.Y.Z` のように、`spin.toml` のタグと同じバージョンを
-指定して CLI を更新します。CLI と `spin.lock` が固定するフレームワークは対で更新するものなので、
-バージョンがずれるとビルドや起動が失敗します）:
+1. 手元で、`spin.toml` の `ref` を新しいタグ（`"vX.Y.Z"`）に書き換えます。
+2. 手元で、`gem install cybertrain` で CLI を同じバージョンにそろえます。
+3. サーバーでも、`notes` ユーザーで同じバージョンの CLI を入れます
+   （`gem install --user-install cybertrain -v X.Y.Z`）。二つがずれているとデプロイが止まります
+   （3-4）。
+
+続けて、手元で:
 
 ```sh
 rm spin.lock              # spin lock だけでは固定済みのコミットが残る
 cybertrain spin lock      # 新しいタグのコミットを spin.lock に固定する
-cybertrain spin run gen   # 生成コードがフレームワークに合わせて変わることがある
-cybertrain spin test      # テストを書いているなら
+SPIN_DEBUG=1 cybertrain spin run gen   # 生成コードがフレームワークに合わせて変わることがある
+cybertrain test           # アプリのテスト
 cybertrain server         # 動作確認
 git add -A && git commit -m "Update cybertrain"
 git push
@@ -841,7 +861,7 @@ git push
 0.4 のリリースから更新するときは、データベースの日時も一度だけ書き換えます。0.4 は
 `2026-10-05T09:00:00Z` の形で保存していましたが、その後のリリースは Rails と同じ
 `2026-10-05 09:00:00.000000` の形で保存し、二つの形が混ざったカラムは形の順に並んでしまいます
-（[モデルのガイド](guide/models.md#datetimes-and-db-normalize)）。その一回のデプロイでは
+（[モデルのガイド](guide/ja/models.md#datetimes-and-db-normalize)）。その一回のデプロイでは
 `~/deploy.sh` の `dist/notes migrate` のあとに二行足します:
 
 ```sh
@@ -932,6 +952,14 @@ sudo systemctl enable --now notes@2 notes@3
 `./notes worker` はポートを開かず、ジョブ（`job_threads` 本のスレッド。既定は 3、
 `CYBERTRAIN_JOB_THREADS`）と定期タスクだけを動かします。`./notes feeds [NAME...]` は
 WebSocket の購読だけを動かします（名前を並べるとその購読だけ）。
+
+`worker` の役割と `jobs` コマンドにはジョブのサブシステム（`bin/notes.rb` と `bin/db.rb` の
+`require "cybertrain/jobs"`。`cybertrain generate job` と `generate authentication` が足します）が、
+`feeds` の役割には `require "cybertrain/feeds"` が必要です
+（[サブシステム](guide/ja/how-it-works.md#subsystems)）。新しいアプリはコアだけを読み込み、この
+チュートリアルの `notes` もそうです。この行がないとバイナリは
+`the worker role needs require "cybertrain/jobs" in bin/notes.rb` と出して 1 で終了し、
+`Restart=always` がそれを繰り返します。下のユニットは、ジョブのあるアプリにだけ足してください。
 
 ジョブを Web のプロセスから切り離すには、`notes.service` と同じ形のユニットをもう一つ作ります。
 
@@ -1060,7 +1088,8 @@ dist/notes feeds status                       # 各フィードが最後に報�
 
 ### 8-2. `config/deploy.yml` を書き換える
 
-`CHANGE ME` と書いた値を自分のものにします。
+`CHANGE ME` と書いた値を自分のものにします。書き換える部分は次のとおりです（ジョブのある
+アプリの例です。新しいアプリでは `worker` の役割はコメントになっています。下で説明します）。
 
 ```yaml
 service: notes
@@ -1104,7 +1133,8 @@ registry:
 同じボリュームのデータベースを共有し、定期タスクはリースを持つ 1 つだけが動かします（第 7 部
 「役割を分ける」）。WebSocket の購読を自分のコンテナで動かすときは、生成されたファイルで
 コメントになっている `feeds` の役割（`cmd: ./notes feeds trades`）を有効にし、`web` に
-`env: clear: CYBERTRAIN_WORKER: 0` を足します。ハートビートのない古い cybertrain のリリースから
+`env: clear: CYBERTRAIN_WORKER: 0` を足します（`feeds` の役割には `bin/notes.rb` の
+`require "cybertrain/feeds"` が必要です）。ハートビートのない古い cybertrain のリリースから
 上げる 1 回目は、`kamal app stop` で古いコンテナをすべて止めてから `kamal deploy` してください
 （古いワーカーの実行中のジョブを新しいワーカーが二重に実行しないように）。
 
@@ -1130,7 +1160,9 @@ Docker が再起動し続けます。
 静かなフィードでデプロイを止めたくないときは、`env.clear` に `CYBERTRAIN_HEALTH_FEEDS: 0` を
 足してください。
 
-組み込みのヘルスチェック（`GET /up`、README の「Operations」）があるフレームワークで作ったアプリなら、
+組み込みのヘルスチェック（`GET /up`。
+[運用](guide/ja/background-and-operations.md#operations-backups-vacuum-health-check)）がある
+フレームワークで作ったアプリなら、
 `healthcheck` の `path` を `/up.html` から `/up` に変えられます。`/up` はデータベースのスキーマを
 読む問い合わせをして、読めなければ 503 を返すので、ボリュームやデータベースが壊れたリリースに
 トラフィックが切り替わりません。`/up.html` は静的ファイルで、プロセスが HTTP に応えることしか
@@ -1173,6 +1205,13 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # 初回だけ作�
 パスワードマネージャーから直接読む書き方は
 [Kamal のドキュメント](https://kamal-deploy.org/docs/commands/secrets/)にあります。
 
+`cybertrain new` が書く `.env.example` には、アプリが読むほかの変数が並んでいます。そのうち一つは、
+モデルが `encrypts` を宣言したときから必須になります。`CYBERTRAIN_ENCRYPTION_KEY` がないと、
+そういうアプリは起動しません。鍵は `cybertrain secret --hex` で作ってもう一つの秘密鍵と一緒に
+保管し、下の Sentry の DSN と同じ形で渡します。`config/deploy.yml` の `env: secret:` に
+`- CYBERTRAIN_ENCRYPTION_KEY`、`.kamal/secrets` に
+`CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY` を書き、シェルで export します。
+
 エラー報告を Sentry（または GlitchTip）に送るための行は、生成されたファイルにコメントで用意して
 あります。`config/deploy.yml` の `env: secret:` の `- CYBERTRAIN_SENTRY_DSN` と、`.kamal/secrets` の
 `CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN` のコメントを外し、`bin/notes.rb` に
@@ -1192,7 +1231,7 @@ Kamal は手元の git の HEAD からイメージをビルドします。`gen/`
 （2-7）。
 
 ```sh
-cybertrain spin run gen -- --check
+SPIN_DEBUG=1 cybertrain spin run gen -- --check
 git add -A && git commit -m "Configure Kamal"
 kamal setup
 ```
@@ -1246,7 +1285,8 @@ https://notes.example.com を開いて確かめます。
 | 起動ログに `error: views are not embedded in this binary` | ビューを埋め込まずにビルドしたバイナリ（`spin build notes` の `build/bin/notes` など）を本番モードで起動している。`cybertrain build` で作った `dist/notes` を使う |
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
-| デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
+| デプロイが `stale: gen/...` で止まる | 手元で `SPIN_DEBUG=1 cybertrain spin run gen` して `gen/` をコミットし忘れている |
+| デプロイが `this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C` で止まる | `notes` ユーザーの CLI がアプリのリリースと違う。メッセージが示すバージョンを `gem install --user-install cybertrain -v X.Y.Z`（3-4）で入れ、`cybertrain setup` を実行する |
 | デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが約 30 秒のうちに `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
 | `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v X.Y.Z`） |
