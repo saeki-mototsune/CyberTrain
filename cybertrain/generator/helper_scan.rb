@@ -111,10 +111,15 @@ module Cybertrain
         Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
       end
 
+      # An empty list of helper modules, likewise.
+      def self.no_helper_modules
+        Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
+      end
+
       # Every module under dir (recursively, sorted by file), checked for a
       # helper name defined twice.
       def self.scan_dir(dir)
-        modules = Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
+        modules = HelperScan.no_helper_modules
         SourceText.ruby_files(dir).each do |path|
           scan_source(path, File.read(path)).each { |m| modules << m }
         end
@@ -132,7 +137,7 @@ module Cybertrain
         # whether each one holds another module.
         names = Array.new(0) { "" }
         indents = Array.new(0) { 0 }
-        found = Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
+        found = HelperScan.no_helper_modules
         wraps = Array.new(0) { false }
         skip_indent = -1
         in_private = false
@@ -219,7 +224,7 @@ module Cybertrain
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
         end
-        kept = Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
+        kept = HelperScan.no_helper_modules
         found.each_with_index do |mod, j|
           kept << mod if !wraps[j] || !mod.defs.empty?
         end
