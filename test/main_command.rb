@@ -162,7 +162,7 @@ def dsn_for_this_case
 end
 
 # Runs `argv` with config.log_format = :json, then puts the text format
-# back (a plain method's ensure: pre-flight ruling G4).
+# back (a plain method's ensure).
 def run_in_json(argv)
   Cybertrain.config.log_format = :json
   run(argv)

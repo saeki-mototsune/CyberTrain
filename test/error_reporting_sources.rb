@@ -6,8 +6,8 @@ require "cybertrain/test_help"
 require "cybertrain/test/websocket_receiver"
 require_relative "support/log_capture"
 
-# What is reported automatically outside the request path (spec section
-# 13.2, plan D10): every failed job attempt (the default policy, a
+# What is reported automatically outside the request path
+# (docs/design.md D88): every failed job attempt (the default policy, a
 # `retry_on`, a `discard_on`), with the job's context and the id of the
 # request that enqueued it; a failed `deliver_later` as the `cybertrain
 # mail` job; a job thread's own failure; scheduled tasks (a block that
@@ -443,7 +443,7 @@ end
 
 # Runs the give-up case with exit_on_feed_death on, and off again (with
 # the supervisor's state reset and the feeds stopped) after it, also when
-# it raises (pre-flight ruling G4).
+# it raises (a plain method's ensure).
 module FeedsProcess
   def self.during
     B.exit_on_feed_death = true

@@ -1,7 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/sentry_dsn"
 
-# Cybertrain::SentryDsn (spec section 13.4, plan Task 4): the DSN that turns
+# Cybertrain::SentryDsn (docs/design.md D88): the DSN that turns
 # the Sentry sender on, `scheme://key[:secret]@host[:port][/path]/<id>`,
 # read by a byte scan. Refused DSNs say why and never echo the key (it is
 # public in Sentry's model, still kept out of logs like any credential).

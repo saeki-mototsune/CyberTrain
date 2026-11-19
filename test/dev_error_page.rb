@@ -893,7 +893,7 @@ test "shell_quote escapes single quotes" do
   assert_equal "'it'\\''s'", Cybertrain::Shell.quote("it's")
 end
 
-# ---- What development reports (Task 9; spec section 13.2, plan D6/D7) -------
+# ---- What development reports (docs/design.md D88) -------------------------
 
 def no_report_context
   h = { "" => "" }
