@@ -327,8 +327,8 @@ module Cybertrain
       end
     end
 
-    # An empty RETURNING row, seeded with every type a cell can be
-    # (NOTES rules 9 and 46).
+    # An empty row (a RETURNING row, or the cells of an input row), seeded
+    # with every type a cell can be (NOTES rules 9 and 46).
     def self.bulk_empty_row
       row = { "" => [nil, 0, 0.0, "", true, Time.at(0), Date.new(1970, 1, 1)][0] }
       row.delete("")
@@ -365,8 +365,7 @@ module Cybertrain
 
     # One row's values keyed by the String of each key.
     def self.bulk_cells(row)
-      cells = { "" => [nil, 0, 0.0, "", true, Time.at(0), Date.new(1970, 1, 1)][0] }
-      cells.delete("")
+      cells = Model.bulk_empty_row
       row.each { |k, v| cells[k.to_s] = v }
       cells
     end
