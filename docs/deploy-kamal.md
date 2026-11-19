@@ -20,8 +20,8 @@ files:
 | File | What it holds |
 | --- | --- |
 | `Dockerfile` | A two-stage build. The first stage (Ubuntu 24.04) runs `gem install cybertrain`, `cybertrain setup` (Spinel) and `cybertrain build`; the second (the same Ubuntu) gets only `dist/` and the libraries it needs at run time (SQLite, zlib, jemalloc, OpenSSL). On start it runs `./notes migrate`, then `exec`s `./notes` |
-| `.dockerignore` | Keeps `build/`, `dist/`, the databases in `storage/`, `tmp/`, `.git/` and `.kamal/` out of the build |
-| `config/deploy.yml` | Kamal's configuration. kamal-proxy takes HTTPS (Let's Encrypt) and forwards to the app's port 3000, and health-checks `/up.html`. The database lives on the volume `notes_storage` (`/app/storage` in the container), and `asset_path: /app/public/assets` carries the previous release's digested assets over |
+| `.dockerignore` | Keeps `build/`, `dist/`, `log/`, everything in `storage/` and `tmp/`, `.git/` and `.kamal/` out of the build |
+| `config/deploy.yml` | Kamal's configuration. kamal-proxy takes HTTPS (Let's Encrypt) and forwards to the app's port 3000, and health-checks `/up.html`. The database, and uploaded files (`storage/uploads/`), live on the volume `notes_storage` (`/app/storage` in the container), and `asset_path: /app/public/assets` carries the previous release's digested assets over |
 | `.kamal/secrets` | Reads `KAMAL_REGISTRY_PASSWORD` and `CYBERTRAIN_SECRET_KEY_BASE` from the environment of the shell that runs kamal. It never holds the values themselves (the file is committed) |
 | `public/up.html` | The health check page, served by the app itself as a static file |
 
@@ -49,7 +49,9 @@ the same OS as the machine that runs it". The CPU still has to match
 
 ## 8-2. Edit `config/deploy.yml`
 
-Replace the values marked `CHANGE ME` with yours.
+Replace the values marked `CHANGE ME` with yours. These are the parts you
+edit, shown for an app that has jobs (in a new app the `worker` role is
+commented out, as explained below):
 
 ```yaml
 service: notes
@@ -89,14 +91,17 @@ server build it.
 Do not turn `proxy.ssl` off. The session cookie is `Secure` in production, so
 over plain HTTP every form submission gets a 403.
 
+### Roles
+
 Every role under `servers` runs the same image. `web` serves HTTP (and, unless
 `CYBERTRAIN_WORKER=0`, the jobs and scheduled tasks); `worker` runs only the
 jobs and scheduled tasks, with `./notes worker`. They share the database on
 the volume, and only the one holding the lease runs the scheduled tasks
-([deploy.en.md](deploy.en.md), part 7, "Splitting the roles"). To run the
+([deploy.en.md](deploy.en.md), part 9, "Splitting the roles"). To run the
 WebSocket subscriptions in a container of their own, turn on the `feeds` role
 that the generated file has commented out (`cmd: ./notes feeds trades`) and
-give `web` `env: clear: CYBERTRAIN_WORKER: 0`. The first time you upgrade from
+give `web` `env: clear: CYBERTRAIN_WORKER: 0` (the `feeds` role needs
+`require "cybertrain/feeds"` in `bin/notes.rb`). The first time you upgrade from
 a cybertrain release without heartbeats, stop every old container with `kamal
 app stop` before `kamal deploy`, so that a new worker does not run an old
 worker's running job a second time.
@@ -124,12 +129,25 @@ so neither holds up the next web deploy; a crashed one leaves them to go
 stale. Set `CYBERTRAIN_HEALTH_FEEDS: 0` under `env.clear` if the proxy's health
 check points at `/up` and a quiet feed should not hold up a deploy.
 
-With a framework that has the built-in health check (`GET /up`, README
-"Operations"), you can change the `healthcheck` `path` from `/up.html` to
+### The health check
+
+With a framework that has the built-in health check (`GET /up`;
+[Operations](guide/background-and-operations.md#operations-backups-vacuum-health-check)),
+you can change the `healthcheck` `path` from `/up.html` to
 `/up`. `/up` runs a query that reads the database's schema and answers 503
 when it cannot, so traffic never moves to a release whose volume or database
 is broken; `/up.html` is a static file and only shows that the process
 answers HTTP. Keep `/up.html` for an app made with an older cybertrain.
+
+kamal-proxy already redirects http to https and the app sees
+`X-Forwarded-Proto: https`. If you turn on `CYBERTRAIN_FORCE_SSL: 1` as well
+(for the HSTS header), or `CYBERTRAIN_HOSTS: notes.example.com` (which refuses
+other `Host` values), point the `healthcheck` at `/up`. The proxy's check is
+plain http to the container, by address: only the health path (`/up`) is
+exempt from the redirect and from the Host check, so `/up.html` would be
+redirected or get a 403 and the new container would never turn healthy.
+
+### The proxy's address
 
 The generated `config/deploy.yml` sets `CYBERTRAIN_TRUSTED_PROXIES:
 172.16.0.0/12` under `env.clear`. kamal-proxy runs in a container of its own
@@ -143,21 +161,15 @@ shows it). Leave `proxy.forward_headers` unset: kamal-proxy terminating TLS
 sets `X-Forwarded-For` itself and does not pass on what the client sent,
 which is what you want.
 
-The generated `config/deploy.yml` also has `asset_path: /app/public/assets`.
+### Assets across a deploy
+
+The generated `config/deploy.yml` has `asset_path: /app/public/assets`.
 Each image carries only its own digested stylesheets and scripts, so Kamal
 bridges the previous release's files into the new container for the
 switch-over, and a page loaded before the deploy still finds the files its
 HTML names. Add the line to a `config/deploy.yml` from an older cybertrain;
 its `Dockerfile` also needs `libssl-dev` in the build stage and `libssl3t64`
 in the runtime stage, since every app now links OpenSSL.
-
-kamal-proxy already redirects http to https and the app sees
-`X-Forwarded-Proto: https`. If you turn on `CYBERTRAIN_FORCE_SSL: 1` as well
-(for the HSTS header), or `CYBERTRAIN_HOSTS: notes.example.com` (which refuses
-other `Host` values), point the `healthcheck` at `/up`. The proxy's check is
-plain http to the container, by address: only the health path (`/up`) is
-exempt from the redirect and from the Host check, so `/up.html` would be
-redirected or get a 403 and the new container would never turn healthy.
 
 ## 8-3. Prepare the secrets
 
@@ -172,6 +184,15 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # generate once, t
 
 [Kamal's documentation](https://kamal-deploy.org/docs/commands/secrets/)
 shows how to read them straight from a password manager.
+
+The `.env.example` that `cybertrain new` writes lists the other variables an
+app reads. One of them is required as soon as a model declares `encrypts`:
+without `CYBERTRAIN_ENCRYPTION_KEY` such an app does not start. Make the key
+with `cybertrain secret --hex`, keep it with the other secret, and pass it
+the way the Sentry DSN below is passed: `- CYBERTRAIN_ENCRYPTION_KEY` under
+`env: secret:` in `config/deploy.yml`,
+`CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY` in `.kamal/secrets`,
+and an `export` in the shell.
 
 To send error reports to Sentry (or GlitchTip), the generated files have
 the lines ready, commented out: uncomment `- CYBERTRAIN_SENTRY_DSN` under
@@ -194,7 +215,7 @@ Kamal builds the image from your local git HEAD. Commit first, `gen/`
 included (`gen/` is generated code, and the build expects it to be current):
 
 ```sh
-cybertrain spin run gen -- --check
+SPIN_DEBUG=1 cybertrain spin run gen -- --check
 git add -A && git commit -m "Configure Kamal"
 kamal setup
 ```
@@ -229,6 +250,10 @@ to check.
   ```sh
   sudo sqlite3 /var/lib/docker/volumes/notes_storage/_data/production.sqlite3 ".backup /root/notes-$(date +%Y%m%d).sqlite3"
   ```
+
+  An app with file uploads keeps them beside the database, in
+  `/var/lib/docker/volumes/notes_storage/_data/uploads/`: copy that directory
+  with each backup.
 
 - `kamal deploy` stops the old container only after the new one passes the
   health check, so unlike a systemd restart, no connection is refused during

@@ -14,9 +14,10 @@ cybertrain generate scaffold comment commenter:string body:text article:referenc
 - `config/routes.rb`: `root "articles#index"` and comments nested under
   articles (`only: [:create, :destroy]`); the standalone comment pages the
   scaffold wrote are gone.
-- `Article` validates the title and a body of at least 10 characters, and
-  deletes its comments before it is destroyed. `Article#comments` and
-  `Comment#article` are generated from the `comments.article_id` foreign key.
+- `Article` validates a title, present and unique, and a body of at least
+  10 characters, and deletes its comments before it is destroyed.
+  `Article#comments` and `Comment#article` are generated from the
+  `comments.article_id` foreign key.
 - `articles/show.html.erb` lists the comments inside `<div id="comments">`
   and ends with the comment form (`comments/_form`, which takes the
   comment as a local, `form_with(model: [@article, comment])`, inside
@@ -251,7 +252,7 @@ fixtures (`test/fixtures/users.yml`), `sign_in_as`
 `remember_me_test.rb` and `lockout_test.rb`.
 
 - **Who may do what.** Anyone reads the articles and posts comments
-  (`allow_unauthenticated_access only: [:index, :show]` in
+  (`allow_unauthenticated_access only: [:index, :show, :cover]` in
   `ArticlesController`, `only: [:create]` in `CommentsController`); writing,
   editing and deleting articles, and deleting comments, need a signed-in
   user, and a visitor is sent to sign in first (then back to the page

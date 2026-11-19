@@ -96,10 +96,10 @@
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
-<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
+<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000/articles</span></span>
 <span class="ln cmd">cybertrain build             <span class="c"># 生产环境：dist/blog、dist/public/、dist/storage/、dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note"><code>cybertrain</code> 命令和开发时的 CRuby 预览需要 Ruby&nbsp;3.2+（预览还会加载 <code>fiddle</code>；生产环境不需要 Ruby），此外还需要 <code>git</code>、<code>make</code>、<code>curl</code>、C 编译器和 SQLite&nbsp;3 头文件：参见<a href="guide/install.html#requirements">开始之前</a>。设置好 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 后，用 <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> 运行构建产物。</p>
+        <p class="term-note"><code>cybertrain</code> 命令和开发时的 CRuby 预览需要 Ruby&nbsp;3.2+（预览还会加载 <code>fiddle</code>；生产环境不需要 Ruby），此外还需要 <code>git</code>、<code>make</code>、<code>curl</code>、C 编译器以及 SQLite&nbsp;3、zlib 和 OpenSSL 的头文件：参见<a href="guide/install.html#requirements">开始之前</a>。设置好 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 后，用 <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> 运行构建产物。</p>
       </div>
     </div>
   </div>
@@ -230,12 +230,16 @@
     <ul class="features sec-full">
       <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>原生 HTTP 服务器</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器，每个连接一个绿色线程，请求和响应都带有类型。没有 Rack 层；需要 TLS 时在前面放 nginx 或 Caddy。</p><p class="feat-ref"><code>TCPServer#accept</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>路由与控制器</h3><p><code>resources</code>、嵌套路由、<code>before_action</code>、<code>after_action</code> 和 <code>rescue_from</code>，在构建时生成为纯 Ruby。强参数和“先 flash 再重定向”的用法与 Rails 相同。</p><p class="feat-ref"><code>config/routes.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>会话、flash、CSRF</h3><p>HMAC 签名的 cookie 会话、flash 消息和 CSRF 防护默认开启。表单会自动携带令牌；伪造的 POST 请求会得到 403。</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>会话、flash、CSRF</h3><p>加密的 cookie 会话（AES-256-GCM）、flash 消息和 CSRF 防护默认开启。表单会自动携带令牌；伪造的 POST 请求会得到 403。</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>类 ERB 模板</h3><p>视图看起来就像 Rails 的 ERB，支持布局、局部视图、<code>form_with</code> 和 <code>link_to</code>。开发时从磁盘读取，所以修改后无需重新构建。<code>cybertrain build</code> 会把它们嵌入。</p><p class="feat-ref"><code>app/views/**/*.html.erb</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>SQLite 模型</h3><p>验证、回调，以及由外键推导出的关联。通过 Spinel 的 FFI 和连接池访问 SQLite；所有查询都使用参数绑定。</p><p class="feat-ref"><code>ffi_func · ffi_lib</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>迁移与脚手架</h3><p><code>cybertrain generate scaffold</code> 会写出迁移、模型、控制器和五个视图。<code>cybertrain db migrate</code> 先生成代码，再执行迁移、重写 <code>db/schema.rb</code>，然后再次生成。</p><p class="feat-ref"><code>db/migrate/*.rb</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>实时开发循环</h3><p><code>cybertrain server</code> 监视你的代码：Ruby 改动后，CRuby 预览在一秒内响应，同时 Spinel 在后台构建；构建完成后，编译好的二进制文件接管同一端口。构建失败时预览继续提供服务，并显示编译器输出。</p><p class="feat-ref"><code>X-Cybertrain-Runtime: cruby|spinel</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>自带测试</h3><p>用 <code>Cybertrain::Test</code> 编写测试，并通过带 cookie jar 的客户端在进程内驱动整个应用。<code>cybertrain spin test</code> 会编译每个测试并比对其输出。</p><p class="feat-ref"><code>test/&lt;name&gt;.rb.expected</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>测试</h3><p>Rails 风格的测试类（<code>ActiveSupport::TestCase</code>、<code>ActionDispatch::IntegrationTest</code>）和 fixtures，由生成器写好。<code>cybertrain test</code> 把它们编译成一个程序并运行。</p><p class="feat-ref"><code>test/**/*_test.rb</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>后台作业</h3><p>带重试、cron 计划和作业页面的作业类，保存在应用的 SQLite 数据库里。<code>./blog worker</code> 在单独的进程中运行它们。</p><p class="feat-ref"><code>app/jobs/*.rb</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Turbo Streams</h3><p>视图里的 <code>turbo_stream_from</code>，以及动作或作业里的 <code>broadcast_append_to</code>，通过 Server-Sent Events 或 WebSocket 送达。</p><p class="feat-ref"><code>require "cybertrain/streams"</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>登录与上传</h3><p><code>cybertrain generate authentication</code>（注册或仅限邀请、重置密码、邮箱确认）和 <code>cybertrain generate attachment</code> 写出的代码归你所有，可以随意修改。</p><p class="feat-ref"><code>cybertrain generate</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>只编译用到的部分</h3><p>作业、Turbo Streams、feeds、邮件、缓存和速率限制各是一行 <code>require</code>；新应用只编译核心。</p><p class="feat-ref"><code>require "cybertrain/core"</code></p></li>
     </ul>
   </div></div>
 </section>
@@ -251,18 +255,18 @@
       <article class="part" aria-labelledby="part-fw">
         <div class="part-head"><p class="part-k">Spinel 包</p><h3 id="part-fw">框架</h3></div>
         <p class="part-what">你的应用所基于的库。</p>
-        <div class="part-fact"><p class="fact-k">包含什么</p><p>HTTP 服务器、路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移，以及 <code>spin run gen</code> 背后的代码生成器。</p></div>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>HTTP 服务器、路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移、可选的子系统（作业、Turbo Streams、邮件、缓存）、测试框架，以及 <code>spin run gen</code> 背后的代码生成器。</p></div>
         <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库与你的 <code>cybertrain</code> 命令相对应的发布标签，<code>spin lock</code> 会把它拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定提交。不会有任何内容被复制到你的应用中。</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> 命令</h3></div>
         <p class="part-what">用来创建、构建和运行你的应用的工具。</p>
-        <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate scaffold</code>、<code>db migrate</code>、<code>server</code>、<code>build</code>、<code>spin</code>、<code>setup</code> 和 <code>doctor</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code> 和 <code>doctor</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
         <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">两者从同一个标签发布，因此版本一致。安装指南中有<a href="guide/install.html#moving-an-app-to-a-new-release">应用如何迁移到新版本</a>的说明。</p>
+      <p class="footnote">两者从同一个标签发布；如果应用的框架是另一个版本，命令会拒绝构建它。安装指南中有<a href="guide/install.html#moving-an-app-to-a-new-release">应用如何迁移到新版本</a>的说明。</p>
     </div>
   </div></div>
 </section>
@@ -310,14 +314,14 @@
           <tr><th scope="col" class="cmp-topic"><span class="sr-only">主题</span></th><th scope="col" class="cmp-rails">Rails</th><th scope="col" class="cmp-ct"><svg class="cmp-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg><span>CyberTrain</span></th></tr>
         </thead>
         <tbody>
-          <tr><th scope="row"><span class="cmp-n">01</span>控制台</th><td data-label="Rails"><code>rails console</code></td><td data-label="CyberTrain">没有控制台——Spinel 没有 <code>eval</code></td></tr>
+          <tr><th scope="row"><span class="cmp-n">01</span>控制台</th><td data-label="Rails"><code>rails console</code>、<code>rails dbconsole</code></td><td data-label="CyberTrain"><code>./blog console</code> 在模型上求值模板表达式语言（Spinel 没有 <code>eval</code>，所以不是 Ruby）；<code>./blog dbconsole</code> 打开 <code>sqlite3</code></td></tr>
           <tr><th scope="row"><span class="cmp-n">02</span>重新加载</th><td data-label="Rails">修改代码，正在运行的应用会自动加载</td><td data-label="CyberTrain">Ruby 的改动立即通过 CRuby 预览生效；构建完成后，编译好的二进制文件接管端口（<code>cybertrain server</code>）</td></tr>
           <tr><th scope="row"><span class="cmp-n">03</span>new 动作</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code>（<code>new</code> 会遮蔽 <code>Klass.new(ctx)</code>）</td></tr>
           <tr><th scope="row"><span class="cmp-n">04</span>回调</th><td data-label="Rails"><code>before_action { do_thing }</code>（隐式 <code>self</code>）</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code>——无法对存储的块使用 <code>instance_exec</code>，因此回调需要显式接收控制器/记录</td></tr>
           <tr><th scope="row"><span class="cmp-n">05</span>嵌套路由</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code>——嵌套块需要显式接收 mapper</td></tr>
-          <tr><th scope="row"><span class="cmp-n">06</span>会话</th><td data-label="Rails">会话可以保存任何经 marshal 序列化的对象</td><td data-label="CyberTrain">会话值只能是 String，使用 HMAC 签名的 cookie</td></tr>
+          <tr><th scope="row"><span class="cmp-n">06</span>会话</th><td data-label="Rails">会话可以保存任何经 marshal 序列化的对象</td><td data-label="CyberTrain">会话值只能是 String，使用 AES-256-GCM 加密的 cookie</td></tr>
           <tr><th scope="row"><span class="cmp-n">07</span>数据库</th><td data-label="Rails">多种数据库适配器</td><td data-label="CyberTrain">仅支持 SQLite，通过 FFI 访问</td></tr>
-          <tr><th scope="row"><span class="cmp-n">08</span>测试</th><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code>——基于反射的测试运行器无法在 AOT 编译下工作</td></tr>
+          <tr><th scope="row"><span class="cmp-n">08</span>测试</th><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain">Rails 风格的测试类和 fixtures，由 <code>cybertrain test</code> 编译成一个程序——基于反射的测试运行器无法在 AOT 编译下工作</td></tr>
         </tbody>
       </table>
       <div class="cmp-foot">
@@ -333,7 +337,7 @@
     <div class="sec-head"><span class="sec-num" aria-hidden="true">06</span><p class="sec-label">性能</p></div>
     <div class="sec-body">
       <h2 id="perf-h">在一个核心上，处理的请求是 Rails 的 2.2 到 8.8 倍。</h2>
-      <p class="lead">对比 <code>examples/blog</code> 与用 Rails 8.1 编写的同一个博客：视图、路由、模型和 SQLite 模式都相同。两者都以生产模式运行，固定在同一台机器的相同 CPU 核心上，由 wrk 施加相同的负载。第二个核心对 Rails 的帮助更大：Puma 会多开一个完整的进程，而 CyberTrain 的第二个工作线程只带来 0% 到 19% 的提升，因此在两个核心上差距为 1.1 到 4.4 倍。</p>
+      <p class="lead">对比 2026-11-05 时的 <code>examples/blog</code> 与用 Rails 8.1 编写的同一个博客：视图、路由、模型和 SQLite 模式都相同（这个示例此后又有增加）。两者都以生产模式运行，固定在同一台机器的相同 CPU 核心上，由 wrk 施加相同的负载。第二个核心对 Rails 的帮助更大：Puma 会多开一个完整的进程，而 CyberTrain 的第二个工作线程只带来 0% 到 19% 的提升，因此在两个核心上差距为 1.1 到 4.4 倍。</p>
     </div>
     <div class="sec-full">
       <figure class="perf-fig">
@@ -361,7 +365,7 @@
         <li><p class="perf-k">服务器上需要的东西</p><p class="perf-v">4.0&nbsp;MB</p><p class="perf-d">一个二进制文件。Rails：Ruby、69 个 gem 和应用，共 121&nbsp;MB。</p></li>
         <li><p class="perf-k">代价：一次构建</p><p class="perf-v">50 秒</p><p class="perf-d">用 <code>cybertrain build</code> 编译二进制文件所需的时间。Rails 直接运行源代码。</p></li>
       </ul>
-      <p class="footnote">预热之后三次 10 秒测量的中位数，环境为一台 4 vCPU 的云虚拟机：用锁定的 Spinel 版本构建的 CyberTrain（提交 0d8a942），对比运行在 Ruby 3.4.6（启用 YJIT）和 Puma 8.0 上的 Rails 8.1.4。测量方法、全部数字以及如何重新测量：<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>。</p>
+      <p class="footnote">预热之后三次 10 秒测量的中位数，环境为一台 4 vCPU 的云虚拟机：用锁定的 Spinel 版本构建的 CyberTrain（提交 0d8a942），对比运行在 Ruby 3.4.6（启用 YJIT）和 Puma 8.0 上的 Rails 8.1.4。测量方法、全部数字，以及示例此后的变化：<a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>。</p>
     </div>
   </div></div>
 </section>

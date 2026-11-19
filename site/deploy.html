@@ -118,9 +118,9 @@
 <span class="ln">                                       └─ storage/production.sqlite3</span></code></pre>
 </figure>
     <ul class="points">
-      <li><strong>It links the system&rsquo;s SQLite and libc,</strong> so build it on the same OS and CPU as the machine that runs it. Building inside a Docker image, as the Kamal setup does, takes care of that.</li>
+      <li><strong>It links the system&rsquo;s SQLite, zlib, OpenSSL and libc,</strong> so build it on the same OS and CPU as the machine that runs it. Building inside a Docker image, as the Kamal setup does, takes care of that.</li>
       <li><strong>It speaks plain HTTP/1.1 only.</strong> TLS and HTTP/2 are the reverse proxy&rsquo;s job. In production the session cookie is <code>Secure</code>, so the site must be served over HTTPS or forms fail with <code>Invalid authenticity token</code>.</li>
-      <li><strong>The database is one SQLite file.</strong> Run one process on one server, and keep the file on storage that outlives a deploy.</li>
+      <li><strong>The database is one SQLite file.</strong> Run it on one server, and keep the file on storage that outlives a deploy. Several processes on that server can share it: a <code>worker</code> for jobs, or, on Linux, more server processes on the same port.</li>
       <li><strong>It is production by default</strong> and refuses to start without <code>CYBERTRAIN_SECRET_KEY_BASE</code>. <code>./blog migrate</code> applies the migrations compiled into it.</li>
     </ul>
   </section>
@@ -137,11 +137,11 @@
         <tr><td data-label="">Static files</td><td data-label="Kamal">The app serves <code>public/</code></td><td data-label="systemd and Caddy">Caddy serves <code>dist/public/</code> itself</td></tr>
         <tr><td data-label="">A deploy</td><td data-label="Kamal">The new container takes traffic once its health check passes: nothing is refused</td><td data-label="systemd and Caddy">A restart: a few seconds of Caddy&rsquo;s 500.html</td></tr>
         <tr><td data-label="">Rolling back</td><td data-label="Kamal"><code>kamal rollback VERSION</code></td><td data-label="systemd and Caddy">Point <code>current</code> at an earlier release and restart</td></tr>
-        <tr><td data-label="">The server needs</td><td data-label="Kamal">SSH and Docker (<code>kamal setup</code> installs it), plus an image registry</td><td data-label="systemd and Caddy">Ruby, a C toolchain, the SQLite headers, the <code>cybertrain</code> CLI and Spinel</td></tr>
+        <tr><td data-label="">The server needs</td><td data-label="Kamal">SSH and Docker (<code>kamal setup</code> installs it), plus an image registry</td><td data-label="systemd and Caddy">Ruby, a C toolchain, the SQLite, zlib and OpenSSL headers, the <code>cybertrain</code> CLI and Spinel</td></tr>
       </tbody>
     </table>
     </div>
-    <p class="note">Either way, the app is one process with its SQLite file on one server.</p>
+    <p class="note">Either way, the app and its SQLite file live on one server.</p>
   </section>
 
   <section class="step" id="kamal" aria-labelledby="h-kamal">
@@ -164,7 +164,7 @@
     <ul class="points">
       <li>Each deploy builds the image (Spinel stays in Docker&rsquo;s layer cache after the first), pushes it, and starts a container that runs <code>./blog migrate</code> and then <code>exec ./blog</code> on <code>0.0.0.0:3000</code>.</li>
       <li>kamal-proxy waits until <code>/up.html</code> answers 200, switches traffic to the new container, then stops the old one, which finishes its requests in flight on <code>SIGTERM</code>.</li>
-      <li>The database lives on the volume <code>blog_storage</code>, mounted at <code>/app/storage</code>, so it survives every deploy.</li>
+      <li>The database, and any uploaded files, live on the volume <code>blog_storage</code>, mounted at <code>/app/storage</code>, so they survive every deploy.</li>
       <li>Set <code>builder.arch</code> to the server&rsquo;s CPU. Spinel compiles inside the image, so building another architecture under emulation is slow; build on the server with <code>builder.remote</code> instead.</li>
     </ul>
     <p class="note">The step-by-step guide, with backups of the volume, is <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>. <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> carries the same setup, and CI builds and smoke-tests its image.</p>
@@ -210,7 +210,7 @@
     <table class="env">
       <thead><tr><th scope="col">Variable</th><th scope="col">In production</th></tr></thead>
       <tbody>
-        <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="In production">Required. Signs the session cookie; changing it signs everyone out. Generate it once with <code>openssl rand -hex 32</code></td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="In production">Required. Encrypts the session cookie; changing it signs everyone out. Generate it once with <code>openssl rand -hex 32</code> (or <code>cybertrain secret</code>)</td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_DATABASE</code></td><td data-label="In production">The SQLite file; <code>storage/production.sqlite3</code> under the working directory by default. Keep it outside the release</td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_HOST</code></td><td data-label="In production"><code>127.0.0.1</code> by default, right behind a proxy on the same machine; <code>0.0.0.0</code> in a container</td></tr>
         <tr><td data-label="Variable"><code>PORT</code></td><td data-label="In production"><code>3000</code> by default; what the proxy forwards to</td></tr>
@@ -218,7 +218,7 @@
       </tbody>
     </table>
     </div>
-    <p class="note">The tutorial&rsquo;s <a href="tutorial.html#ship">Build for deployment</a> step lists every variable and its <code>config/app.rb</code> attribute.</p>
+    <p class="note">Every variable and its <code>config/app.rb</code> attribute: <a href="guide/configuration.html#configuration-and-environment-variables">Configuration</a>.</p>
   </section>
 
   <section class="step" id="operate" aria-labelledby="h-operate">
@@ -229,6 +229,7 @@
       <li><strong>Back up with SQLite&rsquo;s <code>.backup</code>,</strong> not by copying the file: it takes a consistent copy while the app writes.</li>
       <li><strong>Rolling back past a migration</strong> means rolling the database back too, with <code>db rollback</code> from the newer release, before you switch.</li>
       <li><strong>Stopping is graceful:</strong> on <code>SIGTERM</code> the server stops accepting, finishes the requests in flight and exits, after 10 seconds at most.</li>
+      <li><strong>One binary, several roles.</strong> With the jobs subsystem required, <code>./blog worker</code> runs the jobs and scheduled tasks without HTTP; with the feeds subsystem, <code>./blog feeds</code> runs the WebSocket subscriptions. <code>GET /up</code> answers 503 when the database, the worker or a feed is not healthy. <a href="guide/background-and-operations.html#process-roles">Process roles</a>.</li>
     </ul>
   </section>
 
