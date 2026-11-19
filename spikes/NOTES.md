@@ -138,8 +138,8 @@ for the evidence needed to change a status.
 | 111 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional-subsystems design, not of a defect. |
 | 112 | Runtime behaviour, checked 2026-11-13 on this pin (spikes/phase5/flock_fstat.rb): `File#flock` matches CRuby; `File#stat` and `IO.for_fd` do not. |
 | 113, 119 | Work on this build (phase 5b, 2026-11-13): records of forms that compile and behave as under CRuby, not of defects. |
-| 114 | Found on this build (phase 5b spike item 7, 2026-11-13): how green threads are scheduled at one worker, not a defect. |
-| 115 | Performance observation on this build (phase 5b spike item 9, 2026-11-13), with the limits its entry lists; not re-measured with wrk or a slow reader. |
+| 114 | Found on this build (phase 5b spike, 2026-11-13): how green threads are scheduled at one worker, not a defect. |
+| 115 | Performance observation on this build (phase 5b spike, 2026-11-13), with the limits its entry lists; not re-measured with wrk or a slow reader. |
 | 116, 117 | **Still there**: found on this build (phase 5b, 2026-11-13) and reduced on 2026-11-14 (spikes/phase5/stringio_threads.rb, queue_in_array.rb). |
 | 118 | How a thread test is written: CRuby hides the race, not a Spinel defect (phase 5b, 2026-11-13). |
 | 120 | Tool behaviour, seen 2026-11-13: spin's freshness check for a test binary compares modification times. |
@@ -1999,7 +1999,7 @@ from CRuby that is still there (the status table classifies each); record
      45% of the release build's in-process request rate. So the test runner names a failing test by
      the line of its `test` call, never by the assertion's line, and an
      error report carries a backtrace only from a debug build (phase 5a
-     spike item 5, 2026-11-12; spikes/phase5/backtrace.rb;
+     spike, 2026-11-12; spikes/phase5/backtrace.rb;
      docs/spinel-feedback.md AM).
 
 108. Tool behaviour: `spin run gen` rebuilds the application's
@@ -2061,7 +2061,7 @@ from CRuby that is still there (the status table classifies each); record
      does not compile, `'_o1' undeclared`, where CRuby prints `amp` and
      `long`; with the methods in the other order it compiles; with both
      cases as return values it compiles; docs/spinel-feedback.md AO).
-     Extended in phase 5b (2026-11-13, pre-flight ruling G2): new
+     Extended in phase 5b (2026-11-13): new
      framework code writes no statement `case` on any Integer, a
      `getbyte` value included, since a nullable subject is what leaks the
      mark and a plain one is what it breaks; the byte scanners of
@@ -2170,17 +2170,16 @@ from CRuby that is still there (the status table classifies each); record
      answers `v`) and `return v` (returns from the method around the block)
      inside the block. A record of a form that works, refining rules 32, 45
      and 79 for this shape: `Cybertrain.error.handle` is written so
-     (phase 5b spike item 8, spikes/phase5/error_names.rb at framework
+     (phase 5b spike, spikes/phase5/error_names.rb at framework
      19668bc, 2026-11-13, deleted since; test/error_reporter.rb's "handle
-     through a forwarding block, with next, and nested in blocks" since
-     Task 7).
+     through a forwarding block, with next, and nested in blocks" since).
 
 114. Under `SPINEL_WORKERS=1` a `sleep 0` does not switch green threads on
      Spinel 2026.11.04.7026: four threads started through a method, each
      calling `sleep 0` between storing and reading its own value, ran one
      after another, so a test meant to read after another thread wrote saw
      no other thread run. A timed sleep (2 ms) did switch them (phase 5b
-     spike item 7, spikes/phase5/thread_scope.rb, 2026-11-13). So a test
+     spike, spikes/phase5/thread_scope.rb, 2026-11-13). So a test
      that must interleave threads sleeps for a time, or better meets
      through Queues (`inbox.pop(timeout: 5)` parks the thread whatever the
      worker count, rule 85), as test/logger_scope.rb and
@@ -2196,8 +2195,9 @@ from CRuby that is still there (the status table classifies each); record
      once without the lock, served under `taskset -c 0,1` with
      `SPINEL_WORKERS=2`, the request log on and stdout into a pipe, five
      10-second runs each: medians 1,590 and 1,581 requests a second
-     (100.6%), no request over 1 s, no error (phase 5b spike item 9,
-     2026-11-13; the spec's section 16 has every run). The limits of that
+     (100.6%), no request over 1 s, no error (phase 5b spike,
+     2026-11-13; the header of spikes/phase5/logger_lock/run.sh has every
+     run). The limits of that
      measurement: the load was the spike's own CRuby loader with 8
      keep-alive connections, not wrk (not installed) at its higher rates,
      where rule 57's stalls showed; stdout was a pipe read promptly, so a
@@ -2215,8 +2215,8 @@ from CRuby that is still there (the status table classifies each); record
      serializes them) prints the joined size. With one worker the same
      program finishes (reduced program spikes/phase5/stringio_threads.rb,
      2026-11-14; docs/spinel-feedback.md AQ). Found when test/logger_threads.rb
-     was run against a logger without its lock (phase 5b Task 2's fix
-     round): the failure there showed as a crash, not as interleaved lines.
+     was run against a logger without its lock (phase 5b): the failure
+     there showed as a crash, not as interleaved lines.
      So a StringIO (or any object) that several threads write is written
      under a lock (the Logger's `LOCK` covers the test loggers' StringIO
      too), and a test of a race sets `SPINEL_WORKERS` above 1 before its
@@ -2231,14 +2231,14 @@ from CRuby that is still there (the status table classifies each); record
      Queue that never goes into an Array, kept in a local or a constant and
      passed as a parameter, pops as under CRuby (reduced program
      spikes/phase5/queue_in_array.rb, its header has the variants,
-     2026-11-14; docs/spinel-feedback.md AP). Found in phase 5b Task 3
+     2026-11-14; docs/spinel-feedback.md AP). Found in phase 5b
      (test/logger_scope.rb's concurrent `tagged` test, whose threads each
      get their two Queues as parameters).
 
 118. Thread tests: a handshake that relies on the other thread not
      running yet passes under CRuby, where the GVL runs one thread at a
      time and switches rarely, and fails compiled, where the threads run
-     on several workers at once. Found in phase 5b Task 7 (test/error_reporter.rb):
+     on several workers at once. Found in phase 5b (test/error_reporter.rb):
      a delivery thread blocked in a subscriber is released by tokens on a
      Queue; a spare token left from one phase let a later delivery through
      early compiled, never under CRuby. So a test pushes exactly as many
@@ -2252,7 +2252,7 @@ from CRuby that is still there (the status table classifies each); record
      under CRuby, on Spinel 2026.11.04.7026: `Logger::NO_SCOPE`'s tags and
      context are frozen, and `scope_tags << "x"` and `scope_context["k"] =
      "v"` on it raise `FrozenError` in the compiled test/logger_scope.rb
-     (phase 5b Task 3's fix round, 2026-11-13). A record of a form that
+     (phase 5b, 2026-11-13). A record of a form that
      works: freezing is how the framework keeps a shared constant
      container from being written (`assert_raises("FrozenError") { ... }`
      there).

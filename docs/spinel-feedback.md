@@ -3729,10 +3729,10 @@ build while a third, loading the same file, built.
 
 ## Found in phase 5b of the Rails-gap programme (2026-11-13)
 
-The operations part of the phase 5 design (logs, request ids and error
-reporting; section 16's items 7 to 9 ran before the code, in
-spikes/phase5/, item 8's program, error_names.rb, deleted since) met two
-Spinel bugs, AP and AQ, both reduced on 2026-11-14
+Phase 5b, operations (logs, request ids and error reporting,
+docs/design.md D86 and D88; three checks ran before the code:
+spikes/phase5/thread_scope.rb, error_names.rb, deleted since, and
+logger_lock/) met two Spinel bugs, AP and AQ, both reduced on 2026-11-14
 with the pinned 2026.11.04.7026 (a2d06115, gcc 13.3.0, Linux x86_64,
 `spinel prog.rb -o prog`, no flags) and run beside CRuby 3.3.6.
 spikes/NOTES.md has them as rules 117 and 116, and the rest of what the
@@ -3835,7 +3835,7 @@ an application ported from Ruby may rely on it without knowing.
 
 ## Found in the phase 5b follow-ups (2026-11-14)
 
-The follow-ups (docs/superpowers/plans/2026-11-14-phase5b-followups-plan.md)
+The follow-ups (docs/design.md section 13, the entry of 2026-11-14)
 met one Spinel item, AR, seen in a build and reduced on 2026-11-15;
 spikes/NOTES.md has it as rule 122, and a form that works as rule 121.
 
