@@ -145,7 +145,7 @@ module Cybertrain
     end
 
     # Written by gen/concerns.rb (`spin run gen`) around the `included`
-    # body of a model concern it splices into this class (spec 4.2):
+    # body of a model concern it splices into this class:
     # until {.model_concern_insert_done}, the rules its `validates` calls
     # declare go before the model's own call number `validators_index`
     # (the count of the model's `validates` calls above the `include`
@@ -189,10 +189,10 @@ module Cybertrain
     # @api public
     def self.validate(*args) = nil
 
-    # Encrypts columns at rest: `encrypts :api_key, :notes` (spec section
-    # 10). The generator reads the line as text: the generated load_row
-    # decrypts each column ({Crypto.decrypt}) and to_row encrypts it with a
-    # fresh nonce, so the record holds the text and the table the payload
+    # Encrypts columns at rest: `encrypts :api_key, :notes`. The generator
+    # reads the line as text: the generated load_row decrypts each column
+    # ({Crypto.decrypt}) and to_row encrypts it with a fresh nonce, so the
+    # record holds the text and the table the payload
     # (`"1:..."`, AES-256-GCM). Each must be a string or text column, named
     # with Symbols, no options (there is no deterministic encryption). The
     # application then needs `CYBERTRAIN_ENCRYPTION_KEY` (boot fails

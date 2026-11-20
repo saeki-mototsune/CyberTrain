@@ -38,6 +38,8 @@ module Cybertrain
   # @api public
   class TimeZone
     # Where zone files are looked up when `TZDIR` is unset or empty.
+    # @return [String]
+    # @api public
     DEFAULT_DIR = "/usr/share/zoneinfo"
     # A zone file larger than this is refused (the largest real ones are a
     # few KB).
@@ -602,7 +604,8 @@ module Cybertrain
       remember_zone(path, zone)
     end
 
-    # The directory zone names resolve under: `TZDIR`, or {DEFAULT_DIR}.
+    # The directory zone names resolve under: `TZDIR`, or
+    # `/usr/share/zoneinfo` ({DEFAULT_DIR}).
     # @return [String]
     # @api public
     def self.zoneinfo_dir

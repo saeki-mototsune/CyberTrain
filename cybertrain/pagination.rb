@@ -22,6 +22,8 @@ module Cybertrain
   # @api public
   class Page
     # The largest `per:` {Relation#page} takes.
+    # @return [Integer]
+    # @api public
     MAX_PER = 1000
 
     # @return [Integer] the page's number, from 1

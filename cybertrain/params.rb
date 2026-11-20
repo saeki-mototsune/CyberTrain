@@ -166,6 +166,8 @@ module Cybertrain
     # The most digits {Params.parse_int} reads: 18 stay below 2**63-1, past
     # which `String#to_i` raises RangeError under Spinel instead of
     # promoting to a Bignum (spikes/NOTES.md rule 25).
+    # @return [Integer]
+    # @api public
     MAX_INT_DIGITS = 18
 
     # A String value read as a decimal Integer, bounded: `default` when the
@@ -214,7 +216,7 @@ module Cybertrain
     end
 
     # A decimal Integer from text, or default when text is not an optional
-    # `-` and 1 to {MAX_INT_DIGITS} ASCII digits. Never raises: the length
+    # `-` and 1 to 18 ({MAX_INT_DIGITS}) ASCII digits. Never raises: the length
     # is checked before `to_i` (NOTES rule 25). Shared with Config.
     # @param text [String]
     # @param default [Integer]

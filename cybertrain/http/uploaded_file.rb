@@ -33,6 +33,8 @@ module Cybertrain
   class UploadedFile
     # The only detected types that may be shown inline in a browser. SVG and
     # HTML are never detected, so they can never be on this list.
+    # @return [Array<String>]
+    # @api public
     INLINE_SAFE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
     # The longest display name kept, in bytes (a file system limit).
     MAX_FILENAME_BYTES = 255

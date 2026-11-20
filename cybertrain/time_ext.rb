@@ -369,7 +369,7 @@ class Time
   # @api public
   def tomorrow = advance(days: 1)
 
-  # This instant's wall fields in `zone` (spec section 4): a
+  # This instant's wall fields in `zone`: a
   # {Cybertrain::ZonedTime} with `year`, `month`, `day`, `hour`, `min`,
   # `sec`, `wday`, `yday`, `utc_offset`, `zone` (the abbreviation),
   # `to_time` and `to_date`. The Time itself stays a UTC instant.

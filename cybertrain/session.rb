@@ -13,8 +13,8 @@ module Cybertrain
   # Symbol key is its name; a value is stored as `value.to_s`, so
   # `session[:user_id] = 5` reads back as `"5"`).
   #
-  # The cookie is encrypted and authenticated with AES-256-GCM (spec
-  # section 5.1, as Rails' cookie store), under a key derived from
+  # The cookie is encrypted and authenticated with AES-256-GCM (as Rails'
+  # cookie store), under a key derived from
   # `secret_key_base` ({Crypto.derive_key} with the label
   # `"cybertrain session"`) and with `"session"` as the additional data:
   # the client can neither read it nor change it. A cookie that does not
@@ -201,10 +201,9 @@ module Cybertrain
 
     # Gives this session its own lifetime, `seconds` long, in place of
     # `Config#session_absolute_max_age`. SessionStore ends the session
-    # once that many seconds have passed since its start
-    # ({#issued_at}). With `persistent` true, the cookie's Max-Age is the
-    # time left, even past `Config#session_max_age` ("remember me"
-    # checked). With `persistent` false, the cookie has no Max-Age and no
+    # once that many seconds have passed since its start. With
+    # `persistent` true, the cookie's Max-Age is the time left, even past
+    # `Config#session_max_age` ("remember me" checked). With `persistent` false, the cookie has no Max-Age and no
     # Expires, so the browser drops it when it closes ("remember me"
     # unchecked). `seconds` 0 or less removes the lifetime and keeps the
     # browser-session choice.

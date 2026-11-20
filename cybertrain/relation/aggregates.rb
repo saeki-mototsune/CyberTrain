@@ -63,11 +63,11 @@ module Cybertrain
     end
 
     # Two or more columns of the matching rows, in the relation's order, one
-    # Array of cells per row. Each cell is cast by the column's type
-    # ({#column_type}): an integer column gives an Integer, a float or
-    # decimal a Float, a boolean `true`/`false`, a datetime a UTC Time, a
-    # date a Date, any other (string, text, json, binary) the String
-    # stored; NULL is nil. One column has a typed reader instead
+    # Array of cells per row. Each cell is cast by the column's type: an
+    # integer column gives an Integer, a float or decimal a Float, a
+    # boolean `true`/`false`, a datetime a UTC Time, a date a Date, any
+    # other (string, text, json, binary) the String stored; NULL is nil.
+    # One column has a typed reader instead
     # ({#pluck_str}, {#pluck_int}, {#pluck_float}, {#ids}), since Spinel
     # gives a method one return type.
     # @example

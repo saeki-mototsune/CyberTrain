@@ -34,8 +34,7 @@ module Cybertrain
     # `{"stream":...,"id":...,"data":...}`), a `: ping` comment after
     # {Config#stream_ping_interval} seconds of silence. `Last-Event-ID`
     # replays what is still in the table after that id first. A GET with
-    # `Upgrade: websocket` gets the same messages over a WebSocket
-    # ({WebSocketWriter}).
+    # `Upgrade: websocket` gets the same messages over a WebSocket.
     #
     # Authorisation is the token's signature: a bad or missing one is a 403
     # (with no body, nothing read from the database); no session is read.

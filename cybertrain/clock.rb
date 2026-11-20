@@ -3,7 +3,7 @@ require "cybertrain/time_zone"
 require "cybertrain/logger"
 
 module Cybertrain
-  # The one clock of the framework (spec section 2.2): real time, or the
+  # The one clock of the framework: real time, or the
   # instant a test travelled to. The test helpers `travel_to`,
   # `travel`, `freeze_time` and `travel_back` move it;
   # an application never needs to. `Time.current` answers {Clock.now}.
@@ -36,8 +36,8 @@ module Cybertrain
   # not locked because {now} is on every request's path and a test needs
   # no more than this.
   #
-  # Each write of the state is followed by {Logger.follow_clock}
-  # (docs/design.md D86): the log line's time follows a travel, while cybertrain/logger.rb, in
+  # Each write of the state is pushed to the Logger (docs/design.md D86):
+  # the log line's time follows a travel, while cybertrain/logger.rb, in
   # the HTTP layer, never names the Clock.
   # @api public
   module Clock
@@ -131,7 +131,7 @@ module Cybertrain
 
     # The zone whose calendar `beginning_of_day`, `advance` and the other
     # calendar methods on Time, and `Date.current`, follow. UTC by default.
-    # Values stay UTC instants whatever the zone (spec section 4).
+    # Values stay UTC instants whatever the zone.
     # @return [TimeZone]
     # @api public
     def self.zone

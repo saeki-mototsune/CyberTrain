@@ -52,7 +52,7 @@ end
 # Renders a component (`render_inline(CardComponent.new(title: "x"))`, its
 # content as `content:`) or a partial (`render_inline(partial:
 # "articles/form", locals: { article: Article.new })`) outside any request,
-# answers the HTML and keeps it for `assert_select` (spec section 9.1).
+# answers the HTML and keeps it for `assert_select`.
 # Rails answers a Nokogiri fragment and takes the content as a block; here
 # the answer is the String and a block is refused. Request-bound helpers
 # raise Views::OutsideRequest, as in Views.render_partial.

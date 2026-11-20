@@ -83,7 +83,7 @@ module Cybertrain
 
     attr_reader :http_version
 
-    # The request's id (spec section 12.2): a UUID that
+    # The request's id: a UUID that
     # Cybertrain::RequestId made, or the `X-Request-Id` a trusted proxy sent
     # (1 to 255 letters, digits and hyphens); the response's `X-Request-Id`
     # echoes it, and every line logged during the request carries it.
