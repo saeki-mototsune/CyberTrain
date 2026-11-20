@@ -31,8 +31,8 @@ module Cybertrain
     # The environment: `"development"` (the default), `"test"` or
     # `"production"` (the default in a binary from `cybertrain build`). From
     # `CYBERTRAIN_ENV`. Set the variable rather than this attribute:
-    # `database_path` and `session_secure` are derived from it before
-    # `config/app.rb` runs.
+    # the defaults of `database_path`, `session_secure` and
+    # `mail_delivery_method` are derived from it before `config/app.rb` runs.
     # @return [String]
     # @api public
     attr_accessor :env

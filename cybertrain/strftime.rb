@@ -150,7 +150,8 @@ module Cybertrain
       ""
     end
 
-    # One directive of time_tag_strftime; nil for an unknown conversion.
+    # One directive of a pattern Strftime.walk reads; nil for an unknown
+    # conversion.
     # abbr, when not "", is what `%Z` writes (the zone's abbreviation).
     def self.strftime_directive(time, conv, flags, width, abbr)
       base = case conv
