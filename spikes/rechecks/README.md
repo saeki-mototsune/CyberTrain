@@ -94,6 +94,7 @@ directory with an `.expected` file, and its rule's status row says so.
 | `differing/nil_only_puts_openssl.rb` | Rule 78: the C compiler refuses `@io.puts(line)` on a nil-only ivar once `openssl` is required |
 | `differing/invalid_utf8.rb` | Rule 52: `byteindex` off a character boundary returns an offset, and `strip` returns the String, where CRuby raises |
 | `differing/float_range_boxed.rb` | Rule 86: a Range of Time raises TypeError when built; a Float Range is not matched by `when Range` from a Hash value or through a parameter |
+| `differing/rescue_from_json_error.rb` | Rule 48, added 2026-11-20 (same machine and tools): `rescue_from JSON::ParserError` on `Cybertrain::Controller`, with a block and with `with:`, answers for an action's failed `JSON.parse`, and the error is re-raised when no handler is registered. Needs `-I .`; compiled side only, since CRuby cannot load the controller's SQLite FFI bindings without the preview's shim. It does not differ: it printed what it is written to print |
 
 ## Running
 
