@@ -71,6 +71,9 @@ generated ones too, through their Markdown) comes from
 The home page carries summaries and links to the guides for detail: when a
 guide becomes the canonical place for a fact, the home page keeps at most a
 sentence about it.
+The Caddyfile on `deploy.html` is a second copy of the one in
+[docs/deploy.md](../docs/deploy.md) and docs/deploy.en.md, section 6-2
+(without its two comments): change the three together.
 The home page's Performance section (06) shows the run recorded in
 [docs/benchmark.md](../docs/benchmark.md) (`bench/results/<date>.json`,
 printed by `bench/report`): after a new recorded run, update its numbers in
