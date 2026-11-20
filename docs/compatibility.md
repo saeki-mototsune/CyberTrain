@@ -29,7 +29,7 @@ of those lines are contracts and how each is held.
 | `where(col: a..b)` | any Range | Integer Ranges; a Time or Date range is `where_between` | D43 | test/relation_where.rb |
 | `order(...)` | any SQL string | `column [ASC\|DESC]` lists only; raw SQL is `order_sql`, request data goes through an allowlist | models guide, "Ordering" | test/query_extras.rb |
 | `before_action { ... }`, `before_save { ... }` | the block runs with `self` as the controller or record | the block takes it: `before_action { \|c\| c.authenticate }` | how-it-works; D8 | test/controller.rb, test/controller_order.rb, test/model.rb |
-| `def new` in a controller | an action | `def new_action` (`new` would shadow the constructor) | how-it-works | test/gen_routes.rb, test/controller.rb |
+| `def new` in a controller | an action | `def new_action` (the generated routes call the action by that name) | how-it-works | test/gen_routes.rb, test/controller.rb |
 | `layout "x"` declared twice | the last wins | the first declaration that applies wins | template language, "Per-controller layouts" | test/controller_views.rb |
 | `session[:key] = value` | any marshalled object | Strings only | requests guide, "Cookies and the session" | test/session.rb |
 | `config.filter_parameters` | Symbols, Regexps, lambdas | Strings matched by substring, case-insensitively | configuration guide | test/middleware.rb |

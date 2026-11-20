@@ -182,7 +182,7 @@ follow-ups; AS is the last section.
 | X (rule 94) | Type inference does not converge in examples/blog's generator | Each emitter scans `app/controllers` for itself (`Runner.controllers_source`, `concerns_source`, generator/runner.rb) | Open; not reduced, not reported |
 | Q (rule 86) | A Range holds Integer ends only: Time and Date ends raise, a boxed Float Range is not a Range | `where(col: a..b)` takes Integer ends and other bounds go through `where_between`; `inclusion:` / `exclusion:` take an Integer Range or an Array (relation.rb, validator.rb, model.rb) | Fixed, #10998 and #11639; in no fork tag |
 | T (rule 91) | `exit` on a thread other than main ends only that thread | The feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the status (background/supervisor.rb, roles/feeds.rb) | Fixed on master; in no fork tag |
-| K (rule 78) | `puts` on a nil-only receiver does not compile with the TLS layer in the program | `Logger#log` calls `@io.write` (logger.rb) | Fixed, #11129; in no fork tag |
+| K (rule 78) | `puts` on a nil-only receiver does not compile with the TLS layer in the program | `Logger#write_now` calls `@io.write` (logger.rb) | Fixed, #11129; in no fork tag |
 | M (rule 83) | `gets` on STDIN does not show a partial STDOUT line first | `Console.run` flushes after the banner and every prompt (console.rb) | Fixed, #11193; in no fork tag |
 | O (rule 72) | `TCPSocket.new` ignores `connect_timeout:` | `Net::TcpStream` connects with `connect_nonblock`, `wait_writable` and `SO_ERROR` (net/socket.rb); kept after a fix, for the deadline | Fixed, #11183; in no fork tag |
 | P | Net::HTTP's TLS handshake and reads are not bounded by its timeouts | `HttpClient` does the handshake and every read itself, with bounded waits (http_client.rb, net/tls.rb); kept after a fix | Fixed, dcc46945c; in no fork tag |
@@ -240,19 +240,19 @@ Spinel changes"). Until then new code follows the rule.
 | Comment, generator/routes_dsl.rb | A receiverless call in a block nested inside `instance_eval` has no `self` in the C | Nested routing blocks take the mapper (`resources :articles do \|r\|`); part of the public API | Probe passes (2026-11-13); A was this call one level up |
 | Comment, generator/routes_dsl.rb | A class with an instance method named `new` does not compile | The `new` action is `def new_action` in controllers; part of the public API | Probe passes (2026-11-13) for a plain class |
 | Comment, generator/inflector.rb | Regexp objects cannot be kept in a collection | Each inflection table is written out as literal regexes | Probe passes (2026-11-13) |
-| Comment, logger.rb | `STDOUT.flush` as a method's value is typed a File and emitted as void | `Logger#log` ends in an explicit `nil` | Probe passes (2026-11-13) |
+| Comment, logger.rb | `STDOUT.flush` as a method's value is typed a File and emitted as void | `Logger#write_now` ends in an explicit `nil` | Probe passes (2026-11-13) |
 | Comment, test/cli_toolchain.rb | `File.join(Dir.pwd, *parts)` passed only the first element of the splat (2026.09.12) | The helper takes one joined argument | Probe passes (2026-11-13) |
 | Comment, stream.rb and password.rb | `Base64.urlsafe_decode64` was not relied on to take unpadded input | The text is padded back before decoding | Probe passes (2026-11-13) |
 | Comment, http/server.rb, roles/server.rb, dev/reexec.rb | A `trap` block runs inside the C signal handler, where a join, an allocation or `execv` is not safe | A handler only sets a flag (`Server#request_stop`); the stop and the re-exec run on ordinary threads | Not run. The pinned tree's lib/spinel_rt.h says a threaded program runs trap procs on a green thread of its own (`sp_sig_thread_body`), so the comment describes the unthreaded runtime; the flag is right either way |
+| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Every program that requires the framework exercises the stack it requires; test/csrf_conditional.rb's header records the shape that did not compile on 2026.09.12 | Probe passes for the one recorded shape (2026-11-15, 2026-11-19, 2026-11-20; spikes/NOTES.md status 36 has its source); seen in larger programs and never reduced, so not conclusive |
+| Rule 35 | `obj[k] = v` on an object received as a plain parameter does nothing behind a middleware chain | The mutation is a typed instance method (`Session#csrf_token!`, session.rb) | Probe passes (2026-11-15, spikes/rechecks/type_shapes.rb); seen in the whole framework and never reduced, so not conclusive |
+| Rule 4 | An inherited class method called as `self.class.foo` binds `self` to the base class | The class is passed in (`Controller.chain_for(klass)`); registries are keyed by class name | Probe passes (2026-11-15, spikes/rechecks/dispatch_shapes.rb) |
 
 #### 1.3 Kept, and not re-checked on the pin
 
 | Rule or comment | What was seen (2026.09.12 unless it says otherwise) | What CyberTrain does, and where |
 | --- | --- | --- |
 | Rule 57 (item 7) | A `Mutex#synchronize` on every request stalls requests for seconds at `SPINEL_WORKERS=2` | No lock on the request path; the template cache is filled at boot (`Engine.embedded`); development serves on one worker (`Application.serving_workers`); `TimeZone` reads its snapshot under the lock and looks up outside it |
-| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Every program that requires the framework exercises the stack it requires; test/csrf_conditional.rb records the shape that still does not compile |
-| Rule 35 | `obj[k] = v` on an object received as a plain parameter does nothing behind a middleware chain | The mutation is a typed instance method (`Session#csrf_token!`, session.rb) |
-| Rule 4 | An inherited class method called as `self.class.foo` binds `self` to the base class | The class is passed in (`Controller.chain_for(klass)`); registries are keyed by class name |
 | Rules 6, 11, 37, 39, 63, 71 | A Method object in a collection; a nil-initialised local; a Symbol-keyed Integer Hash read with a polymorphic key; a `case` whose branches both build a SafeString; same-named locals in two top-level blocks; narrowing that does not type a return value | Lambdas; typed sentinels; `.to_i` on every branch; `SafeString#+` in two steps; distinct local names in tests; `Cast.hash` / `Cast.array` copy into a seeded container |
 | Rule 41 | One accessor name with two types in files that never meet stops the compiler | Each subsystem has a test that requires the whole framework (test/template_integration.rb); `script/check-reserved-names` |
 | Rule 15 | A static `ffi_buffer` out-parameter crashes under threads | A `malloc`ed scratch pointer per call (db/sqlite_ffi.rb, http/gzip_ffi.rb) |
@@ -272,14 +272,14 @@ They are listed so that they are not mistaken for the rows above.
 
 | What Spinel is | What CyberTrain does |
 | --- | --- |
-| No run-time code: no `eval`, `define_method`, `method_missing` or `const_get`; `instance_exec(&stored)` is refused (rule 2, refused on 2026-11-13 as before); a computed `send` works up to the dispatch's 1024 arms (rule 1) | Models, relations, routes, helpers, components, jobs and concerns are generated Ruby; blocks take their receiver (`before_action { \|c\| ... }`); names dispatch through generated `case` tables; templates are an interpreted language of their own; the console evaluates template expressions (D3, D4, D8, D9, D41) |
+| No run-time code: no `eval` or `method_missing`, and no method defined while the program runs (`define_method` from a class body compiles, spikes/rechecks/define_method_shapes.rb, 2026-11-20; `const_get` with a non-literal name passes a probe, rule 1's status); `instance_exec(&stored)` is refused (rule 2, refused on 2026-11-13 as before); a computed `send` works up to the dispatch's 1024 arms (rule 1) | Models, relations, routes, helpers, components, jobs and concerns are generated Ruby; blocks take their receiver (`before_action { \|c\| ... }`); names dispatch through generated `case` tables; templates are an interpreted language of their own; the console evaluates template expressions (D3, D4, D8, D9, D41) |
 | One static return type per method; a base method returning `self` is typed as the base (rule 5) | `pluck_int`, `sum_float`, `Cache.fetch_hash` and the like; `DB.transaction` returns nil; a per-model Relation subclass wraps the base setters (D10, D20, D22, D43) |
 | D (rule 25): `String#to_i` raises `RangeError` past 2**63-1 in the default mode | Request numbers are length-checked first: `Request#content_length`, `Server#body_length`, `Params#int`, the session's and the configuration's Integers |
 | B (rule 59): an `ffi_source` fragment declares what it calls, with the types already emitted | `extern` declarations in db/sqlite_ffi.rb and http/gzip_ffi.rb |
-| Every String is UTF-8, a socket buffer included (rule 27) | All framing is by byte (`byteindex`, `byteslice`, `bytesize`) |
+| `IO#gets` on a socket answers a UTF-8 character String (rule 27; `readpartial`, `read(n)` and `read_nonblock` answer byte Strings on the pin, spikes/NOTES.md status 27) | All framing is by byte (`byteindex`, `byteslice`, `bytesize`) |
 | A constant resolves as in CRuby (rule 76); a class method no class defines is refused at compile time, reached or not (rule 84) | Code outside `module Cybertrain` writes `Cybertrain::DB`; a program requires every file whose class methods it names |
 | No `fork`: a compiled `fork` is `NameError` (checked 2026-11-13) | Several processes share a port with `SO_REUSEPORT` (`CYBERTRAIN_REUSE_PORT`, D35) instead of a prefork server; jobs run on threads of a `worker` process |
-| No tz database, `IPAddr`, `Marshal` or asynchronous resolver; the `zlib` package inflates in one shot with no ceiling; `bigdecimal` has no `to_s("F")`, `to_d` or construction from a Float (rule 100) | `TimeZone` reads TZif files (D19); byte-scanned addresses (net/address.rb, http/ip_address.rb); cache values are Strings; `GzipFFI` streams through the system zlib under a limit (http/gzip_ffi.rb); decimals are Floats rounded on their digits (D73) |
+| No tz database, `IPAddr` or asynchronous resolver (`Marshal` was listed here until 2026-11-20: a `Marshal.dump` / `Marshal.load` round trip of a Hash holding an Array compiles and prints CRuby's result on the pin, docs/design.md D54); the `zlib` package inflates in one shot with no ceiling; `bigdecimal` has no `to_s("F")`, `to_d` or construction from a Float (rule 100) | `TimeZone` reads TZif files (D19); byte-scanned addresses (net/address.rb, http/ip_address.rb); cache values are Strings; `GzipFFI` streams through the system zlib under a limit (http/gzip_ffi.rb); decimals are Floats rounded on their digits (D73) |
 | Tests: no reflection to find test methods (rule 23); a test requires `cybertrain/test` itself (rule 24); a C file Spinel wrote is refused inside a package (rule 98) | Tests are programs compared with a snapshot (test.rb, D13); probe output is kept outside the package |
 | Rules 13, 16, 17 and 38: frozen String literals, `Class#name` and `case rec when Post`, constants read before their definition, a protected method called from a class method | Ordinary Ruby, recorded so that nobody takes them for a Spinel rule |
 | Rule 99: `dup` of a user-defined object is a shallow copy | The generated `<Model>Relation#dup` copies its Arrays (D72). CRuby's `dup` is shallow in the same way, and the pin calls `initialize_copy` as CRuby does (probe, 2026-11-13: both print `2 2 0 5` and `1 2`), so this is ordinary Ruby, not a Spinel behaviour |
@@ -357,7 +357,7 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | W | An ivar String passed to a stored lambda is refused | Not reduced | No |
 | X | Type inference does not converge in examples/blog's generator | Not reduced | No |
 | AA | Closure cells allocated on method entry (a cost, listed here because 2026.09.12 allocated none for the same source) | Not reduced | No |
-| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Not reduced; not re-checked on the pin | No |
+| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Not reduced; the one recorded shape compiles in a probe on the pin (spikes/NOTES.md status 36) | No |
 | 7 | A `Mutex` on the request path stalls for seconds at two workers | Not reduced; not retried since 2026.09.12 | No |
 | 5 (a) | At one worker 83% of collections are full | Measured, under 5 | No |
 
@@ -423,7 +423,7 @@ The third column is the item's program built with master 1c0cc5e35 on
 
 | Item | On master | Its program on master 1c0cc5e35 | What changes in CyberTrain once pinned to it |
 | --- | --- | --- | --- |
-| K. `puts` on a nil-only receiver does not compile with the TLS layer | #11129, merged 2026-11-06 | builds and prints `ok` | `Logger#log` goes back to `@io.puts(line)` |
+| K. `puts` on a nil-only receiver does not compile with the TLS layer | #11129, merged 2026-11-06 | builds and prints `ok` | `Logger#write_now` goes back to `@io.puts(line)` |
 | Rule 79. A rescuing method's value from a block that only raises | #11137, merged 2026-11-06 (and #11143 to #11145) | prints `["b"]` | the test idiom of rule 79 is no longer needed |
 | M. `gets` on STDIN does not show a partial STDOUT line first | #11193, merged 2026-11-06 | not run (it needs a terminal) | `Console.run`'s flushes go |
 | N. A Hash return does not follow an ivar widened late | #11184 and #11219, merged 2026-11-06 and 2026-11-07 | prints `0` | nothing here; Daicho's `n.to_i` goes |
@@ -538,7 +538,7 @@ run on master 1c0cc5e35:
 
 | Item | Workaround it would remove | What can be sent |
 | --- | --- | --- |
-| K | `Logger#log`'s `@io.write` instead of `@io.puts` | **Ready**: a nine-line reduced program and a one-line fix in src/codegen_call_io.c, tested on a build of 2026.11.04.7026 (see K). **Sent and merged**: matz/spinel#11129 (2026-11-06), which reads the argument through `emit_to_s_expr` and covers `print` as well. Needs a fork tag that carries it |
+| K | `Logger#write_now`'s `@io.write` instead of `@io.puts` | **Ready**: a nine-line reduced program and a one-line fix in src/codegen_call_io.c, tested on a build of 2026.11.04.7026 (see K). **Sent and merged**: matz/spinel#11129 (2026-11-06), which reads the argument through `emit_to_s_expr` and covers `print` as well. Needs a fork tag that carries it |
 | 5 (a) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files | A change to the full-collection cadence rule (`SP_GC_PROMOTED_DEAD_CUT`), a policy change that upstream's benchmarks would have to support; not written yet |
 | 5 (b) | none (a gain of about 5% on one CPU) | Small: start no sweeper in `sp_cs_start_sweepers` (lib/sp_sched.c) when `SPINEL_GC_SWEEPERS` is unset and the process may use one CPU; not written or measured as a patch. **Sent and merged**: matz/spinel#11646 (2026-11-12), measured there on Linux/aarch64 held to one CPU (see 5), with its test made stricter by #11697 (2026-11-13). Needs a fork tag that carries it |
 | J | none | Nothing yet: where the capture struct becomes unreachable is not known |
@@ -694,7 +694,7 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | test/template_engine.rb settles the layout Hash's value types where it is built (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged; still refused on 2026.10.27.7020 (see "The refusal in test/template_engine.rb") | not needed: the earlier form (`git show 81778ea^:test/template_engine.rb`) passes (#10525). Dropped: the test is back in that form, and `layout_env` is gone |
 | `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value | dropped (test/db_with_value.rb passes) |
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
-| `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile. Fixed on master (#11129); goes with the pin's move |
+| `Logger#write_now` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | the nine-line reduced program still does not compile; test/logger_tls.rb builds with `@io.puts` put back (2026-11-19, again 2026-11-20). Fixed on master (#11129); goes with the pin's move |
 | The `server`, `worker` and `feeds` roles set `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers_for`, cybertrain/application.rb; cybertrain/roles/*.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help. Upstream documents `N+1` for such a program (da4485a5), so this row is how Spinel is used, not a debt |
 | `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 83) | M | not checked | not checked | required: without it the prompt appears only after the line is read. Fixed on master (#11193); goes with the pin's move |
 | `Net::TcpStream` connects with `connect_nonblock` + `wait_writable` + `SO_ERROR` (cybertrain/net/socket.rb, rule 72), not `TCPSocket.new(connect_timeout:)`; socket.rb's header and the guides say why | O | not checked | not checked | required: the keyword is still ignored (checked 2026-11-05 here and in Daicho's report). The connect stays for the deadline either way; a fix retires the sentence. Fixed on master (#11183) |
@@ -1954,7 +1954,12 @@ dispatch's fallback does not compile: `passing argument 2 of
 [-Werror=incompatible-pointer-types]`, an `sp_String *` where sp_io.h
 wants a `const char *`. Checked on 2026.11.04.7026 by putting
 `@io.puts(line)` back into `Logger#log` (cybertrain/logger.rb:57) and
-building test/logger_tls.rb, which then fails to build.
+building test/logger_tls.rb, which then failed to build (2026-11-05).
+The method is `Logger#write_now` today, and the framework's program no
+longer shows it: on 2026-11-19, and again on 2026-11-20, test/logger_tls.rb
+built at `-O 0` with `@io.puts(line)` put back and matched its snapshot.
+The reduced program below still fails in the C compiler
+(spikes/rechecks/differing/nil_only_puts_openssl.rb).
 
 Reduced on 2026-11-05 on 2026.11.04.7026 (a standalone class with a
 nil-default `@io` and `require "openssl"` had not reproduced it on
@@ -1998,10 +2003,12 @@ interpolation in place of the parameter.
   was not run with the change, and the `print` arm beside it was not
   looked at. The fork's master (one commit past 2026.11.04.7026) has not
   touched this code.
-- Today: `Logger#log` calls `@io.write(line.end_with?("\n") ? line :
-  "#{line}\n")`, which compiles through the same dispatch with the right
-  argument type; test/logger_tls.rb is the regression program. With the
-  fix released, `Logger#log` could go back to `@io.puts(line)`.
+- Today: `Logger#write_now` calls `@io.write(line)` on a line that
+  `Logger.format_line` ends with a newline, which compiles through the
+  same dispatch with the right argument type. test/logger_tls.rb was
+  written as the regression program and builds either way today (above).
+  With the fix released, `Logger#write_now` could go back to
+  `@io.puts(line)`.
 - Fixed upstream by matz/spinel#11129 ("puts and print on an IO known
   only at run time write a held String's bytes", 8ec94a54, merged
   2026-11-06), read on master 494deaac and not run here. It names the

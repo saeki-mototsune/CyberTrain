@@ -447,7 +447,7 @@ retire them, and they are not re-checked on an update.
 | Shape in the framework | Constraint | Decision | Verified by |
 | --- | --- | --- | --- |
 | Callbacks and nested DSL blocks take their receiver (`before_action { \|c\| ... }`, `resources ... do \|r\|`); names dispatch through generated `case` tables | no `instance_exec` of a stored block, no computed `send` (rules 1, 2) | D4, D8, D38 | test/gen_controllers.rb, test/gen_helpers.rb, test/controller.rb |
-| Models, relations, routes, helpers, components, jobs and concerns are generated Ruby, not metaprogramming | no `define_method`, `method_missing`, `eval` (rules 1, 92, 93) | D3, D4, D60 | test/gen_*_compiles.rb, test/gen_concerns.rb; examples/blog's `gen/` freshness in CI |
+| Models, relations, routes, helpers, components, jobs and concerns are generated Ruby, not metaprogramming | no `method_missing` or `eval`, and no method defined while the program runs (rules 1, 92, 93; for `define_method` see the note under this table) | D3, D4, D60 | test/gen_*_compiles.rb, test/gen_concerns.rb; examples/blog's `gen/` freshness in CI |
 | One return type per method: `pluck_int`, `maximum_int`, `sum_float_by`, `Cache.fetch_hash`; `DB.transaction` and `Model.transaction` return nil | a method has one static return type (rules 5, 90) | D20, D22, D44, D45 | test/pluck.rb, test/aggregates.rb, test/db_transaction_api.rb |
 | A per-model Relation subclass whose chain methods wrap base setters and return `self` | a base method returning `self` is typed as the base (rule 5) | D10, D43, D72 | test/gen_models_compiles.rb, test/relation_where.rb |
 | Templates are a language of their own, interpreted over fixed dispatch tables | no `eval`, no run-time method lookup (verdict 3) | D9 | test/template_*.rb, docs/compatibility.md |
@@ -458,6 +458,28 @@ retire them, and they are not re-checked on an update.
 | A method name means one thing: distinct names for framework accessors (`reject_status`, `command_name`, `service_start`), reserved column names | same name, same return type across classes (rules 10, 34, 62) | D10 | `script/check-reserved-names`, test/openssl_dispatch.rb, test/cast_types.rb |
 | FFI fragments declare what they call (`extern` in `ffi_source`); the `-1` literal for `SQLITE_TRANSIENT` | Spinel's documented FFI rule (rule 59; spinel-feedback B) | D10 | test/db_sqlite.rb |
 | Request numbers are length-checked before `to_i` | `String#to_i` raises past 2**63-1 by design (rule 25; spinel-feedback D) | D14 | test/http_request.rb, test/params.rb, test/server.rb |
+
+The second row said "no `define_method`" until 2026-11-20, which is wider
+than what was shown. On 2026.11.04.7026 (`a2d06115`, Linux x86_64, GCC
+13.3.0, `-O 0`, compared with CRuby 3.3.6, 2026-11-20)
+[rechecks/define_method_shapes.rb](rechecks/define_method_shapes.rb)
+compiles and prints what CRuby prints: `define_method` with a literal name
+in a class body; a class macro that defines two methods with literal names
+whose blocks read and write an ivar, called from a subclass body; and a
+macro that takes the name as its parameter, called with literal Symbols
+from a class body. Two programs that define a method while the program
+runs are refused. `class Conf; def initialize; @vals = { "" => "" }; end;
+def setting(name, value); @vals[name.to_s] = value; vals = @vals; key =
+name.to_s; self.class.send(:define_method, name) { vals[key] }; nil; end;
+end; c = Conf.new; c.setting(:base_url, "http://x"); puts c.base_url`
+stops with "unsupported call: ... (CallNode `define_method`)". `class
+Conf; def initialize; @a = "1"; end; end; name = ARGV.empty? ? "a" :
+ARGV[0]; Conf.send(:define_method, name.to_sym) { @a }; puts Conf.new.a`
+stops with "Conf.define_method(...) is not supported by AOT compilation
+... Move the `define_method` inside `class Conf ... end`". CRuby prints
+`http://x` and `1`. These are five small programs: they say nothing about
+macros at the scale of an application's models, and the decisions of the
+row (D3, D4, D60: generated Ruby) are unchanged.
 
 ### Tied to a build: workarounds a Spinel release may retire
 

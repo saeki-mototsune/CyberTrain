@@ -64,6 +64,16 @@ that half is under `differing/`, described below.
 | `builtin_superclass_no_module.rb` | Rule 104: the `superclass` chain of `ArgumentError` and `RuntimeError` in a program that defines no module |
 | `json_nesting_shapes.rb` | Rule 61: `JSON.generate`'s NestingError against `rescue JSON::ParserError, StandardError`, `rescue StandardError`, `rescue JSON::ParserError`, and on a Thread whose `ensure` runs |
 
+## Program added on 2026-11-20
+
+| Program | Evidence |
+| --- | --- |
+| `define_method_shapes.rb` | NOTES, "Permanent: how CyberTrain is written for an ahead-of-time compiler": `define_method` with a literal name in a class body; a class macro defining two methods whose blocks read and write an ivar, called from a subclass body; a macro taking the name as its parameter, called with literal Symbols. Not a method defined while the program runs, which is refused (the two programs are in that section of NOTES) |
+
+Run with `run.sh` beside the eighteen above on 2026-11-20, on Linux x86_64,
+Spinel `2026.11.04.7026` (`a2d06115`, GCC 13.3.0), `-O 0` and CRuby 3.3.6:
+all nineteen matched. Its `.expected` file is CRuby's output from that run.
+
 ## Programs that still differ: `differing/`
 
 `run.sh` reads only the `.rb` files of this directory and expects each to
@@ -95,7 +105,7 @@ spikes/rechecks/run.sh
 ```
 
 The script prints its output directory first, then runs every probe even
-after one fails, and exits 1 if any did. With the eighteen programs here it
+after one fails, and exits 1 if any did. With the nineteen programs here it
 takes about a minute. Each failure names the file that holds its output. Each compile and each run is bounded at 180 seconds
 (`RECHECK_TIMEOUT`; `gtimeout` on macOS, unbounded with a note when
 neither exists). Compiler output other than the usual `src -> bin` line is
