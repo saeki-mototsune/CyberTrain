@@ -1303,10 +1303,9 @@ module Cybertrain
           run_after_callbacks(chain, action)
         end
         HttpCache.add_vary_accept(@request, @response)
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
-        # JSON::ParserError named (NOTES rule 33: not a StandardError under
-        # Spinel) so an action's bad JSON.parse goes through
-        # rescue_with_handler like any other exception. A `rescue_from
+      rescue StandardError => e
+        # An action's bad JSON.parse goes through rescue_with_handler
+        # like any other exception. A `rescue_from
         # JSON::ParserError` handler fires under CRuby; under Spinel the
         # constant cannot be referenced as a value (rule 48), so no app can
         # register one there and the exception goes on to the error pages.

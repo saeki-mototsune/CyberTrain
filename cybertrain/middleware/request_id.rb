@@ -183,8 +183,7 @@ module Cybertrain
 
     # The stack, with what escapes it reported and raised on unchanged.
     # The rescue sits in this plain method, which does not yield
-    # (spikes/NOTES.md rules 32 and 45). JSON::NestingError and
-    # JSON::ParserError are named (rules 33 and 61); the second arm takes
+    # (spikes/NOTES.md rules 32 and 45). The second arm takes
     # NotImplementedError, SystemStackError and ScriptError. Any other
     # Exception (an application's own, outside StandardError) goes on up
     # unreported; {#call}'s `ensure` still puts the Scope back.
@@ -192,7 +191,7 @@ module Cybertrain
       nxt = @app
       nxt.call(ctx) unless nxt.nil?
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       report_escaped(ctx, e)
       raise e
     rescue NotImplementedError, SystemStackError, ScriptError => e

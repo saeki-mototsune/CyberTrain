@@ -28,10 +28,9 @@ module Cybertrain
     def call(ctx)
       begin
         super
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
-        # JSON::ParserError named too: not a StandardError under Spinel
-        # (NOTES rule 33), and an action's JSON.parse of a bad body deserves
-        # the same 500 page as any other failure. ClientError maps and logs:
+      rescue StandardError => e
+        # An action's JSON.parse of a bad body gets the same 500 page as
+        # any other failure. ClientError maps and logs:
         # a client's fault (request parameters past Query's limits) is a 400
         # at info level. Caught here because this middleware wraps the whole
         # stack, so Server#respond's own mapping never sees the exception in

@@ -321,8 +321,7 @@ module Cybertrain
     end
 
     # The Session of an authenticated JSON payload; an empty one unless it
-    # is a JSON object. JSON::ParserError is NOT a StandardError under
-    # Spinel (NOTES rule 33), so it is listed explicitly, as in Flash.load.
+    # is a JSON object.
     def self.from_json(json)
       data = {}
       begin
@@ -336,7 +335,7 @@ module Cybertrain
             i += 1
           end
         end
-      rescue JSON::NestingError, JSON::ParserError, StandardError
+      rescue StandardError
         return Session.new
       end
       Session.new(data)
