@@ -166,7 +166,7 @@ test "the controller follows the Rails scaffold shape" do
       end
 
       # GET /posts/new
-      # (named new_action: a `new` method would shadow PostsController.new)
+      # (named new_action: the generated routes call the `new` action by that name)
       def new_action
         @post = Post.new
       end

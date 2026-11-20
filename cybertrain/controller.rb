@@ -33,7 +33,7 @@ module Cybertrain
   #         @articles = Article.all.to_a
   #       end
   #
-  #       def new_action   # GET /articles/new: a method named `new` would shadow ArticlesController.new
+  #       def new_action   # GET /articles/new: the generated routes call the `new` action by this name
   #         @article = Article.new
   #       end
   #

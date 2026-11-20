@@ -136,7 +136,7 @@ module Cybertrain
             Run spin with the pinned Spinel, from any directory
             (cybertrain spin test; cybertrain spin run gen -- --check).
         cybertrain secret [--hex]
-            Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+            Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (encrypts
             the session cookie); with --hex, a new key for
             CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
             Both are 64 hex digits (32 random bytes). Keep the encryption

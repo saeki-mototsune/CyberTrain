@@ -155,10 +155,10 @@ module Cybertrain
           [package]
           name = "#{package}"
           version = "0.1.0"
-          # jemalloc is a faster malloc for a server: 1.1 to 1.4 times the
-          # requests per second on examples/blog (docs/benchmark.md). Building then
-          # needs its development package (libjemalloc-dev on Debian/Ubuntu,
-          # `brew install jemalloc` on macOS).
+          # jemalloc is another malloc for a server: between no gain and 1.4 times
+          # the requests per second on examples/blog, depending on the run
+          # (docs/benchmark.md). Building then needs its development package
+          # (libjemalloc-dev on Debian/Ubuntu, `brew install jemalloc` on macOS).
           # allocator = "jemalloc"
 
           [dependencies]
@@ -187,8 +187,8 @@ module Cybertrain
           # is committed: copy a line into the environment (or your deploy's
           # secrets) with a value, never write the value here.
 
-          # Signs the session cookie; changing it signs everyone out. Required in
-          # production; development and test keep one in tmp/secret_key.
+          # Encrypts the session cookie; changing it signs everyone out. Required
+          # in production; development and test keep one in tmp/secret_key.
           # Make one with `cybertrain secret`.
           # CYBERTRAIN_SECRET_KEY_BASE=
 
@@ -846,7 +846,7 @@ module Cybertrain
           # GitHub token with write:packages for ghcr.io).
           KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
 
-          # Signs the session cookie; changing it signs everyone out. Generate it
+          # Encrypts the session cookie; changing it signs everyone out. Generate it
           # once with `openssl rand -hex 32` and keep it somewhere safe.
           CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE
 
@@ -1230,7 +1230,7 @@ module Cybertrain
             end
 
             # GET /#{p}/new
-            # (named new_action: a `new` method would shadow #{res.plural_class}Controller.new)
+            # (named new_action: the generated routes call the `new` action by that name)
             def new_action
               @#{s} = #{res.class_name}.new
             end

@@ -1107,8 +1107,8 @@ module Cybertrain
           # The password is hashed by Cybertrain::Password (PBKDF2-HMAC-SHA256) into
           # password_digest; the plain text lives only in @password until the
           # record is saved. `password=` and `authenticate` are what Rails'
-          # `has_secure_password` would define (Spinel cannot define methods at
-          # run time, so they are written out).
+          # `has_secure_password` would define (CyberTrain has no such macro:
+          # they are written out here).
           class User
             MIN_PASSWORD_LENGTH = 8
             @CONFIRMATION_TOKEN_TTL@
@@ -1723,7 +1723,7 @@ module Cybertrain
             rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
 
             # GET /session/new
-            # (named new_action: a `new` method would shadow SessionsController.new)
+            # (named new_action: the generated routes call the `new` action by that name)
             def new_action
             end
 

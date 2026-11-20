@@ -64,7 +64,7 @@ class ArticlesController < ApplicationController
   end
 
   # GET /articles/new
-  # (named new_action: a `new` method would shadow ArticlesController.new)
+  # (named new_action: the generated routes call the `new` action by that name)
   def new_action
     @article = Article.new
   end
