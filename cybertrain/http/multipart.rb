@@ -143,10 +143,14 @@ module Cybertrain
     # Spaces and tabs allowed after a delimiter (RFC 2046 transport padding).
     MAX_PADDING_BYTES = 16
 
-    # Module-level ivars with literal defaults, the Request.inflater shape
-    # (NOTES rule 18). Application#boot installs the configured limits.
-    @max_upload_bytes = 5_242_880
-    @max_parts = 128
+    # The limits before any boot, which Runtime.reset! restores.
+    DEFAULT_MAX_UPLOAD_BYTES = 5_242_880
+    DEFAULT_MAX_PARTS = 128
+
+    # Module-level ivars, the Request.inflater shape (NOTES rule 18).
+    # Application#boot installs the configured limits.
+    @max_upload_bytes = DEFAULT_MAX_UPLOAD_BYTES
+    @max_parts = DEFAULT_MAX_PARTS
 
     # Installs the limits from the Config. Called by Application#boot.
     # @param max_upload_bytes [Integer] the largest file part, in bytes
