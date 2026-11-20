@@ -4,6 +4,7 @@ require "cybertrain/test"
 require "cybertrain/generator"
 require "cybertrain/generator/job_scan"
 require "cybertrain/generator/jobs_emitter"
+require_relative "support/file_tree"
 
 # The job generator as text (CRuby-portable, no database): Gen::JobScan
 # reads app/jobs/**/*.rb, Gen::JobsEmitter writes gen/jobs.rb. The
@@ -13,16 +14,7 @@ require "cybertrain/generator/jobs_emitter"
 FIXTURE = "test/fixtures/gen_app"
 TMP = Dir.mktmpdir("cybertrain-gen-jobs")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 # A fresh app tree under TMP with `files` ({ "app/jobs/x_job.rb" => source }).
 def app_tree(files)

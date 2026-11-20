@@ -2,26 +2,17 @@ require "tmpdir"
 require "cybertrain/cli"
 require "cybertrain/test"
 require "cybertrain/generator/locale_yaml"
+require_relative "support/file_tree"
 
 # Every path below is relative to a fresh temp dir so the output (and the
 # `create <path>` lines the generator prints) is the same on every machine.
 TMP = Dir.mktmpdir("cybertrain-cli-new")
 Dir.chdir(TMP)
 
-# Removes a generated tree (files, dot-files and directories).
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 # Test.run! exits the process, so the temp tree is removed at exit.
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 EXPECTED_FILES = [

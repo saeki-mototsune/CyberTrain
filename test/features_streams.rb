@@ -4,6 +4,7 @@ require "cybertrain/core"
 require "cybertrain/streams"
 require "cybertrain/test"
 require "cybertrain/test/client"
+require_relative "support/file_tree"
 
 # The core and cybertrain/streams alone (the optional-subsystems design,
 # docs/superpowers/specs/2026-11-13-optional-subsystems-design.md, section
@@ -20,18 +21,9 @@ Dir.chdir(TMP)
 Dir.mkdir("public")
 ENV["CYBERTRAIN_ENV"] = "test"
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 LOG = StringIO.new

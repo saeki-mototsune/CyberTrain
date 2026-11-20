@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/cli"
+require_relative "support/file_tree"
 
 # The command refuses an application on another release of the framework
 # (docs/design.md D89): what FrameworkVersion reads from spin.lock and
@@ -9,18 +10,9 @@ require "cybertrain/cli"
 ROOT = Dir.mktmpdir("cybertrain-cli-framework-version")
 Dir.chdir(ROOT)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(ROOT)
+  FileTree.remove(ROOT)
 end
 
 GIT = "https://github.com/saeki-mototsune/cybertrain".freeze

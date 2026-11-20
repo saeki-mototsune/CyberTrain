@@ -6,6 +6,7 @@ require "cybertrain/controller"
 require "cybertrain/model"
 require "cybertrain/job"
 require "cybertrain/generator"
+require_relative "support/schema_tables"
 require_relative "fixtures/gen_app/config/routes"
 # Model concerns (spec 4.2, plan decision 9), on the fixture app loaded
 # through its checked-in gen/app.rb: gen/concerns/models/concerns/visible.rb
@@ -18,35 +19,10 @@ require_relative "fixtures/gen_app/gen/app"
 
 FIXTURE = "test/fixtures/gen_app"
 
-def sql_type(column)
-  case column.type
-  when :integer, :boolean then "INTEGER"
-  when :float then "REAL"
-  when :decimal then "DECIMAL"
-  else "TEXT"
-  end
-end
-
-def create_tables_sql(definition)
-  sql = +""
-  definition.tables.each do |table|
-    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
-    table.columns.each do |c|
-      part = +"\"#{c.name}\" #{sql_type(c)}"
-      part << " NOT NULL" unless c.null
-      default = c.default
-      part << " DEFAULT #{default}" unless default.nil?
-      parts << part
-    end
-    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
-  end
-  sql
-end
-
 require_relative "fixtures/gen_app/db/schema"
 Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 Cybertrain::DB.connect(":memory:", size: 1)
-Cybertrain::DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+Cybertrain::DB.with { |c| c.exec_script(SchemaTables.create_sql(Cybertrain::Schema.current)) }
 
 def reset_tables
   Cybertrain::DB.with { |c| c.exec_script("DELETE FROM comments; DELETE FROM posts;") }
