@@ -25,7 +25,7 @@ require "cybertrain/test/html_reader"
 
 module Cybertrain
   module Test
-    # Rails' selector subset (spec section 9.2), parsed for
+    # Rails' selector subset, parsed for
     # {Selector.matching_nodes}.
     # @api public
     module Selector
@@ -514,7 +514,9 @@ end
 #   assert_select "ul#articles > li", count: 2
 #   assert_select "h1", "Articles"
 #   assert_select "form[action=\"/articles\"] input[name=\"article[title]\"]"
-# @param selector [String] see cybertrain/test/select.rb for the subset
+# @param selector [String] a tag (or `*`), `#id`, `.class`, `[attr]`,
+#   `[attr="v"]`, compounds of them, the descendant and `>` combinators
+#   and a list (`h1, h2`); any other form fails, named in the message
 # @param equality [String, Regexp, Integer, Range, true, false, nil]
 # @param count [Integer, nil] exactly this many
 # @param minimum [Integer, nil] at least
@@ -523,6 +525,10 @@ end
 # @return [Array<Cybertrain::Test::HtmlNode>] the matching elements
 # @raise [Cybertrain::Test::AssertionFailed] with the selector, what was
 #   expected and found, and the first 500 characters of the HTML
+# @raise [ArgumentError] for arguments that cannot be meant: a negative
+#   count, `minimum:` above `maximum:`, the text or the count given both
+#   as the second argument and as an option, a Range without both ends,
+#   or a second argument of another type
 # @api public
 def assert_select(selector, equality = nil, count: nil, minimum: nil, maximum: nil, text: nil)
   if block_given?

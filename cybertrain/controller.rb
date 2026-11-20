@@ -243,8 +243,8 @@ module Cybertrain
       nil
     end
 
-    # Makes controller methods callable from this controller's templates
-    # (spec 4.3). A declaration only: `spin run gen` reads the names.
+    # Makes controller methods callable from this controller's templates.
+    # A declaration only: `spin run gen` reads the names.
     # @example
     #   helper_method :current_user, :admin?
     # @param names [Array<Symbol>]
@@ -269,7 +269,7 @@ module Cybertrain
       nil
     end
 
-    # This controller's own Content Security Policy (spec C-5): a copy of
+    # This controller's own Content Security Policy: a copy of
     # the nearest ancestor's, or of the application's
     # (Config#content_security_policy, declared in config/app.rb, which
     # loads first), yielded at once to the block and kept for this class
@@ -708,7 +708,8 @@ module Cybertrain
     # has its interpolated values escaped; the answer is a String all the
     # same (wrap it in a SafeString to render it as HTML).
     # @example
-    #   redirect_to posts_path, notice: t(".created", title: @post.title)
+    #   flash[:notice] = t(".created", title: @post.title)
+    #   redirect_to posts_path, status: :see_other
     # @param key [String, Symbol]
     # @param options [Hash{Symbol => Object}] as for I18n.t
     # @return [String]
@@ -745,8 +746,8 @@ module Cybertrain
     end
 
     # The layout an action's HTML renders in: `"layouts/application"` (the
-    # configured {Views.layout_name}) here, and in a controller with
-    # `layout` lines the one they choose for the action. gen/controllers.rb
+    # configured `Cybertrain::Views.layout_name`) here, and in a controller
+    # with `layout` lines the one they choose for the action. gen/controllers.rb
     # writes the override from them, in order, the first that applies
     # winning, else `super`:
     #
@@ -854,8 +855,9 @@ module Cybertrain
       nil
     end
 
-    # Renders the response from a template, text, HTML or JSON: exactly
-    # one of template, plain:, html:, json: or partial:.
+    # Renders the response from a template, text, HTML, JSON, a partial or
+    # Turbo Stream elements: exactly one of template, `plain:`, `html:`,
+    # `json:`, `partial:` or `turbo_stream:`.
     #
     # An action that renders nothing renders its own template
     # (`app/views/<controller_path>/<action>.html.erb`) in the layout, or
@@ -869,8 +871,8 @@ module Cybertrain
     #   unless a `layout` line chooses another), when it exists. `layout:
     #   "admin"` (or `"layouts/admin"`) uses
     #   `app/views/layouts/admin.html.erb` instead, and raises
-    #   {MissingTemplate} when that layout does not exist; `layout: false`
-    #   none. Inside a {#respond_to} declaration for another format
+    #   `Cybertrain::MissingTemplate` when that layout does not exist;
+    #   `layout: false` none. Inside a {#respond_to} declaration for another format
     #   (`format.json { render :show }`) it is `<template>.<format>.erb`
     #   (`show.json.erb`), never in a layout.
     # - `plain:` the String as `text/plain`.
@@ -997,6 +999,8 @@ module Cybertrain
     end
 
     # The longest path {#local_path?} accepts, in bytes.
+    # @return [Integer]
+    # @api public
     MAX_LOCAL_PATH_BYTES = 2048
 
     # Whether `text` is a path on this site that is safe to redirect to: it
@@ -1004,8 +1008,8 @@ module Cybertrain
     # host), holds printable ASCII only (no space, control character,
     # backslash or byte above 126: browsers strip or reinterpret those; a
     # path the browser sent is percent-encoded already) and is at most
-    # {MAX_LOCAL_PATH_BYTES} bytes. Use it on any destination that came
-    # from the request (a `return_to` parameter, a remembered page).
+    # 2048 bytes ({MAX_LOCAL_PATH_BYTES}). Use it on any destination that
+    # came from the request (a `return_to` parameter, a remembered page).
     # @example
     #   local_path?("/articles?page=2")   # => true
     #   local_path?("//evil.example/")    # => false
@@ -1103,8 +1107,8 @@ module Cybertrain
 
     # Serves stored bytes that came from a user (an upload), safely. This is
     # the only supported way to send an upload back: never put uploads under
-    # `public/`, because {Static} serves them with whatever type their
-    # extension implies.
+    # `public/`, because the static file middleware serves them with
+    # whatever type their extension implies.
     #
     # The bytes are untrusted, so the response never lets a browser run them:
     #
@@ -1117,9 +1121,8 @@ module Cybertrain
     # - `X-Content-Type-Options: nosniff`, `Content-Security-Policy:
     #   default-src 'none'; sandbox` and `Cache-Control: private,
     #   max-age=3600` are always set. (nosniff and `X-Frame-Options:
-    #   SAMEORIGIN` are also the defaults of every response, see
-    #   {Response#to_http}; the header set here is the one sent, not a
-    #   second copy.)
+    #   SAMEORIGIN` are also the defaults of every response; the header
+    #   set here is the one sent, not a second copy.)
     #
     # HEAD works as for any action: the Server leaves the body out.
     # @example
