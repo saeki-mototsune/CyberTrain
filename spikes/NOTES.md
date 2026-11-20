@@ -1327,11 +1327,12 @@ from CRuby that is still there (the status table classifies each); record
     test/db_transaction.rb, which requires only the db files, the same
     clause matches the full name. Spell the full name in a rescue clause.
     Not re-run with the alias on 2026.11.04.7026 in a whole-framework
-    program (status 70 has a small probe). 2026-11-20: where a clause named
-    `Cybertrain::DB::Error` only ahead of `StandardError`, the name is
-    gone and `rescue StandardError` catches the error compiled
-    (test/health.rb, test/features_feeds.rb); the rule is about the short
-    name and stays.
+    program (status 70 has a small probe). 2026-11-20: three clauses that
+    named `Cybertrain::DB::Error` ahead of `StandardError` (Stream::Poller.tick,
+    HealthCheck.feed_rows, FeedTableWriter#status_withdraw) are now
+    `rescue StandardError`, which catches the error compiled
+    (test/health.rb, test/features_feeds.rb); HealthCheck.database_ok?
+    keeps the full name. The rule is about the short name and stays.
 71. Narrowing does not type a return value: `case v when Hash then v else
     {} end` on a polymorphic `v` (a `JSON.parse` result) is
     `(untyped) -> untyped` in `spinel --emit-rbs` (2026.09.12), so every

@@ -208,7 +208,7 @@ are a different thing: test classes that `cybertrain test` runs, as in
 
 What several test programs need is in `test/support/`, loaded with
 `require_relative "support/<name>"` (the files there are not test programs:
-the gate and `script/test-shard` read `test/*.rb` only). Use these before
+neither the gate nor `script/test-shard` looks into `test/support/`). Use these before
 writing another copy into a test:
 
 - `file_tree.rb`: `FileTree.remove`, `copy` and `make_dirs`, for a test
