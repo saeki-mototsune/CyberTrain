@@ -1422,11 +1422,6 @@ module Cybertrain
 
       @secret_key_base = ConfigFiles.load_or_create_secret(@secret_key_path, SECRET_LENGTH)
     end
-
-    # mkdir -p (ConfigFiles.make_directory; kept here for its callers).
-    def self.make_directory(dir, mode = 0o777)
-      ConfigFiles.make_directory(dir, mode)
-    end
   end
 
   # Module-level ivar, not @@config: spikes/NOTES.md rule 18. Created on
