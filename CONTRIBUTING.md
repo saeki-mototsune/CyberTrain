@@ -82,9 +82,10 @@ is a quick way to try the framework, not a place to develop it.
 
 ## The commit gate
 
-Every commit passes a gate: a set of fast checks (about a second, CRuby only,
-no Spinel) that catch what is cheap to catch before a reviewer or a CI run
-does. `script/install-hooks` points this clone's git hooks
+Every commit passes a gate: a set of fast checks (CRuby only, no Spinel;
+under a second for a commit of Markdown alone, some tens of seconds when the
+repository checks run) that catch what is cheap to catch before a reviewer
+or a CI run does. `script/install-hooks` points this clone's git hooks
 at [.githooks/](.githooks/), after which:
 
 - **pre-commit** runs `script/gate --staged` on the files being committed:
@@ -298,8 +299,10 @@ way; the script or workflow step that checks it says so in its comment.
   typed column (`Ident::FRAMEWORK_METHOD_TYPES`) must document that type
   with `@return`.
 - **Every client fault is listed.** A new `QueryInvalid` subclass must be in
-  `ClientError::CLIENT_FAULTS`, or it is a 500 under Spinel, where the class
-  hierarchy is not visible (`script/check-client-faults`).
+  `ClientError::CLIENT_FAULTS`, or it is a 500: the list is compared with
+  the exception's class name, not walked with `is_a?`
+  ([spikes/NOTES.md](spikes/NOTES.md), rules 47 and 54, has why)
+  (`script/check-client-faults`).
 - **The HTTP layer stands alone.** `cybertrain/http/*` must load without the
   rest of the framework, so it can be lifted out (`script/check-http-layer`).
 - **The core does not name an optional subsystem.** No file that

@@ -24,18 +24,19 @@ require "cybertrain/router"
 #   - The real production stack, SessionStore -> CsrfProtection -> Router,
 #     built and called end to end -- see test/csrf_chain.rb.
 #
-# STILL DOES NOT COMPILE (a genuine Spinel whole-program type-inference gap,
-# not something fixable from cybertrain code -- tracked, not worked around):
+# DID NOT COMPILE on Spinel 2026.09.12 (the record behind spikes/NOTES.md
+# rule 36; the failing program was not kept):
 #   - `require "cybertrain/middleware/session_store"` in a program where
-#     `SessionStore#call` is never reachable (SessionStore is never
-#     instantiated, or is instantiated but its `#call` chain is never
-#     invoked). The dead method body still gets type-checked with no
-#     concrete Session usage to pin its types, and that miscompiles code in
-#     cybertrain/params.rb that has nothing to do with sessions. Requiring
-#     session_store.rb is safe exactly when the program also builds AND
-#     calls a real SessionStore chain, which is always true of a real app
-#     (Application#stack always instantiates and calls SessionStore) and of
-#     every test here.
+#     `SessionStore#call` was never reachable (SessionStore never
+#     instantiated, or instantiated without its `#call` chain being
+#     invoked). The dead method body was still type-checked with no
+#     concrete Session usage to pin its types, and that miscompiled code in
+#     cybertrain/params.rb that has nothing to do with sessions. A program
+#     of this shape that uses params.rb compiles in a probe on
+#     2026.11.04.7026 (NOTES status 36, which has its source); that is one
+#     program, so every test here still builds AND calls a real
+#     SessionStore chain when it requires session_store.rb, as a real app
+#     always does (Application#stack instantiates and calls SessionStore).
 
 # Mirrors Application#stack: `CsrfProtection (if csrf)`.
 def build_stack(router, csrf)

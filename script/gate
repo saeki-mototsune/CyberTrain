@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # The commit gate: the checks a change must pass before it is committed, all
-# of them fast (about a second, CRuby only, no Spinel, no gems) so they can
+# of them fast (seconds; CRuby only, no Spinel, no gems) so they can
 # run on every commit. The pre-commit hook (.githooks/pre-commit, installed
 # by script/install-hooks) runs `script/gate --staged`; the Gate workflow
 # (.github/workflows/gate.yml) runs `script/gate` on every push and pull
@@ -42,8 +42,8 @@
 # is in the set:
 #   * script/check-guide-i18n passes (the guide translations match the English).
 # When a page script/check-version-mentions reads (site/, docs/guide/,
-# docs/deploy*.md, the READMEs), cybertrain/version.rb or that script is in
-# the set:
+# docs/deploy*.md, README.md, playground/README.md), cybertrain/version.rb or
+# that script is in the set:
 #   * script/check-version-mentions passes (no page names the current release's
 #     numbers).
 # When a workflow, a local action (.github/workflows/, .github/actions/) or
@@ -218,8 +218,9 @@ end
 
 # --- release numbers in the pages ------------------------------------------------
 
-# The site, the guides, the deployment tutorial and the READMEs describe the
-# current release without naming its numbers, which move with every release.
+# The site, the guides, the deployment tutorial, README.md and
+# playground/README.md describe the current release without naming its
+# numbers, which move with every release.
 VERSION_MENTIONS = %r{\A(site/(?!api/).*\.html|docs/guide/.*\.md|docs/deploy(\.en|-kamal)?\.md|(playground/)?README\.md|cybertrain/version\.rb|script/check-version-mentions)\z}
 if mode != :all && files.none? { |f| f.match?(VERSION_MENTIONS) }
   skip("release numbers in the pages", "no page, cybertrain/version.rb or script/check-version-mentions in the set")
