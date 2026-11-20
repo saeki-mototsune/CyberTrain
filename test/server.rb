@@ -29,12 +29,13 @@ class ServerTestApp < Cybertrain::Middleware
       # what Query.parse raises past its limits (a bare app: no error pages)
       raise Cybertrain::QueryTooDeep, "nested too deeply (limit 32)"
     when "/json"
-      # a StandardError under CRuby, not under Spinel (NOTES rule 33)
+      # a StandardError: Server#handle's `rescue StandardError` must catch it
+      # (it once did not under Spinel, NOTES rule 33)
       raise JSON::ParserError, "unexpected token"
     when "/deep"
       # JSON::NestingError: what JSON.generate raises past 100 levels, which
-      # a parsed document can reach (JSON.parse accepts 200). Under Spinel
-      # `rescue JSON::ParserError` does not catch it (NOTES rule 61).
+      # a parsed document can reach (JSON.parse accepts 200). Server#handle's
+      # `rescue StandardError` must catch it too (NOTES rule 61).
       res.content_type = "application/json"
       res.body = JSON.generate(ServerTestApp.deep(150))
     when "/stream"

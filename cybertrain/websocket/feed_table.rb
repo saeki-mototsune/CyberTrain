@@ -142,7 +142,7 @@ module Cybertrain
         return 0 unless DB.connected?
 
         FeedTable.delete_process_feeds(process)
-      rescue Cybertrain::DB::Error, StandardError => e
+      rescue StandardError => e
         Cybertrain.logger.warn("feeds: could not delete this process's status rows: #{e.class.name}: #{e.message}")
         0
       end

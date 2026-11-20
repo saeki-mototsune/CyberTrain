@@ -369,7 +369,7 @@ module Cybertrain
       end
 
       # ["subscribe" | "unsubscribe", token], or ["", ""] for anything else.
-      # The rescue in a plain method (rules 32/45); NestingError first (61).
+      # The rescue in a plain method (rules 32/45).
       def self.client_request(text)
         parsed = JSON.parse(text)
         case parsed
@@ -384,7 +384,7 @@ module Cybertrain
           end
         end
         ["", ""]
-      rescue JSON::NestingError, JSON::ParserError, StandardError
+      rescue StandardError
         ["", ""]
       end
 

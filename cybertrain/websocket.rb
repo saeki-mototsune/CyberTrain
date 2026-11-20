@@ -958,10 +958,8 @@ module Cybertrain
       block = sub.sub_open_block
       block.call(conn) unless block.nil?
       true
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_open failed: #{e.class.name}: #{e.message}")
-      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
-      false
+    rescue StandardError => e
+      callback_failed(sub, "on_open", e)
     end
 
     # Calls on_message; false (logged and reported) when it raised. The
@@ -970,10 +968,8 @@ module Cybertrain
       block = sub.sub_message_block
       block.call(conn, data) unless block.nil?
       true
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_message failed: #{e.class.name}: #{e.message}")
-      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
-      false
+    rescue StandardError => e
+      callback_failed(sub, "on_message", e)
     end
 
     # Calls on_tick; false (logged and reported) when it raised a
@@ -983,8 +979,13 @@ module Cybertrain
       block = sub.sub_tick_block
       block.call(conn) unless block.nil?
       true
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_tick failed: #{e.class.name}: #{e.message}")
+    rescue StandardError => e
+      callback_failed(sub, "on_tick", e)
+    end
+
+    # A callback raised: logged and reported (`where` {feed_where}); false.
+    def self.callback_failed(sub, callback, e)
+      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} #{callback} failed: #{e.class.name}: #{e.message}")
       Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
       false
     end

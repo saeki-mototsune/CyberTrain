@@ -125,7 +125,7 @@ module Cybertrain
       rows = WebSocket::FeedTable.read_feeds
       @feed_read_warned = false
       rows
-    rescue Cybertrain::DB::Error, StandardError
+    rescue StandardError
       unless @feed_read_warned
         @feed_read_warned = true
         Cybertrain.logger.warn("health: the feed status table cannot be read; feeds are not checked")
