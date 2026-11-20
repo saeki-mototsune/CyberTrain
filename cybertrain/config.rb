@@ -248,22 +248,22 @@ module Cybertrain
     # @api public
     attr_accessor :trusted_proxy
 
-# The proxies that may name the client besides loopback, `[]`, from
-# `CYBERTRAIN_TRUSTED_PROXIES`: comma-separated IPv4 or IPv6 addresses
-# or CIDRs (`172.16.0.0/12,10.0.0.0/8`, or one `172.18.0.2`). A request
-# whose connection comes from inside one of them takes its
-# {Request#client_ip} from the last hop of `X-Forwarded-For`. For a
-# proxy that reaches the app over a network rather than loopback:
-# kamal-proxy, which runs in its own Docker container and connects from
-# the bridge network's address (Docker hands those out of 172.16.0.0/12
-# by default). List only addresses no client can connect from: anyone
-# inside a listed network can choose the address a rate limit counts.
-# `trusted_proxy` is the shorthand for `127.0.0.0/8,::1`; the two add
-# up. An entry that is not an address or CIDR (or a prefix past /32 or
-# /128) stops the server at boot.
-# @return [Array<String>]
-# @api public
-attr_accessor :trusted_proxies
+    # The proxies that may name the client besides loopback, `[]`, from
+    # `CYBERTRAIN_TRUSTED_PROXIES`: comma-separated IPv4 or IPv6 addresses
+    # or CIDRs (`172.16.0.0/12,10.0.0.0/8`, or one `172.18.0.2`). A request
+    # whose connection comes from inside one of them takes its
+    # {Request#client_ip} from the last hop of `X-Forwarded-For`. For a
+    # proxy that reaches the app over a network rather than loopback:
+    # kamal-proxy, which runs in its own Docker container and connects from
+    # the bridge network's address (Docker hands those out of 172.16.0.0/12
+    # by default). List only addresses no client can connect from: anyone
+    # inside a listed network can choose the address a rate limit counts.
+    # `trusted_proxy` is the shorthand for `127.0.0.0/8,::1`; the two add
+    # up. An entry that is not an address or CIDR (or a prefix past /32 or
+    # /128) stops the server at boot.
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :trusted_proxies
 
     # Whether http requests are redirected to https and https responses
     # carry `Strict-Transport-Security: max-age=63072000; includeSubDomains`
@@ -1189,6 +1189,19 @@ attr_accessor :trusted_proxies
       configured.empty? ? default : configured
     end
 
+    # The comma-separated entries of text, each stripped, blank ones
+    # dropped; [] for "". Takes the text, not the variable's name: the
+    # ENV read stays at the call site with a literal key. Typed seed
+    # (spikes/NOTES.md rule 9).
+    def self.list_from(text)
+      entries = Array.new(0) { "" }
+      text.split(",").each do |entry|
+        item = entry.strip
+        entries << item unless item.empty?
+      end
+      entries
+    end
+
     # True only for CYBERTRAIN_SESSION_PARTITIONED=1 or =true; any other
     # value is false, not an error.
     def self.default_session_partitioned
@@ -1213,22 +1226,14 @@ attr_accessor :trusted_proxies
       @env = Config.default_env
       @host = Config.default_host
       @allowed_hosts = ["localhost", "127.0.0.1", "[::1]"]
-      extra_hosts = ENV["CYBERTRAIN_ALLOWED_HOSTS"] || ""
-      extra_hosts.split(",").each do |entry|
-        name = entry.strip
-        @allowed_hosts << name unless name.empty?
-      end
+      Config.list_from(ENV["CYBERTRAIN_ALLOWED_HOSTS"] || "").each { |name| @allowed_hosts << name }
       @port = (ENV["PORT"] || "3000").to_i
       @database_path = Config.default_database_path(@env)
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
       # Stripped, like the previous keys: a .env line's newline is not part of it.
       @encryption_key = (ENV["CYBERTRAIN_ENCRYPTION_KEY"] || "").strip
-      # Typed seed (rule 9); empty entries of the comma list are dropped.
-      @encryption_keys_previous = Array.new(0) { "" }
-      (ENV["CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS"] || "").split(",").each do |entry|
-        previous_key = entry.strip
-        @encryption_keys_previous << previous_key unless previous_key.empty?
-      end
+      # Empty entries of the comma list are dropped (Config.list_from).
+      @encryption_keys_previous = Config.list_from(ENV["CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS"] || "")
       @secret_key_path = "tmp/secret_key"
       @views_root = "app/views"
       # Renders open at once (the page and its partials; the layout renders after
@@ -1271,28 +1276,17 @@ attr_accessor :trusted_proxies
       # Request.trusted_proxy's default; Application#boot installs it there
       # (the HTTP layer cannot read the Config).
       @trusted_proxy = Config.default_trusted_proxy
-# Request.trusted_proxies' list, the same way: split here, checked by
-# trusted_proxies_error at boot. Typed seed (rule 9), assigned in
-# initialize (rule 73).
-@trusted_proxies = Array.new(0) { "" }
-(ENV["CYBERTRAIN_TRUSTED_PROXIES"] || "").split(",").each do |entry|
-  proxy = entry.strip
-  @trusted_proxies << proxy unless proxy.empty?
-end
+      # Request.trusted_proxies' list, the same way: split here, checked by
+      # trusted_proxies_error at boot. Assigned in initialize (rule 73).
+      @trusted_proxies = Config.list_from(ENV["CYBERTRAIN_TRUSTED_PROXIES"] || "")
       # CYBERTRAIN_FORCE_SSL, kept as written for security_error.
       @force_ssl_text = Config.env_or("CYBERTRAIN_FORCE_SSL", "")
       @force_ssl = @force_ssl_text == "1" || @force_ssl_text == "true"
       @force_ssl_given = false
       # CYBERTRAIN_HOSTS: checked by security_error, appended to
-      # allowed_hosts (typed seed, rule 9).
-      @hosts_from_env = Array.new(0) { "" }
-      (ENV["CYBERTRAIN_HOSTS"] || "").split(",").each do |entry|
-        env_host = entry.strip
-        next if env_host.empty?
-
-        @hosts_from_env << env_host
-        @allowed_hosts << env_host
-      end
+      # allowed_hosts.
+      @hosts_from_env = Config.list_from(ENV["CYBERTRAIN_HOSTS"] || "")
+      @hosts_from_env.each { |env_host| @allowed_hosts << env_host }
       # What CYBERTRAIN_HOSTS gave, to tell an in-place change from it.
       @hosts_from_env_read = @hosts_from_env.dup
       @hosts_from_env_given = false
@@ -1420,21 +1414,14 @@ end
 
     # ParameterFilter::DEFAULT_NAMES, kept as a literal here (the HTTP layer
     # is not required by Config), or CYBERTRAIN_FILTER_PARAMETERS split on
-    # commas, blanks dropped, when it is set and not empty. Typed seed
-    # (spikes/NOTES.md rule 9).
+    # commas, blanks dropped (Config.list_from), when it is set and not
+    # empty.
     def self.default_filter_parameters
-      names = Array.new(0) { "" }
       configured = env_or("CYBERTRAIN_FILTER_PARAMETERS", "")
-      if configured.empty?
-        ["password", "password_confirmation", "token", "secret", "secret_key_base",
-         "session_key", "api_key", "authorization"].each { |n| names << n }
-      else
-        configured.split(",").each do |entry|
-          name = entry.strip
-          names << name unless name.empty?
-        end
-      end
-      names
+      return list_from(configured) unless configured.empty?
+
+      ["password", "password_confirmation", "token", "secret", "secret_key_base",
+       "session_key", "api_key", "authorization"]
     end
 
     # Declares the application's Content Security Policy (spec section 5,

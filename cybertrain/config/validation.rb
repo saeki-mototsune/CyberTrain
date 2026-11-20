@@ -408,22 +408,22 @@ module Cybertrain
       ""
     end
 
-# The error Application#boot reports (and exits 1 on) when a
-# trusted_proxies entry is not an IPv4 or IPv6 address or CIDR
-# (IpAddress.parse_network); "" when every entry is one. A while loop,
-# no block (NOTES rules 32, 45).
-def trusted_proxies_error
-  entries = @trusted_proxies
-  i = 0
-  while i < entries.size
-    entry = entries[i].to_s
-    if IpAddress.parse_network(entry).empty?
-      return "CYBERTRAIN_TRUSTED_PROXIES / trusted_proxies entry #{entry.inspect} is not an IP address or CIDR (e.g. 172.16.0.0/12)"
+    # The error Application#boot reports (and exits 1 on) when a
+    # trusted_proxies entry is not an IPv4 or IPv6 address or CIDR
+    # (IpAddress.parse_network); "" when every entry is one. A while loop,
+    # no block (NOTES rules 32, 45).
+    def trusted_proxies_error
+      entries = @trusted_proxies
+      i = 0
+      while i < entries.size
+        entry = entries[i].to_s
+        if IpAddress.parse_network(entry).empty?
+          return "CYBERTRAIN_TRUSTED_PROXIES / trusted_proxies entry #{entry.inspect} is not an IP address or CIDR (e.g. 172.16.0.0/12)"
+        end
+        i += 1
+      end
+      ""
     end
-    i += 1
-  end
-  ""
-end
 
     # The error Application#boot reports (and exits 1 on) when the
     # encryption keys are unusable; "" when they are fine. A set key must be
