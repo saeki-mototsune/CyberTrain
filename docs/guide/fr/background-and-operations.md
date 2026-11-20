@@ -1,5 +1,5 @@
 ---
-source_sha256: 143689fc040acc9ab32433666e2c11366c85ef784370269c43a7237378ec0156
+source_sha256: b8966fe43fcd456b2e389fe3ddd71d5c48ad7db2fa2e9082c6fee1e306ddffb9
 ---
 # Tâches de fond et exploitation
 
@@ -427,7 +427,7 @@ des conteneurs, tous à partir de la même image et de la même base&nbsp;:
   rôle `worker` et un rôle `feeds` en commentaire&nbsp;;
   `cybertrain generate job` et `generate authentication`, qui ajoutent
   `require "cybertrain/jobs"`, décommentent le rôle worker&nbsp;;
-  [docs/deploy.en.md](../deploy.en.md), partie 7, «&nbsp;Splitting the
+  [docs/deploy.en.md](../deploy.en.md), partie 9, «&nbsp;Splitting the
   roles&nbsp;», donne les unités systemd.
 - **Mise à jour depuis une version sans battements de cœur**&nbsp;: arrêtez
   tous les anciens processus avant de démarrer le premier nouveau. Un nouveau

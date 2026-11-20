@@ -416,7 +416,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   else is said; bytes the server sends after its STARTTLS reply are
   refused. `tls` speaks TLS from the first byte (port 465). Both check the
   certificate against `host` as the HTTP client does (give a host name, not
-  an IP address), and both need `require "cybertrain/net/tls"` (which `require "cybertrain"` loads): without
+  an IP address), and both need `require "cybertrain/net/tls"` (`require
+  "cybertrain"` loads it; `cybertrain/core` and `cybertrain/mailer` do not): without
   it, `deliver` raises `Mailer::TLSError` saying so, before connecting.
   `none` is plain text, for a relay on the same machine or a test server:
   with a user configured it refuses (`Mailer::InsecureError`, before

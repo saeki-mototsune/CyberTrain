@@ -1,5 +1,5 @@
 ---
-source_sha256: 27de4452d886e56f5942567c0bb28d918a424a7e66c5b0b46e78f8ddaba9326a
+source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -455,7 +455,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   STARTTLS sont refusés. `tls` parle TLS dès le premier octet (port 465). Les
   deux vérifient le certificat par rapport à `host` comme le fait le client HTTP
   (donnez un nom d’hôte, pas une adresse IP), et les deux demandent
-  `require "cybertrain/net/tls"` (que `require "cybertrain"` charge)&nbsp;: sans
+  `require "cybertrain/net/tls"` (`require "cybertrain"` le charge,
+  `cybertrain/core` et `cybertrain/mailer` non)&nbsp;: sans
   lui, `deliver` lève
   `Mailer::TLSError` qui le signale, avant de se connecter. `none` est du texte
   en clair, pour un relais sur la même machine ou un serveur de test&nbsp;: avec

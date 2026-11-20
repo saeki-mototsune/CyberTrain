@@ -1,5 +1,5 @@
 ---
-source_sha256: 27de4452d886e56f5942567c0bb28d918a424a7e66c5b0b46e78f8ddaba9326a
+source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
@@ -192,7 +192,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；`tls` 或 `none` |
 
-- **TLS 模式。** `starttls` 以明文连接，要求服务器提供 STARTTLS（否则为 `Mailer::TLSError`），并在说任何其他内容之前升级连接；服务器在其 STARTTLS 应答之后发送的字节会被拒绝。`tls` 从第一个字节起就使用 TLS（端口 465）。两者都像 HTTP 客户端一样根据 `host` 检查证书（请给出主机名，而不是 IP 地址），并且都需要 `require "cybertrain/net/tls"`（`require "cybertrain"` 会加载它）：没有它时，`deliver` 会在连接之前抛出 `Mailer::TLSError` 并说明这一点。`none` 是明文，用于同一台机器上的中继或测试服务器：配置了用户时它会拒绝（在连接之前引发 `Mailer::InsecureError`），除非主机解析为环回地址，此时它只拨号该主机的环回地址。
+- **TLS 模式。** `starttls` 以明文连接，要求服务器提供 STARTTLS（否则为 `Mailer::TLSError`），并在说任何其他内容之前升级连接；服务器在其 STARTTLS 应答之后发送的字节会被拒绝。`tls` 从第一个字节起就使用 TLS（端口 465）。两者都像 HTTP 客户端一样根据 `host` 检查证书（请给出主机名，而不是 IP 地址），并且都需要 `require "cybertrain/net/tls"`（`require "cybertrain"` 会加载它，`cybertrain/core` 和 `cybertrain/mailer` 不会）：没有它时，`deliver` 会在连接之前抛出 `Mailer::TLSError` 并说明这一点。`none` 是明文，用于同一台机器上的中继或测试服务器：配置了用户时它会拒绝（在连接之前引发 `Mailer::InsecureError`），除非主机解析为环回地址，此时它只拨号该主机的环回地址。
 - **密码从不会被记录或显示。** 它不在启动横幅、`help`、日志或任何错误消息中；它只在 AUTH PLAIN 命令中通过 TLS 发送（或发往环回地址）。不要对持有密码的 `Mailer` 或 `Config` 使用 `p` 或 `inspect`。
 - **每次等待都有上限**，与[出站 HTTP](#outbound-http) 中一样：连接、TLS 的每一步以及每个应答最多等待 `timeout` 秒（默认 10 秒），整个投递最多 `deadline` 秒（默认 60 秒），否则为 `Mailer::TimeoutError`。域名解析会阻塞调用它的线程。
 - **对话过程**：220 问候、`EHLO`（名称为 `helo:`，默认 `localhost`）、`STARTTLS` 和再次 `EHLO`、设置了用户时的 `AUTH PLAIN`（服务器必须提供 PLAIN）、`MAIL FROM`、每个收件人一条 `RCPT TO`、`DATA`、`QUIT`。代码不符合预期的应答为 `Mailer::RejectedError`，其 `smtp_code` 是服务器给出的代码（421、535、550 等），其消息包含所在步骤和服务器的文本。返回值是服务器对该邮件的应答（`"250 2.0.0 Ok: queued

@@ -1,5 +1,5 @@
 ---
-source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
+source_sha256: 4f41772e35e37674b8e1389ae3eb7abbc95e52b3b89635a88fbfa531e3cac42d
 ---
 # インストール
 
@@ -24,7 +24,7 @@ CyberTrain が手元のマシンに必要とするもの、`cybertrain` コマ�
 
 - Spinel のビルドには Ruby の `prism` gem が必要で、Ruby 3.3 以上には同梱されています。Ruby 3.2 では `gem install prism` を実行します（Ruby の開発用ヘッダーが必要です。Debian/Ubuntu なら `ruby-dev`）。`cybertrain doctor` が確認します。
 - OpenSSL のヘッダーを入れる前にビルドした Spinel には `openssl` パッケージがなく、アプリケーションのビルドが失敗します。ヘッダーを入れたら `cybertrain setup --force` で作り直してください。同じパッケージが TLS（`require "cybertrain/net/tls"`）と暗号化されたカラム（`encrypts`）にも使われます。
-- jemalloc の開発用パッケージ（`libjemalloc-dev`、`brew install jemalloc`）は任意です：アプリがこれを必要とするのは、その `spin.toml` に `allocator = "jemalloc"` と書いたときだけで、`cybertrain new` はこの行をコメントアウトして書き出します。本番環境では有効にする価値があります：examples/blog で毎秒のリクエスト数が 1.1〜1.4 倍になります（[docs/benchmark.md](../benchmark.md)）。
+- jemalloc の開発用パッケージ（`libjemalloc-dev`、`brew install jemalloc`）は任意です：アプリがこれを必要とするのは、その `spin.toml` に `allocator = "jemalloc"` と書いたときだけで、`cybertrain new` はこの行をコメントアウトして書き出します。本番環境で頼る前に自分のアプリで測ってください：examples/blog では、2026-10-09 の計測で動的なページの毎秒のリクエスト数が 1.3〜1.4 倍、最新の計測ではページで数 % の差（1 コアで POST は 18% 増）でした（[docs/benchmark.md](../benchmark.md)）。
 
 </details>
 

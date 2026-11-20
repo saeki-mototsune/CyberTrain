@@ -382,7 +382,7 @@ image and the same database:
   writes a `web` role into `config/deploy.yml`, with a `worker` and a `feeds`
   role commented out; `cybertrain generate job` and `generate authentication`,
   which add `require "cybertrain/jobs"`, uncomment the worker role;
-  [docs/deploy.en.md](../deploy.en.md) part 7,
+  [docs/deploy.en.md](../deploy.en.md) part 9,
   "Splitting the roles", has the systemd units.
 - **Upgrading from a release without heartbeats**: stop every old process
   before starting the first new one. A new worker would take the jobs an

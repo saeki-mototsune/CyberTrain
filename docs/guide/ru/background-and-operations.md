@@ -1,5 +1,5 @@
 ---
-source_sha256: 143689fc040acc9ab32433666e2c11366c85ef784370269c43a7237378ec0156
+source_sha256: b8966fe43fcd456b2e389fe3ddd71d5c48ad7db2fa2e9082c6fee1e306ddffb9
 ---
 # Фоновая работа и эксплуатация
 
@@ -413,7 +413,7 @@ done jobs") { Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400) }`).
   закомментированными; `cybertrain generate job` и `generate authentication`,
   которые добавляют `require "cybertrain/jobs"`, раскомментируют роль worker;
   юниты systemd — в [docs/deploy.en.md](../deploy.en.md), часть
-  7, «Splitting the roles».
+  9, «Splitting the roles».
 - **Обновление с версии без пульса**: остановите все старые процессы, прежде
   чем запускать первый новый. Новый обработчик принял бы задачи, которые
   старый ещё выполняет, за брошенные: старый процесс не пишет пульс.
