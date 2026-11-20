@@ -133,7 +133,7 @@
     <div class="sec-full look">
       <ul class="look-notes" aria-label="Règles Spinel par couche">
         <li data-note="0"><p class="look-k">Routes</p><p>Les blocs <code>resources</code> imbriqués reçoivent le mapper explicitement&nbsp;: <code>articles.resources :comments</code>.</p></li>
-        <li data-note="1"><p class="look-k">Contrôleurs</p><p><code>new</code> s’écrit <code>new_action</code>&nbsp;: une méthode nommée <code>new</code> masquerait <code>Klass.new(ctx)</code>.</p></li>
+        <li data-note="1"><p class="look-k">Contrôleurs</p><p><code>new</code> s’écrit <code>new_action</code>&nbsp;: les routes générées appellent l’action sous ce nom.</p></li>
         <li data-note="2"><p class="look-k">Vues</p><p>En développement, les templates sont lus depuis le disque, donc modifier une vue ne demande pas de recompilation&nbsp;; <code>cybertrain build</code> les intègre au binaire. Ils forment une grammaire fermée, pas du Ruby arbitraire.</p></li>
         <li data-note="3"><p class="look-k">Modèles</p><p><code>class Article</code> déclare les validations&nbsp;; les colonnes, les finders et les associations sont générés à partir de <code>db/schema.rb</code>.</p></li>
       </ul>
@@ -164,7 +164,7 @@
 <span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
 <span class="ln"></span>
-<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># the generated routes call the `new` action by this name</span></span>
 <span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
 <span class="ln">  <span class="k">end</span></span>
 <span class="ln"></span>
@@ -316,7 +316,7 @@
         <tbody>
           <tr><th scope="row"><span class="cmp-n">01</span>Console</th><td data-label="Rails"><code>rails console</code>, <code>rails dbconsole</code></td><td data-label="CyberTrain"><code>./blog console</code> évalue le langage d’expressions des templates sur les modèles (Spinel n’a pas d’<code>eval</code>, ce n’est donc pas du Ruby)&nbsp;; <code>./blog dbconsole</code> ouvre <code>sqlite3</code></td></tr>
           <tr><th scope="row"><span class="cmp-n">02</span>Rechargement</th><td data-label="Rails">Modifiez le code, l’application en cours d’exécution le prend en compte</td><td data-label="CyberTrain">Les modifications Ruby apparaissent tout de suite grâce à un aperçu CRuby&nbsp;; le binaire compilé reprend le port quand sa compilation se termine (<code>cybertrain server</code>)</td></tr>
-          <tr><th scope="row"><span class="cmp-n">03</span>L’action new</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (<code>new</code> masquerait <code>Klass.new(ctx)</code>)</td></tr>
+          <tr><th scope="row"><span class="cmp-n">03</span>L’action new</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (les routes générées l’appellent sous ce nom)</td></tr>
           <tr><th scope="row"><span class="cmp-n">04</span>Callbacks</th><td data-label="Rails"><code>before_action { do_thing }</code> (<code>self</code> implicite)</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — pas d’<code>instance_exec</code> sur un bloc stocké, donc les callbacks reçoivent explicitement le contrôleur/l’enregistrement</td></tr>
           <tr><th scope="row"><span class="cmp-n">05</span>Routes imbriquées</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code> — les blocs imbriqués reçoivent le mapper explicitement</td></tr>
           <tr><th scope="row"><span class="cmp-n">06</span>Sessions</th><td data-label="Rails">La session contient n’importe quel objet sérialisé (marshal)</td><td data-label="CyberTrain">Valeurs de session de type String uniquement, cookie chiffré en AES-256-GCM</td></tr>

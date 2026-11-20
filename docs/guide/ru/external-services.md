@@ -1,5 +1,5 @@
 ---
-source_sha256: 27de4452d886e56f5942567c0bb28d918a424a7e66c5b0b46e78f8ddaba9326a
+source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -436,7 +436,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   своего ответа на STARTTLS, отвергаются. `tls` говорит на TLS с первого байта
   (порт 465). Оба проверяют сертификат по `host`, как HTTP-клиент (указывайте
   имя хоста, а не IP-адрес), и обоим нужен `require "cybertrain/net/tls"` (его загружает
-  `require "cybertrain"`): без
+  `require "cybertrain"`, а `cybertrain/core` и `cybertrain/mailer` нет): без
   него `deliver` ещё до подключения возбуждает `Mailer::TLSError`, который
   говорит об этом. `none` — открытый текст, для ретранслятора на той же машине
   или тестового сервера: при настроенном пользователе он отказывается

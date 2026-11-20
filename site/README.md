@@ -81,6 +81,10 @@ the three against each other: when a command changes, change all three, the
 four translations of each page, and the `COMMANDS` table in
 `script/og-cards`, which prints one of them on the home, tutorial and
 playground social cards (then regenerate the cards, below).
+
+The Caddyfile on `deploy.html` is a second copy of the one in
+[docs/deploy.md](../docs/deploy.md) and docs/deploy.en.md, section 6-2
+(without its two comments): change the three together.
 The home page's Performance section (06) shows the run recorded in
 [docs/benchmark.md](../docs/benchmark.md) (`bench/results/<date>.json`,
 printed by `bench/report`): after a new recorded run, update its numbers in

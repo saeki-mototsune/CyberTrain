@@ -12,7 +12,7 @@
 #
 # The model names reach the generated models through four module-level
 # accessors that the application's generated gen/console.rb sets (a `case`
-# table per model: no computed dispatch, spikes/NOTES.md rule 2). Until they
+# table per model: no computed dispatch, spikes/NOTES.md rule 1). Until they
 # are set, every model name is an UnknownModel, so this file needs no gen/
 # file to compile:
 #

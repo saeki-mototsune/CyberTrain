@@ -59,9 +59,12 @@ missing it also prints the install command for your platform (a missing
   (`require "cybertrain/net/tls"`) and encrypted columns (`encrypts`).
 - jemalloc's development package (`libjemalloc-dev`; `brew install jemalloc`)
   is optional: an app needs it only once its `spin.toml` says
-  `allocator = "jemalloc"`, which `cybertrain new` writes commented out. It
-  is worth turning on for production: 1.1 to 1.4 times the requests per second on
-  examples/blog ([docs/benchmark.md](../benchmark.md)).
+  `allocator = "jemalloc"`, which `cybertrain new` writes commented out.
+  Measure it on your own application before relying on it in production: on
+  examples/blog it gave 1.3 to 1.4 times the requests per second on the
+  dynamic pages in the run of 2026-10-09, and within a few percent on the
+  pages (18% more on the POST, on one core) in the latest one
+  ([docs/benchmark.md](../benchmark.md)).
 
 </details>
 

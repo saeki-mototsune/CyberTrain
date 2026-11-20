@@ -602,7 +602,7 @@ module Cybertrain
 
     # Deletes the status rows this process wrote, through the registered
     # {StatusWriter}s: a `feeds` process does it after a clean stop
-    # (Application#run_feeds_threads), so the health check stops counting
+    # (Roles::FeedsRunner#run_feeds_threads), so the health check stops counting
     # feeds nobody runs. A crashed process deletes nothing, and its rows go
     # stale. Does nothing while the feeds run.
     # @return [Integer] how many rows were deleted

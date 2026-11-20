@@ -31,8 +31,8 @@ module Cybertrain
     # The environment: `"development"` (the default), `"test"` or
     # `"production"` (the default in a binary from `cybertrain build`). From
     # `CYBERTRAIN_ENV`. Set the variable rather than this attribute:
-    # `database_path` and `session_secure` are derived from it before
-    # `config/app.rb` runs.
+    # the defaults of `database_path`, `session_secure` and
+    # `mail_delivery_method` are derived from it before `config/app.rb` runs.
     # @return [String]
     # @api public
     attr_accessor :env
@@ -80,8 +80,7 @@ module Cybertrain
     # `CYBERTRAIN_ENCRYPTION_KEY`, "" when unset. `cybertrain secret --hex`
     # makes one. It is not derived from {#secret_key_base}, so rotating the
     # session secret leaves stored data readable. Boot fails on a malformed
-    # key, and on an empty one when a model declares `encrypts`
-    # ({#encryption_error}).
+    # key, and on an empty one when a model declares `encrypts`.
     # @return [String]
     # @api public
     attr_accessor :encryption_key
@@ -278,8 +277,9 @@ module Cybertrain
 
     # Whether http requests are redirected to https and https responses
     # carry `Strict-Transport-Security: max-age=63072000; includeSubDomains`
-    # ({SslRedirect}), `false`, from `CYBERTRAIN_FORCE_SSL` (`1` or `true`;
-    # `0`, `false` or empty is off, anything else stops the server at boot).
+    # (the `SslRedirect` middleware), `false`, from `CYBERTRAIN_FORCE_SSL`
+    # (`1` or `true`; `0`, `false` or empty is off, anything else stops the
+    # server at boot).
     # Behind a TLS-terminating proxy the request counts as https when it
     # says `X-Forwarded-Proto: https` (the first element of a list).
     # Request#base_url believes that header only from a trusted proxy, so
@@ -394,7 +394,8 @@ module Cybertrain
     # @api public
     attr_reader :csrf
 
-    # Sets {#csrf}, and records that it was given ({#csrf_given?}).
+    # Sets {#csrf}, and records that it was given (`cybertrain test` turns
+    # forgery protection off only when it was not).
     # @param value [Boolean]
     # @api public
     def csrf=(value)
@@ -672,8 +673,7 @@ module Cybertrain
     # Spinel worker threads that serve requests, `1`, from `SPINEL_WORKERS`:
     # the core count on a server with more than one. Above 1 the server
     # hands Spinel one more, since Spinel counts the main thread, which
-    # only waits ({Application.spinel_workers}). Development always serves
-    # on one and ignores this ({Application.serving_workers}).
+    # only waits. Development always serves on one and ignores this.
     # @return [Integer]
     # @api public
     attr_accessor :workers
@@ -815,8 +815,7 @@ module Cybertrain
     # interval of the scheduled task `"cybertrain cache prune"`, read once,
     # when the task is registered (requiring cybertrain/cache and
     # cybertrain/jobs); without jobs a cache write prunes when this long has
-    # passed since the last prune ({Cache.prune_if_due}), reading it each
-    # time. At least 1.
+    # passed since the last prune, reading it each time. At least 1.
     # @return [Integer]
     # @api public
     attr_accessor :cache_prune_interval
@@ -1315,9 +1314,9 @@ module Cybertrain
       @auth_idle_timeout = Config.env_int("CYBERTRAIN_AUTH_IDLE_TIMEOUT", 604_800)
     end
 
-    # Declares the application's Content Security Policy (docs/design.md
-    # D61): yields it to the block, made on the first call. Off by
-    # default; {ContentSecurityPolicyHeader} writes it on every response,
+    # Declares the application's Content Security Policy: yields it to the
+    # block, made on the first call. Off by default; the
+    # `ContentSecurityPolicyHeader` middleware writes it on every response,
     # and a controller adjusts its own copy with
     # {Controller.content_security_policy}.
     # @example config/app.rb
@@ -1349,7 +1348,7 @@ module Cybertrain
 
     # Whether HostAuthorization checks the Host header: always in
     # development, elsewhere only when `CYBERTRAIN_HOSTS` named hosts
-    # (docs/design.md D61; empty means no check, as Rails' production default).
+    # (empty means no check, as Rails' production default).
     # @return [Boolean]
     # @api public
     def host_check?

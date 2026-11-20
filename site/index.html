@@ -133,7 +133,7 @@
     <div class="sec-full look">
       <ul class="look-notes" aria-label="Spinel rules by layer">
         <li data-note="0"><p class="look-k">Routes</p><p>Nested <code>resources</code> blocks take the mapper explicitly: <code>articles.resources :comments</code>.</p></li>
-        <li data-note="1"><p class="look-k">Controllers</p><p><code>new</code> is written <code>new_action</code>: a method named <code>new</code> would shadow <code>Klass.new(ctx)</code>.</p></li>
+        <li data-note="1"><p class="look-k">Controllers</p><p><code>new</code> is written <code>new_action</code>: the generated routes call the action by that name.</p></li>
         <li data-note="2"><p class="look-k">Views</p><p>In development, templates are read from disk, so editing a view needs no rebuild; <code>cybertrain build</code> embeds them in the binary. They are a closed grammar, not arbitrary Ruby.</p></li>
         <li data-note="3"><p class="look-k">Models</p><p><code>class Article</code> declares validations; columns, finders and associations are generated from <code>db/schema.rb</code>.</p></li>
       </ul>
@@ -164,7 +164,7 @@
 <span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
 <span class="ln"></span>
-<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># the generated routes call the `new` action by this name</span></span>
 <span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
 <span class="ln">  <span class="k">end</span></span>
 <span class="ln"></span>
@@ -316,7 +316,7 @@
         <tbody>
           <tr><th scope="row"><span class="cmp-n">01</span>Console</th><td data-label="Rails"><code>rails console</code>, <code>rails dbconsole</code></td><td data-label="CyberTrain"><code>./blog console</code> evaluates the template expression language over the models (Spinel has no <code>eval</code>, so not Ruby); <code>./blog dbconsole</code> opens <code>sqlite3</code></td></tr>
           <tr><th scope="row"><span class="cmp-n">02</span>Reloading</th><td data-label="Rails">Edit code, the running app picks it up</td><td data-label="CyberTrain">Ruby changes show at once from a CRuby preview; the compiled binary takes the port when its build finishes (<code>cybertrain server</code>)</td></tr>
-          <tr><th scope="row"><span class="cmp-n">03</span>The new action</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (<code>new</code> would shadow <code>Klass.new(ctx)</code>)</td></tr>
+          <tr><th scope="row"><span class="cmp-n">03</span>The new action</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (the generated routes call it by that name)</td></tr>
           <tr><th scope="row"><span class="cmp-n">04</span>Callbacks</th><td data-label="Rails"><code>before_action { do_thing }</code> (implicit <code>self</code>)</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — no <code>instance_exec</code> on a stored block, so callbacks take the controller/record explicitly</td></tr>
           <tr><th scope="row"><span class="cmp-n">05</span>Nested routes</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code> — nested blocks take the mapper explicitly</td></tr>
           <tr><th scope="row"><span class="cmp-n">06</span>Sessions</th><td data-label="Rails">Session holds any marshalled object</td><td data-label="CyberTrain">Session values are Strings only, in an AES-256-GCM encrypted cookie</td></tr>

@@ -119,6 +119,19 @@ module Cybertrain
       -1
     end
 
+    # What bin/<app>.rb ends with, `exit(Cybertrain::Main.run(...))`: runs what
+    # `argv` names and answers the exit status. A {Main.command}'s name runs
+    # its block; no argument, `server` or a port starts the server;
+    # `migrate`, `db ...`, `console`, `dbconsole` and `help` are built in;
+    # `worker`, `feeds` and `jobs` belong to the subsystems the application
+    # requires. Any other word prints the usage and answers 1.
+    # @param name [String] the application's name, as in `./blog`
+    # @param argv [Array<String>] the binary's ARGV
+    # @param router [Object] `Gen::Routes.build(Cybertrain::Router.new)`
+    # @param url_resolver [Proc] `Gen::Routes.url_resolver`
+    # @param views [Hash{String => String}] `Gen::Views::SOURCES`
+    # @return [Integer] the exit status
+    # @api public
     def self.run(name, argv, router:, url_resolver:, views:)
       unless argv.empty?
         index = command_index(argv[0])

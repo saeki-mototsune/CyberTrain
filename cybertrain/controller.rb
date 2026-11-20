@@ -33,7 +33,7 @@ module Cybertrain
   #         @articles = Article.all.to_a
   #       end
   #
-  #       def new_action   # GET /articles/new: a method named `new` would shadow ArticlesController.new
+  #       def new_action   # GET /articles/new: the generated routes call the `new` action by this name
   #         @article = Article.new
   #       end
   #
@@ -243,8 +243,8 @@ module Cybertrain
       nil
     end
 
-    # Makes controller methods callable from this controller's templates
-    # (docs/design.md D60). A declaration only: `spin run gen` reads the names.
+    # Makes controller methods callable from this controller's templates.
+    # A declaration only: `spin run gen` reads the names.
     # @example
     #   helper_method :current_user, :admin?
     # @param names [Array<Symbol>]
@@ -708,7 +708,8 @@ module Cybertrain
     # has its interpolated values escaped; the answer is a String all the
     # same (wrap it in a SafeString to render it as HTML).
     # @example
-    #   redirect_to posts_path, notice: t(".created", title: @post.title)
+    #   flash[:notice] = t(".created", title: @post.title)
+    #   redirect_to posts_path, status: :see_other
     # @param key [String, Symbol]
     # @param options [Hash{Symbol => Object}] as for I18n.t
     # @return [String]
@@ -745,8 +746,8 @@ module Cybertrain
     end
 
     # The layout an action's HTML renders in: `"layouts/application"` (the
-    # configured {Views.layout_name}) here, and in a controller with
-    # `layout` lines the one they choose for the action. gen/controllers.rb
+    # configured `Cybertrain::Views.layout_name`) here, and in a controller
+    # with `layout` lines the one they choose for the action. gen/controllers.rb
     # writes the override from them, in order, the first that applies
     # winning, else `super`:
     #
@@ -854,8 +855,9 @@ module Cybertrain
       nil
     end
 
-    # Renders the response from a template, text, HTML or JSON: exactly
-    # one of template, plain:, html:, json: or partial:.
+    # Renders the response from a template, text, HTML, JSON, a partial or
+    # Turbo Stream elements: exactly one of template, `plain:`, `html:`,
+    # `json:`, `partial:` or `turbo_stream:`.
     #
     # An action that renders nothing renders its own template
     # (`app/views/<controller_path>/<action>.html.erb`) in the layout, or
@@ -869,8 +871,8 @@ module Cybertrain
     #   unless a `layout` line chooses another), when it exists. `layout:
     #   "admin"` (or `"layouts/admin"`) uses
     #   `app/views/layouts/admin.html.erb` instead, and raises
-    #   {MissingTemplate} when that layout does not exist; `layout: false`
-    #   none. Inside a {#respond_to} declaration for another format
+    #   `Cybertrain::MissingTemplate` when that layout does not exist;
+    #   `layout: false` none. Inside a {#respond_to} declaration for another format
     #   (`format.json { render :show }`) it is `<template>.<format>.erb`
     #   (`show.json.erb`), never in a layout.
     # - `plain:` the String as `text/plain`.
@@ -997,6 +999,8 @@ module Cybertrain
     end
 
     # The longest path {#local_path?} accepts, in bytes.
+    # @return [Integer]
+    # @api public
     MAX_LOCAL_PATH_BYTES = 2048
 
     # Whether `text` is a path on this site that is safe to redirect to: it
@@ -1004,8 +1008,8 @@ module Cybertrain
     # host), holds printable ASCII only (no space, control character,
     # backslash or byte above 126: browsers strip or reinterpret those; a
     # path the browser sent is percent-encoded already) and is at most
-    # {MAX_LOCAL_PATH_BYTES} bytes. Use it on any destination that came
-    # from the request (a `return_to` parameter, a remembered page).
+    # 2048 bytes ({MAX_LOCAL_PATH_BYTES}). Use it on any destination that
+    # came from the request (a `return_to` parameter, a remembered page).
     # @example
     #   local_path?("/articles?page=2")   # => true
     #   local_path?("//evil.example/")    # => false
@@ -1103,8 +1107,8 @@ module Cybertrain
 
     # Serves stored bytes that came from a user (an upload), safely. This is
     # the only supported way to send an upload back: never put uploads under
-    # `public/`, because {Static} serves them with whatever type their
-    # extension implies.
+    # `public/`, because the static file middleware serves them with
+    # whatever type their extension implies.
     #
     # The bytes are untrusted, so the response never lets a browser run them:
     #
@@ -1117,9 +1121,8 @@ module Cybertrain
     # - `X-Content-Type-Options: nosniff`, `Content-Security-Policy:
     #   default-src 'none'; sandbox` and `Cache-Control: private,
     #   max-age=3600` are always set. (nosniff and `X-Frame-Options:
-    #   SAMEORIGIN` are also the defaults of every response, see
-    #   {Response#to_http}; the header set here is the one sent, not a
-    #   second copy.)
+    #   SAMEORIGIN` are also the defaults of every response; the header
+    #   set here is the one sent, not a second copy.)
     #
     # HEAD works as for any action: the Server leaves the body out.
     # @example
@@ -1305,10 +1308,11 @@ module Cybertrain
         HttpCache.add_vary_accept(@request, @response)
       rescue StandardError => e
         # An action's bad JSON.parse goes through rescue_with_handler
-        # like any other exception. A `rescue_from
-        # JSON::ParserError` handler fires under CRuby; under Spinel the
-        # constant cannot be referenced as a value (rule 48), so no app can
-        # register one there and the exception goes on to the error pages.
+        # like any other exception: a `rescue_from JSON::ParserError`
+        # handler is found by the class's name, and with none the
+        # exception goes on to the error pages. No test in test/ registers
+        # such a handler; spikes/rechecks/differing/rescue_from_json_error.rb
+        # does, compiled (NOTES status 48).
         rescue_with_handler(e)
         HttpCache.add_vary_accept(@request, @response)
       end
@@ -1380,11 +1384,11 @@ module Cybertrain
       # a Query.parse of its own past Query's limits) answers 400 with its
       # message in plain text, like Rails' bad-request page, instead of
       # surfacing as a 500. The decision is ClientError's, the same one the
-      # error pages use, by class name (NOTES rules 46, 47): comparing the
-      # full "Cybertrain::Params::ParameterMissing" here would miss under
-      # Spinel, where Class#name is the bare "ParameterMissing". Which
-      # headers survive is Response#client_error!'s policy; then performed!
-      # so the chain stops. classify also logs the "rejected request" info
+      # error pages use, by full class name (ClientError::CLIENT_FAULTS
+      # against `e.class.name`; NOTES rules 47 and 54 are why it is a list
+      # of names and not an `is_a?`). Which headers survive is
+      # Response#client_error!'s policy; then performed! so the chain
+      # stops. classify also logs the "rejected request" info
       # line, which the error pages write for the same fault one layer up
       # (Cybertrain.logger, as Dev::ErrorPage does), so an answer given here
       # is as visible as one given there. It is called only once status_for

@@ -373,10 +373,10 @@ module Cybertrain
       # The decoded value of name in the request's query string
       # (Request#query_value), "" when there is none or the query is
       # malformed or too long (Query raises a client fault; the rescue sits
-      # in this non-yielding method, NOTES rules 32 and 61).
+      # in this non-yielding method, NOTES rule 32).
       def self.state_param(request, name)
         request.query_value(name)
-      rescue JSON::NestingError, JSON::ParserError, StandardError
+      rescue StandardError
         ""
       end
 

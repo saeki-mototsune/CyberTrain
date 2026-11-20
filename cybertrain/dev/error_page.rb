@@ -47,11 +47,11 @@ module Cybertrain
         begin
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
-          # NOTES rule 33: JSON::ParserError is not a StandardError under
-          # Spinel, and a bad JSON body deserves the diagnostics page too. A
-          # client fault (ClientError: parameters past Query's limits) gets a
-          # plain 4xx naming the limit instead, as ErrorPages does.
+        rescue StandardError => e
+          # A bad JSON body deserves the diagnostics page too: StandardError
+          # includes JSON::ParserError and JSON::NestingError. A client fault
+          # (ClientError: parameters past Query's limits) gets a plain 4xx
+          # naming the limit instead, as ErrorPages does.
           status = ClientError.classify(e, Cybertrain.logger)
           if status >= 500
             render_exception(ctx, e)
@@ -167,8 +167,8 @@ module Cybertrain
       # The request's JSON body, parsed and dumped with filtered values
       # replaced, or "" when it is not a JSON request, is encoded, larger
       # than MAX_DUMP_BODY_BYTES, or does not parse (it may be what failed).
-      # The rescue sits in this non-yielding method (spikes/NOTES.md rules
-      # 32 and 61).
+      # The rescue sits in this non-yielding method (spikes/NOTES.md rule
+      # 32).
       def self.json_dump(request)
         return "" unless request.json?
         return "" unless request.content_encoding.empty?
@@ -178,7 +178,7 @@ module Cybertrain
 
         begin
           ErrorPage.filtered_json(JSON.parse(body), 0)
-        rescue JSON::NestingError, JSON::ParserError, StandardError
+        rescue StandardError
           ""
         end
       end
@@ -187,7 +187,8 @@ module Cybertrain
       # member whose name ParameterFilter.filter? names shown as
       # "[FILTERED]", recursively. Every piece is appended directly to a
       # +"" local (spikes/NOTES.md rule 66); typed copies through Cast.hash
-      # / Cast.array (rule 71), `when Time` first (rule 8).
+      # / Cast.array (rule 71), `when Time` first (the order rule 8 asks
+      # for; status 8 has its probe on the pinned build).
       def self.filtered_json(value, depth)
         return "..." if depth >= MAX_DUMP_DEPTH
 

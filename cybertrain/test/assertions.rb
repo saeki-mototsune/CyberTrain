@@ -19,11 +19,11 @@ module Cybertrain
     # given (`to: nil` is an expectation). Not for tests to pass.
     UNSET = "\u0000unset"
 
-    # Ruby's own exception classes answer no `superclass` under Spinel
-    # ("undefined method 'superclass' for module RuntimeError"; phase 5a
-    # spike, spikes/phase5/assert_raises.rb; spikes/NOTES.md rule
-    # 104), so above the first
-    # builtin the chain `assert_raises` walks is read from their parents
+    # Ruby's own exception classes answer no `superclass` under Spinel in a
+    # program that defines a module, as every program that requires this
+    # file does ("undefined method 'superclass' for module RuntimeError";
+    # spikes/NOTES.md rule 104, spikes/phase5/assert_raises.rb), so above
+    # the first builtin the chain `assert_raises` walks is read from their parents
     # (checked against CRuby 3.3's `superclass`); every `Errno::` class's
     # parent is SystemCallError (see {builtin_parent}).
     BUILTIN_PARENTS = {
@@ -278,8 +278,9 @@ module Cybertrain
       nil
     end
 
-    # A user class's superclass; nil for a class of Ruby's own, which
-    # answers none under Spinel (a NoMethodError there).
+    # A user class's superclass; nil where `superclass` raises, as it does
+    # under Spinel for a class of Ruby's own in a program that defines a
+    # module (a NoMethodError; spikes/NOTES.md rule 104).
     def self.superclass_or_nil(klass)
       klass.superclass
     rescue StandardError

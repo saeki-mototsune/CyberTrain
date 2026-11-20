@@ -133,7 +133,7 @@
     <div class="sec-full look">
       <ul class="look-notes" aria-label="Правила Spinel по слоям">
         <li data-note="0"><p class="look-k">Маршруты</p><p>Вложенные блоки <code>resources</code> получают маппер явно: <code>articles.resources :comments</code>.</p></li>
-        <li data-note="1"><p class="look-k">Контроллеры</p><p><code>new</code> пишется как <code>new_action</code>: метод с именем <code>new</code> затенил бы <code>Klass.new(ctx)</code>.</p></li>
+        <li data-note="1"><p class="look-k">Контроллеры</p><p><code>new</code> пишется как <code>new_action</code>: сгенерированные маршруты вызывают действие под этим именем.</p></li>
         <li data-note="2"><p class="look-k">Представления</p><p>В режиме разработки шаблоны читаются с диска, поэтому правка представления не требует пересборки; <code>cybertrain build</code> встраивает их в бинарный файл. Это замкнутая грамматика, а не произвольный Ruby.</p></li>
         <li data-note="3"><p class="look-k">Модели</p><p><code>class Article</code> объявляет валидации; столбцы, finder-методы и ассоциации генерируются из <code>db/schema.rb</code>.</p></li>
       </ul>
@@ -164,7 +164,7 @@
 <span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
 <span class="ln"></span>
-<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># the generated routes call the `new` action by this name</span></span>
 <span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
 <span class="ln">  <span class="k">end</span></span>
 <span class="ln"></span>
@@ -316,7 +316,7 @@
         <tbody>
           <tr><th scope="row"><span class="cmp-n">01</span>Консоль</th><td data-label="Rails"><code>rails console</code>, <code>rails dbconsole</code></td><td data-label="CyberTrain"><code>./blog console</code> вычисляет выражения языка шаблонов над моделями (в Spinel нет <code>eval</code>, поэтому это не Ruby); <code>./blog dbconsole</code> открывает <code>sqlite3</code></td></tr>
           <tr><th scope="row"><span class="cmp-n">02</span>Перезагрузка</th><td data-label="Rails">Правите код — запущенное приложение подхватывает изменения</td><td data-label="CyberTrain">Изменения Ruby видны сразу через CRuby-превью; скомпилированный бинарный файл забирает порт, когда его сборка завершится (<code>cybertrain server</code>)</td></tr>
-          <tr><th scope="row"><span class="cmp-n">03</span>Действие new</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (<code>new</code> затенил бы <code>Klass.new(ctx)</code>)</td></tr>
+          <tr><th scope="row"><span class="cmp-n">03</span>Действие new</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (сгенерированные маршруты вызывают его под этим именем)</td></tr>
           <tr><th scope="row"><span class="cmp-n">04</span>Колбэки</th><td data-label="Rails"><code>before_action { do_thing }</code> (неявный <code>self</code>)</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — для сохранённого блока нет <code>instance_exec</code>, поэтому колбэки получают контроллер/запись явно</td></tr>
           <tr><th scope="row"><span class="cmp-n">05</span>Вложенные маршруты</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code> — вложенные блоки получают маппер явно</td></tr>
           <tr><th scope="row"><span class="cmp-n">06</span>Сессии</th><td data-label="Rails">Сессия хранит любой сериализуемый через Marshal объект</td><td data-label="CyberTrain">Значения сессии — только строки (String), cookie зашифрована AES-256-GCM</td></tr>

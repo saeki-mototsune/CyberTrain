@@ -8,7 +8,7 @@ class SessionsController < ApplicationController
   rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
 
   # GET /session/new
-  # (named new_action: a `new` method would shadow SessionsController.new)
+  # (named new_action: the generated routes call the `new` action by that name)
   def new_action
   end
 

@@ -98,7 +98,7 @@ module Cybertrain
 
     # Sets the body. A body replaces a stream: an action that called
     # Controller#stream and then render or head answers with the body, so
-    # the writer is dropped, as {#redirect} and an error reset drop it.
+    # the writer is dropped, as a redirect and an error reset drop it.
     # @param text [String]
     # @api public
     def body=(text)

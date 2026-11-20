@@ -575,16 +575,16 @@ module Cybertrain
     # Runs every registered case in registration order, prints one line per
     # case plus a summary, and exits non-zero when anything failed.
     #
-    # Each case runs as {run_top_level_case} does: the resets, the file's
-    # `setup` blocks, the body, its `teardown` blocks, then travel_back and
-    # the receivers' stop. The lines are `ok   <name>`,
+    # Each case runs with the resets, the file's `setup` blocks, the body,
+    # its `teardown` blocks, then travel_back and the receivers' stop. The
+    # lines are `ok   <name>`,
     # `FAIL <name>: <message>` for a failed assertion,
     # `ERR  <name>: <Class>: <message>` for another exception
     # (`ERR  <name>: in setup: <Class>: <message>` outside the body), then
     # `<n> tests, <n> assertions, <n> failures`. Call it at the end of
-    # every test file. Inside `cybertrain test`'s program ({bundled?}) it
-    # does nothing: the bundle runs every test once, at its end. The cases
-    # of a file the bundle began ({begin_file}) are the bundle's, not run!'s.
+    # every test file. Inside `cybertrain test`'s program it does nothing:
+    # the bundle runs every test once, at its end. The cases of a file the
+    # bundle began are the bundle's, not run!'s.
     # @return [void]
     # @api public
     def self.run!

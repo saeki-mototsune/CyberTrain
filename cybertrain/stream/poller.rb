@@ -4,8 +4,9 @@ module Cybertrain
     # into deliveries: every {Config#stream_poll_ms} ms it reads
     # `SELECT MAX(id)` (one B-tree descent on the primary key) and, when that
     # passed the last id it delivered, the new rows, which it hands to
-    # {Stream.hub}. Every minute it also deletes the rows older than
-    # {Config#stream_retention} seconds; the one place that prunes. Started
+    # the process's subscribers. Every minute it also deletes the rows
+    # older than {Config#stream_retention} seconds; the one place that
+    # prunes. Started
     # by Application#serve before it binds the port (so no subscription can
     # come before the start position) and stopped with the server; the
     # endpoint answers 503 while it is not running. It

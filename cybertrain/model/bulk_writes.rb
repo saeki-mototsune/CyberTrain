@@ -12,7 +12,7 @@ module Cybertrain
     #
     # `attrs` are column => value, bound, never interpolated; a generated
     # model casts each by its column's type as a save does
-    # ({Relation.typed_bind}: a decimal rounded to its scale, a boolean as
+    # (a decimal rounded to its scale, a boolean as
     # 1/0, a Hash as JSON, a Time in the storage format) and refuses an
     # encrypted column (`encrypts`) among the attrs, the conflict columns
     # and the update keys, which only a save can encrypt. A hand-written

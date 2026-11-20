@@ -1,5 +1,5 @@
 ---
-source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
+source_sha256: 4f41772e35e37674b8e1389ae3eb7abbc95e52b3b89635a88fbfa531e3cac42d
 ---
 # Installer cybertrain
 
@@ -65,9 +65,12 @@ quand même, compilé).
 - Le paquet de développement de jemalloc (`libjemalloc-dev`&nbsp;;
   `brew install jemalloc`) est facultatif&nbsp;: une application n’en a besoin
   qu’une fois que son `spin.toml` indique `allocator = "jemalloc"`, ligne que
-  `cybertrain new` écrit en commentaire. Cela vaut la peine de l’activer en
-  production&nbsp;: de 1,1 à 1,4 fois plus de requêtes par seconde sur
-  examples/blog ([docs/benchmark.md](../benchmark.md)).
+  `cybertrain new` écrit en commentaire. Mesurez-le sur votre propre
+  application avant de vous y fier en production&nbsp;: sur examples/blog, la
+  mesure du 2026-10-09 donnait de 1,3 à 1,4 fois plus de requêtes par seconde
+  sur les pages dynamiques, et la dernière un écart de quelques pour cent sur
+  les pages (18&nbsp;% de plus pour le POST, sur un cœur)
+  ([docs/benchmark.md](../benchmark.md)).
 
 </details>
 

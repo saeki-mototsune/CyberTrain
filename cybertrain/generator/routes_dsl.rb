@@ -5,9 +5,12 @@ module Cybertrain
     # One route as config/routes.rb declared it; RoutesEmitter turns the
     # list into gen/routes.rb.
     class RouteSpec
-      # Spinel cannot compile a class that defines an instance method named
-      # `new` (it breaks `PostsController.new(ctx)`), so the Rails `new`
-      # action is written `def new_action` in controllers.
+      # The Rails `new` action is written `def new_action` in controllers,
+      # and the generated routes call it by that name. The rename comes from
+      # Spinel 2026.09.12, recorded as unable to compile a class with an
+      # instance method named `new` beside `PostsController.new(ctx)`; a
+      # small program of that shape compiles on the pinned build
+      # (docs/spinel-feedback.md 1.2), and the name stays as public API.
       ACTION_METHODS = { "new" => "new_action" }
 
       # helper_args: the *_path helper's parameter names, one per dynamic
@@ -982,15 +985,15 @@ module Cybertrain
   #     get "/about", to: "pages#about"
   #   end
   #
-  # Spinel compiles `instance_eval(&block)` by splicing the block body into
-  # the caller with self rebound to the mapper, so receiverless calls work
-  # at the top level of the draw block. A block nested inside it is still
-  # compiled as a closure of its own, where that rebound self does not
-  # exist: a receiverless `resources` inside `resources :posts do ... end`
-  # runs under CRuby but fails the C build under Spinel ("use of undeclared
-  # identifier 'self'"). Nested blocks therefore take the mapper as their
-  # argument. `draw do |r| r.root ... end` also works (instance_eval passes
-  # the receiver as the block argument).
+  # `draw` evaluates its block with `instance_eval`, so receiverless calls
+  # work at the top level of the draw block. Nested blocks take the mapper
+  # as their argument: on Spinel 2026.09.12 a receiverless `resources`
+  # inside `resources :posts do ... end` ran under CRuby and failed the C
+  # build ("use of undeclared identifier 'self'"). A small program of that
+  # shape compiles on the pinned build (docs/spinel-feedback.md 1.2); the
+  # explicit mapper stays the documented form, the one the generators and
+  # the tests write. `draw do |r| r.root ... end` also works (instance_eval
+  # passes the receiver as the block argument).
   # @api public
   module Routes
     @specs = Array.new(0) { Gen::RouteSpec.new("", "", "", "", "") }

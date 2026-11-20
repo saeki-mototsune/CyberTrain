@@ -178,10 +178,10 @@ git init -b main
 [package]
 name = "notes"
 version = "0.1.0"
-# jemalloc is a faster malloc for a server: 1.1 to 1.4 times the
-# requests per second on examples/blog (docs/benchmark.md). Building then
-# needs its development package (libjemalloc-dev on Debian/Ubuntu,
-# `brew install jemalloc` on macOS).
+# jemalloc is another malloc for a server: between no gain and 1.4 times
+# the requests per second on examples/blog, depending on the run
+# (docs/benchmark.md). Building then needs its development package
+# (libjemalloc-dev on Debian/Ubuntu, `brew install jemalloc` on macOS).
 # allocator = "jemalloc"
 
 [dependencies]

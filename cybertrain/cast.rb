@@ -12,6 +12,11 @@ module Cybertrain
   module Cast
     TRUE_STRINGS = ["1", "true", "t", "on", "yes"]
 
+    # `v` as an Integer: an Integer as it is, a Float truncated, a String
+    # through `to_i`, true as 1; false, nil and anything else 0.
+    # @param v [Object]
+    # @return [Integer]
+    # @api public
     def self.int(v)
       case v
       when Integer then v
@@ -22,7 +27,12 @@ module Cybertrain
       end
     end
 
-    # nil and "" (an empty form field) mean "no value".
+    # {Cast.int} for a nullable column: nil and "" (an empty form field)
+    # mean "no value" and are nil; an Integer as it is, a Float truncated,
+    # any other String through `to_i`, true/false as 1/0; anything else nil.
+    # @param v [Object]
+    # @return [Integer, nil]
+    # @api public
     def self.int_or_nil(v)
       case v
       when nil then nil
@@ -35,6 +45,11 @@ module Cybertrain
       end
     end
 
+    # `v` as a String: nil is `""`, a String itself, a Time its ISO 8601
+    # text ({Cast.iso8601}), anything else `to_s`.
+    # @param v [Object]
+    # @return [String]
+    # @api public
     def self.str(v)
       case v
       when nil then ""
@@ -44,6 +59,10 @@ module Cybertrain
       end
     end
 
+    # {Cast.str} for a nullable column: nil stays nil; `""` stays `""`.
+    # @param v [Object]
+    # @return [String, nil]
+    # @api public
     def self.str_or_nil(v)
       case v
       when nil then nil
@@ -83,6 +102,11 @@ module Cybertrain
       end
     end
 
+    # `v` as a Float: a Float as it is, an Integer or a String through
+    # `to_f`; nil and anything else 0.0.
+    # @param v [Object]
+    # @return [Float]
+    # @api public
     def self.float(v)
       case v
       when Float then v
@@ -92,6 +116,11 @@ module Cybertrain
       end
     end
 
+    # {Cast.float} for a nullable column: nil and "" are nil; a Float as it
+    # is, an Integer or any other String through `to_f`; anything else nil.
+    # @param v [Object]
+    # @return [Float, nil]
+    # @api public
     def self.float_or_nil(v)
       case v
       when nil then nil
@@ -102,7 +131,13 @@ module Cybertrain
       end
     end
 
-    # true/false, 1/0 (SQLite), "1"/"0", "true"/"false", "on" (checkbox), "".
+    # `v` as true or false: true/false as they are; an Integer is true
+    # unless it is 0 (SQLite stores 1/0); a String is true when it is "1",
+    # "true", "t", "on" (a checkbox) or "yes" in any letter case, and false
+    # otherwise ("0", "false", ""); nil and anything else false.
+    # @param v [Object]
+    # @return [Boolean]
+    # @api public
     def self.bool(v)
       case v
       when true then true
@@ -113,6 +148,10 @@ module Cybertrain
       end
     end
 
+    # {Cast.bool} for a nullable column: nil and "" are nil.
+    # @param v [Object]
+    # @return [Boolean, nil]
+    # @api public
     def self.bool_or_nil(v)
       case v
       when nil then nil
@@ -141,8 +180,7 @@ module Cybertrain
     # The value to bind for a column: a Time in the storage format
     # ({Cast.sql_datetime}), a Date as `YYYY-MM-DD`, a Hash as its JSON
     # text ({Cast.json_text}), booleans as 1/0; nil, Integer, Float and
-    # String pass through. `when Time` comes before the container branch
-    # (NOTES rule 8).
+    # String pass through.
     # @param v [Object]
     # @return [Object]
     # @api public
@@ -565,10 +603,9 @@ module Cybertrain
     end
 
     # A decimal value rounded to the column's scale: `v` as a Float, rounded
-    # half away from zero on its decimal digits ({Cast.round_digits}); a
-    # negative scale (none declared) and a non-finite value (`"1e999"`) are
-    # left as they are. The contract of a decimal column is docs/design.md
-    # D73.
+    # half away from zero on its decimal digits; a negative scale (none
+    # declared) and a non-finite value (`"1e999"`) are left as they are.
+    # The contract of a decimal column is docs/design.md D73.
     # @example
     #   Cast.round_scale("1.005", 2)  # => 1.01
     #   Cast.round_scale(2.6, 0)      # => 3.0

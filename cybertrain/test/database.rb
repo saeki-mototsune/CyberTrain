@@ -271,7 +271,7 @@ module Cybertrain
         return "" unless File.exist?(path)
 
         File.realpath(path)
-      rescue JSON::NestingError, JSON::ParserError, StandardError
+      rescue StandardError
         ""
       end
 
@@ -326,7 +326,7 @@ module Cybertrain
           raise problem unless problem.empty?
 
           c.commit!
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           Database.restore_after_failure(Database.rollback_step(c), Database.foreign_keys_step(c))
           raise e
         end
@@ -373,7 +373,7 @@ module Cybertrain
       def self.attempt(step)
         step.call
         nil
-      rescue JSON::NestingError, JSON::ParserError, StandardError
+      rescue StandardError
         nil
       end
 

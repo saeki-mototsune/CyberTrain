@@ -245,6 +245,8 @@ module Cybertrain
     attr_reader :mail_delivery_method
 
     # What {#deliver} answers for a message stored in {.deliveries}.
+    # @return [String]
+    # @api public
     STORED_REPLY = "250 2.0.0 stored in Mailer.deliveries"
 
     # The port a mode uses when none is configured: 587 (submission) for
@@ -633,7 +635,13 @@ module Cybertrain
       nil
     end
 
-    # "" when the address is acceptable, else why not.
+    # `""` when `address` is a bare ASCII address {Mailer.deliver} accepts
+    # (local@domain: no display name, angle brackets, spaces, CR or LF,
+    # commas or quotes; at most 254 bytes, 64 before the @), else why
+    # not, as a phrase such as `"has no @"`.
+    # @param address [String] one address
+    # @return [String]
+    # @api public
     def self.address_problem(address)
       s = address.to_s # NOTES rule 62
       n = s.bytesize

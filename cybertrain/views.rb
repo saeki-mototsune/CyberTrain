@@ -110,7 +110,7 @@ module Cybertrain
 
     # ->(controller Controller | nil) { Template::Helpers }: how controllers
     # and render_partial build the helpers a template calls. gen/helpers.rb
-    # sets it to build the app's ApplicationHelpers (docs/design.md D38).
+    # sets it to build the app's ApplicationHelpers.
     # @api public
     def self.helpers_builder
       @helpers_builder

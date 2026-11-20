@@ -30,8 +30,12 @@
 module Cybertrain
   # A leveled logger writing one line per message to standard output (or
   # to the io it was given): `debug`, `info`, `warn`, `error`, `fatal`.
-  # The line's shape is the file's header comment; {Cybertrain.logger} is
-  # the one the framework logs through.
+  # A line is `2026-11-11T12:00:00.123Z INFO [tag] message`: the time in
+  # UTC with milliseconds, the level in capitals, each tag in brackets,
+  # the message (a line feed or carriage return inside it is written as
+  # `\n` or `\r`); with `c.log_format = :json`, one JSON object per line
+  # (`time`, `level`, `tags`, `message`, and `request_id` on a request's
+  # lines). {Cybertrain.logger} is the one the framework logs through.
   # @api public
   class Logger
     LEVELS = { debug: 0, info: 1, warn: 2, error: 3, fatal: 4 }
@@ -46,7 +50,7 @@ module Cybertrain
     # and `where` (the controller action, written by the controller), the
     # line's tags in order, the index of the request id among them (-1
     # when it is not shown), and the context an error report adds. One
-    # Scope sits in the thread's Thread.current[{SCOPE_KEY}] slot
+    # Scope sits in the thread's `Thread.current[:cybertrain_log_scope]` slot
     # ({swap_scope}, {current_scope}); {tagged} adds tags to a copy.
     # @api public
     class Scope
@@ -130,6 +134,8 @@ module Cybertrain
     # One object shared by every thread, so nothing writes to it: its
     # `scope_where=` does nothing, and its tags and context are frozen (a
     # write raises FrozenError, compiled as under CRuby).
+    # @return [Scope]
+    # @api public
     NO_SCOPE = Logger.empty_scope
     NO_SCOPE.scope_tags.freeze
     NO_SCOPE.scope_context.freeze
@@ -468,6 +474,9 @@ module Cybertrain
       end
     end
 
+    # The lowest level this logger writes.
+    # @return [Symbol] `:debug`, `:info`, `:warn`, `:error` or `:fatal`
+    # @api public
     attr_reader :level
 
     # `io` defaults to nil rather than the documented STDOUT literal: Spinel
@@ -487,28 +496,54 @@ module Cybertrain
     # later `LEVELS[severity] >= LEVELS[@level]` raise
     # "comparison of Integer with nil failed". (Config#log_error refuses
     # an unknown level at boot.)
+    # @param level [Symbol] `:debug`, `:info`, `:warn`, `:error` or
+    #   `:fatal`; an unknown level counts as `:info`
+    # @api public
     def level=(level)
       @level = LEVELS[level] ? level : :info
     end
 
+    # Writes `msg` as one line at DEBUG, when the logger's level is `:debug`.
+    # @param msg [String]
+    # @return [nil]
+    # @api public
     def debug(msg)
       log(:debug, msg)
     end
 
+    # Writes `msg` as one line at INFO, when the logger's level is `:info`
+    # or lower.
+    # @param msg [String]
+    # @return [nil]
+    # @api public
     def info(msg)
       log(:info, msg)
     end
 
+    # Writes `msg` as one line at WARN, when the logger's level is `:warn`
+    # or lower.
+    # @param msg [String]
+    # @return [nil]
+    # @api public
     def warn(msg)
       log(:warn, msg)
     end
 
+    # Writes `msg` as one line at ERROR, when the logger's level is
+    # `:error` or lower.
+    # @param msg [String]
+    # @return [nil]
+    # @api public
     def error(msg)
       log(:error, msg)
     end
 
     # The line before the process gives up (a feeds process whose feed
-    # keeps dying: cybertrain/background/supervisor.rb).
+    # keeps dying: cybertrain/background/supervisor.rb). Written at FATAL,
+    # whatever the logger's level.
+    # @param msg [String]
+    # @return [nil]
+    # @api public
     def fatal(msg)
       log(:fatal, msg)
     end
@@ -553,9 +588,12 @@ module Cybertrain
       if @io
         # #write, not #puts (spikes/NOTES.md rule 78): in a program whose
         # loggers never get an io, @io is nil-only, and Spinel
-        # 2026.10.26.7019 sends `@io.puts(line)` through a dispatch whose
-        # fallback fails C compilation once the TLS layer is in the program
-        # (test/logger_tls.rb).
+        # 2026.10.26.7019 sent `@io.puts(line)` through a dispatch whose
+        # fallback failed C compilation once the TLS layer was in the
+        # program. The rule's reduced program still fails that way
+        # (spikes/rechecks/differing/nil_only_puts_openssl.rb); the program
+        # of test/logger_tls.rb, written for it, builds with `puts` put
+        # back (NOTES status 78).
         @io.write(line)
       else
         # Flushed per line: a server's stdout is usually a pipe or a file,
@@ -591,6 +629,11 @@ module Cybertrain
   # spikes/NOTES.md rule 18.
   @logger = Logger.new
 
+  # The process's logger, the one the framework logs through:
+  # `Cybertrain.logger.info("imported #{n} rows")` anywhere in the
+  # application.
+  # @return [Logger]
+  # @api public
   def self.logger
     @logger
   end

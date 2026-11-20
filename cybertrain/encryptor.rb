@@ -230,7 +230,7 @@ module Cybertrain
     # built on first use and again only when they change.
     # @return [Encryptor]
     # @raise [Encryptor::Error] when the key is unset or not 64 hex
-    #   characters (boot reports this first: {#encryption_error})
+    #   characters (boot reports this first)
     # @api public
     def encryptor
       Encryptor.for_keys(@encryption_key, @encryption_keys_previous)

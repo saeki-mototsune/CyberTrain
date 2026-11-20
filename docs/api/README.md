@@ -1,8 +1,8 @@
 # CyberTrain API
 
-The methods an application calls: in controllers, models, migrations,
-`config/routes.rb`, `config/app.rb` and tests. New to CyberTrain? Start with
-the [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html).
+The methods an application calls: in controllers, models, jobs, components,
+migrations, `config/routes.rb`, `config/app.rb`, `bin/<app>.rb` and tests.
+New to CyberTrain? Start with the [tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html).
 The guides cover the rest: {https://saeki-mototsune.github.io/CyberTrain/guide/install.html installing and the CLI},
 {https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html how it works and the differences from Rails},
 {https://saeki-mototsune.github.io/CyberTrain/guide/models.html models}, {https://saeki-mototsune.github.io/CyberTrain/guide/requests.html requests},
@@ -30,17 +30,23 @@ generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 | `user.password = ...`, `user.authenticate(...)` (from `cybertrain generate authentication`) | {Cybertrain::Password}: `hash`, `verify?`, `needs_rehash?`, `iterations=` |
 | `params[:id]`, `params.require(:article).permit(...)` | {Cybertrain::Params} |
 | `session[...]`, `flash[...]` | {Cybertrain::Session}, {Cybertrain::Flash} |
-| `request.header(...)`, `request.client_ip`, `response.set_header(...)`, cookies | {Cybertrain::Request}, {Cybertrain::Response}, {Cybertrain::Cookies} |
+| `request.header(...)`, `request.client_ip`, `response.set_header(...)` | {Cybertrain::Request}, {Cybertrain::Response} |
+| `cookies[:theme] = "dark"`, `cookies.signed[:user_id]`, `cookies.encrypted[...]` | {Cybertrain::Controller#cookies}, {Cybertrain::CookieJar}; without a controller, {Cybertrain::Cookies} |
+| an uploaded file, `send_blob` | {Cybertrain::UploadedFile}, {Cybertrain::BlobStore}, {Cybertrain::Controller#send_blob} |
 | `Article.where(...).order(...).to_a`, `Article.find(id)` | {Article} and {ArticleRelation} (generated), {Cybertrain::Relation} |
+| `Article.order(...).page(params.page_number)` | {Cybertrain::Relation#page}, {Cybertrain::Page} |
 | `article.save`, `article.update(...)`, `article.errors` | {Cybertrain::Model}, {Cybertrain::Errors} |
 | `validates`, `before_save { \|r\| ... }` in `app/models/` | {Cybertrain::Model.validates}, {Cybertrain::Model.before_save} and the other callbacks |
+| `encrypts :api_key`, signed tokens | {Cybertrain::Model.encrypts}, {Cybertrain::Token}, {Cybertrain::Crypto} |
+| `Time.zone`, `Time.current`, `5.minutes` | {Time}, {Integer}, {Cybertrain::TimeZone}, {Cybertrain::Clock} |
 | `article.comments`, `comment.article` | {Article#comments}, {Comment#article} (from foreign keys) |
 | `config/routes.rb` | {Cybertrain::Routes.draw}, {Cybertrain::Gen::Mapper} (`resources`, `resource`, `get` ...) |
 | `article_path(@article)` | {Gen::UrlHelpers} (generated), {Cybertrain.url_root} |
 | `db/migrate/*.rb` | {Cybertrain::Migration::Base}, {Cybertrain::Schema::TableDef} |
 | `Cybertrain::WebSocket.subscribe("trades", url).on_open { ... }.on_message { ... }` in `config/app.rb` | {Cybertrain::WebSocket} (`require "cybertrain/websocket"`): {Cybertrain::WebSocket.subscribe}, {Cybertrain::WebSocket::Subscription}, {Cybertrain::WebSocket::Connection}, {Cybertrain::WebSocket.feed_status}; one connection: {Cybertrain::WebSocket::Client}; {Cybertrain::Background} |
 | `config/app.rb` | {Cybertrain.configure}, {Cybertrain::Config} |
-| `class NotifyJob < Cybertrain::Job::Base`, `NotifyJob.perform_later(...)`, `Cybertrain::Scheduler.cron(...)` | {Cybertrain::Job::Base}, {Cybertrain::Job}, {Cybertrain::Scheduler} (`require "cybertrain/jobs"`) |
+| `exit(Cybertrain::Main.run(...))`, `Cybertrain::Main.command("name", "what it does") { ... }` in `bin/<app>.rb` | {Cybertrain::Main.run}, {Cybertrain::Main.command} |
+| `class NotifyJob < Cybertrain::Job::Base`, `NotifyJob.perform_later(...)`, `Cybertrain::Scheduler.cron(...)` | {Cybertrain::Job::Base}, {WelcomeJob} (generated), {Cybertrain::Job}, {Cybertrain::Scheduler}, {Cybertrain::Cron} (`require "cybertrain/jobs"`) |
 | `Cybertrain::Cache.fetch(key, expires_in: 60) { ... }` | {Cybertrain::Cache} (`require "cybertrain/cache"`) |
 | `turbo_stream_from @article`, `Cybertrain::Stream.broadcast_append_to(...)` | {Cybertrain::Stream} (`require "cybertrain/streams"`) |
 | `Cybertrain::Mailer.deliver(to:, subject:, body:)`, `deliver_later` | {Cybertrain::Mailer} (`require "cybertrain/mailer"`, `"cybertrain/mailer/later"`) |
@@ -94,7 +100,7 @@ Top-level methods for `test/*.rb` (see {Cybertrain::Test}):
 | `assert_changes(-> { article.reload.title }, from: "a", to: "b") { ... }` | it changes the value (from and to, when given) |
 | `flunk(message)` | never |
 | `assert_response(response, :ok)` | the status matches (an Integer, or `:success`, `:redirect`, `:not_found`, ...) |
-| `assert_redirected_to(response, "/path")` | it is a redirect to exactly that Location |
+| `assert_redirected_to(response, "/path")` | it is a 3xx whose Location is that path (an absolute URL on the application's own host counts as its path, on either side) |
 
 `assert_response` and `assert_redirected_to` come with
 `require "cybertrain/test/client"`. Each is documented on the

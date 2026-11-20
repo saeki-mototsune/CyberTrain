@@ -29,7 +29,7 @@ module Cybertrain
   # being the client's address or the value of the `by:` method, and
   # `now` {Cache.now}; the `to`-th request of a window is the last one let
   # through, and an exhausted client's `Retry-After` is the rest of the
-  # window, `within - now % within` (docs/design.md D61). Only the part
+  # window, `within - now % within`. Only the part
   # after the name can come from a client, and a name holds no `:`, so a
   # client cannot pick a key that counts against another limit or
   # controller.
@@ -41,8 +41,8 @@ module Cybertrain
   # end; nothing deletes it then but the cache's prune: with
   # cybertrain/jobs the scheduled `"cybertrain cache prune"` task
   # ({Cache.prune}, every {Config#cache_prune_interval} seconds), without
-  # it the counting writes themselves ({Cache.prune_if_due}: once per
-  # interval, at most 1000 expired rows per write). Between two prunes the
+  # it the counting writes themselves (once per interval, at most 1000
+  # expired rows per write). Between two prunes the
   # table grows by one row per client and window, so a flood of addresses
   # costs disk until the next prune, never memory.
   #
@@ -340,7 +340,7 @@ module Cybertrain
     # `unless: :m` only when it answers false; a request it does not apply
     # to is not counted. The methods named by `by:`, `with:`, `if:` and
     # `unless:` are called through the tables `spin run gen` writes
-    # ({#rate_limit_key}, {#rate_limit_condition?}, {#run_callback}).
+    # (gen/controllers.rb).
     #
     # Differences from Rails: `within:` is a number of seconds (`3 * 60`;
     # there is no `3.minutes`), `only:`/`except:` take Arrays, `by:`,

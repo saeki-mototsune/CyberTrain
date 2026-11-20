@@ -133,7 +133,9 @@ module Cybertrain
       when nil
         "#{column} IS NULL"
       when Time
-        # Before `when Array`: a Time in a poly slot matches Array (rule 8).
+        # Before `when Array`, the order NOTES rule 8 asks for: on Spinel
+        # 2026.09.12 a Time in a polymorphic slot matched Array (status 8
+        # has the rule's probe on the pinned build).
         @binds << Cast.to_sql(value)
         "#{column} = ?"
       when Array
@@ -669,7 +671,7 @@ module Cybertrain
     #   @articles = Article.order("created_at DESC")
     #   @page = @articles.page(params.page_number, per: 20)
     # @param number [Integer] the 1-based page, usually Params#page_number
-    # @param per [Integer] rows per page, 1 to {Page::MAX_PER}
+    # @param per [Integer] rows per page, 1 to 1000 ({Page::MAX_PER})
     # @return [Page]
     # @raise [ArgumentError] when per is out of range (a programmer error)
     # @api public
@@ -844,7 +846,7 @@ module Cybertrain
 
     # Sets each column to its value in every matching row with one
     # `UPDATE ... SET a = ?, b = ?`, each value cast by its column's type as
-    # save stores it ({Relation.typed_bind}): a boolean as 1/0 (a form's
+    # save stores it: a boolean as 1/0 (a form's
     # `"false"` too), a Hash or JSON text as JSON (invalid text as `{}`), a
     # Date or `YYYY-MM-DD` text as that date, a Time or time text in the
     # storage format, a decimal rounded to its scale, binary bytes as a

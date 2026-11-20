@@ -4,7 +4,7 @@ require "cybertrain/strftime"
 require "cybertrain/clock"
 require "cybertrain/zoned_time"
 
-# I18n, a top-level module as in Rails (docs/design.md D79), so application
+# I18n, a top-level module as in Rails, so application
 # code writes `I18n.t` and `I18n.locale` as there.
 #
 # Two dictionaries answer: the application's (`config/locales/**/*.yml`,
@@ -348,7 +348,7 @@ module I18n
   # "" for a Date), `%^a` and the like upper-case the name; every other
   # directive is strftime's.
   #
-  # A Time is rendered in `Time.zone` (docs/design.md D81): its wall fields,
+  # A Time is rendered in `Time.zone`: its wall fields,
   # `%z` and `%Z` are the zone's, and so are the day and month names and
   # `%p`. `zone:` (an IANA name) renders this one call in another zone. A
   # Time that carries an offset of its own (`getlocal("+09:00")`) keeps it

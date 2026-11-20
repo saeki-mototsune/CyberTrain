@@ -1,5 +1,5 @@
 ---
-source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
+source_sha256: 4f41772e35e37674b8e1389ae3eb7abbc95e52b3b89635a88fbfa531e3cac42d
 ---
 # 安装
 
@@ -24,7 +24,7 @@ source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
 
 - 构建 Spinel 需要 Ruby 的 `prism` gem，Ruby 3.3 及以上已内置；Ruby 3.2 请运行 `gem install prism`（需要 Ruby 的开发头文件，Debian/Ubuntu 上为 `ruby-dev`）。`cybertrain doctor` 会检查它。
 - 在安装 OpenSSL 头文件之前构建的 Spinel 没有 `openssl` 包，这时应用的构建会失败；装好头文件后运行 `cybertrain setup --force` 重新构建它。同一个包也用于 TLS（`require "cybertrain/net/tls"`）和加密列（`encrypts`）。
-- jemalloc 的开发包（`libjemalloc-dev`；`brew install jemalloc`）是可选的：只有当应用的 `spin.toml` 写明 `allocator = "jemalloc"` 时才需要它，`cybertrain new` 会把这一行写成注释。在生产环境中值得开启：在 examples/blog 上每秒请求数可达 1.1 到 1.4 倍（[docs/benchmark.md](../benchmark.md)）。
+- jemalloc 的开发包（`libjemalloc-dev`；`brew install jemalloc`）是可选的：只有当应用的 `spin.toml` 写明 `allocator = "jemalloc"` 时才需要它，`cybertrain new` 会把这一行写成注释。在生产环境中依赖它之前，请先在自己的应用上测量：在 examples/blog 上，2026-10-09 的测量中动态页面的每秒请求数为 1.3 到 1.4 倍，最近一次测量中页面只相差百分之几（单核下 POST 多 18%）（[docs/benchmark.md](../benchmark.md)）。
 
 </details>
 

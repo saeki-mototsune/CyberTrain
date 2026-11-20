@@ -133,7 +133,7 @@
     <div class="sec-full look">
       <ul class="look-notes" aria-label="各层的 Spinel 规则">
         <li data-note="0"><p class="look-k">路由</p><p>嵌套的 <code>resources</code> 块需要显式接收 mapper：<code>articles.resources :comments</code>。</p></li>
-        <li data-note="1"><p class="look-k">控制器</p><p><code>new</code> 要写成 <code>new_action</code>：名为 <code>new</code> 的方法会遮蔽 <code>Klass.new(ctx)</code>。</p></li>
+        <li data-note="1"><p class="look-k">控制器</p><p><code>new</code> 要写成 <code>new_action</code>：生成的路由按这个名字调用该动作。</p></li>
         <li data-note="2"><p class="look-k">视图</p><p>开发时模板从磁盘读取，所以修改视图无需重新构建；<code>cybertrain build</code> 会把它们嵌入二进制文件。模板是一套封闭的语法，而不是任意 Ruby。</p></li>
         <li data-note="3"><p class="look-k">模型</p><p><code>class Article</code> 声明验证；列、查找方法和关联都根据 <code>db/schema.rb</code> 生成。</p></li>
       </ul>
@@ -164,7 +164,7 @@
 <span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
 <span class="ln"></span>
-<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># the generated routes call the `new` action by this name</span></span>
 <span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
 <span class="ln">  <span class="k">end</span></span>
 <span class="ln"></span>
@@ -316,7 +316,7 @@
         <tbody>
           <tr><th scope="row"><span class="cmp-n">01</span>控制台</th><td data-label="Rails"><code>rails console</code>、<code>rails dbconsole</code></td><td data-label="CyberTrain"><code>./blog console</code> 在模型上求值模板表达式语言（Spinel 没有 <code>eval</code>，所以不是 Ruby）；<code>./blog dbconsole</code> 打开 <code>sqlite3</code></td></tr>
           <tr><th scope="row"><span class="cmp-n">02</span>重新加载</th><td data-label="Rails">修改代码，正在运行的应用会自动加载</td><td data-label="CyberTrain">Ruby 的改动立即通过 CRuby 预览生效；构建完成后，编译好的二进制文件接管端口（<code>cybertrain server</code>）</td></tr>
-          <tr><th scope="row"><span class="cmp-n">03</span>new 动作</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code>（<code>new</code> 会遮蔽 <code>Klass.new(ctx)</code>）</td></tr>
+          <tr><th scope="row"><span class="cmp-n">03</span>new 动作</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code>（生成的路由按这个名字调用它）</td></tr>
           <tr><th scope="row"><span class="cmp-n">04</span>回调</th><td data-label="Rails"><code>before_action { do_thing }</code>（隐式 <code>self</code>）</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code>——无法对存储的块使用 <code>instance_exec</code>，因此回调需要显式接收控制器/记录</td></tr>
           <tr><th scope="row"><span class="cmp-n">05</span>嵌套路由</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code>——嵌套块需要显式接收 mapper</td></tr>
           <tr><th scope="row"><span class="cmp-n">06</span>会话</th><td data-label="Rails">会话可以保存任何经 marshal 序列化的对象</td><td data-label="CyberTrain">会话值只能是 String，使用 AES-256-GCM 加密的 cookie</td></tr>

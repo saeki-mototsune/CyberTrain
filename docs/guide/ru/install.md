@@ -1,5 +1,5 @@
 ---
-source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
+source_sha256: 4f41772e35e37674b8e1389ae3eb7abbc95e52b3b89635a88fbfa531e3cac42d
 ---
 # Установка
 
@@ -64,8 +64,11 @@ source_sha256: ae39f9e8858ad5bd0e072287d3b910f1174bd32ae52b8e87cb9975d7c4bfd0d3
 - Пакет разработки jemalloc (`libjemalloc-dev`; `brew install jemalloc`)
   необязателен: он нужен приложению, только когда в его `spin.toml` указано
   `allocator = "jemalloc"`, что `cybertrain new` записывает закомментированным.
-  Его стоит включить для продакшена: в 1,1–1,4 раза больше запросов в секунду на
-  examples/blog ([docs/benchmark.md](../benchmark.md)).
+  Прежде чем полагаться на него в продакшене, измерьте на своём приложении: на
+  examples/blog замер 2026-10-09 дал в 1,3–1,4 раза больше запросов в секунду
+  на динамических страницах, а последний замер — разницу в несколько процентов
+  на страницах (POST на одном ядре: на 18% больше)
+  ([docs/benchmark.md](../benchmark.md)).
 
 </details>
 

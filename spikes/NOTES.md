@@ -79,7 +79,7 @@ for the evidence needed to change a status.
 | 2 | **Still there** for a stored block (2026-11-15): `class C; def initialize; @v = 5; @blk = proc { 1 }; end; def keep(&blk); @blk = blk; end; def run = instance_exec(&@blk); end; c = C.new; c.keep { @v + 1 }; puts c.run` prints 6 under CRuby and is refused by Spinel ("unsupported call: CallNode `instance_exec`"); with `instance_eval(&@blk)` the refusal names `instance_eval`. A Proc held in a local and handed in as an ordinary argument (`def run(blk) = instance_exec(&blk)`) is refused too ("instance_exec/instance_eval of a proc parameter some call site hands a value spinel cannot trace to a proc literal"). A block parameter given a literal block at its call site (`def run(&blk) = instance_eval(&blk)`) and a literal block (`instance_exec(2) { \|x\| @v * x }`) compile and run (rechecks/dispatch_shapes.rb). The framework's callbacks are stored, so the policy is unchanged. |
 | 7, 9, 10/34, 14, 29, 31, 40, 42, 55, 67, 68 | Probe passes. 7, 9, 10/34, 14, 29, 31, 40, 42 and 55 again on 2026-11-15, now saved: rechecks/type_shapes.rb (7, 9, 10/34, 14, 29), rechecks/dispatch_shapes.rb (31, 40, 42) and rechecks/container_shapes.rb (55: an append through a reader, a list element and a narrowed boxed value reaches the stored String). |
 | 43 | Probe passes for both parts (2026-11-15): an `attr_accessor :body` writer beside another class's `def body=`, on boxed receivers, and a writer that calls a `Cast.time_or_nil`-shaped helper, given a Time and a String or only ever a Time (rechecks/type_shapes.rb, where the two writers share the helper; the probe in which nothing else called the helper was not saved). Generated models keep `attr_accessor`. |
-| 8 | Probe passes (2026-11-15, rechecks/type_shapes.rb: with `when Array`, `when Hash`, `when String` and `when Integer` first, Times taken from an Array and from a Hash's values reach `when Time`, and `Array === time` is false). **Retired in part** on this pin: the `when Time` arms that only repeated the `else` (or the no-match) result are gone from cast.rb, relation.rb and validator.rb; test/query_extras.rb and test/validators.rb pass a Time through each of those `case` statements (`when Array`, `when Hash`, `when Date`, `when Range`, the numeric arms). So are those in html.rb (`tag_attributes`, `attribute_html`, `add_class_words`), template/form_builder.rb (`text_list`, `choice_option`, `group_choices?`, `options_html`'s element test, `collection_options`), `Helpers#safe_join` and template/interpreter.rb (`exec_each`, `blank?`, `index`, `zip`, `flatten_into`); test/form_tags.rb and test/template_interpreter.rb pass a Time through each. The arms with a body of their own, and those in component.rb, rendering.rb, `render` (template/helpers.rb), console/printer.rb and dev/error_page.rb, were not re-checked and stay. |
+| 8 | Probe passes (2026-11-15, rechecks/type_shapes.rb: with `when Array`, `when Hash`, `when String` and `when Integer` first, Times taken from an Array and from a Hash's values reach `when Time`, and `Array === time` is false). **Retired in part** on this pin: the `when Time` arms that only repeated the `else` (or the no-match) result are gone from cast.rb, relation.rb and validator.rb; test/query_extras.rb and test/validators.rb pass a Time through each of those `case` statements (`when Array`, `when Hash`, `when Date`, `when Range`, the numeric arms). So are those in html.rb (`tag_attributes`, `attribute_html`, `add_class_words`), template/form_builder.rb (`text_list`, `choice_option`, `group_choices?`, `options_html`'s element test, `collection_options`), `Helpers#safe_join` and template/interpreter.rb (`exec_each`, `blank?`, `index`, `zip`, `flatten_into`); test/form_tags.rb and test/template_interpreter.rb pass a Time through each. The arms with a body of their own, and those in console/printer.rb and dev/error_page.rb, were not re-checked and stay. Two later changes took out more arms that only repeated the fall-through, and their commit messages name the compiled tests left unchanged: "Views: drop the Time guard arms that only repeat the fall-through" (2026-11-15: `render_helper`, `render_collection` and `render_records` in template/helpers.rb, `ComponentCollection#initialize`, the interpreter's `block_value`) and "Rendering: drop turbo_stream_text's Time arm" (2026-11-20). |
 | 12, 18, 26, 47, 53, 73, 74 | Reduced program passes (18: the class variable is also marked as a GC root, see 64). 47: `is_a?` on a superclass after `rescue StandardError`, with the raised class chosen at run time, passes in rechecks/exception_shapes.rb (2026-11-11), and again for the rule's own example (`QueryTooDeep` caught by `rescue StandardError`, `is_a?` its superclasses true, `KeyError#is_a?(IndexError)` true) in phase 5a (2026-11-12, Tasks 1 and 7). 47's last sentence (a `begin ... ensure ... end` ending a block) passes as a probe. 26 and both parts of 47 were run again on 2026-11-15 (rechecks/type_shapes.rb, rechecks/rescue_shapes.rb). |
 | 54 | **Split.** For user-defined classes, walking `e.class` / `.superclass` after `rescue StandardError` gives CRuby's full chain (rechecks/exception_shapes.rb, 2026-11-11). **Still there** for a package exception: `begin; JSON.parse("{"); rescue JSON::ParserError => e; puts e.class.superclass.name; end` prints `JSON::JSONError` under CRuby, but under Spinel it raises "undefined method 'superclass' for module JSON::ParserError (NoMethodError)" (checked 2026-11-11). A fallback that walks ancestor names is still unavailable for such classes. Rule 104 is the same failure for Ruby's own exception classes, and its row says in which programs it was seen. |
 | 25 | **Still there**, by design (docs/spinel-feedback.md D). |
@@ -88,18 +88,18 @@ for the evidence needed to change a status.
 | 38 | Not a Spinel rule: CRuby raises NoMethodError too (a protected method is callable only with an instance of the class as `self`, not from a class method). |
 | 44 | Probe passes for each part (2026-11-13, docs/spinel-feedback.md 1.2; again 2026-11-15, rechecks/rescue_shapes.rb): `break` out of a block whose `yield` sits inside `begin/rescue`, `return` in a block given to a user-defined yielding method (it leaves the enclosing method, as under CRuby), and `break` in a block forwarded as `&block`. `DB.transaction`'s block still must not `break` or `return`. |
 | 46 | `Class#name` now carries the namespace, as under CRuby, for a rescued `JSON::ParserError` and for user-defined nested classes (rechecks/exception_shapes.rb, 2026-11-11). A Hash literal of Strings later given an Integer and an Array works as a probe (2026-11-15, rechecks/type_shapes.rb, which also recurses 5,000 small frames deep on a Thread); the depth at which nested template renders overflow a thread stack was not re-measured. |
-| 48 | Probe passes: `klass = JSON::ParserError` is a value and `rescue klass` catches with it, and passing the constant to a registering class method from a class body works (2026-11-15, rechecks/json_error_shapes.rb). The framework's own `rescue_from(JSON::ParserError)` has no compiled test. |
+| 48 | Probe passes: `klass = JSON::ParserError` is a value and `rescue klass` catches with it, and passing the constant to a registering class method from a class body works (2026-11-15, rechecks/json_error_shapes.rb). The framework's own `rescue_from(JSON::ParserError)` has no test in `test/`; on 2026-11-20 rechecks/differing/rescue_from_json_error.rb compiled and ran it on `Cybertrain::Controller`: a block handler and a `with:` handler each answer for an action's `JSON.parse("{")`, and with no handler the error is re-raised out of `process`. Three small controllers in one program, `-O 0`, compiled side only (the header says why). |
 | 49 | **Still there**: decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes 224 / 855 / 3,668 ms (quadratic). |
 | 51 | Probe passes for both parts (2026-11-15 for the second; rechecks/container_shapes.rb): `Hash#keys` next to a user class's `keys` dispatches, and one class's readers doing `key.to_s` take Symbol and String keys in one program. The rule was seen in test/router.rb with the framework's `Params` and never reduced, so not conclusive. |
 | 52 | **Still there**: `"a=1&\x81b=2".byteindex("b", 4)` returns 5 where CRuby raises IndexError, and `" x\x81 ".strip` returns the String where CRuby raises Encoding::CompatibilityError (2026-11-15, rechecks/differing/invalid_utf8.rb). `split` on such a String now raises ArgumentError as under CRuby, and `index` with a String needle raises on neither (rechecks/invalid_utf8_shapes.rb). |
 | 56 | `String#to_sym` is hashed since 2026.10.25-7018 (docs/spinel-feedback.md); the rest was not re-checked. |
 | 60 | Reduced program passes (the NUL byte and what follows are kept). |
-| 61 | Probe passes: `rescue JSON::ParserError, StandardError` catches `JSON.generate`'s NestingError, and so does `rescue StandardError` alone (2026-11-15, rechecks/json_error_shapes.rb); `rescue JSON::ParserError` alone catches it too, and on a Thread it is caught and the `ensure` runs (rechecks/json_nesting_shapes.rb). **Retired in part** with 33, see there. |
+| 61 | Probe passes: `rescue JSON::ParserError, StandardError` catches `JSON.generate`'s NestingError, and so does `rescue StandardError` alone (2026-11-15, rechecks/json_error_shapes.rb); `rescue JSON::ParserError` alone catches it too, and on a Thread it is caught and the `ensure` runs (rechecks/json_nesting_shapes.rb). **Retired** as a clause with 33 on 2026-11-20, see there; what the rule says about an escaped thread's `ensure` was not re-run. |
 | 62 | Reduced program passes: with `require "openssl"`, `getbyte` on a boxed String prints 97, and the C has no `sp_nomethod_msg("getbyte"` switch. |
 | 66 | Reduced buffer-append program passes. The separate `TimeZone#name` collision in the whole framework was not re-checked; do not treat it as cleared. |
 | 64, 65 | Marked / rooted in the shape checked (docs/spinel-feedback.md, "From spikes/NOTES.md"). |
 | 69 | Probe passes in a small program (2026-11-13, docs/spinel-feedback.md 1.2; again 2026-11-15, rechecks/block_call_shapes.rb): a `&block` method with `ensure` or `rescue` compiles and runs them, and a Proc passed two levels down is called with a user-class argument whose method the block calls. The rule was seen in the framework (DB.transaction -> Pool -> Connection), so not conclusive; the framework keeps the one-level form. |
-| 70 | Probe passes in a small program; the rule was seen only with the whole framework required, so not conclusive. |
+| 70 | Probe passes in a small program; the rule was seen only with the whole framework required, so not conclusive. The aliased short name was not run again. Seen beside it on 2026-11-20: three clauses that named `Cybertrain::DB::Error` in full ahead of `StandardError` (`Poller.tick`, `HealthCheck.feed_rows`, `FeedTableWriter#status_withdraw`) are `rescue StandardError` alone and still catch it compiled (test/health.rb and test/features_feeds.rb drop the status table and get the fail-open answer). That shows a `DB::Error` is caught as a `StandardError` there, not that a short name matches. |
 | 71 | As recorded (2026-11-15, `spinel --emit-rbs`): `case v when Hash then v else {} end` is `(untyped) -> untyped`, and the copy into a seeded Hash is `(untyped) -> Hash[String, untyped]`. An inference fact, not a miscompile. The program is short enough to stay in the rule; it is not saved, since `run.sh` compares output and not signatures. |
 | 72 | Probe passes for six parts on Linux (2026-11-15 for the last four; rechecks/outbound_socket_shapes.rb): an unresolvable name raises SocketError, `entry[3]` indexes a `getaddrinfo` entry, `IPSocket.getaddress` and `Addrinfo.tcp` exist, a second `connect_nonblock` on a refused socket raises `Errno::ECONNREFUSED` (its message has strerror text, worded "Connection refused @ connect - " where CRuby says "Connection refused - connect(2) for 127.0.0.1:1"), and `Errno::ECONNREFUSED::Errno` compiles. **Still there**: `connect_timeout:` is ignored (docs/spinel-feedback.md O; on 2026-11-19 `TCPSocket.new("127.0.0.1", port, connect_timeout: 1)` against a full `listen(0)` queue raised IO::TimeoutError after a second under CRuby and was still waiting compiled when it was killed after 20). `Socket#bind(sockaddr)`, the openssl package notes and macOS were not re-checked. |
 | 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. Phase 4a relies on it: test/rate_limit_store.rb spawns its own binary with `Process.spawn` and reaps it with `Process.wait(pid)` (2026-11-10). |
@@ -146,7 +146,7 @@ for the evidence needed to change a status.
 | 121 | Works on this build: a record of a form that compiles and runs (phase 5b follow-ups, 2026-11-14; test/framework_names_compiles.rb), not of a defect. |
 | 122 | **Still there**, reduced on 2026-11-15 to three lines (in the rule; rechecks/differing/require_in_regex.rb): a require-shaped line inside a regex literal stops a `--strict-require` build, and without that flag the build passes with a warning and the match fails where CRuby's succeeds. |
 | 123 | **Still there**: found on this build (2026-11-15; rechecks/differing/env_nonliteral_key.rb, again 2026-11-19), in a program that requires two framework files; correct once cybertrain/core is required first. Not reduced (docs/spinel-feedback.md AS). |
-| 3, 19, 20, 21, 30, 33, 45, 50 | Probe passes (2026-11-13, docs/spinel-feedback.md 1.2; again on 2026-11-15, saved in rechecks/dispatch_shapes.rb (3, 30), io_shapes.rb (19), socket_bare_readpartial.rb (20), socket_shapes.rb (21), json_error_shapes.rb (33) and rescue_shapes.rb (45, 50)). 20: at `SPINEL_WORKERS=1` another green thread keeps running while one sits in a bare `readpartial` on an idle connection; the `wait_readable` stays, since its nil return is the idle timeout. 33: `rescue StandardError` and a bare `rescue` catch `JSON::ParserError`, and `rescue StandardError` catches `JSON.generate`'s `JSON::NestingError`. 33 and 61 are **retired in part**: the change "DB: rescue StandardError alone in the data layer's rollback arms" (2026-11-15) took the three-class clause out of db.rb, db/cli.rb, db/connection.rb, db/pool.rb and model.rb, checked there with a whole-framework compiled program and the transaction tests it names; the clause stays in the other files (`git grep -l 'rescue JSON::NestingError' cybertrain`). The other workarounds of this row stay until a change removes each with a test of the framework's own shape. |
+| 3, 19, 20, 21, 30, 33, 45, 50 | Probe passes (2026-11-13, docs/spinel-feedback.md 1.2; again on 2026-11-15, saved in rechecks/dispatch_shapes.rb (3, 30), io_shapes.rb (19), socket_bare_readpartial.rb (20), socket_shapes.rb (21), json_error_shapes.rb (33) and rescue_shapes.rb (45, 50)). 20: at `SPINEL_WORKERS=1` another green thread keeps running while one sits in a bare `readpartial` on an idle connection; the `wait_readable` stays, since its nil return is the idle timeout. 33: `rescue StandardError` and a bare `rescue` catch `JSON::ParserError`, and `rescue StandardError` catches `JSON.generate`'s `JSON::NestingError`. 33 and 61 are **retired in part**: the change "DB: rescue StandardError alone in the data layer's rollback arms" (2026-11-15) took the three-class clause out of db.rb, db/cli.rb, db/connection.rb, db/pool.rb and model.rb, checked there with a whole-framework compiled program and the transaction tests it names; Since 2026-11-20 no file under `cybertrain/` has the three-class clause (`git grep -n 'JSON::ParserError, StandardError' cybertrain` prints nothing). Four changes of 2026-11-19 and 2026-11-20 removed it, each with compiled tests whose snapshots did not change: the scheduler, the job executor and worker and the console, with test/json_rescue_background.rb added as the regression (a job handler, scheduled tasks, job threads and plain Threads raising both errors); the HTTP server, WebSocket and ErrorReporter files, with test/server.rb's `/json` and `/deep` cases; the controller, the middleware, Session and Flash (test/controller.rb, error_pages.rb, request_id.rb, session.rb, flash.rb); and dev/error_page.rb, dev/indicator.rb and test/database.rb (test/dev_error_page.rb, dev_indicator.rb, test_database.rb). Of the tests in `test/`, json_rescue_background.rb, server.rb and dev_error_page.rb (a body that does not parse, in `ErrorPage.json_dump`) raise a JSON error into a changed clause; for the controller and middleware clauses and for `Dev::ErrorPage#call` that was shown by compiled programs that were not saved (their commits describe them). `Cast.parse_json` still names the two JSON classes, in two arms and without `StandardError`; it was not changed. All of this is as `spin test` builds a program, on Linux x86_64, without GC stress. The other workarounds of this row stay until a change removes each with a test of the framework's own shape. |
 | 4, 5, 6, 35, 39, 41 | Probe passes (2026-11-15; rechecks/dispatch_shapes.rb for 4, 5 and 6, rechecks/type_shapes.rb for 35, 39 and 41): an inherited class method called as `self.class.foo`, a base chain method returning `self` with a subclass's typed `first`, `Method` objects in an Array and a Hash, `obj[k] = v` on a parameter behind a chain of `call(env)` objects, `SafeString#+` with a constructing `case`, and an Array-valued `attr_accessor :target` beside a String `target`. 35 and 41 were seen in the whole framework and never reduced, so this is not conclusive. |
 | 11, 37 | Cost rules, not wrong results. Probe output matches CRuby (2026-11-15, rechecks/type_shapes.rb), and for 11's probe, alone and inside that program, the generated C (`spinel -c`) keeps the two nil-initialised locals typed (`sp_String *`, `sp_oint`), not boxed. 37's generated C was not read. |
 | 17 | **Split** (2026-11-15). A constant assigned with `=` and read before its assignment raises NameError compiled, as under CRuby, at top level, in a module body and in a class body (rechecks/constant_order.rb). **Still there** for a class name: `puts Later.new.hi; class Later; def hi = "hi"; end` prints `hi` compiled and raises "uninitialized constant Later (NameError)" under CRuby. |
@@ -231,6 +231,9 @@ both runtimes did on 2026-11-19: `env_nonliteral_key.rb` (123),
 `nil_only_puts_openssl.rb` (78), `invalid_utf8.rb` (52) and
 `float_range_boxed.rb` (86). The limits stated above hold for these
 programs too: small programs, `-O 0`, Linux, no GC stress.
+`rescue_from_json_error.rb` (48) was added there on 2026-11-20 because it
+needs the framework; it was run compiled only, and printed what it is
+written to print.
 
 ## CRuby preview spike, 2026-11
 
@@ -446,7 +449,7 @@ retire them, and they are not re-checked on an update.
 | Shape in the framework | Constraint | Decision | Verified by |
 | --- | --- | --- | --- |
 | Callbacks and nested DSL blocks take their receiver (`before_action { \|c\| ... }`, `resources ... do \|r\|`); names dispatch through generated `case` tables | no `instance_exec` of a stored block, no computed `send` (rules 1, 2) | D4, D8, D38 | test/gen_controllers.rb, test/gen_helpers.rb, test/controller.rb |
-| Models, relations, routes, helpers, components, jobs and concerns are generated Ruby, not metaprogramming | no `define_method`, `method_missing`, `eval` (rules 1, 92, 93) | D3, D4, D60 | test/gen_*_compiles.rb, test/gen_concerns.rb; examples/blog's `gen/` freshness in CI |
+| Models, relations, routes, helpers, components, jobs and concerns are generated Ruby, not metaprogramming | no `method_missing` or `eval`, and no method defined while the program runs (rules 1, 92, 93; for `define_method` see the note under this table) | D3, D4, D60 | test/gen_*_compiles.rb, test/gen_concerns.rb; examples/blog's `gen/` freshness in CI |
 | One return type per method: `pluck_int`, `maximum_int`, `sum_float_by`, `Cache.fetch_hash`; `DB.transaction` and `Model.transaction` return nil | a method has one static return type (rules 5, 90) | D20, D22, D44, D45 | test/pluck.rb, test/aggregates.rb, test/db_transaction_api.rb |
 | A per-model Relation subclass whose chain methods wrap base setters and return `self` | a base method returning `self` is typed as the base (rule 5) | D10, D43, D72 | test/gen_models_compiles.rb, test/relation_where.rb |
 | Templates are a language of their own, interpreted over fixed dispatch tables | no `eval`, no run-time method lookup (verdict 3) | D9 | test/template_*.rb, docs/compatibility.md |
@@ -457,6 +460,28 @@ retire them, and they are not re-checked on an update.
 | A method name means one thing: distinct names for framework accessors (`reject_status`, `command_name`, `service_start`), reserved column names | same name, same return type across classes (rules 10, 34, 62) | D10 | `script/check-reserved-names`, test/openssl_dispatch.rb, test/cast_types.rb |
 | FFI fragments declare what they call (`extern` in `ffi_source`); the `-1` literal for `SQLITE_TRANSIENT` | Spinel's documented FFI rule (rule 59; spinel-feedback B) | D10 | test/db_sqlite.rb |
 | Request numbers are length-checked before `to_i` | `String#to_i` raises past 2**63-1 by design (rule 25; spinel-feedback D) | D14 | test/http_request.rb, test/params.rb, test/server.rb |
+
+The second row said "no `define_method`" until 2026-11-20, which is wider
+than what was shown. On 2026.11.04.7026 (`a2d06115`, Linux x86_64, GCC
+13.3.0, `-O 0`, compared with CRuby 3.3.6, 2026-11-20)
+[rechecks/define_method_shapes.rb](rechecks/define_method_shapes.rb)
+compiles and prints what CRuby prints: `define_method` with a literal name
+in a class body; a class macro that defines two methods with literal names
+whose blocks read and write an ivar, called from a subclass body; and a
+macro that takes the name as its parameter, called with literal Symbols
+from a class body. Two programs that define a method while the program
+runs are refused. `class Conf; def initialize; @vals = { "" => "" }; end;
+def setting(name, value); @vals[name.to_s] = value; vals = @vals; key =
+name.to_s; self.class.send(:define_method, name) { vals[key] }; nil; end;
+end; c = Conf.new; c.setting(:base_url, "http://x"); puts c.base_url`
+stops with "unsupported call: ... (CallNode `define_method`)". `class
+Conf; def initialize; @a = "1"; end; end; name = ARGV.empty? ? "a" :
+ARGV[0]; Conf.send(:define_method, name.to_sym) { @a }; puts Conf.new.a`
+stops with "Conf.define_method(...) is not supported by AOT compilation
+... Move the `define_method` inside `class Conf ... end`". CRuby prints
+`http://x` and `1`. These are five small programs: they say nothing about
+macros at the scale of an application's models, and the decisions of the
+row (D3, D4, D60: generated Ruby) are unchanged.
 
 ### Tied to a build: workarounds a Spinel release may retire
 
@@ -470,7 +495,7 @@ follows the rule even where a probe passes.
 | Workaround | Rule | Where | Fails without it in | Status on the pin |
 | --- | --- | --- | --- | --- |
 | `begin/rescue` and `ensure` live in a plain method that takes the block as a Proc, one level down and no further (`DB.run_transaction`, `Controller#process` / `#run_action`, the job worker's run loop, `Server#run_writer`, `Main.run_command`) | 32, 45, 67, 69, 79 | db.rb, controller.rb, job/worker.rb, job/executor.rb, scheduler.rb, http_client.rb, http/server.rb, main.rb | test/db_transaction.rb, test/db_transaction_api.rb, test/db_rolled_back_transaction.rb, test/jobs.rb, test/cron.rb | 32: the described shape compiles, 79 still there; 45, 67, 69: probe passes |
-| `rescue JSON::NestingError, JSON::ParserError, StandardError`, in that order, wherever application code may raise | 33, 61 | http/server.rb, controller.rb, job/worker.rb, job/executor.rb, scheduler.rb, console.rb, session.rb, middleware/error_pages.rb and the other files `git grep -l 'rescue JSON::NestingError' cybertrain` lists; no longer the data layer's rollback arms (status 33) | test/server.rb, test/client_error.rb | 33, 61: probe passes; retired in part (status 33) |
+| `rescue JSON::NestingError, JSON::ParserError, StandardError`, in that order, wherever application code may raise | 33, 61 | Nowhere under `cybertrain/` since 2026-11-20: each of those clauses is `rescue StandardError` (status 33). `Cast.parse_json` names the two classes in two arms, without `StandardError` | test/server.rb (`/json`, `/deep`), test/json_rescue_background.rb | 33, 61: probe passes; the clause is retired (status 33) |
 | Every client fault is listed by its full name in `ClientError::CLIENT_FAULTS`, which is compared with `e.class.name` | 46, 53, 54 | http/client_error.rb | `script/check-client-faults`, test/client_error.rb | 46: `Class#name` carries the namespace; 53: reduced program passes; 54: split, still there for a package's exception classes (built-in ones: rule 104) |
 | Byte scanners read their parameter through a fresh `to_s` local; no Ruby method is named after a builtin (`getbyte`, `write`, `close`, `<<`) | 62, 66 | http/*.rb, cast.rb, http_client.rb, mailer.rb, net/*.rb | test/openssl_dispatch.rb, test/http_client_gzip.rb, test/template_integration.rb, test/websocket_integration.rb | reduced program passes; kept |
 | A String made in an argument is bound to a local before `new`; `SafeString.of` | 58, 65 | html.rb, mailer.rb, cron.rb, job.rb, model/bulk_writes.rb | test/uploaded_file.rb, test/cli_toolchain.rb, test/gen_models.rb | 58 accepted as a constraint (spinel-feedback 1), not re-checked; 65 rooted in the shape checked |
@@ -788,6 +813,11 @@ from CRuby that is still there (the status table classifies each); record
     JSON errors in a probe (status 33). The three-class clause is retired
     where status 33 says so and stays elsewhere until a change removes it
     with a framework test.
+    2026-11-20, same build: the clause is gone from every file under
+    `cybertrain/`; status 33 lists the changes and the compiled tests
+    (test/json_rescue_background.rb and test/server.rb raise both errors
+    into a `rescue StandardError`). Do not write the three-class clause in
+    new code on the strength of this rule.
 34. Rule 10 is stronger than stated: two methods sharing a name on unrelated
     classes whose return types differ (`add_index` returning an Index vs an
     Array) corrupt inference even when no polymorphic receiver exists, with the
@@ -930,6 +960,11 @@ from CRuby that is still there (the status table classifies each); record
     registration work in a probe (status 48, 2026-11-15). The framework's
     own `rescue_from(JSON::ParserError)` has no compiled test yet, so the
     sentence above is unverified there, not confirmed.
+    2026-11-20, same build: rechecks/differing/rescue_from_json_error.rb
+    registers the handler on `Cybertrain::Controller` with a block and
+    with `with:`, and both answer for an action's failed `JSON.parse`
+    (status 48). "An app cannot register a `rescue_from` handler for it"
+    did not hold in that program; no test in `test/` covers it.
 49. `URI.decode_www_form_component` is quadratic on a non-ASCII String under
     Spinel (517 ms for e-acute + 50 000 bytes, 8.5 s for 200 000; linear
     under CRuby and for ASCII text: 11 ms for 400 000 "a" + "%41%C3%A9"). A
@@ -1145,6 +1180,13 @@ from CRuby that is still there (the status table classifies each); record
     removes it with test/server.rb and test/client_error.rb passing
     compiled. Those small programs did not show an application's rescue
     needing `JSON::NestingError`; they are not a whole application.
+    2026-11-20, same build: no rescue under `cybertrain/` names
+    `JSON::NestingError` ahead of `StandardError` any more (status 33).
+    test/server.rb's `/deep` case (an action whose `JSON.generate` raises
+    it gets a 500 and the server keeps serving) and
+    test/json_rescue_background.rb (job threads and plain Threads) pass
+    compiled with `rescue StandardError` alone. A thread that an exception
+    does escape, and whether its `ensure` runs, was not run again.
 62. A method defined in Ruby source with the name of a builtin method
     (`getbyte`, `puts`, `read`, `gets`, `close`, `write`, `<<`) changes how
     every call of that name on a **boxed** receiver compiles: a switch over
@@ -1295,6 +1337,13 @@ from CRuby that is still there (the status table classifies each); record
     2026-10-25), so it never caught a raised `Cybertrain::DB::Error`; in
     test/db_transaction.rb, which requires only the db files, the same
     clause matches the full name. Spell the full name in a rescue clause.
+    Not re-run with the alias on 2026.11.04.7026 in a whole-framework
+    program (status 70 has a small probe). 2026-11-20: three clauses that
+    named `Cybertrain::DB::Error` ahead of `StandardError` (Stream::Poller.tick,
+    HealthCheck.feed_rows, FeedTableWriter#status_withdraw) are now
+    `rescue StandardError`, which catches the error compiled
+    (test/health.rb, test/features_feeds.rb); HealthCheck.database_ok?
+    keeps the full name. The rule is about the short name and stays.
 71. Narrowing does not type a return value: `case v when Hash then v else
     {} end` on a polymorphic `v` (a `JSON.parse` result) is
     `(untyped) -> untyped` in `spinel --emit-rbs` (2026.09.12), so every

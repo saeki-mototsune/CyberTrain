@@ -28,8 +28,9 @@ module Cybertrain
   # or an invalid UTF-8 byte sequence ("\x81", or "%81" once decoded) in a
   # query string or form body (Cookies keep such a value raw instead).
   # Query finds the escape with its own byte scanner, not the decoder's
-  # ArgumentError (CRuby only: Spinel decodes it leniently, to a NUL byte,
-  # NOTES rule 28), and the bytes with String#valid_encoding? on the text
+  # ArgumentError (NOTES rule 28: Spinel 2026.09.12 decoded it leniently,
+  # to a NUL byte; status 28 has the decoder raising on the pinned build),
+  # and the bytes with String#valid_encoding? on the text
   # read as UTF-8 whatever the String's tag (Query.utf8!, NOTES rule 52), so
   # both are raised the same way on both runtimes. That includes a raw byte
   # and an escape that would only together make one character
@@ -197,9 +198,10 @@ module Cybertrain
     # fault in every parameter: a malformed percent-escape or an invalid
     # UTF-8 byte sequence (raw, or percent-encoded: "%81") is QueryMalformed.
     # The escapes are refused by the decoding loop itself, with one clear
-    # message and the same behaviour on both runtimes, which Spinel could not
-    # give otherwise (its decoder never raises, NOTES rule 28, and would put
-    # NUL bytes into params while CRuby answered 400); there is no pre-scan
+    # message and the same behaviour on both runtimes, whatever the library
+    # decoder does with one (Spinel 2026.09.12's never raised and put NUL
+    # bytes into params where CRuby's raised, NOTES rule 28); there is no
+    # pre-scan
     # (valid_escapes? is Request.split_path's check, for its own policy). There is no
     # rescue around the library decoder either: the loop hands it only runs
     # of well-formed "%XX", which it never refuses.

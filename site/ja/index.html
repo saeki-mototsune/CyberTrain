@@ -133,7 +133,7 @@
     <div class="sec-full look">
       <ul class="look-notes" aria-label="レイヤーごとの Spinel のルール">
         <li data-note="0"><p class="look-k">ルーティング</p><p>ネストした <code>resources</code> ブロックはマッパーを明示的に受け取ります：<code>articles.resources :comments</code>。</p></li>
-        <li data-note="1"><p class="look-k">コントローラー</p><p><code>new</code> は <code>new_action</code> と書きます。<code>new</code> という名前のメソッドは <code>Klass.new(ctx)</code> を覆い隠してしまうからです。</p></li>
+        <li data-note="1"><p class="look-k">コントローラー</p><p><code>new</code> は <code>new_action</code> と書きます。生成されたルートがこの名前でアクションを呼び出します。</p></li>
         <li data-note="2"><p class="look-k">ビュー</p><p>開発環境ではテンプレートをディスクから読み込むので、ビューの編集に再ビルドは不要です。<code>cybertrain build</code> はテンプレートをバイナリに埋め込みます。テンプレートは閉じた文法であり、任意の Ruby ではありません。</p></li>
         <li data-note="3"><p class="look-k">モデル</p><p><code>class Article</code> ではバリデーションを宣言します。カラム、ファインダー、関連付けは <code>db/schema.rb</code> から生成されます。</p></li>
       </ul>
@@ -164,7 +164,7 @@
 <span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
 <span class="ln"></span>
-<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># the generated routes call the `new` action by this name</span></span>
 <span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
 <span class="ln">  <span class="k">end</span></span>
 <span class="ln"></span>
@@ -316,7 +316,7 @@
         <tbody>
           <tr><th scope="row"><span class="cmp-n">01</span>コンソール</th><td data-label="Rails"><code>rails console</code>、<code>rails dbconsole</code></td><td data-label="CyberTrain"><code>./blog console</code> はモデルに対してテンプレートの式言語を評価する（Spinel には <code>eval</code> がないので Ruby ではない）。<code>./blog dbconsole</code> は <code>sqlite3</code> を開く</td></tr>
           <tr><th scope="row"><span class="cmp-n">02</span>リロード</th><td data-label="Rails">コードを編集すると、実行中のアプリに反映される</td><td data-label="CyberTrain">Ruby の変更は CRuby のプレビューからすぐに反映され、ビルドが終わるとコンパイル済みのバイナリがポートを引き継ぐ（<code>cybertrain server</code>）</td></tr>
-          <tr><th scope="row"><span class="cmp-n">03</span>new アクション</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> （<code>new</code> だと <code>Klass.new(ctx)</code> を覆い隠してしまう）</td></tr>
+          <tr><th scope="row"><span class="cmp-n">03</span>new アクション</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> （生成されたルートがこの名前で呼び出す）</td></tr>
           <tr><th scope="row"><span class="cmp-n">04</span>コールバック</th><td data-label="Rails"><code>before_action { do_thing }</code>（暗黙の <code>self</code>）</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — 保存したブロックに対する <code>instance_exec</code> がないため、コールバックはコントローラー／レコードを明示的に受け取る</td></tr>
           <tr><th scope="row"><span class="cmp-n">05</span>ネストしたルーティング</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code> — ネストしたブロックはマッパーを明示的に受け取る</td></tr>
           <tr><th scope="row"><span class="cmp-n">06</span>セッション</th><td data-label="Rails">セッションにはマーシャリングした任意のオブジェクトを保持できる</td><td data-label="CyberTrain">セッションの値は String のみ、AES-256-GCM で暗号化した cookie</td></tr>

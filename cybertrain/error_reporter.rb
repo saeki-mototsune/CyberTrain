@@ -181,6 +181,8 @@ module Cybertrain
     # The events waiting for the delivery thread, at most.
     QUEUE_LIMIT = 100
     # An event like one queued this many seconds ago or less is not queued.
+    # @return [Integer]
+    # @api public
     DEDUPE_SECONDS = 60
     # The drop count is logged at most once in this many seconds.
     DROP_LOG_SECONDS = 60
@@ -287,7 +289,7 @@ module Cybertrain
     # made, on the unfiltered class, message and `where`. A filter that
     # rewrites the message does not change which reports collapse, and an
     # event a filter drops still holds its dedupe slot for
-    # {ErrorReporter::DEDUPE_SECONDS} seconds (a like report in that time
+    # 60 seconds ({ErrorReporter::DEDUPE_SECONDS}; a like report in that time
     # is not queued, so no filter sees it).
     #
     # A filter that raises drops the event (fail closed: a filter exists
@@ -381,9 +383,9 @@ module Cybertrain
       report_failed(e)
     end
 
-    # Runs the block and answers its value; an exception it raises
-    # (`StandardError`, `JSON::ParserError`, `JSON::NestingError`) is
-    # reported with `handled: true` and the block answers nil.
+    # Runs the block and answers its value; an exception it raises (any
+    # StandardError) is reported with `handled: true` and the block
+    # answers nil.
     # @example
     #   price = Cybertrain.error.handle(context: { "feed" => "prices" }) do
     #     parse_price(text)

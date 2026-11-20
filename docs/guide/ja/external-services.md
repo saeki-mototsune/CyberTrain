@@ -1,5 +1,5 @@
 ---
-source_sha256: 27de4452d886e56f5942567c0bb28d918a424a7e66c5b0b46e78f8ddaba9326a
+source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
@@ -192,7 +192,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`。`tls` または `none` |
 
-- **TLS のモード。** `starttls` は平文で接続し、サーバーが STARTTLS を提供することを求め（なければ `Mailer::TLSError`）、他に何かを話す前にアップグレードします。サーバーが STARTTLS の応答の後に送ってきたバイトは拒否されます。`tls` は最初のバイトから TLS を話します（ポート 465）。どちらも HTTP クライアントと同じく証明書を `host` に対して検証し（IP アドレスではなくホスト名を指定してください）、どちらにも `require "cybertrain/net/tls"`（`require "cybertrain"` が読み込みます）が必要です：それがないと、`deliver` は接続する前に、その旨を伝える `Mailer::TLSError` を出します。`none` は平文で、同じマシン上のリレーやテストサーバー向けです：ユーザーが設定されている場合、ホストがループバックアドレスに解決されない限り拒否し（接続する前に `Mailer::InsecureError`）、解決される場合はそのループバックアドレスにだけ接続します。
+- **TLS のモード。** `starttls` は平文で接続し、サーバーが STARTTLS を提供することを求め（なければ `Mailer::TLSError`）、他に何かを話す前にアップグレードします。サーバーが STARTTLS の応答の後に送ってきたバイトは拒否されます。`tls` は最初のバイトから TLS を話します（ポート 465）。どちらも HTTP クライアントと同じく証明書を `host` に対して検証し（IP アドレスではなくホスト名を指定してください）、どちらにも `require "cybertrain/net/tls"`（`require "cybertrain"` は読み込みますが、`cybertrain/core` と `cybertrain/mailer` は読み込みません）が必要です：それがないと、`deliver` は接続する前に、その旨を伝える `Mailer::TLSError` を出します。`none` は平文で、同じマシン上のリレーやテストサーバー向けです：ユーザーが設定されている場合、ホストがループバックアドレスに解決されない限り拒否し（接続する前に `Mailer::InsecureError`）、解決される場合はそのループバックアドレスにだけ接続します。
 - **パスワードがログに出たり表示されたりすることはない。** 起動バナー、`help`、ログ、どのエラーメッセージにも含まれず、送られるのは TLS 越しに（またはループバックへ）AUTH PLAIN コマンドの中だけです。パスワードを保持している `Mailer` や `Config` を `p` や `inspect` しないでください。
 - **すべての待ちに上限がある。** [外向きの HTTP](#outbound-http) と同じく：接続、TLS の各手順、各応答は最大 `timeout` 秒（デフォルトは 10）待ち、配信全体では最大 `deadline` 秒（デフォルトは 60）待ちます。それを超えると `Mailer::TimeoutError` です。名前解決は呼び出したスレッドをブロックします。
 - **やり取り：** 220 の挨拶、`EHLO`（名前は `helo:`。デフォルトは `localhost`）、`STARTTLS` と再度の `EHLO`、ユーザーが設定されていれば `AUTH PLAIN`（サーバーが PLAIN を提供する必要があります）、`MAIL FROM`、受信者ごとに 1 つの `RCPT TO`、`DATA`、`QUIT`。それ以外のコードの応答は `Mailer::RejectedError` で、その `smtp_code` はサーバーのもの（421、535、550 など）、メッセージには手順とサーバーのテキストが含まれます。戻り値は、メッセージに対するサーバーの応答です（`"250 2.0.0 Ok: queued

@@ -125,6 +125,13 @@ module Cybertrain
 
       # Runs one statement with positional `?` binds and returns its rows as
       # Hashes keyed by column name (an empty Array for DDL/DML).
+      # @param sql [String]
+      # @param binds [Array<Object>] one value per `?` (build them with
+      #   {Cast.binds})
+      # @return [Array<Hash{String => Object}>]
+      # @raise [Cybertrain::DB::Error] when the statement fails, or the
+      #   connection is closed
+      # @api public
       def execute(sql, binds = [])
         run_statement(sql, binds, false)
       end
@@ -296,12 +303,15 @@ module Cybertrain
       # transaction), so a later `transaction` on the same checkout would
       # nest into it and never COMMIT. Nothing in this method can observe
       # that: an `ensure` is the only construct that could, and an ensure in
-      # this re-entrant yielding method miscompiles under Spinel (NOTES rule
-      # 50; rule 45 for nested calls). The Pool rolls the
-      # open transaction back on check-in (abandon_transaction!, with a warn
-      # line), so the hole is bounded to the rest of that one checkout under
-      # CRuby, and it does not exist under Spinel: a `break` there is
-      # refused at compile time and a `return` just ends the block (rule 44).
+      # this re-entrant yielding method miscompiled on Spinel 2026.09.12
+      # (NOTES rule 50; rule 45 for nested calls; their status rows have the
+      # probes that pass on the pinned build, and the method keeps its
+      # shape). The Pool rolls the open transaction back on check-in
+      # (abandon_transaction!, with a warn line), so the hole is bounded to
+      # the rest of that one checkout. That
+      # holds for both runtimes: Spinel 2026.09.12 refused such a `break` at
+      # compile time and ended only the block on a `return` (rule 44), and
+      # in status 44's probes the pinned build runs both as CRuby does.
       # A BEGIN run by hand is caught by the Pool the same way.
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
