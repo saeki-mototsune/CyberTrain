@@ -196,15 +196,26 @@ module Cybertrain
 
     def self.add_callback(callback)
       list = (CALLBACKS[self.name] ||= [])
-      if CONCERN_CALLBACK_AT.key?(self.name)
-        at = CONCERN_CALLBACK_AT[self.name]
-        at = list.size if at > list.size
-        list.insert(at, callback)
-        CONCERN_CALLBACK_AT[self.name] = at + 1
-      else
-        list << callback
-      end
+      list.insert(Controller.take_insert_index(CONCERN_CALLBACK_AT, self.name, list.size), callback)
       nil
+    end
+
+    # Where the next declaration of the class `name` goes in its list of
+    # `size` entries: the end, or during a {.concern_insert_at} splice the
+    # position recorded in `positions` (the end when it is past it), which
+    # then moves on by one.
+    # @param positions [Hash{String => Integer}] CONCERN_CALLBACK_AT or CONCERN_RESCUE_AT
+    # @param name [String]
+    # @param size [Integer]
+    # @return [Integer]
+    # @api private
+    def self.take_insert_index(positions, name, size)
+      return size unless positions.key?(name)
+
+      at = positions[name]
+      at = size if at > size
+      positions[name] = at + 1
+      at
     end
 
     # Written by gen/concerns.rb (`spin run gen`) around the `included`
@@ -289,20 +300,20 @@ module Cybertrain
 
     # The policy content_security_policy declared for klass or its nearest
     # ancestor, nil when none did (the class is passed in, as for
-    # chain_for).
+    # lineage).
     # @param klass [Class]
     # @return [ContentSecurityPolicy, nil]
     # @api private
     def self.policy_for(klass)
       return nil if CSP_POLICIES.empty?
 
-      k = klass
-      while k
-        found = CSP_POLICIES[k.name]
+      names = Controller.lineage(klass)
+      i = 0
+      while i < names.size
+        found = CSP_POLICIES[names[i]]
         return found unless found.nil?
-        break if k == Controller
 
-        k = k.superclass
+        i += 1
       end
       nil
     end
@@ -364,12 +375,13 @@ module Cybertrain
     end
 
     # The skips that apply to klass: its own and its ancestors', up to
-    # Controller (the class is passed in, as for chain_for).
+    # Controller (the class is passed in, as for lineage).
     def self.skips_for(klass)
       skips = []
-      k = klass
-      while k
-        list = SKIPS[k.name]
+      names = Controller.lineage(klass)
+      i = 0
+      while i < names.size
+        list = SKIPS[names[i]]
         unless list.nil?
           j = 0
           while j < list.size
@@ -377,9 +389,7 @@ module Cybertrain
             j += 1
           end
         end
-        break if k == Controller
-
-        k = k.superclass
+        i += 1
       end
       skips
     end
@@ -429,32 +439,36 @@ module Cybertrain
     def self.rescue_from(klass, with: nil, &block)
       list = (RESCUES[self.name] ||= [])
       handler = RescueHandler.new(klass.name, with, block)
-      if CONCERN_RESCUE_AT.key?(self.name)
-        at = CONCERN_RESCUE_AT[self.name]
-        at = list.size if at > list.size
-        list.insert(at, handler)
-        CONCERN_RESCUE_AT[self.name] = at + 1
-      else
-        list << handler
-      end
+      list.insert(Controller.take_insert_index(CONCERN_RESCUE_AT, self.name, list.size), handler)
       nil
     end
 
-    # The class is passed in rather than read from self: an inherited class
-    # method called as self.class.chain_for binds self to the base class
-    # under Spinel.
-    def self.chain_for(klass)
-      names = []
+    # The names of klass and its ancestors up to Controller, nearest
+    # first. The class is passed in rather than read from self: an
+    # inherited class method called as self.class.lineage binds self to
+    # the base class under Spinel.
+    # @param klass [Class]
+    # @return [Array<String>]
+    # @api private
+    def self.lineage(klass)
+      names = Array.new(0) { "" }
       k = klass
       while k
-        names.unshift(k.name)
+        names << k.name
         break if k == Controller
 
         k = k.superclass
       end
+      names
+    end
+
+    # The callbacks that apply to klass, parents' first (the class is
+    # passed in, as for lineage).
+    def self.chain_for(klass)
+      names = Controller.lineage(klass)
       chain = []
-      i = 0
-      while i < names.size
+      i = names.size - 1
+      while i >= 0
         list = CALLBACKS[names[i]]
         unless list.nil?
           j = 0
@@ -463,16 +477,17 @@ module Cybertrain
             j += 1
           end
         end
-        i += 1
+        i -= 1
       end
       chain
     end
 
     def self.rescues_for(klass)
       handlers = []
-      k = klass
-      while k
-        list = RESCUES[k.name]
+      names = Controller.lineage(klass)
+      i = 0
+      while i < names.size
+        list = RESCUES[names[i]]
         unless list.nil?
           j = 0
           while j < list.size
@@ -480,9 +495,7 @@ module Cybertrain
             j += 1
           end
         end
-        break if k == Controller
-
-        k = k.superclass
+        i += 1
       end
       handlers
     end
