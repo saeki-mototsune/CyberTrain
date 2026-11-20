@@ -2,6 +2,7 @@ require "tmpdir"
 require "stringio"
 require "cybertrain/test"
 require "cybertrain"
+require_relative "support/file_tree"
 
 # `./<app> jobs ...` (Cybertrain::Main.run -> Job::CLI.run): list, retry
 # (one row and --all), discard, delete and prune on a database file in a
@@ -15,18 +16,9 @@ Dir.chdir(TMP)
 ENV["CYBERTRAIN_ENV"] = "test"
 ENV["CYBERTRAIN_DATABASE"] = "jobs.sqlite3"
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 LOG = StringIO.new

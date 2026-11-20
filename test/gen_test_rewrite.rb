@@ -30,58 +30,26 @@ class ProbeBase
 end
 
 require_relative "fixtures/test_rewrite/gen/probe_test"
+require_relative "support/file_tree"
 TEMP_ROOTS = Array.new(0) { "" }
-
-def copy_tree(from, to)
-  Dir.mkdir(to) unless File.directory?(to)
-  Dir.children(from).sort.each do |entry|
-    if File.directory?("#{from}/#{entry}")
-      copy_tree("#{from}/#{entry}", "#{to}/#{entry}")
-    else
-      File.write("#{to}/#{entry}", File.read("#{from}/#{entry}"))
-    end
-  end
-  nil
-end
-
-def remove_tree(dir)
-  Dir.children(dir).each do |entry|
-    path = "#{dir}/#{entry}"
-    if File.directory?(path)
-      remove_tree(path)
-    else
-      File.delete(path)
-    end
-  end
-  Dir.rmdir(dir)
-  nil
-end
-
-def make_dirs(dir)
-  return nil if File.directory?(dir)
-
-  make_dirs(File.dirname(dir))
-  Dir.mkdir(dir)
-  nil
-end
 
 # A copy of the fixture app with `files` (path => text) written into it.
 def temp_app(files)
   root = Dir.mktmpdir("cybertrain-gen-test")
   TEMP_ROOTS << root
-  copy_tree(FIXTURE, root)
+  FileTree.copy(FIXTURE, root)
   # The fixture app's gen/test/data.rb (Task 8's fixtures) is left to a
   # gen that loads the schema, which this program does not: without it
   # the copies are the only files of gen/test.
-  remove_tree("#{root}/gen/test")
+  FileTree.remove("#{root}/gen/test")
   files.each do |rel, text|
-    make_dirs(File.dirname("#{root}/#{rel}"))
+    FileTree.make_dirs(File.dirname("#{root}/#{rel}"))
     File.write("#{root}/#{rel}", text)
   end
   root
 end
 
-at_exit { TEMP_ROOTS.each { |root| remove_tree(root) if File.directory?(root) } }
+at_exit { TEMP_ROOTS.each { |root| FileTree.remove(root) if File.directory?(root) } }
 
 # A double-quoted literal of s, written out by hand: String#inspect escapes
 # non-ASCII characters when the locale is not UTF-8.

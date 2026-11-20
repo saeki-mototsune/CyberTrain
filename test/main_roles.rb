@@ -4,6 +4,7 @@ require "cybertrain/test"
 require "cybertrain"
 require "cybertrain/websocket"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # Requiring the framework must not create Cybertrain.config: one made then
 # keeps the environment of that moment (development), before the lines
@@ -33,18 +34,9 @@ ENV["CYBERTRAIN_DATABASE"] = "roles.sqlite3"
 ENV.delete("CYBERTRAIN_WORKER")
 ENV.delete("CYBERTRAIN_JOB_THREADS")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 LOG = StringIO.new

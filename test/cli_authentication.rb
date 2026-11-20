@@ -3,6 +3,7 @@ require "cybertrain/cli"
 require "cybertrain/test"
 require "cybertrain/locales/bundled"
 require "cybertrain/password"
+require_relative "support/file_tree"
 
 # `cybertrain generate authentication` on a fresh `cybertrain new` tree: the
 # files it writes (the Authentication concern, the user command in both
@@ -14,18 +15,9 @@ require "cybertrain/password"
 TMP = Dir.mktmpdir("cybertrain-cli-authentication")
 Dir.chdir(TMP)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 ENV["CYBERTRAIN_TIMESTAMP"] = "20260925120000"

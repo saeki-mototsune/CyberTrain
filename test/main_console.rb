@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/main"
+require_relative "support/file_tree"
 
 # Cybertrain::Main's console and dbconsole words. `console` reads the
 # terminal, so the console cases run this same binary again as a child with
@@ -33,16 +34,7 @@ PATH_BEFORE = ENV["PATH"].to_s
 ENV["CYBERTRAIN_ENV"] = "test"
 ENV["CYBERTRAIN_DATABASE"] = "#{TMP}/console.sqlite3"
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 # The child's output for `input` on its standard input, and its status.
 def console_child(input)

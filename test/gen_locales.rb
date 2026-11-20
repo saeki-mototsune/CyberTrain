@@ -7,6 +7,7 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 require "cybertrain/locales/bundled"
+require_relative "support/file_tree"
 
 # gen/locales.rb (spec section 8, plan decisions D2-D4): the scan of
 # config/locales/**/*.yml, the merge across files, the emitted lookup, the
@@ -17,17 +18,7 @@ FIXTURE = "test/fixtures/locales_app"
 TMP = Dir.mktmpdir("cybertrain-gen-locales")
 LOCALE_FILES = ["config/locales/en.yml", "config/locales/ja.yml", "config/locales/posts/ja.yml"]
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
-
-at_exit { remove_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 Cybertrain::Gen::SourceText.make_dirs("#{TMP}/app/config/locales/posts")
 LOCALE_FILES.each { |f| File.write("#{TMP}/app/#{f}", File.read("#{FIXTURE}/#{f}")) }

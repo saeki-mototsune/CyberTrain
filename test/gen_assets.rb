@@ -3,6 +3,7 @@ require "digest"
 require "cybertrain/test"
 require "cybertrain/generator"
 require_relative "fixtures/assets_app/gen/assets"
+require_relative "support/file_tree"
 
 # Assets at gen time (spec section 7.1, 7.3): digests, CSS url() rewriting,
 # three kept versions under public/assets, the import map and gen/assets.rb.
@@ -25,17 +26,7 @@ SOURCES = [
  "vendor", "vendor/javascript", "config"].each { |d| Dir.mkdir("#{TMP}/#{d}") }
 SOURCES.each { |f| File.write("#{TMP}/#{f}", File.read("#{FIXTURE}/#{f}")) }
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
-
-at_exit { remove_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 def scan_now
   Cybertrain::Gen::AssetScan.scan(TMP)
@@ -202,7 +193,7 @@ test "an asset root that is itself a symlink stops gen" do
   message = assert_raises("ArgumentError") { scan_now }
   File.delete("#{TMP}/vendor/javascript")
   File.rename("#{TMP}/vendor/javascript.real", "#{TMP}/vendor/javascript")
-  remove_tree("#{TMP}/elsewhere")
+  FileTree.remove("#{TMP}/elsewhere")
   assert_equal "vendor/javascript is a symlink; asset directories are never followed, so make it a real directory", message
   assert_equal "chart.js", asset("chart.js").logical_path
 end

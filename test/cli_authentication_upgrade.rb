@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/cli"
 require "cybertrain/test"
+require_relative "support/file_tree"
 
 # `cybertrain generate authentication` run again over an application an
 # older generator wrote (spec §14, D19): test/fixtures/auth_04_app, a
@@ -18,18 +19,9 @@ EXPECTED_OUTPUT = "#{ROOT}/test/fixtures/auth_04_app.upgrade.diff"
 TMP = Dir.mktmpdir("cybertrain-cli-authentication-upgrade")
 Dir.chdir(TMP)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 ENV["CYBERTRAIN_TIMESTAMP"] = "20260925120000"

@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/main"
+require_relative "support/file_tree"
 
 # Cybertrain::Main.run dispatches bin/<name>.rb's argv. The server branch
 # is not exercised here (it would listen); Application covers it. The db
@@ -14,19 +15,10 @@ require "cybertrain/main"
 TMP = Dir.mktmpdir("cybertrain-main")
 Dir.chdir(TMP)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 # Test.run! exits the process, so the temp tree is removed at exit.
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 def no_views

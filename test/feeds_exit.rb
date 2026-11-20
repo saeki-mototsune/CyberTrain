@@ -4,6 +4,7 @@ require "cybertrain/websocket"
 require "cybertrain/test/websocket_receiver"
 require "cybertrain/test"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # The exit rule of a `feeds` process (spec section 9): when one feed's
 # thread dies again after Config#feed_restart_limit restarts within
@@ -50,16 +51,7 @@ TMP = Dir.mktmpdir("cybertrain-feeds-exit")
 OUT_PATH = "#{TMP}/stdout.log"
 ERR_PATH = "#{TMP}/stderr.log"
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 # A port nothing listens on any more.
 def dead_url(path)

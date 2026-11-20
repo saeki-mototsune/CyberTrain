@@ -3,6 +3,7 @@ require "cybertrain/cli"
 require "cybertrain/template"
 require "cybertrain/test"
 require "cybertrain/generator/crc32"
+require_relative "support/file_tree"
 
 # `cybertrain generate attachment MODEL FIELD` and the scaffold type
 # `FIELD:attachment` on fresh `cybertrain new` trees: the files they write, the
@@ -13,18 +14,9 @@ require "cybertrain/generator/crc32"
 TMP = Dir.mktmpdir("cybertrain-cli-attachment")
 Dir.chdir(TMP)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 ENV["CYBERTRAIN_TIMESTAMP"] = "20260925120000"

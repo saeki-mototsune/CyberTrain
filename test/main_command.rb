@@ -2,6 +2,7 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/main"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # Cybertrain::Main.command: an application's own subcommands on its binary.
 # The blocks below are registered at top level, as bin/<name>.rb does
@@ -13,19 +14,10 @@ require_relative "support/log_capture"
 TMP = Dir.mktmpdir("cybertrain-main-command")
 Dir.chdir(TMP)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 # Test.run! exits the process, so the temp tree is removed at exit.
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 def no_views
