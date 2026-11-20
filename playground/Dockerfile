@@ -182,7 +182,7 @@ RUN set -eu; \
       abort "build/bin/blog is stale (Build.binary_stale?)" if build.binary_stale?(Dir.pwd, "blog"); \
       others = ARGV.reject { |dir| File.expand_path(dir) == Dir.pwd }; \
       abort "spin flags names no -I directory but the blog: #{ARGV.join(", ")}" if others.empty?; \
-      newer = others.select { |dir| build.newer_ruby?(dir, since, true) }; \
+      newer = others.select { |dir| build.newer_ruby?(dir, since, true, "") }; \
       abort "a Ruby file is as new as build/bin/blog or newer in #{newer.join(", ")}" unless newer.empty?' $dirs; \
     spin build blog | grep -F "(up to date)"
 
