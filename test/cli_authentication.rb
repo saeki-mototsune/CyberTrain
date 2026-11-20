@@ -2740,20 +2740,20 @@ test "a jobs_page line of the application's own: drawn when it skips require_aut
 end
 
 test "insert_before_line inserts at the start of the line" do
-  out = Cybertrain::CLI::Authentication.insert_before_line("a\nexit(x)\n", "exit(", "b\n")
+  out = Cybertrain::CLI::SourceEdit.insert_before_line("a\nexit(x)\n", "exit(", "b\n")
   assert_equal "a\nb\nexit(x)\n", out
-  out = Cybertrain::CLI::Authentication.insert_before_line("exit(x)\n", "exit(", "b\n")
+  out = Cybertrain::CLI::SourceEdit.insert_before_line("exit(x)\n", "exit(", "b\n")
   assert_equal "b\nexit(x)\n", out
-  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Authentication.insert_before_line("# exit(x)\n", "exit(", "b\n") }
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::SourceEdit.insert_before_line("# exit(x)\n", "exit(", "b\n") }
   assert_includes message, "no line starting with `exit(`"
 end
 
 test "insert_after_line keeps the rest of the file" do
-  out = Cybertrain::CLI::Authentication.insert_after_line("a\nb\nc\n", "b", "  x\n  y\n")
+  out = Cybertrain::CLI::SourceEdit.insert_after_line("a\nb\nc\n", "b", "  x\n  y\n")
   assert_equal "a\nb\n  x\n  y\nc\n", out
-  out = Cybertrain::CLI::Authentication.insert_after_line("a\nb", "b", "  x\n")
+  out = Cybertrain::CLI::SourceEdit.insert_after_line("a\nb", "b", "  x\n")
   assert_equal "a\nb\n  x\n", out
-  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Authentication.insert_after_line("a\n", "z", "x\n") }
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::SourceEdit.insert_after_line("a\n", "z", "x\n") }
   assert_includes message, "no `z` line"
 end
 

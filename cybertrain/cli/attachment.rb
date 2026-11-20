@@ -29,8 +29,9 @@
 # the create_table migration itself, so there is no second migration.
 #
 # Loaded by cybertrain/cli.rb together with scaffold.rb (whose Scaffold
-# and InvalidArgument it uses) and authentication.rb (indent and
-# insert_after_line).
+# and InvalidArgument it uses, and through it source_edit.rb's text
+# helpers) and authentication.rb (included?, include_line? and
+# test_sign_in_lines: what an application with authentication needs).
 require "cybertrain/generator/inflector"
 require "cybertrain/ident"
 require "cybertrain/cli/templates"
@@ -336,11 +337,11 @@ module Cybertrain
         at = line_end(source, line_start(source, "class #{spec.class_name}", "class"))
         if at < 0
           puts "skip #{path} (no `class #{spec.class_name}` line): add this inside the class:"
-          puts Authentication.indent(model_block(spec))
+          puts SourceEdit.indent(model_block(spec))
           return false
         end
 
-        File.write(full, insert_at(source, at, Authentication.indent(model_block(spec)) + "\n"))
+        File.write(full, insert_at(source, at, SourceEdit.indent(model_block(spec)) + "\n"))
         puts "insert #{path} (attachment #{spec.field})"
         true
       end
@@ -365,12 +366,12 @@ module Cybertrain
         at = line_end(source, line_start(source, controller_line(spec), "start"))
         if at < 0
           puts "skip #{path} (no `#{controller_line(spec)}` line): add this to the controller:"
-          puts Authentication.indent(action_block(spec, false))
+          puts SourceEdit.indent(action_block(spec, false))
           return false
         end
 
         source = add_to_only_list(source, spec, spec.field) if coverage == "add"
-        block = Authentication.indent(action_block(spec, scoped))
+        block = SourceEdit.indent(action_block(spec, scoped))
         # Below the before_action line when there is one, so that it stays
         # the first thing in the class. The block ends in a blank line; it
         # moves to the front, since that line is usually followed by one.
@@ -608,7 +609,7 @@ module Cybertrain
           return false
         end
 
-        File.write(routes_path, Authentication.insert_after_line(source, Scaffold::DRAW_LINE, Authentication.indent(line + "\n")))
+        File.write(routes_path, SourceEdit.insert_after_line(source, Scaffold::DRAW_LINE, SourceEdit.indent(line + "\n")))
         puts "route #{spec.singular}_#{spec.field} (GET /#{spec.plural}/:id/#{spec.field})"
         true
       end
@@ -1087,7 +1088,7 @@ module Cybertrain
         body = body.sub("<<fields_hash>>", fields_hash(root, spec, fields))
         text = TEST_HEAD.sub("<<sign_in>>", auth ? Authentication.test_sign_in_lines : "")
         text = text.sub("<<TestClass>>", test_class(spec))
-        text += Authentication.margin(body, 2)
+        text += SourceEdit.margin(body, 2)
         text += "end\n"
         spec.expand(text)
       end

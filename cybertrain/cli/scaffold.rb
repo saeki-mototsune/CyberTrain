@@ -10,6 +10,7 @@
 require "cybertrain/generator/inflector"
 require "cybertrain/ident"
 require "cybertrain/cli/templates"
+require "cybertrain/cli/source_edit"
 
 module Cybertrain
   module CLI
@@ -434,17 +435,9 @@ module Cybertrain
           return false
         end
 
-        at = source.index(DRAW_LINE)
-        raise InvalidArgument, "#{routes_path} has no `#{DRAW_LINE}` line" if at.nil?
+        raise InvalidArgument, "#{routes_path} has no `#{DRAW_LINE}` line" if source.index(DRAW_LINE).nil?
 
-        eol = source.index("\n", at)
-        eol = source.size if eol.nil?
-        updated = +""
-        updated << source[0, eol]
-        updated << "\n  #{route}"
-        updated << source[eol, source.size - eol]
-        updated << "\n" unless updated.end_with?("\n")
-        File.write(routes_path, updated)
+        File.write(routes_path, SourceEdit.insert_after_line(source, DRAW_LINE, "  #{route}\n"))
         puts "route #{route}"
         true
       end

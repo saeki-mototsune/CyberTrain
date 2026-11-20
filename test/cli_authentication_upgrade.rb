@@ -157,7 +157,7 @@ end
 test "the fixture holds 0.4's block exactly as LEGACY_APPLICATION_CONTROLLER_BLOCKS has it" do
   legacy = Cybertrain::CLI::Authentication::LEGACY_APPLICATION_CONTROLLER_BLOCKS
   assert_equal 1, legacy.size
-  block = Cybertrain::CLI::Authentication.indent(legacy[0])
+  block = Cybertrain::CLI::SourceEdit.indent(legacy[0])
   controller = read("#{FIXTURE}/app/controllers/application_controller.rb")
   assert controller.start_with?("class ApplicationController < Cybertrain::Controller\n#{block}  rescue_from ")
   assert block.start_with?(Cybertrain::CLI::Authentication::LEGACY_BLOCK_START)
@@ -221,7 +221,7 @@ end
 
 test "the application_controller diff removes 0.4's block and includes Authentication" do
   diff = manual_for(UPGRADE, "app/controllers/application_controller.rb")
-  block = Cybertrain::CLI::Authentication.indent(Cybertrain::CLI::Authentication::LEGACY_APPLICATION_CONTROLLER_BLOCKS[0])
+  block = Cybertrain::CLI::SourceEdit.indent(Cybertrain::CLI::Authentication::LEGACY_APPLICATION_CONTROLLER_BLOCKS[0])
   assert diff.start_with?("manual  app/controllers/application_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file\n" \
                           "--- a/app/controllers/application_controller.rb\n" \
                           "+++ b/app/controllers/application_controller.rb\n" \
@@ -404,7 +404,7 @@ test "declares_column? names a column only where it ends (review M3)" do
 end
 
 test "a block that is there twice, or has lost its end line, is left alone (review M2, M6)" do
-  block = Cybertrain::CLI::Authentication.indent(Cybertrain::CLI::Authentication::LEGACY_APPLICATION_CONTROLLER_BLOCKS[0])
+  block = Cybertrain::CLI::SourceEdit.indent(Cybertrain::CLI::Authentication::LEGACY_APPLICATION_CONTROLLER_BLOCKS[0])
   copy_fixture("twice")
   path = "twice/app/controllers/application_controller.rb"
   twice = read(path).sub(block, "#{block}#{block}")

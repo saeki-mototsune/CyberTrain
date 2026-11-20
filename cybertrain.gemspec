@@ -38,6 +38,7 @@ Gem::Specification.new do |spec|
     "cybertrain/crypto.rb",
     "cybertrain/cli/new_app.rb",
     "cybertrain/cli/scaffold.rb",
+    "cybertrain/cli/source_edit.rb",
     "cybertrain/cli/authentication.rb",
     "cybertrain/cli/authentication_tests.rb",
     "cybertrain/cli/line_diff.rb",
