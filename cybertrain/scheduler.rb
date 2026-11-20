@@ -552,15 +552,7 @@ module Cybertrain
     # @return [Logger::Scope]
     # @api private
     def self.task_scope(task)
-      where = task_where(task)
-      id = ""
-      verb = ""
-      path = ""
-      tags = Array.new(0) { "" }
-      tags << where
-      context = { "" => "" }
-      context.delete("")
-      Logger::Scope.new(id, verb, path, where, tags, -1, context)
+      Logger.where_scope(task_where(task))
     end
 
     # A task's `where` (its log tag and its error reports' `where`):

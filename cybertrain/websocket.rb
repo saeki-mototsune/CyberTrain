@@ -823,15 +823,7 @@ module Cybertrain
     # @return [Logger::Scope]
     # @api private
     def self.feed_scope(sub)
-      where = feed_where(sub)
-      id = ""
-      verb = ""
-      path = ""
-      tags = Array.new(0) { "" }
-      tags << where
-      context = { "" => "" }
-      context.delete("")
-      Logger::Scope.new(id, verb, path, where, tags, -1, context)
+      Logger.where_scope(feed_where(sub))
     end
 
     def self.run_feed(sub, generation)

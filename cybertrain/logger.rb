@@ -134,6 +134,23 @@ module Cybertrain
     NO_SCOPE.scope_tags.freeze
     NO_SCOPE.scope_context.freeze
 
+    # The Scope of work outside a request that has a name (a feed's thread,
+    # a scheduled task's run): `where` as its only tag and its `where`, no
+    # request id, no context. Built as {empty_scope} is (rule 58).
+    # @param where [String]
+    # @return [Scope]
+    # @api private
+    def self.where_scope(where)
+      id = ""
+      verb = ""
+      path = ""
+      tags = Array.new(0) { "" }
+      tags << where
+      context = { "" => "" }
+      context.delete("")
+      Scope.new(id, verb, path, where, tags, -1, context)
+    end
+
     # This thread's Scope, {NO_SCOPE} when it has none.
     # @return [Scope]
     # @api public
