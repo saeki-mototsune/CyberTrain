@@ -1310,10 +1310,9 @@ module Cybertrain
         # An action's bad JSON.parse goes through rescue_with_handler
         # like any other exception: a `rescue_from JSON::ParserError`
         # handler is found by the class's name, and with none the
-        # exception goes on to the error pages. No compiled test registers
-        # such a handler (NOTES rule 48: Spinel 2026.09.12 could not take
-        # the constant as a value; status 48 has the program that does on
-        # the pinned build).
+        # exception goes on to the error pages. No test in test/ registers
+        # such a handler; spikes/rechecks/differing/rescue_from_json_error.rb
+        # does, compiled (NOTES status 48).
         rescue_with_handler(e)
         HttpCache.add_vary_accept(@request, @response)
       end

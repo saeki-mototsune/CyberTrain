@@ -131,8 +131,9 @@ module Cybertrain
         apply_boot_settings
         completed = true
       ensure
-        # A flag and an ensure, not a rescue: a rescue clause does not see
-        # every exception class under Spinel (NOTES rules 33, 61).
+        # A flag and an ensure, not a rescue: the boot is abandoned whatever
+        # was raised, a class outside StandardError included, and the
+        # exception goes on as it was.
         abandon_boot(before) unless completed
       end
       @booted = true
