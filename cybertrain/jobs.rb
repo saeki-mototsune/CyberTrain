@@ -64,14 +64,8 @@ module Cybertrain
     # 32/45). The error reports queued meanwhile are waited for, up to 2
     # seconds, before the database is closed.
     def self.run_jobs(args, name)
-      log_problem = Runtime.apply_logging(Cybertrain.config)
-      return zone_refused(log_problem) unless log_problem.empty?
-
-      zone_problem = Runtime.apply_zone(Cybertrain.config)
-      return zone_refused(zone_problem) unless zone_problem.empty?
-
-      sender_problem = Application.sender_problem(Cybertrain.config, name)
-      return zone_refused(sender_problem) unless sender_problem.empty?
+      problem = Main.one_shot_problem(name)
+      return Roles.refuse(problem) unless problem.empty?
 
       status = 0
       begin
