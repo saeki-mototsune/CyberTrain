@@ -125,6 +125,13 @@ module Cybertrain
 
       # Runs one statement with positional `?` binds and returns its rows as
       # Hashes keyed by column name (an empty Array for DDL/DML).
+      # @param sql [String]
+      # @param binds [Array<Object>] one value per `?` (build them with
+      #   {Cast.binds})
+      # @return [Array<Hash{String => Object}>]
+      # @raise [Cybertrain::DB::Error] when the statement fails, or the
+      #   connection is closed
+      # @api public
       def execute(sql, binds = [])
         run_statement(sql, binds, false)
       end

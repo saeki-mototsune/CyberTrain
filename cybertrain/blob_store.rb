@@ -24,6 +24,9 @@ module Cybertrain
 
   # Stores and reads upload bytes by key. Untrusted bytes: serve them only
   # with Controller#send_blob, never through Static.
+  # `key = BlobStore.new_key; BlobStore.write(key, upload.body_bytes)`
+  # stores an upload, `BlobStore.read(key)` reads it back for
+  # {Controller#send_blob}, `BlobStore.delete(key)` removes it.
   # @api public
   module BlobStore
     KEY_BYTES = 32
@@ -50,6 +53,7 @@ module Cybertrain
 
     # A fresh key: 32 lowercase hex characters from SecureRandom (128 bits).
     # @return [String]
+    # @api public
     def self.new_key
       SecureRandom.hex(16)
     end
@@ -58,6 +62,7 @@ module Cybertrain
     # bytes, not a regexp: the key may come from a tampered database value.
     # @param candidate [String]
     # @return [Boolean]
+    # @api public
     def self.valid_key?(candidate)
       # Through a `to_s` local (NOTES rule 62): boxed in a program that also
       # requires the openssl package (test/template_integration.rb).
@@ -93,6 +98,7 @@ module Cybertrain
     # @param data [String] the bytes; NUL and 0xFF are kept
     # @return [nil]
     # @raise [BlobKeyInvalid] for an invalid key or a key that already exists
+    # @api public
     def self.write(key, data)
       final = path_for(key)
       dir = "#{@root}/#{key[0, 2]}"
@@ -118,6 +124,7 @@ module Cybertrain
     # @param key [String]
     # @return [String] binary
     # @raise [BlobKeyInvalid] for an invalid key
+    # @api public
     def self.read(key)
       File.binread(path_for(key))
     rescue Errno::ENOENT
@@ -128,6 +135,7 @@ module Cybertrain
     # blob: the store only ever writes regular files.
     # @param key [String]
     # @return [Boolean]
+    # @api public
     def self.exist?(key)
       return false unless valid_key?(key)
 
@@ -140,6 +148,7 @@ module Cybertrain
     # already gone).
     # @param key [String]
     # @return [Boolean] true when a file was removed
+    # @api public
     def self.delete(key)
       return false unless valid_key?(key)
 
