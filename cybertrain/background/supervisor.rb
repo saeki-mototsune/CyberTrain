@@ -23,7 +23,7 @@
 #    the `cybertrain_feeds` rows).
 #
 # The backoff, the window and the publish interval are measured on the
-# monotonic clock (Process::CLOCK_MONOTONIC, as Job and Scheduler do), so
+# monotonic clock ({Clock.monotonic}, as Job and Scheduler do), so
 # a step of the wall clock neither delays a restart nor miscounts the
 # window; the rows' `updated_at` is epoch seconds from {Clock.now}
 # (a test moves it with `travel_to`). The state below is written by the
@@ -95,7 +95,7 @@ module Cybertrain
     # Whole seconds on the monotonic clock: the backoff, the window and
     # the publish interval.
     def self.monotonic_seconds
-      Process.clock_gettime(Process::CLOCK_MONOTONIC).to_i
+      Clock.monotonic.to_i
     end
 
     @supervising = false

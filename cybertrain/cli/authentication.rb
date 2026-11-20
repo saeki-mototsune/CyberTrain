@@ -190,7 +190,7 @@ module Cybertrain
       # The authentication block 0.4's generator inserted after CLASS_LINE
       # (v0.4.0's and v0.4.1's application_controller_block, the same text
       # in both), each line indented two spaces as it was inserted
-      # (indent). A re-run over a 0.4 application replaces it with
+      # (SourceEdit.indent). A re-run over a 0.4 application replaces it with
       # `include Authentication`: as a diff to apply by hand, or with
       # --force when the file holds it exactly.
       LEGACY_APPLICATION_CONTROLLER_BLOCKS = [
@@ -353,9 +353,7 @@ module Cybertrain
       # diff put in `manual`, or, with `force`, overwritten (`forced`). The
       # create_* migrations are never rewritten: they may have run.
       def self.generate_with_result(root, invite_only = false, confirmable = false, force = false)
-        routes_path = File.join(root, "config/routes.rb")
-        raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
-        raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
+        routes_path = Scaffold.require_routes!(root)
 
         controller_path = File.join(root, "app/controllers/application_controller.rb")
         raise InvalidArgument, "#{controller_path} not found: run this inside a cybertrain app" unless File.exist?(controller_path)
@@ -367,7 +365,7 @@ module Cybertrain
 
         bin_path = File.join(root, "bin/#{app}.rb")
         raise InvalidArgument, "#{bin_path} not found: run this inside a cybertrain app" unless File.exist?(bin_path)
-        raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
+        raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if SourceEdit.line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
 
         # Both modes declare the base_url setting in config/app.rb.
         config_path = File.join(root, "config/app.rb")
@@ -668,7 +666,7 @@ module Cybertrain
         block = source[start, stop - start].to_s
         updated = +""
         updated << source[0, start].to_s << "  #{INCLUDE_LINE}\n\n" << source[stop, source.size - stop].to_s
-        exact = LEGACY_APPLICATION_CONTROLLER_BLOCKS.any? { |legacy| indent(legacy) == block }
+        exact = LEGACY_APPLICATION_CONTROLLER_BLOCKS.any? { |legacy| SourceEdit.indent(legacy) == block }
         warn_own_require_admin(updated)
         if force && exact
           File.write(path, updated)
@@ -760,7 +758,7 @@ module Cybertrain
         return ["", "no `# #{NEW_APP_JOBS_PAGE_LINE}` comment to draw"] unless add_missing
 
         draw = source.index(Scaffold::DRAW_LINE).to_i
-        start = line_start_before(source, draw)
+        start = SourceEdit.line_start_before(source, draw)
         pad = source[start, draw - start].to_s
         return ["", "its draw line is not at the start of a line"] unless pad.strip.empty?
 
@@ -793,11 +791,7 @@ module Cybertrain
       # db/migrate/<version>_create_<table>.rb, or the existing one; the
       # second table's version follows the first's (Scaffold.next_version).
       def self.migration_path(root, table)
-        suffix = "_create_#{table}.rb"
-        existing = Dir.glob(File.join(root, "db/migrate/*#{suffix}")).sort
-        return "db/migrate/#{File.basename(existing[0])}" unless existing.empty?
-
-        "db/migrate/#{Scaffold.next_version(root, Scaffold.timestamp)}#{suffix}"
+        Scaffold.migration_file(root, "_create_#{table}.rb")
       end
 
       # Whether source has an `include Authentication` line (a trailing
@@ -834,7 +828,7 @@ module Cybertrain
           return false
         end
 
-        File.write(path, insert_after_line(source, CLASS_LINE, "  #{INCLUDE_LINE}\n\n"))
+        File.write(path, SourceEdit.insert_after_line(source, CLASS_LINE, "  #{INCLUDE_LINE}\n\n"))
         puts "insert app/controllers/application_controller.rb (#{INCLUDE_LINE})"
         warn_own_require_admin(source)
         true
@@ -896,7 +890,7 @@ module Cybertrain
         source = File.read(path)
         confirmations = confirmable ? "#{CONFIRMATIONS_ROUTE_MARK}, " : ""
         if source.index(ROUTE_MARK).nil?
-          File.write(path, insert_after_line(source, Scaffold::DRAW_LINE, indent(routes_block(invite_only, confirmable))))
+          File.write(path, SourceEdit.insert_after_line(source, Scaffold::DRAW_LINE, SourceEdit.indent(routes_block(invite_only, confirmable))))
           puts "route #{ROUTE_MARK}, #{PASSWORDS_ROUTE_MARK}, #{confirmations}#{ACCOUNT_ROUTE_MARK}, get/post #{invite_only ? "/setup" : "/sign_up"}"
           return true
         end
@@ -931,15 +925,9 @@ module Cybertrain
       # that holds mark, indented as that line is.
       def self.insert_route_after(source, mark, route)
         at = source.index(mark).to_i
-        start = line_start_before(source, at)
+        start = SourceEdit.line_start_before(source, at)
         margin = source[start, at - start].to_s
-        insert_after_line(source, mark, "#{margin}#{route}\n")
-      end
-
-      # Where the line holding offset `at` of source starts.
-      def self.line_start_before(source, at)
-        found = at > 0 ? source.rindex("\n", at - 1) : nil
-        found.nil? ? 0 : found + 1
+        SourceEdit.insert_after_line(source, mark, "#{margin}#{route}\n")
       end
 
       # Requires app/commands/user_command.rb (which registers the `user`
@@ -953,7 +941,7 @@ module Cybertrain
           return false
         end
 
-        File.write(path, insert_before_line(source, MAIN_RUN_LINE, bin_block(app, invite_only)))
+        File.write(path, SourceEdit.insert_before_line(source, MAIN_RUN_LINE, bin_block(app, invite_only)))
         puts invite_only ? "insert #{name} (./#{app} user, the first-run warning)" : "insert #{name} (./#{app} user)"
         true
       end
@@ -965,7 +953,7 @@ module Cybertrain
         source = File.read(path)
         changed = false
         if source.index("setting_string :base_url").nil?
-          source = insert_after_line(source, CONFIGURE_LINE, indent(base_url_block(app)))
+          source = SourceEdit.insert_after_line(source, CONFIGURE_LINE, SourceEdit.indent(base_url_block(app)))
           puts "insert config/app.rb (#{base_url_env(app)})"
           changed = true
         else
@@ -973,7 +961,7 @@ module Cybertrain
         end
         if invite_only
           if source.index("setting_bool :setup_open").nil?
-            source = insert_after_line(source, CONFIGURE_LINE, indent(config_block(app)))
+            source = SourceEdit.insert_after_line(source, CONFIGURE_LINE, SourceEdit.indent(config_block(app)))
             puts "insert config/app.rb (#{setup_env(app)})"
             changed = true
           else
@@ -1015,7 +1003,7 @@ module Cybertrain
           return false
         end
 
-        File.write(path, insert_after_line(source, "<main>", "      #{NAV_LINE}\n"))
+        File.write(path, SourceEdit.insert_after_line(source, "<main>", "      #{NAV_LINE}\n"))
         puts "insert app/views/layouts/application.html.erb (#{NAV_LINE})"
         true
       end
@@ -1048,7 +1036,7 @@ module Cybertrain
             next
           end
 
-          File.write(path, insert_after_line(source, "#{TEST_SETUP_LINE}\n", test_sign_in_lines))
+          File.write(path, SourceEdit.insert_after_line(source, "#{TEST_SETUP_LINE}\n", test_sign_in_lines))
           puts "insert #{name} (sign in first)"
         end
         # An earlier generator's top-level-form attachment test
@@ -1060,80 +1048,6 @@ module Cybertrain
                "(an ActionDispatch::IntegrationTest with `#{TEST_SIGN_IN_POST}` in its setup)"
         end
         nil
-      end
-
-      # `text` with two spaces in front of every non-blank line: the heredocs
-      # below are written flush (`<<~` strips their indentation), and what
-      # goes inside a class body or a draw block is indented here.
-      def self.indent(text)
-        out = +""
-        text.each_line { |line| out << (line == "\n" ? line : "  #{line}") }
-        out
-      end
-
-      # `text` with `spaces` spaces before every non-blank line: a chunk
-      # written flush, moved to where splice puts it (inside a method's
-      # `if`, say).
-      def self.margin(text, spaces)
-        pad = " " * spaces
-        out = +""
-        text.each_line { |line| out << (line == "\n" ? line : "#{pad}#{line}") }
-        out
-      end
-
-      # `source` with `block` (its own lines, each ending in a newline)
-      # inserted right after the first line containing `marker`.
-      def self.insert_after_line(source, marker, block)
-        at = source.index(marker)
-        raise InvalidArgument, "no `#{marker}` line to insert after" if at.nil?
-
-        eol = source.index("\n", at)
-        eol = source.size if eol.nil?
-        updated = +""
-        updated << source[0, eol] << "\n"
-        updated << block
-        rest = source[eol + 1, source.size - eol - 1].to_s
-        updated << rest
-        updated << "\n" unless updated.end_with?("\n")
-        updated
-      end
-
-      # `text` with the whole line that holds `mark` (a placeholder line in
-      # one of the templates below, wherever it is indented) replaced by
-      # `chunk`: lines of their own, each ending in a newline and indented
-      # as the file needs, or "" to drop the line. What --confirmable adds
-      # to a file the other modes write too goes in this way.
-      def self.splice(text, mark, chunk)
-        at = text.index(mark)
-        raise InvalidArgument, "no `#{mark}` in the template" if at.nil?
-
-        start = line_start_before(text, at)
-        stop = text.index("\n", at)
-        stop = stop.nil? ? text.size : stop + 1
-        out = +""
-        out << text[0, start].to_s << chunk << text[stop, text.size - stop].to_s
-        out
-      end
-
-      # Where the first line that starts with `marker` starts, or -1.
-      def self.line_start(source, marker)
-        return 0 if source.start_with?(marker)
-
-        found = source.index("\n#{marker}")
-        found.nil? ? -1 : found + 1
-      end
-
-      # `source` with `block` inserted right before the first line that
-      # starts with `marker`.
-      def self.insert_before_line(source, marker, block)
-        start = line_start(source, marker)
-        raise InvalidArgument, "no line starting with `#{marker}` to insert before" if start < 0
-
-        updated = +""
-        updated << source[0, start].to_s
-        updated << block
-        updated << source[start, source.size - start].to_s
-        updated
       end
 
       # ---- the files ----------------------------------------------------
@@ -1159,7 +1073,7 @@ module Cybertrain
           end
         RUBY
         columns = confirmable ? "      t.datetime \"confirmed_at\"\n      t.string \"unconfirmed_email\"\n" : ""
-        splice(text, "@CONFIRMABLE_COLUMNS@", columns)
+        SourceEdit.splice(text, "@CONFIRMABLE_COLUMNS@", columns)
       end
 
       def self.sessions_migration
@@ -1426,23 +1340,23 @@ module Cybertrain
         RUBY
         text = text.gsub("@APP@", app)
         text = text.sub("@CONFIRMABLE_COLUMN_NAMES@", confirmable ? ", confirmed_at,\n# unconfirmed_email" : "")
-        text = splice(text, "@CONFIRMATION_TOKEN_TTL@", confirmable ? confirmation_token_ttl_lines : "")
-        text = splice(text, "@VALIDATE_UNCONFIRMED_EMAIL@", confirmable ? "    user.validate_unconfirmed_email\n" : "")
-        text = splice(text, "@FIND_BY_CONFIRMATION_TOKEN@", confirmable ? find_by_confirmation_token_method : "")
-        text = splice(text, "@CONFIRMATION_METHODS@", confirmable ? confirmation_methods : "")
-        splice(text, "@VALIDATE_UNCONFIRMED_EMAIL_METHOD@", confirmable ? validate_unconfirmed_email_method : "")
+        text = SourceEdit.splice(text, "@CONFIRMATION_TOKEN_TTL@", confirmable ? confirmation_token_ttl_lines : "")
+        text = SourceEdit.splice(text, "@VALIDATE_UNCONFIRMED_EMAIL@", confirmable ? "    user.validate_unconfirmed_email\n" : "")
+        text = SourceEdit.splice(text, "@FIND_BY_CONFIRMATION_TOKEN@", confirmable ? find_by_confirmation_token_method : "")
+        text = SourceEdit.splice(text, "@CONFIRMATION_METHODS@", confirmable ? confirmation_methods : "")
+        SourceEdit.splice(text, "@VALIDATE_UNCONFIRMED_EMAIL_METHOD@", confirmable ? validate_unconfirmed_email_method : "")
       end
 
       # --confirmable's pieces of app/models/user.rb (user_model).
       def self.confirmation_token_ttl_lines
-        indent(<<~'RUBY')
+        SourceEdit.indent(<<~'RUBY')
           # How long a confirmation link works: three days (--confirmable).
           CONFIRMATION_TOKEN_TTL = 3 * 24 * 3600
         RUBY
       end
 
       def self.find_by_confirmation_token_method
-        indent(<<~'RUBY')
+        SourceEdit.indent(<<~'RUBY')
 
           # The user a confirmation_token was made for, while it still confirms
           # what it was made to (confirmation_binding); nil for any other token (a
@@ -1459,7 +1373,7 @@ module Cybertrain
       end
 
       def self.confirmation_methods
-        indent(<<~'RUBY')
+        SourceEdit.indent(<<~'RUBY')
 
           # Whether the address has been confirmed (--confirmable): until it is,
           # SessionsController#create answers the right password with the
@@ -1532,7 +1446,7 @@ module Cybertrain
       end
 
       def self.validate_unconfirmed_email_method
-        indent(<<~'RUBY')
+        SourceEdit.indent(<<~'RUBY')
 
           # The new address request_email_change asked for (--confirmable),
           # refused when blank, not a single address (User.email_address_format?)
@@ -1746,8 +1660,8 @@ module Cybertrain
             @SEND_CONFIRMATION_MAIL@
           end
         RUBY
-        text = splice(text, "@CONFIRMED_ONLY@", confirmable ? confirmed_only_lines : "")
-        splice(text, "@SEND_CONFIRMATION_MAIL@", confirmable ? send_confirmation_mail_method : "")
+        text = SourceEdit.splice(text, "@CONFIRMED_ONLY@", confirmable ? confirmed_only_lines : "")
+        SourceEdit.splice(text, "@SEND_CONFIRMATION_MAIL@", confirmable ? send_confirmation_mail_method : "")
       end
 
       # --confirmable's first lines of the concern's start_new_session_for:
@@ -1756,7 +1670,7 @@ module Cybertrain
       # first, with its own message; this holds where that check is
       # missing too (a sessions controller an upgrade's diff never reached).
       def self.confirmed_only_lines
-        margin(<<~'RUBY', 4)
+        SourceEdit.margin(<<~'RUBY', 4)
           # --confirmable: an account whose address is not confirmed gets no
           # session, whichever action asks (SessionsController#create says
           # why first; this holds where that check is missing too).
@@ -1771,7 +1685,7 @@ module Cybertrain
       # --confirmable's private method of the concern: sign-up, the account
       # page and the send-again form all mail a confirmation this way.
       def self.send_confirmation_mail_method
-        indent(<<~'RUBY')
+        SourceEdit.indent(<<~'RUBY')
 
           # The confirmation mail (ConfirmationsMailer, --confirmable) to the
           # address user is confirming, with the link to
@@ -1845,12 +1759,12 @@ module Cybertrain
             end
           end
         RUBY
-        splice(text, "@UNCONFIRMED@", confirmable ? sessions_unconfirmed_branch : "")
+        SourceEdit.splice(text, "@UNCONFIRMED@", confirmable ? sessions_unconfirmed_branch : "")
       end
 
       # --confirmable's branch of SessionsController#create.
       def self.sessions_unconfirmed_branch
-        margin(<<~'RUBY', 4)
+        SourceEdit.margin(<<~'RUBY', 4)
               elsif !user.confirmed?
                 # Said only once the password is right, so that it tells nobody
                 # without the password that the address is registered. The
@@ -1904,11 +1818,11 @@ module Cybertrain
             end
           end
         RUBY
-        splice(text, "@SIGNED_UP@", confirmable ? registrations_confirm_lines : registrations_sign_in_lines)
+        SourceEdit.splice(text, "@SIGNED_UP@", confirmable ? registrations_confirm_lines : registrations_sign_in_lines)
       end
 
       def self.registrations_sign_in_lines
-        margin(<<~'RUBY', 6)
+        SourceEdit.margin(<<~'RUBY', 6)
                 start_new_session_for(@user)
                 flash[:notice] = t(".welcome")
                 redirect_to after_authentication_url, status: :see_other
@@ -1917,7 +1831,7 @@ module Cybertrain
 
       # --confirmable: the link by mail, and the sign-in page.
       def self.registrations_confirm_lines
-        margin(<<~'RUBY', 6)
+        SourceEdit.margin(<<~'RUBY', 6)
                 # Signed in only once the address is confirmed (the mail's link),
                 # and then with the password.
                 token = @user.confirmation_token
@@ -2139,16 +2053,16 @@ module Cybertrain
             end
           end
         RUBY
-        chunk = margin("# The link went to email_address: a reset proves that mailbox, as a\n" \
-                       "# confirmation link does (--confirmable). A new address waiting\n" \
-                       "# (unconfirmed_email) is not confirmed: that takes its own link.\n" \
-                       "user.update_columns(confirmed_at: Time.current) unless user.confirmed?\n", 8)
-        withdraw = margin("# A new address waiting (unconfirmed_email) is withdrawn, and with it\n" \
-                          "# its link (the token is bound to it): whoever asked for it may be\n" \
-                          "# the one the owner is taking the account back from.\n" \
-                          "user.unconfirmed_email = nil\n", 6)
-        text = splice(text, "@WITHDRAW_ON_RESET@", confirmable ? withdraw : "")
-        splice(text, "@CONFIRM_ON_RESET@", confirmable ? chunk : "")
+        chunk = SourceEdit.margin("# The link went to email_address: a reset proves that mailbox, as a\n" \
+                                  "# confirmation link does (--confirmable). A new address waiting\n" \
+                                  "# (unconfirmed_email) is not confirmed: that takes its own link.\n" \
+                                  "user.update_columns(confirmed_at: Time.current) unless user.confirmed?\n", 8)
+        withdraw = SourceEdit.margin("# A new address waiting (unconfirmed_email) is withdrawn, and with it\n" \
+                                     "# its link (the token is bound to it): whoever asked for it may be\n" \
+                                     "# the one the owner is taking the account back from.\n" \
+                                     "user.unconfirmed_email = nil\n", 6)
+        text = SourceEdit.splice(text, "@WITHDRAW_ON_RESET@", confirmable ? withdraw : "")
+        SourceEdit.splice(text, "@CONFIRM_ON_RESET@", confirmable ? chunk : "")
       end
 
       # app/mailers/passwords_mailer.rb. `reset` takes the link as well as
@@ -2534,24 +2448,24 @@ module Cybertrain
           end
         RUBY
         if confirmable
-          text = splice(text, "@ADDRESS_COMMENT@", "  # A new address waits for the link mailed to it, and takes the old\n" \
-                                                   "  # one's place once that is opened (ConfirmationsController#show).\n")
-          text = splice(text, "@ADDRESS@", accounts_pending_address_lines)
-          text = splice(text, "@SAVED@", accounts_pending_address_saved_lines)
-          text = splice(text, "@CANCEL_EMAIL_CHANGE@", accounts_cancel_email_change)
-          return splice(text, "@PENDING@", "    # The new address waiting, as saved: the page shows it.\n" \
-                                           "    @pending_email = @user.unconfirmed_email.to_s\n")
+          text = SourceEdit.splice(text, "@ADDRESS_COMMENT@", "  # A new address waits for the link mailed to it, and takes the old\n" \
+                                                              "  # one's place once that is opened (ConfirmationsController#show).\n")
+          text = SourceEdit.splice(text, "@ADDRESS@", accounts_pending_address_lines)
+          text = SourceEdit.splice(text, "@SAVED@", accounts_pending_address_saved_lines)
+          text = SourceEdit.splice(text, "@CANCEL_EMAIL_CHANGE@", accounts_cancel_email_change)
+          return SourceEdit.splice(text, "@PENDING@", "    # The new address waiting, as saved: the page shows it.\n" \
+                                                      "    @pending_email = @user.unconfirmed_email.to_s\n")
         end
-        text = splice(text, "@ADDRESS_COMMENT@", "  # A new address takes effect at once.\n")
-        text = splice(text, "@ADDRESS@", margin("@user.email_address = fields[\"email_address\"].to_s if fields.key?(\"email_address\")\n", 6))
-        text = splice(text, "@SAVED@", margin("flash[:notice] = t(\".updated\")\n", 8))
-        text = splice(text, "@CANCEL_EMAIL_CHANGE@", "")
-        splice(text, "@PENDING@", "")
+        text = SourceEdit.splice(text, "@ADDRESS_COMMENT@", "  # A new address takes effect at once.\n")
+        text = SourceEdit.splice(text, "@ADDRESS@", SourceEdit.margin("@user.email_address = fields[\"email_address\"].to_s if fields.key?(\"email_address\")\n", 6))
+        text = SourceEdit.splice(text, "@SAVED@", SourceEdit.margin("flash[:notice] = t(\".updated\")\n", 8))
+        text = SourceEdit.splice(text, "@CANCEL_EMAIL_CHANGE@", "")
+        SourceEdit.splice(text, "@PENDING@", "")
       end
 
       # --confirmable's action that withdraws the new address waiting.
       def self.accounts_cancel_email_change
-        indent(<<~'RUBY')
+        SourceEdit.indent(<<~'RUBY')
 
           # DELETE /account/pending_email
           # Withdraws the new address waiting (a mistyped one, say): its link stops
@@ -2570,7 +2484,7 @@ module Cybertrain
       # --confirmable's AccountsController#update: a new address goes into
       # unconfirmed_email (the address in use is no change).
       def self.accounts_pending_address_lines
-        margin(<<~'RUBY', 6)
+        SourceEdit.margin(<<~'RUBY', 6)
           address_changed = false
           if fields.key?("email_address")
             address = User.normalize_email_address(fields["email_address"].to_s)
@@ -2586,7 +2500,7 @@ module Cybertrain
 
       # ...and, once saved, the link to it by mail.
       def self.accounts_pending_address_saved_lines
-        margin(<<~'RUBY', 8)
+        SourceEdit.margin(<<~'RUBY', 8)
           if address_changed
             token = @user.confirmation_token
             send_confirmation_mail(@user, token, true)
@@ -2658,14 +2572,14 @@ module Cybertrain
             </div>
           <% end %>
         ERB
-        text = splice(text, "@PENDING_HINT@", confirmable ? accounts_pending_hint : "")
+        text = SourceEdit.splice(text, "@PENDING_HINT@", confirmable ? accounts_pending_hint : "")
         button = "\n<% unless @pending_email.empty? %>\n" \
                  "  <p><%= button_to t(\".cancel_pending\"), account_pending_email_path, method: :delete %></p>\n<% end %>\n"
-        splice(text, "@CANCEL_PENDING_BUTTON@", confirmable ? button : "")
+        SourceEdit.splice(text, "@CANCEL_PENDING_BUTTON@", confirmable ? button : "")
       end
 
       def self.accounts_pending_hint
-        margin(<<~'ERB', 4)
+        SourceEdit.margin(<<~'ERB', 4)
           <% unless @pending_email.empty? %>
             <p class="hint"><%= t(".pending", email_address: @pending_email) %></p>
           <% end %>
@@ -2760,9 +2674,9 @@ module Cybertrain
             end
           end
         RUBY
-        chunk = margin("# Nothing mails the first user a link: the address counts as\n" \
-                       "# confirmed (--confirmable).\n@user.confirmed_at = Time.current\n", 4)
-        splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
+        chunk = SourceEdit.margin("# Nothing mails the first user a link: the address counts as\n" \
+                                  "# confirmed (--confirmable).\n@user.confirmed_at = Time.current\n", 4)
+        SourceEdit.splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
       end
 
       def self.setup_new_view
@@ -2929,9 +2843,9 @@ module Cybertrain
               s
             end
         RUBY
-        chunk = margin("# A user made here gets no mail with a link: the address counts as\n" \
-                       "# confirmed from the start (--confirmable).\nuser.confirmed_at = Time.current if created\n", 4)
-        splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
+        chunk = SourceEdit.margin("# A user made here gets no mail with a link: the address counts as\n" \
+                                  "# confirmed from the start (--confirmable).\nuser.confirmed_at = Time.current if created\n", 4)
+        SourceEdit.splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
       end
 
       # --invite-only: the boot warning and the question it asks, indented
@@ -2962,7 +2876,7 @@ module Cybertrain
             end
           end
         RUBY
-        indent(text)
+        SourceEdit.indent(text)
       end
 
       # Inserted before the Main.run line of bin/<app>.rb; with

@@ -2,6 +2,7 @@ require "tmpdir"
 require "digest"
 require "cybertrain/test"
 require "cybertrain/blob_store"
+require_relative "support/file_tree"
 
 # Cybertrain::BlobStore against a temporary root: a binary round-trip, file
 # modes, the shard directory, key validation and the symlink rule. Data is
@@ -11,19 +12,8 @@ require "cybertrain/blob_store"
 ROOT = Dir.mktmpdir("cybertrain-blob-store")
 Cybertrain::BlobStore.root = "#{ROOT}/uploads/nested"
 
-def rm_tree(path)
-  if File.symlink?(path)
-    File.delete(path)
-  elsif File.directory?(path)
-    Dir.children(path).each { |child| rm_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
-  rm_tree(ROOT)
+  FileTree.remove(ROOT)
 end
 
 # Every byte value 0..255 twice, with a run of NULs, built from byteslices

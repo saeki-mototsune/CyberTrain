@@ -186,11 +186,17 @@ module Cybertrain
     # linked sender sends, is refused with boot's line
     # (`error: time_zone "X" is not a known time zone`,
     # `error: log_level must be ...`) and exit status 1, before the
-    # database is opened. This prints the line.
-    def self.zone_refused(problem)
-      puts "error: #{problem}"
-      STDOUT.flush
-      1
+    # database is opened. This answers the first problem's message, ""
+    # when there is none; the command prints it with Roles.refuse.
+    def self.one_shot_problem(name)
+      config = Cybertrain.config
+      problem = Runtime.apply_logging(config)
+      return problem unless problem.empty?
+
+      problem = Runtime.apply_zone(config)
+      return problem unless problem.empty?
+
+      Application.sender_problem(config, name)
     end
 
     # A registered command with a pool of one: a one-shot process needs no
@@ -203,14 +209,8 @@ module Cybertrain
     # are waited for, up to 2 seconds, before the database is closed
     # (a subscriber may read it) and the process exits.
     def self.run_command(command, args, views, url_resolver, name)
-      log_problem = Runtime.apply_logging(Cybertrain.config)
-      return zone_refused(log_problem) unless log_problem.empty?
-
-      zone_problem = Runtime.apply_zone(Cybertrain.config)
-      return zone_refused(zone_problem) unless zone_problem.empty?
-
-      sender_problem = Application.sender_problem(Cybertrain.config, name)
-      return zone_refused(sender_problem) unless sender_problem.empty?
+      problem = Main.one_shot_problem(name)
+      return Roles.refuse(problem) unless problem.empty?
 
       begin
         DB.connect(Cybertrain.config.database_path, size: 1)
@@ -234,14 +234,8 @@ module Cybertrain
     # rules 32/45). The error reports queued in the session are waited
     # for, up to 2 seconds, before the database is closed.
     def self.run_console(name)
-      log_problem = Runtime.apply_logging(Cybertrain.config)
-      return zone_refused(log_problem) unless log_problem.empty?
-
-      zone_problem = Runtime.apply_zone(Cybertrain.config)
-      return zone_refused(zone_problem) unless zone_problem.empty?
-
-      sender_problem = Application.sender_problem(Cybertrain.config, name)
-      return zone_refused(sender_problem) unless sender_problem.empty?
+      problem = Main.one_shot_problem(name)
+      return Roles.refuse(problem) unless problem.empty?
 
       status = 0
       begin
@@ -346,8 +340,7 @@ module Cybertrain
     end
 
     def self.serve(name, argv, router, url_resolver, views)
-      app = Application.new(router: router, url_resolver: url_resolver, views: views, name: name)
-      app.run(server_args(argv))
+      role_app(name, router, url_resolver, views).run(server_args(argv))
       0
     end
 

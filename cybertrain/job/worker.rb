@@ -88,9 +88,9 @@ module Cybertrain
 
         @running = false
         seen = stop_seen_at
-        started_at = seen > 0.0 ? seen : Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        started_at = seen > 0.0 ? seen : Clock.monotonic
         ends_at = started_at + @drain_timeout
-        while live_loops > 0 && Process.clock_gettime(Process::CLOCK_MONOTONIC) < ends_at
+        while live_loops > 0 && Clock.monotonic < ends_at
           sleep 0.05
         end
         @started = false
@@ -129,7 +129,7 @@ module Cybertrain
       # too: its stop is not the new pool's, and its stamp would make the
       # next stop! count the drain from a time long past.
       def self.note_stop_seen(generation)
-        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        now = Clock.monotonic
         POOL_LOCK.synchronize do
           @stop_seen_at = now if generation == @generation && @stop_seen_at == 0.0
         end
@@ -224,8 +224,8 @@ module Cybertrain
       # Sleeps `seconds` in WAIT_SLICE steps, returning early once the pool
       # is stopped.
       def self.idle_wait(seconds, generation)
-        ends_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
-        while pool_live?(generation) && Process.clock_gettime(Process::CLOCK_MONOTONIC) < ends_at
+        ends_at = Clock.monotonic + seconds
+        while pool_live?(generation) && Clock.monotonic < ends_at
           sleep WAIT_SLICE
         end
         nil

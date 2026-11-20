@@ -45,14 +45,8 @@ module Cybertrain
     @applied = 0
     @role = ""
 
-    # The defaults Runtime.reset! restores: what each module holds before
-    # any boot. They repeat the modules' own literals, and test/runtime.rb
-    # compares the two, so a default changed in one place fails there.
-    DEFAULT_MAX_UPLOAD_BYTES = 5_242_880
-    DEFAULT_MAX_PARTS = 128
-    DEFAULT_UPLOAD_ROOT = "storage/uploads"
-    DEFAULT_MAX_PAGE = 10_000
-    DEFAULT_PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
+    # The locale Runtime.reset! restores. The other defaults it restores
+    # are constants of the modules that hold the settings.
     DEFAULT_LOCALE = :en
 
     # Installs every process-shared setting from `config`, in the order
@@ -142,13 +136,13 @@ module Cybertrain
       Views.reset!
       Assets.forget_kept
       Assets.raise_on_unknown = true
-      Multipart.configure(DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_MAX_PARTS)
-      BlobStore.root = DEFAULT_UPLOAD_ROOT
-      Params.max_page = DEFAULT_MAX_PAGE
+      Multipart.configure(Multipart::DEFAULT_MAX_UPLOAD_BYTES, Multipart::DEFAULT_MAX_PARTS)
+      BlobStore.root = BlobStore::DEFAULT_ROOT
+      Params.max_page = Params::DEFAULT_MAX_PAGE
       Request.trusted_proxy = false
       Request.trusted_proxies = Array.new(0) { "" }
       ParameterFilter.names = ParameterFilter::DEFAULT_NAMES
-      Response.default_permissions_policy = DEFAULT_PERMISSIONS_POLICY
+      Response.default_permissions_policy = Response::DEFAULT_PERMISSIONS_POLICY
       Cybertrain.logger.level = :info
       Logger.json_lines = false
       I18n.default_locale = DEFAULT_LOCALE

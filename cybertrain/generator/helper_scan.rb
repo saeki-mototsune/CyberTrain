@@ -1,5 +1,4 @@
-require "cybertrain/generator/controller_scan"
-require "cybertrain/generator/model_scan"
+require "cybertrain/generator/source_text"
 
 module Cybertrain
   module Gen
@@ -106,11 +105,22 @@ module Cybertrain
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:;|\z|#)/
       DEF_LINE = /\A\s*def\s+([a-z_]\w*[?!]?)(.*)\z/m
 
+      # An empty list of helper definitions (a new Array each call): the
+      # one place that spells the element type out for the compiler.
+      def self.no_helper_defs
+        Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+      end
+
+      # An empty list of helper modules, likewise.
+      def self.no_helper_modules
+        Array.new(0) { HelperModule.new("", "", HelperScan.no_helper_defs) }
+      end
+
       # Every module under dir (recursively, sorted by file), checked for a
       # helper name defined twice.
       def self.scan_dir(dir)
-        modules = Array.new(0) { HelperModule.new("", "", Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }) }
-        ControllerScan.ruby_files(dir).each do |path|
+        modules = HelperScan.no_helper_modules
+        SourceText.ruby_files(dir).each do |path|
           scan_source(path, File.read(path)).each { |m| modules << m }
         end
         check_duplicates(modules)
@@ -127,7 +137,7 @@ module Cybertrain
         # whether each one holds another module.
         names = Array.new(0) { "" }
         indents = Array.new(0) { 0 }
-        found = Array.new(0) { HelperModule.new("", "", Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }) }
+        found = HelperScan.no_helper_modules
         wraps = Array.new(0) { false }
         skip_indent = -1
         in_private = false
@@ -138,19 +148,19 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ModelScan.indent_of(raw)
+          indent = SourceText.indent_of(raw)
           if skip_indent >= 0
-            skip_indent = -1 if indent == skip_indent && ModelScan.closing_end?(line)
+            skip_indent = -1 if indent == skip_indent && SourceText.closing_end?(line)
             next
           end
           # A class (top-level or nested, `class << self` too) is skipped
           # whole before modules are looked for: a module inside it is not
           # a helper module.
           if line.start_with?("class ") || line.start_with?("class<<")
-            skip_indent = indent unless ModelScan.one_line_block?(line)
+            skip_indent = indent unless SourceText.one_line_block?(line)
             next
           end
-          if !indents.empty? && indent <= indents.last && ModelScan.closing_end?(line)
+          if !indents.empty? && indent <= indents.last && SourceText.closing_end?(line)
             names.pop
             indents.pop
             in_private = false
@@ -160,14 +170,14 @@ module Cybertrain
           if m
             wraps[wraps.size - 1] = true unless wraps.empty?
             full = names.empty? ? m[1].to_s : "#{names.last}::#{m[1]}"
-            if ModelScan.one_line_block?(line)
-              found << HelperModule.new(full, file, Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") })
+            if SourceText.one_line_block?(line)
+              found << HelperModule.new(full, file, HelperScan.no_helper_defs)
               wraps << false
               next
             end
             names << full
             indents << indent
-            found << HelperModule.new(full, file, Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") })
+            found << HelperModule.new(full, file, HelperScan.no_helper_defs)
             wraps << false
             in_private = false
             next
@@ -195,7 +205,7 @@ module Cybertrain
           # The body (when it has one) is skipped up to the def's own `end`,
           # so a column-0 `end` of an unindented body does not close the
           # module, and nothing in the body is read as a def or `private`.
-          skip_indent = indent unless ModelScan.one_line_block?(line) || endless?(text)
+          skip_indent = indent unless SourceText.one_line_block?(line) || endless?(text)
           # A singleton method is not mixed in by `include`, so it is neither
           # a helper nor a shadowing risk. A private def is checked, though:
           # `include` mixes private methods in as well, so a private
@@ -214,7 +224,7 @@ module Cybertrain
           owner = found_named(found, names.last)
           owner.defs << d unless owner.nil?
         end
-        kept = Array.new(0) { HelperModule.new("", "", Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }) }
+        kept = HelperScan.no_helper_modules
         found.each_with_index do |mod, j|
           kept << mod if !wraps[j] || !mod.defs.empty?
         end

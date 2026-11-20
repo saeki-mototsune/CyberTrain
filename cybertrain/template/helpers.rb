@@ -11,6 +11,7 @@
 # program that renders through it: cybertrain/controller.rb requires this
 # file, so this file does not require the controller back.
 require "cybertrain/assets"
+require "cybertrain/cast"
 require "cybertrain/html"
 require "cybertrain/http/header_name"
 require "cybertrain/http/query"
@@ -70,10 +71,9 @@ module Cybertrain
         # (unit tests) keeps answering "" and empty values.
         @outside_request = false
         # The options of a url_for or route call that has none (link_to's
-        # href, a form's action): a template's keywords Hash, typed empty
-        # (rule 9). Never mutated.
-        @no_url_options = { "" => [nil, 0, 0.0, "", true][0] }
-        @no_url_options.delete("")
+        # href, a form's action): a template's keywords Hash, typed empty.
+        # Never mutated.
+        @no_url_options = Cast.empty_hash
       end
 
       # Marks these helpers as rendering with no request (Views.render_partial).
@@ -257,7 +257,7 @@ module Cybertrain
           i += 1
         end
         kwargs.each_key do |key|
-          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless Helpers.name_in?(known, key)
+          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless known.include?(key)
         end
         nil
       end
@@ -290,10 +290,7 @@ module Cybertrain
       # the template's turbo_stream builder renders for `partial:`.
       # @return [SafeString]
       def partial_html(name, locals, interp, env)
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = Array.new(0) { "" }
         locals.each_key { |key| names << key }
         render_partial_scope(template, locals, names, interp, env)
@@ -367,31 +364,16 @@ module Cybertrain
         i = 0
         while i < locals.size
           name = locals[i]
-          raise ArgumentError, "missing local '#{name}' for #{template.name}" unless Helpers.name_in?(given, name)
+          raise ArgumentError, "missing local '#{name}' for #{template.name}" unless given.include?(name)
           i += 1
         end
         i = 0
         while i < given.size
           name = given[i]
-          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless Helpers.name_in?(locals, name)
+          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless locals.include?(name)
           i += 1
         end
         nil
-      end
-
-      # Array#include? with String arguments mis-dispatches once the whole
-      # framework (SafeString's to_str) is in the program (spikes/NOTES.md
-      # rules 14 and 29); compare explicitly.
-      # A while loop: `each` with a `return` in the block costs a setjmp and
-      # a Proc per call under Spinel, and this runs for every partial.
-      def self.name_in?(names, name)
-        i = 0
-        n = names.size
-        while i < n
-          return true if names[i] == name
-          i += 1
-        end
-        false
       end
 
       # The current flash messages as a Hash ("notice" => "Saved"), so that
@@ -421,8 +403,7 @@ module Cybertrain
       # `class: "c"` from Ruby comes with Symbol keys; the template-facing
       # helpers look keywords up by String (typed Hash, rule 71).
       def string_keys_of(attrs)
-        out = { "" => [nil, 0, 0.0, "", true][0] }
-        out.delete("")
+        out = Cast.empty_hash
         attrs.each_key { |key| out[key.to_s] = attrs[key] }
         out
       end
@@ -972,8 +953,6 @@ module Cybertrain
         else
           first = args[0]
           case first
-          # Time before Array (spikes/NOTES.md rule 8).
-          when Time then nil
           when Array, Cybertrain::Model
             helper_arity!("render", args, 1, 1)
             helper_no_keywords!("render", kwargs)
@@ -981,10 +960,7 @@ module Cybertrain
           end
           name = text_arg(args, 0, "render")
         end
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
         render_partial_scope(template, locals, names, interp, env)
@@ -994,7 +970,6 @@ module Cybertrain
       def render_collection(name, kwargs, locals, interp, env)
         items = kwargs["collection"]
         case items
-        when Time then nil
         when Array
           return SafeString.of("") if items.empty?
 
@@ -1003,8 +978,7 @@ module Cybertrain
           as_name = FormBuilder.value_text(kwargs["as"]) if kwargs.key?("as")
           spacer = ""
           if kwargs.key?("spacer_template")
-            no_locals = { "" => [nil, 0, 0.0, "", true][0] }
-            no_locals.delete("")
+            no_locals = Cast.empty_hash
             spacer = partial_html(FormBuilder.value_text(kwargs["spacer_template"]), no_locals, interp, env).to_s
           end
           return render_items(name, as_name, items, locals, spacer, interp, env)
@@ -1017,8 +991,7 @@ module Cybertrain
       # `render @comment`.
       def render_records(value, interp, env)
         out = +""
-        no_locals = { "" => [nil, 0, 0.0, "", true][0] }
-        no_locals.delete("")
+        no_locals = Cast.empty_hash
         case value
         when Cybertrain::Model
           key = record_partial_local(value)
@@ -1030,7 +1003,6 @@ module Cybertrain
           while i < value.size
             record = value[i]
             case record
-            when Time then record_expected!(record)
             when Cybertrain::Model
               key = record_partial_local(record)
               # One item at a time: the records may be of different models.
@@ -1084,16 +1056,15 @@ module Cybertrain
       # (index; none when it is -1) unless the partial's strict locals leave
       # it out.
       def render_item(name, as_name, item, index, locals, interp, env)
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         counter = "#{as_name}_counter"
+        # Cast.empty_hash written out: this runs once per item, and the call
+        # measured about 5% slower over a 200-item collection.
         scoped = { "" => [nil, 0, 0.0, "", true][0] }
         scoped.delete("")
         locals.each_key { |key| scoped[key] = locals[key] }
         scoped[as_name] = item
-        scoped[counter] = index if index >= 0 && (!template.strict_locals? || Helpers.name_in?(template.locals, counter))
+        scoped[counter] = index if index >= 0 && (!template.strict_locals? || template.locals.include?(counter))
         names = Array.new(0) { "" }
         scoped.each_key { |key| names << key }
         render_partial_scope(template, scoped, names, interp, env)
@@ -1133,8 +1104,7 @@ module Cybertrain
       # content.
       def render_component_helper(kwargs, block, interp, env)
         name = FormBuilder.value_text(kwargs["component"])
-        attrs = { "" => [nil, 0, 0.0, "", true][0] }
-        attrs.delete("")
+        attrs = Cast.empty_hash
         kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "component" }
         built = Views.component_builder.call(name, attrs)
         content = block.nil? ? "" : interp.capture(block, env)
@@ -1217,10 +1187,18 @@ module Cybertrain
         I18n.l(args[0], options)
       end
 
-      # A template's keywords as I18n's options (Symbol keys).
-      def self.symbol_options(kwargs)
+      # A fresh empty Hash typed Symbol => any value (I18n's options), seeded
+      # with a value of every scalar type (spikes/NOTES.md rule 9), as
+      # Cast.empty_hash is for String keys.
+      def self.empty_options
         options = { default: [nil, 0, 0.0, "", true][0] }
         options.delete(:default)
+        options
+      end
+
+      # A template's keywords as I18n's options (Symbol keys).
+      def self.symbol_options(kwargs)
+        options = Helpers.empty_options
         kwargs.each { |name, value| options[name.to_sym] = value }
         options
       end
@@ -1232,8 +1210,7 @@ module Cybertrain
       # @param options [Hash{Symbol => Object}]
       # @return [Hash{Symbol => Object}]
       def self.escaped_interpolations(options)
-        out = { default: [nil, 0, 0.0, "", true][0] }
-        out.delete(:default)
+        out = Helpers.empty_options
         options.each do |name, value|
           if name == :default || name == :locale || (name == :count && value.is_a?(Integer))
             out[name] = value
@@ -1719,8 +1696,7 @@ module Cybertrain
         helper_arity!("javascript_tag", args, 0, block.nil? ? 1 : 0)
         helper_keywords!("javascript_tag", kwargs, ["nonce", "id", "type", "data"], 0)
         content = block.nil? ? (args.empty? ? "" : text_arg(args, 0, "javascript_tag")) : interp.capture(block, env)
-        attrs = { "" => [nil, 0, 0.0, "", true][0] }
-        attrs.delete("")
+        attrs = Cast.empty_hash
         kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "nonce" }
         if kwargs["nonce"] == true
           nonce = content_security_policy_nonce

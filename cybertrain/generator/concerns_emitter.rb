@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/concern_scan"
 require "cybertrain/generator/controllers_emitter"
 require "cybertrain/generator/model_scan"
@@ -44,21 +45,11 @@ module Cybertrain
                "# application's classes.\n"
 
       def self.emit(controller_infos, concern_infos, model_infos = Array.new(0) { ModelInfo.empty("", "", Array.new(0) { "" }) },
-                    model_concern_infos = Array.new(0) { ConcernInfo.new("", "", 0) })
+                    model_concern_infos = ConcernScan.no_concern_infos)
         out = +""
         out << HEADER
-        concern_infos.each do |c|
-          next if c.class_method_names.empty?
-
-          out << "\n"
-          out << ControllersEmitter.wrap_in_modules(c.concern_name, class_methods_source(c))
-        end
-        model_concern_infos.each do |c|
-          next if c.class_method_names.empty?
-
-          out << "\n"
-          out << ControllersEmitter.wrap_in_modules(c.concern_name, class_methods_source(c))
-        end
+        out << class_methods_modules(concern_infos)
+        out << class_methods_modules(model_concern_infos)
         ControllersEmitter.parents_first(controller_infos).each do |info|
           from = Array.new(0) { 0 }
           own = ConcernScan.own_concerns(info, controller_infos, concern_infos, from)
@@ -68,15 +59,33 @@ module Cybertrain
           body = class_body(info, own, from)
           next if body.empty?
 
-          last = info.class_name.split("::").last.to_s
-          source = +"class #{last}\n"
-          body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
-          source << "end\n"
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(info.class_name, source)
+          out << reopened_class(info.class_name, body)
         end
         out << emit_models(model_infos, model_concern_infos)
         out
+      end
+
+      # The module holding each concern's class methods, for the concerns
+      # that have any.
+      def self.class_methods_modules(concerns)
+        out = +""
+        concerns.each do |c|
+          next if c.class_method_names.empty?
+
+          out << "\n"
+          out << SourceText.wrap_in_scopes(c.concern_name, Array.new(0) { "" }, class_methods_source(c))
+        end
+        out
+      end
+
+      # `class X` reopened around body, inside X's modules.
+      def self.reopened_class(class_name, body)
+        last = class_name.split("::").last.to_s
+        source = +"class #{last}\n"
+        body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
+        source << "end\n"
+        SourceText.wrap_in_scopes(class_name, Array.new(0) { "" }, source)
       end
 
       # The reopening of every model that includes concerns: a forwarder
@@ -91,7 +100,7 @@ module Cybertrain
         model_infos.each do |info|
           next if info.concern_names.empty?
 
-          own = Array.new(0) { ConcernInfo.new("", "", 0) }
+          own = ConcernScan.no_concern_infos
           info.concern_names.each do |name|
             c = ConcernScan.find(concern_infos, name)
             own << c unless c.nil?
@@ -118,12 +127,8 @@ module Cybertrain
           body << spliced
           next if body.empty?
 
-          last = info.class_name.split("::").last.to_s
-          source = +"class #{last}\n"
-          body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
-          source << "end\n"
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(info.class_name, source)
+          out << reopened_class(info.class_name, body)
         end
         out
       end
@@ -237,7 +242,7 @@ module Cybertrain
         lines.each do |line|
           next if line.strip == ""
 
-          n = ControllerScan.indent_of(line)
+          n = SourceText.indent_of(line)
           min = n if min < 0 || n < min
         end
         out = Array.new(0) { "" }

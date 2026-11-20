@@ -137,12 +137,15 @@ module Cybertrain
       @uploads.key?(key.to_s)
     end
 
+    # {.max_page} before any boot, which Runtime.reset! restores.
+    DEFAULT_MAX_PAGE = 10_000
+
     # The largest page number {#page_number} gives (and {Relation#page}
-    # accepts), `10000` by default. A module-level ivar with a literal
-    # default, the Multipart shape (spikes/NOTES.md rule 18):
+    # accepts), `10000` by default. A module-level ivar, the Multipart
+    # shape (spikes/NOTES.md rule 18):
     # Application#boot installs Config#max_page here, since Params belongs
     # to the HTTP layer and cannot read the Config itself.
-    @max_page = 10_000
+    @max_page = DEFAULT_MAX_PAGE
 
     # @return [Integer] the largest page number accepted (Config#max_page)
     # @api public

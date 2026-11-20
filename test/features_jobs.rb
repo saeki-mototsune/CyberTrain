@@ -2,6 +2,7 @@ require "tmpdir"
 require "stringio"
 require "cybertrain"
 require "cybertrain/test"
+require_relative "support/file_tree"
 
 # The jobs feature as the core reaches it (cybertrain/jobs.rb's JobsFeature,
 # through Cybertrain::Features; docs/design.md D85), with the whole
@@ -23,16 +24,7 @@ Features = Cybertrain::Features
 TMP = Dir.mktmpdir("cybertrain-features-jobs")
 PATH = File.join(TMP, "jobs.sqlite3")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)

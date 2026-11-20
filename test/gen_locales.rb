@@ -7,6 +7,7 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 require "cybertrain/locales/bundled"
+require_relative "support/file_tree"
 
 # gen/locales.rb (docs/design.md D79): the scan of
 # config/locales/**/*.yml, the merge across files, the emitted lookup, the
@@ -17,26 +18,16 @@ FIXTURE = "test/fixtures/locales_app"
 TMP = Dir.mktmpdir("cybertrain-gen-locales")
 LOCALE_FILES = ["config/locales/en.yml", "config/locales/ja.yml", "config/locales/posts/ja.yml"]
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
+at_exit { FileTree.remove(TMP) }
 
-at_exit { remove_tree(TMP) }
-
-Cybertrain::Gen::Runner.make_dirs("#{TMP}/app/config/locales/posts")
+Cybertrain::Gen::SourceText.make_dirs("#{TMP}/app/config/locales/posts")
 LOCALE_FILES.each { |f| File.write("#{TMP}/app/#{f}", File.read("#{FIXTURE}/#{f}")) }
 
 # A tree of its own under TMP holding `files` (path => text).
 def locale_tree(name, files)
   root = "#{TMP}/#{name}"
   files.each do |rel, text|
-    Cybertrain::Gen::Runner.make_dirs(File.dirname("#{root}/#{rel}"))
+    Cybertrain::Gen::SourceText.make_dirs(File.dirname("#{root}/#{rel}"))
     File.write("#{root}/#{rel}", text)
   end
   root
@@ -304,7 +295,7 @@ end
 test "script/bundle-locales --check exits 0 on a fresh tree and 1 after en.yml changes" do
   assert system("ruby", "script/bundle-locales", "--check")
   copy = "#{TMP}/bundle"
-  Cybertrain::Gen::Runner.make_dirs("#{copy}/cybertrain/locales")
+  Cybertrain::Gen::SourceText.make_dirs("#{copy}/cybertrain/locales")
   ["en.yml", "ja.yml", "bundled.rb"].each { |f| File.write("#{copy}/cybertrain/locales/#{f}", File.read("cybertrain/locales/#{f}")) }
   out = "#{TMP}/bundle.out"
   check = "ruby script/bundle-locales --check \"$1\" > \"$2\""

@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/helper_scan"
 
@@ -59,14 +60,14 @@ module Cybertrain
         @include_line_numbers = Array.new(0) { 0 }
         @concern_ivars = Array.new(0) { "" }
         @concern_callbacks = Array.new(0) { "" }
-        @concern_defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        @concern_defs = HelperScan.no_helper_defs
         @concern_def_errors = Array.new(0) { "" }
         @callback_count = 0
         @rescue_count = 0
         @block_starts = Array.new(0) { 0 }
         @block_ends = Array.new(0) { 0 }
-        @concern_layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        @concern_rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        @concern_layouts = ControllerScan.no_layout_decls
+        @concern_rate_limit_refs = ControllerScan.no_rate_limit_refs
       end
 
       def count_callback
@@ -90,13 +91,19 @@ module Cybertrain
       AROUND = /\A\s*around_action\b/
       RULE_93 = "Spinel compiles a def inside class_methods as an instance method too (spikes/NOTES.md rule 93), so rename one"
 
+      # An empty list of concerns (a new Array each call): the one place
+      # that spells the element type out for the compiler.
+      def self.no_concern_infos
+        Array.new(0) { ConcernInfo.new("", "", 0) }
+      end
+
       # Every concern under dir (an app/controllers): the files of
       # dir/concerns, then each other file under dir that defines no
       # controller class, sorted by file within each group.
       def self.scan_dir(dir)
-        infos = Array.new(0) { ConcernInfo.new("", "", 0) }
+        infos = ConcernScan.no_concern_infos
         concerns_dir = "#{dir}/concerns/"
-        files = ControllerScan.ruby_files(dir)
+        files = SourceText.ruby_files(dir)
         files.each do |path|
           next unless path.start_with?(concerns_dir)
 
@@ -214,8 +221,8 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ControllerScan.indent_of(raw)
-          if !indents.empty? && indent <= indents.last && ControllerScan.closing_end?(line)
+          indent = SourceText.indent_of(raw)
+          if !indents.empty? && indent <= indents.last && SourceText.closing_end?(line)
             modules.pop
             indents.pop
             module_lines.pop
@@ -297,7 +304,7 @@ module Cybertrain
           j += 1
           line = raw.strip
           next if line == "" || line.start_with?("#")
-          return j if ControllerScan.indent_of(raw) <= indent && ControllerScan.closing_end?(line)
+          return j if SourceText.indent_of(raw) <= indent && SourceText.closing_end?(line)
         end
         j
       end
@@ -340,7 +347,7 @@ module Cybertrain
           raw = lines[j]
           j += 1
           line = raw.strip
-          return j if ControllerScan.indent_of(raw) <= indent && ControllerScan.closing_end?(line)
+          return j if SourceText.indent_of(raw) <= indent && SourceText.closing_end?(line)
 
           if raw.match?(AROUND)
             msg = "#{ControllerScan.app_path(file)}:#{j}: around_action is not supported (no around callbacks in Cybertrain::Controller)"
@@ -371,7 +378,7 @@ module Cybertrain
           raw = lines[j]
           j += 1
           line = raw.strip
-          return j if ControllerScan.indent_of(raw) <= indent && ControllerScan.closing_end?(line)
+          return j if SourceText.indent_of(raw) <= indent && SourceText.closing_end?(line)
 
           info.class_method_lines << raw
           dm = raw.match(ControllerScan::DEF_NAME)
@@ -412,7 +419,7 @@ module Cybertrain
       # `include` stays plain Ruby. Names are full names (resolve_include);
       # one that is not but ends in a concern's name is refused.
       def self.expand(names, concerns)
-        out = Array.new(0) { ConcernInfo.new("", "", 0) }
+        out = ConcernScan.no_concern_infos
         names.each { |name| visit(name, concerns, Array.new(0) { "" }, out) }
         out
       end
@@ -452,7 +459,7 @@ module Cybertrain
       # cycle; a name that is not a concern brings in nothing.
       def self.own_concerns(info, infos, concerns, from_include = Array.new(0) { 0 })
         inherited = inherited_concerns(info, infos, concerns)
-        out = Array.new(0) { ConcernInfo.new("", "", 0) }
+        out = ConcernScan.no_concern_infos
         info.includes.each_with_index do |name, k|
           expand([name], concerns).each do |c|
             next if inherited.include?(c.concern_name)

@@ -139,19 +139,10 @@ module Cybertrain
           # cybertrain/feeds, the services files like cybertrain/websocket
           # registered when required).
           Features.start_features(config)
-          if supervised
-            serve_supervised(srv)
-          elsif config.development?
+          if config.development? && !supervised
             serve_development(srv)
           else
-            # Flags only (safe in a trap): the job threads stop claiming
-            # while the requests drain, so Job.stop! waits out only what is
-            # left of its job_drain_timeout, inside systemd's TimeoutStopSec.
-            previous_term = trap("TERM") do
-              srv.request_stop
-              Features.request_stop_features
-            end
-            wait_for_stop(srv, previous_term)
+            serve_until_term(srv)
           end
         ensure
           # Also when a start above raised (D66): each stop is a no-op for
@@ -189,25 +180,30 @@ module Cybertrain
       # gen ran) is only picked up by the next change.
       def serve_development(srv)
         rebuilder = @rebuilder
-        previous_term = trap("TERM") do
-          srv.request_stop
-          Features.request_stop_features
-        end
+        previous_term = trap_term(srv)
         previous_hup = trap("HUP") { request_restart }
         watcher = Dev::Watcher.new(Dev::WATCHED, 0.5, ["gen/"], Dev::IGNORED)
         watch_and_wait(srv, rebuilder, watcher, previous_term, previous_hup)
       end
 
-      # Under `cybertrain server`: no rebuilder, no watcher, no HUP trap, no
-      # restart monitor and no exec. The supervisor stops this process with
-      # TERM (as in production: flags only, the requests drain) and starts
-      # the next one on the same listener.
-      def serve_supervised(srv)
-        previous_term = trap("TERM") do
+      # Production, and development under `cybertrain server`: no
+      # rebuilder, no watcher, no HUP trap, no restart monitor and no exec;
+      # the process serves until TERM. The supervisor stops this process
+      # with TERM as systemd does in production (the requests drain) and
+      # starts the next one on the same listener.
+      def serve_until_term(srv)
+        wait_for_stop(srv, trap_term(srv))
+      end
+
+      # Installs the TERM trap and answers the handler it replaced. Flags
+      # only (safe in a trap): the job threads stop claiming while the
+      # requests drain, so Job.stop! waits out only what is left of its
+      # job_drain_timeout, inside systemd's TimeoutStopSec.
+      def trap_term(srv)
+        trap("TERM") do
           srv.request_stop
           Features.request_stop_features
         end
-        wait_for_stop(srv, previous_term)
       end
 
       # The development server's lifetime. When it ends without an exec

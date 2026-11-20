@@ -28,8 +28,11 @@ module Cybertrain
   module BlobStore
     KEY_BYTES = 32
 
+    # The root before any boot, which Runtime.reset! restores.
+    DEFAULT_ROOT = "storage/uploads"
+
     # Module-level ivar, not @@root: spikes/NOTES.md rule 18.
-    @root = "storage/uploads"
+    @root = DEFAULT_ROOT
 
     # Points the store at another directory (Application#boot sets it from
     # Config#upload_root). The directory is created by the first {write},

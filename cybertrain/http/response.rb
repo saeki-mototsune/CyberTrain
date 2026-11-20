@@ -63,7 +63,8 @@ module Cybertrain
     # The Permissions-Policy every response carries unless it sets its own:
     # camera, microphone and geolocation off. Application#boot
     # installs Config#permissions_policy here; "" sends none.
-    @default_permissions_policy = "camera=(), microphone=(), geolocation=()"
+    DEFAULT_PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
+    @default_permissions_policy = DEFAULT_PERMISSIONS_POLICY
 
     # @return [String] the default Permissions-Policy, "" for none
     # @api public

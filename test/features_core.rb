@@ -3,6 +3,7 @@ require "stringio"
 require "cybertrain/core"
 require "cybertrain/test"
 require "cybertrain/test/client"
+require_relative "support/file_tree"
 
 # The core alone (`require "cybertrain/core"`, docs/design.md D85):
 # it compiles without jobs, the scheduler, the lease, cron, the jobs page,
@@ -39,18 +40,9 @@ TMP = Dir.mktmpdir("cybertrain-features-core")
 Dir.chdir(TMP)
 Dir.mkdir("public")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 LOG = StringIO.new
@@ -80,14 +72,8 @@ APP = Cybertrain::Application.new(router: ROUTER, url_resolver: ->(name, args, o
 APP.boot
 CLIENT = Cybertrain::Test::Client.new(APP)
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: Cybertrain::Application.no_views)
 end
 
 test "no feature is registered, and none runs periodic work" do

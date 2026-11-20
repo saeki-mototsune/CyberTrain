@@ -6,6 +6,7 @@ require "cybertrain/test"
 require "cybertrain/test/client"
 require "cybertrain/websocket"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # The core and cybertrain/feeds alone (docs/design.md D85): it compiles without jobs, streams, the mailer, the cache or rate
 # limiting; FeedsFeature is the one registered feature; `help` lists the
@@ -24,31 +25,16 @@ ENV["CYBERTRAIN_ENV"] = "test"
 ENV["CYBERTRAIN_DATABASE"] = "feeds.sqlite3"
 ENV.delete("CYBERTRAIN_WORKER")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: Cybertrain::Application.no_views)
 end
 
 test "feeds is the one registered feature" do

@@ -130,8 +130,8 @@ module Cybertrain
       end
 
       # run_once and the minute's prune, with the rescue in a plain method
-      # (rules 32/45); JSON::NestingError first (rule 61), the full DB error
-      # name (rule 70). A database that is gone is logged and polled again.
+      # (rules 32/45). A database that is gone (a DB::Error, which is a
+      # StandardError) is logged and polled again.
       def self.tick(retention)
         Poller.run_once(Stream.hub)
         # The interval between prunes on the monotonic clock; the cut-off
@@ -142,7 +142,7 @@ module Cybertrain
           Stream.prune(Clock.now.to_i - retention)
         end
         nil
-      rescue Cybertrain::DB::Error, JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         Cybertrain.logger.error("stream poller: #{e.class.name}: #{e.message}")
         nil
       end

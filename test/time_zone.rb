@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/time_zone"
+require_relative "support/file_tree"
 
 # Cybertrain::TimeZone: the civil-time helpers, TZif parsing (version 1 and
 # 2+ files built byte by byte below, so the snapshot does not depend on the
@@ -15,19 +16,8 @@ TZ = Cybertrain::TimeZone
 ROOT = Dir.mktmpdir("cybertrain-time-zone")
 ZONEINFO = "#{ROOT}/zoneinfo"
 
-def rm_tree(path)
-  if File.symlink?(path)
-    File.delete(path)
-  elsif File.directory?(path)
-    Dir.children(path).each { |child| rm_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
-  rm_tree(ROOT)
+  FileTree.remove(ROOT)
 end
 
 # --- a TZif writer (RFC 8536), byte by byte ------------------------------
@@ -126,15 +116,8 @@ end
 def write_zone(name, bytes)
   path = "#{ZONEINFO}/#{name}"
   dir = File.dirname(path)
-  make_dirs(dir)
+  FileTree.make_dirs(dir)
   File.binwrite(path, bytes)
-end
-
-def make_dirs(dir)
-  return if File.directory?(dir)
-
-  make_dirs(File.dirname(dir))
-  Dir.mkdir(dir)
 end
 
 BIG_BANG = -576_460_752_303_423_488

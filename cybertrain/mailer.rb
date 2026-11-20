@@ -181,18 +181,17 @@ module Cybertrain
         code = -1
         while true
           line = @reader.read_line(MAX_REPLY_LINE_BYTES)
-          s = line.to_s # NOTES rule 62
-          n = s.bytesize
-          raise Net::ProtocolError, "#{@session_label}: the server's reply is not SMTP" unless Mailer.reply_line?(s)
+          n = line.bytesize
+          raise Net::ProtocolError, "#{@session_label}: the server's reply is not SMTP" unless Mailer.reply_line?(line)
 
-          this_code = (s.getbyte(0) - 48) * 100 + (s.getbyte(1) - 48) * 10 + (s.getbyte(2) - 48)
+          this_code = (line.getbyte(0) - 48) * 100 + (line.getbyte(1) - 48) * 10 + (line.getbyte(2) - 48)
           raise Net::ProtocolError, "#{@session_label}: a multi-line reply changed its code" if code >= 0 && this_code != code
 
           code = this_code
-          text = n > 4 ? s.byteslice(4, n - 4) : ""
+          text = n > 4 ? line.byteslice(4, n - 4) : ""
           lines << text
           raise Net::LimitError, "#{@session_label}: a reply of more than #{MAX_REPLY_LINES} lines" if lines.size > MAX_REPLY_LINES
-          return SmtpReply.new(code, lines) if n == 3 || s.getbyte(3) == 32
+          return SmtpReply.new(code, lines) if n == 3 || line.getbyte(3) == 32
         end
         SmtpReply.new(code, lines)
       end
@@ -571,22 +570,21 @@ module Cybertrain
 
     # "NNN", "NNN text" or "NNN-text" with NNN from 200 to 599.
     def self.reply_line?(line)
-      s = line.to_s # NOTES rule 62
-      n = s.bytesize
+      n = line.bytesize
       return false if n < 3
 
       i = 0
       while i < 3
-        b = s.getbyte(i)
+        b = line.getbyte(i)
         return false if b < 48 || b > 57
 
         i += 1
       end
-      first = s.getbyte(0)
+      first = line.getbyte(0)
       return false if first < 50 || first > 53
       return true if n == 3
 
-      sep = s.getbyte(3)
+      sep = line.getbyte(3)
       sep == 32 || sep == 45
     end
 
@@ -694,13 +692,12 @@ module Cybertrain
     # A host name or IPv4 literal: letters, digits, "-", ".", "_"; or an
     # IPv6 literal (hex digits, ":", ".").
     def self.host_name?(text)
-      s = text.to_s # NOTES rule 62
-      n = s.bytesize
+      n = text.bytesize
       return false if n == 0 || n > 253
 
       i = 0
       while i < n
-        b = s.getbyte(i)
+        b = text.getbyte(i)
         ok = (b >= 48 && b <= 58) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 45 || b == 46 || b == 95
         return false unless ok
 
@@ -714,17 +711,16 @@ module Cybertrain
     # Raises ArgumentError for a subject with CR, LF or NUL (header
     # injection), invalid UTF-8, or more than MAX_SUBJECT_BYTES bytes.
     def self.check_subject(subject)
-      s = subject.to_s # NOTES rule 62
-      raise ArgumentError, "the subject is longer than #{MAX_SUBJECT_BYTES} bytes" if s.bytesize > MAX_SUBJECT_BYTES
+      raise ArgumentError, "the subject is longer than #{MAX_SUBJECT_BYTES} bytes" if subject.bytesize > MAX_SUBJECT_BYTES
 
       i = 0
-      n = s.bytesize
+      n = subject.bytesize
       while i < n
-        b = s.getbyte(i)
+        b = subject.getbyte(i)
         raise ArgumentError, "the subject contains CR, LF or NUL" if b == 13 || b == 10 || b == 0
         i += 1
       end
-      raise ArgumentError, "the subject is not valid UTF-8" unless Mailer.utf8?(s)
+      raise ArgumentError, "the subject is not valid UTF-8" unless Mailer.utf8?(subject)
 
       nil
     end
@@ -740,26 +736,25 @@ module Cybertrain
     # The body with every line ending (CRLF, LF, a lone CR) made CRLF, and
     # a final CRLF. Raises ArgumentError for invalid UTF-8 or a NUL byte.
     def self.normalize_body(body)
-      s = body.to_s # NOTES rule 62
-      raise ArgumentError, "the body is not valid UTF-8" unless Mailer.utf8?(s)
+      raise ArgumentError, "the body is not valid UTF-8" unless Mailer.utf8?(body)
 
       out = String.new
-      n = s.bytesize
+      n = body.bytesize
       start = 0
       i = 0
       while i < n
-        b = s.getbyte(i)
+        b = body.getbyte(i)
         raise ArgumentError, "the body contains a NUL byte" if b == 0
 
         if b == 13 || b == 10
-          out << s.byteslice(start, i - start) if i > start
+          out << body.byteslice(start, i - start) if i > start
           out << "\r\n"
-          i += 1 if b == 13 && i + 1 < n && s.getbyte(i + 1) == 10
+          i += 1 if b == 13 && i + 1 < n && body.getbyte(i + 1) == 10
           start = i + 1
         end
         i += 1
       end
-      out << s.byteslice(start, n - start) if n > start
+      out << body.byteslice(start, n - start) if n > start
       out << "\r\n" unless out.end_with?("\r\n")
       out
     end
@@ -767,13 +762,12 @@ module Cybertrain
     # "7bit" for ASCII lines of at most MAX_LINE_BYTES, "8bit" for UTF-8
     # ones when the server advertises 8BITMIME, else "base64".
     def self.body_encoding(text, eight_bit_ok)
-      s = text.to_s # NOTES rule 62
-      n = s.bytesize
+      n = text.bytesize
       ascii = true
       line = 0
       i = 0
       while i < n
-        b = s.getbyte(i)
+        b = text.getbyte(i)
         if b == 10
           line = 0
         elsif b != 13
@@ -858,15 +852,14 @@ module Cybertrain
     # ENCODED_WORD_BYTES bytes each, split between UTF-8 characters, one per
     # folded line.
     def self.subject_header(subject)
-      s = subject.to_s # NOTES rule 62
       out = String.new
       out << "Subject: "
-      if Mailer.plain_subject?(s)
-        out << s
+      if Mailer.plain_subject?(subject)
+        out << subject
         out << "\r\n"
         return out
       end
-      n = s.bytesize
+      n = subject.bytesize
       start = 0
       first = true
       while start < n
@@ -875,9 +868,9 @@ module Cybertrain
           stop = n
         else
           # Back off continuation bytes (10xxxxxx): never split a character.
-          stop -= 1 while stop > start && (s.getbyte(stop) & 0xC0) == 0x80
+          stop -= 1 while stop > start && (subject.getbyte(stop) & 0xC0) == 0x80
         end
-        piece = s.byteslice(start, stop - start)
+        piece = subject.byteslice(start, stop - start)
         out << "\r\n " unless first
         out << "=?UTF-8?B?" << Base64.strict_encode64(piece) << "?="
         first = false
@@ -889,14 +882,13 @@ module Cybertrain
 
     # Printable ASCII (and tab), no "=?", short enough for one line.
     def self.plain_subject?(text)
-      s = text.to_s # NOTES rule 62
-      n = s.bytesize
+      n = text.bytesize
       return false if n > 900
-      return false unless s.index("=?").nil?
+      return false unless text.index("=?").nil?
 
       i = 0
       while i < n
-        b = s.getbyte(i)
+        b = text.getbyte(i)
         return false if (b < 32 && b != 9) || b >= 127
 
         i += 1
@@ -923,15 +915,14 @@ module Cybertrain
     # The DATA payload: a "." doubled at the start of every line (RFC 5321
     # 4.5.2) and the terminating ".\r\n". `message` ends with CRLF.
     def self.dot_stuff(message)
-      s = message.to_s # NOTES rule 62
       out = String.new
-      n = s.bytesize
+      n = message.bytesize
       start = 0
       while start < n
-        out << "." if s.getbyte(start) == 46
-        newline = s.byteindex("\n", start)
+        out << "." if message.getbyte(start) == 46
+        newline = message.byteindex("\n", start)
         stop = newline.nil? ? n : newline + 1
-        out << s.byteslice(start, stop - start)
+        out << message.byteslice(start, stop - start)
         start = stop
       end
       out << ".\r\n"
@@ -941,15 +932,14 @@ module Cybertrain
     # `text` with every byte that is not printable ASCII as "?", cut to
     # `max` bytes.
     def self.printable(text, max)
-      s = text.to_s # NOTES rule 62
-      n = s.bytesize
+      n = text.bytesize
       n = max if n > max
       out = String.new
       i = 0
       while i < n
-        b = s.getbyte(i)
+        b = text.getbyte(i)
         if b >= 32 && b < 127
-          out << s.byteslice(i, 1)
+          out << text.byteslice(i, 1)
         else
           out << "?"
         end

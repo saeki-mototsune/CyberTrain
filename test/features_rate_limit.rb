@@ -4,6 +4,7 @@ require "cybertrain/core"
 require "cybertrain/rate_limit"
 require "cybertrain/test"
 require "cybertrain/test/client"
+require_relative "support/file_tree"
 
 # The core and cybertrain/rate_limit alone (docs/design.md D85), which
 # loads the cache: it compiles without jobs, streams, feeds or
@@ -16,18 +17,9 @@ TMP = Dir.mktmpdir("cybertrain-features-rate-limit")
 Dir.chdir(TMP)
 Dir.mkdir("public")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 LOG = StringIO.new

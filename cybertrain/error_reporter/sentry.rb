@@ -321,9 +321,7 @@ module Cybertrain
         line = "error report not sent: Sentry answered #{status}"
         Cybertrain.logger.warn(line)
         false
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
-        not_sent(e)
-      rescue NotImplementedError, SystemStackError, ScriptError => e
+      rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
         not_sent(e)
       end
 

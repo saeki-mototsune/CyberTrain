@@ -4,6 +4,7 @@ require "cybertrain/websocket"
 require "cybertrain/test/websocket_receiver"
 require "cybertrain/test"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # The exit rule of a `feeds` process (docs/design.md D56): when one feed's
 # thread dies again after Config#feed_restart_limit restarts within
@@ -24,12 +25,6 @@ end
 
 def resolver = ->(name, args, options) { "/" }
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def subscribe_crashy(url)
   Cybertrain::WebSocket.subscribe("crashy", url, allow_private: true)
     .on_message { |conn, data| conn.send_text(data) }
@@ -40,7 +35,7 @@ if ENV[CHILD_FLAG] == "1"
   Dir.chdir(ENV["CT_TEST_DIR"].to_s)
   subscribe_crashy(ENV["CT_TEST_URL"].to_s)
   status = Cybertrain::Main.run("blog", ["feeds"], router: Cybertrain::Router.new, url_resolver: resolver,
-                                                   views: no_views)
+                                                   views: Cybertrain::Application.no_views)
   puts "returned #{status}"
   STDOUT.flush
   exit(status)
@@ -50,16 +45,7 @@ TMP = Dir.mktmpdir("cybertrain-feeds-exit")
 OUT_PATH = "#{TMP}/stdout.log"
 ERR_PATH = "#{TMP}/stderr.log"
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 # A port nothing listens on any more.
 def dead_url(path)

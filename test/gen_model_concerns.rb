@@ -6,6 +6,7 @@ require "cybertrain/controller"
 require "cybertrain/model"
 require "cybertrain/job"
 require "cybertrain/generator"
+require_relative "support/schema_tables"
 require_relative "fixtures/gen_app/config/routes"
 # Model concerns (docs/design.md D60), on the fixture app loaded
 # through its checked-in gen/app.rb: gen/concerns/models/concerns/visible.rb
@@ -18,35 +19,10 @@ require_relative "fixtures/gen_app/gen/app"
 
 FIXTURE = "test/fixtures/gen_app"
 
-def sql_type(column)
-  case column.type
-  when :integer, :boolean then "INTEGER"
-  when :float then "REAL"
-  when :decimal then "DECIMAL"
-  else "TEXT"
-  end
-end
-
-def create_tables_sql(definition)
-  sql = +""
-  definition.tables.each do |table|
-    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
-    table.columns.each do |c|
-      part = +"\"#{c.name}\" #{sql_type(c)}"
-      part << " NOT NULL" unless c.null
-      default = c.default
-      part << " DEFAULT #{default}" unless default.nil?
-      parts << part
-    end
-    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
-  end
-  sql
-end
-
 require_relative "fixtures/gen_app/db/schema"
 Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 Cybertrain::DB.connect(":memory:", size: 1)
-Cybertrain::DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+Cybertrain::DB.with { |c| c.exec_script(SchemaTables.create_sql(Cybertrain::Schema.current)) }
 
 def reset_tables
   Cybertrain::DB.with { |c| c.exec_script("DELETE FROM comments; DELETE FROM posts;") }
@@ -177,7 +153,7 @@ TMP_SOURCES = {
   "looped.rb" => "module Looped\n  extend ActiveSupport::Concern\n\n  included do\n    include Looped\n  end\nend\n",
   "paged.rb" => "module Paged\n  extend ActiveSupport::Concern\n\n  class_methods do\n    def recent = 1\n    def where = 2\n    def per_page = 3\n  end\nend\n"
 }
-Cybertrain::Gen::Runner.make_dirs("#{TMP_APP}/app/models/concerns")
+Cybertrain::Gen::SourceText.make_dirs("#{TMP_APP}/app/models/concerns")
 TMP_SOURCES.each { |name, source| File.write("#{TMP_APP}/app/models/concerns/#{name}", source) }
 at_exit do
   TMP_SOURCES.keys.each { |name| File.delete("#{TMP_APP}/app/models/concerns/#{name}") }
@@ -245,7 +221,7 @@ end
 
 test "a model concern named relative to its module is resolved as Ruby resolves it; an unreached one is refused" do
   root = Dir.mktmpdir("cybertrain-model-concerns-nested")
-  Cybertrain::Gen::Runner.make_dirs("#{root}/app/models/concerns/shop")
+  Cybertrain::Gen::SourceText.make_dirs("#{root}/app/models/concerns/shop")
   File.write("#{root}/app/models/concerns/shop/priced.rb",
              "module Shop\n  module Priced\n    extend ActiveSupport::Concern\n\n    included do\n      scope :cheap, -> { where(price: 1) }\n    end\n  end\nend\n")
   File.write("#{root}/app/models/concerns/shop/bundle.rb",

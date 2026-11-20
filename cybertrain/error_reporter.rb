@@ -205,9 +205,7 @@ module Cybertrain
       name = error.class.name.to_s
       text = error.message.to_s
       "#{name}: #{text}"
-    rescue JSON::NestingError, JSON::ParserError, StandardError
-      error.class.name.to_s
-    rescue NotImplementedError, SystemStackError, ScriptError
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError
       error.class.name.to_s
     end
 
@@ -379,9 +377,7 @@ module Cybertrain
       scope = Logger.current_scope
       where = scope.scope_where
       enqueue_error(error, where, handled, given)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      report_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       report_failed(e)
     end
 
@@ -400,7 +396,7 @@ module Cybertrain
       value = nil
       begin
         value = yield
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         report(e, handled: true, context: context)
         value = nil
       end
@@ -444,9 +440,7 @@ module Cybertrain
       scope = Logger.current_scope
       at = where == "" ? scope.scope_where : where
       enqueue_error(error, at, false, given)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      report_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       report_failed(e)
     end
 
@@ -470,9 +464,7 @@ module Cybertrain
       name = error_class.to_s
       text = message.to_s
       queue_event(name, text, Array.new(0) { "" }, at, false, given)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      report_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       report_failed(e)
     end
 
@@ -713,9 +705,7 @@ module Cybertrain
         deliver_counted(event)
       end
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      delivery_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       delivery_failed(e)
     end
 
@@ -774,9 +764,7 @@ module Cybertrain
     # (fail closed) and is logged.
     def filter_kept?(filter, event)
       filter.filter_event(event) ? true : false
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      filter_failed(filter, e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       filter_failed(filter, e)
     end
 
@@ -791,9 +779,7 @@ module Cybertrain
     def deliver_to(subscriber, event)
       subscriber.report(event)
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      subscriber_failed(subscriber, e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       subscriber_failed(subscriber, e)
     end
 
@@ -809,9 +795,7 @@ module Cybertrain
     def send_to(sender, event)
       sender.deliver_event(event) if sender.sends?
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      sender_failed(sender, e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       sender_failed(sender, e)
     end
 

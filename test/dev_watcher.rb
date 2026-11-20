@@ -3,21 +3,12 @@
 require "cybertrain/dev/watcher"
 require "cybertrain/dev/watched"
 require "cybertrain/test"
+require_relative "support/file_tree"
 
 ROOT = "tmp/dev_watcher_test"
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
-
 def reset_root
-  remove_tree(ROOT)
+  FileTree.remove(ROOT)
   Dir.mkdir("tmp") unless Dir.exist?("tmp")
   Dir.mkdir(ROOT)
   Dir.mkdir("#{ROOT}/app")
@@ -38,7 +29,7 @@ def watcher
   Cybertrain::Dev::Watcher.new(["#{ROOT}/app/**/*.rb"], 0.05)
 end
 
-at_exit { remove_tree(ROOT) }
+at_exit { FileTree.remove(ROOT) }
 
 test "snapshot maps every matching file to its mtime" do
   reset_root

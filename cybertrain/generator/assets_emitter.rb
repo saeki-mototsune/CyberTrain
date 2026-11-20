@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/asset_scan"
 require "cybertrain/generator/importmap_reader"
 require "cybertrain/generator/views_emitter"
@@ -172,19 +173,11 @@ module Cybertrain
         log
       end
 
-      def self.make_dirs(dir)
-        return nil if File.directory?(dir)
-
-        make_dirs(File.dirname(dir))
-        Dir.mkdir(dir)
-        nil
-      end
-
       # Writes a new file through a temporary one renamed into place, so a
       # server reading public/assets never sees half a file and a symlink
       # left at the path is replaced, not followed.
       def self.write_new(path, body)
-        make_dirs(File.dirname(path))
+        SourceText.make_dirs(File.dirname(path))
         write_replacing(path, body)
       end
 

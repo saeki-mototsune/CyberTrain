@@ -24,7 +24,7 @@ module Cybertrain
         modules.each { |m| out << "  include ::#{m.name}\n" }
         out << "\n"
         out << "  def app_helper_call(name, args, kwargs, block, interp, env)\n"
-        defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        defs = HelperScan.no_helper_defs
         modules.each { |m| m.defs.each { |d| defs << d } }
         if defs.empty?
           out << "    super(name, args, kwargs, block, interp, env)\n"

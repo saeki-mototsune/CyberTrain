@@ -9,6 +9,7 @@ require "cybertrain/streams"
 require "cybertrain/feeds"
 require "cybertrain/jobs"
 require "cybertrain/test"
+require_relative "support/file_tree"
 
 # The order the features run in does not follow the order of bin/NAME.rb's
 # requires (docs/design.md D85: the features are ranked,
@@ -27,16 +28,7 @@ require "cybertrain/test"
 
 TMP = Dir.mktmpdir("cybertrain-features-order")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
