@@ -1,10 +1,7 @@
 require "cybertrain/logger"
 require "cybertrain/params"
-require "cybertrain/http/ip_address"
 require "cybertrain/template/limits"
-require "cybertrain/time_zone"
 require "cybertrain/content_security_policy"
-require "cybertrain/sentry_dsn"
 require "cybertrain/config/files"
 
 module Cybertrain
@@ -682,23 +679,6 @@ module Cybertrain
       text.to_f
     end
 
-    # True when `text` is one or more digits, optionally followed by "."
-    # and one or more digits. A byte scan (NOTES rule 62).
-    def self.rate_text?(text)
-      s = text.to_s
-      n = s.bytesize
-      i = 0
-      i += 1 while i < n && s.getbyte(i) >= 48 && s.getbyte(i) <= 57
-      return false if i == 0
-      return true if i == n
-      return false unless s.getbyte(i) == 46
-
-      i += 1
-      digits_from = i
-      i += 1 while i < n && s.getbyte(i) >= 48 && s.getbyte(i) <= 57
-      i == n && i > digits_from
-    end
-
     # Spinel worker threads that serve requests, `1`, from `SPINEL_WORKERS`:
     # the core count on a server with more than one. Above 1 the server
     # hands Spinel one more, since Spinel counts the main thread, which
@@ -1033,45 +1013,6 @@ module Cybertrain
     # request input never does.
     def self.default_i18n_locale
       env_or("CYBERTRAIN_I18N_DEFAULT_LOCALE", "en").to_sym
-    end
-
-    # Whether text is a locale name: a 2-3 letter language, then any number
-    # of `-` or `_` separated parts of 2-8 letters or digits (`en`, `ja`,
-    # `pt-BR`, `zh-Hant-TW`), at most 35 bytes. A byte scan through a fresh
-    # local (NOTES rule 62).
-    # @param text [String]
-    # @return [Boolean]
-    # @api private
-    def self.locale_name?(text)
-      s = text.to_s
-      len = s.bytesize
-      return false if len < 2 || len > 35
-
-      part = 0 # 0-based index of the part being read
-      part_len = 0
-      i = 0
-      while i < len
-        b = s.getbyte(i)
-        if b == 45 || b == 95 # "-" "_"
-          return false if part_len < 2
-          return false if part == 0 && part_len > 3
-
-          part += 1
-          part_len = 0
-        else
-          letter = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
-          digit = b >= 48 && b <= 57
-          return false unless letter || (digit && part > 0)
-
-          part_len += 1
-          return false if part_len > 8
-        end
-        i += 1
-      end
-      return false if part_len < 2
-      return false if part == 0 && part_len > 3
-
-      true
     end
 
     # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
@@ -1432,46 +1373,6 @@ module Cybertrain
       @session_secure || @force_ssl
     end
 
-    # Whether `text` is a host name as a Host header carries it, without
-    # the port: letters, digits, `-` and `.` (neither first nor last), or
-    # an IPv6 address in brackets. No scheme, path, port, userinfo or
-    # wildcard. Reads its parameter through a fresh local (NOTES rule 62).
-    # @param text [String]
-    # @return [Boolean]
-    # @api private
-    def self.host_name?(text)
-      s = text.to_s
-      n = s.bytesize
-      return false if n == 0 || n > 255
-
-      if s.getbyte(0) == 0x5b # "["
-        return false if n < 3 || s.getbyte(n - 1) != 0x5d # "]"
-
-        i = 1
-        while i < n - 1
-          b = s.getbyte(i)
-          ok = (b >= 0x30 && b <= 0x39) || (b >= 0x61 && b <= 0x66) || (b >= 0x41 && b <= 0x46) || b == 0x3a || b == 0x2e
-          return false unless ok
-
-          i += 1
-        end
-        return true
-      end
-      first = s.getbyte(0)
-      last = s.getbyte(n - 1)
-      return false if first == 0x2e || first == 0x2d || last == 0x2e || last == 0x2d
-
-      i = 0
-      while i < n
-        b = s.getbyte(i)
-        ok = (b >= 0x30 && b <= 0x39) || (b >= 0x61 && b <= 0x7a) || (b >= 0x41 && b <= 0x5a) || b == 0x2d || b == 0x2e
-        return false unless ok
-
-        i += 1
-      end
-      true
-    end
-
     # @return [Boolean]
     # @api public
     def development?
@@ -1504,22 +1405,6 @@ module Cybertrain
     # @param value [Boolean]
     def self.encryption_required=(value)
       @encryption_required = value
-    end
-
-    # Whether `text` is 64 hex digits, either case: an encryption key.
-    def self.encryption_key_text?(text)
-      s = text.to_s
-      return false unless s.bytesize == 64
-
-      i = 0
-      while i < 64
-        b = s.getbyte(i).to_i
-        hex = (b >= 48 && b <= 57) || (b >= 97 && b <= 102) || (b >= 65 && b <= 70)
-        return false unless hex
-
-        i += 1
-      end
-      true
     end
 
     # The secret the session and cookie keys are derived from. Production must set it
