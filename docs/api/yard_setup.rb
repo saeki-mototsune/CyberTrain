@@ -10,8 +10,9 @@
 #    internals too. This reads the comment as written instead.
 #
 # 2. A public class keeps its public description. Several framework files
-#    reopen a class (cybertrain/template/interpreter.rb reopens
-#    Cybertrain::Model), and YARD would let the last comment parsed replace
+#    reopen a class (cybertrain/model/bulk_writes.rb reopens
+#    Cybertrain::Model, cybertrain/template/interpreter.rb reopens
+#    Cybertrain::Component), and YARD would let the last comment parsed replace
 #    the description; a comment without `@api public` never replaces one
 #    with it.
 #
