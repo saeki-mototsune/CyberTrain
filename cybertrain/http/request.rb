@@ -192,16 +192,7 @@ module Cybertrain
         next if parts.empty?
 
         media = parts[0].to_s.strip.downcase
-        refused = false
-        parts.each_with_index do |param, i|
-          next if i == 0
-
-          pair = param.split("=", 2)
-          next unless pair.size == 2 && pair[0].to_s.strip.downcase == "q"
-
-          refused = Request.zero_quality?(pair[1].to_s.strip)
-        end
-        next if refused
+        next if Request.entry_quality(parts) == 0
 
         turbo = true if media == "text/vnd.turbo-stream.html"
         json_at = position if media == "application/json" && json_at < 0
@@ -255,15 +246,7 @@ module Cybertrain
         i += 1
         next if parts.empty?
 
-        q = 1000
-        parts.each_with_index do |param, k|
-          next if k == 0
-
-          pair = param.split("=", 2)
-          next unless pair.size == 2 && pair[0].to_s.strip.downcase == "q"
-
-          q = Request.quality_thousandths(pair[1].to_s.strip)
-        end
+        q = Request.entry_quality(parts)
         next if q <= best_q
 
         found = Request.locale_match(parts[0].to_s.strip.downcase, available)
@@ -273,6 +256,20 @@ module Cybertrain
         best_q = q
       end
       best
+    end
+
+    # The quality of one `Accept` / `Accept-Language` entry already split at
+    # ";": its `q` parameter as {quality_thousandths} reads it (the last one
+    # when it is given twice), 1000 without one. 0 refuses the entry.
+    def self.entry_quality(parts)
+      q = 1000
+      k = 1
+      while k < parts.size
+        pair = parts[k].split("=", 2)
+        q = Request.quality_thousandths(pair[1].to_s.strip) if pair.size == 2 && pair[0].to_s.strip.downcase == "q"
+        k += 1
+      end
+      q
     end
 
     # A q-value as thousandths (`"0.8"` is 800, `"1"` is 1000); -1 for text
@@ -322,22 +319,6 @@ module Cybertrain
         return candidate if candidate.to_s.downcase == language
       end
       nil
-    end
-
-    # "0", "0.", "0.0", "0.000": a q-value that refuses the type.
-    def self.zero_quality?(value)
-      q = value.to_s
-      return false unless q.start_with?("0")
-      return true if q == "0"
-      return false unless q[1, 1] == "." && q.size <= 5
-
-      i = 2
-      while i < q.size
-        return false unless q[i, 1] == "0"
-
-        i += 1
-      end
-      true
     end
 
     # The registered format of an extension, Rails' MIME table (`"json"` ->
