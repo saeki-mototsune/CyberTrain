@@ -258,9 +258,7 @@ module Cybertrain
       # bad name, a bad or duplicate field, or a routes file without a
       # `Cybertrain::Routes.draw do` line, before anything is written.
       def self.generate(root, name, fields, any = false)
-        routes_path = File.join(root, "config/routes.rb")
-        raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
-        raise InvalidArgument, "#{routes_path} has no `#{DRAW_LINE}` line" if File.read(routes_path).index(DRAW_LINE).nil?
+        routes_path = require_routes!(root)
 
         underscored = Inflector.underscore(name)
         raise InvalidArgument, "bad resource name '#{name}'" unless Templates.identifier?(underscored)
@@ -373,10 +371,26 @@ module Cybertrain
         nil
       end
 
+      # What every generator that edits the routes asks of `root` first: the
+      # path of its config/routes.rb, which exists and has the draw line.
+      # Raises InvalidArgument otherwise.
+      def self.require_routes!(root)
+        routes_path = File.join(root, "config/routes.rb")
+        raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
+        raise InvalidArgument, "#{routes_path} has no `#{DRAW_LINE}` line" if File.read(routes_path).index(DRAW_LINE).nil?
+
+        routes_path
+      end
+
       # db/migrate/<timestamp>_create_posts.rb, or the existing
       # *_create_posts.rb when the scaffold already ran.
       def self.migration_path(root, res)
-        suffix = "_create_#{res.plural}.rb"
+        migration_file(root, "_create_#{res.plural}.rb")
+      end
+
+      # db/migrate/<version><suffix> for a migration about to be written, or
+      # the existing db/migrate/*<suffix> when the generator already ran.
+      def self.migration_file(root, suffix)
         existing = Dir.glob(File.join(root, "db/migrate/*#{suffix}")).sort
         return "db/migrate/#{File.basename(existing[0])}" unless existing.empty?
 

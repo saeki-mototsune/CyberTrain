@@ -353,9 +353,7 @@ module Cybertrain
       # diff put in `manual`, or, with `force`, overwritten (`forced`). The
       # create_* migrations are never rewritten: they may have run.
       def self.generate_with_result(root, invite_only = false, confirmable = false, force = false)
-        routes_path = File.join(root, "config/routes.rb")
-        raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
-        raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
+        routes_path = Scaffold.require_routes!(root)
 
         controller_path = File.join(root, "app/controllers/application_controller.rb")
         raise InvalidArgument, "#{controller_path} not found: run this inside a cybertrain app" unless File.exist?(controller_path)
@@ -793,11 +791,7 @@ module Cybertrain
       # db/migrate/<version>_create_<table>.rb, or the existing one; the
       # second table's version follows the first's (Scaffold.next_version).
       def self.migration_path(root, table)
-        suffix = "_create_#{table}.rb"
-        existing = Dir.glob(File.join(root, "db/migrate/*#{suffix}")).sort
-        return "db/migrate/#{File.basename(existing[0])}" unless existing.empty?
-
-        "db/migrate/#{Scaffold.next_version(root, Scaffold.timestamp)}#{suffix}"
+        Scaffold.migration_file(root, "_create_#{table}.rb")
       end
 
       # Whether source has an `include Authentication` line (a trailing

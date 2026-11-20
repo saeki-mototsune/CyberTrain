@@ -91,9 +91,7 @@ module Cybertrain
         spec = AttachmentSpec.new(model, field, any)
         check_names!(spec)
 
-        routes_path = File.join(root, "config/routes.rb")
-        raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
-        raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
+        Scaffold.require_routes!(root)
 
         model_path = File.join(root, model_file(spec))
         raise InvalidArgument, "#{model_path} not found: generate the model first (cybertrain generate scaffold #{spec.singular} ...)" unless File.exist?(model_path)
@@ -269,7 +267,7 @@ module Cybertrain
       def self.check_names!(spec)
         field = spec.field
         raise InvalidArgument, "bad model name '#{spec.singular}'" unless Templates.identifier?(spec.singular)
-        raise InvalidArgument, "bad field name '#{field}' (lowercase letters, digits and _, starting with a letter)" unless field_name?(field)
+        raise InvalidArgument, "bad field name '#{field}' (lowercase letters, digits and _, starting with a letter)" unless Templates.identifier?(field)
         if Templates.attachment_action_clash?(field, spec.singular)
           raise InvalidArgument, "'#{field}' would redefine a method of #{spec.plural_class}Controller (the download action is `def #{field}`); pick another field name"
         end
@@ -279,31 +277,11 @@ module Cybertrain
         nil
       end
 
-      # /\A[a-z][a-z0-9_]*\z/
-      def self.field_name?(name)
-        return false if name.empty?
-
-        i = 0
-        while i < name.bytesize
-          b = name.getbyte(i)
-          lower = b >= 97 && b <= 122
-          digit_or_underscore = (b >= 48 && b <= 57) || b == 95
-          return false unless lower || (i > 0 && digit_or_underscore)
-
-          i += 1
-        end
-        true
-      end
-
       # ---- the migration ------------------------------------------------
 
       # db/migrate/<version>_add_cover_to_posts.rb, or the existing one.
       def self.migration_path(root, spec)
-        suffix = "_add_#{spec.field}_to_#{spec.plural}.rb"
-        existing = Dir.glob(File.join(root, "db/migrate/*#{suffix}")).sort
-        return "db/migrate/#{File.basename(existing[0])}" unless existing.empty?
-
-        "db/migrate/#{Scaffold.next_version(root, Scaffold.timestamp)}#{suffix}"
+        Scaffold.migration_file(root, "_add_#{spec.field}_to_#{spec.plural}.rb")
       end
 
       # `default:` is SQL literal text (migration.rb), hence "''" and "0".

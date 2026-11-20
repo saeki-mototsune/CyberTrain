@@ -250,34 +250,10 @@ module Cybertrain
     # a later one (docs/design.md D11). The
     # constraint is written as given: spin decides what it accepts.
     def self.version_note(version)
-      return "" if version == "" || exact_version?(version)
+      return "" if version == "" || FrameworkVersion.release?(version)
 
       "note: spin selects the lowest release that satisfies \"#{version}\" and spin.lock pins it, " \
         "so a range does not follow new releases; name one release (--version X.Y.Z) to choose it"
-    end
-
-    # "0.4.1": three dot-separated runs of digits and nothing else. A loop
-    # over the characters rather than a Regexp, as the rest of the CLI does
-    # for what Spinel also compiles.
-    def self.exact_version?(value)
-      dots = 0
-      digits = 0
-      i = 0
-      while i < value.length
-        c = value[i]
-        if c == "."
-          return false if digits == 0
-
-          dots += 1
-          digits = 0
-        elsif c >= "0" && c <= "9"
-          digits += 1
-        else
-          return false
-        end
-        i += 1
-      end
-      dots == 2 && digits > 0
     end
 
     # `value` as a TOML basic string: `\` and `"` escaped. Control
