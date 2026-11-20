@@ -206,6 +206,20 @@ are a different thing: test classes that `cybertrain test` runs, as in
 [examples/blog/test/](examples/blog/test/) (see the
 [testing guide](docs/guide/testing.md)).
 
+What several test programs need is in `test/support/`, loaded with
+`require_relative "support/<name>"` (the files there are not test programs:
+the gate and `script/test-shard` read `test/*.rb` only). Use these before
+writing another copy into a test:
+
+- `file_tree.rb`: `FileTree.remove`, `copy` and `make_dirs`, for a test
+  that builds a scratch tree on disk.
+- `schema_tables.rb`: `SchemaTables.create_sql`, the `CREATE TABLE`
+  statements of a schema definition, for a test that loads generated models
+  into an in-memory database.
+- `log_capture.rb`: `capture_log`, `with_scope` and `assert_logged`, for a
+  test that reads log lines.
+- `zone_swap.rb`: `ZoneSwap.during`, for a test that sets `Time.zone`.
+
 ### The example application
 
 The example application is a test too. If your change affects what the
