@@ -1035,13 +1035,6 @@ module Cybertrain
       env_or("CYBERTRAIN_I18N_DEFAULT_LOCALE", "en").to_sym
     end
 
-    # An authentication setting's variable read as default_job_threads
-    # reads its own: the default when unset or not a number, any number
-    # kept for boot to refuse (auth_error).
-    def self.default_auth_setting(name, default)
-      Params.parse_int(env_or(name, ""), default)
-    end
-
     # Whether text is a locale name: a 2-3 letter language, then any number
     # of `-` or `_` separated parts of 2-8 letters or digits (`en`, `ja`,
     # `pt-BR`, `zh-Hant-TW`), at most 35 bytes. A byte scan through a fresh
@@ -1088,34 +1081,12 @@ module Cybertrain
       n < 1 ? 10_000 : n
     end
 
-    # CYBERTRAIN_JOB_THREADS read without to_i on unbounded text (NOTES
-    # rule 25): 3 when it is unset or not a number. A number below 1 is
-    # kept, so that boot reports it (scheduler_error) rather than starting
-    # a different count than asked for.
-    def self.default_job_threads
-      Params.parse_int(env_or("CYBERTRAIN_JOB_THREADS", ""), 3)
-    end
-
-    # CYBERTRAIN_JOBS_PAGE_PER_PAGE as default_job_threads reads its
-    # variable: 50 when it is unset or not a number, a number below 1 kept
-    # for boot to refuse (scheduler_error).
-    def self.default_jobs_page_per_page
-      Params.parse_int(env_or("CYBERTRAIN_JOBS_PAGE_PER_PAGE", ""), 50)
-    end
-
-    # CYBERTRAIN_CACHE_PRUNE_INTERVAL as default_job_threads reads its
-    # variable: 300 when it is unset or not a number, a number below 1
-    # kept for boot to refuse (scheduler_error).
+    # CYBERTRAIN_CACHE_PRUNE_INTERVAL through Config.env_int: 300 when it
+    # is unset or not a number, a number below 1 kept for boot to refuse
+    # (scheduler_error). Shared with Cache, which reads it before a Config
+    # exists.
     def self.default_cache_prune_interval
-      Params.parse_int(env_or("CYBERTRAIN_CACHE_PRUNE_INTERVAL", ""), 300)
-    end
-
-    # CYBERTRAIN_FEED_STATUS_INTERVAL, CYBERTRAIN_FEED_RESTART_LIMIT,
-    # CYBERTRAIN_FEED_RESTART_WINDOW and CYBERTRAIN_HEALTH_FEED_STALE as default_job_threads reads its
-    # variable: the default when unset or not a number, a number below 1
-    # kept for boot to refuse (feeds_error).
-    def self.default_feed_setting(name, default)
-      Params.parse_int(env_or(name, ""), default)
+      env_int("CYBERTRAIN_CACHE_PRUNE_INTERVAL", 300)
     end
 
     # False only for CYBERTRAIN_HEALTH_FEEDS=0 or =false; anything else
@@ -1202,23 +1173,21 @@ module Cybertrain
       entries
     end
 
-    # True only for CYBERTRAIN_SESSION_PARTITIONED=1 or =true; any other
-    # value is false, not an error.
-    def self.default_session_partitioned
-      configured = ENV["CYBERTRAIN_SESSION_PARTITIONED"] || ""
-      configured == "1" || configured == "true"
+    # ENV[name] as an Integer, read without to_i on unbounded text (NOTES
+    # rule 25): default when it is unset, empty or not a number. Not
+    # range-checked: a number below 1 is kept, so that boot's *_error
+    # check (scheduler_error, feeds_error, auth_error) reports it rather
+    # than starting with a different number than asked for.
+    def self.env_int(name, default)
+      Params.parse_int(env_or(name, ""), default)
     end
 
-    # True only for CYBERTRAIN_HTTP_ALLOW_PRIVATE=1 or =true.
-    def self.default_http_allow_private
-      configured = ENV["CYBERTRAIN_HTTP_ALLOW_PRIVATE"] || ""
-      configured == "1" || configured == "true"
-    end
-
-    # True only for CYBERTRAIN_TRUSTED_PROXY=1 or =true, like
-    # default_session_partitioned.
-    def self.default_trusted_proxy
-      configured = ENV["CYBERTRAIN_TRUSTED_PROXY"] || ""
+    # True only for "1" or "true" (what CYBERTRAIN_SESSION_PARTITIONED,
+    # CYBERTRAIN_TRUSTED_PROXY, CYBERTRAIN_HTTP_ALLOW_PRIVATE and
+    # CYBERTRAIN_FORCE_SSL turn on with); any other text is false, not an
+    # error. Takes the text, not the variable's name: the ENV read stays
+    # at the call site with a literal key.
+    def self.flag_text?(configured)
       configured == "1" || configured == "true"
     end
 
@@ -1272,16 +1241,16 @@ module Cybertrain
       @session_same_site = Config.default_session_same_site
       # Partitioned (CHIPS): with None, the cookie survives third-party cookie
       # blocking inside such a frame. Adds Secure too.
-      @session_partitioned = Config.default_session_partitioned
+      @session_partitioned = Config.flag_text?(ENV["CYBERTRAIN_SESSION_PARTITIONED"] || "")
       # Request.trusted_proxy's default; Application#boot installs it there
       # (the HTTP layer cannot read the Config).
-      @trusted_proxy = Config.default_trusted_proxy
+      @trusted_proxy = Config.flag_text?(ENV["CYBERTRAIN_TRUSTED_PROXY"] || "")
       # Request.trusted_proxies' list, the same way: split here, checked by
       # trusted_proxies_error at boot. Assigned in initialize (rule 73).
       @trusted_proxies = Config.list_from(ENV["CYBERTRAIN_TRUSTED_PROXIES"] || "")
       # CYBERTRAIN_FORCE_SSL, kept as written for security_error.
       @force_ssl_text = Config.env_or("CYBERTRAIN_FORCE_SSL", "")
-      @force_ssl = @force_ssl_text == "1" || @force_ssl_text == "true"
+      @force_ssl = Config.flag_text?(@force_ssl_text)
       @force_ssl_given = false
       # CYBERTRAIN_HOSTS: checked by security_error, appended to
       # allowed_hosts.
@@ -1311,7 +1280,7 @@ module Cybertrain
       @max_multipart_parts = 128
       @upload_root = "storage/uploads"
       @upload_root_given = false
-      @http_allow_private = Config.default_http_allow_private
+      @http_allow_private = Config.flag_text?(ENV["CYBERTRAIN_HTTP_ALLOW_PRIVATE"] || "")
       # Mailer's settings (CYBERTRAIN_SMTP_*). Assigned here, not in a
       # helper: an ivar first set outside initialize is boxed.
       @smtp_host = Config.env_or("CYBERTRAIN_SMTP_HOST", "")
@@ -1358,15 +1327,15 @@ module Cybertrain
       @scheduler_interval = 1
       @job_poll_interval = 1
       @job_max_attempts = 5
-      @job_threads = Config.default_job_threads
+      @job_threads = Config.env_int("CYBERTRAIN_JOB_THREADS", 3)
       @job_heartbeat_interval = 30
       @job_heartbeat_stale = 300
       @job_drain_timeout = 10
-      @jobs_page_per_page = Config.default_jobs_page_per_page
+      @jobs_page_per_page = Config.env_int("CYBERTRAIN_JOBS_PAGE_PER_PAGE", 50)
       @cache_prune_interval = Config.default_cache_prune_interval
-      @feed_status_interval = Config.default_feed_setting("CYBERTRAIN_FEED_STATUS_INTERVAL", 10)
-      @feed_restart_limit = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_LIMIT", 10)
-      @feed_restart_window = Config.default_feed_setting("CYBERTRAIN_FEED_RESTART_WINDOW", 600)
+      @feed_status_interval = Config.env_int("CYBERTRAIN_FEED_STATUS_INTERVAL", 10)
+      @feed_restart_limit = Config.env_int("CYBERTRAIN_FEED_RESTART_LIMIT", 10)
+      @feed_restart_window = Config.env_int("CYBERTRAIN_FEED_RESTART_WINDOW", 600)
       @scheduler_lease_ttl = 30
       @time_zone = Config.env_or("CYBERTRAIN_TIME_ZONE", "UTC")
       # "" (unset): scheduler_tz answers time_zone.
@@ -1379,7 +1348,7 @@ module Cybertrain
       @health_path = ENV["CYBERTRAIN_HEALTH_PATH"] || "/up"
       @health_worker_stale = 300
       @health_feeds = Config.default_health_feeds
-      @health_feed_stale = Config.default_feed_setting("CYBERTRAIN_HEALTH_FEED_STALE", 180)
+      @health_feed_stale = Config.env_int("CYBERTRAIN_HEALTH_FEED_STALE", 180)
       # The realtime endpoint (Stream, Stream::Endpoint); an empty variable
       # turns it off, as for health_path.
       @stream_path = ENV["CYBERTRAIN_STREAM_PATH"] || "/cybertrain/stream"
@@ -1392,10 +1361,10 @@ module Cybertrain
       @i18n_default_locale = Config.default_i18n_locale
       @i18n_available_locales = []
       @i18n_raise_on_missing = false
-      @auth_lockout_attempts = Config.default_auth_setting("CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS", 10)
-      @auth_lockout_period = Config.default_auth_setting("CYBERTRAIN_AUTH_LOCKOUT_PERIOD", 3600)
-      @auth_remember_for = Config.default_auth_setting("CYBERTRAIN_AUTH_REMEMBER_FOR", 2_592_000)
-      @auth_idle_timeout = Config.default_auth_setting("CYBERTRAIN_AUTH_IDLE_TIMEOUT", 604_800)
+      @auth_lockout_attempts = Config.env_int("CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS", 10)
+      @auth_lockout_period = Config.env_int("CYBERTRAIN_AUTH_LOCKOUT_PERIOD", 3600)
+      @auth_remember_for = Config.env_int("CYBERTRAIN_AUTH_REMEMBER_FOR", 2_592_000)
+      @auth_idle_timeout = Config.env_int("CYBERTRAIN_AUTH_IDLE_TIMEOUT", 604_800)
     end
 
     # The parameter names whose values are replaced with `[FILTERED]` in the
