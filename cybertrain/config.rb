@@ -184,6 +184,20 @@ module Cybertrain
     # @api public
     attr_accessor :log_tags
 
+    # The parameter names whose values are replaced with `[FILTERED]` in the
+    # request log's `Started` line and on the development error page
+    # (Rails' `filter_parameters`): `password`, `password_confirmation`,
+    # `token`, `secret`, `secret_key_base`, `session_key`, `api_key` and
+    # `authorization`, or the comma-separated names in
+    # `CYBERTRAIN_FILTER_PARAMETERS` instead. A parameter is filtered when
+    # its name contains one of them, ASCII case-insensitively (`password`
+    # filters `user[password]`). `[]` turns filtering off.
+    # @example config/app.rb
+    #   config.filter_parameters = config.filter_parameters + ["otp", "ssn"]
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :filter_parameters
+
     # The session cookie's name, `"_cybertrain_session"`.
     # @return [String]
     # @api public
@@ -599,21 +613,6 @@ module Cybertrain
       nil
     end
 
-    # CYBERTRAIN_MAIL_DELIVERY_METHOD as a Symbol, or, when it is unset or
-    # empty, :test for the test environment and :smtp for any other.
-    def self.default_mail_delivery_method(env)
-      given = env_or("CYBERTRAIN_MAIL_DELIVERY_METHOD", "").downcase
-      return given.to_sym unless given.empty?
-
-      env == "test" ? :test : :smtp
-    end
-
-    # CYBERTRAIN_SMTP_PORT: 0 (the mode's port) unless it is 1..65535.
-    def self.default_smtp_port
-      n = Params.parse_int(env_or("CYBERTRAIN_SMTP_PORT", ""), 0)
-      n < 1 || n > 65_535 ? 0 : n
-    end
-
     # ---- end of the Mailer settings ----------------------------------------
 
     # The Sentry (or GlitchTip) DSN error reports are sent to, from
@@ -669,15 +668,6 @@ module Cybertrain
     # @return [String]
     # @api public
     attr_accessor :release
-
-    # CYBERTRAIN_ERROR_SAMPLE_RATE as a Float when `text` is digits with an
-    # optional "." and digits (0.25, 1, 0); 1.0 otherwise (empty, or text
-    # {#reporting_error} refuses).
-    def self.default_error_sample_rate(text)
-      return 1.0 unless Config.rate_text?(text)
-
-      text.to_f
-    end
 
     # Spinel worker threads that serve requests, `1`, from `SPINEL_WORKERS`:
     # the core count on a server with more than one. Above 1 the server
@@ -1007,12 +997,51 @@ module Cybertrain
       list
     end
 
+    # ---- Defaults from the environment: what initialize reads -------------
+
     # CYBERTRAIN_I18N_DEFAULT_LOCALE as a Symbol (`:en` when unset or
-    # empty). A name boot refuses (i18n_error) is kept as written. This is
-    # the one place environment text becomes a Symbol, once at startup;
+    # empty). A name boot refuses (i18n_error) is kept as written.
+    # Environment text becomes a Symbol in these readers only (the locale,
+    # the mail delivery method, the log level and format), once at startup;
     # request input never does.
     def self.default_i18n_locale
       env_or("CYBERTRAIN_I18N_DEFAULT_LOCALE", "en").to_sym
+    end
+
+    # CYBERTRAIN_MAIL_DELIVERY_METHOD as a Symbol, or, when it is unset or
+    # empty, :test for the test environment and :smtp for any other.
+    def self.default_mail_delivery_method(env)
+      given = env_or("CYBERTRAIN_MAIL_DELIVERY_METHOD", "").downcase
+      return given.to_sym unless given.empty?
+
+      env == "test" ? :test : :smtp
+    end
+
+    # CYBERTRAIN_SMTP_PORT: 0 (the mode's port) unless it is 1..65535.
+    def self.default_smtp_port
+      n = Params.parse_int(env_or("CYBERTRAIN_SMTP_PORT", ""), 0)
+      n < 1 || n > 65_535 ? 0 : n
+    end
+
+    # CYBERTRAIN_ERROR_SAMPLE_RATE as a Float when `text` is digits with an
+    # optional "." and digits (0.25, 1, 0); 1.0 otherwise (empty, or text
+    # {#reporting_error} refuses).
+    def self.default_error_sample_rate(text)
+      return 1.0 unless Config.rate_text?(text)
+
+      text.to_f
+    end
+
+    # ParameterFilter::DEFAULT_NAMES, kept as a literal here (the HTTP layer
+    # is not required by Config), or CYBERTRAIN_FILTER_PARAMETERS split on
+    # commas, blanks dropped (Config.list_from), when it is set and not
+    # empty.
+    def self.default_filter_parameters
+      configured = env_or("CYBERTRAIN_FILTER_PARAMETERS", "")
+      return list_from(configured) unless configured.empty?
+
+      ["password", "password_confirmation", "token", "secret", "secret_key_base",
+       "session_key", "api_key", "authorization"]
     end
 
     # CYBERTRAIN_MAX_PAGE read without to_i on unbounded text (NOTES rule
@@ -1284,32 +1313,6 @@ module Cybertrain
       @auth_lockout_period = Config.env_int("CYBERTRAIN_AUTH_LOCKOUT_PERIOD", 3600)
       @auth_remember_for = Config.env_int("CYBERTRAIN_AUTH_REMEMBER_FOR", 2_592_000)
       @auth_idle_timeout = Config.env_int("CYBERTRAIN_AUTH_IDLE_TIMEOUT", 604_800)
-    end
-
-    # The parameter names whose values are replaced with `[FILTERED]` in the
-    # request log's `Started` line and on the development error page
-    # (Rails' `filter_parameters`): `password`, `password_confirmation`,
-    # `token`, `secret`, `secret_key_base`, `session_key`, `api_key` and
-    # `authorization`, or the comma-separated names in
-    # `CYBERTRAIN_FILTER_PARAMETERS` instead. A parameter is filtered when
-    # its name contains one of them, ASCII case-insensitively (`password`
-    # filters `user[password]`). `[]` turns filtering off.
-    # @example config/app.rb
-    #   config.filter_parameters = config.filter_parameters + ["otp", "ssn"]
-    # @return [Array<String>]
-    # @api public
-    attr_accessor :filter_parameters
-
-    # ParameterFilter::DEFAULT_NAMES, kept as a literal here (the HTTP layer
-    # is not required by Config), or CYBERTRAIN_FILTER_PARAMETERS split on
-    # commas, blanks dropped (Config.list_from), when it is set and not
-    # empty.
-    def self.default_filter_parameters
-      configured = env_or("CYBERTRAIN_FILTER_PARAMETERS", "")
-      return list_from(configured) unless configured.empty?
-
-      ["password", "password_confirmation", "token", "secret", "secret_key_base",
-       "session_key", "api_key", "authorization"]
     end
 
     # Declares the application's Content Security Policy (spec section 5,
