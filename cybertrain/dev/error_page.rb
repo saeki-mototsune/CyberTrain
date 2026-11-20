@@ -43,11 +43,9 @@ module Cybertrain
         begin
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
-          # A bad JSON body deserves the diagnostics page too. The two JSON
-          # classes are named ahead of StandardError for NOTES rules 33 and
-          # 61: Spinel 2026.09.12 did not catch them with it (status 33 has
-          # the program in which the pinned build does). A client fault
+        rescue StandardError => e
+          # A bad JSON body deserves the diagnostics page too: StandardError
+          # includes JSON::ParserError and JSON::NestingError. A client fault
           # (ClientError: parameters past Query's limits) gets a plain 4xx
           # naming the limit instead, as ErrorPages does.
           status = ClientError.classify(e, Cybertrain.logger)
@@ -165,8 +163,8 @@ module Cybertrain
       # The request's JSON body, parsed and dumped with filtered values
       # replaced, or "" when it is not a JSON request, is encoded, larger
       # than MAX_DUMP_BODY_BYTES, or does not parse (it may be what failed).
-      # The rescue sits in this non-yielding method (spikes/NOTES.md rules
-      # 32 and 61).
+      # The rescue sits in this non-yielding method (spikes/NOTES.md rule
+      # 32).
       def self.json_dump(request)
         return "" unless request.json?
         return "" unless request.content_encoding.empty?
@@ -176,7 +174,7 @@ module Cybertrain
 
         begin
           ErrorPage.filtered_json(JSON.parse(body), 0)
-        rescue JSON::NestingError, JSON::ParserError, StandardError
+        rescue StandardError
           ""
         end
       end
