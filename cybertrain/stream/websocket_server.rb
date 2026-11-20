@@ -26,9 +26,7 @@ module Cybertrain
       def initialize(socket, sub, max_message)
         @socket = socket
         @sub = sub
-        @max_message = max_message
         @assembler = WebSocket::Frame::Assembler.new(max_message)
-        @assembled = 0
         @buf = +""
         @pos = 0
         @done = false
@@ -104,10 +102,7 @@ module Cybertrain
         WebSocket::Frame.check_header(header, @assembler.assembling?, false)
         op = header.frame_opcode
         length = header.frame_length
-        if op < 8
-          before = op == WebSocket::Frame::OP_CONTINUATION ? @assembled : 0
-          raise Cybertrain::WebSocket::TooLargeError, "message too large" if before + length > @max_message
-        end
+        @assembler.check_room(op, length)
         return 0 if have < size + length
 
         payload = WebSocket::Frame.unmask(@buf.byteslice(@pos + size, length), header.frame_mask_key)
@@ -123,11 +118,8 @@ module Cybertrain
           return -1
         else
           if @assembler.add(op, header.frame_fin, payload)
-            @assembled = 0
             msg = @assembler.take_message
             return -1 unless reader_push(msg.ws_opcode == :text ? "text" : "binary", msg.ws_data)
-          else
-            @assembled = op == WebSocket::Frame::OP_CONTINUATION ? @assembled + payload.bytesize : payload.bytesize
           end
         end
         1
