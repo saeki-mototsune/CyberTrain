@@ -3,6 +3,7 @@ require "cybertrain/logger"
 require "cybertrain/http/body_writer"
 require "cybertrain/websocket/frame"
 require "cybertrain/stream"
+require "cybertrain/stream/session_writer"
 
 module Cybertrain
   module Stream
@@ -158,22 +159,21 @@ module Cybertrain
     # connect, 1009 for a message past {Config#stream_max_message}, 1002
     # for a framing error, 1013 past {Config#stream_max_connections} and
     # for a subscriber dropped for its backlog.
-    class WebSocketWriter < BodyWriter
+    class WebSocketWriter < SessionWriter
       SLICE = 1.0
       # How long to wait for the client's close after ours.
       CLOSE_WAIT = 1.0
 
       # close_code > 0: answer the handshake with that close at once.
       def initialize(hub, names, json, after, ping_interval, max_message, close_code, max_connections)
-        @max_connections = max_connections
-        @hub = hub
-        @names = names
-        @json = json
-        @after = after
-        @head = -1
-        @ping_interval = ping_interval
+        super(hub, names, json, after, ping_interval, max_connections)
         @max_message = max_message
         @close_code = close_code
+      end
+
+      def write_message(sink, msg)
+        ws_send(sink, WebSocket::Frame::OP_TEXT, @json ? Stream.envelope(msg) : msg.message_payload)
+        nil
       end
 
       def write_body(sink)
@@ -236,24 +236,7 @@ module Cybertrain
       private
 
       def ws_session(sink, sub)
-        last = Stream.replay_start(@after, @head)
-        if last >= 0
-          # By chunks, as SSEWriter does.
-          cursor = sub.boundary
-          names = sub.stream_names
-          while !sink.closed?
-            backlog = Stream.replay(names, last)
-            i = 0
-            while i < backlog.size
-              msg = backlog[i]
-              ws_send(sink, WebSocket::Frame::OP_TEXT, ws_text(msg))
-              last = msg.message_id
-              i += 1
-            end
-            break if backlog.size < Stream::REPLAY_CHUNK || last >= cursor
-          end
-          sub.skip_through!(last)
-        end
+        replay_backlog(sink, sub, sub.stream_names)
         ping = @ping_interval.to_f
         slice = ping < SLICE ? ping : SLICE
         started = Clock.monotonic
@@ -295,7 +278,7 @@ module Cybertrain
           elsif msg.message_id == CONTROL_ID
             return nil unless ws_control(sink, sub, msg.message_stream, msg.message_payload)
           else
-            ws_send(sink, WebSocket::Frame::OP_TEXT, ws_text(msg))
+            write_message(sink, msg)
             quiet_since = now
           end
         end
@@ -401,10 +384,6 @@ module Cybertrain
       def ws_send(sink, opcode, payload)
         sink.write(WebSocket::Frame.encode(opcode, payload, ""))
         nil
-      end
-
-      def ws_text(msg)
-        @json ? Stream.envelope(msg) : msg.message_payload
       end
     end
   end
