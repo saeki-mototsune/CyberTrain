@@ -35,14 +35,8 @@ end
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: ->(name, args, options) { "/" }, views: Cybertrain::Application.no_views)
 end
 
 test "feeds is the one registered feature" do

@@ -27,16 +27,10 @@ Cybertrain.logger = Cybertrain::Logger.new(LOG)
 Cybertrain::Job.handle("Mailer") { |payload| nil }
 Cybertrain::Job.register("Welcome", concurrency: 1, concurrency_key: "user_id") { |payload| nil }
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def resolver = ->(name, args, options) { "/" }
 
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: Cybertrain::Application.no_views)
 end
 
 # Runs block with the database connected (Main disconnects after each command).

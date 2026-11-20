@@ -14,16 +14,10 @@ require_relative "support/file_tree"
 # It links SQLite through FFI, so it cannot run under CRuby: its snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def resolver = ->(name, args, options) { "/" }
 
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: Cybertrain::Application.no_views)
 end
 
 exit(run(["console"])) if ENV["MAIN_CONSOLE_CHILD"] == "1"

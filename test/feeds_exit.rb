@@ -25,12 +25,6 @@ end
 
 def resolver = ->(name, args, options) { "/" }
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def subscribe_crashy(url)
   Cybertrain::WebSocket.subscribe("crashy", url, allow_private: true)
     .on_message { |conn, data| conn.send_text(data) }
@@ -41,7 +35,7 @@ if ENV[CHILD_FLAG] == "1"
   Dir.chdir(ENV["CT_TEST_DIR"].to_s)
   subscribe_crashy(ENV["CT_TEST_URL"].to_s)
   status = Cybertrain::Main.run("blog", ["feeds"], router: Cybertrain::Router.new, url_resolver: resolver,
-                                                   views: no_views)
+                                                   views: Cybertrain::Application.no_views)
   puts "returned #{status}"
   STDOUT.flush
   exit(status)

@@ -21,16 +21,10 @@ at_exit do
   FileTree.remove(TMP)
 end
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def resolver = ->(name, args, options) { "/" }
 
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: Cybertrain::Application.no_views)
 end
 
 test "server_args keeps only a port" do

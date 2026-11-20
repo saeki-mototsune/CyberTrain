@@ -45,16 +45,10 @@ Cybertrain.logger = Cybertrain::Logger.new(LOG)
 # What the job ran (a constant: NOTES rule 64).
 DONE = Array.new(0) { "" }
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def resolver = ->(name, args, options) { "/" }
 
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: Cybertrain::Application.no_views)
 end
 
 # Through a method whose parameter the closure captures (NOTES rule 21).
