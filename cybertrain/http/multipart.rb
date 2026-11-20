@@ -29,8 +29,8 @@ module Cybertrain
 
   # The flat result of {Multipart.parse}: parallel typed Arrays, in the order
   # the parts arrived, not one Hash of mixed values (NOTES rules 46, 56). It
-  # is named MultipartForm and not Multipart::Form because Class#name carries
-  # no namespace under Spinel.
+  # is named MultipartForm and not Multipart::Form: Class#name carried no
+  # namespace on Spinel 2026.09.12 (rule 46), and the name is public API.
   # @api public
   class MultipartForm
     def initialize

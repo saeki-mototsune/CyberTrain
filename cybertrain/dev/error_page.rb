@@ -44,10 +44,12 @@ module Cybertrain
           nxt = @app
           nxt.call(ctx) unless nxt.nil?
         rescue JSON::NestingError, JSON::ParserError, StandardError => e
-          # NOTES rule 33: JSON::ParserError is not a StandardError under
-          # Spinel, and a bad JSON body deserves the diagnostics page too. A
-          # client fault (ClientError: parameters past Query's limits) gets a
-          # plain 4xx naming the limit instead, as ErrorPages does.
+          # A bad JSON body deserves the diagnostics page too. The two JSON
+          # classes are named ahead of StandardError for NOTES rules 33 and
+          # 61: Spinel 2026.09.12 did not catch them with it (status 33 has
+          # the program in which the pinned build does). A client fault
+          # (ClientError: parameters past Query's limits) gets a plain 4xx
+          # naming the limit instead, as ErrorPages does.
           status = ClientError.classify(e, Cybertrain.logger)
           if status >= 500
             render_exception(ctx, e)
@@ -183,7 +185,8 @@ module Cybertrain
       # member whose name ParameterFilter.filter? names shown as
       # "[FILTERED]", recursively. Every piece is appended directly to a
       # +"" local (spikes/NOTES.md rule 66); typed copies through Cast.hash
-      # / Cast.array (rule 71), `when Time` first (rule 8).
+      # / Cast.array (rule 71), `when Time` first (the order rule 8 asks
+      # for; status 8 has its probe on the pinned build).
       def self.filtered_json(value, depth)
         return "..." if depth >= MAX_DUMP_DEPTH
 

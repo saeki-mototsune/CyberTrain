@@ -32,8 +32,8 @@ module Cybertrain
       @exact_length = -1
       # Strings or Integers, seeded with both (spikes/NOTES.md rule 9).
       @in_list = Array.new(0) { [0, ""][0] }
-      # An Integer Range (the only kind Spinel builds: NOTES rule 86) as its
-      # two ends; an open end has its has_range_* flag false.
+      # An Integer Range (the only kind apply_list accepts: NOTES rule 86)
+      # as its two ends; an open end has its has_range_* flag false.
       @has_range = false
       @range_min = 0
       @range_max = 0
@@ -192,8 +192,10 @@ module Cybertrain
     end
 
     # inclusion / exclusion `in:` (or `within:`): an Array of Strings or
-    # Integers, or a Range of Integers. Spinel builds no other Range (NOTES
-    # rule 86), and one with other ends raises here under CRuby too.
+    # Integers, or a Range of Integers. A Range with other ends raises here
+    # on both runtimes: under Spinel a Range of Time or Date raises when it
+    # is built, and a Float Range is not matched by `when Range` once boxed
+    # (NOTES rule 86 and its status; a String Range is matched there).
     def apply_list(key, value)
       unless key == :in || key == :within
         raise ArgumentError, "validates: #{@kind}: takes in: (got #{key}:)"

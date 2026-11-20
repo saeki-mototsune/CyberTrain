@@ -109,8 +109,8 @@ module Cybertrain
       case value
       when nil, false then ""
       when true then " #{name}=\"#{name}\""
-      # Time before Hash: a Time in a polymorphic slot can match a
-      # collection class (spikes/NOTES.md rule 8).
+      # Time before Hash, the order spikes/NOTES.md rule 8 asks for (seen
+      # on Spinel 2026.09.12; status 8 has its probe on the pinned build).
       when Time then " #{name}=\"#{FormBuilder.html_text(value)}\""
       when Hash
         unless name == "data" || name == "aria"

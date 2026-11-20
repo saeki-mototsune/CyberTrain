@@ -1305,10 +1305,12 @@ module Cybertrain
         HttpCache.add_vary_accept(@request, @response)
       rescue StandardError => e
         # An action's bad JSON.parse goes through rescue_with_handler
-        # like any other exception. A `rescue_from
-        # JSON::ParserError` handler fires under CRuby; under Spinel the
-        # constant cannot be referenced as a value (rule 48), so no app can
-        # register one there and the exception goes on to the error pages.
+        # like any other exception: a `rescue_from JSON::ParserError`
+        # handler is found by the class's name, and with none the
+        # exception goes on to the error pages. No compiled test registers
+        # such a handler (NOTES rule 48: Spinel 2026.09.12 could not take
+        # the constant as a value; status 48 has the program that does on
+        # the pinned build).
         rescue_with_handler(e)
         HttpCache.add_vary_accept(@request, @response)
       end
@@ -1380,11 +1382,11 @@ module Cybertrain
       # a Query.parse of its own past Query's limits) answers 400 with its
       # message in plain text, like Rails' bad-request page, instead of
       # surfacing as a 500. The decision is ClientError's, the same one the
-      # error pages use, by class name (NOTES rules 46, 47): comparing the
-      # full "Cybertrain::Params::ParameterMissing" here would miss under
-      # Spinel, where Class#name is the bare "ParameterMissing". Which
-      # headers survive is Response#client_error!'s policy; then performed!
-      # so the chain stops. classify also logs the "rejected request" info
+      # error pages use, by full class name (ClientError::CLIENT_FAULTS
+      # against `e.class.name`; NOTES rules 47 and 54 are why it is a list
+      # of names and not an `is_a?`). Which headers survive is
+      # Response#client_error!'s policy; then performed! so the chain
+      # stops. classify also logs the "rejected request" info
       # line, which the error pages write for the same fault one layer up
       # (Cybertrain.logger, as Dev::ErrorPage does), so an answer given here
       # is as visible as one given there. It is called only once status_for

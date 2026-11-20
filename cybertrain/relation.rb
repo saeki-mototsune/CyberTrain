@@ -133,7 +133,9 @@ module Cybertrain
       when nil
         "#{column} IS NULL"
       when Time
-        # Before `when Array`: a Time in a poly slot matches Array (rule 8).
+        # Before `when Array`, the order NOTES rule 8 asks for: on Spinel
+        # 2026.09.12 a Time in a polymorphic slot matched Array (status 8
+        # has the rule's probe on the pinned build).
         @binds << Cast.to_sql(value)
         "#{column} = ?"
       when Array

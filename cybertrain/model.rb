@@ -84,7 +84,7 @@ module Cybertrain
     #   long (maximum is m characters)"`, `"is the wrong length (should be n
     #   characters)"`. A `nil` value is left to `presence`.
     # - `inclusion: { in: }` / `exclusion: { in: }`: an Array of Strings or
-    #   Integers, or a Range of Integers (Spinel builds no other Range);
+    #   Integers, or a Range of Integers (other ends raise ArgumentError);
     #   `"is not included in the list"` / `"is reserved"`.
     # - `format: { with: /re/, without: /re/ }`: the value as a String must
     #   match `with:` and must not match `without:`, else `"is invalid"`

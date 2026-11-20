@@ -329,8 +329,8 @@ module Cybertrain
         when Symbol
           return recv.to_s if name_sym == :to_s
           undefined(node, name_str, "Symbol")
-        # Time before Array: a Time in a polymorphic slot also matches Array
-        # (spikes/NOTES.md rule 8).
+        # Time before Array, the order spikes/NOTES.md rule 8 asks for (seen
+        # on Spinel 2026.09.12; status 8 has its probe on the pinned build).
         when Time then time_method(recv, name_sym, name_str, args, node)
         when Array then array_method(recv, name_sym, name_str, args, node)
         when Hash then hash_method(recv, name_sym, name_str, args, node)

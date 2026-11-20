@@ -28,19 +28,22 @@ module Cybertrain
     end
 
     # Full class names of the client-fault exceptions: THE list, and the one
-    # place to add a new one (a new QueryInvalid subclass, say).
-    # `e.is_a?(QueryInvalid)` cannot do this job: under Spinel is_a? on an
-    # exception object answered false for its own superclass (a QueryTooDeep
-    # reached every error path as a 500 on the 2026.09.12 build, NOTES rule
-    # 47). Matching by class name is what Controller#rescue_with_handler
-    # already does for rescue_from.
+    # place to add a new one (a new QueryInvalid subclass, say). The list
+    # stands in for `e.is_a?(QueryInvalid)`: on Spinel 2026.09.12 is_a? on
+    # an exception object answered false for its own superclass (a
+    # QueryTooDeep reached every error path as a 500, NOTES rule 47), and a
+    # raised QueryTooMany's class chain was QueryTooMany, Object,
+    # BasicObject (rule 54). On the pinned build small programs of both
+    # shapes answer as CRuby does for classes the program defines, while
+    # `superclass` still raises NoMethodError on a package's exception
+    # class and, in a program that defines a module, on Ruby's own (NOTES
+    # status 47, 54 and 104). The list stays until a change replaces it
+    # with a compiled test of these error paths. Matching by class name is
+    # what Controller#rescue_with_handler does for rescue_from.
     #
-    # Every subclass must be listed by its full name: the hierarchy is not
-    # visible under Spinel (a raised QueryTooMany's class chain there is
-    # QueryTooMany, Object, BasicObject; NOTES rules 47, 54), so there is no
-    # "any descendant of QueryInvalid" test that means the same on both
-    # runtimes. An app's own exception class, even one that subclasses
-    # QueryLimitExceeded, is the app's 500 on both; the list is the
+    # Every subclass must be listed by its full name, which is what
+    # ClientError.status_for compares. An app's own exception class, even
+    # one that subclasses QueryLimitExceeded, is the app's 500; the list is the
     # framework's. script/check-client-faults (run by CI) fails when a
     # QueryInvalid subclass or ParameterMissing is not listed, or an entry
     # names no class.

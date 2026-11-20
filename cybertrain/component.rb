@@ -54,8 +54,9 @@ module Cybertrain
     end
 
     # "card" for CardComponent, "admin/user_row" for Admin::UserRowComponent:
-    # the name `render component:` uses. gen/components.rb spells it out
-    # per class (under Spinel Class#name has no namespace, rule 46).
+    # the name `render component:` uses. gen/components.rb defines it per
+    # class as a literal, so the name does not depend on Class#name (which
+    # had no namespace on Spinel 2026.09.12, NOTES rule 46).
     # @api public
     def component_name
       Component.name_for(self.class.name)
