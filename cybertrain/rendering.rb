@@ -231,8 +231,6 @@ module Cybertrain
       case value
       when SafeString then return value.to_s
       when String then nil
-      # Time before Array (spikes/NOTES.md rule 8).
-      when Time then nil
       when Array
         out = +""
         i = 0
