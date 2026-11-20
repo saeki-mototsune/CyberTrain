@@ -1110,35 +1110,13 @@ module Cybertrain
     # or empty; text that is not a level becomes its own Symbol, which
     # {#log_error} refuses at boot.
     def self.default_log_level
-      text = env_or("CYBERTRAIN_LOG_LEVEL", "info").downcase
-      if text == "debug"
-        :debug
-      elsif text == "info"
-        :info
-      elsif text == "warn"
-        :warn
-      elsif text == "error"
-        :error
-      elsif text == "fatal"
-        :fatal
-      elsif text == "none"
-        :none
-      else
-        text.to_sym
-      end
+      env_or("CYBERTRAIN_LOG_LEVEL", "info").downcase.to_sym
     end
 
     # CYBERTRAIN_LOG_FORMAT as a Symbol (any case), :text when it is unset
     # or empty; other text becomes its own Symbol, refused at boot.
     def self.default_log_format
-      text = env_or("CYBERTRAIN_LOG_FORMAT", "text").downcase
-      if text == "text"
-        :text
-      elsif text == "json"
-        :json
-      else
-        text.to_sym
-      end
+      env_or("CYBERTRAIN_LOG_FORMAT", "text").downcase.to_sym
     end
 
     # CYBERTRAIN_HOST, or "127.0.0.1" when it is unset or empty. Not
