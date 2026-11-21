@@ -244,3 +244,69 @@ keep working as files that require the new ones, so neither cybertrain's code no
 - Workarounds needed for upstream Spinel, each recorded in spinel-http's
   own notes with the upstream issue, in the style of `spikes/NOTES.md`.
 - Splitting `Request` (1,336 lines) further, if it helps; not required.
+
+## 11. Spike results
+
+Step 1's spike, run on 2026-11-21 (Linux x86_64, gcc 13.3.0): the records
+are in `spikes/spinel-http/` (each program's header holds its commands and
+output; the README the upstream test run). **fork** is the pinned
+2026.11.15.7033; **upstream** is matz/spinel's latest release, 2026.10.25
+(2814693f), built from source with toolchain.rb's four steps. That tag
+predates the fork fixes merged into matz/spinel on 2026-10-26 (#10254 to
+#10263).
+
+| Question | fork | upstream |
+| --- | --- | --- |
+| Does the HTTP layer as it is (`require "cybertrain/http/server"`, a bare `HttpHandler`, `Server.new(..., port: 0)`, one request) build and serve? (`hello.rb`) | yes: `HTTP/1.1 200 OK`, `hello` | yes, the same, no compile warning |
+| Do the eleven moving tests (section 6) pass? | not re-run by the spike (CI runs them on every push) | 10 of 11; `http_response.rb` fails 2 of 25 cases, see below |
+| Does a `HttpLogContext` subclass stored in a base-typed ivar keep its type and its `request_id` when handed to a sink subclass's `swap_context`? (`subclass_log.rb`) | yes, by calling the subclass's method directly, no `is_a?` (rule 47) | yes |
+| Is a class-level switch (`@installed = HttpLogSwitch.new`, the `Params.max_page` shape) replaced at load by a subclass the one another thread calls, with save-yield-ensure (rule 103) restoring the thread's context? | yes | yes |
+| Does `permit` added by reopening `Params` in a second file work on children the first file built with `Params.new`, nested filters and a nested error class included? (`reopen_params.rb`) | yes | yes |
+| Do constant aliases (`Cybertrain::Server = SpinelHttp::Server`) construct, subclass, and catch a moved error (and its subclass) in `rescue Cybertrain::QueryInvalid`? (`const_alias.rb`) | yes | yes |
+| What does `e.class.name` print for an alias-caught error? | `SpinelHttp::QueryInvalid` (as CRuby; rule 46's bare names not seen) | the same |
+
+Upstream failures, the whole list:
+
+1. `assert_nil res.drop_header("Location")` and `assert_nil
+   res.client_error!(400, ...)` in test/http_response.rb: the argument
+   call is compiled away, so the header is not dropped. docs/spinel-feedback.md
+   F ("a call whose result is always nil is dropped when passed to a typed
+   parameter"), fixed in the fork's 2026.10.26.7019 and in matz/spinel by
+   #10260, after the 2026.10.25 tag. The layer's own code is not affected
+   in these tests (the same calls as statements work under upstream); the
+   shape is a test's. Avoidable inside spinel-http: its tests call a
+   nil-returning method as a statement and assert after, until an upstream
+   release carries #10260.
+
+Not a failure, but a difference scripts must allow for: the fork's `spin
+flags` writes `--strict-require`, upstream's `--require-gate`. spinel-http
+takes its flags from `spin flags` and spells neither.
+
+No stop condition of the plan's Task 1 step 7 holds: hello builds and
+serves under upstream, the context keeps its type under both, and
+reopening works. G1 does not wait on an upstream release, though
+spinel-http's CI under upstream will show F wherever a test keeps its
+shape.
+
+Mechanisms the tasks use:
+
+- **Task 2 (logging):** the class-level switch. `HttpLogSwitch.installed`
+  is a module-level ivar defaulting to the base, and cybertrain's
+  `logger.rb` assigns its `Logger::ScopeSwitch` at load. The switch
+  receives `HttpLogContext`-typed values and hands them on to
+  `Logger.swap_scope` as they are; `Logger` calls `Scope` methods on what
+  comes back with no type test. The one thing the switch does by hand is
+  map `HttpLogContext::NONE` to `Logger::NO_SCOPE` both ways, since a base
+  context has no `Scope` methods.
+- **Task 3 (params):** reopening. The HTTP layer's file defines `Params`'
+  structure and builds children with `Params.new`; cybertrain's
+  `params.rb` reopens the class to add `permit`/`require`/`expect` and
+  `ParameterMissing`. Moving the whole `Params` is not needed.
+- **Next plan (old names):** constant aliases for classes and error
+  classes (`Cybertrain::Server = SpinelHttp::Server`): one class object,
+  so `new`, subclassing, `equal?` and `rescue` by either name all hold. A
+  thin subclass is not needed and would make two classes. Since
+  `Class#name` answers `SpinelHttp::...` after the move, every list that
+  matches class names as strings (`ClientError::CLIENT_FAULTS` and its
+  bare-name twin) must name the `SpinelHttp::` classes. A module alias
+  (`Cookies`) was not tried; it is the next plan's to check.
