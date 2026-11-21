@@ -430,3 +430,7 @@ at the newest release's image.
 
 [docs/deploy-kamal.md](../../docs/deploy-kamal.md) (part 8 of docs/deploy.md, in English) covers the rest:
 DNS, the registry, `builder.arch`, backups of the SQLite volume.
+
+`AGENTS.md` tells AI coding agents how the blog differs from Rails and
+from an application made by `cybertrain new`, and the checks to run before
+a change is done; `CLAUDE.md` imports it for Claude Code.

@@ -16,7 +16,7 @@ at_exit do
 end
 
 EXPECTED_FILES = [
-  "spin.toml", ".gitignore", ".env.example", "README.md",
+  "spin.toml", ".gitignore", ".env.example", "README.md", "AGENTS.md", "CLAUDE.md",
   "config/app.rb", "config/routes.rb", "config/locales/en.yml",
   "db/schema.rb", "db/migrate/.keep",
   "app/controllers/application_controller.rb", "app/models/.keep", "app/helpers/.keep", "app/jobs/.keep",
@@ -190,6 +190,24 @@ test "README.md gives the cybertrain command sequence" do
   assert_includes readme, "`cybertrain test` runs the tests under `test/`"
   assert_includes readme, "then runs `cybertrain test`.\n"
   assert_nil readme.index("spin test")
+end
+
+test "AGENTS.md tells an AI agent where the app is not Rails; CLAUDE.md imports it" do
+  agents = read("blog/AGENTS.md")
+  assert(agents.start_with?("# AGENTS.md\n\nInstructions for AI coding agents working on Blog."))
+  # The checks before a change is done, and the binary they name.
+  assert_includes agents, "SPIN_DEBUG=1 cybertrain spin run gen -- --check"
+  assert_includes agents, "a missing `require` line in\n   `bin/blog.rb` passes the tests"
+  assert_includes agents, "- `gen/`: **generated, never edit by hand.**"
+  # The Rails habits that do not compile or mean something else.
+  assert_includes agents, "`def new_action`"
+  assert_includes agents, "`before_action { |c| c.require_admin }`"
+  assert_includes agents, "`base.dup.where(...)`"
+  assert_includes agents, "`rescue JSON::ParserError, StandardError`"
+  assert_includes agents, "use `button_to`"
+  assert_includes agents, "both** files"
+  assert_equal "@AGENTS.md\n", read("blog/CLAUDE.md")
+  assert_includes read("blog/README.md"), "`AGENTS.md` tells AI coding agents"
 end
 
 test "the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000" do

@@ -26,6 +26,8 @@ module Cybertrain
           [".gitignore", Templates.gitignore],
           [".env.example", Templates.env_example],
           ["README.md", Templates.readme(title, package)],
+          ["AGENTS.md", Templates.agents_md(title, package)],
+          ["CLAUDE.md", Templates.claude_md],
           ["config/app.rb", Templates.config_app],
           ["config/routes.rb", Templates.routes],
           ["config/locales/en.yml", Templates.locales_en_yml],
