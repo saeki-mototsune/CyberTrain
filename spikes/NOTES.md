@@ -647,8 +647,7 @@ decision, and 77 explicitly retires a workaround.
     so; of the reads tried only `IO#gets` returns a UTF-8 character String
     (`size` 8 for 13 bytes; status 27). Byte offsets stay the rule: they are
     right under both.
-    Permanent (docs/spinel-feedback.md rule 27): how Spinel is, and nothing
-    is asked; no build retires this rule.
+    Kept until docs/spinel-feedback.md rule 27 is closed.
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel (2026.09.12; on
     2026.11.04.7026 the library raises ArgumentError as CRuby does, status

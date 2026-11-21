@@ -31,7 +31,7 @@ none of them.
 | `type_shapes.rb` | rule 7 to rule 11, rule 14, rule 26, rule 29, rule 34, rule 35, rule 37, rule 39, rule 41, rule 43, rule 46 | 7 to 11, 14, 26, 29, 34, 35, 37, 39, 41, 43, 46 | each is closed |
 | `constant_order.rb` | rule 17 (the half that matches CRuby: a constant assigned with `=`) | 17 | rule 17 is closed |
 | `io_shapes.rb` | rule 19, rule 28 | 19, 28 | each is closed |
-| `socket_shapes.rb` | rule 21, rule 27 | 21, 27 | rule 21 is closed; the section of rule 27 (a constraint) is permanent |
+| `socket_shapes.rb` | rule 21, rule 27 (the reads that match CRuby) | 21, 27 | each is closed |
 | `socket_bare_readpartial.rb` | rule 20 | 20 | rule 20 is closed |
 | `rescue_shapes.rb` | rule 32, rule 44, rule 45, rule 50, AE | 32, 44, 45, 47, 50 | each is closed |
 | `json_error_shapes.rb` | rule 33, rule 48, rule 61 | 33, 48, 61 | each is closed |
