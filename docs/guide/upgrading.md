@@ -19,8 +19,9 @@ cybertrain test
 <!-- list: points -->
 - `git status --short` prints nothing: everything is committed, so each
   later step shows as a diff of its own.
-- `cybertrain version` prints the release the application is on. It is also
-  the `version` under `[lock.cybertrain]` in `spin.lock`.
+- `cybertrain version` prints the command's release. The application's is
+  the `version` under `[lock.cybertrain]` in `spin.lock`. The two are the
+  same, or `cybertrain test` stops.
 - `cybertrain test` passes. A test that fails now is fixed first, on the old
   release: afterwards you could not tell it from a failure the upgrade
   caused.
@@ -32,18 +33,42 @@ Read the notes of the release you are moving to before you change anything.
 An application that skips releases reads the notes of every release in
 between, oldest first.
 
+## Install the new command
+
+The gem and the framework are released from one tag, and each release is
+written for one Spinel release and compiles the application with it
+([How Spinel is installed](install.md#how-spinel-is-installed)). So an
+upgrade starts with the new command and the Spinel it is pinned to:
+
+```shell terminal — any directory
+gem install cybertrain -v X.Y.Z
+cybertrain version
+cybertrain doctor
+cybertrain setup
+```
+
+`cybertrain version` prints `cybertrain X.Y.Z`. `cybertrain doctor` starts
+with the release and its pin, `cybertrain X.Y.Z, pinned to Spinel
+SPINEL_TAG`, and has a `spinel    ok` line when that Spinel is on this
+machine. When it is, `cybertrain setup` says `nothing to install`, as it
+does when the pin did not move with this release. When it is not,
+`cybertrain setup` builds the new Spinel into
+`~/.cybertrain/spinel/<release>/`, which takes minutes, leaves the old one
+in place and points the links in `~/.cybertrain/bin` at the new one.
+
+The commands that run spin do the same install the first time they need it,
+`cybertrain spin lock` in the next step among them. Running `cybertrain
+setup` here only chooses when the wait happens.
+
 ## Change the version
 
-The gem and the framework are released from one tag, and the `cybertrain`
-command refuses an application whose framework is another release than
-itself ([Moving an app to a new release](install.md#moving-an-app-to-a-new-release)).
-So the release is changed in three places, together:
+The `cybertrain` command refuses an application whose framework is another
+release than itself ([Moving an app to a new release](install.md#moving-an-app-to-a-new-release)).
+So the application follows the command, in two files:
 
-1. The command: `gem install cybertrain -v X.Y.Z`. `cybertrain version`
-   then prints `cybertrain X.Y.Z`.
-2. `spin.toml`: the `cybertrain` line under `[dependencies]` names the new
+1. `spin.toml`: the `cybertrain` line under `[dependencies]` names the new
    tag, `ref = "vX.Y.Z"`.
-3. `spin.lock`, which is written again from nothing:
+2. `spin.lock`, which is written again from nothing:
 
 ```shell terminal — the app's directory
 rm spin.lock
@@ -73,27 +98,6 @@ Until the command and `spin.lock` agree, `server`, `build`, `db`, `test` and
 is cybertrain A.B.C (spin.lock), but this cybertrain command is X.Y.Z.`,
 before they run spin or write a file. `cybertrain spin ...` is never
 checked.
-
-## Install the pinned Spinel
-
-Each release is written for one Spinel release and compiles the application
-with it ([How Spinel is installed](install.md#how-spinel-is-installed)).
-
-```shell terminal — any directory
-cybertrain doctor
-cybertrain setup
-```
-
-`cybertrain doctor` starts with the release and its pin, `cybertrain X.Y.Z,
-pinned to Spinel SPINEL_TAG`, and has a `spinel    ok` line when that Spinel
-is installed. When it is, `cybertrain setup` prints `nothing to install`:
-the pin did not move with this release. When it is not, `cybertrain setup`
-builds the new Spinel into `~/.cybertrain/spinel/<release>/`, which takes
-minutes, leaves the old one in place and points the links in
-`~/.cybertrain/bin` at the new one.
-
-The commands that run spin do the same install the first time they need it,
-so this step only chooses when the wait happens.
 
 ## Regenerate and read the diff
 
@@ -218,8 +222,8 @@ release does not need them. Each one says so itself:
 
 | Step | Nothing to do when |
 | --- | --- |
+| Install the new command | never for the command; for its Spinel, when `cybertrain setup` says `nothing to install` |
 | Change the version | never: every release changes it |
-| Install the pinned Spinel | `cybertrain setup` prints `nothing to install` |
 | Regenerate | `git status --short gen/` prints nothing |
 | Run the generators again | the run prints no `manual` and no `create` line |
 | Migrate | `cybertrain db status` shows no `down` line |
@@ -373,12 +377,14 @@ Two defaults changed after 0.4
 - `every` tasks continue from the timetable after a restart instead of
   starting afresh: an interval that passed while the process was down runs
   once at start.
-- Giving an existing kind a key (`limits_concurrency ... key:`): stop every
-  old process before the first new one starts, as for any upgrade
-  ([Process roles](background-and-operations.md#process-roles)). The first
-  new process keys the `queued` rows enqueued before (it logs the ids of
-  rows whose payload has no such field), and a `running` row left by an old
-  process gets its key when it is recovered.
+- An application that runs jobs stops every old process before the first
+  new one starts ([Deploy](#deploy), step 4). 0.4 writes no heartbeat for a
+  job it is running, so a new process takes that job for abandoned, queues
+  it again and runs it a second time beside the old one.
+- Giving an existing kind a key (`limits_concurrency ... key:`) relies on
+  that stop. The first new process keys the `queued` rows enqueued before
+  (it logs the ids of rows whose payload has no such field), and a
+  `running` row left by an old process gets its key when it is recovered.
 - `jobs` is now a built-in command: an application command named `jobs`
   must be renamed.
 

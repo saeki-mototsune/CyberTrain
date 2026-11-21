@@ -1,5 +1,5 @@
 ---
-source_sha256: 7aa2bc9f2afe3a20ee476630983ef58387503e54a0cca20dedb6705d2914155f
+source_sha256: 482060de855362691c97a23308a1211859f96d1d52a161c7acda863db228e640
 ---
 # 后台任务与运维
 
@@ -153,7 +153,7 @@ end
 - 带名称的 `feeds` 只运行这些订阅（每个订阅一个容器），未知的名称会让启动停止，并列出已注册的名称。当数据订阅在自己的进程中运行时，请在服务器上设置 `CYBERTRAIN_WORKER=0`，否则每个进程都会接收每个订阅。
 - `feeds` 进程会重启线程已死掉的数据订阅，而当某一个订阅不断死掉时（在 `feed_restart_window` 内重启了 `feed_restart_limit` 次），它会以状态 1 退出；所以请在重启策略之下运行它（Docker 的 `restart: unless-stopped`、systemd 的 `Restart=always`）；详情见[订阅 WebSocket 数据流](external-services.md#consuming-websocket-feeds)。`./<app> feeds status` 打印每个数据订阅最后报告的状态。
 - 典型的拆分方式：代理之后是设置了 `CYBERTRAIN_WORKER=0` 的 `server`，一个或多个 `worker`，有订阅时再加上 `feeds`。`cybertrain new` 会在 `config/deploy.yml` 中写入 `web` 角色，`worker` 和 `feeds` 角色则是注释掉的；`cybertrain generate job` 和 `generate authentication` 会添加 `require "cybertrain/jobs"`，并取消 worker 角色的注释；systemd 单元见 [docs/deploy.en.md](../deploy.en.md) 第 9 部分 “Splitting the roles”。
-- **从没有心跳的版本升级时**：在启动第一个新进程之前，先停止所有旧进程。旧进程不写心跳，所以新的 worker 会把旧 worker 仍在运行的作业当作被遗弃的作业取走。
+- 说明有要求的升级，要在第一个新进程启动之前停止旧版本的所有进程（[升级：部署](upgrading.md#deploy)）。
 - `Cybertrain::Main.worker?(ARGV)` 和 `Main.feeds?(ARGV)` 与 `Main.server?(ARGV)` 一样，告诉 `bin/<app>.rb` 它正在启动哪种角色。
 - `worker` 需要 `bin/<app>.rb` 中的 `require "cybertrain/jobs"`，`feeds` 需要 `require "cybertrain/feeds"`（`cybertrain/websocket` 会加载它）；缺少时，二进制文件会指出缺少哪一行并以 1 退出。
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 7aa2bc9f2afe3a20ee476630983ef58387503e54a0cca20dedb6705d2914155f
+source_sha256: 482060de855362691c97a23308a1211859f96d1d52a161c7acda863db228e640
 ---
 # Tâches de fond et exploitation
 
@@ -414,10 +414,9 @@ des conteneurs, tous à partir de la même image et de la même base&nbsp;:
   `require "cybertrain/jobs"`, décommentent le rôle worker&nbsp;;
   [docs/deploy.en.md](../deploy.en.md), partie 9, «&nbsp;Splitting the
   roles&nbsp;», donne les unités systemd.
-- **Mise à jour depuis une version sans battements de cœur**&nbsp;: arrêtez
-  tous les anciens processus avant de démarrer le premier nouveau. Un nouveau
-  worker prendrait pour abandonnés les jobs qu’un ancien exécute encore,
-  puisqu’un ancien processus n’écrit aucun battement de cœur.
+- Une mise à jour dont les notes le demandent arrête tous les processus de
+  l’ancienne version avant que le premier nouveau démarre
+  ([Mise à jour&nbsp;: déployer](upgrading.md#deploy)).
 - `Cybertrain::Main.worker?(ARGV)` et `Main.feeds?(ARGV)`, comme
   `Main.server?(ARGV)`, indiquent à `bin/<app>.rb` quel rôle il démarre.
 - `worker` demande `require "cybertrain/jobs"` dans `bin/<app>.rb`, et `feeds`

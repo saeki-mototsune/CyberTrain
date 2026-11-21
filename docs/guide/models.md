@@ -208,11 +208,7 @@ Rails reads a `decimal` column as a BigDecimal; here it is a Float in a
 Keep money in minor units in an integer column (`price_cents`): Integer
 arithmetic and `sum_int` are exact. Read a form field with
 `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` and show it
-with `number_to_currency(price_cents / 100.0)`. Upgrade note: a tie that the
-compiled framework used to round down (1.005 stored as 1.0) is now stored
-rounded up, for new writes only, and the generated validation refuses values
-that were stored before; D73 has the steps for moving a decimal column to
-minor units.
+with `number_to_currency(price_cents / 100.0)`.
 
 ### JSON columns
 

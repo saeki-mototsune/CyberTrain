@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a9265e8cc11206efd57f2283164a48771657a3ce876972b6e9492031c11de61
+source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
 ---
 # モデルとデータベース
 
@@ -122,7 +122,7 @@ Rails は `decimal` カラムを BigDecimal として読みますが、ここで
 - **範囲外はバリデーションエラーです。** precision のある decimal カラムに対して `spin run gen` は `numericality` のバリデーションを書くので、精度を超える値、Infinity、NaN に対して `save` は保存せずに false を返します。
 - **合計は Float の合計です。** 合計は端で `Cybertrain::Cast.round_scale(total, 2)` で丸めてください。`total.round(2)` ではありません。
 
-金額は整数カラムに最小単位で持ってください（`price_cents`）：Integer の演算と `sum_int` は正確です。フォームの項目は `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` で読み、`number_to_currency(price_cents / 100.0)` で表示します。アップグレード時の注意：コンパイルしたフレームワークがこれまで切り捨てていた境界値（1.005 が 1.0 として保存されていた）は、新しい書き込みに限り、切り上げて保存されるようになりました。また、生成されるバリデーションは、これまで保存されていた値を拒否します。decimal カラムを最小単位に移す手順は D73 にあります。
+金額は整数カラムに最小単位で持ってください（`price_cents`）：Integer の演算と `sum_int` は正確です。フォームの項目は `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` で読み、`number_to_currency(price_cents / 100.0)` で表示します。
 
 ### JSON のカラム
 

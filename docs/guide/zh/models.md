@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a9265e8cc11206efd57f2283164a48771657a3ce876972b6e9492031c11de61
+source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
 ---
 # 模型与数据库
 
@@ -122,7 +122,7 @@ Rails 把 `decimal` 列读成 BigDecimal；这里它是存放在 `DECIMAL(p,s)` 
 - **超出范围是验证错误。** 对于带 precision 的 decimal 列，`spin run gen` 会写出一条 `numericality` 验证，因此对超出精度的值、Infinity 和 NaN，`save` 返回 false 而不会存储。
 - **求和是 Float 求和。** 在边界处用 `Cybertrain::Cast.round_scale(total, 2)` 对总数舍入，而不是 `total.round(2)`。
 
-把金额以最小单位存在整数列中（`price_cents`）：Integer 运算和 `sum_int` 是精确的。用 `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` 读取表单字段，用 `number_to_currency(price_cents / 100.0)` 显示。升级说明：编译后的框架过去会向下舍入的临界值（1.005 被存为 1.0），现在会向上舍入后存储，仅影响新的写入；生成的验证会拒绝以前可以存入的值。把 decimal 列迁移为最小单位的步骤见 D73。
+把金额以最小单位存在整数列中（`price_cents`）：Integer 运算和 `sum_int` 是精确的。用 `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` 读取表单字段，用 `number_to_currency(price_cents / 100.0)` 显示。
 
 ### JSON 列
 

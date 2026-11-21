@@ -1,5 +1,5 @@
 ---
-source_sha256: 7aa2bc9f2afe3a20ee476630983ef58387503e54a0cca20dedb6705d2914155f
+source_sha256: 482060de855362691c97a23308a1211859f96d1d52a161c7acda863db228e640
 ---
 # バックグラウンド処理と運用
 
@@ -153,7 +153,7 @@ end
 - 名前を付けた `feeds` はその購読だけを動かし（フィードごとに 1 つのコンテナー）、未知の名前は、登録された名前の一覧を出して起動を止めます。フィードを専用のプロセスで動かすときは、サーバーに `CYBERTRAIN_WORKER=0` を設定してください。そうしないと、どのプロセスもすべてのフィードを受信します。
 - `feeds` のプロセスはスレッドが死んだフィードを再起動し、同じフィードが死に続けると（`feed_restart_window` のうちに `feed_restart_limit` 回の再起動）終了ステータス 1 で終わります。なので再起動ポリシーの下で動かしてください（Docker の `restart: unless-stopped`、systemd の `Restart=always`）。詳しくは[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)にあります。`./<app> feeds status` は、各フィードが最後に報告した状態を表示します。
 - よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` の役割を書き、`worker` と `feeds` の役割はコメントにしておきます。`require "cybertrain/jobs"` を追加する `cybertrain generate job` と `generate authentication` が、worker の役割のコメントを外します。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 9「Splitting the roles」にあります。
-- **ハートビートのないリリースから上げるとき**：最初の新しいプロセスを起動する前に、古いプロセスをすべて止めてください。古いプロセスはハートビートを書かないので、新しいワーカーは、古いワーカーがまだ実行しているジョブを放棄されたものとして取ってしまいます。
+- 注意点が求めるアップグレードでは、最初の新しいプロセスが起動する前に、古いリリースのプロセスをすべて止めます（[アップグレード：デプロイ](upgrading.md#deploy)）。
 - `Cybertrain::Main.worker?(ARGV)` と `Main.feeds?(ARGV)` は、`Main.server?(ARGV)` と同じく、`bin/<app>.rb` にどの役割を起動しているかを教えます。
 - `worker` には `bin/<app>.rb` に `require "cybertrain/jobs"` が、`feeds` には `require "cybertrain/feeds"`（`cybertrain/websocket` が読み込みます）が必要です。ないと、バイナリはどの行が足りないかを表示して 1 で終了します。
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 7aa2bc9f2afe3a20ee476630983ef58387503e54a0cca20dedb6705d2914155f
+source_sha256: 482060de855362691c97a23308a1211859f96d1d52a161c7acda863db228e640
 ---
 # Фоновая работа и эксплуатация
 
@@ -399,9 +399,9 @@ done jobs") { Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400) }`).
   которые добавляют `require "cybertrain/jobs"`, раскомментируют роль worker;
   юниты systemd — в [docs/deploy.en.md](../deploy.en.md), часть
   9, «Splitting the roles».
-- **Обновление с версии без пульса**: остановите все старые процессы, прежде
-  чем запускать первый новый. Новый обработчик принял бы задачи, которые
-  старый ещё выполняет, за брошенные: старый процесс не пишет пульс.
+- Обновление, заметки которого этого требуют, останавливает все процессы
+  старого релиза до запуска первого нового
+  ([Обновление: развёртывание](upgrading.md#deploy)).
 - `Cybertrain::Main.worker?(ARGV)` и `Main.feeds?(ARGV)`, как и
   `Main.server?(ARGV)`, сообщают `bin/<app>.rb`, какую роль он запускает.
 - `worker` требует `require "cybertrain/jobs"` в `bin/<app>.rb`, а `feeds` —

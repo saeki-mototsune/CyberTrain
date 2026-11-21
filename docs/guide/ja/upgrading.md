@@ -1,5 +1,5 @@
 ---
-source_sha256: c488bca3969af0a0d59804950c6461d8a7735db560f30b0dc8348d77a97edba8
+source_sha256: 45a936279cc9a0eb9a65fd3141efb6218521a5d3bb4a7b17ee0efb2db4fe9659
 ---
 # アップグレード
 
@@ -17,19 +17,33 @@ cybertrain test
 
 <!-- list: points -->
 - `git status --short` が何も表示しないこと：すべてコミット済みなので、以降の各ステップがそれぞれ別の差分として見えます。
-- `cybertrain version` は、アプリケーションが使っているリリースを表示します。`spin.lock` の `[lock.cybertrain]` にある `version` も同じです。
+- `cybertrain version` は、コマンドのリリースを表示します。アプリケーションのリリースは、`spin.lock` の `[lock.cybertrain]` にある `version` です。この 2 つは同じで、違えば `cybertrain test` が止まります。
 - `cybertrain test` が通ること。いま失敗するテストは、古いリリースの上で先に直します：後からでは、アップグレードが原因の失敗と見分けがつきません。
 - 本番に今日のバックアップがあること（[運用：バックアップ、VACUUM、ヘルスチェック](background-and-operations.md#operations-backups-vacuum-health-check)）。リリースによっては、データベースに保存されているものが変わります。
 
 何かを変える前に、移行先のリリースの注意点を読んでください。リリースを飛ばすアプリケーションは、間にあるすべてのリリースの注意点を古い順に読みます。
 
+## 新しいコマンドをインストールする
+
+gem とフレームワークは同じタグからリリースされ、各リリースは 1 つの Spinel リリースに向けて書かれていて、アプリケーションをそれでコンパイルします（[Spinel のインストールの仕組み](install.md#how-spinel-is-installed)）。そのため、アップグレードは新しいコマンドと、それがピン留めする Spinel から始めます：
+
+```shell ターミナル — 任意のディレクトリ
+gem install cybertrain -v X.Y.Z
+cybertrain version
+cybertrain doctor
+cybertrain setup
+```
+
+`cybertrain version` は `cybertrain X.Y.Z` と表示します。`cybertrain doctor` の出力は、リリースとそのピンの行 `cybertrain X.Y.Z, pinned to Spinel SPINEL_TAG` で始まり、その Spinel がこのマシンにあれば `spinel    ok` の行があります。あれば、`cybertrain setup` は `nothing to install` と伝えます。このリリースでピンが動いていないときがそうです。なければ、`cybertrain setup` は新しい Spinel を `~/.cybertrain/spinel/<release>/` にビルドします。数分かかり、古いものはそのまま残り、`~/.cybertrain/bin` のリンクは新しいものを指すようになります。
+
+spin を実行するコマンドは、最初に必要になったときに同じインストールを自分で行います。次のステップの `cybertrain spin lock` もその 1 つです。ここで `cybertrain setup` を実行して決まるのは、いつ待つかだけです。
+
 ## バージョンを変える
 
-gem とフレームワークは同じタグからリリースされ、`cybertrain` コマンドは、フレームワークが自分と別のリリースであるアプリケーションを拒否します（[アプリを新しいリリースに移行する](install.md#moving-an-app-to-a-new-release)）。そのため、リリースは 3 か所で一緒に変えます：
+`cybertrain` コマンドは、フレームワークが自分と別のリリースであるアプリケーションを拒否します（[アプリを新しいリリースに移行する](install.md#moving-an-app-to-a-new-release)）。そのため、アプリケーションを 2 つのファイルでコマンドに合わせます：
 
-1. コマンド：`gem install cybertrain -v X.Y.Z`。その後 `cybertrain version` は `cybertrain X.Y.Z` と表示します。
-2. `spin.toml`：`[dependencies]` の `cybertrain` の行が新しいタグを指すようにします（`ref = "vX.Y.Z"`）。
-3. `spin.lock`：何もないところから書き直します：
+1. `spin.toml`：`[dependencies]` の `cybertrain` の行が新しいタグを指すようにします（`ref = "vX.Y.Z"`）。
+2. `spin.lock`：何もないところから書き直します：
 
 ```shell ターミナル — アプリのディレクトリ
 rm spin.lock
@@ -45,19 +59,6 @@ cybertrain spin lock
 - `.github/workflows/ci.yml`：`setup-cybertrain@` の後のタグ（[継続的インテグレーション](testing.md#continuous-integration)）。
 
 コマンドと `spin.lock` が一致するまで、`server`、`build`、`db`、`test`、`generate` は、spin を実行したりファイルを書いたりする前に、終了ステータス 1 と「`error: this application's framework is cybertrain A.B.C (spin.lock), but this cybertrain command is X.Y.Z.`」で止まります。`cybertrain spin ...` は検査されません。
-
-## ピン留めされた Spinel をインストールする
-
-各リリースは 1 つの Spinel リリースに向けて書かれていて、アプリケーションをそれでコンパイルします（[Spinel のインストールの仕組み](install.md#how-spinel-is-installed)）。
-
-```shell ターミナル — 任意のディレクトリ
-cybertrain doctor
-cybertrain setup
-```
-
-`cybertrain doctor` の出力は、リリースとそのピンの行 `cybertrain X.Y.Z, pinned to Spinel SPINEL_TAG` で始まり、その Spinel がインストール済みなら `spinel    ok` の行があります。インストール済みなら、`cybertrain setup` は `nothing to install` と表示します：このリリースでピンは動いていません。まだなら、`cybertrain setup` は新しい Spinel を `~/.cybertrain/spinel/<release>/` にビルドします。数分かかり、古いものはそのまま残り、`~/.cybertrain/bin` のリンクは新しいものを指すようになります。
-
-spin を実行するコマンドは、最初に必要になったときに同じインストールを自分で行います。このステップで決まるのは、いつ待つかだけです。
 
 ## 再生成して差分を読む
 
@@ -132,8 +133,8 @@ cybertrain build
 
 | ステップ | することがないのは |
 | --- | --- |
+| 新しいコマンドをインストールする | コマンドは、なし。その Spinel は、`cybertrain setup` が `nothing to install` と伝えるとき |
 | バージョンを変える | なし：どのリリースでも変わります |
-| ピン留めされた Spinel をインストールする | `cybertrain setup` が `nothing to install` と表示するとき |
 | 再生成する | `git status --short gen/` が何も表示しないとき |
 | ジェネレーターをもう一度実行する | 実行しても `manual` の行も `create` の行も出ないとき |
 | マイグレートする | `cybertrain db status` に `down` の行がないとき |
@@ -205,7 +206,8 @@ cybertrain build
 
 - `cybertrain_jobs` に `concurrency_key` の列と `discarded` の状態が加わります。テーブルに最初に触れたプロセスが列を足します。状態を列挙するコード（`Job.state_count` を使うダッシュボード）は `discarded` を足してください。`Job.prune_done` が消すのは、これまでどおり `done` の行だけです。
 - `every` のタスクは、再起動の後に最初からやり直すのではなく、時刻表から続きます。プロセスが止まっている間に過ぎた間隔は、起動時に 1 回実行されます。
-- 既存の種類にキーを与えるとき（`limits_concurrency ... key:`）：ほかの更新と同じく、最初の新しいプロセスが起動する前に古いプロセスをすべて止めてください（[プロセスの役割](background-and-operations.md#process-roles)）。最初の新しいプロセスが、それ以前にキューに入った `queued` の行にキーを付けます（ペイロードにそのフィールドがない行の id はログに出します）。古いプロセスが残した `running` の行は、回収されるときにキーが付きます。
+- ジョブを実行するアプリケーションは、最初の新しいプロセスが起動する前に、古いプロセスをすべて止めます（[デプロイ](#deploy) のステップ 4）。0.4 は実行中のジョブのハートビートを書かないので、新しいプロセスはそのジョブを放棄されたものと見なしてキューに戻し、古いプロセスと並んでもう一度実行します。
+- 既存の種類にキーを与えること（`limits_concurrency ... key:`）は、この停止を前提にしています。最初の新しいプロセスが、それ以前にキューに入った `queued` の行にキーを付けます（ペイロードにそのフィールドがない行の id はログに出します）。古いプロセスが残した `running` の行は、回収されるときにキーが付きます。
 - `jobs` は組み込みのコマンドになりました。`jobs` という名前のアプリケーションのコマンドは、名前を変えてください。
 
 ### 0.4 から：ログとエラー報告

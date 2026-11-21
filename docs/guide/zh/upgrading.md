@@ -1,5 +1,5 @@
 ---
-source_sha256: c488bca3969af0a0d59804950c6461d8a7735db560f30b0dc8348d77a97edba8
+source_sha256: 45a936279cc9a0eb9a65fd3141efb6218521a5d3bb4a7b17ee0efb2db4fe9659
 ---
 # 升级
 
@@ -17,19 +17,33 @@ cybertrain test
 
 <!-- list: points -->
 - `git status --short` 什么也不打印：一切都已提交，这样后面每个步骤都会显示为各自的差异。
-- `cybertrain version` 打印应用所用的版本。它也是 `spin.lock` 中 `[lock.cybertrain]` 下的 `version`。
+- `cybertrain version` 打印命令的版本。应用的版本是 `spin.lock` 中 `[lock.cybertrain]` 下的 `version`。两者相同，否则 `cybertrain test` 会停下。
 - `cybertrain test` 通过。现在失败的测试要先在旧版本上修好：之后你就分不清它和升级造成的失败了。
 - 生产环境有今天的备份（[运维：备份、VACUUM、健康检查](background-and-operations.md#operations-backups-vacuum-health-check)）。某个版本可能会改变数据库中存储的内容。
 
 在改动任何东西之前，先阅读目标版本的说明。跳过若干版本的应用，要按从旧到新的顺序阅读中间每个版本的说明。
 
+## 安装新命令
+
+gem 和框架从同一个标签发布，每个版本都针对一个 Spinel 版本编写，并用它编译应用（[Spinel 是如何安装的](install.md#how-spinel-is-installed)）。所以升级从新命令和它固定的 Spinel 开始：
+
+```shell 终端 — 任意目录
+gem install cybertrain -v X.Y.Z
+cybertrain version
+cybertrain doctor
+cybertrain setup
+```
+
+`cybertrain version` 打印 `cybertrain X.Y.Z`。`cybertrain doctor` 的输出以版本及其固定的 Spinel 开头，`cybertrain X.Y.Z, pinned to Spinel SPINEL_TAG`；这台机器上已有该 Spinel 时，有一行 `spinel    ok`。已有时，`cybertrain setup` 会说 `nothing to install`，这个版本没有移动固定的 Spinel 时就是如此。没有时，`cybertrain setup` 把新的 Spinel 构建到 `~/.cybertrain/spinel/<release>/`，需要几分钟；旧的保留不动，`~/.cybertrain/bin` 中的链接改为指向新的。
+
+运行 spin 的命令在第一次需要时会自己完成同样的安装，下一步的 `cybertrain spin lock` 也在其中。在这里运行 `cybertrain setup` 只决定等待发生在什么时候。
+
 ## 修改版本
 
-gem 和框架从同一个标签发布，`cybertrain` 命令会拒绝框架版本与自己不同的应用（[把应用迁移到新版本](install.md#moving-an-app-to-a-new-release)）。所以版本要在三个地方一起修改：
+`cybertrain` 命令会拒绝框架版本与自己不同的应用（[把应用迁移到新版本](install.md#moving-an-app-to-a-new-release)）。所以应用要在两个文件中跟上命令：
 
-1. 命令：`gem install cybertrain -v X.Y.Z`。之后 `cybertrain version` 打印 `cybertrain X.Y.Z`。
-2. `spin.toml`：`[dependencies]` 下的 `cybertrain` 一行指向新标签，`ref = "vX.Y.Z"`。
-3. `spin.lock`，从零重新写出：
+1. `spin.toml`：`[dependencies]` 下的 `cybertrain` 一行指向新标签，`ref = "vX.Y.Z"`。
+2. `spin.lock`，从零重新写出：
 
 ```shell 终端 — 应用目录
 rm spin.lock
@@ -45,19 +59,6 @@ cybertrain spin lock
 - `.github/workflows/ci.yml`：`setup-cybertrain@` 后面的标签（[持续集成](testing.md#continuous-integration)）。
 
 在命令与 `spin.lock` 一致之前，`server`、`build`、`db`、`test` 和 `generate` 会在运行 spin 或写出文件之前停下，退出状态为 1，并显示“`error: this application's framework is cybertrain A.B.C (spin.lock), but this cybertrain command is X.Y.Z.`”。`cybertrain spin ...` 从不做这项检查。
-
-## 安装固定的 Spinel
-
-每个版本都针对一个 Spinel 版本编写，并用它编译应用（[Spinel 是如何安装的](install.md#how-spinel-is-installed)）。
-
-```shell 终端 — 任意目录
-cybertrain doctor
-cybertrain setup
-```
-
-`cybertrain doctor` 的输出以版本及其固定的 Spinel 开头，`cybertrain X.Y.Z, pinned to Spinel SPINEL_TAG`；该 Spinel 已安装时，有一行 `spinel    ok`。已安装时，`cybertrain setup` 打印 `nothing to install`：这个版本没有移动固定的 Spinel。未安装时，`cybertrain setup` 把新的 Spinel 构建到 `~/.cybertrain/spinel/<release>/`，需要几分钟；旧的保留不动，`~/.cybertrain/bin` 中的链接改为指向新的。
-
-运行 spin 的命令在第一次需要时会自己完成同样的安装，所以这一步只决定等待发生在什么时候。
 
 ## 重新生成并阅读差异
 
@@ -132,8 +133,8 @@ cybertrain build
 
 | 步骤 | 无事可做的情形 |
 | --- | --- |
+| 安装新命令 | 命令：没有。它的 Spinel：`cybertrain setup` 说 `nothing to install` 时 |
 | 修改版本 | 没有：每个版本都会改 |
-| 安装固定的 Spinel | `cybertrain setup` 打印 `nothing to install` |
 | 重新生成 | `git status --short gen/` 什么也不打印 |
 | 再次运行生成器 | 运行后既没有 `manual` 行也没有 `create` 行 |
 | 迁移 | `cybertrain db status` 没有 `down` 行 |
@@ -205,7 +206,8 @@ cybertrain build
 
 - `cybertrain_jobs` 新增 `concurrency_key` 列和 `discarded` 状态；第一个接触这张表的进程会添加该列。列举状态的代码（基于 `Job.state_count` 的仪表板）要加上 `discarded`。`Job.prune_done` 仍然只清理 `done` 的行。
 - `every` 任务在重启之后从时间表继续，而不是从头开始：进程停止期间过去的间隔会在启动时运行一次。
-- 给已有的种类加上键（`limits_concurrency ... key:`）：与任何升级一样，在第一个新进程启动之前停止所有旧进程（[进程角色](background-and-operations.md#process-roles)）。第一个新进程会为之前入队的 `queued` 行设置键（对负载中没有该字段的行，它会记录其 id），旧进程留下的 `running` 行会在被回收时获得它的键。
+- 运行作业的应用要在第一个新进程启动之前停止所有旧进程（[部署](#deploy)的第 4 步）。0.4 不为正在运行的作业写心跳，所以新进程会把这个作业当作被遗弃的，重新排队，并与旧进程同时再运行一次。
+- 给已有的种类加上键（`limits_concurrency ... key:`）依赖这次停止。第一个新进程会为之前入队的 `queued` 行设置键（对负载中没有该字段的行，它会记录其 id），旧进程留下的 `running` 行会在被回收时获得它的键。
 - `jobs` 现在是一个内置命令：名为 `jobs` 的应用命令必须改名。
 
 ### 从 0.4：日志与错误报告

@@ -371,10 +371,9 @@ image and the same database:
   which add `require "cybertrain/jobs"`, uncomment the worker role;
   [docs/deploy.en.md](../deploy.en.md) part 9,
   "Splitting the roles", has the systemd units.
-- **Upgrading from a release without heartbeats**: stop every old process
-  before starting the first new one. A new worker would take the jobs an
-  old one is still running for abandoned, since an old process writes no
-  heartbeat.
+- An upgrade whose notes ask for it stops every process of the old release
+  before the first new one starts
+  ([Upgrading: Deploy](upgrading.md#deploy)).
 - `Cybertrain::Main.worker?(ARGV)` and `Main.feeds?(ARGV)`, like
   `Main.server?(ARGV)`, tell `bin/<app>.rb` which role it is starting.
 - `worker` needs `require "cybertrain/jobs"` in `bin/<app>.rb`, and `feeds`

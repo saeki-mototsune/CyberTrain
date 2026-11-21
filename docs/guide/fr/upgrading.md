@@ -1,5 +1,5 @@
 ---
-source_sha256: c488bca3969af0a0d59804950c6461d8a7735db560f30b0dc8348d77a97edba8
+source_sha256: 45a936279cc9a0eb9a65fd3141efb6218521a5d3bb4a7b17ee0efb2db4fe9659
 ---
 # Mise à jour
 
@@ -17,19 +17,33 @@ cybertrain test
 
 <!-- list: points -->
 - `git status --short` n’affiche rien&nbsp;: tout est commité, si bien que chaque étape suivante apparaît comme un diff à part.
-- `cybertrain version` affiche la version que l’application utilise. C’est aussi la `version` sous `[lock.cybertrain]` dans `spin.lock`.
+- `cybertrain version` affiche la version de la commande. Celle de l’application est la `version` sous `[lock.cybertrain]` dans `spin.lock`. Les deux sont identiques, sinon `cybertrain test` s’arrête.
 - `cybertrain test` passe. Un test qui échoue maintenant se corrige d’abord, sur l’ancienne version&nbsp;: ensuite, vous ne pourriez plus le distinguer d’un échec dû à la mise à jour.
 - La production a une sauvegarde du jour ([Exploitation&nbsp;: sauvegardes, VACUUM, contrôle de santé](background-and-operations.md#operations-backups-vacuum-health-check)). Une version peut changer ce qui est stocké dans la base de données.
 
 Lisez les notes de la version visée avant de changer quoi que ce soit. Une application qui saute des versions lit les notes de chaque version intermédiaire, de la plus ancienne à la plus récente.
 
+## Installer la nouvelle commande
+
+Le gem et le framework sont publiés à partir du même tag, et chaque version est écrite pour une version de Spinel et compile l’application avec elle ([Comment Spinel est installé](install.md#how-spinel-is-installed)). Une mise à jour commence donc par la nouvelle commande et le Spinel qu’elle épingle&nbsp;:
+
+```shell terminal — n’importe quel répertoire
+gem install cybertrain -v X.Y.Z
+cybertrain version
+cybertrain doctor
+cybertrain setup
+```
+
+`cybertrain version` affiche `cybertrain X.Y.Z`. La sortie de `cybertrain doctor` commence par la version et le Spinel qu’elle épingle, `cybertrain X.Y.Z, pinned to Spinel SPINEL_TAG`, et contient une ligne `spinel    ok` quand ce Spinel est sur la machine. S’il y est, `cybertrain setup` dit `nothing to install`, comme lorsque le Spinel épinglé n’a pas changé avec cette version. Sinon, `cybertrain setup` compile le nouveau Spinel dans `~/.cybertrain/spinel/<release>/`, ce qui prend quelques minutes, laisse l’ancien en place et fait pointer les liens de `~/.cybertrain/bin` vers le nouveau.
+
+Les commandes qui lancent spin font la même installation la première fois qu’elles en ont besoin, `cybertrain spin lock` à l’étape suivante comprise. Lancer `cybertrain setup` ici ne fait que choisir le moment de l’attente.
+
 ## Changer la version
 
-Le gem et le framework sont publiés à partir du même tag, et la commande `cybertrain` refuse une application dont le framework est d’une autre version qu’elle ([Passer une application à une nouvelle version](install.md#moving-an-app-to-a-new-release)). La version se change donc à trois endroits, ensemble&nbsp;:
+La commande `cybertrain` refuse une application dont le framework est d’une autre version qu’elle ([Passer une application à une nouvelle version](install.md#moving-an-app-to-a-new-release)). L’application suit donc la commande, dans deux fichiers&nbsp;:
 
-1. La commande&nbsp;: `gem install cybertrain -v X.Y.Z`. `cybertrain version` affiche alors `cybertrain X.Y.Z`.
-2. `spin.toml`&nbsp;: la ligne `cybertrain` sous `[dependencies]` nomme le nouveau tag, `ref = "vX.Y.Z"`.
-3. `spin.lock`, qui est réécrit à partir de rien&nbsp;:
+1. `spin.toml`&nbsp;: la ligne `cybertrain` sous `[dependencies]` nomme le nouveau tag, `ref = "vX.Y.Z"`.
+2. `spin.lock`, qui est réécrit à partir de rien&nbsp;:
 
 ```shell terminal — le répertoire de l’application
 rm spin.lock
@@ -45,19 +59,6 @@ Deux fichiers écrits par `cybertrain new` nomment aussi la version. Changez-les
 - `.github/workflows/ci.yml`&nbsp;: le tag après `setup-cybertrain@` ([Intégration continue](testing.md#continuous-integration)).
 
 Tant que la commande et `spin.lock` ne concordent pas, `server`, `build`, `db`, `test` et `generate` s’arrêtent avec le code de sortie 1 et «&nbsp;`error: this application's framework is cybertrain A.B.C (spin.lock), but this cybertrain command is X.Y.Z.`&nbsp;», avant de lancer spin ou d’écrire un fichier. `cybertrain spin ...` n’est jamais vérifié.
-
-## Installer la version épinglée de Spinel
-
-Chaque version est écrite pour une version de Spinel et compile l’application avec elle ([Comment Spinel est installé](install.md#how-spinel-is-installed)).
-
-```shell terminal — n’importe quel répertoire
-cybertrain doctor
-cybertrain setup
-```
-
-La sortie de `cybertrain doctor` commence par la version et le Spinel qu’elle épingle, `cybertrain X.Y.Z, pinned to Spinel SPINEL_TAG`, et contient une ligne `spinel    ok` quand ce Spinel est installé. S’il l’est, `cybertrain setup` affiche `nothing to install`&nbsp;: le Spinel épinglé n’a pas changé avec cette version. Sinon, `cybertrain setup` compile le nouveau Spinel dans `~/.cybertrain/spinel/<release>/`, ce qui prend quelques minutes, laisse l’ancien en place et fait pointer les liens de `~/.cybertrain/bin` vers le nouveau.
-
-Les commandes qui lancent spin font la même installation la première fois qu’elles en ont besoin&nbsp;; cette étape ne fait donc que choisir le moment de l’attente.
 
 ## Régénérer et lire le diff
 
@@ -132,8 +133,8 @@ Chaque étape s’exécute pour chaque version&nbsp;; la plupart se terminent au
 
 | Étape | Rien à faire quand |
 | --- | --- |
+| Installer la nouvelle commande | jamais pour la commande&nbsp;; pour son Spinel, quand `cybertrain setup` dit `nothing to install` |
 | Changer la version | jamais&nbsp;: chaque version la change |
-| Installer la version épinglée de Spinel | `cybertrain setup` affiche `nothing to install` |
 | Régénérer | `git status --short gen/` n’affiche rien |
 | Relancer les générateurs | l’exécution n’affiche ni ligne `manual` ni ligne `create` |
 | Migrer | `cybertrain db status` ne montre aucune ligne `down` |
@@ -238,9 +239,13 @@ Deux valeurs par défaut ont changé après 0.4
 - Les tâches `every` reprennent à partir du calendrier après un redémarrage
   au lieu de repartir de zéro&nbsp;: un intervalle écoulé pendant que le
   processus était arrêté s’exécute une fois au démarrage.
-- Donner une clé à un kind existant (`limits_concurrency ... key:`)&nbsp;:
-  arrêtez tous les anciens processus avant que le premier nouveau démarre,
-  comme pour toute mise à jour ([Rôles des processus](background-and-operations.md#process-roles)). Le
+- Une application qui exécute des jobs arrête tous les anciens processus
+  avant que le premier nouveau démarre ([Déployer](#deploy), étape 4). 0.4
+  n’écrit aucun battement de cœur pour un job qu’il exécute&nbsp;: un nouveau
+  processus prend donc ce job pour abandonné, le remet en file et l’exécute
+  une seconde fois à côté de l’ancien.
+- Donner une clé à un kind existant (`limits_concurrency ... key:`) repose
+  sur cet arrêt. Le
   premier nouveau processus attribue leur clé aux lignes `queued` mises en
   file auparavant (il journalise les ids des lignes dont la charge utile n’a
   pas ce champ), et une ligne `running` laissée par un ancien processus

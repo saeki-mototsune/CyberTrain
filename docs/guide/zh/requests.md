@@ -1,5 +1,5 @@
 ---
-source_sha256: b855230d282f170790fc5218f4c7c42202916db808f505391e8d5b93077c5577
+source_sha256: ab0b6cc63583ed237388a97fb1a15d96fac59ac3c772258276247f942759e84c
 ---
 # 请求
 
@@ -271,7 +271,7 @@ request.header_params("prefer").key?("respond-async")   # => true
 - 无效的 UTF-8 字节序列，无论是原始字节（不管 String 带什么编码标记）还是百分号编码的（Rails 同样会对参数编码无效的请求返回 400）；
 - 只有加上转义才能补全的原始字节（`a=\xC3%A9`）。
 
-`Cookies.parse` 则会原样保留这样的值。带有无效序列的路径（原始的，或某个路径段经百分号解码后出现的）同样返回 400（`request.path_segments`）；路径中格式错误的转义保持原样，因匹配不到而返回 404。请求参数最多嵌套 32 层、4096 对，超过则返回 400。升级说明：原先在这些调用外面 rescue `ArgumentError` 的应用代码，应改为 rescue `Cybertrain::QueryInvalid`。
+`Cookies.parse` 则会原样保留这样的值。带有无效序列的路径（原始的，或某个路径段经百分号解码后出现的）同样返回 400（`request.path_segments`）；路径中格式错误的转义保持原样，因匹配不到而返回 404。请求参数最多嵌套 32 层、4096 对，超过则返回 400。
 
 请求本身不保存参数树（路由器构建 `params`，中间件只读取一个键）；需要完整参数树的应用自己解析，`Query.parse(request.utf8_query_string)`，并自行管理结果。
 

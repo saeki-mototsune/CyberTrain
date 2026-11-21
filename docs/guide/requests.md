@@ -564,8 +564,7 @@ the credential from `request.header("authorization")`. Design:
 sequence (raw, or percent-decoded in a segment) is a 400 as well
 (`request.path_segments`); a malformed escape in a path stays literal, a 404
 by non-match. Request parameters nest at most 32 levels and 4096 pairs, and
-are a 400 past that. Upgrade note: app code that rescued `ArgumentError`
-around these calls should rescue `Cybertrain::QueryInvalid` instead.
+are a 400 past that.
 
 The request keeps no parameter tree of its own (the Router builds `params`,
 the middleware read one key); an app that wants the whole tree parses it

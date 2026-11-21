@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a9265e8cc11206efd57f2283164a48771657a3ce876972b6e9492031c11de61
+source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
 ---
 # Modèles et base de données
 
@@ -221,12 +221,7 @@ Gardez l’argent en unités mineures dans une colonne entière
 (`price_cents`)&nbsp;: l’arithmétique Integer et `sum_int` sont exactes.
 Lisez un champ de formulaire avec
 `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` et
-affichez-le avec `number_to_currency(price_cents / 100.0)`. Note de mise à
-niveau&nbsp;: un cas limite que le framework compilé arrondissait vers le bas
-(1.005 stocké comme 1.0) est désormais stocké arrondi vers le haut, pour les
-nouvelles écritures seulement, et la validation générée refuse des valeurs
-qui étaient stockées auparavant&nbsp;; D73 donne les étapes pour passer une
-colonne decimal aux unités mineures.
+affichez-le avec `number_to_currency(price_cents / 100.0)`.
 
 ### Colonnes JSON
 

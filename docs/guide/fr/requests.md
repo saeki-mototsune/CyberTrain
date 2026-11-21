@@ -1,5 +1,5 @@
 ---
-source_sha256: b855230d282f170790fc5218f4c7c42202916db808f505391e8d5b93077c5577
+source_sha256: ab0b6cc63583ed237388a97fb1a15d96fac59ac3c772258276247f942759e84c
 ---
 # Requêtes
 
@@ -334,7 +334,7 @@ paramètre&nbsp;: vérifiez le schéma, puis lisez l’identifiant dans
 - une séquence d’octets UTF-8 invalide, brute (quel que soit le tag de la String) ou encodée en pourcent (Rails répond de même 400 pour un encodage de paramètre invalide)&nbsp;;
 - un octet brut que seul un échappement compléterait (`a=\xC3%A9`).
 
-`Cookies.parse` garde plutôt une telle valeur brute. Un chemin avec une séquence invalide (brute, ou décodée depuis le pourcent dans un segment) donne aussi une 400 (`request.path_segments`)&nbsp;; un échappement mal formé dans un chemin reste littéral, une 404 faute de correspondance. Les paramètres de requête s’imbriquent sur 32 niveaux et 4096 paires au plus, et donnent une 400 au-delà. Note de mise à niveau&nbsp;: le code d’application qui faisait `rescue ArgumentError` autour de ces appels doit plutôt faire `rescue Cybertrain::QueryInvalid`.
+`Cookies.parse` garde plutôt une telle valeur brute. Un chemin avec une séquence invalide (brute, ou décodée depuis le pourcent dans un segment) donne aussi une 400 (`request.path_segments`)&nbsp;; un échappement mal formé dans un chemin reste littéral, une 404 faute de correspondance. Les paramètres de requête s’imbriquent sur 32 niveaux et 4096 paires au plus, et donnent une 400 au-delà.
 
 La requête ne garde pas d’arbre de paramètres à elle (le Router construit `params`, le middleware lit une seule clé)&nbsp;; une application qui veut l’arbre entier l’analyse elle-même, `Query.parse(request.utf8_query_string)`, et possède le résultat.
 
