@@ -6,7 +6,7 @@ ok   a layout declared in a concern's included block applies to the including co
 ok   class_methods are callable through self.class
 ok   nested concerns expand depth first; a cycle is refused by name
 ok   a concern included by an ancestor and again is expanded once
-ok   a class_methods name that an ancestor's concern defines as an instance method is refused
+ok   a class_methods name may also be the name of an instance method
 ok   include A, B splices B first, as Ruby includes B first
 ok   prepend_before_action is not a callback declaration
 ok   @x in a concern method is a view assign of the includer
@@ -15,4 +15,4 @@ ok   an endless operator or self. def does not swallow the def after it
 ok   include Gate inside module Admin brings in Admin::Gate, as Ruby resolves it
 ok   an include that does not reach a concern but ends in a concern's name is refused
 ok   include Comparable, no concern's name, stays plain Ruby
-17 tests, 65 assertions, 0 failures
+17 tests, 70 assertions, 0 failures

@@ -11,4 +11,10 @@ module Visible
   end
 
   def visible? = hidden == 0
+
+  # Post.summary beside Post#summary: a class method named like an
+  # instance method of the including model.
+  class_methods do
+    def summary = "posts"
+  end
 end

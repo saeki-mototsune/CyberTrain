@@ -89,7 +89,6 @@ module Cybertrain
       INCLUDED_OPEN = /\A\s*included\s+do\s*(?:\|\s*\w*\s*\|)?\s*(?:#.*)?\z/
       CLASS_METHODS_OPEN = /\A\s*class_methods\s+do\s*(?:#.*)?\z/
       AROUND = /\A\s*around_action\b/
-      RULE_93 = "Spinel compiles a def inside class_methods as an instance method too (spikes/NOTES.md rule 93), so rename one"
 
       # An empty list of concerns (a new Array each call): the one place
       # that spells the element type out for the compiler.
@@ -291,7 +290,6 @@ module Cybertrain
         return nil if innermost == ""
 
         info = ConcernInfo.new(file, innermost, innermost_line) unless found
-        check_class_methods(info)
         info
       end
 
@@ -388,24 +386,6 @@ module Cybertrain
           end
         end
         j
-      end
-
-      # spikes/NOTES.md rule 93: Spinel compiles a `def` inside the
-      # never-run `class_methods` block as an instance method of the
-      # concern, so its name must not be one of the concern's instance
-      # methods too.
-      def self.check_class_methods(info)
-        where = ControllerScan.app_path(info.concern_file)
-        info.class_method_names.each_with_index do |name, k|
-          info.concern_defs.each do |d|
-            next unless d.name == name
-
-            msg = "#{where}:#{info.class_method_line_numbers[k]}: class_methods def #{name}: #{info.concern_name} also defines " \
-                  "an instance method #{name} (#{where}:#{d.line}); #{RULE_93}"
-            raise ArgumentError, msg
-          end
-        end
-        nil
       end
 
       def self.find(concerns, name)

@@ -46,12 +46,9 @@ module ActiveSupport
   # without a receiver (`scope :visible, -> { where(hidden: 0) }`).
   #
   # Differences from Rails: `around_action` in an `included` block is
-  # refused (there are no around callbacks); a `class_methods` method may
-  # not share its name with an instance method of the concern or of a
-  # class that includes it (the compiled program would also give every
-  # including class an instance method of that name; spikes/NOTES.md rule
-  # 93), nor, in a model, with a scope or a class method every model has;
-  # and a model concern's callbacks (`before_save` and the rest) run after
+  # refused (there are no around callbacks); in a model, a `class_methods`
+  # method may not share its name with a scope or with a class method
+  # every model has; and a model concern's callbacks (`before_save` and the rest) run after
   # all of the model's own, wherever the `include` stands (Rails runs them
   # in declaration order, so a concern included first runs first).
   # @api public
