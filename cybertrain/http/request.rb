@@ -948,6 +948,16 @@ module Cybertrain
     # for a binary CRuby socket buffer it is one copy. A raise is not cached:
     # every call raises again and the request still ends as that 400. The ivar
     # starts as nil and is assigned from a method's result (NOTES rule 7).
+    # (A blank line ends this comment: the API reference shows the next one.)
+
+    # The query string as valid UTF-8 text, still percent-encoded: the text to
+    # hand to {Query.parse}. It is checked once per request.
+    # @example
+    #   Query.parse(request.utf8_query_string)["page"]
+    # @return [String]
+    # @raise [QueryInvalid] when the query string holds an invalid UTF-8 byte
+    #   sequence (a 400 when unhandled)
+    # @api public
     def utf8_query_string
       cached = @utf8_query_string
       return cached unless cached.nil?

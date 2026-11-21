@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d83a592d1063e49a4747842c76506f5ec8cfa7f4d63aaa25b109d1b6184b1b7
+source_sha256: a8daf8137bdd9b6bb50a405ab126b696ae02cbddf3e3d25448e6bd2dbe219f15
 ---
 # リクエスト
 
@@ -265,13 +265,13 @@ request.header_params("prefer").key?("respond-async")   # => true
 
 ## クエリ文字列とボディ
 
-`Query.parse`、`Query.value_of`、`Query.decode`、`request.form_value` / `query_value` は、次の場合に `Cybertrain::QueryMalformed`（`Cybertrain::QueryInvalid` 配下の `StandardError` で、`ArgumentError` ではない）を出し、400 が返されます：
+リクエストのパラメーターはアクションが実行される前にデコードされ、`Query.parse` も同じようにテキストをデコードします。どちらも、次の場合に `Cybertrain::QueryInvalid`（`StandardError` で、`ArgumentError` ではない）を出し、400 が返されます：
 
 - 形式の壊れたパーセントエスケープ（どちらのランタイムでも）
 - 不正な UTF-8 のバイト列。生のもの（String のタグにかかわらず）でも、パーセントエンコードされたものでも（Rails も不正なパラメーターのエンコーディングには 400 を返します）
 - エスケープによってしか完成しない生のバイト（`a=\xC3%A9`）
 
-`Cookies.parse` はそうした値を代わりに生のまま保持します。不正なバイト列を含むパス（生のもの、またはセグメント内でパーセントデコードされたもの）も 400 になります（`request.path_segments`）。パス内の形式の壊れたエスケープは文字どおりに扱われ、一致しないので 404 です。リクエストパラメーターのネストは最大 32 階層、4096 ペアで、それを超えると 400 です。
+`Cookies.parse` はそうした値を代わりに生のまま保持します。不正なバイト列を含むパス（生のもの、またはセグメント内でパーセントデコードされたもの）も 400 になります。パス内の形式の壊れたエスケープは文字どおりに扱われ、一致しないので 404 です。リクエストパラメーターのネストは最大 32 階層、4096 ペアで、それを超えると 400 です。
 
 リクエストは自前のパラメーターツリーを持ちません（`params` は Router が組み立て、ミドルウェアはキーをひとつ読みます）。ツリー全体が欲しいアプリは自分でパースし（`Query.parse(request.utf8_query_string)`）、結果を自分で管理します。
 

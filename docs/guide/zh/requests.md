@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d83a592d1063e49a4747842c76506f5ec8cfa7f4d63aaa25b109d1b6184b1b7
+source_sha256: a8daf8137bdd9b6bb50a405ab126b696ae02cbddf3e3d25448e6bd2dbe219f15
 ---
 # 请求
 
@@ -265,13 +265,13 @@ request.header_params("prefer").key?("respond-async")   # => true
 
 ## 查询字符串与请求体
 
-`Query.parse`、`Query.value_of`、`Query.decode` 以及 `request.form_value` / `query_value` 会抛出 `Cybertrain::QueryMalformed`（`Cybertrain::QueryInvalid` 之下的一个 `StandardError`，而不是 `ArgumentError`），以 400 响应，情形如下：
+请求的参数在动作运行之前解码，`Query.parse` 以同样的方式解码文本。两者都会抛出 `Cybertrain::QueryInvalid`（一个 `StandardError`，而不是 `ArgumentError`），以 400 响应，情形如下：
 
 - 格式错误的百分号转义，在两种运行时上都是如此；
 - 无效的 UTF-8 字节序列，无论是原始字节（不管 String 带什么编码标记）还是百分号编码的（Rails 同样会对参数编码无效的请求返回 400）；
 - 只有加上转义才能补全的原始字节（`a=\xC3%A9`）。
 
-`Cookies.parse` 则会原样保留这样的值。带有无效序列的路径（原始的，或某个路径段经百分号解码后出现的）同样返回 400（`request.path_segments`）；路径中格式错误的转义保持原样，因匹配不到而返回 404。请求参数最多嵌套 32 层、4096 对，超过则返回 400。
+`Cookies.parse` 则会原样保留这样的值。带有无效序列的路径（原始的，或某个路径段经百分号解码后出现的）同样返回 400；路径中格式错误的转义保持原样，因匹配不到而返回 404。请求参数最多嵌套 32 层、4096 对，超过则返回 400。
 
 请求本身不保存参数树（路由器构建 `params`，中间件只读取一个键）；需要完整参数树的应用自己解析，`Query.parse(request.utf8_query_string)`，并自行管理结果。
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d83a592d1063e49a4747842c76506f5ec8cfa7f4d63aaa25b109d1b6184b1b7
+source_sha256: a8daf8137bdd9b6bb50a405ab126b696ae02cbddf3e3d25448e6bd2dbe219f15
 ---
 # Requêtes
 
@@ -328,13 +328,13 @@ paramètre&nbsp;: vérifiez le schéma, puis lisez l’identifiant dans
 
 ## Chaînes de requête et corps
 
-`Query.parse`, `Query.value_of`, `Query.decode` et `request.form_value` / `query_value` lèvent `Cybertrain::QueryMalformed` (une `StandardError` sous `Cybertrain::QueryInvalid`, pas une `ArgumentError`), à laquelle il est répondu 400, sur&nbsp;:
+Les paramètres d’une requête sont décodés avant que son action s’exécute, et `Query.parse` décode un texte de la même façon. Les deux lèvent `Cybertrain::QueryInvalid` (une `StandardError`, pas une `ArgumentError`), à laquelle il est répondu 400, sur&nbsp;:
 
 - un échappement pourcent mal formé, sur les deux runtimes&nbsp;;
 - une séquence d’octets UTF-8 invalide, brute (quel que soit le tag de la String) ou encodée en pourcent (Rails répond de même 400 pour un encodage de paramètre invalide)&nbsp;;
 - un octet brut que seul un échappement compléterait (`a=\xC3%A9`).
 
-`Cookies.parse` garde plutôt une telle valeur brute. Un chemin avec une séquence invalide (brute, ou décodée depuis le pourcent dans un segment) donne aussi une 400 (`request.path_segments`)&nbsp;; un échappement mal formé dans un chemin reste littéral, une 404 faute de correspondance. Les paramètres de requête s’imbriquent sur 32 niveaux et 4096 paires au plus, et donnent une 400 au-delà.
+`Cookies.parse` garde plutôt une telle valeur brute. Un chemin avec une séquence invalide (brute, ou décodée depuis le pourcent dans un segment) donne aussi une 400&nbsp;; un échappement mal formé dans un chemin reste littéral, une 404 faute de correspondance. Les paramètres de requête s’imbriquent sur 32 niveaux et 4096 paires au plus, et donnent une 400 au-delà.
 
 La requête ne garde pas d’arbre de paramètres à elle (le Router construit `params`, le middleware lit une seule clé)&nbsp;; une application qui veut l’arbre entier l’analyse elle-même, `Query.parse(request.utf8_query_string)`, et possède le résultat.
 

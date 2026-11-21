@@ -547,9 +547,10 @@ the credential from `request.header("authorization")`. Design:
 
 ## Query strings and bodies
 
-`Query.parse`, `Query.value_of`, `Query.decode` and `request.form_value` /
-`query_value` raise `Cybertrain::QueryMalformed` (a `StandardError` under
-`Cybertrain::QueryInvalid`, not an `ArgumentError`), answered 400, on:
+A request's parameters are decoded before its action runs, and
+`Query.parse` decodes text the same way. Both raise
+`Cybertrain::QueryInvalid` (a `StandardError`, not an `ArgumentError`),
+answered 400, on:
 
 - a malformed percent-escape, on both runtimes;
 - an invalid UTF-8 byte sequence, raw (whatever the String's tag) or
@@ -558,10 +559,9 @@ the credential from `request.header("authorization")`. Design:
 - a raw byte that only an escape would complete (`a=\xC3%A9`).
 
 `Cookies.parse` keeps such a value raw instead. A path with an invalid
-sequence (raw, or percent-decoded in a segment) is a 400 as well
-(`request.path_segments`); a malformed escape in a path stays literal, a 404
-by non-match. Request parameters nest at most 32 levels and 4096 pairs, and
-are a 400 past that.
+sequence (raw, or percent-decoded in a segment) is a 400 as well; a
+malformed escape in a path stays literal, a 404 by non-match. Request
+parameters nest at most 32 levels and 4096 pairs, and are a 400 past that.
 
 The request keeps no parameter tree of its own (the Router builds `params`,
 the middleware read one key); an app that wants the whole tree parses it

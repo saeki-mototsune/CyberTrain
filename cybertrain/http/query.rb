@@ -2,9 +2,9 @@ require "uri"
 require "cybertrain/params"
 
 module Cybertrain
-  # Raised for request parameters the server will not take: past one of
-  # Query's limits (QueryLimitExceeded: QueryTooDeep, QueryTooMany) or not
-  # decodable (QueryMalformed). StandardErrors on purpose: ClientError turns
+  # The parameter errors below are past one of Query's limits
+  # (QueryLimitExceeded: QueryTooDeep, QueryTooMany) or not decodable
+  # (QueryMalformed). StandardErrors on purpose: ClientError turns
   # them into a 400 at info level instead of a 500 at error level, so a
   # scanner's junk does not fill the error log or kill the connection
   # thread. In Cybertrain (like Rejected, RecordNotFound, MissingTemplate);
@@ -12,11 +12,18 @@ module Cybertrain
   # name.
   # Not called Rejected: Cybertrain::Rejected is the Server's own
   # status-carrying error.
+  # (A blank line ends this comment: the API reference shows the next one.)
+
+  # Raised for request text the server will not take: parameters that do not
+  # decode or are past a limit, a body that cannot be decoded
+  # ({BodyUndecodable}, {BodyTooLarge}), a multipart body that is not well
+  # formed or is past a limit ({MultipartMalformed}, {MultipartTooManyParts},
+  # {MultipartPartTooLarge}, {MultipartHeaderTooLarge}).
   #
-  # The class to rescue around `Query.parse`, `Query.decode`,
-  # `request.form_value` and {Request#decoded_body}: every refusal of
-  # request text is one of its subclasses. Unhandled, the request is
-  # answered 400.
+  # The class to rescue around {Query.parse}, {Query.without_key},
+  # {Request#utf8_query_string}, {Request#decoded_body} and
+  # {Request#multipart_form}: every refusal of request text is one of its
+  # subclasses. Unhandled, the request is answered 400.
   # @api public
   class QueryInvalid < StandardError
   end
@@ -112,6 +119,22 @@ module Cybertrain
     # segment: a yielding helper called from nested blocks is a NOTES rule 32
     # hazard (the raises below must stay plain raises), and the loop is a
     # dozen lines; Array-free on purpose too (no `split`, see above).
+    # (A blank line ends this comment: the API reference shows the next one.)
+
+    # Parses a query string or an `application/x-www-form-urlencoded` body
+    # into a new {Params}. `+` and percent-escapes are decoded, `a[b]=1` nests,
+    # `a[]=1` adds to a list, a name without `=` maps to `""`, and a later
+    # pair overrides an earlier one of the same name.
+    # @example The query string of a request as a tree
+    #   Query.parse(request.utf8_query_string)["page"]
+    # @example
+    #   Query.parse("q=a+b&tags[]=x&tags[]=y").list("tags")  # => ["x", "y"]
+    # @param str [String] the text as sent, not yet percent-decoded
+    # @return [Params] a new tree, the caller's own
+    # @raise [QueryInvalid] for a malformed percent-escape, an invalid UTF-8
+    #   byte sequence, a name nested past 32 levels or more than 4096
+    #   `&`-separated pairs (a 400 when unhandled)
+    # @api public
     def self.parse(str)
       parse_into(Params.new, str)
     end
