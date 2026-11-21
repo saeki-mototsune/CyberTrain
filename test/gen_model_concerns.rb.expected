@@ -10,4 +10,4 @@ ok   associations, encrypts, uniqueness and validate from a concern join the mod
 ok   an include in a concern's included body brings that concern in after it; a cycle is refused
 ok   a model concern's class_methods name may not be a scope or a model class method; an instance method's is fine
 ok   a model concern named relative to its module is resolved as Ruby resolves it; an unreached one is refused
-12 tests, 76 assertions, 0 failures
+12 tests, 75 assertions, 0 failures

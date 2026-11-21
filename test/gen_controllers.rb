@@ -313,7 +313,6 @@ test "includes, and each include's position among the callbacks and rescues abov
   assert_equal [1, 1, 1], info.rescue_positions
   assert_equal [4, 4, 8], info.include_lines
   assert_equal ["show", "gone"], info.method_names
-  assert_equal [10, 16], info.method_lines
 end
 
 test "the nested module form names the class after its modules" do

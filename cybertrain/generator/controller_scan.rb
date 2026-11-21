@@ -44,7 +44,7 @@ module Cybertrain
     class ControllerInfo
       attr_reader :file, :class_name, :superclass_name, :ivars, :callbacks,
                   :includes, :include_positions, :rescue_positions, :include_lines,
-                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors, :layouts,
+                  :method_names, :module_prefix, :helper_methods, :defs, :def_errors, :layouts,
                   :rate_limit_refs
 
       # includes: the module names of the class's `include` lines, in the
@@ -53,9 +53,9 @@ module Cybertrain
       # include_positions / rescue_positions: per include, the count of
       # callback declarations (before_action, after_action, rate_limit) / of
       # rescue_from lines above it in the class.
-      # include_lines: per include, its line number. method_names /
-      # method_lines: the class's instance `def`s. module_prefix: the
-      # modules around the class line ("Admin"; "" at the top level).
+      # include_lines: per include, its line number. method_names: the
+      # class's instance `def`s. module_prefix: the modules around the
+      # class line ("Admin"; "" at the top level).
       # helper_methods: the names of the class's `helper_method` lines,
       # in order; defs: a HelperDef per instance `def` (its
       # parameters when HelperScan.parse_def reads them, else the name and
@@ -67,7 +67,7 @@ module Cybertrain
       def initialize(file, class_name, superclass_name, ivars, callbacks,
                      includes = Array.new(0) { "" }, include_positions = Array.new(0) { 0 },
                      rescue_positions = Array.new(0) { 0 }, include_lines = Array.new(0) { 0 },
-                     method_names = Array.new(0) { "" }, method_lines = Array.new(0) { 0 }, module_prefix = "")
+                     method_names = Array.new(0) { "" }, module_prefix = "")
         @file = file
         @class_name = class_name
         @superclass_name = superclass_name
@@ -78,7 +78,6 @@ module Cybertrain
         @rescue_positions = rescue_positions
         @include_lines = include_lines
         @method_names = method_names
-        @method_lines = method_lines
         @module_prefix = module_prefix
         @helper_methods = Array.new(0) { "" }
         @defs = HelperScan.no_helper_defs
@@ -173,7 +172,6 @@ module Cybertrain
         rescue_positions = Array.new(0) { 0 }
         include_lines = Array.new(0) { 0 }
         method_names = Array.new(0) { "" }
-        method_lines = Array.new(0) { 0 }
         helper_methods = Array.new(0) { "" }
         defs = HelperScan.no_helper_defs
         def_errors = Array.new(0) { "" }
@@ -226,7 +224,6 @@ module Cybertrain
               rescue_positions = Array.new(0) { 0 }
               include_lines = Array.new(0) { 0 }
               method_names = Array.new(0) { "" }
-              method_lines = Array.new(0) { 0 }
               helper_methods = Array.new(0) { "" }
               defs = HelperScan.no_helper_defs
               def_errors = Array.new(0) { "" }
@@ -253,7 +250,6 @@ module Cybertrain
             dm = line.match(DEF_NAME)
             if dm
               method_names << dm[1].to_s
-              method_lines << number
               defs << def_at(file, lines, number, def_errors)
             end
             helper_method_names(line).each { |n| helper_methods << n unless helper_methods.include?(n) }
@@ -279,7 +275,7 @@ module Cybertrain
         return nil if class_name == ""
 
         info = ControllerInfo.new(file, class_name, superclass_name, ivars, callbacks, includes, include_positions,
-                                  rescue_positions, include_lines, method_names, method_lines, prefix)
+                                  rescue_positions, include_lines, method_names, prefix)
         helper_methods.each { |n| info.helper_methods << n }
         defs.each { |d| info.defs << d }
         def_errors.each { |e| info.def_errors << e }

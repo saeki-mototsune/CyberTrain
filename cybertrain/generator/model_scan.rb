@@ -26,12 +26,11 @@ module Cybertrain
     # with concern_from the index (into includes) of the `include` that
     # brought each in (a concern an `included` body includes counts as
     # brought in by the `include` of the concern around it).
-    # defined_places: per defined_methods entry, the "file:line" of its def.
     class ModelInfo
       attr_reader :file, :class_name, :view_methods, :scopes, :associations, :custom_validations,
                   :condition_methods, :condition_lines, :defined_methods, :encrypted, :encrypted_lines,
                   :unique_columns, :unique_lines, :includes, :include_lines, :include_validates,
-                  :concern_names, :concern_from, :defined_places
+                  :concern_names, :concern_from
 
       def initialize(file, class_name, view_methods, scopes, associations, custom_validations,
                      condition_methods, condition_lines, defined_methods, encrypted, encrypted_lines,
@@ -54,13 +53,6 @@ module Cybertrain
         @include_validates = Array.new(0) { 0 }
         @concern_names = Array.new(0) { "" }
         @concern_from = Array.new(0) { 0 }
-        @defined_places = Array.new(0) { "" }
-      end
-
-      # Per defined_methods entry, the "app/...:line" of its def.
-      def record_defined_places(places)
-        places.each { |p| @defined_places << p }
-        nil
       end
 
       def add_include(name, line, validates)
@@ -238,7 +230,6 @@ module Cybertrain
         conditions = Array.new(0) { "" }
         condition_lines = Array.new(0) { 0 }
         defined = Array.new(0) { "" }
-        defined_places = Array.new(0) { "" }
         encrypted = Array.new(0) { "" }
         encrypted_lines = Array.new(0) { 0 }
         unique = Array.new(0) { "" }
@@ -332,7 +323,7 @@ module Cybertrain
                 scanned = scan_concern(c, concerns, within)
                 concern_names << c.concern_name
                 concern_from << includes.size - 1
-                merge_concern(scanned, scopes, associations, validations, conditions, condition_lines, defined, defined_places,
+                merge_concern(scanned, scopes, associations, validations, conditions, condition_lines, defined,
                               methods, encrypted, encrypted_lines, unique, unique_lines)
                 # The concerns its `included` body includes, spliced after it.
                 scanned.concern_names.each do |inner|
@@ -349,10 +340,7 @@ module Cybertrain
             in_private = false
           else
             defined_name = def_name(line)
-            if def_indent < 0 && defined_name != "" && !defined.include?(defined_name)
-              defined << defined_name
-              defined_places << "#{ControllerScan.app_path(file)}:#{lineno}"
-            end
+            defined << defined_name if def_indent < 0 && defined_name != "" && !defined.include?(defined_name)
             unless in_private
               name = view_method_name(line)
               methods << name if name != "" && !methods.include?(name)
@@ -367,7 +355,6 @@ module Cybertrain
                              defined, encrypted, encrypted_lines, unique, unique_lines)
         includes.each_with_index { |name, k| info.add_include(name, include_lines[k], include_validates[k]) }
         concern_names.each_with_index { |name, k| info.add_concern(name, concern_from[k]) }
-        info.record_defined_places(defined_places)
         info
       end
 
@@ -434,7 +421,7 @@ module Cybertrain
       # scanned, as if written at its `include`. A scope or association
       # named like one the model already has raises Error naming both
       # places.
-      def self.merge_concern(part, scopes, associations, validations, conditions, condition_lines, defined, defined_places,
+      def self.merge_concern(part, scopes, associations, validations, conditions, condition_lines, defined,
                              methods, encrypted, encrypted_lines, unique, unique_lines)
         part.scopes.each do |sc|
           scopes.each do |e|
@@ -461,12 +448,7 @@ module Cybertrain
           conditions << name
           condition_lines << part.condition_lines[k]
         end
-        part.defined_methods.each_with_index do |name, k|
-          next if defined.include?(name)
-
-          defined << name
-          defined_places << part.defined_places[k]
-        end
+        part.defined_methods.each { |name| defined << name unless defined.include?(name) }
         part.view_methods.each { |name| methods << name unless methods.include?(name) }
         part.encrypted.each_with_index do |name, k|
           next if encrypted.include?(name)

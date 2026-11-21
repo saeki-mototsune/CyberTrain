@@ -179,7 +179,6 @@ test "associations, encrypts, uniqueness and validate from a concern join the mo
   assert_equal ["slug_sane"], info.custom_validations.map { |v| v.name }
   assert_equal "create", info.custom_validations[0].on
   assert_equal ["slug_sane"], info.defined_methods
-  assert_equal ["app/models/concerns/tracked.rb:12"], info.defined_places
 end
 
 test "an include in a concern's included body brings that concern in after it; a cycle is refused" do
