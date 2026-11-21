@@ -298,8 +298,9 @@ the object cache (`~/.cache/spinel`) empty at the start, each step timed
 to the first response that shows it. Before is 34c9b7e, after is the
 branch that left `db/schema.rb` alone when unchanged, built gen and db in
 spin's debug mode and made the server's first build the incremental one
-([the spec](superpowers/specs/2026-11-12-dev-flow-bottlenecks-design.md)
-has the causes and what was left out).
+(docs/design.md D12 has what was changed and why;
+[spinel-feedback.md](spinel-feedback.md), "Build time", the causes that
+are the compiler's and spin's).
 
 | Step | Before | After |
 | --- | --: | --: |
@@ -331,17 +332,31 @@ has the causes and what was left out).
   ([spinel-feedback.md](spinel-feedback.md), "Build time").
 - Not tried here: leaving the subsystems an application does not call
   out of its program (done since, below), and a `bin/db.rb` that requires
-  only the migrator (8 s of analysis instead of 48 s, but it cannot load a
-  `config/app.rb` that names the rest of the framework). Both are in the
-  spec's section 6.
+  only the migrator, which is still open. A db program that requires
+  `cybertrain/db/cli` and `cybertrain/config` alone analysed in 8 s
+  instead of 48 s and built in 13 s at `-O0` instead of 57 s (against
+  `require "cybertrain"`, 2026-11-12). It was not built because
+  `bin/db.rb` loads `config/app.rb`, which is application code
+  (examples/blog's calls `Cybertrain::Scheduler.cron` and
+  `Cybertrain::Job.prune_done`), so the slim program does not compile for
+  such an application; and leaving `config/app.rb` out would make
+  `DB::CLI` fall back to the default database path of the environment and
+  ignore a `database_path` the application configures.
+- Also open: the next steps `generate helper`, `component` and `job`
+  print begin with a bare `spin run gen`, as the guide pages do. Typed as
+  printed that builds a release gen (38 s, or 18 s when its C is split),
+  which the next `cybertrain` command replaces with the debug one (8.5 s;
+  D12 of docs/design.md). The hints' second line, `cybertrain test`, runs
+  gen itself in debug mode, so the first is not needed there; elsewhere a
+  `cybertrain gen` command, or the `SPIN_DEBUG=1` prefix in what is
+  printed, would keep one mode.
 
 ### Optional subsystems (2026-11-13)
 
 An application now requires `cybertrain/core` and a line per subsystem it
 uses (jobs, streams, feeds, the mailer, the cache, rate limiting), and
 `cybertrain new` writes the core alone
-([the spec](superpowers/specs/2026-11-13-optional-subsystems-design.md),
-docs/design.md D85). Measured on the same 4-core VM and Spinel at fabd28a:
+(docs/design.md D85). Measured on the same 4-core VM and Spinel at fabd28a:
 one application made with `cybertrain new --path`, `generate scaffold
 article title:string body:text` and `db migrate`, copied, and the copy's
 `require "cybertrain/core"` replaced by `require "cybertrain"` in
@@ -363,9 +378,30 @@ nothing else running.
   build: three edits of `articles_controller.rb`, each built and timed
   alone (an added comment, then two changed flash messages). `db status`
   was run once first, so the build it timed is the one the edit caused.
-- The spike of the spec (cut by hand from a915504) found 41.6 s against
-  30-31 s of analysis for the same cut; the framework has grown since, and
-  the saving held: about 14 s of every edit and every `db` command.
+- A spike before the work (2026-11-13: a throwaway copy of the framework
+  at a915504 with the subsystems cut out by hand, a scaffolded `article`
+  application, one compile at a time) found the same proportion; the
+  framework has grown since, and the saving held: about 14 s of every
+  edit and every `db` command. Its cuts, cumulative:
+
+  | Cut, cumulative | Methods | Analysis |
+  | --- | --: | --: |
+  | none (two compiles) | 2,690 | 41.6 s, 40.7 s |
+  | WebSocket feeds, the feeds role, `Background` | 2,634 | 41.1 s |
+  | streams, SSE, the stream endpoint and poller, Turbo Streams | 2,502 | 37.4 s |
+  | the mailer and `net/*` | 2,378 | 37.0 s |
+  | the jobs page and the `jobs` command | 2,351 | 36.0 s |
+  | jobs, the scheduler, the lease, cron, the worker role | 2,203 | 32.1 s |
+  | the cache and rate limiting (two compiles) | 2,176 | 31.2 s, 30.0 s |
+
+  Two compiles of one tree differ by about 1 s, so only two steps are
+  above that: streams and jobs, about 4 s each. The method count does not
+  predict the saving: the 180 methods of feeds and the mailer bought
+  nothing that could be measured. The spike's reading, which D85 took
+  over, was that what costs is what is wired into code every program
+  reaches (the template helper dispatch, the middleware stack, the server
+  role's boot), not what is merely defined; the table agrees with it and
+  did not test it further.
 - The binary of the core application served `/articles`, `/articles/new`
   and `/up` with 200, answered `/cybertrain/stream` with 404, and
   `./NAME worker`, `jobs` and `feeds` with the line each needs and status 1.

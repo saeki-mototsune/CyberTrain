@@ -1,4 +1,4 @@
-# assert_select (spec section 9.2): Rails' selector subset and options over
+# assert_select (docs/design.md D84): Rails' selector subset and options over
 # the last rendered HTML (Cybertrain::Test.last_html: the last
 # `render_inline` or integration-test response), read by
 # Cybertrain::Test::HtmlReader.
@@ -463,7 +463,7 @@ module Cybertrain
       nil
     end
 
-    # `assert_select`'s count check (pre-flight R17: the one check every
+    # `assert_select`'s count check (the one check every
     # form calls). `count`, `minimum` and `maximum` are -1 when not given;
     # `text_label` is "" or the text option's inspect.
     # @return [nil]

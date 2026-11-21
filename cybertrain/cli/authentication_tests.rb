@@ -1,6 +1,6 @@
-# The tests `cybertrain generate authentication` writes (spec section 11,
-# third bullet): Rails-shaped classes that `cybertrain test` runs in one
-# program, on the fixtures of test/fixtures/users.yml, signing in with
+# The tests `cybertrain generate authentication` writes: Rails-shaped
+# classes that `cybertrain test` runs in one program, on the fixtures of
+# test/fixtures/users.yml, signing in with
 # SessionTestHelper#sign_in_as (test/support/session_test_helper.rb, which
 # test/test_helper.rb includes into ActionDispatch::IntegrationTest).
 #
@@ -21,7 +21,7 @@
 # time), and mail is read from Cybertrain::Mailer.deliveries (the test
 # environment stores it) with assert_emails and perform_enqueued_jobs.
 # Phase 4b's top-level test files these replace (TEST_FILES_REPLACED) are
-# named on a re-run, and deleted with --force (plan decision D15).
+# named on a re-run, and deleted with --force.
 require "digest"
 require "base64"
 

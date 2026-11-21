@@ -47,8 +47,8 @@ module Cybertrain
       # ---- the subsystem lines of bin/<app>.rb ----------------------------
       #
       # `cybertrain new` writes `require "cybertrain/core"`: the framework
-      # without its optional subsystems (docs/superpowers/specs/
-      # 2026-11-13-optional-subsystems-design.md). A generator whose files
+      # without its optional subsystems (docs/design.md D85). A generator
+      # whose files
       # need one adds its line: `generate job` cybertrain/jobs,
       # `generate authentication` cybertrain/jobs, cybertrain/mailer,
       # cybertrain/mailer/later and cybertrain/rate_limit
@@ -923,7 +923,7 @@ module Cybertrain
         YAML
       end
 
-      # test/test_helper.rb (spec 5.1): what every test file's `require
+      # test/test_helper.rb: what every test file's `require
       # "test_helper"` loads. `cybertrain test` requires it before the test
       # files; the generators that add helpers (authentication) insert them
       # after TEST_HELPER_MARKER.

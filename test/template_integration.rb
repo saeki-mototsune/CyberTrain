@@ -131,7 +131,7 @@ class Note
   before_save { |r| r.title = r.title.strip }
 end
 
-# ---- helpers: the Task 13 entry point, a subclass of HelperBase ----------
+# ---- helpers: the entry point, a subclass of HelperBase ------------------
 
 class IntegrationHelpers < Cybertrain::Template::HelperBase
   def helper_call(name, args, kwargs, block, interp, env)

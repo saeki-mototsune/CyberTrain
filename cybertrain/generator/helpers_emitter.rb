@@ -2,7 +2,7 @@ require "cybertrain/generator/helper_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/helpers.rb (spec 3.1): ApplicationHelpers, the
+    # Writes gen/helpers.rb (docs/design.md D38): ApplicationHelpers, the
     # Template::Helpers subclass that includes every app/helpers module and
     # dispatches a template's receiverless call to them through a `case`
     # on the literal name (Spinel has no `send`, spikes/NOTES.md rule 1),

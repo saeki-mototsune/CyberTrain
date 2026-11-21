@@ -283,7 +283,7 @@ test "no jobs page, no jobs controller" do
   assert_equal "", Cybertrain::Gen::ControllersEmitter.jobs_page_warning(none)
 end
 
-# --- concerns (spec 4.1) and the nested module form ------------------------
+# --- concerns and the nested module form -----------------------------------
 
 test "includes, and each include's position among the callbacks and rescues above it" do
   source = <<~'RUBY'
@@ -325,7 +325,7 @@ test "the nested module form names the class after its modules" do
   # A module is closed by the `end` at its own indentation.
   after = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/x_controller.rb", "module Admin\nend\n\nclass XController < ApplicationController\nend\n")
   assert_equal "XController", after.class_name
-  # The compact form stays accepted (phase 4a spike, item 2).
+  # The compact form stays accepted (phase 4a spike).
   compact = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/admin/x_controller.rb", "class Admin::XController < ApplicationController\nend\n")
   assert_equal "Admin::XController", compact.class_name
 end
@@ -464,7 +464,7 @@ test "a class_methods name that is also an instance method gets its forwarder" d
 end
 
 
-# --- helper_method (spec 4.3) ----------------------------------------------
+# --- helper_method ---------------------------------------------------------
 
 HELPERS_SOURCE = <<~'RUBY'
   class ArticlesController < ApplicationController

@@ -82,7 +82,7 @@ test "a machine that has not started has nothing" do
   assert_equal [], r.calls
 end
 
-test "a change: cancel, gen, stop, CRuby child, build (P12)" do
+test "a change: cancel, gen, stop, CRuby child, build" do
   r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
   m.on_change(["app/models/article.rb"])
   assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
@@ -194,7 +194,7 @@ test "events of another generation are ignored; stop ends everything" do
   assert_equal [[:cancel_build], [:stop_child], [:release_hold]], calls_after(r)
 end
 
-test "start while the build lock is held: hold, then start on the first tick after it (R4)" do
+test "start while the build lock is held: hold, then start on the first tick after it" do
   r = FakeRunner.new; r.locked = true; m = Machine.new(r); m.start
   assert_equal [[:hold, "cybertrain build in progress", "the server starts when it finishes"]], calls_after(r)
   assert_equal [LOCK_LINE], r.lines
@@ -218,7 +218,7 @@ test "a change that arrives before the locked start has run joins the start" do
   assert_equal [[:release_hold], [:run_gen], [:start_child, :cruby, 1], [:start_build, 1]], calls_after(r)
 end
 
-test "a binary handover does not start a stale binary after a blocking stop (P16)" do
+test "a binary handover does not start a stale binary after a blocking stop" do
   r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
   r.pending = true
   m.on_build_done(1, true, "")
@@ -228,7 +228,7 @@ test "a binary handover does not start a stale binary after a blocking stop (P16
   assert_equal [[:cancel_build], [:run_gen], [:stop_child], [:start_child, :cruby, 2], [:start_build, 2]], calls_after(r)
 end
 
-test "the lock appears while gen runs: the round stops, the old child keeps serving (P17)" do
+test "the lock appears while gen runs: the round stops, the old child keeps serving" do
   r = FakeRunner.new; m = Machine.new(r); m.start; calls_after(r)
   r.during_gen = ->(fake) { fake.locked = true }
   m.on_change(["a.rb"])
@@ -516,7 +516,7 @@ test "the first round never stops a child, so the lock cannot appear between its
   assert_equal [[:run_gen], [:start_child, :cruby, 1], [:start_build, 1]], calls_after(r)
 end
 
-# A handover that gave way to a change (P16) leaves nothing serving; the
+# A handover that gave way to a change leaves nothing serving; the
 # change's round normally follows. A change that never comes (a temporary
 # file under a watched glob, gone by the watcher's next poll) must not leave
 # the port unanswered: the next tick hands over again.

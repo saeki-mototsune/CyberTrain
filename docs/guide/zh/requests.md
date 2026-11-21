@@ -1,5 +1,5 @@
 ---
-source_sha256: 2b5fded6e781bd7858eecd4087a657f9a3942325ea7b3d7be3ac8a684a924643
+source_sha256: 7d20c1d676f0c2252ce9c6e5066373d67c01cf27c716496a63adc1b628df3f81
 ---
 # 请求
 
@@ -279,7 +279,7 @@ Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: g
 
 ## 升级为 0.4 编写的应用
 
-为 0.4 编写的应用需要注意的变化（完整列表见[设计文档](../superpowers/specs/2026-11-10-phase4-web-layer-design.md)第 14 节）：
+为 0.4 编写的应用需要注意的变化：
 
 - 模型和数据库有自己的一份列表，其中包括运行一次 `db normalize`（[从 0.4 升级](models.md#upgrading-from-04)）；测试（[从 0.4 升级](testing.md#upgrading-from-04)）和任务（[从 0.4 升级](background-and-operations.md#upgrading-from-04)）也各有一份。
 - 每个会话都会结束一次：加密的 cookie 不读取旧的签名 cookie，所以用户需要重新登录。调用 `Session.load` 或 `Session.dump` 的代码要传入派生的密钥 `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)`；传入原始密钥会抛出 `Encryptor::Error`。

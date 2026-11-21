@@ -13,11 +13,11 @@ require "cybertrain/zoned_time"
 # (cybertrain/locales/en.yml and ja.yml, rails-i18n's keys, compiled into
 # cybertrain/locales/bundled.rb). A key is looked up in the current locale,
 # the application's dictionary first, then in the default locale the same
-# way (D2): an application's key overrides the bundled one.
+# way: an application's key overrides the bundled one.
 #
 # The current locale belongs to the thread (`Thread.current`, under
 # {LOCALE_KEY}), so connections served at the same time keep their own;
-# every controller action starts at the default locale (D5-D7, R4).
+# every controller action starts at the default locale.
 #
 # @example
 #   # config/locales/ja.yml:  ja: { greeting: "こんにちは、%{name}" }
@@ -517,7 +517,7 @@ module I18n
     I18n.list_in_locale(I18n.default_locale, k)
   end
 
-  # The CLDR plural category of an integer count in a locale (D7), decided
+  # The CLDR plural category of an integer count in a locale, decided
   # by the locale's language (`pt-BR` by `pt`): ja and zh `other`; fr `one`
   # for 0 and 1, `many` for a non-zero multiple of 1,000,000, else `other`;
   # ru `one` (1, 21, 101), `few` (2-4, 22-24), else `many`; en and every
@@ -722,7 +722,7 @@ module I18n
   # @api public
   def self.missing_text(full_key) = "translation missing: #{full_key}"
 
-  # What t answers for a key no dictionary holds (D5).
+  # What t answers for a key no dictionary holds.
   # @api private
   def self.missing_answer(loc, key)
     full = "#{loc}.#{key}"

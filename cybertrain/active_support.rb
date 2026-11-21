@@ -1,6 +1,6 @@
 # ActiveSupport::Concern, as far as a controller or model concern needs
-# it to compile (spec sections 4.1 and 4.2, plan decision 11). `ActiveSupport` as a whole
-# does not exist.
+# it to compile (docs/design.md D60). `ActiveSupport` as a whole does not
+# exist.
 module ActiveSupport
   # Lets a module of `app/controllers/concerns` (or `app/models/concerns`)
   # be written the Rails way:

@@ -5,8 +5,7 @@ require "cybertrain/test"
 require_relative "support/file_tree"
 
 # The jobs feature as the core reaches it (cybertrain/jobs.rb's JobsFeature,
-# through Cybertrain::Features; docs/superpowers/specs/
-# 2026-11-13-optional-subsystems-design.md, section 4), with the whole
+# through Cybertrain::Features; docs/design.md D85), with the whole
 # framework required: the features register in the order cybertrain.rb
 # requires them (help and `/up` follow it); boot's feature check is
 # Scheduler.job_kinds_error; the server role's TERM trap

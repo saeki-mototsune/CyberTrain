@@ -5,8 +5,8 @@ require "cybertrain"
 require "cybertrain/test_help"
 require "cybertrain/test/smtp_receiver"
 
-# Mail and jobs in tests (spec section 10, acceptance 7; plan decisions
-# D12 and D13): in the test environment a delivery is stored in
+# Mail and jobs in tests (docs/design.md D84):
+# in the test environment a delivery is stored in
 # Mailer.deliveries instead of connecting, cleared before every test;
 # assert_emails / assert_no_emails count what a block delivered, the
 # deliver_later jobs it queued included; perform_enqueued_jobs with a block

@@ -68,7 +68,7 @@ module Cybertrain
       # The feeds' lifetime, the counterpart of WorkerRunner#run_worker_threads.
       #
       # In this role a feed whose thread keeps dying ends the process
-      # (Background.exit_on_feed_death, spec section 9): the supervisor
+      # (Background.exit_on_feed_death, docs/design.md D56): the supervisor
       # logs the FATAL line and sets Background.feeds_failed?, which ends
       # the wait as a stop does; the feeds are stopped and the role answers
       # 1, the exit status Main.run's caller exits with. (The supervisor

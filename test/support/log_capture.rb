@@ -5,13 +5,13 @@ require "cybertrain/logger"
 # `require_relative "support/log_capture"`). Not a test program itself:
 # script/gate and script/test-shard read test/*.rb only.
 #
-# A log line is `<time> <LEVEL> [<tag>]... <message>` (spec section 12.1).
+# A log line is `<time> <LEVEL> [<tag>]... <message>` (docs/design.md D86).
 # Tests compare the level and the message, not the time and the tags, so
 # that a tag added around a line (a request id, a job's kind and id) does
 # not change what they assert: {LogCapture.entries} drops the time (read
 # by its shape) and the tags, leaving `"<LEVEL> <message>"`. A message that itself starts with
 # `[` would lose that bracket group too; none of the framework's does.
-# Byte-level reading, no regexp (pre-flight ruling G5).
+# Byte-level reading, no regexp.
 module LogCapture
   # Runs the block with Cybertrain.logger writing into a StringIO at
   # :debug and answers what was logged; the logger found before is back
@@ -123,8 +123,7 @@ end
 module LogCapture
   # Whether `value` is a version 4 UUID in lower-case hex,
   # `xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx` (a request id
-  # Cybertrain::Crypto.uuid made), read byte by byte (no regexp,
-  # pre-flight ruling G5).
+  # Cybertrain::Crypto.uuid made), read byte by byte (no regexp).
   def self.uuid?(value)
     s = value.to_s
     return false unless s.bytesize == 36

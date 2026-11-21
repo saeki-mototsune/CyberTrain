@@ -1,7 +1,7 @@
 # Cybertrain::Logger -- a small leveled logger, and Cybertrain.logger, the
 # process-wide default every framework component logs through.
 #
-# A line (spec sections 12.1 and 12.5):
+# A line (docs/design.md D86):
 #
 #   2026-11-11T12:00:00.123Z INFO Completed 200 in 12ms
 #

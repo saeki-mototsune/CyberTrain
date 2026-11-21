@@ -5,7 +5,7 @@ require "cybertrain/generator/model_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/concerns.rb (spec 4.1, plan decisions 8 and 12), which
+    # Writes gen/concerns.rb (docs/design.md D60), which
     # gen/app.rb requires last, once every application class is defined:
     #
     # - per concern with `class_methods do ... end`, the module reopened
@@ -23,7 +23,7 @@ module Cybertrain
     # name with an instance method: the forwarder is a class method, and
     # the blanked copy defines no instance method for it.
     #
-    # Models get the same (spec 4.2, plan decision 9): per model that
+    # Models get the same: per model that
     # includes concerns, the forwarders and each concern's `included` body
     # between `model_concern_insert_at(validators_index)` and
     # `model_concern_insert_done` (emit_models).

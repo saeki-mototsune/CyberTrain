@@ -9,7 +9,7 @@ require_relative "fixtures/gen_app/config/routes"
 # The checked-in generator output for the fixture app, loaded the way an
 # app's binary loads it: gen/models, routes, controllers, then app/models
 # and app/controllers. The fixture is shared with the model generator
-# (Task 11b), so gen/app.rb pulls in the generated models and this program
+# too, so gen/app.rb pulls in the generated models and this program
 # needs the model runtime; it also loads the fixture's jobs and gen/jobs.rb
 # (Job.register), so the job runtime too. That runtime links SQLite through FFI, which
 # CRuby cannot load: the snapshot comes from the compiled binary
@@ -147,8 +147,8 @@ test "path_for resolves helpers by name" do
   assert_equal "missing route parameter", assert_raises("ArgumentError") { Gen::Routes.path_for("post_path", []) }
 end
 
-# The generated helpers, called the way a controller calls them (plan
-# decisions 13 and 14, spec 2.6).
+# The generated helpers, called the way a controller calls them
+# (docs/design.md D58).
 class HelperProbe
   include ::Gen::UrlHelpers
 end

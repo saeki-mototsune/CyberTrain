@@ -21,7 +21,11 @@ module Cybertrain
     # compiler output (not a download, not an encoded body). The answer
     # comes from the Rebuilder in the loop the binary runs itself, or from a
     # BuildStatus (the supervisor's state file) under `cybertrain server`;
-    # either slot may be nil.
+    # either slot may be nil. Two slots, not one status object that both
+    # loops fill: the Rebuilder's path through this class was left as it
+    # was when the supervisor arrived, so that the loop the binary runs
+    # itself kept its output and snapshots. A choice to change little, not
+    # a constraint.
     class ErrorPage < Middleware
       BANNER_ID = "cybertrain-build-failed"
 

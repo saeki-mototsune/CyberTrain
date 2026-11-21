@@ -5,7 +5,7 @@ require "cybertrain/schema"
 require "cybertrain/encryptor"
 require_relative "support/schema_tables"
 
-# includes / preload (spec section 8) on the compiled fixture models, loaded
+# includes / preload (docs/design.md D47) on the compiled fixture models, loaded
 # as test/gen_models_compiles.rb loads them: Post has_many :comments,
 # Comment belongs_to :post. Every claim about queries is a delta of
 # Connection#statements_run. test/associations.rb covers has_one and a
@@ -145,7 +145,7 @@ test "includes with no names, or a name twice, changes nothing" do
   assert_equal 3, statements - before
 end
 
-test "an empty result runs only its own statement (Review Focus 4)" do
+test "an empty result runs only its own statement" do
   seed_posts
   before = statements
   assert_equal 0, Post.where(id: -1).includes(:comments).to_a.size

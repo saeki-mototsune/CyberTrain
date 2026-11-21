@@ -582,8 +582,7 @@ past the limit `Cybertrain::BodyTooLarge`, both `QueryInvalid`s answered 400.
 
 ## Upgrading an application from 0.4
 
-What changes for an application written for 0.4 (the full list is section
-14 of [the design](../superpowers/specs/2026-11-10-phase4-web-layer-design.md)):
+What changes for an application written for 0.4:
 
 - Models and the database have a list of their own, which includes running
   `db normalize` once ([Upgrading from 0.4](models.md#upgrading-from-04));

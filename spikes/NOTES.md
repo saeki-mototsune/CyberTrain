@@ -217,11 +217,11 @@ for the evidence needed to change a status.
 | 108 | Tool behaviour, checked 2026-11-12: spin's freshness check for `bin/gen` counts test files and gen's outputs as inputs. |
 | 109 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb). |
 | 110 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/case_nullable_temp.rb does not compile). |
-| 111 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional-subsystems design, not of a defect. |
+| 111 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional subsystems (docs/design.md D85, cybertrain/feature.rb), not of a defect. |
 | 112 | Runtime behaviour, checked 2026-11-13 on this pin (spikes/phase5/flock_fstat.rb): `File#flock` matches CRuby; `File#stat` and `IO.for_fd` do not. |
 | 113, 119 | Work on this build (phase 5b, 2026-11-13): records of forms that compile and behave as under CRuby, not of defects. |
-| 114 | Found on this build (phase 5b spike item 7, 2026-11-13): how green threads are scheduled at one worker, not a defect. |
-| 115 | Performance observation on this build (phase 5b spike item 9, 2026-11-13), with the limits its entry lists; not re-measured with wrk or a slow reader. |
+| 114 | Found on this build (phase 5b spike, 2026-11-13): how green threads are scheduled at one worker, not a defect. |
+| 115 | Performance observation on this build (phase 5b spike, 2026-11-13), with the limits its entry lists; not re-measured with wrk or a slow reader. |
 | 116, 117 | **Still there**: found on this build (phase 5b, 2026-11-13) and reduced on 2026-11-14 (spikes/phase5/stringio_threads.rb, queue_in_array.rb). |
 | 118 | How a thread test is written: CRuby hides the race, not a Spinel defect (phase 5b, 2026-11-13). |
 | 120 | Tool behaviour, seen 2026-11-13: spin's freshness check for a test binary compares modification times. |
@@ -319,9 +319,8 @@ written to print.
 
 ## CRuby preview spike, 2026-11
 
-The spike of the CRuby preview design
-([docs/superpowers/specs/2026-11-12-cruby-preview-design.md](../docs/superpowers/specs/2026-11-12-cruby-preview-design.md),
-sections 7 and 13): can the unmodified framework serve examples/blog under
+The spike of the CRuby preview ([docs/design.md](../docs/design.md), D87):
+can the unmodified framework serve examples/blog under
 CRuby, with a Fiddle shim for the `ffi_*` DSL? Throwaway programs,
 deleted once `cybertrain/preview/` replaced them
 (`git log --diff-filter=D -- spikes/preview` in a full clone):
@@ -367,9 +366,9 @@ the title; the row in SQLite holds the title's UTF-8 bytes.
   symbol" error, and all 44 `ffi_func` symbols of the three files resolve
   (the compiled unit first, then the `ffi_lib`, then the process). The
   counts are 33 `ffi_func` and 4 `ffi_source` in sqlite_ffi.rb, not the
-  34 and 5 of the design's section 2.
-- **When to compile**: not at a module's first `ffi_func`, as the design
-  said: sqlite_ffi.rb declares three of its four `ffi_source` blocks after
+  34 and 5 the design first counted.
+- **When to compile**: not at a module's first `ffi_func`, as first
+  designed: sqlite_ffi.rb declares three of its four `ffi_source` blocks after
   its first `ffi_func`. The shim binds lazily, at the first call of any of
   the module's functions, when every source has been read.
 - **Encodings**: a `:str` result is a copy up to the NUL tagged UTF-8, a
@@ -435,8 +434,8 @@ the title; the row in SQLite holds the title's UTF-8 bytes.
   | The test's input comes from the runtime's own `Zlib.gzip`, whose bytes differ: flipping its middle byte still inflates to the same 2000 bytes (CRuby's zlib agrees), so no BodyUndecodable | 1 | 1 | http_gunzip |
   | The test runs `$0` as an executable (only a binary can), and `Process.spawn` reports a non-executable `sqlite3` on PATH as ENOENT under CRuby, EACCES compiled | 1 | 1 | main_console |
 
-  None is a shim defect; the last two are the documented gap between the
-  runtimes the plan's first step expects to list. The suite took 184 s
+  None is a shim defect; the last two are among the gaps between the
+  runtimes that test/cruby/parity-gaps.txt lists. The suite took 184 s
   under CRuby, one test at a time (websocket_subscription 33 s,
   background 21 s, job_threads 20 s).
 - **Not covered**: under CRuby the server boots in development with the
@@ -910,7 +909,19 @@ from CRuby that is still there (the status table classifies each); record
     (both nil) and a class-method `setup` that only raises compiled beside
     `CLI::Toolchain.setup` (an Integer), all called, and a test file's
     top-level `last_message` answering an Array beside `Test.last_message`
-    answering a String. The rule stands for new code; these are records.
+    answering a String. In phase 3 (2026-11-09, same build) a spike
+    compiled and ran stand-ins of the cache's class methods beside the
+    framework's existing methods of the same names with other return
+    types, in one program that required the whole framework: `Cache.read`
+    (String or nil) beside `BlobStore.read` (String), `Cache.write`
+    (Boolean) beside `BlobStore.write` (nil), `Cache.delete` (Boolean)
+    beside `Session#delete` (String or nil), and `HttpClient#request`
+    beside `Test::Client#request`, each answering its own Response class.
+    The framework ships them that way: every program that requires
+    `cybertrain` holds the first three pairs, and an application's test
+    program the fourth. If a compiler update refuses one, the remedy is a
+    prefixed name (`cache_read`), as `Sse::Event`'s readers already are
+    (`event_data`). The rule stands for new code; these are records.
 35. Mutating an object received as a plain parameter through `obj[k] = v` can
     silently do nothing once the caller sits behind a middleware chain (the
     parameter widened); put the mutation in a typed instance method on the
@@ -1841,7 +1852,7 @@ from CRuby that is still there (the status table classifies each); record
     returns the status (`Roles::FeedsRunner#run_feeds_threads`,
     cybertrain/roles/feeds.rb; the flag is in
     cybertrain/background/supervisor.rb). `Thread#join` on a thread that
-    died of an exception re-raises it, as under CRuby (spike 3 of phase 3),
+    died of an exception re-raises it, as under CRuby (checked in phase 3, 2026-11-09),
     so the framework joins feed and supervisor threads in plain methods
     that rescue `Exception` (rules 32 / 45).
 
@@ -1864,7 +1875,7 @@ from CRuby that is still there (the status table classifies each); record
     stubbed the program builds and the declarations gen splices into the
     including class work. Found in the phase 4a spike (2026-11-10,
     spikes/phase4/concern_class_methods.rb, deleted since).
-    Stubs are not enough for a call no stub covers: Task 7 of phase 4a
+    Stubs are not enough for a call no stub covers: phase 4a
     found `included do; scope :visible, -> { where(hidden: 0) }; end` in a
     model concern refused at the bare `where` inside the lambda, with
     `scope` stubbed and `method_missing` defined (stubbing Relation's
@@ -1890,7 +1901,7 @@ from CRuby that is still there (the status table classifies each); record
     `x` under Spinel: a `class_methods` name must not be the name of an
     instance method of the concern or of an including class (gen refuses
     it), and the class method itself comes from gen's `def self.x` on the
-    concern and forwarder in the class (plan decision 12). Found in the
+    concern and forwarder in the class (docs/design.md D60). Found in the
     phase 4a spike (2026-11-10; docs/spinel-feedback.md U). The final
     generated concern copies blank these blocks before compilation (rule
     92); the phantom instance-method description applies to compiling the
@@ -1901,7 +1912,7 @@ from CRuby that is still there (the status table classifies each); record
     converge in 128 rounds" once `Gen::Runner.run` held the results of two
     lexical scans of `app/controllers` (the controllers' and the
     concerns') in locals and passed both to two emitters; bisected to that
-    change (phase 4a Task 5, 2026-11-10), not reduced further. Each emitter
+    change (phase 4a, 2026-11-10), not reduced further. Each emitter
     now scans for itself (`Runner.controllers_source`,
     `concerns_source`), so `app/controllers` is read twice. When the
     message appears after a change that threads one value through several
@@ -1928,7 +1939,7 @@ from CRuby that is still there (the status table classifies each); record
     buffer. The literal-pattern form works. So `time_tag`'s `format:`
     (`Template::Helpers.time_tag_strftime`) walks the pattern itself and
     calls `strftime` with a literal for each directive it supports,
-    raising for an unknown one (phase 4a Task 17, 2026-11-11). Since
+    raising for an unknown one (phase 4a, 2026-11-11). Since
     phase 4b the walk is `Cybertrain::Strftime.walk(time, pattern, label, zone)`
     (cybertrain/strftime.rb; `zone`, the TimeZone a Time at offset 0 is
     rendered in, since phase 5a), which `time_tag_strftime` and `I18n.l`'s
@@ -1944,7 +1955,7 @@ from CRuby that is still there (the status table classifies each); record
     lambda shape, use an independently owned local copy and preserve the
     caller's mutation semantics; a plain local alias is not evidence that
     the same workaround works. Do not generalize this to every ivar/type
-    passed to a stored lambda (phase 4a Task 17,
+    passed to a stored lambda (phase 4a,
     2026-11-11; compare rule 82).
 
 98. A C file that Spinel wrote (`spinel prog.rb -c -o x.c`, such as the
@@ -2081,7 +2092,7 @@ from CRuby that is still there (the status table classifies each); record
      `Test::BUILTIN_PARENTS` and the `Errno::` prefix
      (cybertrain/test/assertions.rb), and fails naming a built-in class it
      does not know rather than ending in that NoMethodError (phase 5a
-     spike item 4 and Task 7, 2026-11-12; spikes/phase5/assert_raises.rb,
+     spike, 2026-11-12; spikes/phase5/assert_raises.rb,
      test/assertions.rb; docs/spinel-feedback.md AJ). `rescue Exception
      => e` in a yielding method catches every class probed, ScriptError
      and NotImplementedError included.
@@ -2095,7 +2106,7 @@ from CRuby that is still there (the status table classifies each); record
      a yielding method catches. Rule 84's refusal is for class methods;
      this instance-method counterpart is not a guard an API can rely on,
      so `1.month` is documented as failing when it runs (phase 5a spike
-     item 2 and Task 4, 2026-11-12, Spinel 2026.11.04.7026;
+     item 2, 2026-11-12, Spinel 2026.11.04.7026;
      spikes/phase5/durations_month.rb, test/durations_refused.rb).
 
 106. A method named like a builtin `Time` instance method (`hour`, `day`,
@@ -2106,8 +2117,8 @@ from CRuby that is still there (the status table classifies each); record
      default arm calls the builtin Time's method before raising (the C has
      one `sp_raise_nomethod` per name, each in that default arm). A record
      of a form that works, refining rule 62 (whose reduced program also
-     passes): `ZonedTime` keeps Rails' reader names (phase 5a spike item
-     2, 2026-11-12; spikes/phase5/durations.rb's header has the greps).
+     passes): `ZonedTime` keeps Rails' reader names (phase 5a spike,
+     2026-11-12; spikes/phase5/durations.rb's header has the greps).
 
 107. What `e.backtrace` answers depends on the build on Spinel
      2026.11.04.7026: a release build answers an empty Array, `-g` one
@@ -2118,7 +2129,7 @@ from CRuby that is still there (the status table classifies each); record
      45% of the release build's in-process request rate. So the test runner names a failing test by
      the line of its `test` call, never by the assertion's line, and an
      error report carries a backtrace only from a debug build (phase 5a
-     spike item 5, 2026-11-12; spikes/phase5/backtrace.rb;
+     spike, 2026-11-12; spikes/phase5/backtrace.rb;
      docs/spinel-feedback.md AM).
 
 108. Tool behaviour: `spin run gen` rebuilds the application's
@@ -2166,7 +2177,7 @@ from CRuby that is still there (the status table classifies each); record
      depends on whole-program type inference: test/test_render_inline.rb
      and test/test_classes.rb failed (`'_o24' undeclared` in
      `HtmlReader.parse`, at `case kind`) while test/test_html.rb, loading
-     the same file, built (phase 5a, CI after the fix wave, 2026-11-13).
+     the same file, built (phase 5a, in CI, 2026-11-13).
      Commit 50bbcb8 reshuffled the code before that case, which only moved
      the number: it fixed one program and not the others. So shared
      framework code does not use a statement `case` on a plain Integer
@@ -2180,7 +2191,7 @@ from CRuby that is still there (the status table classifies each); record
      does not compile, `'_o1' undeclared`, where CRuby prints `amp` and
      `long`; with the methods in the other order it compiles; with both
      cases as return values it compiles; docs/spinel-feedback.md AO).
-     Extended in phase 5b (2026-11-13, pre-flight ruling G2): new
+     Extended in phase 5b (2026-11-13): new
      framework code writes no statement `case` on any Integer, a
      `getbyte` value included, since a nullable subject is what leaks the
      mark and a plain one is what it breaks; the byte scanners of
@@ -2191,9 +2202,9 @@ from CRuby that is still there (the status table classifies each); record
 111. A registry of features, an Array of base-class instances whose
     overridable hooks are called on each element, compiles and dispatches
     to each subclass's override under Spinel 2026.11.04.7026 (a2d06115,
-    GCC 13.3.0, Linux x86_64, no flags), as the optional-subsystems design
-    needs (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md
-    section 4, plan Task 1). Checked on 2026-11-13 at 6876ae6 with
+    GCC 13.3.0, Linux x86_64, no flags), as the optional subsystems
+    need (docs/design.md D85; cybertrain/feature.rb). Checked on
+    2026-11-13 at 6876ae6 with
     spikes/phase6/feature_registry.rb and feature_registry_ba.rb (the same
     checks with the two feature files required in the other order),
     standalone programs with no framework: each compiled (4 s), exited 0
@@ -2244,7 +2255,7 @@ from CRuby that is still there (the status table classifies each); record
     not dispatched. Rule 88's `add { |r| r.hook }` is that shape. Which
     module stores the block, and whether `add` is called on implicit self
     or on another module, does not matter (reductions with a separate
-    `Store` module fail the same way). The design's
+    `Store` module fail the same way). The framework's
     `Features.run_periodic(i, now)` is clear of it either way; a feature
     file must still not write a block that calls a hook inside its class
     body ahead of the hook's `def` (registering at the end of the file,
@@ -2289,17 +2300,16 @@ from CRuby that is still there (the status table classifies each); record
      answers `v`) and `return v` (returns from the method around the block)
      inside the block. A record of a form that works, refining rules 32, 45
      and 79 for this shape: `Cybertrain.error.handle` is written so
-     (phase 5b spike item 8, spikes/phase5/error_names.rb at framework
+     (phase 5b spike, spikes/phase5/error_names.rb at framework
      19668bc, 2026-11-13, deleted since; test/error_reporter.rb's "handle
-     through a forwarding block, with next, and nested in blocks" since
-     Task 7).
+     through a forwarding block, with next, and nested in blocks" since).
 
 114. Under `SPINEL_WORKERS=1` a `sleep 0` does not switch green threads on
      Spinel 2026.11.04.7026: four threads started through a method, each
      calling `sleep 0` between storing and reading its own value, ran one
      after another, so a test meant to read after another thread wrote saw
      no other thread run. A timed sleep (2 ms) did switch them (phase 5b
-     spike item 7, spikes/phase5/thread_scope.rb, 2026-11-13). So a test
+     spike, spikes/phase5/thread_scope.rb, 2026-11-13). So a test
      that must interleave threads sleeps for a time, or better meets
      through Queues (`inbox.pop(timeout: 5)` parks the thread whatever the
      worker count, rule 85), as test/logger_scope.rb and
@@ -2315,8 +2325,9 @@ from CRuby that is still there (the status table classifies each); record
      once without the lock, served under `taskset -c 0,1` with
      `SPINEL_WORKERS=2`, the request log on and stdout into a pipe, five
      10-second runs each: medians 1,590 and 1,581 requests a second
-     (100.6%), no request over 1 s, no error (phase 5b spike item 9,
-     2026-11-13; the spec's section 16 has every run). The limits of that
+     (100.6%), no request over 1 s, no error (phase 5b spike,
+     2026-11-13; the header of spikes/phase5/logger_lock/run.sh has every
+     run). The limits of that
      measurement: the load was the spike's own CRuby loader with 8
      keep-alive connections, not wrk (not installed) at its higher rates,
      where rule 57's stalls showed; stdout was a pipe read promptly, so a
@@ -2334,8 +2345,8 @@ from CRuby that is still there (the status table classifies each); record
      serializes them) prints the joined size. With one worker the same
      program finishes (reduced program spikes/phase5/stringio_threads.rb,
      2026-11-14; docs/spinel-feedback.md AQ). Found when test/logger_threads.rb
-     was run against a logger without its lock (phase 5b Task 2's fix
-     round): the failure there showed as a crash, not as interleaved lines.
+     was run against a logger without its lock (phase 5b): the failure
+     there showed as a crash, not as interleaved lines.
      So a StringIO (or any object) that several threads write is written
      under a lock (the Logger's `LOCK` covers the test loggers' StringIO
      too), and a test of a race sets `SPINEL_WORKERS` above 1 before its
@@ -2350,14 +2361,14 @@ from CRuby that is still there (the status table classifies each); record
      Queue that never goes into an Array, kept in a local or a constant and
      passed as a parameter, pops as under CRuby (reduced program
      spikes/phase5/queue_in_array.rb, its header has the variants,
-     2026-11-14; docs/spinel-feedback.md AP). Found in phase 5b Task 3
+     2026-11-14; docs/spinel-feedback.md AP). Found in phase 5b
      (test/logger_scope.rb's concurrent `tagged` test, whose threads each
      get their two Queues as parameters).
 
 118. Thread tests: a handshake that relies on the other thread not
      running yet passes under CRuby, where the GVL runs one thread at a
      time and switches rarely, and fails compiled, where the threads run
-     on several workers at once. Found in phase 5b Task 7 (test/error_reporter.rb):
+     on several workers at once. Found in phase 5b (test/error_reporter.rb):
      a delivery thread blocked in a subscriber is released by tokens on a
      Queue; a spare token left from one phase let a later delivery through
      early compiled, never under CRuby. So a test pushes exactly as many
@@ -2371,7 +2382,7 @@ from CRuby that is still there (the status table classifies each); record
      under CRuby, on Spinel 2026.11.04.7026: `Logger::NO_SCOPE`'s tags and
      context are frozen, and `scope_tags << "x"` and `scope_context["k"] =
      "v"` on it raise `FrozenError` in the compiled test/logger_scope.rb
-     (phase 5b Task 3's fix round, 2026-11-13). A record of a form that
+     (phase 5b, 2026-11-13). A record of a form that
      works: freezing is how the framework keeps a shared constant
      container from being written (`assert_raises("FrozenError") { ... }`
      there).

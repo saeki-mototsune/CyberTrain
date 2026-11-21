@@ -1,4 +1,4 @@
-# Phase 4b spike, item 6d (D3): the dictionary handed to I18n as stored
+# Phase 4b spike, item 6d: the dictionary handed to I18n as stored
 # lambdas, and I18n.with_locale's yield / ensure. A record, not a test.
 #
 # - Gen::Locales (a `case`, as gen/locales.rb would write it) answers

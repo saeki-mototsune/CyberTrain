@@ -1,5 +1,5 @@
-# What `cybertrain server` answers while no child can serve (HOLDING in
-# docs/superpowers/specs/2026-11-12-cruby-preview-design.md section 6): gen
+# What `cybertrain server` answers while no child can serve (the hold of
+# docs/design.md D87; Machine's `serving` is :holding): gen
 # failed, the CRuby child could not boot or stopped, or `cybertrain build`
 # holds its lock. The supervisor itself accepts on the listener then and
 # answers every request with a 503 page that shows the error and what it is

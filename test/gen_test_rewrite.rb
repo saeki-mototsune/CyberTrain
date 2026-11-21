@@ -2,12 +2,12 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 
-# The class-form rewrite (spec 5.2, plan decisions 18 and 20): a file of
+# The class-form rewrite (docs/design.md D82): a file of
 # test/ holding a Rails-shaped test class is copied into gen/test/ with
 # each `test "name" do` turned into a method, setup / teardown blocks into
 # per-class methods called from one setup / teardown on the class line,
-# every line kept where it was and each method ending in nil (pre-flight
-# ruling R8). Text only: CRuby-portable.
+# every line kept where it was and each method ending in nil (rule
+# 34). Text only: CRuby-portable.
 require_relative "fixtures/gen_app/config/routes"
 
 FIXTURE = "test/fixtures/gen_app"
@@ -38,7 +38,7 @@ def temp_app(files)
   root = Dir.mktmpdir("cybertrain-gen-test")
   TEMP_ROOTS << root
   FileTree.copy(FIXTURE, root)
-  # The fixture app's gen/test/data.rb (Task 8's fixtures) is left to a
+  # The fixture app's gen/test/data.rb (its fixtures) is left to a
   # gen that loads the schema, which this program does not: without it
   # the copies are the only files of gen/test.
   FileTree.remove("#{root}/gen/test")
@@ -145,7 +145,7 @@ end
 test "names that collide after the method-name rule, non-ASCII and quoted names" do
   assert_equal "test/x_test.rb:5: test \"a-b\" has the same method name test_a_b as test \"a b\" (line 2)", refusal(two_tests("a b", "a-b"))
   # Each non-ASCII character is _u<hex>: names in another script do not
-  # collide (ruling C-M2).
+  # collide.
   assert_equal "", refusal(two_tests("日本語", "ロシア"))
   assert_equal "", refusal(two_tests("ログインできる", "ログアウトする"))
   assert_equal "test__u65e5__u672c__u8a9e__u306e__u30c6__u30b9__u30c8_", Cybertrain::Gen::TestScan.method_name("日本語のテスト")

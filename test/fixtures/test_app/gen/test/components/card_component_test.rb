@@ -1,6 +1,6 @@
 
 
-# render_inline and assert_select (spec section 9.1): a component, then a
+# render_inline and assert_select: a component, then a
 # partial outside any request.
 class CardComponentTest < ViewComponent::TestCase
   def test_renders_the_title; begin

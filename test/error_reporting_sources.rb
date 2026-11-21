@@ -6,8 +6,8 @@ require "cybertrain/test_help"
 require "cybertrain/test/websocket_receiver"
 require_relative "support/log_capture"
 
-# What is reported automatically outside the request path (spec section
-# 13.2, plan D10): every failed job attempt (the default policy, a
+# What is reported automatically outside the request path
+# (docs/design.md D88): every failed job attempt (the default policy, a
 # `retry_on`, a `discard_on`), with the job's context and the id of the
 # request that enqueued it; a failed `deliver_later` as the `cybertrain
 # mail` job; a job thread's own failure; scheduled tasks (a block that
@@ -197,7 +197,7 @@ test "every failed job attempt is reported, with the job's context and its reque
   assert_logged LOG.string, "ERROR", "job #{id} (BoomJob) attempt 1 of 5 failed: RuntimeError: boom; retrying in "
 end
 
-# Plan D11: the reporter keeps one event per class, message and `where`
+# The reporter keeps one event per class, message and `where`
 # (and, for a job, the job's id) for 60 seconds by the Clock, so a test of every attempt travels past
 # the window between attempts. The worked time (`perform_enqueued_jobs`'s
 # argument) only makes the row due; the Clock is what dedupe reads.
@@ -443,7 +443,7 @@ end
 
 # Runs the give-up case with exit_on_feed_death on, and off again (with
 # the supervisor's state reset and the feeds stopped) after it, also when
-# it raises (pre-flight ruling G4).
+# it raises (a plain method's ensure).
 module FeedsProcess
   def self.during
     B.exit_on_feed_death = true

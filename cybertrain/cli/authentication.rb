@@ -36,7 +36,7 @@
 # harmless.
 #
 # Run over an application an older generator wrote (0.4's, or one
-# without --confirmable; D19 of docs/superpowers/plans/2026-11-11-phase4b-i18n-auth-plan.md),
+# without --confirmable; docs/design.md D80, "re-runs"),
 # it writes the files that are missing, a db/migrate/<v>_add_authentication_columns.rb
 # with the columns the existing migrations lack, and the edits above; a
 # file it writes whole that exists with other content is left alone and
@@ -2137,7 +2137,7 @@ module Cybertrain
       end
 
       # The mail's HTML (Views.render_mail); its lazy keys are
-      # mail.password_reset.* (D8).
+      # mail.password_reset.*.
       def self.password_reset_mail_view
         <<~ERB
           <%# locals: (user:, url:) %>
@@ -2299,7 +2299,7 @@ module Cybertrain
       end
 
       # The mail's HTML (Views.render_mail); its lazy keys are
-      # mail.confirmation.* (D8).
+      # mail.confirmation.*.
       def self.confirmation_mail_view
         <<~ERB
           <%# locals: (address:, url:) %>
@@ -2318,7 +2318,7 @@ module Cybertrain
       # does not count toward the lockout, which guards signing in). A new
       # password restarts this browser's session through
       # start_new_session_for with the row's own remember flag, so "keep me
-      # signed in" survives it (pre-flight finding 9). With `confirmable` a
+      # signed in" survives it. With `confirmable` a
       # new address waits in unconfirmed_email for the link mailed to it.
       def self.accounts_controller(confirmable = false)
         text = <<~'RUBY'
@@ -2740,7 +2740,7 @@ module Cybertrain
 
       # The command's file up to the end of its last method, in both modes;
       # with `confirmable` a user it creates is confirmed, as nothing mails
-      # them (pre-flight finding 6).
+      # them.
       def self.user_command_head(app, invite_only, confirmable = false)
         mode = invite_only ? " --invite-only" : ""
         warned = invite_only ? ", which also calls UserCommand.warn_if_no_user before serving" : ""

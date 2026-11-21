@@ -112,9 +112,8 @@ its build: `gen/` is current and `build/bin/{gen,db,blog}` exist, and the
 CRuby preview's FFI shim has compiled the framework's C into
 `tmp/cybertrain-dev/ffi/` (`Cybertrain::Preview.warm!`), as `dev`, the user
 every container runs as: the shim loads nothing from a cache that another
-user owns or that its group or others may write to (decision P26 of
-[the preview's plan](../docs/superpowers/plans/2026-11-12-cruby-preview-plan.md)),
-and the build checks that a second `warm!` compiles
+user owns or that its group or others may write to
+([docs/design.md](../docs/design.md) D87, "Known limits"), and the build checks that a second `warm!` compiles
 nothing.
 
 - `build/bin/blog` is the release build of a plain `spin build blog`.

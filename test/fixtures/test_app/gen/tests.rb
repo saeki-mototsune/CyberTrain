@@ -39,7 +39,7 @@ module Gen
     CASE_NAME = ["renders the title", "renders the form partial", "a new article is broadcast", "a new article answers with a Turbo Stream", "lists the rows", "shows one through its path helper", "creates one and follows the redirect", "an unknown path fails with the top-level form's message", "shows the form for a new one", "mail is stored, not sent", "deliveries start empty and deliver_later counts", "a job queued in the block runs, and the mail it queues", "title must be present", "belongs to its author", "keeps a boolean, a datetime and a decimal", "starts from empty tables", "a slug from the support helper", "fixtures: a test changes and adds rows", "fixtures: the next test sees exactly the fixture rows"].freeze
     CASE_METHOD = ["test_renders_the_title", "test_renders_the_form_partial", "test_a_new_article_is_broadcast", "test_a_new_article_answers_with_a_Turbo_Stream", "test_lists_the_rows", "test_shows_one_through_its_path_helper", "test_creates_one_and_follows_the_redirect", "test_an_unknown_path_fails_with_the_top_level_form_s_message", "test_shows_the_form_for_a_new_one", "test_mail_is_stored__not_sent", "test_deliveries_start_empty_and_deliver_later_counts", "test_a_job_queued_in_the_block_runs__and_the_mail_it_queues", "test_title_must_be_present", "test_belongs_to_its_author", "test_keeps_a_boolean__a_datetime_and_a_decimal", "test_starts_from_empty_tables", "test_a_slug_from_the_support_helper", "test_fixtures__a_test_changes_and_adds_rows", "test_fixtures__the_next_test_sees_exactly_the_fixture_rows"].freeze
 
-    # Runs the class-form test i: spec 5.2's four lines per arm.
+    # Runs the class-form test i: before_case, run_body, after_case.
     def self.run_case(i)
       case i
       when 0

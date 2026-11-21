@@ -4,7 +4,7 @@ require "cybertrain/middleware/session_store"
 require "cybertrain/middleware/csrf_protection"
 require "cybertrain/router"
 
-# End-to-end regression for the Task 7 review's two BLOCKERs: driving the
+# End-to-end regression for two defects a review found: driving the
 # real production stack order (SessionStore -> CsrfProtection -> Router,
 # per Application#stack) through
 # Cybertrain::Test::Client the way a real form POST arrives, with the token

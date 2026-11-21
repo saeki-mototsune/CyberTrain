@@ -1,6 +1,6 @@
 # cybertrain/rate_limit: Controller.rate_limit, an optional subsystem
 # (require "cybertrain/rate_limit" in bin/NAME.rb, or require "cybertrain";
-# docs/superpowers/specs/2026-11-13-optional-subsystems-design.md). It
+# docs/design.md D85). It
 # counts through the cache (cybertrain/cache), so sign-in throttling across
 # processes is the same whichever lines an application has.
 #
@@ -437,7 +437,7 @@ module Cybertrain
     # redirect), which halts the chain. The key carries the controller's
     # path, so a limit inherited from a parent counts each controller
     # apart, and the declaration's name, so two limits of one controller
-    # count apart (plan decision 17). Public: RateLimitFeature calls it.
+    # count apart. Public: RateLimitFeature calls it.
     # @api private
     def apply_rate_limit(limit)
       condition = limit.if_method

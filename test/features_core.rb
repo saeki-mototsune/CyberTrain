@@ -5,8 +5,7 @@ require "cybertrain/test"
 require "cybertrain/test/client"
 require_relative "support/file_tree"
 
-# The core alone (`require "cybertrain/core"`, the optional-subsystems
-# design, docs/superpowers/specs/2026-11-13-optional-subsystems-design.md):
+# The core alone (`require "cybertrain/core"`, docs/design.md D85):
 # it compiles without jobs, the scheduler, the lease, cron, the jobs page,
 # the worker role, Turbo Streams, the feeds, the mailer, the cache or rate
 # limiting; an application built on it boots in-process and serves a page

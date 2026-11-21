@@ -174,7 +174,7 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
   assert_includes read("blog/.gitignore"), "/storage/uploads/\n"
   assert_includes read("blog/.gitignore"), "/dist/"
-  # gen's list of kept digests (spec 7.4): local state, never committed.
+  # gen's list of kept digests: local state, never committed.
   assert_includes read("blog/.gitignore"), "/public/assets/\n"
 end
 

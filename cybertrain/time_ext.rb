@@ -222,7 +222,7 @@ class Time
 
   private_class_method :strptime_digits, :strptime_word, :strptime_name, :strptime_name_length
 
-  # --- the calendar in Time.zone (spec sections 3.2 and 4) ---------------
+  # --- the calendar in Time.zone (docs/design.md D81) --------------------
   #
   # Each method below answers a UTC Time. Boundaries and calendar steps are
   # taken in `Time.zone` ({Cybertrain::Clock.zone}, UTC by default): the

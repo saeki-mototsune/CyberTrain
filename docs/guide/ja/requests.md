@@ -1,5 +1,5 @@
 ---
-source_sha256: 2b5fded6e781bd7858eecd4087a657f9a3942325ea7b3d7be3ac8a684a924643
+source_sha256: 7d20c1d676f0c2252ce9c6e5066373d67c01cf27c716496a63adc1b628df3f81
 ---
 # リクエスト
 
@@ -279,7 +279,7 @@ Rack は gzip されたリクエストボディをそのままにします。こ
 
 ## 0.4 のアプリを更新する
 
-0.4 向けに書いたアプリで変わること（全体は [設計](../superpowers/specs/2026-11-10-phase4-web-layer-design.md) の 14 節にあります）：
+0.4 向けに書いたアプリで変わること：
 
 - モデルとデータベースには別の一覧があり、`db normalize` を一度実行することもそこに含まれます（[0.4 からの更新](models.md#upgrading-from-04)）。テスト（[0.4 からのアップグレード](testing.md#upgrading-from-04)）とジョブ（[0.4 からの更新](background-and-operations.md#upgrading-from-04)）にも、それぞれ一覧があります。
 - どのセッションも一度だけ終わります：暗号化した Cookie は以前の署名付きのものを読めないので、ユーザーはもう一度サインインします。`Session.load` や `Session.dump` を呼ぶコードは、導いた鍵 `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)` を渡します。生の秘密鍵を渡すと `Encryptor::Error` になります。

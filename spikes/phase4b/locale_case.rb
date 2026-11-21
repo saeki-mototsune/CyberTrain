@@ -1,4 +1,4 @@
-# Phase 4b spike, item 6b (spec section 12, plan decision D3): the
+# Phase 4b spike, item 6b: the
 # 2,000-key dictionary of make_keys.rb as gen/locales.rb could write it,
 # a `case` of String literals: `lookup(key)` over the 1,980 scalar keys
 # (String or nil) and `lookup_list(key)` over the 20 sequences

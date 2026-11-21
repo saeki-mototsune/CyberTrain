@@ -11,7 +11,7 @@ require "cybertrain/generator/models_emitter"
 # first byte, bytes above 127, 0, 1 and 70,000 bytes), and a model of the
 # shape the generator emits (hand-written below, as test/model.rb does) with
 # a binary attribute. A TEXT column holding the invalid UTF-8 "\xff\xfe"
-# binds as text and round-trips too (Review Focus 5 of the phase-1 plan).
+# binds as text and round-trips too.
 #
 # It links SQLite through FFI, so it cannot run under CRuby: its snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).

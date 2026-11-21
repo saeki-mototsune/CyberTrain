@@ -642,7 +642,7 @@ module Cybertrain
       raise UnknownCallback, msg
     end
 
-    # Whether `name` is one of this controller's helper methods (spec 4.3):
+    # Whether `name` is one of this controller's helper methods:
     # gen/controllers.rb overrides it with a `case` over the names of the
     # controller's `helper_method` lines and its concerns', then `super`.
     # Called on self, never through a stored block.
@@ -1281,7 +1281,7 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
-      # The request's `where` (spec section 13): the controller and action,
+      # The request's `where` (docs/design.md D88): the controller and action,
       # on the Context and on the thread's log Scope, which a RequestId
       # made for this request; nothing is written to the shared empty
       # Scope (a controller run without one: a test, a nested call).

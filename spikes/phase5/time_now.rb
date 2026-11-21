@@ -1,4 +1,4 @@
-# Phase 5a spike, item 1 (spec section 16, section 2.4): overriding
+# Phase 5a spike, item 1: overriding
 # Time.now in a program that requires the whole framework. A record, not a
 # test.
 #
@@ -27,7 +27,7 @@
 require "cybertrain"
 require "standins/clock"
 
-# What cybertrain/test/time_now.rb (Task 2) will hold.
+# What cybertrain/test/time_now.rb will hold.
 class Time
   def self.now = Cybertrain::Clock.now
 end

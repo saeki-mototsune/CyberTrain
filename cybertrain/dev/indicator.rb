@@ -10,8 +10,7 @@ require "cybertrain/dev/supervision"
 module Cybertrain
   module Dev
     # Which runtime rendered the page in front of the developer
-    # (docs/superpowers/specs/2026-11-12-cruby-preview-design.md sections 5
-    # and 8, change 5). Installed by Roles::ServerRunner#front_app only
+    # (docs/design.md D87). Installed by Roles::ServerRunner#front_app only
     # under `cybertrain server`, around ErrorPage and outside the
     # application's stack, so the requests it answers itself never reach
     # RequestLogger. It

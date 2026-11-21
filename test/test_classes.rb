@@ -1,6 +1,6 @@
-# The class form's lifecycle (spec sections 5.1 to 5.3, plan D3 and D9):
+# The class form's lifecycle (docs/design.md D82):
 # hand-written classes in the shape gen's rewrite writes (every test
-# method, setup and teardown ends in nil, pre-flight R8), driven by hand
+# method, setup and teardown ends in nil, rule 34), driven by hand
 # through Cybertrain::Test.before_case / run_body / after_case as
 # gen/tests.rb's arms drive them. Requires cybertrain/test_help, so its
 # reset hooks are registered and the program compiles everything an

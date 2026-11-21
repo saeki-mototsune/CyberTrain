@@ -94,7 +94,7 @@ module Cybertrain
       def self.helpers_source(spec)
         out = +""
         names = arg_names(spec)
-        # Plan decision 13: braceless keywords at the call (`page: 2`,
+        # Braceless keywords at the call (`page: 2`,
         # `format: :json`) arrive as the trailing options Hash, renamed when
         # a segment already took the name (`get "/x/:options"`).
         opts = "options"

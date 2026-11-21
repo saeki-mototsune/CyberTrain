@@ -546,7 +546,7 @@ module Cybertrain
       Logger.swap_scope(saved)
     end
 
-    # The log Scope of a scheduled task's run (spec section 12.3): the tag
+    # The log Scope of a scheduled task's run (docs/design.md D86): the tag
     # and `where` `schedule:<name>`, no request id, no context.
     # @param task [Task]
     # @return [Logger::Scope]
@@ -567,7 +567,7 @@ module Cybertrain
     # Calls the task's block, or enqueues its `job:`, with its rescue in a
     # plain method that reads the Proc from the Task rather than yielding
     # (NOTES rules 32/45/69).
-    # False when it raised, logged and reported (spec section 13.2). Each
+    # False when it raised, logged and reported (docs/design.md D88). Each
     # run starts at the default locale, so a locale one task set does not
     # stay for the next.
     def self.run_task_body(task)

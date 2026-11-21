@@ -1,8 +1,8 @@
-# The assertions of spec section 10 beyond the first few, and the checks
+# The assertions (docs/design.md D84) beyond the first few, and the checks
 # behind every assertion, with Minitest's (or Rails') failure text.
 # Required by cybertrain/test at its end; it reopens Cybertrain::Test.
 #
-# The pattern every assertion follows (pre-flight R17): the check and its
+# The pattern every assertion follows: the check and its
 # message live in one module function, `Cybertrain::Test.check_<name>`,
 # which counts the assertion, compares, builds the message into a local
 # (rule 58) and raises AssertionFailed through {Cybertrain::Test.fail_with};

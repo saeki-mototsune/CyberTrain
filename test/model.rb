@@ -7,7 +7,7 @@ require "cybertrain/params"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 #
 # Post/PostRelation and Comment/CommentRelation below are hand-written in
-# exactly the shape the model generator (Task 11b) emits into gen/models/:
+# exactly the shape the model generator emits into gen/models/:
 # this file is the executable specification of that shape.
 
 # ---- gen/models/post.rb -------------------------------------------------
@@ -578,7 +578,7 @@ test "Errors collects messages per attribute in insertion order" do
   assert_equal [:title, :post_id], errors.keys
   assert_equal ["can't be blank", "is too short (minimum is 3 characters)"], errors[:title]
   assert_equal [], errors[:body]
-  # Rails' humanize drops a trailing _id (phase 4b, plan decision D9).
+  # Rails' humanize drops a trailing _id (phase 4b).
   assert_equal ["Title can't be blank", "Title is too short (minimum is 3 characters)", "Post is invalid"],
                errors.full_messages
   seen = []

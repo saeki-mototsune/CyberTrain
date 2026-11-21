@@ -2338,9 +2338,9 @@ converting" is the right shape in either mode.
 
 ## Found in phase 2 of the Rails-gap programme (2026-11-06)
 
-The data-layer design (docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md,
-section 14) ran seven checks against 2026.11.04.7026 before any code was
-written; six passed, and this is the one that did not.
+Before the data-layer work (docs/design.md D42 to D50) seven checks were
+compiled against 2026.11.04.7026; six passed, and this is the one that did
+not.
 
 ### Q. A Range of Time or Date raises at construction; a Float Range is not a Range once boxed
 
@@ -2415,8 +2415,7 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 `TypeError` as the literal `t1..t2`, and so does a Range of `Date` ends.
 
 - What CyberTrain does with it (phase 2 of the Rails-gap programme,
-  docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md 3.1 and
-  9.1, delivered 2026-11-07): `where(col: a..b)` (cybertrain/relation.rb)
+  docs/design.md D43 and D48, delivered 2026-11-07): `where(col: a..b)` (cybertrain/relation.rb)
   accepts Integer ends only; any other bound goes through
   `where_between(col, from, to)`, and the validator options
   `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an
@@ -2452,9 +2451,11 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 
 ## Found in phase 3 of the Rails-gap programme (2026-11-09)
 
-The jobs-and-outbound design (docs/superpowers/specs/2026-11-07-phase3-jobs-outbound-design.md,
-section 14) ran six checks against 2026.11.04.7026 before any code was
-written; all six passed, and this was found while writing the second.
+Before the jobs-and-outbound work (docs/design.md D51 to D57) six checks
+were run against 2026.11.04.7026 (cron over a DST change, `rescue` arms
+for application classes, respawning a dead thread, the HTTP client with
+zlib linked, a multipart mail, and same-named methods on distinct
+receivers); all six passed, and this was found while writing the second.
 
 ### R. A `rescue` arm naming a qualified class the program does not define
 
@@ -2703,9 +2704,9 @@ ended (checked again on 2026-11-10 with `spinel exit_thread.rb`).
 
 ## Found in phase 4a of the Rails-gap programme (2026-11-10)
 
-The web-layer design (docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md,
-section 12) ran five checks against 2026.11.04.7026 before any code was
-written (spikes/phase4/, deleted since); all five passed, one with a stub,
+The web-layer work (docs/design.md D58 to D63) ran five checks against
+2026.11.04.7026 before any code was written (spikes/phase4/, deleted
+since); all five passed, one with a stub,
 and these were found while writing the third.
 
 ### U. A `def` inside a block that never runs defines the method anyway
@@ -2733,8 +2734,8 @@ around the block, and `C` has it through the include.
 
 - What CyberTrain does with it (phase 4a): a concern's `class_methods do
   def x ... end end` is written by gen as `def self.x` on the concern and
-  a forwarding `def self.x(...)` in each including class (plan decision
-  12); since `x` is also an instance method of every including class
+  a forwarding `def self.x(...)` in each including class (docs/design.md
+  D60); since `x` is also an instance method of every including class
   under Spinel, gen refuses a `class_methods` name that an instance method
   of the concern or of an including class has (spikes/NOTES.md rule 93).
   Since the final fixes of phase 4a (2026-11-11) the refusal also covers
@@ -2790,7 +2791,7 @@ method on the concern would give those names a second return type (rule
 34). So gen does not let Spinel see the blocks at all: it loads each
 concern from a copy in `gen/concerns/` with its `included` and
 `class_methods` blocks blanked, and splices their bodies into the
-including classes (phase 4a Task 7, 2026-11-10; docs/design.md D60).
+including classes (phase 4a, 2026-11-10; docs/design.md D60).
 
 ### V. `strftime` with a built pattern on a Time or Date returns the pattern
 
@@ -2804,7 +2805,7 @@ polymorphic dispatch (`sp_pd_*`) reads the pattern with
 `_sp_ret_strbuf`, which still holds the pattern. The variant that takes a
 `const char*` (a literal pattern) formats correctly.
 
-- What CyberTrain does with it (phase 4a Task 17): `Strftime.walk`
+- What CyberTrain does with it (phase 4a): `Strftime.walk`
   (cybertrain/strftime.rb; reached from
   `Template::Helpers.time_tag_strftime` and `I18n.l`) parses the pattern
   and calls `strftime` with a literal for each directive it supports,
@@ -2840,7 +2841,7 @@ the `Views` module and `@name` a String ivar; the same call with a fresh
 local (`name = "#{@name}"`) builds. It showed only in the blog's
 program, so the trigger needs more of a program than that line.
 
-- What CyberTrain does with it (phase 4a Task 17): `Component` passes the
+- What CyberTrain does with it (phase 4a): `Component` passes the
   interpolated local (spikes/NOTES.md rule 97).
 - Not reduced; not reported upstream.
 
@@ -2852,7 +2853,7 @@ with "type inference did not converge in 128 rounds" after one change to
 `app/controllers` in locals and passing both to two emitters. Bisected to
 that change.
 
-- What CyberTrain does with it (phase 4a Task 5): each emitter scans
+- What CyberTrain does with it (phase 4a): each emitter scans
   `app/controllers` for itself (`Runner.controllers_source`,
   `concerns_source`), so the directory is read twice (spikes/NOTES.md rule
   94).
@@ -3018,7 +3019,7 @@ the top either way.
 ## Build time, measured on 2026-11-12
 
 Measured for the development flow of an application
-([the spec](superpowers/specs/2026-11-12-dev-flow-bottlenecks-design.md)):
+([performance-next.md](performance-next.md), "The development flow"):
 CyberTrain 34c9b7e, Spinel 2026.11.04.7026, a 4-core x86-64 Linux VM
 (Ubuntu 24.04, gcc 13.3). Nothing here is a wrong result. It is the time a
 developer waits after each edit, and most of it is not CyberTrain's to
@@ -3469,9 +3470,8 @@ by design.
 
 ## Found in phase 4b of the Rails-gap programme (2026-11-11)
 
-The i18n and authentication part of the web-layer design
-(docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md, section 12,
-item 6) ran four checks against 2026.11.04.7026 before any code was
+The i18n and authentication part of the web-layer work (docs/design.md
+D79) ran four checks against 2026.11.04.7026 before any code was
 written (spikes/phase4b/; the YAML reader's programs deleted since, the
 generator's own reader and test/locale_yaml.rb having replaced them); all
 four passed, and this was found while
@@ -3528,13 +3528,12 @@ compares with generated UTF-8 through `LineDiff.as_utf8`.
 
 ## Found in phase 5a of the Rails-gap programme (2026-11-12)
 
-The tests part of the phase 5 design
-(docs/superpowers/specs/2026-11-11-phase5-tests-operations-design.md,
-section 16) ran six checks against 2026.11.04.7026 before the code
-(spikes/phase5/), and the eighteen tasks after them met the rest. Six
-items are new: AJ to AM from the spike and the tasks (spikes/NOTES.md
-rules 104, 107 and 108, and the measurement behind AK), and AN and AO,
-found on 2026-11-13 (rules 109 and 110).
+Phase 5a (docs/design.md D81 to D84) ran six checks against
+2026.11.04.7026 before the code (spikes/phase5/; each program's header
+holds its command, output and verdict), and the work after them met the
+rest. Six items are new: AJ to AM from the spike and that work
+(spikes/NOTES.md rules 104, 107 and 108, and the measurement behind AK),
+and AN and AO, found on 2026-11-13 (rules 109 and 110).
 
 ### AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError
 
@@ -3586,8 +3585,8 @@ and one report.
 
 ### AK. The C of a very large program needs more memory to compile than its front end
 
-Spike item 6 bundled 196 of the framework's test programs (61,000 lines of
-Ruby) into one. Spinel's front end, every rule included, passed in about
+A phase 5a spike (spikes/phase5/bundle_suite.sh) bundled 196 of the
+framework's test programs (61,000 lines of Ruby) into one. Spinel's front end, every rule included, passed in about
 6.5 minutes at about 1.65 GB resident and wrote 87.6 MB of C (1.17 million
 lines). Compiling that C at the default -O2, split into units compiled in
 parallel, ran for about 21 minutes and was killed by the memory cgroup's
@@ -3638,9 +3637,9 @@ rate.
   (rule 105). Not a defect: rule 84's refusal by design has no
   instance-method counterpart to rely on.
 - A Ruby-source `def self.now` on `Time` overrides the builtin at every
-  call site, framework files included (spike item 1), and methods named
-  like builtin Time methods on another class leave a boxed Time working
-  (rule 106).
+  call site, framework files included (spikes/phase5/time_now.rb), and
+  methods named like builtin Time methods on another class leave a boxed
+  Time working (rule 106).
 - `rescue Exception => e` in a yielding method catches ScriptError and
   NotImplementedError as CRuby does; rule 47's `is_a?` half did not
   reproduce for its own example (its status row).
@@ -3737,10 +3736,10 @@ build while a third, loading the same file, built.
 
 ## Found in phase 5b of the Rails-gap programme (2026-11-13)
 
-The operations part of the phase 5 design (logs, request ids and error
-reporting; section 16's items 7 to 9 ran before the code, in
-spikes/phase5/, item 8's program, error_names.rb, deleted since) met two
-Spinel bugs, AP and AQ, both reduced on 2026-11-14
+Phase 5b, operations (logs, request ids and error reporting,
+docs/design.md D86 and D88; three checks ran before the code:
+spikes/phase5/thread_scope.rb, error_names.rb, deleted since, and
+logger_lock/) met two Spinel bugs, AP and AQ, both reduced on 2026-11-14
 with the pinned 2026.11.04.7026 (a2d06115, gcc 13.3.0, Linux x86_64,
 `spinel prog.rb -o prog`, no flags) and run beside CRuby 3.3.6.
 spikes/NOTES.md has them as rules 117 and 116, and the rest of what the
@@ -3843,7 +3842,7 @@ an application ported from Ruby may rely on it without knowing.
 
 ## Found in the phase 5b follow-ups (2026-11-14)
 
-The follow-ups (docs/superpowers/plans/2026-11-14-phase5b-followups-plan.md)
+The follow-ups (docs/design.md section 13, the entry of 2026-11-14)
 met one Spinel item, AR, seen in a build and reduced on 2026-11-15;
 spikes/NOTES.md has it as rule 122, and a form that works as rule 121.
 

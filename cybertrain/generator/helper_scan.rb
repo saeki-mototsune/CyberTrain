@@ -3,7 +3,7 @@ require "cybertrain/generator/source_text"
 module Cybertrain
   module Gen
     # One public `def` of an application helper module, with its parameter
-    # list split into the kinds a template can pass (spec 3.1).
+    # list split into the kinds a template can pass (docs/design.md D38).
     class HelperDef
       attr_reader :name, :line, :required, :optional, :keywords_required, :keywords_optional, :block
 

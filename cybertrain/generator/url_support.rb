@@ -40,7 +40,7 @@ module Cybertrain
       Router.escape_segment(param(value))
     end
 
-    # A helper's path with its options (spec 2.6, plan decision 14):
+    # A helper's path with its options (docs/design.md D58):
     # `format:` appended as an extension, every other key a query
     # parameter in the order given, then `anchor:` as the fragment.
     #
@@ -148,7 +148,7 @@ module Cybertrain
       end
     end
 
-    # Plan decision 14: a Hash value has no query form here.
+    # A Hash value has no query form here.
     def self.hash_option!(name)
       msg = "path helper option :#{name} must be a String, Symbol, number, boolean or Array (got Hash)"
       raise ArgumentError, msg

@@ -103,16 +103,16 @@ module Cybertrain
         schema = Cybertrain::Schema.current
         # gen/tests.rb, the program `cybertrain test` compiles, whenever
         # test/ exists (a refused bundle is a program that only aborts with
-        # the reason: gen itself still succeeds, pre-flight ruling B2).
+        # the reason: gen itself still succeeds, docs/design.md D83).
         # With a loaded schema gen/test/data.rb is written too (below), and
         # the bundle requires it and clears and loads before every test. A
         # fixture gen cannot load refuses the bundle the same way: a
         # scaffold's test/fixtures/articles.yml comes before the migration
         # that creates its table, and `cybertrain db migrate` runs gen first.
-        # So does a test file the class-form rewrite refuses (ruling C-I1:
-        # a broken test must not stop the dev server, db migrate or a
-        # build): no copy is written then, and gen/test's copies are left
-        # as they are until the file is fixed.
+        # So does a test file the class-form rewrite refuses (a broken test
+        # must not stop the dev server, db migrate or a build): no copy is
+        # written then, and gen/test's copies are left as they are until
+        # the file is fixed.
         tests_rb = "#{root}/#{TestsEmitter::PATH}"
         fixture_problem = ""
         test_problem = ""

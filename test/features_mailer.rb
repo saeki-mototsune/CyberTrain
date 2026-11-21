@@ -2,9 +2,7 @@ require "cybertrain/core"
 require "cybertrain/mailer"
 require "cybertrain/test"
 
-# The core and cybertrain/mailer alone (the optional-subsystems design,
-# docs/superpowers/specs/2026-11-13-optional-subsystems-design.md, section
-# 3): it compiles without jobs (so no deliver_later), streams, feeds, the
+# The core and cybertrain/mailer alone (docs/design.md D85): it compiles without jobs (so no deliver_later), streams, feeds, the
 # cache or rate limiting; the mailer registers no feature; Mailer is
 # defined and checks an address before connecting anywhere. It links
 # SQLite through FFI (the core's database), so its snapshot comes from the

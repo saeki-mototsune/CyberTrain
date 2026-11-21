@@ -1,6 +1,6 @@
 # The fixture's checked-in gen/locales.rb comes first, before anything
 # that could load cybertrain/i18n: the generated file requires it itself
-# (plan decision D3), so this program does not compile (nor load under
+# (docs/design.md D79), so this program does not compile (nor load under
 # CRuby) if it stops doing so.
 require_relative "fixtures/locales_app/gen/locales"
 require "tmpdir"
@@ -9,7 +9,7 @@ require "cybertrain/generator"
 require "cybertrain/locales/bundled"
 require_relative "support/file_tree"
 
-# gen/locales.rb (spec section 8, plan decisions D2-D4): the scan of
+# gen/locales.rb (docs/design.md D79): the scan of
 # config/locales/**/*.yml, the merge across files, the emitted lookup, the
 # Runner's output pair and the bundled dictionaries of script/bundle-locales.
 # Runs on a copy of test/fixtures/locales_app in a temporary directory.

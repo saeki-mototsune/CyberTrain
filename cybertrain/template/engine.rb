@@ -57,7 +57,7 @@ module Cybertrain
       COMPONENTS_PREFIX = "__components/"
 
       # components_root: where names under COMPONENTS_PREFIX are read from
-      # (app/components beside app/views, spec 3.2); "" derives it from root.
+      # (app/components beside app/views, docs/design.md D38); "" derives it from root.
       def initialize(root, cache: true, max_render_depth: MAX_RENDER_DEPTH, components_root: "")
         # Views.configure and Views.configure_embedded (Engine.embedded) both
         # end here. A ceiling below 1 would fail `@depth >= @max_depth` at

@@ -3,16 +3,16 @@ require "cybertrain/generator/views_emitter"
 
 module Cybertrain
   module Gen
-    # Writes a dictionary module (gen/locales.rb, plan decision D3; and
-    # cybertrain/locales/bundled.rb, D2) from merged LocaleEntry records:
+    # Writes a dictionary module (gen/locales.rb, and cybertrain/locales/
+    # bundled.rb; docs/design.md D79) from merged LocaleEntry records:
     # `lookup(key)` -> String or nil, `lookup_list(key)` -> Array<String>
     # (empty when absent), and `resolver` / `list_resolver`, the two as
     # lambdas. Texts and lists are two Hash constants, each filled at load
     # by methods of at most FILL_SIZE stores, keys sorted: one literal of
-    # every key compiles slowly (spikes/NOTES.md rule 101, spec section 12
-    # item 6b). With `install`, the file first requires cybertrain/i18n, so
-    # it loads on its own, and its last line hands both lambdas to
-    # I18n.install_dictionary (positionally, rule 42).
+    # every key compiles slowly (spikes/NOTES.md rule 101). With `install`,
+    # the file first requires cybertrain/i18n, so it loads on its own, and
+    # its last line hands both lambdas to I18n.install_dictionary
+    # (positionally, rule 42).
     module LocalesEmitter
       FILL_SIZE = 50
 

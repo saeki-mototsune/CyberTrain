@@ -2,8 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# Task 13 of phase 2: the validators of spec section 9.1
-# (docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md) --
+# The validators (docs/design.md D48) --
 # inclusion, exclusion, format, numericality, uniqueness, length's is:/in:,
 # and allow_nil:, allow_blank:, on:, message:, if:/unless: on every rule --
 # each with Rails' default English message. SQLite is FFI, so the snapshot
@@ -438,7 +437,7 @@ test "a Time is neither a list for in: nor a member of one" do
 end
 
 # Last: it adds rules to Thing. What gen/concerns.rb writes for a model
-# concern (spec 4.2): the index counts the model's own `validates` calls
+# concern: the index counts the model's own `validates` calls
 # above the `include`, however many rules each call made.
 def thing_rules
   Cybertrain::Model.validators_for("Thing").map { |v| "#{v.attr}:#{v.kind}" }

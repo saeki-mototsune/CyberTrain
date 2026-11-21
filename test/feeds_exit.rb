@@ -6,7 +6,7 @@ require "cybertrain/test"
 require_relative "support/log_capture"
 require_relative "support/file_tree"
 
-# The exit rule of a `feeds` process (spec section 9): when one feed's
+# The exit rule of a `feeds` process (docs/design.md D56): when one feed's
 # thread dies again after Config#feed_restart_limit restarts within
 # Config#feed_restart_window, the supervisor logs, at FATAL, `feed NAME
 # restarted N times in W s; exiting` and the process exits with status 1
