@@ -346,6 +346,7 @@ follows the rule even where a probe passes.
 | `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, roles/feeds.rb | test/feeds_exit.rb | T |
 | `Logger#write_now` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_flush.rb, test/main_console.rb; test/logger_tls.rb was written for 78 and no longer fails without it (status 78) | K, M |
 | Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` (and `I18n.l`) walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb, strftime.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | Q, V |
+| A helper that only raises and stands in for a typed lambda names a typed value after its `raise` (`Console.unknown_model`, `Console.unknown_record`) | 79 | console.rb; generator/console_emitter.rb emits the calls | test/console.rb (the rescuing-caller case) | rule 79 |
 | A program that requires a middleware exercises it | 36 | every test that requires `cybertrain/application` | test/application.rb, test/db_integration.rb, test/health.rb | rule 36 |
 
 The table had a row for rules 33 and 61 until 2026-11-21: `rescue
@@ -1445,7 +1446,12 @@ decision, and 77 explicitly retires a workaround.
     compile, and so does a block that can also return a value (`raise "b"
     if x > 0; "ok"`). Found while re-checking rule 32. In a test of a
     rescuing helper, give the block a value after the raise or pass the
-    result through a method.
+    result through a method. A helper that only raises and stands where a
+    lambda's value is expected names a typed value after its `raise`
+    (`Console.unknown_model`, `Console.unknown_record`): without it a
+    rescuing method given both the helper and such a lambda's call as
+    blocks does not compile (rechecks/differing/raising_helper_beside_lambda.rb;
+    test/console.rb has the case).
     Kept until docs/spinel-feedback.md rule 79 is closed.
 80. Never wait for another connection's SQLite lock inside the SQLite call
     on the request path: an FFI call holds its OS worker for as long as it

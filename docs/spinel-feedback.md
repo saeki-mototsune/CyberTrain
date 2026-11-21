@@ -210,8 +210,8 @@ States:
   framework is written around it any more. These are the candidates for a
   closing pull request. No row is in this state since 2026-11-21: rules 33
   and 61 were, and were closed that day; rule 79 was listed with them, and
-  comments in the framework and a test still give it as their reason (its
-  row).
+  cybertrain/console.rb is still written around a compile failure found
+  under it (its row).
 - `probe matches on the pin`: for a "rule N" item that was never reduced,
   its section of a saved program printed CRuby's output when
   `spikes/rechecks/run.sh` was run on the pin (Linux x86_64, 2026-11-21;
@@ -348,7 +348,7 @@ the cell names another build.
 | rule 74 | bug | 74 | not re-checked on the pin (last: reduced program passes on 2026.11.04.7026) |  |
 | rule 75 | bug | 75 | closed | 2026.11.04.7026: `Process.spawn` and `Process.wait` work; test/rate_limit_store.rb uses them. The body of rule 75 was cut on 2026-11-21, and what it held is under "Rule 75" |
 | rule 76 | constraint | 76 | settled (1.4: a constant resolves as in CRuby) |  |
-| rule 79 | bug | 79 | passes on the pin, workaround kept (status 79). Not closed on 2026-11-21: comments in cybertrain/console.rb (`Console.unknown_model` and `unknown_record`, a typed value after the `raise`), cybertrain/generator/console_emitter.rb (`name_case`) and test/test_lifecycle.rb (each lambda does something before it raises) give rule 79 as their reason, and no test in `test/` appends the value of a rescuing method whose block only raises |  |
+| rule 79 | bug | 79 | passes on the pin, workaround kept (status 79). Tried without it on 2026-11-21, and not closed. test/test_lifecycle.rb no longer cites the rule: its three bodies that appended a step before raising only raise now, and the test passes compiled. `Console.unknown_model` and `unknown_record` (cybertrain/console.rb) keep the typed value after their `raise`, and that site is why the item stays open: with the two values removed the framework and its tests built and passed on the pin, but a case that gives one rescuing method the two helpers and the default builders' calls as blocks did not compile ("incompatible types when assigning to type 'sp_RbVal' from type 'const char *'", at the method's `yield`); reduced as rechecks/differing/raising_helper_beside_lambda.rb, which fails the same way on 2026.11.04.7026. That is not the C error of rule 79's own program, and whether it is one behaviour with it or an item of its own is not decided. With the typed values in place the case passes compiled: test/console.rb, "an unknown model or record raises through a rescuing caller". cybertrain/generator/console_emitter.rb (`name_case`) cites the rule for those helpers |  |
 | rule 84 | refusal by design | 84 | settled ("A refusal of a never-reached class-method call") |  |
 | rule 85 | record | 85 | settled: a form that works (1.4) |  |
 | rule 87 | record | 87 | settled: a form that works (1.4) |  |
@@ -1007,7 +1007,8 @@ moved up into spikes/rechecks/, as spikes/rechecks/README.md says a
 program that matches CRuby is; the other four stay in differing/. Later
 that day the programs of rows 17 and 27, inline until then, were saved
 there as class_before_definition.rb and socket_bytes.rb (AV and AW), which
-makes six.
+makes six, and raising_helper_beside_lambda.rb (row 79) was added, which
+makes seven.
 
 | Rule | On 2026.11.15.7033 |
 | --- | --- |
@@ -1022,7 +1023,7 @@ makes six.
 | 54 | Reduced program passes for the half that failed (docs/spinel-feedback.md AE): `e.class.superclass.name` for a rescued `JSON::ParserError` prints `JSON::JSONError`, as under CRuby; 2026.11.04.7026 raises "undefined method 'superclass' for module JSON::ParserError (NoMethodError)". The user-class half still matches: rechecks/exception_shapes.rb prints its `.expected` on both pins. |
 | 61 | **Closed** on 2026-11-21 with 33 ("Item register"), same machine, tools and day as row 33. rechecks/json_nesting_shapes.rb (`JSON.generate` of an Array nested 150 deep in a method with `rescue JSON::ParserError, StandardError`, one with `rescue StandardError`, one with `rescue JSON::ParserError`, and on a Thread with `rescue StandardError` and an `ensure`) printed `ParserError, StandardError: JSON::NestingError`, `StandardError alone: JSON::NestingError`, `ParserError alone: JSON::NestingError`, `thread: JSON::NestingError` and `thread: ensure ran` under CRuby, built by 2026.11.15.7033 and built by 2026.11.04.7026. The program was deleted after that run, as the README beside it said it would be; it is in the repository's history. test/server.rb's `/deep` case (an action whose `JSON.generate` raises `JSON::NestingError`: 500, the connection closed, and the server keeps serving) passed compiled on 2026.11.15.7033. What the rule says of a thread an exception escapes was tried once that day in a program that is not saved: a method that calls `JSON.generate` on the same Array with an `ensure` and no `rescue`, run as the body of `Thread.new`, with `report_on_exception = false` and the `join` under `rescue StandardError`. It printed `thread: ensure ran`, `join: JSON::NestingError` and `main: alive` under CRuby and on both builds. That is one small program, not the framework's request thread, where the rule was seen on 2026.09.12; the comment in cybertrain/error_reporter.rb that cites the rule for it stays. |
 | 78 | Reduced program passes (docs/spinel-feedback.md K): `@io.puts(line)` on a nil-only `@io` with `require "openssl"` builds and prints `ok`; on 2026.11.04.7026 cc stops with "incompatible pointer types passing 'sp_String *' ... to parameter of type 'const char *'" (sp_io.h). Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): rechecks/nil_only_puts_openssl.rb builds and prints `ok`, as under CRuby; with 2026.11.04.7026 in the same run cc stops at the program's line 17 with "passing argument 2 of 'sp_File_puts_bin' from incompatible pointer type". The program matches CRuby on this pin, so on 2026-11-21 it moved up from rechecks/differing/ into rechecks/ with an `.expected` file and is run by rechecks/run.sh (the last row); the workaround stays. |
-| 79 | Reduced program passes (docs/spinel-feedback.md, "Rule 79"): `out << g { raise "b" }` builds and prints `["b"]`; on 2026.11.04.7026 cc stops with "variable has incomplete type 'void'" (spinel_rt.h, `SP_STR_HDL`). Run again on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): rechecks/2026.11.15.7033/r79_raise_block.rb builds and prints `["b"]`, as under CRuby; with 2026.11.04.7026 in the same run cc stops with "variable or field '_sp_fv' declared void" (spinel_rt.h, at the `SP_STR_B` expansion for line 7 and the `SP_STR_HDL` expansion for line 2). The item was not closed that day ("Item register", row rule 79, says what is missing). |
+| 79 | Reduced program passes (docs/spinel-feedback.md, "Rule 79"): `out << g { raise "b" }` builds and prints `["b"]`; on 2026.11.04.7026 cc stops with "variable has incomplete type 'void'" (spinel_rt.h, `SP_STR_HDL`). Run again on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): rechecks/2026.11.15.7033/r79_raise_block.rb builds and prints `["b"]`, as under CRuby; with 2026.11.04.7026 in the same run cc stops with "variable or field '_sp_fv' declared void" (spinel_rt.h, at the `SP_STR_B` expansion for line 7 and the `SP_STR_HDL` expansion for line 2). The item was not closed that day ("Item register", row rule 79, says what is missing). Later that day, same machine and tools, the workaround was tried removed in a copy of the repository ("Rule 79", "Tried without the workaround"): r79_raise_block.rb again printed `["b"]` under CRuby and built by 2026.11.15.7033, and did not build with 2026.11.04.7026 (same error). test/test_lifecycle.rb with bodies that only raise passed compiled on both builds. With the typed values after the `raise` removed from `Console.unknown_model` and `unknown_record`, `spin test` of test/console.rb (as it was), main_console.rb, main_command.rb, main.rb, config_settings.rb, gen_console.rb, gen_namespaced.rb, gen_routes_compiles.rb and gen_manifest.rb passed on 2026.11.15.7033 and `spin run gen` left examples/blog/gen identical; the case added to test/console.rb that day did not build ("incompatible types when assigning to type 'sp_RbVal' from type 'const char *'" at test/console.rb's `yield` in `message_raised`), and with the typed values in place it passes on 2026.11.15.7033 and on 2026.11.04.7026. rechecks/differing/raising_helper_beside_lambda.rb is its reduction: CRuby prints `["no a", "no b"]`, and both builds stop in cc with that error at the program's `yield`; with a typed value after the `raise` both print CRuby's line. The typed values stay, and the item stays open. |
 | 80 | **Still there** for `blocking: true` and for no option (docs/spinel-feedback.md AB, the 600 ms `nanosleep` program, three runs each): at `SPINEL_WORKERS=1` it prints `ticks=1` on both pins, at `SPINEL_WORKERS=2` `ticks=10` (once `ticks=9`). The pin adds `ffi_func ... offload: true` (docs/FFI.md, "`offload: true` (Spinel's own)": the C function runs on a pool thread while the caller waits as for I/O; it implies `blocking: true`, and is refused for a variadic function or in a program with an `ffi_callback`). With `offload: true` the same program prints `ticks=10` (once `ticks=9`) at one worker and at two, and still takes 0.61 s, so the call ran its full 600 ms while the worker ran main. 2026.11.04.7026 accepts `offload: true` without a word and prints `ticks=1` at one worker. |
 | 81 | Reduced program passes (docs/spinel-feedback.md R, the third program): `rescue Inner::Oops` inside `Outer::User` prints `oops` with no warning; 2026.11.04.7026 warns "uninitialized constant Inner: defined nowhere in the program" and prints `none`. |
 | 82 | Reduced program passes (docs/spinel-feedback.md Y): a lambda literal in a module-body ivar, called through a reader with a `Ctl`, prints `sess`; 2026.11.04.7026 raises "undefined method 'session' for an instance of Integer (NoMethodError)". docs/spinel-feedback.md recorded the same failure on matz/spinel master 1c0cc5e35, so the fix is later than that commit. |
@@ -2596,7 +2597,10 @@ p out
   return a value (`raise "b" if x > 0; "ok"`).
 - Today: nothing in the framework; a test of a rescuing helper gives the
   block a value after the `raise`, or passes the result through a method
-  (spikes/NOTES.md rule 79).
+  (spikes/NOTES.md rule 79). cybertrain/console.rb, added on
+  2026-11-05, is not covered by that sentence: its two raising helpers
+  end in a typed value and cite the rule ("Tried without the workaround",
+  below).
 - Fix: give a block whose body cannot complete the bottom type at the
   value slot (as the method's own `rescue` value is what the call
   answers), or type the call by the method's return type rather than the
@@ -2608,6 +2612,77 @@ p out
   the String-handle arm. #11143, #11144 and #11145 do the same for a
   block that ends in `exit` or `abort`, that leaves through `next` and
   otherwise raises, and that leaves by `throw`. In no fork tag yet.
+
+#### Tried without the workaround (2026-11-21)
+
+On 2026.11.15.7033 the program above prints `["b"]` ("Status by rule",
+row 79). Three places in the repository gave rule 79 as their reason that
+day, and each was tried written the plain way, in a copy of the
+repository, on Linux x86_64 (gcc 13.3.0, CRuby 3.3.6), with
+2026.11.04.7026 as a control.
+
+- test/test_lifecycle.rb: three test bodies appended a step before they
+  raised. As lambdas that only raise they pass compiled on both builds,
+  and they are written that way since.
+- cybertrain/console.rb: `Console.unknown_model` and `unknown_record`
+  raise UnknownModel and then name a typed value that is never reached
+  (`Relation.new("")`, `Model.new`), so that a lambda ending in one has
+  the type of the builder it stands in for. With the two values removed,
+  the framework and every test that compiles the console built and passed
+  on 2026.11.15.7033 (row 79 names them). One new case did not build: one
+  rescuing method given, as blocks, the two helpers, the calls of the two
+  default builders (`Console.no_scope_builder.call(name)`), and two blocks
+  that only raise, each value appended. cc stops at the method's `yield`
+  with "incompatible types when assigning to type 'sp_RbVal' from type
+  'const char *'". With the typed values in place the same case builds and
+  passes on both builds, so the values stay, and the case is in
+  test/console.rb ("an unknown model or record raises through a rescuing
+  caller").
+- cybertrain/generator/console_emitter.rb: a comment about those two
+  helpers. It stays with them.
+
+The failure reduces to this, saved as
+spikes/rechecks/differing/raising_helper_beside_lambda.rb. CRuby prints
+`["no a", "no b"]`; 2026.11.15.7033 and 2026.11.04.7026 both stop in cc
+with the error above at the `yield` of `g`:
+
+```ruby
+class Rel
+  def initialize(t); @t = t; end
+end
+module C
+  def self.unknown(name)
+    raise "no #{name}"
+  end
+  def self.no_builder = ->(name) { C.unknown(name) }
+  @b = C.no_builder
+  def self.b=(v)
+    @b = v
+  end
+end
+def rel_builder = ->(name) { Rel.new(name) }
+C.b = rel_builder
+def g
+  yield
+rescue StandardError => e
+  e.message
+end
+out = Array.new(0) { "" }
+out << g { C.unknown("a") }
+out << g { C.no_builder.call("b") }
+p out
+```
+
+Either `out <<` line alone builds and prints its message, and so does the
+whole program once `C.unknown` has `Rel.new("")` as a second line, on
+both builds. What it needs is all of: a method that only raises as one
+block of a rescuing method, and as another block the call of a lambda
+that ends in that method and is stored in a module ivar where a lambda
+returning an object is stored later. This is not the error of the program
+at the top of this section, which #11137 fixed, and it is on the pin. It
+is recorded here because the workaround it explains is the one the
+framework's comments file under rule 79; it has not been given an item of
+its own, and nothing has been sent upstream for it.
 
 ### M. `gets` on STDIN does not flush a partial STDOUT line first
 
