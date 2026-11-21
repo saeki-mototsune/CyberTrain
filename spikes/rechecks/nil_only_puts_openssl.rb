@@ -2,8 +2,8 @@
 # variable, on an ivar only ever assigned nil, with the openssl package in
 # the program.
 #
-#   ruby spikes/rechecks/differing/nil_only_puts_openssl.rb
-#   spinel spikes/rechecks/differing/nil_only_puts_openssl.rb -O 0 -o "$TMPDIR/lg"
+#   ruby spikes/rechecks/nil_only_puts_openssl.rb
+#   spinel spikes/rechecks/nil_only_puts_openssl.rb -O 0 -o "$TMPDIR/lg"
 #
 # Linux x86_64, Spinel 2026.11.04.7026 (a2d06115, GCC 13.3.0), CRuby 3.3.6,
 # 2026-11-19. CRuby prints `ok`. The compile fails in the C compiler:

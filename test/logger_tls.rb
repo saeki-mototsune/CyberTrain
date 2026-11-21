@@ -7,7 +7,7 @@
 # here may set a logger io. On 2026.11.04.7026 this program also builds
 # with `@io.puts(line)` put back (NOTES status 78): it shows that the shape
 # compiles and logs, and the program that still fails is
-# spikes/rechecks/differing/nil_only_puts_openssl.rb.
+# spikes/rechecks/nil_only_puts_openssl.rb.
 #
 # cybertrain/net/tls requires Spinel's openssl package, so the snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23):

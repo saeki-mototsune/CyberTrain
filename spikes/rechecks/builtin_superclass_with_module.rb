@@ -1,9 +1,9 @@
 # NOTES 104: `superclass` on one of Ruby's own exception classes, in a
 # program that defines a module. The same program without its first line is
-# ../builtin_superclass_no_module.rb, which matches CRuby.
+# builtin_superclass_no_module.rb, which matches CRuby.
 #
-#   ruby spikes/rechecks/differing/builtin_superclass_with_module.rb
-#   spinel spikes/rechecks/differing/builtin_superclass_with_module.rb -O 0 -o "$TMPDIR/sc" && "$TMPDIR/sc"
+#   ruby spikes/rechecks/builtin_superclass_with_module.rb
+#   spinel spikes/rechecks/builtin_superclass_with_module.rb -O 0 -o "$TMPDIR/sc" && "$TMPDIR/sc"
 #
 # Linux x86_64, Spinel 2026.11.04.7026 (a2d06115, GCC 13.3.0), CRuby 3.3.6,
 # 2026-11-19. CRuby prints three lines and exits 0:

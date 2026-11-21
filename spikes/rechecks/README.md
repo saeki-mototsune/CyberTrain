@@ -42,12 +42,12 @@ none of them.
 | `builtin_superclass_no_module.rb` | AJ | 104 | AJ is closed |
 | `json_nesting_shapes.rb` | rule 61 | 61 | rule 61 is closed |
 | `define_method_shapes.rb` | rule 1 (a constraint: no run-time code) | 1 | permanent |
+| `builtin_superclass_with_module.rb` | AJ | 104 | AJ is closed |
+| `nil_only_puts_openssl.rb` | K | 78 | K is closed |
+| `float_range_boxed.rb` | Q | 86 | Q is closed |
 | `differing/env_nonliteral_key.rb` | AS | 123 | AS is closed |
-| `differing/builtin_superclass_with_module.rb` | AJ | 104 | AJ is closed |
 | `differing/require_in_regex.rb` | AR | 122 | AR is closed |
-| `differing/nil_only_puts_openssl.rb` | K | 78 | K is closed |
 | `differing/invalid_utf8.rb` | AD, AU | 52 | AD and AU are closed |
-| `differing/float_range_boxed.rb` | Q | 86 | Q is closed |
 | `differing/rescue_from_json_error.rb` | rule 48 | 48 | rule 48 is closed |
 
 ## The first four programs, 2026-11-11
@@ -113,8 +113,9 @@ The same review ran programs for rules 51 to 122, and found rule 123. Six
 that match CRuby are
 kept here; they were run with `run.sh` beside the twelve above on
 2026-11-19, on the same machine and tools, and all eighteen matched. Three
-of them are the matching half of a rule whose other half still differs;
-that half is under `differing/`, described below.
+of them are the matching half of a rule whose other half differed on that
+build; that half was put under `differing/`, described below. Two of those
+halves have since moved up ("Programs moved up from `differing/`").
 
 | Program | Evidence |
 | --- | --- |
@@ -135,6 +136,31 @@ Run with `run.sh` beside the eighteen above on 2026-11-20, on Linux x86_64,
 Spinel `2026.11.04.7026` (`a2d06115`, GCC 13.3.0), `-O 0` and CRuby 3.3.6:
 all nineteen matched. Its `.expected` file is CRuby's output from that run.
 
+## Programs moved up from `differing/`, 2026-11-21
+
+Three programs that were written under `differing/` on 2026-11-19, because
+they differed from CRuby on Spinel `2026.11.04.7026`, print CRuby's result
+on Spinel `2026.11.15.7033` and were moved into this directory with an
+`.expected` file, as the next section says. Their headers were written for
+the run of 2026-11-19 and still describe it: what the header calls "the
+compiled program" is the program built by `2026.11.04.7026`. Only the
+paths in the headers were changed.
+
+| Program | Evidence |
+| --- | --- |
+| `nil_only_puts_openssl.rb` | Rule 78: `@io.puts(line)` on a nil-only ivar with `openssl` required builds and prints `ok` |
+| `float_range_boxed.rb` | Rule 86: a Range of Time built from a literal and with `Range.new`; a Float Range matched by `when Range` from a Hash value and through a parameter that also takes an Integer Range and an Array |
+| `builtin_superclass_with_module.rb` | Rule 104: with a module defined, the `superclass` chain of a user-defined subclass of `ArgumentError`, of `RuntimeError` and of `ArgumentError` |
+
+Run with `run.sh` beside the nineteen above on 2026-11-21, on Linux x86_64,
+Spinel `2026.11.15.7033` (`a2f3bfaa`, GCC 13.3.0), `-O 0` and CRuby 3.3.6:
+all twenty-two matched. The three `.expected` files are CRuby's output from
+that day. Built with Spinel `2026.11.04.7026` (`a2d06115`) the same day as
+a control, each of the three did what its header says. As for every
+program here, this is evidence for these small programs on that build,
+`-O 0`, on Linux, with no GC stress; no workaround was removed for it, and
+rules 78, 86 and 104 stand until K, Q and AJ are closed.
+
 ## Programs that still differ: `differing/`
 
 `run.sh` reads only the `.rb` files of this directory and expects each to
@@ -149,14 +175,20 @@ directory with an `.expected` file, and the rule's row in
 docs/spinel-feedback.md, "Status by rule", says so. The limits stated above
 hold for these programs too: small programs, `-O 0`, Linux, no GC stress.
 
+Seven programs were written here. Three moved up on 2026-11-21 (the
+section above); for those the table gives what each showed while it was
+here. The four that remain are the three that still differed in the run
+of 2026-11-21 (docs/spinel-feedback.md, "Status by rule", rows 52, 122 and
+123 on 2026.11.15.7033) and the one that needs the framework.
+
 | Program | What it showed |
 | --- | --- |
 | `differing/env_nonliteral_key.rb` | Rule 123: after `require "cybertrain/http/request"` and `require "cybertrain/config"`, `Config.env_or` answers the variable's name for a variable that is set. Needs `-I .`. Not reduced |
-| `differing/builtin_superclass_with_module.rb` | Rule 104: with a module defined, `superclass` on `RuntimeError` is NoMethodError, after a user-defined subclass of `ArgumentError` walked its whole chain |
 | `differing/require_in_regex.rb` | Rule 122: a require-shaped regex literal stops a `--strict-require` build; without the flag it is a warning and the match fails |
-| `differing/nil_only_puts_openssl.rb` | Rule 78: the C compiler refuses `@io.puts(line)` on a nil-only ivar once `openssl` is required |
 | `differing/invalid_utf8.rb` | Rule 52: `byteindex` off a character boundary returns an offset, and `strip` returns the String, where CRuby raises |
-| `differing/float_range_boxed.rb` | Rule 86: a Range of Time raises TypeError when built; a Float Range is not matched by `when Range` from a Hash value or through a parameter |
+| `builtin_superclass_with_module.rb` (moved up) | Rule 104: with a module defined, `superclass` on `RuntimeError` is NoMethodError, after a user-defined subclass of `ArgumentError` walked its whole chain |
+| `nil_only_puts_openssl.rb` (moved up) | Rule 78: the C compiler refuses `@io.puts(line)` on a nil-only ivar once `openssl` is required |
+| `float_range_boxed.rb` (moved up) | Rule 86: a Range of Time raises TypeError when built; a Float Range is not matched by `when Range` from a Hash value or through a parameter |
 | `differing/rescue_from_json_error.rb` | Rule 48, added 2026-11-20 (same machine and tools): `rescue_from JSON::ParserError` on `Cybertrain::Controller`, with a block and with `with:`, answers for an action's failed `JSON.parse`, and the error is re-raised when no handler is registered. Needs `-I .`; compiled side only, since CRuby cannot load the controller's SQLite FFI bindings without the preview's shim. It does not differ: it printed what it is written to print |
 
 ## Running
@@ -169,7 +201,7 @@ spikes/rechecks/run.sh
 ```
 
 The script prints its output directory first, then runs every probe even
-after one fails, and exits 1 if any did. With the nineteen programs here it
+after one fails, and exits 1 if any did. With the twenty-two programs here it
 takes about a minute. Each failure names the file that holds its output. Each compile and each run is bounded at 180 seconds
 (`RECHECK_TIMEOUT`; `gtimeout` on macOS, unbounded with a note when
 neither exists). Compiler output other than the usual `src -> bin` line is

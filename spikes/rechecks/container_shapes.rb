@@ -1,7 +1,7 @@
 # Reduced shapes only: NOTES 51, 55 and the parts of 86 that match CRuby.
 # One program, so the three shapes are inferred together. Not here, because
 # they still differ on 2026.11.04.7026: a Float Range behind `when Range`
-# and a Range of Time (differing/float_range_boxed.rb).
+# and a Range of Time (float_range_boxed.rb).
 
 # 51: one class's readers, each doing `key.to_s`, called with Symbol and
 # String keys in one program; `keys` on that class, on a Hash and on another

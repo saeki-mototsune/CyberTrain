@@ -1447,7 +1447,7 @@ decision, and 77 explicitly retires a workaround.
     in a newline.
     On 2026.11.04.7026 (2026-11-15 and 2026-11-19) the reduced program
     still failed in the C compiler
-    (rechecks/differing/nil_only_puts_openssl.rb). The framework's own
+    (rechecks/nil_only_puts_openssl.rb). The framework's own
     three lines no longer showed it: with `@io.puts(line)` put back into
     the `Logger#write_now` of 2026-11-19 they compiled and logged, and
     test/logger_tls.rb, written as the regression program, built and
@@ -1961,7 +1961,7 @@ decision, and 77 explicitly retires a workaround.
      its whole chain, through its built-in ancestors up to BasicObject
      (`Pkg::Mine < ArgumentError < StandardError < ...`), in the program
      where the built-in start fails
-     (rechecks/differing/builtin_superclass_with_module.rb); this record
+     (rechecks/builtin_superclass_with_module.rb); this record
      first said "up to its first built-in ancestor", which those runs do
      not bear out. It is rule 54's failing half, extended from a package's
      classes to the core ones. So a walk up an exception's ancestry that

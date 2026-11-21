@@ -1,0 +1,6 @@
+literal of Time: 0
+Range.new of Time: 100
+Float Range from a Hash: range
+Float Range as an argument: [1.5, 2.5]
+Integer Range as an argument: [1, 3]
+Array as an argument: []
