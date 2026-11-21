@@ -5,7 +5,8 @@
 # of cybertrain (no Logger, Params, Config, Context, Middleware, Router,
 # Controller and the like). `allowed` lists the files outside the layer it may
 # still load, each with its reason; it is empty since the layer stopped
-# loading Logger (HttpLog) and Params (its core moved into the layer).
+# loading Logger (HttpLog), Params (its core moved into the layer) and Key
+# (moved into the layer, cybertrain/http/key.rb).
 # CRuby only.
 #
 # A constant named in a method body resolves only when the method runs, so
@@ -21,9 +22,7 @@ require "cybertrain/http/server"
 
 root = File.expand_path("..", __dir__) + "/"
 loaded = $LOADED_FEATURES.select { |f| f.start_with?(root + "cybertrain/") }.map { |f| f.delete_prefix(root) }
-# cybertrain/key.rb: main's Key.string_of, which Params names its keys with
-# (merged from main; the next commit moves it into the layer).
-allowed = ["cybertrain/key.rb"]
+allowed = []
 stray = loaded.reject { |f| f.start_with?("cybertrain/http/") || allowed.include?(f) }
 
 unless stray.empty?

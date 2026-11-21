@@ -14,7 +14,7 @@
 # parameters are not the layer's: a framework on top adds them by
 # reopening the class (docs/design.md D91).
 require_relative "uploaded_file"
-require_relative "../key"
+require_relative "key"
 
 module Cybertrain
   # The request parameters as the HTTP layer parses them: Strings, lists of

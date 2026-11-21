@@ -2403,7 +2403,8 @@ decision, and 77 explicitly retires a workaround.
      `cookies[:x]`, `flash[:notice]`, `t(:key)`, `where(col: v)`, the
      action name, the template interpreter's `article[:title]`, helper names.
      Name a key given as a String or a Symbol with
-     `Cybertrain::Key.string_of(key)` (cybertrain/key.rb: `Symbol#name`, one
+     `Cybertrain::Key.string_of(key)` (cybertrain/http/key.rb, required as
+     `cybertrain/key` too: `Symbol#name`, one
      cached String per Symbol), never `key.to_s`, and use `sym.name` where
      the value is known to be a Symbol (`I18n.locale.name`); freeze only
      Strings made once (constants, boot). test/key_text.rb is the
