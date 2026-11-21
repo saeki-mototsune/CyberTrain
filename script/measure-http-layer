@@ -2,7 +2,10 @@
 # Measures what the HTTP layer's refactoring must not make worse: build times
 # and request throughput of examples/blog, built with Spinel.
 #
-# usage: script/measure-http-layer OUT.json
+# usage: script/measure-http-layer [--rev REV] OUT.json
+#   --rev REV   measure a `git worktree` of REV (under tmp/measure/rev, removed
+#               at exit) instead of the current checkout, so a base and a
+#               changed tree can be measured alternately in one session.
 #
 # Works in a `cp -a` of examples/blog under tmp/measure/ (spin.toml pointed at
 # this checkout, as script/preview-e2e does). Measures
@@ -17,7 +20,13 @@
 # otherwise idle machine, and compare numbers only from the same machine.
 set -euo pipefail
 
-[ $# -eq 1 ] || { echo "usage: script/measure-http-layer OUT.json" >&2; exit 2; }
+rev=
+if [ "${1:-}" = "--rev" ]; then
+  [ $# -ge 2 ] || { echo "usage: script/measure-http-layer [--rev REV] OUT.json" >&2; exit 2; }
+  rev=$2
+  shift 2
+fi
+[ $# -eq 1 ] || { echo "usage: script/measure-http-layer [--rev REV] OUT.json" >&2; exit 2; }
 repo=$(cd "$(dirname "$0")/.." && pwd)
 case $1 in /*) out=$1 ;; *) out=$PWD/$1 ;; esac
 
@@ -26,41 +35,55 @@ if ! command -v wrk > /dev/null 2>&1; then
   command -v wrk > /dev/null 2>&1 || { echo "measure-http-layer: wrk is missing and 'apt-get install -y wrk' failed" >&2; exit 1; }
 fi
 
-if command -v cybertrain > /dev/null 2>&1; then
-  ct=(cybertrain)
-else
-  ct=(ruby "-I$repo" "$repo/exe/cybertrain")
-fi
-
 work=$repo/tmp/measure
+mkdir -p "$work" "$(dirname "$out")"
+src=$repo
+dirty=false
+if [ -n "$rev" ]; then
+  src=$work/rev
+  git -C "$repo" worktree remove --force "$src" > /dev/null 2>&1 || true
+  rm -rf "$src"
+  git -C "$repo" worktree add --detach "$src" "$rev" > /dev/null
+elif [ -n "$(git -C "$repo" status --porcelain --untracked-files=no)" ]; then
+  dirty=true
+fi
+commit=$(git -C "$src" rev-parse HEAD)
+# The CLI of the measured tree, so that --rev measures REV's own toolchain.
+ct=(ruby "-I$src" "$src/exe/cybertrain")
+
 app=$work/blog
 rm -rf "$app"
-mkdir -p "$work" "$(dirname "$out")"
-cp -a "$repo/examples/blog" "$app"
+cp -a "$src/examples/blog" "$app"
 rm -rf "$app/build" "$app/dist" "$app/tmp" "$app/storage"/*.sqlite3*
 mkdir -p "$app/tmp" "$app/storage"
 (cd "$app" && ruby -e '
   toml = File.read("spin.toml")
   pinned = toml.sub(%q(cybertrain = { path = "../.." }), "cybertrain = { path = #{ARGV[0].dump} }")
   abort "spin.toml has no cybertrain path dependency" if pinned == toml
-  File.write("spin.toml", pinned)' "$repo")
+  File.write("spin.toml", pinned)' "$src")
 
-now() { date +%s.%N; }
+now() { ruby -e 'print Process.clock_gettime(Process::CLOCK_MONOTONIC)'; }
+server=
+cleanup() {
+  [ -z "$server" ] || kill "$server" 2> /dev/null || true
+  [ -z "$rev" ] || git -C "$repo" worktree remove --force "$src" > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 cold=() incr=()
-
 build() { (cd "$app" && "${ct[@]}" build > "$work/build.log" 2>&1) || { echo "measure-http-layer: build failed, see $work/build.log" >&2; tail -20 "$work/build.log" >&2; exit 1; }; }
 
 for i in 1 2 3; do
   rm -rf "$app/build"
   t0=$(now); build; t1=$(now)
-  cold+=("$(echo "$t1 - $t0" | bc -l)")
-  echo "cold build $i: ${cold[-1]} s" >&2
+  cold+=("$t0:$t1")
+  echo "cold build $i done" >&2
 done
 for i in 1 2 3; do
   touch "$app/app/controllers/articles_controller.rb"
   t0=$(now); build; t1=$(now)
-  incr+=("$(echo "$t1 - $t0" | bc -l)")
-  echo "incremental build $i: ${incr[-1]} s" >&2
+  incr+=("$t0:$t1")
+  echo "incremental build $i done" >&2
 done
 
 [ -x "$app/dist/blog" ] || { echo "measure-http-layer: $app/dist/blog was not built" >&2; exit 1; }
@@ -71,17 +94,29 @@ cd "$app/dist"
 mkdir -p storage tmp
 rm -f storage/production.sqlite3*
 { ./blog migrate && ./blog user bench@example.com measure-http-layer-pw; } > "$work/migrate.log" 2>&1 || { echo "measure-http-layer: migrate or user creation failed" >&2; cat "$work/migrate.log" >&2; exit 1; }
-PORT=$port SPINEL_WORKERS=2 ./blog > /dev/null 2> "$work/server.log" &
-server=$!
-trap 'kill $server 2> /dev/null || true' EXIT
 
+# The server's memory grows by about 70 MB per 10 s of load and its
+# throughput falls with it (1284 -> 1052 req/s on /articles over four runs),
+# so every wrk run gets a fresh process on the same seeded database.
+start_server() {
+  PORT=$port SPINEL_WORKERS=2 ./blog > /dev/null 2>> "$work/server.log" &
+  server=$!
+  ruby -rnet/http -e '
+    ok = false
+    60.times { begin; ok = Net::HTTP.get_response("127.0.0.1", "/up", ARGV[0].to_i).code == "200"; rescue SystemCallError; end; break if ok; sleep 0.5 }
+    abort "server not ready" unless ok' "$port"
+}
+stop_server() {
+  kill "$server" 2> /dev/null || true
+  wait "$server" 2> /dev/null || true
+  server=
+}
+
+start_server
 # /articles needs a signed-in user: sign in through the form, and keep the
 # session cookie for wrk.
 cookie=$(ruby -rnet/http -e '
   port = ARGV[0].to_i
-  ok = false
-  60.times { begin; ok = Net::HTTP.get_response("127.0.0.1", "/", port).code == "200"; rescue SystemCallError; end; break if ok; sleep 0.5 }
-  abort "server not ready" unless ok
   cookie = nil
   req = lambda do |r|
     r["Cookie"] = cookie if cookie
@@ -107,29 +142,47 @@ cookie=$(ruby -rnet/http -e '
   n = req.(Net::HTTP::Get.new("/articles")).body.scan("<tr>").size - 1
   abort "index lists #{n} articles, not 20" unless n == 20
   print cookie' "$port")
+stop_server
 
-# Warm up, then measure.
-wrk -t2 -c32 -d3s -H "Cookie: $cookie" "http://127.0.0.1:$port/articles" > /dev/null
-rps() { wrk -t2 -c32 -d10s -H "Cookie: $cookie" "http://127.0.0.1:$port$1" | awk '/Requests\/sec/ { print $2 }'; }
+# One run: a fresh server, a status check (wrk counts a 303 as success, so
+# the 200 is asserted here), a warm-up, then the measured 10 s. A wrk report of
+# non-2xx/3xx responses fails the run.
+rps() {
+  start_server
+  local code
+  code=$(ruby -rnet/http -e '
+    r = Net::HTTP::Get.new(ARGV[1]); r["Cookie"] = ARGV[2]
+    print Net::HTTP.start("127.0.0.1", ARGV[0].to_i) { |h| h.request(r) }.code' "$port" "$1" "$cookie")
+  [ "$code" = 200 ] || { echo "measure-http-layer: GET $1 answered $code, not 200" >&2; exit 1; }
+  wrk -t2 -c32 -d3s -H "Cookie: $cookie" "http://127.0.0.1:$port$1" > /dev/null
+  local report
+  report=$(wrk -t2 -c32 -d10s -H "Cookie: $cookie" "http://127.0.0.1:$port$1")
+  stop_server
+  if grep -q "Non-2xx or 3xx responses" <<< "$report"; then
+    echo "measure-http-layer: wrk on $1 got non-2xx/3xx responses:" >&2
+    echo "$report" >&2
+    exit 1
+  fi
+  awk '/Requests\/sec/ { print $2 }' <<< "$report"
+}
 up=() arts=()
 for i in 1 2 3 4 5; do
   up+=("$(rps /up)"); arts+=("$(rps /articles)")
   echo "run $i: /up ${up[-1]} req/s, /articles ${arts[-1]} req/s" >&2
 done
 
-kill $server 2> /dev/null || true
-wait $server 2> /dev/null || true
-trap - EXIT
-
 ruby -rjson -e '
-  commit, out, *rest = ARGV
-  a = rest.join(" ").split("|", -1).map { |s| s.split.map(&:to_f) }
+  commit, dirty, out, *rest = ARGV
+  a = rest.join(" ").split("|", -1).map { |s| s.split }
+  secs = ->(pairs) { pairs.map { |p| t0, t1 = p.split(":").map(&:to_f); (t1 - t0).round(2) } }
+  a = [secs.(a[0]), secs.(a[1]), a[2].map(&:to_f), a[3].map(&:to_f)]
   names = %w[build_cold_s build_incremental_s rps_up rps_articles]
   abort "wrong counts" unless a.map(&:size) == [3, 3, 5, 5] && a.flatten.none?(&:zero?)
   med = ->(v) { s = v.sort; m = s.size / 2; (s.size.odd? ? s[m] : (s[m - 1] + s[m]) / 2.0).round(2) }
-  h = { "commit" => commit }
+  h = { "commit" => commit, "dirty" => dirty == "true" }
   names.zip(a) { |n, v| h[n] = v }
   h["median"] = names.zip(a).to_h { |n, v| [n, med.(v)] }
+  h["spread"] = names.zip(a).last(2).to_h { |n, v| [n, { "min" => v.min, "max" => v.max, "last_first" => (v.last / v.first).round(3) }] }
   File.write(out, JSON.pretty_generate(h) + "\n")' \
-  "$(git -C "$repo" rev-parse HEAD)" "$out" "${cold[*]}" "|" "${incr[*]}" "|" "${up[*]}" "|" "${arts[*]}"
+  "$commit" "$dirty" "$out" "${cold[*]}" "|" "${incr[*]}" "|" "${up[*]}" "|" "${arts[*]}"
 cat "$out"
