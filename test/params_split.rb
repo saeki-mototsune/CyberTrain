@@ -1,7 +1,7 @@
 require "cybertrain/http/query"
 require "cybertrain/http/multipart"
 require "cybertrain/http/client_error"
-require "cybertrain/context"
+require "cybertrain/params"
 require "cybertrain/test"
 
 # Params is split in two: its structure lives in the HTTP layer
@@ -10,7 +10,7 @@ require "cybertrain/test"
 # reopening the class in cybertrain/params.rb. These cases pin that the
 # Params the layer builds, children included, answer the reopened methods,
 # and that ParameterMissing is still a 400 once the layer no longer names it
-# (cybertrain/context.rb registers it, hence that require).
+# (cybertrain/params.rb registers it, hence that require).
 
 BOUNDARY = "----WebKitFormBoundarySplit42"
 

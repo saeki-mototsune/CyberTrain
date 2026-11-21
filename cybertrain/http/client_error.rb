@@ -1,4 +1,5 @@
 require "json"
+require "cybertrain/http/extra_faults"
 require "cybertrain/http/query"
 require "cybertrain/http/response"
 
@@ -59,42 +60,9 @@ module Cybertrain
                      "Cybertrain::MultipartMalformed", "Cybertrain::MultipartTooManyParts",
                      "Cybertrain::MultipartPartTooLarge", "Cybertrain::MultipartHeaderTooLarge"]
 
-    # The client faults the layer does not define: full class names,
-    # matched exactly as CLIENT_FAULTS' are. Registering one is the job of
-    # the library that defines the class, at load (a framework's
-    # missing-required-parameter error, say); a program that never loads
-    # that registration answers the class with 500. A module-level ivar
-    # with a literal default (the Params.max_page shape, spikes/NOTES.md
-    # rule 18).
-    @extra_faults = Array.new(0) { "" }
-
-    # The client faults registered on top of CLIENT_FAULTS, empty until a
-    # library adds one with {.extra_faults=}.
-    # @return [Array<String>] full class names
-    # @api public
-    def self.extra_faults
-      @extra_faults
-    end
-
-    # Installs the client faults added to CLIENT_FAULTS, replacing the
-    # earlier ones (a copy of `names` is kept): add to them with
-    # `ClientError.extra_faults = ClientError.extra_faults + [name]`.
-    # Called at load, before any thread starts.
-    # @example
-    #   ClientError.extra_faults = ClientError.extra_faults + ["MyLib::MissingInput"]
-    # @param names [Array<String>] full class names
-    # @return [nil]
-    # @api public
-    def self.extra_faults=(names)
-      full = Array.new(0) { "" }
-      i = 0
-      while i < names.length
-        full << names[i]
-        i += 1
-      end
-      @extra_faults = full
-      nil
-    end
+    # {.extra_faults} and {.extra_faults=}, the client faults defined
+    # outside the layer, are in cybertrain/http/extra_faults.rb, which a
+    # library that registers one can load without the rest of the layer.
 
     # 400 for a client fault (CLIENT_FAULTS or {.extra_faults}), 500 for
     # the app's own exception: an Array lookup, no raise, so a request
@@ -110,7 +78,7 @@ module Cybertrain
     def self.status_for(e)
       name = e.class.name.to_s
       return 400 if fault_name_in?(name, CLIENT_FAULTS)
-      return 400 if fault_name_in?(name, @extra_faults)
+      return 400 if fault_name_in?(name, extra_faults)
 
       500
     end

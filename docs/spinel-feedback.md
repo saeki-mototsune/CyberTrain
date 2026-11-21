@@ -4536,9 +4536,10 @@ the shell, to the same effect; again 2026-11-19).
   only `env_or` was run. A test program that requires part of the
   framework can meet it. New code does not add an `ENV[variable]` read.
   Since 2026-11-21 the HTTP layer's `ClientError` learns of
-  `Params::ParameterMissing` in cybertrain/context.rb, not in
-  cybertrain/params.rb, so the programs that load Config without the
-  rest (the db CLI, the mailer, the scheduler) do not load Query.
+  `Params::ParameterMissing` from cybertrain/params.rb through
+  cybertrain/http/extra_faults.rb, which loads nothing else, not through
+  client_error.rb, so the programs that load Config without the rest
+  (the db CLI, the mailer, the scheduler) do not load Query.
 - Asked of Spinel: clear `_sp_ret_strbuf` after the arguments are read,
   or take a builtin's String result from its return value when the
   builtin never publishes one (a builtin that returns a fresh `char *`

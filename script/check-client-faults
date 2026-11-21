@@ -3,8 +3,8 @@
 # the lists of exceptions answered as a 400. They are matched by class NAME,
 # not walked with `is_a?` (NOTES rules 47 and 54, and their status rows, have
 # why), so a QueryInvalid subclass nobody listed would be a 500. This loads
-# the framework under CRuby (cybertrain/context too, which adds
-# ParameterMissing to extra_faults at load), collects every class at or below
+# the framework under CRuby (cybertrain/params adds ParameterMissing to
+# extra_faults at load; cybertrain/context loads it), collects every class at or below
 # Cybertrain::QueryInvalid plus Cybertrain::Params::ParameterMissing, and
 # fails (exit 1) when one is in neither list, or when an entry names no
 # loaded class. CRuby only (needs

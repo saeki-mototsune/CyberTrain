@@ -5,10 +5,15 @@
 # files; the readers; what Query and Multipart fill) is the HTTP layer's,
 # in cybertrain/http/params.rb. This file reopens the class to add the
 # strong parameters, ParameterMissing and the filtered #inspect.
-# cybertrain/context.rb registers ParameterMissing with ClientError as a
-# client fault (not this file: see that registration's comment).
+# ParameterMissing is registered here with ClientError.extra_faults, so the
+# HTTP layer answers it with 400 in any program that can raise it. Through
+# cybertrain/http/extra_faults.rb, which loads nothing else: Config-only
+# programs (the db CLI, the mailer, the scheduler) load this file, and
+# loading Query beside Config there miscompiles ENV reads
+# (docs/spinel-feedback.md AS), so this file must not load client_error.rb.
 require "cybertrain/http/params"
 require "cybertrain/http/parameter_filter"
+require "cybertrain/http/extra_faults"
 
 module Cybertrain
   # The request parameters, {Controller#params} in an action and `params`
@@ -250,4 +255,10 @@ module Cybertrain
       out
     end
   end
+
+  # A missing required parameter is the client's fault (a 400), wherever
+  # ClientError classifies it (Server's bare-app path, ErrorPages,
+  # Dev::ErrorPage, Controller). See the header for why through
+  # cybertrain/http/extra_faults.rb alone.
+  ClientError.extra_faults = ClientError.extra_faults + ["Cybertrain::Params::ParameterMissing"]
 end

@@ -1,22 +1,11 @@
 require "cybertrain/http/request"
 require "cybertrain/http/response"
 require "cybertrain/params"
-require "cybertrain/http/client_error"
 require "cybertrain/content_security_policy"
 require "base64"
 require "securerandom"
 
 module Cybertrain
-  # A missing required parameter is the client's fault (a 400): the HTTP
-  # layer's ClientError does not know Params::ParameterMissing, so it is
-  # added to ClientError.extra_faults at load. Here and not in
-  # cybertrain/params.rb: every program that serves requests or classifies
-  # their errors (core, Controller, the middlewares, Test::Client) loads
-  # this file, while Config-only programs (the db CLI, the mailer, the
-  # scheduler) load params.rb without the HTTP layer, and loading Query
-  # beside Config there miscompiles ENV reads (docs/spinel-feedback.md AS).
-  ClientError.extra_faults = ClientError.extra_faults + ["Cybertrain::Params::ParameterMissing"]
-
   # Everything one request carries through the middleware stack, the router
   # and the controller. The Response is created here and written back to the
   # socket by the Server once the stack returns.
