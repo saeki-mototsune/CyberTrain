@@ -881,7 +881,7 @@ module Cybertrain
     # @example
     #   request.preferred_locale([:en, :ja])   # "ja-JP, en;q=0.5" => :ja
     # @param available [Array<Symbol>] the locales the application serves
-    # @return [Symbol]
+    # @return [Symbol] an element of `available`, or {I18n.default_locale}
     # @api public
     def preferred_locale(available)
       negotiate_locale(available, I18n.default_locale)

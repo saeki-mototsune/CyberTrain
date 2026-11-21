@@ -18,12 +18,19 @@ module Cybertrain
   # apart there) -- its own reason so the operator does not hunt for a
   # process that is not there. With reuse_port a host that does not resolve
   # or is not this machine's is a third reason and a name with several
-  # addresses a fourth, both naming the setting; with listen_fd, a
-  # descriptor that is not a listening socket is a fifth. The message is the HTTP
-  # layer's own, free of any application's settings; #reason is the constant
-  # that ends it, for a caller that adds a hint of its own.
+  # addresses a fourth; with listen_fd, a descriptor that is not a
+  # listening socket is a fifth. The message is the HTTP layer's own and
+  # names no application's settings; {#reason} is the constant that ends
+  # it, for a caller that adds a hint of its own.
   class PortInUse < StandardError
-    attr_reader :port, :reason
+    # @return [Integer] the port that could not be bound
+    attr_reader :port
+
+    # Which of the five it is: one of IN_USE, PERMISSION_DENIED,
+    # REUSE_PORT_HOST, REUSE_PORT_NAME and NOT_LISTENING, compared with
+    # `==`. The message ends with it.
+    # @return [String]
+    attr_reader :reason
 
     IN_USE = "is already in use"
     PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
@@ -127,8 +134,11 @@ module Cybertrain
     # flight; keep it below the process manager's stop timeout (systemd's
     # TimeoutStopSec, 15 s in docs/deploy.md).
     # stream_write_timeout: how long one write of a streaming response may
-    # wait for a client that does not read (Sink); Application passes
-    # Config#stream_ping_interval.
+    # wait for a client that does not read (Sink); an application passes
+    # its configured stream ping interval.
+    # logger: the {HttpLog} the server writes its lines to; the base, the
+    # default, writes `"<level>: <msg>"` lines to standard error, and a
+    # framework passes its own subclass.
     def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
                    max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: HttpLog.new,
                    reuse_port: false,

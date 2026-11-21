@@ -82,7 +82,7 @@ module Cybertrain
     # treat an empty value as malformed). A while loop over getbyte: no
     # Array and no block per request, as `bytes.all?` would cost. Lives here,
     # not as Cast.digits? (which is true for ""): the HTTP layer requires
-    # nothing outside cybertrain/http/ but logger.rb
+    # nothing outside cybertrain/http/
     # (script/check-http-layer). `value` is a nullable header value, boxed,
     # hence the `to_s` local: a boxed `getbyte` raises NoMethodError in a
     # program that requires the openssl package (spikes/NOTES.md rule 62).

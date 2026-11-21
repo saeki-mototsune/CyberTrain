@@ -12,16 +12,16 @@ module Cybertrain
   module ClientError
     # The status for an exception out of the app, logged at the level it
     # deserves: a client fault (request parameters past Query's limits or
-    # not decodable, QueryInvalid; a missing required parameter) is its 4xx
-    # at info, so a flood of them does not fill the error log; anything else
-    # is 500 at error, as `class: message`. Each error path then does
+    # not decodable, QueryInvalid; or a class in {.extra_faults}, such as a
+    # framework's missing-required-parameter error) is its 4xx at info, so
+    # a flood of them does not fill the error log; anything else is 500 at
+    # error, as `class: message`. Each error path then does
     # `reset_to(status)` (or its own 500 page); the layer's next
-    # client-fault class is added to CLIENT_FAULTS below and nowhere else
-    # (one defined outside the layer, to extra_faults). `logger` is the
-    # Server's {HttpLog} (cybertrain's Logger is one).
+    # client-fault class is added to CLIENT_FAULTS below and nowhere else,
+    # and one defined outside the layer to {.extra_faults}.
     # @param e [Exception]
-    # @param logger [HttpLog]
-    # @return [Integer]
+    # @param logger [HttpLog] the Server's sink, the base or a subclass
+    # @return [Integer] 400 or 500 ({.status_for})
     def self.classify(e, logger)
       status = self.status_for(e)
       if status >= 500
@@ -49,9 +49,9 @@ module Cybertrain
     # Every subclass must be listed by its full name, which is what
     # ClientError.status_for compares. An app's own exception class, even
     # one that subclasses QueryLimitExceeded, is the app's 500; the list is the
-    # framework's. script/check-client-faults (run by CI) fails when a
-    # QueryInvalid subclass or cybertrain's ParameterMissing is in neither
-    # this list nor extra_faults, or an entry names no class.
+    # layer's. script/check-client-faults (run by CI) fails when a
+    # client-fault class is in neither this list nor {.extra_faults}, or an
+    # entry names no class.
     CLIENT_FAULTS = ["Cybertrain::QueryInvalid", "Cybertrain::QueryLimitExceeded",
                      "Cybertrain::QueryTooDeep", "Cybertrain::QueryTooMany",
                      "Cybertrain::QueryMalformed",
@@ -59,23 +59,29 @@ module Cybertrain
                      "Cybertrain::MultipartMalformed", "Cybertrain::MultipartTooManyParts",
                      "Cybertrain::MultipartPartTooLarge", "Cybertrain::MultipartHeaderTooLarge"]
 
-    # The client faults the layer does not define, added at load by the
-    # code that defines them (cybertrain/context.rb adds
-    # "Cybertrain::Params::ParameterMissing"): full class names, matched
-    # exactly as CLIENT_FAULTS' are. A module-level ivar with a literal
-    # default (the Params.max_page shape, spikes/NOTES.md rule 18).
+    # The client faults the layer does not define: full class names,
+    # matched exactly as CLIENT_FAULTS' are. Registering one is the job of
+    # the library that defines the class, at load (a framework's
+    # missing-required-parameter error, say); a program that never loads
+    # that registration answers the class with 500. A module-level ivar
+    # with a literal default (the Params.max_page shape, spikes/NOTES.md
+    # rule 18).
     @extra_faults = Array.new(0) { "" }
 
-    # @return [Array<String>] the client faults added to CLIENT_FAULTS
+    # The client faults registered on top of CLIENT_FAULTS, empty until a
+    # library adds one with {.extra_faults=}.
+    # @return [Array<String>] full class names
     # @api public
     def self.extra_faults
       @extra_faults
     end
 
     # Installs the client faults added to CLIENT_FAULTS, replacing the
-    # earlier ones: add to them with
+    # earlier ones (a copy of `names` is kept): add to them with
     # `ClientError.extra_faults = ClientError.extra_faults + [name]`.
     # Called at load, before any thread starts.
+    # @example
+    #   ClientError.extra_faults = ClientError.extra_faults + ["MyLib::MissingInput"]
     # @param names [Array<String>] full class names
     # @return [nil]
     # @api public
@@ -90,15 +96,17 @@ module Cybertrain
       nil
     end
 
-    # 400 for a client fault, 500 for the app's own exception: an Array
-    # lookup, no raise, so RequestLogger (for its Completed line) and the
-    # error path outside it (ErrorPages, Dev::ErrorPage, Server#respond) can
-    # each ask and always agree. `to_s`: Class#name is nil for an anonymous
-    # class (`Class.new(StandardError)`) under CRuby, and this runs inside
-    # error handlers' rescue clauses, where a NoMethodError would escape and
-    # close the connection with no response at all. Named status_for, not
-    # status: DB::Migrator#status and DB::CLI.status share the program and
-    # return other types (NOTES rules 10, 34).
+    # 400 for a client fault (CLIENT_FAULTS or {.extra_faults}), 500 for
+    # the app's own exception: an Array lookup, no raise, so a request
+    # logger (for its completion line) and every error path (an error page,
+    # Server#respond) can each ask and always agree. `to_s`: Class#name is
+    # nil for an anonymous class (`Class.new(StandardError)`) under CRuby,
+    # and this runs inside error handlers' rescue clauses, where a
+    # NoMethodError would escape and close the connection with no response
+    # at all. Named status_for, not status: other classes in one program
+    # define `status` with other return types (NOTES rules 10, 34).
+    # @param e [Exception]
+    # @return [Integer] 400 or 500
     def self.status_for(e)
       name = e.class.name.to_s
       return 400 if fault_name_in?(name, CLIENT_FAULTS)
@@ -109,6 +117,10 @@ module Cybertrain
 
     # Whether name is one of names. A while loop, not a block: no closure,
     # nothing to widen (rules 32, 45).
+    # @param name [String]
+    # @param names [Array<String>]
+    # @return [Boolean]
+    # @api private
     def self.fault_name_in?(name, names)
       i = 0
       while i < names.length

@@ -102,8 +102,8 @@ module Cybertrain
     end
 
     # The request's log context ({HttpLogContext}), set by whatever gave
-    # the request its id (cybertrain's RequestId middleware sets its
-    # Logger::Scope); {HttpLogContext::NONE} until then. The Server swaps
+    # the request its id (a request-id middleware sets its own subclass of
+    # HttpLogContext); {HttpLogContext::NONE} until then. The Server swaps
     # it in through {HttpLogSwitch.installed} around the error line it logs
     # for what escaped the handler, after the handler has put the thread's
     # own context back, so that line carries the request's id too.
@@ -111,7 +111,9 @@ module Cybertrain
     # @api private
     attr_reader :log_context
 
+    # Sets {#log_context}.
     # @param ctx [HttpLogContext]
+    # @return [HttpLogContext] ctx
     # @api private
     def log_context=(ctx)
       @log_context = ctx
@@ -807,7 +809,8 @@ module Cybertrain
     # The default refuses every gzip body: the only bounded inflater is
     # GzipFFI (system zlib through Spinel FFI), which cannot be loaded here
     # (CRuby loads this file for the portable tests and check-http-layer),
-    # so `require "cybertrain"` installs it. A module-level ivar with a
+    # so {GzipFFI.install!} (cybertrain/http/gzip_ffi) installs it; hence
+    # the default's message. A module-level ivar with a
     # lambda default, the shape Views.url_resolver has (NOTES rules 18, 42).
     @inflater = ->(data, limit) { raise BodyUndecodable, "gzip request bodies are not decoded: no inflater is installed (require the gzip support)" }
 

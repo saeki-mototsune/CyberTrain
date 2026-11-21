@@ -160,7 +160,13 @@ module Cybertrain
       end
 
       # The HTTP layer's PortInUse message plus the setting that fixes it
-      # (the text `cybertrain server` has always printed).
+      # (the text `cybertrain server` has always printed), chosen by
+      # {PortInUse#reason}; a reason with no setting to name (permission
+      # denied, an inherited descriptor that is not listening) is the
+      # message alone.
+      # @param e [PortInUse]
+      # @return [String]
+      # @api private
       def self.port_message(e)
         reason = e.reason
         return "#{e.message} (stop the other server or set PORT)" if reason == PortInUse::IN_USE
