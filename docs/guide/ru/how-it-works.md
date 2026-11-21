@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, необязательные подсистемы, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
+source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
 ---
 
 # Как это работает
@@ -339,7 +339,7 @@ spin (`SPIN_DEBUG=1`, `-O0`): они работают миллисекунды, 
 | `def new` | `def new_action`: маршрут `GET /posts/new` и представление `new.html.erb` сохраняют свои имена, переименован только метод |
 | `before_action { do_thing }` (неявный `self`) | `before_action { \|c\| c.do_thing }` — для сохранённого блока нет `instance_exec`, поэтому колбэки получают контроллер/запись явно |
 | `skip_before_action :x` | То же самое для именованных before-колбэков (у колбэка-блока нет имени, которое можно пропустить); `skip_after_action` нет |
-| `ActiveSupport::Concern`, включаемый во время выполнения | Concerns в `app/controllers/concerns` и `app/models/concerns`, которые `spin run gen` разворачивает во включающие классы; `include` называет concern, а метод `class_methods` не может называться так же, как метод экземпляра ([Concerns](requests.md#concerns-and-helper_method)) |
+| `ActiveSupport::Concern`, включаемый во время выполнения | Concerns в `app/controllers/concerns` и `app/models/concerns`, которые `spin run gen` разворачивает во включающие классы; `include` называет concern, а имя метода `class_methods` в concern модели не может совпадать со scope модели или с методом класса, который есть у каждой модели ([Concerns](requests.md#concerns-and-helper_method)) |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — вложенные блоки получают маппер явно |
 | `resource :session` | Те же шесть действий в `SessionsController`; блок (`do \|session\| ... end`) добавляет маршруты-члены и вложенные ресурсы ([Маршрутизация](requests.md#routing)) |
 | `get "/x"`, затем `post "/x"` | Оба допустимы: выведенное имя второго маршрута уже занято, поэтому он остаётся без имени, как в Rails; повторяющийся `as:` по-прежнему ошибка |

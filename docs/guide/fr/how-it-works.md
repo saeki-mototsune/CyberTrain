@@ -1,5 +1,5 @@
 ---
-source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
+source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -159,7 +159,7 @@ Les lignes sont regroupées par domaine&nbsp;: d’abord les commandes, l’outi
 | `def new` | `def new_action`&nbsp;: la route `GET /posts/new` et la vue `new.html.erb` gardent leur nom, seule la méthode est renommée |
 | `before_action { do_thing }` (`self` implicite) | `before_action { \|c\| c.do_thing }` — pas d’`instance_exec` sur un bloc stocké, donc les callbacks reçoivent explicitement le contrôleur/l’enregistrement |
 | `skip_before_action :x` | Pareil, pour les callbacks before nommés (un callback sous forme de bloc n’a pas de nom à sauter)&nbsp;; pas de `skip_after_action` |
-| `ActiveSupport::Concern` inclus à l’exécution | Concerns dans `app/controllers/concerns` et `app/models/concerns`, développés par `spin run gen` dans les classes qui les incluent&nbsp;; un `include` nomme un concern, et une méthode de `class_methods` ne peut pas porter le nom d’une méthode d’instance ([Concerns](requests.md#concerns-and-helper_method)) |
+| `ActiveSupport::Concern` inclus à l’exécution | Concerns dans `app/controllers/concerns` et `app/models/concerns`, développés par `spin run gen` dans les classes qui les incluent&nbsp;; un `include` nomme un concern, et le nom d’une méthode de `class_methods` d’un concern de modèle ne peut être ni un scope du modèle ni une méthode de classe que tout modèle a ([Concerns](requests.md#concerns-and-helper_method)) |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — les blocs imbriqués reçoivent le mapper explicitement |
 | `resource :session` | Les mêmes six actions de `SessionsController`&nbsp;; un bloc (`do \|session\| ... end`) ajoute des routes membres et des ressources imbriquées ([Routage](requests.md#routing)) |
 | `get "/x"` puis `post "/x"` | Les deux sont acceptés&nbsp;: le nom déduit de la seconde route est déjà pris, elle reste donc sans nom, comme dans Rails&nbsp;; un `as:` en double reste une erreur |

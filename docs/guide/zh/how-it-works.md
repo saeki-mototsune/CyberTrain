@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
+source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
 ---
 # 工作原理
 
@@ -157,7 +157,7 @@ CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 ge
 | `def new` | `def new_action`：路由 `GET /posts/new` 和视图 `new.html.erb` 保持原名，只有方法改了名 |
 | `before_action { do_thing }`（隐式的 `self`） | `before_action { \|c\| c.do_thing }`——无法对存储的块使用 `instance_exec`，所以回调显式接收控制器或记录 |
 | `skip_before_action :x` | 相同，适用于有名称的 before 回调（块形式的回调没有可供跳过的名称）；没有 `skip_after_action` |
-| 在运行时包含的 `ActiveSupport::Concern` | `app/controllers/concerns` 和 `app/models/concerns` 中的 concern 由 `spin run gen` 展开到包含它们的类中；`include` 指向 concern，`class_methods` 的方法不能与实例方法同名（[Concern](requests.md#concerns-and-helper_method)） |
+| 在运行时包含的 `ActiveSupport::Concern` | `app/controllers/concerns` 和 `app/models/concerns` 中的 concern 由 `spin run gen` 展开到包含它们的类中；`include` 指向 concern，模型 concern 的 `class_methods` 方法名不能是该模型的 scope，也不能是每个模型都有的类方法（[Concern](requests.md#concerns-and-helper_method)） |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end`——嵌套块显式接收 mapper |
 | `resource :session` | 同样是 `SessionsController` 上的六个动作；块（`do \|session\| ... end`）可以添加成员路由和嵌套资源（[路由](requests.md#routing)） |
 | 先 `get "/x"` 再 `post "/x"` | 两者都可以：第二条路由推导出的名称已被占用，所以它没有名称，与 Rails 相同；重复的 `as:` 仍然是错误 |

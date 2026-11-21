@@ -1,5 +1,5 @@
 ---
-source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
+source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -157,7 +157,7 @@ CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin の�
 | `def new` | `def new_action`：ルート `GET /posts/new` とビュー `new.html.erb` の名前はそのままで、メソッドの名前だけが変わる |
 | `before_action { do_thing }`（暗黙の `self`） | `before_action { \|c\| c.do_thing }` — 保存したブロックに対する `instance_exec` がないので、コールバックはコントローラーやレコードを明示的に受け取る |
 | `skip_before_action :x` | 名前付きの before コールバックについては同じ（ブロックのコールバックにはスキップする名前がない）。`skip_after_action` はない |
-| 実行時に include される `ActiveSupport::Concern` | `app/controllers/concerns` と `app/models/concerns` のコンサーンを、`spin run gen` が include するクラスに展開する。`include` はコンサーンを指し、`class_methods` のメソッドはインスタンスメソッドと同じ名前にできない（[コンサーン](requests.md#concerns-and-helper_method)） |
+| 実行時に include される `ActiveSupport::Concern` | `app/controllers/concerns` と `app/models/concerns` のコンサーンを、`spin run gen` が include するクラスに展開する。`include` はコンサーンを指し、モデルのコンサーンの `class_methods` のメソッド名は、そのモデルのスコープや、どのモデルにもあるクラスメソッドと同じにできない（[コンサーン](requests.md#concerns-and-helper_method)） |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — ネストしたブロックはマッパーを明示的に受け取る |
 | `resource :session` | `SessionsController` の同じ 6 つのアクション。ブロック（`do \|session\| ... end`）でメンバールートとネストしたリソースを追加する（[ルーティング](requests.md#routing)） |
 | `get "/x"` の後に `post "/x"` | どちらも問題ない：2 つ目のルートから導かれる名前は使用済みなので、Rails と同じく名前なしになる。`as:` の重複は引き続きエラー |

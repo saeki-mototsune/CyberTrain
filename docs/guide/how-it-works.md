@@ -346,7 +346,7 @@ uses, and operations.
 | `def new` | `def new_action`: the route `GET /posts/new` and the view `new.html.erb` keep their names, only the method is renamed |
 | `before_action { do_thing }` (implicit `self`) | `before_action { \|c\| c.do_thing }` — no `instance_exec` on a stored block, so callbacks take the controller/record explicitly |
 | `skip_before_action :x` | The same, for named before callbacks (a block callback has no name to skip); no `skip_after_action` |
-| `ActiveSupport::Concern` included at run time | Concerns in `app/controllers/concerns` and `app/models/concerns`, expanded by `spin run gen` into the including classes; an `include` names a concern, and a `class_methods` method may not share an instance method's name ([Concerns](requests.md#concerns-and-helper_method)) |
+| `ActiveSupport::Concern` included at run time | Concerns in `app/controllers/concerns` and `app/models/concerns`, expanded by `spin run gen` into the including classes; an `include` names a concern, and a model concern's `class_methods` name may not be a scope of the model or a class method every model has ([Concerns](requests.md#concerns-and-helper_method)) |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — nested blocks take the mapper explicitly |
 | `resource :session` | The same six actions on `SessionsController`; a block (`do \|session\| ... end`) adds member routes and nested resources ([Routing](requests.md#routing)) |
 | `get "/x"` then `post "/x"` | Both are fine: the second route's derived name is taken, so it is unnamed, as in Rails; a duplicate `as:` is still an error |

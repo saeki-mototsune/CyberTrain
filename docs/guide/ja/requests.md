@@ -1,5 +1,5 @@
 ---
-source_sha256: ab0b6cc63583ed237388a97fb1a15d96fac59ac3c772258276247f942759e84c
+source_sha256: 4d83a592d1063e49a4747842c76506f5ec8cfa7f4d63aaa25b109d1b6184b1b7
 ---
 # リクエスト
 
@@ -113,7 +113,7 @@ end
 
 `include AdminGate` と書いたコントローラーは、`included` ブロックが宣言するもの（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`）を、`include` の位置に、書いた順で受け取り、アクションの中で `self.class.per_page` が使えます。コンサーンはコンサーンを include できます：gen はそれらを深さ優先で、それぞれ一度だけ展開し、循環は名前を挙げて拒否します（`concern cycle: A includes B includes A`）。`include A, B` は Ruby と同じく B を先に include するので、B の `included` ブロックとコールバックが A のものより先に来ます。`around_action` は拒否されます（around コールバックはありません）。コンサーンのメソッドの中の `@x =` の代入は、コントローラーのビュー変数になります。
 
-Spinel は実行されることのない `included` と `class_methods` のブロックもコンパイルするので、gen が代わりに展開します：各コンサーンを、その二つのブロックを空行にして `gen/concerns/<app/ 以下のパス>` に書き（アプリのファイルはこのコピーを読み込みます）、`gen/concerns.rb` で include する各クラスを開き直して、差し込んだ宣言と、`class_methods` のメソッドごとの転送メソッドを書きます。ここから二つの規則が出てきます。gen は、コンサーン、include するクラス、その祖先のインスタンスメソッドと同じ名前の `class_methods` のメソッドを、両方の場所（インスタンスメソッドの `ファイル:行`）を挙げて拒否します。この検査は元のソースに由来します：書かれたままコンパイルすると、実行されることのない `class_methods` ブロックの中の `def` は、include するクラスのインスタンスメソッドにもなります（縮小したプログラムで確かめられます。spikes/NOTES.md のルール 93）。gen はこの二つの名前を分けたままにします。また、コンサーンでないモジュール（`include Comparable` や、`app/*/concerns` の下にファイルのない名前）の `include` は、そのまま Ruby に任されます。そのためコンサーン名の綴り間違いは、gen のメッセージではなく、アプリの読み込み時の `NameError` になります。gen は名前を Ruby と同じように、クラス自身のモジュールから先に探すので、`module Admin` の中の `include Gate` は `Admin::Gate` を取り込みます。どのコンサーンにも届かないのに最後の部分がコンサーンの名前と同じ名前（`Admin::Gate` しかないときの `include Gate`）では gen が止まります。Ruby は別のモジュールを include するか例外を出し、コンサーンの `included` ブロックが失われるからです。
+Spinel は実行されることのない `included` と `class_methods` のブロックもコンパイルするので、gen が代わりに展開します：各コンサーンを、その二つのブロックを空行にして `gen/concerns/<app/ 以下のパス>` に書き（アプリのファイルはこのコピーを読み込みます）、`gen/concerns.rb` で include する各クラスを開き直して、差し込んだ宣言と、`class_methods` のメソッドごとの転送メソッドを書きます。`class_methods` のメソッドは、コンサーン、include するクラス、その祖先のインスタンスメソッドと同じ名前にできます：転送メソッドはクラスメソッドで、gen が書くコピーはその名前のインスタンスメソッドを定義しません。コンサーンでないモジュール（`include Comparable` や、`app/*/concerns` の下にファイルのない名前）の `include` は、そのまま Ruby に任されます。そのためコンサーン名の綴り間違いは、gen のメッセージではなく、アプリの読み込み時の `NameError` になります。gen は名前を Ruby と同じように、クラス自身のモジュールから先に探すので、`module Admin` の中の `include Gate` は `Admin::Gate` を取り込みます。どのコンサーンにも届かないのに最後の部分がコンサーンの名前と同じ名前（`Admin::Gate` しかないときの `include Gate`）では gen が止まります。Ruby は別のモジュールを include するか例外を出し、コンサーンの `included` ブロックが失われるからです。
 
 モデルのコンサーンは `app/models/concerns/` に置き、同じように働きます：`included` ブロックには、モデルのクラスレベルの宣言（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、コールバック）をどれでも書け、`include` の位置でモデルに書いたものとして扱われます。コンサーンのコールバックは、同じ種類のモデル自身のコールバックの後に実行され、モデルのコンサーンの `included` ブロックの中の `include` は、そのコンサーンを取り込みます。モデルのコンサーンの `class_methods` のメソッド名は、そのモデルのスコープや、どのモデルにもあるクラスメソッドと同じにはできません（`scope :recent` と並べた `recent` や `where`）。gen はそれを拒否します。
 

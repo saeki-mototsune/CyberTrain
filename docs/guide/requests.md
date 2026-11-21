@@ -200,13 +200,10 @@ gen expands them itself instead: it writes each concern to
 `gen/concerns/<path under app/>` with the two blocks blanked (the
 application's files load those copies), and `gen/concerns.rb` reopens every
 including class with the spliced declarations and a forwarder per
-`class_methods` method. Two rules follow. gen refuses a `class_methods` method
-that shares its name with an instance method of the concern, of an
-including class or of its ancestors, naming both places (`file:line` of the
-instance method). The check comes from the original source: compiled as
-written, a `def` inside the never-run `class_methods` block is an instance
-method of the including class as well (a reduced program shows it;
-spikes/NOTES.md rule 93), and gen keeps the two names apart. And an `include` of a module that is not a concern
+`class_methods` method. Such a method may share its name with an instance
+method of the concern, of an including class or of its ancestors: the
+forwarder is a class method, and the copy gen writes defines no instance
+method for it. An `include` of a module that is not a concern
 (`include Comparable`, a name with no file under `app/*/concerns`) is left
 to Ruby as it is, so a misspelt concern name is a `NameError` when the
 application loads, not a gen message. gen looks a name up as Ruby does, the
