@@ -6,7 +6,7 @@ from this repository and the Spinel release `Cybertrain::SPINEL_TAG` names built
 the framework so that `cybertrain new` needs no network, and the tutorial's
 blog in `/workspace/blog`, created, scaffolded, migrated and built once.
 [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) opens
-it in GitHub Codespaces ([the playground page](https://saeki-mototsune.github.io/CyberTrain/playground.html)
+it in GitHub Codespaces ([the playground page](https://www.cybertrain.dev/playground.html)
 says what to expect there).
 
 - Tags: `X.Y.Z` comes from the release tag `vX.Y.Z` once every release

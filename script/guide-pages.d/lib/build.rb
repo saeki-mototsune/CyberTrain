@@ -23,7 +23,7 @@ require_relative "words"
 
 module GuidePages
   module Build
-    BASE = "https://saeki-mototsune.github.io/CyberTrain/"
+    BASE = "https://www.cybertrain.dev/"
     LAYOUT = File.expand_path("../layout.html.erb", __dir__)
     HREFLANG = { "en" => "en", "ja" => "ja", "zh" => "zh-Hans", "ru" => "ru", "fr" => "fr" }.freeze
     OG_LOCALE = { "en" => "en_US", "ja" => "ja_JP", "zh" => "zh_CN", "ru" => "ru_RU", "fr" => "fr_FR" }.freeze
