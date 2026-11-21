@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a31d45e598b54446d9c4a8fac5c9e197285b1b4dd872a7905d91d3f24b3219d
+source_sha256: 0d4044d25ae3a662123d5ade27eaf77e908a536c48a46ba72557147da3306758
 ---
 # 設定
 
@@ -104,6 +104,8 @@ end
 **Content Security Policy：** Rails と同じく既定では無効で、`cybertrain new` は下のブロックをコメントアウトして `config/app.rb` に書きます。`c.content_security_policy do |p| ... end` がポリシーを宣言し（ディレクティブごとのメソッドで `p.script_src :self, "https://cdn.jsdelivr.net"`。二度目の呼び出しは同じポリシーに足します）、`c.content_security_policy_nonce_directives`（`[]`）がリクエストの nonce を付けるディレクティブを挙げ（ディレクティブでない名前なら起動が止まります）、`c.content_security_policy_report_only`（`false`）はヘッダーを `Content-Security-Policy-Report-Only` として送ります。コントローラーは `content_security_policy do |p|` で自分のコピーを宣言します。[Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts)を参照してください。
 
 **フィルターされるパラメーター：** リクエストログの `Started GET "/login?..."` の行と開発環境のエラーページ（そのリクエスト行と、params や JSON ボディのダンプ）は、Rails の `filter_parameters` と同じく、`config.filter_parameters` に名前のあるすべてのパラメーターの値を `[FILTERED]` と表示します。そのため、URL 内の `?token=` や、失敗したフォームに送信されたパスワードが、フレームワークのリクエストログや開発環境のエラーページに現れることはありません。置き換えられるのは値だけです：クエリ文字列の残りは送られたままログに記録されます（制御文字はエスケープされます）。リストは大文字小文字を区別せず、部分文字列で照合します。`config/app.rb` で拡張する（`c.filter_parameters = c.filter_parameters + ["otp", "ssn"]`）か、`CYBERTRAIN_FILTER_PARAMETERS` で置き換えてください。アクションが自分でログに出す値はフィルターされません。そこでは `Cybertrain::ParameterFilter.filter?(name)` や `ParameterFilter.filter_query(text)` に問い合わせてください。
+
+**フィルターされるパス：** パスそのものに含まれる秘密（`/results/<token>` のような共有リンクのトークン）には、フィルターの手がかりになるパラメーター名がありません。そこで、その直前のプレフィックスを列挙します：`c.filter_path_prefixes = ["/results/"]` とすると、フレームワークがリクエストのパスを書き出すすべての場所（リクエストログの `Started` の行、`Blocked host` の行、エラーレポートのリクエスト、開発環境のエラーページ）で、`/results/` の次のセグメント全体が `[FILTERED]` と書かれます。プレフィックスは送られたままのパスと先頭のバイトから照合され、`/` で始まって `/` で終わり、`/` だけであってはなりません。そうでなければ起動に失敗します。リストはデフォルトでは空です。フレームワーク自身の署名付きトークン（パスワード再設定リンクのもの）は、これがなくてもその形で伏せられます。前段のリバースプロキシは独自のログを残します。そちらでもパスを伏せてください。
 
 **デプロイ：** `cybertrain build` は `dist/` を作ります：ビューを埋め込んだバイナリ `dist/NAME`、`dist/public/`（静的アセット。リバースプロキシに配信させてもかまいません）、`dist/storage/`（デフォルトでは SQLite のファイル）、`dist/tmp/` です。`CYBERTRAIN_SECRET_KEY_BASE` を設定して `dist/` から実行します。`CYBERTRAIN_ENV` で指定しない限り本番環境で、`./NAME
 migrate` はバイナリに組み込まれたマイグレーションを適用します。バイナリが話すのは素の HTTP/1.1 だけです。TLS と HTTP/2 には nginx や Caddy を前に置いてください（本番環境ではセッションの cookie が `Secure` なので、HTTPS で配信してください）。本番環境では、例外には 500 を返し、飾りのないエラーレスポンス（ルーターのプレーンテキストの 404、`head :not_found`、`render plain:`）は、`public/<status>.html` があればそれに置き換えられます。アクションが HTML や JSON としてレンダリングしたエラーはそのまま通ります。`SIGTERM` を受けると、新たな受け付けを止め、処理中のリクエストを完了させ（`Connection: close` で応答します。アイドル状態の keep-alive 接続はすぐに閉じます）、それらが終わるか、サーバーの `drain_timeout`（10 秒）が過ぎると終了します。監視と再ビルドのループは本番環境では決して動きません。[docs/deploy.en.md](../deploy.en.md)（日本語版：[docs/deploy.md](../deploy.md)）では、`cybertrain new`、Ubuntu のサーバー、systemd、HTTPS 付きの Caddy、再デプロイ、ロールバック、バックアップまで、全体を通して説明しています。

@@ -167,6 +167,18 @@ it with `CYBERTRAIN_FILTER_PARAMETERS`. Values an action logs itself are not
 filtered; ask `Cybertrain::ParameterFilter.filter?(name)` or
 `ParameterFilter.filter_query(text)` there.
 
+**Filtered paths:** a secret in the path itself (a share link's token in
+`/results/<token>`) has no parameter name to filter by, so list the prefix
+it follows: with `c.filter_path_prefixes = ["/results/"]`, the whole
+segment after `/results/` is written `[FILTERED]` wherever the framework
+writes a request's path: the request log's `Started` line, a `Blocked host`
+line, the request of an error report and the development error page. A
+prefix is compared with the path as sent, from its first byte, and must
+start and end with `/` and not be `/` alone, or the boot fails. The list is
+empty by default; the framework's own signed tokens (a password reset
+link's) are masked by their shape without it. A reverse proxy in front
+keeps a log of its own: mask the path there too.
+
 **Deployment:** `cybertrain build` produces `dist/`: the binary `dist/NAME`
 with the views embedded, `dist/public/` (static assets, or let a reverse
 proxy serve it), and `dist/storage/` (the SQLite file by default) and
