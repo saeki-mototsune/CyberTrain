@@ -1383,28 +1383,11 @@ decision, and 77 explicitly retires a workaround.
     and read the warnings `spin test` prints.
     Kept until docs/spinel-feedback.md rule 74 is closed.
 75. Files and child processes for `db backup` (Spinel 2026.09.12, issue
-    #76): `File.open(path, File::WRONLY | File::CREAT | File::EXCL, 0o600)`
-    creates the file with that mode and raises `Errno::EEXIST` for an
-    existing one, as under CRuby; `File#fsync`, `File.rename`, `File.chmod`,
-    `File.stat(path).mode`, `Dir.children` and `Time#strftime` behave the
-    same too (BlobStore already relied on the O_EXCL form). `VACUUM INTO`
-    must create its output file itself: macOS's SQLite answers "output file
-    already exists" for a pre-created empty file that Linux's accepts, so
-    `db backup` gives it a fresh name inside a 0700 directory. Child processes:
-    Kernel `spawn` is "unsupported call", `Process.spawn` compiles but
-    `Process.wait` does not (a spawned child is never reaped), and
-    `system("prog", "arg", ...)` waits for the child without stalling other
-    threads: with `SPINEL_WORKERS=1` the main thread kept ticking every
-    0.1 s while another thread's `system("sleep 1")` ran. So an application
-    runs its own binary for heavy SQLite work (`system("./app", "db",
-    "backup", ...)` from a Scheduler task) instead of running a long
-    `VACUUM INTO` on a thread of the server, where the SQLite call would hold
-    its OS worker until it returns.
-    Current-pin update: `spawn` / `Process.spawn` and `Process.wait` now
-    pass the recorded probe; `test/rate_limit_store.rb` uses and reaps child
-    processes. The earlier spawn prohibition is superseded. Bounded work
-    and child cleanup still matter; the SQLite platform difference was not
-    re-checked.
+    #76): Kernel `spawn` was refused and `Process.wait` did not compile,
+    so a child process went through `system`. `Process.spawn` and
+    `Process.wait` work since 2026.11.04.7026 (test/rate_limit_store.rb).
+    The body of this rule was cut on 2026-11-21; all it held is in
+    docs/spinel-feedback.md, "Rule 75".
     Closed (docs/spinel-feedback.md rule 75): kept for its number.
 76. Spinel 2026.10.26.7019 resolves constants as CRuby does: a bare `DB`
     in an application class outside `module Cybertrain` (`class
@@ -1417,39 +1400,13 @@ decision, and 77 explicitly retires a workaround.
     so on, or aliases one at the top (`DB = Cybertrain::DB`, as the tests do).
     Permanent (docs/spinel-feedback.md rule 76): how Spinel is, and nothing
     is asked; no build retires this rule.
-77. The value of a block forwarded with `&block` to a yielding method loses
-    an application class once the program's blocks for that method return
-    different types (Spinel 2026.10.26.7019; fine on 2026.09.12; on
-    matz/spinel's 2026.10.25 only hidden: the gap is there already, and a
-    `method` call with a computed name or none (`req.method`, which every
-    CyberTrain program has) seeded the block with every class until upstream
-    b6ca77437 narrowed that seeding; still present on matz/spinel master
-    b7007eb8b, see docs/spinel-feedback.md H). `Cybertrain::DB.with` is
-    such a method, and the framework's own DB.with blocks return Arrays and
-    Integers, so in any program that requires it a DB.with block returning
-    a `LoginResult` gives back a boxed value whose dispatch has no case for
-    the class: `r.ok?` raises "undefined method 'ok?' for an instance of
-    LoginResult" (`spinel prog.rb -c` shows the switch with only a
-    `default:`, and `LoginResult#ok?` is not emitted at all). Reduced repro:
-    `class Pool; def with; begin; yield 1; ensure; nil; end; end; end`,
-    `module Db; @pool = Pool.new; def self.with(&block) =
-    @pool.with(&block); end`, `class Result; def ok? = true; end`, `def
-    result_of = Db.with { |c| Result.new }`, then `p result_of.ok?` and
-    `p Db.with { |c| 1 }`: 2026.10.26.7019 raises, 2026.09.12 prints
-    `true` and `1`; without the second call, or calling `Pool#with`
-    directly, it prints `true`. Builtin values (rows, Integers, Strings,
-    true/false) still dispatch, so the framework's sites are unaffected
-    (issue #27, reported downstream). A Boolean block value used as a
-    condition was reported refused at compile time ("unsupported condition
-    (non-bool)") in a larger program; it did not reproduce in the
-    framework or in small programs. The remedy for an object: declare a
-    typed local before the block, assign it inside, return it after
-    (`result = LoginResult.new("none"); DB.with { |c| result = ... };
-    result`), the form DB.transaction already requires.
-    test/db_with_value.rb is the regression program. **Fixed in
-    2026.10.27.7020** (matz/spinel#10415, issue #90): the block's own value
-    keeps the class, so the typed local is no longer needed with the
-    pinned release; the test covers both forms.
+77. The value of a block forwarded with `&block` to a yielding method lost
+    an application class once the program's blocks for that method
+    returned different types (Spinel 2026.10.26.7019, issue #27), so an
+    object computed in a `DB.with` block went through a local declared
+    before it. Fixed in 2026.10.27.7020 (matz/spinel#10415, issue #90);
+    test/db_with_value.rb covers both forms. The body of this rule was cut
+    on 2026-11-21; all it held is in docs/spinel-feedback.md H.
     Closed (docs/spinel-feedback.md H): kept for its number.
 78. `puts` on a receiver whose type is nil-only (an ivar only ever assigned
     nil, like Logger's `@io` in a program that never passes a logger an

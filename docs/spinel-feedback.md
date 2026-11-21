@@ -243,7 +243,7 @@ the cell names another build.
 | E | cost |  | not re-checked on the pin (last: no change against 2026.10.27.7020 on 2026.11.04.7026, 2026-11-05) |  |
 | F | bug |  | closed | 2026.10.26.7019 (#10260); never had a workaround |
 | G | bug |  | closed | 2026.10.26.7019 (#10262); never had a workaround |
-| H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 is not cut yet |
+| H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 was cut on 2026-11-21, and what only it held is in H |
 | I | bug |  | closed | 2026.11.04.7026 (#10735, #10786); never had a workaround |
 | J | bug |  | not re-checked on the pin (last: fails with `SPINEL_GC_SLAB=0` on 2026.11.04.7026, 3 runs of 3; the default is unknown) |  |
 | K | bug | 78 | passes on the pin, workaround kept (status 78) |  |
@@ -346,7 +346,7 @@ the cell names another build.
 | rule 72 | bug | 72 | probe matches on the pin for the parts in rechecks/outbound_socket_shapes.rb (Linux), workaround kept; `Socket#bind(sockaddr)` and the openssl package notes were not tried since 2026.09.12; `connect_timeout:` is O |  |
 | rule 73 | bug | 73 | not re-checked on the pin (last: reduced program passes on 2026.11.04.7026) |  |
 | rule 74 | bug | 74 | not re-checked on the pin (last: reduced program passes on 2026.11.04.7026) |  |
-| rule 75 | bug | 75 | closed | 2026.11.04.7026: `Process.spawn` and `Process.wait` work; test/rate_limit_store.rb uses them. The body of rule 75 is not cut yet |
+| rule 75 | bug | 75 | closed | 2026.11.04.7026: `Process.spawn` and `Process.wait` work; test/rate_limit_store.rb uses them. The body of rule 75 was cut on 2026-11-21, and what it held is under "Rule 75" |
 | rule 76 | constraint | 76 | settled (1.4: a constant resolves as in CRuby) |  |
 | rule 79 | bug | 79 | passes on the pin, workaround kept (status 79). Not closed on 2026-11-21: comments in cybertrain/console.rb (`Console.unknown_model` and `unknown_record`, a typed value after the `raise`), cybertrain/generator/console_emitter.rb (`name_case`) and test/test_lifecycle.rb (each lambda does something before it raises) give rule 79 as their reason, and no test in `test/` appends the value of a rescuing method whose block only raises |  |
 | rule 84 | refusal by design | 84 | settled ("A refusal of a never-reached class-method call") |  |
@@ -411,7 +411,7 @@ are spikes/NOTES.md's.
 The items stand where they were found, so the letters do not run in order
 through the document. 1 to 3 are under "Correctness" and 4 to 7 under
 "Runtime cost"; A to J and L under "Regressions in newer packages"; K, M
-and rules 64, 65 and 79 under "From spikes/NOTES.md, not written up
+and rules 64, 65, 75 and 79 under "From spikes/NOTES.md, not written up
 before"; N, O and P under "Found by Daicho"; Q, then R to T, then U to X
 under the sections of phases 2, 3 and 4a; Y and Z under "Re-checked on
 2026-11-11"; AA to AH under "Written up on 2026-11-13"; AI, AJ to AO, AP
@@ -2077,19 +2077,25 @@ p result_of.ok?      # undefined method 'ok?' for an instance of Result (NoMetho
 p Db.with { |c| 1 }  # without this second block, or calling Pool#with directly: true
 ```
 
-The generated C dispatches `ok?` with a `switch` that has only the
-`default:` NoMethodError case; 2026.09.12's has `case <Result>:`. Builtin
+The generated C (`spinel prog.rb -c`) dispatches `ok?` with a `switch`
+that has only the `default:` NoMethodError case; 2026.09.12's has `case
+<Result>:`. In the reported application the class was `LoginResult`, the
+value of a `Cybertrain::DB.with` block, and `r.ok?` raised "undefined
+method 'ok?' for an instance of LoginResult". Builtin
 values (Arrays, Hashes, Integers, Strings, true/false) still dispatch, so
 CyberTrain's own `Cybertrain::DB.with` sites, which return rows and
 Integers, are unaffected, and its 98 test programs pass. An application's
 `DB.with { |c| ... }` that returns its own object breaks, because the
 framework's blocks already make DB.with's value polymorphic. The reporter
 also saw a Boolean block value refused as a condition ("unsupported
-condition (non-bool)") in a larger program; that was not reproduced.
+condition (non-bool)") in a larger program; that was not reproduced, in
+the framework or in small programs.
 
 CyberTrain's workaround while it was pinned to 2026.10.26.7019: DB.with's
 comment said to assign such a value to a local declared before the block
-(as DB.transaction already requires), and test/db_with_value.rb covered
+(`result = LoginResult.new("none"); DB.with { |c| result = ... };
+result`, as DB.transaction already requires), and test/db_with_value.rb
+covered
 that form and a Boolean condition (spikes/NOTES.md rule 77). Since the pin
 moved to 2026.10.27.7020, which carries the fix below, the comment no
 longer asks for it, and the test also covers the block's own value, which
@@ -2427,7 +2433,8 @@ rules in spikes/NOTES.md. They were looked at on 2026.11.04.7026 on
 2026-11-04: one is still there (K), and the generated C of the other two
 no longer shows the cause in the shape checked. A fourth, rule 79, was
 found on 2026.11.04.7026 on 2026-11-04 and checked against the two
-releases before it on 2026-11-05 (at the end).
+releases before it on 2026-11-05 (at the end). The record of rule 75,
+closed since 2026.11.04.7026, was moved in before it on 2026-11-21.
 
 ### K. `puts` on a nil-only receiver does not compile once the TLS layer is in the program
 
@@ -2522,6 +2529,43 @@ interpolation in place of the parameter.
   interpolation allocates. There was no AddressSanitizer run, so this is
   not a claim that it is fixed in general; CyberTrain keeps building the
   allocating argument first, in a local (cybertrain/cli/toolchain.rb).
+
+### Rule 75: files and child processes for `db backup`
+
+Moved here on 2026-11-21 from the body of spikes/NOTES.md rule 75, which
+is cut to its record there: the item was closed by the pin moving to
+2026.11.04.7026 ("Item register"). What follows was seen on Spinel
+2026.09.12 for `db backup` (issue #76), except where a later build is
+named.
+
+- Files, which behave as under CRuby: `File.open(path, File::WRONLY |
+  File::CREAT | File::EXCL, 0o600)` creates the file with that mode and
+  raises `Errno::EEXIST` for an existing one; `File#fsync`, `File.rename`,
+  `File.chmod`, `File.stat(path).mode`, `Dir.children` and `Time#strftime`
+  behave the same too (BlobStore already relied on the O_EXCL form).
+- Not Spinel: `VACUUM INTO` must create its output file itself. macOS's
+  SQLite answers "output file already exists" for a pre-created empty
+  file that Linux's accepts, so `db backup` gives it a fresh name inside a
+  0700 directory (docs/design.md D30). This platform difference was not
+  re-checked after 2026.09.12.
+- Child processes, the difference from CRuby: Kernel `spawn` is
+  "unsupported call", and `Process.spawn` compiles but `Process.wait` does
+  not, so a spawned child is never reaped. `system("prog", "arg", ...)`
+  waits for the child without stalling other threads: with
+  `SPINEL_WORKERS=1` the main thread kept ticking every 0.1 s while
+  another thread's `system("sleep 1")` ran.
+- What CyberTrain did, and still advises: an application runs its own
+  binary for heavy SQLite work (`system("./app", "db", "backup", ...)`
+  from a Scheduler task) instead of running a long `VACUUM INTO` on a
+  thread of the server, where the SQLite call would hold its OS worker
+  until it returns. Bounded work and child cleanup still matter.
+- On 2026.11.04.7026 Kernel `spawn`, `Process.spawn` and `Process.wait`
+  pass the recorded probe ("Status by rule", row 75 on 2026.11.04.7026),
+  and the prohibition on `spawn` is superseded: test/rate_limit_store.rb
+  spawns its own binary and reaps it with `Process.wait(pid)`, and
+  `./<app> dbconsole` runs the sqlite3 shell with `Process.spawn` and
+  `Process.wait` (cybertrain/main.rb, docs/design.md D41).
+- Nothing is asked of Spinel.
 
 ### Rule 79: a rescuing method's value does not compile when its block only raises
 
